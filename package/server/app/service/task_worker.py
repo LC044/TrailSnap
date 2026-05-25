@@ -60,6 +60,8 @@ class TaskQueueManager:
 
 def get_chunk_size(task_type):
     chunk_size = 8
+    if task_type == TaskType.PROCESS_BASIC:
+        chunk_size = 1
     if task_type == TaskType.VISUAL_DESCRIPTION:
         chunk_size = 2
     elif task_type == TaskType.OCR:
@@ -289,10 +291,12 @@ class TaskWorker:
         tasks_by_type = {}
         try:
             # We will fetch up to max_batch_size per category if its queue is below threshold
-            # Max items in queue per category
-            QUEUE_THRESHOLD = 50
-            # How many items to fetch in one DB query per category
-            FETCH_BATCH_SIZE = 48
+            # Keep the local Docker setup gentle. The original queue sizes can
+            # mark hundreds of tasks as PROCESSING before they actually run,
+            # which is painful when NAS IO or Docker Desktop storage stalls.
+            max_tasks = max(1, system_config.config.task.max_concurrent_tasks)
+            QUEUE_THRESHOLD = max_tasks
+            FETCH_BATCH_SIZE = max_tasks * 8
 
             # Filter allowed types based on current queue size
             types_to_fetch = []
@@ -310,7 +314,7 @@ class TaskWorker:
             query = query.filter(Task.type.in_(types_to_fetch))
 
             # Fetch tasks. We fetch a bit more to fill the queues up
-            tasks = query.order_by(Task.priority.desc(), Task.created_at.asc()).limit(FETCH_BATCH_SIZE * 3).all()
+            tasks = query.order_by(Task.priority.desc(), Task.created_at.asc()).limit(FETCH_BATCH_SIZE).all()
 
             if tasks:
                 for task in tasks:
@@ -347,10 +351,11 @@ class TaskWorker:
         # Configure max concurrency per consumer category based on system settings
         # or Fast Mode. Using Semaphores to allow multiple batches to run concurrently.
         max_concurrency = 1
+        configured_workers = max(1, system_config.config.task.max_concurrent_tasks)
         if category == 'CPU':
-            max_concurrency = os.cpu_count() or 4
+            max_concurrency = configured_workers
         elif category == 'IO':
-            max_concurrency = 10
+            max_concurrency = configured_workers
         elif category == 'AI':
             max_concurrency = 1
 

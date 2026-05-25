@@ -10,5 +10,6 @@ dist
 *uploads*
 data/*
 pg_data/
+backups/
 .env
 .claude/

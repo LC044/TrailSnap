@@ -15,7 +15,7 @@ services:
     ports:
       - "5532:5432"
     volumes:
-      - ./pg_data:/var/lib/postgresql/data
+      - trailsnap_pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U trailsnap -d trailsnap -p 5432"]
       interval: 5s
@@ -34,6 +34,7 @@ services:
       - app-network
     volumes:
       - ./data:/app/data
+      - ./package/server/app:/app/app:ro
       - /Volumes/photo:/app/Photos/:ro
     environment:
       - TZ=Asia/Shanghai
@@ -74,3 +75,7 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  trailsnap_pg_data:
+    external: true
