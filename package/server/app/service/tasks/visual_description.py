@@ -5,6 +5,7 @@ import logging
 import os
 import json
 import base64
+import re
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from langchain_openai import ChatOpenAI
@@ -17,6 +18,34 @@ from app.core.config_manager import config_manager
 from app.service import storage
 
 logger = logging.getLogger(__name__)
+
+
+def parse_json_response(content: str) -> Dict[str, Any]:
+    text = (content or "").strip()
+    if text.startswith("```"):
+        match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+        if match:
+            text = match.group(1).strip()
+
+    candidates = [text]
+    brace_index = text.find("{")
+    if brace_index > 0:
+        candidates.append(text[brace_index:])
+
+    last_error = None
+    decoder = json.JSONDecoder(strict=False)
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            result, _ = decoder.raw_decode(candidate.strip())
+            if isinstance(result, dict):
+                return result
+        except json.JSONDecodeError as e:
+            last_error = e
+
+    preview = text[:300].replace("\n", "\\n")
+    raise ValueError(f"Failed to parse model JSON response: {preview}") from last_error
 
 
 def encode_image(image_path):
@@ -201,16 +230,10 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 ]
             )
 
-            eval_content = eval_response.content.strip().strip('`').strip().strip('json')
-            print(eval_content)
-            # Clean up code blocks if present
-            if eval_content.startswith("```"):
-                eval_content = eval_content.strip("`")
-                if eval_content.startswith("json"):
-                    eval_content = eval_content[4:]
+            eval_content = eval_response.content
             try:
-                result_json = json.loads(eval_content.strip())
-            except json.JSONDecodeError as e:
+                result_json = parse_json_response(eval_content)
+            except (json.JSONDecodeError, ValueError) as e:
                 logger.error(f"Failed to parse evaluation JSON for photo {photo.id}: {eval_content}")
                 raise e
 
