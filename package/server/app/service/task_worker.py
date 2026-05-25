@@ -263,7 +263,8 @@ class TaskWorker:
         if active_count > 0:
             if active_cpu_count > 0 and self.process_pool is None:
                 logging.info(f"Restarting process pool")
-                self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count())
+                max_workers = max(1, system_config.config.task.max_concurrent_tasks)
+                self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=max_workers)
             if self.thread_pool is None and active_io_count > 0:
                 max_workers = system_config.config.task.max_concurrent_tasks
                 logging.info(f"Restarting thread pool")
@@ -360,7 +361,7 @@ class TaskWorker:
         elif category == 'IO':
             max_concurrency = configured_workers
         elif category == 'AI':
-            max_concurrency = 1
+            max_concurrency = configured_workers
 
         semaphore = asyncio.Semaphore(max_concurrency)
 
