@@ -20,6 +20,59 @@ from app.service import storage
 logger = logging.getLogger(__name__)
 
 
+def _extract_json_string_field(text: str, key: str) -> str | None:
+    match = re.search(rf'"{key}"\s*:\s*"', text)
+    if not match:
+        return None
+
+    start = match.end()
+    next_key = re.search(
+        r',?\s*\n?\s*"(description|tags|memory_score|beauty_score|quality_score|reason|narrative)"\s*:',
+        text[start:],
+    )
+    end = start + next_key.start() if next_key else len(text)
+    value = text[start:end].strip()
+    value = re.sub(r'"\s*,?\s*\}?\s*$', '', value, flags=re.DOTALL).strip()
+    return value.replace('\\"', '"')
+
+
+def _extract_json_array_field(text: str, key: str) -> List[str] | None:
+    match = re.search(rf'"{key}"\s*:\s*(\[[^\]]*\])', text, re.DOTALL)
+    if not match:
+        return None
+    raw_value = match.group(1)
+    try:
+        value = json.loads(raw_value, strict=False)
+        if isinstance(value, list):
+            return value
+    except json.JSONDecodeError:
+        pass
+    return re.findall(r'"([^"]+)"', raw_value)
+
+
+def _extract_json_number_field(text: str, key: str) -> float | None:
+    match = re.search(rf'"{key}"\s*:\s*(-?\d+(?:\.\d+)?)', text)
+    if not match:
+        return None
+    return float(match.group(1))
+
+
+def _parse_partial_json_response(text: str) -> Dict[str, Any]:
+    result = {
+        "description": _extract_json_string_field(text, "description"),
+        "tags": _extract_json_array_field(text, "tags") or [],
+        "memory_score": _extract_json_number_field(text, "memory_score"),
+        "beauty_score": _extract_json_number_field(text, "beauty_score"),
+        "quality_score": _extract_json_number_field(text, "quality_score"),
+        "reason": _extract_json_string_field(text, "reason"),
+        "narrative": _extract_json_string_field(text, "narrative"),
+    }
+    result = {key: value for key, value in result.items() if value not in (None, "")}
+    if "description" in result or "narrative" in result:
+        return result
+    raise ValueError("No usable fields found in partial JSON response")
+
+
 def parse_json_response(content: str) -> Dict[str, Any]:
     text = (content or "").strip()
     if text.startswith("```"):
@@ -43,6 +96,14 @@ def parse_json_response(content: str) -> Dict[str, Any]:
                 return result
         except json.JSONDecodeError as e:
             last_error = e
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            return _parse_partial_json_response(candidate.strip())
+        except ValueError:
+            pass
 
     preview = text[:300].replace("\n", "\\n")
     raise ValueError(f"Failed to parse model JSON response: {preview}") from last_error
