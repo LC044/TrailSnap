@@ -53,6 +53,13 @@ def encode_image(image_path):
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 
+def mark_visual_description_processed(photo: Photo, db: Session) -> None:
+    tasks_status = dict(photo.processed_tasks or {})
+    tasks_status['visual_description'] = True
+    photo.processed_tasks = tasks_status
+    db.commit()
+
+
 @TaskStrategyFactory.register(TaskType.VISUAL_DESCRIPTION)
 class VisualDescriptionStrategy(BaseTaskStrategy):
     @property
@@ -231,6 +238,10 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             )
 
             eval_content = eval_response.content
+            if "considered high risk" in (eval_content or "").lower():
+                mark_visual_description_processed(photo, db)
+                return {'status': 'skipped', 'reason': 'model rejected high risk image'}
+
             try:
                 result_json = parse_json_response(eval_content)
             except (json.JSONDecodeError, ValueError) as e:
@@ -256,10 +267,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             )
             db.add(desc)
             # Update photo processed status
-            tasks_status = dict(photo.processed_tasks or {})
-            tasks_status['visual_description'] = True
-            photo.processed_tasks = tasks_status
-            db.commit()
+            mark_visual_description_processed(photo, db)
             return {
                 'status': 'completed',
                 'description': desc.description,
