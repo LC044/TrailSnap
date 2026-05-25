@@ -9,5 +9,6 @@ dist
 .trae
 *uploads*
 data/*
+pg_data/
 .env
 .claude/
