@@ -51,17 +51,22 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             logger.error("Visual Model connection has no api_key: %s", settings.analysis_connection_id)
             raise ValueError(f"Visual Model connection has no api_key: {settings.analysis_connection_id}")
 
-        # 2. Call OpenAI API
-        client = ChatOpenAI(
-            api_key=connection.api_key,
-            model= settings.analysis_model_name,
-            base_url=connection.api_base if connection.api_base else None,
-            timeout=60,
-            extra_body={
+        # 2. Call OpenAI-compatible API. Some providers reject
+        # reasoning_effort="none"; disabling thinking through extra_body is
+        # enough for Xiaomi Mimo while still working with LM Studio Qwen.
+        client_kwargs = {
+            "api_key": connection.api_key,
+            "model": settings.analysis_model_name,
+            "base_url": connection.api_base if connection.api_base else None,
+            "timeout": 60,
+            "extra_body": {
                 "chat_template_kwargs": {"enable_thinking": False},
             },
-            reasoning_effort="none",
-        )
+        }
+        if "xiaomimimo.com" not in (connection.api_base or ""):
+            client_kwargs["reasoning_effort"] = "none"
+
+        client = ChatOpenAI(**client_kwargs)
         return client
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:

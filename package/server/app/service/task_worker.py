@@ -296,37 +296,40 @@ class TaskWorker:
             # which is painful when NAS IO or Docker Desktop storage stalls.
             max_tasks = max(1, system_config.config.task.max_concurrent_tasks)
             QUEUE_THRESHOLD = max_tasks
-            FETCH_BATCH_SIZE = max_tasks * 8
+            FETCH_BATCH_SIZE = max_tasks
 
-            # Filter allowed types based on current queue size
-            types_to_fetch = []
+            # Filter allowed types based on current queue size, then fetch per
+            # category. A single global priority query lets PROCESS_BASIC fill
+            # every fetch window and starve AI work such as VISUAL_DESCRIPTION.
+            types_by_category = {}
             for t in allowed_types:
                 task_Factory = TaskStrategyFactory.get_strategy(t)
                 if not task_Factory: continue
                 cat = task_Factory.task_category
                 if cat and current_qsizes.get(cat, 0) < QUEUE_THRESHOLD:
-                    types_to_fetch.append(t)
+                    types_by_category.setdefault(cat, []).append(t)
 
-            if not types_to_fetch:
+            if not types_by_category:
                 return {}
 
-            query = db.query(Task).filter(Task.status == TaskStatus.PENDING)
-            query = query.filter(Task.type.in_(types_to_fetch))
-
-            # Fetch tasks. We fetch a bit more to fill the queues up
-            tasks = query.order_by(Task.priority.desc(), Task.created_at.asc()).limit(FETCH_BATCH_SIZE).all()
-
-            if tasks:
+            for category, types_to_fetch in types_by_category.items():
+                tasks = (
+                    db.query(Task)
+                    .filter(Task.status == TaskStatus.PENDING)
+                    .filter(Task.type.in_(types_to_fetch))
+                    .order_by(Task.priority.desc(), Task.created_at.asc())
+                    .limit(FETCH_BATCH_SIZE)
+                    .all()
+                )
                 for task in tasks:
-                    cat = TaskStrategyFactory.get_strategy(task.type).task_category
-                    if not cat: continue
-
                     if task.type not in tasks_by_type:
                         tasks_by_type[task.type] = []
 
                     task.status = TaskStatus.PROCESSING
                     self.last_active_time[task.type] = datetime.now()
                     tasks_by_type[task.type].append({'id': task.id, 'type': task.type, 'priority': task.priority})
+
+            if tasks_by_type:
                 db.commit()
 
             # Split tasks into smaller batches of max 8 items
