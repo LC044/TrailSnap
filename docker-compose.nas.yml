@@ -40,7 +40,7 @@ services:
       - TZ=Asia/Shanghai
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
-      - AI_API_URL=http://ai:8001
+      - AI_API_URL=http://192.168.10.12:8801
     depends_on:
       postgres:
         condition: service_healthy
