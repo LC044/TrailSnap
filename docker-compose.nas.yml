@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg18-trixie
+    container_name: trailsnap_postgres
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      POSTGRES_DB: trailsnap
+      POSTGRES_USER: trailsnap
+      POSTGRES_PASSWORD: trailsnap
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+      PGDATA: /var/lib/postgresql/data/pgdata
+    networks:
+      - app-network
+    ports:
+      - "5532:5432"
+    volumes:
+      - trailsnap_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trailsnap -d trailsnap -p 5432"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  server:
+    image: siyuan044/trailsnap-server:latest
+    restart: unless-stopped
+    expose:
+      - "8000"
+    ports:
+      - "8800:8000"
+    networks:
+      - app-network
+    volumes:
+      - ./data:/app/data
+      - ./package/server/app:/app/app:ro
+      - /volume1/photo:/app/Photos/:ro
+    environment:
+      - TZ=Asia/Shanghai
+      - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
+      - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
+      - AI_API_URL=http://ai:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+
+  ai:
+    image: siyuan044/trailsnap-ai:latest
+    restart: unless-stopped
+    expose:
+      - "8001"
+    ports:
+      - "8801:8001"
+    networks:
+      - app-network
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+
+  frontend:
+    image: siyuan044/trailsnap-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    depends_on:
+      - server
+    networks:
+      - app-network
+    environment:
+      - TZ=Asia/Shanghai
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  trailsnap_pg_data:
