@@ -16,6 +16,13 @@ router = APIRouter()
 class RemovePhotosRequest(BaseModel):
     photo_ids: List[UUID]
 
+class RenameTagRequest(BaseModel):
+    new_name: str
+
+class MergeTagsRequest(BaseModel):
+    target_name: str
+    source_names: List[str]
+
 @router.get("", response_model=BaseResponse[List[schemas.TagStats]], summary="获取智能分类标签列表")
 def get_tags(
     skip: int = 0,
@@ -28,6 +35,53 @@ def get_tags(
     """
     data = crud.get_tags_with_stats(db, current_user.id, skip, limit)
     return BaseResponse(data=data)
+
+@router.post("/merge", summary="合并分类标签")
+def merge_tags(
+    payload: MergeTagsRequest = Body(..., description="合并标签请求"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    success, count, message = crud.merge_tags(
+        db,
+        current_user.id,
+        payload.target_name,
+        payload.source_names,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    from app.crud.album import trigger_conditional_albums_update
+    trigger_conditional_albums_update(db, current_user.id, None)
+    return BaseResponse(data={"status": "success", "count": count})
+
+@router.put("/{path:path}", summary="重命名分类标签")
+def rename_tag(
+    payload: RenameTagRequest = Body(..., description="标签重命名请求"),
+    path: str = Path(..., description="标签名称（支持多级/包含/）", path=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    success, message = crud.rename_tag(db, current_user.id, path, payload.new_name)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    from app.crud.album import trigger_conditional_albums_update
+    trigger_conditional_albums_update(db, current_user.id, None)
+    return BaseResponse(data={"status": "success"})
+
+@router.delete("/{path:path}", summary="删除分类标签")
+def delete_tag(
+    path: str = Path(..., description="标签名称（支持多级/包含/）", path=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    if not crud.delete_tag(db, current_user.id, path):
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    from app.crud.album import trigger_conditional_albums_update
+    trigger_conditional_albums_update(db, current_user.id, None)
+    return BaseResponse(data={"status": "success"})
 
 @router.get("/{path:path}/photos", response_model=BaseResponse[List[photo_schemas.Photo]], summary="获取分类照片列表")
 def get_tag_photos(

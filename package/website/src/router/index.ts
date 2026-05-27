@@ -60,6 +60,9 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
+  { path: '/people', redirect: '/album/people' },
+  { path: '/people/:id', redirect: to => `/album/people/${to.params.id}` },
+
   // Annual Report (Standalone Layout)
   {
     path: '/annual-report',

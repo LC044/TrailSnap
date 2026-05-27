@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from uuid import UUID
 from sqlalchemy.orm import Session
 from app.db.models.tag import PhotoTag, PhotoTagRelation
@@ -184,3 +184,76 @@ def set_tag_cover(db: Session, owner_id: UUID, tag_name: str, photo_id: UUID) ->
     tag.cover_id = photo_id
     db.commit()
     return True
+
+def delete_tag(db: Session, owner_id: UUID, tag_name: str) -> bool:
+    tag = get_tag_by_name(db, tag_name, owner_id)
+    if not tag:
+        return False
+
+    db.query(PhotoTagRelation).filter(PhotoTagRelation.tag_id == tag.id).delete(synchronize_session=False)
+    db.delete(tag)
+    db.commit()
+    return True
+
+def rename_tag(db: Session, owner_id: UUID, old_name: str, new_name: str) -> Tuple[bool, str]:
+    new_name = new_name.strip()
+    if not new_name:
+        return False, "New tag name is empty"
+
+    tag = get_tag_by_name(db, old_name, owner_id)
+    if not tag:
+        return False, "Tag not found"
+
+    existing = get_tag_by_name(db, new_name, owner_id)
+    if existing and existing.id != tag.id:
+        return False, "Target tag already exists"
+
+    tag.tag_name = new_name
+    db.commit()
+    return True, "success"
+
+def merge_tags(db: Session, owner_id: UUID, target_name: str, source_names: List[str]) -> Tuple[bool, int, str]:
+    target_name = target_name.strip()
+    source_names = [name.strip() for name in source_names if name and name.strip()]
+    if not target_name:
+        return False, 0, "Target tag name is empty"
+    if not source_names:
+        return False, 0, "Source tags are empty"
+
+    target = get_tag_by_name(db, target_name, owner_id)
+    if not target:
+        target = create_tag(db, target_name, "classification", owner_id)
+
+    merged_count = 0
+    for source_name in source_names:
+        if source_name == target_name:
+            continue
+
+        source = get_tag_by_name(db, source_name, owner_id)
+        if not source:
+            continue
+
+        if not target.cover_id and source.cover_id:
+            target.cover_id = source.cover_id
+
+        source_relations = db.query(PhotoTagRelation).filter(
+            PhotoTagRelation.tag_id == source.id
+        ).all()
+
+        for relation in source_relations:
+            target_relation = db.query(PhotoTagRelation).filter(
+                PhotoTagRelation.photo_id == relation.photo_id,
+                PhotoTagRelation.tag_id == target.id
+            ).first()
+
+            if target_relation:
+                target_relation.confidence = max(target_relation.confidence or 0, relation.confidence or 0)
+                db.delete(relation)
+            else:
+                relation.tag_id = target.id
+            merged_count += 1
+
+        db.delete(source)
+
+    db.commit()
+    return True, merged_count, "success"
