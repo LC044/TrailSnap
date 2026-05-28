@@ -335,18 +335,34 @@ def get_photos_for_cleanup(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Join with ImageDescription to access scores
-    query = db.query(Photo).join(ImageDescriptionModel, Photo.id == ImageDescriptionModel.photo_id).filter(Photo.owner_id == current_user.id, Photo.is_deleted == False)
+    score_subquery = db.query(
+        ImageDescriptionModel.photo_id.label("photo_id"),
+        func.max(
+            func.coalesce(ImageDescriptionModel.memory_score, 0) +
+            func.coalesce(ImageDescriptionModel.quality_score, 0)
+        ).label("score")
+    ).group_by(ImageDescriptionModel.photo_id).subquery()
 
-    # Calculate score: memory_score + quality_score
-    # We use coalesce to treat nulls as 0
-    score_expr = func.coalesce(ImageDescriptionModel.memory_score, 0) + func.coalesce(ImageDescriptionModel.quality_score, 0)
+    query = db.query(Photo).join(
+        score_subquery,
+        Photo.id == score_subquery.c.photo_id
+    ).filter(
+        Photo.owner_id == current_user.id,
+        Photo.is_deleted == False
+    )
 
     if sort_by == "desc":
-        query = query.order_by(score_expr.desc())
+        query = query.order_by(
+            score_subquery.c.score.desc(),
+            Photo.photo_time.desc().nulls_last(),
+            Photo.id.desc(),
+        )
     else:
-        query = query.order_by(score_expr.asc())
+        query = query.order_by(
+            score_subquery.c.score.asc(),
+            Photo.photo_time.asc().nulls_last(),
+            Photo.id.asc(),
+        )
 
     photos = query.offset(skip).limit(limit).all()
     return BaseResponse(data=photos)
-

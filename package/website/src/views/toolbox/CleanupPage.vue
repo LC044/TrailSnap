@@ -114,6 +114,15 @@ const subtitle = computed(() => {
   return `${photos.value.length}${hasMore.value ? '+' : ''} 张照片`
 })
 
+const dedupePhotos = (items: AlbumImage[], existingIds = new Set<string>()) => {
+  const seen = new Set(existingIds)
+  return items.filter(item => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
 const fetchPhotos = async (isLoadMore = false) => {
   if (loading.value) return
   
@@ -132,18 +141,21 @@ const fetchPhotos = async (isLoadMore = false) => {
     })
 
     const newPhotos = res.map(item => mapPhotoToImage(item))
+    const uniqueNewPhotos = isLoadMore
+      ? dedupePhotos(newPhotos, new Set(photos.value.map(item => item.id)))
+      : dedupePhotos(newPhotos)
 
     if (newPhotos.length < limit) {
       hasMore.value = false
     }
 
     if (isLoadMore) {
-      photos.value.push(...newPhotos)
+      photos.value.push(...uniqueNewPhotos)
     } else {
-      photos.value = newPhotos
+      photos.value = uniqueNewPhotos
     }
 
-    skip.value += limit
+    skip.value += newPhotos.length
   } catch (e) {
     console.error('Fetch failed:', e)
     ElMessage.error('获取照片失败')

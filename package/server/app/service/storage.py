@@ -22,6 +22,11 @@ except ImportError:
 # Global cache for storage root (User ID -> Root Path)
 _STORAGE_ROOT_CACHE = {}
 
+RAW_EXTENSIONS = {
+    '.arw', '.cr2', '.cr3', '.dng', '.nef', '.nrw', '.orf',
+    '.pef', '.raf', '.raw', '.rw2', '.srw', '.x3f'
+}
+
 def _get_storage_root(user_id: UUID, db: Session = None) -> str:
     try:
         root = './data/uploads'  # Default path
@@ -237,6 +242,67 @@ def get_live_photo_vide(image_path: str) -> Optional[str]:
         logging.error(f"Error getting live photo video for {image_path}: {e}")
     return None
 
+def _raw_candidate_dirs(file_path: str):
+    parent = os.path.abspath(os.path.dirname(file_path))
+    seen = set()
+
+    def add(path: str):
+        path = os.path.abspath(path)
+        if path not in seen and os.path.isdir(path):
+            seen.add(path)
+            yield path
+
+    yield from add(parent)
+
+    def add_raw_dir_with_children(path: str):
+        if 'raw' not in os.path.basename(path).lower():
+            return
+        yield from add(path)
+        try:
+            for name in os.listdir(path):
+                child = os.path.join(path, name)
+                if os.path.isdir(child):
+                    yield from add(child)
+        except OSError as e:
+            logging.warning(f"Could not inspect RAW sidecar directory {path}: {e}")
+
+    try:
+        for name in os.listdir(parent):
+            yield from add_raw_dir_with_children(os.path.join(parent, name))
+    except OSError as e:
+        logging.warning(f"Could not inspect photo directory {parent}: {e}")
+
+    grandparent = os.path.dirname(parent)
+    if grandparent and grandparent != parent:
+        try:
+            for name in os.listdir(grandparent):
+                yield from add_raw_dir_with_children(os.path.join(grandparent, name))
+        except OSError as e:
+            logging.warning(f"Could not inspect sibling directories for {parent}: {e}")
+
+def delete_raw_sidecars(file_path: str):
+    base_name, ext = os.path.splitext(os.path.basename(file_path))
+    if ext.lower() in RAW_EXTENSIONS:
+        return
+
+    base_name_lower = base_name.lower()
+    for directory in _raw_candidate_dirs(file_path):
+        try:
+            names = os.listdir(directory)
+        except OSError as e:
+            logging.warning(f"Could not inspect RAW sidecar candidates in {directory}: {e}")
+            continue
+
+        for name in names:
+            candidate_base, candidate_ext = os.path.splitext(name)
+            if candidate_base.lower() == base_name_lower and candidate_ext.lower() in RAW_EXTENSIONS:
+                candidate = os.path.join(directory, name)
+                try:
+                    os.remove(candidate)
+                    logging.info(f"Deleted RAW sidecar: {candidate}")
+                except OSError as e:
+                    logging.error(f"Error deleting RAW sidecar {candidate}: {e}")
+
 def delete_file(user_id: UUID, file_path: str, file_id: UUID, is_live_photo: bool = False):
     try:
         if os.path.exists(file_path):
@@ -245,6 +311,7 @@ def delete_file(user_id: UUID, file_path: str, file_id: UUID, is_live_photo: boo
             video_path = get_live_photo_vide(file_path)
             if video_path and os.path.exists(video_path):
                 os.remove(video_path)
+        delete_raw_sidecars(file_path)
         delete_thumbnails(user_id, file_id)
     except Exception as e:
         logging.error(f"Error deleting file {user_id}/{file_path}: {e}")
