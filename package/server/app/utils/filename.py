@@ -85,6 +85,8 @@ def _extract_datetime_from_filename(filename)-> datetime | None:
         r"(\d{8})[ _\.-](\d{2})[ _\.-](\d{2})[ _\.-](\d{2})",  # 格式：YYYYMMDD_HH-MM-SS
         r"(\d{8})[ _T\.-](\d{6})",  # 格式：YYYYMMDD_HHMMSS
         r"(\d{14})",  # 格式：YYYYMMDDHHMMSS
+        r"(?<!\d)((?:19|20)\d{2})[ _\.-](\d{1,2})[ _\.-](\d{1,2})(?!\d)",  # 格式：YYYY-MM-DD / YYYY.M.D
+        r"(?<!\d)((?:19|20)\d{2})([01]\d)([0-3]\d)(?!\d)",  # 格式：YYYYMMDD
         r"(\d{13}|\d{10})",  # 格式：TIMESTAMP (13位毫秒级时间戳)
     ]
     try:
@@ -105,6 +107,10 @@ def _extract_datetime_from_filename(filename)-> datetime | None:
                         return dt
                     else:
                         return is_valid_timestamp(timestamp, filename)
+                elif len(match.groups()) == 3:  # 格式：YYYY-MM-DD / YYYYMMDD
+                    year, month, day = match.groups()
+                    dt = datetime(int(year), int(month), int(day))
+                    return dt
                 elif len(match.groups()) == 4:  # 格式：YYYY-MM-DD HHMMSS
                     year, month, day, time_str = match.groups()
                     if len(year) == 4:
