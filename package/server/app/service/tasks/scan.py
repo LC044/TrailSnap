@@ -15,6 +15,8 @@ from app.db.models.user import User
 from app.core.config_manager import config_manager
 from app.service.live_photo import live_photo_service
 
+IGNORED_SCAN_DIRS = {'@eaDir', '#recycle'}
+
 def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None) -> Set[str]:
     found = set()
     try:
@@ -47,6 +49,8 @@ def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optiona
 
                         found.add(entry.path)
                 elif entry.is_dir():
+                    if entry.name in IGNORED_SCAN_DIRS:
+                        continue
                     found.update(scan_directory_recursive(entry.path, exts, filter_settings))
     except OSError:
         pass
@@ -109,7 +113,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
                 try:
                     with os.scandir(root) as it:
                         for entry in it:
-                            if entry.is_dir():
+                            if entry.is_dir() and entry.name not in IGNORED_SCAN_DIRS:
                                 work_items.append(entry.path)
                 except OSError:
                     pass
