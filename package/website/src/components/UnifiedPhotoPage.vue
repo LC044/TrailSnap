@@ -157,6 +157,7 @@
         @add-to-album="handleBatchAddToAlbum"
         @set-album-cover="(ids) => $emit('set-cover', ids)"
         @retry="$emit('retry')"
+        @transfer="handleBatchTransfer"
       >
         <template #batch-actions="{ selectedIds, clearSelection }">
             <slot name="batch-actions" :selected-ids="selectedIds" :clear-selection="clearSelection"></slot>
@@ -185,6 +186,7 @@
       @prev="handlePrev"
       @next="handleNext"
       @add-to-album="handleAddToAlbumFromLightbox"
+      @transfer="handleLightboxTransfer"
     />
 
     <!-- Delete Confirmation -->
@@ -213,6 +215,14 @@
     <!-- Extra Modals Slot -->
     <slot name="extra-modals"></slot>
 
+    <!-- Folder Selection Dialog -->
+    <FolderSelectionDialog
+      v-model:visible="showFolderSelector"
+      :action="folderAction"
+      :photo-ids="transferPhotoIds"
+      :default-sub-folder="title"
+      @success="handleTransferSuccess"
+    />
   </div>
 </template>
 
@@ -231,6 +241,7 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ParticleExplosion from '@/components/ParticleExplosion.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
+import FolderSelectionDialog from '@/components/FolderSelectionDialog.vue'
 import type { AlbumImage } from '@/types/album'
 
 import { useAlbumStore } from '@/stores/albumStore'
@@ -311,6 +322,33 @@ const pendingRemoveIds = ref(new Set<string>())
 // UI State
 const showUploadModal = ref(false)
 const tempSelectedIds = ref<string[]>([])
+
+// Transfer state
+const showFolderSelector = ref(false)
+const folderAction = ref<'move' | 'copy'>('move')
+const transferPhotoIds = ref<string[]>([])
+
+const handleLightboxTransfer = (action: 'move' | 'copy') => {
+  if (lightboxImage.value) {
+    folderAction.value = action
+    transferPhotoIds.value = [lightboxImage.value.id]
+    showFolderSelector.value = true
+  }
+}
+
+const handleBatchTransfer = (action: 'move' | 'copy', ids: string[]) => {
+  folderAction.value = action
+  transferPhotoIds.value = ids
+  showFolderSelector.value = true
+}
+
+const handleTransferSuccess = () => {
+  if (galleryRef.value) {
+    galleryRef.value.exitSelectionMode()
+  }
+  closeLightbox()
+  emit('retry')
+}
 
 onClickOutside(viewOptionsRef, () => {
   showViewOptions.value = false

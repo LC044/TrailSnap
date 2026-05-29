@@ -22,17 +22,20 @@ def load_paddleocr_model():
             "Rec.model_type": ModelType.MOBILE,
             "Rec.ocr_version": OCRVersion.PPOCRV5,
         }
-        import torch
-        if torch.cuda.is_available():
-            params.update(
-                {
-                    "Det.engine_type": EngineType.TORCH,
-                    "Cls.engine_type": EngineType.TORCH,
-                    "Rec.engine_type": EngineType.TORCH,
-                    "EngineConfig.torch.use_cuda": True,  # 使用torch GPU版推理
-                    "EngineConfig.torch.gpu_id": 0,  # 指定GPU id
-                }
-            )
+        try:
+            import torch
+            if torch.cuda.is_available():
+                params.update(
+                    {
+                        "Det.engine_type": EngineType.TORCH,
+                        "Cls.engine_type": EngineType.TORCH,
+                        "Rec.engine_type": EngineType.TORCH,
+                        "EngineConfig.torch.use_cuda": True,  # 使用torch GPU版推理
+                        "EngineConfig.torch.gpu_id": 0,  # 指定GPU id
+                    }
+                )
+        except ImportError:
+            pass
         ocr = RapidOCR(
             params=params,
         )

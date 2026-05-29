@@ -268,9 +268,9 @@ class BasicTaskStrategy(BaseTaskStrategy):
                 # 5. Ticket Recognition Task
                 # db.add(Task(type=TaskType.RECOGNIZE_TICKET, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES.get(TaskType.RECOGNIZE_TICKET, 2), status=TaskStatus.PENDING, owner_id=owner_id))
                 # 6. Visual Description Task
-                db.add(Task(type=TaskType.VISUAL_DESCRIPTION, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES.get(TaskType.VISUAL_DESCRIPTION, 2), status=TaskStatus.PENDING, owner_id=owner_id))
+                db.add(Task(type=TaskType.VISUAL_DESCRIPTION, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.VISUAL_DESCRIPTION], status=TaskStatus.PENDING, owner_id=owner_id))
                 # 7. Embedding Generation Task
-                db.add(Task(type=TaskType.IMAGE_EMBEDDING, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES.get(TaskType.IMAGE_EMBEDDING, 2), status=TaskStatus.PENDING, owner_id=owner_id))
+                db.add(Task(type=TaskType.IMAGE_EMBEDDING, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.IMAGE_EMBEDDING], status=TaskStatus.PENDING, owner_id=owner_id))
 
 def release_resources():
     pass

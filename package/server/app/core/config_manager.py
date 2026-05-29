@@ -94,8 +94,8 @@ DEFAULT_EVALUATION_PROMPT = """你是一个“个人相册照片评估助手”�
 {
   "description": "...",
   "tags": ["...", "..."],
-  "memory_score": 0.0,
-  "beauty_score": 0.0,
+  "memory_score": 100.0,
+  "beauty_score": 100.0,
   "reason": "...",
   "narrative": "..."
 }
@@ -111,10 +111,10 @@ class LLMConnection(BaseModel):
 
 class AISettings(BaseModel):
     connections: List[LLMConnection] = Field(default_factory=list, description="LLM Connections")
-    analysis_connection_id: str = Field(default="", description="Default connection ID for analysis")
-    analysis_model_name: str = Field(default="", description="Default model name for analysis")
-    chat_connection_id: str = Field(default="", description="Default connection ID for agent chat")
-    chat_model_name: str = Field(default="", description="Default model name for agent chat")
+    analysis_connection_id: str = Field(default="builtin", description="Default connection ID for analysis")
+    analysis_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for analysis")
+    chat_connection_id: str = Field(default="builtin", description="Default connection ID for agent chat")
+    chat_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for agent chat")
     ai_api_url: str = Field(default=os.getenv("AI_API_URL", "http://localhost:8001"), description="AI Service API URL")
     face_recognition_threshold: float = Field(default=0.7, description="Face recognition confidence threshold")
     face_cluster_threshold: float = Field(default=0.4, description="Face cluster distance threshold")
@@ -147,7 +147,7 @@ class MapSettings(BaseModel):
     api_keys: List[str] = Field(default=[], description="Map API Key")
 
 class AppSettings(BaseModel):
-    version: str = "0.3.9"
+    version: str = "0.4.0"
     ai: AISettings = Field(default_factory=AISettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     image: ImageSettings = Field(default_factory=ImageSettings)
@@ -189,9 +189,9 @@ class ConfigManager:
         user = db.query(User).filter(User.id == user_id).first()
         
         if user and user.settings:
-             config = self.merge_user_settings(user.settings)
+            config = self.merge_user_settings(user.settings)
         else:
-             config = AppSettings()
+            config = self.merge_user_settings({})
         
         # Update cache
         self._user_cache[user_id] = (config, time.time())
@@ -212,7 +212,7 @@ class ConfigManager:
 
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-             raise ValueError(f"User {user_id} not found")
+            raise ValueError(f"User {user_id} not found")
 
         # Merge existing settings with new settings
         current_settings = dict(user.settings) if user.settings else {}
@@ -258,8 +258,8 @@ class ConfigManager:
         Merge default config with user settings.
         Returns a new AppSettings object with user overrides.
         """
-        if not user_settings:
-            return AppSettings()
+        if user_settings is None:
+            user_settings = {}
 
         # Handle migration from old AI settings
         if 'ai' in user_settings:
@@ -288,14 +288,38 @@ class ConfigManager:
 
         merged_data = deep_merge(current_data, user_settings)
         
+        # Ensure built-in AI connection exists and is synced with ai_api_url
+        ai_settings = merged_data.get('ai', {})
+        connections = ai_settings.get('connections', [])
+        ai_api_url = ai_settings.get('ai_api_url', os.getenv("AI_API_URL", "http://localhost:8001"))
+        builtin_api_base = f"{ai_api_url}/v1"
+        
+        builtin_exists = False
+        for conn in connections:
+            if conn.get('id') == 'builtin':
+                builtin_exists = True
+                conn['api_base'] = builtin_api_base
+                break
+        
+        if not builtin_exists:
+            connections.insert(0, {
+                'id': 'builtin',
+                'provider': 'Built-in AI',
+                'api_base': builtin_api_base,
+                'api_key': 'empty',
+                'model_names': ['MiniCPM-V-4_6-Q4_K_M'],
+                'enable': True
+            })
+        ai_settings['connections'] = connections
+        
         return AppSettings(**merged_data)
 
     def get_default_config(self) -> Dict[str, Any]:
         """Return the default config as a dict."""
-        return AppSettings().model_dump()
+        return self.merge_user_settings({}).model_dump()
 
 os.makedirs('./data', exist_ok=True)
 os.makedirs('./data/uploads', exist_ok=True)
 # Global instance
 config_manager = ConfigManager()
-VERSION = "0.3.9"
+VERSION = "0.4.0"

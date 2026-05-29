@@ -98,7 +98,8 @@
 
 2. docker-compose
 
-docker-compose.yml 配置文件（注意修改挂载路径为本地路径，不然无法扫描本地照片目录）
+docker-compose.yml 配置文件（注意修改挂载路径为本地路径，不然无法扫描本地照片目录），具体可以参考 [TrailSnap 文档](http://192.168.1.168:5173/docs/guide/install.html) ：
+
 ```yml
 version: '3.8'
 
@@ -180,27 +181,9 @@ docker-compose up -d
 
 [源码部署](http://localhost:5173/docs/dev/guide.html)
 
-
-## 📂 目录结构
-
-```
-TrailSnap/
-├── package/
-│   ├── server/      # 后端 FastAPI 服务
-│   └── website/     # 前端 Vue 应用
-│   └── ai/          # AI 微服务 (OCR/Face)
-├── doc/             # 项目技术文档
-└── ...
-```
-
 ## 📚 文档
 
-更多详细技术文档请参阅 `doc/` 目录（文档更新不及时，仅供参考使用）：
-- [架构设计文档](doc/architecture_design.md)
-- [前端框架分析](doc/frontend_analysis.md)
-- [后端框架分析](doc/backend_analysis.md)
-- [开发者文档](doc/developer_guide.md)
-- [用户指南](doc/user_guide.md)
+更多详细技术文档请参阅 [TrailSnap 文档](https://trailsnap.cn/docs/dev/guide.html) ：
 
 ## 🔍 其他
 
@@ -208,9 +191,15 @@ TrailSnap/
 
 <img src="./doc/image/QQ1.jpg" alt="QQ交流群" width="200px">
 
-### 相关项目
+### 致谢
 
-- [InkTime](https://github.com/dai-hongtao/InkTime) InkTime 是一个可自托管的墨水屏电子相框。它用AI分析你的照片库，按值得回忆度打分，并按"历史上的今天"自动生成每日最具回忆价值的照片，让沉睡的记忆重新被看见。
+本项目90%以上的代码由AI生成
+
+- [TRAE](https://www.trae.ai/) 本来不打算做完整的相册，奈何AI太强了，于是开了10$套餐年卡，从此告别手写代码.如果你的AI写代码能力一般，可以参考一下我的[提示词](https://trailsnap.cn/docs/dev/prompt/2025-12-25.html)
+- [Claude Code](https://www.claude.ai/) 没钱用官方模型，用它来帮我提交代码，写写文档啥的
+- [豆包](https://www.doubao.com/) 满嘴胡话，但还是能提出建设性意见的
+- [ChatGPT](https://chat.openai.com/) 用于教豆包做AI
+- [InkTime](https://github.com/dai-hongtao/InkTime) InkTime 是一个可自托管的墨水屏电子相框。它用AI分析你的照片库，按值得回忆度打分，并按"历史上的今天"自动生成每日最具回忆价值的照片，让沉睡的记忆重新被看见
 
 ## 🌟 Star History
 

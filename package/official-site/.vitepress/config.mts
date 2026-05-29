@@ -122,6 +122,7 @@ export default defineConfig({
                   { text: '0.3.6', link: '/docs/dev/prompt/0.3.6' },
                   { text: '0.3.8', link: '/docs/dev/prompt/0.3.8' },
                   { text: '0.3.9', link: '/docs/dev/prompt/0.3.9' },
+                  { text: '0.3.10', link: '/docs/dev/prompt/0.3.10' },
                   { text: '官网设计文档', link: '/docs/dev/prompt/official_website_design' }
                 ]
               }

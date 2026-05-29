@@ -6,9 +6,11 @@ import os
 import json
 import base64
 import re
+import io
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from langchain_openai import ChatOpenAI
+from PIL import Image
 
 from app.db.models import PhotoMetadata
 from app.db.models.task import Task, TaskType
@@ -109,9 +111,28 @@ def parse_json_response(content: str) -> Dict[str, Any]:
     raise ValueError(f"Failed to parse model JSON response: {preview}") from last_error
 
 
-def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+def encode_image(image_path, max_size=672):
+    with Image.open(image_path) as img:
+        # 缩放：长边缩放到 max_size(896)，保持比例
+        width, height = img.size
+        if max(width, height) > max_size:
+            # 计算缩放比例
+            ratio = max_size / max(width, height)
+            new_width = int(width * ratio)
+            new_height = int(height * ratio)
+            # 高质量缩放
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+        # 处理 WEBP / PNG 透明图
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # 保存到内存并转 JPEG（进一步降低体积）
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+    return base64_str
 
 
 def mark_visual_description_processed(photo: Photo, db: Session) -> None:
@@ -156,6 +177,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             "model": settings.analysis_model_name,
             "base_url": connection.api_base if connection.api_base else None,
             "timeout": 60,
+            "max_completion_tokens": 4096,
             "extra_body": {
                 "chat_template_kwargs": {"enable_thinking": False},
             },
@@ -199,7 +221,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 photo = db.query(Photo).filter(Photo.id == photo_id).first()
                 if not photo:
                     return {'status': 'skipped', 'reason': 'photo not found'}
-                
+
                 # Check if already processed (unless force)
                 if not force:
                     tasks_status = photo.processed_tasks or {}
@@ -265,7 +287,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             user_config = config_manager.get_user_config(photo.owner_id, db)
             settings = user_config.ai
             client =self.create_client(settings)
- 
+
             target_path = storage.get_preview_path(photo.owner_id, photo.id)
             if not target_path or not os.path.exists(target_path):
                 target_path = photo.file_path
@@ -279,7 +301,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             metadata = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
             if metadata:
                 image_info += f"照片位置：{metadata.address}\n"
-
+            # print(target_path, base64_image)
             # Step A: Evaluation
             eval_response = client.invoke([
                     {"role": "system", "content": eval_prompt},

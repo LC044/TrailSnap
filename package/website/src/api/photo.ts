@@ -1,14 +1,6 @@
 import request from '@/utils/request'
 import type { AlbumImage,Photo, SimilarPhoto } from '@/types/album'
-
-export interface TaskResponse {
-  id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
-  result?: any;
-  error?: string;
-  total_items: number;
-  processed_items: number;
-}
+import type { Task as TaskResponse } from '@/api/tasks'
 
 export const photoApi = {
   // Similar Photo Task API
@@ -38,6 +30,15 @@ export const photoApi = {
 
   async cancelSimilarTask(taskId: string) {
     await request.delete(`/api/toolbox/similar/tasks/${taskId}`);
+  },
+
+  async transferPhotos(photoIds: string[], targetPath: string, action: 'move' | 'copy') {
+    const { data } = await request.post('/api/photos/batch/transfer', {
+      photo_ids: photoIds,
+      target_path: targetPath,
+      action
+    });
+    return data;
   },
 
   // Legacy (Deprecated)

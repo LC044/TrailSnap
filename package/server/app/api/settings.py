@@ -160,6 +160,57 @@ def get_directories(
     external = target_user.settings.get('storage',{}).get('external_directories', []) if target_user.settings else []
     return {'primary': primary, 'external': external}
 
+@router.get('/directories/tree')
+def get_directories_tree(
+    path: str = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    primary = get_storage_root(current_user.id, db)
+    config = config_manager.get_user_config(current_user.id, db)
+    external = config.storage.external_directories or []
+    
+    primary_abs = os.path.abspath(primary)
+    external_abs = [os.path.abspath(p) for p in external]
+    allowed_roots = [primary_abs] + external_abs
+    
+    if not path:
+        roots = []
+        if os.path.exists(primary_abs):
+            roots.append({"name": "主存储 (" + os.path.basename(primary_abs) + ")", "path": primary_abs, "is_leaf": False})
+        for ext in external_abs:
+            if os.path.exists(ext):
+                roots.append({"name": os.path.basename(ext) or ext, "path": ext, "is_leaf": False})
+        return {"directories": roots}
+    
+    abs_path = os.path.abspath(path)
+    is_allowed = any(abs_path == r or abs_path.startswith(r + os.sep) for r in allowed_roots)
+    if not is_allowed:
+        raise HTTPException(status_code=403, detail="Directory not allowed")
+        
+    if not os.path.exists(abs_path) or not os.path.isdir(abs_path):
+        raise HTTPException(status_code=404, detail="Directory not found")
+        
+    dirs = []
+    try:
+        for item in os.listdir(abs_path):
+            item_path = os.path.join(abs_path, item)
+            if os.path.isdir(item_path):
+                try:
+                    has_subdirs = any(os.path.isdir(os.path.join(item_path, sub)) for sub in os.listdir(item_path))
+                except Exception:
+                    has_subdirs = False
+                dirs.append({
+                    "name": item,
+                    "path": item_path,
+                    "is_leaf": not has_subdirs
+                })
+    except Exception:
+        pass
+        
+    dirs.sort(key=lambda x: x['name'].lower())
+    return {"directories": dirs}
+
 @router.post('/directories')
 def add_directory(
     payload: dict, 

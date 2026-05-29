@@ -1,15 +1,21 @@
-# 使用官方Python镜像作为基础镜像
-# FROM python:3.12.12-alpine3.21
-FROM python:3.12.12-slim
+# 使用 nvidia/cuda runtime 镜像，以确保存在 libcudart 等运行共享库
+FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
 
-# 设置工作目录
-WORKDIR /app
+# 避免 tzdata 等交互式配置卡住
+ENV DEBIAN_FRONTEND=noninteractive
 
-# 安装编译依赖（g++等），这是解决insightface编译失败的关键
-RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    # insightface编译依赖
+# 安装 Python 3.12 及系统运行依赖
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    curl \
+    tar \
     build-essential \
     g++ \
+    cmake \
     # OpenCV核心运行依赖（仅保留必需项）
     libgl1 \
     libglib2.0-0 \
@@ -17,23 +23,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     libxext6 \
     && rm -rf /var/lib/apt/lists/*
 
-# 先安装pip工具（确保能装wheel），再直接安装预编译的insightface
-# RUN pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple \
-#     # 优先尝试安装预编译版本（如果3.0.0不行，可换2.7.0等稳定版）
-#     && pip install insightface==3.0.0 -f https://download.pytorch.org/whl/torch_stable.html -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 设置 python 指向 python3.12
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3
+
+WORKDIR /app
+
+# 下载预编译的 llama.cpp 二进制文件
+# 由于 NVIDIA CUDA 主要在 x86_64 平台上提供预编译的 llama.cpp，
+# 但为了兼容性，依然读取 TARGETARCH
+ARG TARGETARCH
+# 注意: 官方没有直接提供 arm64 的 CUDA 预编译包，如果有的话需要替换这里，
+# 目前暂时 fallback 到普通的 arm64 CPU 版，或者你需要为 Jetson 等平台自行编译
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-arm64.tar.gz; \
+    else \
+        curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-x64.tar.gz; \
+    fi && \
+    mkdir -p /usr/local/llama && \
+    tar -xzf llama.tar.gz -C /usr/local/llama --strip-components=1 && \
+    rm llama.tar.gz
+
+# 注册动态链接库并将 bin 目录加入环境变量
+ENV LD_LIBRARY_PATH="/usr/local/llama:/usr/local/llama/lib64:${LD_LIBRARY_PATH}"
+ENV PATH="/usr/local/llama:${PATH}"
+RUN ldconfig
 
 # 复制项目所有文件到工作目录
 COPY . .
 
-# 复制依赖文件并安装
+# 安装 pip 和 uv
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+RUN python3.12 -m pip install uv -i https://pypi.tuna.tsinghua.edu.cn/simple
 
-RUN pip install uv -i https://pypi.tuna.tsinghua.edu.cn/simple
-# RUN pip install -r requirements.txt
-
+# 安装 Python 项目依赖
 RUN uv sync --extra gpu
-
-# 可选：清理编译依赖以减小镜像体积（如果对镜像体积敏感）
-# RUN apt-get purge -y --auto-remove build-essential g++
 
 # 暴露端口
 EXPOSE 8001

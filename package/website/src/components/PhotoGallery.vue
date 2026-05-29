@@ -100,7 +100,27 @@
                   </el-dropdown-item>
 
                   <el-dropdown-item 
-                    v-if="store.currentContext.type === 'album'"
+                    :disabled="localSelectedIds.size === 0"
+                    @click="$emit('transfer', 'move', Array.from(localSelectedIds))"
+                  >
+                     <div class="flex items-center gap-2">
+                        <FolderOutput class="w-4 h-4" />
+                        <span>移动到目录</span>
+                     </div>
+                  </el-dropdown-item>
+                  
+                  <el-dropdown-item 
+                    :disabled="localSelectedIds.size === 0"
+                    @click="$emit('transfer', 'copy', Array.from(localSelectedIds))"
+                  >
+                     <div class="flex items-center gap-2">
+                        <Copy class="w-4 h-4" />
+                        <span>复制到目录</span>
+                     </div>
+                  </el-dropdown-item>
+
+                  <el-dropdown-item 
+                    v-if="store?.currentContext?.type === 'album'"
                     :disabled="localSelectedIds.size === 0"
                     @click="$emit('remove-from-album', Array.from(localSelectedIds))"
                   >
@@ -111,7 +131,7 @@
                   </el-dropdown-item>
 
                   <el-dropdown-item 
-                    v-if="store.currentContext.type === 'album' && localSelectedIds.size===1"
+                    v-if="store?.currentContext?.type === 'album' && localSelectedIds.size===1"
                     @click="$emit('set-album-cover', Array.from(localSelectedIds))"
                   >
                      <div class="flex items-center gap-2">
@@ -301,7 +321,7 @@ import {
   ref, computed, watch, onMounted, onUnmounted, nextTick, toRef, reactive
 } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, RefreshCcw, Aperture, MoreHorizontal, UserPlus, CheckSquare } from 'lucide-vue-next'
+import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, RefreshCcw, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -342,7 +362,7 @@ const props = withDefaults(defineProps<Props>(), {
   showActionBar: true
 })
 
-const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change'])
+const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer'])
 
     // --- Selection State ---
 const { 

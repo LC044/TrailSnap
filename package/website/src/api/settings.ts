@@ -25,6 +25,10 @@ export const settingsApi = {
     const { data } = await request.get('/api/settings/directories', { params: { user_id } })
     return data
   },
+  async getDirectoryTree(path?: string) {
+    const { data } = await request.get('/api/settings/directories/tree', { params: { path } })
+    return data
+  },
   async addDirectory(path: string, user_id?: string) {
     const { data } = await request.post('/api/settings/directories', { path, user_id })
     return data

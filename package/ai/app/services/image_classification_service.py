@@ -6,9 +6,79 @@ import base64
 from typing import List, Dict, Optional
 from PIL import Image
 
+import json
+import numpy as np
+
 from app.config import settings
 from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
+
+class ONNXModelWrapper:
+    def __init__(self, model_path):
+        import onnxruntime as ort
+        import ast
+        self.session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider', 'CUDAExecutionProvider'])
+        meta = self.session.get_modelmeta()
+        names_str = meta.custom_metadata_map.get('names', '{}')
+        try:
+            names_dict = ast.literal_eval(names_str)
+            self.names = {int(k): v for k, v in names_dict.items()}
+        except Exception:
+            self.names = {}
+        
+        self.input_name = self.session.get_inputs()[0].name
+        self.output_name = self.session.get_outputs()[0].name
+        self.model_name = os.path.basename(model_path)
+        
+        input_shape = self.session.get_inputs()[0].shape
+        self.input_size = input_shape[2] if len(input_shape) == 4 else 224
+
+    def _preprocess(self, image: Image.Image):
+        # Resize shorter side to input_size
+        w, h = image.size
+        if w < h:
+            new_w = self.input_size
+            new_h = int(self.input_size * h / w)
+        else:
+            new_h = self.input_size
+            new_w = int(self.input_size * w / h)
+        
+        img = image.resize((new_w, new_h), Image.Resampling.BILINEAR)
+        
+        # Center crop
+        left = (new_w - self.input_size) / 2
+        top = (new_h - self.input_size) / 2
+        right = (new_w + self.input_size) / 2
+        bottom = (new_h + self.input_size) / 2
+        img = img.crop((left, top, right, bottom))
+        
+        img_array = np.array(img).astype(np.float32) / 255.0
+        if len(img_array.shape) == 2:
+            img_array = np.stack([img_array]*3, axis=-1)
+        elif img_array.shape[2] == 4:
+            img_array = img_array[:, :, :3]
+            
+        img_array = img_array.transpose(2, 0, 1)
+        return img_array
+
+    def __call__(self, images):
+        is_single = False
+        if isinstance(images, Image.Image):
+            images = [images]
+            is_single = True
+            
+        results = []
+        for img in images:
+            input_tensor = self._preprocess(img)
+            # Expand dims to create a batch of 1 (1, C, H, W)
+            input_tensor = np.expand_dims(input_tensor, axis=0)
+            outputs = self.session.run([self.output_name], {self.input_name: input_tensor})[0]
+            # outputs shape is usually (1, num_classes), so we take the first element
+            results.append(outputs[0])
+            
+        if is_single:
+            return results
+        return results
 
 class ImageClassificationService:
     _LABEL_TO_CHINESE: Dict[str, str] = {
@@ -44,7 +114,7 @@ class ImageClassificationService:
         self._category_model_map = self._discover_category_models()
         self._register_models()
         self._register_downloads()
-        self.version = 'v0.3.9'
+        self.version = 'v0.3.10.1'
 
     def _translate_label(self, label: str) -> str:
         return self._LABEL_TO_CHINESE.get(label, label)
@@ -55,8 +125,8 @@ class ImageClassificationService:
             return {}
         category_map = {}
         for f in os.listdir(path):
-            if f.startswith("photo-cls-") and f.endswith(".pt") and f != "photo-cls-general.pt":
-                category = f.replace("photo-cls-", "").replace(".pt", "")
+            if f.startswith("photo-cls-") and f.endswith(".onnx") and f != "photo-cls-general.onnx":
+                category = f.replace("photo-cls-", "").replace(".onnx", "")
                 category_map[category] = f
         return category_map
 
@@ -67,7 +137,7 @@ class ImageClassificationService:
                 path = os.path.join(settings.MODEL_PATH, "photo-cls")
                 if not os.path.exists(path):
                     return False
-                model_path = os.path.join(path, "photo-cls-general.pt")
+                model_path = os.path.join(path, "photo-cls-general.onnx")
                 if not os.path.exists(model_path):
                     return False
                 version_file = os.path.join(path, ".mv")
@@ -84,7 +154,7 @@ class ImageClassificationService:
         def download_general_model():
             path = os.path.join(settings.MODEL_PATH, "photo-cls")
             from modelscope.hub.snapshot_download import snapshot_download
-            logging.info(f"Downloading YOLO model SiYuan044/photo-cls to {path}...")
+            logging.info(f"Downloading ONNX model SiYuan044/photo-cls to {path}...")
             return snapshot_download('SiYuan044/photo-cls', local_dir=path, revision=self.version)
 
         model_downloader.register_model("yolo_photo_cls_general", check_general_model, download_general_model)
@@ -111,16 +181,15 @@ class ImageClassificationService:
 
     def _load_general_model(self):
         path = os.path.join(settings.MODEL_PATH, "photo-cls")
-        model_path = os.path.join(path, "photo-cls-general.pt")
+        model_path = os.path.join(path, "photo-cls-general.onnx")
         if not os.path.exists(model_path):
-            pt_files = [f for f in os.listdir(path) if f.endswith('.pt') and 'general' in f]
+            pt_files = [f for f in os.listdir(path) if f.endswith('.onnx') and 'general' in f]
             if pt_files:
                 model_path = os.path.join(path, pt_files[0])
             else:
                 raise FileNotFoundError(f"No general model found in {path}")
-        from ultralytics import YOLO
-        logging.info(f"Loading YOLO general model from {model_path}")
-        return YOLO(model_path)
+        logging.info(f"Loading ONNX general model from {model_path}")
+        return ONNXModelWrapper(model_path)
 
     def _load_category_model(self, category: str):
         model_file = self._category_model_map.get(category)
@@ -130,33 +199,28 @@ class ImageClassificationService:
         model_path = os.path.join(path, model_file)
         if not os.path.exists(model_path):
             return None
-        from ultralytics import YOLO
-        logging.info(f"Loading YOLO {category} model from {model_path}")
-        return YOLO(model_path)
+        logging.info(f"Loading ONNX {category} model from {model_path}")
+        return ONNXModelWrapper(model_path)
 
     def _release_model(self, wrapper):
         model_name = getattr(wrapper, 'model_name', 'unknown')
         logging.info(f"Releasing resources for {model_name}")
 
-        if hasattr(wrapper, 'model'):
-            del wrapper.model
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        if hasattr(wrapper, 'session'):
+            del wrapper.session
+        import gc
+        gc.collect()
 
     def _register_models(self):
         model_manager.register_model("yolo_photo_cls_general", self._load_general_model, self._release_model)
         for category in self._category_model_map.keys():
             model_manager.register_model(f"yolo_photo_cls_{category}", lambda c=category: self._load_category_model(c), self._release_model)
 
-    def _get_top_prediction(self, pred, model):
-        if hasattr(pred, 'probs') and pred.probs is not None:
-            top5_indices = pred.probs.top5
-            top5_conf = pred.probs.top5conf
-            if len(top5_indices) > 0:
-                cls_idx = top5_indices[0]
-                conf = top5_conf[0]
-                return model.names[cls_idx], float(conf)
+    def _get_top_prediction(self, probs, model):
+        if probs is not None and len(probs) > 0:
+            cls_idx = np.argmax(probs)
+            conf = probs[cls_idx]
+            return model.names.get(cls_idx, str(cls_idx)), float(conf)
         return None, None
 
     def _normalize_label(self, label: Optional[str], confidence: float) -> str:

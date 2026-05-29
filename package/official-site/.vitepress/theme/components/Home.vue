@@ -227,7 +227,7 @@
     </section>
 
     <!-- 4. Features Overview -->
-    <section class="py-20 bg-neutral-light dark:bg-[#141414]/50">
+    <section id="overview" class="py-20 bg-neutral-light dark:bg-[#141414]/50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex flex-col lg:flex-row gap-12 lg:gap-20">
           <!-- Left List -->
@@ -260,8 +260,7 @@
           <div class="lg:w-[60%] flex items-center justify-center">
             <div class="bg-white dark:bg-[#141414] rounded-2xl shadow-float p-4 w-full max-w-xl aspect-[4/3] flex items-center justify-center border border-gray-100 dark:border-slate-700 relative overflow-hidden group">
               <div class="text-center">
-                <!-- <div class="text-6xl mb-4">{{ overviewFeatures[activeFeatureIndex].icon }}</div> -->
-                <img :src="overviewFeatures[activeFeatureIndex].image" alt="Feature Image" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" loading="lazy">
+                <img id="overview-img" :src="overviewFeatures[activeFeatureIndex].image" alt="Feature Image" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" loading="eager">
               </div>
               
               <!-- Hover Arrows (Mock) -->
@@ -728,14 +727,16 @@ const overviewFeaturesList = {
     { title: 'AI能力', icon: '🤖', items: ['一句话生成游记', 'Vlog智能剪辑', '照片智能精修'], image: '/images/ScreenShot_2026-05-09_005142_617.png' },
     { title: '行程票据', icon: '🎫', items: ['票据自动识别录入', '国内5A景区位置识别', '多票据统一管理'], image: '/images/火车票_郑州东_天津西_G1710_2026-12-12.png' },
     { title: '数据可视化', icon: '📊', items: ['足迹地图点亮', '出行里程统计', '城市打卡记录'], image: 'https://blog.siyuan.ink/static/img/fc209e02f7046645cb38bd6dead5d088.map-province.webp' },
-    { title: '年度报告', icon: '📅', items: ['年度出行总结', '专属回忆生成', '分享朋友圈'], image: 'https://blog.siyuan.ink/static/img/720c50509ca349f40b1e8038371b7bcf.å¹´åº¦æ¥å.webp' }
+    { title: '年度报告', icon: '📅', items: ['年度出行总结', '专属回忆生成', '分享朋友圈'], image: 'https://blog.siyuan.ink/static/img/720c50509ca349f40b1e8038371b7bcf.å¹´åº¦æ¥å.webp' },
+    { title: '工具箱', icon: '🧰', items: ['照片一键整理', '照片元数据修复', '低质量清理'], image: '/images/toolbox.jpg' }
   ],
   'en-US': [
     { title: 'Smart Album', icon: '📸', items: ['Precise Face Clustering', 'Scene/Object Smart Tags', 'Custom Smart Albums'], image: 'https://blog.siyuan.ink/static/img/8082f0451f051b1ad848b9c4261359e7.classification.webp' },
     { title: 'AI Capabilities', icon: '🤖', items: ['One-sentence Diary', 'Smart Vlog Editing', 'Smart Photo Retouching'], image: 'https://blog.siyuan.ink/static/img/943063875ecd4ff82543e0ae3a21a4a4.AI-narrative.webp' },
     { title: 'Itinerary & Tickets', icon: '🎫', items: ['Auto Ticket Recognition', '5A Scenic Spot Location', 'Unified Ticket Mgmt'], image: 'https://blog.siyuan.ink/static/img/38bd45b7c69fe79457e74109dbba8683.map.webp' },
     { title: 'Data Visualization', icon: '📊', items: ['Footprint Map Lighting', 'Travel Mileage Stats', 'City Check-in Records'], image: 'https://blog.siyuan.ink/static/img/fc209e02f7046645cb38bd6dead5d088.map-province.webp' },
-    { title: 'Annual Report', icon: '📅', items: ['Annual Travel Summary', 'Exclusive Memory Gen', 'Share to Moments'], image: 'https://blog.siyuan.ink/static/img/720c50509ca349f40b1e8038371b7bcf.å¹´åº¦æ¥å.webp' }
+    { title: 'Annual Report', icon: '📅', items: ['Annual Travel Summary', 'Exclusive Memory Gen', 'Share to Moments'], image: 'https://blog.siyuan.ink/static/img/720c50509ca349f40b1e8038371b7bcf.å¹´åº¦æ¥å.webp' },
+    { title: 'Toolbox', icon: '🧰', items: ['Batch Image Processing', 'Photo Metadata Management', 'Data Backup & Restore'], image: '/images/toolbox.jpg' }
   ]
 }
 
@@ -788,6 +789,25 @@ const handleScroll = () => {
 
 onMounted(() => {
   window.addEventListener('scroll', handleScroll)
+
+  // Preload overview images when section is visible
+  const overviewSection = document.getElementById('overview')
+  if (overviewSection) {
+    const imgObserver = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting) {
+          overviewFeatures.value.forEach(f => {
+            const img = new Image()
+            img.src = f.image
+          })
+          imgObserver.disconnect()
+        }
+      },
+      { threshold: 0.1 }
+    )
+    imgObserver.observe(overviewSection)
+  }
+
   const ids = ['home', 'core-features']
   const els = ids
     .map(id => document.getElementById(id))

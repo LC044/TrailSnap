@@ -10,6 +10,9 @@
 """
 import logging
 import time
+import os
+import shutil
+import uuid
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -35,6 +38,8 @@ from app.db.models.user import User
 from app.db.models.image_description import ImageDescription as ImageDescriptionModel
 from app.schemas.image_description import ImageDescription as ImageDescriptionSchema
 from app.db.models.photo import Photo
+from app.service.task_manager import TaskManager
+from app.db.models.task import TaskType
 
 
 router = APIRouter()
@@ -247,6 +252,74 @@ def batch_delete_photos(
 ):
     count = app.crud.photo.batch_soft_delete_photos(db, batch_data.photo_ids, user_id=current_user.id)
     return {"message": f"Successfully moved {count} photos to recycle bin"}
+
+@router.post("/batch/transfer")
+def batch_transfer_photos(
+    data: schemas.BatchPhotoTransfer,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    config = config_manager.get_user_config(current_user.id, db)
+    primary = config.storage.photo_storage_path or 'uploads'
+    external = config.storage.external_directories or []
+    allowed_roots = [os.path.abspath(primary)] + [os.path.abspath(p) for p in external]
+    
+    abs_target = os.path.abspath(data.target_path)
+    is_allowed = any(abs_target == r or abs_target.startswith(r + os.sep) for r in allowed_roots)
+    if not is_allowed:
+        raise HTTPException(status_code=403, detail="Target directory not allowed")
+        
+    try:
+        os.makedirs(abs_target, exist_ok=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create directory: {e}")
+        
+    photos = app.crud.photo.get_photos_by_ids(db, data.photo_ids, user_id=current_user.id)
+    success_count = 0
+    for photo in photos:
+        old_path = photo.file_path
+        if not old_path or not os.path.exists(old_path):
+            continue
+            
+        filename = os.path.basename(old_path)
+        new_path = os.path.join(abs_target, filename)
+        
+        # Handle collision
+        if os.path.exists(new_path) and os.path.abspath(old_path) != os.path.abspath(new_path):
+            base, ext = os.path.splitext(filename)
+            new_path = os.path.join(abs_target, f"{base}_{uuid.uuid4().hex[:8]}{ext}")
+            
+        if data.action == 'move':
+            if os.path.abspath(old_path) != os.path.abspath(new_path):
+                try:
+                    shutil.move(old_path, new_path)
+                    photo.file_path = new_path
+                    photo.filename = os.path.basename(new_path)
+                    success_count += 1
+                except Exception as e:
+                    logging.error(f"Failed to move {old_path} to {new_path}: {e}")
+        elif data.action == 'copy':
+            if os.path.abspath(old_path) != os.path.abspath(new_path):
+                try:
+                    shutil.copy2(old_path, new_path)
+                    
+                    # Create new DB record
+                    new_photo_data = {c.name: getattr(photo, c.name) for c in photo.__table__.columns if c.name not in ['id', 'file_path', 'filename', 'created_at', 'updated_at']}
+                    new_photo = Photo(
+                        id=uuid.uuid4(),
+                        file_path=new_path,
+                        filename=os.path.basename(new_path),
+                        **new_photo_data
+                    )
+                    db.add(new_photo)
+                    success_count += 1
+                    
+                    TaskManager.get_instance().add_task(db, TaskType.GENERATE_THUMBNAIL, {'photo_id': str(new_photo.id)})
+                except Exception as e:
+                    logging.error(f"Failed to copy {old_path} to {new_path}: {e}")
+                    
+    db.commit()
+    return {"message": f"Successfully {data.action}ed {success_count} photos"}
 
 
 @router.delete("/{photo_id}", response_model=schemas.Photo)

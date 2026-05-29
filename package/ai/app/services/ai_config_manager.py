@@ -41,11 +41,6 @@ class AIConfigManager:
                     "selected": "clip-ViT-B-32",
                     "available": ["clip-ViT-B-32"],
                     "description": "Image classification and embedding models."
-                },
-                "ticket_recognition": {
-                    "selected": "rpxaaa/ticket_recognition",
-                    "available": ["rpxaaa/ticket_recognition"],
-                    "description": "YOLO model for train ticket recognition."
                 }
             }
         }

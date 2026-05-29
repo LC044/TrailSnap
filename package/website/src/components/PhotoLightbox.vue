@@ -59,6 +59,12 @@
                                     <span>添加到人物</span>
                                 </div>
                             </el-dropdown-item>
+                            <el-dropdown-item command="moveToFolder">
+                                <div class="flex items-center gap-2">
+                                    <FolderOutput class="w-4 h-4" />
+                                    <span>移动到目录</span>
+                                </div>
+                            </el-dropdown-item>
                             <el-dropdown-item command="viewDescription">
                                 <div class="flex items-center gap-2">
                                     <FileText class="w-4 h-4" />
@@ -256,6 +262,7 @@ import {
     Focus,
     UserPlus,
     FileText,
+    FolderOutput,
 } from 'lucide-vue-next'
 import Player from 'xgplayer'
 import 'xgplayer/dist/index.min.css'
@@ -322,7 +329,7 @@ const toggleOriginal = () => {
     showOriginal.value = !showOriginal.value
 }
 
-const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'add-to-album'])
+const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'add-to-album', 'transfer'])
 
 // State
 const showSidebar = ref(false)
@@ -508,6 +515,8 @@ const handleCommand = (command: string) => {
         emit('add-to-album', props.image)
     } else if (command === 'addToPerson') {
         showPersonSelector.value = true
+    } else if (command === 'moveToFolder') {
+        emit('transfer', 'move')
     } else if (command === 'viewDescription') {
         if (props.image) {
             fetchDescription(props.image.id)

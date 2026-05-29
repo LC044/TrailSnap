@@ -156,7 +156,8 @@
             <div v-for="(conn, index) in aiForm.connections" :key="conn.id" class="border border-gray-200 dark:border-gray-600 rounded-md p-4 mb-4 relative bg-gray-50 dark:bg-gray-800 flex justify-between items-center">
               <div class="flex-1 overflow-hidden mr-4">
                 <div class="text-sm font-medium text-gray-800 dark:text-gray-200 mb-1 truncate" :title="conn.api_base">
-                  URL: {{ conn.api_base || '未设置' }}
+                  <span v-if="conn.id === 'builtin'" class="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs px-2 py-0.5 rounded mr-2">内置</span>
+                  {{ conn.provider !== 'OpenAI' && conn.provider ? conn.provider + ' - ' : '' }}URL: {{ conn.api_base || '未设置' }}
                 </div>
                 <div class="text-xs text-gray-500 flex items-center">
                   API Key: 
@@ -532,7 +533,8 @@
     <el-dialog v-model="editDialogVisible" title="编辑大模型连接" width="500px">
       <el-form label-position="top" v-if="editingConnection">
         <el-form-item label="API 提供商">
-          <el-select v-model="editingConnection.provider" placeholder="选择提供商" class="w-full">
+          <el-select v-model="editingConnection.provider" placeholder="选择提供商" class="w-full" :disabled="editingConnection.id === 'builtin'">
+             <el-option label="内置AI (Built-in AI)" value="Built-in AI" v-if="editingConnection.id === 'builtin'" />
              <el-option label="OpenAI" value="OpenAI" />
              <el-option label="Ollama" value="Ollama" disabled />
              <el-option label="Google" value="Google" disabled />
@@ -540,10 +542,11 @@
           </el-select>
         </el-form-item>
         <el-form-item label="Base URL">
-          <el-input v-model="editingConnection.api_base" placeholder="https://api.openai.com/v1" />
+          <el-input v-model="editingConnection.api_base" placeholder="https://api.openai.com/v1" :disabled="editingConnection.id === 'builtin'" />
+          <div v-if="editingConnection.id === 'builtin'" class="text-xs text-gray-500 mt-1">内置连接的地址会自动与上方的“AI API 地址”保持同步</div>
         </el-form-item>
         <el-form-item label="API Key">
-          <el-input v-model="editingConnection.api_key" type="password" show-password placeholder="sk-..." />
+          <el-input v-model="editingConnection.api_key" type="password" show-password placeholder="sk-..." :disabled="editingConnection.id === 'builtin'" />
         </el-form-item>
         <el-form-item label="可用模型 (可选)">
           <el-select
@@ -561,7 +564,7 @@
       <template #footer>
         <div class="flex justify-between items-center w-full">
           <div class="flex gap-2">
-            <el-button type="danger" plain @click="deleteEditingConnection">删除</el-button>
+            <el-button type="danger" plain @click="deleteEditingConnection" :disabled="editingConnection.id === 'builtin'">删除</el-button>
             <el-button type="success" plain @click="verifyEditingConnection" :loading="verifying">验证</el-button>
           </div>
           <div>

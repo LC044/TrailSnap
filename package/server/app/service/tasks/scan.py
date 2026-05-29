@@ -1,5 +1,5 @@
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
-from app.db.models.task import TaskType
+from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 from typing import List, Dict, Set, Optional
 import asyncio
 import logging
@@ -85,10 +85,10 @@ class ScanFolderStrategy(BaseTaskStrategy):
             if not roots:
                 config = config_manager.get_user_config(user.id, db)
                 roots = config.storage.external_directories
-            
+
             if not roots:
                 continue
-            
+
             res = await self._scan_for_user(worker, db, user, roots)
             total_new += res.get('new_files', 0)
             total_deleted += res.get('deleted_files', 0)
@@ -127,7 +127,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
         files_on_disk = await loop.run_in_executor(None, parallel_scan_wrapper)
 
         existing_files, live_photo_to_add = self._get_existing_files(db, str(user.id), scan_roots)
-        
+
         # Determine new and deleted
         new_files = files_on_disk - existing_files
         deleted_files = existing_files - files_on_disk
@@ -185,7 +185,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
             elif file_path.endswith('.mov') and (p[0][:-3] + 'HEIC' in existing_files):
                 live_photo_to_add.add(p[0])
             existing_files.add(p[0])
-            
+
         return existing_files, live_photo_to_add
 
     async def _create_tasks_for_new_files(self, user_id: str, new_files: Set[str], loop: asyncio.AbstractEventLoop, db: Session):
@@ -242,7 +242,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
                         'is_live_photo': True,
                         'user_id': user_id
                     },
-                    priority=10,
+                    priority=DEFAULT_PRIORITIES[TaskType.PROCESS_BASIC],
                     status=TaskStatus.PENDING
                 ))
                 processed_paths.add(image_path)
@@ -254,7 +254,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
                     new_tasks.append(Task(
                         type=TaskType.PROCESS_BASIC,
                         payload={'file_path': fp, 'user_id': user_id},
-                        priority=10,
+                        priority=DEFAULT_PRIORITIES[TaskType.PROCESS_BASIC],
                         status=TaskStatus.PENDING
                     ))
                     processed_paths.add(fp)
@@ -268,7 +268,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
     def _handle_deleted_files(self, user_id: str, deleted_files: Set[str], db: Session, worker):
         if not deleted_files:
             return
-            
+
         deleted_list = list(deleted_files)
         chunk_size = 500
         for i in range(0, len(deleted_list), chunk_size):
@@ -278,11 +278,11 @@ class ScanFolderStrategy(BaseTaskStrategy):
             for ph in photos_to_delete:
                 photo_ids_to_delete.append(ph.id)
                 db.add(IndexLog(action='deleted', file_path=ph.file_path, photo_id=ph.id, owner_id=user_id))
-        
+
             if photo_ids_to_delete:
                 from app.crud.photo import batch_delete_photos_db
                 batch_delete_photos_db(db, photo_ids_to_delete, is_delete_file=False, user_id=user_id)
-            
+
             db.commit()
             worker.scan_status['deleted'] += len(photos_to_delete)
 

@@ -46,7 +46,6 @@ async def face_recognition(request: FaceRecognitionRequest):
                 "face_count": len(results),
                 "faces": results
             })
-        print(len(batch_results))
         return {"results": batch_results}
     except ValueError as ve:
         logging.error(traceback.format_exc())

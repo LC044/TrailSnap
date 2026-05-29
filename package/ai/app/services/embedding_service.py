@@ -11,14 +11,63 @@ from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
 from app.services.ai_config_manager import ai_config_manager
 
-class SentenceTransformerWrapper:
-    def __init__(self, model_name="sentence-transformers/clip-ViT-B-32-multilingual-v1"):
-        from sentence_transformers import SentenceTransformer
-        import torch
-        self.model_name = model_name
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logging.info(f"Loading SentenceTransformer model {model_name} on {self.device}")
-        self.model = SentenceTransformer(model_name, device=self.device, cache_folder=settings.MODEL_PATH)
+class ONNXCLIPTextWrapper:
+    def __init__(self, model_dir):
+        import onnxruntime as ort
+        from modelscope import AutoTokenizer
+        import os
+        
+        self.model_dir = model_dir
+        logging.info(f"Loading ONNX Text model from {model_dir}")
+        
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        
+        providers = ['CPUExecutionProvider', 'CUDAExecutionProvider']
+        text_model_path = os.path.join(model_dir, "textual.onnx")
+        self.text_session = ort.InferenceSession(text_model_path, providers=providers)
+
+    def encode_text(self, texts: List[str]):
+        import numpy as np
+        inputs = self.tokenizer(text=texts, return_tensors="np", padding=True, truncation=True, max_length=128)
+        
+        ort_inputs = {
+            self.text_session.get_inputs()[0].name: inputs["input_ids"],
+            self.text_session.get_inputs()[1].name: inputs["attention_mask"]
+        }
+        outputs = self.text_session.run(None, ort_inputs)
+        embeddings = outputs[0]
+        # Normalize
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        normalized = embeddings / np.maximum(norms, 1e-12)
+        return normalized
+
+class ONNXCLIPImageWrapper:
+    def __init__(self, model_dir):
+        import onnxruntime as ort
+        from modelscope import AutoImageProcessor
+        import os
+        
+        self.model_dir = model_dir
+        logging.info(f"Loading ONNX Image model from {model_dir}")
+        
+        self.processor = AutoImageProcessor.from_pretrained(model_dir)
+        
+        providers = ['CPUExecutionProvider', 'CUDAExecutionProvider']
+        vision_model_path = os.path.join(model_dir, "visual.onnx")
+        self.vision_session = ort.InferenceSession(vision_model_path, providers=providers)
+
+    def encode_image(self, images: List[Image.Image]):
+        import numpy as np
+        inputs = self.processor(images=images, return_tensors="np")
+        ort_inputs = {
+            self.vision_session.get_inputs()[0].name: inputs["pixel_values"]
+        }
+        outputs = self.vision_session.run(None, ort_inputs)
+        embeddings = outputs[0]
+        # Normalize
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        normalized = embeddings / np.maximum(norms, 1e-12)
+        return normalized
 
 class EmbeddingService:
     def __init__(self):
@@ -29,16 +78,16 @@ class EmbeddingService:
         selected = ai_config_manager.get_model_selection("classification")
         if selected == "clip-ViT-B-32":
             return {
-                "text_model_repo": "sentence-transformers/clip-ViT-B-32-multilingual-v1",
-                "image_model_repo": "sentence-transformers/clip-ViT-B-32",
-                "text_dir_name": "clip-ViT-B-32-multilingual-v1",
-                "image_dir_name": "clip-ViT-B-32"
+                "text_model_repo": "SiYuan044/clip-ViT-B-32-multilingual-v1-onnx",
+                "image_model_repo": "SiYuan044/clip-ViT-B-32-onnx",
+                "text_dir_name": "clip-ViT-B-32-multilingual-v1-onnx",
+                "image_dir_name": "clip-ViT-B-32-onnx"
             }
         return {
-                "text_model_repo": "sentence-transformers/clip-ViT-B-32-multilingual-v1",
-                "image_model_repo": "sentence-transformers/clip-ViT-B-32",
-                "text_dir_name": "clip-ViT-B-32-multilingual-v1",
-                "image_dir_name": "clip-ViT-B-32"
+                "text_model_repo": "SiYuan044/clip-ViT-B-32-multilingual-v1-onnx",
+                "image_model_repo": "SiYuan044/clip-ViT-B-32-onnx",
+                "text_dir_name": "clip-ViT-B-32-multilingual-v1-onnx",
+                "image_dir_name": "clip-ViT-B-32-onnx"
         }
 
     def _register_downloads(self):
@@ -73,23 +122,28 @@ class EmbeddingService:
         info = self._get_model_info()
         path = os.path.join(settings.MODEL_PATH, info["text_dir_name"])
         model_name = path if os.path.exists(path) else info["text_model_repo"]
-        return SentenceTransformerWrapper(model_name)
+        return ONNXCLIPTextWrapper(model_name)
 
     def _load_image_model(self):
         info = self._get_model_info()
         path = os.path.join(settings.MODEL_PATH, info["image_dir_name"])
         model_name = path if os.path.exists(path) else info["image_model_repo"]
-        return SentenceTransformerWrapper(model_name)
+        return ONNXCLIPImageWrapper(model_name)
 
     def _release_model(self, wrapper):
         """Release resources associated with the model"""
-        model_name = getattr(wrapper, 'model_name', 'unknown')
+        model_name = getattr(wrapper, 'model_dir', 'unknown')
         logging.info(f"Releasing resources for {model_name}")
-        if hasattr(wrapper, 'model'):
-            del wrapper.model
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        if hasattr(wrapper, 'text_session'):
+            del wrapper.text_session
+        if hasattr(wrapper, 'vision_session'):
+            del wrapper.vision_session
+        if hasattr(wrapper, 'tokenizer'):
+            del wrapper.tokenizer
+        if hasattr(wrapper, 'processor'):
+            del wrapper.processor
+        import gc
+        gc.collect()
 
     def _register_models(self):
         model_manager.register_model("clip_text", self._load_text_model, self._release_model)
@@ -101,7 +155,7 @@ class EmbeddingService:
         wrapper = model_manager.get_model("clip_text")
         try:
             # Encode texts
-            text_embs = wrapper.model.encode(texts, convert_to_tensor=False)
+            text_embs = wrapper.encode_text(texts)
             return text_embs.tolist()
         except Exception as e:
             logging.error(f"Error in text embedding: {e}\n{traceback.format_exc()}")
@@ -121,7 +175,7 @@ class EmbeddingService:
                 images.append(image)
                 
             # Encode images
-            image_embs = wrapper.model.encode(images, convert_to_tensor=False)
+            image_embs = wrapper.encode_image(images)
             return image_embs.tolist()
         except Exception as e:
             logging.error(f"Error in image embedding: {e}\n{traceback.format_exc()}")

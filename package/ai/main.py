@@ -9,9 +9,10 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import system, face, ocr, object_detection, tickets, image_classification, ai_config, embedding
+from app.routers import system, face, ocr, object_detection, tickets, image_classification, ai_config, embedding, llm
 from app.core.logger import setup_logging
 from app.services.model_downloader import model_downloader
+from app.services.llm_manager import llm_manager
 
 # Memory management globals
 active_requests = 0
@@ -52,6 +53,10 @@ async def lifespan(app: FastAPI):
 
     # Start model downloads in background
     model_downloader.start_downloads()
+    
+    # Start LLM idle checker task
+    llm_idle_task = asyncio.create_task(llm_manager.idle_checker())
+
     # 判断当前平台是否为Windows，Windows平台下不启动空闲检查任务
     if sys.platform != 'win32':
         # Start idle check task
@@ -66,6 +71,15 @@ async def lifespan(app: FastAPI):
             await idle_check_task
         except asyncio.CancelledError:
             pass
+            
+    llm_idle_task.cancel()
+    try:
+        await llm_idle_task
+    except asyncio.CancelledError:
+        pass
+        
+    # Stop LLM server subprocess
+    await llm_manager.stop()
 
     if log_listener:
         log_listener.stop()
@@ -126,6 +140,7 @@ app.include_router(object_detection.router, prefix="/object-detection", tags=["O
 app.include_router(tickets.router, prefix="/tickets", tags=["Ticket Recognition"])
 app.include_router(image_classification.router, prefix="/classification", tags=["Image Classification"])
 app.include_router(embedding.router, prefix="/embedding", tags=["Embedding"])
+app.include_router(llm.router, prefix="/v1", tags=["OpenAI LLM"])
 app.include_router(ai_config.router, prefix="/ai", tags=["AI Configuration"])
 
 if __name__ == "__main__":

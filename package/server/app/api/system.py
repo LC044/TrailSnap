@@ -76,10 +76,10 @@ async def check_update():
                 if response.status == 200:
                     remote_data = await response.json()
                     # sort by version
-                    remote_data.sort(key=lambda x: x["version"], reverse=True)
-                    remote_version = remote_data[0]["version"]
-                    update_info = remote_data[0].get("update_info")
-                    download_url = remote_data[0].get("download_url")
+                    # remote_data.sort(key=lambda x: x["version"], reverse=True)
+                    remote_version = remote_data[-1]["version"]
+                    update_info = remote_data[-1].get("update_info")
+                    download_url = remote_data[-1].get("download_url")
                     has_update = compare_versions(remote_version, current_version) > 0
                     update_info = ""
                     for item in remote_data:

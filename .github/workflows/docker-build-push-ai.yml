@@ -75,3 +75,5 @@ jobs:
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-ai:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAGS != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAGS) || '' }}
+          cache-from: type=gha,scope=build-ai-${{ matrix.type }}
+          cache-to: type=gha,mode=max,scope=build-ai-${{ matrix.type }}

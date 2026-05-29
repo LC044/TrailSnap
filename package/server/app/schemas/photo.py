@@ -48,6 +48,11 @@ class BatchPhotoUpdate(BaseModel):
 class BatchPhotoDelete(BaseModel):
     photo_ids: List[UUID]
 
+class BatchPhotoTransfer(BaseModel):
+    photo_ids: List[UUID]
+    target_path: str
+    action: str # 'move' or 'copy'
+
 class PhotoCreateItem(BaseModel):
     photo: PhotoCreate
     file_path: str

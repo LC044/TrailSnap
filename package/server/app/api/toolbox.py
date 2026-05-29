@@ -28,6 +28,40 @@ class DuplicatePhotoGroup(BaseModel):
     md5: str
     photos: List[PhotoSchema]
 
+class OrganizeRequest(BaseModel):
+    target_root_path: str
+    strategy: str # 'time', 'category', 'person', 'location'
+    action: str # 'move' or 'copy'
+    time_granularity: Optional[str] = 'ym' # 'ym' or 'ymd'
+    time_format: Optional[str] = 'flat' # 'flat' or 'nested'
+    location_granularity: Optional[str] = 'city' # 'province', 'city', 'district'
+    location_format: Optional[str] = 'flat' # 'flat' or 'nested'
+    time_range: Optional[List[str]] = None
+    categories: Optional[List[str]] = None
+    people: Optional[List[str]] = None
+    locations: Optional[List[str]] = None
+
+class OrganizePreviewOptionsRequest(BaseModel):
+    strategy: str
+    location_granularity: Optional[str] = 'city'
+    location_format: Optional[str] = 'flat'
+
+class OrganizePreviewOptionsResponse(BaseModel):
+    options: List[str]
+
+class RenameRequest(BaseModel):
+    target_root_path: str
+    prefix: Optional[str] = 'IMG_'
+    suffix: Optional[str] = ''
+
+class TimeFromFilenameRequest(BaseModel):
+    target_root_path: str
+    only_missing_metadata: Optional[bool] = False
+    make: Optional[str] = None
+    model: Optional[str] = None
+    time_mode: Optional[str] = 'auto'
+    custom_time: Optional[str] = None
+
 router = APIRouter()
 
 @router.post("/duplicate-photos/scan", response_model=BaseResponse[TaskResponse])
@@ -95,7 +129,7 @@ def get_duplicate_photos(
         if md5 not in grouped_photos:
             grouped_photos[md5] = []
         # Convert DB model to Schema dict/object. We can just use the Pydantic model dump
-        # Fastapi will automatically serialize Pydantic models returned in a list/dict, 
+        # Fastapi will automatically serialize Pydantic models returned in a list/dict,
         # but here we construct the dict structure manually.
         grouped_photos[md5].append(photo)
 
@@ -139,7 +173,7 @@ def get_latest_similar_task(
         db, TaskType.SIMILAR_PHOTO_CLUSTERING, current_user.id,
         [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
     )
-    
+
     if task:
         return BaseResponse(data=task)
 
@@ -158,7 +192,7 @@ def get_latest_similar_task(
             task_id_uuid = UUID(latest_cluster.task_id)
         except ValueError:
             return BaseResponse(data=None)
-            
+
         return BaseResponse(data=TaskResponse(
             id=task_id_uuid,
             type=TaskType.SIMILAR_PHOTO_CLUSTERING,
@@ -169,7 +203,7 @@ def get_latest_similar_task(
             processed_items=0,
             result=None
         ))
-        
+
     return BaseResponse(data=None)
 
 @router.get("/similar/tasks/{task_id}", response_model=BaseResponse[TaskResponse])
@@ -182,10 +216,10 @@ def get_similar_task(
     Get the status of a specific similar photo clustering task
     """
     task = crud_task.get_task_by_id_and_owner(db, task_id, current_user.id)
-    
+
     if task:
         return BaseResponse(data=task)
-        
+
     # If not in Task table, it was either completed or deleted.
     # We assume it's completed.
     return BaseResponse(data=TaskResponse(
@@ -213,17 +247,17 @@ def get_similar_task_result(
     result = []
     current_skip = skip
     # Safety break to avoid infinite loops
-    max_loops = 100 
+    max_loops = 100
     loop_count = 0
-    
+
     while len(result) < limit and loop_count < max_loops:
         loop_count += 1
-        
+
         # Calculate how many more we need
         remaining_needed = limit - len(result)
         # Fetch at least 20 or remaining_needed to be efficient
         fetch_limit = max(remaining_needed, 20)
-        
+
         clusters = db.query(ImageCluster).filter(
             ImageCluster.task_id == str(task_id),
             ImageCluster.cluster_type == "SIMILARITY"
@@ -234,21 +268,21 @@ def get_similar_task_result(
 
         processed_count = 0
         deleted_count = 0
-        
+
         for cluster in clusters:
             # If we have enough results, we stop adding to result,
             # but we simply break and let the offset calculation handle the next page start.
             if len(result) >= limit:
                 break
-                
+
             processed_count += 1
-            
+
             photo_clusters = db.query(PhotoCluster).filter(PhotoCluster.cluster_id == cluster.cluster_id).all()
             photo_ids = [pc.photo_id for pc in photo_clusters]
 
             should_delete = False
             cluster_photos = []
-            
+
             if not photo_ids:
                 should_delete = True
             else:
@@ -263,24 +297,24 @@ def get_similar_task_result(
                     score = 0
                     if desc:
                         score = (desc.memory_score or 0) + (desc.quality_score or 0)
-                    
+
                     cluster_photos.append((photo, score))
-                
+
                 # Sort by score desc, then photo_time desc
                 cluster_photos.sort(key=lambda x: (x[1], x[0].photo_time or datetime.min), reverse=True)
-                
+
                 if len(cluster_photos) < 2:
                     should_delete = True
-            
+
             if should_delete:
                 # Delete invalid cluster
                 db.delete(cluster)
                 # Commit to ensure DB state reflects deletion for next query or consistency
-                db.commit() 
+                db.commit()
                 deleted_count += 1
             else:
                 result.append([x[0] for x in cluster_photos])
-        
+
         # Update current_skip for the next iteration or next page logic
         # logic: we advanced 'processed_count' positions in the original list,
         # but 'deleted_count' items were removed, so the DB shifts.
@@ -299,11 +333,11 @@ def cancel_similar_task(
     Cancel/Delete a similar photo clustering task
     """
     task = crud_task.get_task_by_id_and_owner(db, task_id, current_user.id)
-    
+
     if task:
         if task.status in [TaskStatus.PENDING, TaskStatus.PROCESSING]:
             task.status = TaskStatus.CANCELLED
-            # Note: This doesn't stop the running thread immediately if it's processing, 
+            # Note: This doesn't stop the running thread immediately if it's processing,
             # but TaskWorker should handle cancellation check.
         crud_task.delete_task(db, task)
     else:
@@ -313,7 +347,7 @@ def cancel_similar_task(
             return BaseResponse(code=404, msg="Task not found", data=None)
         for cluster in clusters:
             db.delete(cluster)
-            
+
     db.commit()
     return BaseResponse(data={"message": "Task deleted"})
 
@@ -366,3 +400,236 @@ def get_photos_for_cleanup(
 
     photos = query.offset(skip).limit(limit).all()
     return BaseResponse(data=photos)
+
+@router.post("/organize/tasks", response_model=BaseResponse[TaskResponse])
+def start_organize_task(
+    req: OrganizeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    触发图片文件整理任务。
+    """
+    existing_task = crud_task.get_latest_task_by_type_and_owner(
+        db, TaskType.ORGANIZE_PHOTOS, current_user.id,
+        [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
+    )
+
+    if existing_task:
+        return BaseResponse(data=existing_task)
+
+    task = TaskManager.get_instance().add_task(
+        db,
+        type=TaskType.ORGANIZE_PHOTOS,
+        payload=req.model_dump(),
+        owner_id=current_user.id
+    )
+    return BaseResponse(data=task)
+
+@router.post("/organize/preview-options", response_model=BaseResponse[OrganizePreviewOptionsResponse])
+def get_organize_preview_options(
+    req: OrganizePreviewOptionsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取整理策略的可用选项列表。
+    """
+    from app.db.models.photo import Photo
+    from app.db.models.face import Face, FaceIdentity
+    from app.db.models.tag import PhotoTag, PhotoTagRelation
+    from app.db.models.photo_metadata import PhotoMetadata
+    from sqlalchemy import and_, or_
+    import os
+
+    options = set()
+
+    if req.strategy == 'category':
+        tags = db.query(PhotoTag.tag_name)\
+            .join(PhotoTagRelation, PhotoTag.id == PhotoTagRelation.tag_id)\
+            .join(Photo, PhotoTagRelation.photo_id == Photo.id)\
+            .filter(Photo.owner_id == current_user.id, Photo.is_deleted.is_(False))\
+            .distinct().all()
+
+        for (tag_name,) in tags:
+            if tag_name:
+                options.add(tag_name)
+
+        has_untagged = db.query(Photo.id)\
+            .outerjoin(PhotoTagRelation, Photo.id == PhotoTagRelation.photo_id)\
+            .filter(
+                Photo.owner_id == current_user.id,
+                Photo.is_deleted.is_(False),
+                PhotoTagRelation.tag_id.is_(None)
+            ).first()
+
+        if has_untagged:
+            options.add('未分类')
+
+    elif req.strategy == 'person':
+        identities = db.query(FaceIdentity.identity_name)\
+            .join(Face, FaceIdentity.id == Face.face_identity_id)\
+            .join(Photo, Face.photo_id == Photo.id)\
+            .filter(
+                Photo.owner_id == current_user.id,
+                Photo.is_deleted.is_(False),
+                FaceIdentity.identity_name.isnot(None),
+                FaceIdentity.identity_name != ''
+            ).distinct().all()
+
+        for (identity_name,) in identities:
+            options.add(identity_name)
+
+        valid_photo_ids_query = db.query(Face.photo_id)\
+            .join(FaceIdentity, Face.face_identity_id == FaceIdentity.id)\
+            .filter(FaceIdentity.identity_name.isnot(None), FaceIdentity.identity_name != '')
+
+        has_unnamed = db.query(Photo.id)\
+            .filter(
+                Photo.owner_id == current_user.id,
+                Photo.is_deleted.is_(False),
+                Photo.id.notin_(valid_photo_ids_query)
+            ).first()
+
+        if has_unnamed:
+            options.add('未命名')
+
+    elif req.strategy == 'location':
+        locations = db.query(PhotoMetadata.province, PhotoMetadata.city, PhotoMetadata.district)\
+            .join(Photo, PhotoMetadata.photo_id == Photo.id)\
+            .filter(Photo.owner_id == current_user.id, Photo.is_deleted.is_(False))\
+            .distinct().all()
+
+        for prov, city, dist in locations:
+            if not prov and not city and not dist:
+                continue
+
+            parts = []
+            if req.location_granularity == 'province' and prov:
+                parts.append(prov)
+            elif req.location_granularity == 'city' and city:
+                parts.append(city)
+            elif req.location_granularity == 'district' and dist:
+                parts.append(dist)
+            elif req.location_granularity == 'province_city':
+                if prov: parts.append(prov)
+                if city and (not parts or parts[-1] != city): parts.append(city)
+            elif req.location_granularity == 'city_district':
+                if city: parts.append(city)
+                if dist and (not parts or parts[-1] != dist): parts.append(dist)
+            elif req.location_granularity == 'province_city_district':
+                if prov: parts.append(prov)
+                if city and (not parts or parts[-1] != city): parts.append(city)
+                if dist and (not parts or parts[-1] != dist): parts.append(dist)
+
+            if not parts:
+                options.add('未知位置')
+            else:
+                if req.location_format == 'nested':
+                    options.add(os.path.join(*parts))
+                else:
+                    options.add("-".join(parts))
+
+        if '未知位置' not in options:
+            has_unknown_location = db.query(Photo.id)\
+                .outerjoin(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)\
+                .filter(
+                    Photo.owner_id == current_user.id,
+                    Photo.is_deleted.is_(False),
+                    or_(
+                        PhotoMetadata.photo_id.is_(None),
+                        and_(
+                            (PhotoMetadata.province == '') | PhotoMetadata.province.is_(None),
+                            (PhotoMetadata.city == '') | PhotoMetadata.city.is_(None),
+                            (PhotoMetadata.district == '') | PhotoMetadata.district.is_(None)
+                        )
+                    )
+                ).first()
+
+            if has_unknown_location:
+                options.add('未知位置')
+
+    return BaseResponse(data=OrganizePreviewOptionsResponse(options=list(options)))
+
+@router.get("/organize/tasks/latest", response_model=BaseResponse[Optional[TaskResponse]])
+def get_latest_organize_task(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    task = crud_task.get_latest_task_by_type_and_owner(
+        db, TaskType.ORGANIZE_PHOTOS, current_user.id,
+        [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value, TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
+    )
+    return BaseResponse(data=task)
+
+@router.post("/rename/tasks", response_model=BaseResponse[TaskResponse])
+def start_rename_task(
+    req: RenameRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    触发批量重命名任务。
+    """
+    existing_task = crud_task.get_latest_task_by_type_and_owner(
+        db, TaskType.BATCH_RENAME, current_user.id,
+        [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
+    )
+
+    if existing_task:
+        return BaseResponse(data=existing_task)
+
+    task = TaskManager.get_instance().add_task(
+        db,
+        type=TaskType.BATCH_RENAME,
+        payload=req.model_dump(),
+        owner_id=current_user.id
+    )
+    return BaseResponse(data=task)
+
+@router.get("/rename/tasks/latest", response_model=BaseResponse[Optional[TaskResponse]])
+def get_latest_rename_task(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    task = crud_task.get_latest_task_by_type_and_owner(
+        db, TaskType.BATCH_RENAME, current_user.id,
+        [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value, TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
+    )
+    return BaseResponse(data=task)
+
+@router.post("/time-from-filename/tasks", response_model=BaseResponse[TaskResponse])
+def start_time_from_filename_task(
+    req: TimeFromFilenameRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    触发从文件名修改时间任务。
+    """
+    existing_task = crud_task.get_latest_task_by_type_and_owner(
+        db, TaskType.BATCH_TIME_FROM_FILENAME, current_user.id,
+        [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
+    )
+
+    if existing_task:
+        return BaseResponse(data=existing_task)
+
+    task = TaskManager.get_instance().add_task(
+        db,
+        type=TaskType.BATCH_TIME_FROM_FILENAME,
+        payload=req.model_dump(),
+        owner_id=current_user.id
+    )
+    return BaseResponse(data=task)
+
+@router.get("/time-from-filename/tasks/latest", response_model=BaseResponse[Optional[TaskResponse]])
+def get_latest_time_from_filename_task(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    task = crud_task.get_latest_task_by_type_and_owner(
+        db, TaskType.BATCH_TIME_FROM_FILENAME, current_user.id,
+        [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value, TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]
+    )
+    return BaseResponse(data=task)
