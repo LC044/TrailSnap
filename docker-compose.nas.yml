@@ -37,6 +37,8 @@ services:
       - ./package/server/main.py:/app/main.py:ro
       - ./package/server/app:/app/app:ro
       - /volume1/photo:/app/Photos/
+      - /volume1/homes/rowankid/Photos:/app/SynologyPhotos/rowankid:ro
+      - /volume1/homes/wenjing/Photos:/app/SynologyPhotos/wenjing:ro
     environment:
       - TZ=Asia/Shanghai
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
