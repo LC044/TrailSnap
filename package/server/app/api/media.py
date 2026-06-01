@@ -154,10 +154,15 @@ async def get_media_file(
         raise HTTPException(status_code=404, detail="File not found")
         
     file_path = photo.file_path
-    # Determine media type
+    # Determine media type. Browsers cannot render HEIC/HEIF reliably, so serve
+    # the generated medium preview for the "file" view used by the lightbox.
     ext = os.path.splitext(file_path)[1].lower()
-    if ext == '.heic':
-        file_path = _get_thumbnail_path, photo.owner_id, photo_id, db, 'medium'
+    if ext in ('.heic', '.heif'):
+        file_path = await run_in_threadpool(_get_thumbnail_path, photo.owner_id, photo_id, db, 'medium')
+        preview_exists = await run_in_threadpool(os.path.exists, file_path)
+        if not preview_exists:
+            raise HTTPException(status_code=404, detail="Preview not found")
+        ext = os.path.splitext(file_path)[1].lower()
     file_size = await run_in_threadpool(os.path.getsize, file_path)
 
     media_type = "application/octet-stream"
