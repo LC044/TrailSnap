@@ -333,29 +333,27 @@ onUnmounted(() => {
 const galleryEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(1000)
 
-const { y: windowScrollTop } = useWindowScroll()
-const { y: containerScrollTop } = useScroll(computed(() => props.scrollContainer))
+const scrollContainerRef = ref<HTMLElement | Window | null>(null)
+const { y: containerScrollTop } = useScroll(scrollContainerRef)
 
-const scrollTop = computed(() => {
-  if (props.scrollContainer) return containerScrollTop.value
-  return windowScrollTop.value
-})
+const scrollTop = computed(() => containerScrollTop.value)
 
 const viewportHeight = ref(window.innerHeight)
 
 const handleResize = () => {
-  if (props.scrollContainer) {
-    viewportHeight.value = props.scrollContainer.clientHeight
+  const container = scrollContainerRef.value
+  if (container && container !== window) {
+    viewportHeight.value = (container as HTMLElement).clientHeight
   } else {
     viewportHeight.value = window.innerHeight
   }
 }
 
-watch(() => props.scrollContainer, (container) => {
-  if (container) {
-    viewportHeight.value = container.clientHeight
+watch(scrollContainerRef, (container) => {
+  if (container && container !== window) {
+    viewportHeight.value = (container as HTMLElement).clientHeight
     const ro = new ResizeObserver(handleResize)
-    ro.observe(container)
+    ro.observe(container as HTMLElement)
   } else {
     viewportHeight.value = window.innerHeight
   }
@@ -363,6 +361,17 @@ watch(() => props.scrollContainer, (container) => {
 
 let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
+    if (props.scrollContainer) {
+      scrollContainerRef.value = props.scrollContainer
+    } else {
+      const mainEl = document.querySelector('main')
+      if (mainEl && window.getComputedStyle(mainEl).overflowY === 'auto') {
+        scrollContainerRef.value = mainEl
+      } else {
+        scrollContainerRef.value = window
+      }
+    }
+
     window.addEventListener('resize', handleResize)
     if (galleryEl.value) {
         containerWidth.value = galleryEl.value.clientWidth

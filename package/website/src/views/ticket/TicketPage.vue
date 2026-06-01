@@ -1,7 +1,7 @@
 <template>
   <div 
     :class="[isDarkMode ? 'dark' : '']"
-    class="min-h-screen font-sans transition-colors duration-300 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
+    class="container mx-auto min-h-screen font-sans transition-colors duration-300 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
   >
     <TicketHeader
       v-model:searchQuery="searchQuery"
@@ -11,7 +11,7 @@
       @handle-file-import="handleFileImport"
     />
 
-    <main class="max-w-[1400px] mx-auto px-4 py-4">
+    <main class="mx-auto px-4 py-4">
       <div class="flex flex-col xl:flex-row gap-6">
         <TicketStatsSidebar
           v-model:searchQuery="searchQuery"

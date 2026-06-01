@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto classification-list px-6 py-6 flex flex-col">
+  <div class="container mx-auto classification-list py-6 px-4 flex flex-col">
     <!-- Header -->
     <div class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
       <div class="flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">

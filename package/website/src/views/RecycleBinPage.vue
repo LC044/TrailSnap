@@ -1,8 +1,8 @@
 <template>
-  <div class="recycle-bin-page container mx-auto py-6 px-4 flex flex-col">
+  <div class="recycle-bin-page container mx-auto flex flex-col">
     <!-- Header -->
-    <div class="sticky top-[60px] z-30 pointer-events-none mb-4">
-      <div class="flex md:flex-row items-center justify-between gap-4 max-w-7xl mx-auto px-4 py-3 pointer-events-auto">
+    <div class="sticky top-[60px] md:top-0 z-30 pointer-events-none mb-4">
+      <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-4 py-3 pointer-events-auto">
         <div class="flex items-center gap-3 w-full max-w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
           <button @click="router.back()" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -18,7 +18,7 @@
     </div>
 
     <!-- Gallery -->
-    <div class="max-w-7xl mx-auto w-full">
+    <div class="mx-auto w-full">
       <!-- Empty State -->
       <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
@@ -261,17 +261,33 @@ const handleRestore = async (ids: string[]) => {
   }
 }
 
+const scrollContainer = ref<HTMLElement | Window>(window)
+const { y: windowScrollY } = useScroll(scrollContainer)
+
 onMounted(async () => {
   await fetchConfig()
   fetchPhotos()
+  
+  const mainEl = document.querySelector('main')
+  if (mainEl && window.getComputedStyle(mainEl).overflowY === 'auto') {
+    scrollContainer.value = mainEl
+  }
 })
-
-// Listen to scroll to load more
-const { y: windowScrollY } = useScroll(window)
 
 watch(windowScrollY, (y) => {
     if (!hasMore.value || loading.value) return
-    const bottom = document.documentElement.scrollHeight - window.innerHeight - y
+    
+    let scrollHeight = 0
+    let clientHeight = 0
+    if (scrollContainer.value === window) {
+      scrollHeight = document.documentElement.scrollHeight
+      clientHeight = window.innerHeight
+    } else {
+      scrollHeight = (scrollContainer.value as HTMLElement).scrollHeight
+      clientHeight = (scrollContainer.value as HTMLElement).clientHeight
+    }
+    
+    const bottom = scrollHeight - clientHeight - y
     if (bottom < 500) {
         loadMore()
     }

@@ -1,9 +1,8 @@
 <template>
-  <div class="unified-photo-page mx-auto px-4 py-1 pb-24 min-h-screen">
+  <div class="unified-photo-page container mx-auto py-1 px-4 min-h-screen">
     <!-- Toolbar & Header -->
-    <div class="sticky top-[60px] z-30 pointer-events-none">
-      <div class="flex md:flex-row items-center justify-between gap-4 max-w-7xl mx-auto px-4 py-3 pointer-events-auto">
-        
+    <div class="sticky md:top-0 z-30 pointer-events-none">
+      <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-4 py-3 pointer-events-auto">
         <!-- Back & Title -->
         <slot name="header-left">
           <div v-if="showBack || title || $slots['title-extra']" class="flex items-center gap-3 w-full max-w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
@@ -133,7 +132,7 @@
     />
 
     <!-- Main Content Area -->
-    <div class="mt-6 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mx-auto sm:px-6 lg:px-8">
       <slot name="intro"></slot>
       <PhotoGallery
         ref="galleryRef"

@@ -1,5 +1,5 @@
 <template>
-  <div :class="['location-list flex flex-col relative py-6', (viewMode === 'map' || viewMode === 'trajectory') ? 'p-0 h-screen' : 'px-6 container mx-auto']">
+  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory') ? 'p-0 h-screen' : 'container mx-auto']">
     <!-- Header -->
     <div :class="['container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300', (viewMode === 'map' || viewMode === 'trajectory') ? 'absolute top-0 left-0 right-0 p-4 pointer-events-none' : 'sticky top-0 backdrop-blur-md pb-4 pt-2 -mt-2 mb-2']">
       <div class="flex flex-col gap-3 pointer-events-auto">

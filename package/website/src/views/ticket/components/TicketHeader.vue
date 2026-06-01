@@ -1,6 +1,6 @@
 <template>
-  <nav class="sticky top-14 z-30 shadow-sm h-14 transition-colors duration-300">
-    <div class="max-w-[1400px] mx-auto px-4 h-full flex items-center justify-between">
+  <nav class="sticky top-0 z-30 shadow-sm h-14 transition-colors duration-300 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md">
+    <div class="mx-auto px-4 h-full flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg flex items-center justify-center border border-primary-500 bg-primary-50 dark:bg-slate-700/50 transition-colors">
           <TrainFront class="w-5 h-5 text-primary-600 dark:text-primary-400" />

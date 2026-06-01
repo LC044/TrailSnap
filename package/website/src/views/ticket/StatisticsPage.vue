@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 p-4 pb-10">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 px-4 py-6">
     
-    <div class="max-w-[1400px] mx-auto mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+    <div class="mx-auto mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <button 
           @click="router.back()" 
@@ -70,7 +70,7 @@
       </div>
     </div>
 
-    <div class="max-w-[1400px] mx-auto space-y-6">
+    <div class="mx-auto space-y-6">
       
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 group">

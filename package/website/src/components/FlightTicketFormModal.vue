@@ -24,7 +24,7 @@
               class="hidden" 
               @change="handleFileChange"
             />
-            <button @click="handleCancel" class="text-slate-400 hover:text-red-500 transition-colors ml-2">
+            <button @click="handleCancel" class="text-slate-400 hover:text-red-500 transition-colors ml-2 dark:bg-slate-700 dark:text-slate-200">
               <X class="w-6 h-6" />
             </button>
           </div>
@@ -125,7 +125,7 @@
         </div>
 
         <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3 bg-slate-50 dark:bg-slate-800">
-          <button @click="handleCancel" class="px-5 py-2 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">取消</button>
+          <button @click="handleCancel" class="px-5 py-2 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors dark:bg-slate-700 dark:text-slate-200">取消</button>
           <button
             @click="handleSubmit"
             :disabled="saving"

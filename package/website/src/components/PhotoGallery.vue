@@ -187,7 +187,7 @@
             >
                 <template v-if="visibleDayRanges.has(day.key)">
                      <!-- Day Header -->
-                    <div class="h-[50px] flex items-center mb-0 sticky top-[120px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
+                    <div class="h-[50px] flex items-center mb-0 sticky top-[20px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
                         <div class="flex items-center gap-3 group cursor-pointer text-sm font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-2 pointer-events-auto cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" @click="toggleDaySelection(day)">
                              <div 
                                 class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"
@@ -449,31 +449,28 @@ onUnmounted(() => {
 const galleryEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(1000)
 
-const { y: windowScrollTop } = useWindowScroll()
-const { y: containerScrollTop } = useScroll(computed(() => props.scrollContainer))
+const scrollContainerRef = ref<HTMLElement | Window | null>(null)
+const { y: containerScrollTop } = useScroll(scrollContainerRef)
 
-const scrollTop = computed(() => {
-  if (props.scrollContainer) return containerScrollTop.value
-  return windowScrollTop.value
-})
+const scrollTop = computed(() => containerScrollTop.value)
 
 const viewportHeight = ref(window.innerHeight)
 
 const handleResize = () => {
-  if (props.scrollContainer) {
-    viewportHeight.value = props.scrollContainer.clientHeight
+  const container = scrollContainerRef.value
+  if (container && container !== window) {
+    viewportHeight.value = (container as HTMLElement).clientHeight
   } else {
     viewportHeight.value = window.innerHeight
   }
   updateVisibleBlocks()
 }
 
-// Update viewport height based on scroll container
-watch(() => props.scrollContainer, (container) => {
-  if (container) {
-    viewportHeight.value = container.clientHeight
+watch(scrollContainerRef, (container) => {
+  if (container && container !== window) {
+    viewportHeight.value = (container as HTMLElement).clientHeight
     const ro = new ResizeObserver(handleResize)
-    ro.observe(container)
+    ro.observe(container as HTMLElement)
   } else {
     viewportHeight.value = window.innerHeight
   }
@@ -595,6 +592,17 @@ watch(monthBlocks, () => {
 // Resize Observer for Container Width
 let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
+    if (props.scrollContainer) {
+      scrollContainerRef.value = props.scrollContainer
+    } else {
+      const mainEl = document.querySelector('main')
+      if (mainEl && window.getComputedStyle(mainEl).overflowY === 'auto') {
+        scrollContainerRef.value = mainEl
+      } else {
+        scrollContainerRef.value = window
+      }
+    }
+
     window.addEventListener('resize', handleResize)
     if (galleryEl.value) {
         containerWidth.value = galleryEl.value.clientWidth
@@ -686,8 +694,9 @@ const scrollToDate = (date: string) => {
         const month = parseInt(match[2])
         const block = monthBlocks.value.find(b => b.year === year && b.month === month)
         if (block) {
-            if (props.scrollContainer) {
-                props.scrollContainer.scrollTo({ top: block.top + 60, behavior: 'smooth' })
+            const container = scrollContainerRef.value
+            if (container && container !== window) {
+                (container as HTMLElement).scrollTo({ top: block.top + 60, behavior: 'smooth' })
             } else {
                 window.scrollTo({ top: block.top + 60, behavior: 'smooth' })
             }

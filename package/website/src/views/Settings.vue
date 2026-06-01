@@ -1,6 +1,6 @@
 <template>
   <!-- 禁用滚动条 -->
-  <div class="flex flex-col md:flex-row bg-gray-50 dark:bg-gray-900 scrollbar-hide h-screen"  style="height: calc(100vh - 3.5rem)">
+  <div class="flex flex-col md:flex-row bg-gray-50 dark:bg-gray-900 scrollbar-hide h-full">
     <!-- Sidebar -->
     <div class="w-full md:w-64 bg-white dark:bg-gray-800 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 flex-shrink-0">
       <div class="hidden md:block md:p-6">

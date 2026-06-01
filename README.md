@@ -98,7 +98,7 @@
 
 2. docker-compose
 
-docker-compose.yml 配置文件（注意修改挂载路径为本地路径，不然无法扫描本地照片目录），具体可以参考 [TrailSnap 文档](http://192.168.1.168:5173/docs/guide/install.html) ：
+docker-compose.yml 配置文件（注意修改挂载路径为本地路径，不然无法扫描本地照片目录），具体可以参考 [TrailSnap 文档](https://trailsnap.cn/docs/guide/install.html) ：
 
 ```yml
 version: '3.8'
@@ -183,7 +183,7 @@ docker-compose up -d
 
 ## 📚 文档
 
-更多详细技术文档请参阅 [TrailSnap 文档](https://trailsnap.cn/docs/dev/guide.html) ：
+更多详细技术文档请参阅 [TrailSnap 文档](https://trailsnap.cn/docs/dev/guide.html)
 
 ## 🔍 其他
 
@@ -205,8 +205,12 @@ docker-compose up -d
 
 [![Star History Chart](https://api.star-history.com/svg?repos=LC044/TrailSnap&type=Date)](https://star-history.com/?utm_source=bestxtools.com#LC044/TrailSnap&Date)
 
-## 🤝贡献者
+## 🤝 贡献者
 
 <a href="https://github.com/lc044/TrailSnap/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=lc044/TrailSnap" />
 </a>
+
+## 📖 贡献指南
+
+欢迎提交 Pull Request！请阅读 [贡献指南](CONTRIBUTING.md) 了解开发环境设置、代码规范和提交流程。
