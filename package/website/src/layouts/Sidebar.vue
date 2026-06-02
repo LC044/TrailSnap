@@ -58,7 +58,7 @@
           <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
         </transition>
       </RouterLink>
-
+      <div class="my-4 border-t border-slate-200 dark:border-slate-800"></div>
       <!-- 预留的自定义选项区块占位 -->
       <div v-if="!isCollapsed" class="mt-8 px-3">
         <div class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">

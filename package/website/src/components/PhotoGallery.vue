@@ -187,7 +187,7 @@
             >
                 <template v-if="visibleDayRanges.has(day.key)">
                      <!-- Day Header -->
-                    <div class="h-[50px] flex items-center mb-0 sticky top-[20px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
+                    <div class="h-[50px] flex items-center mb-0 sticky top-[20px] z-50 py-2 transition-opacity duration-300 pointer-events-none">
                         <div class="flex items-center gap-3 group cursor-pointer text-sm font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-2 pointer-events-auto cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" @click="toggleDaySelection(day)">
                              <div 
                                 class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"

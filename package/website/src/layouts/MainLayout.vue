@@ -25,7 +25,7 @@
     <button 
       v-show="!isAgentOpen && $route.name !== 'Login'" 
       @click="isAgentOpen = true"
-      class="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-50 w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg shadow-indigo-500/30 flex items-center justify-center transition-transform hover:scale-110 active:scale-95 group"
+      class="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-50 w-14 h-14 bg-primary-600 hover:bg-primary-700 text-white rounded-full shadow-lg shadow-primary-500/30 flex items-center justify-center transition-transform hover:scale-110 active:scale-95 group"
     >
       <Bot class="w-6 h-6 group-hover:animate-bounce" />
     </button>

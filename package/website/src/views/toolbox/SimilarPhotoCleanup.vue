@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto flex flex-col h-screen">
+  <div class="container mx-auto px-4 flex flex-col">
     <div class="sticky top-0 z-30 backdrop-blur-md">
         <div class="mx-auto px-4 py-3 flex items-center gap-4 justify-between flex-shrink-0">
             <div class="flex items-center gap-2">
@@ -218,7 +218,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed, onUnmounted } from 'vue';
-import { photoApi, type TaskResponse } from '@/api/photo';
+import { photoApi } from '@/api/photo';
+import type { Task as TaskResponse } from '@/api/tasks'
 import type { Photo, AlbumImage } from '@/types/album';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ArrowLeft, Search } from 'lucide-vue-next'
