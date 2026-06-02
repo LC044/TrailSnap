@@ -72,12 +72,14 @@ def get_chunk_size(task_type):
     chunk_size = 4
     if task_type == TaskType.PROCESS_BASIC:
         chunk_size = 1
+    elif task_type == TaskType.RECOGNIZE_FACE:
+        chunk_size = 1
     elif task_type == TaskType.VISUAL_DESCRIPTION:
         chunk_size = 2
     elif task_type == TaskType.EXTRACT_METADATA:
         chunk_size = 16
     elif task_type == TaskType.CLASSIFY_IMAGE:
-        chunk_size = 8
+        chunk_size = 2
     elif task_type == TaskType.IMAGE_EMBEDDING:
         chunk_size = 8
     return chunk_size

@@ -22,6 +22,7 @@ from app.service import storage
 logger = logging.getLogger(__name__)
 
 _tag_cache: Dict[str, str] = {}
+CLASSIFICATION_AI_TIMEOUT = aiohttp.ClientTimeout(total=180)
 
 
 def get_tag_id(db: Session, tag_name: str, owner_id: Optional[UUID] = None) -> str:
@@ -174,7 +175,7 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                 return results
             # logger.info(f"valid tasks num: {len(valid_tasks)}")
             api_url = f"{config_manager.get_user_config(owner_id, db).ai.ai_api_url}/classification/"
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=CLASSIFICATION_AI_TIMEOUT) as session:
                 async with session.post(api_url, json={"images": b64_images}) as resp:
                     if resp.status == 200:
                         result_data = await resp.json()

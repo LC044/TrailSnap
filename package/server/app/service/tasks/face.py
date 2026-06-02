@@ -15,6 +15,7 @@ from app.core.config_manager import config_manager
 from app.service import storage
 
 logger = logging.getLogger(__name__)
+FACE_AI_TIMEOUT = aiohttp.ClientTimeout(total=180)
 
 @TaskStrategyFactory.register(TaskType.RECOGNIZE_FACE)
 class RecognizeFaceStrategy(BaseTaskStrategy):
@@ -178,7 +179,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
 
                 # Batch AI request
                 api_url = f"{config_manager.get_user_config(owner_id, db).ai.ai_api_url}/face/face-recognition"
-                async with aiohttp.ClientSession() as session:
+                async with aiohttp.ClientSession(timeout=FACE_AI_TIMEOUT) as session:
                     async with session.post(api_url, json={"images": b64_images}) as resp:
                         if resp.status == 200:
                             result_data = await resp.json()
@@ -261,7 +262,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                 if not target_path or not os.path.exists(target_path):
                     return {'status': 'failed', 'error': 'file not found'}
 
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=FACE_AI_TIMEOUT) as session:
                 with open(target_path, 'rb') as f:
                     file_data = f.read()
                 width, height, _ = storage.get_image_dimensions(target_path)
