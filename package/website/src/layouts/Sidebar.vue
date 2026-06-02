@@ -28,6 +28,77 @@
 
     <!-- 主要导航菜单 -->
     <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-1 custom-scrollbar">
+      <!-- 搜索功能 -->
+      <div class="mb-2">
+        <div v-if="!isCollapsed" class="relative">
+          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input
+            ref="searchInputRef"
+            v-model="searchText"
+            @input="onInput"
+            @keydown.enter="handleSearch"
+            @blur="handleBlur"
+            @focus="handleFocus"
+            type="text"
+            placeholder="搜索..."
+            class="w-full pl-9 pr-7 py-2 text-sm bg-slate-100 dark:bg-slate-800 border border-transparent dark:border-slate-700 rounded-lg focus:outline-none focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 text-slate-700 dark:text-slate-200 transition-colors"
+          />
+          <button 
+            v-if="searchText"
+            @click="clearSearch"
+            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          >
+            <X class="w-3 h-3" />
+          </button>
+
+          <!-- 搜索建议下拉框 -->
+          <div 
+            v-if="showDropdown && (suggestions.length > 0 || searchText)" 
+            class="absolute top-full left-0 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg mt-2 overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar"
+          >
+            <!-- 语义搜索选项 -->
+            <div 
+              v-if="searchText"
+              @mousedown.prevent="handleSearch"
+              class="px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-sm border-b last:border-0 border-slate-100 dark:border-slate-700 flex items-center gap-2"
+            >
+              <Sparkles class="w-4 h-4 text-primary-500" />
+              <div class="flex flex-col">
+                <span class="text-slate-800 dark:text-slate-200 font-medium">画面识别: "{{ searchText }}"</span>
+                <span class="text-xs text-slate-500">使用AI进行语义搜索</span>
+              </div>
+            </div>
+
+            <!-- 其他建议 -->
+            <div 
+              v-for="(item, index) in suggestions" 
+              :key="index" 
+              @mousedown.prevent="selectSuggestion(item)"
+              class="px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-sm border-b last:border-0 border-slate-100 dark:border-slate-700 flex items-center gap-2"
+            >
+              <component :is="getIcon(item.type)" class="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              
+              <div class="flex-1 min-w-0">
+                 <div class="flex items-center justify-between">
+                   <span class="text-slate-800 dark:text-slate-200 font-medium truncate">
+                     {{ item.type === 'ocr' ? item.label : item.value }}
+                   </span>
+                   <span class="text-xs text-slate-500 dark:text-slate-400 ml-2 whitespace-nowrap bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">{{ getLabel(item.type) }}</span>
+                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button
+          v-else
+          @click="openSearch"
+          class="flex bg-transparent items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative w-full"
+          title="搜索"
+        >
+          <Search class="w-5 h-5 shrink-0" />
+        </button>
+      </div>
+
       <RouterLink
         v-for="item in navLinks"
         :key="item.href"
@@ -100,7 +171,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Home,
@@ -111,11 +182,25 @@ import {
   Settings,
   ChevronLeft,
   Menu,
-  Trash2
+  Trash2,
+  Search,
+  X,
+  User,
+  MapPin,
+  Type,
+  Folder,
+  FileText,
+  Tag,
+  Mountain,
+  Sparkles
 } from 'lucide-vue-next'
+import { useDebounceFn } from '@vueuse/core'
+import { usePhotoStore } from '@/stores/photoStore'
+import searchService, { type SearchSuggestion } from '@/api/search'
 
 const route = useRoute()
 const router = useRouter()
+const store = usePhotoStore()
 
 // 路由激活状态判断：完全匹配，避免首页（/）一直处于激活状态
 const isActiveRoute = (path: string) => {
@@ -141,6 +226,139 @@ const moreLinks = [
   { label: '车票', href: '/ticket', icon: Ticket },
   { label: '工具箱', href: '/toolbox', icon: Wrench },
 ]
+
+// 搜索相关状态和逻辑
+const searchText = ref('')
+const showDropdown = ref(false)
+const searchInputRef = ref<HTMLInputElement | null>(null)
+const suggestions = ref<SearchSuggestion[]>([])
+
+watch(() => store.currentContext, (ctx) => {
+  if (ctx.type === 'search' && ctx.id) {
+    searchText.value = ctx.id
+  } else if (ctx.type !== 'search') {
+    searchText.value = ''
+    suggestions.value = []
+  }
+})
+
+const openSearch = () => {
+  isCollapsed.value = false
+  nextTick(() => {
+    if (searchInputRef.value) {
+      searchInputRef.value.focus()
+    }
+  })
+}
+
+const handleBlur = () => {
+  setTimeout(() => {
+    showDropdown.value = false
+    suggestions.value = []
+  }, 200)
+}
+
+const handleFocus = () => {
+  showDropdown.value = true
+  if (searchText.value) {
+    fetchSuggestions(searchText.value)
+  }
+}
+
+const handleSearch = () => {
+  if (searchText.value.trim()) {
+    showDropdown.value = false
+    suggestions.value = []
+    router.push({ path: '/search', query: { q: searchText.value } })
+    searchInputRef.value?.blur()
+  }
+}
+
+const clearSearch = () => {
+  searchText.value = ''
+  suggestions.value = []
+  store.loadPhotos(true)
+  searchInputRef.value?.focus()
+}
+
+const fetchSuggestions = useDebounceFn(async (q: string) => {
+  if (!q.trim()) {
+    suggestions.value = []
+    return
+  }
+  try {
+    const res = await searchService.getSuggestions(q)
+    const processedSuggestions: SearchSuggestion[] = []
+    let hasOcr = false
+    
+    for (const item of res) {
+      if (item.type === 'ocr') {
+        hasOcr = true
+      } else {
+        processedSuggestions.push(item)
+      }
+    }
+    
+    if (hasOcr) {
+      processedSuggestions.push({
+        type: 'ocr',
+        value: q,
+        label: `图片中包含文字：${q}`
+      } as SearchSuggestion)
+    }
+    
+    suggestions.value = processedSuggestions
+  } catch (e) {
+    console.error("Failed to fetch suggestions", e)
+  }
+}, 300)
+
+const onInput = () => {
+  showDropdown.value = true
+  fetchSuggestions(searchText.value)
+}
+
+const selectSuggestion = (item: SearchSuggestion) => {
+  searchText.value = item.value
+  showDropdown.value = false
+  suggestions.value = []
+  router.push({ 
+    path: '/search', 
+    query: { 
+      q: item.value, 
+      type: item.type 
+    } 
+  })
+  searchInputRef.value?.blur()
+}
+
+const getLabel = (type: string) => {
+  const map: Record<string, string> = {
+    'person': '人物',
+    'location': '地点',
+    'ocr': '文字',
+    'album': '相册',
+    'folder': '文件夹',
+    'filename': '文件',
+    'tag': '标签',
+    'scene': '景区'
+  }
+  return map[type] || type
+}
+
+const getIcon = (type: string) => {
+  const map: Record<string, any> = {
+    'person': User,
+    'location': MapPin,
+    'ocr': Type,
+    'album': Images,
+    'folder': Folder,
+    'filename': FileText,
+    'tag': Tag,
+    'scene': Mountain
+  }
+  return map[type] || Search
+}
 </script>
 
 <style scoped>

@@ -11,7 +11,7 @@
     <!-- 右侧主体内容区 -->
     <div class="flex-1 flex flex-col min-w-0 transition-all duration-300 relative" id="main-content-wrapper">
       <!-- 顶部导航 -->
-      <NavBar />
+      <NavBar class="flex md:hidden" />
       
       <!-- 页面内容 -->
       <main class="flex-1 overflow-y-auto bg-slate-50 dark:bg-gray-900 box-border dark:from-gray-900 dark:to-gray-800 relative pt-[60px] md:pt-0">

@@ -29,10 +29,10 @@ html.dark {
 
 /* 2. 添加关键的 hover 规则 */
 /* 注意：您需要使用反斜杠 '\' 来转义 Tailwind 类名中的冒号 */
-.hover\:text-primary-500:hover { 
-    color: var(--theme-primary); 
+.hover\:text-primary-500:hover {
+    color: var(--theme-primary);
     /* 建议在 hover 时稍微变亮或变暗，以提供视觉反馈 */
-    filter: brightness(0.9); 
+    filter: brightness(0.9);
 }
 
 /* 3. 添加深色模式下的 hover 规则 (确保在深色模式下颜色不变暗，反而可以更亮) */
@@ -47,8 +47,15 @@ html.dark {
 .shadow-primary-200 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
 
 /* 深色模式下的微调 */
+.dark .text-primary-500 { color: var(--theme-primary); }
 .dark .text-primary-400 { color: var(--theme-primary); filter: brightness(1.2); }
+.dark .text-primary-300 { color: var(--theme-primary); filter: brightness(0.8); }
+.dark .text-primary-200 { color: var(--theme-primary); filter: brightness(0.6); }
 .dark .bg-primary-900 { background-color: rgba(var(--theme-rgb), 0.9); }
+.dark .bg-primary-800 { background-color: rgba(var(--theme-rgb), 0.8); }
+.dark .bg-primary-700 { background-color: rgba(var(--theme-rgb), 0.7); }
+.dark .dark\:bg-primary-900\\\/20 { background-color: rgba(var(--theme-rgb), 0.2) !important; }
+.dark .dark\:text-primary-400 { color: var(--theme-primary) !important; filter: brightness(1.2); }
 
 /* 动画 */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
