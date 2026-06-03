@@ -9,9 +9,9 @@
 
 <script setup lang="ts">
 // 空白布局无需导航/页脚，仅提供基础容器
-import { provideTheme } from '@/composables/useTheme';
-// 提供主题状态（确保深色模式在空白布局下也生效）
-provideTheme();
+// 主题由 App.vue 统一 provide，此处直接 inject，保证主布局与空白布局共享同一份主题状态
+import { injectTheme } from '@/composables/useTheme';
+injectTheme();
 </script>
 
 <style scoped>

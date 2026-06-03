@@ -46,7 +46,7 @@
           <button 
             v-if="searchText"
             @click="clearSearch"
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            class="absolute bg-transparent right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
           >
             <X class="w-3 h-3" />
           </button>

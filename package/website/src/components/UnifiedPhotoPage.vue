@@ -226,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid,
@@ -301,11 +301,14 @@ const lightboxImage = ref<AlbumImage | null>(null)
 const showViewOptions = ref(false)
 const viewOptionsRef = ref<HTMLElement | null>(null)
 const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
-const isMobile = ref(window.innerWidth < 768)
+const isMobile = ref(typeof window !== 'undefined' && window.innerWidth < 768)
 
-// Add a resize listener to update isMobile
-window.addEventListener('resize', () => {
+const handleResize = () => {
   isMobile.value = window.innerWidth < 768
+}
+window.addEventListener('resize', handleResize)
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 
 const albumStore = useAlbumStore()

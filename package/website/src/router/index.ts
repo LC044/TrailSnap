@@ -9,7 +9,6 @@ const AlbumDetail = () => import('@/views/album/AlbumDetail.vue');
 const PhotosPage = () => import('@/views/PhotosPage.vue');
 const TicketPage = () => import('@/views/ticket/TicketPage.vue');
 const StatisticsPage = () => import('@/views/ticket/StatisticsPage.vue');
-const More = () => import('@/views/More.vue');
 const Settings = () => import('@/views/Settings.vue');
 const PeopleList = () => import('@/views/album/people/PeopleList.vue');
 const PeopleDetail = () => import('@/views/album/people/PeopleDetail.vue');
@@ -23,6 +22,7 @@ const CleanupPage = () => import('@/views/toolbox/CleanupPage.vue');
 const ToolboxPage = () => import('@/views/toolbox/ToolboxPage.vue');
 const SimilarPhotoCleanup = () => import('@/views/toolbox/SimilarPhotoCleanup.vue');
 const DuplicatePhotoCleanup = () => import('@/views/toolbox/DuplicatePhotoCleanup.vue');
+const TicketEdit = () => import('@/views/More.vue');
 const RecycleBinPage = () => import('@/views/RecycleBinPage.vue');
 
 const NotFound = () => import('@/views/NotFound.vue');
@@ -45,20 +45,19 @@ const routes: RouteRecordRaw[] = [
       { path: '/album/classification', name: 'ClassificationList', component: ClassificationList, meta: { title: '智能分类' } },
       { path: '/album/classification/:name', name: 'ClassificationDetail', component: ClassificationDetail, meta: { title: '分类详情' } },
       { path: '/search', name: 'SearchResult', component: SearchResult, meta: { title: '搜索结果' } },
-      { path: '/cleanup', name: 'Cleanup', component: CleanupPage, meta: { title: '清理相册' } },
       { path: '/toolbox', name: 'Toolbox', component: ToolboxPage, meta: { title: '工具箱' } },
       { path: '/toolbox/similar', name: 'SimilarPhotoCleanup', component: SimilarPhotoCleanup, meta: { title: '相似照片清理' } },
       { path: '/toolbox/duplicate', name: 'DuplicatePhotoCleanup', component: DuplicatePhotoCleanup, meta: { title: '重复照片清理' } },
       { path: '/toolbox/organize', name: 'OrganizePhotos', component: () => import('@/views/toolbox/OrganizePage.vue'), meta: { title: '图片文件整理' } },
       { path: '/toolbox/rename', name: 'BatchRename', component: () => import('@/views/toolbox/RenamePage.vue'), meta: { title: '批量重命名' } },
       { path: '/toolbox/time-from-filename', name: 'TimeFromFilename', component: () => import('@/views/toolbox/TimeFromFilenamePage.vue'), meta: { title: '从文件名修改拍摄信息' } },
-      { path: '/toolbox/cleanup', name: 'Cleanup', component: CleanupPage, meta: { title: '清理相册' } },
+      { path: '/toolbox/cleanup', name: 'ToolboxCleanup', component: CleanupPage, meta: { title: '清理相册' } },
+      { path: '/toolbox/ticket-edit', name: 'TicketEdit', component: TicketEdit, meta: { title: '车票编辑' } },
       { path: '/recycle-bin', name: 'RecycleBin', component: RecycleBinPage, meta: { title: '回收站' } },
       { path: '/photos', name: 'Photos', component: PhotosPage, meta: { title: '所有照片' } },
       { path: '/mobile-search', name: 'MobileSearch', component: MobileSearch, meta: { title: '搜索', layout: 'blank' } },
       { path: '/ticket', name: 'Ticket', component: TicketPage, meta: { title: '车票', keepAlive: true } },
       { path: '/statistics', name: 'Statistics', component: StatisticsPage, meta: { title: '统计' } },
-      { path: '/more', name: 'More', component: More, meta: { title: '更多' } },
       { path: '/settings', name: 'Settings', component: Settings, meta: { title: '设置' } },
     ],
   },

@@ -1,104 +1,31 @@
 <template>
-  <div class="container mx-auto px-4 flex flex-col">
-    <div class="sticky top-0 z-30 backdrop-blur-md">
-        <div class="mx-auto px-4 py-3 flex items-center gap-4 justify-between flex-shrink-0">
-            <div class="flex items-center gap-2">
-                <button @click="$router.back()" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-900 rounded-full transition-colors">
-                    <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                </button>
-                <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">相似照片清理</h1>
-            </div>
-            <div class="flex gap-2">
-                <button 
-                    v-if="!loading && groups.length > 0"
-                    @click="startNewScan"
-                    class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-sm"
-                >
-                    重新扫描
-                </button>
-                <button 
-                    v-if="groups.length > 0"
-                    @click="handleDeleteAll"
-                    class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors shadow-sm"
-                >
-                    保留最佳
-                </button>
-            </div>
-        </div>
-    </div>
-    <!-- Task Progress -->
-    <div v-if="task && (task.status === 'pending' || task.status === 'processing')" class="flex-1 flex flex-col items-center justify-center p-8">
-        <div class="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg text-center">
-             <div class="mb-6 relative">
-                 <div class="w-20 h-20 mx-auto rounded-full border-4 border-blue-100 dark:border-blue-900/30 flex items-center justify-center">
-                    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500"></div>
-                 </div>
-             </div>
-             <h3 class="text-xl font-bold text-gray-800 dark:text-white mb-2">正在分析相似照片</h3>
-             <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">这可能需要几分钟，请耐心等待...</p>
-             
-             <!-- Progress Bar -->
-             <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 mb-2 overflow-hidden">
-                <div 
-                    class="bg-blue-600 h-2.5 rounded-full transition-all duration-500" 
-                    :style="{ width: progressPercentage + '%' }"
-                ></div>
-             </div>
-             <div class="flex justify-between text-xs text-gray-500 mb-6">
-                <span>{{ task.processed_items }} / {{ task.total_items }}</span>
-                <span>{{ progressPercentage }}%</span>
-             </div>
-
-             <button 
-                @click="cancelTask"
-                class="text-red-500 hover:text-red-600 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 rounded-lg transition-colors"
-             >
-                取消任务
-             </button>
-        </div>
-    </div>
-
-    <!-- Error/Start State -->
-    <div v-else-if="!task || task.status === 'failed' || task.status === 'cancelled'" class="flex-1 flex flex-col items-center justify-center">
-        <div v-if="task?.status === 'failed'" class="text-red-500 mb-4">
-            任务失败: {{ task.error }}
-        </div>
-        <div v-else-if="task?.status === 'cancelled'" class="text-orange-500 mb-4">
-            任务已取消
-        </div>
-        
-        <div class="text-center max-w-sm">
-            <div class="w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl text-blue-500">
-                👯
-            </div>
-            <h2 class="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">开始相似照片分析</h2>
-            <p class="text-gray-500 dark:text-gray-400 mb-8">
-                系统将扫描您的相册，找出画面高度相似的照片（如连拍），帮助您筛选保留最佳瞬间。
-            </p>
-            <button 
-                @click="startNewScan" 
-                class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg shadow-blue-500/30 transition-all transform hover:scale-105 font-medium"
-            >
-                开始扫描
-            </button>
-        </div>
-    </div>
-
-    <!-- Empty Result -->
-    <div v-else-if="task?.status === 'completed' && groups.length === 0" class="flex-1 flex flex-col items-center justify-center text-gray-500 dark:text-gray-400">
-        <i class="mgc_check_circle_line text-4xl mb-2 text-green-500"></i>
-        <p>未发现相似照片分组</p>
-        <p class="text-sm mt-2 opacity-70">您的相册很整洁！</p>
-        <button 
-            @click="startNewScan" 
-            class="mt-6 px-6 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-        >
-            重新扫描
-        </button>
-    </div>
-
+  <CleanupTaskShell
+    title="相似照片清理"
+    color="blue"
+    :can-rescan="!loading && groups.length > 0"
+    :can-bulk-action="groups.length > 0"
+    bulk-action-label="保留最佳"
+    :is-running="!!task && (task.status === 'pending' || task.status === 'processing')"
+    running-title="正在分析相似照片"
+    :processed-items="task?.processed_items ?? 0"
+    :total-items="task?.total_items ?? 0"
+    :show-start="!task || task.status === 'failed' || task.status === 'cancelled'"
+    start-icon="👯"
+    start-title="开始相似照片分析"
+    start-description="系统将扫描您的相册，找出画面高度相似的照片（如连拍），帮助您筛选保留最佳瞬间。"
+    :show-empty="task?.status === 'completed' && groups.length === 0"
+    empty-title="未发现相似照片分组"
+    empty-hint="您的相册很整洁！"
+    :task-status="task?.status ?? null"
+    :task-error="task?.error ?? null"
+    @back="$router.back()"
+    @rescan="startNewScan"
+    @bulk-action="handleDeleteAll"
+    @cancel="cancelTask"
+    @start="startNewScan"
+  >
     <!-- Result Content -->
-    <div v-else class="flex-1 overflow-y-auto space-y-6 pb-20 scrollbar-hide" ref="containerRef">
+    <div class="flex-1 overflow-y-auto space-y-6 pb-20 scrollbar-hide" ref="containerRef">
         <div v-for="(group, gIndex) in groups" :key="gIndex" class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
@@ -213,7 +140,7 @@
         @prev="lightbox.index--"
         @next="lightbox.index++"
     />
-  </div>
+  </CleanupTaskShell>
 </template>
 
 <script setup lang="ts">
@@ -222,8 +149,9 @@ import { photoApi } from '@/api/photo';
 import type { Task as TaskResponse } from '@/api/tasks'
 import type { Photo, AlbumImage } from '@/types/album';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, Search } from 'lucide-vue-next'
+import { Search } from 'lucide-vue-next'
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
+import CleanupTaskShell from '@/components/CleanupTaskShell.vue';
 import request from '@/utils/request';
 import {usePhotoStore, mapPhotoToImage} from '@/stores/photoStore'
 import { useInfiniteScroll } from '@vueuse/core';
@@ -247,13 +175,6 @@ useInfiniteScroll(containerRef, async () => {
         await loadMore();
     }
 }, { distance: 10 });
-
-// Progress
-const progressPercentage = computed(() => {
-    if (!task.value || !task.value.total_items) return 0;
-    const pct = Math.round((task.value.processed_items / task.value.total_items) * 100);
-    return Math.min(pct, 99); // Hold at 99 until finished
-});
 
 // Scroll refs and state
 const scrollRefs = ref<HTMLElement[]>([]);
