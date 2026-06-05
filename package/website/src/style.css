@@ -34,17 +34,27 @@ html.dark {
     /* 建议在 hover 时稍微变亮或变暗，以提供视觉反馈 */
     filter: brightness(0.9);
 }
+.hover\:bg-primary-500:hover { background-color: var(--theme-primary); filter: brightness(0.92); }
+.hover\:bg-primary-600:hover { background-color: var(--theme-primary); filter: brightness(0.88); }
+.hover\:bg-primary-700:hover { background-color: var(--theme-primary); filter: brightness(0.82); }
 
 /* 3. 添加深色模式下的 hover 规则 (确保在深色模式下颜色不变暗，反而可以更亮) */
 .dark .hover\:text-primary-500:hover {
     color: var(--theme-primary);
     filter: brightness(1.2); /* 在深色背景下稍微增亮 */
 }
+.dark .hover\:bg-primary-500:hover { filter: brightness(1.15); }
+.dark .hover\:bg-primary-600:hover { filter: brightness(1.10); }
+.dark .hover\:bg-primary-700:hover { filter: brightness(1.05); }
 
 /* RGB 版本的背景色，用于支持 opacity (bg-primary-50 等) */
 .bg-primary-50 { background-color: rgba(var(--theme-rgb), 0.1); }
 .bg-primary-200 { background-color: rgba(var(--theme-rgb), 0.3); }
 .shadow-primary-200 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
+.shadow-primary-500 { --tw-shadow-color: rgba(var(--theme-rgb), 0.5); }
+.shadow-primary-500\/20 { --tw-shadow-color: rgba(var(--theme-rgb), 0.2); }
+.shadow-primary-500\/30 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
+.shadow-primary-500\/40 { --tw-shadow-color: rgba(var(--theme-rgb), 0.4); }
 
 /* 深色模式下的微调 */
 .dark .text-primary-500 { color: var(--theme-primary); }
