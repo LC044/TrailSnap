@@ -9,8 +9,8 @@
         @click="$router.push('/toolbox/cleanup')"
       >
         <div class="flex items-center gap-4 mb-3">
-          <div class="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500 text-2xl">
-            🗑️
+          <div class="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center text-red-500">
+            <Trash2 class="w-6 h-6" />
           </div>
           <div>
             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">低分清理</h3>
@@ -25,8 +25,8 @@
         @click="$router.push('/toolbox/similar')"
       >
         <div class="flex items-center gap-4 mb-3">
-          <div class="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 text-2xl">
-            👯
+          <div class="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-500">
+            <Images class="w-6 h-6" />
           </div>
           <div>
             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">相似照片清理</h3>
@@ -41,8 +41,8 @@
         @click="$router.push('/toolbox/duplicate')"
       >
         <div class="flex items-center gap-4 mb-3">
-          <div class="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-500 text-2xl">
-            🧹
+          <div class="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-500">
+            <Copy class="w-6 h-6" />
           </div>
           <div>
             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">清理重复</h3>
@@ -57,8 +57,8 @@
         @click="$router.push('/toolbox/organize')"
       >
         <div class="flex items-center gap-4 mb-3">
-          <div class="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-500 text-2xl">
-            📁
+          <div class="w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center text-purple-500">
+            <FolderOpen class="w-6 h-6" />
           </div>
           <div>
             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">图片整理</h3>
@@ -73,8 +73,8 @@
         @click="$router.push('/toolbox/rename')"
       >
         <div class="flex items-center gap-4 mb-3">
-          <div class="w-12 h-12 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-teal-500 text-2xl">
-            🏷️
+          <div class="w-12 h-12 rounded-full bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center text-teal-500">
+            <Tag class="w-6 h-6" />
           </div>
           <div>
             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">批量重命名</h3>
@@ -89,8 +89,8 @@
         @click="$router.push('/toolbox/time-from-filename')"
       >
         <div class="flex items-center gap-4 mb-3">
-          <div class="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500 text-2xl">
-            ⏱️
+          <div class="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-500">
+            <Clock class="w-6 h-6" />
           </div>
           <div>
             <h3 class="font-bold text-lg text-gray-800 dark:text-gray-100">修改图片元数据</h3>
@@ -104,4 +104,5 @@
 </template>
 
 <script setup lang="ts">
+import { Trash2, Images, Copy, FolderOpen, Tag, Clock } from 'lucide-vue-next'
 </script>
