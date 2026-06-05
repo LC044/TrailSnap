@@ -19,7 +19,7 @@
       <button
         @click="toggleCollapse"
         :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
-        class="bg-transparent p-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block"
+        class="bg-transparent p-1 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block"
       >
         <Menu v-if="isCollapsed" class="w-5 h-5" />
         <ChevronLeft v-else class="w-5 h-5" />

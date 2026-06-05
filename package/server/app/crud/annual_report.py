@@ -60,24 +60,35 @@ def get_annual_report_photos(
     if user_id:
         base_query = base_query.filter(Photo.owner_id == user_id)
 
-    # 窗口函数：每月按时间倒序编号，限制每月前 10（替代原"拉全年到 Python 随机分桶"）
-    month_col = extract('month', Photo.photo_time).label("month")
+    # 窗口函数：按月分区、photo_time DESC 编号
+    month_col = extract('month', Photo.photo_time)
     row_num = func.row_number().over(
         partition_by=month_col,
         order_by=Photo.photo_time.desc()
     ).label("rn")
-    ranked = base_query.with_entities(Photo, month_col, row_num).subquery()
+    ranked = base_query.with_entities(
+        Photo.id, month_col.label("month"), row_num
+    ).subquery()
 
-    ranked_photos = db.query(ranked).filter(ranked.c.rn <= 10).all()
+    # 取每月前 10（按 month + rn 排序保证输出有序）
+    top_rows = (
+        db.query(ranked.c.id, ranked.c.month)
+        .filter(ranked.c.rn <= 10)
+        .order_by(ranked.c.month, ranked.c.rn)
+        .all()
+    )
 
-    # 按月分组（已按 photo_time DESC，每组最多 10）
+    # 一次 IN 查询取完整 Photo 对象，再按月组装
+    photo_ids = [r[0] for r in top_rows]
+    photos_map = {
+        p.id: p for p in db.query(Photo).filter(Photo.id.in_(photo_ids)).all()
+    } if photo_ids else {}
+
     monthly_groups: Dict[int, List[Photo]] = {}
-    for row in ranked_photos:
-        photo = row[0]
-        month = row[1]
-        if not photo.photo_time:
-            continue
-        monthly_groups.setdefault(month, []).append(photo)
+    for pid, month in top_rows:
+        p = photos_map.get(pid)
+        if p is not None:
+            monthly_groups.setdefault(month, []).append(p)
 
     return monthly_groups
 
