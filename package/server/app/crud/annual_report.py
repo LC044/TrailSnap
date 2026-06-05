@@ -1,6 +1,5 @@
 from typing import List, Optional, Dict
 from datetime import datetime
-import random
 import math
 import logging
 from uuid import UUID
@@ -49,43 +48,36 @@ def get_annual_report_photos(
     db: Session,
     user_id: Optional[UUID] = None
 ):
-    # Query photos within the time range, ordered by time descending
-    query = db.query(Photo).join(PhotoMetadata, PhotoMetadata.photo_id == Photo.id)\
-    .filter(
+    # 基础过滤：时间范围 + 未删除 + 图片 + 非截图 + 有 EXIF
+    base_query = db.query(Photo).join(PhotoMetadata, PhotoMetadata.photo_id == Photo.id).filter(
         Photo.photo_time >= start_time,
         Photo.photo_time <= end_time,
-        Photo.is_deleted == False
-    )\
-    .filter(Photo.file_type == FileType.image)\
-    .filter(Photo.image_type != ImageType.SCREENSHOT)\
-    .filter(PhotoMetadata.exif_info.isnot(None))
-
+        Photo.is_deleted == False,
+        Photo.file_type == FileType.image,
+        Photo.image_type != ImageType.SCREENSHOT,
+        PhotoMetadata.exif_info.isnot(None)
+    )
     if user_id:
-        query = query.filter(Photo.owner_id == user_id)
+        base_query = base_query.filter(Photo.owner_id == user_id)
 
-    photos = query.order_by(Photo.photo_time.desc()).all()
+    # 窗口函数：每月按时间倒序编号，限制每月前 10（替代原"拉全年到 Python 随机分桶"）
+    month_col = extract('month', Photo.photo_time).label("month")
+    row_num = func.row_number().over(
+        partition_by=month_col,
+        order_by=Photo.photo_time.desc()
+    ).label("rn")
+    ranked = base_query.with_entities(Photo, month_col, row_num).subquery()
 
-    # Group by month
+    ranked_photos = db.query(ranked).filter(ranked.c.rn <= 10).all()
+
+    # 按月分组（已按 photo_time DESC，每组最多 10）
     monthly_groups: Dict[int, List[Photo]] = {}
-
-    # We can iterate and filter.
-    # Since we need max 10 per month, and we sorted by time desc,
-    # we can just fill the buckets until they are full.
-
-    for p in photos:
-        if not p.photo_time:
+    for row in ranked_photos:
+        photo = row[0]
+        month = row[1]
+        if not photo.photo_time:
             continue
-
-        month = p.photo_time.month
-        if month not in monthly_groups:
-            monthly_groups[month] = []
-
-        monthly_groups[month].append(p)
-
-    # 每个月随机选10张照片
-    for month in monthly_groups:
-        random.shuffle(monthly_groups[month])
-        monthly_groups[month] = monthly_groups[month][:10]
+        monthly_groups.setdefault(month, []).append(photo)
 
     return monthly_groups
 

@@ -261,7 +261,7 @@ def get_identities_with_details(
     return results
 
 def get_identities_by_photo_id(db: Session, photo_id: UUID, owner_id: Optional[UUID] = None) -> List[FaceIdentitySchema]:
-    # Query Face, FaceIdentity, and Photo to get all faces in the photo with their identity details
+    # 1. 主查询：单次拿所有 Face + Identity + Photo
     query = db.query(Face, FaceIdentity, Photo).join(
         FaceIdentity, Face.face_identity_id == FaceIdentity.id
     ).join(
@@ -274,28 +274,36 @@ def get_identities_by_photo_id(db: Session, photo_id: UUID, owner_id: Optional[U
     if owner_id:
         query = query.filter(Photo.owner_id == owner_id)
 
+    rows = query.all()
+    if not rows:
+        return []
+
+    # 2. 单次聚合：取所有相关 identity 的总 face 数（替代原 N+1 循环 count）
+    identity_ids = {identity.id for _, identity, _ in rows}
+    count_rows = db.query(
+        Face.face_identity_id, func.count(Face.id)
+    ).filter(
+        Face.face_identity_id.in_(identity_ids),
+        Face.is_deleted == False
+    ).group_by(Face.face_identity_id).all()
+    face_counts = {fid: cnt for fid, cnt in count_rows}
+
+    # 3. 构结果（O(N) 内存组装，无额外查询）
     results = []
-    for face, identity, photo in query.all():
-        # Use current face data for cover_photo info instead of identity's default cover
+    for face, identity, photo in rows:
         cover_photo_info = schemas.CoverPhotoInfo(
             photo_id=photo.id,
             face_rect=face.face_rect,
             face_confidence=face.face_confidence,
             recognize_confidence=face.recognize_confidence
         )
-        # Get face count for this identity
-        face_count = db.query(func.count(Face.id)).filter(
-            Face.face_identity_id == identity.id,
-            Face.is_deleted == False
-        ).scalar()
-
         results.append(FaceIdentitySchema(
             id=identity.id,
             identity_name=identity.identity_name,
             default_face_id=identity.default_face_id,
             description=identity.description,
             tags=identity.tags,
-            face_count=face_count or 0,
+            face_count=face_counts.get(identity.id, 0),
             cover_photo=cover_photo_info,
             cover=None,
             is_hidden=identity.is_hidden,
