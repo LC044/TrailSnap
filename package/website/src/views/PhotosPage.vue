@@ -78,7 +78,7 @@
         </p>
         <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
           <button
-            @click="router.push('/settings#')"
+            @click="router.push('/settings#external')"
             class="px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-medium transition-all shadow-lg shadow-primary-500/30 flex items-center justify-center gap-2"
           >
             <Settings class="w-5 h-5" />

@@ -1,26 +1,7 @@
 <template>
   <div class="photo-gallery min-h-screen relative" ref="galleryEl">
     <!-- Skeleton Loader (Initial Load) -->
-    <div v-if="loading && photos.length === 0" class="absolute inset-0 z-10 bg-white dark:bg-gray-950 p-4">
-        <div class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            <div v-for="i in 20" :key="i" class="aspect-[3/2] bg-gray-200 dark:bg-gray-800 rounded-lg animate-pulse"></div>
-        </div>
-    </div>
-
-    <!-- Error State -->
-    <div v-if="error" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-gray-950">
-        <div class="text-center space-y-4">
-            <p class="text-red-500 font-medium">{{ error }}</p>
-            <button 
-                @click="$emit('retry')"
-                class="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors group relative overflow-hidden"
-            >
-                <div class="absolute inset-0 rounded-lg animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] bg-white/20"></div>
-                <RefreshCcw class="w-4 h-4 group-hover:animate-[spin_1s_ease-in-out]" />
-                <span class="relative z-10">重试</span>
-            </button>
-        </div>
-    </div>
+    <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
 
     <!-- Batch Action Bar -->
     <transition
@@ -187,7 +168,7 @@
             >
                 <template v-if="visibleDayRanges.has(day.key)">
                      <!-- Day Header -->
-                    <div class="h-[50px] flex items-center mb-0 sticky top-[20px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
+                    <div class="h-[50px] flex items-center mb-0 sticky top-[80px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
                         <div class="flex items-center gap-3 group cursor-pointer text-sm font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-2 pointer-events-auto cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" @click="toggleDaySelection(day)">
                              <div 
                                 class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"
@@ -321,7 +302,7 @@ import {
   ref, computed, watch, onMounted, onUnmounted, nextTick, toRef, reactive
 } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, RefreshCcw, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy } from 'lucide-vue-next'
+import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -330,6 +311,7 @@ import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/
 import { useSelection } from '@/composables/useSelection'
 import { useWindowScroll, useScroll, useDebounceFn } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
+import GalleryChrome from './GalleryChrome.vue'
 import { faceApi } from '@/api/face'
 
 // Props

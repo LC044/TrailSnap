@@ -160,7 +160,7 @@
         <div v-if="form.type === 'smart'">
           <div class="flex justify-between items-center mb-1">
              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">匹配阈值</label>
-             <span class="text-xs text-gray-500">{{ (form.threshold * 100).toFixed(0) }}%</span>
+             <span class="text-xs text-gray-500 dark:text-gray-400">{{ (form.threshold * 100).toFixed(0) }}%</span>
           </div>
           <el-slider
             v-model="form.threshold"
@@ -169,7 +169,7 @@
             :step="0.01"
             :format-tooltip="(val: number) => (val * 100).toFixed(0) + '%'"
           />
-          <p class="text-xs text-gray-400 mt-1">阈值越高匹配越严格，建议值 0.25</p>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">阈值越高匹配越严格，建议值 0.25</p>
         </div>
 
         <!-- Conditional Album Fields -->
@@ -178,7 +178,7 @@
             
             <!-- Time Range -->
             <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">时间范围</label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">时间范围</label>
                 <!-- Desktop Date Range -->
                 <el-date-picker
                     v-if="!isMobile"
@@ -200,7 +200,7 @@
                         value-format="YYYY-MM-DDTHH:mm:ss"
                         class="flex-1 !w-full"
                     />
-                    <span class="text-gray-500 text-xs">至</span>
+                    <span class="text-gray-500 dark:text-gray-400 text-xs">至</span>
                     <el-date-picker
                         v-model="timeRangeEnd"
                         type="date"
@@ -213,7 +213,7 @@
             
             <!-- Locations -->
             <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">地点</label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">地点</label>
                 <el-select
                     v-model="form.locations"
                     multiple
@@ -233,12 +233,12 @@
                         :value="item.value"
                     />
                 </el-select>
-                <p class="text-xs text-gray-400 mt-1">支持搜索省、市、区</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">支持搜索省、市、区</p>
             </div>
 
             <!-- People -->
             <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">人物</label>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">人物</label>
                 <el-select
                     v-model="form.people"
                     multiple
@@ -247,7 +247,7 @@
                     filterable
                 >
                     <!-- 如果为空，显示提示 -->
-                    <div v-if="form.people.length === 0" class="text-xs text-gray-400 italic">暂无人物条件</div>
+                    <div v-if="form.people.length === 0" class="text-xs text-gray-400 dark:text-gray-500 italic">暂无人物条件</div>
                     <!-- 否则，显示人物条件 -->
                     <el-option
                         v-for="face in faces"

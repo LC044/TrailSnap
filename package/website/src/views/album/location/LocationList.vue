@@ -1,27 +1,17 @@
 <template>
-  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory') ? 'p-0 h-screen' : 'container mx-auto']">
+  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory') ? 'h-screen' : 'container mx-auto']">
     <!-- Header -->
-    <div :class="['container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300', (viewMode === 'map' || viewMode === 'trajectory') ? 'absolute top-0 left-0 right-0 p-4 pointer-events-none' : 'sticky top-0 backdrop-blur-md pb-4 pt-2 -mt-2 mb-2']">
-      <div class="flex flex-col gap-3 pointer-events-auto">
+    <div class="container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
+      <div class="flex flex-col gap-3">
         <div class="flex items-center gap-3 w-full md:w-auto dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
           <button @click="router.back()" class="p-0 md:p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
           <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">位置</h1>
         </div>
-
-        <!-- Stats Block -->
-        <div v-if="viewMode === 'map' && statistics" class="self-start dark:bg-gray-900/80 backdrop-blur-md px-4 py-2.5 rounded-xl shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all">
-           <div class="text-sm font-bold text-gray-800 dark:text-white">
-              累计点亮 <span class="text-primary-500 text-base">{{ statistics.province_count }}</span> 省 <span class="text-primary-500 text-base">{{ statistics.city_count }}</span> 市
-           </div>
-           <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              已解锁 {{ unlockPercentage }}%
-           </div>
-        </div>
       </div>
 
-      <div class="pointer-events-auto flex items-center gap-1 md:gap-3">
+      <div class="flex items-center gap-1 md:gap-3">
         <!-- Add Scene Button (Left) -->
         <button
           v-if="level === 'scene'"
@@ -92,7 +82,7 @@
             v-for="opt in filterOptions"
             :key="opt.value"
             @click="filterStatus = opt.value as any"
-            :class="['px-3 py-1 rounded-md text-xs font-medium transition-all bg-white dark:bg-gray-700 ', filterStatus === opt.value ? 'shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+            :class="['px-3 py-1 rounded-md text-xs font-medium transition-all bg-white dark:bg-gray-700 ', filterStatus === opt.value ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
           >
             {{ opt.label }}
           </button>
@@ -210,25 +200,25 @@
           <div class="hidden md:flex">
             <button
               @click="changeLevel('district')"
-              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'district' ? ' shadow-sm text-gray-900 dark:text-white font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'district' ? ' shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             >
               区县
             </button>
             <button
               @click="changeLevel('city')"
-              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'city' ? 'shadow-sm text-gray-900 dark:text-white font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'city' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             >
               城市
             </button>
             <button
               @click="changeLevel('province')"
-              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'province' ? 'shadow-sm text-gray-900 dark:text-white font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'province' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             >
               省份
             </button>
             <button
               @click="changeLevel('scene')"
-              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'scene' ? 'shadow-sm text-gray-900 dark:text-white font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'scene' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             >
               景区
             </button>
@@ -239,7 +229,7 @@
           <button
             v-show="viewMode === 'map'"
             @click="level = 'photo-map'"
-            :class="['hidden md:flex px-3 py-1.5 rounded-md text-sm font-medium transition-all items-center gap-1.5 bg-white dark:bg-gray-700', level === 'photo-map' ? 'bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+            :class="['hidden md:flex px-3 py-1.5 rounded-md text-sm font-medium transition-all items-center gap-1.5 bg-white dark:bg-gray-700', level === 'photo-map' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             title="地图照片"
           >
             <Images class="w-4 h-4" />
@@ -296,28 +286,28 @@
           <div class="hidden md:flex">
             <button
               @click="viewMode = 'grid'"
-              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'grid' ? 'shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'grid' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
               title="网格视图"
             >
               <LayoutGrid class="w-4 h-4" />
             </button>
             <button
               @click="viewMode = 'map'"
-              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'map' ? 'shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'map' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
               title="地图视图"
             >
               <Map class="w-4 h-4" />
             </button>
             <button
               @click="viewMode = 'timeline'"
-              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'timeline' ? 'shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'timeline' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
               title="时间轴视图"
             >
               <Clock class="w-4 h-4" />
             </button>
             <button
               @click="viewMode = 'trajectory'"
-              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'trajectory' ? 'shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'trajectory' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
               title="轨迹视图"
             >
               <Route class="w-4 h-4" />
@@ -329,6 +319,7 @@
 
     <!-- Map View -->
     <LocationMapView
+      class="flex-1"
       v-show="viewMode === 'map' && level !== 'photo-map' && level !== 'scene'"
       :level="level"
       :view-mode="viewMode"

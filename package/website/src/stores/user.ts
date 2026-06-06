@@ -3,6 +3,18 @@ import { ref } from 'vue';
 import { authService, type LoginParams, type UserInfo } from '@/api/auth';
 import router from '@/router';
 
+const PERSIST_KEY_PREFIXES = ['trailsnap:', 'ticket-', 'trailsnap-location-'];
+
+const clearPersistedState = () => {
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    if (PERSIST_KEY_PREFIXES.some(prefix => key.startsWith(prefix))) {
+      localStorage.removeItem(key);
+    }
+  }
+};
+
 export const useUserStore = defineStore('user', () => {
   const token = ref<string | null>(localStorage.getItem('user_token') || null);
   const userInfo = ref<UserInfo | null>(null);
@@ -48,6 +60,7 @@ export const useUserStore = defineStore('user', () => {
   const resetState = () => {
     setToken(null);
     userInfo.value = null;
+    clearPersistedState();
     router.push('/login');
   };
 

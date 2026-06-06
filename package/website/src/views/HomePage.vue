@@ -32,7 +32,7 @@
              <i class="mgc_calendar_line text-xl"></i>
           </div>
           <div>
-            <h3 class="font-bold text-orange-800 dark:text-orange-200 text-sm">2025 年度回忆录</h3>
+            <h3 class="font-bold text-orange-800 dark:text-orange-200 text-sm">{{ annualYear }} 年度回忆录</h3>
             <p class="text-xs text-orange-600 dark:text-orange-300/80">一帧一画，定格步履与温柔</p>
           </div>
         </div>
@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { dashboardApi, DashboardResponse } from '@/api/dashboard';
 import { ElMessage } from 'element-plus';
 
@@ -80,6 +80,7 @@ import OnThisDay from '@/components/OnThisDay.vue';
 const loading = ref(false);
 const dashboardData = ref<DashboardResponse | null>(null);
 const showStorageDialog = ref(false);
+const annualYear = computed(() => new Date().getFullYear() - 1);
 
 const fetchData = async () => {
   loading.value = true;

@@ -35,7 +35,7 @@
           <button 
             @click="confirmMerge"
             :disabled="selectedIds.length < 2"
-            class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 shadow-sm text-sm"
+            class="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 shadow-sm text-sm"
           >
             <MergeIcon class="w-4 h-4" />
             <span>合并 ({{ selectedIds.length }})</span>
@@ -111,7 +111,7 @@
           class="relative w-full aspect-square rounded-full overflow-hidden border-2 transition-all duration-300 bg-gray-100 dark:bg-gray-800"
           :class="[
             selectedIds.includes(person.id)
-              ? 'border-blue-500 ring-4 ring-blue-500/20'
+              ? 'border-primary-500 ring-4 ring-primary-500/20'
               : (person.is_hidden ? 'border-dashed border-gray-400' : 'border-transparent group-hover:border-gray-300 dark:group-hover:border-gray-600')
           ]"
         >
@@ -121,10 +121,10 @@
              <EyeOffIcon class="w-8 h-8 text-white drop-shadow-md opacity-80" />
           </div>
 
-          <div v-if="isMergeMode" class="absolute inset-0 bg-blue-500/10 flex items-center justify-center transition-opacity">
+          <div v-if="isMergeMode" class="absolute inset-0 bg-primary-500/10 flex items-center justify-center transition-opacity">
             <div
               class="w-7 h-7 rounded-full border-2 flex items-center justify-center shadow-lg"
-              :class="selectedIds.includes(person.id) ? 'bg-blue-600 border-blue-600' : 'bg-white/80 border-white'"
+              :class="selectedIds.includes(person.id) ? 'bg-primary-600 border-primary-600' : 'bg-white/80 border-white'"
             >
               <CheckIcon v-if="selectedIds.includes(person.id)" class="w-4 h-4 text-white" />
             </div>

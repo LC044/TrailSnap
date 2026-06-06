@@ -29,26 +29,43 @@ html.dark {
 
 /* 2. 添加关键的 hover 规则 */
 /* 注意：您需要使用反斜杠 '\' 来转义 Tailwind 类名中的冒号 */
-.hover\:text-primary-500:hover { 
-    color: var(--theme-primary); 
+.hover\:text-primary-500:hover {
+    color: var(--theme-primary);
     /* 建议在 hover 时稍微变亮或变暗，以提供视觉反馈 */
-    filter: brightness(0.9); 
+    filter: brightness(0.9);
 }
+.hover\:bg-primary-500:hover { background-color: var(--theme-primary); filter: brightness(0.92); }
+.hover\:bg-primary-600:hover { background-color: var(--theme-primary); filter: brightness(0.88); }
+.hover\:bg-primary-700:hover { background-color: var(--theme-primary); filter: brightness(0.82); }
 
 /* 3. 添加深色模式下的 hover 规则 (确保在深色模式下颜色不变暗，反而可以更亮) */
 .dark .hover\:text-primary-500:hover {
     color: var(--theme-primary);
     filter: brightness(1.2); /* 在深色背景下稍微增亮 */
 }
+.dark .hover\:bg-primary-500:hover { filter: brightness(1.15); }
+.dark .hover\:bg-primary-600:hover { filter: brightness(1.10); }
+.dark .hover\:bg-primary-700:hover { filter: brightness(1.05); }
 
 /* RGB 版本的背景色，用于支持 opacity (bg-primary-50 等) */
 .bg-primary-50 { background-color: rgba(var(--theme-rgb), 0.1); }
 .bg-primary-200 { background-color: rgba(var(--theme-rgb), 0.3); }
 .shadow-primary-200 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
+.shadow-primary-500 { --tw-shadow-color: rgba(var(--theme-rgb), 0.5); }
+.shadow-primary-500\/20 { --tw-shadow-color: rgba(var(--theme-rgb), 0.2); }
+.shadow-primary-500\/30 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
+.shadow-primary-500\/40 { --tw-shadow-color: rgba(var(--theme-rgb), 0.4); }
 
 /* 深色模式下的微调 */
+.dark .text-primary-500 { color: var(--theme-primary); }
 .dark .text-primary-400 { color: var(--theme-primary); filter: brightness(1.2); }
+.dark .text-primary-300 { color: var(--theme-primary); filter: brightness(0.8); }
+.dark .text-primary-200 { color: var(--theme-primary); filter: brightness(0.6); }
 .dark .bg-primary-900 { background-color: rgba(var(--theme-rgb), 0.9); }
+.dark .bg-primary-800 { background-color: rgba(var(--theme-rgb), 0.8); }
+.dark .bg-primary-700 { background-color: rgba(var(--theme-rgb), 0.7); }
+.dark .dark\:bg-primary-900\\\/20 { background-color: rgba(var(--theme-rgb), 0.2) !important; }
+.dark .dark\:text-primary-400 { color: var(--theme-primary) !important; filter: brightness(1.2); }
 
 /* 动画 */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
@@ -108,34 +125,6 @@ body {
   overflow-x: hidden; /* 禁用水平滚动 */
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-.card {
-  padding: 2em;
-}
-
 /* 全局或 App 级别基础设置 */
 #app {
   font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -153,19 +142,6 @@ button:focus-visible {
   justify-content: center;
   align-items: center;
   /* text-align: center; */
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
 }
 
 /* 页面过渡动画 (从 MainLayout.vue 移动过来) */

@@ -84,6 +84,7 @@ import type { TimelineNode } from '@/types/location'
 import type { Photo } from '@/types/album'
 import { loadMapScript } from '@/utils/mapLoader'
 import { ElMessage } from 'element-plus'
+import { injectTheme } from '@/composables/useTheme'
 
 // Declare T globally
 declare const T: any
@@ -106,6 +107,7 @@ const skip = ref(0)
 const limit = 100
 
 const router = useRouter()
+const { currentTheme } = injectTheme()
 const timelineNodes = ref<TimelineNode[]>([])
 const map = ref<any>(null)
 const currentApiKey = ref('')
@@ -249,7 +251,7 @@ const drawTrajectory = () => {
   // Draw lines and directional arrows
   if (points.length > 1) {
      const line = new T.Polyline(points, {
-       color: "#3b82f6", // primary-500
+       color: currentTheme.value.primary, // 跟随主题色
        weight: 3,
        opacity: 0.8,
        lineStyle: "dashed"
@@ -292,6 +294,13 @@ watch([() => props.startDate, () => props.endDate, () => props.level], () => {
         initMap()
       })
     }
+})
+
+// 主题色变化时重绘轨迹（仅折线颜色变化，重绘所有 overlay 较重但保证一致性）
+watch(() => currentTheme.value.primary, () => {
+  if (map.value && timelineNodes.value.length > 0) {
+    drawTrajectory()
+  }
 })
 
 onMounted(async () => {

@@ -107,7 +107,9 @@ class ImageClassificationService:
         "car": "汽车",
         "plant": "植物",
         "electronics": "电子产品",
-        "ski": "滑雪"
+        "ski": "滑雪",
+        "game": "游戏",
+        "screenshot": "截图",
     }
 
     def __init__(self):
@@ -223,8 +225,8 @@ class ImageClassificationService:
             return model.names.get(cls_idx, str(cls_idx)), float(conf)
         return None, None
 
-    def _normalize_label(self, label: Optional[str], confidence: float) -> str:
-        if label is None or confidence < 0.7:
+    def _normalize_label(self, label: Optional[str], confidence: float, min_conf = 0.5) -> str:
+        if label is None or confidence < min_conf:
             return "others"
         return label
 
@@ -299,7 +301,7 @@ class ImageClassificationService:
                 for i, small_pred in enumerate(small_preds):
                     idx = indices[i][0]
                     final_label, final_conf = self._get_top_prediction(small_pred, small_model)
-                    final_label = self._normalize_label(final_label, final_conf)
+                    final_label = self._normalize_label(final_label, final_conf, min_conf=0.95)
                     # final_results[idx] = {"label": category + '_' + self._translate_label(final_label), "confidence": final_conf}
                     final_results[idx] = {"label": self._translate_label(final_label), "confidence": final_conf}
             else:

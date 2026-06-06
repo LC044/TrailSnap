@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto py-6 px-4 flex flex-col">
+  <div class="container mx-auto px-4 flex flex-col">
     <!-- Header -->
     <div class="sticky top-0 z-30 backdrop-blur-md">
       <div class="flex px-4 py-3 items-center justify-between flex-shrink-0">
@@ -30,7 +30,7 @@
     </div>
     
     <!-- Content -->
-    <div class="max-w-7xl mx-auto px-4 py-6">
+    <div class="mx-auto py-6">
         <!-- Empty State -->
       <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">

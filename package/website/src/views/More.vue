@@ -354,28 +354,29 @@
 import { ref, reactive, onMounted, nextTick, watch, computed} from 'vue';
 import TrainTicket from '@/components/TrainTicket.vue';
 import { toPng } from "html-to-image";
+import { ElMessage } from 'element-plus';
 
 
 // 表单初始数据
 const form = reactive({
-  serial: '283K104567',
-  gate: '5A',
-  fromStation: '上海虹桥',
-  fromPinyin: 'shanghaihongqiao',
-  toStation: '南京南',
-  toPinyin: 'nanjingnan',
-  trainCode: 'G2025',
-  dateTime: '2023-10-01 08:30',
-  carriage: '07',
-  seatNumber: '12F',
-  price: '443.5',
-  seatType: '一等座',
-  idNumber: '3201021990****5678',
-  passengerName: '张三',
-  footerInfo: '65773311920607K104567 北京南售',
-  discountType: '', // 示例：学生票
-  berthType: '', // 铺位类型（上/中/下）
-  berthNumber: '', // 铺位号（数字部分）
+  serial: '',
+  gate: '',
+  fromStation: '',
+  fromPinyin: '',
+  toStation: '',
+  toPinyin: '',
+  trainCode: '',
+  dateTime: '',
+  carriage: '',
+  seatNumber: '',
+  price: '',
+  seatType: '',
+  idNumber: '',
+  passengerName: '',
+  footerInfo: '',
+  discountType: '',
+  berthType: '',
+  berthNumber: '',
 });
 
 // 定义卧铺类型列表（用于判断是否显示铺位选择）
@@ -429,7 +430,7 @@ const handleSaveImage = async () => {
     link.click();
     link.remove();
   } catch (error) {
-    alert('图片保存失败，请重试！');
+    ElMessage.error('图片保存失败，请重试！');
     console.error('保存图片错误：', error);
   }
 };

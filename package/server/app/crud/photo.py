@@ -935,10 +935,11 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
     
     embeddings_map = {}
     if candidate_ids:
-        # 单独查一次 vectors，避免与 joinedload 冲突
-        vectors = db.query(ImageVector).filter(ImageVector.photo_id.in_(candidate_ids)).all()
-        for v in vectors:
-            embeddings_map[v.photo_id] = v.embedding
+        # 只取 photo_id + embedding 两列，避免拉回整行 ORM 对象（含其他大列）
+        vector_rows = db.query(
+            ImageVector.photo_id, ImageVector.embedding
+        ).filter(ImageVector.photo_id.in_(candidate_ids)).all()
+        embeddings_map = {pid: emb for pid, emb in vector_rows}
 
     def cosine_similarity(vec1, vec2):
         v1 = np.array(vec1)

@@ -1,26 +1,7 @@
 <template>
   <div class="photo-gallery min-h-screen relative" ref="galleryEl">
     <!-- Skeleton Loader (Initial Load) -->
-    <div v-if="loading && photos.length === 0" class="absolute inset-0 z-10 bg-white dark:bg-gray-950 p-4">
-        <div class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            <div v-for="i in 20" :key="i" class="aspect-[3/2] bg-gray-200 dark:bg-gray-800 rounded-lg animate-pulse"></div>
-        </div>
-    </div>
-
-    <!-- Error State -->
-    <div v-if="error" class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white dark:bg-gray-950">
-        <div class="text-center space-y-4">
-            <p class="text-red-500 font-medium">{{ error }}</p>
-            <button 
-                @click="$emit('retry')"
-                class="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors group relative overflow-hidden"
-            >
-                <div class="absolute inset-0 rounded-lg animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] bg-white/20"></div>
-                <RefreshCcw class="w-4 h-4 group-hover:animate-[spin_1s_ease-in-out]" />
-                <span class="relative z-10">重试</span>
-            </button>
-        </div>
-    </div>
+    <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
 
     <!-- Batch Action Bar -->
     <transition
@@ -220,13 +201,14 @@ import {
   ref, computed, watch, onMounted, onUnmounted, reactive
 } from 'vue'
 import { ElMessage } from 'element-plus'
-import { PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, Loader2, ImageMinusIcon, ImagePlusIcon, RefreshCcw, MoreHorizontal, UserPlus, CheckSquare } from 'lucide-vue-next'
+import { PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, Loader2, ImageMinusIcon, ImagePlusIcon, MoreHorizontal, UserPlus, CheckSquare } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { usePhotoStore } from '@/stores/photoStore'
 import type { AlbumImage } from '@/types/album'
 import { useSelection } from '@/composables/useSelection'
 import { useWindowScroll, useScroll } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
+import GalleryChrome from './GalleryChrome.vue'
 import { faceApi } from '@/api/face'
 
 // Props

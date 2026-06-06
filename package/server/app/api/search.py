@@ -158,6 +158,23 @@ async def get_search_suggestions(
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
+
+def _build_vector_search_response(db, results, threshold):
+    """results: List[Tuple[ImageVector, distance]]; 一次批取 Photo，按 threshold 过滤"""
+    items = [(v, 1 - d) for v, d in results if (1 - d) >= threshold]
+    if not items:
+        return []
+    photo_ids = [v.photo_id for v, _ in items]
+    photos_map = {
+        p.id: p for p in app.crud.photo.get_photos_by_ids(db, photo_ids)
+    }
+    return [
+        SearchResult(photo=photos_map[v.photo_id], score=score)
+        for v, score in items
+        if v.photo_id in photos_map
+    ]
+
+
 @router.post("/text", response_model=BaseResponse[List[SearchResult]])
 async def search_by_text(
     request: TextSearchRequest,
@@ -218,16 +235,8 @@ async def search_by_text(
             # 2. Search Vectors
             results = crud_vector.search_similar_vectors(db, embedding, request.limit, request.skip, user_id=user.id)
 
-            # 3. Format Response
-            response = []
-            for vector, distance in results:
-                score = 1 - distance
-                if score < request.threshold:
-                    continue
-
-                photo = app.crud.photo.get_photo(db, vector.photo_id)
-                if photo:
-                    response.append(SearchResult(photo=photo, score=score))
+            # 3. Format Response（批取 Photo，消除原 N+1）
+            response = _build_vector_search_response(db, results, request.threshold)
             return BaseResponse(code=200, msg="搜索成功", data=response)
 
     except Exception as e:
@@ -269,16 +278,8 @@ async def search_by_image(
         # 2. Search Vectors
         results = crud_vector.search_similar_vectors(db, embedding, limit, user_id=user.id)
 
-        # 3. Format Response
-        response = []
-        for vector, distance in results:
-            score = 1 - distance
-            if score < threshold:
-                continue
-            
-            photo = app.crud.photo.get_photo(db, vector.photo_id)
-            if photo:
-                response.append(SearchResult(photo=photo, score=score))
+        # 3. Format Response（批取 Photo，消除原 N+1）
+        response = _build_vector_search_response(db, results, threshold)
         return BaseResponse(code=200, msg="搜索成功", data=response)
 
     except Exception as e:
