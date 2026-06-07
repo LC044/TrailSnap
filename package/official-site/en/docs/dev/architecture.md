@@ -2,7 +2,12 @@
 
 ## 1. Overall Architecture Diagram
 
-TrailSnap adopts a typical separated frontend and backend architecture, consisting of a frontend presentation layer, a backend service layer, and a data storage layer.
+TrailSnap adopts a typical separated frontend and backend architecture, consisting of a frontend presentation layer, a backend service layer, an AI microservice layer, and a data storage layer.
+
+1. **Frontend Presentation Layer**: Provides a unified entry point through Nginx reverse proxy, supports HTTP/HTTPS access, and delivers the interactive frontend interface to users.
+2. **Backend Service Layer**: Built on FastAPI as the core, with a security authentication module for JWT identity verification and multi-user permission isolation, ensuring safe family multi-user usage; separates business logic services from the task manager, achieving decoupling of synchronous business and async AI tasks; connects to PostgreSQL via SQLAlchemy ORM for metadata storage, and interfaces with the NAS local file system via file services for image storage — fully adapted to NAS storage architecture.
+3. **AI Microservice Layer**: Uses a unified entry dispatch with a built-in model manager implementing intelligent lifecycle management — lazy loading on demand, automatic unloading when idle, and automatic download when needed — significantly reducing NAS memory and compute usage; integrates PaddleOCR, InsightFace, YOLO+OCR, CLIP, and other AI capabilities, covering OCR recognition, face recognition, ticket recognition, vector search, and other core album functions; also supports connecting to external LLMs like Qwen and GPT for good extensibility.
+4. **Data Storage Layer**: Metadata and files are stored separately, with all data stored locally to ensure family data privacy and security.
 
 ```mermaid
 flowchart TD
@@ -62,7 +67,7 @@ flowchart TD
 - **Logger**: Custom JSON queue logger + daily capacity rolling (built-in for both server and ai)
 
 ### 2.3 Database
-- **PostgreSQL**: Relational database, stores users, albums, photo metadata, system settings, etc.
+- **PostgreSQL (PgVector)**: Relational database, stores users, albums, photo metadata, system settings, etc.
 
 ## 3. Directory Structure & Module Description
 

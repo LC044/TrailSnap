@@ -1,8 +1,8 @@
-# 设置外部图库
+# External Libraries
 
-添加外部文件夹路径，系统将扫描这些文件夹中的图片。外部文件夹中的图片不会被移动或修改，生成的缩略图将存储在主目录中。
+Add external folder paths and the system will scan images in those folders. Images in external folders will not be moved or modified; generated thumbnails will be stored in the main directory.
 
-查看docker-compose.yml文件，确认photos文件夹的挂载路径。
+Check the `docker-compose.yml` file to confirm the mount path of the photos folder.
 
 ```yml
   server:
@@ -16,13 +16,13 @@
       - D:\TrailSnap\photos:/app/Photos/
 ```
 
-冒号前面是电脑上的文件夹路径，冒号后面是容器内的路径。外部图库要添加的目录为冒号后面的路径，也就是`/app/Photos/`。
+The part before the colon is the folder path on your computer; the part after the colon is the path inside the container. The directory to add as an external library is the path after the colon, i.e. `/app/Photos/`.
 
-你也可以挂载多个文件夹，只需要在volumes中添加多个挂载路径即可。修改之后要重启docker容器，使配置生效。
+You can also mount multiple folders by adding multiple mount paths in the `volumes` section. After modifying, restart the Docker container for the changes to take effect.
 
 ```yml
       - D:\TrailSnap\photos1:/app/Photos1/
       - E:\TrailSnap\photos2:/app/Photos2/
 ```
 
-也可以添加外部文件夹的某个子文件夹，例如只想添加`D:\TrailSnap\photos1\2025\`中的图片，那么外部图库为`/app/Photos1/2025/`。
+You can also add a subfolder of an external folder. For example, if you only want to add images from `D:\TrailSnap\photos1\2025\`, the external library path would be `/app/Photos1/2025/`.
