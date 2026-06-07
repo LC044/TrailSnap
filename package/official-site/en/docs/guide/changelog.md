@@ -19,7 +19,7 @@
 - Unified icons and refined frontend conventions.
 - Improved page UI layout and fixed import issues.
 
-## 2026-05-28 (0.4.0) [vibe coding prompt](/en/docs/dev/prompt/0.3.10)
+## 2026-05-28 (0.4.0)
 
 ### New
 
@@ -38,7 +38,7 @@
 - Improved failed task cleanup mechanism.
 - Fixed organize task progress calculation error.
 
-## 2026-05-14 (0.3.9) [vibe coding prompt](/en/docs/dev/prompt/0.3.9)
+## 2026-05-14 (0.3.9)
 
 ### New
 
