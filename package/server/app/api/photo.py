@@ -17,6 +17,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -37,7 +38,8 @@ from app.db.models.user import User
 
 from app.db.models.image_description import ImageDescription as ImageDescriptionModel
 from app.schemas.image_description import ImageDescription as ImageDescriptionSchema
-from app.db.models.photo import Photo
+from app.db.models.photo import Photo, FileType
+from app.service import storage
 from app.service.task_manager import TaskManager
 from app.db.models.task import TaskType
 
@@ -336,6 +338,30 @@ def update_photo(photo_id: UUID, photo: schemas.PhotoUpdate, db: Session = Depen
     if not db_photo:
         raise HTTPException(status_code=404, detail="Photo not found")
     return db_photo
+
+
+@router.put("/{photo_id}/file", response_model=schemas.Photo)
+async def replace_photo_file(
+    photo_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    db_photo = app.crud.photo.get_photo(db, photo_id)
+    if not db_photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if db_photo.owner_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Permission denied")
+    if db_photo.file_type == FileType.video:
+        raise HTTPException(status_code=400, detail="Cannot replace video file via image editor")
+
+    new_file_path = await run_in_threadpool(
+        storage.save_upload_file, file, db_photo.id, current_user.id
+    )
+    updated = await run_in_threadpool(
+        app.crud.photo.replace_photo_file, db, db_photo, new_file_path, current_user.id
+    )
+    return updated
 
 # Tag Endpoints
 

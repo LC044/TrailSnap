@@ -2,8 +2,8 @@
   <Transition name="fade">
     <div v-if="visible" class="fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm" @click="close" @keydown.esc="close" tabindex="0">
 
-      <!-- Top Toolbar (Mobile Adapted) -->
-      <div class="fixed top-0 left-0 right-0 z-[102] p-2 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+      <!-- Top Toolbar (Mobile Adapted) — hidden in edit mode -->
+      <div v-if="!isEditing" class="fixed top-0 left-0 right-0 z-[102] p-2 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
          <button
             @click.stop="close"
             class="pointer-events-auto w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0"
@@ -23,6 +23,9 @@
             <!-- Actions -->
             <button @click.stop="downloadImage" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="下载图片">
                 <Download class="w-6 h-6" />
+            </button>
+             <button v-if="image && image.file_type === 'image'" @click.stop="enterEditMode" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="编辑图片">
+                <Pencil class="w-6 h-6" />
             </button>
              <button @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片">
                 <Trash2 class="w-6 h-6" />
@@ -78,18 +81,28 @@
         </div>
       </div>
 
-      <!-- Main Image Area -->
-      <div class="flex-1 relative flex items-center justify-center h-full overflow-hidden group">
+      <!-- Photo Editor (replaces viewer when editing) -->
+      <PhotoEditor
+        v-if="isEditing && image"
+        :image-url="image.url"
+        :image-width="image.width"
+        :image-height="image.height"
+        @save="handleEditorSave"
+        @cancel="exitEditMode"
+      />
+
+      <!-- Main Image Area (hidden when editing) -->
+      <div v-else class="flex-1 relative flex items-center justify-center h-full overflow-hidden group">
 
         <!-- Navigation -->
-        <button 
+        <button
             v-if="hasPrev"
             @click.stop="prev"
             class="absolute left-4 z-[101] w-12 h-12 flex items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
             <ChevronLeft class="w-8 h-8" />
         </button>
-        <button 
+        <button
             v-if="hasNext"
             @click.stop="next"
             class="absolute right-4 z-[101] w-12 h-12 flex items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
@@ -189,8 +202,9 @@
         </div>
       </div>
 
-      <!-- Sidebar (Metadata) -->
+      <!-- Sidebar (Metadata) — hidden in edit mode -->
       <PhotoMetadataSidebar
+        v-if="!isEditing"
         :visible="showSidebar"
         :image="image"
         :metadata="metadata"
@@ -201,8 +215,9 @@
         @highlight-face="handleHighlightFace"
       />
 
-      <!-- OCR Panel (Separate) -->
+      <!-- OCR Panel (Separate) — hidden in edit mode -->
       <PhotoOCRPanel
+        v-if="!isEditing"
         :visible="showOCR"
         :loading="ocrLoading"
         :records="ocrRecords"
@@ -211,7 +226,8 @@
         @click-record="onOCRRecordClick"
       />
 
-      <PersonSelector 
+      <PersonSelector
+        v-if="!isEditing"
         v-model:visible="showPersonSelector"
         :submitting="isAddingPerson"
         @select="handlePersonSelected"
@@ -263,6 +279,7 @@ import {
     UserPlus,
     FileText,
     FolderOutput,
+    Pencil,
 } from 'lucide-vue-next'
 import Player from 'xgplayer'
 import 'xgplayer/dist/index.min.css'
@@ -274,6 +291,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import PhotoMetadataSidebar from './PhotoMetadataSidebar.vue'
 import PhotoOCRPanel from './PhotoOCRPanel.vue'
 import PersonSelector from './PersonSelector.vue'
+import PhotoEditor from './PhotoEditor.vue'
 
 
 interface Props {
@@ -291,6 +309,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const showOriginal = ref(false)
+const isEditing = ref(false)
 const isPlayingLive = ref(false)
 const liveVideoRef = ref<HTMLVideoElement | null>(null)
 const videoStyle = ref<Record<string, string>>({})
@@ -426,6 +445,7 @@ const isDragging = ref(false)
 watch(() => props.image, async (newImg, oldImg) => {
     // 1. Reset State
     showOriginal.value = false
+    isEditing.value = false
     scale.value = 1
     translateX.value = 0
     translateY.value = 0
@@ -487,6 +507,7 @@ watch(() => props.visible, async (newVal) => {
         }
     } else {
         document.body.style.overflow = ''
+        isEditing.value = false
         disposePlayer()
         isPlayingLive.value = false
         showPersonSelector.value = false
@@ -822,6 +843,42 @@ const handleDelete = () => {
              close() // Close after delete, or let parent handle if it switches to next
         }
     })
+}
+
+// Edit Mode
+const enterEditMode = () => {
+    isEditing.value = true
+    showSidebar.value = false
+    showOCR.value = false
+}
+
+const exitEditMode = () => {
+    isEditing.value = false
+}
+
+const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 'new') => {
+    if (!props.image) return
+    try {
+        if (mode === 'replace') {
+            const file = new File([blob], filename, { type: blob.type || 'image/jpeg' })
+            await albumService.replacePhotoFile(props.image.id, file, filename)
+            ElMessage.success('已替换原图')
+            // Bust cache by updating image URLs
+            const t = Date.now()
+            if (props.image.url) props.image.url = `${props.image.url.split('?')[0]}?t=${t}`
+            if (props.image.thumbnail) props.image.thumbnail = `${props.image.thumbnail.split('?')[0]}?t=${t}`
+            if (props.image.preview) props.image.preview = `${props.image.preview.split('?')[0]}?t=${t}`
+            emit('update', { id: props.image.id, edited: true })
+        } else {
+            const file = new File([blob], filename, { type: blob.type || 'image/jpeg' })
+            await albumService.uploadPhoto(file)
+            ElMessage.success('已另存为新图')
+        }
+        exitEditMode()
+    } catch (e: any) {
+        console.error('Save failed', e)
+        ElMessage.error('保存失败: ' + (e.message || '未知错误'))
+    }
 }
 
 </script>

@@ -21,6 +21,7 @@
     "dompurify": "^3.4.0",
     "echarts": "^6.0.0",
     "element-plus": "^2.11.9",
+    "fabric": "^7.4.0",
     "html-to-image": "^1.11.13",
     "html2canvas": "^1.4.1",
     "lucide-vue-next": "^0.555.0",

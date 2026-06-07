@@ -753,6 +753,54 @@ def update_photo(db: Session, photo_id: UUID, photo_update: photo_schemas.PhotoU
     return db_photo
 
 
+def replace_photo_file(db: Session, db_photo: Photo, new_file_path: str, user_id: UUID):
+    old_file_path = db_photo.file_path
+
+    # Delete old file if different from new
+    if old_file_path != new_file_path and os.path.exists(old_file_path):
+        try:
+            os.remove(old_file_path)
+        except Exception as e:
+            logging.getLogger("app.crud.photo").warning(f"Failed to delete old file {old_file_path}: {e}")
+
+    # Update file path and filename
+    new_filename = os.path.basename(new_file_path)
+    db_photo.file_path = new_file_path
+    db_photo.filename = new_filename
+
+    # Delete old thumbnails and regenerate
+    storage.delete_thumbnails(user_id, db_photo.id)
+    storage.generate_thumbnail(user_id, new_file_path, db_photo.id)
+
+    # Update dimensions and size
+    width, height, _ = storage.get_image_dimensions(new_file_path)
+    size = storage.get_file_size(new_file_path)
+    if width is not None:
+        db_photo.width = width
+    if height is not None:
+        db_photo.height = height
+    if size is not None:
+        db_photo.size = size
+
+    db.commit()
+    db.refresh(db_photo)
+
+    # Trigger re-processing tasks (face, OCR, description may be stale)
+    from app.service.task_manager import TaskManager
+    from app.db.models.task import TaskType
+    TaskManager.get_instance().add_tasks(db, [
+        {'type': TaskType.RECOGNIZE_FACE, 'payload': {'photo_id': str(db_photo.id), 'file_path': new_file_path, 'user_id': str(user_id)}},
+        {'type': TaskType.OCR, 'payload': {'photo_id': str(db_photo.id), 'file_path': new_file_path, 'user_id': str(user_id)}},
+        {'type': TaskType.VISUAL_DESCRIPTION, 'payload': {'photo_id': str(db_photo.id), 'file_path': new_file_path, 'user_id': str(user_id)}},
+    ])
+
+    if user_id:
+        from app.crud.album import trigger_conditional_albums_update
+        trigger_conditional_albums_update(db, user_id, [db_photo.id])
+
+    return db_photo
+
+
 def get_photos_by_ids(db: Session, photo_ids: List[UUID], user_id: UUID = None, include_deleted: bool = False):
     query = db.query(Photo).filter(Photo.id.in_(photo_ids))
     if not include_deleted:

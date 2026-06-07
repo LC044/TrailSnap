@@ -107,6 +107,16 @@ export const albumService = {
     return data.data;
   },
 
+  // Replace photo file
+  async replacePhotoFile(photoId: string, file: File, filename: string) {
+    const formData = new FormData();
+    formData.append('file', file, filename);
+    const data = await request.put<Photo>(`/api/photos/${photoId}/file`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return data.data;
+  },
+
   // Chunk Upload
   async initUpload() {
       const data = await request.post<{upload_id: string}>('/api/medias/upload/init');
