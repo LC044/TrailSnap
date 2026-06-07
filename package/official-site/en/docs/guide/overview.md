@@ -7,6 +7,9 @@ In the future, every family will have its own AI data center. Your photo album i
 ## Highlights
 
 - **AI Assistant**: chat with your album and search by natural language.
+- **Built-in AI**: out-of-the-box multimodal model with no extra setup; also supports local LLM hosting for full data privacy.
+- **Sidebar Navigation**: collapsible sidebar with global search for quick access.
+- **Theme Customization**: 5 brand colors (Sky, Emerald, Violet, Rose, Amber) that apply globally with one click.
 - **Footprints**: connect places into a travel trail on the map.
 - **On This Day**: AI recommends the most memorable photos from past years.
 
@@ -52,14 +55,15 @@ In the future, every family will have its own AI data center. Your photo album i
 
 ### 🔧 Toolbox
 
+- Batch photo transfer (move/copy to specified directories)
+- Auto-organize photos by time or person (flat or recursive directory structure)
+- Modify photo metadata (set capture time from filename)
+- Batch rename photos
 - Clean duplicate/similar photos
 - Use AI to identify and clean low-quality photos
 
 ## 🛠️ Planned Features
 
-- Toolbox enhancements
-  - Image editing (crop, rotate, add text/tags, etc.)
-  - Organize photos into folders by time/location
 - AI enhancements
   - Better classification, search, and recommendations
   - Auto-generated travel journals (itinerary, hotels, food, people, scenery)

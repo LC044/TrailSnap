@@ -1,5 +1,58 @@
 # Changelog
 
+## 2026-06-07 (0.5.0)
+
+### New
+
+- Added **Sidebar navigation**: redesigned frontend layout with collapsible sidebar.
+- Sidebar shows hover tooltips when collapsed.
+- Added **Sidebar global search**: quickly find photos, albums, people, etc.
+- Added **Theme customization**: choose from 5 brand colors (Sky, Emerald, Violet, Rose, Amber) that apply globally with one click.
+- Unified theme handling with reusable components.
+
+### Improvements
+
+- Optimized location map page; refactored backend photo query logic.
+- Improved multi-module query performance.
+- Fixed album page theme color not responding and dark mode contrast issues.
+- Fixed missing primary theme utility class mappings (hover/shadow not following theme).
+- Unified icons and refined frontend conventions.
+- Improved page UI layout and fixed import issues.
+
+## 2026-05-28 (0.4.0) [vibe coding prompt](/en/docs/dev/prompt/0.3.10)
+
+### New
+
+- Photo organize toolbox now supports "Time directory structure" option — flat or recursive nested structure (e.g. `2026/01/01`).
+- Photo organize supports automatic grouping by person.
+- Added **Built-in AI connection**: works out of the box, using MiniCPM-V-4_6-Q4_K_M multimodal model by default.
+- Added **Local LLM hosting**: host custom models via llama.cpp.
+
+### Improvements
+
+- Migrated all AI services to ONNX Runtime, removing redundant dependencies.
+- Refactored AI service LLM deployment logic — replaced pyllama-cpp-python with natively compiled llama-server binary.
+- Implemented priority-based task filtering when queue is full.
+- Improved image processing with WebP format auto-conversion.
+- Improved LLM settings page with built-in connection badge.
+- Improved failed task cleanup mechanism.
+- Fixed organize task progress calculation error.
+
+## 2026-05-14 (0.3.9) [vibe coding prompt](/en/docs/dev/prompt/0.3.9)
+
+### New
+
+- Added "Skiing" category to smart classification.
+- Smart classification now supports setting cover photos.
+- Added ability to delete recognized people.
+
+### Improvements
+
+- Thumbnails now use WebP format to reduce file size.
+- Fixed task priority anomalies.
+- Improved smart classification accuracy, reducing misclassification.
+- Improved some UI details.
+
 ## 2026-04-28 (0.3.8)
 
 ### New

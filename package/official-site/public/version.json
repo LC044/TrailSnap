@@ -55,8 +55,13 @@
         "download_url": "https://trailsnap.cn"
     },
     {
-        "version": "0.4.0",
-        "update_info": "- 照片自动整理工具箱新增“时间目录结构”选项，支持平铺结构和递归嵌套结构（如 `2026/01/01`）<br>- 照片自动整理支持按人物自动归类<br>- 新增内置 AI 连接功能，开箱即用，默认使用 MiniCPM-V-4_6-Q4_K_M 多模态模型<br>- 新增本地 LLM 服务托管与代理能力，支持通过 llama.cpp 托管自定义模型",
-        "download_url": "https://trailsnap.cn"
+        “version”: “0.4.0”,
+        “update_info”: “- 照片自动整理工具箱新增”时间目录结构”选项，支持平铺结构和递归嵌套结构（如 `2026/01/01`）<br>- 照片自动整理支持按人物自动归类<br>- 新增内置 AI 连接功能，开箱即用，默认使用 MiniCPM-V-4_6-Q4_K_M 多模态模型<br>- 新增本地 LLM 服务托管与代理能力，支持通过 llama.cpp 托管自定义模型”,
+        “download_url”: “https://trailsnap.cn”
+    },
+    {
+        “version”: “0.5.0”,
+        “update_info”: “- 新增侧边栏导航，支持折叠模式和全局搜索<br>- 新增主题色自定义，支持天空蓝、翡翠绿、紫罗兰、玫瑰红、琥珀橙 5 种主题色<br>- 优化位置地图页面，重构后端照片查询逻辑<br>- 优化多模块查询性能<br>- 修复相册页主题色不响应与深色模式对比度问题”,
+        “download_url”: “https://trailsnap.cn”
     }
 ]
