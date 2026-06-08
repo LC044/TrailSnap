@@ -14,25 +14,53 @@
           @blur="handleBlur"
           @focus="handleFocus"
           type="text"
-          placeholder="画面内容/地点/人物/相册..."
+          placeholder="搜索或描述画面..."
           class="w-full pl-9 pr-7 py-1.5 text-sm bg-slate-100 dark:bg-slate-800 border border-transparent dark:border-slate-700 rounded-full focus:outline-none focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 text-slate-700 dark:text-slate-200 transition-colors"
         />
         
-        <button 
+        <button
           v-if="searchText"
           @click="clearSearch"
           class="absolute right-2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
         >
           <X class="w-3 h-3" />
         </button>
+        <button
+          v-else
+          @click="searchInputRef?.focus()"
+          class="absolute right-2 p-1 text-primary-500/50 hover:text-primary-500 transition-colors"
+          title="AI 语义搜索"
+        >
+          <Sparkles class="w-3.5 h-3.5" />
+        </button>
 
         <!-- 搜索建议下拉框 -->
-        <div 
-          v-if="showDropdown && (suggestions.length > 0 || searchText)" 
+        <div
+          v-if="showDropdown"
           class="absolute top-full left-0 w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg mt-2 overflow-hidden z-50 max-h-60 overflow-y-auto custom-scrollbar"
         >
+          <!-- 空输入时：AI 搜索提示 -->
+          <div
+            v-if="!searchText && suggestions.length === 0"
+            class="px-4 py-3"
+          >
+            <div class="flex items-center gap-2 text-primary-500 mb-2">
+              <Sparkles class="w-4 h-4" />
+              <span class="text-sm font-medium">AI 语义搜索</span>
+            </div>
+            <p class="text-xs text-slate-500 dark:text-slate-400">描述画面内容，即可找到对应照片</p>
+            <div class="flex flex-wrap gap-1.5 mt-2">
+              <span
+                v-for="tag in searchHints"
+                :key="tag"
+                @mousedown.prevent="quickSearch(tag)"
+                class="px-2 py-0.5 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full cursor-pointer hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-900/20 dark:hover:text-primary-400 transition-colors"
+              >{{ tag }}</span>
+            </div>
+          </div>
+
           <!-- 语义搜索选项 -->
-          <div 
+          <div
             v-if="searchText"
             @mousedown.prevent="handleSearch"
             class="px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-sm border-b last:border-0 border-slate-100 dark:border-slate-700 flex items-center gap-2"
@@ -45,14 +73,14 @@
           </div>
 
           <!-- 其他建议 -->
-          <div 
-            v-for="(item, index) in suggestions" 
-            :key="index" 
+          <div
+            v-for="(item, index) in suggestions"
+            :key="index"
             @mousedown.prevent="selectSuggestion(item)"
             class="px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 cursor-pointer text-sm border-b last:border-0 border-slate-100 dark:border-slate-700 flex items-center gap-2"
           >
             <component :is="getIcon(item.type)" class="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            
+
             <div class="flex-1 min-w-0">
                <div class="flex items-center justify-between">
                  <span class="text-slate-800 dark:text-slate-200 font-medium truncate">
@@ -136,7 +164,7 @@
 
         <div
           v-if="showMoreMenu"
-          class="absolute top-10 left-1/2 transform -translate-x-1/2 w-32 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-1 z-50 animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
+          class="absolute top-10 left-1/2 transform -translate-x-1/2 w-40 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl p-1 z-50 animate-in fade-in zoom-in-95 duration-200 overflow-hidden"
         >
           <RouterLink
             v-for="link in moreLinks"
@@ -148,6 +176,24 @@
           >
             {{ link.label }}
           </RouterLink>
+          <!-- 快捷访问 -->
+          <div v-if="navItemsList.length > 0" class="border-t border-slate-200 dark:border-slate-700 mt-1 pt-1">
+            <div class="px-4 py-1 text-xs text-slate-400 font-semibold">快捷访问</div>
+            <RouterLink
+              v-for="item in navItemsList"
+              :key="`${item.entity_type}-${item.entity_id}`"
+              :to="item.route_path"
+              @click="showMoreMenu = false"
+              class="flex items-center gap-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              active-class="bg-primary-50 text-primary-600 dark:bg-slate-700 dark:text-primary-400 font-medium"
+            >
+              <div class="w-5 h-5 rounded overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" class="w-full h-full object-cover" loading="lazy" />
+                <component v-else :is="getNavIcon(item.entity_type)" class="w-3 h-3 text-slate-400" />
+              </div>
+              <span class="truncate">{{ item.name }}</span>
+            </RouterLink>
+          </div>
         </div>
       </div>
     </nav>
@@ -157,9 +203,9 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import {
-  Image as ImageIcon, 
-  Images, 
-  Search, 
+  Image as ImageIcon,
+  Images,
+  Search,
   X,
   User,
   MapPin,
@@ -170,12 +216,14 @@ import {
   Mountain,
   Sparkles,
   Filter,
-  ChevronDown
+  ChevronDown,
+  Bookmark
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router'
 import { onClickOutside, useDebounceFn, useBreakpoints, breakpointsTailwind } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
+import { injectNavItems, type ResolvedNavItem } from '@/composables/useNavItems'
 
 const navLinks = [
   { label: '首页', href: '/' },
@@ -206,6 +254,30 @@ const isSearchExpanded = ref(false);
 const showDropdown = ref(false);
 const searchInputRef = ref<HTMLInputElement | null>(null);
 const suggestions = ref<SearchSuggestion[]>([]);
+const searchHints = ['海边日落', '猫咪', '雪景', '花园', '城市夜景'];
+
+// 自定义导航项
+const { items: navItemsList } = injectNavItems();
+
+const getNavIcon = (entityType: string) => {
+  const map: Record<string, any> = {
+    'album': Images,
+    'person': User,
+    'location': MapPin,
+    'classification': Tag
+  };
+  return map[entityType] || Bookmark;
+};
+
+const getThumbnailUrl = (item: ResolvedNavItem) => {
+  if (item.entity_type === 'person' && item.cover_photo_id) {
+    return `/api/medias/${item.cover_photo_id}/thumbnail?size=medium`;
+  }
+  if (item.cover_photo_id) {
+    return `/api/medias/${item.cover_photo_id}/thumbnail`;
+  }
+  return '';
+};
 
 watch(() => store.currentContext, (ctx) => {
   if (ctx.type === 'search' && ctx.id) {
@@ -281,6 +353,11 @@ const clearSearch = () => {
   } else {
     searchInputRef.value?.focus();
   }
+};
+
+const quickSearch = (text: string) => {
+  searchText.value = text;
+  handleSearch();
 };
 
 const fetchSuggestions = useDebounceFn(async (q: string) => {

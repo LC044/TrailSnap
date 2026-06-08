@@ -146,6 +146,13 @@ class MapSettings(BaseModel):
     provider: str = Field(default="tianditu", description="Map provider (tianditu, amap, baidu)")
     api_keys: List[str] = Field(default=[], description="Map API Key")
 
+class NavItemRef(BaseModel):
+    entity_type: str = Field(..., description="album | person | location | classification")
+    entity_id: str = Field(..., description="UUID for album/person/classification; name string for location")
+
+class NavSettings(BaseModel):
+    items: List[NavItemRef] = Field(default_factory=list, description="Ordered list of custom nav items")
+
 class AppSettings(BaseModel):
     version: str = "0.4.0"
     ai: AISettings = Field(default_factory=AISettings)
@@ -153,6 +160,7 @@ class AppSettings(BaseModel):
     image: ImageSettings = Field(default_factory=ImageSettings)
     filter: FilterSettings = Field(default_factory=FilterSettings)
     map: MapSettings = Field(default_factory=MapSettings)
+    nav: NavSettings = Field(default_factory=NavSettings)
 
     class Config:
         arbitrary_types_allowed = True

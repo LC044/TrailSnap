@@ -13,6 +13,7 @@ import { useRoute } from 'vue-router';
 import MainLayout from '@/layouts/MainLayout.vue';
 import BlankLayout from '@/layouts/BlankLayout.vue';
 import { provideTheme } from '@/composables/useTheme';
+import { provideNavItems } from '@/composables/useNavItems';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {
@@ -23,6 +24,7 @@ const {
   setMode,
   setTheme
 } = provideTheme();
+provideNavItems();
 
 const route = useRoute();
 
