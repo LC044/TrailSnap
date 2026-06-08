@@ -1,6 +1,6 @@
 [project]
 name = "project"
-version = "0.4.0"
+version = "0.4.1"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110.0",
