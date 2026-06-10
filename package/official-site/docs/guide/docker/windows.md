@@ -65,7 +65,7 @@ services:
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
-      - ./photos:/app/Photos/
+      - ./photos:/app/Photos
     environment:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
@@ -98,7 +98,7 @@ networks:
 
 
 修改文件挂载目录：
-找到`docker-compose.yml`文件中`server`的`volumes`配置，修改挂载目录`./photos:/app/Photos/`为你自己的照片目录。
+找到`docker-compose.yml`文件中`server`的`volumes`配置，修改挂载目录`./photos:/app/Photos`为你自己的照片目录。
 例如，我的照片目录是`D:\TrailSnap\photos`，则修改为：
 
 ```yml
@@ -110,7 +110,7 @@ networks:
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
-      - D:\TrailSnap\photos:/app/Photos/
+      - D:\TrailSnap\photos:/app/Photos
     environment:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
@@ -131,9 +131,9 @@ networks:
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
-      - D:\TrailSnap\photos:/app/Photos/
-      - D:\TrailSnap\photos1:/app/Photos1/
-      - D:\TrailSnap\photos2:/app/Photos2/
+      - D:\TrailSnap\photos:/app/Photos
+      - D:\TrailSnap\photos1:/app/Photos1
+      - D:\TrailSnap\photos2:/app/Photos2
 ```
 冒号前面是本地目录，冒号后面是TrailSnap用到的目录。
 
@@ -170,8 +170,8 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 
 打开浏览器，访问`http://localhost:8082`，即可看到TrailSnap的前端界面。
 
-然后点击更多->设置->外部图库，添加`/app/Photos/`。
-如果有多个照片目录，例如`/app/Photos1/`、`/app/Photos2/`，则可以添加多个。
+然后点击更多->设置->外部图库，添加`/app/Photos`。
+如果有多个照片目录，例如`/app/Photos1`、`/app/Photos2`，则可以添加多个。
 
 ### 常见问题解决
 1. **启动时提示“找不到docker-compose.yml”**：确认命令行当前目录是文件所在目录，或执行`docker-compose -f 完整路径/文件名.yml up -d`。

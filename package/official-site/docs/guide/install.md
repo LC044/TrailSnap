@@ -61,7 +61,7 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
        networks: [ app-network ]
        volumes:
          - ./data:/app/data
-         - /path/to/your/photos:/app/Photos/  # 请修改为你的照片目录路径
+         - /path/to/your/photos:/app/Photos  # 请修改为你的照片目录路径
        environment:
          - TZ=Asia/Shanghai
          - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
@@ -103,12 +103,12 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
    
    Windows 用户示例：
    ```yaml
-   - F:\Photos:/app/Photos/
+   - F:\Photos:/app/Photos
    ```
    
    Linux/macOS 用户示例：
    ```yaml
-   - /home/user/photos:/app/Photos/
+   - /home/user/photos:/app/Photos
    ```
 
 3. **启动服务**

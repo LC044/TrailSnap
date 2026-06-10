@@ -63,7 +63,7 @@ services:
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
-      - /path/to/your/photos:/app/Photos/
+      - /path/to/your/photos:/app/Photos
     environment:
       - TZ=Asia/Shanghai
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
