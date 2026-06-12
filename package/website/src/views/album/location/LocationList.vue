@@ -194,6 +194,14 @@
                <Images class="w-4 h-4" />
                地图照片
             </button>
+            <button
+               v-if="parentRegion"
+               @click="parentRegion = undefined; fetchLocations(); showLevelMenu = false"
+               class="w-full px-4 py-2 text-left text-sm hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors flex items-center gap-2"
+            >
+               <X class="w-4 h-4" />
+               清除区域过滤: {{ parentRegion }}
+            </button>
           </div>
 
           <!-- Desktop Buttons -->
@@ -221,6 +229,15 @@
               :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'scene' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             >
               景区
+            </button>
+            <button
+              v-if="parentRegion"
+              @click="parentRegion = undefined; fetchLocations();"
+              class="px-4 py-1.5 rounded-md text-sm transition-all bg-white/60 dark:bg-gray-700/60 text-gray-500 dark:text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 ml-1 flex items-center gap-1"
+              title="清除区域过滤"
+            >
+              <X class="w-3.5 h-3.5" />
+              {{ parentRegion }}
             </button>
           </div>
 
@@ -325,8 +342,9 @@
       :view-mode="viewMode"
       :start-date="dateRange?.[0]"
       :end-date="dateRange?.[1]"
+      :parent-region="parentRegion"
       @click-location="goToLocation"
-      @change-level="(level: string, viewState?: { zoom: number; center: number[] }) => changeLevel(level as any, viewState)"
+      @change-level="(level: string, viewState?: { zoom: number; center: number[]; parentRegion?: string }) => changeLevel(level as any, viewState)"
     />
 
     <!-- Photo Map View -->
@@ -403,6 +421,7 @@ const selectedYear = ref<number | null>(null)
 const availableYears = ref<number[]>([])
 const dateRange = ref<[string, string] | null>(null)
 const isCustomRange = ref(false)
+const parentRegion = ref<string | undefined>(undefined)
 
 const dateRangeStart = computed({
   get: () => dateRange.value?.[0] || '',
@@ -619,15 +638,20 @@ const handleDateRangeChange = (val: [string, string] | null) => {
   fetchLocations()
 }
 
-const changeLevel = (newLevel: 'city' | 'province' | 'district' | 'scene', viewState?: { zoom: number, center: number[] }) => {
-  if (level.value === newLevel) return
+const changeLevel = (newLevel: 'city' | 'province' | 'district' | 'scene', viewState?: { zoom: number, center: number[], parentRegion?: string }) => {
+  if (level.value === newLevel && !viewState?.parentRegion && !parentRegion.value) return
   level.value = newLevel
+  if (viewState?.parentRegion) {
+    parentRegion.value = viewState.parentRegion
+  } else {
+    parentRegion.value = undefined
+  }
   fetchLocations()
-  // Map initialization is handled by LocationMapView watcher on 'level'
+  // Map initialization is handled by LocationMapView watcher on 'level' and 'parentRegion'
 }
 
-const goToLocation = (name: string) => {
-  const query: any = { level: level.value }
+const goToLocation = (name: string, overrideLevel?: string) => {
+  const query: any = { level: overrideLevel || level.value }
   if (dateRange.value) {
     query.startDate = dateRange.value[0]
     query.endDate = dateRange.value[1]

@@ -353,7 +353,7 @@ async def finish_upload_generic(
     return photo
 
 @router.get('/geojson')
-async def get_geojson(level: str = Query("city")):
+async def get_geojson(level: str = Query("city"), parent: Optional[str] = Query(None)):
     if level not in ["province", "city", "district"]:
         raise HTTPException(status_code=400, detail="Invalid level. Must be province, city, or district.")
     try:
@@ -362,6 +362,83 @@ async def get_geojson(level: str = Query("city")):
         exists = await run_in_threadpool(os.path.exists, path)
         if not exists:
             raise FileNotFoundError
+
+        if parent and level in ["city", "district"]:
+            # Load parent level to find its gb code
+            # For district level, the parent is usually a city.
+            # But for municipalities (Beijing, Shanghai, etc.), the parent might be considered a province.
+            # We will search in both province and city geojson to find the parent.
+            parent_gb = None
+            
+            def get_short(name):
+                for suffix in ['省', '市', '自治区', '特别行政区', '回族自治区', '壮族自治区', '维吾尔自治区', '自治州', '地区', '盟', '县', '区', '自治县']:
+                    if name.endswith(suffix):
+                        name = name[:-len(suffix)]
+                return name
+                
+            def clean_name(n):
+                n = get_short(n)
+                for s in ['藏族', '彝族', '苗族', '土家族', '蒙古族', '回族', '壮族', '维吾尔族', '哈萨克族', '朝鲜族', '满族', '瑶族', '白族', '布依族', '侗族', '水族', '傣族', '黎族', '傈僳族', '佤族', '畲族', '高山族', '拉祜族', '族']:
+                    n = n.replace(s, '')
+                return n
+
+            # Pass 1: Exact match or short match
+            for parent_level in ["省", "市"]:
+                parent_path = os.path.join("resources","geo_data", f"中国_{parent_level}.geojson")
+                if os.path.exists(parent_path):
+                    with open(parent_path, 'r', encoding='utf-8') as f:
+                        parent_data = json.load(f)
+                    
+                    for feature in parent_data.get('features', []):
+                        props = feature.get('properties', {})
+                        name = props.get('name', '')
+                        if not name: continue
+                        if name == parent or get_short(name) == get_short(parent):
+                            parent_gb = props.get('gb')
+                            break
+                if parent_gb:
+                    break
+                    
+            # Pass 2: Clean match (if exact match fails)
+            if not parent_gb:
+                for parent_level in ["省", "市"]:
+                    parent_path = os.path.join("resources","geo_data", f"中国_{parent_level}.geojson")
+                    if os.path.exists(parent_path):
+                        with open(parent_path, 'r', encoding='utf-8') as f:
+                            parent_data = json.load(f)
+                        
+                        for feature in parent_data.get('features', []):
+                            props = feature.get('properties', {})
+                            name = props.get('name', '')
+                            if not name: continue
+                            if clean_name(name) == clean_name(parent):
+                                parent_gb = props.get('gb')
+                                break
+                    if parent_gb:
+                        break
+
+            if parent_gb:
+                if parent_gb.endswith('0000'):
+                    prefix_len = 5
+                elif parent_gb.endswith('00'):
+                    prefix_len = 7
+                else:
+                    prefix_len = len(parent_gb)
+                
+                prefix = parent_gb[:prefix_len]
+                
+                with open(path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                filtered_features = []
+                for feature in data.get('features', []):
+                    gb = feature.get('properties', {}).get('gb', '')
+                    if gb.startswith(prefix):
+                        filtered_features.append(feature)
+                
+                data['features'] = filtered_features
+                return Response(content=json.dumps(data), media_type="application/geo+json", headers={"Cache-Control": "public, max-age=31536000"})
+
         return FileResponse(path, media_type="application/geo+json", headers={"Cache-Control": "public, max-age=31536000"})
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"GeoJSON file for {level} not found.")
