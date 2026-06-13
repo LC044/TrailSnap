@@ -1,23 +1,28 @@
 # Changelog
 
-## 2026-06-07 (0.5.0)
+## 2026-06-07 (0.4.1)
 
 ### New
 
+- Added **Photo editing**: crop, rotate, doodle, text, and shape tools.
 - Added **Sidebar navigation**: redesigned frontend layout with collapsible sidebar.
 - Sidebar shows hover tooltips when collapsed.
 - Added **Sidebar global search**: quickly find photos, albums, people, etc.
 - Added **Theme customization**: choose from 5 brand colors (Sky, Emerald, Violet, Rose, Amber) that apply globally with one click.
+- Added **Custom sidebar navigation items**: customize the sidebar navigation menu.
 - Unified theme handling with reusable components.
 
 ### Improvements
 
-- Optimized location map page; refactored backend photo query logic.
+- Optimized location map page and view component; refactored backend photo query logic.
 - Improved multi-module query performance.
-- Fixed album page theme color not responding and dark mode contrast issues.
-- Fixed missing primary theme utility class mappings (hover/shadow not following theme).
 - Unified icons and refined frontend conventions.
 - Improved page UI layout and fixed import issues.
+
+### Bug Fixes
+
+- Fixed album page theme color not responding and dark mode contrast issues.
+- Fixed missing primary theme utility class mappings (hover/shadow not following theme).
 
 ## 2026-05-28 (0.4.0)
 
