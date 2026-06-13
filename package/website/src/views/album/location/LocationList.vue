@@ -730,3 +730,20 @@ onMounted(() => {
 <style scoped>
 /* Optional transitions */
 </style>
+
+<style>
+/* 全局适配 Element Plus 图片预览的深色模式，因为 el-image-viewer 是 teleport 到 body 的 */
+html.dark .el-image-viewer__wrapper .el-image-viewer__btn {
+  color: #e5e7eb;
+  background-color: rgba(31, 41, 55, 0.6);
+  border-color: rgba(75, 85, 99, 0.4);
+}
+
+html.dark .el-image-viewer__wrapper .el-image-viewer__btn:hover {
+  background-color: rgba(31, 41, 55, 0.9);
+}
+
+html.dark .el-image-viewer__wrapper .el-image-viewer__mask {
+  background: rgba(15, 23, 42, 0.9);
+}
+</style>
