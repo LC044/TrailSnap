@@ -16,12 +16,13 @@
           <div class="hidden md:flex items-center justify-center space-x-6 flex-1">
             <button type="button" class="transition-colors text-sm font-medium" :class="navClass('home')" @click="scrollTo('home')">{{ t.nav.home }}</button>
             <button type="button" class="transition-colors text-sm font-medium" :class="navClass('core-features')" @click="scrollTo('core-features')">{{ t.nav.features }}</button>
+            <button type="button" class="transition-colors text-sm font-medium text-neutral-dark dark:text-gray-300 hover:text-primary" @click="goLink(lang === 'zh-CN' ? '/cli' : '/en/cli')">CLI</button>
             <button type="button" class="transition-colors text-sm font-medium text-neutral-dark dark:text-gray-300 hover:text-primary" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.quickStart }}</button>
           </div>
 
           <!-- Desktop Buttons -->
           <div class="hidden md:flex items-center flex-shrink-0">
-            <button class="px-5 py-2 rounded-full bg-neutral-dark dark:bg-white text-white dark:text-neutral-dark text-sm font-bold hover:scale-105 transition-transform shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
+            <button class="px-5 py-2 rounded-full bg-primary text-white text-sm font-bold hover:bg-primary-dark hover:scale-105 transition-transform shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
           </div>
 
           <!-- Mobile Hamburger -->
@@ -37,9 +38,10 @@
       <div v-if="isMobileMenuOpen" class="md:hidden absolute top-full left-0 right-0 mt-2 bg-white/95 dark:bg-[#141414]/95 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-100 dark:border-gray-700 py-4 px-4 flex flex-col space-y-4">
         <button type="button" class="text-left w-fit transition-colors" :class="navClass('home')" @click="scrollTo('home')">{{ t.nav.home }}</button>
         <button type="button" class="text-left w-fit transition-colors" :class="navClass('core-features')" @click="scrollTo('core-features')">{{ t.nav.features }}</button>
+        <button type="button" class="text-left w-fit transition-colors text-neutral-dark dark:text-gray-300 hover:text-primary" @click="goLink(lang === 'zh-CN' ? '/cli' : '/en/cli')">CLI</button>
         <button type="button" class="text-left w-fit transition-colors text-neutral-dark dark:text-gray-300 hover:text-primary" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.quickStart }}</button>
         <div class="flex space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-          <button class="flex-1 py-2.5 rounded-xl bg-neutral-dark dark:bg-white text-white dark:text-neutral-dark font-bold shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
+          <button class="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
         </div>
       </div>
     </div>
@@ -66,9 +68,9 @@
               <span v-for="(tag, index) in t.hero.tags" :key="tag"
                     class="px-4 py-1.5 rounded-full text-sm font-medium hover:-translate-y-1 transition-transform cursor-default"
                     :class="[
-                      index === 0 ? 'bg-slate-100 text-slate-700 dark:bg-[#141414]/40 dark:text-slate-300' :
-                      index === 1 ? 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300' :
-                      'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300'
+                      index === 0 ? 'bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300' :
+                      index === 1 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' :
+                      'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                     ]">{{ tag }}</span>
             </div>
 
@@ -97,7 +99,7 @@
                 <div class="p-4 md:p-6 space-y-6 max-h-[680px] overflow-y-auto font-sans text-sm md:text-base custom-scrollbar">
                   <!-- User Message -->
                   <div class="flex justify-end animate-fade-in-up">
-                    <div class="bg-[#8b5cf6] text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] shadow-sm leading-relaxed">
+                    <div class="bg-[#95EC69] text-neutral-dark dark:text-gray-800 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] shadow-sm leading-relaxed">
                       {{ t.hero.chat.userMsg }}
                     </div>
                   </div>
@@ -112,7 +114,7 @@
                           <p class="font-bold text-neutral-dark dark:text-white mb-1.5 flex items-center gap-1.5"><span class="text-lg">📍</span> {{ t.hero.chat.itineraryTitle }}</p>
                           <ul class="space-y-1.5 text-[13px] md:text-sm text-neutral-gray dark:text-gray-300 ml-1">
                             <li v-for="(item, i) in t.hero.chat.itinerary" :key="i" class="flex gap-2">
-                              <span class="min-w-[50px] md:min-w-[65px] font-medium text-[#8b5cf6] dark:text-[#a78bfa]">{{ item.date }}</span>
+                              <span class="min-w-[50px] md:min-w-[65px] font-medium text-[#07C160] dark:text-[#2DC100]">{{ item.date }}</span>
                               <span class="font-medium text-neutral-dark dark:text-gray-200">{{ item.desc }}</span>
                             </li>
                           </ul>
@@ -153,8 +155,9 @@
               </div>
               
               <!-- Decorative Elements -->
-              <div class="absolute -top-6 -right-6 text-4xl opacity-20 text-primary animate-pulse z-0">✨</div>
-              <div class="absolute -bottom-6 -left-6 w-24 h-24 bg-purple-400/20 dark:bg-[#a78bfa]/20 rounded-full blur-2xl z-0"></div>
+              <div class="absolute -top-6 -right-6 text-4xl opacity-20 text-green-500 animate-pulse z-0">✨</div>
+              <div class="absolute -bottom-6 -left-6 w-24 h-24 bg-green-400/20 dark:bg-green-500/20 rounded-full blur-2xl z-0"></div>
+              <div class="absolute -top-4 -left-4 w-16 h-16 bg-green-300/10 dark:bg-green-400/10 rounded-full blur-xl z-0"></div>
             </div>
           </div>
         </div>
@@ -310,6 +313,9 @@
           <button class="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:bg-primary-dark hover:scale-105 transition-all shadow-lg hover:shadow-xl" @click="goLink(lang === 'zh-CN' ? '/docs/guide/agent/' : '/en/docs/guide/agent/')">
             {{ t.agentSkills.ctaDocs }}
           </button>
+          <button class="px-8 py-3 rounded-lg border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white hover:scale-105 transition-all" @click="goLink(lang === 'zh-CN' ? '/docs/guide/settings/tokensetting' : '/en/docs/guide/settings/tokensetting')">
+            {{ t.agentSkills.ctaToken }}
+          </button>
         </div>
       </div>
     </section>
@@ -376,7 +382,7 @@
             <ul class="space-y-3 text-sm opacity-80">
               <li><a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/cli' : '/en/cli')">{{ t.footer.links.items[0] }}</a></li>
               <li><a href="#" class="hover:text-primary transition-colors" @click.prevent="scrollTo('core-features')">{{ t.footer.links.items[1] }}</a></li>
-              <li><a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/docs/guide/overview' : '/en/docs/guide/overview')">{{ t.footer.links.items[2] }}</a></li>
+              <li><a href="#" class="hover:text-primary transition-colors" @click.prevent="scrollTo('agent-skills')">{{ t.footer.links.items[2] }}</a></li>
               <li><a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/docs/guide/overview' : '/en/docs/guide/overview')">{{ t.footer.links.items[3] }}</a></li>
               <li><a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/docs/guide/questions' : '/en/docs/guide/questions')">{{ t.footer.links.items[4] }}</a></li>
             </ul>
@@ -653,9 +659,9 @@ const featureScreenshotsList = {
     { title: '时光轴展示', desc: '丝滑的时间轴滚动效果', image: 'https://blog.siyuan.ink/static/img/7f3995c1fa22ded5a26506194a516da4.timeline.webp' }
   ],
   'en-US': [
-    { title: 'Timeline View', desc: 'Smooth timeline scrolling effect', image: '' },
-    { title: 'Map Mode', desc: 'View your footprints on the map and light up every city you visited', image: '' },
-    { title: 'Smart Classification', desc: 'Automatically identify people and scenery in photos and classify them intelligently', image: '' }
+    { title: 'Timeline View', desc: 'Smooth timeline scrolling effect', image: 'https://blog.siyuan.ink/static/img/7f3995c1fa22ded5a26506194a516da4.timeline.webp' },
+    { title: 'Map Mode', desc: 'View your footprints on the map and light up every city you visited', image: 'https://blog.siyuan.ink/static/img/38bd45b7c69fe79457e74109dbba8683.map.webp' },
+    { title: 'Smart Classification', desc: 'Automatically identify people and scenery in photos and classify them intelligently', image: 'https://blog.siyuan.ink/static/img/8082f0451f051b1ad848b9c4261359e7.classification.webp' }
   ]
 }
 
@@ -808,7 +814,7 @@ onMounted(() => {
     imgObserver.observe(overviewSection)
   }
 
-  const ids = ['home', 'core-features']
+  const ids = ['home', 'core-features', 'agent-skills']
   const els = ids
     .map(id => document.getElementById(id))
     .filter((el): el is HTMLElement => Boolean(el))

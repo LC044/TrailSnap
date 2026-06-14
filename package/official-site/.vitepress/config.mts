@@ -32,7 +32,15 @@ export default defineConfig({
     // /^http:\/\/localhost:\d+$/ // 正则匹配所有 localhost:端口 形式的链接
   ],
   head: [
-    ['link', { rel: 'icon', type: 'image/png', href: '/favicon.ico' }]
+    ['link', { rel: 'icon', type: 'image/png', href: '/favicon.ico' }],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:title', content: 'TrailSnap 行影集 — AI 驱动的智能相册' }],
+    ['meta', { property: 'og:description', content: 'AI赋能家庭相册，智能分析、整理照片，生成专属记忆报告，让每一段出行都值得珍藏' }],
+    ['meta', { property: 'og:image', content: 'https://blog.siyuan.ink/static/img/7f3995c1fa22ded5a26506194a516da4.timeline.webp' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:title', content: 'TrailSnap 行影集 — AI 驱动的智能相册' }],
+    ['meta', { name: 'twitter:description', content: 'AI赋能家庭相册，智能分析、整理照片，生成专属记忆报告，让每一段出行都值得珍藏' }],
+    ['meta', { name: 'twitter:image', content: 'https://blog.siyuan.ink/static/img/7f3995c1fa22ded5a26506194a516da4.timeline.webp' }]
   ],
 
   locales: {
