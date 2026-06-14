@@ -143,7 +143,13 @@ The dev server (`vite.config.js`) listens on `0.0.0.0:5176` and proxies `/api` t
   - **Focus ring**: Interactive elements (buttons, links, clickable cards, custom dropdown items) must include `focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none` for keyboard accessibility. The ring color is already mapped to `var(--theme-primary)` in `style.css`, so no extra work is needed to make it follow the theme.
   - **One gray family per component**: Stick to `gray-*` (or `slate-*`) — do not mix the two within a single surface. `MainLayout.vue` mixes `bg-slate-50 dark:bg-slate-900` (outer) with `dark:bg-gray-900` (inner content), which produces a visible dark-mode seam. Pick one and apply it consistently to the root + main + modals of the same layout.
 - **Migrations**: edit ORM models in `app/db/models/`, then `alembic revision --autogenerate` and commit the generated file. Never delete a model field without a migration step.
-- **Commit messages**: Conventional Commits (`feat(scope):`, `fix(scope):`, `refactor(scope):`). For backend Docker builds, include "构建后端" in the commit message (see `docker-build-push-server.yml`).
+- **Commit messages**: Conventional Commits (`feat(scope):`, `fix(scope):`, `refactor(scope):`). Certain keywords in commit messages trigger GitHub Actions CI pipelines — **only include these when you intentionally want to build and push Docker images or publish packages**, as they consume CI resources and push to Docker Hub / npm / GitHub Releases:
+  - `构建后端` — triggers **Server** Docker build & push (`.github/workflows/docker-build-push-server.yml`), only when `package/server/` files changed.
+  - `构建前端` — triggers **Frontend** Docker build & push (`.github/workflows/docker-build-push-frontend.yml`), only when `package/website/` files changed.
+  - `构建ai` or `构建AI` — triggers **AI service** Docker build & push (`.github/workflows/docker-build-push-ai.yml`), only when `package/ai/` files changed.
+  - `构建cli` — triggers **CLI** binary build & npm publish (`.github/workflows/build-publish-cli.yml`), only when `package/trailsnap-cli/` files changed.
+  - All pipelines also trigger on `v*.*.*` tag pushes regardless of commit message.
+  - **Rule of thumb**: for routine code changes (UI tweaks, bug fixes, docs), do NOT include these keywords. Only add them when the change is significant enough to warrant a new Docker image or package release (e.g., new feature, breaking change, version bump).
 - **PR template**: see `.github/pull_request_template.md`. CLA confirmation ("I have read and agree to the CLA") is required in PR comments (AGPLv3).
 
 ## Key Files

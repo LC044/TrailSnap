@@ -30,3 +30,5 @@ Ask your Agent in natural language:
 
 > "Use the trailsnap-cli skill and list my recent photos taken in Xi'an."
 > "Where did I travel last National Day? Generate an HTML travel diary for me."
+
+👉 [View an AI-generated travel diary example](/examples/travel-diary-2025-golden-week.html)

@@ -58,6 +58,23 @@
             </div>
           </div>
 
+          <!-- Agent Use Cases -->
+          <div class="mt-5 pt-4 border-t border-primary-200/50 dark:border-gray-700">
+            <p class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">AI Agent 能帮你做什么？</p>
+            <div class="space-y-3">
+              <div class="bg-white dark:bg-gray-900 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
+                <p class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">📖 生成旅行手账</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">对 AI 说「帮我写一篇去年国庆的旅行日记」，它会自动查询你的足迹时间线、筛选沿途照片、获取照片与描述，最终生成带图文的精美 HTML 手账页面。
+                  <a href="https://trailsnap.cn/examples/travel-diary-2025-golden-week.html" target="_blank" class="text-primary-500 hover:underline">查看示例 →</a>
+                </p>
+              </div>
+              <div class="bg-white dark:bg-gray-900 rounded-lg p-3 border border-gray-100 dark:border-gray-700">
+                <p class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">🔍 智能找照片</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">对 AI 说「找一下小明在西安的照片」或「去年在上海拍了什么」，它会组合人物、城市、时间等条件精准检索，并直接展示照片和 AI 生成的场景描述。</p>
+              </div>
+            </div>
+          </div>
+
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-4">
             将令牌配置到 Claude Code / OpenClaw 等 AI Agent 后，即可用自然语言查询相册。详见
             <a href="https://trailsnap.cn/docs/guide/agent" target="_blank" class="text-primary-500 hover:underline">Agent Skills 文档</a>。

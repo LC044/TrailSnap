@@ -30,3 +30,5 @@ TrailSnap CLI 可以作为 Agent 工具（Skill）被无缝集成到各种 AI �
 
 > "帮我使用 trailsnap-cli skill，查一下最近在西安拍的照片有哪些？"
 > "我去年国庆节去了哪些地方，帮我写一个HTML格式的旅游日记。"
+
+👉 [查看 AI 生成的旅行日记示例](/examples/travel-diary-2025-golden-week.html)

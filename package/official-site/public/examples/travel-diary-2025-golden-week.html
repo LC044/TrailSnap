@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>国庆七日 · 2025</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #faf7f2;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", serif;
+      color: #5c4a3a;
+      line-height: 1.8;
+    }
+
+    .hero {
+      position: relative;
+      width: 100%;
+      height: 70vh;
+      overflow: hidden;
+    }
+
+    .hero img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: brightness(0.85);
+    }
+
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 40%, rgba(40,30,20,0.6));
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      align-items: center;
+      padding-bottom: 3rem;
+    }
+
+    .hero-overlay h1 {
+      color: #fff;
+      font-size: 2.4rem;
+      font-weight: 300;
+      letter-spacing: 0.3em;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+
+    .hero-overlay p {
+      color: rgba(255,255,255,0.8);
+      font-size: 1rem;
+      margin-top: 0.5rem;
+      letter-spacing: 0.15em;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem;
+    }
+
+    .intro {
+      text-align: center;
+      font-size: 1.05rem;
+      color: #8a7560;
+      padding: 2rem 0 3rem;
+      border-bottom: 1px dashed #d8cfc4;
+      margin-bottom: 3rem;
+    }
+
+    .day-block {
+      margin-bottom: 3.5rem;
+    }
+
+    .day-header {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .day-date {
+      font-size: 0.8rem;
+      color: #b0a090;
+      letter-spacing: 0.1em;
+      font-family: "Georgia", serif;
+    }
+
+    .day-title {
+      font-size: 1.15rem;
+      color: #6b4c35;
+      font-weight: 400;
+    }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin: 0.8rem 0;
+    }
+
+    .photo-grid .wide {
+      grid-column: 1 / -1;
+    }
+
+    .photo-card {
+      border-radius: 16px;
+      overflow: hidden;
+      background: #ede8e0;
+      box-shadow: 0 2px 12px rgba(100,80,60,0.08);
+      position: relative;
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-card.wide img {
+      height: 300px;
+    }
+
+    .photo-narrative {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 1.5rem 1rem 0.8rem;
+      background: linear-gradient(transparent, rgba(30,20,10,0.75));
+      color: #fff;
+      font-size: 0.82rem;
+      font-style: italic;
+      line-height: 1.6;
+    }
+
+    .photo-tag {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border-radius: 20px;
+      padding: 0.15rem 0.6rem;
+      font-size: 0.7rem;
+      margin-top: 0.4rem;
+      font-style: normal;
+      letter-spacing: 0.05em;
+    }
+
+    .day-desc {
+      font-size: 0.88rem;
+      color: #8a7560;
+      margin-top: 0.6rem;
+      padding-left: 0.5rem;
+      border-left: 2px solid #d8cfc4;
+    }
+
+    .summary {
+      background: #fff;
+      border-radius: 20px;
+      padding: 2rem 1.8rem;
+      box-shadow: 0 2px 16px rgba(100,80,60,0.07);
+      margin-top: 3rem;
+    }
+
+    .summary h2 {
+      font-size: 1rem;
+      color: #b0a090;
+      font-weight: 400;
+      letter-spacing: 0.2em;
+      text-align: center;
+      margin-bottom: 1.2rem;
+    }
+
+    .cities {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      justify-content: center;
+    }
+
+    .city-pill {
+      background: #f0ebe3;
+      color: #7a6050;
+      border-radius: 30px;
+      padding: 0.35rem 1rem;
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 3rem 0 2rem;
+      color: #c0b0a0;
+      font-size: 0.78rem;
+      letter-spacing: 0.1em;
+    }
+
+    .badge {
+      text-align: center;
+      padding: 1rem 0 0;
+    }
+
+    .badge span {
+      display: inline-block;
+      background: #f0ebe3;
+      color: #a09080;
+      border-radius: 20px;
+      padding: 0.3rem 1rem;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+    }
+
+    @media (max-width: 600px) {
+      .hero-overlay h1 { font-size: 1.6rem; }
+      .photo-grid { grid-template-columns: 1fr; }
+      .photo-card.wide img { height: 220px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <img src="images/hero-huizhou.jpg" alt="徽州古城航拍">
+  <div class="hero-overlay">
+    <h1>国庆七日</h1>
+    <p>2025.10.01 — 10.07 · 五城漫游记</p>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="intro">
+    假期太短，脚步太长。<br>
+    七天跑了五个地方，苏州、黄山、景德镇、舟山、上海。<br>
+    烟火、灯笼、古城、海浪、大桥——全部收入囊中。
+  </div>
+
+  <!-- 10月1日 · 苏州 -->
+  <div class="day-block">
+    <div class="day-header">
+      <span class="day-date">10.01</span>
+      <span class="day-title">苏州 · 平江路</span>
+    </div>
+    <div class="photo-grid">
+      <div class="photo-card wide">
+        <img src="images/suzhou-pingjianglu.jpg" alt="苏州平江路">
+        <div class="photo-narrative">
+          "倒影里的建筑比岸边更稳当些。"
+          <div class="photo-tag">苏州 · 平江路</div>
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/suzhou-lantern.jpg" alt="苏州灯笼">
+        <div class="photo-narrative">
+          "这一抹橘光把平江路的旧日子照亮了。"
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/suzhou-garden-mist.jpg" alt="苏州园林雾">
+        <div class="photo-narrative">
+          "水面把喧嚣藏进了这层薄雾的边界里。"
+        </div>
+      </div>
+    </div>
+    <p class="day-desc">园林里的雾气把石桥藏得若隐若现，白墙黛瓦倒映在墨色水面，安静得可以听见树叶落下的声音。</p>
+  </div>
+
+  <!-- 10月2日 · 黄山 -->
+  <div class="day-block">
+    <div class="day-header">
+      <span class="day-date">10.02</span>
+      <span class="day-title">黄山 · 呈坎古镇</span>
+    </div>
+    <div class="photo-grid">
+      <div class="photo-card wide">
+        <img src="images/huangshan-firework.jpg" alt="呈坎烟花">
+        <div class="photo-narrative">
+          "夜色被烟火烫出了人间的颜色。"
+          <div class="photo-tag">记忆评分 90.5</div>
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/huangshan-lanterns.jpg" alt="呈坎灯笼">
+        <div class="photo-narrative">
+          "这满河的红灯笼，比任何导航都更精准地指引着回家的路。"
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/huangshan-fish-lamp.jpg" alt="呈坎鱼灯">
+        <div class="photo-narrative">
+          "这鱼比我的钱包还大，但快乐比它更重。"
+        </div>
+      </div>
+    </div>
+    <p class="day-desc">国庆的烟花在呈坎夜空绽放，龙形灯笼和满河灯火把整个古镇点得透亮。拍到内存卡警告也舍不得停手。</p>
+  </div>
+
+  <!-- 10月3日 · 景德镇 -->
+  <div class="day-block">
+    <div class="day-header">
+      <span class="day-date">10.03</span>
+      <span class="day-title">景德镇 · 瓷都夜市</span>
+    </div>
+    <div class="photo-grid">
+      <div class="photo-card wide">
+        <img src="images/jingdezhen-ceramics.jpg" alt="景德镇陶瓷">
+        <div class="photo-narrative">
+          "这些红唇小杯子，把日常摆成了戏台。"
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/jingdezhen-night-street.jpg" alt="景德镇夜街">
+        <div class="photo-narrative">
+          "脚下的砖路还在发光，城市的霓虹把夜晚烫出了温度。"
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/jingdezhen-cups.jpg" alt="景德镇瓷器">
+        <div class="photo-narrative">
+          "红唇微张，像是要替大家多干杯。"
+        </div>
+      </div>
+    </div>
+    <p class="day-desc">景德镇的夜市热闹得像不要钱，那些夸张表情的陶瓷杯真是让人走不动路——最后买了三个回家。</p>
+  </div>
+
+  <!-- 10月5日 · 舟山 -->
+  <div class="day-block">
+    <div class="day-header">
+      <span class="day-date">10.05</span>
+      <span class="day-title">舟山 · 跨海大桥</span>
+    </div>
+    <div class="photo-grid">
+      <div class="photo-card wide">
+        <img src="images/zhoushan-sunrise.jpg" alt="舟山日出">
+        <div class="photo-narrative">
+          "大桥沉默地托举着太阳升起。"
+          <div class="photo-tag">日出 · 舟山跨海大桥</div>
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/zhoushan-seaside.jpg" alt="舟山海边">
+        <div class="photo-narrative">
+          "两个人并排坐着，把整个大海都装进了眼里。"
+        </div>
+      </div>
+      <div class="photo-card">
+        <img src="images/zhoushan-bridge-moon.jpg" alt="跨海大桥月亮">
+        <div class="photo-narrative">
+          "月亮这么大，桥也这么长，让人忍不住想发呆。"
+        </div>
+      </div>
+    </div>
+    <p class="day-desc">在海边坐到月亮爬上来，大桥的灯把海面切成一块一块的。两个人并排坐着，什么都不用说。</p>
+  </div>
+
+  <!-- 10月7日 · 上海 -->
+  <div class="day-block">
+    <div class="day-header">
+      <span class="day-date">10.07</span>
+      <span class="day-title">上海 · 返程</span>
+    </div>
+    <div class="photo-grid">
+      <div class="photo-card wide" style="background:#e8e0d5; display:flex; align-items:center; justify-content:center; height:200px;">
+        <div style="text-align:center; color:#b0a090; font-size:0.9rem; letter-spacing:0.15em;">
+          🎒 假期尾声 · 满载而归
+        </div>
+      </div>
+    </div>
+    <p class="day-desc">七天跑了五个地方，苏州看园子，黄山看烟火，景德镇淘瓷器，舟山看大桥。最后在上海收尾，结论：假期太短，下次还想去。</p>
+  </div>
+
+  <div class="summary">
+    <h2>此行足迹</h2>
+    <div class="cities">
+      <span class="city-pill">🏮 苏州</span>
+      <span class="city-pill">⛰️ 黄山</span>
+      <span class="city-pill">🏺 景德镇</span>
+      <span class="city-pill">🌊 舟山</span>
+      <span class="city-pill">🌆 上海</span>
+    </div>
+  </div>
+
+  <div class="badge">
+    <span>✨ 由 TrailSnap AI Agent 自动生成</span>
+  </div>
+
+  <div class="footer">
+    2025 国庆 · 记忆评分最高的那些瞬间
+  </div>
+
+</div>
+
+</body>
+</html>

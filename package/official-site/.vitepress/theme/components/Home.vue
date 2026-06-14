@@ -306,6 +306,9 @@
                 <span class="leading-relaxed">{{ ex }}</span>
               </li>
             </ul>
+            <a v-if="item.link" :href="item.link" target="_blank" class="inline-flex items-center gap-1 mt-4 text-sm text-primary font-medium hover:underline">
+              {{ lang === 'zh-CN' ? '查看示例' : 'View Example' }} →
+            </a>
           </div>
         </div>
 
@@ -521,7 +524,8 @@ const i18n = {
           icon: '📝',
           title: '生成游记/文案',
           desc: '基于足迹与照片内容，自动整理时间线与亮点，生成可发布的内容。',
-          examples: ['我去年国庆节去了哪些地方？', '帮我写一篇 HTML 格式旅行日记']
+          examples: ['我去年国庆节去了哪些地方？', '帮我写一篇 HTML 格式旅行日记'],
+          link: '/examples/travel-diary-2025-golden-week.html'
         },
         {
           icon: '🧰',
@@ -620,7 +624,8 @@ const i18n = {
           icon: '📝',
           title: 'Generate diaries & copy',
           desc: 'Summarize footprints and photo content into timelines, highlights, and publishable posts.',
-          examples: ['Where did I travel last National Day?', 'Generate an HTML travel diary for me']
+          examples: ['Where did I travel last National Day?', 'Generate an HTML travel diary for me'],
+          link: '/examples/travel-diary-2025-golden-week.html'
         },
         {
           icon: '🧰',
