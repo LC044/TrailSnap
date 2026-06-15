@@ -17,6 +17,28 @@
     </div>
     <!-- Map Settings -->
     <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+      <el-collapse-item name="security">
+        <template #title>
+           <h2 class="text-lg font-semibold dark:text-white px-6">安全设置</h2>
+        </template>
+        <div class="px-6 pb-6">
+          <el-form label-position="top" class="max-w-3xl">
+            <el-form-item label="允许新用户注册">
+              <div class="flex items-center gap-3">
+                <el-switch v-model="securityForm.allow_registration" />
+                <span class="text-sm text-gray-500">{{ securityForm.allow_registration ? '任何人可以自行注册账号' : '关闭后仅管理员可在「用户管理」中添加账号' }}</span>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveSecuritySettings">保存安全配置</el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-collapse-item>
+    </el-collapse>
+
+    <!-- Map Settings (original) -->
+    <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
       <el-collapse-item name="map">
         <template #title>
            <h2 class="text-lg font-semibold dark:text-white px-6">地图设置</h2>
@@ -792,6 +814,10 @@ const recycleBinForm = ref({
   cleanup_time: '00:00'
 })
 
+const securityForm = ref({
+  allow_registration: false
+})
+
 const saveScanScheduleSettings = async () => {
   if (scanScheduleForm.value.mode === 'weekly' && scanScheduleForm.value.weekdays.length === 0) {
     ElMessage.warning('请至少选择一天执行日期')
@@ -813,6 +839,15 @@ const saveRecycleBinSettings = async () => {
   try {
     await settingsApi.updateSystemConfig({ recycle_bin: recycleBinForm.value })
     ElMessage.success('回收站设置已保存')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  }
+}
+
+const saveSecuritySettings = async () => {
+  try {
+    await settingsApi.updateSystemConfig({ security: securityForm.value })
+    ElMessage.success('安全设置已保存')
   } catch (e) {
     ElMessage.error('保存失败')
   }
@@ -971,6 +1006,9 @@ const loadData = async () => {
         }
         if (sysConfig.recycle_bin) {
             recycleBinForm.value = { ...sysConfig.recycle_bin }
+        }
+        if (sysConfig.security) {
+            securityForm.value = { ...securityForm.value, ...sysConfig.security }
         }
       } catch (err) {
         console.error('Failed to load system config', err)

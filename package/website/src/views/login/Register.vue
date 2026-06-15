@@ -109,8 +109,9 @@ const loading = ref(false);
 onMounted(async () => {
   try {
     const status = await authService.getAuthStatus();
-    if (status.has_users) {
-      ElMessage.warning('系统已存在用户，禁止注册。请联系管理员添加账号。');
+    // Block registration only when there are already users AND registration is disabled
+    if (status.has_users && !status.allow_registration) {
+      ElMessage.warning('注册已关闭，请联系管理员添加账号。');
       router.push('/login');
     }
   } catch (error) {

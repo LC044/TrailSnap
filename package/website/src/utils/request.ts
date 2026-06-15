@@ -78,12 +78,24 @@ service.interceptors.response.use(
     let errorMsg = '网络异常，请重试';
     if (error.response) {
       switch (error.response.status) {
-        case 401:
-          errorMsg = '登录已过期，请重新登录';
+        case 401: {
+          const currentPath = router.currentRoute.value.path;
+          const publicPages = ['/login', '/register', '/forgot-password'];
           const userStore = useUserStore();
-          // Directly reset state without calling logout API to avoid loops
-          userStore.resetState(); 
+
+          if (publicPages.some(p => currentPath.startsWith(p))) {
+            // Already on a public page — just clear stale token silently
+            localStorage.removeItem('user_token');
+            userStore.token = null;
+            userStore.userInfo = null;
+            return Promise.reject(error);
+          }
+
+          errorMsg = '登录已过期，请重新登录';
+          // Clear auth state and redirect to login
+          userStore.resetState();
           break;
+        }
         case 403:
           errorMsg = '暂无权限访问';
           break;

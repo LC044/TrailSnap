@@ -68,9 +68,12 @@
               登录
             </el-button>
 
-            <div class="text-center mt-6" v-if="!hasUsers">
+            <div class="text-center mt-6" v-if="allowRegistration">
               <span class="text-gray-600 text-sm">还没有账号? </span>
               <router-link to="/register" class="text-blue-600 hover:underline text-sm font-medium">立即注册</router-link>
+            </div>
+            <div class="text-center mt-6" v-else-if="hasUsers">
+              <span class="text-gray-500 dark:text-gray-400 text-sm">没有账号？请联系管理员添加</span>
             </div>
           </el-form>
         </div>
@@ -95,7 +98,8 @@ const userStore = useUserStore();
 const loginFormRef = ref<FormInstance>();
 const loading = ref(false);
 const rememberMe = ref(false);
-const hasUsers = ref(true);
+const hasUsers = ref(true)
+const allowRegistration = ref(false);
 
 // Character interaction state
 const focusTarget = ref<'username' | 'password' | null>(null);
@@ -128,6 +132,8 @@ onMounted(async () => {
   try {
     const status = await authService.getAuthStatus();
     hasUsers.value = status.has_users;
+    // Show register link when: no users yet (first-time setup) OR registration is explicitly allowed
+    allowRegistration.value = !status.has_users || status.allow_registration;
   } catch (error) {
     console.error('Failed to get auth status:', error);
   }

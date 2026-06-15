@@ -57,6 +57,14 @@ def register_user(
     """
     Create new user.
     """
+    # Check if registration is allowed (always allowed when no users exist — first-time setup)
+    has_users = db.query(crud_user.User).count() > 0
+    if has_users and not system_config.config.security.allow_registration:
+        raise HTTPException(
+            status_code=403,
+            detail="Registration is currently disabled. Please contact an administrator.",
+        )
+
     user = crud_user.get_by_email(db, email=user_in.email)
     if user:
         raise HTTPException(
@@ -120,4 +128,5 @@ def confirm_password_reset(
 @router.get("/status")
 def get_auth_status(db: Session = Depends(get_db)):
     has_users = db.query(crud_user.User).count() > 0
-    return {"has_users": has_users}
+    allow_registration = system_config.config.security.allow_registration
+    return {"has_users": has_users, "allow_registration": allow_registration}
