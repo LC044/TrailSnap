@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from commands import config, photos, tags, albums, locations, people, folders, medias
 from output import set_formatter, OutputFormatter
 
-VERSION = "0.4.1"
+VERSION = "0.4.2"
 
 def main():
     if hasattr(sys.stdout, "reconfigure"):
