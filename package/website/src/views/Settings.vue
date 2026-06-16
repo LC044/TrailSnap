@@ -28,6 +28,7 @@
       <ExternalGallery v-if="activeTab === 'external'" />
       <Tokens v-if="activeTab === 'tokens'" />
       <AboutPage v-if="activeTab === 'about'" />
+      <FeedbackPage v-if="activeTab === 'feedback'" />
     </div>
   </div>
 </template>
@@ -35,13 +36,14 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, List, Settings, FolderOpen, Info, Key } from 'lucide-vue-next'
+import { User, List, Settings, FolderOpen, Info, Key, MessageSquare } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import TaskManagement from './settings/TaskManagement.vue'
 import BasicSettings from './settings/BasicSettings.vue'
 import ExternalGallery from './settings/ExternalGallery.vue'
 import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
+import FeedbackPage from './settings/FeedbackPage.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -54,6 +56,7 @@ const menuItems = [
   { key: 'external', label: '外部图库', icon: FolderOpen },
   { key: 'tokens', label: '令牌管理', icon: Key },
   { key: 'about', label: '关于行影集', icon: Info },
+  { key: 'feedback', label: '问题反馈', icon: MessageSquare },
 ]
 
 // Handle URL hash navigation

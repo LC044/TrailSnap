@@ -6,7 +6,7 @@
     :timeline-items="photoStore.timelineStats?.timeline || []"
     :timeline-stats="photoStore.timelineStats"
     :has-more="photoStore.hasMore"
-    :allow-upload="false"
+    :allow-upload="true"
     :delete-label="'删除'"
     :confirm-remove="true"
     :show-back="false"

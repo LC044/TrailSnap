@@ -214,30 +214,10 @@ async def get_media_file(
 def add_tasks(db: Session, user_id: UUID, photo_id: UUID, file_path: str):
     TaskManager.get_instance().add_tasks(db, [
         {
-            'type': TaskType.EXTRACT_METADATA,
+            'type': TaskType.PROCESS_BASIC,
             'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
-        },
-        {
-            'type': TaskType.RECOGNIZE_FACE,
-            'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
-        },
-        {
-            'type': TaskType.OCR,
-            'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
-        },
-        {
-            'type': TaskType.RECOGNIZE_TICKET,
-            'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
-        },
-        {
-            'type': TaskType.CLASSIFY_IMAGE,
-            'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
-        },
-        {
-            'type': TaskType.VISUAL_DESCRIPTION,
-            'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
-        },
-    ])
+        }
+    ], owner_id=user_id)
 
 @router.post("", response_model=schemas.Photo)
 async def upload_photo_generic(
