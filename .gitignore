@@ -1,8 +1,5 @@
 .idea
 .vscode
-*test*
-!tests/
-!tests/**
 tests/artifacts/
 *.pyc
 node_modules
@@ -14,3 +11,4 @@ dist
 data/*
 .env
 .claude/
+test-local*
