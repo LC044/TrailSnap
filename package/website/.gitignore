@@ -22,7 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-test*
 *.env
 *.local
 .env.*.local
@@ -42,3 +41,4 @@ build
 !.yarn/patches
 !.yarn/releases
 .trae
+.playwright-system

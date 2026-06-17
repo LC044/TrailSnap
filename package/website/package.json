@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:system": "playwright test -c playwright.system.config.ts",
+    "test:e2e:system:headed": "playwright test -c playwright.system.config.ts --headed"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
