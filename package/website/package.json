@@ -10,6 +10,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "test:e2e:p0": "playwright test -c playwright.p0.config.ts",
     "test:e2e:system": "playwright test -c playwright.system.config.ts",
     "test:e2e:system:headed": "playwright test -c playwright.system.config.ts --headed"
   },

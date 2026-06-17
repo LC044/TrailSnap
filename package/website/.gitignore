@@ -42,3 +42,4 @@ build
 !.yarn/releases
 .trae
 .playwright-system
+playwright-report
