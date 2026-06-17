@@ -547,7 +547,7 @@ def download_map_data(payload: dict, background_tasks: BackgroundTasks):
 
     # We can run this in background
     background_tasks.add_task(download_country_data, code, RG_DATA_DIR)
-    return {"status": "downloading", "code": code}
+    return {"status": "downloading", "country_code": code}
 
 @router.post('/map/upload')
 async def upload_map_data(file: UploadFile = File(...)):

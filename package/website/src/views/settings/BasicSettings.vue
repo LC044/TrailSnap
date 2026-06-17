@@ -68,7 +68,8 @@
 
       <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
         <h3 class="text-md font-semibold mb-3 dark:text-white">离线地图数据</h3>
-        <p class="text-sm text-gray-500 mb-4">下载或上传城市数据以支持离线解析照片拍摄位置。（下载越多解析的时候占用内存越大，请根据实际情况选择下载）<a href="http://trailsnap.cn/docs/guide/settings/mapsetting.html#_4-离线地图数据-offline-map-data" target="_blank" class="text-blue-500 hover:underline">查看详细说明</a></p>
+        <p class="text-sm text-gray-500 mb-1">下载或上传城市数据以支持离线解析照片拍摄位置。（下载越多解析的时候占用内存越大，请根据实际情况选择下载）<a href="http://trailsnap.cn/docs/guide/settings/mapsetting.html#_4-离线地图数据-offline-map-data" target="_blank" class="text-blue-500 hover:underline">查看详细说明</a></p>
+        <p class="text-sm text-gray-500 mb-4">修改后需要到任务管理里重新执行元数据提取任务</p>
         
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -103,7 +104,12 @@
         </div>
         
         <div class="mt-6">
-           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">已下载数据</h4>
+           <div class="flex items-center justify-between mb-2">
+             <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">已下载数据</h4>
+             <el-button size="small" @click="handleRefreshMapData" :loading="refreshingMapData" plain>
+               <RefreshCw class="w-4 h-4 mr-1" /> 刷新
+             </el-button>
+           </div>
            <div class="bg-gray-50 dark:bg-gray-900 rounded border dark:border-gray-700 overflow-hidden">
              <div v-if="downloadedCountries.length === 0" class="p-4 text-center text-gray-500 text-sm">暂无数据</div>
              <table v-else class="min-w-full text-sm">
@@ -604,7 +610,7 @@ import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { settingsApi } from '@/api/settings'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme.js'
-import { Sun, Moon, Palette, Check, Info, Download, Loader2, Trash2 } from 'lucide-vue-next'
+import { Sun, Moon, Palette, Check, Info, Download, Loader2, Trash2, RefreshCw } from 'lucide-vue-next'
 
 const {
   currentMode,
@@ -864,6 +870,7 @@ const downloadedCountries = ref<any[]>([])
 const selectedCountry = ref('')
 const downloading = ref(false)
 const downloadingFiles = ref(new Set<string>())
+const refreshingMapData = ref(false)
 
 const loadMapDataInfo = async () => {
   try {
@@ -876,6 +883,13 @@ const loadMapDataInfo = async () => {
   } catch (e) {
     console.error('Failed to load map data info', e)
   }
+}
+
+const handleRefreshMapData = async () => {
+  refreshingMapData.value = true
+  await loadMapDataInfo()
+  refreshingMapData.value = false
+  ElMessage.success('数据已刷新')
 }
 
 const downloadCountry = async () => {
