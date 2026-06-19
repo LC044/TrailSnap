@@ -450,7 +450,40 @@ collect_config() {
   step "Collecting configuration..."
 
   # Installation directory
-  INSTALL_DIR="$(prompt_default "Installation directory" "$DEFAULT_INSTALL_DIR")"
+  if [[ -z "$INSTALL_DIR" || "$INSTALL_DIR" == "$DEFAULT_INSTALL_DIR" ]]; then
+    INSTALL_DIR="$(prompt_default "Installation directory" "$DEFAULT_INSTALL_DIR")"
+  fi
+  # Validate install directory: if parent doesn't exist, ask to create or re-enter
+  while true; do
+    if [[ -d "$INSTALL_DIR" ]]; then
+      break  # exists, ok
+    fi
+    local install_parent
+    install_parent="$(dirname "$INSTALL_DIR")"
+    if [[ -d "$install_parent" ]]; then
+      # Parent exists, we can create the directory
+      local answer
+      answer="$(prompt_yes_no "Installation directory does not exist: ${INSTALL_DIR}. Create it?" "y")"
+      if [[ "$answer" == "y" ]]; then
+        if mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+          info "Created directory: ${INSTALL_DIR}"
+          break
+        else
+          error "Failed to create directory: ${INSTALL_DIR}"
+          if [[ "$YES_FLAG" == true ]]; then
+            die "Cannot create installation directory. Please check permissions."
+          fi
+        fi
+      fi
+    else
+      warn "Parent directory does not exist: ${install_parent}"
+    fi
+    # Ask for a new path
+    if [[ "$YES_FLAG" == true ]]; then
+      die "Installation directory does not exist and cannot be created: ${INSTALL_DIR}"
+    fi
+    INSTALL_DIR="$(prompt_default "Installation directory" "$DEFAULT_INSTALL_DIR")"
+  done
 
   # Photo directory (required, no safe default)
   if [[ -z "$PHOTO_DIR" ]]; then
@@ -467,19 +500,59 @@ collect_config() {
     done
   fi
 
-  # Validate photo directories exist
+  # Validate photo directories: if not exist, ask to create or re-enter
+  local validated_photo_dirs=()
   IFS=',' read -ra PHOTO_DIRS <<< "$PHOTO_DIR"
   for dir in "${PHOTO_DIRS[@]}"; do
     dir="$(echo "$dir" | xargs)"  # trim whitespace
-    if [[ ! -d "$dir" ]]; then
-      if [[ "$YES_FLAG" == true ]]; then
-        warn "Photo directory does not exist: $dir (will be created or may cause issues)"
-      else
-        local answer
-        answer="$(prompt_yes_no "Directory does not exist: ${dir}. Continue anyway?" "n")"
-        [[ "$answer" != "y" ]] && die "Please provide a valid photo directory."
+    while true; do
+      if [[ -d "$dir" ]]; then
+        validated_photo_dirs+=("$dir")
+        break
       fi
-    fi
+      # Directory doesn't exist — ask what to do
+      if [[ "$YES_FLAG" == true ]]; then
+        warn "Photo directory does not exist: $dir"
+        die "Photo directory must exist. Please create it or specify a valid path with --photo-dir."
+      fi
+      echo ""
+      warn "Photo directory does not exist: ${dir}"
+      echo "  1) Create this directory"
+      echo "  2) Enter a different path"
+      echo "  3) Abort"
+      local choice
+      read -rp "$(printf '\033[0;36mChoose [1/2/3]: \033[0m')" choice
+      case "${choice}" in
+        1)
+          if mkdir -p "$dir" 2>/dev/null; then
+            info "Created directory: ${dir}"
+            validated_photo_dirs+=("$dir")
+            break
+          else
+            error "Failed to create directory: ${dir}. Please check permissions."
+            continue
+          fi
+          ;;
+        2)
+          local new_dir
+          new_dir="$(prompt_default "Photo directory path" "")"
+          if [[ -n "$new_dir" ]]; then
+            dir="$new_dir"
+            continue  # re-validate the new path
+          fi
+          ;;
+        3|*)
+          die "Aborted."
+          ;;
+      esac
+    done
+  done
+
+  # Rebuild PHOTO_DIR from validated paths
+  PHOTO_DIR=""
+  for dir in "${validated_photo_dirs[@]}"; do
+    [[ -n "$PHOTO_DIR" ]] && PHOTO_DIR+=","
+    PHOTO_DIR+="$dir"
   done
 
   # Ports

@@ -355,6 +355,34 @@ function Collect-Config {
     if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
         $script:InstallDir = Read-Prompt "Installation directory" $DefaultInstallDir
     }
+    # Validate install directory: if not exist, ask to create or re-enter
+    while ($true) {
+        if (Test-Path $script:InstallDir) {
+            break
+        }
+        $installParent = Split-Path $script:InstallDir -Parent
+        if (Test-Path $installParent) {
+            # Parent exists, we can create it
+            if (Read-YesNo "Installation directory does not exist: $($script:InstallDir). Create it?" "y") {
+                try {
+                    New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
+                    Write-Info "Created directory: $($script:InstallDir)"
+                    break
+                } catch {
+                    Write-Err "Failed to create directory: $($script:InstallDir)"
+                    if ($Yes) {
+                        Stop-Script "Cannot create installation directory. Please check permissions."
+                    }
+                }
+            }
+        } else {
+            Write-Warn "Parent directory does not exist: $installParent"
+        }
+        if ($Yes) {
+            Stop-Script "Installation directory does not exist and cannot be created: $($script:InstallDir)"
+        }
+        $script:InstallDir = Read-Prompt "Installation directory" $DefaultInstallDir
+    }
 
     # Photo directory (required)
     if ([string]::IsNullOrWhiteSpace($PhotoDir)) {
@@ -371,19 +399,54 @@ function Collect-Config {
         }
     }
 
-    # Validate photo directories exist
+    # Validate photo directories: if not exist, ask to create or re-enter
+    $validatedDirs = @()
     $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() }
     foreach ($dir in $photoDirs) {
-        if (-not (Test-Path $dir)) {
+        $currentDir = $dir
+        while ($true) {
+            if (Test-Path $currentDir) {
+                $validatedDirs += $currentDir
+                break
+            }
+            # Directory doesn't exist — ask what to do
             if ($Yes) {
-                Write-Warn "Photo directory does not exist: $dir (will be created or may cause issues)"
-            } else {
-                if (-not (Read-YesNo "Directory does not exist: ${dir}. Continue anyway?" "n")) {
-                    Stop-Script "Please provide a valid photo directory."
+                Write-Warn "Photo directory does not exist: $currentDir"
+                Stop-Script "Photo directory must exist. Please create it or specify a valid path with -PhotoDir."
+            }
+            Write-Warn "Photo directory does not exist: $currentDir"
+            Write-Host "  1) Create this directory"
+            Write-Host "  2) Enter a different path"
+            Write-Host "  3) Abort"
+            $choice = Read-Host "Choose [1/2/3]"
+            switch ($choice) {
+                "1" {
+                    try {
+                        New-Item -ItemType Directory -Path $currentDir -Force | Out-Null
+                        Write-Info "Created directory: $currentDir"
+                        $validatedDirs += $currentDir
+                        break
+                    } catch {
+                        Write-Err "Failed to create directory: $currentDir. Please check permissions."
+                        continue
+                    }
+                }
+                "2" {
+                    $newDir = Read-Prompt "Photo directory path" ""
+                    if (-not [string]::IsNullOrWhiteSpace($newDir)) {
+                        $currentDir = $newDir
+                        continue  # re-validate
+                    }
+                }
+                default {
+                    Stop-Script "Aborted."
                 }
             }
         }
     }
+
+    # Rebuild PhotoDir from validated paths
+    $script:PhotoDir = $validatedDirs -join ","
 
     # Port checks
     $portPairs = @(
