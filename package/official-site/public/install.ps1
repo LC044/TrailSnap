@@ -51,6 +51,13 @@ $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
 $DefaultPgPassword = "trailsnap"
 
+# Fix Chinese display: ensure console uses UTF-8 encoding
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+$PSDefaultParameterValues['*:Encoding'] = 'utf8'
+try { chcp 65001 >$null } catch {}
+
 # Promote param to script scope so functions can access it
 $script:InstallDir = $InstallDir
 $script:ComposeCmd = ""
