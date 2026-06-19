@@ -47,7 +47,7 @@ curl -fsSL https://trailsnap.cn/install.sh | bash
 
 ```powershell
 # 一键在线安装
-Invoke-WebRequest -Uri https://trailsnap.cn/install.ps1 -OutFile install.ps1; ./install.ps1
+irm https://trailsnap.cn/install.ps1 | iex
 ```
 
 或下载后运行：

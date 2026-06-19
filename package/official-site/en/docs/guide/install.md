@@ -49,7 +49,7 @@ Or download and run locally:
 
 ```powershell
 # One-click online installation
-Invoke-WebRequest -Uri https://trailsnap.cn/install.ps1 -OutFile install.ps1; ./install.ps1
+irm https://trailsnap.cn/install.ps1 | iex
 ```
 
 Or download and run locally:

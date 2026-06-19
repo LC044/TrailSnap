@@ -105,7 +105,7 @@ curl -fsSL https://trailsnap.cn/install.sh | bash
 **Windows PowerShell：**
 
 ```powershell
-Invoke-WebRequest -Uri https://trailsnap.cn/install.ps1 -OutFile install.ps1; ./install.ps1
+irm https://trailsnap.cn/install.ps1 | iex
 ```
 
 更多用法（非交互模式、GPU 加速、自定义端口等）请参考 [安装文档](https://trailsnap.cn/docs/guide/install.html)。

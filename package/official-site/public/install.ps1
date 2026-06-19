@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
 TrailSnap (行影集) — One-Click Installation Script for Windows
 
@@ -9,9 +9,6 @@ Supports interactive and non-interactive modes, GPU acceleration, and upgrade/un
 .EXAMPLE
 # Interactive install
 .\install.ps1
-
-# One-click online install
-Invoke-WebRequest -Uri https://trailsnap.cn/install.ps1 -OutFile install.ps1; ./install.ps1
 
 # Non-interactive install
 .\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
