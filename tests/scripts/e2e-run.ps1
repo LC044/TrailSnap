@@ -3,9 +3,17 @@
     Run Playwright E2E tests in the running docker-compose E2E stack.
 #>
 param([ValidateSet('p0','smoke','all')][string]$Level='p0')
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# Force UTF-8 console encoding (cross-platform: Windows + Linux pwsh)
 $OutputEncoding = [System.Text.Encoding]::UTF8
-chcp 65001 | Out-Null
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+  # pwsh 7+ supports InputEncoding on all platforms
+  try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+}
+# Windows-only fallback for legacy code pages (5xx system locale)
+if ($IsWindows -or ($env:OS -eq 'Windows_NT')) {
+  cmd /c chcp 65001 > $null 2>&1
+}
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $WebsiteDir = Join-Path $RepoRoot 'package\website'
