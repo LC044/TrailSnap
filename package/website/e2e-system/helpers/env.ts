@@ -1,21 +1,18 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { e2eEnv } from '../../playwright/e2e-env'
+
 export const runtimeDir = path.resolve(process.cwd(), '.playwright-system')
 export const authStatePath = path.join(runtimeDir, 'storage-state.json')
 export const bootstrapStatePath = path.join(runtimeDir, 'bootstrap-state.json')
 
-export const apiBaseUrl = process.env.TS_API_BASE_URL || 'http://localhost:8800'
-export const webBaseUrl = process.env.TS_WEB_BASE_URL || 'http://localhost:8082'
-export const photoDirectory = process.env.TS_PHOTO_DIR || '/testdata/photos'
+/** 兼容旧引用：从 e2e-env 转发（与原行为完全一致） */
+export const apiBaseUrl = e2eEnv.apiBaseUrl
+export const webBaseUrl = e2eEnv.webBaseUrl
+export const photoDirectory = e2eEnv.photoDirectory
 
-export const adminUser = {
-  username: process.env.TS_ADMIN_USERNAME || 'e2e-admin',
-  email: process.env.TS_ADMIN_EMAIL || 'e2e-admin@example.com',
-  password: process.env.TS_ADMIN_PASSWORD || 'Passw0rd!123',
-  securityQuestion: process.env.TS_ADMIN_SECURITY_QUESTION || '测试问题',
-  securityAnswer: process.env.TS_ADMIN_SECURITY_ANSWER || '测试答案',
-}
+export const adminUser = e2eEnv.adminUser
 
 export interface BootstrapState {
   accessToken: string

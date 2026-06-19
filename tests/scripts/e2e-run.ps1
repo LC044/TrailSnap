@@ -7,10 +7,8 @@ param([ValidateSet('p0','smoke','all')][string]$Level='p0')
 $OutputEncoding = [System.Text.Encoding]::UTF8
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 if ($PSVersionTable.PSVersion.Major -ge 7) {
-  # pwsh 7+ supports InputEncoding on all platforms
   try { [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 }
-# Windows-only fallback for legacy code pages (5xx system locale)
 if ($IsWindows -or ($env:OS -eq 'Windows_NT')) {
   cmd /c chcp 65001 > $null 2>&1
 }
@@ -27,11 +25,28 @@ try {
   $env:TS_PHOTO_DIR     = if ($env:TS_PHOTO_DIR)     { $env:TS_PHOTO_DIR }     else { '/testdata/photos' }
   $env:TS_TEST_USERNAME = if ($env:TS_TEST_USERNAME) { $env:TS_TEST_USERNAME } else { 'e2e-admin' }
   $env:TS_TEST_PASSWORD = if ($env:TS_TEST_PASSWORD) { $env:TS_TEST_PASSWORD } else { 'Passw0rd!123' }
-  Write-Host "Level=$Level API=$($env:TS_API_BASE_URL) Web=$($env:TS_WEB_BASE_URL) User=$($env:TS_TEST_USERNAME)"
+  # Playwright 1.60 testDir 必须是单目录；all 套件 = p0 + smoke 串行执行两次
   switch ($Level) {
-    'p0'    { & pnpm test:e2e:p0 }
-    'smoke' { & pnpm test:e2e:system }
-    'all'   { & pnpm test:e2e:p0; if ($LASTEXITCODE -ne 0) { throw "P0 failed $LASTEXITCODE" }; & pnpm test:e2e:system }
+    'p0'    {
+      $env:TS_E2E_SUITE = 'p0'
+      Write-Host "Level=p0 (TS_E2E_SUITE=p0) API=$($env:TS_API_BASE_URL) Web=$($env:TS_WEB_BASE_URL) User=$($env:TS_TEST_USERNAME)"
+      & pnpm test:e2e
+    }
+    'smoke' {
+      $env:TS_E2E_SUITE = 'smoke'
+      Write-Host "Level=smoke (TS_E2E_SUITE=smoke) API=$($env:TS_API_BASE_URL) Web=$($env:TS_WEB_BASE_URL) User=$($env:TS_TEST_USERNAME)"
+      & pnpm test:e2e
+    }
+    'all'   {
+      Write-Host "Level=all (TS_E2E_SUITE=p0 then =smoke) API=$($env:TS_API_BASE_URL) Web=$($env:TS_WEB_BASE_URL) User=$($env:TS_TEST_USERNAME)"
+      $env:TS_E2E_SUITE = 'p0'
+      Write-Host '[1/2] Running P0...'
+      & pnpm test:e2e
+      if ($LASTEXITCODE -ne 0) { throw "P0 failed $LASTEXITCODE" }
+      $env:TS_E2E_SUITE = 'smoke'
+      Write-Host '[2/2] Running smoke...'
+      & pnpm test:e2e
+    }
   }
   if ($LASTEXITCODE -ne 0) { throw "Tests failed $LASTEXITCODE" }
   Write-Host 'E2E tests passed.'

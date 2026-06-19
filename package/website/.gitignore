@@ -42,4 +42,6 @@ build
 !.yarn/releases
 .trae
 .playwright-system
+.playwright-p0
 playwright-report
+test-results

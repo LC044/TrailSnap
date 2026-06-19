@@ -1,28 +1,63 @@
+/**
+ * TrailSnap Playwright E2E 配置（单一入口）
+ *
+ * 通过 TS_E2E_SUITE 环境变量切换测试套件：
+ *   dev    - 默认。pnpm test:e2e 走 vite dev server (5176)，跑 tests/e2e 下所有 spec
+ *   p0     - 跑 P0 冒烟（auth/smoke/tasks/redirect），需已启动的 system 环境（e2e-up）
+ *   smoke  - 跑系统级冒烟（e2e-system/api + e2e-system/ui）
+ *   all    - P0 + smoke 全量
+ *
+ * 所有环境变量默认值 / 套件映射集中在 ./playwright/e2e-env.ts
+ */
+
 import { defineConfig, devices } from '@playwright/test'
 
+import { e2eEnv } from './playwright/e2e-env'
+
+const suite = e2eEnv.suite
+const isSystemSuite = suite !== 'dev'
+
 export default defineConfig({
-  testDir: './tests/e2e',
-  fullyParallel: true,
+  testDir: e2eEnv.testDir,
+  testMatch: e2eEnv.testMatch,
+
+  // dev 套件下用本地 vite dev server 自动拉起；system 套件用 docker compose
+  // 见 e2e-up.ps1 / package.json scripts
+  fullyParallel: suite !== 'smoke',
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: [['html', { outputFolder: 'playwright-report' }]],
+  retries: process.env.CI ? 1 : 0,
+  workers: process.env.CI ? (suite === 'smoke' ? 1 : 2) : undefined,
+
+  globalSetup: e2eEnv.globalSetup,
+
+  reporter: [
+    ['list'],
+    ['html', { outputFolder: e2eEnv.reportDir }],
+  ],
+  outputDir: e2eEnv.outputDir,
+
   use: {
-    baseURL: process.env.VITE_API_BASE_URL || 'http://localhost:5176',
+    baseURL: e2eEnv.webBaseUrl,
+    storageState: e2eEnv.storageState,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure'
+    video: 'retain-on-failure',
   },
+
+  // dev 套件自动拉起 vite dev server；system 套件依赖 docker compose（外部启动）
+  webServer: isSystemSuite
+    ? undefined
+    : {
+        command: 'pnpm dev',
+        url: 'http://localhost:5176',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+      },
+
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-    }
+    },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:5176',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000
-  }
 })
