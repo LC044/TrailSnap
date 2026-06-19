@@ -46,6 +46,13 @@ curl -fsSL https://trailsnap.cn/install.sh | bash
 #### Windows PowerShell
 
 ```powershell
+# 一键在线安装
+irm https://trailsnap.cn/install.ps1 | iex
+```
+
+或下载后运行：
+
+```powershell
 # 交互式安装（按提示操作）
 .\install.ps1
 

@@ -92,7 +92,25 @@
 
 ## 🚀 快速开始
 
-### docker一键启动
+### 一键安装脚本 (推荐)
+
+TrailSnap 提供一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署。
+
+**Linux / macOS / WSL2：**
+
+```bash
+curl -fsSL https://trailsnap.cn/install.sh | bash
+```
+
+**Windows PowerShell：**
+
+```powershell
+irm https://trailsnap.cn/install.ps1 | iex
+```
+
+更多用法（非交互模式、GPU 加速、自定义端口等）请参考 [安装文档](https://trailsnap.cn/docs/guide/install.html)。
+
+### Docker 手动部署
 
 1. 确保已安装 Docker 和 Docker Compose。
 

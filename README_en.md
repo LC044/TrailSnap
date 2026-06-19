@@ -93,7 +93,25 @@
 
 ## 🚀 Quick Start
 
-### Docker One-Click Setup
+### One-Click Install Script (Recommended)
+
+TrailSnap provides a one-click installation script that automatically handles Docker installation, mirror configuration, and service deployment.
+
+**Linux / macOS / WSL2:**
+
+```bash
+curl -fsSL https://trailsnap.cn/install.sh | bash
+```
+
+**Windows PowerShell:**
+
+```powershell
+irm https://trailsnap.cn/install.ps1 | iex
+```
+
+For more options (non-interactive mode, GPU acceleration, custom ports, etc.), see the [Installation Guide](https://trailsnap.cn/en/docs/guide/install.html).
+
+### Docker Manual Setup
 
 1. Ensure Docker and Docker Compose are installed.
 

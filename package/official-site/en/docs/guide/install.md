@@ -48,6 +48,13 @@ Or download and run locally:
 #### Windows PowerShell
 
 ```powershell
+# One-click online installation
+irm https://trailsnap.cn/install.ps1 | iex
+```
+
+Or download and run locally:
+
+```powershell
 # Interactive installation (follow the prompts)
 .\install.ps1
 
