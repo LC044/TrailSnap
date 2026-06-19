@@ -17,12 +17,113 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
 
 - [Docker 部署（Windows）](/docs/guide/docker/windows)
 
-### 前置要求
+### 一键安装脚本 (推荐)
+
+TrailSnap 提供了一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署，无需手动编写配置文件。
+
+#### Linux / macOS / WSL2
+
+```bash
+curl -fsSL https://trailsnap.cn/install.sh | bash
+```
+
+或下载后运行：
+
+```bash
+# 交互式安装（按提示操作）
+./install.sh
+
+# 非交互式安装（指定照片目录，使用国内镜像加速）
+./install.sh --photo-dir /home/user/photos --china-mirrors --yes
+
+# 启用 GPU 加速
+./install.sh --photo-dir /home/user/photos --ai-mode gpu
+
+# 指定自定义端口
+./install.sh --photo-dir /home/user/photos --frontend-port 8082 --server-port 8800
+```
+
+#### Windows PowerShell
+
+```powershell
+# 交互式安装（按提示操作）
+.\install.ps1
+
+# 非交互式安装（指定照片目录，使用国内镜像加速）
+.\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
+
+# 启用 GPU 加速
+.\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
+```
+
+#### 脚本功能
+
+- ✅ 自动检测操作系统，安装 Docker 和 Docker Compose
+- ✅ 自动配置国内 Docker 镜像加速源（解决国内拉取镜像慢的问题）
+- ✅ 交互式收集配置（安装目录、照片目录、端口、时区、CPU/GPU 模式）
+- ✅ 自动生成 `.env` 和 `docker-compose.yml`
+- ✅ 拉取镜像并启动服务
+- ✅ 部署后自动健康检查
+- ✅ 支持升级和卸载
+
+#### 管理命令
+
+安装完成后，在安装目录（默认 `~/trailsnap`）下执行：
+
+```bash
+# 查看服务状态
+docker compose --env-file .env ps
+
+# 查看日志
+docker compose --env-file .env logs -f
+
+# 停止服务
+docker compose --env-file .env down
+
+# 重启服务
+docker compose --env-file .env restart
+
+# 升级到最新版本
+./install.sh --upgrade
+
+# 卸载（保留数据）
+./install.sh --uninstall
+
+# 卸载（删除所有数据）
+./install.sh --uninstall --purge
+```
+
+#### 完整参数列表
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--photo-dir` | 照片目录（逗号分隔支持多个） | 必填 |
+| `--install-dir` | 安装目录 | `~/trailsnap` |
+| `--frontend-port` | 前端端口 | `8082` |
+| `--server-port` | 后端 API 端口 | `8800` |
+| `--ai-port` | AI 服务端口 | `8801` |
+| `--postgres-port` | PostgreSQL 端口 | `5532` |
+| `--timezone` | 时区 | `Asia/Shanghai` |
+| `--ai-mode` | AI 模式（`cpu` 或 `gpu`） | `cpu` |
+| `--tag` | 镜像标签（`latest` 或 `master`） | `latest` |
+| `--china-mirrors` | 配置国内 Docker 镜像加速源 | - |
+| `--yes` / `-y` | 非交互模式，接受所有默认值 | - |
+| `--upgrade` | 升级现有安装 | - |
+| `--uninstall` | 卸载 | - |
+| `--purge` | 删除所有数据（配合 `--uninstall`） | - |
+
+---
+
+### 手动部署
+
+如果你更倾向于手动配置，或是在 NAS 等特殊环境下部署，可以按照以下步骤操作。
+
+#### 前置要求
 
 - 安装 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)。
 - 确保本地 5532, 8800, 8801, 8082 端口未被占用。
 
-### 部署步骤
+#### 部署步骤
 
 1. **获取 `docker-compose.yml`**
 
@@ -126,7 +227,7 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
    - 后端 API: `http://localhost:8800/docs`
    - AI 服务文档: `http://localhost:8801/docs`
 
-### 注意事项
+#### 注意事项
 
 ::: warning
 - **数据持久化**: 数据库数据会保存在当前目录下的 `pg_data` 文件夹中，应用数据保存在 `data` 文件夹中。请勿随意删除这些目录，以免丢失数据。

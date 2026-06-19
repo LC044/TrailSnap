@@ -19,12 +19,113 @@ If you have never used Docker and are using Windows, it is recommended to read t
 
 - [Docker Deployment (Windows)](/en/docs/guide/docker/windows)
 
-### Prerequisites
+### One-Click Install Script (Recommended)
+
+TrailSnap provides a one-click installation script that automatically handles Docker installation, mirror configuration, and service deployment — no manual configuration files needed.
+
+#### Linux / macOS / WSL2
+
+```bash
+curl -fsSL https://trailsnap.cn/install.sh | bash
+```
+
+Or download and run locally:
+
+```bash
+# Interactive installation (follow the prompts)
+./install.sh
+
+# Non-interactive installation (specify photo directory, use China mirrors)
+./install.sh --photo-dir /home/user/photos --china-mirrors --yes
+
+# Enable GPU acceleration
+./install.sh --photo-dir /home/user/photos --ai-mode gpu
+
+# Specify custom ports
+./install.sh --photo-dir /home/user/photos --frontend-port 8082 --server-port 8800
+```
+
+#### Windows PowerShell
+
+```powershell
+# Interactive installation (follow the prompts)
+.\install.ps1
+
+# Non-interactive installation (specify photo directory, use China mirrors)
+.\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
+
+# Enable GPU acceleration
+.\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
+```
+
+#### Script Features
+
+- ✅ Auto-detect OS and install Docker & Docker Compose
+- ✅ Auto-configure China Docker registry mirrors (resolve slow image pulls in China)
+- ✅ Interactive configuration collection (install directory, photo directory, ports, timezone, CPU/GPU mode)
+- ✅ Auto-generate `.env` and `docker-compose.yml`
+- ✅ Pull images and start services
+- ✅ Post-deployment health checks
+- ✅ Support for upgrade and uninstall
+
+#### Management Commands
+
+After installation, run the following commands in the install directory (default: `~/trailsnap`):
+
+```bash
+# Check service status
+docker compose --env-file .env ps
+
+# View logs
+docker compose --env-file .env logs -f
+
+# Stop services
+docker compose --env-file .env down
+
+# Restart services
+docker compose --env-file .env restart
+
+# Upgrade to latest version
+./install.sh --upgrade
+
+# Uninstall (keep data)
+./install.sh --uninstall
+
+# Uninstall (delete all data)
+./install.sh --uninstall --purge
+```
+
+#### Full Parameter Reference
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `--photo-dir` | Photo directory (comma-separated for multiple) | Required |
+| `--install-dir` | Installation directory | `~/trailsnap` |
+| `--frontend-port` | Frontend port | `8082` |
+| `--server-port` | Backend API port | `8800` |
+| `--ai-port` | AI service port | `8801` |
+| `--postgres-port` | PostgreSQL port | `5532` |
+| `--timezone` | Timezone | `Asia/Shanghai` |
+| `--ai-mode` | AI mode (`cpu` or `gpu`) | `cpu` |
+| `--tag` | Image tag (`latest` or `master`) | `latest` |
+| `--china-mirrors` | Configure China Docker registry mirrors | - |
+| `--yes` / `-y` | Non-interactive mode, accept all defaults | - |
+| `--upgrade` | Upgrade existing installation | - |
+| `--uninstall` | Uninstall | - |
+| `--purge` | Delete all data (use with `--uninstall`) | - |
+
+---
+
+### Manual Deployment
+
+If you prefer to configure manually, or are deploying on a NAS or other special environment, follow these steps.
+
+#### Prerequisites
 
 - Install [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
 - Ensure that local ports 5532, 8800, 8801, and 8082 are not in use.
 
-### Deployment Steps
+#### Deployment Steps
 
 1. **Get `docker-compose.yml`**
 
@@ -130,7 +231,7 @@ If you have never used Docker and are using Windows, it is recommended to read t
    - Backend API: `http://localhost:8800/docs`
    - AI Service Docs: `http://localhost:8801/docs`
 
-### Notes
+#### Notes
 
 ::: warning
 - **Data Persistence**: Database data is stored in `pg_data`, and application data in `data`. Do not delete them to avoid data loss.
