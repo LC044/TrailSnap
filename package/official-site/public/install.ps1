@@ -649,7 +649,7 @@ function Test-HealthCheck {
         Write-Err "Some services failed health checks."
         Write-Info "Checking logs..."
         Push-Location $script:InstallDir
-        & $script:ComposeCmd --env-file .env logs --tail=50
+        Invoke-Compose "--env-file .env logs --tail=50"
         Pop-Location
         Write-Host ""
         Write-Warn "You can check logs manually: cd ${script:InstallDir}; $($script:ComposeCmd) --env-file .env logs -f"
@@ -661,11 +661,22 @@ function Test-HealthCheck {
 
 # ── Pull & Start ─────────────────────────────────────────────────────────────
 
+function Invoke-Compose {
+    param([string]$Arguments)
+    # docker compose is a two-word command; & "docker compose" fails in PowerShell
+    # because it treats the whole string as one executable name.
+    # Split into command + args, then use & with the executable and pass args separately.
+    $parts = $script:ComposeCmd -split ' ', 2
+    $exe = $parts[0]
+    $subArgs = if ($parts.Count -gt 1) { "$($parts[1]) $Arguments" } else { $Arguments }
+    & $exe $subArgs.Split(' ')
+}
+
 function Pull-Images {
     Write-Step "Pulling Docker images..."
     Push-Location $script:InstallDir
     try {
-        & $script:ComposeCmd --env-file .env pull
+        Invoke-Compose "--env-file .env pull"
         if ($LASTEXITCODE -ne 0) {
             Write-Err "Failed to pull images."
             if (-not $ChinaMirrors) {
@@ -682,7 +693,7 @@ function Start-Services {
     Write-Step "Starting services..."
     Push-Location $script:InstallDir
     try {
-        & $script:ComposeCmd --env-file .env up -d
+        Invoke-Compose "--env-file .env up -d"
     } finally {
         Pop-Location
     }
@@ -755,7 +766,7 @@ function Do-Upgrade {
     # Recreate containers
     Push-Location $script:InstallDir
     try {
-        & $script:ComposeCmd --env-file .env up -d --remove-orphans
+        Invoke-Compose "--env-file .env up -d --remove-orphans"
     } finally {
         Pop-Location
     }
@@ -779,7 +790,7 @@ function Do-Uninstall {
 
     Push-Location $script:InstallDir
     try {
-        & $script:ComposeCmd --env-file .env down 2>$null
+        Invoke-Compose "--env-file .env down" 2>$null
     } finally {
         Pop-Location
     }
