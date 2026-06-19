@@ -130,27 +130,36 @@ function Read-YesNo {
 # ── Docker Detection & Installation ─────────────────────────────────────────
 
 function Test-DockerInstalled {
-    Get-Command docker -ErrorAction SilentlyContinue | Out-Null
+    $cmd = Get-Command docker -ErrorAction SilentlyContinue
+    return ($null -ne $cmd)
 }
 
 function Test-DockerRunning {
     try {
-        docker info 2>&1 | Out-Null
-        return $true
+        $result = docker info 2>&1
+        # docker info returns non-zero exit code when daemon is not running
+        if ($LASTEXITCODE -eq 0) {
+            return $true
+        }
+        return $false
     } catch {
         return $false
     }
 }
 
 function Get-ComposeCmd {
+    # Try Docker Compose V2 plugin
     try {
-        docker compose version 2>&1 | Out-Null
-        return "docker compose"
+        $null = docker compose version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            return "docker compose"
+        }
     } catch {}
-    try {
-        Get-Command docker-compose -ErrorAction SilentlyContinue | Out-Null
+    # Try Docker Compose V1 standalone
+    $cmd = Get-Command docker-compose -ErrorAction SilentlyContinue
+    if ($null -ne $cmd) {
         return "docker-compose"
-    } catch {}
+    }
     return $null
 }
 
