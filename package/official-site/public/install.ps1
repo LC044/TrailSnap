@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-TrailSnap (行影集) — One-Click Installation Script for Windows
+TrailSnap — One-Click Installation Script for Windows
 
 .DESCRIPTION
 Automatically configures Docker, sets up registry mirrors, and starts TrailSnap.
@@ -51,13 +51,6 @@ $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
 $DefaultPgPassword = "trailsnap"
 
-# Fix Chinese display: ensure console uses UTF-8 encoding
-$OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::InputEncoding = [System.Text.Encoding]::UTF8
-$PSDefaultParameterValues['*:Encoding'] = 'utf8'
-try { chcp 65001 >$null } catch {}
-
 # Promote param to script scope so functions can access it
 $script:InstallDir = $InstallDir
 $script:ComposeCmd = ""
@@ -74,7 +67,7 @@ function Write-Banner {
     Write-Host ""
     Write-Host "  ╔═══════════════════════════════════════════════╗" -ForegroundColor Cyan
     Write-Host "  ║                                               ║" -ForegroundColor Cyan
-    Write-Host "  ║       TrailSnap  行影集  — 一键安装           ║" -ForegroundColor Cyan
+    Write-Host "  ║       TrailSnap — One-Click Install            ║" -ForegroundColor Cyan
     Write-Host "  ║       AI-Powered Self-Hosted Photo Album      ║" -ForegroundColor Cyan
     Write-Host "  ║                                               ║" -ForegroundColor Cyan
     Write-Host "  ╚═══════════════════════════════════════════════╝" -ForegroundColor Cyan
@@ -326,16 +319,16 @@ function Test-GpuSupport {
 
 function Configure-Mirrors {
     if (-not $ChinaMirrors) {
-        if (-not (Read-YesNo "是否配置国内 Docker 镜像加速源？(Configure China Docker mirror?)" "y")) {
+        if (-not (Read-YesNo "Configure China Docker registry mirror?" "y")) {
             return
         }
     }
 
     Write-Step "Configuring Docker registry mirrors..."
     Write-Host ""
-    Write-Info "Docker Desktop 镜像源配置方法："
-    Write-Info "  1. 打开 Docker Desktop → Settings → Docker Engine"
-    Write-Info "  2. 在 JSON 配置中添加："
+    Write-Info "Docker Desktop mirror configuration:"
+    Write-Info "  1. Open Docker Desktop -> Settings -> Docker Engine"
+    Write-Info "  2. Add the following to the JSON config:"
     Write-Host ""
     Write-Host "  {" -ForegroundColor White
     Write-Host "    `"registry-mirrors`": [" -ForegroundColor White
@@ -345,11 +338,11 @@ function Configure-Mirrors {
     Write-Host "    ]" -ForegroundColor White
     Write-Host "  }" -ForegroundColor White
     Write-Host ""
-    Write-Info "  3. 点击 Apply & Restart"
+    Write-Info "  3. Click Apply & Restart"
     Write-Host ""
 
-    if (-not (Read-YesNo "配置完成后继续？(Continue after configuration?)" "y")) {
-        Stop-Script "请配置镜像源后重新运行脚本。"
+    if (-not (Read-YesNo "Continue after configuration?" "y")) {
+        Stop-Script "Please configure the mirror and re-run the script."
     }
 }
 
@@ -776,7 +769,7 @@ function Write-Success {
     Write-Host ""
     Write-Host "  =======================================================" -ForegroundColor Green
     Write-Host "" -ForegroundColor Green
-    Write-Host "        TrailSnap (行影集) is now running!" -ForegroundColor Green
+    Write-Host "        TrailSnap is now running!" -ForegroundColor Green
     Write-Host "" -ForegroundColor Green
     Write-Host "  =======================================================" -ForegroundColor Green
     Write-Host ""
@@ -886,7 +879,7 @@ function Do-Uninstall {
 
 function Write-Usage {
     Write-Host @"
-TrailSnap (行影集) — One-Click Installation Script for Windows
+TrailSnap — One-Click Installation Script for Windows
 
 Usage:
   .\install.ps1 [OPTIONS]
