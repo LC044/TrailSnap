@@ -10,9 +10,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:p0": "playwright test",
-    "test:e2e:system": "playwright test",
-    "test:e2e:all": "playwright test"
+    "test:e2e:p0": "node playwright/run-e2e.mjs p0",
+    "test:e2e:system": "node playwright/run-e2e.mjs smoke",
+    "test:e2e:all": "node playwright/run-e2e.mjs all"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

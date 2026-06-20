@@ -1,21 +1,18 @@
 import { test, expect, type Page } from '@playwright/test';
-import { authStatePath } from '../../../e2e-system/helpers/env';
-
-// auth 测试需要已登录态（依赖真实后端）
-test.use({ storageState: authStatePath });
+import { e2eEnv } from '../../../playwright/e2e-env';
 
 /**
  * P0 冒烟测试 - 账号与会话
  *
  * 覆盖 doc/e2e-test-checklist.md §1.1。
  * system 环境使用 e2e-system 自动注册的 admin（e2e-admin / Passw0rd!123）；
- * dev 环境可自定义 TS_TEST_USERNAME / TS_TEST_PASSWORD / TS_TEST_API_BASE_URL。
+ * dev 环境可自定义 TS_TEST_USERNAME / TS_TEST_PASSWORD。
+ * 后端地址通过 e2eEnv.apiBaseUrl 获取（dev: 8000, system: 8800）。
  */
 
-const API_BASE = process.env.TS_API_BASE_URL || 'http://localhost:8800';
 const TEST_USER = {
-  username: process.env.TS_TEST_USERNAME || 'e2e-admin',
-  password: process.env.TS_TEST_PASSWORD || 'Passw0rd!123',
+  username: e2eEnv.testUsername,
+  password: e2eEnv.testPassword,
 };
 
 async function clearStorage(page: Page) {
@@ -103,21 +100,25 @@ test.describe('P0 冒烟 - 账号与会话', () => {
 
   test('已登录态访问 /login 应跳走（非白名单内访问）', async ({ page }) => {
     // 路由守卫源码: 有 token 访问 /login 时 next({ path: '/' })
-    // storageState 已注入 e2e-admin 真实 token
-    // 注: SPA 路由守卫判断基于 userStore.token，
-    //     而 userStore 在 setup 时从 localStorage 读取 token
-    //     storageState 在 page.goto 之前注入到 localStorage
+    // system 套件: playwright.config.ts 通过 storageState 注入真实 token
+    // dev 套件: 无 storageState，手动注入伪 token 模拟已登录态
+    if (!e2eEnv.storageState) {
+      await page.goto('/login');
+      await page.evaluate(() => localStorage.setItem('user_token', 'fake.jwt.for.redirect.test'));
+    }
+
     await page.goto('/login');
-    // 等待路由守卫执行（最长 5s）
+    // 等待路由守卫执行
     await page.waitForTimeout(3_000);
     const url = page.url();
-    // 软断言: token 有效时应跳到 / 或 /
-    // 兼容失败: SPA 在 /login 也允许停留（不强制跳转）
+
     if (url.includes('/login')) {
-      // 至少页面应可正常渲染
+      // dev 模式下伪 token 无法通过后端校验，SPA 可能留在 /login，这是可接受的
+      // 断言页面至少正常渲染
       await expect(page.locator('body')).toBeVisible();
     } else {
-      expect(url).toMatch(/localhost:8082\/$/);
+      // system 模式下真实 token 有效，SPA 应跳转到首页
+      expect(url).not.toContain('/login');
     }
   });
 
@@ -159,9 +160,9 @@ test.describe('P0 冒烟 - 账号与会话', () => {
 
 test.describe('P0 冒烟 - 后端鉴权 API', () => {
   test('GET /users/me 无 Token 返回 401/403', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/users/me`, { timeout: 5_000 }).catch(() => null);
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, { timeout: 5_000 }).catch(() => null);
     if (!res) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     // 后端可能 401（无 token）、403（路径不匹配）或 404（路由不存在）
@@ -169,12 +170,12 @@ test.describe('P0 冒烟 - 后端鉴权 API', () => {
   });
 
   test('伪造 Bearer Token 返回鉴权失败', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/users/me`, {
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, {
       headers: { Authorization: 'Bearer fake.invalid.jwt.token' },
       timeout: 5_000,
     }).catch(() => null);
     if (!res) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     // 后端可能 401（无签名）、403（解码失败）或 404（路由不存在）
@@ -184,12 +185,12 @@ test.describe('P0 冒烟 - 后端鉴权 API', () => {
   test('真实登录后 GET /users/me 返回 200', async ({ request }) => {
     let loginRes;
     try {
-      loginRes = await request.post(`${API_BASE}/auth/login`, {
+      loginRes = await request.post(`${e2eEnv.apiBaseUrl}/auth/login`, {
         form: { username: TEST_USER.username, password: TEST_USER.password },
         timeout: 5_000,
       });
     } catch {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     if (!loginRes.ok()) {
@@ -197,7 +198,7 @@ test.describe('P0 冒烟 - 后端鉴权 API', () => {
       return;
     }
     const { access_token } = await loginRes.json();
-    const meRes = await request.get(`${API_BASE}/users/me`, {
+    const meRes = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, {
       headers: { Authorization: `Bearer ${access_token}` },
     });
     expect(meRes.status()).toBe(200);

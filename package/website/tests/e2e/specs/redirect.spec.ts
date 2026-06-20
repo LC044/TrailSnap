@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { e2eEnv } from '../../../playwright/e2e-env';
 
 // 注: P0 config 已不设 storageState；此文件用默认空 state
 // 不显式覆盖以避免 Playwright 内部处理空 storage state 的边界 bug
@@ -8,6 +9,7 @@ import { test, expect } from '@playwright/test';
  *
  * 覆盖 doc/e2e-test-checklist.md §1.1、§4.4。
  * 受保护路由全部验证跳转 /login?redirect=；白名单放行。
+ * 后端地址通过 e2eEnv.apiBaseUrl 获取（dev: 8000, system: 8800）。
  */
 
 const PROTECTED_ROUTES = [
@@ -25,10 +27,10 @@ const PROTECTED_ROUTES = [
   '/statistics',
 ];
 
-const API_BASE = process.env.TS_API_BASE_URL || 'http://localhost:8800';
+// 后端地址统一通过 e2eEnv.apiBaseUrl 获取
 
 test.describe('P0 冒烟 - 路由守卫', () => {
-  // 注: 文件顶部 test.use({ storageState: { cookies: [], origins: [] } }) 已覆盖 config 注入
+  // 注: 此文件不设 storageState，使用 playwright.config.ts 的默认值（dev: 无, system: 已登录态）
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
     await page.evaluate(() => {
@@ -106,12 +108,12 @@ test.describe('P0 冒烟 - 路由守卫', () => {
 
 test.describe('P0 冒烟 - Token 过期与 401 处理', () => {
   test('伪造 Bearer Token 后端返回鉴权失败', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/users/me`, {
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, {
       headers: { Authorization: 'Bearer fake.invalid.jwt.token' },
       timeout: 5_000,
     }).catch(() => null);
     if (!res) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     expect([401, 403, 404]).toContain(res.status());

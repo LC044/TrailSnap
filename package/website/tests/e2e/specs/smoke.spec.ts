@@ -1,21 +1,31 @@
-import { test, expect } from '@playwright/test';
-import { authStatePath } from '../../../e2e-system/helpers/env';
-
-// smoke 测试需要已登录态（首页/404 兜底访问后端）
-test.use({ storageState: authStatePath });
+import { test, expect, type APIRequestContext } from '@playwright/test';
+import { e2eEnv } from '../../../playwright/e2e-env';
 
 /**
  * P0 冒烟测试 - 主链路渲染与系统健康
  *
  * 覆盖 doc/e2e-test-checklist.md §1.3、§1.4。
- * 环境变量约定（与 e2e-system/ 一致）：
- *   TS_WEB_BASE_URL  - 前端入口（system 环境: 8082, dev 环境: 5176）
- *   TS_API_BASE_URL  - 后端入口（system 环境: 8800, dev 环境: 8000）
- *
+ * 后端地址通过 e2eEnv.apiBaseUrl 获取（dev: 8000, system: 8800）。
  * 后端不可达时自动 test.skip，避免环境噪声。
  */
 
-const API_BASE = process.env.TS_API_BASE_URL || 'http://localhost:8800';
+/** 检查后端是否可达，不可达则 skip 当前测试 */
+async function ensureBackend(
+  request: APIRequestContext,
+  testInfo: { skip: (condition: boolean, reason: string) => void },
+): Promise<boolean> {
+  try {
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/system/version`, { timeout: 5_000 });
+    if (!res.ok()) {
+      testInfo.skip(true, `Backend returned ${res.status()}`);
+      return false;
+    }
+    return true;
+  } catch {
+    testInfo.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
+    return false;
+  }
+}
 
 test.describe('P0 冒烟 - 主链路渲染', () => {
   test.beforeEach(async ({ page }) => {
@@ -24,7 +34,8 @@ test.describe('P0 冒烟 - 主链路渲染', () => {
     await page.evaluate(() => localStorage.setItem('user_token', 'p0-smoke.jwt'));
   });
 
-  test('首页正常加载 - 至少渲染出标题', async ({ page }) => {
+  test('首页正常加载 - 至少渲染出标题', async ({ page, request }, testInfo) => {
+    if (!(await ensureBackend(request, testInfo))) return;
     await page.goto('/');
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
@@ -56,9 +67,9 @@ test.describe('P0 冒烟 - 主链路渲染', () => {
 
 test.describe('P0 冒烟 - 后端 API 健康', () => {
   test('/system/version 返回版本号', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/system/version`, { timeout: 5_000 }).catch(() => null);
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/system/version`, { timeout: 5_000 }).catch(() => null);
     if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     const body = await res.json();
@@ -68,9 +79,9 @@ test.describe('P0 冒烟 - 后端 API 健康', () => {
   });
 
   test('/auth/status 返回 has_users / allow_registration 字段', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/auth/status`, { timeout: 5_000 }).catch(() => null);
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/auth/status`, { timeout: 5_000 }).catch(() => null);
     if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     const body = await res.json();
@@ -81,9 +92,9 @@ test.describe('P0 冒烟 - 后端 API 健康', () => {
   });
 
   test('/tasks/status 返回全局任务状态', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/tasks/status`, { timeout: 5_000 }).catch(() => null);
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/status`, { timeout: 5_000 }).catch(() => null);
     if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     const body = await res.json();
@@ -91,9 +102,9 @@ test.describe('P0 冒烟 - 后端 API 健康', () => {
   });
 
   test('/openapi.json 可访问 - FastAPI 文档', async ({ request }) => {
-    const res = await request.get(`${API_BASE}/openapi.json`, { timeout: 5_000 }).catch(() => null);
+    const res = await request.get(`${e2eEnv.apiBaseUrl}/openapi.json`, { timeout: 5_000 }).catch(() => null);
     if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${API_BASE}`);
+      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
       return;
     }
     const body = await res.json();
