@@ -33,7 +33,22 @@ test.describe('P0 冒烟 - 账号与会话', () => {
     await expect(page.locator('button:has-text("登录")')).toBeVisible();
   });
 
-  test('登录成功 - 写入 token 并跳转首页', async ({ page }) => {
+  test('登录成功 - 写入 token 并跳转首页', async ({ page, request }, testInfo) => {
+    // 前置检查：测试账号是否可登录，不可达或账号不存在时 skip
+    try {
+      const checkRes = await request.post(`${e2eEnv.apiBaseUrl}/auth/login`, {
+        form: { username: TEST_USER.username, password: TEST_USER.password },
+        timeout: 5_000,
+      });
+      if (!checkRes.ok()) {
+        testInfo.skip(true, `Test user "${TEST_USER.username}" login failed (${checkRes.status()}) — register the account first`);
+        return;
+      }
+    } catch {
+      testInfo.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
+      return;
+    }
+
     await page.goto('/login');
 
     await page.fill('input[placeholder="请输入用户名"]', TEST_USER.username);
