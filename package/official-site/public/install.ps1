@@ -1,25 +1,25 @@
-<#
+﻿<#
 .SYNOPSIS
-TrailSnap — One-Click Installation Script for Windows
+TrailSnap - Windows 一键安装脚本
 
 .DESCRIPTION
-Automatically configures Docker, sets up registry mirrors, and starts TrailSnap.
-Supports interactive and non-interactive modes, GPU acceleration, and upgrade/uninstall.
+自动配置 Docker、设置镜像加速源、启动 TrailSnap。
+支持交互式和非交互式模式、GPU 加速、升级和卸载。
 
 .EXAMPLE
-# Interactive install
+# 交互式安装
 .\install.ps1
 
-# Non-interactive install
+# 非交互式安装
 .\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
 
-# GPU mode
+# GPU 模式
 .\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
 
-# Upgrade
+# 升级
 .\install.ps1 -Upgrade
 
-# Uninstall
+# 卸载
 .\install.ps1 -Uninstall -Purge
 #>
 
@@ -44,8 +44,17 @@ param(
     [switch]$Help
 )
 
-# ── Constants ────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.0.0"
+# ── 设置控制台编码为 UTF-8 ────────────────────────────────────────────────────
+# Windows 默认使用 GBK 编码，中文会显示为乱码。强制切换到 UTF-8 输出。
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+    # Windows 10 1903+ 支持 chcp 65001 切换代码页
+    chcp 65001 > $null 2>&1
+} catch {}
+
+# ── 常量 ──────────────────────────────────────────────────────────────────────
+$ScriptVersion = "1.1.0"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -61,32 +70,32 @@ $ChinaMirrorList = @(
     "https://dockerproxy.net"
 )
 
-# ── Utility Functions ────────────────────────────────────────────────────────
+# ── 工具函数 ──────────────────────────────────────────────────────────────────
 
 function Write-Banner {
     Write-Host ""
-    Write-Host "  ╔═══════════════════════════════════════════════╗" -ForegroundColor Cyan
-    Write-Host "  ║                                               ║" -ForegroundColor Cyan
-    Write-Host "  ║       TrailSnap — One-Click Install            ║" -ForegroundColor Cyan
-    Write-Host "  ║       AI-Powered Self-Hosted Photo Album      ║" -ForegroundColor Cyan
-    Write-Host "  ║                                               ║" -ForegroundColor Cyan
-    Write-Host "  ╚═══════════════════════════════════════════════╝" -ForegroundColor Cyan
+    Write-Host "  +===============================================+" -ForegroundColor Cyan
+    Write-Host "  |                                               |" -ForegroundColor Cyan
+    Write-Host "  |       TrailSnap (行影集) — 一键安装           |" -ForegroundColor Cyan
+    Write-Host "  |       AI 驱动的自托管相册                     |" -ForegroundColor Cyan
+    Write-Host "  |                                               |" -ForegroundColor Cyan
+    Write-Host "  +===============================================+" -ForegroundColor Cyan
     Write-Host ""
 }
 
 function Write-Info {
     param([string]$Message)
-    Write-Host "[INFO]  $Message" -ForegroundColor Green
+    Write-Host "[信息]  $Message" -ForegroundColor Green
 }
 
 function Write-Warn {
     param([string]$Message)
-    Write-Host "[WARN]  $Message" -ForegroundColor Yellow
+    Write-Host "[警告]  $Message" -ForegroundColor Yellow
 }
 
 function Write-Err {
     param([string]$Message)
-    Write-Host "[ERROR] $Message" -ForegroundColor Red
+    Write-Host "[错误] $Message" -ForegroundColor Red
 }
 
 function Write-Step {
@@ -127,7 +136,80 @@ function Read-YesNo {
     $answer -match "^[yY]"
 }
 
-# ── Docker Detection & Installation ─────────────────────────────────────────
+# ── 获取局域网 IP ────────────────────────────────────────────────────────────
+
+function Get-LanIP {
+    try {
+        # 获取所有启用的 IPv4 地址，排除回环和自动配置地址
+        $adapters = Get-NetIPAddress -AddressFamily IPv4 |
+            Where-Object { $_.IPAddress -ne "127.0.0.1" -and $_.PrefixOrigin -ne "WellKnown" -and $_.SuffixOrigin -ne "Link" } |
+            Sort-Object -Property InterfaceAlias
+
+        # 优先返回能上网的适配器（有默认网关的）
+        $defaultGateway = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty InterfaceIndex -Unique
+
+        foreach ($gw in $defaultGateway) {
+            $ip = $adapters | Where-Object { $_.InterfaceIndex -eq $gw } | Select-Object -First 1 -ExpandProperty IPAddress
+            if ($ip) { return $ip }
+        }
+
+        # 回退：返回第一个非回环地址
+        $first = $adapters | Select-Object -First 1 -ExpandProperty IPAddress
+        if ($first) { return $first }
+    } catch {}
+    return $null
+}
+
+# ── 硬件预检 ──────────────────────────────────────────────────────────────────
+
+function Test-Hardware {
+    Write-Step "检查硬件资源..."
+
+    # 检查磁盘空间
+    $installDrive = if ($script:InstallDir) {
+        (Resolve-Path (Split-Path $script:InstallDir -Parent) -ErrorAction SilentlyContinue).Drive.Name
+    } else {
+        $env:SystemDrive.Substring(0,1)
+    }
+    if (-not $installDrive) { $installDrive = $env:SystemDrive.Substring(0,1) }
+
+    try {
+        $disk = Get-PSDrive -Name $installDrive -ErrorAction Stop
+        $freeGB = [math]::Round($disk.Free / 1GB, 1)
+        if ($freeGB -lt 10) {
+            Write-Err "磁盘 ${installDrive}: 剩余空间仅 ${freeGB} GB，不足以安装 TrailSnap（至少需要 10 GB）。"
+            Write-Err "请清理磁盘空间后重试。"
+            Stop-Script "磁盘空间不足。"
+        } elseif ($freeGB -lt 15) {
+            Write-Warn "磁盘 ${installDrive}: 剩余空间 ${freeGB} GB，安装 TrailSnap（含 AI 镜像）可能需要 10-15 GB。"
+            Write-Warn "如果空间不足，可能导致下载失败。建议先清理磁盘。"
+            if (-not (Read-YesNo "是否继续安装？" "n")) {
+                Stop-Script "已取消。"
+            }
+        } else {
+            Write-Info "磁盘 ${installDrive}: 剩余空间 ${freeGB} GB，满足安装要求。"
+        }
+    } catch {
+        Write-Warn "无法检测磁盘空间，跳过检查。"
+    }
+
+    # 检查内存
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem
+        $totalRAM_GB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+        if ($totalRAM_GB -lt 4) {
+            Write-Warn "系统内存 ${totalRAM_GB} GB，运行 AI 服务可能会卡顿。"
+            Write-Warn "建议至少 4 GB 内存。可以选择 CPU 模式（不启用 GPU 加速）。"
+        } else {
+            Write-Info "系统内存 ${totalRAM_GB} GB，满足运行要求。"
+        }
+    } catch {
+        Write-Warn "无法检测系统内存，跳过检查。"
+    }
+}
+
+# ── Docker 检测与安装 ─────────────────────────────────────────────────────────
 
 function Test-DockerInstalled {
     $cmd = Get-Command docker -ErrorAction SilentlyContinue
@@ -137,7 +219,6 @@ function Test-DockerInstalled {
 function Test-DockerRunning {
     try {
         $result = docker info 2>&1
-        # docker info returns non-zero exit code when daemon is not running
         if ($LASTEXITCODE -eq 0) {
             return $true
         }
@@ -148,14 +229,12 @@ function Test-DockerRunning {
 }
 
 function Get-ComposeCmd {
-    # Try Docker Compose V2 plugin
     try {
         $null = docker compose version 2>&1
         if ($LASTEXITCODE -eq 0) {
             return "docker compose"
         }
     } catch {}
-    # Try Docker Compose V1 standalone
     $cmd = Get-Command docker-compose -ErrorAction SilentlyContinue
     if ($null -ne $cmd) {
         return "docker-compose"
@@ -164,64 +243,100 @@ function Get-ComposeCmd {
 }
 
 function Install-DockerDesktop {
-    Write-Step "Installing Docker Desktop..."
+    Write-Step "正在安装 Docker Desktop..."
 
-    # Check winget
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     if ($winget) {
-        Write-Info "Installing Docker Desktop via winget..."
+        Write-Info "正在通过 winget 安装 Docker Desktop..."
         winget install Docker.DockerDesktop --accept-package-agreements --accept-source-agreements
-        Write-Info "Docker Desktop installed. Please start it from the Start Menu."
-        Write-Warn "You may need to restart this script after Docker Desktop starts."
-        Stop-Script "Please start Docker Desktop and re-run this script."
+        Write-Info "Docker Desktop 已安装，请从开始菜单启动。"
+        Write-Warn "Docker Desktop 启动后，请重新运行本脚本。"
+        Stop-Script "请启动 Docker Desktop 后重新运行本脚本。"
     } else {
         Write-Host ""
-        Write-Err "winget is not available. Please install Docker Desktop manually:"
-        Write-Host "  https://docs.docker.com/desktop/install/windows-install/" -ForegroundColor Cyan
+        Write-Err "winget 不可用，无法自动安装 Docker Desktop。"
+        Write-Info "正在打开 Docker Desktop 下载页面..."
+        Start-Process "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
         Write-Host ""
-        Stop-Script "Docker is required. Please install it and re-run this script."
+        Stop-Script "请安装 Docker Desktop 后重新运行本脚本。"
     }
 }
 
+function New-ResumeShortcut {
+    # 在桌面创建"继续安装 TrailSnap"快捷方式
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcutPath = Join-Path $desktopPath "继续安装 TrailSnap.bat"
+    $scriptPath = $PSCommandPath
+    if (-not $scriptPath) {
+        $scriptPath = $MyInvocation.PSCommandPath
+    }
+
+    $batContent = @"
+@echo off
+chcp 65001 >nul 2>&1
+echo.
+echo   =============================================
+echo   ^|   继续安装 TrailSnap (行影集)            ^|
+echo   =============================================
+echo.
+powershell -ExecutionPolicy Bypass -File "$scriptPath"
+del "%~f0"
+"@
+    Set-Content -Path $shortcutPath -Value $batContent -Encoding ASCII
+    Write-Info "已在桌面创建快捷方式：继续安装 TrailSnap.bat"
+    Write-Info "重启电脑后双击桌面图标即可继续安装。"
+    return $shortcutPath
+}
+
 function Ensure-WSL2 {
-    Write-Step "Checking WSL2..."
+    Write-Step "检查 WSL2..."
     try {
         $wslStatus = wsl --status 2>&1
-        Write-Info "WSL2 is available."
+        Write-Info "WSL2 已安装。"
     } catch {
-        Write-Warn "WSL2 is not installed."
-        if (Read-YesNo "Install WSL2 now?" "y") {
+        Write-Warn "WSL2 未安装。"
+        if (Read-YesNo "是否现在安装 WSL2？" "y") {
             wsl --install --no-distribution
-            Write-Warn "WSL2 installed. A system restart may be required."
-            Stop-Script "Please restart your computer and re-run this script."
+            Write-Host ""
+            Write-Host "  +===========================================================+" -ForegroundColor Yellow
+            Write-Host "  |                                                           |" -ForegroundColor Yellow
+            Write-Host "  |   !! 需要重启电脑才能完成 WSL2 安装 !!                   |" -ForegroundColor Yellow
+            Write-Host "  |                                                           |" -ForegroundColor Yellow
+            Write-Host "  |   重启后，请双击桌面上的 `"继续安装 TrailSnap.bat`"        |" -ForegroundColor Yellow
+            Write-Host "  |   即可继续安装，无需再次手动运行脚本。                   |" -ForegroundColor Yellow
+            Write-Host "  |                                                           |" -ForegroundColor Yellow
+            Write-Host "  +===========================================================+" -ForegroundColor Yellow
+            Write-Host ""
+
+            # 创建桌面快捷方式
+            New-ResumeShortcut
+
+            Stop-Script "请重启电脑后，双击桌面上的「继续安装 TrailSnap.bat」继续安装。"
         } else {
-            Stop-Script "WSL2 is required for Docker Desktop on Windows."
+            Stop-Script "WSL2 是 Docker Desktop 在 Windows 上的必需组件。"
         }
     }
 }
 
 function Ensure-Docker {
-    Write-Step "Checking Docker..."
+    Write-Step "检查 Docker..."
 
-    # Check WSL2 first (required for Docker Desktop on Windows)
     Ensure-WSL2
 
     if (-not (Test-DockerInstalled)) {
-        Write-Warn "Docker is not installed."
-        if (Read-YesNo "Do you want to install Docker Desktop automatically?" "y") {
+        Write-Warn "Docker 未安装。"
+        if (Read-YesNo "是否自动安装 Docker Desktop？" "y") {
             Install-DockerDesktop
         } else {
-            Stop-Script "Docker is required. Please install it: https://docs.docker.com/desktop/install/windows-install/"
+            Stop-Script "Docker 是必需的。请手动安装：https://docs.docker.com/desktop/install/windows-install/"
         }
     }
 
-    # Check Docker is running
     if (-not (Test-DockerRunning)) {
-        Write-Warn "Docker Desktop is not running."
-        Write-Info "Starting Docker Desktop..."
+        Write-Warn "Docker Desktop 未运行。"
+        Write-Info "正在启动 Docker Desktop..."
         $dockerExe = Get-Command "Docker Desktop" -ErrorAction SilentlyContinue
         if (-not $dockerExe) {
-            # Try common install paths
             $paths = @(
                 "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe",
                 "${env:LOCALAPPDATA}\Programs\Docker\Docker\Docker Desktop.exe"
@@ -235,7 +350,7 @@ function Ensure-Docker {
         }
         if ($dockerExe) {
             Start-Process $dockerExe
-            Write-Info "Waiting for Docker Desktop to start..."
+            Write-Info "等待 Docker Desktop 启动..."
             $retries = 0
             while (-not (Test-DockerRunning) -and $retries -lt 60) {
                 Start-Sleep -Seconds 3
@@ -244,25 +359,24 @@ function Ensure-Docker {
             }
             Write-Host ""
             if (-not (Test-DockerRunning)) {
-                Stop-Script "Docker Desktop did not start. Please start it manually and re-run this script."
+                Stop-Script "Docker Desktop 未能在规定时间内启动。请手动启动后重新运行本脚本。"
             }
         } else {
-            Stop-Script "Cannot find Docker Desktop. Please start it manually and re-run this script."
+            Stop-Script "未找到 Docker Desktop。请手动启动后重新运行本脚本。"
         }
     }
 
-    Write-Info "Docker is running."
+    Write-Info "Docker 已运行。"
 
-    # Detect compose command
     $script:ComposeCmd = Get-ComposeCmd
     if (-not $script:ComposeCmd) {
-        Stop-Script "Docker Compose not found. Please ensure Docker Desktop is properly installed."
+        Stop-Script "未找到 Docker Compose。请确保 Docker Desktop 已正确安装。"
     }
 
-    Write-Info "Using compose command: $script:ComposeCmd"
+    Write-Info "Compose 命令：$($script:ComposeCmd)"
 }
 
-# ── Port Check ───────────────────────────────────────────────────────────────
+# ── 端口检查（自动分配） ─────────────────────────────────────────────────────
 
 function Test-PortAvailable {
     param([int]$Port)
@@ -270,7 +384,6 @@ function Test-PortAvailable {
         $connections = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
         return ($null -eq $connections -or $connections.Count -eq 0)
     } catch {
-        # Fallback: try netstat
         $netstat = netstat -an 2>&1 | Select-String ":${Port}\s"
         return ($null -eq $netstat)
     }
@@ -287,27 +400,26 @@ function Get-SuggestedPort {
     return $BasePort + 1
 }
 
-# ── GPU Check ────────────────────────────────────────────────────────────────
+# ── GPU 检查 ──────────────────────────────────────────────────────────────────
 
 function Test-GpuSupport {
     $nvidiaSmi = Get-Command nvidia-smi -ErrorAction SilentlyContinue
     if (-not $nvidiaSmi) {
-        Write-Warn "nvidia-smi not found. GPU is not available."
+        Write-Warn "未检测到 nvidia-smi，GPU 不可用。"
         return $false
     }
 
-    Write-Info "NVIDIA GPU detected:"
+    Write-Info "检测到 NVIDIA GPU："
     $gpuInfo = & nvidia-smi --query-gpu name,memory.total --format=csv,noheader 2>$null
     if ($gpuInfo) {
         $gpuInfo | ForEach-Object { Write-Info "  - $_" }
     }
 
-    # Check nvidia-container-toolkit via docker info
     $dockerInfo = docker info 2>&1 | Out-String
     if ($dockerInfo -notmatch "nvidia") {
-        Write-Warn "NVIDIA Container Toolkit not detected in Docker."
-        Write-Warn "GPU mode may not work. See: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
-        if (-not (Read-YesNo "Still use GPU mode?" "n")) {
+        Write-Warn "Docker 中未检测到 NVIDIA Container Toolkit。"
+        Write-Warn "GPU 模式可能无法使用。详见：https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+        if (-not (Read-YesNo "仍使用 GPU 模式？" "n")) {
             return $false
         }
     }
@@ -315,20 +427,20 @@ function Test-GpuSupport {
     return $true
 }
 
-# ── China Mirrors ────────────────────────────────────────────────────────────
+# ── 国内镜像源 ────────────────────────────────────────────────────────────────
 
 function Configure-Mirrors {
     if (-not $ChinaMirrors) {
-        if (-not (Read-YesNo "Configure China Docker registry mirror?" "y")) {
+        if (-not (Read-YesNo "是否配置国内 Docker 镜像加速源？" "y")) {
             return
         }
     }
 
-    Write-Step "Configuring Docker registry mirrors..."
+    Write-Step "配置 Docker 镜像加速源..."
     Write-Host ""
-    Write-Info "Docker Desktop mirror configuration:"
-    Write-Info "  1. Open Docker Desktop -> Settings -> Docker Engine"
-    Write-Info "  2. Add the following to the JSON config:"
+    Write-Info "Docker Desktop 镜像源配置方法（以下步骤需要手动操作）："
+    Write-Info "  1. 打开 Docker Desktop → Settings → Docker Engine"
+    Write-Info "  2. 在 JSON 配置中添加以下内容："
     Write-Host ""
     Write-Host "  {" -ForegroundColor White
     Write-Host "    `"registry-mirrors`": [" -ForegroundColor White
@@ -338,171 +450,221 @@ function Configure-Mirrors {
     Write-Host "    ]" -ForegroundColor White
     Write-Host "  }" -ForegroundColor White
     Write-Host ""
-    Write-Info "  3. Click Apply & Restart"
+    Write-Info "  3. 点击 Apply & Restart"
     Write-Host ""
 
-    if (-not (Read-YesNo "Continue after configuration?" "y")) {
-        Stop-Script "Please configure the mirror and re-run the script."
+    if (-not (Read-YesNo "配置完成后是否继续？" "y")) {
+        Stop-Script "请配置镜像源后重新运行脚本。"
     }
 }
 
-# ── Configuration Collection ────────────────────────────────────────────────
+# ── 配置收集 ──────────────────────────────────────────────────────────────────
 
 function Collect-Config {
-    Write-Step "Collecting configuration..."
+    Write-Step "收集配置信息..."
 
-    # Installation directory
+    # 安装目录
     if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
-        $script:InstallDir = Read-Prompt "Installation directory" $DefaultInstallDir
+        $script:InstallDir = Read-Prompt "安装目录" $DefaultInstallDir
     }
-    # Validate install directory: if not exist, ask to create or re-enter
     while ($true) {
         if (Test-Path $script:InstallDir) {
             break
         }
         $installParent = Split-Path $script:InstallDir -Parent
         if (Test-Path $installParent) {
-            # Parent exists, we can create it
-            if (Read-YesNo "Installation directory does not exist: $($script:InstallDir). Create it?" "y") {
+            if (Read-YesNo "安装目录不存在：$($script:InstallDir)。是否创建？" "y") {
                 try {
                     New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
-                    Write-Info "Created directory: $($script:InstallDir)"
+                    Write-Info "已创建目录：$($script:InstallDir)"
                     break
                 } catch {
-                    Write-Err "Failed to create directory: $($script:InstallDir)"
+                    Write-Err "创建目录失败：$($script:InstallDir)"
                     if ($Yes) {
-                        Stop-Script "Cannot create installation directory. Please check permissions."
+                        Stop-Script "无法创建安装目录，请检查权限。"
                     }
                 }
             }
         } else {
-            Write-Warn "Parent directory does not exist: $installParent"
+            Write-Warn "父目录不存在：$installParent"
         }
         if ($Yes) {
-            Stop-Script "Installation directory does not exist and cannot be created: $($script:InstallDir)"
+            Stop-Script "安装目录不存在且无法创建：$($script:InstallDir)"
         }
-        $script:InstallDir = Read-Prompt "Installation directory" $DefaultInstallDir
+        $script:InstallDir = Read-Prompt "安装目录" $DefaultInstallDir
     }
 
-    # Photo directory (required)
-    if ([string]::IsNullOrWhiteSpace($PhotoDir)) {
-        while ($true) {
-            $PhotoDir = Read-Prompt "Photo directory path (comma-separated for multiple)" ""
-            if ([string]::IsNullOrWhiteSpace($PhotoDir)) {
-                Write-Warn "Photo directory is required."
-                if ($Yes) {
-                    Stop-Script "Photo directory must be specified with -PhotoDir in non-interactive mode."
-                }
-                continue
-            }
-            break
-        }
-    }
-
-    # Validate photo directories: if not exist, ask to create or re-enter
+    # 照片目录（向导式循环输入）
     $validatedDirs = @()
-    $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() }
-    foreach ($dir in $photoDirs) {
-        $currentDir = $dir
+
+    if ([string]::IsNullOrWhiteSpace($PhotoDir)) {
+        # 交互式逐个输入
+        Write-Host ""
+        Write-Info "请输入您的照片文件夹路径（一次一个，之后可以继续添加）。"
         while ($true) {
-            if (Test-Path $currentDir) {
-                $validatedDirs += $currentDir
+            $inputDir = Read-Prompt "照片文件夹路径" ""
+            if ([string]::IsNullOrWhiteSpace($inputDir)) {
+                if ($validatedDirs.Count -eq 0) {
+                    Write-Warn "照片文件夹是必需的。"
+                    if ($Yes) {
+                        Stop-Script "非交互模式下必须通过 -PhotoDir 指定照片目录。"
+                    }
+                    continue
+                }
                 break
             }
-            # Directory doesn't exist — ask what to do
-            if ($Yes) {
-                Write-Warn "Photo directory does not exist: $currentDir"
-                Stop-Script "Photo directory must exist. Please create it or specify a valid path with -PhotoDir."
+
+            $currentDir = $inputDir.Trim().Trim('"', "'")
+
+            # 验证目录
+            while ($true) {
+                if (Test-Path $currentDir) {
+                    $validatedDirs += $currentDir
+                    Write-Info "已添加：$currentDir"
+                    break
+                }
+                if ($Yes) {
+                    Write-Warn "照片目录不存在：$currentDir"
+                    Stop-Script "照片目录必须存在。请创建后或通过 -PhotoDir 指定有效路径。"
+                }
+                Write-Warn "目录不存在：$currentDir"
+                Write-Host "  1) 创建此目录"
+                Write-Host "  2) 输入其他路径"
+                Write-Host "  3) 取消"
+                $choice = Read-Host "请选择 [1/2/3]"
+                switch ($choice) {
+                    "1" {
+                        try {
+                            New-Item -ItemType Directory -Path $currentDir -Force | Out-Null
+                            Write-Info "已创建目录：$currentDir"
+                            $validatedDirs += $currentDir
+                            break
+                        } catch {
+                            Write-Err "创建目录失败：$currentDir，请检查权限。"
+                            continue
+                        }
+                    }
+                    "2" {
+                        $newDir = Read-Prompt "照片文件夹路径" ""
+                        if (-not [string]::IsNullOrWhiteSpace($newDir)) {
+                            $currentDir = $newDir.Trim().Trim('"', "'")
+                            continue
+                        }
+                    }
+                    default {
+                        Stop-Script "已取消。"
+                    }
+                }
+                break
             }
-            Write-Warn "Photo directory does not exist: $currentDir"
-            Write-Host "  1) Create this directory"
-            Write-Host "  2) Enter a different path"
-            Write-Host "  3) Abort"
-            $choice = Read-Host "Choose [1/2/3]"
-            switch ($choice) {
-                "1" {
-                    try {
-                        New-Item -ItemType Directory -Path $currentDir -Force | Out-Null
-                        Write-Info "Created directory: $currentDir"
-                        $validatedDirs += $currentDir
-                        break
-                    } catch {
-                        Write-Err "Failed to create directory: $currentDir. Please check permissions."
-                        continue
-                    }
+
+            # 询问是否继续添加
+            if (-not (Read-YesNo "是否继续添加其他照片文件夹？" "n")) {
+                break
+            }
+        }
+    } else {
+        # 命令行传入 -PhotoDir（逗号分隔兼容）
+        $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim().Trim('"', "'") }
+        foreach ($dir in $photoDirs) {
+            $currentDir = $dir
+            while ($true) {
+                if (Test-Path $currentDir) {
+                    $validatedDirs += $currentDir
+                    break
                 }
-                "2" {
-                    $newDir = Read-Prompt "Photo directory path" ""
-                    if (-not [string]::IsNullOrWhiteSpace($newDir)) {
-                        $currentDir = $newDir
-                        continue  # re-validate
-                    }
+                if ($Yes) {
+                    Write-Warn "照片目录不存在：$currentDir"
+                    Stop-Script "照片目录必须存在。请创建后或通过 -PhotoDir 指定有效路径。"
                 }
-                default {
-                    Stop-Script "Aborted."
+                Write-Warn "照片目录不存在：$currentDir"
+                Write-Host "  1) 创建此目录"
+                Write-Host "  2) 输入其他路径"
+                Write-Host "  3) 取消"
+                $choice = Read-Host "请选择 [1/2/3]"
+                switch ($choice) {
+                    "1" {
+                        try {
+                            New-Item -ItemType Directory -Path $currentDir -Force | Out-Null
+                            Write-Info "已创建目录：$currentDir"
+                            $validatedDirs += $currentDir
+                            break
+                        } catch {
+                            Write-Err "创建目录失败：$currentDir，请检查权限。"
+                            continue
+                        }
+                    }
+                    "2" {
+                        $newDir = Read-Prompt "照片文件夹路径" ""
+                        if (-not [string]::IsNullOrWhiteSpace($newDir)) {
+                            $currentDir = $newDir.Trim().Trim('"', "'")
+                            continue
+                        }
+                    }
+                    default {
+                        Stop-Script "已取消。"
+                    }
                 }
             }
         }
     }
 
-    # Rebuild PhotoDir from validated paths
     $script:PhotoDir = $validatedDirs -join ","
 
-    # Port checks
+    # 端口检查（自动分配，无需用户确认）
     $portPairs = @(
-        @{ Name = "Frontend";  Var = "FrontendPort";  Default = 8082 },
-        @{ Name = "Backend API"; Var = "ServerPort";  Default = 8800 },
-        @{ Name = "AI service";  Var = "AiPort";      Default = 8801 },
-        @{ Name = "PostgreSQL";  Var = "PostgresPort"; Default = 5532 }
+        @{ Name = "前端";      Var = "FrontendPort";  Default = 8082 },
+        @{ Name = "后端 API";  Var = "ServerPort";    Default = 8800 },
+        @{ Name = "AI 服务";   Var = "AiPort";        Default = 8801 },
+        @{ Name = "PostgreSQL"; Var = "PostgresPort";  Default = 5532 }
     )
 
     foreach ($pair in $portPairs) {
         $currentVal = Get-Variable $pair.Var -ValueOnly -Scope Script
         if (-not (Test-PortAvailable $currentVal)) {
             $suggested = Get-SuggestedPort $currentVal
-            Write-Warn "Port $($currentVal) is in use."
-            $newPort = [int](Read-Prompt "  Use port" $suggested)
-            Set-Variable $pair.Var $newPort -Scope Script
+            Write-Info "端口 $($currentVal) 已被占用，已自动分配新端口 $($suggested)。"
+            Set-Variable $pair.Var $suggested -Scope Script
         }
     }
 
-    # AI mode
+    # AI 模式
     if ($AiMode -eq "gpu") {
         if (-not (Test-GpuSupport)) {
-            Write-Warn "Falling back to CPU mode."
+            Write-Warn "将回退到 CPU 模式。"
             $script:AiMode = "cpu"
         }
     }
 }
 
-# ── File Generation ─────────────────────────────────────────────────────────
+# ── 文件生成 ──────────────────────────────────────────────────────────────────
 
 function Generate-EnvFile {
-    Write-Step "Generating .env file..."
+    Write-Step "生成 .env 配置文件..."
 
     $envContent = @"
-# TrailSnap Configuration — generated by install.ps1 v$ScriptVersion
+# TrailSnap 配置 — 由 install.ps1 v$ScriptVersion 生成
 # https://github.com/LC044/TrailSnap
 
-# Photo directory (comma-separated for multiple mounts)
+# 照片目录（逗号分隔，支持多个挂载点）
 PHOTO_DIR=$PhotoDir
 
-# Ports
+# 端口
 FRONTEND_PORT=$FrontendPort
 SERVER_PORT=$ServerPort
 AI_PORT=$AiPort
 POSTGRES_PORT=$PostgresPort
 
-# Timezone
+# 时区
 TZ=$Timezone
 
-# Docker image tag (latest or master)
+# Docker 镜像标签（latest 或 master）
 IMAGE_TAG=$Tag
 
-# AI mode: cpu or gpu
+# AI 模式：cpu 或 gpu
 AI_MODE=$AiMode
 
-# Database
+# 数据库
 POSTGRES_DB=$DefaultPgDb
 POSTGRES_USER=$DefaultPgUser
 POSTGRES_PASSWORD=$DefaultPgPassword
@@ -510,13 +672,12 @@ POSTGRES_PASSWORD=$DefaultPgPassword
 
     $envPath = Join-Path $script:InstallDir ".env"
     Set-Content -Path $envPath -Value $envContent -Encoding UTF8 -NoNewline
-    Write-Info "Created $envPath"
+    Write-Info "已创建 $envPath"
 }
 
 function Generate-ComposeFile {
-    Write-Step "Generating docker-compose.yml..."
+    Write-Step "生成 docker-compose.yml..."
 
-    # Build photo volume mounts
     $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() }
     $photoVolumes = @()
     $mountIndex = 1
@@ -530,7 +691,6 @@ function Generate-ComposeFile {
     }
     $photoVolumeStr = $photoVolumes -join "`n"
 
-    # GPU block
     $gpuBlock = ""
     $aiImageTag = '${IMAGE_TAG}'
     if ($AiMode -eq "gpu") {
@@ -624,10 +784,10 @@ networks:
 
     $composePath = Join-Path $script:InstallDir "docker-compose.yml"
     Set-Content -Path $composePath -Value $composeContent -Encoding UTF8 -NoNewline
-    Write-Info "Created $composePath"
+    Write-Info "已创建 $composePath"
 }
 
-# ── Health Check ─────────────────────────────────────────────────────────────
+# ── 健康检查 ──────────────────────────────────────────────────────────────────
 
 function Wait-ForService {
     param(
@@ -638,7 +798,7 @@ function Wait-ForService {
 
     $interval = 5
     $elapsed = 0
-    Write-Host -NoNewline "  Waiting for ${Name}..."
+    Write-Host -NoNewline "  等待 ${Name} 启动..."
 
     while ($elapsed -lt $TimeoutSeconds) {
         try {
@@ -654,14 +814,13 @@ function Wait-ForService {
         Write-Host -NoNewline "."
     }
 
-    Write-Host " FAILED" -ForegroundColor Red
+    Write-Host " 失败" -ForegroundColor Red
     return $false
 }
 
 function Test-HealthCheck {
-    Write-Step "Running health checks..."
+    Write-Step "运行健康检查..."
 
-    # Load env for ports
     $envFilePath = Join-Path $script:InstallDir ".env"
     if (Test-Path $envFilePath) {
         Get-Content $envFilePath | ForEach-Object {
@@ -673,15 +832,13 @@ function Test-HealthCheck {
 
     $failed = $false
 
-    # Postgres — check container health
-    $pgOk = Wait-ForService "postgres" {
+    $pgOk = Wait-ForService "PostgreSQL" {
         $status = docker inspect --format='{{.State.Health.Status}}' trailsnap-postgres 2>$null
         $status -match "healthy"
     } -TimeoutSeconds 60
     if (-not $pgOk) { $failed = $true }
 
-    # AI service
-    $aiOk = Wait-ForService "ai" {
+    $aiOk = Wait-ForService "AI 服务" {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:${AiPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
@@ -689,17 +846,15 @@ function Test-HealthCheck {
     } -TimeoutSeconds 90
     if (-not $aiOk) { $failed = $true }
 
-    # Server
-    $srvOk = Wait-ForService "server" {
+    $srvOk = Wait-ForService "后端" {
         try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:${ServerPort}/docs" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri "http://localhost:${ServerPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
     } -TimeoutSeconds 90
     if (-not $srvOk) { $failed = $true }
 
-    # Frontend
-    $feOk = Wait-ForService "frontend" {
+    $feOk = Wait-ForService "前端" {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:${FrontendPort}" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
@@ -709,26 +864,23 @@ function Test-HealthCheck {
 
     if ($failed) {
         Write-Host ""
-        Write-Err "Some services failed health checks."
-        Write-Info "Checking logs..."
+        Write-Err "部分服务健康检查失败。"
+        Write-Info "正在查看日志..."
         Push-Location $script:InstallDir
         Invoke-Compose "--env-file .env logs --tail=50"
         Pop-Location
         Write-Host ""
-        Write-Warn "You can check logs manually: cd ${script:InstallDir}; $($script:ComposeCmd) --env-file .env logs -f"
+        Write-Warn "手动查看日志：cd ${script:InstallDir}; $($script:ComposeCmd) --env-file .env logs -f"
         return $false
     }
 
     return $true
 }
 
-# ── Pull & Start ─────────────────────────────────────────────────────────────
+# ── 拉取与启动 ────────────────────────────────────────────────────────────────
 
 function Invoke-Compose {
     param([string]$Arguments)
-    # docker compose is a two-word command; & "docker compose" fails in PowerShell
-    # because it treats the whole string as one executable name.
-    # Split into command + args, then use & with the executable and pass args separately.
     $parts = $script:ComposeCmd -split ' ', 2
     $exe = $parts[0]
     $subArgs = if ($parts.Count -gt 1) { "$($parts[1]) $Arguments" } else { $Arguments }
@@ -736,16 +888,16 @@ function Invoke-Compose {
 }
 
 function Pull-Images {
-    Write-Step "Pulling Docker images..."
+    Write-Step "拉取 Docker 镜像（可能需要几分钟，如果拉取失败，请检查网络和 Docker 配置。）..."
     Push-Location $script:InstallDir
     try {
         Invoke-Compose "--env-file .env pull"
         if ($LASTEXITCODE -ne 0) {
-            Write-Err "Failed to pull images."
+            Write-Err "拉取镜像失败。"
             if (-not $ChinaMirrors) {
-                Write-Warn "If you are in China, try re-running with -ChinaMirrors flag."
+                Write-Warn "如果您在国内，请尝试添加 -ChinaMirrors 参数重新运行。"
             }
-            Stop-Script "Image pull failed. Please check your network and Docker configuration."
+            Stop-Script "镜像拉取失败，请检查网络和 Docker 配置。"
         }
     } finally {
         Pop-Location
@@ -753,60 +905,73 @@ function Pull-Images {
 }
 
 function Start-Services {
-    Write-Step "Starting services..."
+    Write-Step "启动服务..."
     Push-Location $script:InstallDir
     try {
         Invoke-Compose "--env-file .env up -d"
     } finally {
         Pop-Location
     }
-    Write-Info "Services started."
+    Write-Info "服务已启动。"
 }
 
-# ── Success Banner ───────────────────────────────────────────────────────────
+# ── 成功横幅 ──────────────────────────────────────────────────────────────────
 
 function Write-Success {
+    $lanIP = Get-LanIP
+
     Write-Host ""
     Write-Host "  =======================================================" -ForegroundColor Green
     Write-Host "" -ForegroundColor Green
-    Write-Host "        TrailSnap is now running!" -ForegroundColor Green
+    Write-Host "        TrailSnap (行影集) 安装成功！" -ForegroundColor Green
     Write-Host "" -ForegroundColor Green
     Write-Host "  =======================================================" -ForegroundColor Green
     Write-Host ""
-    Write-Host "  Frontend:     http://localhost:${FrontendPort}" -ForegroundColor White
-    Write-Host "  Backend API:  http://localhost:${ServerPort}/docs" -ForegroundColor White
-    Write-Host "  AI Service:   http://localhost:${AiPort}/docs" -ForegroundColor White
+    Write-Host "  访问地址：" -ForegroundColor Cyan
+    Write-Host "  💻 本机访问:  http://localhost:${FrontendPort}" -ForegroundColor White
+    if ($lanIP) {
+        Write-Host "  📱 手机访问:  http://${lanIP}:${FrontendPort}  (需连接同一 Wi-Fi)" -ForegroundColor White
+    }
     Write-Host ""
-    Write-Host "  Next steps:" -ForegroundColor Cyan
-    Write-Host "  1. Open the frontend URL in your browser"
-    Write-Host "  2. Go to More -> Settings -> External Library"
-    Write-Host "  3. Add /app/Photos/ to scan your photos"
+    Write-Host "  后端 API:  http://localhost:${ServerPort}/docs" -ForegroundColor Gray
+    Write-Host "  AI 服务:   http://localhost:${AiPort}/docs" -ForegroundColor Gray
     Write-Host ""
-    Write-Host "  Management commands (run in $($script:InstallDir)):" -ForegroundColor Cyan
-    Write-Host "    Stop:      $($script:ComposeCmd) --env-file .env down"
-    Write-Host "    Restart:   $($script:ComposeCmd) --env-file .env restart"
-    Write-Host "    Logs:      $($script:ComposeCmd) --env-file .env logs -f"
-    Write-Host "    Upgrade:   .\install.ps1 -Upgrade"
+    Write-Host "  下一步：" -ForegroundColor Cyan
+    Write-Host "  1. 在浏览器中打开上面的访问地址"
+    Write-Host "  2. 进入 更多 → 设置 → 外部图库"
+    Write-Host "  3. 添加 /app/Photos/ 以扫描照片"
     Write-Host ""
+    Write-Host "  管理命令（在 $($script:InstallDir) 目录下运行）：" -ForegroundColor Cyan
+    Write-Host "    停止:    $($script:ComposeCmd) --env-file .env down"
+    Write-Host "    重启:    $($script:ComposeCmd) --env-file .env restart"
+    Write-Host "    日志:    $($script:ComposeCmd) --env-file .env logs -f"
+    Write-Host "    升级:    .\install.ps1 -Upgrade"
+    Write-Host ""
+
+    # 删除可能存在的桌面快捷方式
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcutPath = Join-Path $desktopPath "继续安装 TrailSnap.bat"
+    if (Test-Path $shortcutPath) {
+        Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue
+        Write-Info "已清理桌面快捷方式。"
+    }
 }
 
-# ── Upgrade ──────────────────────────────────────────────────────────────────
+# ── 升级 ──────────────────────────────────────────────────────────────────────
 
 function Do-Upgrade {
-    Write-Step "Upgrading TrailSnap..."
+    Write-Step "正在升级 TrailSnap..."
 
     $envFilePath = Join-Path $script:InstallDir ".env"
     if (-not (Test-Path $envFilePath)) {
-        Stop-Script "No existing installation found at $($script:InstallDir). Run without -Upgrade to install."
+        Stop-Script "未在 $($script:InstallDir) 找到已安装的实例。请直接运行（不带 -Upgrade）来安装。"
     }
 
-    # Load existing config
     Get-Content $envFilePath | ForEach-Object {
         if ($_ -match "^([^#][^=]+)=(.*)$") {
             $key = $Matches[1].Trim()
             $value = $Matches[2].Trim()
             Set-Item -Path "env:$key" -Value $value
-            # Sync script variables
             switch ($key) {
                 "FRONTEND_PORT" { $script:FrontendPort = [int]$value }
                 "SERVER_PORT"   { $script:ServerPort = [int]$value }
@@ -820,13 +985,9 @@ function Do-Upgrade {
         }
     }
 
-    # Regenerate compose (template may have changed)
     Generate-ComposeFile
-
-    # Pull new images
     Pull-Images
 
-    # Recreate containers
     Push-Location $script:InstallDir
     try {
         Invoke-Compose "--env-file .env up -d --remove-orphans"
@@ -834,21 +995,20 @@ function Do-Upgrade {
         Pop-Location
     }
 
-    # Health check
     Test-HealthCheck | Out-Null
 
     Write-Success
-    Write-Info "Upgrade complete. Your .env configuration was preserved."
+    Write-Info "升级完成。您的 .env 配置已保留。"
 }
 
-# ── Uninstall ────────────────────────────────────────────────────────────────
+# ── 卸载 ──────────────────────────────────────────────────────────────────────
 
 function Do-Uninstall {
-    Write-Step "Uninstalling TrailSnap..."
+    Write-Step "正在卸载 TrailSnap..."
 
     $composePath = Join-Path $script:InstallDir "docker-compose.yml"
     if (-not (Test-Path $composePath)) {
-        Stop-Script "No installation found at $($script:InstallDir)."
+        Stop-Script "未在 $($script:InstallDir) 找到已安装的实例。"
     }
 
     Push-Location $script:InstallDir
@@ -857,72 +1017,72 @@ function Do-Uninstall {
     } finally {
         Pop-Location
     }
-    Write-Info "Containers stopped and removed."
+    Write-Info "容器已停止并移除。"
 
     if ($Purge) {
-        if (Read-YesNo "This will DELETE all data (database, models, uploads). Are you sure?" "n") {
+        if (Read-YesNo "这将删除所有数据（数据库、模型、上传文件）。确定吗？" "n") {
             Remove-Item -Path (Join-Path $script:InstallDir "pg_data") -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -Path (Join-Path $script:InstallDir "data") -Recurse -Force -ErrorAction SilentlyContinue
             Remove-Item -Path (Join-Path $script:InstallDir ".env") -Force -ErrorAction SilentlyContinue
             Remove-Item -Path (Join-Path $script:InstallDir "docker-compose.yml") -Force -ErrorAction SilentlyContinue
-            Write-Info "All data deleted."
+            Write-Info "所有数据已删除。"
         }
     } else {
-        Write-Info "Data directories preserved at $($script:InstallDir)/"
-        Write-Info "To delete data too, run: .\install.ps1 -Uninstall -Purge"
+        Write-Info "数据目录已保留在 $($script:InstallDir)/"
+        Write-Info "如需删除数据，请运行：.\install.ps1 -Uninstall -Purge"
     }
 
-    Write-Info "Uninstall complete."
+    Write-Info "卸载完成。"
 }
 
-# ── Usage ────────────────────────────────────────────────────────────────────
+# ── 使用帮助 ──────────────────────────────────────────────────────────────────
 
 function Write-Usage {
     Write-Host @"
-TrailSnap — One-Click Installation Script for Windows
+TrailSnap (行影集) — Windows 一键安装脚本
 
-Usage:
-  .\install.ps1 [OPTIONS]
+用法：
+  .\install.ps1 [选项]
 
-Options:
-  -PhotoDir <path>       Photo directory (comma-separated for multiple)
-  -InstallDir <path>     Installation directory (default: ~/trailsnap)
-  -FrontendPort <int>    Frontend port (default: 8082)
-  -ServerPort <int>      Backend API port (default: 8800)
-  -AiPort <int>          AI service port (default: 8801)
-  -PostgresPort <int>    PostgreSQL port (default: 5532)
-  -Timezone <tz>         Timezone (default: Asia/Shanghai)
-  -AiMode <cpu|gpu>      AI mode (default: cpu)
-  -Tag <latest|master>   Docker image tag (default: latest)
-  -ChinaMirrors          Configure China Docker registry mirrors
-  -Yes                   Non-interactive: accept all defaults
-  -Upgrade               Upgrade existing installation
-  -Uninstall             Uninstall TrailSnap
-  -Purge                 Delete all data (use with -Uninstall)
-  -Help                  Show this help message
+选项：
+  -PhotoDir <路径>       照片目录（逗号分隔支持多个）
+  -InstallDir <路径>     安装目录（默认：~/trailsnap）
+  -FrontendPort <端口>   前端端口（默认：8082）
+  -ServerPort <端口>     后端 API 端口（默认：8800）
+  -AiPort <端口>         AI 服务端口（默认：8801）
+  -PostgresPort <端口>   PostgreSQL 端口（默认：5532）
+  -Timezone <时区>       时区（默认：Asia/Shanghai）
+  -AiMode <cpu|gpu>      AI 模式（默认：cpu）
+  -Tag <latest|master>   Docker 镜像标签（默认：latest）
+  -ChinaMirrors          配置国内 Docker 镜像加速源
+  -Yes                   非交互模式：接受所有默认值
+  -Upgrade               升级已安装的实例
+  -Uninstall             卸载 TrailSnap
+  -Purge                 删除所有数据（与 -Uninstall 配合使用）
+  -Help                  显示此帮助信息
 
-Examples:
-  # Interactive install
+示例：
+  # 交互式安装
   .\install.ps1
 
-  # Non-interactive install with all options
+  # 非交互式安装
   .\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
 
-  # GPU mode
+  # GPU 模式
   .\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
 
-  # Upgrade
+  # 升级
   .\install.ps1 -Upgrade
 
-  # Uninstall (keep data)
+  # 卸载（保留数据）
   .\install.ps1 -Uninstall
 
-  # Uninstall (delete everything)
+  # 卸载（删除所有数据）
   .\install.ps1 -Uninstall -Purge
 "@
 }
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# ── 主流程 ────────────────────────────────────────────────────────────────────
 
 if ($Help) {
     Write-Usage
@@ -931,71 +1091,78 @@ if ($Help) {
 
 Write-Banner
 
-# Handle uninstall first
+# 处理卸载
 if ($Uninstall) {
     if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
-        $script:InstallDir = Read-Prompt "Installation directory" $DefaultInstallDir
+        $script:InstallDir = Read-Prompt "安装目录" $DefaultInstallDir
     }
     Do-Uninstall
     exit 0
 }
 
-# Set default install dir
+# 设置默认安装目录
 if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
     $script:InstallDir = $DefaultInstallDir
 }
 
-# Ensure Docker is available
+# 确保 Docker 可用
 Ensure-Docker
 
-# Handle upgrade
+# 处理升级
 if ($Upgrade) {
     Do-Upgrade
     exit 0
 }
 
-# Configure mirrors (for China)
+# 配置镜像源（国内用户）
 Configure-Mirrors
 
-# Check for existing installation
+# 检查硬件资源
+Test-Hardware
+
+# 检查是否已有安装
 $existingCompose = Join-Path $script:InstallDir "docker-compose.yml"
 if (Test-Path $existingCompose) {
-    Write-Warn "Existing installation found at $($script:InstallDir)."
-    if (Read-YesNo "Do you want to upgrade the existing installation?" "y") {
+    Write-Warn "在 $($script:InstallDir) 检测到已有安装。"
+    if (Read-YesNo "是否升级TrailSnap版本（y 升级/n 重新安装）？" "y") {
         Do-Upgrade
         exit 0
     } else {
-        if (-not (Read-YesNo "Reconfigure and reinstall? (Data will be preserved)" "n")) {
-            Stop-Script "Aborted."
+        if (-not (Read-YesNo "重新配置并安装？（数据将保留）" "n")) {
+            Stop-Script "已取消。"
         }
     }
 }
 
-# Collect configuration
+# 收集配置
 Collect-Config
 
-# Create install directory
+# 创建安装目录
 New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "pg_data") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "data") -Force | Out-Null
 
-# Generate configuration files
+# 生成配置文件
 Generate-EnvFile
 Generate-ComposeFile
 
-# Pull and start
+# 拉取并启动
 Pull-Images
 Start-Services
 
-# Health check
+# 健康检查
 if (Test-HealthCheck) {
     Write-Success
 } else {
     Write-Host ""
-    Write-Warn "Some services may need more time to start."
-    Write-Info "You can check status with: cd $($script:InstallDir); $($script:ComposeCmd) --env-file .env ps"
-    Write-Info "Or view logs with: cd $($script:InstallDir); $($script:ComposeCmd) --env-file .env logs -f"
+    Write-Warn "部分服务可能需要更多时间启动。"
+    Write-Info "查看状态：cd $($script:InstallDir); $($script:ComposeCmd) --env-file .env ps"
+    Write-Info "查看日志：cd $($script:InstallDir); $($script:ComposeCmd) --env-file .env logs -f"
     Write-Host ""
-    Write-Host "  Frontend:     http://localhost:${FrontendPort}" -ForegroundColor White
-    Write-Host "  Backend API:  http://localhost:${ServerPort}/docs" -ForegroundColor White
+    $lanIP = Get-LanIP
+    Write-Host "  前端:  http://localhost:${FrontendPort}" -ForegroundColor White
+    if ($lanIP) {
+        Write-Host "  手机:  http://${lanIP}:${FrontendPort}" -ForegroundColor White
+    }
+    Write-Host "  后端:  http://localhost:${ServerPort}/docs" -ForegroundColor White
 }

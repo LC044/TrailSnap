@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # =============================================================================
-# TrailSnap (行影集) — One-Click Installation Script
+# TrailSnap (行影集) — 一键安装脚本
 # https://github.com/LC044/TrailSnap
 #
-# Usage:
-#   Interactive:      ./install.sh
-#   Non-interactive:  ./install.sh --photo-dir /path/to/photos --china-mirrors --yes
-#   One-liner:        curl -fsSL https://trailsnap.cn/install.sh | bash
-#   Upgrade:          ./install.sh --upgrade
-#   Uninstall:        ./install.sh --uninstall [--purge]
+# 用法：
+#   交互式安装:    ./install.sh
+#   非交互式安装:  ./install.sh --photo-dir /path/to/photos --china-mirrors --yes
+#   一键安装:      curl -fsSL https://trailsnap.cn/install.sh | bash
+#   升级:          ./install.sh --upgrade
+#   卸载:          ./install.sh --uninstall [--purge]
 # =============================================================================
 
 set -euo pipefail
 
-# ── Constants ────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.0.0"
+# ── 常量 ──────────────────────────────────────────────────────────────────────
+SCRIPT_VERSION="1.1.0"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -33,16 +33,16 @@ CHINA_MIRRORS=(
   "https://dockerproxy.net"
 )
 
-# ── Colors ───────────────────────────────────────────────────────────────────
+# ── 颜色 ─────────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# ── Globals ──────────────────────────────────────────────────────────────────
+# ── 全局变量 ──────────────────────────────────────────────────────────────────
 OS=""
 ARCH=""
 COMPOSE_CMD=""
@@ -61,22 +61,22 @@ UPGRADE_FLAG=false
 UNINSTALL_FLAG=false
 PURGE_FLAG=false
 
-# ── Utility Functions ────────────────────────────────────────────────────────
+# ── 工具函数 ──────────────────────────────────────────────────────────────────
 
 print_banner() {
   echo -e "${CYAN}"
-  echo "  ╔═══════════════════════════════════════════════╗"
-  echo "  ║                                               ║"
-  echo "  ║       TrailSnap  行影集  — 一键安装           ║"
-  echo "  ║       AI-Powered Self-Hosted Photo Album      ║"
-  echo "  ║                                               ║"
-  echo "  ╚═══════════════════════════════════════════════╝"
+  echo "  +===============================================+"
+  echo "  |                                               |"
+  echo "  |       TrailSnap (行影集) — 一键安装           |"
+  echo "  |       AI 驱动的自托管相册                     |"
+  echo "  |                                               |"
+  echo "  +===============================================+"
   echo -e "${NC}"
 }
 
-info()    { echo -e "${GREEN}[INFO]${NC}  $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
-error()   { echo -e "${RED}[ERROR]${NC} $*"; }
+info()    { echo -e "${GREEN}[信息]${NC}  $*"; }
+warn()    { echo -e "${YELLOW}[警告]${NC}  $*"; }
+error()   { echo -e "${RED}[错误]${NC} $*"; }
 step()    { echo -e "${BLUE}==>${NC} ${BOLD}$*${NC}"; }
 
 die() {
@@ -111,10 +111,86 @@ prompt_yes_no() {
   [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]] && echo "y" || echo "n"
 }
 
-# ── OS Detection ─────────────────────────────────────────────────────────────
+# ── 获取局域网 IP ────────────────────────────────────────────────────────────
+
+get_lan_ip() {
+  local ip=""
+  # 尝试通过默认路由获取
+  if command -v ip &>/dev/null; then
+    # Linux: 获取默认路由接口的 IP
+    local iface
+    iface="$(ip route show default 2>/dev/null | awk '{print $5}' | head -1)"
+    if [[ -n "$iface" ]]; then
+      ip="$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet )\S+' | cut -d/ -f1 | head -1)"
+    fi
+  fi
+  # macOS 回退
+  if [[ -z "$ip" ]] && command -v ifconfig &>/dev/null; then
+    ip="$(ifconfig 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -1)"
+  fi
+  # 通用回退
+  if [[ -z "$ip" ]]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+  echo "$ip"
+}
+
+# ── 硬件预检 ──────────────────────────────────────────────────────────────────
+
+check_hardware() {
+  step "检查硬件资源..."
+
+  # 检查磁盘空间
+  local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+  local target_fs
+  target_fs="$(df --output=target "$target_dir" 2>/dev/null | tail -1 | xargs)" || \
+    target_fs="$(df "$target_dir" 2>/dev/null | tail -1 | awk '{print $6}')" || \
+    target_fs="/"
+
+  local free_kb
+  free_kb="$(df -k "$target_dir" 2>/dev/null | tail -1 | awk '{print $4}')"
+  if [[ -n "$free_kb" ]]; then
+    local free_gb=$((free_kb / 1024 / 1024))
+    if [[ $free_gb -lt 10 ]]; then
+      die "磁盘剩余空间仅 ${free_gb} GB，不足以安装 TrailSnap（至少需要 10 GB）。请清理磁盘空间后重试。"
+    elif [[ $free_gb -lt 15 ]]; then
+      warn "磁盘剩余空间 ${free_gb} GB，安装 TrailSnap（含 AI 镜像）可能需要 10-15 GB。"
+      warn "如果空间不足，可能导致下载失败。建议先清理磁盘。"
+      local answer
+      answer="$(prompt_yes_no "是否继续安装？" "n")"
+      [[ "$answer" != "y" ]] && die "已取消。"
+    else
+      info "磁盘剩余空间 ${free_gb} GB，满足安装要求。"
+    fi
+  else
+    warn "无法检测磁盘空间，跳过检查。"
+  fi
+
+  # 检查内存
+  local total_ram_mb
+  if [[ -f /proc/meminfo ]]; then
+    total_ram_mb="$(awk '/MemTotal/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null)"
+  elif command -v sysctl &>/dev/null; then
+    # macOS
+    total_ram_mb="$(sysctl -n hw.memsize 2>/dev/null | awk '{printf "%.0f", $1/1024/1024}')"
+  fi
+  if [[ -n "$total_ram_mb" ]]; then
+    local total_ram_gb=$((total_ram_mb / 1024))
+    if [[ $total_ram_gb -lt 4 ]]; then
+      warn "系统内存 ${total_ram_gb} GB，运行 AI 服务可能会卡顿。"
+      warn "建议至少 4 GB 内存。可以选择 CPU 模式（不启用 GPU 加速）。"
+    else
+      info "系统内存 ${total_ram_gb} GB，满足运行要求。"
+    fi
+  else
+    warn "无法检测系统内存，跳过检查。"
+  fi
+}
+
+# ── 操作系统检测 ─────────────────────────────────────────────────────────────
 
 detect_os() {
-  step "Detecting operating system..."
+  step "检测操作系统..."
   local uname_s
   uname_s="$(uname -s)"
 
@@ -127,17 +203,17 @@ detect_os() {
       OS="linux"
     fi
   else
-    die "Unsupported OS: $uname_s. This script supports Linux, macOS, and WSL2."
+    die "不支持的操作系统：$uname_s。本脚本支持 Linux、macOS 和 WSL2。"
   fi
 
   ARCH="$(uname -m)"
   [[ "$ARCH" == "x86_64" ]] && ARCH="amd64"
   [[ "$ARCH" == "aarch64" ]] && ARCH="arm64"
 
-  info "Detected: OS=${OS}, Arch=${ARCH}"
+  info "检测到：OS=${OS}, 架构=${ARCH}"
 }
 
-# ── Docker Detection & Installation ─────────────────────────────────────────
+# ── Docker 检测与安装 ─────────────────────────────────────────────────────────
 
 detect_docker() {
   if command -v docker &>/dev/null; then
@@ -147,12 +223,10 @@ detect_docker() {
 }
 
 detect_compose_cmd() {
-  # Docker Compose V2 plugin
   if docker compose version &>/dev/null 2>&1; then
     COMPOSE_CMD="docker compose"
     return 0
   fi
-  # Docker Compose V1 standalone
   if command -v docker-compose &>/dev/null; then
     COMPOSE_CMD="docker-compose"
     return 0
@@ -161,13 +235,12 @@ detect_compose_cmd() {
 }
 
 install_docker_linux() {
-  step "Installing Docker on Linux..."
+  step "在 Linux 上安装 Docker..."
 
   if [[ "$(id -u)" -ne 0 ]]; then
-    warn "Docker installation requires sudo."
+    warn "Docker 安装需要 sudo 权限。"
   fi
 
-  # Detect distro family
   if [[ -f /etc/debian_version ]] || grep -qi "debian\|ubuntu" /etc/os-release 2>/dev/null; then
     install_docker_debian
   elif [[ -f /etc/redhat-release ]] || grep -qi "rhel\|centos\|fedora" /etc/os-release 2>/dev/null; then
@@ -175,12 +248,12 @@ install_docker_linux() {
   elif command -v apt-get &>/dev/null; then
     install_docker_debian
   else
-    die "Cannot auto-install Docker on this distro. Please install Docker manually: https://docs.docker.com/get-docker/"
+    die "无法在此发行版上自动安装 Docker。请手动安装：https://docs.docker.com/get-docker/"
   fi
 }
 
 install_docker_debian() {
-  step "Installing Docker via apt (Debian/Ubuntu)..."
+  step "通过 apt 安装 Docker（Debian/Ubuntu）..."
   sudo apt-get update -qq
   sudo apt-get install -y -qq ca-certificates curl gnupg
 
@@ -201,11 +274,11 @@ install_docker_debian() {
   sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
   sudo systemctl enable --now docker
-  info "Docker installed successfully."
+  info "Docker 安装成功。"
 }
 
 install_docker_rhel() {
-  step "Installing Docker via dnf/yum (RHEL/CentOS/Fedora)..."
+  step "通过 dnf/yum 安装 Docker（RHEL/CentOS/Fedora）..."
   sudo dnf install -y dnf-utils || sudo yum install -y yum-utils
   sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo || \
     sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
@@ -214,63 +287,74 @@ install_docker_rhel() {
     sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
   sudo systemctl enable --now docker
-  info "Docker installed successfully."
+  info "Docker 安装成功。"
 }
 
 install_docker_macos() {
-  step "Installing Docker on macOS..."
+  step "在 macOS 上安装 Docker..."
   if command -v brew &>/dev/null; then
     brew install --cask docker
-    info "Docker Desktop installed via Homebrew. Please start it from Applications."
+    info "已通过 Homebrew 安装 Docker Desktop。请从应用程序中启动。"
   else
-    die "Homebrew not found. Please install Docker Desktop manually: https://docs.docker.com/desktop/install/mac-install/"
+    warn "未检测到 Homebrew。"
+    info "正在打开 Docker Desktop 下载页面..."
+    # 检测芯片架构选择下载链接
+    local docker_url
+    if [[ "$(uname -m)" == "arm64" ]]; then
+      docker_url="https://desktop.docker.com/mac/main/arm64/Docker.dmg"
+    else
+      docker_url="https://desktop.docker.com/mac/main/amd64/Docker.dmg"
+    fi
+    open "$docker_url" 2>/dev/null || \
+      info "请手动下载 Docker Desktop：$docker_url"
+    die "请安装 Docker Desktop 后重新运行本脚本。"
   fi
 }
 
 install_docker_wsl2() {
-  step "Setting up Docker for WSL2..."
+  step "为 WSL2 设置 Docker..."
   if command -v docker.exe &>/dev/null || command -v docker &>/dev/null; then
-    info "Docker detected. If it's Docker Desktop, make sure it's running."
+    info "检测到 Docker。如果是 Docker Desktop，请确保它正在运行。"
     return
   fi
-  die "Docker not found in WSL2. Please install Docker Desktop for Windows: https://docs.docker.com/desktop/install/windows-install/"
+  die "WSL2 中未找到 Docker。请安装 Docker Desktop for Windows：https://docs.docker.com/desktop/install/windows-install/"
 }
 
 ensure_docker() {
-  step "Checking Docker..."
+  step "检查 Docker..."
 
   if ! detect_docker; then
-    warn "Docker is not installed."
+    warn "Docker 未安装。"
     local answer
-    answer="$(prompt_yes_no "Do you want to install Docker automatically?" "y")"
+    answer="$(prompt_yes_no "是否自动安装 Docker？" "y")"
     if [[ "$answer" == "y" ]]; then
       case "$OS" in
         linux)  install_docker_linux ;;
         macos)  install_docker_macos ;;
         wsl2)   install_docker_wsl2 ;;
-        *)      die "Cannot auto-install Docker on $OS" ;;
+        *)      die "无法在 $OS 上自动安装 Docker" ;;
       esac
     else
-      die "Docker is required. Please install it manually: https://docs.docker.com/get-docker/"
+      die "Docker 是必需的。请手动安装：https://docs.docker.com/get-docker/"
     fi
   fi
 
-  # Add user to docker group on Linux
+  # Linux 上将用户加入 docker 组
   if [[ "$OS" == "linux" ]] && [[ "$(id -u)" -ne 0 ]] && ! groups "$(whoami)" | grep -q docker; then
-    info "Adding current user to docker group..."
+    info "正在将当前用户加入 docker 组..."
     sudo usermod -aG docker "$(whoami)" 2>/dev/null || true
-    warn "You may need to log out and log back in for the docker group to take effect."
-    warn "Or run: newgrp docker"
+    warn "您可能需要注销并重新登录才能使 docker 组生效。"
+    warn "或者运行：newgrp docker"
   fi
 
-  # Check Docker daemon is running
+  # 检查 Docker 守护进程
   if ! docker info &>/dev/null; then
-    warn "Docker daemon is not running."
+    warn "Docker 守护进程未运行。"
     if [[ "$OS" == "linux" ]]; then
-      info "Starting Docker daemon..."
-      sudo systemctl start docker || die "Failed to start Docker. Please start it manually."
+      info "正在启动 Docker 守护进程..."
+      sudo systemctl start docker || die "启动 Docker 失败。请手动启动。"
     elif [[ "$OS" == "macos" || "$OS" == "wsl2" ]]; then
-      info "Waiting for Docker Desktop to start..."
+      info "等待 Docker Desktop 启动..."
       local retries=0
       while ! docker info &>/dev/null && [[ $retries -lt 30 ]]; do
         sleep 2
@@ -279,30 +363,29 @@ ensure_docker() {
       done
       echo ""
       if ! docker info &>/dev/null; then
-        die "Docker Desktop is not responding. Please start it and re-run this script."
+        die "Docker Desktop 未响应。请启动后重新运行本脚本。"
       fi
     fi
   fi
 
-  info "Docker is running."
+  info "Docker 已运行。"
 
-  # Detect compose command
   if ! detect_compose_cmd; then
     if [[ "$OS" == "linux" ]]; then
-      warn "Docker Compose not found. Installing docker-compose-plugin..."
+      warn "未找到 Docker Compose。正在安装 docker-compose-plugin..."
       sudo apt-get install -y -qq docker-compose-plugin 2>/dev/null || \
         sudo dnf install -y -q docker-compose-plugin 2>/dev/null || \
-        die "Failed to install Docker Compose. Please install it manually."
+        die "安装 Docker Compose 失败。请手动安装。"
       COMPOSE_CMD="docker compose"
     else
-      die "Docker Compose not found. Please install it: https://docs.docker.com/compose/install/"
+      die "未找到 Docker Compose。请安装：https://docs.docker.com/compose/install/"
     fi
   fi
 
-  info "Using compose command: ${COMPOSE_CMD}"
+  info "Compose 命令：${COMPOSE_CMD}"
 }
 
-# ── China Mirrors ────────────────────────────────────────────────────────────
+# ── 国内镜像源 ────────────────────────────────────────────────────────────────
 
 test_mirror() {
   local mirror="$1"
@@ -310,21 +393,21 @@ test_mirror() {
 }
 
 configure_mirrors_linux() {
-  step "Configuring Docker registry mirrors for China..."
+  step "配置国内 Docker 镜像加速源..."
 
   local available_mirrors=()
   for mirror in "${CHINA_MIRRORS[@]}"; do
-    info "Testing mirror: ${mirror}..."
+    info "测试镜像源：${mirror}..."
     if test_mirror "$mirror"; then
       available_mirrors+=("\"$mirror\"")
-      info "  ✓ Available"
+      info "  ✓ 可用"
     else
-      warn "  ✗ Unreachable"
+      warn "  ✗ 不可达"
     fi
   done
 
   if [[ ${#available_mirrors[@]} -eq 0 ]]; then
-    warn "No mirrors are reachable. Skipping mirror configuration."
+    warn "没有可用的镜像源，跳过配置。"
     return
   fi
 
@@ -333,7 +416,6 @@ configure_mirrors_linux() {
 
   local daemon_json="/etc/docker/daemon.json"
   if [[ -f "$daemon_json" ]]; then
-    # Merge with existing config using python
     if command -v python3 &>/dev/null; then
       python3 -c "
 import json, sys
@@ -344,7 +426,6 @@ with open('$daemon_json', 'w') as f:
     json.dump(cfg, f, indent=2)
 "
     else
-      # Fallback: overwrite
       echo "{\"registry-mirrors\": [${mirrors_json}]}" | sudo tee "$daemon_json" >/dev/null
     fi
   else
@@ -352,13 +433,13 @@ with open('$daemon_json', 'w') as f:
   fi
 
   sudo systemctl restart docker
-  info "Docker mirrors configured and Docker restarted."
+  info "Docker 镜像源已配置，Docker 已重启。"
 }
 
 configure_mirrors() {
   if [[ "$CHINA_MIRRORS_FLAG" != true ]]; then
     local answer
-    answer="$(prompt_yes_no "是否配置国内 Docker 镜像加速源？(Configure China Docker mirror?)" "y")"
+    answer="$(prompt_yes_no "是否配置国内 Docker 镜像加速源？" "y")"
     [[ "$answer" != "y" ]] && return
   fi
 
@@ -370,7 +451,7 @@ configure_mirrors() {
       echo ""
       info "Docker Desktop 镜像源配置方法："
       info "  1. 打开 Docker Desktop → Settings → Docker Engine"
-      info "  2. 在 JSON 配置中添加："
+      info "  2. 在 JSON 配置中添加以下内容："
       echo ""
       echo '  {'
       echo '    "registry-mirrors": ['
@@ -383,13 +464,13 @@ configure_mirrors() {
       info "  3. 点击 Apply & Restart"
       echo ""
       local cont
-      cont="$(prompt_yes_no "配置完成后继续？(Continue after configuration?)" "y")"
+      cont="$(prompt_yes_no "配置完成后是否继续？" "y")"
       [[ "$cont" != "y" ]] && die "请配置镜像源后重新运行脚本。"
       ;;
   esac
 }
 
-# ── Port Check ───────────────────────────────────────────────────────────────
+# ── 端口检查（自动分配） ─────────────────────────────────────────────────────
 
 check_port_available() {
   local port="$1"
@@ -419,219 +500,288 @@ suggest_port() {
   echo "$((base_port + 1))"
 }
 
-# ── GPU Check ────────────────────────────────────────────────────────────────
+# ── GPU 检查 ──────────────────────────────────────────────────────────────────
 
 check_gpu_support() {
   if ! command -v nvidia-smi &>/dev/null; then
-    warn "nvidia-smi not found. GPU is not available."
+    warn "未检测到 nvidia-smi，GPU 不可用。"
     return 1
   fi
 
-  info "NVIDIA GPU detected:"
+  info "检测到 NVIDIA GPU："
   nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | while read -r line; do
     info "  - $line"
   done
 
-  # Check nvidia-container-toolkit
   if ! docker info 2>/dev/null | grep -q "nvidia"; then
-    warn "NVIDIA Container Toolkit not detected."
-    warn "GPU mode may not work. Install: https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+    warn "Docker 中未检测到 NVIDIA Container Toolkit。"
+    warn "GPU 模式可能无法使用。安装方法：https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
     local answer
-    answer="$(prompt_yes_no "Still use GPU mode?" "n")"
+    answer="$(prompt_yes_no "仍使用 GPU 模式？" "n")"
     [[ "$answer" != "y" ]] && return 1
   fi
 
   return 0
 }
 
-# ── Configuration Collection ────────────────────────────────────────────────
+# ── 配置收集 ──────────────────────────────────────────────────────────────────
 
 collect_config() {
-  step "Collecting configuration..."
+  step "收集配置信息..."
 
-  # Installation directory
+  # 安装目录
   if [[ -z "$INSTALL_DIR" || "$INSTALL_DIR" == "$DEFAULT_INSTALL_DIR" ]]; then
-    INSTALL_DIR="$(prompt_default "Installation directory" "$DEFAULT_INSTALL_DIR")"
+    INSTALL_DIR="$(prompt_default "安装目录" "$DEFAULT_INSTALL_DIR")"
   fi
-  # Validate install directory: if parent doesn't exist, ask to create or re-enter
   while true; do
     if [[ -d "$INSTALL_DIR" ]]; then
-      break  # exists, ok
+      break
     fi
     local install_parent
     install_parent="$(dirname "$INSTALL_DIR")"
     if [[ -d "$install_parent" ]]; then
-      # Parent exists, we can create the directory
       local answer
-      answer="$(prompt_yes_no "Installation directory does not exist: ${INSTALL_DIR}. Create it?" "y")"
+      answer="$(prompt_yes_no "安装目录不存在：${INSTALL_DIR}。是否创建？" "y")"
       if [[ "$answer" == "y" ]]; then
         if mkdir -p "$INSTALL_DIR" 2>/dev/null; then
-          info "Created directory: ${INSTALL_DIR}"
+          info "已创建目录：${INSTALL_DIR}"
           break
         else
-          error "Failed to create directory: ${INSTALL_DIR}"
+          error "创建目录失败：${INSTALL_DIR}"
           if [[ "$YES_FLAG" == true ]]; then
-            die "Cannot create installation directory. Please check permissions."
+            die "无法创建安装目录，请检查权限。"
           fi
         fi
       fi
     else
-      warn "Parent directory does not exist: ${install_parent}"
+      warn "父目录不存在：${install_parent}"
     fi
-    # Ask for a new path
     if [[ "$YES_FLAG" == true ]]; then
-      die "Installation directory does not exist and cannot be created: ${INSTALL_DIR}"
+      die "安装目录不存在且无法创建：${INSTALL_DIR}"
     fi
-    INSTALL_DIR="$(prompt_default "Installation directory" "$DEFAULT_INSTALL_DIR")"
+    INSTALL_DIR="$(prompt_default "安装目录" "$DEFAULT_INSTALL_DIR")"
   done
 
-  # Photo directory (required, no safe default)
+  # 照片目录（向导式循环输入）
+  local validated_photo_dirs=()
+
   if [[ -z "$PHOTO_DIR" ]]; then
+    # 交互式逐个输入
+    echo ""
+    info "请输入您的照片文件夹路径（一次一个，之后可以继续添加）。"
     while true; do
-      PHOTO_DIR="$(prompt_default "Photo directory path (comma-separated for multiple)" "")"
-      if [[ -z "$PHOTO_DIR" ]]; then
-        warn "Photo directory is required."
-        if [[ "$YES_FLAG" == true ]]; then
-          die "Photo directory must be specified with --photo-dir in non-interactive mode."
+      local input_dir
+      input_dir="$(prompt_default "照片文件夹路径" "")"
+      if [[ -z "$input_dir" ]]; then
+        if [[ ${#validated_photo_dirs[@]} -eq 0 ]]; then
+          warn "照片文件夹是必需的。"
+          if [[ "$YES_FLAG" == true ]]; then
+            die "非交互模式下必须通过 --photo-dir 指定照片目录。"
+          fi
+          continue
         fi
-        continue
+        break
       fi
-      break
+
+      # 去除引号和空格
+      local current_dir
+      current_dir="$(echo "$input_dir" | xargs)"
+      current_dir="${current_dir#\"}"
+      current_dir="${current_dir%\"}"
+      current_dir="${current_dir#\'}"
+      current_dir="${current_dir%\'}"
+
+      # 验证目录
+      while true; do
+        if [[ -d "$current_dir" ]]; then
+          validated_photo_dirs+=("$current_dir")
+          info "已添加：$current_dir"
+          break
+        fi
+        if [[ "$YES_FLAG" == true ]]; then
+          warn "照片目录不存在：$current_dir"
+          die "照片目录必须存在。请创建后或通过 --photo-dir 指定有效路径。"
+        fi
+        echo ""
+        warn "目录不存在：${current_dir}"
+        echo "  1) 创建此目录"
+        echo "  2) 输入其他路径"
+        echo "  3) 取消"
+        local choice
+        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice
+        case "${choice}" in
+          1)
+            if mkdir -p "$current_dir" 2>/dev/null; then
+              info "已创建目录：${current_dir}"
+              validated_photo_dirs+=("$current_dir")
+              break
+            else
+              error "创建目录失败：${current_dir}，请检查权限。"
+              continue
+            fi
+            ;;
+          2)
+            local new_dir
+            new_dir="$(prompt_default "照片文件夹路径" "")"
+            if [[ -n "$new_dir" ]]; then
+              new_dir="$(echo "$new_dir" | xargs)"
+              new_dir="${new_dir#\"}"
+              new_dir="${new_dir%\"}"
+              new_dir="${new_dir#\'}"
+              new_dir="${new_dir%\'}"
+              current_dir="$new_dir"
+              continue  # 重新验证
+            fi
+            ;;
+          3|*)
+            die "已取消。"
+            ;;
+        esac
+      done
+
+      # 询问是否继续添加
+      local more
+      more="$(prompt_yes_no "是否继续添加其他照片文件夹？" "n")"
+      [[ "$more" != "y" ]] && break
+    done
+  else
+    # 命令行传入 --photo-dir（逗号分隔兼容）
+    IFS=',' read -ra PHOTO_DIRS <<< "$PHOTO_DIR"
+    for dir in "${PHOTO_DIRS[@]}"; do
+      dir="$(echo "$dir" | xargs)"
+      dir="${dir#\"}"
+      dir="${dir%\"}"
+      dir="${dir#\'}"
+      dir="${dir%\'}"
+
+      while true; do
+        if [[ -d "$dir" ]]; then
+          validated_photo_dirs+=("$dir")
+          break
+        fi
+        if [[ "$YES_FLAG" == true ]]; then
+          warn "照片目录不存在：$dir"
+          die "照片目录必须存在。请创建后或通过 --photo-dir 指定有效路径。"
+        fi
+        echo ""
+        warn "目录不存在：${dir}"
+        echo "  1) 创建此目录"
+        echo "  2) 输入其他路径"
+        echo "  3) 取消"
+        local choice
+        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice
+        case "${choice}" in
+          1)
+            if mkdir -p "$dir" 2>/dev/null; then
+              info "已创建目录：${dir}"
+              validated_photo_dirs+=("$dir")
+              break
+            else
+              error "创建目录失败：${dir}，请检查权限。"
+              continue
+            fi
+            ;;
+          2)
+            local new_dir
+            new_dir="$(prompt_default "照片文件夹路径" "")"
+            if [[ -n "$new_dir" ]]; then
+              new_dir="$(echo "$new_dir" | xargs)"
+              new_dir="${new_dir#\"}"
+              new_dir="${new_dir%\"}"
+              new_dir="${new_dir#\'}"
+              new_dir="${new_dir%\'}"
+              dir="$new_dir"
+              continue
+            fi
+            ;;
+          3|*)
+            die "已取消。"
+            ;;
+        esac
+      done
     done
   fi
 
-  # Validate photo directories: if not exist, ask to create or re-enter
-  local validated_photo_dirs=()
-  IFS=',' read -ra PHOTO_DIRS <<< "$PHOTO_DIR"
-  for dir in "${PHOTO_DIRS[@]}"; do
-    dir="$(echo "$dir" | xargs)"  # trim whitespace
-    while true; do
-      if [[ -d "$dir" ]]; then
-        validated_photo_dirs+=("$dir")
-        break
-      fi
-      # Directory doesn't exist — ask what to do
-      if [[ "$YES_FLAG" == true ]]; then
-        warn "Photo directory does not exist: $dir"
-        die "Photo directory must exist. Please create it or specify a valid path with --photo-dir."
-      fi
-      echo ""
-      warn "Photo directory does not exist: ${dir}"
-      echo "  1) Create this directory"
-      echo "  2) Enter a different path"
-      echo "  3) Abort"
-      local choice
-      read -rp "$(printf '\033[0;36mChoose [1/2/3]: \033[0m')" choice
-      case "${choice}" in
-        1)
-          if mkdir -p "$dir" 2>/dev/null; then
-            info "Created directory: ${dir}"
-            validated_photo_dirs+=("$dir")
-            break
-          else
-            error "Failed to create directory: ${dir}. Please check permissions."
-            continue
-          fi
-          ;;
-        2)
-          local new_dir
-          new_dir="$(prompt_default "Photo directory path" "")"
-          if [[ -n "$new_dir" ]]; then
-            dir="$new_dir"
-            continue  # re-validate the new path
-          fi
-          ;;
-        3|*)
-          die "Aborted."
-          ;;
-      esac
-    done
-  done
-
-  # Rebuild PHOTO_DIR from validated paths
+  # 重建 PHOTO_DIR
   PHOTO_DIR=""
   for dir in "${validated_photo_dirs[@]}"; do
     [[ -n "$PHOTO_DIR" ]] && PHOTO_DIR+=","
     PHOTO_DIR+="$dir"
   done
 
-  # Ports
-  FRONTEND_PORT="$(prompt_default "Frontend port" "$DEFAULT_FRONTEND_PORT")"
-  SERVER_PORT="$(prompt_default "Backend API port" "$DEFAULT_SERVER_PORT")"
-  AI_PORT="$(prompt_default "AI service port" "$DEFAULT_AI_PORT")"
-  POSTGRES_PORT="$(prompt_default "PostgreSQL port" "$DEFAULT_POSTGRES_PORT")"
+  # 端口（自动分配，无需用户确认）
+  FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
+  SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
+  AI_PORT="${AI_PORT:-$DEFAULT_AI_PORT}"
+  POSTGRES_PORT="${POSTGRES_PORT:-$DEFAULT_POSTGRES_PORT}"
 
-  # Check ports
   for port_var in FRONTEND_PORT SERVER_PORT AI_PORT POSTGRES_PORT; do
     local port="${!port_var}"
     if ! check_port_available "$port"; then
       local suggested
       suggested="$(suggest_port "$port")"
-      warn "Port ${port} is in use."
-      local new_port
-      new_port="$(prompt_default "  Use port" "$suggested")"
-      eval "${port_var}=\"${new_port}\""
+      info "端口 ${port} 已被占用，已自动分配新端口 ${suggested}。"
+      eval "${port_var}=\"${suggested}\""
     fi
   done
 
-  # Timezone
-  TZ="$(prompt_default "Timezone" "$DEFAULT_TZ")"
+  # 时区
+  TZ="$(prompt_default "时区" "$DEFAULT_TZ")"
 
-  # AI mode
+  # AI 模式
   if [[ -z "$AI_MODE" ]]; then
-    AI_MODE="$(prompt_default "AI mode (cpu/gpu)" "$DEFAULT_AI_MODE")"
+    AI_MODE="$(prompt_default "AI 模式 (cpu/gpu)" "$DEFAULT_AI_MODE")"
   fi
   if [[ "$AI_MODE" == "gpu" ]]; then
     if ! check_gpu_support; then
-      warn "Falling back to CPU mode."
+      warn "将回退到 CPU 模式。"
       AI_MODE="cpu"
     fi
   fi
 
-  # Image tag
-  IMAGE_TAG="$(prompt_default "Image tag (latest/master)" "$DEFAULT_IMAGE_TAG")"
+  # 镜像标签
+  IMAGE_TAG="$(prompt_default "镜像标签 (latest/master)" "$DEFAULT_IMAGE_TAG")"
 }
 
-# ── File Generation ─────────────────────────────────────────────────────────
+# ── 文件生成 ──────────────────────────────────────────────────────────────────
 
 generate_env() {
-  step "Generating .env file..."
+  step "生成 .env 配置文件..."
   cat > "${INSTALL_DIR}/.env" << EOF
-# TrailSnap Configuration — generated by install.sh v${SCRIPT_VERSION}
+# TrailSnap 配置 — 由 install.sh v${SCRIPT_VERSION} 生成
 # https://github.com/LC044/TrailSnap
 
-# Photo directory (comma-separated for multiple mounts)
+# 照片目录（逗号分隔，支持多个挂载点）
 PHOTO_DIR=${PHOTO_DIR}
 
-# Ports
+# 端口
 FRONTEND_PORT=${FRONTEND_PORT}
 SERVER_PORT=${SERVER_PORT}
 AI_PORT=${AI_PORT}
 POSTGRES_PORT=${POSTGRES_PORT}
 
-# Timezone
+# 时区
 TZ=${TZ}
 
-# Docker image tag (latest or master)
+# Docker 镜像标签（latest 或 master）
 IMAGE_TAG=${IMAGE_TAG}
 
-# AI mode: cpu or gpu
+# AI 模式：cpu 或 gpu
 AI_MODE=${AI_MODE}
 
-# Database
+# 数据库
 POSTGRES_DB=${DEFAULT_PG_DB}
 POSTGRES_USER=${DEFAULT_PG_USER}
 POSTGRES_PASSWORD=${DEFAULT_PG_PASSWORD}
 EOF
 
   chmod 600 "${INSTALL_DIR}/.env"
-  info "Created ${INSTALL_DIR}/.env"
+  info "已创建 ${INSTALL_DIR}/.env"
 }
 
 generate_compose() {
-  step "Generating docker-compose.yml..."
+  step "生成 docker-compose.yml..."
 
-  # Build photo volume mounts
   local photo_volumes=""
   local mount_index=1
   IFS=',' read -ra PHOTO_DIRS <<< "$PHOTO_DIR"
@@ -645,7 +795,6 @@ generate_compose() {
     mount_index=$((mount_index + 1))
   done
 
-  # GPU block
   local gpu_block=""
   local ai_image_tag='${IMAGE_TAG}'
   if [[ "$AI_MODE" == "gpu" ]]; then
@@ -735,10 +884,10 @@ networks:
     driver: bridge
 COMPOSE_EOF
 
-  info "Created ${INSTALL_DIR}/docker-compose.yml"
+  info "已创建 ${INSTALL_DIR}/docker-compose.yml"
 }
 
-# ── Health Check ─────────────────────────────────────────────────────────────
+# ── 健康检查 ──────────────────────────────────────────────────────────────────
 
 wait_for_service() {
   local name="$1"
@@ -747,7 +896,7 @@ wait_for_service() {
   local interval=5
   local elapsed=0
 
-  echo -n "  Waiting for ${name}..."
+  echo -n "  等待 ${name} 启动..."
   while [[ $elapsed -lt $timeout ]]; do
     if eval "$test_cmd" &>/dev/null; then
       echo " ✓"
@@ -762,160 +911,156 @@ wait_for_service() {
 }
 
 health_check() {
-  step "Running health checks..."
+  step "运行健康检查..."
 
-  # Load env for ports
   source "${INSTALL_DIR}/.env" 2>/dev/null || true
 
   local failed=false
 
-  # Postgres — check container health
-  wait_for_service "postgres" \
+  wait_for_service "PostgreSQL" \
     "docker inspect --format='{{.State.Health.Status}}' trailsnap-postgres 2>/dev/null | grep -q healthy" \
     60 || failed=true
 
-  # AI service — check /health-check endpoint
-  wait_for_service "ai" \
+  wait_for_service "AI 服务" \
     "curl -sf http://localhost:${AI_PORT}/health-check" \
     90 || failed=true
 
-  # Server — check /docs endpoint
-  wait_for_service "server" \
-    "curl -sf http://localhost:${SERVER_PORT}/docs -o /dev/null" \
+  wait_for_service "后端" \
+    "curl -sf http://localhost:${SERVER_PORT}/health-check -o /dev/null" \
     90 || failed=true
 
-  # Frontend — check root endpoint
-  wait_for_service "frontend" \
+  wait_for_service "前端" \
     "curl -sf http://localhost:${FRONTEND_PORT} -o /dev/null" \
     60 || failed=true
 
   if [[ "$failed" == true ]]; then
     echo ""
-    error "Some services failed health checks."
-    info "Checking logs..."
+    error "部分服务健康检查失败。"
+    info "正在查看日志..."
     cd "$INSTALL_DIR"
     $COMPOSE_CMD --env-file .env logs --tail=50
     echo ""
-    warn "You can check logs manually: cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env logs -f"
+    warn "手动查看日志：cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env logs -f"
     return 1
   fi
 
   return 0
 }
 
-# ── Pull & Start ─────────────────────────────────────────────────────────────
+# ── 拉取与启动 ────────────────────────────────────────────────────────────────
 
 pull_images() {
-  step "Pulling Docker images..."
+  step "拉取 Docker 镜像（可能需要几分钟，如果拉取失败，请检查网络和 Docker 配置。）..."
   cd "$INSTALL_DIR"
   if ! $COMPOSE_CMD --env-file .env pull; then
-    error "Failed to pull images."
+    error "拉取镜像失败。"
     if [[ "$CHINA_MIRRORS_FLAG" != true ]]; then
-      warn "If you are in China, try re-running with --china-mirrors flag."
+      warn "如果您在国内，请尝试添加 --china-mirrors 参数重新运行。"
     fi
-    die "Image pull failed. Please check your network and Docker configuration."
+    die "镜像拉取失败，请检查网络和 Docker 配置。"
   fi
 }
 
 start_services() {
-  step "Starting services..."
+  step "启动服务..."
   cd "$INSTALL_DIR"
   $COMPOSE_CMD --env-file .env up -d
-  info "Services started."
+  info "服务已启动。"
 }
 
-# ── Success Banner ───────────────────────────────────────────────────────────
+# ── 成功横幅 ──────────────────────────────────────────────────────────────────
 
 print_success() {
   source "${INSTALL_DIR}/.env" 2>/dev/null || true
 
+  local lan_ip
+  lan_ip="$(get_lan_ip)"
+
   echo ""
-  echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
-  echo -e "${GREEN}║                                                       ║${NC}"
-  echo -e "${GREEN}║       🎉  TrailSnap (行影集) is now running!  🎉      ║${NC}"
-  echo -e "${GREEN}║                                                       ║${NC}"
-  echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
+  echo -e "${GREEN}+===========================================================+${NC}"
+  echo -e "${GREEN}|                                                           |${NC}"
+  echo -e "${GREEN}|       🎉  TrailSnap (行影集) 安装成功！ 🎉              |${NC}"
+  echo -e "${GREEN}|                                                           |${NC}"
+  echo -e "${GREEN}+===========================================================+${NC}"
   echo ""
-  echo -e "  ${BOLD}Frontend:${NC}     http://localhost:${FRONTEND_PORT}"
-  echo -e "  ${BOLD}Backend API:${NC}  http://localhost:${SERVER_PORT}/docs"
-  echo -e "  ${BOLD}AI Service:${NC}   http://localhost:${AI_PORT}/docs"
+  echo -e "  ${CYAN}访问地址：${NC}"
+  echo -e "  💻 本机访问:  http://localhost:${FRONTEND_PORT}"
+  if [[ -n "$lan_ip" ]]; then
+    echo -e "  📱 手机访问:  http://${lan_ip}:${FRONTEND_PORT}  (需连接同一 Wi-Fi)"
+  fi
   echo ""
-  echo -e "  ${CYAN}Next steps:${NC}"
-  echo "  1. Open the frontend URL in your browser"
-  echo "  2. Go to More → Settings → External Library"
-  echo "  3. Add /app/Photos/ to scan your photos"
+  echo -e "  ${GRAY}后端 API:  http://localhost:${SERVER_PORT}/docs${NC}"
+  echo -e "  ${GRAY}AI 服务:   http://localhost:${AI_PORT}/docs${NC}"
   echo ""
-  echo -e "  ${CYAN}Management commands (run in ${INSTALL_DIR}):${NC}"
-  echo "    Stop:      ${COMPOSE_CMD} --env-file .env down"
-  echo "    Restart:   ${COMPOSE_CMD} --env-file .env restart"
-  echo "    Logs:      ${COMPOSE_CMD} --env-file .env logs -f"
-  echo "    Upgrade:   ./install.sh --upgrade"
+  echo -e "  ${CYAN}下一步：${NC}"
+  echo "  1. 在浏览器中打开上面的访问地址"
+  echo "  2. 进入 更多 → 设置 → 外部图库"
+  echo "  3. 添加 /app/Photos/ 以扫描照片"
+  echo ""
+  echo -e "  ${CYAN}管理命令（在 ${INSTALL_DIR} 目录下运行）：${NC}"
+  echo "    停止:    ${COMPOSE_CMD} --env-file .env down"
+  echo "    重启:    ${COMPOSE_CMD} --env-file .env restart"
+  echo "    日志:    ${COMPOSE_CMD} --env-file .env logs -f"
+  echo "    升级:    ./install.sh --upgrade"
   echo ""
 }
 
-# ── Upgrade ──────────────────────────────────────────────────────────────────
+# ── 升级 ──────────────────────────────────────────────────────────────────────
 
 do_upgrade() {
-  step "Upgrading TrailSnap..."
+  step "正在升级 TrailSnap..."
 
   if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
-    die "No existing installation found at ${INSTALL_DIR}. Run without --upgrade to install."
+    die "未在 ${INSTALL_DIR} 找到已安装的实例。请直接运行（不带 --upgrade）来安装。"
   fi
 
-  # Source existing config
   source "${INSTALL_DIR}/.env" 2>/dev/null || true
 
-  # Regenerate compose (in case template changed)
   generate_compose
-
-  # Pull new images
   pull_images
 
-  # Recreate containers
   cd "$INSTALL_DIR"
   $COMPOSE_CMD --env-file .env up -d --remove-orphans
 
-  # Health check
   health_check
 
   print_success
-  info "Upgrade complete. Your .env configuration was preserved."
+  info "升级完成。您的 .env 配置已保留。"
 }
 
-# ── Uninstall ────────────────────────────────────────────────────────────────
+# ── 卸载 ──────────────────────────────────────────────────────────────────────
 
 do_uninstall() {
-  step "Uninstalling TrailSnap..."
+  step "正在卸载 TrailSnap..."
 
   if [[ ! -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
-    die "No installation found at ${INSTALL_DIR}."
+    die "未在 ${INSTALL_DIR} 找到已安装的实例。"
   fi
 
   cd "$INSTALL_DIR"
 
-  # Stop and remove containers
   $COMPOSE_CMD --env-file .env down 2>/dev/null || true
-  info "Containers stopped and removed."
+  info "容器已停止并移除。"
 
   if [[ "$PURGE_FLAG" == true ]]; then
     local answer
-    answer="$(prompt_yes_no "This will DELETE all data (database, models, uploads). Are you sure?" "n")"
+    answer="$(prompt_yes_no "这将删除所有数据（数据库、模型、上传文件）。确定吗？" "n")"
     if [[ "$answer" == "y" ]]; then
       rm -rf "${INSTALL_DIR}/pg_data"
       rm -rf "${INSTALL_DIR}/data"
       rm -f "${INSTALL_DIR}/.env"
       rm -f "${INSTALL_DIR}/docker-compose.yml"
-      info "All data deleted."
+      info "所有数据已删除。"
     fi
   else
-    info "Data directories preserved at ${INSTALL_DIR}/"
-    info "To delete data too, run: ./install.sh --uninstall --purge"
+    info "数据目录已保留在 ${INSTALL_DIR}/"
+    info "如需删除数据，请运行：./install.sh --uninstall --purge"
   fi
 
-  info "Uninstall complete."
+  info "卸载完成。"
 }
 
-# ── CLI Argument Parsing ─────────────────────────────────────────────────────
+# ── 命令行参数解析 ────────────────────────────────────────────────────────────
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
@@ -936,11 +1081,10 @@ parse_args() {
       --purge)           PURGE_FLAG=true; shift ;;
       --help|-h)         usage; exit 0 ;;
       --version|-v)      echo "install.sh v${SCRIPT_VERSION}"; exit 0 ;;
-      *)                 die "Unknown option: $1. Use --help for usage." ;;
+      *)                 die "未知选项：$1。使用 --help 查看帮助。" ;;
     esac
   done
 
-  # Set defaults for unset values
   INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
   FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
   SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
@@ -953,118 +1097,126 @@ parse_args() {
 
 usage() {
   cat << 'USAGE'
-TrailSnap (行影集) — One-Click Installation Script
+TrailSnap (行影集) — 一键安装脚本
 
-Usage:
-  ./install.sh [OPTIONS]
+用法：
+  ./install.sh [选项]
 
-Options:
-  --photo-dir PATH       Photo directory (comma-separated for multiple)
-  --install-dir PATH     Installation directory (default: ~/trailsnap)
-  --frontend-port PORT   Frontend port (default: 8082)
-  --server-port PORT     Backend API port (default: 8800)
-  --ai-port PORT         AI service port (default: 8801)
-  --postgres-port PORT   PostgreSQL port (default: 5532)
-  --timezone TZ          Timezone (default: Asia/Shanghai)
-  --ai-mode cpu|gpu      AI mode (default: cpu)
-  --tag latest|master    Docker image tag (default: latest)
-  --china-mirrors        Configure China Docker registry mirrors
-  --yes, -y              Non-interactive: accept all defaults
-  --upgrade              Upgrade existing installation
-  --uninstall            Uninstall TrailSnap
-  --purge                Delete all data (use with --uninstall)
-  --help, -h             Show this help message
-  --version, -v          Show version
+选项：
+  --photo-dir 路径       照片目录（逗号分隔支持多个）
+  --install-dir 路径     安装目录（默认：~/trailsnap）
+  --frontend-port 端口   前端端口（默认：8082）
+  --server-port 端口     后端 API 端口（默认：8800）
+  --ai-port 端口         AI 服务端口（默认：8801）
+  --postgres-port 端口   PostgreSQL 端口（默认：5532）
+  --timezone 时区        时区（默认：Asia/Shanghai）
+  --ai-mode cpu|gpu      AI 模式（默认：cpu）
+  --tag latest|master    Docker 镜像标签（默认：latest）
+  --china-mirrors        配置国内 Docker 镜像加速源
+  --yes, -y              非交互模式：接受所有默认值
+  --upgrade              升级已安装的实例
+  --uninstall            卸载 TrailSnap
+  --purge                删除所有数据（与 --uninstall 配合使用）
+  --help, -h             显示此帮助信息
+  --version, -v          显示版本号
 
-Examples:
-  # Interactive install
+示例：
+  # 交互式安装
   ./install.sh
 
-  # Non-interactive install with all options
+  # 非交互式安装
   ./install.sh --photo-dir /home/user/photos --china-mirrors --yes
 
-  # GPU mode
+  # GPU 模式
   ./install.sh --photo-dir /home/user/photos --ai-mode gpu
 
-  # Upgrade
+  # 升级
   ./install.sh --upgrade
 
-  # Uninstall (keep data)
+  # 卸载（保留数据）
   ./install.sh --uninstall
 
-  # Uninstall (delete everything)
+  # 卸载（删除所有数据）
   ./install.sh --uninstall --purge
 USAGE
 }
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# ── 主流程 ────────────────────────────────────────────────────────────────────
 
 main() {
   parse_args "$@"
   print_banner
 
-  # Handle uninstall first
+  # 处理卸载
   if [[ "$UNINSTALL_FLAG" == true ]]; then
     do_uninstall
     exit 0
   fi
 
-  # Detect OS
+  # 检测操作系统
   detect_os
 
-  # Ensure Docker is available
+  # 确保 Docker 可用
   ensure_docker
 
-  # Handle upgrade
+  # 处理升级
   if [[ "$UPGRADE_FLAG" == true ]]; then
     do_upgrade
     exit 0
   fi
 
-  # Configure mirrors (for China)
+  # 配置镜像源（国内用户）
   configure_mirrors
 
-  # Check for existing installation
+  # 硬件预检
+  check_hardware
+
+  # 检查是否已有安装
   if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
-    warn "Existing installation found at ${INSTALL_DIR}."
+    warn "在 ${INSTALL_DIR} 检测到已有安装。"
     local answer
-    answer="$(prompt_yes_no "Do you want to upgrade the existing installation?" "y")"
+    answer="$(prompt_yes_no "是否升级已有安装？" "y")"
     if [[ "$answer" == "y" ]]; then
       do_upgrade
       exit 0
     else
-      answer="$(prompt_yes_no "Reconfigure and reinstall? (Data will be preserved)" "n")"
-      [[ "$answer" != "y" ]] && die "Aborted."
+      answer="$(prompt_yes_no "重新配置并安装？（数据将保留）" "n")"
+      [[ "$answer" != "y" ]] && die "已取消。"
     fi
   fi
 
-  # Collect configuration
+  # 收集配置
   collect_config
 
-  # Create install directory
+  # 创建安装目录
   mkdir -p "$INSTALL_DIR"
   mkdir -p "${INSTALL_DIR}/pg_data"
   mkdir -p "${INSTALL_DIR}/data"
 
-  # Generate configuration files
+  # 生成配置文件
   generate_env
   generate_compose
 
-  # Pull and start
+  # 拉取并启动
   pull_images
   start_services
 
-  # Health check
+  # 健康检查
   if health_check; then
     print_success
   else
     echo ""
-    warn "Some services may need more time to start."
-    info "You can check status with: cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env ps"
-    info "Or view logs with: cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env logs -f"
+    warn "部分服务可能需要更多时间启动。"
+    info "查看状态：cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env ps"
+    info "查看日志：cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env logs -f"
     echo ""
-    echo -e "  Frontend:     http://localhost:${FRONTEND_PORT}"
-    echo -e "  Backend API:  http://localhost:${SERVER_PORT}/docs"
+    local lan_ip
+    lan_ip="$(get_lan_ip)"
+    echo -e "  前端:  http://localhost:${FRONTEND_PORT}"
+    if [[ -n "$lan_ip" ]]; then
+      echo -e "  手机:  http://${lan_ip}:${FRONTEND_PORT}"
+    fi
+    echo -e "  后端:  http://localhost:${SERVER_PORT}/docs"
   fi
 }
 

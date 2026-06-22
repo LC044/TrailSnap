@@ -138,6 +138,13 @@ app.add_middleware(
 def root():
     return {"message": "Image Manager Backend Ready"}
 
+@app.get("/health-check", tags=["System"])
+def health_check():
+    """
+    健康检测接口
+    """
+    return {"status": "ok", "message": "Service is running"}
+
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(agent_token.router, prefix="/tokens", tags=["Tokens"])
 app.include_router(user.router, prefix="/users", tags=["Users"])

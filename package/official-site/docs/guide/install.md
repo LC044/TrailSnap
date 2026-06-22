@@ -21,6 +21,27 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
 
 TrailSnap 提供了一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署，无需手动编写配置文件。
 
+#### Windows PowerShell
+
+如果首次使用可能需要重启计算机，才能完成安装，重启后请重新运行脚本。
+
+```powershell
+irm https://trailsnap.cn/install.ps1 | iex
+```
+
+或下载后运行：
+
+```powershell
+# 交互式安装（按提示操作）
+.\install.ps1
+
+# 非交互式安装（指定照片目录，使用国内镜像加速）
+.\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
+
+# 启用 GPU 加速
+.\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
+```
+
 #### Linux / macOS / WSL2
 
 ```bash
@@ -41,26 +62,6 @@ curl -fsSL https://trailsnap.cn/install.sh | bash
 
 # 指定自定义端口
 ./install.sh --photo-dir /home/user/photos --frontend-port 8082 --server-port 8800
-```
-
-#### Windows PowerShell
-
-```powershell
-# 一键在线安装
-irm https://trailsnap.cn/install.ps1 | iex
-```
-
-或下载后运行：
-
-```powershell
-# 交互式安装（按提示操作）
-.\install.ps1
-
-# 非交互式安装（指定照片目录，使用国内镜像加速）
-.\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
-
-# 启用 GPU 加速
-.\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
 ```
 
 #### 脚本功能

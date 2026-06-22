@@ -132,6 +132,14 @@ async def log_requests(request: Request, call_next):
         last_request_time = time.time()
 
 
+
+@app.get("/health-check", tags=["System"])
+def health_check():
+    """
+    健康检测接口
+    """
+    return {"status": "ok", "message": "Service is running"}
+
 # Include Routers
 app.include_router(system.router, tags=["System"])
 app.include_router(face.router, prefix="/face", tags=["Face Recognition"])
