@@ -26,7 +26,7 @@ TrailSnap 提供了一键安装脚本，自动完成 Docker 安装、镜像加�
 如果首次使用可能需要重启计算机，才能完成安装，重启后请重新运行脚本。
 
 ```powershell
-irm https://trailsnap.cn/install.ps1 | iex
+irm https://trailsnap.cn/install.ps1 -O install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 或下载后运行：

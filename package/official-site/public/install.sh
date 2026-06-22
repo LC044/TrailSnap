@@ -844,11 +844,13 @@ generate_compose() {
   for dir in "${PHOTO_DIRS[@]}"; do
     dir="$(echo "$dir" | xargs)"
     if [[ ${#PHOTO_DIRS[@]} -eq 1 ]]; then
-      photo_volumes+="      - ${dir}:/app/Photos/:ro"
+      photo_volumes+="      - \"${dir}:/app/Photos/:ro\""
     else
-      photo_volumes+="      - ${dir}:/app/Photos${mount_index}/:ro"
+      photo_volumes+="      - \"${dir}:/app/Photos${mount_index}/:ro\""
+      mount_index=$((mount_index + 1))
     fi
-    mount_index=$((mount_index + 1))
+    # 保证换行
+    photo_volumes+=$'\n'
   done
 
   local gpu_block=""

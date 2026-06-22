@@ -120,7 +120,7 @@ function Read-Prompt {
     }
     $display = if ($Default) { " [$Default]" } else { "" }
     $answer = Read-Host "${Prompt}${display}"
-    if ([string]::IsNullOrWhiteSpace($answer)) { $Default } else { $answer }
+    if ([string]::IsNullOrWhiteSpace($answer)) { return $Default } else { return $answer }
 }
 
 function Read-YesNo {
@@ -134,7 +134,7 @@ function Read-YesNo {
     $indicator = if ($Default -eq "y") { "Y/n" } else { "y/N" }
     $answer = Read-Host "${Prompt} [$indicator]"
     if ([string]::IsNullOrWhiteSpace($answer)) { $answer = $Default }
-    $answer -match "^[yY]"
+    return ($answer -match "^[yY]")
 }
 
 # ── 随机密码生成 ──────────────────────────────────────────────────────────────
@@ -237,7 +237,18 @@ function Test-Hardware {
 
 function Test-DockerInstalled {
     $cmd = Get-Command docker -ErrorAction SilentlyContinue
-    return ($null -ne $cmd)
+    if ($null -ne $cmd) {
+        return $true
+    }
+    
+    # 尝试在默认安装路径中查找（解决刚安装完未刷新环境变量的问题）
+    $defaultPath = "$env:ProgramFiles\Docker\Docker\resources\bin"
+    if (Test-Path "$defaultPath\docker.exe") {
+        $env:PATH += ";$defaultPath"
+        return $true
+    }
+    
+    return $false
 }
 
 function Test-DockerRunning {
@@ -753,10 +764,12 @@ function Generate-ComposeFile {
     $photoVolumes = @()
     $mountIndex = 1
     foreach ($dir in $photoDirs) {
+        # 处理 Windows 路径可能包含空格的问题，并在 Compose 中使用双引号包裹映射
+        $escapedDir = $dir -replace '\\', '\\' -replace '"', '\"'
         if ($photoDirs.Count -eq 1) {
-            $photoVolumes += "      - ${dir}:/app/Photos/:ro"
+            $photoVolumes += "      - `"${escapedDir}:/app/Photos/:ro`""
         } else {
-            $photoVolumes += "      - ${dir}:/app/Photos${mountIndex}/:ro"
+            $photoVolumes += "      - `"${escapedDir}:/app/Photos${mountIndex}/:ro`""
         }
         $mountIndex++
     }
