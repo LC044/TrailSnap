@@ -49,20 +49,20 @@ param(
 try {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $OutputEncoding = [System.Text.Encoding]::UTF8
-    # Windows 10 1903+ 支持 chcp 65001 切换代码页
     chcp 65001 > $null 2>&1
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.1.0"
+$ScriptVersion = "1.2.0"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
-$DefaultPgPassword = "trailsnap"
 
 # Promote param to script scope so functions can access it
 $script:InstallDir = $InstallDir
 $script:ComposeCmd = ""
+$script:LogFile = ""
+$script:PgPassword = ""
 
 $ChinaMirrorList = @(
     "https://docker.1ms.run",
@@ -106,6 +106,7 @@ function Write-Step {
 function Stop-Script {
     param([string]$Message)
     Write-Err $Message
+    Write-Log "FATAL: $Message"
     exit 1
 }
 
@@ -136,16 +137,33 @@ function Read-YesNo {
     $answer -match "^[yY]"
 }
 
+# ── 随机密码生成 ──────────────────────────────────────────────────────────────
+# 生成安全的随机数据库密码，避免硬编码默认密码
+function New-RandomPassword {
+    param([int]$Length = 16)
+    $chars = @(48..57) + @(65..90) + @(97..122) # 0-9, A-Z, a-z
+    -join ($chars | Get-Random -Count $Length | ForEach-Object { [char]$_ })
+}
+
+# ── 日志记录 ──────────────────────────────────────────────────────────────────
+# 同时写入控制台和日志文件，方便安装失败后排查
+function Write-Log {
+    param([string]$Message)
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logLine = "[$timestamp] $Message"
+    if ($script:LogFile -and (Test-Path (Split-Path $script:LogFile -Parent) -ErrorAction SilentlyContinue)) {
+        Add-Content -Path $script:LogFile -Value $logLine -Encoding UTF8
+    }
+}
+
 # ── 获取局域网 IP ────────────────────────────────────────────────────────────
 
 function Get-LanIP {
     try {
-        # 获取所有启用的 IPv4 地址，排除回环和自动配置地址
         $adapters = Get-NetIPAddress -AddressFamily IPv4 |
             Where-Object { $_.IPAddress -ne "127.0.0.1" -and $_.PrefixOrigin -ne "WellKnown" -and $_.SuffixOrigin -ne "Link" } |
             Sort-Object -Property InterfaceAlias
 
-        # 优先返回能上网的适配器（有默认网关的）
         $defaultGateway = Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty InterfaceIndex -Unique
 
@@ -154,7 +172,6 @@ function Get-LanIP {
             if ($ip) { return $ip }
         }
 
-        # 回退：返回第一个非回环地址
         $first = $adapters | Select-Object -First 1 -ExpandProperty IPAddress
         if ($first) { return $first }
     } catch {}
@@ -168,7 +185,12 @@ function Test-Hardware {
 
     # 检查磁盘空间
     $installDrive = if ($script:InstallDir) {
-        (Resolve-Path (Split-Path $script:InstallDir -Parent) -ErrorAction SilentlyContinue).Drive.Name
+        $resolvedParent = Split-Path $script:InstallDir -Parent
+        if (Test-Path $resolvedParent) {
+            (Resolve-Path $resolvedParent).Drive.Name
+        } else {
+            $env:SystemDrive.Substring(0,1)
+        }
     } else {
         $env:SystemDrive.Substring(0,1)
     }
@@ -190,6 +212,7 @@ function Test-Hardware {
         } else {
             Write-Info "磁盘 ${installDrive}: 剩余空间 ${freeGB} GB，满足安装要求。"
         }
+        Write-Log "硬件检查: 磁盘 ${installDrive}: ${freeGB} GB 可用"
     } catch {
         Write-Warn "无法检测磁盘空间，跳过检查。"
     }
@@ -204,6 +227,7 @@ function Test-Hardware {
         } else {
             Write-Info "系统内存 ${totalRAM_GB} GB，满足运行要求。"
         }
+        Write-Log "硬件检查: 内存 ${totalRAM_GB} GB"
     } catch {
         Write-Warn "无法检测系统内存，跳过检查。"
     }
@@ -256,7 +280,13 @@ function Install-DockerDesktop {
         Write-Host ""
         Write-Err "winget 不可用，无法自动安装 Docker Desktop。"
         Write-Info "正在打开 Docker Desktop 下载页面..."
-        Start-Process "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
+        # 检测系统架构，选择对应下载链接
+        $dockerUrl = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
+            "https://desktop.docker.com/win/main/arm64/Docker%20Desktop%20Installer.exe"
+        } else {
+            "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"
+        }
+        Start-Process $dockerUrl
         Write-Host ""
         Stop-Script "请安装 Docker Desktop 后重新运行本脚本。"
     }
@@ -264,8 +294,9 @@ function Install-DockerDesktop {
 
 function New-ResumeShortcut {
     # 在桌面创建"继续安装 TrailSnap"快捷方式
+    # 使用纯 ASCII 文本避免 bat 文件编码乱码问题
     $desktopPath = [Environment]::GetFolderPath("Desktop")
-    $shortcutPath = Join-Path $desktopPath "继续安装 TrailSnap.bat"
+    $shortcutPath = Join-Path $desktopPath "Continue-TrailSnap-Install.bat"
     $scriptPath = $PSCommandPath
     if (-not $scriptPath) {
         $scriptPath = $MyInvocation.PSCommandPath
@@ -276,45 +307,56 @@ function New-ResumeShortcut {
 chcp 65001 >nul 2>&1
 echo.
 echo   =============================================
-echo   ^|   继续安装 TrailSnap (行影集)            ^|
+echo   ^|   Continue TrailSnap Installation         ^|
 echo   =============================================
 echo.
 powershell -ExecutionPolicy Bypass -File "$scriptPath"
 del "%~f0"
 "@
     Set-Content -Path $shortcutPath -Value $batContent -Encoding ASCII
-    Write-Info "已在桌面创建快捷方式：继续安装 TrailSnap.bat"
+    Write-Info "已在桌面创建快捷方式：Continue-TrailSnap-Install.bat"
     Write-Info "重启电脑后双击桌面图标即可继续安装。"
     return $shortcutPath
 }
 
 function Ensure-WSL2 {
     Write-Step "检查 WSL2..."
+    # 使用 wsl --list --verbose 检查 WSL2 是否真正可用
+    $wslReady = $false
     try {
-        $wslStatus = wsl --status 2>&1
-        Write-Info "WSL2 已安装。"
-    } catch {
-        Write-Warn "WSL2 未安装。"
-        if (Read-YesNo "是否现在安装 WSL2？" "y") {
-            wsl --install --no-distribution
-            Write-Host ""
-            Write-Host "  +===========================================================+" -ForegroundColor Yellow
-            Write-Host "  |                                                           |" -ForegroundColor Yellow
-            Write-Host "  |   !! 需要重启电脑才能完成 WSL2 安装 !!                   |" -ForegroundColor Yellow
-            Write-Host "  |                                                           |" -ForegroundColor Yellow
-            Write-Host "  |   重启后，请双击桌面上的 `"继续安装 TrailSnap.bat`"        |" -ForegroundColor Yellow
-            Write-Host "  |   即可继续安装，无需再次手动运行脚本。                   |" -ForegroundColor Yellow
-            Write-Host "  |                                                           |" -ForegroundColor Yellow
-            Write-Host "  +===========================================================+" -ForegroundColor Yellow
-            Write-Host ""
-
-            # 创建桌面快捷方式
-            New-ResumeShortcut
-
-            Stop-Script "请重启电脑后，双击桌面上的「继续安装 TrailSnap.bat」继续安装。"
-        } else {
-            Stop-Script "WSL2 是 Docker Desktop 在 Windows 上的必需组件。"
+        $wslList = wsl --list --verbose 2>&1
+        # 如果 wsl 命令执行成功，并且输出不包含提示安装的消息，就认为可用
+        if ($LASTEXITCODE -eq 0 -and $wslList -notmatch "has no installed distributions|wsl --install") {
+            $wslReady = $true
         }
+    } catch {}
+
+    if ($wslReady) {
+        Write-Info "WSL2 已安装且可用。"
+        return
+    }
+
+    # WSL2 未安装或不可用
+    Write-Warn "WSL2 未安装或未完成配置。"
+    if (Read-YesNo "是否现在安装 WSL2？" "y") {
+        wsl --install --no-distribution
+        Write-Host ""
+        Write-Host "  +===========================================================+" -ForegroundColor Yellow
+        Write-Host "  |                                                           |" -ForegroundColor Yellow
+        Write-Host "  |   !! 需要重启电脑才能完成 WSL2 安装 !!                   |" -ForegroundColor Yellow
+        Write-Host "  |                                                           |" -ForegroundColor Yellow
+        Write-Host "  |   重启后，请双击桌面上的 Continue-TrailSnap-Install.bat  |" -ForegroundColor Yellow
+        Write-Host "  |   即可继续安装，无需再次手动运行脚本。                   |" -ForegroundColor Yellow
+        Write-Host "  |                                                           |" -ForegroundColor Yellow
+        Write-Host "  +===========================================================+" -ForegroundColor Yellow
+        Write-Host ""
+
+        # 创建桌面快捷方式
+        New-ResumeShortcut
+
+        Stop-Script "请重启电脑后，双击桌面上的 Continue-TrailSnap-Install.bat 继续安装。"
+    } else {
+        Stop-Script "WSL2 是 Docker Desktop 在 Windows 上的必需组件。"
     }
 }
 
@@ -367,6 +409,7 @@ function Ensure-Docker {
     }
 
     Write-Info "Docker 已运行。"
+    Write-Log "Docker 检查通过"
 
     $script:ComposeCmd = Get-ComposeCmd
     if (-not $script:ComposeCmd) {
@@ -439,7 +482,7 @@ function Configure-Mirrors {
     Write-Step "配置 Docker 镜像加速源..."
     Write-Host ""
     Write-Info "Docker Desktop 镜像源配置方法（以下步骤需要手动操作）："
-    Write-Info "  1. 打开 Docker Desktop → Settings → Docker Engine"
+    Write-Info "  1. 打开 Docker Desktop -> Settings -> Docker Engine"
     Write-Info "  2. 在 JSON 配置中添加以下内容："
     Write-Host ""
     Write-Host "  {" -ForegroundColor White
@@ -456,6 +499,7 @@ function Configure-Mirrors {
     if (-not (Read-YesNo "配置完成后是否继续？" "y")) {
         Stop-Script "请配置镜像源后重新运行脚本。"
     }
+    Write-Log "镜像源配置完成"
 }
 
 # ── 配置收集 ──────────────────────────────────────────────────────────────────
@@ -635,6 +679,32 @@ function Collect-Config {
             $script:AiMode = "cpu"
         }
     }
+
+    # 设置日志文件路径（安装目录已确定）
+    $script:LogFile = Join-Path $script:InstallDir "install.log"
+}
+
+# ── 安装前确认摘要 ────────────────────────────────────────────────────────────
+
+function Show-ConfirmSummary {
+    Write-Host ""
+    Write-Host "  ┌─────────────────────────────────────────────┐" -ForegroundColor Cyan
+    Write-Host "  │          安装配置确认                        │" -ForegroundColor Cyan
+    Write-Host "  ├─────────────────────────────────────────────┤" -ForegroundColor Cyan
+    Write-Host "  │  安装目录:  $($script:InstallDir)" -ForegroundColor White
+    $photoDisplay = $script:PhotoDir -replace ",", ", "
+    Write-Host "  │  照片目录:  $photoDisplay" -ForegroundColor White
+    Write-Host "  │  前端端口:  $FrontendPort" -ForegroundColor White
+    Write-Host "  │  AI 模式:   $AiMode" -ForegroundColor White
+    Write-Host "  │  数据库密码: $script:PgPassword" -ForegroundColor White
+    Write-Host "  │              （请妥善保管，升级时自动保留）  " -ForegroundColor Gray
+    Write-Host "  └─────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Write-Host ""
+
+    if (-not (Read-YesNo "确认以上配置无误，开始安装？" "y")) {
+        Stop-Script "已取消。"
+    }
+    Write-Log "用户确认安装配置"
 }
 
 # ── 文件生成 ──────────────────────────────────────────────────────────────────
@@ -647,7 +717,7 @@ function Generate-EnvFile {
 # https://github.com/LC044/TrailSnap
 
 # 照片目录（逗号分隔，支持多个挂载点）
-PHOTO_DIR=$PhotoDir
+PHOTO_DIR="$PhotoDir"
 
 # 端口
 FRONTEND_PORT=$FrontendPort
@@ -656,23 +726,24 @@ AI_PORT=$AiPort
 POSTGRES_PORT=$PostgresPort
 
 # 时区
-TZ=$Timezone
+TZ="$Timezone"
 
 # Docker 镜像标签（latest 或 master）
-IMAGE_TAG=$Tag
+IMAGE_TAG="$Tag"
 
 # AI 模式：cpu 或 gpu
-AI_MODE=$AiMode
+AI_MODE="$AiMode"
 
 # 数据库
-POSTGRES_DB=$DefaultPgDb
-POSTGRES_USER=$DefaultPgUser
-POSTGRES_PASSWORD=$DefaultPgPassword
+POSTGRES_DB="$DefaultPgDb"
+POSTGRES_USER="$DefaultPgUser"
+POSTGRES_PASSWORD="$($script:PgPassword)"
 "@
 
     $envPath = Join-Path $script:InstallDir ".env"
     Set-Content -Path $envPath -Value $envContent -Encoding UTF8 -NoNewline
     Write-Info "已创建 $envPath"
+    Write-Log "已生成 .env 配置文件"
 }
 
 function Generate-ComposeFile {
@@ -785,6 +856,7 @@ networks:
     $composePath = Join-Path $script:InstallDir "docker-compose.yml"
     Set-Content -Path $composePath -Value $composeContent -Encoding UTF8 -NoNewline
     Write-Info "已创建 $composePath"
+    Write-Log "已生成 docker-compose.yml"
 }
 
 # ── 健康检查 ──────────────────────────────────────────────────────────────────
@@ -871,9 +943,11 @@ function Test-HealthCheck {
         Pop-Location
         Write-Host ""
         Write-Warn "手动查看日志：cd ${script:InstallDir}; $($script:ComposeCmd) --env-file .env logs -f"
+        Write-Log "健康检查: 部分服务失败"
         return $false
     }
 
+    Write-Log "健康检查: 全部通过"
     return $true
 }
 
@@ -881,14 +955,15 @@ function Test-HealthCheck {
 
 function Invoke-Compose {
     param([string]$Arguments)
-    $parts = $script:ComposeCmd -split ' ', 2
-    $exe = $parts[0]
-    $subArgs = if ($parts.Count -gt 1) { "$($parts[1]) $Arguments" } else { $Arguments }
-    & $exe $subArgs.Split(' ')
+    # 使用 Invoke-Expression 避免手动按空格拆分参数导致路径含空格时出错
+    Invoke-Expression "$($script:ComposeCmd) $Arguments"
 }
 
 function Pull-Images {
     Write-Step "拉取 Docker 镜像（可能需要几分钟，如果拉取失败，请检查网络和 Docker 配置。）..."
+    if (-not $ChinaMirrors) {
+        Write-Info "提示：如果您在中国大陆地区，镜像拉取慢，可取消安装并添加 -ChinaMirrors 参数重新运行"
+    }
     Push-Location $script:InstallDir
     try {
         Invoke-Compose "--env-file .env pull"
@@ -902,6 +977,7 @@ function Pull-Images {
     } finally {
         Pop-Location
     }
+    Write-Log "Docker 镜像拉取完成"
 }
 
 function Start-Services {
@@ -913,19 +989,13 @@ function Start-Services {
         Pop-Location
     }
     Write-Info "服务已启动。"
+    Write-Log "Docker 服务已启动"
 }
 
 # ── 成功横幅 ──────────────────────────────────────────────────────────────────
 
-function Write-Success {
+function Show-ServiceUrls {
     $lanIP = Get-LanIP
-
-    Write-Host ""
-    Write-Host "  =======================================================" -ForegroundColor Green
-    Write-Host "" -ForegroundColor Green
-    Write-Host "        TrailSnap (行影集) 安装成功！" -ForegroundColor Green
-    Write-Host "" -ForegroundColor Green
-    Write-Host "  =======================================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  访问地址：" -ForegroundColor Cyan
     Write-Host "  💻 本机访问:  http://localhost:${FrontendPort}" -ForegroundColor White
@@ -936,6 +1006,18 @@ function Write-Success {
     Write-Host "  后端 API:  http://localhost:${ServerPort}/docs" -ForegroundColor Gray
     Write-Host "  AI 服务:   http://localhost:${AiPort}/docs" -ForegroundColor Gray
     Write-Host ""
+}
+
+function Write-Success {
+    Write-Host ""
+    Write-Host "  =======================================================" -ForegroundColor Green
+    Write-Host "" -ForegroundColor Green
+    Write-Host "        TrailSnap (行影集) 安装成功！" -ForegroundColor Green
+    Write-Host "" -ForegroundColor Green
+    Write-Host "  =======================================================" -ForegroundColor Green
+    
+    Show-ServiceUrls
+    
     Write-Host "  下一步：" -ForegroundColor Cyan
     Write-Host "  1. 在浏览器中打开上面的访问地址"
     Write-Host "  2. 进入 更多 → 设置 → 外部图库"
@@ -950,11 +1032,21 @@ function Write-Success {
 
     # 删除可能存在的桌面快捷方式
     $desktopPath = [Environment]::GetFolderPath("Desktop")
-    $shortcutPath = Join-Path $desktopPath "继续安装 TrailSnap.bat"
+    $shortcutPath = Join-Path $desktopPath "Continue-TrailSnap-Install.bat"
     if (Test-Path $shortcutPath) {
         Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue
         Write-Info "已清理桌面快捷方式。"
     }
+
+    # 自动打开浏览器
+    Write-Info "正在打开浏览器..."
+    try {
+        Start-Process "http://localhost:${FrontendPort}"
+    } catch {
+        Write-Warn "无法自动打开浏览器，请手动访问 http://localhost:${FrontendPort}"
+    }
+
+    Write-Log "安装成功完成"
 }
 
 # ── 升级 ──────────────────────────────────────────────────────────────────────
@@ -967,23 +1059,29 @@ function Do-Upgrade {
         Stop-Script "未在 $($script:InstallDir) 找到已安装的实例。请直接运行（不带 -Upgrade）来安装。"
     }
 
+    # 设置日志文件
+    $script:LogFile = Join-Path $script:InstallDir "install.log"
+
     Get-Content $envFilePath | ForEach-Object {
         if ($_ -match "^([^#][^=]+)=(.*)$") {
             $key = $Matches[1].Trim()
-            $value = $Matches[2].Trim()
+            $value = $Matches[2].Trim().Trim('"')
             Set-Item -Path "env:$key" -Value $value
             switch ($key) {
-                "FRONTEND_PORT" { $script:FrontendPort = [int]$value }
-                "SERVER_PORT"   { $script:ServerPort = [int]$value }
-                "AI_PORT"       { $script:AiPort = [int]$value }
-                "POSTGRES_PORT" { $script:PostgresPort = [int]$value }
-                "TZ"            { $script:Timezone = $value }
-                "IMAGE_TAG"     { $script:Tag = $value }
-                "AI_MODE"       { $script:AiMode = $value }
-                "PHOTO_DIR"     { $script:PhotoDir = $value }
+                "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
+                "SERVER_PORT"     { $script:ServerPort = [int]$value }
+                "AI_PORT"         { $script:AiPort = [int]$value }
+                "POSTGRES_PORT"   { $script:PostgresPort = [int]$value }
+                "TZ"              { $script:Timezone = $value }
+                "IMAGE_TAG"       { $script:Tag = $value }
+                "AI_MODE"         { $script:AiMode = $value }
+                "PHOTO_DIR"       { $script:PhotoDir = $value }
+                "POSTGRES_PASSWORD" { $script:PgPassword = $value }
             }
         }
     }
+
+    Write-Log "开始升级，保留现有配置"
 
     Generate-ComposeFile
     Pull-Images
@@ -1033,6 +1131,9 @@ function Do-Uninstall {
     }
 
     Write-Info "卸载完成。"
+    if ($script:LogFile -and (Test-Path $script:LogFile)) {
+        Write-Log "卸载完成"
+    }
 }
 
 # ── 使用帮助 ──────────────────────────────────────────────────────────────────
@@ -1091,11 +1192,17 @@ if ($Help) {
 
 Write-Banner
 
+# 生成随机数据库密码
+$script:PgPassword = New-RandomPassword
+
+Write-Log "TrailSnap 安装脚本 v$ScriptVersion 启动"
+
 # 处理卸载
 if ($Uninstall) {
     if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
         $script:InstallDir = Read-Prompt "安装目录" $DefaultInstallDir
     }
+    $script:LogFile = Join-Path $script:InstallDir "install.log"
     Do-Uninstall
     exit 0
 }
@@ -1103,6 +1210,123 @@ if ($Uninstall) {
 # 设置默认安装目录
 if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
     $script:InstallDir = $DefaultInstallDir
+}
+
+# 检查是否已有安装
+$existingCompose = Join-Path $script:InstallDir "docker-compose.yml"
+if (Test-Path $existingCompose) {
+    # 如果找到了配置文件，先解析它以获取端口等信息
+    $envFilePath = Join-Path $script:InstallDir ".env"
+    if (Test-Path $envFilePath) {
+        Get-Content $envFilePath | ForEach-Object {
+            if ($_ -match "^([^#][^=]+)=(.*)$") {
+                $key = $Matches[1].Trim()
+                $value = $Matches[2].Trim().Trim('"')
+                Set-Item -Path "env:$key" -Value $value
+                switch ($key) {
+                    "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
+                    "SERVER_PORT"     { $script:ServerPort = [int]$value }
+                    "AI_PORT"         { $script:AiPort = [int]$value }
+                }
+            }
+        }
+    }
+
+    $isServiceRunning = $false
+    # 尝试检测服务状态（这需要 Docker，如果不在此处调用 docker 命令则可以简化）
+    try {
+        $dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
+        if ($dockerCmd) {
+            Push-Location $script:InstallDir
+            $psOutput = docker compose --env-file .env ps -q 2>$null
+            if (-not [string]::IsNullOrWhiteSpace($psOutput)) {
+                $isServiceRunning = $true
+            }
+            Pop-Location
+        }
+    } catch {}
+
+    Write-Warn "在 $($script:InstallDir) 检测到已有安装。"
+    Write-Host "请选择操作："
+    Write-Host "  1) 升级到最新版本"
+    Write-Host "  2) 重新安装"
+    Write-Host "  3) 卸载（保留照片和数据）"
+    Write-Host "  4) 卸载（保留照片，删除其他数据）"
+    if ($isServiceRunning) {
+        Write-Host "  5) 关闭服务"
+        Write-Host "  6) 重启服务"
+    } else {
+        Write-Host "  5) 启动服务"
+    }
+    Write-Host "  0) 退出"
+    
+    $choice = Read-Host "请选择 [0-6]"
+    switch ($choice) {
+        "1" {
+            Ensure-Docker
+            Do-Upgrade
+            exit 0
+        }
+        "2" {
+            # 继续执行重新安装流程
+        }
+        "3" {
+            Ensure-Docker
+            $Purge = $false
+            Do-Uninstall
+            exit 0
+        }
+        "4" {
+            Ensure-Docker
+            $Purge = $true
+            Do-Uninstall
+            exit 0
+        }
+        "5" {
+            Ensure-Docker
+            if ($isServiceRunning) {
+                Push-Location $script:InstallDir
+                try {
+                    Invoke-Compose "--env-file .env down"
+                } finally {
+                    Pop-Location
+                }
+                Write-Info "服务已关闭。"
+            } else {
+                Push-Location $script:InstallDir
+                try {
+                    Invoke-Compose "--env-file .env up -d"
+                } finally {
+                    Pop-Location
+                }
+                Write-Info "服务已启动。"
+                Show-ServiceUrls
+            }
+            exit 0
+        }
+        "6" {
+            Ensure-Docker
+            if ($isServiceRunning) {
+                Push-Location $script:InstallDir
+                try {
+                    Invoke-Compose "--env-file .env restart"
+                } finally {
+                    Pop-Location
+                }
+                Write-Info "服务已重启。"
+                Show-ServiceUrls
+                exit 0
+            } else {
+                Stop-Script "无效选择。"
+            }
+        }
+        "0" {
+            Stop-Script "已退出。"
+        }
+        default {
+            Stop-Script "无效选择。"
+        }
+    }
 }
 
 # 确保 Docker 可用
@@ -1114,33 +1338,16 @@ if ($Upgrade) {
     exit 0
 }
 
-# 配置镜像源（国内用户）
-Configure-Mirrors
-
-# 检查硬件资源
-Test-Hardware
-
-# 检查是否已有安装
-$existingCompose = Join-Path $script:InstallDir "docker-compose.yml"
-if (Test-Path $existingCompose) {
-    Write-Warn "在 $($script:InstallDir) 检测到已有安装。"
-    if (Read-YesNo "是否升级TrailSnap版本（y 升级/n 重新安装）？" "y") {
-        Do-Upgrade
-        exit 0
-    } else {
-        if (-not (Read-YesNo "重新配置并安装？（数据将保留）" "n")) {
-            Stop-Script "已取消。"
-        }
-    }
-}
-
-# 收集配置
-Collect-Config
+# 安装前确认摘要
+Show-ConfirmSummary
 
 # 创建安装目录
 New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "pg_data") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "data") -Force | Out-Null
+
+# 检查硬件资源
+Test-Hardware
 
 # 生成配置文件
 Generate-EnvFile
@@ -1154,15 +1361,17 @@ Start-Services
 if (Test-HealthCheck) {
     Write-Success
 } else {
+    $lanIP = Get-LanIP
     Write-Host ""
     Write-Warn "部分服务可能需要更多时间启动。"
     Write-Info "查看状态：cd $($script:InstallDir); $($script:ComposeCmd) --env-file .env ps"
     Write-Info "查看日志：cd $($script:InstallDir); $($script:ComposeCmd) --env-file .env logs -f"
     Write-Host ""
-    $lanIP = Get-LanIP
-    Write-Host "  前端:  http://localhost:${FrontendPort}" -ForegroundColor White
+    Write-Host "  访问地址：" -ForegroundColor Cyan
+    Write-Host "  💻 本机访问:  http://localhost:${FrontendPort}" -ForegroundColor White
     if ($lanIP) {
-        Write-Host "  手机:  http://${lanIP}:${FrontendPort}" -ForegroundColor White
+        Write-Host "  📱 手机访问:  http://${lanIP}:${FrontendPort}  (需连接同一 Wi-Fi)" -ForegroundColor White
     }
-    Write-Host "  后端:  http://localhost:${ServerPort}/docs" -ForegroundColor White
+    Write-Host "  后端 API:  http://localhost:${ServerPort}/docs" -ForegroundColor Gray
+    Write-Log "安装完成，但部分服务健康检查未通过"
 }

@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -25,7 +25,6 @@ DEFAULT_AI_MODE="cpu"
 DEFAULT_INSTALL_DIR="$HOME/trailsnap"
 DEFAULT_PG_DB="trailsnap"
 DEFAULT_PG_USER="trailsnap"
-DEFAULT_PG_PASSWORD="trailsnap"
 
 CHINA_MIRRORS=(
   "https://docker.1ms.run"
@@ -39,6 +38,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
+GRAY='\033[0;37m'
 BOLD='\033[1m'
 NC='\033[0m'
 
@@ -55,11 +55,19 @@ POSTGRES_PORT=""
 TZ=""
 IMAGE_TAG=""
 AI_MODE=""
+PG_PASSWORD=""
 CHINA_MIRRORS_FLAG=false
 YES_FLAG=false
 UPGRADE_FLAG=false
 UNINSTALL_FLAG=false
 PURGE_FLAG=false
+LOG_FILE=""
+
+# ── 自动检测非交互模式 ────────────────────────────────────────────────────────
+# 通过 curl | bash 运行时 stdin 不是终端，自动启用非交互模式
+if [[ ! -t 0 ]]; then
+  YES_FLAG=true
+fi
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +89,7 @@ step()    { echo -e "${BLUE}==>${NC} ${BOLD}$*${NC}"; }
 
 die() {
   error "$@"
+  log "FATAL: $*"
   exit 1
 }
 
@@ -92,7 +101,7 @@ prompt_default() {
     return
   fi
   printf "\033[0;36m%s\033[0m [%s]: " "$prompt_text" "$default_val"
-  read -r answer
+  read -r answer || true
   echo "${answer:-$default_val}"
 }
 
@@ -106,9 +115,27 @@ prompt_yes_no() {
   local indicator="y/N"
   [[ "$default_val" == "y" ]] && indicator="Y/n"
   printf "\033[0;36m%s\033[0m [%s]: " "$prompt_text" "$indicator"
-  read -r answer
+  read -r answer || true
   answer="${answer:-$default_val}"
   [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]] && echo "y" || echo "n"
+}
+
+# ── 随机密码生成 ──────────────────────────────────────────────────────────────
+# 生成安全的随机数据库密码，避免硬编码默认密码
+generate_random_password() {
+  local length="${1:-16}"
+  tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$length" || \
+    openssl rand -base64 18 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "$length" || \
+    echo "Trailsnap$(date +%s)"
+}
+
+# ── 日志记录 ──────────────────────────────────────────────────────────────────
+# 同时写入控制台和日志文件，方便安装失败后排查
+log() {
+  local msg="[$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo '???')] $*"
+  if [[ -n "$LOG_FILE" ]] && [[ -d "$(dirname "$LOG_FILE")" ]]; then
+    echo "$msg" >> "$LOG_FILE"
+  fi
 }
 
 # ── 获取局域网 IP ────────────────────────────────────────────────────────────
@@ -117,7 +144,6 @@ get_lan_ip() {
   local ip=""
   # 尝试通过默认路由获取
   if command -v ip &>/dev/null; then
-    # Linux: 获取默认路由接口的 IP
     local iface
     iface="$(ip route show default 2>/dev/null | awk '{print $5}' | head -1)"
     if [[ -n "$iface" ]]; then
@@ -142,11 +168,6 @@ check_hardware() {
 
   # 检查磁盘空间
   local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-  local target_fs
-  target_fs="$(df --output=target "$target_dir" 2>/dev/null | tail -1 | xargs)" || \
-    target_fs="$(df "$target_dir" 2>/dev/null | tail -1 | awk '{print $6}')" || \
-    target_fs="/"
-
   local free_kb
   free_kb="$(df -k "$target_dir" 2>/dev/null | tail -1 | awk '{print $4}')"
   if [[ -n "$free_kb" ]]; then
@@ -162,6 +183,7 @@ check_hardware() {
     else
       info "磁盘剩余空间 ${free_gb} GB，满足安装要求。"
     fi
+    log "硬件检查: 磁盘 ${free_gb} GB 可用"
   else
     warn "无法检测磁盘空间，跳过检查。"
   fi
@@ -171,7 +193,6 @@ check_hardware() {
   if [[ -f /proc/meminfo ]]; then
     total_ram_mb="$(awk '/MemTotal/ {printf "%.0f", $2/1024}' /proc/meminfo 2>/dev/null)"
   elif command -v sysctl &>/dev/null; then
-    # macOS
     total_ram_mb="$(sysctl -n hw.memsize 2>/dev/null | awk '{printf "%.0f", $1/1024/1024}')"
   fi
   if [[ -n "$total_ram_mb" ]]; then
@@ -182,6 +203,7 @@ check_hardware() {
     else
       info "系统内存 ${total_ram_gb} GB，满足运行要求。"
     fi
+    log "硬件检查: 内存 ${total_ram_gb} GB"
   else
     warn "无法检测系统内存，跳过检查。"
   fi
@@ -369,6 +391,7 @@ ensure_docker() {
   fi
 
   info "Docker 已运行。"
+  log "Docker 检查通过"
 
   if ! detect_compose_cmd; then
     if [[ "$OS" == "linux" ]]; then
@@ -399,7 +422,7 @@ configure_mirrors_linux() {
   for mirror in "${CHINA_MIRRORS[@]}"; do
     info "测试镜像源：${mirror}..."
     if test_mirror "$mirror"; then
-      available_mirrors+=("\"$mirror\"")
+      available_mirrors+=("$mirror")
       info "  ✓ 可用"
     else
       warn "  ✗ 不可达"
@@ -411,25 +434,32 @@ configure_mirrors_linux() {
     return
   fi
 
-  local mirrors_json
-  mirrors_json=$(IFS=,; echo "${available_mirrors[*]}")
-
   local daemon_json="/etc/docker/daemon.json"
-  if [[ -f "$daemon_json" ]]; then
-    if command -v python3 &>/dev/null; then
-      python3 -c "
+
+  # 使用 python3 安全地合并 JSON 配置（通过命令行参数传递路径，避免代码注入）
+  if command -v python3 &>/dev/null; then
+    local mirrors_json
+    mirrors_json="$(printf '%s\n' "${available_mirrors[@]}" | python3 -c '
 import json, sys
-with open('$daemon_json') as f:
+mirrors = [line.strip() for line in sys.stdin if line.strip()]
+print(json.dumps(mirrors))
+')"
+    python3 -c '
+import json, sys
+daemon_json = sys.argv[1]
+mirrors_json = sys.argv[2]
+with open(daemon_json) as f:
     cfg = json.load(f)
-cfg['registry-mirrors'] = [${mirrors_json}]
-with open('$daemon_json', 'w') as f:
+cfg["registry-mirrors"] = json.loads(mirrors_json)
+with open(daemon_json, "w") as f:
     json.dump(cfg, f, indent=2)
-"
-    else
-      echo "{\"registry-mirrors\": [${mirrors_json}]}" | sudo tee "$daemon_json" >/dev/null
-    fi
+' "$daemon_json" "$mirrors_json"
   else
-    echo "{\"registry-mirrors\": [${mirrors_json}]}" | sudo tee "$daemon_json" >/dev/null
+    # 回退：直接覆盖（无 python3 时）
+    local mirrors_line
+    mirrors_line="$(printf '"%s",' "${available_mirrors[@]}")"
+    mirrors_line="${mirrors_line%,}"  # 去掉末尾逗号
+    echo "{\"registry-mirrors\": [${mirrors_line}]}" | sudo tee "$daemon_json" >/dev/null
   fi
 
   sudo systemctl restart docker
@@ -468,6 +498,7 @@ configure_mirrors() {
       [[ "$cont" != "y" ]] && die "请配置镜像源后重新运行脚本。"
       ;;
   esac
+  log "镜像源配置完成"
 }
 
 # ── 端口检查（自动分配） ─────────────────────────────────────────────────────
@@ -608,7 +639,7 @@ collect_config() {
         echo "  2) 输入其他路径"
         echo "  3) 取消"
         local choice
-        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice
+        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
         case "${choice}" in
           1)
             if mkdir -p "$current_dir" 2>/dev/null; then
@@ -669,7 +700,7 @@ collect_config() {
         echo "  2) 输入其他路径"
         echo "  3) 取消"
         local choice
-        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice
+        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
         case "${choice}" in
           1)
             if mkdir -p "$dir" 2>/dev/null; then
@@ -725,13 +756,12 @@ collect_config() {
     fi
   done
 
-  # 时区
-  TZ="$(prompt_default "时区" "$DEFAULT_TZ")"
+  # TZ、AI 模式、镜像标签：使用默认值，不主动询问（高级选项可通过命令行参数指定）
+  TZ="${TZ:-$DEFAULT_TZ}"
+  AI_MODE="${AI_MODE:-$DEFAULT_AI_MODE}"
+  IMAGE_TAG="${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
 
-  # AI 模式
-  if [[ -z "$AI_MODE" ]]; then
-    AI_MODE="$(prompt_default "AI 模式 (cpu/gpu)" "$DEFAULT_AI_MODE")"
-  fi
+  # GPU 检查
   if [[ "$AI_MODE" == "gpu" ]]; then
     if ! check_gpu_support; then
       warn "将回退到 CPU 模式。"
@@ -739,8 +769,33 @@ collect_config() {
     fi
   fi
 
-  # 镜像标签
-  IMAGE_TAG="$(prompt_default "镜像标签 (latest/master)" "$DEFAULT_IMAGE_TAG")"
+  # 设置日志文件路径
+  LOG_FILE="${INSTALL_DIR}/install.log"
+}
+
+# ── 安装前确认摘要 ────────────────────────────────────────────────────────────
+
+show_confirm_summary() {
+  local photo_display
+  photo_display="${PHOTO_DIR//,/, }"
+
+  echo ""
+  echo -e "  ${CYAN}┌─────────────────────────────────────────────┐${NC}"
+  echo -e "  ${CYAN}│          安装配置确认                        │${NC}"
+  echo -e "  ${CYAN}├─────────────────────────────────────────────┤${NC}"
+  echo -e "  ${WHITE}│  安装目录:  ${INSTALL_DIR}${NC}"
+  echo -e "  ${WHITE}│  照片目录:  ${photo_display}${NC}"
+  echo -e "  ${WHITE}│  前端端口:  ${FRONTEND_PORT}${NC}"
+  echo -e "  ${WHITE}│  AI 模式:   ${AI_MODE}${NC}"
+  echo -e "  ${WHITE}│  数据库密码: ${PG_PASSWORD}${NC}"
+  echo -e "  ${GRAY}│              （请妥善保管，升级时自动保留）  ${NC}"
+  echo -e "  ${CYAN}└─────────────────────────────────────────────┘${NC}"
+  echo ""
+
+  local answer
+  answer="$(prompt_yes_no "确认以上配置无误，开始安装？" "y")"
+  [[ "$answer" != "y" ]] && die "已取消。"
+  log "用户确认安装配置"
 }
 
 # ── 文件生成 ──────────────────────────────────────────────────────────────────
@@ -752,7 +807,7 @@ generate_env() {
 # https://github.com/LC044/TrailSnap
 
 # 照片目录（逗号分隔，支持多个挂载点）
-PHOTO_DIR=${PHOTO_DIR}
+PHOTO_DIR="${PHOTO_DIR}"
 
 # 端口
 FRONTEND_PORT=${FRONTEND_PORT}
@@ -761,22 +816,23 @@ AI_PORT=${AI_PORT}
 POSTGRES_PORT=${POSTGRES_PORT}
 
 # 时区
-TZ=${TZ}
+TZ="${TZ}"
 
 # Docker 镜像标签（latest 或 master）
-IMAGE_TAG=${IMAGE_TAG}
+IMAGE_TAG="${IMAGE_TAG}"
 
 # AI 模式：cpu 或 gpu
-AI_MODE=${AI_MODE}
+AI_MODE="${AI_MODE}"
 
 # 数据库
-POSTGRES_DB=${DEFAULT_PG_DB}
-POSTGRES_USER=${DEFAULT_PG_USER}
-POSTGRES_PASSWORD=${DEFAULT_PG_PASSWORD}
+POSTGRES_DB="${DEFAULT_PG_DB}"
+POSTGRES_USER="${DEFAULT_PG_USER}"
+POSTGRES_PASSWORD="${PG_PASSWORD}"
 EOF
 
   chmod 600 "${INSTALL_DIR}/.env"
   info "已创建 ${INSTALL_DIR}/.env"
+  log "已生成 .env 配置文件"
 }
 
 generate_compose() {
@@ -885,6 +941,7 @@ networks:
 COMPOSE_EOF
 
   info "已创建 ${INSTALL_DIR}/docker-compose.yml"
+  log "已生成 docker-compose.yml"
 }
 
 # ── 健康检查 ──────────────────────────────────────────────────────────────────
@@ -941,9 +998,11 @@ health_check() {
     $COMPOSE_CMD --env-file .env logs --tail=50
     echo ""
     warn "手动查看日志：cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env logs -f"
+    log "健康检查: 部分服务失败"
     return 1
   fi
 
+  log "健康检查: 全部通过"
   return 0
 }
 
@@ -951,6 +1010,9 @@ health_check() {
 
 pull_images() {
   step "拉取 Docker 镜像（可能需要几分钟，如果拉取失败，请检查网络和 Docker 配置。）..."
+  if [[ "$CHINA_MIRRORS_FLAG" != true ]]; then
+    info "提示：如果您在中国大陆地区，镜像拉取慢，可取消安装并添加 --china-mirrors 参数重新运行"
+  fi
   cd "$INSTALL_DIR"
   if ! $COMPOSE_CMD --env-file .env pull; then
     error "拉取镜像失败。"
@@ -959,6 +1021,7 @@ pull_images() {
     fi
     die "镜像拉取失败，请检查网络和 Docker 配置。"
   fi
+  log "Docker 镜像拉取完成"
 }
 
 start_services() {
@@ -966,22 +1029,14 @@ start_services() {
   cd "$INSTALL_DIR"
   $COMPOSE_CMD --env-file .env up -d
   info "服务已启动。"
+  log "Docker 服务已启动"
 }
 
 # ── 成功横幅 ──────────────────────────────────────────────────────────────────
 
-print_success() {
-  source "${INSTALL_DIR}/.env" 2>/dev/null || true
-
+print_service_urls() {
   local lan_ip
   lan_ip="$(get_lan_ip)"
-
-  echo ""
-  echo -e "${GREEN}+===========================================================+${NC}"
-  echo -e "${GREEN}|                                                           |${NC}"
-  echo -e "${GREEN}|       🎉  TrailSnap (行影集) 安装成功！ 🎉              |${NC}"
-  echo -e "${GREEN}|                                                           |${NC}"
-  echo -e "${GREEN}+===========================================================+${NC}"
   echo ""
   echo -e "  ${CYAN}访问地址：${NC}"
   echo -e "  💻 本机访问:  http://localhost:${FRONTEND_PORT}"
@@ -992,6 +1047,20 @@ print_success() {
   echo -e "  ${GRAY}后端 API:  http://localhost:${SERVER_PORT}/docs${NC}"
   echo -e "  ${GRAY}AI 服务:   http://localhost:${AI_PORT}/docs${NC}"
   echo ""
+}
+
+print_success() {
+  source "${INSTALL_DIR}/.env" 2>/dev/null || true
+
+  echo ""
+  echo -e "${GREEN}+===========================================================+${NC}"
+  echo -e "${GREEN}|                                                           |${NC}"
+  echo -e "${GREEN}|       🎉  TrailSnap (行影集) 安装成功！ 🎉              |${NC}"
+  echo -e "${GREEN}|                                                           |${NC}"
+  echo -e "${GREEN}+===========================================================+${NC}"
+  
+  print_service_urls
+  
   echo -e "  ${CYAN}下一步：${NC}"
   echo "  1. 在浏览器中打开上面的访问地址"
   echo "  2. 进入 更多 → 设置 → 外部图库"
@@ -1003,6 +1072,16 @@ print_success() {
   echo "    日志:    ${COMPOSE_CMD} --env-file .env logs -f"
   echo "    升级:    ./install.sh --upgrade"
   echo ""
+
+  # 自动打开浏览器
+  info "正在打开浏览器..."
+  if [[ "$OS" == "macos" ]]; then
+    open "http://localhost:${FRONTEND_PORT}" 2>/dev/null || true
+  elif [[ "$OS" == "linux" ]]; then
+    xdg-open "http://localhost:${FRONTEND_PORT}" 2>/dev/null || true
+  fi
+
+  log "安装成功完成"
 }
 
 # ── 升级 ──────────────────────────────────────────────────────────────────────
@@ -1014,7 +1093,29 @@ do_upgrade() {
     die "未在 ${INSTALL_DIR} 找到已安装的实例。请直接运行（不带 --upgrade）来安装。"
   fi
 
-  source "${INSTALL_DIR}/.env" 2>/dev/null || true
+  # 设置日志文件
+  LOG_FILE="${INSTALL_DIR}/install.log"
+
+  # 读取现有配置，保留密码等关键信息
+  while IFS='=' read -r key value; do
+    key="$(echo "$key" | xargs)"
+    # 去除值两端的引号
+    value="${value#\"}"
+    value="${value%\"}"
+    case "$key" in
+      FRONTEND_PORT)   FRONTEND_PORT="$value" ;;
+      SERVER_PORT)     SERVER_PORT="$value" ;;
+      AI_PORT)         AI_PORT="$value" ;;
+      POSTGRES_PORT)   POSTGRES_PORT="$value" ;;
+      TZ)              TZ="$value" ;;
+      IMAGE_TAG)       IMAGE_TAG="$value" ;;
+      AI_MODE)         AI_MODE="$value" ;;
+      PHOTO_DIR)       PHOTO_DIR="$value" ;;
+      POSTGRES_PASSWORD) PG_PASSWORD="$value" ;;
+    esac
+  done < <(grep -v '^#' "${INSTALL_DIR}/.env" 2>/dev/null || true)
+
+  log "开始升级，保留现有配置"
 
   generate_compose
   pull_images
@@ -1058,6 +1159,7 @@ do_uninstall() {
   fi
 
   info "卸载完成。"
+  log "卸载完成"
 }
 
 # ── 命令行参数解析 ────────────────────────────────────────────────────────────
@@ -1147,10 +1249,107 @@ main() {
   parse_args "$@"
   print_banner
 
+  # 生成随机数据库密码
+  PG_PASSWORD="$(generate_random_password)"
+
+  log "TrailSnap 安装脚本 v${SCRIPT_VERSION} 启动"
+
   # 处理卸载
   if [[ "$UNINSTALL_FLAG" == true ]]; then
+    LOG_FILE="${INSTALL_DIR}/install.log"
     do_uninstall
     exit 0
+  fi
+
+  # 检查是否已有安装
+  if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
+    local is_service_running=false
+    cd "$INSTALL_DIR"
+    if command -v docker &>/dev/null; then
+      if [[ -n "$(docker compose --env-file .env ps -q 2>/dev/null)" ]]; then
+        is_service_running=true
+      fi
+    fi
+
+    warn "在 ${INSTALL_DIR} 检测到已有安装。"
+    echo "请选择操作："
+    echo "  1) 升级到最新版本"
+    echo "  2) 重新安装"
+    echo "  3) 卸载（保留照片和数据）"
+    echo "  4) 卸载（保留照片，删除其他数据）"
+    if [[ "$is_service_running" == true ]]; then
+      echo "  5) 关闭服务"
+      echo "  6) 重启服务"
+    else
+      echo "  5) 启动服务"
+    fi
+    echo "  0) 退出"
+
+    local choice
+    read -rp "$(printf '\033[0;36m请选择 [0-6]: \033[0m')" choice || true
+    case "$choice" in
+      1)
+        detect_os
+        ensure_docker
+        do_upgrade
+        exit 0
+        ;;
+      2)
+        # 继续执行重新安装流程
+        ;;
+      3)
+        detect_os
+        ensure_docker
+        UNINSTALL_FLAG=true
+        PURGE_FLAG=false
+        do_uninstall
+        exit 0
+        ;;
+      4)
+        detect_os
+        ensure_docker
+        UNINSTALL_FLAG=true
+        PURGE_FLAG=true
+        do_uninstall
+        exit 0
+        ;;
+      5)
+        detect_os
+        ensure_docker
+        if [[ "$is_service_running" == true ]]; then
+          cd "$INSTALL_DIR"
+          $COMPOSE_CMD --env-file .env down
+          info "服务已关闭。"
+        else
+          cd "$INSTALL_DIR"
+          $COMPOSE_CMD --env-file .env up -d
+          info "服务已启动。"
+          source "${INSTALL_DIR}/.env" 2>/dev/null || true
+          print_service_urls
+        fi
+        exit 0
+        ;;
+      6)
+        detect_os
+        ensure_docker
+        if [[ "$is_service_running" == true ]]; then
+          cd "$INSTALL_DIR"
+          $COMPOSE_CMD --env-file .env restart
+          info "服务已重启。"
+          source "${INSTALL_DIR}/.env" 2>/dev/null || true
+          print_service_urls
+          exit 0
+        else
+          die "无效选择。"
+        fi
+        ;;
+      0)
+        die "已退出。"
+        ;;
+      *)
+        die "无效选择。"
+        ;;
+    esac
   fi
 
   # 检测操作系统
@@ -1168,25 +1367,14 @@ main() {
   # 配置镜像源（国内用户）
   configure_mirrors
 
-  # 硬件预检
-  check_hardware
-
-  # 检查是否已有安装
-  if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
-    warn "在 ${INSTALL_DIR} 检测到已有安装。"
-    local answer
-    answer="$(prompt_yes_no "是否升级已有安装？" "y")"
-    if [[ "$answer" == "y" ]]; then
-      do_upgrade
-      exit 0
-    else
-      answer="$(prompt_yes_no "重新配置并安装？（数据将保留）" "n")"
-      [[ "$answer" != "y" ]] && die "已取消。"
-    fi
-  fi
-
   # 收集配置
   collect_config
+
+  # 硬件预检（在收集配置后执行，确保检查正确的磁盘）
+  check_hardware
+
+  # 安装前确认摘要
+  show_confirm_summary
 
   # 创建安装目录
   mkdir -p "$INSTALL_DIR"
@@ -1205,18 +1393,20 @@ main() {
   if health_check; then
     print_success
   else
+    local lan_ip
+    lan_ip="$(get_lan_ip)"
     echo ""
     warn "部分服务可能需要更多时间启动。"
     info "查看状态：cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env ps"
     info "查看日志：cd ${INSTALL_DIR} && ${COMPOSE_CMD} --env-file .env logs -f"
     echo ""
-    local lan_ip
-    lan_ip="$(get_lan_ip)"
-    echo -e "  前端:  http://localhost:${FRONTEND_PORT}"
+    echo -e "  ${CYAN}访问地址：${NC}"
+    echo -e "  💻 本机访问:  http://localhost:${FRONTEND_PORT}"
     if [[ -n "$lan_ip" ]]; then
-      echo -e "  手机:  http://${lan_ip}:${FRONTEND_PORT}"
+      echo -e "  📱 手机访问:  http://${lan_ip}:${FRONTEND_PORT}  (需连接同一 Wi-Fi)"
     fi
-    echo -e "  后端:  http://localhost:${SERVER_PORT}/docs"
+    echo -e "  ${GRAY}后端 API:  http://localhost:${SERVER_PORT}/docs${NC}"
+    log "安装完成，但部分服务健康检查未通过"
   fi
 }
 
