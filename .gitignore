@@ -12,3 +12,4 @@ data/*
 .env
 .claude/
 test-local*
+.playwright-cli

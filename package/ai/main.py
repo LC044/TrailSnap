@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import system, face, ocr, object_detection, tickets, image_classification, ai_config, embedding, llm
+from app.routers import system, face, ocr, object_detection, tickets, image_classification, ai_config, embedding, llm, emotion
 from app.core.logger import setup_logging
 from app.services.model_downloader import model_downloader
 from app.services.llm_manager import llm_manager
@@ -150,6 +150,7 @@ app.include_router(image_classification.router, prefix="/classification", tags=[
 app.include_router(embedding.router, prefix="/embedding", tags=["Embedding"])
 app.include_router(llm.router, prefix="/v1", tags=["OpenAI LLM"])
 app.include_router(ai_config.router, prefix="/ai", tags=["AI Configuration"])
+app.include_router(emotion.router, prefix="/emotion", tags=["Emotion Color"])
 
 if __name__ == "__main__":
     # docs：http://localhost:8001/docs

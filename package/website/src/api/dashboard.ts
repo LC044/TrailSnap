@@ -69,14 +69,36 @@ export interface HeatmapResponse {
   available_years: number[];
 }
 
+export interface EmotionCalendarItem {
+  date: string;
+  photo_count: number;
+  dominant_color: string | null;
+  brightness: number | null;
+  saturation: number | null;
+  top_categories: string[];
+  emotion_hint: string | null;
+}
+
+export interface EmotionCalendarResponse {
+  total_photos: number;
+  total_days: number;
+  data: EmotionCalendarItem[];
+  available_years: number[];
+}
+
 export const dashboardApi = {
   async getOverview() {
     const data = await request.get<DashboardResponse>('/api/stats/dashboard');
     return data.data;
   },
-  
+
   async getHeatmap(year?: number) {
     const data = await request.get<HeatmapResponse>('/api/stats/heatmap', { params: { year } });
+    return data.data;
+  },
+
+  async getEmotionCalendar(year?: number) {
+    const data = await request.get<EmotionCalendarResponse>('/api/stats/emotion-calendar', { params: { year } });
     return data.data;
   }
 };

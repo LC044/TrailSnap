@@ -31,6 +31,7 @@ class TaskType(str, enum.Enum):
     ORGANIZE_PHOTOS = "ORGANIZE_PHOTOS"
     BATCH_RENAME = "BATCH_RENAME"
     BATCH_TIME_FROM_FILENAME = "BATCH_TIME_FROM_FILENAME"
+    EXTRACT_EMOTION = "EXTRACT_EMOTION"
 
 DEFAULT_PRIORITIES = {
     TaskType.SCAN_ALBUM: 100,
@@ -50,6 +51,7 @@ DEFAULT_PRIORITIES = {
     TaskType.ORGANIZE_PHOTOS: 1000,
     TaskType.BATCH_RENAME: 1000,
     TaskType.BATCH_TIME_FROM_FILENAME: 1000,
+    TaskType.EXTRACT_EMOTION: 6,
 }
 
 CATEGORY_DESCRIPTION_MAP = {
@@ -69,6 +71,7 @@ CATEGORY_DESCRIPTION_MAP = {
     TaskType.ORGANIZE_PHOTOS: '用于图片文件整理',
     TaskType.BATCH_RENAME: '用于批量重命名文件',
     TaskType.BATCH_TIME_FROM_FILENAME: '用于根据文件名提取时间并批量修改照片的拍摄时间和设备信息',
+    TaskType.EXTRACT_EMOTION: '用于提取照片的主色调、亮度、饱和度及情绪色彩',
 }
 
 CATEGORY_NAME_MAP = {
@@ -87,6 +90,7 @@ CATEGORY_NAME_MAP = {
     TaskType.ORGANIZE_PHOTOS: '图片文件整理',
     TaskType.BATCH_RENAME: '批量重命名',
     TaskType.BATCH_TIME_FROM_FILENAME: '修改拍摄信息',
+    TaskType.EXTRACT_EMOTION: '色彩情绪提取',
 }
 
 class Task(Base):

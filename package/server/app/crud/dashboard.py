@@ -10,9 +10,10 @@ from app.db.models.face import Face, FaceIdentity
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.schemas.dashboard import (
     DashboardCard, DashboardFace,
-    DashboardContentStats, ContentDetail, DashboardTime, 
+    DashboardContentStats, ContentDetail, DashboardTime,
     DashboardTimeChartItem, DashboardResponse,
-    HeatmapResponse, HeatmapItem
+    HeatmapResponse, HeatmapItem,
+    EmotionCalendarResponse, EmotionCalendarItem
 )
 
 def get_dashboard_stats(db: Session, owner_id: UUID) -> DashboardResponse:
@@ -214,6 +215,157 @@ def get_heatmap_stats(db: Session, owner_id: UUID, year: int | None = None) -> H
         total_photos=total_photos,
         total_days=total_days,
         max_consecutive_days=max_consecutive_days,
+        data=data,
+        available_years=available_years
+    )
+
+
+def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = None) -> EmotionCalendarResponse:
+    """Get emotion calendar data - per-day dominant colors and emotion hints."""
+    from app.db.models.photo_color import PhotoColor
+    from app.db.models.tag import PhotoTag, PhotoTagRelation
+
+    today = datetime.now().date()
+
+    # Date range filter
+    if year:
+        start_date = date(year, 1, 1)
+        end_date = date(year, 12, 31)
+    else:
+        start_date = today - timedelta(days=364)
+        end_date = today
+
+    time_filter = (
+        Photo.photo_time >= datetime.combine(start_date, datetime.min.time()),
+        Photo.photo_time <= datetime.combine(end_date, datetime.max.time()),
+    )
+
+    # 1. Per-day photo counts
+    date_counts = db.query(
+        cast(Photo.photo_time, Date).label('photo_date'),
+        func.count(Photo.id).label('count'),
+    ).filter(Photo.owner_id == owner_id, Photo.photo_time != None, *time_filter) \
+        .group_by(cast(Photo.photo_time, Date)).order_by(cast(Photo.photo_time, Date)).all()
+
+    # 2. Photo IDs per date
+    photo_date_rows = db.query(
+        cast(Photo.photo_time, Date).label('photo_date'),
+        Photo.id.label('photo_id'),
+    ).filter(Photo.owner_id == owner_id, Photo.photo_time != None, *time_filter).all()
+
+    photo_by_date: dict = {}
+    for row in photo_date_rows:
+        d = row.photo_date.isoformat()
+        photo_by_date.setdefault(d, []).append(row.photo_id)
+
+    all_photo_ids = [pid for ids in photo_by_date.values() for pid in ids]
+
+    # 3. Batch fetch PhotoColor records
+    color_map: dict = {}  # photo_id -> PhotoColor
+    if all_photo_ids:
+        try:
+            chunk_size = 500
+            for i in range(0, len(all_photo_ids), chunk_size):
+                chunk = all_photo_ids[i:i + chunk_size]
+                colors = db.query(PhotoColor).filter(PhotoColor.photo_id.in_(chunk)).all()
+                for c in colors:
+                    color_map[str(c.photo_id)] = c
+        except Exception as e:
+            db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(f"PhotoColor query failed (table may not exist yet): {e}")
+            color_map = {}
+
+    # 4. Batch fetch classification tags via JOIN (PhotoTagRelation -> PhotoTag)
+    tag_map: dict = {}  # photo_id -> list of tag_name
+    if all_photo_ids:
+        try:
+            chunk_size = 500
+            for i in range(0, len(all_photo_ids), chunk_size):
+                chunk = all_photo_ids[i:i + chunk_size]
+                tag_rows = db.query(
+                    PhotoTagRelation.photo_id,
+                    PhotoTag.tag_name,
+                ).join(PhotoTag, PhotoTagRelation.tag_id == PhotoTag.id) \
+                 .filter(PhotoTagRelation.photo_id.in_(chunk), PhotoTag.type == 'yolo').all()
+                for row in tag_rows:
+                    pid_str = str(row.photo_id)
+                    tag_map.setdefault(pid_str, []).append(row.tag_name)
+        except Exception as e:
+            db.rollback()
+            import logging
+            logging.getLogger(__name__).warning(f"Tag query failed: {e}")
+            tag_map = {}
+
+    # 5. Aggregate per-day
+    total_photos = 0
+    data = []
+
+    for r in date_counts:
+        total_photos += r.count
+        date_str = r.photo_date.isoformat()
+        photo_ids = photo_by_date.get(date_str, [])
+
+        dominant_color = None
+        avg_brightness = None
+        avg_saturation = None
+        emotion_hint = None
+        all_categories: list = []
+
+        color_records = [color_map[str(pid)] for pid in photo_ids if str(pid) in color_map]
+
+        if color_records:
+            emotion_counts: dict = {}
+            brightness_sum = 0.0
+            saturation_sum = 0.0
+            top_color_counts: dict = {}
+
+            for cr in color_records:
+                if cr.emotion_hint:
+                    emotion_counts[cr.emotion_hint] = emotion_counts.get(cr.emotion_hint, 0) + 1
+                if cr.brightness is not None:
+                    brightness_sum += cr.brightness
+                if cr.saturation is not None:
+                    saturation_sum += cr.saturation
+                if cr.dominant_colors and len(cr.dominant_colors) > 0:
+                    top_color = cr.dominant_colors[0].get('hex') if isinstance(cr.dominant_colors[0], dict) else cr.dominant_colors[0]
+                    top_color_counts[top_color] = top_color_counts.get(top_color, 0) + 1
+
+            if emotion_counts:
+                emotion_hint = max(emotion_counts, key=emotion_counts.get)
+            if top_color_counts:
+                dominant_color = max(top_color_counts, key=top_color_counts.get)
+            avg_brightness = round(brightness_sum / len(color_records), 3) if brightness_sum else None
+            avg_saturation = round(saturation_sum / len(color_records), 3) if saturation_sum else None
+
+        # Collect classification tags from JOIN (not stored in PhotoColor)
+        for pid in photo_ids:
+            tags = tag_map.get(str(pid), [])
+            all_categories.extend(tags)
+        unique_cats = list(dict.fromkeys(all_categories))[:3]
+
+        data.append(EmotionCalendarItem(
+            date=date_str,
+            photo_count=r.count,
+            dominant_color=dominant_color,
+            brightness=avg_brightness,
+            saturation=avg_saturation,
+            top_categories=unique_cats,
+            emotion_hint=emotion_hint,
+        ))
+
+    # Available years
+    years_query = db.query(
+        func.extract('year', Photo.photo_time).label('year')
+    ).filter(Photo.owner_id == owner_id, Photo.photo_time != None) \
+        .group_by(func.extract('year', Photo.photo_time)) \
+        .order_by(desc('year')).all()
+
+    available_years = [int(y.year) for y in years_query if y.year]
+
+    return EmotionCalendarResponse(
+        total_photos=total_photos,
+        total_days=len(date_counts),
         data=data,
         available_years=available_years
     )

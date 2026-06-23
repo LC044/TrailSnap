@@ -12,7 +12,7 @@ from app.dependencies import get_db
 from app.db.models.photo import Photo
 from app.db.models.album import Album
 from app.schemas.album import TimelineItem, TimelineStats
-from app.schemas.dashboard import DashboardResponse, HeatmapResponse
+from app.schemas.dashboard import DashboardResponse, HeatmapResponse, EmotionCalendarResponse
 from app.schemas.filter import FilterOptions
 from app.crud import dashboard as crud_dashboard
 from app.crud import album as crud_album
@@ -57,6 +57,13 @@ def get_heatmap_stats(year: Optional[int] = Query(None), db: Session = Depends(g
     Get heatmap stats data.
     """
     return crud_dashboard.get_heatmap_stats(db, owner_id=current_user.id, year=year)
+
+@router.get("/emotion-calendar", response_model=EmotionCalendarResponse)
+def get_emotion_calendar(year: Optional[int] = Query(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """
+    Get emotion calendar data - per-day dominant colors and emotion hints.
+    """
+    return crud_dashboard.get_emotion_calendar_stats(db, owner_id=current_user.id, year=year)
 
 @router.get("/filters", response_model=FilterOptions)
 def get_filter_options(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):

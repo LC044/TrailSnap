@@ -8,14 +8,28 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from app.db.models.task import Task, TaskStatus, TaskType
 from app.db.models.photo import Photo
+from app.db.models.photo_color import PhotoColor
 from app.service import storage
 from app.core.config_manager import ImageSettings, config_manager
+from app.utils.color import extract_color_info
 
 def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, storage_root: str, config: ImageSettings = None):
     try:
         storage.update_storage_root_cache(user_id, storage_root)
         thumb_path = storage.generate_thumbnail(user_id, file_path, file_id, config=config)
-        return {"success": True, "thumb_path": thumb_path}
+
+        # Extract color info from the original image
+        color_info = None
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
+            try:
+                from PIL import Image as PILImage
+                with PILImage.open(file_path) as img:
+                    color_info = extract_color_info(img)
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Color extraction failed for {file_path}: {e}")
+
+        return {"success": True, "thumb_path": thumb_path, "color_info": color_info}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -123,7 +137,29 @@ class GenerateThumbnailStrategy(BaseTaskStrategy):
                 tasks_status['thumbnail'] = True
                 photo.processed_tasks = tasks_status
                 db.add(photo)
-                
+
+                # Save color info
+                color_info = res.get('color_info')
+                if color_info and color_info.get('dominant_colors'):
+                    try:
+                        existing = db.query(PhotoColor).filter(PhotoColor.photo_id == photo.id).first()
+                        if existing:
+                            existing.dominant_colors = color_info.get('dominant_colors')
+                            existing.brightness = color_info.get('brightness')
+                            existing.saturation = color_info.get('saturation')
+                            existing.emotion_hint = color_info.get('emotion_hint')
+                        else:
+                            color_record = PhotoColor(
+                                photo_id=photo.id,
+                                dominant_colors=color_info.get('dominant_colors'),
+                                brightness=color_info.get('brightness'),
+                                saturation=color_info.get('saturation'),
+                                emotion_hint=color_info.get('emotion_hint'),
+                            )
+                            db.add(color_record)
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(f"Failed to save color info for photo {photo.id}: {e}")
+
                 results.append({
                     'task_id': data['task_id'],
                     'task_type': data['task_type'],

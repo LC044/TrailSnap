@@ -25,6 +25,7 @@ from app.utils import exif
 from app.utils.hash import calculate_file_md5
 from app.schemas import photo as photo_schemas
 from app.utils import motion_photo
+from app.utils.color import extract_color_info
 
 def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str):
     """
@@ -62,10 +63,18 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
         size = storage.get_file_size(file_path)
         width, height, duration = storage.get_image_dimensions(file_path, image_obj=image_obj)
 
+        # 4. Extract color/emotion info (while image_obj is still open)
+        color_info = None
+        if image_obj:
+            try:
+                color_info = extract_color_info(image_obj)
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Color extraction failed for {file_path}: {e}")
+
         if image_obj:
             image_obj.close()
 
-        # 4. Calculate MD5
+        # 5. Calculate MD5
         md5_hash = calculate_file_md5(file_path)
 
         # Check for Google Motion Photo and extract video
@@ -86,7 +95,8 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             "file_name": file_name,
             "photo_create_data": None, # Placeholder
             "is_motion_photo": is_motion_photo,
-            "md5_hash": md5_hash
+            "md5_hash": md5_hash,
+            "color_info": color_info
         }
     except Exception as e:
         return {
@@ -220,7 +230,8 @@ class BasicTaskStrategy(BaseTaskStrategy):
                         'metadata': metadata_create,
                         'photo_id': data['file_id'],
                         'file_path': data['file_path'],
-                        'user_id': user_id
+                        'user_id': user_id,
+                        'color_info': res.get('color_info'),
                     }
                 }
             })
@@ -228,9 +239,11 @@ class BasicTaskStrategy(BaseTaskStrategy):
         return results
 
     async def handle_completion(self, worker, items: List[Dict], db: Session) -> None:
+        from app.db.models.photo_color import PhotoColor
+
         photos_to_create = {} # user_id -> list of data
         index_logs = []
-        processed_photos = {} # photo_id -> {path: file_path, owner_id: user_id}
+        processed_photos = {} # photo_id -> {path: file_path, owner_id: user_id, color_info: dict}
 
         for item in items:
             status = item['status']
@@ -243,16 +256,31 @@ class BasicTaskStrategy(BaseTaskStrategy):
                         photos_to_create[user_id] = []
                     photos_to_create[user_id].append(data)
                     index_logs.append(IndexLog(action='added', file_path=data['file_path'], photo_id=data['photo_id'], owner_id=user_id))
-                    processed_photos[str(data['photo_id'])] = {'path': data['file_path'], 'owner_id': user_id}
+                    processed_photos[str(data['photo_id'])] = {'path': data['file_path'], 'owner_id': user_id, 'color_info': data.get('color_info')}
                     worker.scan_status['added'] += 1
                     worker.scan_status['processed_files'] += 1
 
         if photos_to_create:
-            # print(photos_to_create)
             for uid, photos in photos_to_create.items():
                 app.crud.photo.batch_create_photos(db, photos, user_id=uid)
             db.add_all(index_logs)
-            # return
+
+            # Save color info for each photo
+            for photo_id, info in processed_photos.items():
+                color_info = info.get('color_info')
+                if color_info and color_info.get('dominant_colors'):
+                    try:
+                        color_record = PhotoColor(
+                            photo_id=photo_id,
+                            dominant_colors=color_info.get('dominant_colors'),
+                            brightness=color_info.get('brightness'),
+                            saturation=color_info.get('saturation'),
+                            emotion_hint=color_info.get('emotion_hint'),
+                        )
+                        db.add(color_record)
+                    except Exception as e:
+                        logging.getLogger(__name__).warning(f"Failed to save color info for photo {photo_id}: {e}")
+
             for photo_id, info in processed_photos.items():
                 file_path = info['path']
                 owner_id = info['owner_id']

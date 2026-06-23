@@ -18,7 +18,7 @@ from app.crud import task as crud_task
 
 from app.service.task_strategy import TaskStrategyFactory
 # Import tasks to register strategies
-from app.service.tasks import thumbnail, metadata, scan, face, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename
+from app.service.tasks import thumbnail, metadata, scan, face, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion
 
 class TaskQueueManager:
     def __init__(self):

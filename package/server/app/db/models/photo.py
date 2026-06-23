@@ -47,6 +47,7 @@ class Photo(Base):
     metadata_info = relationship("PhotoMetadata", uselist=False, back_populates="photo", cascade="all, delete-orphan")
     faces = relationship("Face", back_populates="photo", cascade="all, delete-orphan")
     image_description = relationship("ImageDescription", uselist=False, back_populates="photo", cascade="all, delete-orphan")
+    color_info = relationship("PhotoColor", uselist=False, back_populates="photo", cascade="all, delete-orphan")
     tags = relationship("PhotoTag", secondary="photo_tag_relations", backref="photos")
 
     @property

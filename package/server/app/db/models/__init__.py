@@ -15,3 +15,4 @@ from .scene import Scene
 from .cluster import ImageCluster, PhotoCluster
 from .agent import AgentSession, AgentMessage
 from .agent_token import AgentToken
+from .photo_color import PhotoColor
