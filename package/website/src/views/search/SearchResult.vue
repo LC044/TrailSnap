@@ -90,6 +90,7 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
 import type { AlbumImage } from '@/types/album'
+import { parseDateRange } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
@@ -107,7 +108,8 @@ const title = computed(() => {
     'folder': '文件夹',
     'filename': '文件',
     'tag': '标签',
-    'scene': '景区'
+    'scene': '景区',
+    'date': '日期'
   }
   const typeLabel = type.value ? typeMap[type.value] : ''
   return typeLabel ? `搜索 ${typeLabel}: ${query.value}` : `搜索: ${query.value}`
@@ -256,12 +258,25 @@ const performSearch = async (isLoadMore = false) => {
   
   loading.value = true
   try {
+    let startTime = undefined;
+    let endTime = undefined;
+    
+    if (type.value === 'date') {
+      const dateRange = parseDateRange(query.value);
+      if (dateRange) {
+        startTime = dateRange.start;
+        endTime = dateRange.end;
+      }
+    }
+
     const res = await searchService.searchByText({
-      text: query.value,
+      text: type.value === 'date' ? '' : query.value, // if date, text should be empty string
       type: type.value,
       limit: limit,
       skip: skip.value,
-      threshold: 0.22
+      threshold: 0.22,
+      start_time: startTime,
+      end_time: endTime
     })
 
     const newPhotos = res.map(item => mapPhotoToImage(item.photo))

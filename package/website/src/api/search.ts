@@ -18,6 +18,8 @@ export interface TextSearchRequest {
   skip?: number;
   threshold?: number;
   type?: string;
+  start_time?: string;
+  end_time?: string;
 }
 
 const searchService = {

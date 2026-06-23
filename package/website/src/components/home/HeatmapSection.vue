@@ -46,7 +46,7 @@
                   class="ec-cell"
                   :class="{ 'ec-cell-empty': day.count === 0, 'ec-cell-photo': day.count > 0 }"
                   :style="day.count > 0 ? getCellStyle(day) : {}"
-                  @click="day.count > 0 ? $router.push({ path: '/search', query: { q: day.date } }) : undefined"
+                  @click="day.count > 0 ? $router.push({ path: '/search', query: { q: day.date, type: 'date' } }) : undefined"
                 ></div>
               </el-tooltip>
               <div v-else class="ec-cell ec-cell-void"></div>
@@ -399,7 +399,7 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
 .ec-legend-dot {
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 .ec-select {
@@ -440,7 +440,7 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
 .ec-cell {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 4px;
+  border-radius: 50%;
   transition: opacity 0.15s ease, box-shadow 0.15s ease;
 }
 .ec-cell-empty {
@@ -480,14 +480,14 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
 .ec-tip-info {
   font-size: 12px;
   margin-top: 3px;
-  color: rgba(255, 255, 255, 0.85);
+  opacity: 0.85;
 }
 .ec-tip-emotion {
   margin-left: 2px;
 }
 .ec-tip-empty {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  opacity: 0.5;
   margin-top: 2px;
 }
 

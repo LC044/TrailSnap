@@ -103,10 +103,12 @@ import {
   Tag, 
   Mountain,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  Calendar
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
 import searchService, { type SearchSuggestion } from '@/api/search'
+import { parseDateRange } from '@/utils/date'
 
 const router = useRouter()
 const searchText = ref('')
@@ -129,21 +131,19 @@ const clearSearch = () => {
 
 const fetchSuggestions = useDebounceFn(async (q: string) => {
   if (!q.trim()) {
-    suggestions.value = [];
-    return;
+    suggestions.value = []
+    return
   }
   try {
-    const res = await searchService.getSuggestions(q);
-    
-    // Process suggestions to group OCR results
-    const processedSuggestions: SearchSuggestion[] = [];
-    let hasOcr = false;
+    const res = await searchService.getSuggestions(q)
+    const processedSuggestions: SearchSuggestion[] = []
+    let hasOcr = false
     
     for (const item of res) {
       if (item.type === 'ocr') {
-        hasOcr = true;
+        hasOcr = true
       } else {
-        processedSuggestions.push(item);
+        processedSuggestions.push(item)
       }
     }
     
@@ -152,12 +152,21 @@ const fetchSuggestions = useDebounceFn(async (q: string) => {
         type: 'ocr',
         value: q,
         label: `图片中包含文字：${q}`
-      } as SearchSuggestion);
+      } as SearchSuggestion)
+    }
+
+    const dateRange = parseDateRange(q)
+    if (dateRange) {
+      processedSuggestions.unshift({
+        type: 'date',
+        value: q,
+        label: `按日期搜索：${dateRange.label}`
+      } as SearchSuggestion)
     }
     
-    suggestions.value = processedSuggestions;
+    suggestions.value = processedSuggestions
   } catch (e) {
-    console.error("Failed to fetch suggestions", e);
+    console.error("Failed to fetch suggestions", e)
   }
 }, 300);
 
@@ -167,7 +176,12 @@ const onInput = () => {
 
 const handleSearch = () => {
   if (searchText.value.trim()) {
-    router.replace({ path: '/search', query: { q: searchText.value } });
+    const dateRange = parseDateRange(searchText.value)
+    if (dateRange) {
+      router.push({ path: '/search', query: { q: searchText.value, type: 'date' } })
+    } else {
+      router.push({ path: '/search', query: { q: searchText.value } })
+    }
   }
 }
 
@@ -190,7 +204,8 @@ const getLabel = (type: string) => {
     'folder': '文件夹',
     'filename': '文件',
     'tag': '标签',
-    'scene': '景区'
+    'scene': '景区',
+    'date': '日期'
   };
   return map[type] || type;
 }
@@ -204,7 +219,8 @@ const getIcon = (type: string) => {
     'folder': Folder,
     'filename': FileText,
     'tag': Tag,
-    'scene': Mountain
+    'scene': Mountain,
+    'date': Calendar
   };
   return map[type] || Search;
 }

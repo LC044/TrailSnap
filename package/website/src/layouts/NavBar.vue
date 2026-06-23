@@ -217,13 +217,15 @@ import {
   Sparkles,
   Filter,
   ChevronDown,
-  Bookmark
+  Bookmark,
+  Calendar
 } from 'lucide-vue-next';
 import { useRouter } from 'vue-router'
 import { onClickOutside, useDebounceFn, useBreakpoints, breakpointsTailwind } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, type ResolvedNavItem } from '@/composables/useNavItems'
+import { parseDateRange } from '@/utils/date'
 
 const navLinks = [
   { label: '首页', href: '/' },
@@ -335,7 +337,14 @@ const handleSearch = () => {
   if (searchText.value.trim()) {
     showDropdown.value = false;
     suggestions.value = [];
-    router.push({ path: '/search', query: { q: searchText.value } });
+    
+    const dateRange = parseDateRange(searchText.value);
+    if (dateRange) {
+      router.push({ path: '/search', query: { q: searchText.value, type: 'date' } });
+    } else {
+      router.push({ path: '/search', query: { q: searchText.value } });
+    }
+    
     if (Array.isArray(searchInputRef.value)) {
       searchInputRef.value[0]?.blur();
     } else {
@@ -385,6 +394,15 @@ const fetchSuggestions = useDebounceFn(async (q: string) => {
         label: `图片中包含文字：${q}`
       } as SearchSuggestion);
     }
+
+    const dateRange = parseDateRange(q);
+    if (dateRange) {
+      processedSuggestions.unshift({
+        type: 'date',
+        value: q,
+        label: `按日期搜索：${dateRange.label}`
+      } as SearchSuggestion);
+    }
     
     suggestions.value = processedSuggestions;
   } catch (e) {
@@ -424,7 +442,8 @@ const getLabel = (type: string) => {
     'folder': '文件夹',
     'filename': '文件',
     'tag': '标签',
-    'scene': '景区'
+    'scene': '景区',
+    'date': '日期'
   };
   return map[type] || type;
 }
@@ -438,7 +457,8 @@ const getIcon = (type: string) => {
     'folder': Folder,
     'filename': FileText,
     'tag': Tag,
-    'scene': Mountain
+    'scene': Mountain,
+    'date': Calendar
   };
   return map[type] || Search;
 }
