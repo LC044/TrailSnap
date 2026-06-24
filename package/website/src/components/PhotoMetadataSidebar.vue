@@ -80,6 +80,9 @@
                     <MapPin class="w-3.5 h-3.5" />
                     <span>地理位置</span>
                 </div>
+                <button @click="openLocationEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑位置">
+                    <Pencil class="w-3.5 h-3.5" />
+                </button>
             </div>
             <p class="text-sm text-gray-900 dark:text-gray-200">
                 {{
@@ -267,10 +270,65 @@
       </span>
     </template>
   </el-dialog>
+
+  <!-- Location Edit Dialog -->
+  <el-dialog
+    v-model="showLocationEditDialog"
+    title="编辑位置"
+    width="720px"
+    destroy-on-close
+    align-center
+    append-to-body
+    @opened="initLocationMap"
+    @closed="destroyLocationMap"
+  >
+    <div class="flex gap-4">
+      <div class="flex-1 h-[360px] rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 relative">
+        <div id="location-edit-map" class="w-full h-full"></div>
+        <div v-if="locationMapLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80">
+          <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
+        </div>
+        <div v-if="locationMapError" class="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
+          <p class="text-sm text-gray-500">地图加载失败，请检查地图 API 配置</p>
+        </div>
+      </div>
+      <div class="w-52 flex flex-col gap-3">
+        <el-autocomplete
+          v-model="locationSearchQuery"
+          :fetch-suggestions="handleLocationSearch"
+          placeholder="搜索地点"
+          @select="handleLocationSelect"
+          class="w-full"
+          :trigger-on-focus="false"
+        >
+          <template #default="{ item }">
+            <div class="flex flex-col leading-tight py-1">
+              <span class="font-medium text-sm">{{ item.value }}</span>
+              <span class="text-xs text-gray-500">{{ item.address }}</span>
+            </div>
+          </template>
+        </el-autocomplete>
+        <div class="text-xs text-gray-500 space-y-1">
+          <p>经度: {{ locationForm.longitude ? locationForm.longitude.toFixed(6) : '--' }}</p>
+          <p>纬度: {{ locationForm.latitude ? locationForm.latitude.toFixed(6) : '--' }}</p>
+        </div>
+        <el-input v-model="locationForm.address" placeholder="详细地址" size="small" />
+        <p class="text-xs text-gray-400">拖拽地图标记可更新经纬度</p>
+      </div>
+    </div>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="showLocationEditDialog = false" :disabled="savingLocation">取消</el-button>
+        <el-button type="primary" @click="saveLocationEdit" :loading="savingLocation" :disabled="!locationForm.latitude && !currentMapLat">
+          保存
+        </el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import {
     X, CalendarDays, MapPin, Tags, PanelRightClose, PanelRightOpen,
     Loader2, Trash2, Info, User, Camera, Pencil
@@ -281,16 +339,66 @@ import PersonAvatar from '@/components/PersonAvatar.vue'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo, Tag } from '@/types/album'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { usePhotoStore } from '@/stores/photoStore'
+import { useLocationMap, type LocationDetail } from '@/composables/useLocationMap'
 
 interface Props {
   visible: boolean
   image: AlbumImage | null
   metadata: PhotoMetadata | null
   loading: boolean
+  forceOpenLocationEdit?: boolean
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits(['close', 'delete', 'update', 'highlight-face'])
+
+// Location edit state
+const showLocationEditDialog = ref(false)
+const savingLocation = ref(false)
+const locationMapLoading = ref(false)
+const locationSearchQuery = ref('')
+
+const locationForm = reactive({
+  latitude: 0 as number,
+  longitude: 0 as number,
+  address: '',
+  province: '',
+  city: '',
+  district: '',
+  country: ''
+})
+
+const {
+  currentLat: currentMapLat,
+  currentLng: currentMapLng,
+  currentLocationDetail: mapLocationDetail,
+  mapReady: locationMapReady,
+  mapError: locationMapError,
+  initMap: initLocationMapComposable,
+  setMarker: setLocationMarker,
+  enableMarkerDrag,
+  searchLocation: searchLocationOnMap,
+  searchAndSelect,
+  destroy: destroyLocationMapComposable
+} = useLocationMap({
+  onPositionChange: (lat: number, lng: number, detail?: LocationDetail) => {
+    locationForm.latitude = lat
+    locationForm.longitude = lng
+    if (detail) {
+      locationForm.address = detail.address
+      locationForm.province = detail.province
+      locationForm.city = detail.city
+      locationForm.district = detail.district
+      locationForm.country = detail.country
+    }
+  }
+})
+
+watch(() => props.forceOpenLocationEdit, (val) => {
+  if (val && props.visible) {
+    nextTick(() => openLocationEditDialog())
+  }
+})
 
 // State
 const showExifDialog = ref(false)
@@ -524,5 +632,69 @@ const handleDelete = () => {
              emit('delete', props.image.id)
         }
     })
+}
+
+// Location edit methods
+const openLocationEditDialog = () => {
+    if (!props.metadata) return
+    locationForm.latitude = (props.metadata as any).latitude || 0
+    locationForm.longitude = (props.metadata as any).longitude || 0
+    locationForm.address = props.metadata.address || ''
+    locationForm.province = (props.metadata as any).province || ''
+    locationForm.city = (props.metadata as any).city || ''
+    locationForm.district = (props.metadata as any).district || ''
+    locationForm.country = (props.metadata as any).country || ''
+    locationSearchQuery.value = ''
+    showLocationEditDialog.value = true
+}
+
+const initLocationMap = async () => {
+    locationMapLoading.value = true
+    await initLocationMapComposable({
+        containerId: 'location-edit-map',
+        initialLat: locationForm.latitude || undefined,
+        initialLng: locationForm.longitude || undefined,
+        enableDrag: true
+    })
+    locationMapLoading.value = false
+}
+
+const destroyLocationMap = () => {
+    destroyLocationMapComposable()
+}
+
+const handleLocationSearch = (query: string, cb: (results: any[]) => void) => {
+    searchLocationOnMap(query, cb)
+}
+
+const handleLocationSelect = (item: any) => {
+    searchAndSelect(item.value)
+}
+
+const saveLocationEdit = async () => {
+    if (!props.image) return
+    savingLocation.value = true
+    try {
+        const lat = currentMapLat.value || locationForm.latitude
+        const lng = currentMapLng.value || locationForm.longitude
+        const updates: any = {
+            latitude: lat,
+            longitude: lng,
+        }
+        if (locationForm.address) updates.address = locationForm.address
+        if (locationForm.province) updates.province = locationForm.province
+        if (locationForm.city) updates.city = locationForm.city
+        if (locationForm.district) updates.district = locationForm.district
+        if (locationForm.country) updates.country = locationForm.country
+        const updated = await albumService.updateMetadata(props.image.id, updates)
+        emit('update', { id: props.image.id, ...updated })
+        ElMessage.success('位置更新成功')
+        showLocationEditDialog.value = false
+    } catch (error) {
+        console.error('Failed to update location', error)
+        ElMessage.error('位置更新失败')
+    } finally {
+        savingLocation.value = false
+    }
 }
 </script>

@@ -111,13 +111,23 @@
                      </div>
                   </el-dropdown-item>
 
-                  <el-dropdown-item 
+                  <el-dropdown-item
                     v-if="store?.currentContext?.type === 'album' && localSelectedIds.size===1"
                     @click="$emit('set-album-cover', Array.from(localSelectedIds))"
                   >
                      <div class="flex items-center gap-2">
                         <ImageIcon class="w-4 h-4" />
                         <span>设为封面</span>
+                     </div>
+                  </el-dropdown-item>
+
+                  <el-dropdown-item
+                    :disabled="localSelectedIds.size === 0"
+                    @click="$emit('batch-edit-location', Array.from(localSelectedIds))"
+                  >
+                     <div class="flex items-center gap-2">
+                        <MapPin class="w-4 h-4" />
+                        <span>批量修正位置</span>
                      </div>
                   </el-dropdown-item>
 
@@ -344,7 +354,7 @@ const props = withDefaults(defineProps<Props>(), {
   showActionBar: true
 })
 
-const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer'])
+const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-location'])
 
     // --- Selection State ---
 const { 

@@ -69,6 +69,12 @@
                                     <span>移动到目录 (F)</span>
                                 </div>
                             </el-dropdown-item>
+                            <el-dropdown-item command="adjustLocation">
+                                <div class="flex items-center gap-2">
+                                    <MapPin class="w-4 h-4" />
+                                    <span>调整位置 (L)</span>
+                                </div>
+                            </el-dropdown-item>
                             <el-dropdown-item command="viewDescription">
                                 <div class="flex items-center gap-2">
                                     <FileText class="w-4 h-4" />
@@ -210,6 +216,7 @@
         :image="image"
         :metadata="metadata"
         :loading="loading"
+        :force-open-location-edit="forceOpenLocationEdit"
         @close="showSidebar = false"
         @update="handleSidebarUpdate"
         @delete="handleSidebarDelete"
@@ -365,6 +372,7 @@ import {
     FileText,
     FolderOutput,
     Pencil,
+    MapPin,
 } from 'lucide-vue-next'
 import Player from 'xgplayer'
 import 'xgplayer/dist/index.min.css'
@@ -457,6 +465,8 @@ useHotkeys([
   { key: 'P', handler: () => { showPersonSelector.value = true } },
   { key: 'f', handler: () => emit('transfer', 'move') },
   { key: 'F', handler: () => emit('transfer', 'move') },
+  { key: 'l', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) } },
+  { key: 'L', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) } },
   { key: '?', handler: () => toggleShortcutHelp() },
   { key: 'h', handler: () => toggleShortcutHelp() },
   { key: 'H', handler: () => toggleShortcutHelp() },
@@ -500,6 +510,7 @@ const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'add-to-a
 
 // State
 const showSidebar = ref(false)
+const forceOpenLocationEdit = ref(false)
 const loading = ref(false)
 const metadata = ref<PhotoMetadata | null>(null)
 
@@ -701,6 +712,10 @@ const handleCommand = (command: string) => {
         showPersonSelector.value = true
     } else if (command === 'moveToFolder') {
         emit('transfer', 'move')
+    } else if (command === 'adjustLocation') {
+        showSidebar.value = true
+        forceOpenLocationEdit.value = true
+        nextTick(() => { forceOpenLocationEdit.value = false })
     } else if (command === 'viewDescription') {
         if (props.image) {
             fetchDescription(props.image.id)

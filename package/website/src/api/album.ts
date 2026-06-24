@@ -157,6 +157,20 @@ export const albumService = {
       return data.data;
   },
 
+  async batchUpdateLocation(photoIds: string[], lat: number, lng: number, formattedAddress?: string, locationDetail?: { province?: string; city?: string; district?: string; country?: string }) {
+      const data = await request.post<{message: string, count: number}>('/api/metadata/batch-location', {
+          photo_ids: photoIds,
+          latitude: lat,
+          longitude: lng,
+          formatted_address: formattedAddress,
+          province: locationDetail?.province,
+          city: locationDetail?.city,
+          district: locationDetail?.district,
+          country: locationDetail?.country
+      });
+      return data.data;
+  },
+
   async getThumbnail(photoId: string) {
     const data = await request.get<{ thumbnail: string }>(`/api/medias/${photoId}/thumbnail`);
   },

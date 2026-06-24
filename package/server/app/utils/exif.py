@@ -168,6 +168,27 @@ def get_file_time_form_system(file_path: str) -> datetime:
         return datetime.now()
 
 
+def reverse_geocode(lat: float, lng: float) -> dict:
+    try:
+        results = rg.search([(lat, lng)], mode=1, data_dir=RG_DIR)
+        if results:
+            res = results[0]
+            district = res.get("admin_3", "")
+            name = res.get("admin_4", "")
+            if name == "":
+                name = res.get("name", "")
+            return {
+                "district": district,
+                "city": res.get("admin_2", ""),
+                "province": res.get("admin_1", ""),
+                "country": res.get("country", ""),
+                "address": f"{res.get('admin_1', '')}{res.get('admin_2', '')}{district}{name}"
+            }
+    except Exception as e:
+        print(f"Reverse geocoding error: {e}")
+    return {}
+
+
 def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Image] = None, extract_location_details: bool = True) -> Dict[str, Any]:
     """
     Extracts photo_time, exif_info, and location from the file.
@@ -221,25 +242,11 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
                 gps = get_gps_info(exif_dict)
                 metadata["location"] = gps
                 if gps and extract_location_details:
-                    try:
-                        results = rg.search([(gps["latitude"], gps["longitude"])], mode=1, data_dir=RG_DIR)
-                        if results:
-                            res = results[0]
-                            district = res.get("admin_3", "")
-                            name = res.get("admin_4","")
-                            if name == "":
-                                name = res.get("name","")
-                            metadata["location_details"] = {
-                                "latitude": gps["latitude"],
-                                "longitude": gps["longitude"],
-                                "district": district,
-                                "city": res.get("admin_2", ""),
-                                "province": res.get("admin_1", ""),
-                                "country": res.get("country", ""),
-                                "address": f"{res.get('admin_1', '')}{res.get('admin_2', '')}{district}{name}"
-                            }
-                    except Exception as e:
-                        print(f"Reverse geocoding error: {e}")
+                    loc = reverse_geocode(gps["latitude"], gps["longitude"])
+                    if loc:
+                        loc["latitude"] = gps["latitude"]
+                        loc["longitude"] = gps["longitude"]
+                        metadata["location_details"] = loc
 
     except Exception as e:
         print(traceback.format_exc())

@@ -46,6 +46,17 @@ class PhotoMetadataCreate(PhotoMetadataBase):
 class PhotoMetadataUpdate(PhotoMetadataBase):
     pass
 
+
+class BatchLocationUpdate(BaseModel):
+    photo_ids: List[UUID]
+    latitude: float
+    longitude: float
+    formatted_address: Optional[str] = None
+    province: Optional[str] = None
+    city: Optional[str] = None
+    district: Optional[str] = None
+    country: Optional[str] = None
+
 class PhotoMetadata(PhotoMetadataBase):
     photo_id: UUID
     file_path: Optional[str] = None

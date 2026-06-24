@@ -157,6 +157,7 @@
         @set-album-cover="(ids) => $emit('set-cover', ids)"
         @retry="$emit('retry')"
         @transfer="handleBatchTransfer"
+        @batch-edit-location="handleBatchEditLocation"
       >
         <template #batch-actions="{ selectedIds, clearSelection }">
             <slot name="batch-actions" :selected-ids="selectedIds" :clear-selection="clearSelection"></slot>
@@ -222,6 +223,14 @@
       :default-sub-folder="title"
       @success="handleTransferSuccess"
     />
+
+    <!-- Batch Location Editor -->
+    <LocationBatchEditor
+      v-model="showLocationBatchEditor"
+      :photo-ids="locationEditPhotoIds"
+      :photos="locationEditPhotos"
+      @success="handleLocationBatchSuccess"
+    />
   </div>
 </template>
 
@@ -241,6 +250,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ParticleExplosion from '@/components/ParticleExplosion.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
 import FolderSelectionDialog from '@/components/FolderSelectionDialog.vue'
+import LocationBatchEditor from '@/components/LocationBatchEditor.vue'
 import type { AlbumImage } from '@/types/album'
 
 import { useAlbumStore } from '@/stores/albumStore'
@@ -330,6 +340,10 @@ const showFolderSelector = ref(false)
 const folderAction = ref<'move' | 'copy'>('move')
 const transferPhotoIds = ref<string[]>([])
 
+// Batch location edit state
+const showLocationBatchEditor = ref(false)
+const locationEditPhotoIds = ref<string[]>([])
+const locationEditPhotos = computed(() => props.photos?.filter(p => locationEditPhotoIds.value.includes(p.id)) || [])
 const handleLightboxTransfer = (action: 'move' | 'copy') => {
   if (lightboxImage.value) {
     folderAction.value = action
@@ -349,6 +363,18 @@ const handleTransferSuccess = () => {
     galleryRef.value.exitSelectionMode()
   }
   closeLightbox()
+  emit('retry')
+}
+
+const handleBatchEditLocation = (ids: string[]) => {
+  locationEditPhotoIds.value = ids
+  showLocationBatchEditor.value = true
+}
+
+const handleLocationBatchSuccess = () => {
+  if (galleryRef.value) {
+    galleryRef.value.exitSelectionMode()
+  }
   emit('retry')
 }
 

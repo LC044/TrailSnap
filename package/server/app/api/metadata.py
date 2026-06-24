@@ -23,7 +23,7 @@ from app.crud import face as crud_face
 from app.crud import tag as crud_tag
 from app.schemas import ocr as schemas
 from app.db.models.photo import Photo
-from app.schemas.metadata import PhotoMetadataUpdate, PhotoMetadata
+from app.schemas.metadata import PhotoMetadataUpdate, PhotoMetadata, BatchLocationUpdate
 
 router = APIRouter()
 
@@ -64,4 +64,40 @@ def update_photo_metadata(
     if not result:
         raise HTTPException(status_code=404, detail="Photo not found or access denied")
     return result
+
+
+@router.post("/batch-location")
+def batch_update_location(
+        batch_data: BatchLocationUpdate,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    if not batch_data.photo_ids:
+        raise HTTPException(status_code=400, detail="No photo IDs provided")
+
+    updated_count = 0
+    for photo_id in batch_data.photo_ids:
+        update_data: dict = {
+            "latitude": batch_data.latitude,
+            "longitude": batch_data.longitude,
+        }
+        if batch_data.formatted_address:
+            update_data["address"] = batch_data.formatted_address
+        if batch_data.province:
+            update_data["province"] = batch_data.province
+        if batch_data.city:
+            update_data["city"] = batch_data.city
+        if batch_data.district:
+            update_data["district"] = batch_data.district
+        if batch_data.country:
+            update_data["country"] = batch_data.country
+
+        metadata_update = PhotoMetadataUpdate(**update_data)
+        result = crud_photo.update_photo_metadata(
+            db, photo_id=photo_id, metadata=metadata_update, user_id=current_user.id
+        )
+        if result:
+            updated_count += 1
+
+    return BaseResponse(data={"message": f"Successfully updated location for {updated_count} photos", "count": updated_count})
 
