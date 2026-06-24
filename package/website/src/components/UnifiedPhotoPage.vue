@@ -408,12 +408,10 @@ const hasNext = computed(() => lightboxIndex.value < props.photos.length - 1 && 
 
 const openLightbox = (img: AlbumImage) => {
   lightboxImage.value = img
-  document.body.style.overflow = 'hidden'
 }
 
 const closeLightbox = () => {
   lightboxImage.value = null
-  document.body.style.overflow = ''
 }
 
 const handlePrev = () => {

@@ -598,6 +598,13 @@ const disposePlayer = () => {
 
 onUnmounted(() => {
     disposePlayer()
+    document.body.style.overflow = ''
+    stopDrag()
+    stopTouch()
+    if (shortcutHintTimer) {
+        clearTimeout(shortcutHintTimer)
+        shortcutHintTimer = null
+    }
 })
 
 const isDragging = ref(false)
@@ -684,6 +691,8 @@ watch(() => props.visible, async (newVal) => {
         showOCR.value = false
         showShortcutHint.value = false
         showShortcutHelp.value = false
+        stopDrag()
+        stopTouch()
         if (shortcutHintTimer) {
           clearTimeout(shortcutHintTimer)
           shortcutHintTimer = null

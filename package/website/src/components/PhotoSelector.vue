@@ -125,6 +125,13 @@
         @select="scrollToDate"
       />
     </div>
+
+    <!-- Lightbox -->
+    <PhotoLightbox
+      :visible="!!lightboxImage"
+      :image="lightboxImage"
+      @close="closeLightbox"
+    />
   </div>
 </template>
 
@@ -198,7 +205,10 @@ const scrollToDate = (date: string) => {
 
 const openLightbox = (img: AlbumImage) => {
   lightboxImage.value = img
-  document.body.style.overflow = 'hidden'
+}
+
+const closeLightbox = () => {
+  lightboxImage.value = null
 }
 
 const handleBatchDelete = async (ids: string[]) => {
