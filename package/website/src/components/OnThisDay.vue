@@ -120,6 +120,7 @@ import { CalendarCheck, MapPin } from 'lucide-vue-next'
 import { photoApi } from '@/api/photo';
 import type { Photo } from '@/types/album';
 import { format } from 'date-fns';
+import { useHotkeys } from '@/composables/useHotkeys';
 
 const photos = ref<Photo[]>([]);
 const currentIndex = ref(0);
@@ -200,21 +201,17 @@ const handleCarouselChange = (index: number) => {
 };
 
 // Handle ESC key to exit full screen
-const handleKeydown = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && isFullScreen.value) {
-        toggleFullScreen(currentIndex.value);
-    }
-};
+useHotkeys([
+  { key: 'Escape', handler: () => toggleFullScreen(currentIndex.value), when: () => isFullScreen.value },
+], { priority: 0 });
 
 onMounted(() => {
     fetchOnThisDay();
     updateCarouselHeight();
     window.addEventListener('resize', updateCarouselHeight);
-    window.addEventListener('keydown', handleKeydown);
 });
 
 onUnmounted(() => {
-    window.removeEventListener('keydown', handleKeydown);
     window.removeEventListener('resize', updateCarouselHeight);
     document.body.style.overflow = '';
 });

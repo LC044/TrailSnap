@@ -1,39 +1,40 @@
 <template>
   <Transition name="fade">
-    <div v-if="visible" class="fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm" @click="close" @keydown.esc="close" tabindex="0">
+    <div v-if="visible" class="fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm" @click="close" tabindex="0">
 
       <!-- Top Toolbar (Mobile Adapted) — hidden in edit mode -->
       <div v-if="!isEditing" class="fixed top-0 left-0 right-0 z-[102] p-2 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
          <button
             @click.stop="close"
             class="pointer-events-auto w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0"
+            title="关闭 (Esc)"
         >
             <X class="w-6 h-6" />
         </button>
 
         <div class="flex items-center gap-1 pointer-events-auto p-0">
             <!-- Zoom Controls -->
-            <button @click.stop="zoomOut" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0">
+            <button @click.stop="zoomOut" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="缩小 (-)">
                 <ZoomOut class="w-6 h-6" />
             </button>
-            <button @click.stop="zoomIn" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0">
+            <button @click.stop="zoomIn" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="放大 (+)">
                 <ZoomIn class="w-6 h-6" />
             </button>
 
             <!-- Actions -->
-            <button @click.stop="downloadImage" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="下载图片">
+            <button @click.stop="downloadImage" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="下载图片 (D)">
                 <Download class="w-6 h-6" />
             </button>
-             <button v-if="image && image.file_type === 'image'" @click.stop="enterEditMode" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="编辑图片">
+             <button v-if="image && image.file_type === 'image'" @click.stop="enterEditMode" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="编辑图片 (E)">
                 <Pencil class="w-6 h-6" />
             </button>
-             <button @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片">
+             <button @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片 (Del)">
                 <Trash2 class="w-6 h-6" />
             </button>
-            <button @click.stop="toggleOriginal" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'text-primary-400': showOriginal }" title="查看原图">
+            <button @click.stop="toggleOriginal" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'text-primary-400': showOriginal }" title="查看原图 (Shift+O)">
                 <Focus class="w-6 h-6" />
             </button>
-            <button @click.stop="toggleSidebar" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'bg-white/20 text-white': showSidebar }" title="查看元数据">
+            <button @click.stop="toggleSidebar" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'bg-white/20 text-white': showSidebar }" title="查看元数据 (I)">
                 <Info class="w-6 h-6" />
             </button>
 
@@ -47,25 +48,25 @@
                             <el-dropdown-item command="ocr">
                                 <div class="flex items-center gap-2">
                                     <ScanText class="w-4 h-4" />
-                                    <span>{{ showOCR ? '关闭识别' : '文字识别' }}</span>
+                                    <span>{{ showOCR ? '关闭识别' : '文字识别 (O)' }}</span>
                                 </div>
                             </el-dropdown-item>
                             <el-dropdown-item command="addToAlbum">
                                 <div class="flex items-center gap-2">
                                     <ImagePlus class="w-4 h-4" />
-                                    <span>添加到相册</span>
+                                    <span>添加到相册 (A)</span>
                                 </div>
                             </el-dropdown-item>
                             <el-dropdown-item command="addToPerson">
                                 <div class="flex items-center gap-2">
                                     <UserPlus class="w-4 h-4" />
-                                    <span>添加到人物</span>
+                                    <span>添加到人物 (P)</span>
                                 </div>
                             </el-dropdown-item>
                             <el-dropdown-item command="moveToFolder">
                                 <div class="flex items-center gap-2">
                                     <FolderOutput class="w-4 h-4" />
-                                    <span>移动到目录</span>
+                                    <span>移动到目录 (F)</span>
                                 </div>
                             </el-dropdown-item>
                             <el-dropdown-item command="viewDescription">
@@ -226,6 +227,90 @@
         @click-record="onOCRRecordClick"
       />
 
+      <!-- First-launch shortcut hint toast -->
+      <Transition name="fade">
+        <div
+          v-if="!isEditing && showShortcutHint"
+          class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[103] bg-gray-900/80 dark:bg-gray-100/90 text-white dark:text-gray-900 rounded-lg px-4 py-2 text-sm backdrop-blur-sm pointer-events-none select-none"
+        >
+          <span class="text-primary-500 font-medium">←/→</span> 切换 ·
+          <span class="text-primary-500 font-medium">+/-</span> 缩放 ·
+          <span class="text-primary-500 font-medium">I</span> 信息 ·
+          <span class="text-primary-500 font-medium">D</span> 下载 ·
+          <span class="text-primary-500 font-medium">Del</span> 删除 ·
+          <span class="text-primary-500 font-medium">?</span> 查看全部
+        </div>
+      </Transition>
+
+      <!-- Shortcut help panel -->
+      <el-dialog
+        v-model="showShortcutHelp"
+        :show-close="false"
+        align-center
+        class="shortcut-help-dialog"
+        append-to-body
+        width="auto"
+        @opened="shortcutHelpOpened = true"
+        @closed="shortcutHelpOpened = false"
+      >
+        <template #header>
+          <div class="text-lg font-semibold text-gray-900 dark:text-gray-100">键盘快捷键</div>
+        </template>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-4 text-sm">
+          <!-- Navigation -->
+          <div>
+            <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">导航</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">上一张 / 下一张</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">←</kbd><span class="text-gray-400 dark:text-gray-500">/</span><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">→</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">下一张</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">Space</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">关闭灯箱</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">Esc</kbd></div></div>
+            </div>
+          </div>
+          <!-- Zoom -->
+          <div>
+            <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">缩放</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">放大</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">+</kbd><span class="text-gray-400 dark:text-gray-500">/</span><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">=</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">缩小</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">-</kbd><span class="text-gray-400 dark:text-gray-500">/</span><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">_</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">重置缩放</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">0</kbd></div></div>
+            </div>
+          </div>
+          <!-- Edit -->
+          <div>
+            <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">编辑</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">进入编辑</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">E</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">删除图片</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">Del</kbd></div></div>
+            </div>
+          </div>
+          <!-- Media -->
+          <div>
+            <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">媒体</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">下载图片</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">D</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">查看原图</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">Shift+O</kbd></div></div>
+            </div>
+          </div>
+          <!-- Info -->
+          <div>
+            <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">信息</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">元数据侧栏</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">I</kbd><span class="text-gray-400 dark:text-gray-500">/</span><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">M</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">文字识别</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">O</kbd></div></div>
+            </div>
+          </div>
+          <!-- Organize -->
+          <div>
+            <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">整理</h4>
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">添加到相册</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">A</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">添加到人物</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">P</kbd></div></div>
+              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">移动到目录</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">F</kbd></div></div>
+            </div>
+          </div>
+        </div>
+      </el-dialog>
+
       <PersonSelector
         v-if="!isEditing"
         v-model:visible="showPersonSelector"
@@ -265,7 +350,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
+import { ref, watch, computed, onUnmounted, nextTick, onMounted } from 'vue'
 import {
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info,
     ImagePlus,
@@ -292,6 +377,7 @@ import PhotoMetadataSidebar from './PhotoMetadataSidebar.vue'
 import PhotoOCRPanel from './PhotoOCRPanel.vue'
 import PersonSelector from './PersonSelector.vue'
 import PhotoEditor from './PhotoEditor.vue'
+import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
 
 
 interface Props {
@@ -313,6 +399,68 @@ const isEditing = ref(false)
 const isPlayingLive = ref(false)
 const liveVideoRef = ref<HTMLVideoElement | null>(null)
 const videoStyle = ref<Record<string, string>>({})
+
+// Shortcut hint & help state
+const SHORTCUT_HINT_KEY = 'trailsnap_seen_shortcut_hint'
+const showShortcutHint = ref(false)
+let shortcutHintTimer: ReturnType<typeof setTimeout> | null = null
+const showShortcutHelp = ref(false)
+const shortcutHelpOpened = ref(false)
+
+const toggleShortcutHelp = () => {
+  showShortcutHelp.value = !showShortcutHelp.value
+  // Permanently dismiss the first-launch hint when user opens the help panel
+  if (showShortcutHelp.value && showShortcutHint.value) {
+    showShortcutHint.value = false
+    localStorage.setItem(SHORTCUT_HINT_KEY, '1')
+    if (shortcutHintTimer) {
+      clearTimeout(shortcutHintTimer)
+      shortcutHintTimer = null
+    }
+  }
+}
+
+const handleEscKey = () => {
+  if (shortcutHelpOpened.value) {
+    showShortcutHelp.value = false
+  } else {
+    close()
+  }
+}
+
+// Register lightbox hotkeys (priority 100, only when visible and not editing)
+useHotkeys([
+  { key: 'Escape', handler: handleEscKey },
+  { key: 'ArrowLeft', handler: () => prev(), when: () => !!props.hasPrev },
+  { key: 'ArrowRight', handler: () => next(), when: () => !!props.hasNext },
+  { key: ' ', handler: () => next(), when: () => !!props.hasNext },
+  { key: '+', handler: () => zoomIn() },
+  { key: '=', handler: () => zoomIn() },
+  { key: '-', handler: () => zoomOut() },
+  { key: '_', handler: () => zoomOut() },
+  { key: '0', handler: () => resetZoom() },
+  { key: 'i', handler: () => toggleSidebar() },
+  { key: 'I', handler: () => toggleSidebar() },
+  { key: 'm', handler: () => toggleSidebar() },
+  { key: 'M', handler: () => toggleSidebar() },
+  { key: 'o', handler: () => toggleOCR() },
+  { key: 'O', handler: () => toggleOriginal(), shift: true },
+  { key: 'd', handler: () => downloadImage() },
+  { key: 'D', handler: () => downloadImage() },
+  { key: 'e', handler: () => enterEditMode(), when: () => !!props.image && props.image.file_type === 'image' },
+  { key: 'E', handler: () => enterEditMode(), when: () => !!props.image && props.image.file_type === 'image' },
+  { key: 'Delete', handler: () => handleDelete() },
+  { key: 'Backspace', handler: () => handleDelete() },
+  { key: 'a', handler: () => emit('add-to-album', props.image) },
+  { key: 'A', handler: () => emit('add-to-album', props.image) },
+  { key: 'p', handler: () => { showPersonSelector.value = true } },
+  { key: 'P', handler: () => { showPersonSelector.value = true } },
+  { key: 'f', handler: () => emit('transfer', 'move') },
+  { key: 'F', handler: () => emit('transfer', 'move') },
+  { key: '?', handler: () => toggleShortcutHelp() },
+  { key: 'h', handler: () => toggleShortcutHelp() },
+  { key: 'H', handler: () => toggleShortcutHelp() },
+], { priority: 100, enabled: () => props.visible && !isEditing.value })
 
 const displayImageSrc = computed(() => {
     if (!props.image) return ''
@@ -492,7 +640,7 @@ watch(() => props.visible, async (newVal) => {
     if (newVal && props.image) {
         document.body.style.overflow = 'hidden'
         resetZoom()
-        
+
         if (props.image.file_type === 'live_photo') {
              isPlayingLive.value = true
         }
@@ -501,9 +649,18 @@ watch(() => props.visible, async (newVal) => {
             await nextTick()
             initPlayer()
         }
-        
+
         if (!metadata.value || metadata.value.photo_id !== props.image.id) {
             await fetchMetadata(props.image.id)
+        }
+
+        // Show first-launch shortcut hint
+        if (!localStorage.getItem(SHORTCUT_HINT_KEY)) {
+          showShortcutHint.value = true
+          if (shortcutHintTimer) clearTimeout(shortcutHintTimer)
+          shortcutHintTimer = setTimeout(() => {
+            showShortcutHint.value = false
+          }, 3000)
         }
     } else {
         document.body.style.overflow = ''
@@ -514,6 +671,12 @@ watch(() => props.visible, async (newVal) => {
         showDescription.value = false
         showSidebar.value = false
         showOCR.value = false
+        showShortcutHint.value = false
+        showShortcutHelp.value = false
+        if (shortcutHintTimer) {
+          clearTimeout(shortcutHintTimer)
+          shortcutHintTimer = null
+        }
     }
 })
 

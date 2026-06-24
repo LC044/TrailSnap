@@ -217,6 +217,7 @@ import {
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { useFabricEditor } from '@/composables/useFabricEditor'
 import type { EditorTool } from '@/types/editor'
+import { useHotkeys } from '@/composables/useHotkeys'
 
 const props = defineProps<{
   imageUrl: string
@@ -344,45 +345,28 @@ async function handleCancel() {
   emit('cancel')
 }
 
-function handleKeydown(e: KeyboardEvent) {
-  if (e.ctrlKey || e.metaKey) {
-    if (e.key === 'z' && !e.shiftKey) {
-      e.preventDefault()
-      editor.undo()
-    } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
-      e.preventDefault()
-      editor.redo()
-    }
-    return
-  }
-
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (editor.activeTool.value === 'select') {
-      e.preventDefault()
-      editor.deleteSelected()
-    }
-  } else if (e.key === 'Escape') {
-    if (editor.isCropping.value) {
-      editor.cancelCrop()
-    }
-  } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-    const keyMap: Record<string, EditorTool> = {
-      v: 'select', b: 'draw', t: 'text',
-      r: 'rect', e: 'ellipse', l: 'line',
-    }
-    const tool = keyMap[e.key.toLowerCase()]
-    if (tool) selectTool(tool)
-  }
-}
+// Editor hotkeys at priority 200 (higher than lightbox's 100)
+useHotkeys([
+  { key: 'z', handler: () => editor.undo(), ctrl: true },
+  { key: 'z', handler: () => editor.redo(), ctrl: true, shift: true },
+  { key: 'y', handler: () => editor.redo(), ctrl: true },
+  { key: 'Delete', handler: () => { if (editor.activeTool.value === 'select') editor.deleteSelected() } },
+  { key: 'Backspace', handler: () => { if (editor.activeTool.value === 'select') editor.deleteSelected() } },
+  { key: 'Escape', handler: () => { if (editor.isCropping.value) editor.cancelCrop() } },
+  { key: 'v', handler: () => selectTool('select') },
+  { key: 'b', handler: () => selectTool('draw') },
+  { key: 't', handler: () => selectTool('text') },
+  { key: 'r', handler: () => selectTool('rect') },
+  { key: 'e', handler: () => selectTool('ellipse') },
+  { key: 'l', handler: () => selectTool('line') },
+], { priority: 200 })
 
 onMounted(() => {
-  document.addEventListener('keydown', handleKeydown)
   // Double nextTick to ensure container has layout dimensions
   nextTick(() => nextTick(loadImage))
 })
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown)
   editor.dispose()
   if (imageEl) {
     imageEl.onload = null
