@@ -59,15 +59,19 @@ const menuItems = [
   { key: 'feedback', label: '问题反馈', icon: MessageSquare },
 ]
 
-// Handle URL hash navigation
-watch(() => route.hash, (newHash) => {
-  if (newHash) {
-    const key = newHash.replace('#', '')
-    if (menuItems.some(item => item.key === key)) {
+// Handle URL hash / query-param navigation. Both /settings#tasks and
+// /settings?tab=tasks activate the "任务管理" tab so that the TaskBell
+// can deep-link into a specific category.
+watch(
+  () => [route.hash, route.query.tab],
+  ([newHash, queryTab]) => {
+    const key = (newHash ? String(newHash).replace('#', '') : '') || (queryTab ? String(queryTab) : '')
+    if (key && menuItems.some(item => item.key === key)) {
       activeTab.value = key
     }
-  }
-}, { immediate: true })
+  },
+  { immediate: true }
+)
 
 watch(activeTab, (newTab) => {
   router.replace({ hash: `#${newTab}` })

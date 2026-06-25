@@ -98,16 +98,23 @@ async def log_requests(request: Request, call_next):
 # 自定义 GZip 中间件
 class CustomGZipMiddleware(GZipMiddleware):
     def __init__(
-        self, app, minimum_size: int = 500, compresslevel: int = 9, exclude_paths=None
+        self, app, minimum_size: int = 500, compresslevel: int = 9,
+        exclude_paths=None, exclude_exact=None,
     ) -> None:
         super().__init__(app, minimum_size, compresslevel)
         self.exclude_paths = exclude_paths or []
+        self.exclude_exact = set(exclude_exact or [])
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "http":
             headers = Headers(scope=scope)
             request = Request(scope, receive)
-            if "gzip" in headers.get("Accept-Encoding", "") and not any(request.url.path.endswith(suffix) for suffix in self.exclude_paths):
+            path = request.url.path
+            if (
+                "gzip" in headers.get("Accept-Encoding", "")
+                and path not in self.exclude_exact
+                and not any(path.endswith(suffix) for suffix in self.exclude_paths)
+            ):
                 responder = GZipResponder(
                     self.app, self.minimum_size, compresslevel=self.compresslevel
                 )
@@ -117,7 +124,13 @@ class CustomGZipMiddleware(GZipMiddleware):
 
 # 添加 GZip 中间件
 exclude_paths = ['/ai_communication/AiCommunicationThemesRecord/chat']
-app.add_middleware(CustomGZipMiddleware, minimum_size=1000, compresslevel=9, exclude_paths=exclude_paths)
+app.add_middleware(
+    CustomGZipMiddleware,
+    minimum_size=1000,
+    compresslevel=9,
+    exclude_paths=exclude_paths,
+    exclude_exact={'/tasks/events'},
+)
 
 # 配置允许跨域的源（生产环境建议指定具体域名，不要用 "*"）
 origins = [

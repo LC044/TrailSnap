@@ -12,6 +12,22 @@ export interface Task {
   total_items?: number
   processed_items?: number
   result?: any
+  owner_id?: string | null
+}
+
+const SSE_BASE = (import.meta.env.VITE_API_BASE_URL ?? '') || '';
+
+/**
+ * Build the URL for the task-event SSE stream. EventSource cannot set
+ * headers, so we pass the JWT as a query param. The backend accepts both
+ * `Authorization: Bearer <token>` and `?token=<token>`.
+ */
+export function buildTaskEventsUrl(token: string | null | undefined): string {
+  const base = SSE_BASE || '';
+  const params = new URLSearchParams();
+  if (token) params.set('token', token);
+  const qs = params.toString();
+  return `${base}/api/tasks/events${qs ? '?' + qs : ''}`;
 }
 
 export const tasksApi = {
@@ -91,5 +107,13 @@ export const tasksApi = {
   async getGlobalStatus() {
       const data = await request.get('/api/tasks/status')
       return data.data
-  }
+  },
+
+  /** Fetch tasks updated after a given ISO timestamp (SSE catch-up). */
+  async fetchRecent(since: string, limit = 100, token?: string | null) {
+    const params: any = { since, limit }
+    if (token) params.token = token
+    const data = await request.get<Task[]>('/api/tasks/recent', { params })
+    return data.data
+  },
 }

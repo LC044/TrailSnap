@@ -95,7 +95,7 @@
     </div>
 
     <!-- 右侧（筛选等其他操作） -->
-    <div class="flex items-center space-x-3 ml-auto">
+    <div class="flex items-center space-x-1 ml-auto">
       <!-- 预留的筛选器/功能控件 -->
       <button class="bg-transparent p-2 text-slate-600 dark:text-slate-300 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" title="筛选">
         <Filter class="w-4 h-4" />
@@ -151,6 +151,8 @@
           <X class="w-3 h-3" />
         </button>
       </div>
+
+      <!-- Task bell (mobile) removed -->
 
       <!-- More Menu -->
       <div class="relative" ref="moreMenuRef">

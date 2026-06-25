@@ -1,5 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, Query
+import asyncio
+import json
+from fastapi import APIRouter, Depends, HTTPException, Body, Query, Request
 from sqlalchemy.orm import Session
+from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import get_current_user
 from app.db.models import User
@@ -42,13 +45,14 @@ def list_tasks(
     status: str = None,
     type: str = None,
     limit: int = 50,
+    updated_since: str = Query(None, description="ISO 8601 时间戳；只返回 updated_at 晚于该时间的任务，用于断线补偿"),
     db: Session = Depends(get_db)
 ):
     """
     分页查询任务列表，可按状态和类型过滤。
     默认按创建时间倒序返回前 50 条。
     """
-    return crud_task.list_tasks(db, status=status, type=type, limit=limit)
+    return crud_task.list_tasks(db, status=status, type=type, limit=limit, updated_since=updated_since)
 
 
 @router.post("/fast-mode", summary="设置快速模式")
@@ -95,6 +99,127 @@ def resume_category(category: str):
     """
     TaskManager.get_instance().resume_category(category)
     return {"status": "success"}
+
+
+
+
+# ---------------------------------------------------------------------------
+# SSE: real-time task status push
+# ---------------------------------------------------------------------------
+from datetime import datetime as _dt  # noqa: E402
+
+
+def _serialize_task(task) -> dict:
+    return {
+        "id": str(task.id),
+        "type": task.type,
+        "status": task.status,
+        "priority": task.priority,
+        "total_items": task.total_items or 0,
+        "processed_items": task.processed_items or 0,
+        "error": task.error,
+        "owner_id": str(task.owner_id) if task.owner_id else None,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+        "payload": task.payload or {},
+    }
+
+
+def _resolve_user_from_token(token: str, db: Session) -> User:
+    """Resolve the user from a query-param token. EventSource cannot send
+    an Authorization header, so SSE / polling-fallback endpoints accept
+    the JWT (or `ts_` prefixed agent token) as a `?token=` query param
+    instead. Mirrors the logic in `app.api.deps.get_current_user`."""
+    from datetime import datetime as _now
+    from jose import jwt, JWTError, ExpiredSignatureError
+    from pydantic import ValidationError
+    from app.core.system_config import system_config as _cfg
+    from app.schemas.token import TokenPayload
+    from app.crud import user as _crud_user
+    from app.crud.agent_token import get_token_by_string
+    if not token:
+        raise HTTPException(status_code=401, detail='Missing token')
+    if token.startswith('ts_'):
+        agent_token = get_token_by_string(db, token)
+        if not agent_token:
+            raise HTTPException(status_code=401, detail='Invalid token')
+        if agent_token.expires_at < _now.utcnow():
+            raise HTTPException(status_code=401, detail='Token has expired')
+        user = _crud_user.get(db, id=agent_token.user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail='User not found')
+        return user
+    try:
+        payload = jwt.decode(
+            token,
+            _cfg.config.security.secret_key,
+            algorithms=[_cfg.config.security.algorithm],
+        )
+        token_data = TokenPayload(**payload)
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail='Token has expired')
+    except (JWTError, ValidationError):
+        raise HTTPException(status_code=403, detail='Could not validate credentials')
+    user = _crud_user.get(db, id=token_data.sub)
+    if not user:
+        raise HTTPException(status_code=401, detail='User not found')
+    return user
+
+
+@router.get("/events", summary="任务状态 SSE 事件流")
+async def task_events(
+    request: Request,
+    token: str = Query(None, description="JWT 或 agent token；用于 EventSource 鉴权（EventSource 无法自定义 header）"),
+    db: Session = Depends(get_db),
+):
+    """SSE channel for real-time task status updates.
+
+    The client opens this with ``EventSource('/api/tasks/events?token=...')``
+    and listens for ``task.updated`` / ``task.created`` / ``task.retry`` events.
+    A keep-alive comment is sent every 15 seconds so reverse proxies do not
+    close the connection.
+    """
+    if not token:
+        raise HTTPException(status_code=401, detail="SSE requires token query parameter")
+    # Validate the token so the request 401s immediately on bad creds
+    # instead of silently streaming an empty channel.
+    _resolve_user_from_token(token, db)
+
+    manager = TaskManager.get_instance()
+    queue = manager.subscribe()
+
+    async def event_generator():
+        try:
+            yield {"event": "hello", "data": json.dumps({"ts": _dt.utcnow().isoformat() + "Z"})}
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield {
+                        "event": msg.get("event", "task.updated"),
+                        "data": json.dumps(msg.get("data") or {}, default=str),
+                    }
+                except asyncio.TimeoutError:
+                    yield {"event": "ping", "data": json.dumps({"ts": _dt.utcnow().isoformat() + "Z"})}
+        finally:
+            manager.unsubscribe(queue)
+
+    return EventSourceResponse(event_generator())
+
+
+@router.get("/recent", summary="获取最近完成 / 失败任务（用于 SSE 断线补偿）")
+def list_recent_tasks(
+    since: str = Query(..., description="ISO 8601 时间戳"),
+    limit: int = 100,
+    token: str = Query(None, description="JWT 或 agent token"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return tasks updated after the given timestamp. The frontend uses
+    this to catch up on missed events after a reconnect."""
+    tasks = crud_task.list_tasks(db, status=None, type=None, limit=limit, updated_since=since)
+    return [_serialize_task(t) for t in tasks]
 
 
 @router.get("/{task_id}", response_model=TaskSchema, summary="根据 ID 获取任务详情")
@@ -188,3 +313,4 @@ def delete_failed_tasks(
     """
     count = crud_task.delete_failed_tasks(db, types)
     return {"message": f"Deleted {count} failed tasks", "count": count}
+

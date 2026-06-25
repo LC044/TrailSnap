@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import json
 import multiprocessing
@@ -31,6 +32,10 @@ class TaskManager:
         self.worker_process = None
         self.scheduler_thread = None
         self.scheduler_running = False
+        # SSE subscribers (one asyncio.Queue per connected client)
+        self._subscribers: List[asyncio.Queue] = []
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._lock = threading.Lock()
 
     @classmethod
     def get_instance(cls):
@@ -55,13 +60,48 @@ class TaskManager:
 
         # 2. 启动新进程
         logging.info("Starting background task worker process...")
+        # 用 multiprocessing.Queue 把 worker 的状态变更事件回传给 API 进程，
+        # 由 API 进程派发到所有 SSE 订阅者。
+        self._event_queue = multiprocessing.Queue(maxsize=4096)
+        self._reader_thread = threading.Thread(
+            target=self._event_queue_reader,
+            daemon=True,
+            name='TaskEventReader',
+        )
+        self._reader_thread.start()
         self.worker_process = multiprocessing.Process(
             target=run_worker,
+            args=(self._event_queue,),
             daemon=True,
             name="TaskWorker"
         )
         self.worker_process.start()
         logging.info(f"Worker process started with PID: {self.worker_process.pid}")
+
+    def _event_queue_reader(self):
+        """Drain events pushed by the worker subprocess and forward them to
+        every connected SSE subscriber. Runs as a daemon thread in the API
+        process."""
+        q = self._event_queue
+        if q is None:
+            return
+        while True:
+            try:
+                msg = q.get()
+            except (EOFError, OSError):
+                # Queue closed during shutdown
+                return
+            except Exception as e:
+                logging.debug(f'event_queue_reader error: {e}')
+                continue
+            if not isinstance(msg, dict):
+                continue
+            event = msg.get('event') or 'task.updated'
+            data = msg.get('data') or {}
+            try:
+                self.publish_event(event, data)
+            except Exception as e:
+                logging.debug(f'publish_event error: {e}')
 
     def stop_worker(self):
         """Stops the background worker process gracefully."""
@@ -281,6 +321,10 @@ class TaskManager:
         """Retry a failed task"""
         task = crud_task.retry_task(db, task)
         self.start_worker_if_needed()
+        try:
+            self.publish_task_update(task, event='task.retry')
+        except Exception as e:
+            logging.debug(f'publish_task_update failed: {e}')
         return task
 
     def retry_all_failed_tasks(self, db: Session, types: Optional[List[str]] = None):
@@ -297,9 +341,76 @@ class TaskManager:
         task = crud_task.add_task(db, type, payload, priority, owner_id)
         logging.info(f"Added task: {task.type} with priority {task.priority}")
         self.start_worker_if_needed()
+        try:
+            self.publish_task_update(task, event='task.created')
+        except Exception as e:
+            logging.debug(f'publish_task_update failed: {e}')
         return task
+
+    # ------------------------------------------------------------------
+    # SSE publish / subscribe helpers
+    # ------------------------------------------------------------------
+    def attach_loop(self, loop: asyncio.AbstractEventLoop):
+        """Called from the API process event loop so cross-thread publishes
+        can be scheduled on the right loop via `call_soon_threadsafe`."""
+        self._loop = loop
+
+    def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue(maxsize=256)
+        with self._lock:
+            self._subscribers.append(q)
+        return q
+
+    def unsubscribe(self, q: asyncio.Queue):
+        with self._lock:
+            try:
+                self._subscribers.remove(q)
+            except ValueError:
+                pass
+
+    def publish_event(self, event: str, data: Dict[str, Any]):
+        """Push an SSE event to every connected subscriber. Safe to call from
+        the worker subprocess or any FastAPI handler thread."""
+        for q in list(self._subscribers):
+            try:
+                if q.full():
+                    try:
+                        q.get_nowait()
+                    except Exception:
+                        pass
+                q.put_nowait({'event': event, 'data': data})
+            except Exception:
+                # Subscriber went away mid-flight; ignore.
+                pass
+
+    def publish_task_update(self, task: Task, event: str = 'task.updated'):
+        payload = {
+            'id': str(task.id),
+            'type': task.type,
+            'status': task.status,
+            'priority': task.priority,
+            'total_items': task.total_items or 0,
+            'processed_items': task.processed_items or 0,
+            'error': task.error,
+            'owner_id': str(task.owner_id) if task.owner_id else None,
+            'created_at': task.created_at.isoformat() if task.created_at else None,
+            'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+            'payload': task.payload or {},
+        }
+        self.publish_event(event, payload)
 
     def add_tasks(self, db: Session, tasks_data: List[Dict], owner_id: UUID = None):
         """Batch add tasks"""
         crud_task.add_tasks(db, tasks_data, owner_id)
         self.start_worker_if_needed()
+        try:
+            for t in tasks_data or []:
+                self.publish_event('task.created', {
+                    'type': t.get('type'),
+                    'status': TaskStatus.PENDING.value,
+                    'priority': t.get('priority', 0),
+                    'owner_id': str(t.get('owner_id') or owner_id) if (t.get('owner_id') or owner_id) else None,
+                    'payload': t.get('payload', {}),
+                })
+        except Exception as e:
+            logging.debug(f'add_tasks publish failed: {e}')

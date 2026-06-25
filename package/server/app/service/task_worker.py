@@ -124,6 +124,20 @@ class TaskWorker:
         # Maintain a map of Future/Task -> TaskType to track running tasks
         self.active_task_map: Dict[asyncio.Future, TaskType] = {}
         self.last_active_time: Dict[TaskType, datetime] = {}
+        # Multiprocessing queue back to the API process for SSE events
+        self.event_queue = None
+
+    def set_event_queue(self, queue):
+        self.event_queue = queue
+
+    def _publish(self, event: str, data: Dict[str, Any]):
+        if self.event_queue is None:
+            return
+        try:
+            self.event_queue.put_nowait({'event': event, 'data': data})
+        except Exception:
+            # Queue full or closed; drop the event silently.
+            pass
 
     @classmethod
     def get_instance(cls):
@@ -356,6 +370,25 @@ class TaskWorker:
                     self.last_active_time[task.type] = datetime.now()
                     tasks_by_type_cat[key].append({'id': task.id, 'type': task.type, 'priority': task.priority})
                 db.commit()
+                # Notify SSE subscribers about the PENDING -> PROCESSING transition.
+                for task in tasks:
+                    try:
+                        db.refresh(task)
+                    except Exception:
+                        pass
+                    self._publish('task.updated', {
+                        'id': str(task.id),
+                        'type': task.type,
+                        'status': task.status,
+                        'priority': task.priority,
+                        'total_items': task.total_items or 0,
+                        'processed_items': task.processed_items or 0,
+                        'error': task.error,
+                        'owner_id': str(task.owner_id) if task.owner_id else None,
+                        'created_at': task.created_at.isoformat() if task.created_at else None,
+                        'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                        'payload': task.payload or {},
+                    })
 
             # Split tasks into smaller batches of max 8 items
             chunked_batches = []
@@ -668,6 +701,39 @@ class TaskWorker:
                          })
                 if failed_mappings:
                     db.bulk_update_mappings(Task, failed_mappings)
+                    # Re-read to capture updated_at and notify SSE subscribers.
+                    failed_rows = db.query(Task).filter(Task.id.in_(task_ids_failed)).all()
+                    for row in failed_rows:
+                        self._publish('task.updated', {
+                            'id': str(row.id),
+                            'type': row.type,
+                            'status': row.status,
+                            'priority': row.priority,
+                            'total_items': row.total_items or 0,
+                            'processed_items': row.processed_items or 0,
+                            'error': row.error,
+                            'owner_id': str(row.owner_id) if row.owner_id else None,
+                            'created_at': row.created_at.isoformat() if row.created_at else None,
+                            'updated_at': row.updated_at.isoformat() if row.updated_at else None,
+                            'payload': row.payload or {},
+                        })
+            # Publish COMPLETED events BEFORE deletion so subscribers see the
+            # terminal state (the row will be removed from the DB right after).
+            for item in items:
+                if item.get('status') == TaskStatus.COMPLETED:
+                    self._publish('task.updated', {
+                        'id': str(item['task_id']),
+                        'type': item.get('task_type'),
+                        'status': TaskStatus.COMPLETED.value,
+                        'priority': 0,
+                        'total_items': 0,
+                        'processed_items': 0,
+                        'error': None,
+                        'owner_id': None,
+                        'created_at': None,
+                        'updated_at': datetime.now().isoformat(),
+                        'payload': {},
+                    })
             db.commit()
         except Exception as e:
             logging.error(f"Failed to flush results: {e}", exc_info=True)

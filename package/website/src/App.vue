@@ -7,13 +7,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 // 导入所有布局组件
 import MainLayout from '@/layouts/MainLayout.vue';
 import BlankLayout from '@/layouts/BlankLayout.vue';
 import { provideTheme } from '@/composables/useTheme';
 import { provideNavItems } from '@/composables/useNavItems';
+import { useUserStore } from '@/stores/user';
+import { useTaskNotifyStore } from '@/stores/taskNotifyStore';
+import { useTaskSSE } from '@/composables/useTaskSSE';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {
@@ -39,6 +42,30 @@ const currentLayout = computed(() => {
   // 从路由 meta 中获取布局类型，未指定则默认主布局
   const layoutType = route.meta.layout as 'main' | 'blank' || undefined;
   return layoutMap[layoutType] || MainLayout;
+});
+
+// Wire the task-notification SSE channel. The token ref watches the Pinia
+// user store, so a logout / re-login automatically disconnects / reconnects
+// without us having to manage EventSource lifetimes by hand.
+const userStore = useUserStore();
+const taskStore = useTaskNotifyStore();
+const token = computed(() => userStore.token);
+const sseEnabled = ref(false);
+
+watch(
+  token,
+  (val) => {
+    sseEnabled.value = !!val;
+  },
+  { immediate: true }
+);
+
+useTaskSSE({
+  token,
+  enabled: sseEnabled,
+  onEvent: (event, data) => {
+    taskStore.handleEvent(event, data);
+  },
 });
 
 </script>

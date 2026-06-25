@@ -9,15 +9,16 @@ from dotenv import load_dotenv
 from app.core.logger import setup_logging
 from app.service.task_worker import TaskWorker
 
-async def _run():
+async def _run(event_queue=None):
     worker = TaskWorker.get_instance()
+    worker.set_event_queue(event_queue)
     worker.start()
 
     # Keep the loop alive
     while True:
         await asyncio.sleep(1)
 
-def run_worker():
+def run_worker(event_queue=None):
     load_dotenv('./data/.env')
     """Entry point for the worker process"""
     # Setup logging for this process
@@ -37,7 +38,7 @@ def run_worker():
             # Register signal handlers
             pass
 
-        asyncio.run(_run())
+        asyncio.run(_run(event_queue))
     except (KeyboardInterrupt, SystemExit):
         logging.info("Worker process received stop signal")
     except Exception as e:

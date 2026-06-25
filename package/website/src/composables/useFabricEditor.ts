@@ -457,8 +457,6 @@ export function useFabricEditor() {
         originY: 'center',
         scaleX: newScale,
         scaleY: newScale,
-        scaleX: newScale,
-        scaleY: newScale,
         selectable: false,
         evented: false,
         objectCaching: false,

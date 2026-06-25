@@ -213,7 +213,9 @@
     </nav>
 
     <!-- 底部设置与回收站入口 -->
-    <div class="p-2 border-t border-slate-200 dark:border-slate-800 shrink-0 space-y-1">
+    <div class="p-2 border-t border-slate-200 dark:border-slate-800 shrink-0 flex flex-col space-y-1">
+      <SidebarTaskManager :is-collapsed="isCollapsed" />
+      
       <RouterLink
         to="/recycle-bin"
         :title="isCollapsed ? '回收站' : undefined"
@@ -279,6 +281,7 @@ import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, type ResolvedNavItem } from '@/composables/useNavItems'
 import NavAddDialog from '@/components/NavAddDialog.vue'
+import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
 import { parseDateRange } from '@/utils/date'
 
 const route = useRoute()

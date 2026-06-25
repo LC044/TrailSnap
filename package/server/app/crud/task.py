@@ -20,12 +20,26 @@ DEFAULT_SCAN_STATUS = {
 }
 
 
-def list_tasks(db: Session, status: Optional[str] = None, type: Optional[str] = None, limit: int = 50) -> List[Task]:
+def list_tasks(db: Session, status: Optional[str] = None, type: Optional[str] = None, limit: int = 50, updated_since: Optional[str] = None) -> List[Task]:
+    """List tasks, optionally filtered by status / type / updated_since.
+
+    ``updated_since`` is an ISO 8601 string; rows whose ``updated_at`` is
+    strictly later than that timestamp are returned. This powers the SSE
+    catch-up flow on the frontend.
+    """
     query = db.query(Task).order_by(Task.created_at.desc())
     if status:
         query = query.filter(Task.status == status)
     if type:
         query = query.filter(Task.type == type)
+    if updated_since:
+        try:
+            ts = datetime.fromisoformat(updated_since.replace("Z", "+00:00"))
+            query = query.filter(Task.updated_at > ts)
+        except Exception:
+            # Silently ignore unparseable timestamps so the endpoint still
+            # works for clients that have a bad clock.
+            pass
     return query.limit(limit).all()
 
 def get_task(db: Session, task_id: UUID) -> Optional[Task]:
