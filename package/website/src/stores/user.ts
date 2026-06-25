@@ -57,6 +57,12 @@ export const useUserStore = defineStore('user', () => {
     }
   };
 
+  const updateUserInfo = (newData: Partial<UserInfo>) => {
+    if (userInfo.value) {
+      userInfo.value = { ...userInfo.value, ...newData };
+    }
+  };
+
   const resetState = () => {
     setToken(null);
     userInfo.value = null;
@@ -80,6 +86,7 @@ export const useUserStore = defineStore('user', () => {
     login,
     logout,
     resetState,
-    getUserInfo
+    getUserInfo,
+    updateUserInfo
   };
 });

@@ -7,6 +7,8 @@ from pydantic import BaseModel, EmailStr
 class UserBase(BaseModel):
     username: Optional[str] = None
     email: Optional[EmailStr] = None
+    nickname: Optional[str] = None
+    avatar: Optional[str] = None
     is_active: Optional[bool] = True
     is_superuser: bool = False
 
@@ -23,6 +25,10 @@ class UserUpdate(UserBase):
     password: Optional[str] = None
     security_question: Optional[str] = None
     security_answer: Optional[str] = None
+
+class UserUpdateMe(BaseModel):
+    nickname: Optional[str] = None
+    avatar: Optional[str] = None
 
 # Properties shared by models stored in DB
 class UserInDBBase(UserBase):

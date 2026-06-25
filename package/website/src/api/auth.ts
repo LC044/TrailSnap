@@ -14,6 +14,8 @@ export interface UserInfo {
   id: string;
   username: string;
   email: string;
+  nickname?: string;
+  avatar?: string;
   is_active: boolean;
   is_superuser: boolean;
   failed_login_attempts?: number;
@@ -23,6 +25,8 @@ export interface UserInfo {
 
 export interface RegisterParams {
   username: string;
+  nickname?: string;
+  avatar?: string;
   email: string;
   password: string;
   security_question: string;

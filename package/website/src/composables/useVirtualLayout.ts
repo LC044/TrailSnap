@@ -27,9 +27,10 @@ export interface MonthBlock {
 interface UseVirtualLayoutOptions {
   timelineStats: Ref<TimelineStats | undefined>
   containerWidth: Ref<number>
-  layoutMode: Ref<'grid' | 'masonry' | 'waterfall' | 'list'> // Added 'waterfall'
+  layoutMode: Ref<'grid' | 'masonry' | 'waterfall' | 'list' | 'moments'> // Added 'waterfall' and 'moments'
   viewSize: Ref<'sm' | 'md' | 'lg'>
   photos: Ref<AlbumImage[]> // Added photos dependency
+  expandedDays?: Ref<Set<string>>
 }
 
 export function useVirtualLayout(options: UseVirtualLayoutOptions) {
@@ -101,16 +102,12 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
     let rowHeight = 0
     if (mode === 'grid' || mode === 'masonry') {
          const colWidth = (width - (cols - 1) * gap) / cols
-         // Grid: Square (1:1) if mode is 'grid', else 3:2 if 'masonry' (legacy default)
-         // But user wants 'Square' as one mode. Let's assume 'grid' = Square.
-         // And 'waterfall' = Justified.
-         // If user selects 'Square', we use 1:1.
-         // If user selects 'Waterfall', we handle below.
-         // Let's assume 'grid' is the default Square mode now as per request "Square layout".
          const aspectRatio = (mode === 'grid') ? 1 : 1.5 
          rowHeight = colWidth / aspectRatio
     } else if (mode === 'waterfall') {
          rowHeight = 220 // Target Row Height for Waterfall
+    } else if (mode === 'moments') {
+         rowHeight = width < 640 ? Math.floor((width - 32 - gap * 2) / 3) : 120 // Roughly 120px or container width based
     }
     
     rowHeightVal.value = rowHeight
@@ -151,31 +148,16 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
             
             if (mode === 'waterfall') {
                 // Calculate rows for Justified Layout
-                // For dummy timeline (year=0), we need to map photos correctly
-                // If timeline is dummy, we can't key by date. 
-                // We should rely on global indices or just map all photos.
-                
-                // If it's a dummy day (year=0), just take the slice of photos for this "day"
-                // But wait, the loop below iterates dayItem.count.
-                // We need to fetch the correct photos.
-                // The globalIndex tracks where we are in the photo array.
-                // So we can use globalIndex + i to access photos.value
-                
                 let currentWidth = 0
                 rows = 1
-                
-                // We need to iterate 'dayItem.count' times
                 for (let i = 0; i < dayItem.count; i++) {
-                    // Try to get photo
                     let ar = 1.5
                     const pIndex = globalIndex + i
                     if (pIndex < photos.value.length) {
                         const p = photos.value[pIndex]
                         if (p.width && p.height) ar = p.width / p.height
                     }
-                    
                     const itemWidth = rowHeight * ar
-                    
                     if (currentWidth + itemWidth > width) {
                         rows++
                         currentWidth = itemWidth + gap
@@ -183,8 +165,37 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
                         currentWidth += (currentWidth > 0 ? gap : 0) + itemWidth
                     }
                 }
-                
                 contentHeight = rows * rowHeight + Math.max(0, rows - 1) * gap
+            } else if (mode === 'moments') {
+                const dayKey = (dayItem.year === 0) ? 'all' : `${dayItem.year}-${dayItem.month}-${dayItem.day}`
+                const isExpanded = options.expandedDays?.value.has(dayKey)
+                const displayCount = isExpanded ? dayItem.count : Math.min(dayItem.count, 9)
+                
+                const isMobile = width < 640
+                const actualGap = isMobile ? 6 : 8 // gap-1.5 (6px) or gap-2 (8px)
+                const fullContentWidth = width - 32 - 40 - 12
+
+                if (isExpanded && dayItem.count > 9) {
+                    const contentWidth = fullContentWidth
+                    const minItemWidth = isMobile ? 80 : 120
+                    const expandedCols = Math.floor((contentWidth + actualGap) / (minItemWidth + actualGap)) || 1
+                    const expandedItemWidth = (contentWidth - (expandedCols - 1) * actualGap) / expandedCols
+                    rows = Math.ceil(displayCount / expandedCols)
+                    contentHeight = rows * expandedItemWidth + Math.max(0, rows - 1) * actualGap
+                } else {
+                    const contentWidth = Math.min(fullContentWidth, 600)
+                    const baseItemWidth = (Math.min(contentWidth, 360) - 2 * actualGap) / 3
+                    if (displayCount === 1) {
+                        rows = 1
+                        contentHeight = 200 // Single large image estimate
+                    } else if (displayCount === 4) {
+                        rows = 2
+                        contentHeight = rows * baseItemWidth + actualGap
+                    } else {
+                        rows = Math.ceil(displayCount / 3)
+                        contentHeight = rows * baseItemWidth + Math.max(0, rows - 1) * actualGap
+                    }
+                }
             } else {
                 // Standard Grid / Square
                 rows = Math.ceil(dayItem.count / cols)
@@ -194,7 +205,14 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
             // If it's the dummy day, don't show header?
             // Or just show 0 height header.
             const isDummy = dayItem.year === 0
-            const effectiveHeaderHeight = isDummy ? 0 : DAY_HEADER_HEIGHT
+            let effectiveHeaderHeight = isDummy ? 0 : DAY_HEADER_HEIGHT
+            
+            if (mode === 'moments') {
+                effectiveHeaderHeight = 120 // Header (Avatar, Name, Text) + Footer (Date, Actions) + Margins
+                if (options.expandedDays?.value.has(isDummy ? 'all' : `${dayItem.year}-${dayItem.month}-${dayItem.day}`) && dayItem.count > 9) {
+                    effectiveHeaderHeight += 30 // "Collapse" button height
+                }
+            }
 
             const dayHeight = effectiveHeaderHeight + contentHeight + gap 
             
@@ -237,7 +255,7 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
 
   // Watchers
   // Added photos to watch list
-  watch([() => timelineStats.value, containerWidth, layoutMode, viewSize, () => photos.value.length], () => {
+  watch([() => timelineStats.value, containerWidth, layoutMode, viewSize, () => photos.value.length, () => options.expandedDays?.value.size], () => {
     recalculateLayout()
   }, { immediate: true })
 

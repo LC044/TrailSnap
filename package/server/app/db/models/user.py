@@ -20,6 +20,8 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
+    nickname = Column(String, nullable=True)
+    avatar = Column(String, nullable=True)
     hashed_password = Column(String)
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)

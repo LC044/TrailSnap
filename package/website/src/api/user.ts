@@ -4,6 +4,8 @@ export interface User {
   id: string
   username: string
   email: string
+  nickname?: string
+  avatar?: string
   is_active: boolean
   is_superuser: boolean
 }
@@ -37,6 +39,11 @@ export const userService = {
 
   async getCurrentUser() {
     const data = await request.get<User>('/api/users/me')
+    return data.data
+  },
+
+  async updateCurrentUser(params: { nickname?: string, avatar?: string }) {
+    const data = await request.put<User>('/api/users/me', params)
     return data.data
   },
 

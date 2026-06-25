@@ -73,19 +73,27 @@
                     <div class="grid grid-cols-1 gap-1">
                        <button
                         @click="layoutMode = 'waterfall'"
-                        class="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm dark:bg-gray-800"
-                        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600': layoutMode === 'waterfall', 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300': layoutMode !== 'waterfall' }"
+                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        :class="layoutMode === 'waterfall' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutDashboard class="w-4 h-4" />
-                        <span>瀑布流</span>
+                        <span>自适应</span>
                       </button>
                       <button
                         @click="layoutMode = 'grid'"
-                        class="flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors text-sm dark:bg-gray-800"
-                        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600': layoutMode === 'grid', 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300': layoutMode !== 'grid' }"
+                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        :class="layoutMode === 'grid' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutGrid class="w-4 h-4" />
                         <span>正方形</span>
+                      </button>
+                      <button
+                        @click="layoutMode = 'moments'"
+                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        :class="layoutMode === 'moments' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                      >
+                        <LayoutList class="w-4 h-4" />
+                        <span>朋友圈</span>
                       </button>
                     </div>
                   </div>
@@ -238,7 +246,7 @@
 import { ref, computed, onUnmounted } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
-  ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid,
+  ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
   UploadCloud, CheckSquare, Settings2
 } from 'lucide-vue-next'
 import { ElMessageBox } from 'element-plus'
@@ -305,7 +313,7 @@ const emit = defineEmits<{
 
 // UI State
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
-const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall'>('grid')
+const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments'>('grid')
 const activeDate = ref('')
 const lightboxImage = ref<AlbumImage | null>(null)
 const showViewOptions = ref(false)

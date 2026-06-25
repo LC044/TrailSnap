@@ -22,6 +22,7 @@
 
     <!-- Content Area -->
     <div class="flex-1 overflow-auto p-4 md:p-8 max-w-5xl md:mx-auto">
+      <ProfileSettings v-if="activeTab === 'profile'" />
       <UserManagement v-if="activeTab === 'user'" />
       <TaskManagement v-if="activeTab === 'tasks'" />
       <BasicSettings v-if="activeTab === 'basic'" />
@@ -36,8 +37,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, List, Settings, FolderOpen, Info, Key, MessageSquare } from 'lucide-vue-next'
+import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
+import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
 import BasicSettings from './settings/BasicSettings.vue'
 import ExternalGallery from './settings/ExternalGallery.vue'
@@ -48,8 +50,9 @@ import FeedbackPage from './settings/FeedbackPage.vue'
 const router = useRouter()
 const route = useRoute()
 
-const activeTab = ref('user')
+const activeTab = ref('profile')
 const menuItems = [
+  { key: 'profile', label: '个人资料', icon: UserCircle },
   { key: 'user', label: '用户管理', icon: User },
   { key: 'tasks', label: '任务管理', icon: List },
   { key: 'basic', label: '基础设置', icon: Settings },

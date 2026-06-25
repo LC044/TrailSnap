@@ -43,6 +43,8 @@ def create(db: Session, user: UserCreate) -> User:
     db_user = User(
         email=user.email,
         username=user.username,
+        nickname=user.nickname,
+        avatar=user.avatar,
         hashed_password=hashed_password,
         is_active=user.is_active,
         is_superuser=user.is_superuser,

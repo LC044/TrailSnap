@@ -2,7 +2,7 @@ from typing import Any, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserUpdateMe
 from app.crud.user import create, reset_password, delete
 from app.dependencies import get_db
 from app.api import deps
@@ -85,6 +85,25 @@ def read_user_me(
     """
     Get current user.
     """
+    return current_user
+
+@router.put("/me", response_model=UserResponse)
+def update_user_me(
+    payload: UserUpdateMe,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    """
+    Update current user.
+    """
+    if payload.nickname is not None:
+        current_user.nickname = payload.nickname
+    if payload.avatar is not None:
+        current_user.avatar = payload.avatar
+        
+    db.add(current_user)
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 @router.delete("/{user_id}", response_model=UserResponse)

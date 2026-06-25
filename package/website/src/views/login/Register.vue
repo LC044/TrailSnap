@@ -22,6 +22,13 @@
           />
         </el-form-item>
 
+        <el-form-item label="昵称" prop="nickname">
+          <el-input 
+            v-model="form.nickname" 
+            placeholder="请输入昵称"
+          />
+        </el-form-item>
+
         <el-form-item label="电子邮箱" prop="email">
           <el-input 
             v-model="form.email" 
@@ -121,6 +128,7 @@ onMounted(async () => {
 
 const form = reactive({
   username: '',
+  nickname: '',
   email: '',
   password: '',
   confirmPassword: '',
@@ -185,6 +193,7 @@ const handleRegister = async () => {
         
         await authService.register({
           username: form.username,
+          nickname: form.nickname,
           email: form.email,
           password: form.password,
           security_question: question,

@@ -177,8 +177,8 @@
                 class="day-block"
             >
                 <template v-if="visibleDayRanges.has(day.key)">
-                     <!-- Day Header -->
-                    <div class="h-[50px] flex items-center mb-0 sticky top-[80px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
+                    <!-- Day Header -->
+                    <div v-if="layoutMode !== 'moments'" class="h-[50px] flex items-center mb-0 sticky top-[80px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
                         <div class="flex items-center gap-3 group cursor-pointer text-sm font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-2 pointer-events-auto cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" @click="toggleDaySelection(day)">
                              <div 
                                 class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"
@@ -193,8 +193,113 @@
                         </div>
                     </div>
 
-                    <!-- Photos Grid -->
+                    <!-- Moments Layout Block -->
+                    <div v-if="layoutMode === 'moments'" class="flex gap-3 mb-6 relative">
+                        <!-- Avatar placeholder -->
+                        <div class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0 flex items-center justify-center text-gray-400 font-bold overflow-hidden">
+                            <img v-if="userStore.userInfo?.avatar" :src="userStore.userInfo.avatar" class="w-full h-full object-cover" />
+                            <ImageIcon v-else class="w-5 h-5 opacity-50" />
+                        </div>
+                        
+                        <!-- Content -->
+                        <div class="flex-grow min-w-0" :class="expandedDays.has(day.key) ? 'max-w-full' : 'max-w-[600px]'">
+                            <!-- Name -->
+                            <div class="text-sm font-bold text-[#576b95] dark:text-primary-400 mb-1">
+                                {{ userStore.userInfo?.nickname || userStore.userInfo?.username || '行影集用户' }}
+                            </div>
+                            
+                            <!-- Simulated Text Placeholder -->
+                            <div class="text-[15px] text-gray-800 dark:text-gray-200 mb-2 whitespace-pre-wrap break-words">
+                                这是 {{ day.year }}年{{ day.month }}月{{ day.day }}日 的美好回忆。
+                            </div>
+                            
+                            <!-- Photos Grid for Moments -->
+                            <div 
+                                class="grid gap-1.5 sm:gap-2 mb-2" 
+                                :style="{
+                                    gridTemplateColumns: getGridColumns(day.key, expandedDays.has(day.key)),
+                                    maxWidth: getGridMaxWidth(day.key, expandedDays.has(day.key))
+                                }"
+                            >
+                                <template v-for="(img, idx) in (expandedDays.has(day.key) ? getPhotos(day.key) : getPhotos(day.key).slice(0, 9))" :key="img.id">
+                                    <div
+                                         class="relative group bg-gray-100 dark:bg-gray-800 overflow-hidden cursor-pointer rounded-sm"
+                                         :class="{
+                                             'aspect-square': getPhotos(day.key).length > 1,
+                                             'max-h-[250px] flex justify-start': getPhotos(day.key).length === 1
+                                         }"
+                                         @click="handlePhotoClick(img)"
+                                         @vue:mounted="loadImage(img)"
+                                         @vue:unmounted="cancelImageLoad(img.id)"
+                                     >
+                                         <img
+                                              :src="loadedImages[img.id] || placeholderSrc"
+                                              class="w-full h-full transition-opacity duration-300"
+                                              :class="getPhotos(day.key).length === 1 ? 'object-contain object-left' : 'object-cover'"
+                                              :alt="img.filename"
+                                          />
+                                          
+                                          <!-- Video/Live Photo Indicators -->
+                                          <div v-if="img.file_type === 'video'" class="flex mb-1 absolute top-1 right-2 justify-center pointer-events-none z-10 items-center">
+                                            <div class="text-white text-sm drop-shadow-md mr-1">
+                                              {{ img.duration}}
+                                            </div>
+                                            <PlayCircle class="w-4 h-4 text-white drop-shadow-md opacity-90" />
+                                          </div>
+                                          <div v-else-if="img.file_type === 'live_photo'" class="flex mb-1 absolute top-2 right-2 justify-center pointer-events-none z-10 items-center">
+                                               <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90"></span>
+                                           </div>
+
+                                           <!-- Selection Checkbox -->
+                                           <div
+                                               class="absolute top-1 left-1 z-30 transition-opacity duration-200 cursor-pointer"
+                                               :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'"
+                                               @click.stop="toggleSelection(img)"
+                                           >
+                                               <div
+                                               class="w-5 h-5 rounded-full border flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-sm"
+                                               :class="localSelectedIds.has(img.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/10 border-white/70 hover:bg-black/40'"
+                                               >
+                                               <Check v-if="localSelectedIds.has(img.id)" class="w-3 h-3 text-white" />
+                                               </div>
+                                           </div>
+                                           
+                                           <!-- Selected Overlay -->
+                                           <div 
+                                               v-if="localSelectedIds.has(img.id)"
+                                               class="absolute inset-0 bg-black/10 z-10 pointer-events-none"
+                                           ></div>
+                                        
+                                        <!-- "+N" Overlay for 9th photo if > 9 -->
+                                        <div 
+                                            v-if="idx === 8 && getPhotos(day.key).length > 9 && !expandedDays.has(day.key)"
+                                            class="absolute inset-0 bg-black/50 flex items-center justify-center cursor-pointer"
+                                            @click.stop="toggleExpand(day.key)"
+                                        >
+                                            <span class="text-white text-xl font-medium">+{{ getPhotos(day.key).length - 9 }}</span>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Collapse Button -->
+                            <div v-if="expandedDays.has(day.key) && getPhotos(day.key).length > 9" class="mt-2 mb-2">
+                                <span class="text-sm text-[#576b95] dark:text-primary-400 cursor-pointer hover:opacity-80" @click="toggleExpand(day.key)">收起</span>
+                            </div>
+                            
+                            <!-- Date & Action -->
+                            <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 mt-2">
+                                <span>{{ day.year }}-{{ String(day.month).padStart(2, '0') }}-{{ String(day.day).padStart(2, '0') }}</span>
+                                <div class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
+                                    <MoreHorizontal class="w-4 h-4" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Photos Grid (Standard) -->
                     <div 
+                        v-if="layoutMode !== 'moments'"
                         :class="layoutMode === 'waterfall' ? 'flex flex-wrap' : 'grid w-full'" 
                         :style="layoutMode === 'waterfall' ? { gap: gap + 'px' } : {
                             gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
@@ -316,6 +421,7 @@ import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Downloa
 import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
+import { useUserStore } from '@/stores/user'
 import type { TimelineStats, AlbumImage } from '@/types/album'
 import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/useVirtualLayout'
 import { useSelection } from '@/composables/useSelection'
@@ -330,7 +436,7 @@ interface Props {
   timelineStats?: TimelineStats
   loading?: boolean
   hasMore?: boolean
-  layoutMode?: 'grid' | 'masonry' | 'waterfall' | 'list'
+  layoutMode?: 'grid' | 'masonry' | 'waterfall' | 'list' | 'moments'
   viewSize?: 'sm' | 'md' | 'lg'
   groupByDate?: boolean
   deleteLabel?: string
@@ -377,6 +483,7 @@ const downloadProgress = ref(0)
 const isAddingPerson = ref(false)
 
 const photoStore = usePhotoStore()
+const userStore = useUserStore()
 const store = computed(() => props.store || photoStore)
 
 // --- Image Loading Logic ---
@@ -468,12 +575,47 @@ watch(scrollContainerRef, (container) => {
   }
 }, { immediate: true })
 
+const expandedDays = ref(new Set<string>())
+
+const toggleExpand = (dayKey: string) => {
+    if (expandedDays.value.has(dayKey)) {
+        expandedDays.value.delete(dayKey)
+    } else {
+        expandedDays.value.add(dayKey)
+    }
+    // trigger recalculate
+    expandedDays.value = new Set(expandedDays.value)
+}
+
+const getGridColumns = (dayKey: string, isExpanded: boolean) => {
+    const count = getPhotos(dayKey).length
+    if (isExpanded && count > 9) {
+        // 向右展开，移动端最小80px，PC端最小120px
+        const minWidth = window.innerWidth < 640 ? '80px' : '120px'
+        return `repeat(auto-fill, minmax(${minWidth}, 1fr))`
+    }
+    if (count === 1) return '1fr'
+    if (count === 4) return 'repeat(2, minmax(0, 1fr))'
+    return 'repeat(3, minmax(0, 1fr))'
+}
+
+const getGridMaxWidth = (dayKey: string, isExpanded: boolean) => {
+    const count = getPhotos(dayKey).length
+    if (isExpanded && count > 9) {
+        return '100%' // 占满剩余可用空间
+    }
+    if (count === 1) return 'min(100%, 240px)'
+    if (count === 4) return 'min(100%, 240px)' // 2列
+    return 'min(100%, 360px)' // 3列
+}
+
 const layoutOptions = {
     timelineStats: toRef(props, 'timelineStats'),
     containerWidth,
     layoutMode: toRef(props, 'layoutMode'),
     viewSize: toRef(props, 'viewSize'),
-    photos: toRef(props, 'photos')
+    photos: toRef(props, 'photos'),
+    expandedDays
 }
 
 const { monthBlocks, totalHeight, getVisibleBlocks, recalculateLayout, colCount, rowHeight, gap } = useVirtualLayout(layoutOptions)
@@ -528,8 +670,8 @@ const updateVisibleBlocks = () => {
                 const relStart = startY - photosTopAbs
                 const relEnd = endY - photosTopAbs
                 
-                if (props.layoutMode === 'waterfall') {
-                     // In waterfall mode, disable row virtualization within day for simplicity
+                if (props.layoutMode === 'waterfall' || props.layoutMode === 'moments') {
+                     // In waterfall and moments modes, disable row virtualization within day for simplicity
                      newDayRanges.set(d.key, { start: 0, end: d.count, topH: 0, bottomH: 0 })
                 } else {
                     let startRow = Math.floor(relStart / rowUnit)
