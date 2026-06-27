@@ -13,3 +13,4 @@ data/*
 .claude/
 test-local*
 .playwright-cli
+releases/
