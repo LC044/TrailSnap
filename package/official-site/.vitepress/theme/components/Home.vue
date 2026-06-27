@@ -418,12 +418,12 @@
             <div class="flex justify-center md:justify-start gap-4">
               <div v-for="link in socialLinks" :key="link.name" class="relative group cursor-pointer">
                 <!-- Icon -->
-                <div class="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center hover:bg-white transition-colors overflow-hidden">
+                <div class="w-10 h-10 flex items-center justify-center transition-colors overflow-hidden">
                    <img :src="link.icon" :alt="link.alt" class="w-full h-full object-cover p-1.5 opacity-80 group-hover:opacity-100" />
                 </div>
                 
                 <!-- QR Code Popup -->
-                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 bg-white p-2 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 text-neutral-dark">
+                <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-white p-2 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 text-neutral-dark">
                   <img :src="link.qrCode" :alt="link.alt + ' QR'" class="w-full h-auto rounded" />
                   <div class="text-xs text-center mt-1 text-black">{{ link.alt }}</div>
                   <!-- Arrow -->
@@ -868,6 +868,12 @@ const navClass = (id: 'home' | 'core-features') => {
 
 const socialLinks = [
   {
+    name: 'Douyin',
+    icon: '/icons/douyin.svg',
+    qrCode: '/qrcodes/douyin_qr.png',
+    alt: '抖音'
+  },
+  {
     name: 'WeChat',
     icon: '/icons/wechat.svg',
     qrCode: '/qrcodes/wechat_qr.jpg',
@@ -882,7 +888,7 @@ const socialLinks = [
   {
     name: 'Bilibili',
     icon: '/icons/bilibili.svg',
-    qrCode: '/qrcodes/bilibili_qr.jpg',
+    qrCode: '/qrcodes/bilibili_qr.png',
     alt: 'B站'
   }
 ]
