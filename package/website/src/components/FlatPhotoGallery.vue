@@ -50,10 +50,6 @@
             >
               <Loader2 v-if="isDownloading" class="w-5 h-5 animate-spin" />
               <Download v-else class="w-5 h-5" />
-              <!-- Progress Tooltip -->
-              <div v-if="isDownloading" class="absolute -bottom-8 left-1/2 -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                {{ downloadProgress }}%
-              </div>
             </button>
 
             <!-- Delete/Remove Action -->
@@ -220,6 +216,7 @@ import { useWindowScroll, useScroll } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
 import GalleryChrome from './GalleryChrome.vue'
 import { faceApi } from '@/api/face'
+import { photoApi } from '@/api/photo'
 
 // Props
 interface Props {
@@ -503,38 +500,35 @@ const handleDelete = () => {
 
 const handleDownload = async () => {
   if (localSelectedIds.size === 0) return
+
   isDownloading.value = true
   downloadProgress.value = 0
   
-  const total = localSelectedIds.size
-  let completed = 0
-  
-  for (const id of localSelectedIds) {
-    try {
-      const photo = props.photos.find(p => p.id === id)
-      if (!photo) continue
-
-      const response = await fetch(photo.url)
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      
-      const a = document.createElement('a')
-      a.href = url
-      a.download = photo.filename || `photo-${photo.id}.jpg`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      
-      completed++
-      downloadProgress.value = Math.round((completed / total) * 100)
-    } catch (e) {
-      console.error('Download failed', e)
+  try {
+    const ids = Array.from(localSelectedIds)
+    if (ids.length === 1) {
+      const photo = props.photos.find(p => p.id === ids[0])
+      if (photo) {
+        const response = await fetch(photo.url)
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = photo.filename || `photo-${photo.id}.jpg`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+      }
+    } else {
+      await photoApi.batchDownload(ids)
     }
+  } catch (e) {
+    console.error('Download failed', e)
+  } finally {
+    isDownloading.value = false
+    downloadProgress.value = 0
   }
-  
-  isDownloading.value = false
-  downloadProgress.value = 0
 }
 
 defineExpose({

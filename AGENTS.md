@@ -53,6 +53,11 @@ uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 On non-Windows, the AI service runs an idle-check task that calls `sys.exit(0)` after `IDLE_TIMEOUT` (default 600s) so the container orchestrator can restart it and free memory. LLM is managed as a subprocess via `app/services/llm_manager.py` (port 8002, default 5-min idle).
 
 ### Database Migrations
+
+Note: Avoid modifying the database schema unless absolutely necessary. If changes are required, you must carefully assess the impact of database migrations, including compatibility between old and new versions, to prevent any data loss or corruption.
+
+Migration file naming convention: `12-character-hash_sequence-number_description.py`, for example: `0a3b98f751d6_0007_add_face_foreign.py`
+
 ```bash
 cd package/server
 alembic revision --autogenerate -m "description"

@@ -21,7 +21,7 @@ export const TASK_CATEGORIES: { key: string; label: string }[] = [
   { key: 'EXTRACT_METADATA', label: '元数据提取' },
   { key: 'PROCESS_BASIC', label: '基本处理' },
   { key: 'ORGANIZE_PHOTOS', label: '文件整理' },
-  { key: 'BATCH_RENAME', label: '批量重命名' },
+  { key: 'BATCH_RENAME', label: '批量重命名' }
 ]
 
 const CATEGORY_NAME_MAP: Record<string, string> = Object.fromEntries(

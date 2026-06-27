@@ -673,7 +673,9 @@ class TaskWorker:
             task_ids_completed = []
             task_ids_failed = []
 
-            # Tasks that should be preserved in DB after completion
+            # Tasks that should be preserved in DB after completion.
+            # Only reference real TaskType members here — a non-existent
+            # member raises AttributeError and crashes completion cleanup.
             PRESERVED_TASK_TYPES = set()
 
             for item in items:

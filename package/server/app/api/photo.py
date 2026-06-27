@@ -44,7 +44,60 @@ from app.service.task_manager import TaskManager
 from app.db.models.task import TaskType
 
 
+from app.schemas.photo import BatchDownloadRequest
+
 router = APIRouter()
+
+import tempfile
+import zipfile
+from starlette.background import BackgroundTask
+from fastapi.responses import FileResponse
+
+@router.post("/batch-download", summary="批量下载照片")
+def batch_download_photos(
+    req: BatchDownloadRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if not req.photo_ids:
+        raise HTTPException(status_code=400, detail="Must provide photo_ids")
+        
+    photos = app.crud.photo.get_photos_by_ids(db, [str(uid) for uid in req.photo_ids], user_id=current_user.id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="No photos found")
+        
+    fd, temp_path = tempfile.mkstemp(suffix=".zip")
+    os.close(fd)
+    
+    try:
+        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # Dedup by case-folded name so that "Photo.jpg" and "photo.JPG"
+            # don't silently overwrite each other when extracted on a
+            # case-insensitive filesystem (Windows / macOS default).
+            name_counts = {}
+            for photo in photos:
+                if photo.file_path and os.path.exists(photo.file_path):
+                    filename = photo.filename or os.path.basename(photo.file_path)
+                    base, ext = os.path.splitext(filename)
+                    key = filename.lower()
+                    if key in name_counts:
+                        name_counts[key] += 1
+                        name = f"{base}_{name_counts[key]}{ext}"
+                    else:
+                        name_counts[key] = 0
+                        name = filename
+                    zf.write(photo.file_path, name)
+                    
+        return FileResponse(
+            path=temp_path,
+            filename="trailsnap_export.zip",
+            media_type="application/zip",
+            background=BackgroundTask(os.remove, temp_path)
+        )
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=f"Failed to create zip: {str(e)}")
 
 # Photo Endpoints
 

@@ -7,6 +7,11 @@ from app.db.models.photo import FileType
 from app.schemas.image_description import ImageDescription
 
 # Photo Schemas
+
+class BatchDownloadRequest(BaseModel):
+    photo_ids: List[UUID]
+
+
 class PhotoBase(BaseModel):
     file_type: FileType
     size: int

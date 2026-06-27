@@ -51,8 +51,7 @@ class OrganizePreviewOptionsResponse(BaseModel):
 
 class RenameRequest(BaseModel):
     target_root_path: str
-    prefix: Optional[str] = 'IMG_'
-    suffix: Optional[str] = ''
+    template: Optional[str] = 'IMG_{date}_{time}'
 
 class TimeFromFilenameRequest(BaseModel):
     target_root_path: str

@@ -35,7 +35,7 @@ export const toolboxApi = {
     return data.data
   },
 
-  async createRenameTask(payload: { target_root_path: string, prefix?: string, suffix?: string }) {
+  async createRenameTask(payload: { target_root_path: string, template?: string }) {
     const data = await request.post<TaskResponse>('/api/toolbox/rename/tasks', payload)
     return data.data
   },

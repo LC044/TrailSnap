@@ -74,9 +74,21 @@ service.interceptors.response.use(
     // 如果没有 code 字段，假设是直接返回数据（如 login 接口）
     return response;
   },
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     let errorMsg = '网络异常，请重试';
     if (error.response) {
+      // When a request used responseType: 'blob' (e.g. file downloads), the
+      // error body comes back as an unparsed Blob. Decode it so the switch
+      // below can read the backend's `detail` message.
+      const errData = error.response.data as any;
+      if (errData instanceof Blob) {
+        try {
+          const text = await errData.text();
+          error.response.data = JSON.parse(text);
+        } catch {
+          // Body wasn't JSON — leave as-is and fall through to status text.
+        }
+      }
       switch (error.response.status) {
         case 401: {
           const currentPath = router.currentRoute.value.path;

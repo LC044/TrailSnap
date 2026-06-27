@@ -100,6 +100,18 @@
       </div>
 
     </div>
+
+    <!-- Right side: Activity/Stats placeholder -->
+    <div class="mt-12 space-y-6">
+      <h2 class="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
+        <Clock class="w-5 h-5 text-primary-500" />
+        最近活动
+      </h2>
+      
+      <div class="flex items-center justify-center h-48 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400">
+        暂无最近活动
+      </div>
+    </div>
   </div>
 </template>
 

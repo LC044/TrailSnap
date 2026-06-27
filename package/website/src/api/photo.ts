@@ -62,5 +62,20 @@ export const photoApi = {
       params
     });
     return data.data;
+  },
+
+  async batchDownload(photoIds: string[]) {
+    const res = await request.post('/api/photos/batch-download', 
+      { photo_ids: photoIds }, 
+      { responseType: 'blob', timeout: 0 } // timeout: 0 禁用超时，防止大文件打包下载被 30s 中断
+    );
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `trailsnap_export.zip`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   }
 }

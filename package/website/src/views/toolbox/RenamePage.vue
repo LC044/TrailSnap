@@ -56,15 +56,25 @@
           <div class="text-xs text-gray-500 mt-1">此文件夹（包含其所有子文件夹）内的所有照片都将被重命名。</div>
         </el-form-item>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <el-form-item label="文件前缀">
-            <el-input v-model="prefix" placeholder="例如: IMG_" clearable />
-            <div class="text-xs text-gray-500 mt-1">默认前缀为 IMG_</div>
-          </el-form-item>
-
-          <el-form-item label="文件后缀">
-            <el-input v-model="suffix" placeholder="可选后缀" clearable />
-            <div class="text-xs text-gray-500 mt-1">如果有相同时间的照片，会自动追加 (1), (2)...</div>
+        <div class="grid grid-cols-1 gap-6">
+          <el-form-item label="命名模板（不含后缀）">
+            <el-input v-model="template" placeholder="例如: IMG_{date}_{time}" clearable />
+            <div class="mt-3">
+              <p class="text-xs text-gray-500 mb-2">点击变量插入到模板末尾：</p>
+              <div class="flex flex-wrap gap-2">
+                <el-tag
+                  v-for="v in variables"
+                  :key="v.value"
+                  size="small"
+                  type="info"
+                  class="cursor-pointer hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                  @click="insertVariable(v.value)"
+                >
+                  {{ v.label }}
+                </el-tag>
+              </div>
+            </div>
+            <div class="text-xs text-gray-500 mt-2">默认模板为 IMG_{date}_{time}。如果有相同名字的照片，会自动追加 (1), (2)...</div>
           </el-form-item>
         </div>
 
@@ -136,8 +146,7 @@ import type { Task as TaskResponse } from '@/api/tasks'
 
 const targetRootPath = ref('')
 const tempSelectedPath = ref('')
-const prefix = ref('IMG_')
-const suffix = ref('')
+const template = ref('IMG_{date}_{time}')
 const starting = ref(false)
 const clearing = ref(false)
 
@@ -146,10 +155,56 @@ const showFolderSelector = ref(false)
 const activeTask = ref<TaskResponse | null>(null)
 let pollTimer: number | undefined
 
+const variables = [
+  { label: '日期(YYYY-MM-DD)', value: '{date}' },
+  { label: '时间(HHMMSS)', value: '{time}' },
+  { label: '年(YYYY)', value: '{year}' },
+  { label: '月(MM)', value: '{month}' },
+  { label: '日(DD)', value: '{day}' },
+  { label: '时(HH)', value: '{hour}' },
+  { label: '分(mm)', value: '{minute}' },
+  { label: '城市', value: '{city}' },
+  { label: '地点', value: '{location}' },
+  { label: '原名', value: '{original}' },
+  { label: '序号', value: '{index}' },
+  { label: '3位序号', value: '{sequence3}' },
+  { label: '4位序号', value: '{sequence4}' },
+  { label: '相机', value: '{camera}' },
+  { label: '镜头', value: '{lens}' },
+  { label: 'ISO', value: '{iso}' }
+]
+
+const insertVariable = (val: string) => {
+  template.value += val
+}
+
+// Sample values used to render the live preview. Keep these aligned with the
+// variables exposed above and with backend `format_export_filename`.
+const PREVIEW_VALUES: Record<string, string> = {
+  date: '2026-01-01',
+  time: '123000',
+  year: '2026',
+  month: '01',
+  day: '01',
+  hour: '12',
+  minute: '30',
+  city: '北京市',
+  location: '朝阳区',
+  original: '原文件名',
+  index: '1',
+  sequence3: '001',
+  sequence4: '0001',
+  camera: 'Apple',
+  lens: 'iPhone 13 Pro',
+  iso: '100'
+}
+
 const previewName = computed(() => {
-  const p = prefix.value || ''
-  const s = suffix.value || ''
-  return `${p}20260101_123000${s}.jpg`
+  let name = template.value || ''
+  for (const [key, value] of Object.entries(PREVIEW_VALUES)) {
+    name = name.replace(`{${key}}`, value)
+  }
+  return `${name}.jpg`
 })
 
 const isTaskRunning = computed(() => {
@@ -242,8 +297,7 @@ const startRename = async () => {
   try {
     const payload = {
       target_root_path: targetRootPath.value,
-      prefix: prefix.value,
-      suffix: suffix.value
+      template: template.value
     }
     const task = await toolboxApi.createRenameTask(payload)
     activeTask.value = task
