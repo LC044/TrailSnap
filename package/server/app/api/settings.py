@@ -395,8 +395,11 @@ def apply_filter_task_bg(user_id: str = None):
         merged_config = config_manager.merge_user_settings(user_settings)
         filter_config = merged_config.filter
 
-        if not filter_config.enable:
-            logging.info("Filter disabled, skipping.")
+        # Folder exclusion is structural (NAS @eaDir / #recycle etc.) and applies
+        # independently of the file-filter enable flag, so we only skip when there
+        # is genuinely nothing to do.
+        if not filter_config.enable and not filter_config.exclude_folders:
+            logging.info("Filter disabled and no folder exclusions, skipping.")
             return
 
         deleted_count = 0
@@ -462,6 +465,45 @@ def apply_filter_task_bg(user_id: str = None):
                     
                     if matched:
                         # Re-fetch to delete (ensure it still exists)
+                        p = db.query(Photo).get(pid)
+                        if p:
+                            photo_ids_to_delete.append(p.id)
+                            db.add(IndexLog(action='deleted', file_path=p.file_path, photo_id=p.id, owner_id=p.owner_id))
+                            deleted_count += 1
+                if photo_ids_to_delete:
+                    from app.crud.photo import batch_delete_photos_db
+                    batch_delete_photos_db(db, photo_ids_to_delete, is_delete_file=False, user_id=user_id)
+                db.commit()
+
+        # 3. Folder exclusion — remove already-indexed photos living under an
+        # excluded folder (e.g. NAS @eaDir / #recycle) so existing duplicates are
+        # cleaned up. Applies independently of the file-filter enable flag.
+        folder_patterns = filter_config.exclude_folders
+        if folder_patterns:
+            compiled_folder_patterns = []
+            for pattern in folder_patterns:
+                try:
+                    if pattern:
+                        compiled_folder_patterns.append(re.compile(pattern))
+                except re.error:
+                    logging.error(f"Invalid folder exclusion pattern: {pattern}")
+
+            if compiled_folder_patterns:
+                query = db.query(Photo.id, Photo.file_path)
+                if user_id:
+                    query = query.filter(Photo.owner_id == user_id)
+
+                all_photos = query.all()
+                photo_ids_to_delete = []
+                for pid, path in all_photos:
+                    # Check every path component against the exclusion patterns
+                    parts = [p for p in re.split(r'[\\/]+', path) if p]
+                    matched = any(
+                        cp.search(part)
+                        for part in parts
+                        for cp in compiled_folder_patterns
+                    )
+                    if matched:
                         p = db.query(Photo).get(pid)
                         if p:
                             photo_ids_to_delete.append(p.id)

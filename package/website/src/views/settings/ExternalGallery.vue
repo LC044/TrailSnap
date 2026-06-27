@@ -73,10 +73,28 @@
                          <el-button type="primary" plain size="small" @click="addPattern">添加规则</el-button>
                          <div class="text-xs text-gray-400 mt-1 dark:text-gray-500">符合任一正则表达式的文件名将被过滤</div>
                     </el-form-item>
-                    
-                    <div class="mt-6">
-                        <el-button type="danger" @click="applyFilter">应用过滤到现有数据</el-button>
+                </div>
+
+                <!-- 文件夹过滤独立于“启用过滤”开关，始终生效，用于跳过 NAS 等系统索引目录 -->
+                <el-divider content-position="left" class="!my-6">文件夹过滤</el-divider>
+                <el-form-item label="排除文件夹 (Regex)">
+                    <p class="text-sm text-gray-500 mb-2 dark:text-gray-400">
+                        扫描时将跳过名称匹配以下规则的文件夹（及其子目录），避免重复统计 NAS 索引目录（如 @eaDir、#recycle）。
+                        <br>该规则始终生效，无需开启“启用过滤”。点击“应用过滤到现有数据”可清理已索引的相关照片。
+                    </p>
+                    <div v-for="(folder, index) in filterConfig.exclude_folders" :key="'f-'+index" class="flex gap-2 mb-2">
+                        <el-input v-model="filterConfig.exclude_folders[index]" placeholder="例如: @eaDir" @change="saveSettings" />
+                        <el-button type="danger" :icon="Delete" circle @click="removeExcludeFolder(index)" />
                     </div>
+                    <div class="flex gap-2">
+                        <el-button type="primary" plain size="small" @click="addExcludeFolder">添加文件夹</el-button>
+                        <el-button plain size="small" @click="fillCommonFolders">填入常用 NAS 目录</el-button>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1 dark:text-gray-500">按文件夹名匹配（正则），如 @eaDir、#recycle、.@__thumb</div>
+                </el-form-item>
+
+                <div class="mt-6">
+                    <el-button type="danger" @click="applyFilter">应用过滤到现有数据</el-button>
                 </div>
             </el-form>
         </el-tab-pane>
@@ -105,7 +123,8 @@ const filterConfig = reactive({
     min_size_kb: 0,
     min_width: 0,
     min_height: 0,
-    filename_patterns: [] as string[]
+    filename_patterns: [] as string[],
+    exclude_folders: [] as string[]
 })
 
 const loadData = async () => {
@@ -190,6 +209,33 @@ const addPattern = () => {
 const removePattern = (index: number) => {
     filterConfig.filename_patterns.splice(index, 1)
     saveSettings()
+}
+
+const addExcludeFolder = () => {
+    filterConfig.exclude_folders.push('')
+}
+
+const removeExcludeFolder = (index: number) => {
+    filterConfig.exclude_folders.splice(index, 1)
+    saveSettings()
+}
+
+const fillCommonFolders = () => {
+    const common = ['@eaDir', '#recycle', '@Recycle', '.@__thumb', 'SYNOFILE_THUMB']
+    const existing = new Set(filterConfig.exclude_folders.map(f => f.trim()))
+    let added = false
+    for (const f of common) {
+        if (!existing.has(f)) {
+            filterConfig.exclude_folders.push(f)
+            added = true
+        }
+    }
+    if (added) {
+        saveSettings()
+        ElMessage.success('已填入常用 NAS 目录')
+    } else {
+        ElMessage.info('常用目录已存在')
+    }
 }
 
 const saveSettings = async () => {

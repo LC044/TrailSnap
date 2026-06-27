@@ -15,7 +15,28 @@ from app.db.models.user import User
 from app.core.config_manager import config_manager
 from app.service.live_photo import live_photo_service
 
-def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None) -> Set[str]:
+def _compile_folder_patterns(patterns: Optional[List[str]]) -> List[re.Pattern]:
+    """Compile valid folder-name exclusion patterns (regex)."""
+    compiled = []
+    for p in patterns or []:
+        if not p:
+            continue
+        try:
+            compiled.append(re.compile(p))
+        except re.error:
+            pass  # Ignore invalid regex
+    return compiled
+
+def _is_folder_excluded(name: str, compiled_patterns: List[re.Pattern]) -> bool:
+    """Return True if a folder name matches any compiled exclusion pattern."""
+    if not compiled_patterns:
+        return False
+    for cp in compiled_patterns:
+        if cp.search(name):
+            return True
+    return False
+
+def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None) -> Set[str]:
     found = set()
     try:
         with os.scandir(path) as it:
@@ -47,7 +68,10 @@ def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optiona
 
                         found.add(entry.path)
                 elif entry.is_dir():
-                    found.update(scan_directory_recursive(entry.path, exts, filter_settings))
+                    # Skip excluded folders (e.g. NAS @eaDir / #recycle) regardless of filter enable
+                    if _is_folder_excluded(entry.name, exclude_folder_patterns or []):
+                        continue
+                    found.update(scan_directory_recursive(entry.path, exts, filter_settings, exclude_folder_patterns))
     except OSError:
         pass
     return found
@@ -96,8 +120,10 @@ class ScanFolderStrategy(BaseTaskStrategy):
         loop = asyncio.get_running_loop()
         logging.info(f"Scanning roots for user {user.id}: {scan_roots}")
 
-        user_settings = dict(user.settings) if user.settings else {}
-        filter_config = user_settings.get('filter', {})
+        # Read filter from merged config so defaults (e.g. excluded NAS folders) always apply
+        merged_config = config_manager.get_user_config(user.id, db)
+        filter_config = merged_config.filter.model_dump()
+        exclude_folder_patterns = _compile_folder_patterns(filter_config.get('exclude_folders'))
 
         def parallel_scan_wrapper():
             found_files = set()
@@ -110,12 +136,15 @@ class ScanFolderStrategy(BaseTaskStrategy):
                     with os.scandir(root) as it:
                         for entry in it:
                             if entry.is_dir():
+                                # Skip excluded folders at the top level too
+                                if _is_folder_excluded(entry.name, exclude_folder_patterns):
+                                    continue
                                 work_items.append(entry.path)
                 except OSError:
                     pass
             work_items = list(set(work_items))
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                futures = {executor.submit(scan_directory_recursive, item, EXTS, filter_config): item for item in work_items}
+                futures = {executor.submit(scan_directory_recursive, item, EXTS, filter_config, exclude_folder_patterns): item for item in work_items}
                 for future in concurrent.futures.as_completed(futures):
                     found_files.update(future.result())
             return found_files

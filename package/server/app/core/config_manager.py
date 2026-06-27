@@ -141,6 +141,10 @@ class FilterSettings(BaseModel):
     min_width: int = Field(default=0, description="Minimum image width")
     min_height: int = Field(default=0, description="Minimum image height")
     filename_patterns: List[str] = Field(default=[], description="List of regex patterns to filter out files")
+    exclude_folders: List[str] = Field(
+        default_factory=lambda: ['@eaDir', '#recycle', '@Recycle', '.@__thumb', 'SYNOFILE_THUMB'],
+        description="List of regex patterns matched against folder names; matching folders are skipped during scanning (e.g. NAS index/recycle folders)"
+    )
 
 class MapSettings(BaseModel):
     provider: str = Field(default="tianditu", description="Map provider (tianditu, amap, baidu)")
