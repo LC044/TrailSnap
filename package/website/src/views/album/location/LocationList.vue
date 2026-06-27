@@ -297,6 +297,13 @@
               <Route class="w-4 h-4" />
               轨迹视图
             </button>
+            <button
+              @click="viewMode = 'statistics'; showViewMenu = false"
+              :class="['w-full px-4 py-2 text-left text-sm dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2', viewMode === 'statistics' ? 'text-primary-500 font-medium' : 'text-gray-700 dark:text-gray-200']"
+            >
+              <BarChart3 class="w-4 h-4" />
+              统计视图
+            </button>
           </div>
 
           <!-- Desktop Buttons -->
@@ -328,6 +335,13 @@
               title="轨迹视图"
             >
               <Route class="w-4 h-4" />
+            </button>
+            <button
+              @click="viewMode = 'statistics'"
+              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'statistics' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              title="统计视图"
+            >
+              <BarChart3 class="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -380,6 +394,16 @@
       @click-photo="handlePhotoClick"
       class="flex-1"
     />
+    <!-- Statistics View -->
+    <LocationStatsView
+      v-if="viewMode === 'statistics'"
+      :start-date="dateRange?.[0]"
+      :end-date="dateRange?.[1]"
+      :level="level"
+      :parent-region="parentRegion"
+      @narrow-range="handleNarrowRange"
+      @go-location="goToLocation"
+    />
     <AddSceneDialog v-model="showAddScene" :edit-data="editingScene" @success="fetchLocations" />
   </div>
 </template>
@@ -392,7 +416,7 @@ import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route } from 'lucide-vue-next'
+import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LocationMap from './LocationMap.vue'
@@ -401,6 +425,7 @@ import LocationListView from './LocationListView.vue'
 import LocationMapView from './LocationMapView.vue'
 import LocationTimelineView from './LocationTimelineView.vue'
 import LocationTrajectoryView from './LocationTrajectoryView.vue'
+import LocationStatsView from './LocationStatsView.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const router = useRouter()
@@ -524,6 +549,7 @@ const currentViewIcon = computed(() => {
     case 'map': return Map
     case 'timeline': return Clock
     case 'trajectory': return Route
+    case 'statistics': return BarChart3
     default: return LayoutGrid
   }
 })
@@ -635,6 +661,28 @@ const handleDateRangeChange = (val: [string, string] | null) => {
     // keep isCustomRange state
   }
   showLevelMenu.value = false
+  fetchLocations()
+}
+
+const handleNarrowRange = (start: string, end: string, year?: number) => {
+  dateRange.value = [start, end]
+  if (year) {
+    selectedYear.value = year
+    isCustomRange.value = false
+  } else {
+    const startYear = start.substring(0, 4)
+    const endYear = end.substring(0, 4)
+    if (start === `${startYear}-01-01` && end === `${endYear}-12-31` && startYear === endYear && startYear) {
+      selectedYear.value = parseInt(startYear)
+      isCustomRange.value = false
+    } else {
+      selectedYear.value = null
+      isCustomRange.value = true
+    }
+  }
+  showLevelMenu.value = false
+  showYearMenu.value = false
+  viewMode.value = 'grid'
   fetchLocations()
 }
 

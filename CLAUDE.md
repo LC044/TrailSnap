@@ -99,6 +99,16 @@ Tasks are organized by `TaskType` and registered handlers live in `app/service/t
 - **`railway/`** — independent sub-app with its own `api.py`, `crud.py`, `schemas.py`, `db/`, and `build_database.py`. Mounted at `/railway` in `main.py`. This handles train timetable / ticket data and is functionally separate from the main app.
 - **`utils/`** — EXIF parsing, filename utilities.
 
+要求：后端所有新增api都才用BaseResponse格式。
+
+```json
+{
+  code: 0,
+  msg: "success",
+  data: {}
+}
+```
+
 ### AI microservice (`package/ai/app/`)
 
 - **`routers/`** — `face`, `ocr`, `object_detection`, `tickets`, `image_classification`, `embedding`, `llm` (OpenAI-compatible `/v1/...`), `ai_config`, `system`.
