@@ -27,10 +27,32 @@ gpu = [
   "transformers>=4.37.0"
 ]
 
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.24",
+]
+
 [tool.uv]
 conflicts = [
   [
     { extra = "cpu" },
     { extra = "gpu" },
   ],
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+# 与 server 共用同一套 marker 语义，由 tests/scripts/run-tests.ps1 统一选择
+markers = [
+    "smoke: P0 关键路径，秒级",
+    "regression: 常规回归用例（默认跑）",
+    "slow: 耗时用例（>2s），默认跳过",
+    "model: 需要加载 AI 模型/显存，默认跳过",
+    "module_face: 人脸域",
+    "module_ocr: OCR 域",
+    "module_ticket: 票据域",
+    "module_embedding: 向量/CLIP 域",
 ]

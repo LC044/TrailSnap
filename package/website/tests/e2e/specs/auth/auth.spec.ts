@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { e2eEnv } from '../../../playwright/e2e-env';
+import { e2eEnv } from '../../../../playwright/e2e-env';
 
 /**
  * P0 冒烟测试 - 账号与会话
@@ -20,7 +20,7 @@ async function clearStorage(page: Page) {
   await page.evaluate(() => localStorage.clear());
 }
 
-test.describe('P0 冒烟 - 账号与会话', () => {
+test.describe('P0 冒烟 - 账号与会话 @smoke', () => {
   test.beforeEach(async ({ page }) => {
     await clearStorage(page);
   });
@@ -173,7 +173,7 @@ test.describe('P0 冒烟 - 账号与会话', () => {
   });
 });
 
-test.describe('P0 冒烟 - 后端鉴权 API', () => {
+test.describe('P0 冒烟 - 后端鉴权 API @smoke', () => {
   test('GET /users/me 无 Token 返回 401/403', async ({ request }) => {
     const res = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, { timeout: 5_000 }).catch(() => null);
     if (!res) {

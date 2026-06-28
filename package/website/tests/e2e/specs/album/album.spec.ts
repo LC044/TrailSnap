@@ -1,13 +1,16 @@
 import { test, expect } from '@playwright/test';
+import { ensureAuthSession } from '../../helpers/auth';
 
-test.describe('相册功能', () => {
+test.describe('P0 冒烟 - 相册路由 @smoke', () => {
+  // 受保护路由：未登录会被守卫重定向到 /login，统一在 beforeEach 建立会话
+  test.beforeEach(async ({ page, request }, testInfo) => {
+    if (!(await ensureAuthSession(request, page, testInfo))) return;
+  });
+
   test('相册列表页面正常加载', async ({ page }) => {
     await page.goto('/album');
 
-    // 等待页面加载
     await expect(page.locator('body')).toBeVisible();
-
-    // 验证 URL
     await expect(page).toHaveURL(/\/album/);
   });
 

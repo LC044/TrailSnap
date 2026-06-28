@@ -37,5 +37,33 @@ dependencies = [
     "langgraph>=0.2.61",
     "sse-starlette>=2.1.3",
 ]
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+
 [tool.uv]
 index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+# 统一 marker 体系：覆盖度(smoke/regression/slow) × 资源(postgres/model) × 模块(module_*)
+# 由 tests/scripts/run-tests.ps1 通过 -m 选择，变量集中在 tests/.env.test
+markers = [
+    "smoke: P0 关键路径，秒级",
+    "regression: 常规回归用例（默认跑）",
+    "slow: 耗时用例（>2s），默认跳过",
+    "postgres: 需要真实 pgvector，默认跳过",
+    "model: 需要加载 AI 模型/显存，默认跳过",
+    "module_photo: 照片域",
+    "module_album: 相册域",
+    "module_face: 人脸域",
+    "module_ocr: OCR 域",
+    "module_ticket: 票据域",
+    "module_search: 搜索域",
+    "module_agent: Agent 域",
+    "module_toolbox: 工具箱域",
+]

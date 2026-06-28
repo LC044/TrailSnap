@@ -1,151 +1,48 @@
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { e2eEnv } from '../../../playwright/e2e-env';
+import { test, expect } from '@playwright/test';
+import { ensureAuthSession } from '../helpers/auth';
 
 /**
- * P0 冒烟测试 - 主链路渲染与系统健康
+ * Smoke 测试 — 仅验证「页面能否正常打开」
  *
- * 覆盖 doc/e2e-test-checklist.md §1.3、§1.4。
- * 后端地址通过 e2eEnv.apiBaseUrl 获取（dev: 8000, system: 8800）。
- * 后端不可达或测试账号无法登录时自动 test.skip，避免环境噪声。
+ * 职责边界（与 p0 分离）：
+ *   - smoke (@smoke)：页面能打开、关键静态骨架元素可见。不校验数据正确性、不校验交互。
+ *   - p0   (@p0)   ：功能是否可用、API 是否返回正确数据。
+ *
+ * 受保护页面需要真实 token —— 否则 axios 401 拦截器（src/utils/request.ts）
+ * 会清空 token 并重定向到 /login，页面根本停不住。token 通过 ensureAuthSession
+ * 注入（system 套件走 storageState，dev 套件走登录）；后端不可达 / 账号无法登录时
+ * 自动 test.skip，避免环境噪声。
+ * 白名单页面（/annual-report 等）无需登录，路由守卫直接放行。
+ *
+ * 注意：不再在 beforeEach 注入伪 token —— 那会覆盖 system 套件 storageState
+ * 里的真实 token，导致受保护页面被 401 拦截器踢去 /login。
  */
 
-/** 检查后端是否可达，不可达则 skip 当前测试 */
-async function ensureBackend(
-  request: APIRequestContext,
-  testInfo: { skip: (condition: boolean, reason: string) => void },
-): Promise<boolean> {
-  try {
-    const res = await request.get(`${e2eEnv.apiBaseUrl}/system/version`, { timeout: 5_000 });
-    if (!res.ok()) {
-      testInfo.skip(true, `Backend returned ${res.status()}`);
-      return false;
-    }
-    return true;
-  } catch {
-    testInfo.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
-    return false;
-  }
-}
-
-/**
- * 确保测试账号可登录，为 page 注入真实 token。
- * - system 套件: storageState 已由 config 注入真实 token
- * - dev 套件: 手动登录获取真实 token 并写入 localStorage
- * 如果登录失败则 skip 当前测试。
- */
-async function ensureAuthSession(
-  request: APIRequestContext,
-  page: Page,
-  testInfo: { skip: (condition: boolean, reason: string) => void },
-): Promise<boolean> {
-  // system 套件已有 storageState 提供真实 token，无需手动登录
-  if (e2eEnv.storageState) return true;
-
-  // dev 套件: 尝试用测试账号登录获取真实 token
-  try {
-    const loginRes = await request.post(`${e2eEnv.apiBaseUrl}/auth/login`, {
-      form: { username: e2eEnv.testUsername, password: e2eEnv.testPassword },
-      timeout: 5_000,
-    });
-    if (!loginRes.ok()) {
-      testInfo.skip(true, `Test user login failed (${loginRes.status()}) — register e2e-admin first or run system suite`);
-      return false;
-    }
-    const { access_token } = await loginRes.json();
-    await page.evaluate((token) => localStorage.setItem('user_token', token), access_token);
-    return true;
-  } catch {
-    testInfo.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
-    return false;
-  }
-}
-
-test.describe('P0 冒烟 - 主链路渲染', () => {
-  test.beforeEach(async ({ page }) => {
-    // 注入伪 token 跳过路由守卫（不校验真实性）
-    // 需要真实后端数据的测试会用 ensureAuthSession 替换为真实 token
-    await page.goto('/login');
-    await page.evaluate(() => localStorage.setItem('user_token', 'p0-smoke.jwt'));
-  });
-
-  test('首页正常加载 - 至少渲染出标题', async ({ page, request }, testInfo) => {
-    // 需要 real token 才能获取首页数据
+test.describe('页面打开冒烟 @smoke', () => {
+  test('首页能打开 - 渲染出标题', async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo))) return;
     await page.goto('/');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
-    // HomePage 顶部固定 h1
-    await expect(page.locator('h1', { hasText: '相册概览' })).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('body')).toBeVisible();
+    // HomePage 顶部固定 h1（模板静态写死，与 API 数据无关）
+    await expect(page.locator('h1', { hasText: '相册概览' })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('404 兜底 - 访问不存在的路由', async ({ page, request }, testInfo) => {
-    // 404 页面在 MainLayout 内，需要 real token 防止 axios 拦截器清 token 重定向
+  test('404 兜底页能打开', async ({ page, request }, testInfo) => {
+    // 404 页在 MainLayout 内，需要真实 token 防止 axios 拦截器清 token 重定向
     if (!(await ensureAuthSession(request, page, testInfo))) return;
     await page.goto('/this-route-does-not-exist-12345');
-    await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
 
-    await expect(page.locator('h1', { hasText: '404' })).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('text=页面未找到')).toBeVisible();
+    await expect(page.locator('h1', { hasText: '404' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('页面未找到')).toBeVisible();
   });
 
-  test('白名单页面 - /annual-report 无需登录可访问', async ({ page }) => {
-    await page.evaluate(() => localStorage.removeItem('user_token'));
+  test('白名单页 /annual-report 无需登录可打开', async ({ page }) => {
     await page.goto('/annual-report');
 
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-    const url = page.url();
-    // 源码: to.path.startsWith('/annual-report') 放行
-    // 年度报告页可能因后端 API 失败降级跳登录；这里只断言 URL 合法 + body 可见
-    expect(url).toMatch(/annual-report|login/);
-    await expect(page.locator('body')).toBeVisible();
-  });
-});
-
-test.describe('P0 冒烟 - 后端 API 健康', () => {
-  test('/system/version 返回版本号', async ({ request }) => {
-    const res = await request.get(`${e2eEnv.apiBaseUrl}/system/version`, { timeout: 5_000 }).catch(() => null);
-    if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
-      return;
-    }
-    const body = await res.json();
-    expect(body).toHaveProperty('version');
-    expect(typeof body.version).toBe('string');
-    expect(body.version).toMatch(/^\d+\.\d+\.\d+/);
-  });
-
-  test('/auth/status 返回 has_users / allow_registration 字段', async ({ request }) => {
-    const res = await request.get(`${e2eEnv.apiBaseUrl}/auth/status`, { timeout: 5_000 }).catch(() => null);
-    if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
-      return;
-    }
-    const body = await res.json();
-    expect(body).toHaveProperty('has_users');
-    expect(body).toHaveProperty('allow_registration');
-    expect(typeof body.has_users).toBe('boolean');
-    expect(typeof body.allow_registration).toBe('boolean');
-  });
-
-  test('/tasks/status 返回全局任务状态', async ({ request }) => {
-    const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/status`, { timeout: 5_000 }).catch(() => null);
-    if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
-      return;
-    }
-    const body = await res.json();
-    expect(body).toBeDefined();
-  });
-
-  test('/openapi.json 可访问 - FastAPI 文档', async ({ request }) => {
-    const res = await request.get(`${e2eEnv.apiBaseUrl}/openapi.json`, { timeout: 5_000 }).catch(() => null);
-    if (!res || !res.ok()) {
-      test.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`);
-      return;
-    }
-    const body = await res.json();
-    expect(body).toHaveProperty('openapi');
-    expect(body).toHaveProperty('paths');
+    // 源码: to.path.startsWith('/annual-report') 放行，无需 token。
+    // 年度报告页可能因后端 API 失败降级跳登录；smoke 只验证「没白屏」：
+    // 停在 annual-report 或降级到 login 均算页面存活。
+    await expect(page.locator('body')).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveURL(/\/(annual-report|login)/);
   });
 });

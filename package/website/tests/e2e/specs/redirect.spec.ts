@@ -29,7 +29,7 @@ const PROTECTED_ROUTES = [
 
 // 后端地址统一通过 e2eEnv.apiBaseUrl 获取
 
-test.describe('P0 冒烟 - 路由守卫', () => {
+test.describe('P0 冒烟 - 路由守卫 @smoke', () => {
   // 注: 此文件不设 storageState，使用 playwright.config.ts 的默认值（dev: 无, system: 已登录态）
   test.beforeEach(async ({ page }) => {
     await page.goto('/login');
@@ -106,7 +106,7 @@ test.describe('P0 冒烟 - 路由守卫', () => {
   });
 });
 
-test.describe('P0 冒烟 - Token 过期与 401 处理', () => {
+test.describe('P0 冒烟 - Token 过期与 401 处理 @smoke', () => {
   test('伪造 Bearer Token 后端返回鉴权失败', async ({ request }) => {
     const res = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, {
       headers: { Authorization: 'Bearer fake.invalid.jwt.token' },

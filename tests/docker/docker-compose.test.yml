@@ -1,4 +1,10 @@
-version: "3.8"
+# TrailSnap 测试用 docker compose 栈。
+# 端口由 tests/.env.test 的 TS_DOCKER_* 变量驱动（--env-file 注入）；
+# 容器内部互联（postgres:5432 / ai:8001）静态写死，属 compose 职责。
+#
+# 启动：tests/scripts/run-tests.ps1 -Layer docker
+#       （等价于 docker compose -f 此文件 --env-file tests/.env.test up -d）
+name: trailsnap-test
 
 services:
   postgres:
@@ -11,9 +17,9 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5532:5432"
+      - "${TS_DOCKER_PG_PORT:-5532}:5432"
     volumes:
-      - trailsnap-e2e-pg:/var/lib/postgresql/data
+      - trailsnap-test-pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U trailsnap -d trailsnap -p 5432"]
       interval: 5s
@@ -31,12 +37,20 @@ services:
       TZ: Asia/Shanghai
       DB_URL: postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       RAILWAY_DB_URL: postgresql://trailsnap:trailsnap@postgres:5432/railway
-      AI_API_URL: http://127.0.0.1:65535
+      AI_API_URL: http://ai:8001
     ports:
-      - "8800:8000"
+      - "${TS_DOCKER_SERVER_PORT:-8800}:8000"
     volumes:
-      - trailsnap-e2e-data:/app/data
-      - ../../package/official-site/public/examples/images:/testdata/photos
+      - trailsnap-test-data:/app/data
+      - ${TS_PHOTO_HOST_DIR:-../../package/official-site/public/examples/images}:${TS_PHOTO_DIR:-/testdata/photos}
+
+  ai:
+    image: siyuan044/trailsnap-ai:master
+    restart: unless-stopped
+    ports:
+      - "${TS_DOCKER_AI_PORT:-8801}:8001"
+    volumes:
+      - trailsnap-test-data:/app/data
 
   frontend:
     image: siyuan044/trailsnap-frontend:master
@@ -44,8 +58,8 @@ services:
     depends_on:
       - server
     ports:
-      - "8082:80"
+      - "${TS_DOCKER_WEB_PORT:-8082}:80"
 
 volumes:
-  trailsnap-e2e-pg:
-  trailsnap-e2e-data:
+  trailsnap-test-pg:
+  trailsnap-test-data:

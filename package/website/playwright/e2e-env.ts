@@ -134,8 +134,10 @@ export const e2eEnv = {
   get testMatch(): RegExp {
     switch (this.suite) {
       case 'p0':
-        // P0: 只跑 tests/e2e/specs/{auth,smoke,tasks,redirect}.spec.ts
-        return /specs\/(auth|smoke|tasks|redirect)\.spec\.ts$/
+        // P0: 收集 tests/e2e/specs 下全部 spec（含域子目录），
+        // 由 e2e-run.ps1 传 --grep @smoke 仅跑 @smoke 标记的关键用例。
+        // 这样 spec 可自由分子目录，不再被文件名正则绑死。
+        return /specs\/.*\.spec\.ts$/
       case 'smoke':
         // smoke: 只跑 e2e-system/{api,ui}/smoke.spec.ts
         return /(api|ui)\/smoke\.spec\.ts$/
@@ -151,15 +153,17 @@ export const e2eEnv = {
     }
   },
 
-  /** 套件对应的 globalSetup 路径（dev/p0/smoke/all 都需要 bootstrap） */
+  /** 套件对应的 globalSetup 路径（dev/p0/smoke/all 都需要登录态） */
   get globalSetup(): string | undefined {
-    if (this.suite === 'dev') return undefined
+    if (this.suite === 'dev') return './tests/e2e/helpers/dev-global-setup.ts'
     return './e2e-system/helpers/bootstrap.ts'
   },
 
   /** 套件对应的 storageState（用于全局已登录态） */
   get storageState(): string | undefined {
-    if (this.suite === 'dev') return undefined
+    if (this.suite === 'dev') {
+      return path.resolve(process.cwd(), '.playwright-dev', 'storage-state.json')
+    }
     return path.resolve(process.cwd(), '.playwright-system', 'storage-state.json')
   },
 

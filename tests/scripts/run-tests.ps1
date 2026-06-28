@@ -1,0 +1,205 @@
+<#
+.SYNOPSIS
+    TrailSnap 测试统一入口。
+
+.DESCRIPTION
+    一个命令驱动 docker / 前端 e2e / 后端单元 / AI 四类测试。
+    环境变量单一来源：环境变量文件（默认 tests/.env.test）—— 先加载到会话，
+    子进程（uv / pnpm / docker）全部继承。可用第一个位置参数指定别的 .env 文件。
+
+    四个维度组合：
+      EnvFile    第一个位置参数，环境变量文件路径，不传则默认 tests\.env.test
+      -Layer     unit | integration | e2e | docker | all   （测哪一层）
+      -Component server | ai | website | all               （测哪个组件）
+      -Cover     smoke | regression | full                 （跑多深，默认读 .env 文件的 TS_TEST_COVER）
+                 unit/integration → pytest -m 标记；e2e → smoke=@smoke(页面打开) / regression=功能(暂@smoke,重打后@p0) / full=全部
+      -Scope     all | photo | album | face | ocr | ...     （跑哪个业务域）
+
+    最简打通流程：
+      .\tests\scripts\run-tests.ps1                         # 默认 = server+ai 的 smoke 单元测试
+
+.PARAMETER EnvFile
+    环境变量文件路径（第一个位置参数）。不传则默认 tests\.env.test。
+    相对路径以仓库根为基准解析。
+
+.PARAMETER Layer
+    unit       后端/AI 纯函数与契约测试（无外部服务，秒级）
+    integration后端集成测试（需 DB，见 conftest 的 sqlite/pg fixture）
+    e2e        前端 Playwright（按 TS_E2E_SUITE 选套件；dev/p0 套件 globalSetup 自动登录一次）
+    docker     启动 docker-compose.test.yml 测试栈
+    all        unit + e2e 串行
+
+.EXAMPLE
+    .\tests\scripts\run-tests.ps1                                        # 默认 env 文件 + smoke 单元
+    .\tests\scripts\run-tests.ps1 tests\.env.docker                      # 指定别的 env 文件
+    .\tests\scripts\run-tests.ps1 -Layer e2e                             # e2e，Cover 默认 smoke → 仅 @smoke 页面打开
+    .\tests\scripts\run-tests.ps1 -Layer e2e -Cover regression           # e2e 功能用例（当前暂 @smoke，重打标签后切 @p0）
+    .\tests\scripts\run-tests.ps1 -Layer e2e -Cover full                 # e2e 全部用例（不加 grep）
+    .\tests\scripts\run-tests.ps1 tests\.env.docker -Layer docker        # 用 docker 配置起栈
+    .\tests\scripts\run-tests.ps1 -Layer unit -Component server -Cover smoke -Scope album
+
+.NOTES
+    e2e dev/p0 套件由 globalSetup 自动登录一次（账号取自 TS_TEST_USERNAME/TS_TEST_PASSWORD，
+    默认 e2e-admin）。dev 库若无该账号且 allow_registration=false，受保护页面用例会 skip；
+    可临时把 TS_TEST_USERNAME/PASSWORD 指向已有的管理员账号。
+    smoke/p0 标签分离：@smoke = 仅页面打开，@p0 = 功能可用。
+#>
+[CmdletBinding()]
+param(
+    # 第一个位置参数：环境变量文件路径，不传则默认 tests\.env.test
+    [Parameter(Position = 0)]
+    [string]$EnvFile,
+
+    [ValidateSet('unit', 'integration', 'e2e', 'docker', 'all')]
+    [string]$Layer = 'unit',
+
+    [ValidateSet('server', 'ai', 'website', 'all')]
+    [string]$Component = 'all',
+
+    [string]$Cover,
+
+    [string]$Scope
+)
+
+$ErrorActionPreference = 'Stop'
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests\.env.test' }
+# 允许相对路径：以仓库根为基准解析
+if (-not [System.IO.Path]::IsPathRooted($EnvFile)) {
+    $EnvFile = (Resolve-Path (Join-Path $RepoRoot $EnvFile) -ErrorAction Stop).Path
+}
+
+# 1) 加载单一数据源到会话 —— 四方共享的关键
+. (Join-Path $PSScriptRoot 'Import-EnvFile.ps1')
+Import-EnvFile -Path $EnvFile
+
+# 2) 档位回退：命令行未传则读 .env.test，再不行用默认
+if (-not $Cover) { $Cover = if ($env:TS_TEST_COVER) { $env:TS_TEST_COVER } else { 'smoke' } }
+if (-not $Scope) { $Scope = if ($env:TS_TEST_SCOPE) { $env:TS_TEST_SCOPE } else { 'all' } }
+
+Write-Host ""
+Write-Host "==== TrailSnap 测试入口 ====" -ForegroundColor Cyan
+Write-Host "  TS_TEST_ENV = $($env:TS_TEST_ENV)"
+Write-Host "  Layer       = $Layer"
+Write-Host "  Component   = $Component"
+Write-Host "  Cover       = $Cover"
+Write-Host "  Scope       = $Scope"
+Write-Host "  API         = $($env:TS_API_BASE_URL)"
+Write-Host "  Web         = $($env:TS_WEB_BASE_URL)"
+Write-Host "  AI          = $($env:TS_AI_API_URL)"
+Write-Host "  DB          = $($env:TS_DB_URL)"
+Write-Host "============================" -ForegroundColor Cyan
+Write-Host ""
+
+# 把 Cover/Scope 组合成 pytest -m 表达式
+#   smoke + album -> "smoke and module_album"
+#   full / all    -> 不加 -m（跑全部）
+function Get-MarkerArg {
+    param([string]$c, [string]$s)
+    $parts = @()
+    if ($c -and $c -ne 'full') { $parts += $c }
+    if ($s -and $s -ne 'all') { $parts += "module_$s" }
+    if ($parts.Count -eq 0) { return @() }
+    return @('-m', ($parts -join ' and '))
+}
+
+# 解析 uv：PATH 优先，其次常见安装位置，最后回退到包内 .venv 的 python
+function Resolve-Uv {
+    $cmd = Get-Command uv -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd.Source }
+    foreach ($p in @(
+            "$env:USERPROFILE\.local\bin\uv.exe",
+            "$env:USERPROFILE\.cargo\bin\uv.exe",
+            "$env:APPDATA\uv\uv.exe"
+        )) {
+        if (Test-Path $p) { return $p }
+    }
+    return $null
+}
+
+function Invoke-Pytest {
+    param([string]$PackageDir, [string]$TestPath, [string[]]$ExtraArgs)
+    $pkgAbs = Join-Path $RepoRoot $PackageDir
+    Push-Location $pkgAbs
+    try {
+        $uv = Resolve-Uv
+        if ($uv) {
+            & $uv run python -m pytest $TestPath @ExtraArgs -v
+        }
+        else {
+            # 回退：直接用包内 venv 的 python（CI 或无 uv 时）
+            $py = Join-Path $pkgAbs '.venv\Scripts\python.exe'
+            if (-not (Test-Path $py)) { throw "找不到 uv，且 $py 不存在" }
+            & $py -m pytest $TestPath @ExtraArgs -v
+        }
+        if ($LASTEXITCODE -ne 0) { throw "pytest 失败 ($PackageDir)，退出码 $LASTEXITCODE" }
+    }
+    finally { Pop-Location }
+}
+
+$exitCode = 0
+
+try {
+    # ---------- unit / integration（pytest）----------
+    if ($Layer -in 'unit', 'integration', 'all') {
+        $markerArg = Get-MarkerArg -c $Cover -s $Scope
+        $testPath = if ($Layer -eq 'integration') { 'tests/integration' } else { 'tests/unit' }
+        $aiTestPath = if ($Layer -eq 'integration') { 'tests' } else { 'tests' }
+
+        if ($Component -in 'server', 'all') {
+            Write-Host "==> 后端 $Layer 测试 (server)" -ForegroundColor Green
+            Invoke-Pytest -PackageDir 'package\server' -TestPath $testPath -ExtraArgs $markerArg
+        }
+        if ($Component -in 'ai', 'all') {
+            Write-Host "==> AI $Layer 测试 (ai)" -ForegroundColor Green
+            Invoke-Pytest -PackageDir 'package\ai' -TestPath $aiTestPath -ExtraArgs $markerArg
+        }
+    }
+
+    # ---------- e2e（Playwright，env 已注入，e2e-env.ts 自动读取）----------
+    if ($Layer -in 'e2e', 'all') {
+        if ($Component -in 'website', 'all') {
+            # -Cover 映射到 e2e 标签（仅 dev/p0 套件有效，testDir=tests/e2e/specs）：
+            #   smoke -> @smoke（页面打开）  regression -> @p0（功能可用）  full -> 不加 grep（全部）
+            # 当前功能用例仍挂 @smoke（smoke/p0 逐条重打未完成），regression 暂也走 @smoke，
+            # 待功能用例改挂 @p0 后把 regression 切回 '@p0'。
+            # smoke 套件（TS_E2E_SUITE=smoke，e2e-system）无 @smoke/@p0 标签，不加 grep。
+            $e2eSuite = if ($env:TS_E2E_SUITE) { $env:TS_E2E_SUITE.ToLower() } else { 'dev' }
+            $grepArg = $null
+            if ($e2eSuite -in 'dev', 'p0') {
+                $grepArg = switch ($Cover) {
+                    'smoke' { '@smoke' }
+                    'regression' { '@smoke' }
+                    default { $null }
+                }
+            }
+            Write-Host "==> 前端 E2E (website)  suite=$e2eSuite  cover=$Cover$(if ($grepArg) { "  grep=$grepArg" })" -ForegroundColor Green
+            Push-Location (Join-Path $RepoRoot 'package\website')
+            try {
+                if ($grepArg) { & pnpm test:e2e --grep $grepArg }
+                else { & pnpm test:e2e }
+                if ($LASTEXITCODE -ne 0) { throw "playwright 失败，退出码 $LASTEXITCODE" }
+            }
+            finally { Pop-Location }
+        }
+    }
+
+    # ---------- docker（启动测试栈）----------
+    if ($Layer -eq 'docker') {
+        Write-Host "==> 启动 Docker 测试栈" -ForegroundColor Green
+        $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.test.yml'
+        & docker compose -f $composeFile --env-file $EnvFile up -d
+        if ($LASTEXITCODE -ne 0) { throw "docker compose 启动失败，退出码 $LASTEXITCODE" }
+        Write-Host "Docker 测试栈已启动。停止：docker compose -f `"$composeFile`" down -v" -ForegroundColor Yellow
+    }
+
+    Write-Host ""
+    Write-Host "==== 全部通过 ====" -ForegroundColor Green
+}
+catch {
+    Write-Host ""
+    Write-Host "==== 测试失败：$($_.Exception.Message) ====" -ForegroundColor Red
+    $exitCode = 1
+}
+
+exit $exitCode

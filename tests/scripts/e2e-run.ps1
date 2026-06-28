@@ -30,7 +30,9 @@ try {
     'p0'    {
       $env:TS_E2E_SUITE = 'p0'
       Write-Host "Level=p0 (TS_E2E_SUITE=p0) API=$($env:TS_API_BASE_URL) Web=$($env:TS_WEB_BASE_URL) User=$($env:TS_TEST_USERNAME)"
-      & pnpm test:e2e
+      # p0 = 关键路径用例。当前功能用例仍挂 @smoke（smoke/p0 逐条重打标签未完成），
+      # 故暂 grep @smoke；待功能用例改挂 @p0 后切回 --grep '@p0'。
+      & pnpm test:e2e --grep '@smoke'
     }
     'smoke' {
       $env:TS_E2E_SUITE = 'smoke'
@@ -41,7 +43,7 @@ try {
       Write-Host "Level=all (TS_E2E_SUITE=p0 then =smoke) API=$($env:TS_API_BASE_URL) Web=$($env:TS_WEB_BASE_URL) User=$($env:TS_TEST_USERNAME)"
       $env:TS_E2E_SUITE = 'p0'
       Write-Host '[1/2] Running P0...'
-      & pnpm test:e2e
+      & pnpm test:e2e --grep '@smoke'
       if ($LASTEXITCODE -ne 0) { throw "P0 failed $LASTEXITCODE" }
       $env:TS_E2E_SUITE = 'smoke'
       Write-Host '[2/2] Running smoke...'

@@ -43,5 +43,6 @@ build
 .trae
 .playwright-system
 .playwright-p0
+.playwright-dev
 playwright-report
 test-results
