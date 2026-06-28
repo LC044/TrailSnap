@@ -62,14 +62,15 @@ AI_API_URL=http://localhost:8001
 6. 启动 Uvicorn 服务
 
 ```bash
-# 启动服务（包含自动初始化和迁移）
-python start.py
+# 启动服务（包含自动初始化和迁移），需要在任务管理器手动关闭进程
+python -m uv run start.py
 ```
 
 如果你是在开发环境中需要热重载，可以手动运行：
+
 ```bash
 # 确保先运行一次 start.py 完成数据库初始化
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 启动后访问 Swagger 文档: http://localhost:8000/docs
