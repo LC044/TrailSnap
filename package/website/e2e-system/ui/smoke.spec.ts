@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test.describe('系统 UI 冒烟', () => {
+test.describe('系统 UI 冒烟 @smoke', () => {
   test('照片页可以看到导入结果并打开详情', async ({ page }) => {
     await page.goto('/photos')
 

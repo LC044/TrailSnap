@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { e2eEnv } from '../../../../playwright/e2e-env';
 
 /**
- * P0 冒烟测试 - 账号与会话
+ * P0 核心路径测试 - 账号与会话
  *
  * 覆盖 doc/e2e-test-checklist.md §1.1。
  * system 环境使用 e2e-system 自动注册的 admin（e2e-admin / Passw0rd!123）；
@@ -20,7 +20,7 @@ async function clearStorage(page: Page) {
   await page.evaluate(() => localStorage.clear());
 }
 
-test.describe('P0 冒烟 - 账号与会话 @smoke', () => {
+test.describe('P0 核心路径 - 账号与会话 @p0', () => {
   test.beforeEach(async ({ page }) => {
     await clearStorage(page);
   });
@@ -173,7 +173,7 @@ test.describe('P0 冒烟 - 账号与会话 @smoke', () => {
   });
 });
 
-test.describe('P0 冒烟 - 后端鉴权 API @smoke', () => {
+test.describe('P0 核心路径 - 后端鉴权 API @p0', () => {
   test('GET /users/me 无 Token 返回 401/403', async ({ request }) => {
     const res = await request.get(`${e2eEnv.apiBaseUrl}/users/me`, { timeout: 5_000 }).catch(() => null);
     if (!res) {

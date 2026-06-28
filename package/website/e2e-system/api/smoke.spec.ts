@@ -2,7 +2,7 @@ import { expect, request, test } from '@playwright/test'
 
 import { apiBaseUrl, readBootstrapState } from '../helpers/env'
 
-test.describe('系统 API 冒烟', () => {
+test.describe('系统 API 冒烟 @smoke', () => {
   test('照片导入链路可用', async () => {
     const bootstrapState = readBootstrapState()
     const api = await request.newContext({

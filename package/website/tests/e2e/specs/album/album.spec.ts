@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { ensureAuthSession } from '../../helpers/auth';
 
-test.describe('P0 冒烟 - 相册路由 @smoke', () => {
+test.describe('Smoke - 相册路由 @smoke', () => {
   // 受保护路由：未登录会被守卫重定向到 /login，统一在 beforeEach 建立会话
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo))) return;

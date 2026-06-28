@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 import { e2eEnv } from '../../../../playwright/e2e-env';
 
 /**
- * P0 冒烟测试 - 任务监控
+ * P0 核心路径测试 - 任务监控
  *
  * 覆盖 doc/e2e-test-checklist.md §1.2。
  * 后端地址通过 e2eEnv.apiBaseUrl 获取（dev: 8000, system: 8800）；不可达时自动 skip。
@@ -25,7 +25,7 @@ async function ensureBackend(
   }
 }
 
-test.describe('P0 冒烟 - 任务监控 @smoke', () => {
+test.describe('P0 核心路径 - 任务监控 @p0', () => {
   test('GET /tasks/ 返回任务列表（合法 JSON 数组）', async ({ request }, testInfo) => {
     if (!(await ensureBackend(request, testInfo))) return;
     const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/`);
@@ -91,7 +91,7 @@ test.describe('P0 冒烟 - 任务监控 @smoke', () => {
   });
 });
 
-test.describe('P0 冒烟 - 任务分类与 Fast Mode @smoke', () => {
+test.describe('P0 核心路径 - 任务分类与 Fast Mode @p0', () => {
   test('POST /tasks/categories/{category}/pause 路径存在', async ({ request }, testInfo) => {
     if (!(await ensureBackend(request, testInfo))) return;
     // 用一个稳定存在的分类

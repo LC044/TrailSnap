@@ -11,6 +11,6 @@ dist
 data/*
 .env
 .claude/
-test-local*
+*test-local*
 .playwright-cli
 releases/

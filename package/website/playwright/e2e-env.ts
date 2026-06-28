@@ -8,9 +8,9 @@
  *   import { e2eEnv, E2ESuite } from './playwright/e2e-env'
  *   e2eEnv.apiBaseUrl  // string
  *
- * 环境变量约定（与 e2e-run.ps1 / e2e-up.ps1 一致）：
+ * 环境变量约定（与 run-e2e.mjs / e2e-up 等脚本一致）：
  *
- *   TS_E2E_SUITE        测试套件：dev | p0 | smoke | all
+ *   TS_E2E_SUITE        测试套件：dev | p0 | p1 | smoke | all
  *                       默认 dev（pnpm test:e2e 行为不变）
  *   TS_API_BASE_URL     后端地址
  *                       dev  默认 http://localhost:8000
@@ -19,8 +19,8 @@
  *                       dev  默认 http://localhost:5176
  *                       sys  默认 http://localhost:8082 (frontend nginx)
  *   TS_PHOTO_DIR        测试照片目录（默认 /testdata/photos）
- *   TS_TEST_USERNAME    P0 套件登录账号（默认 e2e-admin，bootstrap.ts 注册）
- *   TS_TEST_PASSWORD    P0 套件登录密码（默认 Passw0rd!123）
+ *   TS_TEST_USERNAME    P0/P1 套件登录账号（默认 e2e-admin，bootstrap.ts 注册）
+ *   TS_TEST_PASSWORD    P0/P1 套件登录密码（默认 Passw0rd!123）
  *   TS_ADMIN_USERNAME   Admin 账号（默认 e2e-admin）
  *   TS_ADMIN_EMAIL      Admin 邮箱
  *   TS_ADMIN_PASSWORD   Admin 密码
@@ -31,12 +31,13 @@
 import path from 'node:path'
 
 /** 测试套件标识 */
-export type E2ESuite = 'dev' | 'p0' | 'smoke' | 'all'
+export type E2ESuite = 'dev' | 'p0' | 'p1' | 'smoke' | 'all'
 
 /** 套件到默认 baseURL 后端的映射 */
 const BACKEND_BY_SUITE: Record<E2ESuite, string> = {
   dev: 'http://localhost:8000',
   p0: 'http://localhost:8800',
+  p1: 'http://localhost:8800',
   smoke: 'http://localhost:8800',
   all: 'http://localhost:8800',
 }
@@ -45,6 +46,7 @@ const BACKEND_BY_SUITE: Record<E2ESuite, string> = {
 const WEB_BY_SUITE: Record<E2ESuite, string> = {
   dev: 'http://localhost:5176',
   p0: 'http://localhost:8082',
+  p1: 'http://localhost:8082',
   smoke: 'http://localhost:8082',
   all: 'http://localhost:8082',
 }
@@ -55,7 +57,7 @@ const WEB_BY_SUITE: Record<E2ESuite, string> = {
  */
 export function resolveSuite(): E2ESuite {
   const raw = (process.env.TS_E2E_SUITE || 'dev').toLowerCase()
-  if (raw === 'p0' || raw === 'smoke' || raw === 'all') return raw
+  if (raw === 'p0' || raw === 'p1' || raw === 'smoke' || raw === 'all') return raw
   return 'dev'
 }
 
@@ -88,12 +90,12 @@ export const e2eEnv = {
     return env('TS_PHOTO_DIR') ?? '/testdata/photos'
   },
 
-  /** P0 套件登录账号 */
+  /** P0 / P1 套件登录账号 */
   get testUsername(): string {
     return env('TS_TEST_USERNAME') ?? 'e2e-admin'
   },
 
-  /** P0 套件登录密码 */
+  /** P0 / P1 套件登录密码 */
   get testPassword(): string {
     return env('TS_TEST_PASSWORD') ?? 'Passw0rd!123'
   },
@@ -121,39 +123,44 @@ export const e2eEnv = {
       case 'smoke':
         return './e2e-system'
       case 'all':
-        // all = P0 + smoke。用 tests/e2e 作主目录，testMatch 同时匹配 e2e-system 下的 spec
+        // all = P0 + P1 + smoke 串行（由 run-e2e.mjs 实现）。此处 testDir 极少被直接调用，
+        // 保留兜底：等价于 dev。
         return './tests/e2e'
       case 'p0':
+      case 'p1':
       case 'dev':
       default:
         return './tests/e2e'
     }
   },
 
-  /** 套件对应的 testMatch 正则 */
+  /**
+   * 套件对应的 testMatch 正则。
+   *
+   * - dev    : 全量（默认）
+   * - p0     : tests/e2e/specs 下所有 spec，由 run-e2e.mjs 加 --grep @p0 过滤
+   * - p1     : 同 p0，由 run-e2e.mjs 加 --grep "^P1 - " 过滤
+   * - smoke  : 扫 specs/ + e2e-system/，由 run-e2e.mjs 加 --grep @smoke 过滤
+   *            （page-load 烟测在 specs/{album,photos,...}.spec.ts；系统烟测在 e2e-system/）
+   * - all    : 兜底，等价于 dev
+   */
   get testMatch(): RegExp {
     switch (this.suite) {
       case 'p0':
-        // P0: 收集 tests/e2e/specs 下全部 spec（含域子目录），
-        // 由 e2e-run.ps1 传 --grep @smoke 仅跑 @smoke 标记的关键用例。
-        // 这样 spec 可自由分子目录，不再被文件名正则绑死。
+        return /specs\/.*\.spec\.ts$/
+      case 'p1':
         return /specs\/.*\.spec\.ts$/
       case 'smoke':
-        // smoke: 只跑 e2e-system/{api,ui}/smoke.spec.ts
-        return /(api|ui)\/smoke\.spec\.ts$/
+        return /(specs|e2e-system)\/.*\.spec\.ts$/
       case 'all':
-        // all 模式在 e2e-run.ps1 里通过两次串行执行实现 (TS_E2E_SUITE=p0 → smoke)；
-        // 此处 'all' 几乎不会被直接调用（仅 e2e-run.ps1 切换 suite 后跑单套件），
-        // 保留兜底：等价于 dev（跑全部 spec）
         return /.*\.spec\.ts$/
       case 'dev':
       default:
-        // dev: 默认全部
         return /.*\.spec\.ts$/
     }
   },
 
-  /** 套件对应的 globalSetup 路径（dev/p0/smoke/all 都需要登录态） */
+  /** 套件对应的 globalSetup 路径（dev/p0/p1/smoke/all 都需要登录态） */
   get globalSetup(): string | undefined {
     if (this.suite === 'dev') return './tests/e2e/helpers/dev-global-setup.ts'
     return './e2e-system/helpers/bootstrap.ts'

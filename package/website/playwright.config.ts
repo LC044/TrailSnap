@@ -3,9 +3,13 @@
  *
  * 通过 TS_E2E_SUITE 环境变量切换测试套件：
  *   dev    - 默认。pnpm test:e2e 走 vite dev server (5176)，跑 tests/e2e 下所有 spec
- *   p0     - 跑 P0 冒烟（auth/smoke/tasks/redirect），需已启动的 system 环境（e2e-up）
- *   smoke  - 跑系统级冒烟（e2e-system/api + e2e-system/ui）
- *   all    - P0 + smoke 全量
+ *   p0     - P0 核心路径（@p0，PR 阶段），需 system 环境（pnpm test:e2e:up）
+ *   p1     - P1 核心业务功能（'^P1 - '，Nightly），需 system 环境
+ *   smoke  - 页面打开 + 系统级冒烟（@smoke，可 Nightly / Release）
+ *   all    - p0 → p1 → smoke 串行
+ *
+ * 套件对应的 testDir / testMatch / 后端前端地址 / 标签 grep 全部集中在
+ * ./playwright/e2e-env.ts 与 ./playwright/run-e2e.mjs。
  *
  * 所有环境变量默认值 / 套件映射集中在 ./playwright/e2e-env.ts
  */
@@ -22,7 +26,7 @@ export default defineConfig({
   testMatch: e2eEnv.testMatch,
 
   // dev 套件下用本地 vite dev server 自动拉起；system 套件用 docker compose
-  // 见 e2e-up.ps1 / package.json scripts
+  // 见 playwright/e2e-up.mjs（pnpm test:e2e:up）/ package.json scripts
   fullyParallel: suite !== 'smoke',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
@@ -44,7 +48,7 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
 
-  // dev 套件自动拉起 vite dev server；system 套件依赖 docker compose（外部启动）
+  // dev 套件自动拉起 vite dev server；system 套件依赖 docker compose（pnpm test:e2e:up 拉起）
   webServer: isSystemSuite
     ? undefined
     : {
