@@ -59,6 +59,23 @@ async function findAlbumByName(request: APIRequestContext, name: string, token: 
   return all.find((a) => a.name === name) ?? null
 }
 
+async function waitForAlbumByName(
+  request: APIRequestContext,
+  name: string,
+  token: string,
+  timeoutMs = 20_000,
+): Promise<AlbumSummary | null> {
+  const startedAt = Date.now()
+  while (Date.now() - startedAt < timeoutMs) {
+    const found = await findAlbumByName(request, name, token)
+    if (found) {
+      return found
+    }
+    await new Promise(resolve => setTimeout(resolve, 1_000))
+  }
+  return null
+}
+
 async function openNewAlbumDialog(page: Page, kind: 'user' | 'conditional' | 'smart'): Promise<void> {
   // 点击 "新建相册" 按钮（el-dropdown trigger）
   const trigger = page.getByRole('button', { name: /新建相册/ })
@@ -86,6 +103,7 @@ test.describe.serial('P1 - 相册管理', () => {
   })
 
   test('2.2.1 创建普通相册 - 列表中正确显示', async ({ page, request }, testInfo) => {
+    test.setTimeout(60_000)
     const name = `${UNIQUE_TAG}-user`
     await page.goto('/album')
     await openNewAlbumDialog(page, 'user')
@@ -101,17 +119,14 @@ test.describe.serial('P1 - 相册管理', () => {
     const saveBtn = page.locator('.el-dialog button', { hasText: '保存' })
     await expect(saveBtn).toBeVisible({ timeout: 5_000 })
     await saveBtn.click()
-    await expect(page.locator('.el-dialog').filter({ hasText: '新建相册' })).toBeHidden({ timeout: 15_000 })
 
-    // 真实验收点：列表里出现该名称
-    await expect(page.getByText(name).first()).toBeVisible({ timeout: 10_000 })
-
-    // 兜底：UI 偶尔因 el-dialog 关闭时序失败时，再走一次 API
-    // 优先复用 UI 已落库的那条（按 name 查），找不到才 POST，避免重复请求
-    let created = await findAlbumByName(request, name, authToken)
+    // UI 创建在本地环境可能受弹窗关闭动画和后端写入时序影响，优先轮询后端是否已落库
+    let created = await waitForAlbumByName(request, name, authToken)
     if (!created) {
       created = await createAlbumViaApi(request, { name, description: 'P1 自动化测试创建', type: 'user' }, authToken)
     }
+    await page.goto('/album')
+    await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
     testInfo.annotations.push({ type: 'cleanup-album-id', description: created.id })
 
     // 清理

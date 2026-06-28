@@ -6,14 +6,17 @@
     一个命令驱动 docker / 前端 e2e / 后端单元 / AI 四类测试。
     环境变量单一来源：环境变量文件（默认 tests/.env.test）—— 先加载到会话，
     子进程（uv / pnpm / docker）全部继承。可用第一个位置参数指定别的 .env 文件。
+    E2E 可通过 -ScanPrep auto|true|false 显式控制是否先执行 scan 预扫描；
+    命令行参数优先级高于 .env 文件中的 TS_E2E_ENABLE_FIXTURE_SCAN。
 
     四个维度组合：
       EnvFile    第一个位置参数，环境变量文件路径，不传则默认 tests\.env.test
       -Layer     unit | integration | e2e | docker | all   （测哪一层）
       -Component server | ai | website | all               （测哪个组件）
       -Cover     smoke | regression | full                 （跑多深，默认读 .env 文件的 TS_TEST_COVER）
-                 unit/integration → pytest -m 标记；e2e → smoke=@smoke(页面打开) / regression=功能(暂@smoke,重打后@p0) / full=全部
+                 unit/integration → pytest -m 标记；e2e → smoke=@smoke / regression=@p0 + P1 / full=全部
       -Scope     all | photo | album | face | ocr | ...     （跑哪个业务域）
+      -ScanPrep  auto | true | false                        （e2e 是否先执行 scan；默认 false）
 
     最简打通流程：
       .\tests\scripts\run-tests.ps1                         # 默认 = server+ai 的 smoke 单元测试
@@ -32,8 +35,10 @@
 .EXAMPLE
     .\tests\scripts\run-tests.ps1                                        # 默认 env 文件 + smoke 单元
     .\tests\scripts\run-tests.ps1 tests\.env.docker                      # 指定别的 env 文件
-    .\tests\scripts\run-tests.ps1 -Layer e2e                             # e2e，Cover 默认 smoke → 仅 @smoke 页面打开
-    .\tests\scripts\run-tests.ps1 -Layer e2e -Cover regression           # e2e 功能用例（当前暂 @smoke，重打标签后切 @p0）
+    .\tests\scripts\run-tests.ps1 -Layer e2e                             # e2e，Cover 默认 smoke → 仅 @smoke
+    .\tests\scripts\run-tests.ps1 -Layer e2e -ScanPrep true              # 先执行 scan 预扫描，再跑 e2e
+    .\tests\scripts\run-tests.ps1 -Layer e2e -ScanPrep false             # 显式关闭预扫描，覆盖 .env 设置
+    .\tests\scripts\run-tests.ps1 -Layer e2e -Cover regression           # e2e 功能用例（@p0 + P1）
     .\tests\scripts\run-tests.ps1 -Layer e2e -Cover full                 # e2e 全部用例（不加 grep）
     .\tests\scripts\run-tests.ps1 tests\.env.docker -Layer docker        # 用 docker 配置起栈
     .\tests\scripts\run-tests.ps1 -Layer unit -Component server -Cover smoke -Scope album
@@ -42,7 +47,9 @@
     e2e dev/p0 套件由 globalSetup 自动登录一次（账号取自 TS_TEST_USERNAME/TS_TEST_PASSWORD，
     默认 e2e-admin）。dev 库若无该账号且 allow_registration=false，受保护页面用例会 skip；
     可临时把 TS_TEST_USERNAME/PASSWORD 指向已有的管理员账号。
-    smoke/p0 标签分离：@smoke = 仅页面打开，@p0 = 功能可用。
+    smoke/p0/p1 套件分离：@smoke = 页面打开，@p0 = 功能可用，P1 = 业务深测。
+    -ScanPrep=true|false 会直接覆盖 .env 的 TS_E2E_ENABLE_FIXTURE_SCAN；
+    仅当 -ScanPrep=auto 时才回退到 .env 或默认 false。
 #>
 [CmdletBinding()]
 param(
@@ -58,7 +65,10 @@ param(
 
     [string]$Cover,
 
-    [string]$Scope
+    [string]$Scope,
+
+    [ValidateSet('auto', 'true', 'false')]
+    [string]$ScanPrep = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,6 +86,13 @@ Import-EnvFile -Path $EnvFile
 # 2) 档位回退：命令行未传则读 .env.test，再不行用默认
 if (-not $Cover) { $Cover = if ($env:TS_TEST_COVER) { $env:TS_TEST_COVER } else { 'smoke' } }
 if (-not $Scope) { $Scope = if ($env:TS_TEST_SCOPE) { $env:TS_TEST_SCOPE } else { 'all' } }
+switch ($ScanPrep) {
+    'true'  { $env:TS_E2E_ENABLE_FIXTURE_SCAN = 'true' }
+    'false' { $env:TS_E2E_ENABLE_FIXTURE_SCAN = 'false' }
+    default {
+        if (-not $env:TS_E2E_ENABLE_FIXTURE_SCAN) { $env:TS_E2E_ENABLE_FIXTURE_SCAN = 'false' }
+    }
+}
 
 Write-Host ""
 Write-Host "==== TrailSnap 测试入口 ====" -ForegroundColor Cyan
@@ -84,10 +101,12 @@ Write-Host "  Layer       = $Layer"
 Write-Host "  Component   = $Component"
 Write-Host "  Cover       = $Cover"
 Write-Host "  Scope       = $Scope"
+Write-Host "  ScanPrepArg = $ScanPrep"
 Write-Host "  API         = $($env:TS_API_BASE_URL)"
 Write-Host "  Web         = $($env:TS_WEB_BASE_URL)"
 Write-Host "  AI          = $($env:TS_AI_API_URL)"
 Write-Host "  DB          = $($env:TS_DB_URL)"
+Write-Host "  ScanPrep    = $($env:TS_E2E_ENABLE_FIXTURE_SCAN)"
 Write-Host "============================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -159,25 +178,27 @@ try {
     # ---------- e2e（Playwright，env 已注入，e2e-env.ts 自动读取）----------
     if ($Layer -in 'e2e', 'all') {
         if ($Component -in 'website', 'all') {
-            # -Cover 映射到 e2e 标签（仅 dev/p0 套件有效，testDir=tests/e2e/specs）：
-            #   smoke -> @smoke（页面打开）  regression -> @p0（功能可用）  full -> 不加 grep（全部）
-            # 当前功能用例仍挂 @smoke（smoke/p0 逐条重打未完成），regression 暂也走 @smoke，
-            # 待功能用例改挂 @p0 后把 regression 切回 '@p0'。
-            # smoke 套件（TS_E2E_SUITE=smoke，e2e-system）无 @smoke/@p0 标签，不加 grep。
             $e2eSuite = if ($env:TS_E2E_SUITE) { $env:TS_E2E_SUITE.ToLower() } else { 'dev' }
-            $grepArg = $null
-            if ($e2eSuite -in 'dev', 'p0') {
-                $grepArg = switch ($Cover) {
-                    'smoke' { '@smoke' }
-                    'regression' { '@smoke' }
-                    default { $null }
-                }
-            }
-            Write-Host "==> 前端 E2E (website)  suite=$e2eSuite  cover=$Cover$(if ($grepArg) { "  grep=$grepArg" })" -ForegroundColor Green
+            Write-Host "==> 前端 E2E (website)  suite=$e2eSuite  cover=$Cover" -ForegroundColor Green
             Push-Location (Join-Path $RepoRoot 'package\website')
             try {
-                if ($grepArg) { & pnpm test:e2e --grep $grepArg }
-                else { & pnpm test:e2e }
+                switch ($e2eSuite) {
+                    'smoke' { & node playwright/run-e2e.mjs smoke }
+                    'p0'    { & node playwright/run-e2e.mjs p0 }
+                    'p1'    { & node playwright/run-e2e.mjs p1 }
+                    'all'   { & node playwright/run-e2e.mjs all }
+                    'light' { & node playwright/run-e2e.mjs light }
+                    'full'  { & node playwright/run-e2e.mjs full }
+                    default {
+                        $grepArg = switch ($Cover) {
+                            'smoke' { '@smoke' }
+                            'regression' { '@p0|P1 - ' }
+                            default { $null }
+                        }
+                        if ($grepArg) { & pnpm test:e2e --grep $grepArg }
+                        else { & pnpm test:e2e }
+                    }
+                }
                 if ($LASTEXITCODE -ne 0) { throw "playwright 失败，退出码 $LASTEXITCODE" }
             }
             finally { Pop-Location }

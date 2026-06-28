@@ -1,6 +1,8 @@
 import type { APIRequestContext } from '@playwright/test'
 
 import { e2eEnv } from '../../../playwright/e2e-env'
+import { ensureApiAccessToken } from './auth'
+import { preparePhotoFixtures, type SkipCapable } from './photo-fixtures'
 
 /**
  * P1 测试数据探针。
@@ -45,10 +47,6 @@ export interface TagSummary {
   count: number
 }
 
-interface SkipCapable {
-  skip: (condition: boolean, reason: string) => void
-}
-
 async function tryGet<T>(request: APIRequestContext, path: string): Promise<{ ok: true; data: T } | { ok: false; status: number }> {
   try {
     const res = await request.get(`${e2eEnv.apiBaseUrl}${path}`, { timeout: 5_000 })
@@ -73,6 +71,21 @@ function skipIfUnreachable(testInfo: SkipCapable, status: number): boolean {
   return false
 }
 
+async function ensureP0Fixtures(
+  request: APIRequestContext,
+  testInfo: SkipCapable,
+): Promise<boolean> {
+  const token = await ensureApiAccessToken(request, testInfo)
+  if (!token) return false
+
+  return preparePhotoFixtures(request, {
+    bucket: 'p0',
+    token,
+    testInfo,
+    onUnavailable: 'skip',
+  })
+}
+
 /** 探测照片总数，< minCount 时 skip。返回 false 表示已 skip。 */
 export async function requirePhotos(
   request: APIRequestContext,
@@ -80,6 +93,10 @@ export async function requirePhotos(
   minCount = 1,
   limit = 50,
 ): Promise<{ ok: true; photos: PhotoSummary[] } | { ok: false }> {
+  if (!(await ensureP0Fixtures(request, testInfo))) {
+    return { ok: false }
+  }
+
   const res = await tryGet<PhotoSummary[] | BaseResponse<PhotoSummary[]>>(
     request,
     `/api/photos?skip=0&limit=${limit}`,
@@ -133,6 +150,10 @@ export async function requireAnyAlbum(
   request: APIRequestContext,
   testInfo: SkipCapable,
 ): Promise<{ ok: true; album: AlbumSummary } | { ok: false }> {
+  if (!(await ensureP0Fixtures(request, testInfo))) {
+    return { ok: false }
+  }
+
   const res = await tryGet<AlbumSummary[] | BaseResponse<AlbumSummary[]>>(request, `/api/albums?limit=100`)
   if (!res.ok) {
     if (skipIfUnreachable(testInfo, res.status)) return { ok: false }
@@ -152,6 +173,10 @@ export async function requireAnyTag(
   request: APIRequestContext,
   testInfo: SkipCapable,
 ): Promise<{ ok: true; tag: TagSummary } | { ok: false }> {
+  if (!(await ensureP0Fixtures(request, testInfo))) {
+    return { ok: false }
+  }
+
   const res = await tryGet<TagSummary[] | BaseResponse<TagSummary[]>>(request, `/api/tags?limit=100`)
   if (!res.ok) {
     if (skipIfUnreachable(testInfo, res.status)) return { ok: false }

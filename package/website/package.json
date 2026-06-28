@@ -10,10 +10,13 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
+    "test:e2e:scan": "node playwright/run-e2e.mjs scan",
     "test:e2e:p0": "node playwright/run-e2e.mjs p0",
     "test:e2e:p1": "node playwright/run-e2e.mjs p1",
     "test:e2e:system": "node playwright/run-e2e.mjs smoke",
     "test:e2e:all": "node playwright/run-e2e.mjs all",
+    "test:e2e:light": "node playwright/run-e2e.mjs light",
+    "test:e2e:full": "node playwright/run-e2e.mjs full",
     "test:e2e:up": "node playwright/e2e-up.mjs",
     "test:e2e:down": "node playwright/e2e-up.mjs down"
   },

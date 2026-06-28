@@ -20,7 +20,7 @@ import { ensureAuthSession } from '../helpers/auth';
 
 test.describe('页面打开冒烟 @smoke', () => {
   test('首页能打开 - 渲染出标题', async ({ page, request }, testInfo) => {
-    if (!(await ensureAuthSession(request, page, testInfo))) return;
+    if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
     await page.goto('/');
 
     // HomePage 顶部固定 h1（模板静态写死，与 API 数据无关）
@@ -29,7 +29,7 @@ test.describe('页面打开冒烟 @smoke', () => {
 
   test('404 兜底页能打开', async ({ page, request }, testInfo) => {
     // 404 页在 MainLayout 内，需要真实 token 防止 axios 拦截器清 token 重定向
-    if (!(await ensureAuthSession(request, page, testInfo))) return;
+    if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
     await page.goto('/this-route-does-not-exist-12345');
 
     await expect(page.locator('h1', { hasText: '404' })).toBeVisible({ timeout: 10_000 });
@@ -46,3 +46,4 @@ test.describe('页面打开冒烟 @smoke', () => {
     await expect(page).toHaveURL(/\/(annual-report|login)/);
   });
 });
+

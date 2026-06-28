@@ -4,7 +4,7 @@ import { ensureAuthSession } from '../../helpers/auth';
 test.describe('Smoke - 相册路由 @smoke', () => {
   // 受保护路由：未登录会被守卫重定向到 /login，统一在 beforeEach 建立会话
   test.beforeEach(async ({ page, request }, testInfo) => {
-    if (!(await ensureAuthSession(request, page, testInfo))) return;
+    if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
   });
 
   test('相册列表页面正常加载', async ({ page }) => {
@@ -35,3 +35,4 @@ test.describe('Smoke - 相册路由 @smoke', () => {
     await expect(page).toHaveURL(/\/album\/people/);
   });
 });
+

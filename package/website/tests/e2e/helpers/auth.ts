@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import type { APIRequestContext, Page } from '@playwright/test'
 
 import { e2eEnv } from '../../../playwright/e2e-env'
+import { preparePhotoFixtures, type PhotoFixtureBucket, type SkipCapable } from './photo-fixtures'
 
 /**
  * 测试账号登录态建立 —— 统一入口，供 album / home / smoke 等 spec 共用。
@@ -64,10 +65,9 @@ export function authHeaders(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` }
 }
 
-export async function ensureAuthSession(
+export async function ensureApiAccessToken(
   request: APIRequestContext,
-  page: Page,
-  testInfo: { skip: (condition: boolean, reason: string) => void },
+  testInfo: SkipCapable,
 ): Promise<string> {
   // globalSetup 已登录：storageState 含真实 token，config 已自动注入到每个 page。
   // 读出来返回，供 `request` fixture 直连后端时手动带 Bearer 头。
@@ -88,12 +88,38 @@ export async function ensureAuthSession(
       return ''
     }
     const { access_token } = await loginRes.json()
-    await page.context().addInitScript((token) => {
-      localStorage.setItem('user_token', token)
-    }, access_token)
     return access_token
   } catch {
     testInfo.skip(true, `Backend not reachable at ${e2eEnv.apiBaseUrl}`)
     return ''
   }
+}
+
+export async function ensureAuthSession(
+  request: APIRequestContext,
+  page: Page,
+  testInfo: SkipCapable,
+  options: { photoBucket?: PhotoFixtureBucket } = {},
+): Promise<string> {
+  const accessToken = await ensureApiAccessToken(request, testInfo)
+  if (!accessToken) return ''
+
+  if (options.photoBucket) {
+    const prepared = await preparePhotoFixtures(request, {
+      bucket: options.photoBucket,
+      token: accessToken,
+      testInfo,
+      onUnavailable: 'skip',
+    })
+    if (!prepared) return ''
+  }
+
+  if (readStorageToken(e2eEnv.storageState)) {
+    return accessToken
+  }
+
+  await page.context().addInitScript((token) => {
+    localStorage.setItem('user_token', token)
+  }, accessToken)
+  return accessToken
 }

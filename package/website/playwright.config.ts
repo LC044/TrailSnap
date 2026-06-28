@@ -4,7 +4,7 @@
  * 通过 TS_E2E_SUITE 环境变量切换测试套件：
  *   dev    - 默认。pnpm test:e2e 走 vite dev server (5176)，跑 tests/e2e 下所有 spec
  *   p0     - P0 核心路径（@p0，PR 阶段），需 system 环境（pnpm test:e2e:up）
- *   p1     - P1 核心业务功能（'^P1 - '，Nightly），需 system 环境
+ *   p1     - P1 核心业务功能（'P1 - '，Nightly），需 system 环境
  *   smoke  - 页面打开 + 系统级冒烟（@smoke，可 Nightly / Release）
  *   all    - p0 → p1 → smoke 串行
  *
@@ -17,6 +17,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
 import { e2eEnv } from './playwright/e2e-env'
+
+process.env.TS_E2E_PREP_RUN_ID ??= `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 
 const suite = e2eEnv.suite
 const isSystemSuite = suite !== 'dev'
@@ -33,6 +35,7 @@ export default defineConfig({
   workers: process.env.CI ? (suite === 'smoke' ? 1 : 2) : undefined,
 
   globalSetup: e2eEnv.globalSetup,
+  globalTeardown: e2eEnv.globalTeardown,
 
   reporter: [
     ['list'],

@@ -8,10 +8,10 @@ import {
   authStatePath,
   bootstrapStatePath,
   ensureRuntimeDir,
-  photoDirectory,
   webBaseUrl,
 } from './env'
-import { waitForTasksToSettle } from './task-poller'
+import { bucketForSuite, preparePhotoFixturesForSuite } from '../../tests/e2e/helpers/photo-fixtures'
+import { e2eEnv } from '../../playwright/e2e-env'
 
 async function registerAdminIfNeeded() {
   const request = await playwrightRequest.newContext({
@@ -58,39 +58,12 @@ async function registerAdminIfNeeded() {
     const loginResult = await loginResponse.json() as { access_token: string }
     const accessToken = loginResult.access_token
 
-    const directoriesResponse = await request.get('/settings/directories', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
-
-    if (!directoriesResponse.ok()) {
-      throw new Error(`获取目录配置失败: ${directoriesResponse.status()} ${await directoriesResponse.text()}`)
-    }
-
-    const directories = await directoriesResponse.json() as { external?: string[] }
-    const externalDirectories = directories.external || []
-
-    if (!externalDirectories.includes(photoDirectory)) {
-      const addDirectoryResponse = await request.post('/settings/directories', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        data: {
-          path: photoDirectory,
-        },
+    const fixtureBucket = bucketForSuite(e2eEnv.suite)
+    if (fixtureBucket) {
+      await preparePhotoFixturesForSuite(request, accessToken, e2eEnv.suite, {
+        onUnavailable: 'throw',
       })
-
-      if (!addDirectoryResponse.ok()) {
-        // 目录可能不存在（挂载未生效 / 容器内路径无效），降级为警告，不阻塞 P0 套件
-        // P0 测试不依赖扫描任务完成，system 套件可后续再触发
-        console.warn(
-          `[bootstrap] skip adding photo directory ${photoDirectory}: ${addDirectoryResponse.status()} ${await addDirectoryResponse.text()}`,
-        )
-      }
     }
-
-    await waitForTasksToSettle(request, accessToken)
 
     return accessToken
   } finally {
@@ -124,6 +97,7 @@ export default async function globalSetup(_config: FullConfig) {
 
   const accessToken = await registerAdminIfNeeded()
   await saveFrontendSession(accessToken)
+  const fixtureBucket = bucketForSuite(e2eEnv.suite)
 
   fs.writeFileSync(
     bootstrapStatePath,
@@ -132,7 +106,7 @@ export default async function globalSetup(_config: FullConfig) {
         accessToken,
         username: adminUser.username,
         email: adminUser.email,
-        photoDirectory,
+        photoDirectory: fixtureBucket ? `${e2eEnv.photoDirectory}/${fixtureBucket}` : e2eEnv.photoDirectory,
       },
       null,
       2,

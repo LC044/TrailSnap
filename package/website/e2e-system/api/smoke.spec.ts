@@ -28,7 +28,7 @@ test.describe('系统 API 冒烟 @smoke', () => {
       })
       expect(tasksResponse.ok()).toBeTruthy()
       const tasks = await tasksResponse.json() as Array<{ status: string }>
-      const failedTasks = tasks.filter(task => task.status === 'FAILED')
+      const failedTasks = tasks.filter(task => task.status.toLowerCase() === 'failed')
       expect(failedTasks).toHaveLength(0)
 
       const detailResponse = await api.get('/photos/detail', {

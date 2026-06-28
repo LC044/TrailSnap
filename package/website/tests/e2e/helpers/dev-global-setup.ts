@@ -4,6 +4,7 @@ import path from 'node:path'
 import { chromium, request as playwrightRequest, type FullConfig } from '@playwright/test'
 
 import { e2eEnv } from '../../../playwright/e2e-env'
+import { preparePhotoFixturesForSuite } from './photo-fixtures'
 
 /**
  * Dev 套件 globalSetup —— 登录一次，落盘 storageState，供所有测试复用。
@@ -20,6 +21,10 @@ import { e2eEnv } from '../../../playwright/e2e-env'
 const storageDir = path.resolve(process.cwd(), '.playwright-dev')
 export const storageStatePath = path.join(storageDir, 'storage-state.json')
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function writeEmptyState() {
   fs.mkdirSync(storageDir, { recursive: true })
   fs.writeFileSync(storageStatePath, JSON.stringify({ cookies: [], origins: [] }), 'utf8')
@@ -34,12 +39,21 @@ export default async function globalSetup(_config: FullConfig) {
   })
 
   try {
-    const loginRes = await req
-      .post('/auth/login', {
-        form: { username: e2eEnv.testUsername, password: e2eEnv.testPassword },
-        timeout: 5_000,
-      })
-      .catch(() => null)
+    let loginRes: Awaited<ReturnType<typeof req.post>> | null = null
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      loginRes = await req
+        .post('/auth/login', {
+          form: { username: e2eEnv.testUsername, password: e2eEnv.testPassword },
+          timeout: 5_000,
+        })
+        .catch(() => null)
+
+      if (loginRes?.ok()) {
+        break
+      }
+
+      await sleep(3_000)
+    }
 
     if (!loginRes || !loginRes.ok()) {
       console.warn(
@@ -51,6 +65,12 @@ export default async function globalSetup(_config: FullConfig) {
     }
 
     const { access_token } = (await loginRes.json()) as { access_token: string }
+
+    if (e2eEnv.enableFixtureScan) {
+      await preparePhotoFixturesForSuite(req, access_token, e2eEnv.suite, {
+        onUnavailable: 'throw',
+      })
+    }
 
     const browser = await chromium.launch()
     const context = await browser.newContext()
