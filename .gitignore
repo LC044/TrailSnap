@@ -14,3 +14,4 @@ data/*
 *test-local*
 .playwright-cli
 releases/
+pg_data/

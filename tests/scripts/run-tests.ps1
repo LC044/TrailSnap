@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     TrailSnap 测试统一入口。
 
@@ -68,7 +68,9 @@ param(
     [string]$Scope,
 
     [ValidateSet('auto', 'true', 'false')]
-    [string]$ScanPrep = 'auto'
+    [string]$ScanPrep = 'auto',
+
+    [switch]$Cleanup
 )
 
 $ErrorActionPreference = 'Stop'
@@ -136,6 +138,25 @@ function Resolve-Uv {
     return $null
 }
 
+function Test-Port {
+    param([int]$Port)
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $connect = $tcp.BeginConnect('127.0.0.1', $Port, $null, $null)
+        $success = $connect.AsyncWaitHandle.WaitOne(500, $false)
+        if ($success) {
+            $tcp.EndConnect($connect)
+            $tcp.Close()
+            return $true
+        } else {
+            $tcp.Close()
+            return $false
+        }
+    } catch {
+        return $false
+    }
+}
+
 function Invoke-Pytest {
     param([string]$PackageDir, [string]$TestPath, [string[]]$ExtraArgs)
     $pkgAbs = Join-Path $RepoRoot $PackageDir
@@ -157,8 +178,70 @@ function Invoke-Pytest {
 }
 
 $exitCode = 0
+$startedProcesses = @()
+$startedDocker = $false
 
 try {
+    # ---------- 启动服务 (根据环境) ----------
+    if ($Layer -in 'e2e', 'integration', 'all') {
+        if ($env:TS_TEST_ENV -eq 'dev') {
+            Write-Host "==> 检查并启动本地开发服务..." -ForegroundColor Cyan
+            
+            $apiUri = [System.Uri]$env:TS_API_BASE_URL
+            if (-not (Test-Port $apiUri.Port)) {
+                Write-Host "  启动 Server ($($apiUri.Port))..."
+                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "uv", "run", "python", "start.py", "--port", "$($apiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\server") -WindowStyle Hidden -PassThru
+                $startedProcesses += $proc
+            }
+            
+            $aiUri = [System.Uri]$env:TS_AI_API_URL
+            if (-not (Test-Port $aiUri.Port)) {
+                Write-Host "  启动 AI 服务 ($($aiUri.Port))..."
+                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$($aiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\ai") -WindowStyle Hidden -PassThru
+                $startedProcesses += $proc
+            }
+            
+            if ($Component -in 'website', 'all') {
+                $webUri = [System.Uri]$env:TS_WEB_BASE_URL
+                if (-not (Test-Port $webUri.Port)) {
+                    Write-Host "  启动 Frontend ($($webUri.Port))..."
+                    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "dev", "--port", "$($webUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\website") -WindowStyle Hidden -PassThru
+                    $startedProcesses += $proc
+                }
+            }
+
+            if ($startedProcesses.Count -gt 0) {
+                Write-Host "  等待服务就绪..."
+                $maxWait = 30
+                while ($maxWait -gt 0) {
+                    $serverReady = Test-Port $apiUri.Port
+                    $aiReady = Test-Port $aiUri.Port
+                    $webReady = if ($Component -in 'website', 'all') { Test-Port $webUri.Port } else { $true }
+                    
+                    if ($serverReady -and $aiReady -and $webReady) { break }
+                    Start-Sleep -Seconds 1
+                    $maxWait--
+                }
+                if ($maxWait -eq 0) {
+                    Write-Host "  警告: 部分服务启动超时，可能影响测试！" -ForegroundColor Yellow
+                } else {
+                    Write-Host "  服务已就绪！" -ForegroundColor Green
+                }
+            }
+        } elseif ($env:TS_TEST_ENV -in 'docker', 'ci') {
+            Write-Host "==> 检查 Docker 服务状态..." -ForegroundColor Cyan
+            $apiUri = [System.Uri]$env:TS_API_BASE_URL
+            if (-not (Test-Port $apiUri.Port)) {
+                Write-Host "  启动 Docker 测试栈..."
+                $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.test.yml'
+                & docker compose -f $composeFile --env-file $EnvFile up -d
+                if ($LASTEXITCODE -ne 0) { throw "docker compose 启动失败，退出码 $LASTEXITCODE" }
+                $startedDocker = $true
+                Start-Sleep -Seconds 10
+            }
+        }
+    }
+
     # ---------- unit / integration（pytest）----------
     if ($Layer -in 'unit', 'integration', 'all') {
         $markerArg = Get-MarkerArg -c $Cover -s $Scope
@@ -221,6 +304,62 @@ catch {
     Write-Host ""
     Write-Host "==== 测试失败：$($_.Exception.Message) ====" -ForegroundColor Red
     $exitCode = 1
+}
+finally {
+    if ($Cleanup) {
+        Write-Host ""
+        Write-Host "==> 清理测试环境..." -ForegroundColor Cyan
+        
+        if ($env:TS_DB_URL -match '^postgresql(?:[^:]*)://([^:]+):([^@]+)@([^:]+):(\d+)/(.*)$') {
+            $dbUser = $matches[1]
+            $dbPass = $matches[2]
+            $dbHost = $matches[3]
+            $dbPort = $matches[4]
+            $dbNameFull = $matches[5]
+            $dbName = ($dbNameFull -split '\?')[0]
+            
+            Write-Host "  清理测试数据库: $dbName"
+            $dropScript = @"
+import sys
+from sqlalchemy import create_engine, text
+try:
+    engine = create_engine('postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/postgres', isolation_level='AUTOCOMMIT')
+    with engine.connect() as conn:
+        conn.execute(text('DROP DATABASE IF EXISTS "$dbName" WITH (FORCE);'))
+    print('  数据库 $dbName 已删除')
+except Exception as e:
+    print('  删除数据库失败: ' + str(e))
+"@
+            $uv = Resolve-Uv
+            if ($uv) {
+                Push-Location (Join-Path $RepoRoot 'package\server')
+                try {
+                    & $uv run python -c $dropScript
+                } finally { Pop-Location }
+            } else {
+                $py = Join-Path $RepoRoot 'package\server\.venv\Scripts\python.exe'
+                if (Test-Path $py) {
+                    & $py -c $dropScript
+                }
+            }
+        }
+    }
+
+    if ($startedDocker) {
+        Write-Host "==> 停止 Docker 测试栈..." -ForegroundColor Cyan
+        $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.test.yml'
+        & docker compose -f $composeFile --env-file $EnvFile down -v
+    }
+    
+    if ($startedProcesses.Count -gt 0) {
+        Write-Host "==> 关闭启动的本地服务..." -ForegroundColor Cyan
+        foreach ($proc in $startedProcesses) {
+            if (-not $proc.HasExited) {
+                Write-Host "  关闭进程 PID: $($proc.Id)"
+                & taskkill /F /T /PID $proc.Id 2>&1 | Out-Null
+            }
+        }
+    }
 }
 
 exit $exitCode

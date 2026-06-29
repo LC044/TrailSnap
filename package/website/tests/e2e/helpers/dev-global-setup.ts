@@ -52,6 +52,26 @@ export default async function globalSetup(_config: FullConfig) {
         break
       }
 
+      // 如果 401 说明认证失败，尝试注册该用户
+      if (loginRes?.status() === 401) {
+        console.log(`[dev-global-setup] login failed with 401, attempting to register user: ${e2eEnv.testUsername}`)
+        const regRes = await req.post('/auth/register', {
+          data: {
+            username: e2eEnv.testUsername,
+            email: `${e2eEnv.testUsername}@example.com`,
+            password: e2eEnv.testPassword,
+          },
+          timeout: 5_000,
+        }).catch(() => null)
+        
+        if (regRes?.ok()) {
+          console.log(`[dev-global-setup] successfully registered user: ${e2eEnv.testUsername}`)
+          continue // 重新尝试登录
+        } else {
+          console.warn(`[dev-global-setup] register failed: ${regRes?.status()}`)
+        }
+      }
+
       await sleep(3_000)
     }
 

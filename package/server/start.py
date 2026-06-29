@@ -3,6 +3,7 @@ import sys
 import subprocess
 import csv
 import json
+import argparse
 from urllib.parse import urlparse
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import make_url
@@ -69,13 +70,17 @@ def import_scenes(database_url):
         print(f"Error importing scenes: {e}")
 
 def main():
+    parser = argparse.ArgumentParser(description="Start the TrailSnap server")
+    parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    args = parser.parse_args()
+
     print("Starting application initialization...")
 
     # 1. 检查数据库连接是否正常
     # 2. 检查数据库是否存在，不存在则创建（创建失败报错退出）
-    database_url = os.environ.get("DB_URL")
+    database_url = os.environ.get("TS_DB_URL") or os.environ.get("DB_URL")
     if not database_url:
-        print("Error: DB_URL environment variable is not set.")
+        print("Error: DB_URL or TS_DB_URL environment variable is not set.")
         print("Please set DB_URL (e.g., postgresql://user:password@host:5432/dbname)")
         sys.exit(1)
 
@@ -152,11 +157,11 @@ def main():
     # but the context is "perfecting the startup script". 
     # The previous start.py started uvicorn. I will keep it.
     
-    print("Starting uvicorn...")
+    print(f"Starting uvicorn on port {args.port}...")
     try:
         sys.stdout.flush()
         # Using python -m uvicorn to ensure it uses the same python environment
-        os.execvp("python", ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"])
+        os.execvp("python", ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(args.port)])
     except OSError as e:
         print(f"Error starting application: {e}")
         sys.exit(1)

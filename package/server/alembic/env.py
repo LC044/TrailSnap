@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 if not os.path.exists('./data'):
     os.mkdir('./data')
 load_dotenv('./data/.env')
-db_url = os.getenv("DB_URL")
+db_url = os.getenv("TS_DB_URL") or os.getenv("DB_URL")
 config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.

@@ -33,19 +33,29 @@ export async function waitForTasksToSettle(
   
   let stableCount = 0
   let lastSignature = ''
+  let errorCount = 0
 
   while (true) {
-    const response = await request.get(groupedUrl, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
+    try {
+      const response = await request.get(groupedUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
 
-    if (!response.ok()) {
-      throw new Error(`查询任务状态失败: ${response.status()} ${response.statusText()}`)
-    }
+      if (!response.ok()) {
+        errorCount++
+        if (errorCount > 5) {
+          throw new Error(`查询任务状态连续失败 5 次: ${response.status()} ${response.statusText()}`)
+        }
+        console.warn(`[Task Progress] 获取状态异常 (${response.status()})，重试中...`)
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+        continue
+      }
+      
+      errorCount = 0 // 重置错误计数
 
-    const groupedTasks = (await response.json()) as GroupedTask[]
+      const groupedTasks = (await response.json()) as GroupedTask[]
     
     // 过滤出有剩余或失败任务的分类
     const activeGroups = groupedTasks.filter(t => t.pending > 0 || t.failed > 0)
@@ -76,6 +86,14 @@ export async function waitForTasksToSettle(
     }
 
     await new Promise(resolve => setTimeout(resolve, intervalMs))
+    } catch (e: any) {
+      errorCount++
+      if (errorCount > 5) {
+        throw new Error(`查询任务状态发生网络错误并重试失败 5 次: ${e.message}`)
+      }
+      console.warn(`[Task Progress] 网络请求异常 (${e.message})，可能服务正在重启，重试中...`)
+      await new Promise(resolve => setTimeout(resolve, intervalMs * 2)) // 发生网络错误时，等待更长时间再重试
+    }
   }
 }
 

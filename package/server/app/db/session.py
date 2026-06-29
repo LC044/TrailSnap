@@ -13,9 +13,9 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-DATABASE_URL = os.environ.get('DB_URL')
+DATABASE_URL = os.environ.get('TS_DB_URL') or os.environ.get('DB_URL')
 if not DATABASE_URL:
-    raise ValueError("DB_URL environment variable is not set")
+    raise ValueError("DB_URL or TS_DB_URL environment variable is not set")
 
 engine = create_engine(
     DATABASE_URL,

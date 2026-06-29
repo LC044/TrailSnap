@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     把一个 .env 文件加载进当前 PowerShell 会话的 $env:（子进程会继承）。
 
