@@ -3,6 +3,7 @@ import time
 import logging
 import sys
 import os
+import subprocess
 import httpx
 from app.config import settings
 from app.services.model_downloader import model_downloader
@@ -66,22 +67,24 @@ class LLMProcessManager:
             
         async with self.lock:
             # Check if process is already running
-            if self.process is not None and self.process.returncode is None:
+            if self.process is not None and self.process.poll() is None:
                 return
             
             logger.info(f"Starting llama.cpp server subprocess on port {self.port} with model {resolved_path}...")
             # Use native llama-server binary compiled in Docker
-            self.process = await asyncio.create_subprocess_exec(
-                "llama-server",
-                "-m", resolved_path,
-                "--mmproj", mmproj,
-                "--host", "127.0.0.1",
-                "--port", str(self.port),
-                "--image-min-tokens", "1024",
-                "--image-max-tokens", "2048",
-                "-c","8192",
-                "-n","1024",
-                "--no-webui",
+            self.process = subprocess.Popen(
+                [
+                    "llama-server",
+                    "-m", resolved_path,
+                    "--mmproj", mmproj,
+                    "--host", "127.0.0.1",
+                    "--port", str(self.port),
+                    "--image-min-tokens", "1024",
+                    "--image-max-tokens", "2048",
+                    "-c", "8192",
+                    "-n", "1024",
+                    "--no-webui"
+                ],
                 stdout=sys.stdout,
                 stderr=sys.stderr
             )
@@ -106,15 +109,21 @@ class LLMProcessManager:
 
     async def stop(self):
         async with self.lock:
-            if self.process and self.process.returncode is None:
+            if self.process and self.process.poll() is None:
                 logger.info("Stopping llama.cpp server to free memory...")
                 self.process.terminate()
-                try:
-                    await asyncio.wait_for(self.process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
+                
+                # Wait up to 5 seconds
+                start_time = time.time()
+                while time.time() - start_time < 5.0:
+                    if self.process.poll() is not None:
+                        break
+                    await asyncio.sleep(0.1)
+                
+                if self.process.poll() is None:
                     logger.warning("Force killing llama.cpp server...")
                     self.process.kill()
-                    await self.process.wait()
+                    self.process.wait()
                 self.process = None
                 logger.info("llama.cpp server stopped successfully.")
 
@@ -122,7 +131,7 @@ class LLMProcessManager:
         """Background task to monitor idle time and shut down the server."""
         while True:
             await asyncio.sleep(10)
-            if self.process and self.process.returncode is None:
+            if self.process and self.process.poll() is None:
                 idle_duration = time.time() - self.last_access_time
                 if idle_duration > settings.LLM_IDLE_TIMEOUT:
                     logger.info(f"LLM server idle for {idle_duration:.0f}s (limit: {settings.LLM_IDLE_TIMEOUT}s). Shutting down.")

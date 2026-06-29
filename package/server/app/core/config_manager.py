@@ -136,10 +136,10 @@ class ImageSettings(BaseModel):
     # Add other image settings here
 
 class FilterSettings(BaseModel):
-    enable: bool = Field(default=False, description="Enable file filtering")
-    min_size_kb: int = Field(default=0, description="Minimum file size in KB")
-    min_width: int = Field(default=0, description="Minimum image width")
-    min_height: int = Field(default=0, description="Minimum image height")
+    enable: bool = Field(default=True, description="Enable file filtering")
+    min_size_kb: int = Field(default=10, description="Minimum file size in KB")
+    min_width: int = Field(default=256, description="Minimum image width")
+    min_height: int = Field(default=256, description="Minimum image height")
     filename_patterns: List[str] = Field(default=[], description="List of regex patterns to filter out files")
     exclude_folders: List[str] = Field(
         default_factory=lambda: ['@eaDir', '#recycle', '@Recycle', '.@__thumb', 'SYNOFILE_THUMB'],

@@ -39,16 +39,6 @@ TrailSnap 的 AI 微服务模块，负责处理所有计算机视觉相关的任
    uv sync --extra gpu
    ```
 
-## 运行
-
-使用 `uvicorn` 启动服务：
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
-```
-
-服务默认运行在 `8001` 端口。
-
 ## LLM 模型安装
 
 TrailSnap 内置 AI 连接使用 MiniCPM-V-4_6-Q4_K_M 多模态模型，需要安装 llama.cpp。
@@ -99,6 +89,16 @@ llama.cpp 安装完成后，启动 AI 服务时会自动下载 MiniCPM-V-4_6-Q4_
 # 模型通常位于 ~/.cache/llama.cpp/ 或项目配置的模型路径
 # 首次启动会自动下载
 ```
+
+## 运行
+
+使用 `uvicorn` 启动服务：
+
+```bash
+python -m uv run uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+```
+
+服务默认运行在 `8001` 端口。
 
 ## API 文档
 
