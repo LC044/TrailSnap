@@ -27,7 +27,7 @@ load_dotenv('./data/.env')
 from app.api import (
     user, train_ticket, flight_ticket, album, index, settings, face, ocr,
     location, location_stats, search, classification, system, media, stats, photo, tasks,
-    annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav
+    annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav, guess_city
 )
 from railway.api import router as railway_router
 from app.db.session import engine, SessionLocal
@@ -192,6 +192,7 @@ app.include_router(annual_report.router, prefix="/annual-report", tags=["AnnualR
 app.include_router(system.router, prefix="/system", tags=["System"])
 app.include_router(agent.router, prefix="/agent", tags=["Agent"])
 app.include_router(nav.router, prefix="/nav", tags=["Nav"])
+app.include_router(guess_city.router, prefix="/guess-city", tags=["GuessCity"])
 
 from fastapi.openapi.utils import get_openapi
 

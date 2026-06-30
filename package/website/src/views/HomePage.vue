@@ -22,22 +22,44 @@
     <div v-else-if="dashboardData" class="py-3 space-y-2">
  
       <OnThisDay />
-     <!-- Annual Report Banner -->
-      <div 
-        class="mx-4 p-4 rounded-xl bg-gradient-to-r from-orange-100 to-amber-50 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800/50 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
-        @click="$router.push('/annual-report')"
-      >
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
-             <i class="mgc_calendar_line text-xl"></i>
+     <!-- Banners Area -->
+      <div class="mx-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Annual Report Banner -->
+        <div 
+          class="p-4 rounded-xl bg-gradient-to-r from-orange-100 to-amber-50 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800/50 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
+          @click="$router.push('/annual-report')"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white">
+               <i class="mgc_calendar_line text-xl"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-orange-800 dark:text-orange-200 text-sm">{{ annualYear }} 年度回忆录</h3>
+              <p class="text-xs text-orange-600 dark:text-orange-300/80">一帧一画，定格步履与温柔</p>
+            </div>
           </div>
-          <div>
-            <h3 class="font-bold text-orange-800 dark:text-orange-200 text-sm">{{ annualYear }} 年度回忆录</h3>
-            <p class="text-xs text-orange-600 dark:text-orange-300/80">一帧一画，定格步履与温柔</p>
+          <div class="w-8 h-8 flex items-center justify-center rounded-full bg-white dark:bg-white/10 text-orange-500">
+             <i class="mgc_right_line"></i>
           </div>
         </div>
-        <div class="w-8 h-8 flex items-center justify-center rounded-full bg-white dark:bg-white/10 text-orange-500">
-           <i class="mgc_right_line"></i>
+
+        <!-- Guess City Banner -->
+        <div 
+          class="p-4 rounded-xl bg-gradient-to-r from-primary-100 to-primary-50 dark:from-primary-900/30 dark:to-primary-900/20 border border-primary-200 dark:border-primary-800/50 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
+          @click="$router.push('/game')"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-primary-500 flex items-center justify-center text-white">
+               <i class="mgc_location_line text-xl"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-primary-800 dark:text-primary-200 text-sm">猜城市</h3>
+              <p class="text-xs text-primary-600 dark:text-primary-300/80">凭借零星线索，找回关于那座城的记忆</p>
+            </div>
+          </div>
+          <div class="w-8 h-8 flex items-center justify-center rounded-full bg-white dark:bg-white/10 text-primary-500">
+             <i class="mgc_right_line"></i>
+          </div>
         </div>
       </div>
       <OverviewCards :data="dashboardData.card" @show-storage="showStorageDialog = true" />

@@ -59,6 +59,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/ticket', name: 'Ticket', component: TicketPage, meta: { title: '车票', keepAlive: true } },
       { path: '/statistics', name: 'Statistics', component: StatisticsPage, meta: { title: '统计' } },
       { path: '/settings', name: 'Settings', component: Settings, meta: { title: '设置' } },
+      { path: '/game', name: 'GuessCity', component: () => import('@/views/game/GuessCity.vue'), meta: { title: '猜城市' } },
     ],
   },
 

@@ -65,8 +65,8 @@ service.interceptors.response.use(
     // 兼容后端直接返回数据（无 code 字段）或标准结构（有 code 字段）
     // 如果是标准结构 { code, message, data }
     if (res && typeof res === 'object' && 'code' in res) {
-      if (res.code !== 200) {
-        ElMessage.error(res.message || '接口请求失败');
+      if (res.code !== 200 && res.code !== 0) {
+        ElMessage.error(res.message || res.msg || '接口请求失败');
         return Promise.reject(res);
       }
       return res;

@@ -64,6 +64,11 @@ export const photoApi = {
     return data.data;
   },
 
+  async getPhotoDescription(photoId: string) {
+    const data = await request.get<any>(`/api/photos/${photoId}/description`);
+    return data.data;
+  },
+
   async batchDownload(photoIds: string[]) {
     const res = await request.post('/api/photos/batch-download', 
       { photo_ids: photoIds }, 
