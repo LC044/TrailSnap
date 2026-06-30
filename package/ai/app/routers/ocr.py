@@ -1,5 +1,9 @@
+import asyncio
+import base64
 import logging
+import os
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Any, Dict
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -21,6 +25,46 @@ class OCRResult(BaseModel):
 class OCRResponse(BaseModel):
     results: List[Dict[str, Any]]
 
+
+def _select_max_workers() -> int:
+    """
+    选择并发线程数：
+    - RapidOCR 底层 ONNX Runtime 单图推理已用 intra-op 线程吃满多核，
+      因此 OCR 的并发收益主要来自「解码/IO 与推理重叠」+ 不阻塞 event loop，
+      而非多核线性加速。CPU 下并发度取保守值避免线程 oversubscription。
+    - GPU 部署显存是瓶颈，限制并发避免 OOM。
+    """
+    cpu_count = os.cpu_count() or 4
+    try:
+        import torch
+        if torch.cuda.is_available():
+            # GPU：推理在显卡上串行，少量线程足以让解码与推理重叠
+            return min(4, cpu_count)
+    except Exception:
+        pass
+    # CPU：RapidOCR 单图已占满 intra-op 线程，2~4 足以重叠 IO，过多反而抢核
+    return min(4, cpu_count)
+
+
+# 模块级线程池，避免每次请求重新创建线程的开销
+_ocr_executor = ThreadPoolExecutor(
+    max_workers=_select_max_workers(),
+    thread_name_prefix="ocr-batch",
+)
+
+
+def _process_one(b64: str) -> dict:
+    """处理单张 base64 图片，供线程池并发调用。"""
+    if ',' in b64:
+        b64 = b64.split(',')[1]
+    contents = base64.b64decode(b64)
+    results = ocr_service.detect_text(contents)
+    return {
+        "ocrResults": results,
+        "dataInfo": []
+    }
+
+
 @router.post("/predict", response_model=OCRResponse, summary="OCR Prediction")
 async def ocr_predict(request: OCRRequest):
     """
@@ -41,23 +85,30 @@ async def ocr_predict(request: OCRRequest):
     """
     if not request.images:
         raise HTTPException(status_code=400, detail="No images provided")
-        
-    import base64
+
+    loop = asyncio.get_running_loop()
     try:
+        # 每张图各自提交到线程池并发处理，同时把同步推理移出事件循环。
+        # return_exceptions=True：单张图片失败（如损坏、解码失败）不影响整批，
+        # 失败项以 error 字段返回，其余正常出结果。
+        tasks = [
+            loop.run_in_executor(_ocr_executor, _process_one, b64)
+            for b64 in request.images
+        ]
+        raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
         batch_results = []
-        for b64 in request.images:
-            if ',' in b64:
-                b64 = b64.split(',')[1]
-            contents = base64.b64decode(b64)
-            results = ocr_service.detect_text(contents)
-            batch_results.append({
-                "ocrResults": results,
-                "dataInfo": []
-            })
+        for res in raw_results:
+            if isinstance(res, Exception):
+                logging.error(f"ocr single image failed: {res}")
+                batch_results.append({
+                    "ocrResults": [],
+                    "dataInfo": [],
+                    "error": str(res),
+                })
+            else:
+                batch_results.append(res)
         return OCRResponse(results=batch_results)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
-

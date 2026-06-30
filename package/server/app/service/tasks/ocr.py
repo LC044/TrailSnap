@@ -193,18 +193,32 @@ class OcrStrategy(BaseTaskStrategy):
                     async with session.post(api_url, json={"images": b64_images}, timeout=aiohttp.ClientTimeout(total=120)) as resp:
                         if resp.status == 200:
                             result_data = await resp.json()
-                            ai_results = result_data.get('ocrResults', [])
-                            
+                            # AI 返回 {"results": [{"ocrResults": [...], "dataInfo": [], "error"?: ...}, ...]}
+                            ai_results = result_data.get('results', [])
+
                             for idx, task in enumerate(valid_tasks):
                                 photo = valid_photos[idx]
                                 width, height = dimensions[idx]
                                 res_item = ai_results[idx] if idx < len(ai_results) else {}
-                                
-                                pruned_result = res_item.get('prunedResult', {})
+
+                                # 单张图片在 AI 服务侧处理失败：标记任务失败，跳过该照片
+                                if res_item.get('error'):
+                                    results.append({
+                                        'task_id': task.id,
+                                        'task_type': task.type,
+                                        'status': 'failed',
+                                        'error': res_item.get('error')
+                                    })
+                                    continue
+
+                                # ocrResults 是 list（detect_text 返回单元素列表），取第一个
+                                ocr_list = res_item.get('ocrResults', [])
+                                ocr_item = ocr_list[0] if ocr_list else {}
+                                pruned_result = ocr_item.get('prunedResult', {})
                                 rec_texts = pruned_result.get('rec_texts', [])
                                 rec_scores = pruned_result.get('rec_scores', [])
                                 rec_polys = pruned_result.get('rec_polys', [])
-                                
+
                                 crud_ocr.delete_ocr_by_photo_id(db, photo.id)
                                 count = 0
                                 
@@ -293,20 +307,19 @@ class OcrStrategy(BaseTaskStrategy):
                         result = await resp.json()
                         # Response structure:
                         # {
-                        #   "dataInfo": ...,
-                        #   "ocrResults": {
-                        #     "prunedResult": {
-                        #       "rec_texts": [...],
-                        #       "rec_scores": [...],
-                        #       "rec_polys": [[[x,y],...], ...]
-                        #     }
-                        #   }
+                        #   "results": [
+                        #     {"ocrResults": [{"prunedResult": {...}}], "dataInfo": [], "error"?: ...}
+                        #   ]
                         # }
-                        ocr_results = result.get('ocrResults', [])
-                        if ocr_results:
-                            ocr_results = ocr_results[0]  # Assuming single image per request
-                        else:
-                            ocr_results = {}
+                        results_arr = result.get('results', [])
+                        res_item = results_arr[0] if results_arr else {}
+
+                        # 单张图片在 AI 服务侧处理失败：直接返回失败，避免写入空结果
+                        if res_item.get('error'):
+                            return {'status': 'failed', 'error': res_item.get('error')}
+
+                        ocr_list = res_item.get('ocrResults', [])
+                        ocr_results = ocr_list[0] if ocr_list else {}
                         pruned_result = ocr_results.get('prunedResult', {})
                         rec_texts = pruned_result.get('rec_texts', [])
                         rec_scores = pruned_result.get('rec_scores', [])

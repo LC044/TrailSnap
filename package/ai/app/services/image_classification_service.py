@@ -29,9 +29,15 @@ class ONNXModelWrapper:
         self.input_name = self.session.get_inputs()[0].name
         self.output_name = self.session.get_outputs()[0].name
         self.model_name = os.path.basename(model_path)
-        
+
         input_shape = self.session.get_inputs()[0].shape
         self.input_size = input_shape[2] if len(input_shape) == 4 else 224
+
+        # 推断是否支持动态 batch：ONNX 中动态维是字符串（如 'batch_size'）/None，
+        # 固定维是 int。若固定为 1 则只能逐张推理。
+        batch_dim = input_shape[0] if len(input_shape) == 4 else None
+        self._supports_batch = not (isinstance(batch_dim, int) and batch_dim == 1)
+        self._max_batch = batch_dim if (isinstance(batch_dim, int) and batch_dim > 1) else 32
 
     def _preprocess(self, image: Image.Image):
         # Resize shorter side to input_size
@@ -62,22 +68,32 @@ class ONNXModelWrapper:
         return img_array
 
     def __call__(self, images):
-        is_single = False
         if isinstance(images, Image.Image):
             images = [images]
-            is_single = True
-            
+
         results = []
-        for img in images:
-            input_tensor = self._preprocess(img)
-            # Expand dims to create a batch of 1 (1, C, H, W)
-            input_tensor = np.expand_dims(input_tensor, axis=0)
-            outputs = self.session.run([self.output_name], {self.input_name: input_tensor})[0]
-            # outputs shape is usually (1, num_classes), so we take the first element
-            results.append(outputs[0])
-            
-        if is_single:
+        if not images:
             return results
+
+        if not self._supports_batch:
+            # 模型固定 batch=1，只能逐张推理
+            for img in images:
+                input_tensor = np.expand_dims(self._preprocess(img), axis=0)
+                outputs = self.session.run([self.output_name], {self.input_name: input_tensor})[0]
+                results.append(outputs[0])
+            return results
+
+        # 真 batch 推理：分类输入为固定尺寸 (input_size×input_size)，
+        # 可直接 stack 成 (N, C, H, W) 一次 session.run 跑完，远快于 N 次 batch=1。
+        # 按 chunk 攒批，避免单次 batch 过大导致 CPU 内存 / GPU 显存压力。
+        chunk_size = min(32, self._max_batch) if isinstance(self._max_batch, int) else 32
+        for start in range(0, len(images), chunk_size):
+            chunk = images[start:start + chunk_size]
+            batch_tensor = np.stack([self._preprocess(img) for img in chunk], axis=0)
+            outputs = self.session.run([self.output_name], {self.input_name: batch_tensor})[0]
+            for i in range(len(chunk)):
+                results.append(outputs[i])
+
         return results
 
 class ImageClassificationService:
@@ -249,7 +265,7 @@ class ImageClassificationService:
 
         return {"label": big_category, "confidence": confidence}
 
-    async def classify_yolo(self, images_base64: List[str]) -> List[dict]:
+    def classify_yolo(self, images_base64: List[str]) -> List[dict]:
         if not model_downloader.is_ready("yolo_photo_cls_general"):
             raise Exception("General model is not ready yet. Please try again later.")
 

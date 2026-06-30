@@ -189,7 +189,19 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
 
                             for idx, task in enumerate(valid_tasks):
                                 photo = valid_photos[idx]
-                                faces_data = ai_results[idx].get('faces', []) if idx < len(ai_results) else []
+                                ai_result = ai_results[idx] if idx < len(ai_results) else {}
+
+                                # 单张图片在 AI 服务侧处理失败：标记任务失败，跳过该照片
+                                if ai_result.get('error'):
+                                    results.append({
+                                        'task_id': task.id,
+                                        'task_type': task.type,
+                                        'status': 'failed',
+                                        'error': ai_result.get('error')
+                                    })
+                                    continue
+
+                                faces_data = ai_result.get('faces', [])
                                 crud_face.delete_faces_by_photo(db, photo.id)
 
                                 count = 0
@@ -275,7 +287,13 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                     if resp.status == 200:
                         result = await resp.json()
                         results = result.get('results', [])
-                        faces = results[0].get('faces', []) if results else []
+                        ai_result = results[0] if results else {}
+
+                        # 单张图片在 AI 服务侧处理失败：直接返回失败，避免被当成 0 人脸成功
+                        if ai_result.get('error'):
+                            return {'status': 'failed', 'error': ai_result.get('error')}
+
+                        faces = ai_result.get('faces', [])
 
                         # Clean up old faces
                         crud_face.delete_faces_by_photo(db, photo.id)

@@ -27,6 +27,7 @@
       <TaskManagement v-if="activeTab === 'tasks'" />
       <BasicSettings v-if="activeTab === 'basic'" />
       <ExternalGallery v-if="activeTab === 'external'" />
+      <PerformanceTest v-if="activeTab === 'performance'" />
       <Tokens v-if="activeTab === 'tokens'" />
       <AboutPage v-if="activeTab === 'about'" />
       <FeedbackPage v-if="activeTab === 'feedback'" />
@@ -37,12 +38,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare } from 'lucide-vue-next'
+import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
 import BasicSettings from './settings/BasicSettings.vue'
 import ExternalGallery from './settings/ExternalGallery.vue'
+import PerformanceTest from './settings/PerformanceTest.vue'
 import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
@@ -57,6 +59,7 @@ const menuItems = [
   { key: 'tasks', label: '任务管理', icon: List },
   { key: 'basic', label: '基础设置', icon: Settings },
   { key: 'external', label: '外部图库', icon: FolderOpen },
+  { key: 'performance', label: '性能测试', icon: Activity },
   { key: 'tokens', label: '令牌管理', icon: Key },
   { key: 'about', label: '关于行影集', icon: Info },
   { key: 'feedback', label: '问题反馈', icon: MessageSquare },
