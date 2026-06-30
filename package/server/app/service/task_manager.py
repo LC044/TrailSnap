@@ -36,6 +36,12 @@ class TaskManager:
         self._subscribers: List[asyncio.Queue] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._lock = threading.Lock()
+        # Worker lifecycle: a watchdog restarts the worker process if it dies
+        # while there is still unfinished work in the DB.
+        self._watchdog_thread = None
+        self._watchdog_running = False
+        self._stopping = False
+        self._worker_lock = threading.Lock()
 
     @classmethod
     def get_instance(cls):
@@ -45,7 +51,12 @@ class TaskManager:
 
     def start_worker_if_needed(self):
         """安全地启动后台工作进程"""
+        with self._worker_lock:
+            self._stopping = False
+            self._start_worker_locked()
 
+    def _start_worker_locked(self):
+        """启动后台工作进程（调用方需持有 _worker_lock）"""
         # 1. 如果进程存在且活着 → 不处理
         if self.worker_process is not None:
             if self.worker_process.is_alive():
@@ -105,20 +116,76 @@ class TaskManager:
 
     def stop_worker(self):
         """Stops the background worker process gracefully."""
-        if self.worker_process and self.worker_process.is_alive():
-            logging.info("Terminating worker process...")
-            self.worker_process.terminate()
-            self.worker_process.join(timeout=5)
-            if self.worker_process.is_alive():
-                logging.warning("Worker process did not terminate gracefully, killing...")
-                self.worker_process.kill()
-            logging.info("Worker process stopped")
+        with self._worker_lock:
+            self._stopping = True
+            if self.worker_process and self.worker_process.is_alive():
+                logging.info("Terminating worker process...")
+                self.worker_process.terminate()
+                self.worker_process.join(timeout=5)
+                if self.worker_process.is_alive():
+                    logging.warning("Worker process did not terminate gracefully, killing...")
+                    self.worker_process.kill()
+                logging.info("Worker process stopped")
             self.worker_process = None
 
     def restart_worker(self):
         """Restarts the background worker process."""
         self.stop_worker()
         self.start_worker_if_needed()
+
+    def start_watchdog(self):
+        """Starts a daemon thread that restarts the worker if it dies while
+        there is still unfinished work in the DB."""
+        if not self._watchdog_running:
+            self._watchdog_running = True
+            self._watchdog_thread = threading.Thread(
+                target=self._watchdog_loop, daemon=True, name="WorkerWatchdog"
+            )
+            self._watchdog_thread.start()
+            logging.info("Started worker watchdog thread.")
+
+    def stop_watchdog(self):
+        """Stops the worker watchdog thread."""
+        self._watchdog_running = False
+        if self._watchdog_thread and self._watchdog_thread.is_alive():
+            self._watchdog_thread.join(timeout=2)
+            logging.info("Stopped worker watchdog thread.")
+
+    def _watchdog_loop(self):
+        """Periodically check the worker process. If it is dead and there are
+        pending/processing tasks in the DB, restart it so the recovery path
+        (which resets stuck PROCESSING tasks back to PENDING) can run.
+
+        Intentional idle-exits (no unfinished work) are NOT restarted here —
+        the worker will be lazily started on the next add_task/retry/resume.
+        """
+        while self._watchdog_running:
+            for _ in range(15):
+                if not self._watchdog_running:
+                    return
+                time.sleep(1)
+            try:
+                if self._stopping:
+                    continue
+                wp = self.worker_process
+                if wp is not None and wp.is_alive():
+                    continue
+                # Worker is dead (or never started). Only restart if there is
+                # unfinished work; otherwise respect the idle-exit.
+                db = SessionLocal()
+                try:
+                    pending = crud_task.count_tasks_by_status(db, TaskStatus.PENDING)
+                    processing = crud_task.count_tasks_by_status(db, TaskStatus.PROCESSING)
+                finally:
+                    db.close()
+                if pending + processing > 0:
+                    logging.warning(
+                        f"Worker process dead with {pending} pending + {processing} processing "
+                        f"tasks; restarting to recover."
+                    )
+                    self.start_worker_if_needed()
+            except Exception as e:
+                logging.error(f"Watchdog error: {e}")
 
     def start_scheduler(self):
         """Starts the background scan scheduler thread."""
@@ -370,7 +437,25 @@ class TaskManager:
 
     def publish_event(self, event: str, data: Dict[str, Any]):
         """Push an SSE event to every connected subscriber. Safe to call from
-        the worker subprocess or any FastAPI handler thread."""
+        the worker subprocess reader thread or any FastAPI handler thread.
+
+        ``asyncio.Queue`` is NOT thread-safe, so the actual ``put_nowait`` must
+        run on the event loop thread. When a loop is attached we schedule
+        ``_do_publish`` via ``call_soon_threadsafe``; this is a no-op overhead
+        when already on the loop thread and correct when called cross-thread.
+        """
+        loop = self._loop
+        if loop is not None:
+            try:
+                loop.call_soon_threadsafe(self._do_publish, event, data)
+                return
+            except RuntimeError:
+                # Loop closed during shutdown — fall through and drop directly.
+                return
+        # No loop attached: best-effort direct publish.
+        self._do_publish(event, data)
+
+    def _do_publish(self, event: str, data: Dict[str, Any]):
         for q in list(self._subscribers):
             try:
                 if q.full():

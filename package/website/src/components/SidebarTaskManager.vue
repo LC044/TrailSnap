@@ -145,9 +145,9 @@ const stopPolling = () => {
   }
 }
 
-watch(() => store.lastEventAt, () => {
-  fetchStatus()
-})
+// watch(() => store.lastEventAt, () => {
+//   fetchStatus()
+// })
 
 onMounted(() => {
   fetchStatus()

@@ -69,9 +69,10 @@ class TaskQueueManager:
 
 
 def get_chunk_size(task_type):
-    chunk_size = 4
+    level = system_config.config.task.concurrency_level
+    chunk_size = 8 if level == 'high' else 4
     if task_type == TaskType.VISUAL_DESCRIPTION:
-        chunk_size = 2
+        chunk_size = 4 if level == 'high' else 2
     elif task_type == TaskType.PROCESS_BASIC or task_type == TaskType.EXTRACT_METADATA:
         chunk_size = 16
     elif task_type == TaskType.CLASSIFY_IMAGE:
@@ -179,6 +180,34 @@ class TaskWorker:
         finally:
             db.close()
 
+    def _get_concurrency_settings(self):
+        level = system_config.config.task.concurrency_level
+        cpu_count = os.cpu_count() or 4
+        if level == "high":
+            return {
+                "process_pool": cpu_count,
+                "thread_pool": 16,
+                "cpu_consumer": cpu_count,
+                "io_consumer": 8,
+                "ai_consumer": 2
+            }
+        elif level == "low":
+            return {
+                "process_pool": max(1, cpu_count // 4),
+                "thread_pool": 4,
+                "cpu_consumer": max(1, cpu_count // 4),
+                "io_consumer": 2,
+                "ai_consumer": 1
+            }
+        else: # medium
+            return {
+                "process_pool": max(1, cpu_count // 2),
+                "thread_pool": 8,
+                "cpu_consumer": max(1, cpu_count // 2),
+                "io_consumer": 4,
+                "ai_consumer": 1
+            }
+
     def start(self):
         if self.running:
             return
@@ -187,9 +216,9 @@ class TaskWorker:
 
         # Load fast_mode state
         self.fast_mode = self._load_system_state('fast_mode', False)
-        max_workers = system_config.config.task.max_concurrent_tasks
-        self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count())
-        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers * 2) # More threads for IO
+        settings = self._get_concurrency_settings()
+        self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
+        self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool']) # More threads for IO
 
         self.worker_task = asyncio.create_task(self.worker_loop())
         self.result_task = asyncio.create_task(self.result_loop())
@@ -250,7 +279,7 @@ class TaskWorker:
             for t in idle_types:
                 del self.last_active_time[t]
 
-    def _sync_system_state_if_needed(self):
+    def _sync_system_state_if_needed(self) -> None:
         now = datetime.now()
         if not hasattr(self, '_last_sync'):
             self._last_sync = datetime.min
@@ -287,13 +316,13 @@ class TaskWorker:
 
         # Ensure pools exist
         if active_count > 0:
+            settings = self._get_concurrency_settings()
             if active_cpu_count > 0 and self.process_pool is None:
                 logging.info(f"Restarting process pool")
-                self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count())
+                self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
             if self.thread_pool is None and active_io_count > 0:
-                max_workers = system_config.config.task.max_concurrent_tasks
                 logging.info(f"Restarting thread pool")
-                self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers * 2)
+                self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool'])
 
     def _calculate_allowed_task_types(self) -> List[str]:
         allowed_types = []
@@ -409,13 +438,14 @@ class TaskWorker:
 
         # Configure max concurrency per consumer category based on system settings
         # or Fast Mode. Using Semaphores to allow multiple batches to run concurrently.
+        settings = self._get_concurrency_settings()
         max_concurrency = 1
         if category == 'CPU':
-            max_concurrency = os.cpu_count() or 4
+            max_concurrency = settings['cpu_consumer']
         elif category == 'IO':
-            max_concurrency = 4
+            max_concurrency = settings['io_consumer']
         elif category == 'AI':
-            max_concurrency = 1
+            max_concurrency = settings['ai_consumer']
 
         semaphore = asyncio.Semaphore(max_concurrency)
 

@@ -5,6 +5,22 @@ import logging
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
+def get_default_concurrency_level() -> str:
+    try:
+        import psutil
+        cpu_cores = os.cpu_count() or 1
+        memory_gb = psutil.virtual_memory().total / (1024 ** 3)
+        # 实际可用内存通常略小于标称值，因此允许一定误差
+        if cpu_cores >= 8 and memory_gb >= 15:
+            return "high"
+        elif cpu_cores >= 4 and memory_gb >= 7:
+            return "medium"
+        else:
+            return "low"
+    except Exception as e:
+        logging.warning(f"Failed to calculate system concurrency level: {e}")
+        return "medium"
+
 class SecuritySettings(BaseModel):
     secret_key: str = Field(default="09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7", description="Secret key for JWT")
     algorithm: str = Field(default="HS256", description="JWT algorithm")
@@ -12,7 +28,7 @@ class SecuritySettings(BaseModel):
     allow_registration: bool = Field(default=False, description="Allow new user self-registration")
 
 class TaskSettings(BaseModel):
-    max_concurrent_tasks: int = Field(default=10, description="Maximum number of concurrent tasks")
+    concurrency_level: str = Field(default_factory=get_default_concurrency_level, description="Task concurrency level: low, medium, high")
 
 class ScanScheduleSettings(BaseModel):
     mode: str = Field(default='off', description="Options: 'off', 'interval', 'weekly'")

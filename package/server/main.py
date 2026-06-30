@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware, GZipResponder
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
+import asyncio
 import os
 import logging
 import time
@@ -43,14 +44,22 @@ async def lifespan(app: FastAPI):
     # We can just check if we need to start it, or simply start it once and it will exit if idle
     # TaskManager.get_instance().start_worker_if_needed()
     # Wait, when the app starts, we might have unfinished tasks. Let's start the worker just in case.
-    TaskManager.get_instance().start_worker_if_needed()
-    TaskManager.get_instance().start_scheduler()
+    mgr = TaskManager.get_instance()
+    # Attach the running loop so cross-thread SSE publishes can be scheduled
+    # onto the loop thread via call_soon_threadsafe (asyncio.Queue is not
+    # thread-safe).
+    mgr.attach_loop(asyncio.get_running_loop())
+    mgr.start_worker_if_needed()
+    mgr.start_scheduler()
+    # Watchdog restarts the worker if it dies with unfinished work left.
+    mgr.start_watchdog()
 
     yield
 
     # Stop Worker Process
-    TaskManager.get_instance().stop_scheduler()
-    TaskManager.get_instance().stop_worker()
+    mgr.stop_watchdog()
+    mgr.stop_scheduler()
+    mgr.stop_worker()
 
     if log_listener:
         log_listener.stop()

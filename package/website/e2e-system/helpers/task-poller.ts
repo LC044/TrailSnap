@@ -34,6 +34,14 @@ export async function waitForTasksToSettle(
   let stableCount = 0
   let lastSignature = ''
   let errorCount = 0
+  let lastLine = ''
+
+  const renderProgress = (line: string) => {
+    // 用回车符覆盖当前行，实现单行进度条，避免刷屏
+    const pad = line.length < lastLine.length ? ' '.repeat(lastLine.length - line.length) : ''
+    process.stdout.write(`\r${line}${pad}`)
+    lastLine = line
+  }
 
   while (true) {
     try {
@@ -46,9 +54,10 @@ export async function waitForTasksToSettle(
       if (!response.ok()) {
         errorCount++
         if (errorCount > 5) {
+          renderProgress('')
           throw new Error(`查询任务状态连续失败 5 次: ${response.status()} ${response.statusText()}`)
         }
-        console.warn(`[Task Progress] 获取状态异常 (${response.status()})，重试中...`)
+        renderProgress(`[Task Progress] 获取状态异常 (${response.status()})，重试中...`)
         await new Promise(resolve => setTimeout(resolve, intervalMs))
         continue
       }
@@ -66,14 +75,27 @@ export async function waitForTasksToSettle(
 
     if (progressSignature !== lastSignature) {
       if (activeGroups.length > 0) {
-        console.log(`[Task Progress]`)
-        activeGroups.forEach(t => {
-          console.log(`  - [${t.category}] 剩余: ${t.pending}, 失败: ${t.failed}`)
-        })
+        const totalPending = activeGroups.reduce((s, t) => s + t.pending, 0)
+        const totalCompleted = activeGroups.reduce((s, t) => s + t.completed, 0)
+        const totalFailed = activeGroups.reduce((s, t) => s + t.failed, 0)
+        const total = totalPending + totalCompleted + totalFailed
+        const ratio = total > 0 ? totalCompleted / total : 0
+        const barWidth = 20
+        const filled = Math.round(ratio * barWidth)
+        const bar = '█'.repeat(filled) + '░'.repeat(barWidth - filled)
+        const percent = Math.round(ratio * 100)
+        const detail = activeGroups
+          .map(t => `[${t.category}] 剩余${t.pending} 失败${t.failed}`)
+          .join('  ')
+        renderProgress(
+          `[Task Progress] ${bar} ${percent}% | 剩余 ${totalPending} 完成 ${totalCompleted} 失败 ${totalFailed}  ${detail}`,
+        )
       } else if (lastSignature !== '') {
-        console.log(`[Task Progress] 所有任务已完成`)
+        renderProgress(`[Task Progress] ████████████████████ 100% | 所有任务已完成`)
+        process.stdout.write('\n')
+        lastLine = ''
       }
-      
+
       lastSignature = progressSignature
       stableCount = 1
     } else {
@@ -82,6 +104,11 @@ export async function waitForTasksToSettle(
 
     // 连续三次没有变化就认为已经结束了
     if (stableCount >= stableRounds) {
+      // 结束前换行，避免后续日志覆盖进度条
+      if (lastLine !== '') {
+        process.stdout.write('\n')
+        lastLine = ''
+      }
       return
     }
 
@@ -89,9 +116,13 @@ export async function waitForTasksToSettle(
     } catch (e: any) {
       errorCount++
       if (errorCount > 5) {
+        if (lastLine !== '') {
+          process.stdout.write('\n')
+          lastLine = ''
+        }
         throw new Error(`查询任务状态发生网络错误并重试失败 5 次: ${e.message}`)
       }
-      console.warn(`[Task Progress] 网络请求异常 (${e.message})，可能服务正在重启，重试中...`)
+      renderProgress(`[Task Progress] 网络请求异常 (${e.message})，可能服务正在重启，重试中...`)
       await new Promise(resolve => setTimeout(resolve, intervalMs * 2)) // 发生网络错误时，等待更长时间再重试
     }
   }

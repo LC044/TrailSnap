@@ -37,6 +37,34 @@
       </el-collapse-item>
     </el-collapse>
 
+    <!-- Task Settings -->
+    <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+      <el-collapse-item name="task">
+        <template #title>
+           <h2 class="text-lg font-semibold dark:text-white px-6">任务设置</h2>
+        </template>
+        <div class="px-6 pb-6">
+          <el-form label-position="top" class="max-w-3xl">
+            <el-form-item label="任务并发度">
+              <el-radio-group v-model="taskForm.concurrency_level">
+                <el-radio value="low">低</el-radio>
+                <el-radio value="medium">中</el-radio>
+                <el-radio value="high">高</el-radio>
+              </el-radio-group>
+              <div class="text-sm text-gray-500 mt-1 w-full">根据您的硬件配置调整后台任务的处理并发度：<br>
+                - 高：适合多核处理器及内存充足的设备（建议 CPU &ge; 8核，内存 &ge; 16GB）<br>
+                - 中：适合普通设备（建议 CPU &ge; 4核，内存 &ge; 8GB）<br>
+                - 低：适合低配设备，减少资源占用（如 NAS 或轻量级虚拟机）
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="saveTaskSettings">保存任务设置</el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-collapse-item>
+    </el-collapse>
+
     <!-- Map Settings (original) -->
     <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
       <el-collapse-item name="map">
@@ -824,6 +852,10 @@ const securityForm = ref({
   allow_registration: false
 })
 
+const taskForm = ref({
+  concurrency_level: 'medium'
+})
+
 const saveScanScheduleSettings = async () => {
   if (scanScheduleForm.value.mode === 'weekly' && scanScheduleForm.value.weekdays.length === 0) {
     ElMessage.warning('请至少选择一天执行日期')
@@ -854,6 +886,15 @@ const saveSecuritySettings = async () => {
   try {
     await settingsApi.updateSystemConfig({ security: securityForm.value })
     ElMessage.success('安全设置已保存')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  }
+}
+
+const saveTaskSettings = async () => {
+  try {
+    await settingsApi.updateSystemConfig({ task: taskForm.value })
+    ElMessage.success('任务设置已保存')
   } catch (e) {
     ElMessage.error('保存失败')
   }
@@ -1023,6 +1064,9 @@ const loadData = async () => {
         }
         if (sysConfig.security) {
             securityForm.value = { ...securityForm.value, ...sysConfig.security }
+        }
+        if (sysConfig.task) {
+            taskForm.value = { ...taskForm.value, ...sysConfig.task }
         }
       } catch (err) {
         console.error('Failed to load system config', err)
