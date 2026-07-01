@@ -5,8 +5,11 @@
     <a href="https://trailsnap.cn/" target="_blank">
         <img alt="GitHub forks" src="https://img.shields.io/github/forks/LC044/TrailSnap?color=eb6ea5">
     </a>
-    <a href="https://trailsnap.cn/" target="_blank">
+    <!-- <a href="https://trailsnap.cn/" target="_blank">
         <img src="https://img.shields.io/badge/TrailSnap-TrailSnap-blue.svg">
+    </a> -->
+    <a href="https://atomgit.com/LC044/TrailSnap" target="_blank">
+      <img alt="Docker Pulls" src="https://atomgit.com/LC044/TrailSnap/star/badge.svg">
     </a>
     <a target="_blank" href="https://trailsnap.cn/">
         <img alt="Hits" src="https://hits.b3log.org/LC044/trailsnap.svg">

@@ -16,11 +16,22 @@
       <!-- Photo Area -->
       <div class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden relative group">
         <template v-if="photoId">
-          <img 
-            :src="`/api/medias/${photoId}/file`" 
+          <img
+            :src="`/api/medias/${photoId}/file`"
             class="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
           />
         </template>
+        <div v-else-if="noPhoto" class="w-full h-full flex flex-col items-center justify-center gap-4 p-6 text-center bg-gray-100 dark:bg-gray-900">
+          <ImageOff class="w-12 h-12 text-gray-400 dark:text-gray-500" />
+          <div class="space-y-1">
+            <p class="text-lg font-medium text-gray-600 dark:text-gray-300">暂无可用的照片</p>
+            <p class="text-sm text-gray-500 dark:text-gray-400 max-w-sm">猜城市游戏需要带有地理位置信息的照片。上传照片并完善其地点信息后再来挑战吧！</p>
+          </div>
+          <el-button type="primary" round class="mt-2" @click="startNewGame">
+            <RefreshCw class="w-4 h-4 mr-1" />
+            重新加载
+          </el-button>
+        </div>
         <div v-else class="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-gray-900">
           <Loader2 class="animate-spin text-4xl text-primary-500 w-10 h-10" />
         </div>
@@ -66,10 +77,10 @@
               clearable
               @select="handleGuess"
               @keyup.enter="handleGuess"
-              :disabled="gameState !== 'playing'"
+              :disabled="gameState !== 'playing' || noPhoto"
             >
               <template #append>
-                <el-button type="primary" @click="handleGuess" :disabled="gameState !== 'playing'">猜</el-button>
+                <el-button type="primary" @click="handleGuess" :disabled="gameState !== 'playing' || noPhoto">猜</el-button>
               </template>
             </el-autocomplete>
             <div v-if="errorMessage" class="text-red-500 text-xs mt-1">{{ errorMessage }}</div>
@@ -152,7 +163,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { CalendarCheck, MapPin, Loader2 } from 'lucide-vue-next'
+import { CalendarCheck, MapPin, Loader2, ImageOff, RefreshCw } from 'lucide-vue-next'
 import { guessCityApi, type CityCoordinate } from '@/api/guessCity'
 import { photoApi } from '@/api/photo'
 import { format } from 'date-fns'
@@ -161,6 +172,7 @@ const photoId = ref<string>('')
 const photoTime = ref<string | null>(null)
 const actualCity = ref<string>('')
 const narrative = ref<string>('')
+const noPhoto = ref(false)
 
 const cities = ref<CityCoordinate[]>([])
 const guessInput = ref('')
@@ -232,13 +244,19 @@ const startNewGame = async () => {
   photoTime.value = null
   actualCity.value = ''
   narrative.value = ''
+  noPhoto.value = false
 
   try {
     const res = await guessCityApi.getRandomPhoto()
     photoId.value = res.data.id
     photoTime.value = res.data.photo_time
   } catch (err: any) {
-    errorMessage.value = err.message || '获取照片失败'
+    // Backend returns code=404 when no eligible photo (with city/location) exists.
+    if (err?.code === 404) {
+      noPhoto.value = true
+    } else {
+      errorMessage.value = err?.msg || err?.message || '获取照片失败'
+    }
   }
 }
 
