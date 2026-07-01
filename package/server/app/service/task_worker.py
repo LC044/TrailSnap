@@ -343,61 +343,69 @@ class TaskWorker:
 
     def _fetch_tasks_to_queues_sync(self, allowed_types: List[str], current_qsizes: Dict[str, int], lowest_priorities: Dict[str, int] = None) -> List[Tuple[str, List[Dict]]]:
         from app.core.config_manager import config_manager
-        from sqlalchemy import or_
         db = SessionLocal()
-        tasks_by_type_cat = {}
         if lowest_priorities is None:
             lowest_priorities = {'CPU': -9999, 'IO': -9999, 'AI': -9999}
         try:
-            # We will fetch up to max_batch_size per category if its queue is below threshold
-            # Max items in queue per category
+            # 每个 category 的内存队列一次只放入「一种」任务类型的任务。
+            # 取最高优先级且尚有 PENDING 任务的类型，把它取完后再取下一优先级，
+            # 避免不同类型在同一队列中交替、导致模型/资源反复加载卸载。
             QUEUE_THRESHOLD = 50
-            # How many items to fetch in one DB query per category
             FETCH_BATCH_SIZE = 48
 
-            type_conditions = []
+            chunked_batches = []
             for cat in ['CPU', 'IO', 'AI']:
                 cat_types = [t for t in allowed_types if TaskStrategyFactory.get_strategy(t) and TaskStrategyFactory.get_strategy(t).task_category == cat]
                 if not cat_types:
                     continue
-                
+
                 qsize = current_qsizes.get(cat, 0)
                 if qsize < QUEUE_THRESHOLD:
-                    # Queue not full, allow all priorities for these types
-                    type_conditions.append(Task.type.in_(cat_types))
+                    # 队列未满，该 category 的所有类型都可作为候选
+                    candidate_types = cat_types
                 else:
-                    # Queue full, only allow tasks with priority higher than the lowest in queue
+                    # 队列已满，只允许优先级高于队列中最低优先级的类型插队
                     lowest_prio = lowest_priorities.get(cat, -9999)
-                    type_conditions.append(
-                        (Task.type.in_(cat_types)) & (Task.priority > lowest_prio)
-                    )
+                    candidate_types = [t for t in cat_types if DEFAULT_PRIORITIES.get(t, 1) > lowest_prio]
 
-            if not type_conditions:
-                return []
+                if not candidate_types:
+                    continue
 
-            query = db.query(Task).filter(Task.status == TaskStatus.PENDING)
-            query = query.filter(or_(*type_conditions))
+                # 选出候选类型中优先级最高、且尚有 PENDING 任务的那一种
+                top = (db.query(Task.type)
+                         .filter(Task.status == TaskStatus.PENDING)
+                         .filter(Task.type.in_(candidate_types))
+                         .order_by(Task.priority.desc(), Task.created_at.asc())
+                         .first())
+                if not top:
+                    continue
+                chosen_type = top[0]
 
-            # Fetch tasks. We fetch a bit more to fill the queues up
-            tasks = query.order_by(Task.priority.desc(), Task.created_at.asc()).limit(FETCH_BATCH_SIZE * 3).all()
+                # 只取这一种类型的任务，按创建时间顺序最多取 FETCH_BATCH_SIZE 条
+                tasks = (db.query(Task)
+                           .filter(Task.status == TaskStatus.PENDING)
+                           .filter(Task.type == chosen_type)
+                           .order_by(Task.created_at.asc())
+                           .limit(FETCH_BATCH_SIZE)
+                           .all())
+                if not tasks:
+                    continue
 
-            if tasks:
+                # 按 (任务类型, 实际目标 category) 分组，保留 AI->IO 的重定向语义
+                tasks_by_cat: Dict[str, List[Dict]] = {}
                 for task in tasks:
-                    cat = TaskStrategyFactory.get_strategy(task.type).task_category
-                    if not cat: continue
-                    
-                    if cat == 'AI' and task.owner_id:
+                    actual_cat = cat
+                    if actual_cat == 'AI' and task.owner_id:
                         user_config = config_manager.get_user_config(task.owner_id, db)
                         if user_config.ai.analysis_connection_id == 'builtin':
-                            cat = 'IO'
-
-                    key = (task.type, cat)
-                    if key not in tasks_by_type_cat:
-                        tasks_by_type_cat[key] = []
+                            actual_cat = 'IO'
 
                     task.status = TaskStatus.PROCESSING
                     self.last_active_time[task.type] = datetime.now()
-                    tasks_by_type_cat[key].append({'id': task.id, 'type': task.type, 'priority': task.priority})
+                    tasks_by_cat.setdefault(actual_cat, []).append(
+                        {'id': task.id, 'type': task.type, 'priority': task.priority}
+                    )
+
                 db.commit()
                 # Notify SSE subscribers about the PENDING -> PROCESSING transition.
                 for task in tasks:
@@ -419,13 +427,12 @@ class TaskWorker:
                         'payload': task.payload or {},
                     })
 
-            # Split tasks into smaller batches of max 8 items
-            chunked_batches = []
-            for (task_type, cat), task_list in tasks_by_type_cat.items():
-                chunk_size = get_chunk_size(task_type)
-                for i in range(0, len(task_list), chunk_size):
-                    chunk = task_list[i:i + chunk_size]
-                    chunked_batches.append((cat, chunk))
+                # 拆分成更小的批次放入对应 category 的队列
+                chunk_size = get_chunk_size(chosen_type)
+                for actual_cat, task_list in tasks_by_cat.items():
+                    for i in range(0, len(task_list), chunk_size):
+                        chunk = task_list[i:i + chunk_size]
+                        chunked_batches.append((actual_cat, chunk))
             return chunked_batches
         except Exception as e:
             logging.error(f"Error fetching tasks: {e}")

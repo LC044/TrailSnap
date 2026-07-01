@@ -50,7 +50,7 @@ def encode_image(image_path, max_size=672):
 class VisualDescriptionStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'AI'
+        return 'IO'
 
     def create_client(self, settings):
         if not settings.analysis_connection_id or not settings.analysis_model_name:

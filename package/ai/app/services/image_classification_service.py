@@ -17,7 +17,7 @@ class ONNXModelWrapper:
     def __init__(self, model_path):
         import onnxruntime as ort
         import ast
-        self.session = ort.InferenceSession(model_path, providers=['CPUExecutionProvider', 'CUDAExecutionProvider'])
+        self.session = ort.InferenceSession(model_path, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         meta = self.session.get_modelmeta()
         names_str = meta.custom_metadata_map.get('names', '{}')
         try:

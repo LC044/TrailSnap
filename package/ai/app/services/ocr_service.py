@@ -12,6 +12,9 @@ def load_paddleocr_model():
     try:
         model_root = settings.MODEL_PATH
         from rapidocr import EngineType, LangDet, LangRec, ModelType, OCRVersion, RapidOCR
+        # GPU 优先：ONNXRUNTIME 引擎开启 use_cuda，RapidOCR 会把 CUDAExecutionProvider
+        # 插到 provider 列表首位；CUDA 运行时库不可用时自动回退 CPU（onnxruntime.get_device()
+        # 非 GPU 即跳过，不会报错）。安装了 torch 时仍走下面的 TORCH 引擎 GPU 路径。
         params = {
             "Det.engine_type": EngineType.ONNXRUNTIME,
             "Det.lang_type": LangDet.CH,
@@ -21,6 +24,7 @@ def load_paddleocr_model():
             "Rec.lang_type": LangRec.CH,
             "Rec.model_type": ModelType.MOBILE,
             "Rec.ocr_version": OCRVersion.PPOCRV5,
+            "EngineConfig.onnxruntime.use_cuda": True,
         }
         try:
             import torch

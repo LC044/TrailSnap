@@ -291,13 +291,13 @@ class BasicTaskStrategy(BaseTaskStrategy):
                 # 2. Face Recognition Task
                 db.add(Task(type=TaskType.RECOGNIZE_FACE, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.RECOGNIZE_FACE], status=TaskStatus.PENDING, owner_id=owner_id))
                 # 3. OCR Task
-                # db.add(Task(type=TaskType.OCR, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.OCR], status=TaskStatus.PENDING, owner_id=owner_id))
+                db.add(Task(type=TaskType.OCR, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.OCR], status=TaskStatus.PENDING, owner_id=owner_id))
                 # 4. Classification Task
                 db.add(Task(type=TaskType.CLASSIFY_IMAGE, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.CLASSIFY_IMAGE], status=TaskStatus.PENDING, owner_id=owner_id))
                 # 5. Ticket Recognition Task
                 # db.add(Task(type=TaskType.RECOGNIZE_TICKET, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES.get(TaskType.RECOGNIZE_TICKET, 2), status=TaskStatus.PENDING, owner_id=owner_id))
                 # 6. Visual Description Task
-                # db.add(Task(type=TaskType.VISUAL_DESCRIPTION, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.VISUAL_DESCRIPTION], status=TaskStatus.PENDING, owner_id=owner_id))
+                db.add(Task(type=TaskType.VISUAL_DESCRIPTION, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.VISUAL_DESCRIPTION], status=TaskStatus.PENDING, owner_id=owner_id))
                 # 7. Embedding Generation Task
                 db.add(Task(type=TaskType.IMAGE_EMBEDDING, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.IMAGE_EMBEDDING], status=TaskStatus.PENDING, owner_id=owner_id))
 

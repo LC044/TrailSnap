@@ -19,10 +19,10 @@ class ONNXCLIPTextWrapper:
         
         self.model_dir = model_dir
         logging.info(f"Loading ONNX Text model from {model_dir}")
-        
+
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        
-        providers = ['CPUExecutionProvider', 'CUDAExecutionProvider']
+
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         text_model_path = os.path.join(model_dir, "textual.onnx")
         self.text_session = ort.InferenceSession(text_model_path, providers=providers)
 
@@ -52,7 +52,8 @@ class ONNXCLIPImageWrapper:
         
         self.processor = AutoImageProcessor.from_pretrained(model_dir)
         
-        providers = ['CPUExecutionProvider', 'CUDAExecutionProvider']
+        # CUDA 优先：onnxruntime-gpu 在 CUDA 运行时库可用时走 GPU，否则回退 CPU。
+        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
         vision_model_path = os.path.join(model_dir, "visual.onnx")
         self.vision_session = ort.InferenceSession(vision_model_path, providers=providers)
 
