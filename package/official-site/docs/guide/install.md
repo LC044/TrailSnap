@@ -179,7 +179,6 @@ docker compose --env-file .env restart
        depends_on:
          postgres:
            condition: service_healthy
-           restart: true
 
      ai:
        image: siyuan044/trailsnap-ai:latest

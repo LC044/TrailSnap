@@ -78,7 +78,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
 
   ai:
     image: siyuan044/trailsnap-ai:latest
@@ -122,7 +121,6 @@ Example (if your photos are in `D:\TrailSnap\photos`):
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
 ```
 
 If you have **multiple photo folders** (e.g., `D:\TrailSnap\photos1`, `D:\TrailSnap\photos2`):

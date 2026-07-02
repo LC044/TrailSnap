@@ -41,7 +41,6 @@ services:
     depends_on:  # 增强依赖配置
       postgres:
         condition: service_healthy
-        restart: true
 
   ai:
     image: siyuan044/trailsnap-ai:master

@@ -835,7 +835,6 @@ $photoVolumeStr
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
 
   ai:
     image: siyuan044/trailsnap-ai:$aiImageTag

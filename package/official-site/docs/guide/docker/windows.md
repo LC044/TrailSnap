@@ -73,7 +73,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
 
   ai:
     image: siyuan044/trailsnap-ai:latest
@@ -118,8 +117,8 @@ networks:
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
 ```
+
 如果你有多个照片目录，例如`D:\TrailSnap\photos1`、`D:\TrailSnap\photos2`，则可以在`docker-compose.yml`中添加多个挂载目录：
 
 ```yml

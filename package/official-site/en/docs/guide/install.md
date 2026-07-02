@@ -182,7 +182,6 @@ If you prefer to configure manually, or are deploying on a NAS or other special 
        depends_on:
          postgres:
            condition: service_healthy
-           restart: true
 
      ai:
       image: siyuan044/trailsnap-ai:latest

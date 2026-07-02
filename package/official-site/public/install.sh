@@ -39,6 +39,7 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 GRAY='\033[0;37m'
+WHITE='\033[0;97m'
 BOLD='\033[1m'
 NC='\033[0m'
 
@@ -63,11 +64,17 @@ UNINSTALL_FLAG=false
 PURGE_FLAG=false
 LOG_FILE=""
 
-# ── 自动检测非交互模式 ────────────────────────────────────────────────────────
-# 通过 curl | bash 运行时 stdin 不是终端，自动启用非交互模式
-if [[ ! -t 0 ]]; then
-  YES_FLAG=true
-fi
+# ── 输入读取 ──────────────────────────────────────────────────────────────────
+# 通过 curl | bash 运行时 stdin 是管道而非终端，直接 read 会读到 EOF。
+# 此时改从 /dev/tty 读取，让一键安装仍可交互式提问。
+# 仅当显式传入 --yes/-y 时才真正进入非交互模式。
+read_line() {
+  if [[ ! -t 0 && -r /dev/tty ]]; then
+    read "$@" < /dev/tty
+  else
+    read "$@"
+  fi
+}
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
 
@@ -100,8 +107,8 @@ prompt_default() {
     echo "$default_val"
     return
   fi
-  printf "\033[0;36m%s\033[0m [%s]: " "$prompt_text" "$default_val"
-  read -r answer || true
+  printf "\033[0;36m%s\033[0m [%s]: " "$prompt_text" "$default_val" >&2
+  read_line -r answer || true
   echo "${answer:-$default_val}"
 }
 
@@ -114,8 +121,8 @@ prompt_yes_no() {
   fi
   local indicator="y/N"
   [[ "$default_val" == "y" ]] && indicator="Y/n"
-  printf "\033[0;36m%s\033[0m [%s]: " "$prompt_text" "$indicator"
-  read -r answer || true
+  printf "\033[0;36m%s\033[0m [%s]: " "$prompt_text" "$indicator" >&2
+  read_line -r answer || true
   answer="${answer:-$default_val}"
   [[ "${answer,,}" == "y" || "${answer,,}" == "yes" ]] && echo "y" || echo "n"
 }
@@ -124,9 +131,20 @@ prompt_yes_no() {
 # 生成安全的随机数据库密码，避免硬编码默认密码
 generate_random_password() {
   local length="${1:-16}"
-  tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$length" || \
-    openssl rand -base64 18 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "$length" || \
-    echo "Trailsnap$(date +%s)"
+  local pw=""
+  # head -c 读够字节后会关闭管道，上游 tr/openssl 收到 SIGPIPE 退出码 141，
+  # 在 set -o pipefail 下会被判为失败从而触发 || 回退，导致两次输出拼接成 32 位。
+  # 这里临时关闭 pipefail，并用显式判空回退。
+  set +o pipefail
+  pw="$(tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c "$length")"
+  if [[ -z "$pw" ]]; then
+    pw="$(openssl rand -base64 18 2>/dev/null | tr -dc 'A-Za-z0-9' | head -c "$length")"
+  fi
+  set -o pipefail
+  if [[ -z "$pw" ]]; then
+    pw="Trailsnap$(date +%s)"
+  fi
+  echo "$pw"
 }
 
 # ── 日志记录 ──────────────────────────────────────────────────────────────────
@@ -339,7 +357,66 @@ install_docker_wsl2() {
     info "检测到 Docker。如果是 Docker Desktop，请确保它正在运行。"
     return
   fi
-  die "WSL2 中未找到 Docker。请安装 Docker Desktop for Windows：https://docs.docker.com/desktop/install/windows-install/"
+  echo ""
+  error "WSL2 中未找到 Docker。"
+  info "请按以下任一方式准备 Docker："
+  info "  方式一（推荐，搭配 Docker Desktop）："
+  info "    1. 在 Windows 安装 Docker Desktop：https://docs.docker.com/desktop/install/windows-install/"
+  info "    2. 启动 Docker Desktop → Settings → Resources → WSL Integration"
+  info "    3. 勾选「Enable integration with my default WSL distro」，并开启当前发行版开关"
+  info "    4. 在 WSL 内运行 'docker info'，应能输出 Server 信息"
+  info "  方式二（WSL 内原生 Docker Engine，不依赖 Docker Desktop）："
+  info "    sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin"
+  info "    sudo service docker start"
+  info "    sudo usermod -aG docker \$USER && newgrp docker"
+  die "准备好 Docker 后重新运行本脚本。"
+}
+
+# 尝试从 WSL2 内拉起 Windows 侧的 Docker Desktop
+# 找到 exe 则后台启动并返回 0；找不到返回 1（调用方自行提示手动启动）
+try_start_docker_desktop() {
+  local dd_paths=(
+    "/mnt/c/Program Files/Docker/Docker/Docker Desktop.exe"
+    "/mnt/d/Program Files/Docker/Docker/Docker Desktop.exe"
+  )
+  local dd
+  for dd in "${dd_paths[@]}"; do
+    if [[ -f "$dd" ]]; then
+      info "尝试启动 Docker Desktop：$dd"
+      # cmd.exe start 以非阻塞方式拉起；wslpath 转 Windows 路径，转换失败则原样传
+      local win_path
+      win_path="$(wslpath -w "$dd" 2>/dev/null || echo "$dd")"
+      cmd.exe /c start "" "$win_path" >/dev/null 2>&1 || true
+      return 0
+    fi
+  done
+  # 路径未命中时，尝试通过 powershell 拉起默认安装位置
+  if command -v powershell.exe &>/dev/null; then
+    if powershell.exe -NoProfile -Command \
+      "Start-Process -FilePath 'C:\Program Files\Docker\Docker\Docker Desktop.exe'" >/dev/null 2>&1; then
+      info "已通过 PowerShell 启动 Docker Desktop。"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+# 等待 Docker 守护进程就绪，超时则打印明确排查指引并退出
+wait_for_docker_desktop() {
+  local max_retries="${1:-60}"   # 默认 60 次 × 3s ≈ 3 分钟
+  local interval="${2:-3}"
+  info "等待 Docker Desktop 启动（最多约 $((max_retries * interval)) 秒）..."
+  local retries=0
+  while ! docker info &>/dev/null && [[ $retries -lt $max_retries ]]; do
+    sleep "$interval"
+    retries=$((retries + 1))
+    echo -n "."
+  done
+  echo ""
+  if docker info &>/dev/null; then
+    return 0
+  fi
+  return 1
 }
 
 ensure_docker() {
@@ -375,16 +452,26 @@ ensure_docker() {
     if [[ "$OS" == "linux" ]]; then
       info "正在启动 Docker 守护进程..."
       sudo systemctl start docker || die "启动 Docker 失败。请手动启动。"
-    elif [[ "$OS" == "macos" || "$OS" == "wsl2" ]]; then
-      info "等待 Docker Desktop 启动..."
-      local retries=0
-      while ! docker info &>/dev/null && [[ $retries -lt 30 ]]; do
-        sleep 2
-        retries=$((retries + 1))
-        echo -n "."
-      done
-      echo ""
-      if ! docker info &>/dev/null; then
+    elif [[ "$OS" == "wsl2" ]]; then
+      # WSL2：尝试自动拉起 Windows 侧的 Docker Desktop，再等待就绪
+      if ! try_start_docker_desktop; then
+        warn "未自动找到 Docker Desktop，请手动启动后继续。"
+      fi
+      if ! wait_for_docker_desktop 60 3; then
+        echo ""
+        error "Docker Desktop 仍未就绪。请按以下步骤排查："
+        info "  1. 在 Windows 上手动启动 Docker Desktop，等待托盘图标变绿"
+        info "  2. 确认 Docker Desktop → Settings → Resources → WSL Integration 中已勾选当前发行版"
+        info "  3. 在 WSL 内运行 'docker info'，应能输出 Server 信息"
+        info "  4. 若尚未安装：https://docs.docker.com/desktop/install/windows-install/"
+        die "Docker Desktop 未响应。请启动后重新运行本脚本。"
+      fi
+    elif [[ "$OS" == "macos" ]]; then
+      if ! wait_for_docker_desktop 60 3; then
+        echo ""
+        error "Docker Desktop 仍未就绪。"
+        info "  1. 从「应用程序」中启动 Docker Desktop，等待托盘图标变绿"
+        info "  2. 运行 'docker info' 确认 Server 信息可正常输出"
         die "Docker Desktop 未响应。请启动后重新运行本脚本。"
       fi
     fi
@@ -412,7 +499,12 @@ ensure_docker() {
 
 test_mirror() {
   local mirror="$1"
-  curl -sfSL --connect-timeout 5 "${mirror}/v2/" &>/dev/null
+  # Docker Registry 的 /v2/ 端点正常情况下也可能返回 401/403（拉取才需鉴权，
+  # 端点可达即可）。不能用 curl -f，否则会把可用镜像源误判为不可达。
+  # 判定标准：能连上且 HTTP code ∈ {200, 401, 403}。
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 "${mirror}/v2/" 2>/dev/null || true)"
+  [[ "$code" == "200" || "$code" == "401" || "$code" == "403" ]]
 }
 
 configure_mirrors_linux() {
@@ -444,16 +536,23 @@ import json, sys
 mirrors = [line.strip() for line in sys.stdin if line.strip()]
 print(json.dumps(mirrors))
 ')"
-    python3 -c '
+    # daemon.json 是 root 所有，python3 以当前用户运行无法直接写。
+    # 做法：python3 读取（通常 644 可读）并合并后输出到 stdout，再 sudo tee 写回。
+    # 文件不存在或内容非法时从空对象 {} 开始。
+    local merged
+    merged="$(python3 -c '
 import json, sys
 daemon_json = sys.argv[1]
 mirrors_json = sys.argv[2]
-with open(daemon_json) as f:
-    cfg = json.load(f)
+try:
+    with open(daemon_json) as f:
+        cfg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    cfg = {}
 cfg["registry-mirrors"] = json.loads(mirrors_json)
-with open(daemon_json, "w") as f:
-    json.dump(cfg, f, indent=2)
-' "$daemon_json" "$mirrors_json"
+print(json.dumps(cfg, indent=2))
+' "$daemon_json" "$mirrors_json")"
+    echo "$merged" | sudo tee "$daemon_json" >/dev/null
   else
     # 回退：直接覆盖（无 python3 时）
     local mirrors_line
@@ -639,7 +738,7 @@ collect_config() {
         echo "  2) 输入其他路径"
         echo "  3) 取消"
         local choice
-        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
+        read_line -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
         case "${choice}" in
           1)
             if mkdir -p "$current_dir" 2>/dev/null; then
@@ -700,7 +799,7 @@ collect_config() {
         echo "  2) 输入其他路径"
         echo "  3) 取消"
         local choice
-        read -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
+        read_line -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
         case "${choice}" in
           1)
             if mkdir -p "$dir" 2>/dev/null; then
@@ -911,7 +1010,6 @@ ${photo_volumes}
     depends_on:
       postgres:
         condition: service_healthy
-        restart: true
 
   ai:
     image: siyuan044/trailsnap-ai:${ai_image_tag}
@@ -1051,6 +1149,27 @@ print_service_urls() {
   echo ""
 }
 
+# 按 generate_compose 的挂载规则，计算容器内照片路径列表（空格分隔）
+# 单目录：/app/Photos/；多目录：/app/Photos1/ /app/Photos2/ ...
+get_internal_photo_paths() {
+  local photo_dir="${PHOTO_DIR:-}"
+  [[ -z "$photo_dir" ]] && { echo "/app/Photos/"; return; }
+  local dirs=()
+  IFS=',' read -ra dirs <<< "$photo_dir"
+  if [[ ${#dirs[@]} -eq 1 ]]; then
+    echo "/app/Photos/"
+  else
+    local i=1
+    local out=""
+    for _ in "${dirs[@]}"; do
+      [[ -n "$out" ]] && out+=" "
+      out+="/app/Photos${i}/"
+      i=$((i + 1))
+    done
+    echo "$out"
+  fi
+}
+
 print_success() {
   source "${INSTALL_DIR}/.env" 2>/dev/null || true
 
@@ -1066,7 +1185,17 @@ print_success() {
   echo -e "  ${CYAN}下一步：${NC}"
   echo "  1. 在浏览器中打开上面的访问地址"
   echo "  2. 进入 更多 → 设置 → 外部图库"
-  echo "  3. 添加 /app/Photos/ 以扫描照片"
+  local photo_paths
+  photo_paths="$(get_internal_photo_paths)"
+  if [[ "$(echo "$photo_paths" | wc -w)" -le 1 ]]; then
+    echo "  3. 添加 ${photo_paths} 以扫描照片"
+  else
+    echo "  3. 添加以下路径以扫描照片（对应您挂载的多个照片文件夹）："
+    local p
+    for p in $photo_paths; do
+      echo "       - ${p}"
+    done
+  fi
   echo ""
   echo -e "  ${CYAN}管理命令（在 ${INSTALL_DIR} 目录下运行）：${NC}"
   echo "    停止:    ${COMPOSE_CMD} --env-file .env down"
@@ -1119,6 +1248,12 @@ do_upgrade() {
 
   log "开始升级，保留现有配置"
 
+  # 重新生成 .env：已读取的旧值会原样写回，同时补齐新版本可能新增的字段。
+  # 升级前备份旧 .env，避免用户手改的额外字段被覆盖后无法找回。
+  if [[ -f "${INSTALL_DIR}/.env" ]]; then
+    cp -p "${INSTALL_DIR}/.env" "${INSTALL_DIR}/.env.bak.$(date +%Y%m%d%H%M%S 2>/dev/null || echo bak)" 2>/dev/null || true
+  fi
+  generate_env
   generate_compose
   pull_images
 
@@ -1288,7 +1423,7 @@ main() {
     echo "  0) 退出"
 
     local choice
-    read -rp "$(printf '\033[0;36m请选择 [0-6]: \033[0m')" choice || true
+    read_line -rp "$(printf '\033[0;36m请选择 [0-6]: \033[0m')" choice || true
     case "$choice" in
       1)
         detect_os
