@@ -10,6 +10,7 @@ from app.services.model_downloader import model_downloader
 from app.services.ai_config_manager import ai_config_manager
 from app.services.ticket_parser import parse_ticket_info, extract_text
 from app.services.fly_ticket_parser import extract_flight_info
+from app.services.onnx_providers import get_onnx_providers
 
 def load_modelscope_model():
     """
@@ -36,7 +37,7 @@ def load_onnx_model():
         model_path = os.path.join(model_dir, "ticket-recognition.onnx")
         
         # Initialize ONNX model
-        providers = ['CPUExecutionProvider', 'CUDAExecutionProvider']
+        providers, _ = get_onnx_providers()
         session = ort.InferenceSession(model_path, providers=providers)
         
         # Set names attribute manually since ONNX model might not have it in the same format

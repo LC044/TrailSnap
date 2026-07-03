@@ -10,6 +10,7 @@ from app.config import settings
 from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
 from app.services.ai_config_manager import ai_config_manager
+from app.services.onnx_providers import get_onnx_providers
 
 class ONNXCLIPTextWrapper:
     def __init__(self, model_dir):
@@ -22,7 +23,7 @@ class ONNXCLIPTextWrapper:
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
-        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        providers, _ = get_onnx_providers()
         text_model_path = os.path.join(model_dir, "textual.onnx")
         self.text_session = ort.InferenceSession(text_model_path, providers=providers)
 
@@ -52,8 +53,8 @@ class ONNXCLIPImageWrapper:
         
         self.processor = AutoImageProcessor.from_pretrained(model_dir)
         
-        # CUDA 优先：onnxruntime-gpu 在 CUDA 运行时库可用时走 GPU，否则回退 CPU。
-        providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+        # 推理后端按 CUDA -> OpenVINO -> CPU 自动选择。
+        providers, _ = get_onnx_providers()
         vision_model_path = os.path.join(model_dir, "visual.onnx")
         self.vision_session = ort.InferenceSession(vision_model_path, providers=providers)
 

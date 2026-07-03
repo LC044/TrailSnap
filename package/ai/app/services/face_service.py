@@ -9,23 +9,23 @@ from app.config import settings
 from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
 from app.services.ai_config_manager import ai_config_manager
+from app.services.onnx_providers import get_onnx_providers
 
 def load_insightface_model():
     try:
         import insightface
         from insightface.app import FaceAnalysis
-        
+
         model_name = ai_config_manager.get_model_selection("face")
         logging.info(f"Initializing InsightFace with model: {model_name}")
 
-        # Initialize InsightFace analysis
-        # providers=['CUDAExecutionProvider', 'CPUExecutionProvider'] if GPU available
-        provider_options = [{"device_id": 0}, {}]
+        # 推理后端按 CUDA -> OpenVINO -> CPU 自动选择，与安装的 extra (gpu/openvino/cpu) 对齐。
+        providers, provider_options = get_onnx_providers()
         model_path = settings.MODEL_PATH.rstrip("/").rstrip("models")
         app = FaceAnalysis(
             name=model_name, root=model_path,
-            providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
-            provider_options = provider_options  # 传递 CUDA 配置
+            providers=providers,
+            provider_options=provider_options,
         )
         app.prepare(ctx_id=0, det_size=(640, 640))
         logging.info("InsightFace model initialized successfully.")

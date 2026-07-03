@@ -15,16 +15,21 @@ dependencies = [
   "rapidocr>=3.0.0",
   "uvicorn>=0.27.0",
   "httpx>=0.27.0",
+  "transformers>=4.37.0"
 ]
 
 [project.optional-dependencies]
 cpu = [
-  "onnxruntime>=1.23.2",
-  "transformers>=4.37.0"
+  "onnxruntime>=1.23.2"
 ]
+
+openvino = [
+  "onnxruntime-openvino>=1.24.1",
+  "openvino==2025.4.1"
+]
+
 gpu = [
-  "onnxruntime-gpu>=1.23.2",
-  "transformers>=4.37.0"
+  "onnxruntime-gpu>=1.23.2"
 ]
 
 [dependency-groups]
@@ -37,6 +42,7 @@ dev = [
 conflicts = [
   [
     { extra = "cpu" },
+    { extra = "openvino" },
     { extra = "gpu" },
   ],
 ]

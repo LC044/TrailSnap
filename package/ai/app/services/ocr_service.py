@@ -15,6 +15,8 @@ def load_paddleocr_model():
         # GPU 优先：ONNXRUNTIME 引擎开启 use_cuda，RapidOCR 会把 CUDAExecutionProvider
         # 插到 provider 列表首位；CUDA 运行时库不可用时自动回退 CPU（onnxruntime.get_device()
         # 非 GPU 即跳过，不会报错）。安装了 torch 时仍走下面的 TORCH 引擎 GPU 路径。
+        # 注意：OCR 走 RapidOCR 自己的引擎配置口，不经过 onnx_providers.get_onnx_providers()，
+        # 因此 openvino extra 不会让 OCR 走 OpenVINO EP（仅人脸 / 分类 / 票据 / embedding 受影响）。
         params = {
             "Det.engine_type": EngineType.ONNXRUNTIME,
             "Det.lang_type": LangDet.CH,
