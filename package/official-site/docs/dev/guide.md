@@ -86,10 +86,10 @@ AI_URL=http://localhost:8001
 ### 4.4 运行服务
 ```bash
 # 第一次运行、或数据库结构发生变化时需要初始化数据库
-python start.py
+uv run python start.py
 
 # 数据库结构初始化完成后，启动服务
-uvicorn main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 API 文档地址：`http://localhost:8000/docs`
 
@@ -133,7 +133,7 @@ uv sync --extra gpu
 
 ### 6.2 运行服务
 ```bash
-uvicorn app.main:app --reload --port 8001
+uv run uvicorn app.main:app --reload --port 8001
 ```
 
 ## 7. 数据库迁移

@@ -1219,14 +1219,13 @@ if ($Uninstall) {
     exit 0
 }
 
-# 设置默认安装目录
-if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
-    $script:InstallDir = $DefaultInstallDir
-}
-
-# 检查是否已有安装
-$existingCompose = Join-Path $script:InstallDir "docker-compose.yml"
+# 检查是否已有安装（未指定 -InstallDir 时检查默认目录，但不写入 $script:InstallDir，
+# 以便后续 Collect-Config 仍能交互式询问安装目录）
+$checkDir = if ([string]::IsNullOrWhiteSpace($script:InstallDir)) { $DefaultInstallDir } else { $script:InstallDir }
+$existingCompose = Join-Path $checkDir "docker-compose.yml"
 if (Test-Path $existingCompose) {
+    # 在默认目录检测到已有安装时，将其作为操作目标
+    $script:InstallDir = $checkDir
     # 如果找到了配置文件，先解析它以获取端口等信息
     $envFilePath = Join-Path $script:InstallDir ".env"
     if (Test-Path $envFilePath) {
@@ -1350,6 +1349,12 @@ if ($Upgrade) {
     exit 0
 }
 
+# 交互式收集配置（安装目录、照片目录、端口、AI 模式）
+Collect-Config
+
+# 检查硬件资源（依赖安装目录以判断磁盘空间）
+Test-Hardware
+
 # 安装前确认摘要
 Show-ConfirmSummary
 
@@ -1357,9 +1362,6 @@ Show-ConfirmSummary
 New-Item -ItemType Directory -Path $script:InstallDir -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "pg_data") -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "data") -Force | Out-Null
-
-# 检查硬件资源
-Test-Hardware
 
 # 生成配置文件
 Generate-EnvFile
