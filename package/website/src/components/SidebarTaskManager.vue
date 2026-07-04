@@ -71,8 +71,17 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Loader2, ChevronDown, CheckCircle2 } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
+import { useDebounceFn } from '@vueuse/core'
 import { tasksApi } from '@/api/tasks'
 import { useTaskNotifyStore } from '@/stores/taskNotifyStore'
+
+// 定义数据类型，消灭 any
+interface TaskCategoryStatus {
+  category: string
+  task_name: string
+  pending: number
+  failed: number
+}
 
 const props = defineProps<{
   isCollapsed: boolean
@@ -82,8 +91,9 @@ const router = useRouter()
 const store = useTaskNotifyStore()
 
 const expanded = ref(false)
-const groupedStatus = ref<any[]>([])
+const groupedStatus = ref<TaskCategoryStatus[]>([])
 let pollTimer: number | null = null
+let successTimer: number | null = null // 用于清理 success 定时器
 
 const activeCategories = computed(() => {
   return groupedStatus.value.filter(cat => cat.pending > 0)
@@ -111,14 +121,20 @@ const fetchStatus = async () => {
     if (totalPending.value > 0) {
       wasPending.value = true
       showSuccess.value = false
+      if (successTimer) {
+        window.clearTimeout(successTimer)
+        successTimer = null
+      }
     } else if (wasPending.value && totalPending.value === 0) {
       // Transitioned from pending to completed
       ElMessage.success('所有后台任务已处理完成')
       wasPending.value = false
       showSuccess.value = true
       expanded.value = false
-      // Let the success state be visible for a short time before hiding
-      setTimeout(() => {
+      
+      // 清理旧定时器，防止竞态条件导致状态异常
+      if (successTimer) window.clearTimeout(successTimer)
+      successTimer = window.setTimeout(() => {
         showSuccess.value = false
       }, 3000)
     }
@@ -132,26 +148,45 @@ const toggleExpand = () => {
   expanded.value = !expanded.value
 }
 
+// 优化轮询机制：基于 setTimeout 的递归，避免网络阻塞时请求堆积
 const startPolling = () => {
   if (pollTimer) return
-  fetchStatus()
-  pollTimer = window.setInterval(fetchStatus, 3000)
+  
+  const loop = async () => {
+    await fetchStatus()
+    pollTimer = window.setTimeout(loop, 5000)
+  }
+  loop()
 }
 
 const stopPolling = () => {
   if (pollTimer) {
-    window.clearInterval(pollTimer)
+    window.clearTimeout(pollTimer)
     pollTimer = null
+  }
+  if (successTimer) {
+    window.clearTimeout(successTimer)
+    successTimer = null
   }
 }
 
-// watch(() => store.lastEventAt, () => {
-//   fetchStatus()
-// })
+// 监听后端事件推送，加上防抖，限制 1 秒内最多触发 1 次
+const handleEvent = useDebounceFn(() => {
+  // 收到推送说明状态有变，先停止当前轮询
+  if (pollTimer) {
+    window.clearTimeout(pollTimer)
+    pollTimer = null
+  }
+  // 重新发起请求，并自动开启新一轮的 5 秒倒计时
+  startPolling()
+}, 1000)
+
+watch(() => store.lastEventAt, () => {
+  handleEvent()
+})
 
 onMounted(() => {
-  fetchStatus()
-  pollTimer = window.setInterval(fetchStatus, 5000)
+  startPolling()
 })
 
 onUnmounted(() => {

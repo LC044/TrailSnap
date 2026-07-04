@@ -56,6 +56,7 @@ TrailSnap 内置 AI 连接使用 MiniCPM-V-4_6-Q4_K_M 多模态模型，需要�
    ```bash
    # 使用 winget 安装
    winget install llama.cpp
+   winget install ffmpeg
 
    # 或手动下载：https://github.com/ggerganov/llama.cpp/releases
    # 解压后将 llama-server.exe 添加到系统 PATH
@@ -83,6 +84,7 @@ sudo cp llama-server /usr/local/bin/
 ```bash
 # 使用 Homebrew 安装
 brew install llama.cpp
+brew install ffmpeg
 
 # 或手动下载预编译版本：https://github.com/ggerganov/llama.cpp/releases
 ```

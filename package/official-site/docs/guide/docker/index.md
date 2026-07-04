@@ -126,6 +126,8 @@ docker-compose up -d
 以 Ubuntu 为例，执行以下命令：
 
 ```bash
+sudo apt update
+sudo apt install -y lsb-release curl gpg
 # 1. 设置NVIDIA软件源
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
 curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -

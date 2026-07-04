@@ -410,6 +410,7 @@
                 </div>
               </li>
               <li>GitHub：<a href="https://github.com/LC044/TrailSnap" target="_blank" class="cursor-pointer border-b border-dashed border-white/40 hover:text-primary hover:border-primary transition-colors">LC044/TrailSnap</a></li>
+              <li>AtomGit：<a href="https://atomgit.com/LC044/TrailSnap" target="_blank" class="cursor-pointer border-b border-dashed border-white/40 hover:text-primary hover:border-primary transition-colors">LC044/TrailSnap</a></li>
             </ul>
           </div>
           <!-- Col 4 -->
@@ -547,7 +548,7 @@ const i18n = {
       links: { title: '快速链接', items: ['TrialSnap CLI', '功能介绍', '产品优势', '关于我们', '帮助中心'] },
       contact: { title: '联系我们', email: '邮箱', wechat: '微信公众号', qq: 'QQ群', scan: '扫码加入' },
       follow: { title: '关注我们' },
-      copyright: '© 2025 TrailSnap行影集 版权所有',
+      copyright: '© 2025-2026 TrailSnap行影集 版权所有',
       privacy: '隐私政策',
       agreement: '用户协议'
     }
@@ -647,7 +648,7 @@ const i18n = {
       links: { title: 'Quick Links', items: ['TrailSnap CLI', 'Features', 'Advantages', 'About Us', 'Help Center'] },
       contact: { title: 'Contact Us', email: 'Email', wechat: 'WeChat', qq: 'QQ Group', scan: 'Scan to Join' },
       follow: { title: 'Follow Us' },
-      copyright: '© 2025 TrailSnap All Rights Reserved',
+      copyright: '© 2025-2026 TrailSnap All Rights Reserved',
       privacy: 'Privacy Policy',
       agreement: 'User Agreement'
     }
