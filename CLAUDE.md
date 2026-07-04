@@ -141,7 +141,7 @@ The dev server (`vite.config.js`) listens on `0.0.0.0:5176` and proxies `/api` t
 
 ### Docker deployment
 
-`docker-compose.yml` at repo root runs `postgres` (pgvector), `server`, `ai`, and `frontend` (nginx serving the Vite build). Mount the host photo directory into the `server` container (see `F:\Photos:/app/Photos/` in `README.md`). Each component has its own `Dockerfile` in its subdir; the AI service has `Dockerfile` (CPU) and `Dockerfile.gpu`. The GitHub workflows in `.github/workflows/` build and push images to Docker Hub on tag pushes or commits containing `-latest` / "构建后端".
+`docker-compose.yml` at repo root runs `postgres` (pgvector), `server`, `ai`, and `frontend` (nginx serving the Vite build). Mount the host photo directory into the `server` container (see `F:\Photos:/app/Photos/` in `README.md`). Each component has its own `Dockerfile` in its subdir; the AI service has `Dockerfile` (CPU), `Dockerfile.gpu`, and `Dockerfile.openvino`. The GitHub workflows in `.github/workflows/` build and push images to Docker Hub on tag pushes or commits containing `-latest` / "构建后端".
 
 ## Conventions
 

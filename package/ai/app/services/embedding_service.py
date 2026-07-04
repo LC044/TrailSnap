@@ -23,9 +23,9 @@ class ONNXCLIPTextWrapper:
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
-        providers, _ = get_onnx_providers()
+        providers, provider_options = get_onnx_providers()
         text_model_path = os.path.join(model_dir, "textual.onnx")
-        self.text_session = ort.InferenceSession(text_model_path, providers=providers)
+        self.text_session = ort.InferenceSession(text_model_path, providers=providers, provider_options=provider_options)
 
     def encode_text(self, texts: List[str]):
         import numpy as np
@@ -54,9 +54,9 @@ class ONNXCLIPImageWrapper:
         self.processor = AutoImageProcessor.from_pretrained(model_dir)
         
         # 推理后端按 CUDA -> OpenVINO -> CPU 自动选择。
-        providers, _ = get_onnx_providers()
+        providers, provider_options = get_onnx_providers()
         vision_model_path = os.path.join(model_dir, "visual.onnx")
-        self.vision_session = ort.InferenceSession(vision_model_path, providers=providers)
+        self.vision_session = ort.InferenceSession(vision_model_path, providers=providers, provider_options=provider_options)
 
     def encode_image(self, images: List[Image.Image]):
         import numpy as np

@@ -23,6 +23,10 @@ jobs:
             dockerfile: Dockerfile.gpu
             platforms: linux/amd64
             tag_suffix: "-gpu"
+          - type: openvino
+            dockerfile: Dockerfile.openvino
+            platforms: linux/amd64
+            tag_suffix: "-openvino"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

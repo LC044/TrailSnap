@@ -11,6 +11,7 @@ from app.services.ai_config_manager import ai_config_manager
 from app.services.ticket_parser import parse_ticket_info, extract_text
 from app.services.fly_ticket_parser import extract_flight_info
 from app.services.onnx_providers import get_onnx_providers
+from app.services.ocr_service import openvino_infer_lock
 
 def load_modelscope_model():
     """
@@ -230,9 +231,13 @@ class TicketService:
             try:
                 # 2. 对裁剪区域执行 OCR (传入文件路径)
                 # RapidOCR 支持路径输入
+                # 共享 ocr_service 的 RapidOCR 实例；OpenVINO 后端下 InferRequest 非线程
+                # 安全，需通过 openvino_infer_lock() 与 ocr_service.detect_text 互斥，避免
+                # 并发请求（或与 /ocr/predict 同时调用）时抛 "Infer Request is busy"。
                 if not ocr:
                     ocr = model_manager.get_model("ocr")
-                out = ocr(temp_path)
+                with openvino_infer_lock():
+                    out = ocr(temp_path)
             except Exception as e:
                 logging.warning(f"OCR inference failed for {temp_path}: {e}")
                 out = None
