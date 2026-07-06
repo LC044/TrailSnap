@@ -34,7 +34,6 @@ param(
     [string]$Timezone = "Asia/Shanghai",
     [ValidateSet("cpu", "gpu")]
     [string]$AiMode = "cpu",
-    [ValidateSet("latest", "master")]
     [string]$Tag = "latest",
     [switch]$ChinaMirrors,
     [switch]$Yes,
@@ -684,11 +683,19 @@ function Collect-Config {
     }
 
     # AI 模式
+    $script:DetectedAiMode = $AiMode
     if ($AiMode -eq "gpu") {
         if (-not (Test-GpuSupport)) {
             Write-Warn "将回退到 CPU 模式。"
-            $script:AiMode = "cpu"
+            $script:DetectedAiMode = "cpu"
         }
+    } else {
+        try {
+            $cpuName = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
+            if ($cpuName -match "Intel") {
+                $script:DetectedAiMode = "openvino"
+            }
+        } catch {}
     }
 
     # 设置日志文件路径（安装目录已确定）
@@ -706,7 +713,7 @@ function Show-ConfirmSummary {
     $photoDisplay = $script:PhotoDir -replace ",", ", "
     Write-Host "  │  照片目录:  $photoDisplay" -ForegroundColor White
     Write-Host "  │  前端端口:  $FrontendPort" -ForegroundColor White
-    Write-Host "  │  AI 模式:   $AiMode" -ForegroundColor White
+    Write-Host "  │  AI 模式:   $script:DetectedAiMode" -ForegroundColor White
     Write-Host "  │  数据库密码: $script:PgPassword" -ForegroundColor White
     Write-Host "  │              （请妥善保管，升级时自动保留）  " -ForegroundColor Gray
     Write-Host "  └─────────────────────────────────────────────┘" -ForegroundColor Cyan
@@ -739,11 +746,12 @@ POSTGRES_PORT=$PostgresPort
 # 时区
 TZ="$Timezone"
 
-# Docker 镜像标签（latest 或 master）
+# Docker 镜像版本标签（默认 latest，可修改为指定版本号，如 v1.0.0 等）
 IMAGE_TAG="$Tag"
 
-# AI 模式：cpu 或 gpu
-AI_MODE="$AiMode"
+# AI 模式。可选：cpu、gpu、openvino
+# GPU 需要用户手动指定，CPU 和 openvino 会自动检测。修改此环境变量可动态调整 AI 镜像。
+AI_MODE="$script:DetectedAiMode"
 
 # 数据库
 POSTGRES_DB="$DefaultPgDb"
@@ -776,9 +784,7 @@ function Generate-ComposeFile {
     $photoVolumeStr = $photoVolumes -join "`n"
 
     $gpuBlock = ""
-    $aiImageTag = '${IMAGE_TAG}'
-    if ($AiMode -eq "gpu") {
-        $aiImageTag = '${IMAGE_TAG}-gpu'
+    if ($script:DetectedAiMode -eq "gpu") {
         $gpuBlock = @"
 
     deploy:
@@ -805,8 +811,6 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [app-network]
-    ports:
-      - "`${POSTGRES_PORT}:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -837,7 +841,7 @@ $photoVolumeStr
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:$aiImageTag
+    image: siyuan044/trailsnap-ai:`${IMAGE_TAG}-`${AI_MODE}
     container_name: trailsnap-ai
     restart: always
     expose: ["8001"]
@@ -1086,7 +1090,7 @@ function Do-Upgrade {
                 "POSTGRES_PORT"   { $script:PostgresPort = [int]$value }
                 "TZ"              { $script:Timezone = $value }
                 "IMAGE_TAG"       { $script:Tag = $value }
-                "AI_MODE"         { $script:AiMode = $value }
+                "AI_MODE"         { $script:DetectedAiMode = $value }
                 "PHOTO_DIR"       { $script:PhotoDir = $value }
                 "POSTGRES_PASSWORD" { $script:PgPassword = $value }
             }
@@ -1166,7 +1170,7 @@ TrailSnap (行影集) — Windows 一键安装脚本
   -PostgresPort <端口>   PostgreSQL 端口（默认：5532）
   -Timezone <时区>       时区（默认：Asia/Shanghai）
   -AiMode <cpu|gpu>      AI 模式（默认：cpu）
-  -Tag <latest|master>   Docker 镜像标签（默认：latest）
+  -Tag <版本号>          Docker 镜像版本标签（默认：latest）
   -ChinaMirrors          配置国内 Docker 镜像加速源
   -Yes                   非交互模式：接受所有默认值
   -Upgrade               升级已安装的实例

@@ -15,3 +15,4 @@ data/*
 .playwright-cli
 releases/
 pg_data/
+doc/plan/

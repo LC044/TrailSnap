@@ -18,7 +18,7 @@ jobs:
           - type: cpu
             dockerfile: Dockerfile
             platforms: linux/amd64,linux/arm64
-            tag_suffix: ""
+            tag_suffix: "-cpu"
           - type: gpu
             dockerfile: Dockerfile.gpu
             platforms: linux/amd64
@@ -48,25 +48,29 @@ jobs:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
-            BASE_TAG=${GITHUB_REF#refs/tags/v}
-            EXTRA_TAGS="latest"
+            RAW_BASE_TAG=${GITHUB_REF#refs/tags/v}
+            RAW_EXTRA_TAGS="latest"
           else
-            BASE_TAG=${GITHUB_REF#refs/heads/}
-            EXTRA_TAGS=""
+            RAW_BASE_TAG=${GITHUB_REF#refs/heads/}
+            RAW_EXTRA_TAGS=""
           fi
           
           if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
-            EXTRA_TAGS="latest"
+            RAW_EXTRA_TAGS="latest"
           fi
           
           # Append suffix from matrix
-          BASE_TAG="${BASE_TAG}${{ matrix.tag_suffix }}"
-          if [ -n "$EXTRA_TAGS" ]; then
-            EXTRA_TAGS="${EXTRA_TAGS}${{ matrix.tag_suffix }}"
+          BASE_TAG="${RAW_BASE_TAG}${{ matrix.tag_suffix }}"
+          if [ -n "$RAW_EXTRA_TAGS" ]; then
+            EXTRA_TAGS="${RAW_EXTRA_TAGS}${{ matrix.tag_suffix }}"
+          else
+            EXTRA_TAGS=""
           fi
           
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
           echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
+          echo "RAW_BASE_TAG=$RAW_BASE_TAG" >> $GITHUB_ENV
+          echo "RAW_EXTRA_TAGS=$RAW_EXTRA_TAGS" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
 
       - name: Build and push ai
@@ -79,5 +83,7 @@ jobs:
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-ai:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAGS != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAGS) || '' }}
+            ${{ matrix.type == 'cpu' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_BASE_TAG) || '' }}
+            ${{ matrix.type == 'cpu' && env.RAW_EXTRA_TAGS != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_EXTRA_TAGS) || '' }}
           cache-from: type=gha,scope=build-ai-${{ matrix.type }}
           cache-to: type=gha,mode=max,scope=build-ai-${{ matrix.type }}

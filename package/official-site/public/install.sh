@@ -861,10 +861,21 @@ collect_config() {
   IMAGE_TAG="${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
 
   # GPU 检查
+  DETECTED_AI_MODE="${AI_MODE}"
   if [[ "$AI_MODE" == "gpu" ]]; then
     if ! check_gpu_support; then
       warn "将回退到 CPU 模式。"
-      AI_MODE="cpu"
+      DETECTED_AI_MODE="cpu"
+    fi
+  else
+    local cpu_name=""
+    if [[ "$OS" == "macos" ]]; then
+      cpu_name="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
+    else
+      cpu_name="$(grep -m 1 'model name' /proc/cpuinfo 2>/dev/null || true)"
+    fi
+    if echo "$cpu_name" | grep -qi "Intel"; then
+      DETECTED_AI_MODE="openvino"
     fi
   fi
 
@@ -885,7 +896,7 @@ show_confirm_summary() {
   echo -e "  ${WHITE}│  安装目录:  ${INSTALL_DIR}${NC}"
   echo -e "  ${WHITE}│  照片目录:  ${photo_display}${NC}"
   echo -e "  ${WHITE}│  前端端口:  ${FRONTEND_PORT}${NC}"
-  echo -e "  ${WHITE}│  AI 模式:   ${AI_MODE}${NC}"
+  echo -e "  ${WHITE}│  AI 模式:   ${DETECTED_AI_MODE}${NC}"
   echo -e "  ${WHITE}│  数据库密码: ${PG_PASSWORD}${NC}"
   echo -e "  ${GRAY}│              （请妥善保管，升级时自动保留）  ${NC}"
   echo -e "  ${CYAN}└─────────────────────────────────────────────┘${NC}"
@@ -917,11 +928,12 @@ POSTGRES_PORT=${POSTGRES_PORT}
 # 时区
 TZ="${TZ}"
 
-# Docker 镜像标签（latest 或 master）
+# Docker 镜像版本标签（默认 latest，可修改为指定版本号，如 v1.0.0 等）
 IMAGE_TAG="${IMAGE_TAG}"
 
-# AI 模式：cpu 或 gpu
-AI_MODE="${AI_MODE}"
+# AI 模式。可选：cpu、gpu、openvino
+# GPU 需要用户手动指定，CPU 和 openvino 会自动检测。修改此环境变量可动态调整 AI 镜像。
+AI_MODE="${DETECTED_AI_MODE}"
 
 # 数据库
 POSTGRES_DB="${DEFAULT_PG_DB}"
@@ -953,9 +965,7 @@ generate_compose() {
   done
 
   local gpu_block=""
-  local ai_image_tag='${IMAGE_TAG}'
-  if [[ "$AI_MODE" == "gpu" ]]; then
-    ai_image_tag='${IMAGE_TAG}-gpu'
+  if [[ "$DETECTED_AI_MODE" == "gpu" ]]; then
     gpu_block="
     deploy:
       resources:
@@ -980,8 +990,6 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [app-network]
-    ports:
-      - "\${POSTGRES_PORT}:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -1012,7 +1020,7 @@ ${photo_volumes}
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:${ai_image_tag}
+    image: siyuan044/trailsnap-ai:\${IMAGE_TAG}-\${AI_MODE}
     container_name: trailsnap-ai
     restart: always
     expose: ["8001"]
@@ -1240,7 +1248,7 @@ do_upgrade() {
       POSTGRES_PORT)   POSTGRES_PORT="$value" ;;
       TZ)              TZ="$value" ;;
       IMAGE_TAG)       IMAGE_TAG="$value" ;;
-      AI_MODE)         AI_MODE="$value" ;;
+      AI_MODE)         DETECTED_AI_MODE="$value" ;;
       PHOTO_DIR)       PHOTO_DIR="$value" ;;
       POSTGRES_PASSWORD) PG_PASSWORD="$value" ;;
     esac
@@ -1350,7 +1358,7 @@ TrailSnap (行影集) — 一键安装脚本
   --postgres-port 端口   PostgreSQL 端口（默认：5532）
   --timezone 时区        时区（默认：Asia/Shanghai）
   --ai-mode cpu|gpu      AI 模式（默认：cpu）
-  --tag latest|master    Docker 镜像标签（默认：latest）
+  --tag 版本号           Docker 镜像版本标签（默认：latest）
   --china-mirrors        配置国内 Docker 镜像加速源
   --yes, -y              非交互模式：接受所有默认值
   --upgrade              升级已安装的实例
