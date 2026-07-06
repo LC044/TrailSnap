@@ -158,7 +158,7 @@ class NavSettings(BaseModel):
     items: List[NavItemRef] = Field(default_factory=list, description="Ordered list of custom nav items")
 
 class AppSettings(BaseModel):
-    version: str = "0.6.0"
+    version: str = "0.6.1"
     ai: AISettings = Field(default_factory=AISettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     image: ImageSettings = Field(default_factory=ImageSettings)
@@ -334,4 +334,4 @@ os.makedirs('./data', exist_ok=True)
 os.makedirs('./data/uploads', exist_ok=True)
 # Global instance
 config_manager = ConfigManager()
-VERSION = "0.6.0"
+VERSION = "0.6.1"

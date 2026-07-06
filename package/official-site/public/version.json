@@ -78,5 +78,10 @@
         "version": "0.6.0",
         "update_info": "- 新增「猜城市」游戏，用一种新方式回顾旅途照片<br>- 新增任务并发度设置，可调节后台任务并发数<br>- 新增外部图库文件夹过滤，自动跳过 NAS 索引目录避免重复统计<br>- AI 推理性能大幅提升：GPU 优先、任务按类型聚合调度、推理并发化与单图容错<br>- 修复任务进程持续打印错误日志、相册任务未注册、Windows 下 llm-server 启动失败等问题",
         "download_url": "https://trailsnap.cn"
+    },
+    {
+        "version": "0.6.1",
+        "update_info": "- 新增 OpenVINO 推理后端，Intel CPU 环境自动启用以提升 AI 推理性能<br>- 安装脚本自动检测 Intel CPU 并切换 openvino 模式，AI 镜像标签统一为「版本号-模式」<br>- 优化侧边栏任务管理器组件<br>- 更新开发指南启动命令与安装脚本逻辑",
+        "download_url": "https://trailsnap.cn"
     }
 ]
