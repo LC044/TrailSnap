@@ -320,6 +320,21 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const suggestions = ref<SearchSuggestion[]>([])
 const searchHints = ['海边日落', '猫咪', '雪景', '花园', '城市夜景']
 
+// AI 微服务预热标记（会话级，仅触发一次，避免后续真正搜索时模型冷启动延迟）
+let aiWarmupTriggered = false
+const triggerAiWarmup = () => {
+  if (aiWarmupTriggered) return
+  aiWarmupTriggered = true
+  // fire-and-forget：发送一次极简语义搜索请求，激活后端的 embedding 调用链以预热 AI 微服务
+  searchService
+    .searchByText({ text: 'warmup', limit: 1 })
+    .catch((e) => {
+      // 预热失败不影响后续使用，重置标记以便下次 focus 再试一次
+      aiWarmupTriggered = false
+      console.warn('AI warmup failed:', e)
+    })
+}
+
 // 自定义导航项
 const { items: navItemsList, removeItem: removeNavItem, addItem: addNavItem } = injectNavItems()
 const showAddNavDialog = ref(false)
@@ -386,6 +401,8 @@ const handleBlur = () => {
 
 const handleFocus = () => {
   showDropdown.value = true
+  // 点击搜索框时预热 AI 微服务，避免后续真正搜索时模型冷启动造成卡顿
+  triggerAiWarmup()
   if (searchText.value) {
     fetchSuggestions(searchText.value)
   }
