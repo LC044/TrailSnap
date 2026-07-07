@@ -218,6 +218,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { useFabricEditor } from '@/composables/useFabricEditor'
 import type { EditorTool } from '@/types/editor'
 import { useHotkeys } from '@/composables/useHotkeys'
+import { embedExifFromUrl } from '@/utils/exif'
 
 const props = defineProps<{
   imageUrl: string
@@ -318,11 +319,19 @@ function setupCanvasEvents() {
 function handleSave(mode: 'replace' | 'new') {
   if (isSaving.value) return
   isSaving.value = true
-  editor.exportToBlob('jpeg', 0.92).then((blob) => {
+  editor.exportToBlob('jpeg', 0.92).then(async (blob) => {
+    // Canvas 导出会丢失全部 EXIF，这里从原图读取 EXIF 并重新嵌入编辑结果，
+    // 以保留相机型号、GPS、拍摄时间等元数据（替换原图 & 另存为新图均生效）。
+    let finalBlob = blob
+    try {
+      finalBlob = await embedExifFromUrl(props.imageUrl, blob)
+    } catch (err) {
+      console.warn('重新嵌入 EXIF 失败，将保存不含 EXIF 的图片:', err)
+    }
     const ext = 'jpg'
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const filename = `edited_${timestamp}.${ext}`
-    emit('save', blob, filename, mode)
+    emit('save', finalBlob, filename, mode)
   }).catch((err) => {
     ElMessage.error('导出图片失败: ' + err.message)
   }).finally(() => {
