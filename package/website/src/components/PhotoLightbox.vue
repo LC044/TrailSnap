@@ -235,7 +235,7 @@
       />
 
       <!-- First-launch shortcut hint toast -->
-      <Transition name="fade">
+      <!-- <Transition name="fade">
         <div
           v-if="!isEditing && showShortcutHint"
           class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[103] bg-gray-900/80 dark:bg-gray-100/90 text-white dark:text-gray-900 rounded-lg px-4 py-2 text-sm backdrop-blur-sm pointer-events-none select-none"
@@ -247,7 +247,7 @@
           <span class="text-primary-500 font-medium">Del</span> 删除 ·
           <span class="text-primary-500 font-medium">?</span> 查看全部
         </div>
-      </Transition>
+      </Transition> -->
 
       <!-- Shortcut help panel -->
       <el-dialog
