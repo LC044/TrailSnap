@@ -134,6 +134,11 @@ onMounted(async () => {
     hasUsers.value = status.has_users;
     // Show register link when: no users yet (first-time setup) OR registration is explicitly allowed
     allowRegistration.value = !status.has_users || status.allow_registration;
+    // 初次使用（尚无任何用户）时直接跳转到注册页，不展示登录界面
+    if (!status.has_users) {
+      router.replace('/register');
+      return;
+    }
   } catch (error) {
     console.error('Failed to get auth status:', error);
   }
