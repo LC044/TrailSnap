@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.3.0"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -30,6 +30,15 @@ CHINA_MIRRORS=(
   "https://docker.1ms.run"
   "https://docker.xuanyuan.me"
   "https://dockerproxy.net"
+  "https://docker.1panel.live"
+  "https://dockerproxy.cn"
+  "https://docker.nastool.de"
+  "https://docker.agsv.top"
+  "https://docker.agsvpt.work"
+  "https://docker.m.daocloud.io"
+  "https://dockerhub.anzu.vip"
+  "https://docker.chenby.cn"
+  "https://docker.jijiai.cn"
 )
 
 # ── 颜色 ─────────────────────────────────────────────────────────────────────
@@ -507,24 +516,57 @@ test_mirror() {
   [[ "$code" == "200" || "$code" == "401" || "$code" == "403" ]]
 }
 
-configure_mirrors_linux() {
-  step "配置国内 Docker 镜像加速源..."
-
-  local available_mirrors=()
-  for mirror in "${CHINA_MIRRORS[@]}"; do
-    info "测试镜像源：${mirror}..."
-    if test_mirror "$mirror"; then
-      available_mirrors+=("$mirror")
-      info "  ✓ 可用"
-    else
-      warn "  ✗ 不可达"
-    fi
-  done
-
-  if [[ ${#available_mirrors[@]} -eq 0 ]]; then
-    warn "没有可用的镜像源，跳过配置。"
-    return
+# 判断当前是否位于中国大陆：依次看时区、系统语言、公网 IP 归属地
+detect_in_china() {
+  # 显式指定 --china-mirrors 时直接认定
+  if [[ "$CHINA_MIRRORS_FLAG" == true ]]; then
+    return 0
   fi
+
+  # 1) 时区
+  local tz=""
+  if [[ -f /etc/timezone ]]; then
+    tz="$(cat /etc/timezone 2>/dev/null | tr -d '[:space:]')"
+  fi
+  if [[ -z "$tz" ]] && command -v timedatectl &>/dev/null; then
+    tz="$(timedatectl show -p Timezone --value 2>/dev/null | tr -d '[:space:]')"
+    if [[ -z "$tz" ]]; then
+      tz="$(timedatectl 2>/dev/null | awk -F': ' '/Time zone/ {print $2}' | awk '{print $1}')"
+    fi
+  fi
+  # macOS：/etc/localtime 是指向 zoneinfo 的软链接
+  if [[ -z "$tz" ]] && [[ -L /etc/localtime ]]; then
+    tz="$(readlink /etc/localtime 2>/dev/null)"
+    tz="${tz##*zoneinfo/}"
+  fi
+  case "$tz" in
+    Asia/Shanghai|Asia/Chongqing|Asia/Urumqi|Asia/Harbin|Asia/Chungking|PRC)
+      return 0
+      ;;
+  esac
+
+  # 2) 系统语言/区域
+  if [[ "${LANG:-}${LC_ALL:-}" == *zh_CN* ]]; then
+    return 0
+  fi
+
+  # 3) 公网 IP 归属地兜底
+  local country=""
+  if command -v curl &>/dev/null; then
+    country="$(curl -s --connect-timeout 3 --max-time 5 https://ipinfo.io/country 2>/dev/null | tr -d '[:space:]')"
+    if [[ -z "$country" ]]; then
+      country="$(curl -s --connect-timeout 3 --max-time 5 https://ipapi.co/country/ 2>/dev/null | tr -d '[:space:]')"
+    fi
+  fi
+  if [[ "$country" == "CN" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# 将可用镜像源合并写入 /etc/docker/daemon.json 并重启 Docker（Linux / WSL 原生）
+configure_mirrors_linux() {
+  local available_mirrors=("$@")
 
   local daemon_json="/etc/docker/daemon.json"
 
@@ -561,41 +603,146 @@ print(json.dumps(cfg, indent=2))
     echo "{\"registry-mirrors\": [${mirrors_line}]}" | sudo tee "$daemon_json" >/dev/null
   fi
 
-  sudo systemctl restart docker
-  info "Docker 镜像源已配置，Docker 已重启。"
+  sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
+  info "Docker 镜像源已写入 ${daemon_json}，Docker 已重启。"
+}
+
+# 将可用镜像源写入 Docker Desktop 的 daemon.json 并重启（macOS / WSL2 Docker Desktop）
+configure_mirrors_desktop() {
+  local available_mirrors=("$@")
+
+  # 确定 daemon.json 路径与重启方式
+  local daemon_json=""
+  local restart_kind=""
+  case "$OS" in
+    macos)
+      daemon_json="$HOME/.docker/daemon.json"
+      restart_kind="macos"
+      ;;
+    wsl2)
+      # Docker Desktop 集成：写 Windows 侧 %USERPROFILE%\.docker\daemon.json
+      local win_profile=""
+      if command -v cmd.exe &>/dev/null; then
+        win_profile="$(cmd.exe /c 'echo %USERPROFILE%' 2>/dev/null | tr -d '\r')"
+      fi
+      if [[ -n "$win_profile" ]] && command -v wslpath &>/dev/null; then
+        local wsl_profile
+        wsl_profile="$(wslpath -u "$win_profile" 2>/dev/null || true)"
+        if [[ -n "$wsl_profile" ]]; then
+          daemon_json="${wsl_profile}/.docker/daemon.json"
+          restart_kind="wsl2-desktop"
+        fi
+      fi
+      # 回退：WSL 内原生 Docker Engine
+      if [[ -z "$daemon_json" ]]; then
+        daemon_json="/etc/docker/daemon.json"
+        restart_kind="linux"
+      fi
+      ;;
+  esac
+
+  # 是否需要 sudo（root 拥有的系统路径）
+  local need_sudo=false
+  if [[ "$daemon_json" == /etc/* ]] && [[ "$(id -u)" -ne 0 ]]; then
+    need_sudo=true
+  fi
+
+  # 确保目录存在
+  if $need_sudo; then
+    sudo mkdir -p "$(dirname "$daemon_json")"
+  else
+    mkdir -p "$(dirname "$daemon_json")"
+  fi
+
+  # 合并 JSON 内容
+  local content=""
+  if command -v python3 &>/dev/null; then
+    local mirrors_json
+    mirrors_json="$(printf '%s\n' "${available_mirrors[@]}" | python3 -c '
+import json, sys
+mirrors = [line.strip() for line in sys.stdin if line.strip()]
+print(json.dumps(mirrors))
+')"
+    content="$(python3 -c '
+import json, sys
+p = sys.argv[1]; m = sys.argv[2]
+try:
+    with open(p) as f:
+        cfg = json.load(f)
+except Exception:
+    cfg = {}
+cfg["registry-mirrors"] = json.loads(m)
+print(json.dumps(cfg, indent=2))
+' "$daemon_json" "$mirrors_json")"
+  else
+    local mirrors_line
+    mirrors_line="$(printf '"%s",' "${available_mirrors[@]}")"
+    mirrors_line="${mirrors_line%,}"
+    content="{\"registry-mirrors\": [${mirrors_line}]}"
+  fi
+
+  if $need_sudo; then
+    echo "$content" | sudo tee "$daemon_json" >/dev/null
+  else
+    echo "$content" > "$daemon_json"
+  fi
+  info "Docker 镜像源已写入 ${daemon_json}。"
+
+  # 重启使配置生效
+  case "$restart_kind" in
+    macos)
+      osascript -e 'quit app "Docker"' 2>/dev/null || pkill -f "Docker Desktop" 2>/dev/null || true
+      sleep 5
+      open -a Docker 2>/dev/null || open -a "Docker Desktop" 2>/dev/null || true
+      info "等待 Docker Desktop 重启..."
+      wait_for_docker_desktop 60 3 || warn "Docker Desktop 未能及时重启，请手动重启。"
+      ;;
+    wsl2-desktop)
+      taskkill.exe /F /IM "Docker Desktop.exe" >/dev/null 2>&1 || true
+      sleep 5
+      try_start_docker_desktop || warn "未能自动启动 Docker Desktop，请手动重启。"
+      wait_for_docker_desktop 60 3 || warn "Docker Desktop 未能及时重启，请手动重启。"
+      ;;
+    linux)
+      sudo systemctl restart docker 2>/dev/null || sudo service docker restart 2>/dev/null || true
+      ;;
+  esac
+  info "Docker 镜像源已配置。"
 }
 
 configure_mirrors() {
+  # 决定是否配置：显式 --china-mirrors 或检测到位于中国大陆
   if [[ "$CHINA_MIRRORS_FLAG" != true ]]; then
-    local answer
-    answer="$(prompt_yes_no "是否配置国内 Docker 镜像加速源？" "y")"
-    [[ "$answer" != "y" ]] && return
+    if detect_in_china; then
+      info "检测到当前位于中国大陆，自动配置 Docker 镜像加速源。"
+    else
+      info "未检测到位于中国大陆，跳过镜像加速源配置。（如需启用请加 --china-mirrors）"
+      return
+    fi
+  fi
+
+  step "配置国内 Docker 镜像加速源..."
+
+  # 测试可达性，仅保留可用镜像源
+  local available_mirrors=()
+  for mirror in "${CHINA_MIRRORS[@]}"; do
+    info "测试镜像源：${mirror}..."
+    if test_mirror "$mirror"; then
+      available_mirrors+=("$mirror")
+      info "  ✓ 可用"
+    else
+      warn "  ✗ 不可达"
+    fi
+  done
+  if [[ ${#available_mirrors[@]} -eq 0 ]]; then
+    warn "没有可用的镜像源，跳过配置。"
+    return
   fi
 
   case "$OS" in
-    linux)
-      configure_mirrors_linux
-      ;;
-    macos|wsl2)
-      echo ""
-      info "Docker Desktop 镜像源配置方法："
-      info "  1. 打开 Docker Desktop → Settings → Docker Engine"
-      info "  2. 在 JSON 配置中添加以下内容："
-      echo ""
-      echo '  {'
-      echo '    "registry-mirrors": ['
-      for mirror in "${CHINA_MIRRORS[@]}"; do
-        echo "      \"${mirror}\","
-      done
-      echo '    ]'
-      echo '  }'
-      echo ""
-      info "  3. 点击 Apply & Restart"
-      echo ""
-      local cont
-      cont="$(prompt_yes_no "配置完成后是否继续？" "y")"
-      [[ "$cont" != "y" ]] && die "请配置镜像源后重新运行脚本。"
-      ;;
+    linux)      configure_mirrors_linux "${available_mirrors[@]}" ;;
+    macos|wsl2) configure_mirrors_desktop "${available_mirrors[@]}" ;;
+    *)          warn "未知系统 $OS，跳过镜像源配置。" ;;
   esac
   log "镜像源配置完成"
 }
@@ -1263,6 +1410,7 @@ do_upgrade() {
   fi
   generate_env
   generate_compose
+  configure_mirrors
   pull_images
 
   cd "$INSTALL_DIR"

@@ -52,7 +52,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.2.0"
+$ScriptVersion = "1.4.0"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -66,7 +66,16 @@ $script:PgPassword = ""
 $ChinaMirrorList = @(
     "https://docker.1ms.run",
     "https://docker.xuanyuan.me",
-    "https://dockerproxy.net"
+    "https://dockerproxy.net",
+    "https://docker.1panel.live",
+    "https://dockerproxy.cn",
+    "https://docker.nastool.de",
+    "https://docker.agsv.top",
+    "https://docker.agsvpt.work",
+    "https://docker.m.daocloud.io",
+    "https://dockerhub.anzu.vip",
+    "https://docker.chenby.cn",
+    "https://docker.jijiai.cn"
 )
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────────
@@ -482,34 +491,198 @@ function Test-GpuSupport {
 
 # ── 国内镜像源 ────────────────────────────────────────────────────────────────
 
+# 判断当前是否位于中国大陆：依次看时区、系统区域设置、公网 IP 归属地
+function Test-InChina {
+    # 显式指定 -ChinaMirrors 时直接认定
+    if ($ChinaMirrors) { return $true }
+
+    # 1) 时区（Windows 时区 ID 为 "China Standard Time"）
+    try {
+        $tzId = [System.TimeZoneInfo]::Local.Id
+        if ($tzId -match "China Standard Time|Asia/Shanghai|Asia/Chongqing|Asia/Urumqi|Asia/Harbin") {
+            return $true
+        }
+    } catch {}
+
+    # 2) 系统区域设置
+    try {
+        $cult = [System.Globalization.CultureInfo]::CurrentCulture.Name
+        if ($cult -ieq "zh-CN" -or $cult -ieq "zh-Hans") { return $true }
+    } catch {}
+
+    # 3) 公网 IP 归属地兜底
+    try {
+        $country = (Invoke-RestMethod -Uri "https://ipinfo.io/country" -TimeoutSec 5 -ErrorAction Stop).Trim()
+        if ($country -eq "CN") { return $true }
+    } catch {}
+
+    return $false
+}
+
+# 测试单个镜像源可达性：/v2/ 端点返回 200/401/403 均视为可用
+function Test-Mirror {
+    param([string]$Mirror)
+    $code = 0
+    try {
+        $resp = Invoke-WebRequest -Uri "$Mirror/v2/" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+        $code = [int]$resp.StatusCode
+    } catch {
+        if ($_.Exception.Response) {
+            $code = [int]$_.Exception.Response.StatusCode
+        } else {
+            return $false
+        }
+    }
+    return ($code -eq 200 -or $code -eq 401 -or $code -eq 403)
+}
+
+# 重启 Docker Desktop 以使 daemon.json 配置生效
+function Restart-DockerDesktop {
+    Write-Info "正在重启 Docker Desktop 以应用镜像源配置..."
+
+    # 优先尝试优雅关闭，超时后再强制结束
+    $dockerProc = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
+    if ($dockerProc) {
+        try {
+            $dockerProc | Stop-Process -Force -ErrorAction Stop
+        } catch {}
+        Write-Info "已关闭 Docker Desktop，等待进程退出..."
+        Start-Sleep -Seconds 5
+    }
+
+    # 同时清理可能残留的后端进程
+    Get-Process -Name "com.docker.backend","vpnkit-bridge","com.docker.service" -ErrorAction SilentlyContinue |
+        ForEach-Object { try { $_ | Stop-Process -Force -ErrorAction SilentlyContinue } catch {} }
+
+    # 启动 Docker Desktop
+    $dockerExe = "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe"
+    if (-not (Test-Path $dockerExe)) {
+        $dockerExe = "${env:LOCALAPPDATA}\Programs\Docker\Docker\Docker Desktop.exe"
+    }
+    if (-not (Test-Path $dockerExe)) {
+        Write-Warn "未找到 Docker Desktop 可执行文件，请手动重启 Docker Desktop。"
+        return $false
+    }
+
+    Start-Process $dockerExe
+    Write-Info "等待 Docker Desktop 重新启动..."
+    $retries = 0
+    while (-not (Test-DockerRunning) -and $retries -lt 60) {
+        Start-Sleep -Seconds 3
+        $retries++
+        Write-Host -NoNewline "."
+    }
+    Write-Host ""
+
+    if (-not (Test-DockerRunning)) {
+        Write-Warn "Docker Desktop 未能在规定时间内重启完成。"
+        return $false
+    }
+
+    Write-Info "Docker Desktop 已重启。"
+    return $true
+}
+
+# 自动写入 Docker daemon.json 并重启 Docker Desktop 使镜像加速源生效
+# 仅当显式 -ChinaMirrors 或检测到位于中国大陆时才配置；仅写入可达的镜像源
 function Configure-Mirrors {
+    # 决定是否配置：显式 -ChinaMirrors 或检测到位于中国大陆
     if (-not $ChinaMirrors) {
-        if (-not (Read-YesNo "是否配置国内 Docker 镜像加速源？" "y")) {
+        if (Test-InChina) {
+            Write-Info "检测到当前位于中国大陆，自动配置 Docker 镜像加速源。"
+        } else {
+            Write-Info "未检测到位于中国大陆，跳过镜像加速源配置。（如需启用请加 -ChinaMirrors 参数）"
             return
         }
     }
 
     Write-Step "配置 Docker 镜像加速源..."
-    Write-Host ""
-    Write-Info "Docker Desktop 镜像源配置方法（以下步骤需要手动操作）："
-    Write-Info "  1. 打开 Docker Desktop -> Settings -> Docker Engine"
-    Write-Info "  2. 在 JSON 配置中添加以下内容："
+
+    # 测试每个镜像源的可达性，仅保留可用者
+    Write-Info "测试镜像源可达性（仅保留可用源）..."
+    $availableMirrors = @()
+    foreach ($mirror in $ChinaMirrorList) {
+        Write-Host -NoNewline "  测试 ${mirror} ... "
+        if (Test-Mirror $mirror) {
+            Write-Host "可用" -ForegroundColor Green
+            $availableMirrors += $mirror
+        } else {
+            Write-Host "不可达，跳过" -ForegroundColor Yellow
+        }
+    }
+
+    if ($availableMirrors.Count -eq 0) {
+        Write-Warn "没有可用的镜像源，跳过配置。"
+        return
+    }
+
+    $dockerConfigDir = Join-Path $env:USERPROFILE ".docker"
+    $daemonJsonPath = Join-Path $dockerConfigDir "daemon.json"
+
+    if (-not (Test-Path $dockerConfigDir)) {
+        New-Item -ItemType Directory -Path $dockerConfigDir -Force | Out-Null
+    }
+
+    # 读取并解析现有 daemon.json，保留已有字段（兼容 PowerShell 5.1 与 7+）
+    $config = $null
+    if (Test-Path $daemonJsonPath) {
+        try {
+            $raw = Get-Content $daemonJsonPath -Raw -Encoding UTF8
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $config = $raw | ConvertFrom-Json
+            }
+        } catch {
+            $backupPath = "$daemonJsonPath.bak"
+            Copy-Item $daemonJsonPath $backupPath -Force
+            Write-Warn "现有 daemon.json 解析失败，已备份至 $backupPath"
+            $config = $null
+        }
+    }
+
+    # 构建有序字典，保留原配置并覆盖 registry-mirrors
+    $newConfig = [ordered]@{}
+    if ($config) {
+        $config.PSObject.Properties | ForEach-Object {
+            $newConfig[$_.Name] = $_.Value
+        }
+    }
+
+    # 若已配置相同的镜像源集合（忽略顺序），则无需重复写入与重启
+    $existing = @($newConfig["registry-mirrors"] | Where-Object { $_ })
+    if ($existing.Count -gt 0) {
+        $existingSorted = ($existing | Sort-Object) -join ","
+        $availableSorted = ($availableMirrors | Sort-Object) -join ","
+        if ($existingSorted -eq $availableSorted) {
+            Write-Info "镜像加速源已配置且与当前可用集合一致，无需重复操作。"
+            Write-Log "镜像加速源已存在，跳过写入"
+            return
+        }
+    }
+
+    $newConfig["registry-mirrors"] = $availableMirrors
+    $jsonOut = $newConfig | ConvertTo-Json -Depth 10
+    Set-Content -Path $daemonJsonPath -Value $jsonOut -Encoding UTF8
+
+    Write-Info "已写入可用镜像加速源到 $daemonJsonPath"
     Write-Host ""
     Write-Host "  {" -ForegroundColor White
     Write-Host "    `"registry-mirrors`": [" -ForegroundColor White
-    foreach ($mirror in $ChinaMirrorList) {
+    foreach ($mirror in $availableMirrors) {
         Write-Host "      `"$mirror`"," -ForegroundColor White
     }
     Write-Host "    ]" -ForegroundColor White
     Write-Host "  }" -ForegroundColor White
     Write-Host ""
-    Write-Info "  3. 点击 Apply & Restart"
-    Write-Host ""
+    Write-Log "已写入 Docker 镜像加速源配置: $daemonJsonPath"
 
-    if (-not (Read-YesNo "配置完成后是否继续？" "y")) {
-        Stop-Script "请配置镜像源后重新运行脚本。"
+    # 重启 Docker Desktop 使配置生效
+    if (-not (Restart-DockerDesktop)) {
+        Write-Warn "配置已写入，但 Docker Desktop 未能自动重启。"
+        Write-Info "请手动重启 Docker Desktop 后重新运行本脚本。"
+        if (-not (Read-YesNo "是否在手动重启后继续？" "y")) {
+            Stop-Script "请重启 Docker Desktop 后重新运行脚本。"
+        }
     }
-    Write-Log "镜像源配置完成"
 }
 
 # ── 配置收集 ──────────────────────────────────────────────────────────────────
@@ -1279,6 +1452,7 @@ if (Test-Path $existingCompose) {
     switch ($choice) {
         "1" {
             Ensure-Docker
+            Configure-Mirrors
             Do-Upgrade
             exit 0
         }
@@ -1349,6 +1523,7 @@ Ensure-Docker
 
 # 处理升级
 if ($Upgrade) {
+    Configure-Mirrors
     Do-Upgrade
     exit 0
 }
@@ -1370,6 +1545,9 @@ New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "data") -Force 
 # 生成配置文件
 Generate-EnvFile
 Generate-ComposeFile
+
+# 配置国内镜像加速源（在拉取镜像之前，加速后续下载）
+Configure-Mirrors
 
 # 拉取并启动
 Pull-Images
