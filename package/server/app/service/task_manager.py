@@ -171,17 +171,23 @@ class TaskManager:
                 if wp is not None and wp.is_alive():
                     continue
                 # Worker is dead (or never started). Only restart if there is
-                # unfinished work; otherwise respect the idle-exit.
+                # dispatchable unfinished work; otherwise respect the idle-exit.
+                # Tasks belonging to paused categories are intentionally not
+                # processed, so they must not trigger a restart — otherwise the
+                # worker would idle-exit and be yanked back forever.
                 db = SessionLocal()
                 try:
+                    paused_types = set(self._load_system_state('paused_categories', []) or [])
+                    dispatchable = crud_task.count_dispatchable_tasks(db, paused_types)
                     pending = crud_task.count_tasks_by_status(db, TaskStatus.PENDING)
                     processing = crud_task.count_tasks_by_status(db, TaskStatus.PROCESSING)
                 finally:
                     db.close()
-                if pending + processing > 0:
+                if dispatchable > 0:
                     logging.warning(
                         f"Worker process dead with {pending} pending + {processing} processing "
-                        f"tasks; restarting to recover."
+                        f"tasks ({dispatchable} dispatchable, {pending + processing - dispatchable} paused); "
+                        f"restarting to recover."
                     )
                     self.start_worker_if_needed()
             except Exception as e:

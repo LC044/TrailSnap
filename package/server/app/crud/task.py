@@ -51,6 +51,18 @@ def get_tasks_by_ids(db: Session, task_ids: List[UUID]) -> List[Task]:
 def count_tasks_by_status(db: Session, status: str) -> int:
     return db.query(Task).filter(Task.status == status).count()
 
+def count_dispatchable_tasks(db: Session, paused_types: set = None) -> int:
+    """Count PENDING + PROCESSING tasks whose type is NOT in ``paused_types``.
+
+    Used by the worker watchdog to decide whether to restart a dead worker:
+    if the only unfinished work belongs to paused categories, the worker's
+    idle-exit was intentional and should not be overridden.
+    """
+    q = db.query(Task).filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
+    if paused_types:
+        q = q.filter(Task.type.notin_(list(paused_types)))
+    return q.count()
+
 def get_tasks_by_status(db: Session, status: str) -> List[Task]:
     return db.query(Task).filter(Task.status == status).all()
 
