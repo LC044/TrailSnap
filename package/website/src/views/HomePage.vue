@@ -7,6 +7,11 @@
         <button class="text-[#666] dark:text-gray-300 dark:bg-gray-800 hover:text-[#4A90E2] transition-colors" @click="$router.push('/recycle-bin')" title="回收站">
           <i class="mgc_delete_2_line text-2xl"></i>
         </button>
+        <button class="text-[#666] dark:text-gray-300 dark:bg-gray-800 hover:text-[#4A90E2] transition-colors relative" @click="showStorageDialog = true" title="存储中心">
+          <i class="mgc_hard_drive_line text-2xl"></i>
+          <!-- Badge can be controlled by storage usage state if we fetch it -->
+          <span v-if="showStorageBadge" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+        </button>
         <button class="text-[#666] dark:text-gray-300 dark:bg-gray-800 hover:text-[#4A90E2] transition-colors md:hidden" @click="$router.push('/settings')" title="设置">
           <i class="mgc_settings_4_line text-2xl"></i>
         </button>
@@ -83,6 +88,31 @@
       <i class="mgc_warning_line text-4xl mb-2"></i>
       <p>加载失败，请下拉刷新</p>
     </div>
+
+    <!-- Storage Center Dialog -->
+    <el-dialog
+      v-model="showStorageDialog"
+      width="92%"
+      top="4vh"
+      :show-close="false"
+      class="storage-dialog"
+      destroy-on-close
+    >
+      <template #header="{ close }">
+        <div class="flex justify-between items-center px-2">
+          <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+            <i class="mgc_hard_drive_line text-primary-500"></i>
+            存储空间管理
+          </h2>
+          <button @click="close" class="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors group">
+            <i class="mgc_close_line text-xl md:text-2xl text-gray-500 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-white transition-colors"></i>
+          </button>
+        </div>
+      </template>
+      <div class="h-[80vh] overflow-y-auto scrollbar-hide px-4 md:px-6 bg-gray-50/50 dark:bg-gray-900/50">
+        <StorageCenter />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -98,20 +128,19 @@ import FaceSection from '@/components/home/FaceSection.vue';
 import ContentStats from '@/components/home/ContentStats.vue';
 import TimeChart from '@/components/home/TimeChart.vue';
 import OnThisDay from '@/components/OnThisDay.vue';
+import StorageCenter from '@/views/settings/StorageCenter.vue';
 
 const loading = ref(false);
 const dashboardData = ref<DashboardResponse | null>(null);
 const showStorageDialog = ref(false);
+const showStorageBadge = ref(false);
 const annualYear = computed(() => new Date().getFullYear() - 1);
 
 const fetchData = async () => {
   loading.value = true;
   try {
-    dashboardData.value = await dashboardApi.getOverview();
-    // Toast success
-    if (loading.value) { // only if triggered manually or first load
-       // ElMessage.success('数据刷新成功');
-    }
+    const dashboardRes = await dashboardApi.getOverview();
+    dashboardData.value = dashboardRes;
   } catch (error) {
     console.error(error);
     ElMessage.error('加载数据失败');
@@ -124,6 +153,22 @@ onMounted(() => {
   fetchData();
 });
 </script>
+
+<style scoped>
+:deep(.storage-dialog) {
+  border-radius: 24px;
+  overflow: hidden;
+  max-width: 1200px;
+}
+:deep(.storage-dialog .el-dialog__header) {
+  margin-right: 0;
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+:deep(.storage-dialog .el-dialog__body) {
+  padding: 0;
+}
+</style>
 
 <style scoped>
 /* Any additional global overrides */
