@@ -128,7 +128,7 @@ import FaceSection from '@/components/home/FaceSection.vue';
 import ContentStats from '@/components/home/ContentStats.vue';
 import TimeChart from '@/components/home/TimeChart.vue';
 import OnThisDay from '@/components/OnThisDay.vue';
-import StorageCenter from '@/views/settings/StorageCenter.vue';
+import StorageCenter from '@/components/home/StorageCenter.vue';
 
 const loading = ref(false);
 const dashboardData = ref<DashboardResponse | null>(null);

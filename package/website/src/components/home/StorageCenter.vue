@@ -93,7 +93,7 @@
         <!-- By Device -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
-            <i class="mgc_camera_line text-orange-500 text-xl"></i> 按拍摄设备分类
+            <i class="mgc_camera_line text-orange-500 text-xl"></i> 拍摄设备分布
           </h3>
           <div ref="deviceChartRef" class="w-full h-[280px]"></div>
         </div>
@@ -195,9 +195,7 @@
         </div>
       </div>
     </div>
-    
-    <ScreenshotCleanupDialog v-model="showScreenshotDialog" />
-    
+
     <!-- Photo Lightbox for Locate -->
     <PhotoLightbox
         :image="currentLightboxImage"
@@ -217,7 +215,6 @@ import { Copy, Image as ImageIcon, Smartphone, Video } from 'lucide-vue-next';
 import { storageApi, type StorageOverview, type LargeFile } from '@/api/storage';
 import { tasksApi } from '@/api/tasks';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import ScreenshotCleanupDialog from './ScreenshotCleanupDialog.vue';
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import type { AlbumImage } from '@/types/album';
 import request from '@/utils/request';
@@ -232,8 +229,6 @@ const typeData = ref<any[]>([]);
 const deviceData = ref<any[]>([]);
 const folderData = ref<any[]>([]);
 const topLargeFiles = ref<LargeFile[]>([]);
-
-const showScreenshotDialog = ref(false);
 
 const timeGroup = ref('month');
 const timeRange = ref('30d');
@@ -299,6 +294,13 @@ const formatSize = (bytes: number) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
+// 文件类型分布图表中“中文名称 -> file_type”反查表，用于点击扇区跳转筛选
+const TYPE_NAME_TO_FILE_TYPE: Record<string, string> = {
+  '图片': 'image',
+  '视频': 'video',
+  '实况图': 'live_photo',
+};
+
 const formatDate = (dateStr: string | null) => {
   if (!dateStr) return '从未扫描';
   return new Date(dateStr).toLocaleString();
@@ -313,10 +315,10 @@ const formatDateShort = (dateStr: string | null) => {
 const recoverableItems = computed(() => {
   if (!recoverableData.value) return {};
   return {
-    similar: { label: '相似照片', icon: Copy, size: recoverableData.value.similar?.size || 0, count: recoverableData.value.similar?.count || 0, route: '/toolbox/similar' },
-    duplicate: { label: '完全重复', icon: Copy, size: recoverableData.value.duplicate?.size || 0, count: recoverableData.value.duplicate?.count || 0, route: '/toolbox/duplicate' },
-    screenshot: { label: '截图与表情包', icon: Smartphone, size: recoverableData.value.screenshot?.size || 0, count: recoverableData.value.screenshot?.count || 0, action: 'screenshot' },
-    video: { label: '大型视频', icon: Video, size: recoverableData.value.video?.size || 0, count: recoverableData.value.video?.count || 0, action: 'video' },
+    similar: { label: '相似', icon: Copy, size: recoverableData.value.similar?.size || 0, count: recoverableData.value.similar?.count || 0, route: '/toolbox/similar' },
+    duplicate: { label: '重复', icon: Copy, size: recoverableData.value.duplicate?.size || 0, count: recoverableData.value.duplicate?.count || 0, route: '/toolbox/duplicate' },
+    screenshot: { label: '截图', icon: Smartphone, size: recoverableData.value.screenshot?.size || 0, count: recoverableData.value.screenshot?.count || 0, filter: { image_types: ['Screenshot'] } },
+    video: { label: '视频', icon: Video, size: recoverableData.value.video?.size || 0, count: recoverableData.value.video?.count || 0, filter: { file_types: ['video'] } },
   };
 });
 
@@ -324,10 +326,13 @@ const handleRecoverableClick = (key: string | number) => {
   const item = recoverableItems.value[key as keyof typeof recoverableItems.value];
   if (item.route) {
     router.push(item.route);
-  } else if (item.action === 'screenshot') {
-    showScreenshotDialog.value = true;
-  } else if (item.action === 'video') {
-    ElMessage.info('大型视频清理即将上线');
+  } else if (item.filter) {
+    // 跳转到照片页面并应用对应的筛选条件
+    const query: Record<string, string> = {};
+    for (const [k, v] of Object.entries(item.filter)) {
+      query[k] = (v as string[]).join(',');
+    }
+    router.push({ path: '/photos', query });
   }
 };
 
@@ -424,7 +429,16 @@ const initCharts = () => {
 
   // Type Chart (Ring)
   if (typeChartRef.value && typeData.value.length > 0) {
-    if (!typeChart) typeChart = echarts.init(typeChartRef.value);
+    if (!typeChart) {
+      typeChart = echarts.init(typeChartRef.value);
+      // 点击某个文件类型扇区，跳转到照片页并按该类型筛选
+      typeChart.on('click', (params: any) => {
+        const fileType = TYPE_NAME_TO_FILE_TYPE[params.name];
+        if (fileType) {
+          router.push({ path: '/photos', query: { file_types: fileType } });
+        }
+      });
+    }
     typeChart.setOption({
       tooltip: {
         trigger: 'item',
@@ -436,6 +450,7 @@ const initCharts = () => {
           type: 'pie',
           radius: ['40%', '70%'],
           avoidLabelOverlap: false,
+          cursor: 'pointer',
           itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
           label: { show: false },
           data: typeData.value.map(d => ({ value: d.size, name: d.name }))

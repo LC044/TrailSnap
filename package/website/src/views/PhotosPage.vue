@@ -100,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { Filter, X, Settings, FolderPlus, UploadCloud } from 'lucide-vue-next'
@@ -111,6 +111,7 @@ import FilterPanel from '@/components/FilterPanel.vue'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const store = useAlbumStore()
 const photoStore = usePhotoStore()
 
@@ -155,8 +156,36 @@ const handlePhotoUpdate = (event: { id: string, location?: string, tags?: string
   console.log('Update photo:', event)
 }
 
+// 将路由 query 中的筛选值解析为数组（支持逗号分隔或重复参数）
+const parseQueryFilter = (value: unknown): string[] => {
+  if (value == null) return []
+  if (Array.isArray(value)) value = value.join(',')
+  return String(value).split(',').map(s => s.trim()).filter(Boolean)
+}
+
+const applyQueryFilters = () => {
+  const f = photoStore.selectedFilters
+  // 先清空已有筛选，避免上一次访问残留
+  f.image_types = []
+  f.file_types = []
+  f.years = []
+  f.cities = []
+  f.makes = []
+  f.models = []
+
+  const { image_types, file_types, years, cities, makes, models } = route.query
+  f.image_types = parseQueryFilter(image_types)
+  f.file_types = parseQueryFilter(file_types)
+  f.makes = parseQueryFilter(makes)
+  f.models = parseQueryFilter(models)
+  f.cities = parseQueryFilter(cities)
+  f.years = parseQueryFilter(years).map(y => Number(y)).filter(n => !Number.isNaN(n))
+}
+
 onMounted(() => {
   photoStore.resetAll()
+  // 从路由查询参数应用筛选条件（如存储中心跳转过来的“截图/视频/实况图”）
+  applyQueryFilters()
   // Initial Load
   photoStore.fetchAvailableFilters()
   store.fetchAlbums()
