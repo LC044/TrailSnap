@@ -69,6 +69,13 @@ export const photoApi = {
     return data.data;
   },
 
+  async getRandomPhotos(limit: number = 10): Promise<Photo[]> {
+    const data: any = await request.get('/api/photos/random', {
+      params: { limit }
+    });
+    return data.data;
+  },
+
   async batchDownload(photoIds: string[]) {
     const res = await request.post('/api/photos/batch-download', 
       { photo_ids: photoIds }, 

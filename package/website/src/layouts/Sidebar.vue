@@ -217,6 +217,18 @@
       <SidebarTaskManager :is-collapsed="isCollapsed" />
       
       <RouterLink
+        to="/swipe-filter"
+        :title="isCollapsed ? '断舍离' : undefined"
+        class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
+        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute('/swipe-filter') }"
+      >
+        <Layers class="w-5 h-5 shrink-0" />
+        <transition name="fade">
+          <span v-if="!isCollapsed" class="ml-3 truncate">断舍离</span>
+        </transition>
+      </RouterLink>
+
+      <RouterLink
         to="/recycle-bin"
         :title="isCollapsed ? '回收站' : undefined"
         class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
@@ -274,7 +286,8 @@ import {
   Sparkles,
   Plus,
   Bookmark,
-  Calendar
+  Calendar,
+  Layers
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'

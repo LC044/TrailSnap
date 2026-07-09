@@ -238,6 +238,8 @@ const navLinks = [
 const moreLinks = [
   { label: '车票', href: '/ticket' },
   { label: '工具箱', href: '/toolbox' },
+  { label: '断舍离', href: '/swipe-filter' },
+  { label: '回收站', href: '/recycle-bin' },
   { label: '设置', href: '/settings' },
 ]
 

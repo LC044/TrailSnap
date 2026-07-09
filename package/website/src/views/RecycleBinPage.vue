@@ -1,8 +1,8 @@
 <template>
   <div class="recycle-bin-page container mx-auto flex flex-col">
     <!-- Header -->
-    <div class="sticky top-[60px] md:top-0 z-30 pointer-events-none mb-4">
-      <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-4 py-3 pointer-events-auto">
+    <div class="sticky top-[10px] md:top-0 z-30 pointer-events-none mb-4 md:mb-6">
+      <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-2 md:px-4 py-3 pointer-events-auto">
         <div class="flex items-center gap-3 w-full max-w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
           <button @click="router.back()" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -14,11 +14,34 @@
             <!-- <p class="text-xs text-gray-500 truncate">回收站中的照片将在保留期后被永久删除</p> -->
           </div>
         </div>
+
+        <!-- Top Batch Actions -->
+        <div v-if="selectedIds.length > 0" class="flex items-center gap-1 sm:gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-2 sm:px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300 mr-1 hidden sm:inline">已选 {{ selectedIds.length }} 项</span>
+          
+          <button @click="handleRestore(selectedIds)" class="text-sm px-2 sm:px-3 py-1.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 rounded-lg transition-colors flex items-center gap-1.5 font-medium">
+            <RefreshCcw class="w-4 h-4" /> 
+            <span class="hidden sm:inline">恢复照片</span>
+            <span class="sm:hidden">恢复</span>
+          </button>
+          
+          <button @click="handlePermanentDelete(selectedIds)" class="text-sm px-2 sm:px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-colors flex items-center gap-1.5 font-medium">
+            <Trash2 class="w-4 h-4" /> 
+            <span class="hidden sm:inline">永久删除</span>
+            <span class="sm:hidden">删除</span>
+          </button>
+          
+          <div class="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+          
+          <button @click="cancelSelection" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500 dark:text-gray-400" title="取消选择">
+             <X class="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Gallery -->
-    <div class="mx-auto w-full">
+    <div class="mx-auto w-full px-2 sm:px-4">
       <!-- Empty State -->
       <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
@@ -29,23 +52,16 @@
 
       <FlatPhotoGallery
         v-else
+        ref="galleryRef"
         :photos="photos"
         :loading="loading && photos.length === 0"
         delete-label="永久删除"
         :pending-remove-ids="pendingRemoveIds"
+        :show-action-bar="false"
         @click-photo="openLightbox"
         @batch-delete="handlePermanentDelete"
+        @selection-change="handleSelectionChange"
       >
-        <template #batch-actions="{ selectedIds, clearSelection }">
-          <el-dropdown-item
-              @click="handleRestore(Array.from(selectedIds)); clearSelection()"
-          >
-              <div class="flex items-center gap-2 text-primary-600">
-                <RefreshCcw class="w-4 h-4" />
-                <span>恢复照片</span>
-              </div>
-          </el-dropdown-item>
-        </template>
         <template #overlay-actions="{ photo }">
            <div class="text-xs text-white/90 bg-black/50 px-2 py-0.5 rounded-full flex items-center gap-1">
              <Clock class="w-3 h-3" />
@@ -85,7 +101,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { RefreshCcw, ArrowLeft, Trash2, Clock } from 'lucide-vue-next'
+import { RefreshCcw, ArrowLeft, Trash2, Clock, X } from 'lucide-vue-next'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -101,6 +117,17 @@ const pendingRemoveIds = ref(new Set<string>())
 const skip = ref(0)
 const limit = 100
 const hasMore = ref(true)
+
+const galleryRef = ref<InstanceType<typeof FlatPhotoGallery> | null>(null)
+const selectedIds = ref<string[]>([])
+
+const handleSelectionChange = (ids: string[]) => {
+  selectedIds.value = ids
+}
+
+const cancelSelection = () => {
+  galleryRef.value?.exitSelectionMode()
+}
 
 // Config
 const retentionDays = ref(7)
@@ -177,9 +204,7 @@ const handlePermanentDelete = (ids: string[], callback?: (success: boolean) => v
   showDeleteConfirm.value = true
   confirmMessage.value = `确定要永久删除这 ${ids.length} 张照片吗？该操作不可恢复！`
   pendingDeleteIds.value = ids
-  if (callback) {
-    deleteCallback = callback
-  }
+  deleteCallback = callback || null
 }
 
 const confirmDelete = async () => {
@@ -197,6 +222,7 @@ const confirmDelete = async () => {
         deleteCallback(true)
         deleteCallback = null
     }
+    cancelSelection()
   } catch (error) {
     console.error(error)
     ElMessage.error('永久删除失败')
@@ -255,6 +281,7 @@ const handleRestore = async (ids: string[]) => {
     await request.post('/api/photos/recycle-bin/restore', { photo_ids: ids })
     ElMessage.success(`成功恢复 ${ids.length} 张照片`)
     photos.value = photos.value.filter(p => !ids.includes(p.id))
+    cancelSelection()
   } catch (error) {
     console.error(error)
     ElMessage.error('恢复失败')

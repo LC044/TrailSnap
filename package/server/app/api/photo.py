@@ -24,7 +24,7 @@ from sqlalchemy import func
 import app.crud.photo
 from app.core.config_manager import config_manager
 from app.crud.photo import save_and_create_photo
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.crud import album as crud_album
 from app.crud import face as crud_face
 from app.crud import tag as crud_tag
@@ -462,6 +462,19 @@ def get_photo_description(
              raise HTTPException(status_code=403, detail="Not authorized")
     
     return desc
+
+
+@router.get("/random", response_model=BaseResponse[List[PhotoDetail]], summary="获取随机照片")
+def get_random_photos(
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    获取未删除的随机图片
+    """
+    photos = app.crud.photo.get_random_photos(db, user_id=current_user.id, limit=limit)
+    return BaseResponse(code=0, msg="success", data=photos)
 
 
 @router.get("/on-this-day", response_model=List[PhotoDetail])

@@ -1021,3 +1021,11 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
             selected_embeddings.append(embedding)
 
     return result_photos
+
+def get_random_photos(db: Session, user_id: UUID, limit: int = 10):
+    query = db.query(Photo).options(
+        joinedload(Photo.metadata_info),
+        joinedload(Photo.image_description)
+    ).filter(Photo.owner_id == user_id, Photo.is_deleted == False)
+    query = query.order_by(func.random())
+    return query.limit(limit).all()

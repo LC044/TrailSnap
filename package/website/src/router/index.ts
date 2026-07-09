@@ -27,6 +27,8 @@ const RecycleBinPage = () => import('@/views/RecycleBinPage.vue');
 
 const NotFound = () => import('@/views/NotFound.vue');
 
+const SwipeFilter = () => import('@/views/toolbox/SwipeFilter.vue');
+
 // 路由配置：TS 类型为 RouteRecordRaw 数组，强制类型校验
 const routes: RouteRecordRaw[] = [
   // 主布局组：所有子页面都使用 MainLayout
@@ -69,6 +71,14 @@ const routes: RouteRecordRaw[] = [
     name: 'AnnualReport',
     component: () => import('@/views/annual-report/index.vue'),
     meta: { layout: 'blank', title: '年度回忆录' },
+  },
+
+  // Swipe Filter (Standalone Layout)
+  {
+    path: '/swipe-filter',
+    name: 'SwipeFilter',
+    component: SwipeFilter,
+    meta: { layout: 'blank', title: '断舍离' },
   },
 
   // 登录页面（使用空白布局）
