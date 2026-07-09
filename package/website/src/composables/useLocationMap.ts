@@ -237,7 +237,20 @@ export function useLocationMap(callbacks?: {
 
   const destroy = () => {
     if (map) {
-      map.remove()
+      // 天地图 T.Map 没有 Leaflet 风格的 remove()，直接调用会抛
+      // "map.remove is not a function"，而该方法在 el-dialog 的 @closed
+      // 过渡钩子中执行，抛错会中断弹窗关闭生命周期，导致再次打开时不显示。
+      // 这里做能力探测 + try/catch，确保销毁永不抛错。
+      try {
+        if (typeof map.clearOverLay === 'function') {
+          map.clearOverLay()
+        }
+        if (typeof map.remove === 'function') {
+          map.remove()
+        }
+      } catch (e) {
+        // 忽略地图销毁异常，避免污染弹窗过渡
+      }
       map = null
     }
     marker = null
