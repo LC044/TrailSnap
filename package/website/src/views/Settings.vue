@@ -6,11 +6,12 @@
       <div class="hidden md:block md:p-6">
         <h1 class="text-xl font-bold text-gray-800 dark:text-white">设置中心</h1>
       </div>
-      <nav class="flex md:block overflow-x-auto md:overflow-visible pb-2 md:pb-0 mt-0 md:mt-2 px-4 md:px-0 scrollbar-hide">
-        <a 
-          v-for="item in menuItems" 
+      <nav ref="navRef" class="flex md:block overflow-x-auto md:overflow-visible pb-2 md:pb-0 mt-0 md:mt-2 px-4 md:px-0 scrollbar-hide">
+        <a
+          v-for="item in menuItems"
           :key="item.key"
-          @click="activeTab = item.key"
+          :data-tab="item.key"
+          @click="selectTab(item.key)"
           class="flex items-center px-4 md:px-6 py-2 md:py-3 text-sm md:text-base text-gray-600 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors whitespace-nowrap md:whitespace-normal mr-2 md:mr-0 rounded-full md:rounded-none"
           :class="{ 'bg-blue-50 text-primary-500 md:border-r-2 border-primary-500 dark:bg-gray-700 dark:text-primary-400': activeTab === item.key }"
         >
@@ -21,22 +22,21 @@
     </div>
 
     <!-- Content Area -->
-    <div class="flex-1 overflow-auto p-4 md:p-8 max-w-5xl md:mx-auto">
-      <ProfileSettings v-if="activeTab === 'profile'" />
-      <UserManagement v-if="activeTab === 'user'" />
-      <TaskManagement v-if="activeTab === 'tasks'" />
-      <BasicSettings v-if="activeTab === 'basic'" />
-      <ExternalGallery v-if="activeTab === 'external'" />
-      <PerformanceTest v-if="activeTab === 'performance'" />
-      <Tokens v-if="activeTab === 'tokens'" />
-      <AboutPage v-if="activeTab === 'about'" />
-      <FeedbackPage v-if="activeTab === 'feedback'" />
+    <div
+      ref="contentRef"
+      class="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-8 max-w-5xl md:mx-auto"
+    >
+      <div class="relative">
+        <Transition :name="transitionName">
+          <component :is="currentComponent" :key="activeTab" />
+        </Transition>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
@@ -48,6 +48,7 @@ import PerformanceTest from './settings/PerformanceTest.vue'
 import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
+import { useSwipeNavigation } from '@/composables/useSwipeNavigation'
 
 const router = useRouter()
 const route = useRoute()
@@ -65,6 +66,59 @@ const menuItems = [
   { key: 'feedback', label: '问题反馈', icon: MessageSquare },
 ]
 
+// Map each tab key to its component so the content area can render a single
+// keyed <component>, which lets <Transition> animate the tab swap.
+const tabComponents: Record<string, typeof ProfileSettings> = {
+  profile: ProfileSettings,
+  user: UserManagement,
+  tasks: TaskManagement,
+  basic: BasicSettings,
+  external: ExternalGallery,
+  performance: PerformanceTest,
+  tokens: Tokens,
+  about: AboutPage,
+  feedback: FeedbackPage,
+}
+const currentComponent = computed(() => tabComponents[activeTab.value] ?? ProfileSettings)
+
+// Direction of the slide transition: swipe left → next slides in from the
+// right; swipe right → previous slides in from the left.
+const transitionName = ref<'slide-left' | 'slide-right' | 'slide-none'>('slide-none')
+
+const goNext = () => {
+  const i = menuItems.findIndex(item => item.key === activeTab.value)
+  if (i >= 0 && i < menuItems.length - 1) {
+    transitionName.value = 'slide-left'
+    activeTab.value = menuItems[i + 1].key
+  }
+}
+const goPrev = () => {
+  const i = menuItems.findIndex(item => item.key === activeTab.value)
+  if (i > 0) {
+    transitionName.value = 'slide-right'
+    activeTab.value = menuItems[i - 1].key
+  }
+}
+
+// Selecting a tab from the sidebar: slide left/right based on whether the
+// target sits after or before the current tab.
+const selectTab = (key: string) => {
+  if (key === activeTab.value) return
+  const cur = menuItems.findIndex(item => item.key === activeTab.value)
+  const next = menuItems.findIndex(item => item.key === key)
+  transitionName.value = next > cur ? 'slide-left' : 'slide-right'
+  activeTab.value = key
+}
+
+// Horizontal swipe to switch tabs — mobile only (below the md breakpoint,
+// where the sidebar collapses into horizontal pills).
+const contentRef = ref<HTMLElement | null>(null)
+useSwipeNavigation(contentRef, {
+  onSwipeLeft: goNext,
+  onSwipeRight: goPrev,
+  enabled: () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+})
+
 // Handle URL hash / query-param navigation. Both /settings#tasks and
 // /settings?tab=tasks activate the "任务管理" tab so that the TaskBell
 // can deep-link into a specific category.
@@ -73,6 +127,7 @@ watch(
   ([newHash, queryTab]) => {
     const key = (newHash ? String(newHash).replace('#', '') : '') || (queryTab ? String(queryTab) : '')
     if (key && menuItems.some(item => item.key === key)) {
+      transitionName.value = 'slide-none'
       activeTab.value = key
     }
   },
@@ -82,4 +137,58 @@ watch(
 watch(activeTab, (newTab) => {
   router.replace({ hash: `#${newTab}` })
 })
+
+const navRef = ref<HTMLElement | null>(null)
+// Keep the active pill inside the horizontal scroll strip on mobile — after a
+// swipe switches to an off-screen tab, scroll its pill into view (centered).
+watch(
+  activeTab,
+  () => {
+    if (typeof window === 'undefined' || !window.matchMedia('(max-width: 767px)').matches) return
+    const el = navRef.value?.querySelector<HTMLElement>(`[data-tab="${activeTab.value}"]`)
+    el?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' })
+  },
+  { flush: 'post' }
+)
 </script>
+
+<style scoped>
+/* Hide scrollbars on the horizontal nav strip (and root) while keeping it
+   scrollable — matches the local .scrollbar-hide used in other components. */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Tab slide transitions. The leaving panel is absolutely positioned so it can
+   slide out while the entering panel takes its place in normal flow — the
+   container keeps the entering panel's height throughout. */
+.slide-left-enter-active,
+.slide-left-leave-active,
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.slide-left-leave-active,
+.slide-right-leave-active {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+.slide-left-enter-from {
+  transform: translateX(100%);
+}
+.slide-left-leave-to {
+  transform: translateX(-100%);
+}
+.slide-right-enter-from {
+  transform: translateX(-100%);
+}
+.slide-right-leave-to {
+  transform: translateX(100%);
+}
+</style>

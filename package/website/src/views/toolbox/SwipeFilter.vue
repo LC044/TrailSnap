@@ -114,7 +114,7 @@
           <!-- 主图片区 -->
           <div class="relative z-10 flex-1 w-full p-2 md:p-3 flex items-center justify-center overflow-hidden pointer-events-none">
             <img 
-              :src="`/api/medias/${currentPhoto.id}/thumbnail?size=large`" 
+              :src="`/api/medias/${currentPhoto.id}/thumbnail?size=medium`" 
               class="w-full h-full transition-all duration-300 drop-shadow-lg object-contain"
               draggable="false"
             />
@@ -158,7 +158,7 @@
       </button>
     </footer>
 
-    <PhotoLightbox 
+    <PhotoLightbox
       v-if="currentPhoto"
       :visible="isLightboxVisible"
       :image="mapPhotoToImage(currentPhoto)"
@@ -167,13 +167,97 @@
       @close="isLightboxVisible = false"
       @delete="handleLightboxDelete"
     />
+
+    <!-- 首次使用引导 -->
+    <Transition name="guide-fade">
+      <div
+        v-if="showGuide"
+        class="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+        @click.self="dismissGuide"
+      >
+        <div class="relative w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <!-- 头部 -->
+          <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-5 text-white">
+            <div class="flex items-center gap-2">
+              <Sparkles class="w-5 h-5" />
+              <h2 class="text-lg font-bold tracking-wide">照片筛选玩法</h2>
+            </div>
+            <p class="text-sm text-white/80 mt-1">左右滑动，快速整理你的相册</p>
+          </div>
+
+          <!-- 操作说明 -->
+          <div class="px-6 py-5 space-y-4 text-sm">
+            <div class="flex items-center gap-4">
+              <div class="flex-none w-11 h-11 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center">
+                <Trash2 class="w-5 h-5" />
+              </div>
+              <div class="flex-1 text-slate-700 dark:text-slate-200">
+                <p class="font-medium">向左滑动 · 丢弃</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">左滑卡片 / 按 ← / 点红色按钮，移至回收站</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <div class="flex-none w-11 h-11 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
+                <Heart class="w-5 h-5" />
+              </div>
+              <div class="flex-1 text-slate-700 dark:text-slate-200">
+                <p class="font-medium">向右滑动 · 保留</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">右滑卡片 / 按 → / 点绿色按钮，留在相册</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <div class="flex-none w-11 h-11 rounded-full bg-slate-500/10 text-slate-500 dark:text-slate-300 flex items-center justify-center">
+                <Hand class="w-5 h-5" />
+              </div>
+              <div class="flex-1 text-slate-700 dark:text-slate-200">
+                <p class="font-medium">拖动卡片</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">按住照片左右拖动，松手即触发</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <div class="flex-none w-11 h-11 rounded-full bg-primary-500/10 text-primary-500 flex items-center justify-center">
+                <Maximize2 class="w-5 h-5" />
+              </div>
+              <div class="flex-1 text-slate-700 dark:text-slate-200">
+                <p class="font-medium">查看大图</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">双击照片 / 按空格 / 点右上角放大</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <div class="flex-none w-11 h-11 rounded-full bg-slate-500/10 text-slate-500 dark:text-slate-300 flex items-center justify-center">
+                <Undo class="w-5 h-5" />
+              </div>
+              <div class="flex-1 text-slate-700 dark:text-slate-200">
+                <p class="font-medium">撤销与清理</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Ctrl+Z 撤销；返回时自动清理已丢弃照片</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部按钮 -->
+          <div class="px-6 pb-5">
+            <button
+              @click="dismissGuide"
+              class="w-full py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-full font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-slate-800"
+            >
+              开始使用
+            </button>
+            <p class="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">点击空白处或按钮均可关闭，仅显示一次</p>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin } from 'lucide-vue-next'
+import { ArrowLeft, Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin, Sparkles, Hand } from 'lucide-vue-next'
 import { photoApi } from '@/api/photo'
 import { albumService } from '@/api/album'
 import { ElMessage } from 'element-plus'
@@ -238,6 +322,19 @@ const isAnimating = ref(false)
 // Lightbox state
 const isLightboxVisible = ref(false)
 
+// 首次使用引导
+const GUIDE_STORAGE_KEY = 'trailsnap:swipe-filter:guide-seen'
+const showGuide = ref(false)
+
+const dismissGuide = () => {
+  showGuide.value = false
+  try {
+    localStorage.setItem(GUIDE_STORAGE_KEY, '1')
+  } catch (e) {
+    // localStorage 不可用时静默忽略，下次仍会提示
+  }
+}
+
 const openLightbox = () => {
   if (photos.value.length > 0) {
     isLightboxVisible.value = true
@@ -253,8 +350,20 @@ const handleLightboxDelete = (deletedPhoto: Photo) => {
 }
 
 // 拖拽常量
-const SWIPE_THRESHOLD = 100 // 触发滑动的位移阈值
+const SWIPE_THRESHOLD = 100 // 触发滑动的位移阈值上限 (桌面)
+const FLICK_VELOCITY = 0.5 // 触发滑动的速度阈值 (px/ms，约 500px/s)
 const MAX_ROTATION = 15 // 最大旋转角度
+
+// 小屏单手操作时位移阈值更低，避免拇指滑不远而失效
+const getSwipeThreshold = () => {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 1024
+  return Math.min(SWIPE_THRESHOLD, Math.max(48, Math.round(w * 0.14)))
+}
+
+// 记录最近一次移动的位置与时间，用于松手时计算瞬时速度 (实现"轻甩即触发")
+let lastMoveX = 0
+let lastMoveTime = 0
+let lastVelocity = 0 // px/ms，正值为向右
 
 // 卡片样式计算
 const cardStyle = computed(() => {
@@ -281,7 +390,7 @@ const cardStyle = computed(() => {
 // 状态透明度 (红叉/绿星)
 const statusOpacity = computed(() => {
   if (!isDragging.value) return 0
-  return Math.min(Math.abs(dragOffset.value) / SWIPE_THRESHOLD, 1)
+  return Math.min(Math.abs(dragOffset.value) / getSwipeThreshold(), 1)
 })
 
 // 数据加载
@@ -368,8 +477,11 @@ const startDrag = (e: MouseEvent | TouchEvent) => {
   const pos = getClientPos(e)
   startX.value = pos.x
   startY.value = pos.y
+  lastMoveX = pos.x
+  lastMoveTime = performance.now()
+  lastVelocity = 0
   isDragging.value = true
-  
+
   document.addEventListener('mousemove', onDrag)
   document.addEventListener('touchmove', onDrag, { passive: false })
   document.addEventListener('mouseup', endDrag)
@@ -380,8 +492,15 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
   if (!isDragging.value) return
   // 阻止默认滚动行为
   if (e.cancelable) e.preventDefault()
-  
+
   const pos = getClientPos(e)
+  const now = performance.now()
+  const dt = now - lastMoveTime
+  if (dt > 0) {
+    lastVelocity = (pos.x - lastMoveX) / dt
+  }
+  lastMoveX = pos.x
+  lastMoveTime = now
   dragOffset.value = pos.x - startX.value
   dragOffsetY.value = pos.y - startY.value
 }
@@ -389,16 +508,26 @@ const onDrag = (e: MouseEvent | TouchEvent) => {
 const endDrag = () => {
   if (!isDragging.value) return
   isDragging.value = false
-  
+
   document.removeEventListener('mousemove', onDrag)
   document.removeEventListener('touchmove', onDrag)
   document.removeEventListener('mouseup', endDrag)
   document.removeEventListener('touchend', endDrag)
-  
-  // 判断是否超过阈值触发滑动
-  if (dragOffset.value > SWIPE_THRESHOLD) {
+
+  const offset = dragOffset.value
+  const threshold = getSwipeThreshold()
+
+  // 松手前若手指已停顿较久，则不计速度 (避免把"拖到位后停一下再松手"误判为甩动)
+  const elapsedSinceMove = performance.now() - lastMoveTime
+  const velocity = elapsedSinceMove > 120 ? 0 : lastVelocity
+
+  // 超过位移阈值，或方向一致的快速甩动，均触发滑动
+  const shouldSwipeRight = offset > threshold || (offset > 0 && velocity > FLICK_VELOCITY)
+  const shouldSwipeLeft = offset < -threshold || (offset < 0 && velocity < -FLICK_VELOCITY)
+
+  if (shouldSwipeRight) {
     swipeRight()
-  } else if (dragOffset.value < -SWIPE_THRESHOLD) {
+  } else if (shouldSwipeLeft) {
     swipeLeft()
   } else {
     // 未超过阈值，回弹 (依靠 computed 里的 CSS transition)
@@ -409,6 +538,8 @@ const endDrag = () => {
 
 // 快捷键处理
 const handleKeydown = (e: KeyboardEvent) => {
+  // 引导展示期间禁用所有快捷键
+  if (showGuide.value) return
   // 忽略输入框内的快捷键
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
   
@@ -469,6 +600,14 @@ const handleBack = async () => {
 onMounted(() => {
   fetchPhotos()
   window.addEventListener('keydown', handleKeydown)
+  // 首次打开时展示引导
+  try {
+    if (!localStorage.getItem(GUIDE_STORAGE_KEY)) {
+      showGuide.value = true
+    }
+  } catch (e) {
+    // localStorage 不可用时忽略
+  }
 })
 
 onUnmounted(() => {
@@ -479,3 +618,14 @@ onUnmounted(() => {
   submitDeletions()
 })
 </script>
+
+<style scoped>
+.guide-fade-enter-active,
+.guide-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.guide-fade-enter-from,
+.guide-fade-leave-to {
+  opacity: 0;
+}
+</style>
