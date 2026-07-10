@@ -100,13 +100,19 @@ const goPrev = () => {
   }
 }
 
-// Selecting a tab from the sidebar: slide left/right based on whether the
-// target sits after or before the current tab.
+// Selecting a tab from the sidebar. The slide animation is mobile-only — on
+// desktop switching is instant (slide-none) since the slide feels out of place
+// alongside the vertical sidebar layout.
 const selectTab = (key: string) => {
   if (key === activeTab.value) return
-  const cur = menuItems.findIndex(item => item.key === activeTab.value)
-  const next = menuItems.findIndex(item => item.key === key)
-  transitionName.value = next > cur ? 'slide-left' : 'slide-right'
+  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  if (isMobile) {
+    const cur = menuItems.findIndex(item => item.key === activeTab.value)
+    const next = menuItems.findIndex(item => item.key === key)
+    transitionName.value = next > cur ? 'slide-left' : 'slide-right'
+  } else {
+    transitionName.value = 'slide-none'
+  }
   activeTab.value = key
 }
 

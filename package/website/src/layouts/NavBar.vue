@@ -111,7 +111,8 @@
         :key="index"
         :to="item.href"
         class="relative px-3 py-1.5 text-sm text-slate-700 dark:text-slate-200 hover:text-primary-500 dark:hover:text-primary-500 transition-colors flex items-center gap-1.5"
-        active-class="font-medium text-primary-600 dark:text-primary-400"
+        :active-class="item.href === '/' ? '' : 'font-medium text-primary-600 dark:text-primary-400'"
+        exact-active-class="font-medium text-primary-600 dark:text-primary-400"
       >
         {{ item.label }}
         <span

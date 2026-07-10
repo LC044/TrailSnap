@@ -190,6 +190,10 @@
                       {{ img.filename || formatTime(img.timestamp) }}
                     </p>
                 </div>
+                <!-- Bottom Left Overlay Slot -->
+                <div v-if="$slots['bottom-left-overlay']" class="absolute bottom-1 left-1 z-10">
+                  <slot name="bottom-left-overlay" :photo="img"></slot>
+                </div>
             </div>
         </div>
     </div>
@@ -533,7 +537,10 @@ const handleDownload = async () => {
 
 defineExpose({
     enterSelectionMode,
-    exitSelectionMode
+    exitSelectionMode,
+    selectAll: selectAllIds,
+    selectedIds: localSelectedIds,
+    isSelectionMode
 })
 </script>
 

@@ -139,22 +139,34 @@
 
     <!-- 底部操作栏 -->
     <footer class="flex-none pb-8 pt-4 px-6 flex items-center justify-center gap-8 z-20 bg-gradient-to-t from-slate-50 dark:from-slate-900 to-transparent">
-      <button 
+      <button
         @click="swipeLeft"
         :disabled="photos.length === 0"
-        class="group w-16 h-16 rounded-full bg-white dark:bg-slate-800 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center shadow-lg transition-all active:scale-95 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:active:scale-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+        class="group relative w-16 h-16 rounded-full bg-white dark:bg-slate-800 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center shadow-lg transition-all active:scale-95 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:active:scale-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
         title="移至回收站 (左方向键)"
       >
         <Trash2 class="w-7 h-7 transition-transform group-hover:scale-110" />
+        <span
+          v-if="deletedCount > 0"
+          class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-slate-50 dark:ring-slate-900 tabular-nums"
+        >
+          {{ deletedCount }}
+        </span>
       </button>
-      
-      <button 
+
+      <button
         @click="swipeRight"
         :disabled="photos.length === 0"
-        class="group w-16 h-16 rounded-full bg-white dark:bg-slate-800 text-emerald-500 hover:bg-emerald-500 hover:text-white flex items-center justify-center shadow-lg transition-all active:scale-95 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:active:scale-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+        class="group relative w-16 h-16 rounded-full bg-white dark:bg-slate-800 text-emerald-500 hover:bg-emerald-500 hover:text-white flex items-center justify-center shadow-lg transition-all active:scale-95 border border-slate-200 dark:border-slate-700 disabled:opacity-50 disabled:active:scale-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
         title="保留照片 (右方向键)"
       >
         <Heart class="w-7 h-7 transition-transform group-hover:scale-110" />
+        <span
+          v-if="keptCount > 0"
+          class="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-slate-50 dark:ring-slate-900 tabular-nums"
+        >
+          {{ keptCount }}
+        </span>
       </button>
     </footer>
 
@@ -285,6 +297,8 @@ const pendingDeleteIds = ref<Set<string>>(new Set())
 // 计算属性
 const currentPhoto = computed(() => photos.value[0] || null)
 const nextPhoto = computed(() => photos.value[1] || null)
+const deletedCount = computed(() => actionHistory.value.filter(a => a.action === 'delete').length)
+const keptCount = computed(() => actionHistory.value.filter(a => a.action === 'keep').length)
 
 const formatDate = (photo: Photo) => {
   const dateStr = photo.photo_time || photo.upload_time

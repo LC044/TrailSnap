@@ -1,47 +1,60 @@
 <template>
   <div class="recycle-bin-page container mx-auto flex flex-col">
     <!-- Header -->
-    <div class="sticky top-[10px] md:top-0 z-30 pointer-events-none mb-4 md:mb-6">
-      <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-2 md:px-4 py-3 pointer-events-auto">
-        <div class="flex items-center gap-3 w-full max-w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <button @click="router.back()" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
-            <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
+    <div class="sticky top-0 z-30 mb-4 md:mb-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+      <!-- Responsive Header -->
+      <div class="flex items-center justify-between px-4 py-3">
+        <!-- Left Side -->
+        <div class="flex items-center gap-2">
+          <!-- Back button: visible unless we are in mobile selection mode -->
+          <button @click="router.back()" class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" :class="{ 'hidden md:block': isSelectionMode }">
+            <ArrowLeft class="w-6 h-6 text-gray-800 dark:text-gray-200" />
           </button>
-          <div class="pr-2 min-w-0">
-            <h1 class="max-w-[140px] md:max-w-[300px] text-sm md:text-lg font-bold text-gray-900 dark:text-white leading-tight flex items-center gap-2 truncate">
-              <span class="truncate">回收站</span>
-            </h1>
-            <!-- <p class="text-xs text-gray-500 truncate">回收站中的照片将在保留期后被永久删除</p> -->
-          </div>
+          
+          <!-- Mobile Select All -->
+          <button v-if="isSelectionMode" @click="toggleSelectAll" class="md:hidden text-primary-600 dark:text-primary-400 font-medium px-2 py-1">
+            {{ isAllSelected ? '取消全选' : '全选' }}
+          </button>
+
+          <!-- Title -->
+          <h1 class="text-lg md:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <span :class="{ 'hidden md:inline': isSelectionMode }">最近删除</span>
+            <span v-if="isSelectionMode" class="md:hidden">已选择 {{ selectedIds.length }} 项</span>
+            <span v-if="isSelectionMode" class="hidden md:inline text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full mt-0.5">已选择 {{ selectedIds.length }} 项</span>
+          </h1>
         </div>
 
-        <!-- Top Batch Actions -->
-        <div v-if="selectedIds.length > 0" class="flex items-center gap-1 sm:gap-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-2 sm:px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all">
-          <span class="text-sm font-medium text-gray-700 dark:text-gray-300 mr-1 hidden sm:inline">已选 {{ selectedIds.length }} 项</span>
-          
-          <button @click="handleRestore(selectedIds)" class="text-sm px-2 sm:px-3 py-1.5 bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 hover:bg-primary-100 dark:hover:bg-primary-900/50 rounded-lg transition-colors flex items-center gap-1.5 font-medium">
-            <RefreshCcw class="w-4 h-4" /> 
-            <span class="hidden sm:inline">恢复照片</span>
-            <span class="sm:hidden">恢复</span>
-          </button>
-          
-          <button @click="handlePermanentDelete(selectedIds)" class="text-sm px-2 sm:px-3 py-1.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 rounded-lg transition-colors flex items-center gap-1.5 font-medium">
-            <Trash2 class="w-4 h-4" /> 
-            <span class="hidden sm:inline">永久删除</span>
-            <span class="sm:hidden">删除</span>
-          </button>
-          
-          <div class="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></div>
-          
-          <button @click="cancelSelection" class="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors text-gray-500 dark:text-gray-400" title="取消选择">
-             <X class="w-4 h-4" />
-          </button>
+        <!-- Right Side -->
+        <div class="flex items-center gap-1">
+          <!-- Normal Actions -->
+          <template v-if="!isSelectionMode">
+            <button @click="handleEnterSelectionMode" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="选择">
+              <CheckSquare class="w-5 h-5 text-gray-700 dark:text-gray-300" />
+            </button>
+            <button class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+               <MoreVertical class="w-5 h-5 text-gray-700 dark:text-gray-300" />
+            </button>
+          </template>
+          <!-- Selection Actions -->
+          <template v-else>
+            <!-- PC Select All -->
+            <button @click="toggleSelectAll" class="hidden md:block text-primary-600 dark:text-primary-400 font-medium px-3 py-1.5 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-full transition-colors mr-2">
+              {{ isAllSelected ? '取消全选' : '全选' }}
+            </button>
+            <button @click="cancelSelection" class="text-primary-600 dark:text-primary-400 font-medium px-2 py-1 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-full transition-colors">
+              取消
+            </button>
+          </template>
         </div>
+      </div>
+      <!-- Hint Text -->
+      <div class="px-4 pb-3 text-xs md:text-sm text-gray-500 dark:text-gray-400">
+        已删除的内容仅保留{{ retentionDays }}天，逾期将永久删除。
       </div>
     </div>
 
     <!-- Gallery -->
-    <div class="mx-auto w-full px-2 sm:px-4">
+    <div class="mx-auto w-full px-2 sm:px-4" :class="{ 'pb-28': isSelectionMode }">
       <!-- Empty State -->
       <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
@@ -62,14 +75,47 @@
         @batch-delete="handlePermanentDelete"
         @selection-change="handleSelectionChange"
       >
-        <template #overlay-actions="{ photo }">
-           <div class="text-xs text-white/90 bg-black/50 px-2 py-0.5 rounded-full flex items-center gap-1">
-             <Clock class="w-3 h-3" />
-             <span>{{ calculateDaysRemaining(photo) }} 天后删除</span>
+        <template #bottom-left-overlay="{ photo }">
+           <div class="text-xs text-white drop-shadow-md flex items-center gap-1 px-1">
+             <Disc class="w-3.5 h-3.5" />
+             <span>{{ calculateDaysRemaining(photo) }}天</span>
            </div>
         </template>
       </FlatPhotoGallery>
     </div>
+
+    <!-- Floating selection action bar (restore / delete) -->
+    <Transition name="bar-slide">
+      <div
+        v-if="isSelectionMode"
+        class="fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none"
+      >
+        <div class="pointer-events-auto flex items-center justify-around w-full max-w-[280px] bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-xl border border-gray-200/50 dark:border-gray-700/50 rounded-[2rem] px-6 py-2.5">
+          <button 
+            @click="handleRestore(selectedIds)" 
+            :disabled="selectedIds.length === 0"
+            class="flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-1"
+            :class="selectedIds.length === 0 ? 'text-gray-400' : 'text-primary-500 hover:text-primary-600'"
+          >
+            <RefreshCcw class="w-5 h-5" />
+            <span class="text-[11px] font-medium">恢复</span>
+          </button>
+
+          <!-- Divider -->
+          <div class="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-2"></div>
+
+          <button 
+            @click="handlePermanentDelete(selectedIds)" 
+            :disabled="selectedIds.length === 0"
+            class="flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-1"
+            :class="selectedIds.length === 0 ? 'text-gray-400' : 'text-red-500 hover:text-red-600'"
+          >
+            <Trash2 class="w-5 h-5" />
+            <span class="text-[11px] font-medium">删除</span>
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Lightbox -->
     <PhotoLightbox
@@ -101,7 +147,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { RefreshCcw, ArrowLeft, Trash2, Clock, X } from 'lucide-vue-next'
+import { RefreshCcw, ArrowLeft, Trash2, Clock, X, CheckSquare, MoreVertical, Disc } from 'lucide-vue-next'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -120,12 +166,37 @@ const hasMore = ref(true)
 
 const galleryRef = ref<InstanceType<typeof FlatPhotoGallery> | null>(null)
 const selectedIds = ref<string[]>([])
+const isSelectionMode = ref(false)
+
+const isAllSelected = computed(() => {
+  return photos.value.length > 0 && selectedIds.value.length === photos.value.length
+})
+
+const handleEnterSelectionMode = () => {
+  isSelectionMode.value = true
+  galleryRef.value?.enterSelectionMode()
+}
+
+const toggleSelectAll = () => {
+  const allIds = photos.value.map(p => p.id)
+  galleryRef.value?.selectAll(allIds)
+  if (!isSelectionMode.value) {
+    galleryRef.value?.enterSelectionMode()
+    isSelectionMode.value = true
+  }
+}
 
 const handleSelectionChange = (ids: string[]) => {
   selectedIds.value = ids
+  if (ids.length > 0) {
+    isSelectionMode.value = true
+  } else if (isSelectionMode.value && galleryRef.value && !galleryRef.value.isSelectionMode) {
+    isSelectionMode.value = false
+  }
 }
 
 const cancelSelection = () => {
+  isSelectionMode.value = false
   galleryRef.value?.exitSelectionMode()
 }
 
@@ -323,4 +394,14 @@ watch(windowScrollY, (y) => {
 </script>
 
 <style scoped>
+/* Floating action bar slides up from the bottom when selection is active. */
+.bar-slide-enter-active,
+.bar-slide-leave-active {
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.bar-slide-enter-from,
+.bar-slide-leave-to {
+  transform: translateY(100%);
+  opacity: 0;
+}
 </style>
