@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-07-11 (0.7.0)
+
+### New
+
+- Added **"Letting Go" photo filter**: swipe left/right to quickly decide each photo's fate — an easy way to declutter a bloated library.
+- Added **Storage Center**: a unified view of storage usage across sources; the home storage card jumps straight to the corresponding photo filter.
+- Photo editing now **preserves original EXIF metadata** (capture time, location, etc.), so timelines and map pins stay accurate.
+- The AI assistant floating button now supports **free dragging and auto half-hiding at screen edges**.
+- Clicking the search box now **pre-warms the AI service** to avoid first-search cold-start delay.
+- First-time users are redirected straight to the registration page.
+- The install script now **auto-configures a China Docker mirror** and enables it by region.
+
+### Improvements
+
+- The recycle bin now supports a selection mode for batch restore/delete.
+- Improved mobile experience for the Settings and Toolbox pages.
+
+### Bug Fixes
+
+- Fixed the photo location-edit popup failing to reopen after being closed.
+- Fixed the worker watchdog restarting in a loop when only paused tasks remained.
+
 ## 2026-06-07 (0.4.1)
 
 ### New
