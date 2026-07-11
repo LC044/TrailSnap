@@ -1,5 +1,5 @@
 import request from '@/utils/request';
-import type { BaseResponse } from '@/types/response';
+import type { BaseResponse } from '@/types/railway';
 
 export interface StorageDistribution {
   name: string;

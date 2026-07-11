@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-6 max-w-6xl mx-auto pb-10">
+  <div class="space-y-4 sm:space-y-6 max-w-6xl mx-auto pb-10">
     <!-- Header Actions -->
     <div class="flex justify-end items-center mb-2 mt-4 md:mt-2">
       <button 
@@ -17,17 +17,17 @@
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
     </div>
 
-    <div v-else-if="overviewData" class="space-y-6">
+    <div v-else-if="overviewData" class="space-y-4 sm:space-y-6">
       <!-- 1. Top Section: Overview & Recoverable -->
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <!-- Overview Card -->
-        <div class="xl:col-span-1 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden flex flex-col items-center">
+        <div class="xl:col-span-1 bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden flex flex-col items-center">
           <div class="absolute top-0 right-0 w-32 h-32 bg-primary-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
           <div class="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -ml-8 -mb-8 pointer-events-none"></div>
           
           <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 w-full text-left mb-2 z-10">总占用空间</h3>
           <div class="text-center z-10 my-2">
-            <p class="text-4xl font-black text-primary-500 tracking-tight">{{ formatSize(overviewData.total_size) }}</p>
+            <p class="text-3xl sm:text-4xl font-black text-primary-500 tracking-tight">{{ formatSize(overviewData.total_size) }}</p>
           </div>
           
           <div ref="overviewChartRef" class="w-full h-[200px] z-10 -mt-4"></div>
@@ -45,8 +45,8 @@
         </div>
 
         <!-- Recoverable Space -->
-        <div class="xl:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
-          <div class="flex items-center justify-between mb-6">
+        <div class="xl:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
+          <div class="flex items-center justify-between mb-4 sm:mb-6">
             <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
               <i class="mgc_magic_line text-amber-500 text-xl"></i>
               空间清理建议
@@ -58,7 +58,7 @@
             <div 
               v-for="(item, key) in recoverableItems" 
               :key="key"
-              class="group relative p-5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 hover:bg-white dark:hover:bg-gray-750 hover:shadow-md hover:border-primary-200 dark:hover:border-primary-800/50 transition-all cursor-pointer overflow-hidden flex flex-col justify-between"
+              class="group relative p-4 sm:p-5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 hover:bg-white dark:hover:bg-gray-750 hover:shadow-md hover:border-primary-200 dark:hover:border-primary-800/50 transition-all cursor-pointer overflow-hidden flex flex-col justify-between"
               @click="handleRecoverableClick(key)"
             >
               <div class="absolute right-0 top-0 h-full w-1.5 bg-transparent group-hover:bg-primary-500 transition-colors"></div>
@@ -84,27 +84,27 @@
       <!-- 2. Distribution Block -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- By Type -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
             <i class="mgc_pie_chart_line text-blue-500 text-xl"></i> 文件类型分布
           </h3>
-          <div ref="typeChartRef" class="w-full h-[280px]"></div>
+          <div ref="typeChartRef" class="w-full h-[260px] sm:h-[280px]"></div>
         </div>
         <!-- By Device -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
           <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
             <i class="mgc_camera_line text-orange-500 text-xl"></i> 拍摄设备分布
           </h3>
-          <div ref="deviceChartRef" class="w-full h-[280px]"></div>
+          <div ref="deviceChartRef" class="w-full h-[260px] sm:h-[280px]"></div>
         </div>
       </div>
         <!-- By Time -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-          <div class="flex justify-between items-center mb-4">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+          <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
             <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
               <i class="mgc_chart_bar_line text-indigo-500 text-xl"></i> 历史占用分布
             </h3>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <!-- Date Range Selector -->
               <div v-if="timeGroup === 'day'" class="flex bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
                 <button 
@@ -141,19 +141,51 @@
         </div>
 
       <!-- Folder Treemap -->
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
         <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <i class="mgc_folder_2_line text-emerald-500 text-xl"></i> 文件夹占用比例
         </h3>
-        <div ref="folderChartRef" class="w-full h-[360px]"></div>
+        <div ref="folderChartRef" class="w-full h-[300px] sm:h-[360px]"></div>
       </div>
 
       <!-- 3. Top Large Files Block -->
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
         <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <i class="mgc_layout_list_line text-rose-500 text-xl"></i> 空间占用 Top 20
         </h3>
-        <div class="overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
+
+        <!-- Mobile: card list -->
+        <div class="sm:hidden space-y-3">
+          <div
+            v-for="(file, index) in topLargeFiles"
+            :key="index"
+            class="p-3 rounded-xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30"
+          >
+            <div class="flex items-center gap-3">
+              <img
+                :src="`/api/medias/${file.id}/thumbnail?size=small`"
+                class="w-12 h-12 object-cover rounded-lg cursor-pointer shrink-0 border border-gray-200 dark:border-gray-600"
+                @click="locateFile(file)"
+                alt="thumbnail"
+              />
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 dark:text-white truncate">{{ file.filename || file.path.split(/[\/\\]/).pop() }}</p>
+                <div class="flex items-center gap-2 mt-1">
+                  <span class="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-md text-xs text-gray-500 dark:text-gray-400">{{ file.type }}</span>
+                  <span class="text-primary-500 font-bold text-sm">{{ formatSize(file.size) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-2 mt-3">
+              <button @click="locateFile(file)" class="flex-1 px-3 py-1.5 text-sm text-primary-600 bg-primary-50 hover:bg-primary-100 dark:text-primary-400 dark:bg-primary-900/30 dark:hover:bg-primary-900/50 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none">查看</button>
+              <button @click="deleteFile(file)" class="flex-1 px-3 py-1.5 text-sm text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/30 dark:hover:bg-red-900/50 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none">删除</button>
+            </div>
+          </div>
+          <div v-if="!topLargeFiles.length" class="py-8 text-center text-gray-500">暂无大文件记录</div>
+        </div>
+
+        <!-- Desktop: table -->
+        <div class="hidden sm:block overflow-x-auto rounded-xl border border-gray-100 dark:border-gray-700">
           <table class="w-full text-sm text-left">
             <thead class="text-xs text-gray-500 uppercase bg-gray-50 dark:bg-gray-750 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
               <tr>
@@ -167,8 +199,8 @@
               <tr v-for="(file, index) in topLargeFiles" :key="index" class="bg-white dark:bg-gray-800 border-b border-gray-50 dark:border-gray-700 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
                 <td class="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[300px]">
                   <div class="flex items-center gap-3">
-                    <img 
-                      :src="`/api/medias/${file.id}/thumbnail?size=small`" 
+                    <img
+                      :src="`/api/medias/${file.id}/thumbnail?size=small`"
                       class="w-10 h-10 object-cover rounded-lg cursor-pointer shrink-0 border border-gray-200 dark:border-gray-600 hover:opacity-80 transition-opacity"
                       @click="locateFile(file)"
                       alt="thumbnail"
@@ -208,7 +240,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, shallowRef, computed, reactive } from 'vue';
+import { ref, onMounted, nextTick, shallowRef, computed, reactive, type Component } from 'vue';
 import { useRouter } from 'vue-router';
 import * as echarts from 'echarts';
 import { Copy, Image as ImageIcon, Smartphone, Video } from 'lucide-vue-next';
@@ -266,7 +298,7 @@ const fetchTimeDistribution = async () => {
     }
 
     const res = await storageApi.getTimeDistribution(timeGroup.value as any, startDate, endDate);
-    renderTimeChart(res.data);
+    renderTimeChart(res.data || []);
   } catch (e) {
     console.error(e);
   } finally {
@@ -312,13 +344,30 @@ const formatDateShort = (dateStr: string | null) => {
   return `${d.getMonth() + 1}-${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 };
 
-const recoverableItems = computed(() => {
-  if (!recoverableData.value) return {};
+interface RecoverableItem {
+  label: string;
+  icon: Component;
+  size: number;
+  count: number;
+  route?: string;
+  filter?: Record<string, string[]>;
+}
+
+const recoverableItems = computed<Record<string, RecoverableItem>>(() => {
+  const d = recoverableData.value;
+  if (!d) {
+    return {
+      similar: { label: '相似', icon: Copy, size: 0, count: 0, route: '/toolbox/similar' },
+      duplicate: { label: '重复', icon: Copy, size: 0, count: 0, route: '/toolbox/duplicate' },
+      screenshot: { label: '截图', icon: Smartphone, size: 0, count: 0, filter: { image_types: ['Screenshot'] } },
+      video: { label: '视频', icon: Video, size: 0, count: 0, filter: { file_types: ['video'] } },
+    };
+  }
   return {
-    similar: { label: '相似', icon: Copy, size: recoverableData.value.similar?.size || 0, count: recoverableData.value.similar?.count || 0, route: '/toolbox/similar' },
-    duplicate: { label: '重复', icon: Copy, size: recoverableData.value.duplicate?.size || 0, count: recoverableData.value.duplicate?.count || 0, route: '/toolbox/duplicate' },
-    screenshot: { label: '截图', icon: Smartphone, size: recoverableData.value.screenshot?.size || 0, count: recoverableData.value.screenshot?.count || 0, filter: { image_types: ['Screenshot'] } },
-    video: { label: '视频', icon: Video, size: recoverableData.value.video?.size || 0, count: recoverableData.value.video?.count || 0, filter: { file_types: ['video'] } },
+    similar: { label: '相似', icon: Copy, size: d.similar?.size || 0, count: d.similar?.count || 0, route: '/toolbox/similar' },
+    duplicate: { label: '重复', icon: Copy, size: d.duplicate?.size || 0, count: d.duplicate?.count || 0, route: '/toolbox/duplicate' },
+    screenshot: { label: '截图', icon: Smartphone, size: d.screenshot?.size || 0, count: d.screenshot?.count || 0, filter: { image_types: ['Screenshot'] } },
+    video: { label: '视频', icon: Video, size: d.video?.size || 0, count: d.video?.count || 0, filter: { file_types: ['video'] } },
   };
 });
 
@@ -349,14 +398,18 @@ const lightbox = reactive({
 
 const currentLightboxImage = computed((): AlbumImage | null => {
   if (!lightbox.file) return null;
+  const file = lightbox.file;
   return {
-    id: lightbox.file.id,
-    url: `/api/medias/${lightbox.file.id}/file`,
-    thumbnail: `/api/medias/${lightbox.file.id}/thumbnail?size=medium`,
-    file_type: lightbox.file.type?.toLowerCase().includes('video') ? 'video' : 'image',
-    filename: lightbox.file.filename || lightbox.file.path.split(/[\/\\]/).pop() || '',
-    photo_time: '',
-    size: lightbox.file.size,
+    id: file.id,
+    url: `/api/medias/${file.id}/file`,
+    thumbnail: `/api/medias/${file.id}/thumbnail?size=medium`,
+    preview: `/api/medias/${file.id}/thumbnail?size=medium`,
+    srcset: '',
+    timestamp: 0,
+    albumIds: [],
+    filename: file.filename || file.path.split(/[\/\\]/).pop() || '',
+    file_type: file.type?.toLowerCase().includes('video') ? 'video' : 'image',
+    size: file.size,
     duration: ''
   };
 });
@@ -389,6 +442,14 @@ const deleteFile = (file: LargeFile) => {
       ElMessage.error('删除失败');
     }
   }).catch(() => {});
+};
+
+// 拍摄设备分布图例在小屏下改为底部水平排布，避免竖直图例挤压饼图
+const getDeviceLayout = () => {
+  const narrow = (deviceChartRef.value?.offsetWidth || 0) < 420;
+  return narrow
+    ? { legend: { type: 'scroll', orient: 'horizontal', bottom: 0, left: 'center' }, center: ['50%' as any, '45%' as any] }
+    : { legend: { type: 'scroll', orient: 'vertical', right: 10, top: 20, bottom: 20 }, center: ['40%' as any, '50%' as any] };
 };
 
 const initCharts = () => {
@@ -462,17 +523,18 @@ const initCharts = () => {
   // Device Chart (Ring/Pie)
   if (deviceChartRef.value && deviceData.value.length > 0) {
     if (!deviceChart) deviceChart = echarts.init(deviceChartRef.value);
+    const deviceLayout = getDeviceLayout();
     deviceChart.setOption({
       tooltip: {
         trigger: 'item',
         formatter: (params: any) => `${params.name}: ${formatSize(params.value)} (${params.percent}%)`
       },
-      legend: { type: 'scroll', orient: 'vertical', right: 10, top: 20, bottom: 20 },
+      legend: deviceLayout.legend,
       series: [
         {
           type: 'pie',
           radius: ['40%', '70%'],
-          center: ['40%', '50%'],
+          center: deviceLayout.center,
           avoidLabelOverlap: false,
           itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
           label: { show: false },
@@ -585,17 +647,17 @@ const fetchData = async () => {
     });
 
     storageApi.getStatsByType().then(res => {
-      typeData.value = res.data;
+      typeData.value = res.data || [];
       nextTick(initCharts);
     });
 
     storageApi.getStatsByDevice().then(res => {
-      deviceData.value = res.data;
+      deviceData.value = res.data || [];
       nextTick(initCharts);
     });
 
     storageApi.getStatsByFolder().then(res => {
-      folderData.value = res.data;
+      folderData.value = res.data || [];
       nextTick(initCharts);
     });
 
@@ -624,6 +686,11 @@ onMounted(() => {
     deviceChart?.resize();
     timeChart?.resize();
     folderChart?.resize();
+    // 宽度变化时重新应用拍摄设备分布的响应式图例
+    if (deviceChart) {
+      const l = getDeviceLayout();
+      deviceChart.setOption({ legend: l.legend, series: [{ center: l.center }] });
+    }
   });
 });
 </script>
