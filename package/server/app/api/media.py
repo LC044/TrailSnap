@@ -57,18 +57,15 @@ async def get_live_photo_video(
     if not photo:
         raise HTTPException(status_code=404, detail="Video file not found")
 
-    ext = os.path.splitext(photo.file_path)[1].lower()
-    if ext in ('.jpg', 'jpeg'):
-        file_path = photo.file_path[:-3] + 'mp4'
-        exists = await run_in_threadpool(os.path.exists, file_path)
-        if not exists:
-            file_path = photo.file_path[:-3] + 'mov'
-            exists = await run_in_threadpool(os.path.exists, file_path)
-            if not exists:
-                thumb_path = await run_in_threadpool(_get_thumbnail_path, photo.owner_id, photo_id, db, 'medium')
-                file_path = thumb_path[:-4] + '.mp4'
-    else:
-        file_path = photo.file_path[:-4] + 'MOV'
+    # Live photo 视频按约定生成在 thumbnail 目录下，与缩略图同名但扩展名为 .mp4
+    # （见 tasks/basic.py 的 motion_photo.extract_video）。用 splitext 去掉缩略图后缀
+    # 再拼 .mp4，避免对 .webp（5 字符）做 [:-4] 切片导致多出一个点。
+    thumb_path = await run_in_threadpool(_get_thumbnail_path, photo.owner_id, photo_id, db, 'medium')
+    file_path = os.path.splitext(thumb_path)[0] + '.mp4'
+
+    exists = await run_in_threadpool(os.path.exists, file_path)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Video file not found")
 
     file_size = await run_in_threadpool(os.path.getsize, file_path)
 
