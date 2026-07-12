@@ -63,6 +63,12 @@ async function resolveCleanupToken(): Promise<string | null> {
 }
 
 export default async function globalTeardown(_config: FullConfig) {
+  // TS_TEST_KEEP_SERVICES=true 时保留服务与数据（含已导入照片），跳过目录/照片清理，
+  // 方便用浏览器/接口查看测试完成后的现场状态。
+  if (e2eEnv.keepServices) {
+    return
+  }
+
   if (!e2eEnv.enableFixtureScan) {
     return
   }

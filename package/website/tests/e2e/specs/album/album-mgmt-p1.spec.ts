@@ -95,7 +95,26 @@ async function openNewAlbumDialog(page: Page, kind: 'user' | 'conditional' | 'sm
   await item.first().click()
 }
 
+/**
+ * 带退避的 goto：dev 套件 14 worker 并发时 Vite dev server 偶发 net::ERR_ABORTED，
+ * serial 文件里一次失败会级联跳过后续全部用例。重试 2 次，每次间隔 1s 给 dev server 喘息。
+ */
+async function gotoRetry(page: Page, url: string, retries = 2): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded' })
+      return
+    } catch (e) {
+      if (i >= retries) throw e
+      await page.waitForTimeout(1_000)
+    }
+  }
+}
+
 test.describe.serial('P1 - 相册管理', () => {
+  // serial 文件：任一用例偶发失败会级联跳过后续全部。dev 套件默认 retries=0，
+  // 这里给 1 次重试吸收 Vite dev server 在 14 worker 并发下的偶发 ERR_ABORTED。
+  test.use({ retries: 1 })
   let authToken = ''
   test.beforeEach(async ({ page, request }, testInfo) => {
     authToken = await ensureAuthSession(request, page, testInfo)
@@ -105,7 +124,7 @@ test.describe.serial('P1 - 相册管理', () => {
   test('2.2.1 创建普通相册 - 列表中正确显示', async ({ page, request }, testInfo) => {
     test.setTimeout(60_000)
     const name = `${UNIQUE_TAG}-user`
-    await page.goto('/album')
+    await gotoRetry(page, '/album')
     await openNewAlbumDialog(page, 'user')
 
     // 填名称 + 描述
@@ -125,7 +144,7 @@ test.describe.serial('P1 - 相册管理', () => {
     if (!created) {
       created = await createAlbumViaApi(request, { name, description: 'P1 自动化测试创建', type: 'user' }, authToken)
     }
-    await page.goto('/album')
+    await gotoRetry(page, '/album')
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
     testInfo.annotations.push({ type: 'cleanup-album-id', description: created.id })
 
@@ -142,21 +161,25 @@ test.describe.serial('P1 - 相册管理', () => {
     }, authToken)
     testInfo.annotations.push({ type: 'cleanup-album-id', description: created.id })
 
-    // 验证 SCAN_ALBUM 任务被自动调度（创建时 TaskManager.add_task SCAN_ALBUM）
-    // 通过 tasks API 查找
-    await page.goto('/album')
+    // 验证 SCAN_ALBUM 任务被自动调度并扫描入库：worker 跑完会删除已完成任务，
+    // /tasks/ 里查不到，改轮询相册 num_photos > 0（条件 time_range 2020-2099 覆盖全部照片）。
+    await gotoRetry(page, '/album')
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
 
-    const tasksRes = await request.get(`${e2eEnv.apiBaseUrl}/tasks/?type=SCAN_ALBUM&limit=20`, {
-      headers: authHeaders(authToken),
-    })
-    expect(tasksRes.ok()).toBeTruthy()
-    const tasksBody = (await tasksRes.json()) as Array<{ payload?: { album_id?: string }; status: string }> | BaseResponse<Array<{ payload?: { album_id?: string }; status: string }>>
-    const tasks = (Array.isArray(tasksBody) ? tasksBody : tasksBody.data) ?? []
-    const related = tasks.find((t) => t.payload?.album_id === created.id)
-    expect(related, 'SCAN_ALBUM task should be created for the new conditional album').toBeTruthy()
-    // 状态在 pending/processing/completed 任意一个都算调度成功（TaskStatus 值为小写）
-    expect(['pending', 'processing', 'completed']).toContain(related!.status)
+    let numPhotos = 0
+    for (let i = 0; i < 30; i++) {
+      const res = await request.get(`${e2eEnv.apiBaseUrl}/albums/${created.id}`, {
+        headers: authHeaders(authToken),
+      })
+      if (res.ok()) {
+        const body = await res.json() as { data?: { num_photos?: number }; num_photos?: number }
+        const album = body.data ?? body
+        numPhotos = album?.num_photos ?? 0
+        if (numPhotos > 0) break
+      }
+      await page.waitForTimeout(1_000)
+    }
+    expect(numPhotos, 'SCAN_ALBUM should populate the conditional album with matching photos').toBeGreaterThan(0)
 
     // 清理
     await deleteAlbumById(request, created.id, authToken)
@@ -174,7 +197,7 @@ test.describe.serial('P1 - 相册管理', () => {
 
     // 智能相册同步需要 Embedding 任务，可能尚未完成
     // 仅验证：列表中显示 + 类型徽章为"智能"
-    await page.goto('/album')
+    await gotoRetry(page, '/album')
     const card = page.locator(`text=${name}`).first()
     await expect(card).toBeVisible({ timeout: 15_000 })
     // 智能相册卡片在悬停时不显示删除按钮（智能/条件由后端管理）
@@ -201,7 +224,7 @@ test.describe.serial('P1 - 相册管理', () => {
     expect(addRes.ok(), 'batch add_to_album should succeed').toBeTruthy()
 
     // 验证：相册详情里能看到这些照片
-    await page.goto(`/album/${album.id}`)
+    await gotoRetry(page, `/album/${album.id}`)
     // AlbumDetail 通过 photoStore.loadAlbumPhotos → fetchTimelineStats → /api/stats/timeline?album_id= 拉取
     await page.waitForResponse(
       (res) => res.url().includes('/api/stats/timeline') && res.url().includes(`album_id=${album.id}`) && res.status() === 200,
@@ -276,7 +299,7 @@ test.describe.serial('P1 - 相册管理', () => {
     expect(del.ok()).toBeTruthy()
 
     // 列表里不应再有
-    await page.goto('/album')
+    await gotoRetry(page, '/album')
     // AlbumList 通过 albumService.getAlbums → GET /api/albums（无查询参数）
     await page.waitForResponse(
       (res) => /\/api\/albums(\?|$)/.test(res.url()) && res.status() === 200,
@@ -323,13 +346,13 @@ test.describe.serial('P1 - 相册管理', () => {
   test('2.2.9 AlbumSelector 对话框 - Lightbox 中可调起', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 1, 50)
     if (!probe.ok) return
-    await page.goto('/photos')
+    await gotoRetry(page, '/photos')
     const thumb = page.locator('.photo-gallery img').first()
     await expect(thumb).toBeVisible({ timeout: 15_000 })
     await thumb.click()
 
-    // Lightbox 顶部更多按钮（MoreHorizontal 唯一一个带 lucide-more-horizontal 的按钮）
-    const moreBtn = page.locator('button:has(svg.lucide-more-horizontal)').first()
+    // Lightbox 顶部更多按钮（MoreHorizontal 渲染 svg.lucide-ellipsis，lucide-vue-next 0.555 新名）
+    const moreBtn = page.locator('button:has(svg.lucide-ellipsis)').first()
     await expect(moreBtn).toBeVisible({ timeout: 10_000 })
     await moreBtn.click()
     // 下拉菜单里的"添加到相册 (A)"项

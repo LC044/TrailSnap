@@ -2,7 +2,7 @@
 // 定义照片相关的状态管理
 
 import { defineStore } from 'pinia'
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch } from 'vue'
 import { albumService } from '@/api/album'
 import searchService, { type TextSearchRequest } from '@/api/search'
 import type { Photo, TimelineStats, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
@@ -130,6 +130,18 @@ export const photoStoreSetup = () => {
       image_types: [],
       file_types: []
   });
+
+  // 筛选条件持久化到 trailsnap:selectedFilters，刷新/重开后恢复（P1 2.1.9 回归用例依赖）。
+  {
+      const FILTER_CACHE_KEY = 'selectedFilters'
+      const cached = getLocalCache<FilterState>(FILTER_CACHE_KEY)
+      if (cached) {
+          Object.assign(selectedFilters, cached)
+      }
+      watch(selectedFilters, (val) => {
+          setLocalCache(FILTER_CACHE_KEY, { ...val })
+      }, { deep: true })
+  }
 
   // --- 辅助函数 ---
   // mapPhotoToImage 已在文件顶部导出（避免重复实现导致列表/详情数据不一致）

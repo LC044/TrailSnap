@@ -115,7 +115,7 @@ class AISettings(BaseModel):
     analysis_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for analysis")
     chat_connection_id: str = Field(default="builtin", description="Default connection ID for agent chat")
     chat_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for agent chat")
-    ai_api_url: str = Field(default=os.getenv("AI_API_URL", "http://localhost:8001"), description="AI Service API URL")
+    ai_api_url: str = Field(default=os.getenv("TS_AI_API_URL") or os.getenv("AI_API_URL", "http://localhost:8001"), description="AI Service API URL")
     face_recognition_threshold: float = Field(default=0.7, description="Face recognition confidence threshold")
     face_cluster_threshold: float = Field(default=0.4, description="Face cluster distance threshold")
     face_recognition_min_photos: int = Field(default=5, description="Minimum photos required for a valid face cluster")

@@ -15,7 +15,7 @@ import { e2eEnv } from '../../../../playwright/e2e-env'
 
 async function getTagPhotos(request: APIRequestContext, name: string): Promise<Array<{ id: string; filename?: string }>> {
   const res = await request.get(
-    `${e2eEnv.apiBaseUrl}/api/tags/${encodeURIComponent(name)}/photos?skip=0&limit=200`,
+    `${e2eEnv.apiBaseUrl}/tags/${encodeURIComponent(name)}/photos?skip=0&limit=200`,
   )
   if (!res.ok()) return []
   const body = (await res.json()) as Array<{ id: string; filename?: string }> | BaseResponse<Array<{ id: string; filename?: string }>>
@@ -24,7 +24,7 @@ async function getTagPhotos(request: APIRequestContext, name: string): Promise<A
 
 async function setTagCover(request: APIRequestContext, name: string, photoId: string): Promise<void> {
   const res = await request.post(
-    `${e2eEnv.apiBaseUrl}/api/tags/${encodeURIComponent(name)}/cover`,
+    `${e2eEnv.apiBaseUrl}/tags/${encodeURIComponent(name)}/cover`,
     { data: { photo_id: photoId } },
   )
   expect(res.ok(), `set cover for ${name}`).toBeTruthy()
@@ -36,7 +36,7 @@ async function removePhotosFromTag(
   photoIds: string[],
 ): Promise<void> {
   const res = await request.post(
-    `${e2eEnv.apiBaseUrl}/api/tags/${encodeURIComponent(name)}/remove-photos`,
+    `${e2eEnv.apiBaseUrl}/tags/${encodeURIComponent(name)}/remove-photos`,
     { data: { photo_ids: photoIds } },
   )
   expect(res.ok(), `remove ${photoIds.length} photo(s) from ${name}`).toBeTruthy()
@@ -70,16 +70,17 @@ test.describe('P1 - 智能分类', () => {
     if (!probe.ok) return
     const name = probe.tag.tag_name
 
+    // API 拉过 tag 的照片（getTagPhotos -> /api/tags/{name}/photos）。
+    // 必须在 goto 之前注册：页面 mount 时即发请求，goto 之后再 wait 会错过响应。
+    const photosResponse = page.waitForResponse(
+      (res) => res.url().includes(`/api/tags/${encodeURIComponent(name)}/photos`) && res.status() === 200,
+      { timeout: 15_000 },
+    )
     await page.goto(`/album/classification/${encodeURIComponent(name)}`)
 
     // 详情页头（ClassificationDetail 通过 :title="name" 渲染）
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
-
-    // API 拉过 tag 的照片（getTagPhotos -> /api/tags/{name}/photos）
-    await page.waitForResponse(
-      (res) => res.url().includes(`/api/tags/${encodeURIComponent(name)}/photos`) && res.status() === 200,
-      { timeout: 15_000 },
-    )
+    await photosResponse
 
     // 至少 1 张图渲染
     const img = page.locator('img').first()
@@ -103,7 +104,7 @@ test.describe('P1 - 智能分类', () => {
     await setTagCover(request, name, target.id)
 
     // 重新拉 tag 列表
-    const listRes = await request.get(`${e2eEnv.apiBaseUrl}/api/tags?limit=200`)
+    const listRes = await request.get(`${e2eEnv.apiBaseUrl}/tags?limit=200`)
     const listBody = (await listRes.json()) as TagSummary[] | BaseResponse<TagSummary[]>
     const tags = Array.isArray(listBody) ? listBody : listBody.data ?? []
     const me = tags.find((t) => t.tag_name === name)

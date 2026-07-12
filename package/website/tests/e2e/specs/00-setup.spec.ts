@@ -2,32 +2,45 @@ import { test, expect } from '@playwright/test';
 import { e2eEnv } from '../../../playwright/e2e-env';
 import { preparePhotoFixturesForSuite } from '../helpers/photo-fixtures';
 import fs from 'node:fs';
+import path from 'node:path';
+
+// 与 dev-global-setup 对齐：用 testUsername/testPassword（本地 dev 环境即实际存在的
+// 超级用户账号），而不是 adminUser（默认 e2e-admin，既有库里通常不存在 → 登录 401）。
+const ADMIN = {
+  username: e2eEnv.testUsername,
+  password: e2eEnv.testPassword,
+  email: `${e2eEnv.testUsername}@example.com`,
+  securityQuestion: e2eEnv.adminUser.securityQuestion,
+  securityAnswer: e2eEnv.adminUser.securityAnswer,
+};
 
 test.describe('Test Environment Setup @setup', () => {
   test('Create test account and scan folder', async ({ page, request }) => {
     // 1. Check if user exists, if not create admin user
-    const statusResponse = await request.get('/auth/status');
+    // request fixture 的 baseURL 是前端地址，必须带 /api 前缀走 Vite 代理到后端，
+    // 否则 Vite 回吐 index.html → res.json() 解析失败。
+    const statusResponse = await request.get('/api/auth/status');
     expect(statusResponse.ok()).toBeTruthy();
     const status = await statusResponse.json();
 
     if (!status.has_users) {
-      const registerResponse = await request.post('/auth/register', {
+      const registerResponse = await request.post('/api/auth/register', {
         data: {
-          username: e2eEnv.adminUser.username,
-          email: e2eEnv.adminUser.email,
-          password: e2eEnv.adminUser.password,
-          security_question: e2eEnv.adminUser.securityQuestion,
-          security_answer: e2eEnv.adminUser.securityAnswer,
+          username: ADMIN.username,
+          email: ADMIN.email,
+          password: ADMIN.password,
+          security_question: ADMIN.securityQuestion,
+          security_answer: ADMIN.securityAnswer,
         },
       });
       expect(registerResponse.ok()).toBeTruthy();
     }
 
     // 2. Login to get token
-    const loginResponse = await request.post('/auth/login', {
+    const loginResponse = await request.post('/api/auth/login', {
       form: {
-        username: e2eEnv.adminUser.username,
-        password: e2eEnv.adminUser.password,
+        username: ADMIN.username,
+        password: ADMIN.password,
       },
     });
     expect(loginResponse.ok()).toBeTruthy();
@@ -45,19 +58,22 @@ test.describe('Test Environment Setup @setup', () => {
     expect(fixtureReady).toBeTruthy();
 
     // 4. Save frontend session (storageState)
-    await page.goto('/login', { waitUntil: 'networkidle' });
+    // 不用 networkidle：本 spec 继承 globalSetup 的已登录态，/login 会被守卫重定向到 /，
+    // 首页有 SSE/轮询等持续网络活动，networkidle 永不满足 → 超时。SPA 用 domcontentloaded
+    // 即可；evaluate 写 localStorage 是 origin 级别，与最终落在哪个路由无关。
+    await page.goto('/login', { waitUntil: 'domcontentloaded' });
     await page.evaluate(
       ({ token, username }) => {
         localStorage.setItem('user_token', token);
         localStorage.setItem('remember_username', username);
       },
-      { token: access_token, username: e2eEnv.adminUser.username }
+      { token: access_token, username: ADMIN.username }
     );
     
     // Ensure directory exists
     const statePath = e2eEnv.storageState;
     if (statePath) {
-      fs.mkdirSync(require('path').dirname(statePath), { recursive: true });
+      fs.mkdirSync(path.dirname(statePath), { recursive: true });
       await page.context().storageState({ path: statePath });
     }
   });

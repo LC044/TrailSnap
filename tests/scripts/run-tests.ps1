@@ -96,6 +96,22 @@ switch ($ScanPrep) {
     }
 }
 
+# 把 TS_TEST_RESET_DB 解析为布尔：true/1/yes 视为开启，其余（含空/false）为关闭。
+# 定义在 banner 之前，因为 banner 就要调用它打印状态。
+function Test-ResetDbFlag {
+    $v = $env:TS_TEST_RESET_DB
+    if (-not $v) { return $false }
+    return @('true', '1', 'yes') -contains $v.Trim().ToLower()
+}
+
+# 把 TS_TEST_KEEP_SERVICES 解析为布尔：true/1/yes 视为开启，其余（含空/false）为关闭。
+# 同样定义在 banner 之前以便打印状态。
+function Test-KeepServicesFlag {
+    $v = $env:TS_TEST_KEEP_SERVICES
+    if (-not $v) { return $false }
+    return @('true', '1', 'yes') -contains $v.Trim().ToLower()
+}
+
 Write-Host ""
 Write-Host "==== TrailSnap 测试入口 ====" -ForegroundColor Cyan
 Write-Host "  TS_TEST_ENV = $($env:TS_TEST_ENV)"
@@ -109,6 +125,8 @@ Write-Host "  Web         = $($env:TS_WEB_BASE_URL)"
 Write-Host "  AI          = $($env:TS_AI_API_URL)"
 Write-Host "  DB          = $($env:TS_DB_URL)"
 Write-Host "  ScanPrep    = $($env:TS_E2E_ENABLE_FIXTURE_SCAN)"
+Write-Host "  ResetDB     = $(if (Test-ResetDbFlag) { 'true (启动 server 前删库)' } else { 'false' })"
+Write-Host "  KeepSvcs    = $(if (Test-KeepServicesFlag) { 'true (测后保留服务)' } else { 'false (测后关闭)' })"
 Write-Host "============================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -177,30 +195,112 @@ function Invoke-Pytest {
     finally { Pop-Location }
 }
 
+# 删除 TS_DB_URL 指向的目标库：连到维护库 postgres 执行 DROP DATABASE ... WITH (FORCE)。
+# 复用于两处：① 启动 server 前重置（TS_TEST_RESET_DB=true）；② 测试结束后清理（-Cleanup）。
+function Invoke-TestDatabaseDrop {
+    param([string]$Reason = '清理')
+    if ($env:TS_DB_URL -notmatch '^postgresql(?:[^:]*)://([^:]+):([^@]+)@([^:]+):(\d+)/(.*)$') {
+        Write-Host "  跳过数据库删除：TS_DB_URL 不是合法的 postgresql 连接串" -ForegroundColor Yellow
+        return
+    }
+    $dbUser = $matches[1]; $dbPass = $matches[2]; $dbHost = $matches[3]; $dbPort = $matches[4]
+    $dbName = ($matches[5] -split '\?')[0]
+    Write-Host "  ${Reason}测试数据库: $dbName (@ ${dbHost}:${dbPort})" -ForegroundColor Cyan
+    $dropScript = @"
+import sys
+from sqlalchemy import create_engine, text
+try:
+    engine = create_engine('postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/postgres', isolation_level='AUTOCOMMIT')
+    with engine.connect() as conn:
+        conn.execute(text('DROP DATABASE IF EXISTS "$dbName" WITH (FORCE);'))
+    print('  数据库 $dbName 已删除')
+except Exception as e:
+    print('  删除数据库失败: ' + str(e))
+"@
+    $uv = Resolve-Uv
+    if ($uv) {
+        Push-Location (Join-Path $RepoRoot 'package\server')
+        try { & $uv run python -c $dropScript } finally { Pop-Location }
+    } else {
+        $py = Join-Path $RepoRoot 'package\server\.venv\Scripts\python.exe'
+        if (Test-Path $py) {
+            & $py -c $dropScript
+        } else {
+            Write-Host "  跳过数据库删除：找不到 uv 且 $py 不存在" -ForegroundColor Yellow
+        }
+    }
+}
+
+# 计算本次运行“关心的”服务端口（与启动逻辑一致：server + ai，web 仅当 Component 含 website）
+function Get-ServicePorts {
+    param([string]$Component)
+    $ports = @()
+    if ($env:TS_API_BASE_URL) { try { $ports += [int]([System.Uri]$env:TS_API_BASE_URL).Port } catch {} }
+    if ($env:TS_AI_API_URL)   { try { $ports += [int]([System.Uri]$env:TS_AI_API_URL).Port } catch {} }
+    if ($Component -in 'website', 'all' -and $env:TS_WEB_BASE_URL) {
+        try { $ports += [int]([System.Uri]$env:TS_WEB_BASE_URL).Port } catch {}
+    }
+    return ($ports | Sort-Object -Unique)
+}
+
+# 杀掉占用指定端口的进程（含其子进程树）。用于：启动前清理 + 测试后兜底清理。
+function Clear-ServicePorts {
+    param([int[]]$Ports, [string]$Reason = '清理')
+    foreach ($port in ($Ports | Sort-Object -Unique)) {
+        $conns = @()
+        try { $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue } catch {}
+        foreach ($c in $conns) {
+            $holderPid = $c.OwningProcess
+            if (-not $holderPid) { continue }
+            try { $holder = Get-Process -Id $holderPid -ErrorAction Stop } catch { continue }
+            Write-Host "  [$Reason] 端口 $port <- PID $holderPid ($($holder.ProcessName))，强制关闭进程树..." -ForegroundColor Yellow
+            & taskkill /F /T /PID $holderPid 2>&1 | Out-Null
+        }
+    }
+}
+
 $exitCode = 0
 $startedProcesses = @()
 $startedDocker = $false
+$localServiceMode = $false
 
 try {
     # ---------- 启动服务 (根据环境) ----------
     if ($Layer -in 'e2e', 'integration', 'all') {
         if ($env:TS_TEST_ENV -eq 'dev') {
             Write-Host "==> 检查并启动本地开发服务..." -ForegroundColor Cyan
-            
+            $localServiceMode = $true
+
+            # 启动前确保服务端口空闲：杀掉任何占用者（上轮残留 / 手动 dev 服务 / 孤儿进程）。
+            # 这样后续 Test-Port 必为空闲 → 由本脚本统一拉起全新服务。
+            $prePorts = Get-ServicePorts -Component $Component
+            if ($prePorts.Count -gt 0) {
+                Write-Host "  启动前清理占用服务端口的进程..." -ForegroundColor Cyan
+                Clear-ServicePorts -Ports $prePorts -Reason '启动前清理'
+                Start-Sleep -Milliseconds 500
+            }
+
             $apiUri = [System.Uri]$env:TS_API_BASE_URL
+            $resetDb = Test-ResetDbFlag
             if (-not (Test-Port $apiUri.Port)) {
+                if ($resetDb) {
+                    Write-Host "  TS_TEST_RESET_DB=true，启动 server 前先删除目标测试库..." -ForegroundColor Cyan
+                    Invoke-TestDatabaseDrop -Reason '启动前重置'
+                }
                 Write-Host "  启动 Server ($($apiUri.Port))..."
                 $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "uv", "run", "python", "start.py", "--port", "$($apiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\server") -WindowStyle Hidden -PassThru
                 $startedProcesses += $proc
+            } elseif ($resetDb) {
+                Write-Host "  警告：TS_TEST_RESET_DB=true，但 server 端口 $($apiUri.Port) 已被占用（服务已在运行），跳过重置以免破坏运行中的服务。先停掉该端口服务再重试。" -ForegroundColor Yellow
             }
-            
+
             $aiUri = [System.Uri]$env:TS_AI_API_URL
             if (-not (Test-Port $aiUri.Port)) {
                 Write-Host "  启动 AI 服务 ($($aiUri.Port))..."
                 $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$($aiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\ai") -WindowStyle Hidden -PassThru
                 $startedProcesses += $proc
             }
-            
+
             if ($Component -in 'website', 'all') {
                 $webUri = [System.Uri]$env:TS_WEB_BASE_URL
                 if (-not (Test-Port $webUri.Port)) {
@@ -261,6 +361,17 @@ try {
     # ---------- e2e（Playwright，env 已注入，e2e-env.ts 自动读取）----------
     if ($Layer -in 'e2e', 'all') {
         if ($Component -in 'website', 'all') {
+            # TS_TEST_RESET_DB=true 时每轮都是新空库，但 photo-fixtures 的 state cache
+            # 落盘且跨轮稳定（dev 套件经 pnpm test:e2e 跑，TS_E2E_PREP_RUN_ID 缺省='default'），
+            # 上轮 ok=true 会让本轮 globalSetup 跳过扫描 → 空库无照片。
+            # 给本轮注入唯一 prep run id：跨轮指纹失效 → 强制重扫；同一轮内 globalSetup 与
+            # 00-setup 共享该 id → 仍命中缓存避免重复扫描。RESET_DB=false 时维持 'default'，
+            # 保留跨轮缓存命中、避免无谓重扫。
+            if (Test-ResetDbFlag -and -not $env:TS_E2E_PREP_RUN_ID) {
+                $env:TS_E2E_PREP_RUN_ID = "reset-$([System.Guid]::NewGuid().ToString('N').Substring(0,12))"
+                Write-Host "  TS_TEST_RESET_DB=true → 本轮 TS_E2E_PREP_RUN_ID=$($env:TS_E2E_PREP_RUN_ID)（强制重扫夹具）" -ForegroundColor DarkGray
+            }
+
             $e2eSuite = if ($env:TS_E2E_SUITE) { $env:TS_E2E_SUITE.ToLower() } else { 'dev' }
             Write-Host "==> 前端 E2E (website)  suite=$e2eSuite  cover=$Cover" -ForegroundColor Green
             Push-Location (Join-Path $RepoRoot 'package\website')
@@ -306,58 +417,71 @@ catch {
     $exitCode = 1
 }
 finally {
+    $keepServices = Test-KeepServicesFlag
+
+    # ---- 数据库清理（-Cleanup）----
+    # 保留服务模式下跳过删库：运行中的 server 仍连着库，DROP 会破坏其状态，
+    # 且与“保留现场供查看”的意图冲突。
     if ($Cleanup) {
-        Write-Host ""
-        Write-Host "==> 清理测试环境..." -ForegroundColor Cyan
-        
-        if ($env:TS_DB_URL -match '^postgresql(?:[^:]*)://([^:]+):([^@]+)@([^:]+):(\d+)/(.*)$') {
-            $dbUser = $matches[1]
-            $dbPass = $matches[2]
-            $dbHost = $matches[3]
-            $dbPort = $matches[4]
-            $dbNameFull = $matches[5]
-            $dbName = ($dbNameFull -split '\?')[0]
-            
-            Write-Host "  清理测试数据库: $dbName"
-            $dropScript = @"
-import sys
-from sqlalchemy import create_engine, text
-try:
-    engine = create_engine('postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/postgres', isolation_level='AUTOCOMMIT')
-    with engine.connect() as conn:
-        conn.execute(text('DROP DATABASE IF EXISTS "$dbName" WITH (FORCE);'))
-    print('  数据库 $dbName 已删除')
-except Exception as e:
-    print('  删除数据库失败: ' + str(e))
-"@
-            $uv = Resolve-Uv
-            if ($uv) {
-                Push-Location (Join-Path $RepoRoot 'package\server')
-                try {
-                    & $uv run python -c $dropScript
-                } finally { Pop-Location }
-            } else {
-                $py = Join-Path $RepoRoot 'package\server\.venv\Scripts\python.exe'
-                if (Test-Path $py) {
-                    & $py -c $dropScript
-                }
-            }
+        if ($keepServices) {
+            Write-Host "==> 跳过 -Cleanup 数据库删除（TS_TEST_KEEP_SERVICES=true，保留服务与数据）" -ForegroundColor Yellow
+        } else {
+            Write-Host ""
+            Write-Host "==> 清理测试环境..." -ForegroundColor Cyan
+            Invoke-TestDatabaseDrop -Reason '测试后清理'
         }
     }
 
+    # ---- Docker 测试栈 ----
     if ($startedDocker) {
-        Write-Host "==> 停止 Docker 测试栈..." -ForegroundColor Cyan
-        $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.test.yml'
-        & docker compose -f $composeFile --env-file $EnvFile down -v
+        if ($keepServices) {
+            Write-Host "==> TS_TEST_KEEP_SERVICES=true，保留 Docker 测试栈运行（未执行 down）" -ForegroundColor Green
+        } else {
+            Write-Host "==> 停止 Docker 测试栈..." -ForegroundColor Cyan
+            $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.test.yml'
+            & docker compose -f $composeFile --env-file $EnvFile down -v
+        }
     }
-    
-    if ($startedProcesses.Count -gt 0) {
-        Write-Host "==> 关闭启动的本地服务..." -ForegroundColor Cyan
-        foreach ($proc in $startedProcesses) {
-            if (-not $proc.HasExited) {
-                Write-Host "  关闭进程 PID: $($proc.Id)"
-                & taskkill /F /T /PID $proc.Id 2>&1 | Out-Null
+
+    # ---- 本地服务 ----
+    if ($keepServices) {
+        # 保留模式：不关闭本次启动的服务，打印仍在运行的 PID / 端口供查看
+        if ($startedProcesses.Count -gt 0) {
+            Write-Host "==> TS_TEST_KEEP_SERVICES=true，保留服务运行（不关闭）：" -ForegroundColor Green
+            foreach ($proc in $startedProcesses) {
+                try { $proc.Refresh() } catch {}
+                if ($proc -and -not $proc.HasExited) {
+                    Write-Host "  PID $($proc.Id) 仍在运行"
+                }
             }
+            $keepPorts = Get-ServicePorts -Component $Component
+            if ($keepPorts.Count -gt 0) {
+                Write-Host "  端口: $($keepPorts -join ', ')"
+            }
+            Write-Host "  手动停止: taskkill /F /T /PID <pid>，或下次运行会自动清理这些端口" -ForegroundColor DarkGray
+        }
+    }
+    else {
+        # 关闭模式：两步——
+        #   1) taskkill /F /T 杀掉记录在册的 cmd.exe 包装进程的整棵树
+        #      （含 uv → uvicorn → worker / llama-server 等直接子进程）。
+        #   2) 按本次运行关心的全部服务端口做兜底清扫：凡仍占用这些端口的
+        #      进程一律强制关闭进程树。覆盖包装进程早退 / uv 中间断链导致子进程
+        #      被 reparent 成孤儿等情况。仅在 dev 本地服务模式下执行。
+        if ($startedProcesses.Count -gt 0) {
+            Write-Host "==> 关闭启动的本地服务..." -ForegroundColor Cyan
+            foreach ($proc in $startedProcesses) {
+                try { $proc.Refresh() } catch {}
+                if ($proc -and -not $proc.HasExited) {
+                    Write-Host "  关闭进程树 PID: $($proc.Id)"
+                    & taskkill /F /T /PID $proc.Id 2>&1 | Out-Null
+                }
+            }
+            Start-Sleep -Milliseconds 500
+        }
+
+        if ($localServiceMode) {
+            Clear-ServicePorts -Ports (Get-ServicePorts -Component $Component) -Reason '测试后清理'
         }
     }
 }

@@ -387,6 +387,12 @@ export async function preparePhotoFixtures(
         deleteState(statePath)
       }
 
+      // 记录加目录前的时间戳：POST /settings/directories 会在添加目录时自动触发一次
+      // SCAN_FOLDER（扫描所有 external 目录）。我们只能等这次扫描，不能再额外建第二个
+      // 扫描任务——两个 scope 重叠的 SCAN_FOLDER 会被 IO consumer 并发执行，而扫描去重
+      // 仅靠查库内已有 file_path，并发时双方都查到「不存在」→ 同一文件各插一条 Photo →
+      // 相册里同一张照片出现两份。
+      const scanStartedAt = new Date().toISOString()
       const addedByTest = await ensureDirectoryConfigured(request, options.token, directories.serverDirectory)
       if (addedByTest) {
         writeCleanupMarker(cleanupPath, {
@@ -395,16 +401,23 @@ export async function preparePhotoFixtures(
           statePath,
         })
       }
-      await triggerScanAndWait(
-        request,
-        options.token,
-        directories.serverDirectory,
-        options.timeoutMs ?? 15_000,
-      )
+
+      const waitMs = options.timeoutMs ?? 15_000
+      if (addedByTest) {
+        // 目录是本次新增的：POST 已经排了一个 SCAN_FOLDER，只等任务跑完，不再重复触发。
+        await waitForTasksToSettle(request, options.token, {
+          progressQuietWindowMs: waitMs,
+          updatedSince: scanStartedAt,
+          tasksUrl: `${e2eEnv.apiBaseUrl}/tasks/`,
+        })
+      } else {
+        // 目录此前已配置（POST 不会触发扫描）：需要主动触发一次，确保照片入库。
+        await triggerScanAndWait(request, options.token, directories.serverDirectory, waitMs)
+      }
       await waitForImportedPhotos(
         request,
         options.token,
-        Math.min(options.timeoutMs ?? 15_000, 2 * 60 * 1000),
+        Math.min(waitMs, 2 * 60 * 1000),
       )
 
       const successState = {

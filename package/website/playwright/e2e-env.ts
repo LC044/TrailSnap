@@ -113,6 +113,15 @@ export const e2eEnv = {
     return envFlag('TS_E2E_ENABLE_FIXTURE_SCAN', false)
   },
 
+  /**
+   * 测试结束后是否保留服务与数据（对应 run-tests.ps1 的 TS_TEST_KEEP_SERVICES）。
+   * 开启时 99-teardown 跳过清理，方便用浏览器/接口查看测试完成后的现场状态。
+   * 默认关闭（测完即清）。
+   */
+  get keepServices(): boolean {
+    return envFlag('TS_TEST_KEEP_SERVICES', false)
+  },
+
   /** P0 / P1 套件登录账号 */
   get testUsername(): string {
     return env('TS_TEST_USERNAME') ?? 'e2e-admin'

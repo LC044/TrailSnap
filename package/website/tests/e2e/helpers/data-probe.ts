@@ -47,9 +47,13 @@ export interface TagSummary {
   count: number
 }
 
-async function tryGet<T>(request: APIRequestContext, path: string): Promise<{ ok: true; data: T } | { ok: false; status: number }> {
+async function tryGet<T>(request: APIRequestContext, path: string, token?: string): Promise<{ ok: true; data: T } | { ok: false; status: number }> {
   try {
-    const res = await request.get(`${e2eEnv.apiBaseUrl}${path}`, { timeout: 5_000 })
+    const res = await request.get(`${e2eEnv.apiBaseUrl}${path}`, {
+      timeout: 5_000,
+      // /photos、/albums、/tags 都 Depends(get_current_user)，不带 token 会 401 → 误 skip。
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
     if (!res.ok()) return { ok: false, status: res.status() }
     // 大多数列表端点直接返回数组；个别返回 BaseResponse[data]
     const body = await res.json()
@@ -74,16 +78,17 @@ function skipIfUnreachable(testInfo: SkipCapable, status: number): boolean {
 async function ensureP0Fixtures(
   request: APIRequestContext,
   testInfo: SkipCapable,
-): Promise<boolean> {
+): Promise<string> {
   const token = await ensureApiAccessToken(request, testInfo)
-  if (!token) return false
+  if (!token) return ''
 
-  return preparePhotoFixtures(request, {
+  const prepared = await preparePhotoFixtures(request, {
     bucket: 'p0',
     token,
     testInfo,
     onUnavailable: 'skip',
   })
+  return prepared ? token : ''
 }
 
 /** 探测照片总数，< minCount 时 skip。返回 false 表示已 skip。 */
@@ -93,13 +98,15 @@ export async function requirePhotos(
   minCount = 1,
   limit = 50,
 ): Promise<{ ok: true; photos: PhotoSummary[] } | { ok: false }> {
-  if (!(await ensureP0Fixtures(request, testInfo))) {
+  const token = await ensureP0Fixtures(request, testInfo)
+  if (!token) {
     return { ok: false }
   }
 
   const res = await tryGet<PhotoSummary[] | BaseResponse<PhotoSummary[]>>(
     request,
-    `/api/photos?skip=0&limit=${limit}`,
+    `/photos?skip=0&limit=${limit}`,
+    token,
   )
   if (!res.ok) {
     if (skipIfUnreachable(testInfo, res.status)) return { ok: false }
@@ -150,11 +157,12 @@ export async function requireAnyAlbum(
   request: APIRequestContext,
   testInfo: SkipCapable,
 ): Promise<{ ok: true; album: AlbumSummary } | { ok: false }> {
-  if (!(await ensureP0Fixtures(request, testInfo))) {
+  const token = await ensureP0Fixtures(request, testInfo)
+  if (!token) {
     return { ok: false }
   }
 
-  const res = await tryGet<AlbumSummary[] | BaseResponse<AlbumSummary[]>>(request, `/api/albums?limit=100`)
+  const res = await tryGet<AlbumSummary[] | BaseResponse<AlbumSummary[]>>(request, `/albums?limit=100`, token)
   if (!res.ok) {
     if (skipIfUnreachable(testInfo, res.status)) return { ok: false }
     testInfo.skip(true, `Albums endpoint failed (HTTP ${res.status})`)
@@ -173,11 +181,12 @@ export async function requireAnyTag(
   request: APIRequestContext,
   testInfo: SkipCapable,
 ): Promise<{ ok: true; tag: TagSummary } | { ok: false }> {
-  if (!(await ensureP0Fixtures(request, testInfo))) {
+  const token = await ensureP0Fixtures(request, testInfo)
+  if (!token) {
     return { ok: false }
   }
 
-  const res = await tryGet<TagSummary[] | BaseResponse<TagSummary[]>>(request, `/api/tags?limit=100`)
+  const res = await tryGet<TagSummary[] | BaseResponse<TagSummary[]>>(request, `/tags?limit=100`, token)
   if (!res.ok) {
     if (skipIfUnreachable(testInfo, res.status)) return { ok: false }
     testInfo.skip(true, `Tags endpoint failed (HTTP ${res.status})`)

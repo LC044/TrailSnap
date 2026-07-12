@@ -20,7 +20,7 @@ test.describe('P1 - 照片流核心功能', () => {
   })
 
   test('2.1.1 无限滚动 - 滚动到底部触发按月加载', async ({ page, request }, testInfo) => {
-    const probe = await requirePhotos(request, testInfo, 10, 5)
+    const probe = await requirePhotos(request, testInfo, 10, 50)
     if (!probe.ok) return
     await page.goto('/photos')
 
@@ -36,14 +36,13 @@ test.describe('P1 - 照片流核心功能', () => {
       }
     })
 
-    // 滚到最底（懒加载的月块需要视口进入才触发）
-    await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' as ScrollBehavior }))
-    await page.waitForTimeout(1_500)
-    // 再滚一次，因为按月加载是按需的
-    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }))
-    await page.waitForTimeout(300)
-    await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' as ScrollBehavior }))
-    await page.waitForTimeout(1_500)
+    // 虚拟滚动按月懒加载：window.scrollTo 不一定驱动容器 scrollTop，改用 wheel 增量
+    // 滚动，每段停顿让 debounced handleScroll 触发对应月份的 /api/photos?start_time= 请求。
+    await page.locator('.photo-gallery').hover()
+    for (let i = 0; i < 10; i++) {
+      await page.mouse.wheel(0, 5000)
+      await page.waitForTimeout(500)
+    }
 
     // 至少应该出现 ≥1 个月块（哪怕只有一条数据也是按月加载触发的）
     const monthCount = await page.locator('.month-block[data-month]').count()
@@ -78,17 +77,18 @@ test.describe('P1 - 照片流核心功能', () => {
     const thumb = page.locator('.photo-gallery img').first()
     await expect(thumb).toBeVisible({ timeout: 15_000 })
 
-    // 监听 medias/file 请求
+    // 打开 Lightbox（默认显示 preview=medium 缩略图，不会请求 /file）
+    await thumb.click()
+    const lightboxImg = page.locator('img[draggable="false"]').first()
+    await expect(lightboxImg).toBeVisible({ timeout: 10_000 })
+
+    // 点「查看原图」才请求 /api/medias/{id}/file（displayImageSrc 在 showOriginal 时用 image.url）
     const fileRequest = page.waitForRequest(
       (req) => /\/api\/medias\/[^/]+\/file(\?|$)/.test(req.url()) && req.method() === 'GET',
       { timeout: 15_000 },
     )
-    await thumb.click()
+    await page.getByTitle('查看原图 (Shift+O)').click()
     await fileRequest
-
-    // lightbox 内的主图元素
-    const lightboxImg = page.locator('img[draggable="false"]').first()
-    await expect(lightboxImg).toBeVisible({ timeout: 10_000 })
   })
 
   test('2.1.4 EXIF 解析显示 - 元数据侧栏展示快门/光圈/ISO', async ({ page, request }, testInfo) => {
@@ -115,21 +115,26 @@ test.describe('P1 - 照片流核心功能', () => {
     if (!probe.ok) return
     await page.goto('/photos')
 
-    // 视频照片在 PhotoGallery 卡片上有 PlayCircle 角标
-    const videoCard = page.locator('.photo-gallery .group:has(svg.lucide-play-circle)').first()
-    const cardExists = await videoCard.isVisible({ timeout: 15_000 }).catch(() => false)
-    if (!cardExists) {
-      // 滚动一次以触发更多月块加载
-      await page.evaluate(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' as ScrollBehavior }))
-      await page.waitForTimeout(1_500)
-    }
-    const card = page.locator('.photo-gallery .group:has(svg.lucide-play-circle)').first()
-    await expect(card).toBeVisible({ timeout: 10_000 })
+    // 132 张里只有 2 个视频，且可能在折叠日（>9 张/天）或懒加载未到的月份里，
+    // 直接翻找不稳定。改用筛选面板按「视频」类型过滤，让画廊只渲染视频卡片。
+    // 注意 lucide-vue-next 0.555 用新名：PlayCircle 渲染 svg.lucide-circle-play。
+    const filterBtn = page.locator('main').getByTitle('筛选').first()
+    await expect(filterBtn).toBeVisible({ timeout: 10_000 })
+    await filterBtn.click()
+    const videoTypeBtn = page.locator('button', { hasText: '视频' }).first()
+    await expect(videoTypeBtn).toBeVisible({ timeout: 5_000 })
+    await videoTypeBtn.click()
+
+    const card = page.locator('.photo-gallery .group:has(svg.lucide-circle-play)').first()
+    await expect(card).toBeVisible({ timeout: 15_000 })
     await card.click()
 
     // PhotoLightbox 视频分支渲染 xgplayer（div 含 .videoPlayer ref）或 video 元素
     const videoOrPlayer = page.locator('video, [class*="xgplayer"], [class*="xgplayer-"]').first()
     await expect(videoOrPlayer).toBeVisible({ timeout: 10_000 })
+
+    // 清理筛选缓存，避免污染后续 2.1.6+ 用例（selectedFilters 会持久化到 localStorage）
+    await page.evaluate(() => localStorage.removeItem('trailsnap:selectedFilters'))
   })
 
   test('2.1.6 HEIC 渲染 - HEIC 照片缩略图正常加载', async ({ page, request }, testInfo) => {
@@ -184,7 +189,7 @@ test.describe('P1 - 照片流核心功能', () => {
     )
 
     // 打开筛选面板
-    const filterBtn = page.getByTitle('筛选').first()
+    const filterBtn = page.locator('main').getByTitle('筛选').first()
     await expect(filterBtn).toBeVisible({ timeout: 10_000 })
     await filterBtn.click()
 
@@ -226,7 +231,7 @@ test.describe('P1 - 照片流核心功能', () => {
     await page.goto('/photos')
 
     // 打开筛选面板并点一个分类
-    const filterBtn = page.getByTitle('筛选').first()
+    const filterBtn = page.locator('main').getByTitle('筛选').first()
     await expect(filterBtn).toBeVisible({ timeout: 10_000 })
     await filterBtn.click()
 

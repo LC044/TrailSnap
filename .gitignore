@@ -7,6 +7,7 @@ temp*
 *.log*
 dist
 .trae
+.workbuddy/
 *uploads*
 data/*
 .env
