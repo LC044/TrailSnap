@@ -10,7 +10,7 @@ from app.services.model_downloader import model_downloader
 from app.services.ai_config_manager import ai_config_manager
 from app.services.ticket_parser import parse_ticket_info, extract_text
 from app.services.fly_ticket_parser import extract_flight_info
-from app.services.onnx_providers import get_onnx_providers
+from app.services.onnx_providers import create_inference_session
 from app.services.ocr_service import openvino_infer_lock
 
 def load_modelscope_model():
@@ -30,7 +30,6 @@ def load_onnx_model():
     Initializes and returns the ONNX model for ticket recognition.
     """
     try:
-        import onnxruntime as ort
         logging.info("Initializing ONNX model for Ticket Recognition...")
         
         # Ensure model is downloaded and get path
@@ -38,8 +37,7 @@ def load_onnx_model():
         model_path = os.path.join(model_dir, "ticket-recognition.onnx")
         
         # Initialize ONNX model
-        providers, _ = get_onnx_providers()
-        session = ort.InferenceSession(model_path, providers=providers)
+        session = create_inference_session(model_path)
         
         # Set names attribute manually since ONNX model might not have it in the same format
         # We know from the code that class 0 is usually 'label' (train) and class 1 is 'label1' (flight)

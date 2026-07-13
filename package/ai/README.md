@@ -111,9 +111,9 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 
 ## 推理后端选择
 
-AI 服务的推理后端按 **CUDA > OpenVINO > CPU** 优先级自动探测，无需手动配置：
+AI 服务的推理后端按 **CUDA > OpenVINO > CoreML（仅 Apple Silicon）> CPU** 优先级自动探测，无需手动配置：
 
-- **人脸 / 物体分类 / 票据检测 / 图像向量**：走 ONNX Runtime，由 `app/services/onnx_providers.py` 统一探测可用 EP（`get_onnx_providers()` 进程内 `lru_cache` 只探测一次）。安装 `gpu` extra 时优先 CUDAExecutionProvider，安装 `openvino` extra 时优先 OpenVINO EP，否则回退 CPUExecutionProvider。
+- **人脸 / 物体分类 / 票据检测 / 图像向量**：走 ONNX Runtime，由 `app/services/onnx_providers.py` 统一探测可用 EP（`get_onnx_providers()` 进程内 `lru_cache` 只探测一次）。安装 `gpu` extra 时优先 CUDAExecutionProvider，安装 `openvino` extra 时优先 OpenVINO EP；Apple Silicon 上启用 CoreMLExecutionProvider（首次加载需编译，失败自动 fallback CPU）；否则回退 CPUExecutionProvider。
 - **OCR / 车票 OCR**：走 RapidOCR 自有的引擎配置口（不经过 `get_onnx_providers()`），在 `app/services/ocr_service.py` 中按 `torch.cuda` → `openvino` → `onnxruntime` 顺序选择引擎。
 
 > ⚠️ **OpenVINO 并发限制**：OpenVINO 的 `InferRequest.infer()` 是同步且非线程安全的，同一 RapidOCR 实例被多线程并发调用会抛 `Infer Request is busy`。`ocr_service.detect_text` 与 `ticket_service.detect` 共享同一 OCR 实例，已通过 `openvino_infer_lock()` 串行化 OpenVINO 推理；ONNX Runtime / Torch 后端线程安全，锁为 no-op，不影响吞吐。LATENCY 模式下单次推理已用 intra-op 线程吃满 CPU，串行化不损失性能。
@@ -133,6 +133,7 @@ AI 服务的推理后端按 **CUDA > OpenVINO > CPU** 优先级自动探测，�
 | `IDLE_TIMEOUT` | `600` | 服务整体空闲多久后 `sys.exit(0)` 释放内存（秒，仅非 Windows 生效） |
 | `CHECK_INTERVAL` | `60` | 空闲检查轮询间隔（秒） |
 | `OPENVINO_DEVICE` | 自动探测 | 强制指定 OpenVINO 设备 |
+| `DISABLE_COREML` | `0` | 设为 `1` 关闭 CoreMLExecutionProvider（仅 Apple Silicon 有效） |
 
 ## API 文档
 

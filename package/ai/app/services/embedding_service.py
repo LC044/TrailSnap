@@ -10,22 +10,20 @@ from app.config import settings
 from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
 from app.services.ai_config_manager import ai_config_manager
-from app.services.onnx_providers import get_onnx_providers
+from app.services.onnx_providers import create_inference_session
 
 class ONNXCLIPTextWrapper:
     def __init__(self, model_dir):
-        import onnxruntime as ort
         from modelscope import AutoTokenizer
         import os
-        
+
         self.model_dir = model_dir
         logging.info(f"Loading ONNX Text model from {model_dir}")
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
-        providers, provider_options = get_onnx_providers()
         text_model_path = os.path.join(model_dir, "textual.onnx")
-        self.text_session = ort.InferenceSession(text_model_path, providers=providers, provider_options=provider_options)
+        self.text_session = create_inference_session(text_model_path)
 
     def encode_text(self, texts: List[str]):
         import numpy as np
@@ -44,19 +42,16 @@ class ONNXCLIPTextWrapper:
 
 class ONNXCLIPImageWrapper:
     def __init__(self, model_dir):
-        import onnxruntime as ort
         from modelscope import AutoImageProcessor
         import os
-        
+
         self.model_dir = model_dir
         logging.info(f"Loading ONNX Image model from {model_dir}")
-        
+
         self.processor = AutoImageProcessor.from_pretrained(model_dir)
-        
-        # 推理后端按 CUDA -> OpenVINO -> CPU 自动选择。
-        providers, provider_options = get_onnx_providers()
+
         vision_model_path = os.path.join(model_dir, "visual.onnx")
-        self.vision_session = ort.InferenceSession(vision_model_path, providers=providers, provider_options=provider_options)
+        self.vision_session = create_inference_session(vision_model_path)
 
     def encode_image(self, images: List[Image.Image]):
         import numpy as np

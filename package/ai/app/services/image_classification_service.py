@@ -12,14 +12,12 @@ import numpy as np
 from app.config import settings
 from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
-from app.services.onnx_providers import get_onnx_providers
+from app.services.onnx_providers import create_inference_session
 
 class ONNXModelWrapper:
     def __init__(self, model_path):
-        import onnxruntime as ort
         import ast
-        providers, provider_options = get_onnx_providers()
-        self.session = ort.InferenceSession(model_path, providers=providers, provider_options=provider_options)
+        self.session = create_inference_session(model_path)
         meta = self.session.get_modelmeta()
         names_str = meta.custom_metadata_map.get('names', '{}')
         try:
