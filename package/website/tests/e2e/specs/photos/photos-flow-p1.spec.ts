@@ -157,25 +157,6 @@ test.describe('P1 - 照片流核心功能', () => {
     await page.evaluate(() => localStorage.removeItem('trailsnap:selectedFilters'))
   })
 
-  test('2.1.6 HEIC 渲染 - HEIC 照片缩略图正常加载', async ({ page, request }, testInfo) => {
-    // HEIC 在后端转码后入库（pillow-heif），缩略图/原图均返回 jpeg/webp
-    // 数据侧难以判定原始后缀（Photo 模型无 file_ext 字段），退化为"有 image 类型 + 文件名含 heic"
-    const probe = await requirePhotos(request, testInfo, 1, 200)
-    if (!probe.ok) return
-    const heicLike = probe.photos.find((p) => (p.filename ?? '').toLowerCase().includes('.heic'))
-    if (!heicLike) {
-      testInfo.skip(true, `No .heic photo in the first 200 photos; seed an iPhone asset to enable this P1 case.`)
-      return
-    }
-
-    await page.goto('/photos')
-    const thumb = page.locator('.photo-gallery img').first()
-    await expect(thumb).toBeVisible({ timeout: 15_000 })
-    // 缩略图 naturalWidth > 0 表示解码成功
-    const naturalWidth = await thumb.evaluate((img) => (img as HTMLImageElement).naturalWidth)
-    expect(naturalWidth).toBeGreaterThan(0)
-  })
-
   test('2.1.7 多选操作 - 选中多张照片后工具栏出现', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 2, 50)
     if (!probe.ok) return
@@ -271,5 +252,90 @@ test.describe('P1 - 照片流核心功能', () => {
     // 因此此用例同时是回归检测：若 selectedFilters 缓存未实现则失败，待补全。
     expect(cacheKeys.some((k) => /filter|selected/i.test(k))).toBeTruthy()
   })
+
+  test('2.1.6 实况图识别 - 实况图加载缩略图/原图/对应视频', async ({ page, request }, testInfo) => {
+    // 数据前置：探测至少一张 file_type=live_photo 的照片。缺失时跳过。
+    const probe = await requirePhotoOfType(request, testInfo, 'live_photo')
+    if (!probe.ok) return
+    const photoId = probe.photo.id
+
+    // 监听针对该实况图的三类资源请求（缩略图 / 视频 / 原图），用于在执行流中锚点校验。
+    const thumbnailRequest = page.waitForRequest(
+      (req) => req.url().includes(`/api/medias/${photoId}/thumbnail`) && req.method() === 'GET',
+      { timeout: 60_000 },
+    )
+    const videoRequest = page.waitForRequest(
+      (req) => req.url().includes(`/api/medias/${photoId}/video`) && req.method() === 'GET',
+      { timeout: 30_000 },
+    )
+    const fileRequest = page.waitForRequest(
+      (req) => req.url().includes(`/api/medias/${photoId}/file`) && req.method() === 'GET',
+      { timeout: 30_000 },
+    )
+
+    await page.goto('/photos')
+
+    // 1. 通过筛选面板按「实况图」类型过滤，让画廊只渲染实况图卡片。
+    //    （数据集若只有 1 张实况图，直接点首张即可；存在多张时，依赖 img[src*=id] 精准定位目标）
+    const filterBtn = page.locator('main').getByTitle('筛选').first()
+    await expect(filterBtn).toBeVisible({ timeout: 10_000 })
+    await filterBtn.click()
+    const liveTypeBtn = page.locator('button', { hasText: '实况图' }).first()
+    await expect(liveTypeBtn).toBeVisible({ timeout: 5_000 })
+    await liveTypeBtn.click()
+    // 筛选已落库（按钮进入选中态 bg-primary-500）
+    await expect(liveTypeBtn).toHaveClass(/bg-primary-500/, { timeout: 5_000 })
+
+    // 2. 等到目标实况图卡片的 <img src> 出现（说明缩略图已加载到 src，photoStore 写入了 thumbnail URL）。
+    //    Tailwind 的 icon-[tabler--live-photo] 在 CSS 选择器中需要转义方括号；改用属性包含匹配 [class*="tabler--live-photo"]
+    //    避免引号转义问题。
+    const targetCardImg = page.locator(`.photo-gallery img[src*="${photoId}/thumbnail"]`).first()
+    let cardImgVisible = false
+    for (let i = 0; i < 20; i++) {
+      if (await targetCardImg.count() > 0) {
+        cardImgVisible = true
+        break
+      }
+      // 月份按需懒加载，滚动 main 容器触发更多月份
+      await page.evaluate(() => {
+        const main = document.querySelector('main')
+        if (main) main.scrollBy(0, 800)
+        window.scrollBy(0, 800)
+      })
+      await page.waitForTimeout(1500)
+    }
+    expect(cardImgVisible, `live photo card for ${photoId} should render after filtering by 实况图`).toBeTruthy()
+
+    // 3. 验证「缩略图请求」已发出 —— gallery 用 img.thumbnail 作为缩略图 src，
+    //    PhotoGallery.vue 在 mounted 后立即触发 fetch(image.thumbnail)。
+    await thumbnailRequest
+
+    // 4. 验证卡片右上角渲染实况图标（用于在画廊层区分实况图）
+    const liveBadgeInCard = page.locator(`.photo-gallery .group:has(img[src*="${photoId}/thumbnail"]) span[class*="tabler--live-photo"]`).first()
+    await expect(liveBadgeInCard).toBeVisible({ timeout: 5_000 })
+
+    // 5. 点击目标卡片打开 PhotoLightbox（PhotoLightbox 的 LIVE 徽章 + 自动播放视频）
+    const targetCard = page.locator(`.photo-gallery .group:has(img[src*="${photoId}/thumbnail"])`).first()
+    await targetCard.click()
+
+    // 6. 验证 LIGHTBOX 中的「LIVE」徽章（PhotoLightbox.vue:198 的 <span>LIVE</span>）
+    await expect(page.getByText('LIVE', { exact: true })).toBeVisible({ timeout: 10_000 })
+
+    // 7. 验证 <video><source src=/api/medias/{id}/video> 正确渲染（PhotoLightbox.vue:182）
+    const videoSource = page.locator('video source[type="video/mp4"]').first()
+    await expect(videoSource).toHaveAttribute('src', new RegExp(`/api/medias/${photoId}/video`), { timeout: 10_000 })
+
+    // 8. 验证「视频请求」已发出 —— Live Photo 自动播放触发 source src 的加载
+    await videoRequest
+
+    // 9. 点击「查看原图 (Shift+O)」加载原图（PhotoLightbox.toggleOriginal）
+    await page.getByTitle('查看原图 (Shift+O)').click()
+    // 10. 验证「原图请求」已发出（displayImageSrc 在 showOriginal 时使用 image.url = /api/medias/{id}/file）
+    await fileRequest
+
+    // 清理筛选缓存，避免污染后续用例（与 2.1.5 视频测试一致）
+    await page.evaluate(() => localStorage.removeItem('trailsnap:selectedFilters'))
+  })
+
 })
 
