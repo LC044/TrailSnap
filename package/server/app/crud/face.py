@@ -195,13 +195,14 @@ def get_identities_with_details(
     ).outerjoin(
         Photo, Face.photo_id == Photo.id
     ).filter(
-        # 核心修正：筛选「统计数>min_photos」（SQL层过滤，提升性能）
-        func.coalesce(face_counts_subq.c.count, 0) > min_photos
+        # 核心修正：筛选「统计数>= min_photos」（SQL层过滤，提升性能）
+        func.coalesce(face_counts_subq.c.count, 0) >= min_photos  # min_photos=0 must include 0-photo identities
     )
 
     # NEW: Filter by owner_id in main query
     if owner_id:
         query = query.filter(FaceIdentity.owner_id == owner_id)
+    query = query.filter(FaceIdentity.is_deleted == False)  # exclude soft-deleted (merged) identities
 
     # 2.1 筛选逻辑
     if visibility_types:

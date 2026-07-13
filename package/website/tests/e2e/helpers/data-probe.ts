@@ -199,3 +199,69 @@ export async function requireAnyTag(
   }
   return { ok: true, tag: tags[0] }
 }
+
+/** ----- 人物（face identities）相关探针 ----- */
+
+export interface FaceIdentitySummary {
+  id: string
+  identity_name?: string
+  description?: string
+  is_hidden?: boolean
+  face_count?: number
+  cover_photo?: { photo_id: string } | null
+  tags?: string[]
+}
+
+/**
+ * 探测至少一个未隐藏的人物身份（默认 named + unnamed）。
+ *
+ * 空数据库 / 人脸识别未跑完 / 测试目录无 face 子目录时返回 { ok: false }，
+ * 调用方应立即 `return`。人脸识别是异步任务（RECOGNIZE_FACE 走 AI 服务，
+ * 可能因 AI 服务未起或模型未下载失败），需要 nightly 提前或准备本地已扫描数据。
+ */
+export async function requireAnyIdentity(
+  request: APIRequestContext,
+  testInfo: SkipCapable,
+): Promise<{ ok: true; identity: FaceIdentitySummary } | { ok: false }> {
+  const token = await ensureP0Fixtures(request, testInfo)
+  if (!token) {
+    return { ok: false }
+  }
+
+  const res = await tryGet<FaceIdentitySummary[] | BaseResponse<FaceIdentitySummary[]>>(
+    request,
+    `/faces/identities?page=1&limit=100&types=named&types=unnamed`,
+    token,
+  )
+  if (!res.ok) {
+    if (skipIfUnreachable(testInfo, res.status)) return { ok: false }
+    testInfo.skip(true, `Faces identities endpoint failed (HTTP ${res.status})`)
+    return { ok: false }
+  }
+  const identities = Array.isArray(res.data) ? res.data : (res.data as BaseResponse<FaceIdentitySummary[]>).data ?? []
+  if (identities.length === 0) {
+    testInfo.skip(
+      true,
+      `Need at least 1 face identity for this P1 case, found 0. Run RECOGNIZE_FACE on p0/face directory first.`,
+    )
+    return { ok: false }
+  }
+  return { ok: true, identity: identities[0] }
+}
+
+/** 探测至少一个含封面照片的人物（face_count > 0）。 */
+export async function requireIdentityWithPhotos(
+  request: APIRequestContext,
+  testInfo: SkipCapable,
+): Promise<{ ok: true; identity: FaceIdentitySummary } | { ok: false }> {
+  const probe = await requireAnyIdentity(request, testInfo)
+  if (!probe.ok) return { ok: false }
+  if (!probe.identity.cover_photo || (probe.identity.face_count ?? 0) === 0) {
+    testInfo.skip(
+      true,
+      `Found identity "${probe.identity.identity_name ?? probe.identity.id}" but it has no cover photo / face_count=0.`,
+    )
+    return { ok: false }
+  }
+  return { ok: true, identity: probe.identity }
+}

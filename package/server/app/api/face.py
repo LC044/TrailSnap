@@ -181,6 +181,7 @@ def list_identities(
     page: int = Query(1, ge=1, description="页码"),
     limit: int = Query(20, ge=1, le=10000, description="每页数量"),
     types: List[str] = Query(["named", "unnamed"], alias="types" , description="人物类型筛选：named, unnamed, hidden"),
+    min_photos: Optional[int] = Query(None, ge=0, description="最低照片数过滤阈值；不传时取用户配置 ai.face_recognition_min_photos"),
     db: Session = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -188,7 +189,9 @@ def list_identities(
     获取人物列表，包含每个人的封面照片和照片总数。
     """
     offset = (page - 1) * limit
-    min_photos = config_manager.get_user_config(current_user.id, db).ai.face_recognition_min_photos
+    # 显式传入的 min_photos 优先（供测试/管理端绕过用户配置），否则回退到用户配置
+    if min_photos is None:
+        min_photos = config_manager.get_user_config(current_user.id, db).ai.face_recognition_min_photos
     data = crud_face.get_identities_with_details(
         db,
         skip=offset,

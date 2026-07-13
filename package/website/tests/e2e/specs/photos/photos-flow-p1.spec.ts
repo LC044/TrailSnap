@@ -125,8 +125,28 @@ test.describe('P1 - 照片流核心功能', () => {
     await expect(videoTypeBtn).toBeVisible({ timeout: 5_000 })
     await videoTypeBtn.click()
 
+    // 确认「视频」筛选已落库到 store（按钮进入选中态 bg-primary-500）。
+    // 并行压测下 timeline 重拉较慢，仅等卡片会出现偶发超时，先确认筛选生效。
+    await expect(videoTypeBtn).toHaveClass(/bg-primary-500/, { timeout: 5_000 })
+
+    // 视频卡片在筛选后由画廊按可见月份懒加载。并行压测下月份加载可能延迟，
+    // 用「边滚边等」兜底：定期滚动触发更多月份加载，最长等 30s。
     const card = page.locator('.photo-gallery .group:has(svg.lucide-circle-play)').first()
-    await expect(card).toBeVisible({ timeout: 15_000 })
+    let cardVisible = false
+    for (let i = 0; i < 20; i++) {
+      if (await card.count() > 0) {
+        cardVisible = true
+        break
+      }
+      // 滚动主容器触发懒加载月份（gallery 以 main 或 window 为滚动容器）
+      await page.evaluate(() => {
+        const main = document.querySelector('main')
+        if (main) main.scrollBy(0, 800)
+        window.scrollBy(0, 800)
+      })
+      await page.waitForTimeout(1500)
+    }
+    expect(cardVisible, 'video card should render after filtering by 视频').toBeTruthy()
     await card.click()
 
     // PhotoLightbox 视频分支渲染 xgplayer（div 含 .videoPlayer ref）或 video 元素
