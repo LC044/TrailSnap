@@ -8,6 +8,7 @@ from typing import List, Dict, Set, Any, Optional
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy import or_, func, cast, String
 
 from app.db.session import SessionLocal
 from app.db.models.task import Task, TaskType, TaskStatus
@@ -411,6 +412,36 @@ class TaskManager:
         return {"message": f"Retried {result} failed tasks", "count": result}
 
     def add_task(self, db: Session, type: str, payload: dict, priority: int = 0, owner_id: UUID = None):
+        # 防重复入队：SCAN_FOLDER 是幂等的全量扫描任务，若已有 PENDING/PROCESSING
+        # 的同类任务，则直接复用，避免并发扫描导致同一文件被入库多次。。
+        if type == TaskType.SCAN_FOLDER or type == TaskType.SCAN_FOLDER.value:
+            try:
+                target_user_id = None
+                if payload and isinstance(payload, dict):
+                    target_user_id = payload.get('user_id')
+                if not target_user_id and owner_id is not None:
+                    target_user_id = str(owner_id)
+
+                query = db.query(Task).filter(
+                    Task.type == TaskType.SCAN_FOLDER,
+                    Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING])
+                )
+                if target_user_id:
+                    # 兼容两种情况：payload 里带 user_id，或 owner_id 列匹配
+                    query = query.filter(or_(
+                        cast(Task.owner_id, String) == str(target_user_id),
+                        func.json_extract_path_text(Task.payload, 'user_id') == str(target_user_id),
+                    ))
+                existing_scan = query.order_by(Task.created_at.desc()).first()
+                if existing_scan:
+                    logging.info(
+                        f"SCAN_FOLDER already {existing_scan.status} for user={target_user_id}, "
+                        f"skip creating duplicate. Reusing task={existing_scan.id}"
+                    )
+                    return existing_scan
+            except Exception as e:
+                logging.warning(f"SCAN_FOLDER dedup check failed, falling back to create: {e}")
+
         task = crud_task.add_task(db, type, payload, priority, owner_id)
         logging.info(f"Added task: {task.type} with priority {task.priority}")
         self.start_worker_if_needed()

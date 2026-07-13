@@ -41,6 +41,40 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
         return 0
 
     try:
+        # 兜底去重：过滤掉数据库中已存在的 (owner_id, file_path)，避免并发扫描
+        # 或历史重复任务导致同一文件被多次入库。
+        incoming_paths = [item['file_path'] for item in photos_data if item.get('file_path')]
+        if incoming_paths:
+            existing_query = db.query(Photo.file_path).filter(
+                Photo.file_path.in_(incoming_paths)
+            )
+            if user_id is not None:
+                existing_query = existing_query.filter(Photo.owner_id == user_id)
+            existing_paths = {row[0] for row in existing_query.all()}
+
+            # 同一批次内也需要去重（比如多个 PROCESS_BASIC 并发时打包了同一文件）
+            seen_in_batch = set()
+            deduped = []
+            for item in photos_data:
+                fp = item.get('file_path')
+                if not fp:
+                    continue
+                if fp in existing_paths or fp in seen_in_batch:
+                    continue
+                seen_in_batch.add(fp)
+                deduped.append(item)
+
+            skipped = len(photos_data) - len(deduped)
+            if skipped > 0:
+                import logging
+                logging.info(
+                    f"batch_create_photos: skipped {skipped} duplicate file_path(s) for user={user_id}"
+                )
+            photos_data = deduped
+
+        if not photos_data:
+            return 0
+
         photos = []
         metadatas = []
 
