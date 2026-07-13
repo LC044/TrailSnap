@@ -80,7 +80,7 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
         # Check for Google Motion Photo and extract video
         is_motion_photo = False
         if ext in ('.jpg', '.jpeg'):
-            video_path = motion_photo.extract_video(file_path, video_path=thumb_path[:-4] + '.mp4')
+            video_path = motion_photo.extract_video(file_path, video_path=os.path.splitext(thumb_path)[0] + '.mp4')
             if video_path:
                 is_motion_photo = True
 

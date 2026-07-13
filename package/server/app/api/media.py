@@ -63,9 +63,18 @@ async def get_live_photo_video(
     thumb_path = await run_in_threadpool(_get_thumbnail_path, photo.owner_id, photo_id, db, 'medium')
     file_path = os.path.splitext(thumb_path)[0] + '.mp4'
 
-    exists = await run_in_threadpool(os.path.exists, file_path)
-    if not exists:
-        raise HTTPException(status_code=404, detail="Video file not found")
+    ext = os.path.splitext(photo.file_path)[1].lower()
+    if ext in ('.jpg', 'jpeg'):
+        file_path = os.path.splitext(photo.file_path)[0] + '.mp4'
+        exists = await run_in_threadpool(os.path.exists, file_path)
+        if not exists:
+            file_path = os.path.splitext(photo.file_path)[0] + '.mov'
+            exists = await run_in_threadpool(os.path.exists, file_path)
+            if not exists:
+                thumb_path = await run_in_threadpool(_get_thumbnail_path, photo.owner_id, photo_id, db, 'medium')
+                file_path = os.path.splitext(thumb_path)[0] + '.mp4'
+    else:
+        file_path = os.path.splitext(photo.file_path)[0] + '.MOV'
 
     file_size = await run_in_threadpool(os.path.getsize, file_path)
 
