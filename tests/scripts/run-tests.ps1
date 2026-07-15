@@ -60,7 +60,7 @@ param(
     [ValidateSet('unit', 'integration', 'e2e', 'docker', 'all')]
     [string]$Layer = 'unit',
 
-    [ValidateSet('server', 'ai', 'website', 'all')]
+    [ValidateSet('server', 'ai', 'website', 'cli', 'all')]
     [string]$Component = 'all',
 
     [string]$Cover,
@@ -282,13 +282,16 @@ try {
 
             $apiUri = [System.Uri]$env:TS_API_BASE_URL
             $resetDb = Test-ResetDbFlag
+            $uv = Resolve-Uv
+            if (-not $uv) { throw "找不到 uv" }
+
             if (-not (Test-Port $apiUri.Port)) {
                 if ($resetDb) {
                     Write-Host "  TS_TEST_RESET_DB=true，启动 server 前先删除目标测试库..." -ForegroundColor Cyan
                     Invoke-TestDatabaseDrop -Reason '启动前重置'
                 }
                 Write-Host "  启动 Server ($($apiUri.Port))..."
-                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "uv", "run", "python", "start.py", "--port", "$($apiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\server") -WindowStyle Hidden -PassThru
+                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$uv`"", "run", "python", "start.py", "--port", "$($apiUri.Port)", ">", "server.log", "2>&1" -WorkingDirectory (Join-Path $RepoRoot "package\server") -WindowStyle Hidden -PassThru
                 $startedProcesses += $proc
             } elseif ($resetDb) {
                 Write-Host "  警告：TS_TEST_RESET_DB=true，但 server 端口 $($apiUri.Port) 已被占用（服务已在运行），跳过重置以免破坏运行中的服务。先停掉该端口服务再重试。" -ForegroundColor Yellow
@@ -297,7 +300,7 @@ try {
             $aiUri = [System.Uri]$env:TS_AI_API_URL
             if (-not (Test-Port $aiUri.Port)) {
                 Write-Host "  启动 AI 服务 ($($aiUri.Port))..."
-                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$($aiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\ai") -WindowStyle Hidden -PassThru
+                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$uv`"", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$($aiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\ai") -WindowStyle Hidden -PassThru
                 $startedProcesses += $proc
             }
 
@@ -312,7 +315,7 @@ try {
 
             if ($startedProcesses.Count -gt 0) {
                 Write-Host "  等待服务就绪..."
-                $maxWait = 30
+                $maxWait = 60
                 while ($maxWait -gt 0) {
                     $serverReady = Test-Port $apiUri.Port
                     $aiReady = Test-Port $aiUri.Port
@@ -355,6 +358,10 @@ try {
         if ($Component -in 'ai', 'all') {
             Write-Host "==> AI $Layer 测试 (ai)" -ForegroundColor Green
             Invoke-Pytest -PackageDir 'package\ai' -TestPath $aiTestPath -ExtraArgs $markerArg
+        }
+        if ($Component -in 'cli', 'all') {
+            Write-Host "==> CLI $Layer 测试 (cli)" -ForegroundColor Green
+            Invoke-Pytest -PackageDir 'package\trailsnap-cli' -TestPath 'tests' -ExtraArgs $markerArg
         }
     }
 
