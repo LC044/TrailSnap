@@ -49,7 +49,7 @@
         <div
           v-for="(photo, index) in stack"
           :key="photo.id"
-          class="absolute inset-0 m-auto w-[85vw] max-w-[360px] h-[68vh] max-h-[600px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden transform-gpu will-change-transform"
+          class="absolute inset-0 m-auto w-[85vw] max-w-[360px] h-[68vh] max-h-[600px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden transform-gpu will-change-transform touch-none"
           :class="index === 0
             ? 'cursor-grab active:cursor-grabbing'
             : 'pointer-events-none'"
@@ -62,12 +62,11 @@
           <!-- 模糊背景 (所有卡片均渲染，升顶时已就位，避免突然出现造成割裂感) -->
           <div class="absolute inset-0 z-0 pointer-events-none">
             <img :src="thumbUrl(photo.id)" class="w-full h-full object-cover blur-2xl scale-125 transition-opacity duration-300" :class="isThumbLoaded(photo.id) ? 'opacity-60 dark:opacity-40' : 'opacity-0'" draggable="false" decoding="async" />
-            <div class="absolute inset-0 bg-white/40 dark:bg-slate-900/60 backdrop-blur-[2px]"></div>
+            <div class="absolute inset-0 bg-white/60 dark:bg-slate-900/80"></div>
           </div>
 
-          <!-- 查看详情按钮 (仅顶层) -->
+          <!-- 查看详情按钮 (所有卡片均渲染，避免升层时闪现) -->
           <button
-            v-show="index === 0"
             @click.stop="openLightbox"
             class="absolute top-4 right-4 z-20 p-2 rounded-full bg-black/30 text-white hover:bg-black/50 transition-colors backdrop-blur-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
             title="查看详情"
@@ -78,18 +77,18 @@
           <!-- 叠加状态指示 (仅顶层, 左滑红叉/右滑绿星) -->
           <div
             v-show="index === 0"
-            class="absolute inset-0 z-20 pointer-events-none flex items-center justify-center transition-opacity"
+            class="absolute inset-0 z-20 pointer-events-none flex items-center justify-center"
             :style="{ opacity: statusOpacity }"
           >
             <div
-              v-if="dragOffset < 0"
-              class="w-32 h-32 rounded-full bg-red-500/20 flex items-center justify-center border-4 border-red-500/50 backdrop-blur-md transform rotate-[-15deg]"
+              class="absolute w-32 h-32 rounded-full bg-red-500/20 flex items-center justify-center border-4 border-red-500/50 transform rotate-[-15deg] transition-opacity duration-200"
+              :style="{ opacity: dragOffset < 0 ? 1 : 0 }"
             >
               <Trash2 class="w-16 h-16 text-red-500 drop-shadow-lg" />
             </div>
             <div
-              v-else-if="dragOffset > 0"
-              class="w-32 h-32 rounded-full bg-emerald-500/20 flex items-center justify-center border-4 border-emerald-500/50 backdrop-blur-md transform rotate-[15deg]"
+              class="absolute w-32 h-32 rounded-full bg-emerald-500/20 flex items-center justify-center border-4 border-emerald-500/50 transform rotate-[15deg] transition-opacity duration-200"
+              :style="{ opacity: dragOffset > 0 ? 1 : 0 }"
             >
               <Heart class="w-16 h-16 text-emerald-500 drop-shadow-lg" />
             </div>
@@ -143,15 +142,16 @@
               {{ formatDuration(photo) }}
             </div>
 
-            <!-- 视频播放按钮 (仅顶层, 点击打开大图播放) -->
-            <button
-              v-if="photo.file_type === 'video' && index === 0"
-              @click.stop="openLightbox"
-              class="absolute z-20 w-14 h-14 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-md transition-colors pointer-events-auto focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
-              title="播放视频"
-            >
-              <Play class="w-7 h-7 ml-0.5" />
-            </button>
+            <!-- 视频播放按钮 (所有卡片均渲染以防闪现，但仅顶层可点击) -->
+          <button
+            v-if="photo.file_type === 'video'"
+            @click.stop="openLightbox"
+            class="absolute z-20 w-14 h-14 rounded-full bg-black/50 hover:bg-black/70 text-white flex items-center justify-center backdrop-blur-md transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+            :class="index === 0 ? 'pointer-events-auto' : 'pointer-events-none'"
+            title="播放视频"
+          >
+            <Play class="w-7 h-7 ml-0.5" />
+          </button>
           </div>
 
           <!-- 信息展示区 (所有卡片均渲染真实信息，升顶时无需替换，无割裂感) -->
@@ -172,7 +172,7 @@
     </main>
 
     <!-- 底部操作栏 -->
-    <footer class="flex-none pb-8 pt-4 px-6 flex items-center justify-center gap-8 z-20 bg-gradient-to-t from-slate-50 dark:from-slate-900 to-transparent">
+    <footer class="flex-none pt-4 px-6 flex items-center justify-center gap-8 z-20 bg-gradient-to-t from-slate-50 dark:from-slate-900 to-transparent pb-[calc(2rem+env(safe-area-inset-bottom))]">
       <button
         @click="swipeLeft"
         :disabled="photos.length === 0"
@@ -302,7 +302,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import { ArrowLeft, Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin, Sparkles, Hand, Play } from 'lucide-vue-next'
 import { photoApi } from '@/api/photo'
 import { albumService } from '@/api/album'
@@ -321,23 +321,80 @@ const processedCount = ref(0)
 const totalCount = ref(0)
 
 // 撤销历史与待删除队列
+const MAX_UNDO = 30
+const BATCH_SYNC_SIZE = 10
+const OFFLINE_STORAGE_KEY = 'trailsnap:swipe-filter:offline-deletes'
+
 interface ActionRecord {
   photo: Photo
   action: 'keep' | 'delete'
 }
 const actionHistory = ref<ActionRecord[]>([])
-const pendingDeleteIds = ref<Set<string>>(new Set())
+const pendingDeleteIds = ref<Set<string>>(new Set()) // 还在撤销栈内的删除
+const syncQueue = ref<Set<string>>(new Set()) // 已超出撤销栈，等待后台提交的删除
+
+// 统计计数 (代替之前的 computed，保证超出撤销栈后数字不掉)
+const sessionDeletedCount = ref(0)
+const sessionKeptCount = ref(0)
 
 // 计算属性
 const currentPhoto = computed(() => photos.value[0] || null)
-const deletedCount = computed(() => actionHistory.value.filter(a => a.action === 'delete').length)
-const keptCount = computed(() => actionHistory.value.filter(a => a.action === 'keep').length)
+const deletedCount = computed(() => sessionDeletedCount.value)
+const keptCount = computed(() => sessionKeptCount.value)
+
+// --- 本地离线缓存与静默提交 ---
+const persistToStorage = () => {
+  try {
+    const allIds = [...syncQueue.value, ...pendingDeleteIds.value]
+    if (allIds.length > 0) {
+      localStorage.setItem(OFFLINE_STORAGE_KEY, JSON.stringify(allIds))
+    } else {
+      localStorage.removeItem(OFFLINE_STORAGE_KEY)
+    }
+  } catch (e) {}
+}
+
+const flushSyncQueue = async () => {
+  if (syncQueue.value.size === 0) return
+  const ids = Array.from(syncQueue.value)
+  try {
+    await albumService.batchUpdatePhotos({
+      photo_ids: ids,
+      action: 'delete'
+    })
+    // 成功后从队列移除
+    ids.forEach(id => syncQueue.value.delete(id))
+    persistToStorage()
+  } catch (error) {
+    // 失败了（如断网）就留在队列里，等待下次触发或退出时再试
+    console.warn('Background sync failed, will retry later.', error)
+  }
+}
+
+const recoverOfflineDeletes = async () => {
+  try {
+    const saved = localStorage.getItem(OFFLINE_STORAGE_KEY)
+    if (saved) {
+      const ids = JSON.parse(saved) as string[]
+      if (ids.length > 0) {
+        await albumService.batchUpdatePhotos({
+          photo_ids: ids,
+          action: 'delete'
+        })
+        localStorage.removeItem(OFFLINE_STORAGE_KEY)
+        console.log(`Recovered and deleted ${ids.length} offline photos.`)
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to recover offline deletes', e)
+  }
+}
 
 // --- 键化卡片栈 ---
 // 只渲染栈深 N 张卡片，每张 :key="photo.id"。滑走时 photos.shift() 移除顶层，
 // Vue 按 key 复用其余卡片元素——下一张的 <img> 早已在自己元素里加载完成，
 // 升为顶层后无需重绑 src、无需重新请求，弱网下也不会闪现旧图。
-const STACK_DEPTH = 3
+const STACK_DEPTH = 4 // 增加栈深至4，使最底层卡片以透明状态预先挂载，防止闪现
 const stack = computed(() => photos.value.slice(0, STACK_DEPTH))
 
 // 统一使用 medium 缩略图（保证清晰度）；弱网体验由键化卡片栈 + 静默预取 + 渐显兜底。
@@ -513,7 +570,7 @@ let lastVelocity = 0 // px/ms，正值为向右
 
 // 卡片过渡曲线：统一使用柔和的 ease-out（无 overshoot 回弹），整段动画一气呵成，避免弹簧感的生硬。
 const EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
-const REST_DUR = 0.32
+const REST_DUR = 0.45
 // 注意：transition 不含 box-shadow。box-shadow 是 paint 属性，逐帧变化会使卡片 GPU 层失效，
 // 连带 filter:blur 的模糊背景一起重栅格化 → 闪烁。故阴影按"角色(层级)"静态取值，不在动画中插值。
 const transitionFor = (dur: number) => `transform ${dur}s ${EASE}, opacity ${dur}s ${EASE}`
@@ -575,6 +632,7 @@ const BEHIND_OFFSETS: Array<{ scale: number; rotate: number; tx: number; ty: num
   { scale: 1, rotate: 0, tx: 0, ty: 0, opacity: 1 }, // index 0 (占位，实际走 cardStyle)
   { scale: 0.94, rotate: 5, tx: 3, ty: 12, opacity: 0.85 },
   { scale: 0.87, rotate: -4, tx: -5, ty: 22, opacity: 0.5 },
+  { scale: 0.80, rotate: 3, tx: 2, ty: 30, opacity: 0 }, // index 3 (全透明，作为新进入栈的预备层，防止闪现)
 ]
 
 // 后层在顶层拖拽/飞出时向中心靠拢的进度上限（按 index）。
@@ -582,7 +640,7 @@ const BEHIND_OFFSETS: Array<{ scale: number; rotate: number; tx: number; ty: num
 //   顶层移除时它已就位，交接瞬间零位移，最丝滑（无落位动画）。
 // index 2+（更深的卡片）：仅 0.15——飞出时几乎不动，避免先顶到中心、shift 后又反向回弹的生硬感；
 //   它们的"上移"交给 shift 后的统一过渡顺滑完成。
-const PROMOTION_CAPS = [1, 1, 0.15]
+const PROMOTION_CAPS = [1, 1, 0.15, 0]
 
 // 按栈中 index 计算卡片样式：顶层用 cardStyle；后层用错位样式，
 // 并随顶层拖拽/飞出进度向中心靠拢——顶层滑走时下一张顺势顶上，过渡自然。
@@ -639,26 +697,47 @@ const handleSwipe = (direction: 'left' | 'right', velocity = 0) => {
   const photo = photos.value[0]
   isAnimating.value = true
 
-  // 根据松手速度决定飞出时长：越快越干脆 (0.34s → 0.20s)，按钮/慢拖则更从容。
+  // 根据松手速度决定飞出时长：越快越干脆 (0.45s → 0.30s)，按钮/慢拖则更从容。
   const v = Math.abs(velocity)
-  const dur = Math.max(0.2, Math.min(0.34, 0.34 - v * 0.06))
+  const dur = Math.max(0.3, Math.min(0.45, 0.45 - v * 0.08))
   flyDuration.value = dur
 
   // 移动端轻触反馈，增强"甩出去"的实感。
   try { navigator.vibrate?.(8) } catch { /* 忽略不支持 */ }
 
-  // 设置飞出动画目标位置
-  const throwX = direction === 'left' ? -window.innerWidth : window.innerWidth
-  dragOffset.value = throwX
-  dragOffsetY.value = direction === 'left' ? 100 : -100 // 飞出时带点垂直位移更自然
-
   // 记录操作
   const action = direction === 'left' ? 'delete' : 'keep'
   actionHistory.value.push({ photo, action })
-
+  
   if (action === 'delete') {
+    sessionDeletedCount.value++
     pendingDeleteIds.value.add(photo.id)
+  } else {
+    sessionKeptCount.value++
   }
+
+  // 防止撤销栈无限膨胀：超出 MAX_UNDO 后，锁定最老的记录并移出撤销栈
+  if (actionHistory.value.length > MAX_UNDO) {
+    const oldest = actionHistory.value.shift()!
+    if (oldest.action === 'delete') {
+      pendingDeleteIds.value.delete(oldest.photo.id)
+      syncQueue.value.add(oldest.photo.id)
+    }
+  }
+
+  persistToStorage()
+
+  // 触发后台分批静默提交
+  if (syncQueue.value.size >= BATCH_SYNC_SIZE) {
+    flushSyncQueue()
+  }
+
+  // 保证 isAnimating=true 的 transition 先生效，下一帧再应用飞出 transform，避免偶发无动画闪切
+  requestAnimationFrame(() => {
+    const throwX = direction === 'left' ? -window.innerWidth : window.innerWidth
+    dragOffset.value = throwX
+    dragOffsetY.value = direction === 'left' ? 100 : -100 // 飞出时带点垂直位移更自然
+  })
 
   // 动画结束后移除当前照片 (与飞出时长同步，避免提前/滞后裁切)
   setTimeout(() => {
@@ -686,8 +765,13 @@ const undo = () => {
   const lastAction = actionHistory.value.pop()!
   
   if (lastAction.action === 'delete') {
+    sessionDeletedCount.value--
     pendingDeleteIds.value.delete(lastAction.photo.id)
+  } else {
+    sessionKeptCount.value--
   }
+  
+  persistToStorage()
   
   // 将照片插回队首
   photos.value.unshift(lastAction.photo)
@@ -804,33 +888,50 @@ const handleWheel = (e: WheelEvent) => {
 
 // 退出前提交批量删除
 const submitDeletions = async () => {
-  const ids = Array.from(pendingDeleteIds.value)
+  const ids = Array.from(new Set([...syncQueue.value, ...pendingDeleteIds.value]))
   if (ids.length > 0) {
     try {
-      pendingDeleteIds.value.clear() // 先清空，防止多次触发
+      syncQueue.value.clear()
+      pendingDeleteIds.value.clear()
       await albumService.batchUpdatePhotos({
         photo_ids: ids,
         action: 'delete'
       })
+      persistToStorage() // 提交成功后清除本地缓存
       ElMessage.success(`已将 ${ids.length} 张照片移至回收站`)
     } catch (error) {
       console.error(error)
-      // 失败后可以加回来，但因为可能页面已经关闭，所以可能意义不大
-      ElMessage.error('批量删除照片失败')
+      // 失败后将 id 重新加回离线队列并缓存，下次进页面时自动重试
+      ids.forEach(id => syncQueue.value.add(id))
+      persistToStorage()
+      ElMessage.error('网络异常，删除操作已保存在本地，下次将自动重试')
     }
   }
 }
 
-const handleBack = async () => {
-  await submitDeletions()
+const handleBack = () => {
   router.back()
+}
+
+onBeforeRouteLeave(async (to, from, next) => {
+  await submitDeletions()
+  next()
+})
+
+const handleBeforeUnload = () => {
+  if (pendingDeleteIds.value.size > 0) {
+    // 浏览器刷新/关闭标签页时，尽量尝试提交数据防丢失
+    submitDeletions()
+  }
 }
 
 // 生命周期
 onMounted(() => {
   detectWeakNetwork()
+  recoverOfflineDeletes() // 页面加载时恢复并提交离线期间的删除操作
   fetchPhotos()
   window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('beforeunload', handleBeforeUnload)
   // 首次打开时展示引导
   try {
     if (!localStorage.getItem(GUIDE_STORAGE_KEY)) {
@@ -843,14 +944,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   if (currentLoadTimer) {
     clearTimeout(currentLoadTimer)
     currentLoadTimer = null
   }
-  // 如果用户直接关闭页面或切换路由而没有点击返回按钮，最好也能提交删除
-  // 不过在 onUnmounted 中做异步请求可能不可靠，通常我们在 beforeRouteLeave 中处理
-  // 这里简化处理，依赖 onUnmounted
-  submitDeletions()
 })
 </script>
 
