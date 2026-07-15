@@ -258,7 +258,9 @@ async function triggerScanAndWait(
     throw new Error(`创建扫描任务失败: ${createResponse.status()} ${await readResponseText(createResponse)}`)
   }
 
-  const task = await createResponse.json() as TaskSchema
+  // POST /tasks/ 已包裹 BaseResponse：兼容旧版直接返回 TaskSchema 的情况
+  const taskBody = await createResponse.json() as TaskSchema | { data?: TaskSchema }
+  const task: TaskSchema = (taskBody as { data?: TaskSchema }).data ?? (taskBody as TaskSchema)
   await waitForTasksToSettle(request, token, {
     progressQuietWindowMs: waitProgressMs,
     updatedSince: startedAt,

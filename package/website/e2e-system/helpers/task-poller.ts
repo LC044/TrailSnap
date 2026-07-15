@@ -64,7 +64,9 @@ export async function waitForTasksToSettle(
       
       errorCount = 0 // 重置错误计数
 
-      const groupedTasks = (await response.json()) as GroupedTask[]
+      // /tasks/grouped-status 已包裹 BaseResponse，兼容旧版直接返回数组的情况
+      const groupedRaw = (await response.json()) as GroupedTask[] | { data?: GroupedTask[] }
+      const groupedTasks = Array.isArray(groupedRaw) ? groupedRaw : (groupedRaw.data ?? [])
     
     // 过滤出有剩余或失败任务的分类
     const activeGroups = groupedTasks.filter(t => t.pending > 0 || t.failed > 0)

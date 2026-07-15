@@ -4,14 +4,14 @@ import type { FaceIdentity } from '@/types/album';
 export const faceApi = {
   async listIdentities(page = 1, limit = 20, types?: string[]) {
     const data = await request.get<FaceIdentity[]>('/api/faces/identities', {
-      params: { page, limit, types }
+      params: { skip: (page - 1) * limit, limit, types }
     });
     return data.data;
   },
 
   async getIdentityPhotos(id: string, page = 1, limit = 50) {
     const data = await request.get<any[]>(`/api/faces/identities/${id}/photos`, {
-      params: { page, limit }
+      params: { skip: (page - 1) * limit, limit }
     });
     return data.data;
   },

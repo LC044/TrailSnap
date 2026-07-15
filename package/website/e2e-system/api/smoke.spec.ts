@@ -27,7 +27,9 @@ test.describe('系统 API 冒烟 @smoke', () => {
         params: { limit: 200 },
       })
       expect(tasksResponse.ok()).toBeTruthy()
-      const tasks = await tasksResponse.json() as Array<{ status: string }>
+      // /tasks/ 已包裹 BaseResponse，兼容旧版直接返回数组的情况
+      const tasksRaw = await tasksResponse.json() as Array<{ status: string }> | { data?: Array<{ status: string }> }
+      const tasks = Array.isArray(tasksRaw) ? tasksRaw : (tasksRaw.data ?? [])
       const failedTasks = tasks.filter(task => task.status.toLowerCase() === 'failed')
       expect(failedTasks).toHaveLength(0)
 

@@ -35,7 +35,7 @@ async function listIdentities(
   types: string[] = ['named', 'unnamed'],
 ): Promise<FaceIdentitySummary[]> {
   const search = types.map((t) => `types=${encodeURIComponent(t)}`).join('&')
-  const res = await request.get(`${e2eEnv.apiBaseUrl}/faces/identities?page=1&limit=100&${search}`, {
+  const res = await request.get(`${e2eEnv.apiBaseUrl}/faces/identities?skip=0&limit=100&${search}`, {
     headers: authHeaders(token),
   })
   if (!res.ok()) return []
@@ -47,7 +47,7 @@ async function listAllIdentities(
   request: APIRequestContext,
   token: string,
 ): Promise<FaceIdentitySummary[]> {
-  const res = await request.get(`${e2eEnv.apiBaseUrl}/faces/identities?page=1&limit=100`, {
+  const res = await request.get(`${e2eEnv.apiBaseUrl}/faces/identities?skip=0&limit=100`, {
     headers: authHeaders(token),
   })
   if (!res.ok()) return []
@@ -62,7 +62,7 @@ async function listIdentityPhotos(
   limit = 100,
 ): Promise<Array<{ id: string }>> {
   const res = await request.get(
-    `${e2eEnv.apiBaseUrl}/faces/identities/${id}/photos?page=1&limit=${limit}`,
+    `${e2eEnv.apiBaseUrl}/faces/identities/${id}/photos?skip=0&limit=${limit}`,
     { headers: authHeaders(token) },
   )
   if (!res.ok()) return []
@@ -271,7 +271,7 @@ test.describe.serial('P1 - 人物相册', () => {
     // 重新拉取（不带 hidden filter，但默认 named+unnamed）→ 该 identity 应 is_hidden=true
     // → 重新拉"含 hidden"才能看到
     const listWithHidden = await request.get(
-      `${e2eEnv.apiBaseUrl}/faces/identities?page=1&limit=100&types=named&types=unnamed&types=hidden`,
+      `${e2eEnv.apiBaseUrl}/faces/identities?skip=0&limit=100&types=named&types=unnamed&types=hidden`,
       { headers: authHeaders(authToken) },
     )
     const allBody = (await listWithHidden.json()) as FaceIdentitySummary[] | BaseResponse<FaceIdentitySummary[]>
@@ -616,7 +616,7 @@ test.describe.serial('P1 - 人物相册', () => {
       // 显式传 min_photos=0，绕过用户配置——并行用例可能已把共享的
       // face_recognition_min_photos 还原成 5，否则 0 照片的临时身份会被过滤掉。
       const listWithHidden = await request.get(
-        `${e2eEnv.apiBaseUrl}/faces/identities?page=1&limit=100&min_photos=0&types=named&types=unnamed&types=hidden`,
+        `${e2eEnv.apiBaseUrl}/faces/identities?skip=0&limit=100&min_photos=0&types=named&types=unnamed&types=hidden`,
         { headers: authHeaders(authToken) },
       )
       const allBody = await listWithHidden.json() as FaceIdentitySummary[] | BaseResponse<FaceIdentitySummary[]>

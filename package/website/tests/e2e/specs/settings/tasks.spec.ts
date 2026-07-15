@@ -31,7 +31,9 @@ test.describe('P0 核心路径 - 任务监控 @p0', () => {
     const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/`);
     expect(res.status()).toBe(200);
     const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
+    // /tasks/ 已包裹 BaseResponse：{ code, msg, data: [...] }
+    const tasks = Array.isArray(body) ? body : body.data ?? [];
+    expect(Array.isArray(tasks)).toBe(true);
   });
 
   test('GET /tasks/?status=PENDING 仅返回 PENDING 任务', async ({ request }, testInfo) => {
@@ -39,8 +41,9 @@ test.describe('P0 核心路径 - 任务监控 @p0', () => {
     const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/?status=PENDING`);
     expect(res.status()).toBe(200);
     const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
-    for (const t of body) {
+    const tasks = Array.isArray(body) ? body : body.data ?? [];
+    expect(Array.isArray(tasks)).toBe(true);
+    for (const t of tasks) {
       expect(t.status).toBe('PENDING');
     }
   });
@@ -50,8 +53,9 @@ test.describe('P0 核心路径 - 任务监控 @p0', () => {
     const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/?type=SCAN_FOLDER&limit=5`);
     expect(res.status()).toBe(200);
     const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
-    for (const t of body) {
+    const tasks = Array.isArray(body) ? body : body.data ?? [];
+    expect(Array.isArray(tasks)).toBe(true);
+    for (const t of tasks) {
       expect(t.type).toBe('SCAN_FOLDER');
     }
   });
@@ -110,7 +114,9 @@ test.describe('P0 核心路径 - 任务分类与 Fast Mode @p0', () => {
     const res = await request.post(`${e2eEnv.apiBaseUrl}/tasks/fast-mode?enabled=true`);
     if (res.ok()) {
       const body = await res.json();
-      expect(body).toHaveProperty('status', 'success');
+      // fast-mode 已包裹 BaseResponse，原 payload 在 data 中
+      const data = body.data ?? body;
+      expect(data).toHaveProperty('status', 'success');
     }
   });
 });

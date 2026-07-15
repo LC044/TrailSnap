@@ -230,7 +230,7 @@ export async function requireAnyIdentity(
 
   const res = await tryGet<FaceIdentitySummary[] | BaseResponse<FaceIdentitySummary[]>>(
     request,
-    `/faces/identities?page=1&limit=100&types=named&types=unnamed`,
+    `/faces/identities?skip=0&limit=100&types=named&types=unnamed`,
     token,
   )
   if (!res.ok) {

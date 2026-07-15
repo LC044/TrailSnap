@@ -43,7 +43,7 @@ async function listIdentities(
   types: string[] = ['named', 'unnamed'],
 ): Promise<FaceIdentitySummary[]> {
   const search = types.map((t) => `types=${encodeURIComponent(t)}`).join('&')
-  const res = await request.get(`${e2eEnv.apiBaseUrl}/faces/identities?page=1&limit=100&${search}`, {
+  const res = await request.get(`${e2eEnv.apiBaseUrl}/faces/identities?skip=0&limit=100&${search}`, {
     headers: authHeaders(token),
   })
   if (!res.ok()) return []

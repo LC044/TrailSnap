@@ -36,7 +36,7 @@ async function createAlbumViaApi(
   })
   expect(res.ok(), `createAlbum ${payload.name} should succeed`).toBeTruthy()
   const body = (await res.json()) as BaseResponse<AlbumSummary>
-  expect(body.code).toBe(200)
+  expect(body.code).toBe(0)
   return body.data
 }
 

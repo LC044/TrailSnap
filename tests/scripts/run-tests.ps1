@@ -42,6 +42,7 @@
     .\tests\scripts\run-tests.ps1 -Layer e2e -Cover full                 # e2e 全部用例（不加 grep）
     .\tests\scripts\run-tests.ps1 tests\.env.docker -Layer docker        # 用 docker 配置起栈
     .\tests\scripts\run-tests.ps1 -Layer unit -Component server -Cover smoke -Scope album
+    .\tests\scripts\run-tests.ps1 tests\.env.test-local -StopServices    # 只关服务，不启动/不测/不动库
 
 .NOTES
     e2e dev/p0 套件由 globalSetup 自动登录一次（账号取自 TS_TEST_USERNAME/TS_TEST_PASSWORD，
@@ -70,7 +71,11 @@ param(
     [ValidateSet('auto', 'true', 'false')]
     [string]$ScanPrep = 'auto',
 
-    [switch]$Cleanup
+    [switch]$Cleanup,
+
+    # 仅停止当前运行中的本地测试服务（按端口清理，含孤儿子进程），
+    # 不启动服务、不跑测试、不动数据库。搭配上一次启动时用的 env 文件使用。
+    [switch]$StopServices
 )
 
 $ErrorActionPreference = 'Stop'
@@ -112,23 +117,26 @@ function Test-KeepServicesFlag {
     return @('true', '1', 'yes') -contains $v.Trim().ToLower()
 }
 
-Write-Host ""
-Write-Host "==== TrailSnap 测试入口 ====" -ForegroundColor Cyan
-Write-Host "  TS_TEST_ENV = $($env:TS_TEST_ENV)"
-Write-Host "  Layer       = $Layer"
-Write-Host "  Component   = $Component"
-Write-Host "  Cover       = $Cover"
-Write-Host "  Scope       = $Scope"
-Write-Host "  ScanPrepArg = $ScanPrep"
-Write-Host "  API         = $($env:TS_API_BASE_URL)"
-Write-Host "  Web         = $($env:TS_WEB_BASE_URL)"
-Write-Host "  AI          = $($env:TS_AI_API_URL)"
-Write-Host "  DB          = $($env:TS_DB_URL)"
-Write-Host "  ScanPrep    = $($env:TS_E2E_ENABLE_FIXTURE_SCAN)"
-Write-Host "  ResetDB     = $(if (Test-ResetDbFlag) { 'true (启动 server 前删库)' } else { 'false' })"
-Write-Host "  KeepSvcs    = $(if (Test-KeepServicesFlag) { 'true (测后保留服务)' } else { 'false (测后关闭)' })"
-Write-Host "============================" -ForegroundColor Cyan
-Write-Host ""
+# -StopServices 模式只关心端口清理，跳过测试相关 banner，避免 Layer/Cover 等无关信息误导。
+if (-not $StopServices) {
+    Write-Host ""
+    Write-Host "==== TrailSnap 测试入口 ====" -ForegroundColor Cyan
+    Write-Host "  TS_TEST_ENV = $($env:TS_TEST_ENV)"
+    Write-Host "  Layer       = $Layer"
+    Write-Host "  Component   = $Component"
+    Write-Host "  Cover       = $Cover"
+    Write-Host "  Scope       = $Scope"
+    Write-Host "  ScanPrepArg = $ScanPrep"
+    Write-Host "  API         = $($env:TS_API_BASE_URL)"
+    Write-Host "  Web         = $($env:TS_WEB_BASE_URL)"
+    Write-Host "  AI          = $($env:TS_AI_API_URL)"
+    Write-Host "  DB          = $($env:TS_DB_URL)"
+    Write-Host "  ScanPrep    = $($env:TS_E2E_ENABLE_FIXTURE_SCAN)"
+    Write-Host "  ResetDB     = $(if (Test-ResetDbFlag) { 'true (启动 server 前删库)' } else { 'false' })"
+    Write-Host "  KeepSvcs    = $(if (Test-KeepServicesFlag) { 'true (测后保留服务)' } else { 'false (测后关闭)' })"
+    Write-Host "============================" -ForegroundColor Cyan
+    Write-Host ""
+}
 
 # 把 Cover/Scope 组合成 pytest -m 表达式
 #   smoke + album -> "smoke and module_album"
@@ -257,6 +265,22 @@ function Clear-ServicePorts {
             & taskkill /F /T /PID $holderPid 2>&1 | Out-Null
         }
     }
+}
+
+# ---- 仅停止服务模式：-StopServices 时，清理所有服务端口后直接退出 ----
+# 不启动服务、不跑测试、不动数据库。端口取自 env 文件（TS_API_BASE_URL /
+# TS_AI_API_URL / TS_WEB_BASE_URL），用 Component='all' 覆盖 server+ai+web。
+if ($StopServices) {
+    Write-Host "==> 停止全部本地测试服务（按端口清理，含孤儿子进程）..." -ForegroundColor Cyan
+    $stopPorts = Get-ServicePorts -Component 'all'
+    if ($stopPorts.Count -eq 0) {
+        Write-Host "  未从 env 文件解析到服务端口（检查 TS_API_BASE_URL / TS_AI_API_URL / TS_WEB_BASE_URL）。" -ForegroundColor Yellow
+    } else {
+        Clear-ServicePorts -Ports $stopPorts -Reason '停止服务'
+        Write-Host "  已清理端口: $($stopPorts -join ', ')" -ForegroundColor Green
+    }
+    Write-Host "==> 完成。" -ForegroundColor Green
+    exit 0
 }
 
 $exitCode = 0
@@ -464,8 +488,13 @@ finally {
             $keepPorts = Get-ServicePorts -Component $Component
             if ($keepPorts.Count -gt 0) {
                 Write-Host "  端口: $($keepPorts -join ', ')"
+                # 生成一键停止命令：按端口清理占用进程（含被 reparent 的孤儿子进程），
+                # 比 taskkill 单个 PID 更稳妥。用户在 PowerShell 直接粘贴即可。
+                $stopCmd = "foreach (`$p in $($keepPorts -join ',')) { Get-NetTCPConnection -LocalPort `$p -State Listen -EA SilentlyContinue | ForEach-Object { taskkill /F /T /PID `$_.OwningProcess } }"
+                Write-Host "  一键停止全部服务（直接复制到 PowerShell 运行）:" -ForegroundColor Cyan
+                Write-Host "    $stopCmd" -ForegroundColor White
             }
-            Write-Host "  手动停止: taskkill /F /T /PID <pid>，或下次运行会自动清理这些端口" -ForegroundColor DarkGray
+            Write-Host "  或重跑本脚本，启动前会自动清理这些端口。" -ForegroundColor DarkGray
         }
     }
     else {

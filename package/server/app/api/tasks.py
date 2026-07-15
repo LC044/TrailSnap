@@ -85,7 +85,7 @@ def get_status(db: Session = Depends(get_db)):
     return BaseResponse.success(data=TaskManager.get_instance().get_status())
 
 
-@router.get("/grouped-status", summary="按状态分组统计任务", response_model=BaseResponse[Dict[str, Any]])
+@router.get("/grouped-status", summary="按状态分组统计任务", response_model=BaseResponse[List[Dict[str, Any]]])
 def get_grouped_status(db: Session = Depends(get_db)):
     """
     调用 TaskManager 获取按状态分组的任务统计信息。
