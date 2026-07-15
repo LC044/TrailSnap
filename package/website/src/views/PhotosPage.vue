@@ -99,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -109,6 +109,10 @@ import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import MultiFileUpload from '@/components/MultiFileUpload.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import { ElMessage } from 'element-plus'
+
+defineOptions({
+  name: 'PhotosPage'
+})
 
 const router = useRouter()
 const route = useRoute()
@@ -182,7 +186,10 @@ const applyQueryFilters = () => {
   f.years = parseQueryFilter(years).map(y => Number(y)).filter(n => !Number.isNaN(n))
 }
 
-onMounted(() => {
+let lastQueryStr = ''
+
+const initData = () => {
+  lastQueryStr = JSON.stringify(route.query)
   photoStore.resetAll()
   // 从路由查询参数应用筛选条件（如存储中心跳转过来的“截图/视频/实况图”）
   applyQueryFilters()
@@ -191,10 +198,26 @@ onMounted(() => {
   store.fetchAlbums()
   photoStore.fetchTimelineStats()
   photoStore.loadPhotos(true)
+}
+
+onMounted(() => {
+  initData()
+})
+
+onActivated(() => {
+  const currentQueryStr = JSON.stringify(route.query)
+  if (currentQueryStr !== lastQueryStr) {
+    initData()
+  } else {
+    // 如果 query 没有变化，静默更新筛选条件、相册列表、时间轴统计以防后台数据有变化
+    photoStore.fetchAvailableFilters()
+    store.fetchAlbums()
+    photoStore.fetchTimelineStats()
+  }
 })
 
 onUnmounted(() => {
-  photoStore.resetAll()
+  // photoStore.resetAll() // 移除销毁时的清空，让 keep-alive 保持数据
 })
 </script>
 

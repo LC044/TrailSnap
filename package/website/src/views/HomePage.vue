@@ -117,9 +117,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onActivated } from 'vue';
 import { dashboardApi, DashboardResponse } from '@/api/dashboard';
 import { ElMessage } from 'element-plus';
+
+defineOptions({
+  name: 'HomePage'
+});
 
 // Components
 import OverviewCards from '@/components/home/OverviewCards.vue';
@@ -136,21 +140,31 @@ const showStorageDialog = ref(false);
 const showStorageBadge = ref(false);
 const annualYear = computed(() => new Date().getFullYear() - 1);
 
-const fetchData = async () => {
-  loading.value = true;
+const fetchData = async (silent = false) => {
+  if (!silent) {
+    loading.value = true;
+  }
   try {
     const dashboardRes = await dashboardApi.getOverview();
     dashboardData.value = dashboardRes;
   } catch (error) {
     console.error(error);
-    ElMessage.error('加载数据失败');
+    if (!silent) {
+      ElMessage.error('加载数据失败');
+    }
   } finally {
-    loading.value = false;
+    if (!silent) {
+      loading.value = false;
+    }
   }
 };
 
 onMounted(() => {
   fetchData();
+});
+
+onActivated(() => {
+  fetchData(true);
 });
 </script>
 

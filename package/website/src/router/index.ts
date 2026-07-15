@@ -37,7 +37,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/components/RouteOutlet.vue'),
     meta: { layout: 'main' }, // 标记布局类型（供 App.vue 识别）
     children: [
-      { path: '', name: 'Home', component: HomePage, meta: { title: '首页' } },
+      { path: '', name: 'Home', component: HomePage, meta: { title: '首页', keepAlive: true } },
       { path: '/album', name: 'AlbumList', component: AlbumList, meta: { title: '智能相册' } },
       { path: '/album/:id', name: 'AlbumDetail', component: AlbumDetail, meta: { title: '相册详情' } },
       { path: '/album/people', name: 'PeopleList', component: PeopleList, meta: { title: '人物相册' } },
@@ -56,7 +56,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/toolbox/cleanup', name: 'ToolboxCleanup', component: CleanupPage, meta: { title: '清理相册' } },
       { path: '/toolbox/ticket-edit', name: 'TicketEdit', component: TicketEdit, meta: { title: '车票编辑' } },
       { path: '/recycle-bin', name: 'RecycleBin', component: RecycleBinPage, meta: { title: '回收站' } },
-      { path: '/photos', name: 'Photos', component: PhotosPage, meta: { title: '所有照片' } },
+      { path: '/photos', name: 'Photos', component: PhotosPage, meta: { title: '所有照片', keepAlive: true } },
       { path: '/mobile-search', name: 'MobileSearch', component: MobileSearch, meta: { title: '搜索', layout: 'blank' } },
       { path: '/ticket', name: 'Ticket', component: TicketPage, meta: { title: '车票', keepAlive: true } },
       { path: '/statistics', name: 'Statistics', component: StatisticsPage, meta: { title: '统计' } },
