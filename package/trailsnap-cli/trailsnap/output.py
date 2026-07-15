@@ -75,6 +75,32 @@ class OutputFormatter:
 
     def _output_table(self, data: Any, fields: Optional[List[str]] = None, headers: Optional[Dict[str, str]] = None):
         """输出表格格式"""
+        import unicodedata
+        import shutil
+
+        def display_width(s: str) -> int:
+            return sum(2 if unicodedata.east_asian_width(c) in 'WF' else 1 for c in str(s))
+
+        def ljust_wide(s: str, width: int) -> str:
+            w = display_width(s)
+            return str(s) + ' ' * max(0, width - w)
+
+        def truncate_wide(s: str, width: int) -> str:
+            s = str(s)
+            if display_width(s) <= width:
+                return s
+            if width <= 3:
+                return "." * width
+            res = ""
+            current_w = 0
+            for c in s:
+                cw = 2 if unicodedata.east_asian_width(c) in 'WF' else 1
+                if current_w + cw > width - 3: # reserve 3 for '...'
+                    break
+                res += c
+                current_w += cw
+            return res + "..."
+
         if not isinstance(data, list):
             data = [data]
 
@@ -93,28 +119,42 @@ class OutputFormatter:
         if headers is None:
             headers = {f: f for f in fields}
 
-        # 计算每列宽度
+        # 计算每列的需要宽度
         col_widths = {}
         for field in fields:
             header = headers.get(field, field)
-            col_widths[field] = max(len(str(header)), 20)
+            col_widths[field] = display_width(header)
 
-        # 计算数据行的列宽度
         for row in data:
             if isinstance(row, dict):
                 for field in fields:
                     value = row.get(field, "")
-                    col_widths[field] = max(col_widths[field], len(str(value)))
+                    col_widths[field] = max(col_widths[field], display_width(str(value)))
+
+        # 列宽跟随终端
+        term_width = shutil.get_terminal_size((80, 20)).columns
+        separator_width = len(fields) * 3 - 1
+        total_content_width = sum(col_widths.values())
+        
+        if total_content_width + separator_width > term_width:
+            # 需要截断
+            avail_width = term_width - separator_width
+            avg_width = avail_width // len(fields)
+            
+            # 重新分配宽度
+            for field in fields:
+                if col_widths[field] > avg_width:
+                    col_widths[field] = avg_width
 
         # 输出表头
-        header_line = " | ".join(headers.get(f, f).ljust(col_widths[f]) for f in fields)
+        header_line = " | ".join(ljust_wide(truncate_wide(headers.get(f, f), col_widths[f]), col_widths[f]) for f in fields)
         print(header_line)
         print("-+-".join("-" * col_widths[f] for f in fields))
 
         # 输出数据行
         for row in data:
             if isinstance(row, dict):
-                row_line = " | ".join(str(row.get(f, "")).ljust(col_widths[f]) for f in fields)
+                row_line = " | ".join(ljust_wide(truncate_wide(str(row.get(f, "")), col_widths[f]), col_widths[f]) for f in fields)
                 print(row_line)
             else:
                 print(str(row))

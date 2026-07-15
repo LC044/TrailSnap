@@ -1,4 +1,4 @@
-from . import config, photos, tags, albums, locations, people, folders, medias
+from . import config, photos, tags, albums, locations, people, folders, medias, tasks, toolbox
 
 __all__ = [
     "config",
@@ -8,5 +8,7 @@ __all__ = [
     "locations",
     "people",
     "folders",
-    "medias"
+    "medias",
+    "tasks",
+    "toolbox"
 ]

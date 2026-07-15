@@ -10,8 +10,21 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
 
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.10.0",
+    "responses>=0.23.0"
+]
+
 [project.scripts]
 trailsnap = "trailsnap.cli:main"
 
 [tool.setuptools]
 packages = ["trailsnap", "trailsnap.commands"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "smoke: P0 关键路径，秒级"
+]

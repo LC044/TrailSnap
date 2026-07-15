@@ -7,6 +7,7 @@ def setup_parser(subparsers):
     sub_subparsers.required = True
 
     list_parser = sub_subparsers.add_parser("list", help="查询挂载的存储目录")
+    list_parser.add_argument("--all", action="store_true", help="自动翻页获取所有结果 (目录查询不支持分页，忽略此参数)")
     list_parser.add_argument("--format", type=str, default="json", choices=OutputFormatter.SUPPORTED_FORMATS, help="输出格式")
     list_parser.set_defaults(func=execute_list)
 
