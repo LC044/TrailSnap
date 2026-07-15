@@ -178,7 +178,7 @@ def update_identity(
 
 @router.get("/identities", response_model=BaseResponse[List[FaceIdentitySchema]],summary="获取人物列表", description="获取所有已识别的人物列表，支持分页，返回包含封面信息和照片数量的人物对象")
 def list_identities(
-    page: int = Query(1, ge=1, description="页码"),
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(20, ge=1, le=10000, description="每页数量"),
     types: List[str] = Query(["named", "unnamed"], alias="types" , description="人物类型筛选：named, unnamed, hidden"),
     min_photos: Optional[int] = Query(None, ge=0, description="最低照片数过滤阈值；不传时取用户配置 ai.face_recognition_min_photos"),
@@ -188,13 +188,12 @@ def list_identities(
     """
     获取人物列表，包含每个人的封面照片和照片总数。
     """
-    offset = (page - 1) * limit
     # 显式传入的 min_photos 优先（供测试/管理端绕过用户配置），否则回退到用户配置
     if min_photos is None:
         min_photos = config_manager.get_user_config(current_user.id, db).ai.face_recognition_min_photos
     data = crud_face.get_identities_with_details(
         db,
-        skip=offset,
+        skip=skip,
         limit=limit,
         min_photos=min_photos,
         visibility_types=types,
@@ -206,7 +205,7 @@ def list_identities(
 @router.get("/identities/{id}/photos",response_model=BaseResponse[List[app.schemas.photo.Photo]] ,summary="获取人物照片列表", description="获取指定人物下的所有照片")
 def get_identity_photos(
     id: UUID = Path(..., description="人物ID"),
-    page: int = Query(1, ge=1, description="页码"),
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(50, ge=1, description="每页数量"),
     db: Session = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
@@ -214,8 +213,7 @@ def get_identity_photos(
     """
     获取指定人物关联的所有照片列表。
     """
-    offset = (page - 1) * limit
-    data = crud_face.get_identity_photos(db, id, skip=offset, limit=limit, owner_id=current_user.id)
+    data = crud_face.get_identity_photos(db, id, skip=skip, limit=limit, owner_id=current_user.id)
     return BaseResponse(code=200, msg="获取成功", data=data)
 
 @router.delete("/identities/{id}", summary="删除人物", description="删除指定人物，但保留其关联的照片（解除关联）")

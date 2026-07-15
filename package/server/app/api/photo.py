@@ -101,16 +101,16 @@ def batch_download_photos(
 
 # Photo Endpoints
 
-@router.get("/recycle-bin", response_model=List[schemas.RecyclePhoto])
+@router.get("/recycle-bin", response_model=BaseResponse[List[schemas.RecyclePhoto]])
 def get_recycle_bin(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return app.crud.photo.get_recycle_bin_photos(db, user_id=current_user.id, skip=skip, limit=limit)
+    return BaseResponse.success(data=app.crud.photo.get_recycle_bin_photos(db, user_id=current_user.id, skip=skip, limit=limit))
 
-@router.post("/recycle-bin/restore")
+@router.post("/recycle-bin/restore", response_model=BaseResponse[dict])
 def restore_recycle_bin_photos(
     batch_data: schemas.BatchPhotoDelete,
     db: Session = Depends(get_db),
@@ -119,9 +119,9 @@ def restore_recycle_bin_photos(
     if not batch_data.photo_ids:
         raise HTTPException(status_code=400, detail="No photo IDs provided")
     count = app.crud.photo.restore_photos(db, batch_data.photo_ids, user_id=current_user.id)
-    return {"message": f"Successfully restored {count} photos"}
+    return BaseResponse.success(data={"message": f"Successfully restored {count} photos"})
 
-@router.delete("/recycle-bin/permanent")
+@router.delete("/recycle-bin/permanent", response_model=BaseResponse[dict])
 def permanently_delete_recycle_bin_photos(
     batch_data: schemas.BatchPhotoDelete,
     db: Session = Depends(get_db),
@@ -130,7 +130,7 @@ def permanently_delete_recycle_bin_photos(
     if not batch_data.photo_ids:
         raise HTTPException(status_code=400, detail="No photo IDs provided")
     count = app.crud.photo.batch_delete_photos_db(db, batch_data.photo_ids, is_delete_file=True, user_id=current_user.id)
-    return {"message": f"Successfully permanently deleted {count} photos"}
+    return BaseResponse.success(data={"message": f"Successfully permanently deleted {count} photos"})
 
 @router.get("", response_model=List[schemas.Photo])
 def read_all_photos(
@@ -250,7 +250,7 @@ def read_all_photos_with_detail(
     logging.info(f"read_all_photos time: {time.time() - st_time}")
     return photos
 
-@router.post("/batch/create")
+@router.post("/batch/create", response_model=BaseResponse[dict])
 def batch_create_photos(
     batch_data: schemas.BatchPhotoCreate,
     db: Session = Depends(get_db),
@@ -266,12 +266,12 @@ def batch_create_photos(
         })
     try:
         count = app.crud.photo.batch_create_photos(db, photos_data, user_id=current_user.id)
-        return {"message": f"Successfully created {count} photos"}
+        return BaseResponse.success(data={"message": f"Successfully created {count} photos"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/batch")
+@router.post("/batch", response_model=BaseResponse[dict])
 def batch_update_photos(
         batch_data: schemas.BatchPhotoUpdate,
         db: Session = Depends(get_db),
@@ -289,26 +289,78 @@ def batch_update_photos(
                 raise HTTPException(status_code=404, detail="Target album not found")
 
         count = crud_album.batch_update_album_association(db, batch_data.photo_ids, batch_data.album_id, batch_data.action, user_id=current_user.id)
-        return {"message": f"Successfully updated {count} photos"}
+        return BaseResponse.success(data={"message": f"Successfully updated {count} photos"})
 
     elif batch_data.action == 'delete':
         app.crud.photo.batch_soft_delete_photos(db, batch_data.photo_ids, user_id=current_user.id)
-        return {"message": "Photos moved to recycle bin successfully"}
+        return BaseResponse.success(data={"message": "Photos moved to recycle bin successfully"})
 
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
 
 
-@router.delete("/batch")
+@router.delete("/batch", response_model=BaseResponse[dict])
 def batch_delete_photos(
     batch_data: schemas.BatchPhotoDelete,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     count = app.crud.photo.batch_soft_delete_photos(db, batch_data.photo_ids, user_id=current_user.id)
-    return {"message": f"Successfully moved {count} photos to recycle bin"}
+    return BaseResponse.success(data={"message": f"Successfully moved {count} photos to recycle bin"})
 
-@router.post("/batch/transfer")
+@router.post("/batch/update", response_model=BaseResponse[dict], summary="批量更新照片元数据")
+def batch_update_photos_data(
+    data: schemas.BatchPhotoDataUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    success_count = 0
+    for photo_id in data.photo_ids:
+        update_data = schemas.PhotoUpdate()
+        if data.photo_time is not None:
+            update_data.photo_time = data.photo_time
+        
+        updated = app.crud.photo.update_photo(db, photo_id, update_data, user_id=current_user.id)
+        if updated:
+            if data.description is not None:
+                desc = db.query(ImageDescriptionModel).filter(ImageDescriptionModel.photo_id == photo_id).first()
+                if desc:
+                    desc.description = data.description
+                else:
+                    desc = ImageDescriptionModel(photo_id=photo_id, description=data.description)
+                    db.add(desc)
+                db.commit()
+            success_count += 1
+            
+    return BaseResponse.success(data={"message": f"Successfully updated {success_count} photos"})
+
+
+@router.post("/batch/tags", response_model=BaseResponse[dict], summary="批量更新照片标签")
+def batch_update_photos_tags(
+    data: schemas.BatchPhotoTagsUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    success_count = 0
+    for photo_id in data.photo_ids:
+        photo = app.crud.photo.get_photo(db, photo_id)
+        if not photo or photo.owner_id != current_user.id:
+            continue
+            
+        for tag_name in data.tags:
+            if data.action == 'add':
+                crud_tag.add_tag_to_photo(db, photo_id, tag_name, 1.0, owner_id=current_user.id)
+            elif data.action == 'remove':
+                # find tag_id by name
+                tag_record = crud_tag.get_tag_by_name(db, tag_name)
+                if tag_record:
+                    crud_tag.remove_tag_from_photo(db, photo_id, tag_record.id)
+        success_count += 1
+        
+    return BaseResponse.success(data={"message": f"Successfully updated tags for {success_count} photos"})
+
+
+@router.post("/batch/transfer", response_model=BaseResponse[dict])
 def batch_transfer_photos(
     data: schemas.BatchPhotoTransfer,
     db: Session = Depends(get_db),
@@ -374,26 +426,26 @@ def batch_transfer_photos(
                     logging.error(f"Failed to copy {old_path} to {new_path}: {e}")
                     
     db.commit()
-    return {"message": f"Successfully {data.action}ed {success_count} photos"}
+    return BaseResponse.success(data={"message": f"Successfully {data.action}ed {success_count} photos"})
 
 
-@router.delete("/{photo_id}", response_model=schemas.Photo)
+@router.delete("/{photo_id}", response_model=BaseResponse[schemas.Photo])
 def delete_photo_global(photo_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     app.crud.photo.batch_soft_delete_photos(db, [photo_id], user_id=current_user.id)
     # Fetch it again to return, or just return an empty response. Wait, return the deleted photo object.
     db_photo = app.crud.photo.get_photo(db, photo_id, include_deleted=True)
-    return db_photo
+    return BaseResponse.success(data=db_photo)
 
 
-@router.put("/{photo_id}", response_model=schemas.Photo)
+@router.put("/{photo_id}", response_model=BaseResponse[schemas.Photo])
 def update_photo(photo_id: UUID, photo: schemas.PhotoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_photo = app.crud.photo.update_photo(db, photo_id, photo, user_id=current_user.id)
     if not db_photo:
         raise HTTPException(status_code=404, detail="Photo not found")
-    return db_photo
+    return BaseResponse.success(data=db_photo)
 
 
-@router.put("/{photo_id}/file", response_model=schemas.Photo)
+@router.put("/{photo_id}/file", response_model=BaseResponse[schemas.Photo])
 async def replace_photo_file(
     photo_id: UUID,
     file: UploadFile = File(...),
@@ -414,7 +466,7 @@ async def replace_photo_file(
     updated = await run_in_threadpool(
         app.crud.photo.replace_photo_file, db, db_photo, new_file_path, current_user.id
     )
-    return updated
+    return BaseResponse.success(data=updated)
 
 # Tag Endpoints
 
@@ -434,7 +486,7 @@ def add_photo_tag(photo_id: UUID, tag_data: tag_schemas.PhotoTagAdd, db: Session
     return crud_tag.add_tag_to_photo(db, photo_id, tag_data.tag_name, tag_data.confidence, owner_id=current_user.id)
 
 
-@router.delete("/{photo_id}/tags/{tag_id}")
+@router.delete("/{photo_id}/tags/{tag_id}", response_model=BaseResponse[dict])
 def delete_photo_tag(photo_id: UUID, tag_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     photo = app.crud.photo.get_photo(db, photo_id)
     if not photo:
@@ -443,7 +495,7 @@ def delete_photo_tag(photo_id: UUID, tag_id: UUID, db: Session = Depends(get_db)
         raise HTTPException(status_code=403, detail="Permission denied")
         
     crud_tag.remove_tag_from_photo(db, photo_id, tag_id)
-    return {"message": "Tag deleted successfully"}
+    return BaseResponse.success(data={"message": "Tag deleted successfully"})
 
 @router.get("/{photo_id}/description", response_model=Optional[ImageDescriptionSchema], summary="获取图片描述")
 def get_photo_description(

@@ -30,9 +30,17 @@ T = TypeVar("T")
 # ------------------------------ 通用响应模型（统一错误码载体）------------------------------
 class BaseResponse(BaseModel, Generic[T]):
     """所有接口的统一响应模型：包含错误码、提示信息、业务数据"""
-    code: int = Field(default=200, description="错误码：200=成功，4xx=客户端错误，5xx=服务端错误")
-    msg: str = Field(default="操作成功", description="提示信息")
+    code: int = Field(default=0, description="错误码：0=成功")
+    msg: str = Field(default="success", description="提示信息")
     data: Optional[T] = Field(default=None, description="业务数据（成功时返回，失败时为None）")
 
     class Config:
         from_attributes = True  # 支持从 ORM 模型直接转换
+
+    @classmethod
+    def success(cls, data: Optional[T] = None, msg: str = "success") -> "BaseResponse[T]":
+        return cls(code=0, msg=msg, data=data)
+
+    @classmethod
+    def fail(cls, code: int = 500, msg: str = "error", data: Optional[T] = None) -> "BaseResponse[T]":
+        return cls(code=code, msg=msg, data=data)

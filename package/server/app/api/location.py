@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query, Path, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.schemas import location as schemas
 from app.crud import location as crud
 from app.schemas import photo as photo_schemas
@@ -96,7 +96,7 @@ def get_map_markers(
     """
     return crud.get_map_markers(db, current_user.id, start_date, end_date)
 
-@router.post("/scenes", response_model=scene_schemas.Scene, summary="创建景区")
+@router.post("/scenes", response_model=BaseResponse[scene_schemas.Scene], summary="创建景区")
 def create_scene(
     scene: scene_schemas.SceneCreate,
     db: Session = Depends(get_db),
@@ -105,9 +105,9 @@ def create_scene(
     """
     创建新的景区，并自动关联范围内的照片。
     """
-    return scene_crud.create_scene(db, scene, owner_id=current_user.id)
+    return BaseResponse.success(data=scene_crud.create_scene(db, scene, owner_id=current_user.id))
 
-@router.get("/scenes/list", response_model=List[scene_schemas.Scene], summary="获取所有景区详情")
+@router.get("/scenes/list", response_model=BaseResponse[List[scene_schemas.Scene]], summary="获取所有景区详情")
 def get_scenes_list(
     skip: int = 0,
     limit: int = 100,
@@ -119,9 +119,9 @@ def get_scenes_list(
     """
     获取所有景区详细信息（包含多边形坐标）。
     """
-    return scene_crud.get_scenes(db, skip, limit, start_date, end_date, owner_id=current_user.id)
+    return BaseResponse.success(data=scene_crud.get_scenes(db, skip, limit, start_date, end_date, owner_id=current_user.id))
 
-@router.get("/scenes/{scene_id}", response_model=scene_schemas.Scene, summary="获取景区详情")
+@router.get("/scenes/{scene_id}", response_model=BaseResponse[scene_schemas.Scene], summary="获取景区详情")
 def get_scene_details(
     scene_id: UUID,
     db: Session = Depends(get_db),
@@ -133,9 +133,9 @@ def get_scene_details(
     scene = scene_crud.get_scene(db, scene_id, owner_id=current_user.id)
     if not scene:
         raise HTTPException(status_code=404, detail="Scene not found")
-    return scene
+    return BaseResponse.success(data=scene)
 
-@router.put("/scenes/{scene_id}", response_model=scene_schemas.Scene, summary="更新景区")
+@router.put("/scenes/{scene_id}", response_model=BaseResponse[scene_schemas.Scene], summary="更新景区")
 def update_scene(
     scene_id: UUID,
     scene: scene_schemas.SceneUpdate,
@@ -149,11 +149,11 @@ def update_scene(
         db_scene = scene_crud.update_scene(db, scene_id, scene, owner_id=current_user.id)
         if not db_scene:
             raise HTTPException(status_code=404, detail="Scene not found")
-        return db_scene
+        return BaseResponse.success(data=db_scene)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
 
-@router.delete("/scenes/{scene_id}", summary="删除景区")
+@router.delete("/scenes/{scene_id}", response_model=BaseResponse[dict], summary="删除景区")
 def delete_scene(
     scene_id: UUID = Path(..., description="景区ID"),
     db: Session = Depends(get_db),
@@ -166,7 +166,7 @@ def delete_scene(
         scene = scene_crud.delete_scene(db, scene_id, owner_id=current_user.id)
         if not scene:
             raise HTTPException(status_code=404, detail="Scene not found")
-        return {"status": "success", "message": "Scene deleted"}
+        return BaseResponse.success(data={"status": "success", "message": "Scene deleted"})
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
 

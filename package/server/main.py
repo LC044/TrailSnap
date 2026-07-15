@@ -131,6 +131,69 @@ class CustomGZipMiddleware(GZipMiddleware):
                 return
         await self.app(scope, receive, send)
 
+import json
+from starlette.responses import Response, StreamingResponse
+
+class FieldsFilterMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        fields_query = request.query_params.get("fields")
+        
+        if not fields_query or request.method != "GET":
+            await self.app(scope, receive, send)
+            return
+            
+        fields = set(f.strip() for f in fields_query.split(",") if f.strip())
+        if not fields:
+            await self.app(scope, receive, send)
+            return
+
+        # Intercept send to modify the response body
+        async def custom_send(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                # Remove content-length as we will modify the body
+                headers = []
+                for name, value in message.get("headers", []):
+                    if name.lower() != b"content-length":
+                        headers.append((name, value))
+                message["headers"] = headers
+                await send(message)
+            elif message["type"] == "http.response.body":
+                body = message.get("body", b"")
+                if body:
+                    try:
+                        data = json.loads(body.decode("utf-8"))
+                        if isinstance(data, dict) and "data" in data:
+                            target = data["data"]
+                            if isinstance(target, list):
+                                for item in target:
+                                    if isinstance(item, dict):
+                                        keys_to_remove = set(item.keys()) - fields
+                                        for k in keys_to_remove:
+                                            item.pop(k, None)
+                            elif isinstance(target, dict):
+                                keys_to_remove = set(target.keys()) - fields
+                                for k in keys_to_remove:
+                                    target.pop(k, None)
+                        body = json.dumps(data).encode("utf-8")
+                    except Exception:
+                        pass
+                message["body"] = body
+                await send(message)
+            else:
+                await send(message)
+
+        await self.app(scope, receive, custom_send)
+
+app.add_middleware(FieldsFilterMiddleware)
+
 # 添加 GZip 中间件
 exclude_paths = ['/ai_communication/AiCommunicationThemesRecord/chat']
 app.add_middleware(

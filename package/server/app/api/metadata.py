@@ -53,7 +53,7 @@ def get_photo_metadata(
     return photo_metadata
 
 
-@router.put("", response_model=PhotoMetadata)
+@router.put("", response_model=BaseResponse[PhotoMetadata])
 def update_photo_metadata(
         photo_id: UUID,
         metadata: PhotoMetadataUpdate,
@@ -63,10 +63,9 @@ def update_photo_metadata(
     result = crud_photo.update_photo_metadata(db, photo_id=photo_id, metadata=metadata, user_id=current_user.id)
     if not result:
         raise HTTPException(status_code=404, detail="Photo not found or access denied")
-    return result
+    return BaseResponse.success(data=result)
 
-
-@router.post("/batch-location")
+@router.post("/batch-location", response_model=BaseResponse[dict])
 def batch_update_location(
         batch_data: BatchLocationUpdate,
         db: Session = Depends(get_db),

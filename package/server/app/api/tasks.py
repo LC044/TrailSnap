@@ -6,7 +6,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from app.api.deps import get_current_user
 from app.db.models import User
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.db.models.task import Task, TaskStatus, TaskType
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
@@ -40,7 +40,16 @@ class TaskCreate(BaseModel):
     payload: Optional[Dict[str, Any]] = {}
 
 
-@router.get("/", response_model=List[TaskSchema], summary="获取任务列表")
+@router.get("/types", response_model=BaseResponse[List[Dict[str, str]]], summary="获取支持的任务类型")
+def get_task_types():
+    """
+    返回系统支持的所有任务类型枚举及其描述
+    """
+    types = [{"type": t.value, "description": str(t.value)} for t in TaskType]
+    return BaseResponse.success(data=types)
+
+
+@router.get("/", response_model=BaseResponse[List[TaskSchema]], summary="获取任务列表")
 def list_tasks(
     status: str = None,
     type: str = None,
@@ -52,10 +61,11 @@ def list_tasks(
     分页查询任务列表，可按状态和类型过滤。
     默认按创建时间倒序返回前 50 条。
     """
-    return crud_task.list_tasks(db, status=status, type=type, limit=limit, updated_since=updated_since)
+    data = crud_task.list_tasks(db, status=status, type=type, limit=limit, updated_since=updated_since)
+    return BaseResponse.success(data=data)
 
 
-@router.post("/fast-mode", summary="设置快速模式")
+@router.post("/fast-mode", summary="设置快速模式", response_model=BaseResponse[Dict[str, Any]])
 def set_fast_mode(enabled: bool = Body(..., embed=True)):
     """
     开启或关闭快速模式。
@@ -63,42 +73,42 @@ def set_fast_mode(enabled: bool = Body(..., embed=True)):
     以最大化利用系统资源。
     """
     TaskManager.get_instance().set_fast_mode(enabled)
-    return {"status": "success", "fast_mode": enabled}
+    return BaseResponse.success(data={"status": "success", "fast_mode": enabled})
 
 
-@router.get("/status", summary="获取全局任务状态")
+@router.get("/status", summary="获取全局任务状态", response_model=BaseResponse[Dict[str, Any]])
 def get_status(db: Session = Depends(get_db)):
     """
     获取当前扫描状态和快速模式状态。
     """
     # return "hello world"
-    return TaskManager.get_instance().get_status()
+    return BaseResponse.success(data=TaskManager.get_instance().get_status())
 
 
-@router.get("/grouped-status", summary="按状态分组统计任务")
+@router.get("/grouped-status", summary="按状态分组统计任务", response_model=BaseResponse[Dict[str, Any]])
 def get_grouped_status(db: Session = Depends(get_db)):
     """
     调用 TaskManager 获取按状态分组的任务统计信息。
     """
-    return TaskManager.get_instance().get_grouped_status(db)
+    return BaseResponse.success(data=TaskManager.get_instance().get_grouped_status(db))
 
 
-@router.post("/categories/{category}/pause", summary="暂停指定分类任务")
+@router.post("/categories/{category}/pause", summary="暂停指定分类任务", response_model=BaseResponse[Dict[str, Any]])
 def pause_category(category: str):
     """
     暂停某一分类（category）下的所有待处理任务。
     """
     TaskManager.get_instance().pause_category(category)
-    return {"status": "success"}
+    return BaseResponse.success(data={"status": "success"})
 
 
-@router.post("/categories/{category}/resume", summary="恢复指定分类任务")
+@router.post("/categories/{category}/resume", summary="恢复指定分类任务", response_model=BaseResponse[Dict[str, Any]])
 def resume_category(category: str):
     """
     恢复之前被暂停的某一分类（category）下的任务。
     """
     TaskManager.get_instance().resume_category(category)
-    return {"status": "success"}
+    return BaseResponse.success(data={"status": "success"})
 
 
 
@@ -208,7 +218,7 @@ async def task_events(
     return EventSourceResponse(event_generator())
 
 
-@router.get("/recent", summary="获取最近完成 / 失败任务（用于 SSE 断线补偿）")
+@router.get("/recent", summary="获取最近完成 / 失败任务（用于 SSE 断线补偿）", response_model=BaseResponse[List[Dict[str, Any]]])
 def list_recent_tasks(
     since: str = Query(..., description="ISO 8601 时间戳"),
     limit: int = 100,
@@ -219,10 +229,10 @@ def list_recent_tasks(
     """Return tasks updated after the given timestamp. The frontend uses
     this to catch up on missed events after a reconnect."""
     tasks = crud_task.list_tasks(db, status=None, type=None, limit=limit, updated_since=since)
-    return [_serialize_task(t) for t in tasks]
+    return BaseResponse.success(data=[_serialize_task(t) for t in tasks])
 
 
-@router.get("/{task_id}", response_model=TaskSchema, summary="根据 ID 获取任务详情")
+@router.get("/{task_id}", response_model=BaseResponse[TaskSchema], summary="根据 ID 获取任务详情")
 def get_task(task_id: UUID, db: Session = Depends(get_db)):
     """
     根据任务 UUID 返回任务详情；若任务不存在则返回空任务。
@@ -237,10 +247,10 @@ def get_task(task_id: UUID, db: Session = Depends(get_db)):
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )
-    return task
+    return BaseResponse.success(data=task)
 
 
-@router.post("/", response_model=TaskSchema, summary="创建新任务")
+@router.post("/", response_model=BaseResponse[TaskSchema], summary="创建新任务")
 def create_task(task_in: TaskCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     创建一个新任务。
@@ -256,10 +266,10 @@ def create_task(task_in: TaskCreate, db: Session = Depends(get_db), current_user
         raise HTTPException(status_code=400, detail=f"Invalid task type: {task_in.type}")
 
     task = TaskManager.get_instance().add_task(db, task_in.type, task_in.payload, owner_id=current_user.id)
-    return task
+    return BaseResponse.success(data=task)
 
 
-@router.post("/{task_id}/cancel", response_model=TaskSchema, summary="取消任务")
+@router.post("/{task_id}/cancel", response_model=BaseResponse[TaskSchema], summary="取消任务")
 def cancel_task(task_id: UUID, db: Session = Depends(get_db)):
     """
     将指定任务状态置为 CANCELLED。
@@ -272,10 +282,10 @@ def cancel_task(task_id: UUID, db: Session = Depends(get_db)):
     if task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
         raise HTTPException(status_code=400, detail="Task is already finished")
 
-    return crud_task.cancel_task(db, task)
+    return BaseResponse.success(data=crud_task.cancel_task(db, task))
 
 
-@router.post("/{task_id}/retry", response_model=TaskSchema, summary="重试任务")
+@router.post("/{task_id}/retry", response_model=BaseResponse[TaskSchema], summary="重试任务")
 def retry_task(task_id: UUID, db: Session = Depends(get_db)):
     """
     重试失败的任务。
@@ -288,10 +298,10 @@ def retry_task(task_id: UUID, db: Session = Depends(get_db)):
          raise HTTPException(status_code=400, detail="Only failed tasks can be retried")
     
     task = TaskManager.get_instance().retry_task(db, task)
-    return task
+    return BaseResponse.success(data=task)
 
 
-@router.post("/retry-all-failed", summary="重试所有失败任务")
+@router.post("/retry-all-failed", summary="重试所有失败任务", response_model=BaseResponse[Dict[str, Any]])
 def retry_all_failed_tasks(
     types: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db)
@@ -300,10 +310,10 @@ def retry_all_failed_tasks(
     重试所有失败的任务。可选指定任务类型。
     """
     result = TaskManager.get_instance().retry_all_failed_tasks(db, types)
-    return result
+    return BaseResponse.success(data=result)
 
 
-@router.delete("/failed", summary="删除失败任务")
+@router.delete("/failed", summary="删除失败任务", response_model=BaseResponse[Dict[str, Any]])
 def delete_failed_tasks(
     types: Optional[List[str]] = Query(None),
     db: Session = Depends(get_db)
@@ -312,5 +322,5 @@ def delete_failed_tasks(
     删除所有失败的任务。可选指定任务类型。
     """
     count = crud_task.delete_failed_tasks(db, types)
-    return {"message": f"Deleted {count} failed tasks", "count": count}
+    return BaseResponse.success(data={"message": f"Deleted {count} failed tasks", "count": count})
 

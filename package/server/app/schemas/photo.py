@@ -58,6 +58,17 @@ class BatchPhotoTransfer(BaseModel):
     target_path: str
     action: str # 'move' or 'copy'
 
+class BatchPhotoDataUpdate(BaseModel):
+    photo_ids: List[UUID]
+    photo_time: Optional[datetime] = None
+    description: Optional[str] = None
+    # Add other fields as needed
+
+class BatchPhotoTagsUpdate(BaseModel):
+    photo_ids: List[UUID]
+    action: str # 'add' or 'remove'
+    tags: List[str]
+
 class PhotoCreateItem(BaseModel):
     photo: PhotoCreate
     file_path: str
