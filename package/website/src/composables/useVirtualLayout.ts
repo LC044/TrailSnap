@@ -1,5 +1,6 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type { TimelineStats, TimelineItem, AlbumImage } from '@/types/album'
+import { getPhotoColumns, getPhotoGap } from '@/utils/photoGridLayout'
 
 export interface DayBlock {
   key: string // YYYY-MM-DD
@@ -49,15 +50,12 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
   const DAY_HEADER_HEIGHT = 50
   
   const getGap = () => {
-    return viewSize.value === 'lg' ? 16 : 8
+    return getPhotoGap(viewSize.value)
   }
-  
-  // Get columns based on viewSize
+
+  // Get columns based on viewSize（口径复用 utils/photoGridLayout）
   const getColumns = () => {
-    const width = containerWidth.value || window.innerWidth
-    if (viewSize.value === 'sm') return width < 640 ? 4 : (width < 768 ? 6 : (width < 1024 ? 8 : 12))
-    if (viewSize.value === 'md') return width < 640 ? 3 : (width < 768 ? 5 : (width < 1024 ? 6 : 8))
-    return width < 640 ? 2 : (width < 768 ? 3 : (width < 1024 ? 4 : 6))
+    return getPhotoColumns(containerWidth.value || window.innerWidth, viewSize.value)
   }
 
   const recalculateLayout = () => {

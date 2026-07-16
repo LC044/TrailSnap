@@ -15,6 +15,7 @@ from app.db.models.photo import Photo, FileType, ImageType
 from app.db.models.image_description import ImageDescription
 from app.core.config_manager import config_manager
 from app.service import storage
+from app.utils.path import get_user_roots, compute_browse_path
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +201,16 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             metadata = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
             if metadata:
                 image_info += f"照片位置：{metadata.address}\n"
+            # 注入文件名与所在文件夹相对路径，帮助模型推断事件/场景（Issue #78）
+            try:
+                roots = get_user_roots(photo.owner_id, db)
+                folder, fname = compute_browse_path(photo.file_path, roots)
+                if fname:
+                    image_info += f"文件名：{fname}\n"
+                if folder:
+                    image_info += f"所在文件夹：{folder}\n"
+            except Exception as e:
+                logger.warning(f"compute relative path failed for photo {photo.id}: {e}")
             # print(target_path, base64_image)
             # Step A: Evaluation
             eval_response = client.invoke([

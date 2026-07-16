@@ -313,6 +313,9 @@ def _build_photo_filter_query(
     center_lng: Optional[float] = None,
     ids: Optional[List[UUID]] = None,
     order_by: Optional[str] = None,
+    folder: Optional[str] = None,
+    folder_direct: bool = False,
+    folder_roots: Optional[List[str]] = None,
     user_id: UUID = None,
     is_deleted: bool = False
 ):
@@ -325,6 +328,39 @@ def _build_photo_filter_query(
     # Filter by IDs if provided
     if ids:
         photo_query = photo_query.filter(Photo.id.in_(ids))
+
+    # Folder Filter：按文件夹路径匹配。
+    # 支持形态：
+    #   - 绝对路径（以 / 开头）：按原始路径前缀匹配（兼容旧调用）。
+    #   - 相对路径（层级树浏览，如 "旅游/景点"）：匹配任意根目录下该相对路径。
+    # folder_direct=True 时只匹配「本层直属」照片（不含更深子目录）。
+    from sqlalchemy import or_ as _or
+    def _esc(s):
+        return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+    norm_expr = func.replace(Photo.file_path, '\\', '/')
+
+    if folder and folder.strip():
+        f = folder.strip().replace('\\', '/').rstrip('/')
+        esc = _esc(f)
+        if f.startswith('/'):
+            base_pat = esc + '/%'
+            photo_query = photo_query.filter(norm_expr.like(base_pat, escape='\\'))
+            if folder_direct:
+                photo_query = photo_query.filter(~norm_expr.like(esc + '/%/%', escape='\\'))
+        else:
+            # 相对路径：前面必须紧跟 /（避免 "b旅游" 误命中 "旅游"）
+            photo_query = photo_query.filter(norm_expr.like('%/' + esc + '/%', escape='\\'))
+            if folder_direct:
+                photo_query = photo_query.filter(~norm_expr.like('%/' + esc + '/%/%', escape='\\'))
+    elif folder_direct and folder_roots:
+        # 根层直属：浏览模型下每个扫描根都作为一个顶层文件夹，因此归属到任一扫描根
+        # 的照片都属于对应根文件夹，根层本身只保留「无法归属到任何扫描根」的孤儿照片。
+        for r in folder_roots:
+            if not r:
+                continue
+            rn = r.replace('\\', '/').rstrip('/')
+            esc = _esc(rn)
+            photo_query = photo_query.filter(~norm_expr.like(esc + '/%', escape='\\'))
 
     # 时间范围过滤（Photo 表）
     if start_time or end_time:
@@ -518,6 +554,9 @@ def get_all_photos(
     center_lng: Optional[float] = None,
     ids: Optional[List[UUID]] = None,
     order_by: Optional[str] = None,
+    folder: Optional[str] = None,
+    folder_direct: bool = False,
+    folder_roots: Optional[List[str]] = None,
     user_id: UUID = None
 ):
     query = _build_photo_filter_query(
@@ -557,6 +596,9 @@ def get_all_photos(
         center_lng=center_lng,
         ids=ids,
         order_by=order_by,
+        folder=folder,
+        folder_direct=folder_direct,
+        folder_roots=folder_roots,
         user_id=user_id
     )
 
@@ -604,6 +646,9 @@ def get_timeline_stats(
     center_lat: Optional[float] = None,
     center_lng: Optional[float] = None,
     ids: Optional[List[UUID]] = None,
+    folder: Optional[str] = None,
+    folder_direct: bool = False,
+    folder_roots: Optional[List[str]] = None,
     user_id: UUID = None
 ):
     query = _build_photo_filter_query(
@@ -642,6 +687,9 @@ def get_timeline_stats(
         center_lat=center_lat,
         center_lng=center_lng,
         ids=ids,
+        folder=folder,
+        folder_direct=folder_direct,
+        folder_roots=folder_roots,
         user_id=user_id
     )
 

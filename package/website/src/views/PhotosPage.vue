@@ -10,6 +10,7 @@
     :delete-label="'删除'"
     :confirm-remove="true"
     :show-back="false"
+    :allow-folder-view="true"
     :store="photoStore"
     @load-more="photoStore.loadPhotos"
     @retry="photoStore.loadPhotos(true)"

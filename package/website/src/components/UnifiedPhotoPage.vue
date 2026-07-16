@@ -95,6 +95,15 @@
                         <LayoutList class="w-4 h-4" />
                         <span>朋友圈</span>
                       </button>
+                      <button
+                        v-if="allowFolderView"
+                        @click="layoutMode = 'folder'"
+                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        :class="layoutMode === 'folder' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                      >
+                        <FolderTree class="w-4 h-4" />
+                        <span>文件夹</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -132,8 +141,9 @@
       <slot name="header-extension"></slot>
     </div>
 
-    <!-- Timeline Navigation Sidebar (Right Sticky) -->
+    <!-- Timeline Navigation Sidebar (Right Sticky) — 文件夹视图有自己的目录树，隐藏时间轴 -->
     <AlbumTimeline
+      v-if="layoutMode !== 'folder'"
       :items="timelineItems"
       :active-date="activeDate"
       @select="scrollToDate"
@@ -142,7 +152,12 @@
     <!-- Main Content Area -->
     <div class="mx-auto sm:px-6 lg:px-8">
       <slot name="intro"></slot>
+
+      <!-- 文件夹视图（作为一种布局模式，与自适应/正方形/朋友圈并列） -->
+      <FolderBrowser v-if="layoutMode === 'folder'" :view-size="viewSize" />
+
       <PhotoGallery
+        v-else
         ref="galleryRef"
         :store="props.store"
         :photos="photos"
@@ -247,11 +262,12 @@ import { ref, computed, onUnmounted } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
-  UploadCloud, CheckSquare, Settings2
+  UploadCloud, CheckSquare, Settings2, FolderTree
 } from 'lucide-vue-next'
 import { ElMessageBox } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
+import FolderBrowser from '@/views/album/folder/FolderBrowser.vue'
 import AlbumTimeline from '@/components/AlbumTimeline.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -280,6 +296,7 @@ const props = withDefaults(defineProps<{
   pendingRemoveIds?: Set<string>
   store?: any
   showBack?: boolean
+  allowFolderView?: boolean
 }>(), {
   title: '',
   subtitle: '',
@@ -294,7 +311,8 @@ const props = withDefaults(defineProps<{
   timelineStats: null,
   confirmRemove: false,
   pendingRemoveIds: () => new Set(),
-  showBack: true
+  showBack: true,
+  allowFolderView: false
 })
 
 const emit = defineEmits<{
@@ -313,7 +331,7 @@ const emit = defineEmits<{
 
 // UI State
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
-const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments'>('grid')
+const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder'>('grid')
 const activeDate = ref('')
 const lightboxImage = ref<AlbumImage | null>(null)
 const showViewOptions = ref(false)

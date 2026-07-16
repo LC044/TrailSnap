@@ -13,7 +13,7 @@ import time
 import os
 import shutil
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
@@ -171,10 +171,17 @@ def read_all_photos(
         center_lng: Optional[float] = None,
         ids: Optional[List[UUID]] = Query(None),
         order_by: Optional[str] = None,
+        folder: Optional[str] = None,
+        folder_direct: bool = False,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
     st_time = time.time()
+    # 根层直属（folder 为空且要求 direct）时需要 roots 来定位「扫描根正下方」的照片
+    folder_roots = None
+    if folder_direct and not (folder and folder.strip()):
+        from app.utils.path import get_user_roots
+        folder_roots = get_user_roots(current_user.id, db)
     photos = app.crud.photo.get_all_photos(
         db, skip=skip, limit=limit, start_time=start_time, end_time=end_time,
         years=years, city=city, cities=cities, scene=scene, scenes=scenes, province=province, provinces=provinces, country=country, countries=countries, 
@@ -185,11 +192,31 @@ def read_all_photos(
         face_id=face_id, face_ids=face_ids, tag_id=tag_id, tag_ids=tag_ids,
         lat_min=lat_min, lat_max=lat_max, lng_min=lng_min, lng_max=lng_max,
         radius=radius, center_lat=center_lat, center_lng=center_lng,
-        order_by=order_by,
+        order_by=order_by, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
         ids=ids, user_id=current_user.id
     )
     logging.info(f"read_all_photos time: {time.time() - st_time}")
     return photos
+
+@router.get("/folders", response_model=BaseResponse[Dict[str, Any]])
+def read_photo_folders(
+    parent: Optional[str] = Query("", description="相对父目录路径，空字符串表示根层；用于层级树逐层浏览"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """按文件夹层级返回某个父目录下的下一层内容（Issue #78）。
+
+    返回 {parent, breadcrumb, own_count, children[]}；
+    children 每项含 name/path/count/has_children，前端据此逐级下钻。
+    """
+    from app.utils.path import get_user_roots, build_folder_tree_level
+    rows = db.query(Photo.file_path).filter(
+        Photo.owner_id == current_user.id,
+        Photo.is_deleted == False
+    ).all()
+    roots = get_user_roots(current_user.id, db)
+    data = build_folder_tree_level(rows, roots, parent or "")
+    return BaseResponse.success(data=data)
 
 @router.get("/detail", response_model=List[PhotoDetail])
 def read_all_photos_with_detail(

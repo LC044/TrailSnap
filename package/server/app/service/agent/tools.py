@@ -22,6 +22,7 @@ from app.db.models.trip import TrainTicket, FlightTicket
 from app.db.models.scene import Scene
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.face import Face, FaceIdentity
+from app.utils.path import get_user_roots, compute_browse_path
 
 def get_agent_tools(user_id: str) -> List[StructuredTool]:
     """
@@ -40,6 +41,7 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
         tags: Optional[List[str]] = None,
         persons: Optional[List[str]] = None,
         description: Optional[str] = None,
+        folders: Optional[List[str]] = None,
         limit: int = 100,
         sort_by: str = "photo_time"
     ) -> str:
@@ -57,10 +59,11 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             tags: 匹配的照片标签列表（如"风景", "猫"）
             persons: 匹配的人物/人脸名称列表
             description: clip模型以文搜图的文本描述提示词
+            folders: 匹配的文件夹名称/相对路径关键字列表（如"旅游", "演唱会"），按文件路径模糊匹配
             limit: 返回的照片数量上限
             sort_by: 排序方式，可选 "photo_time"（按时间）, "quality_score"（按美观度）, "memory_score"（按回忆价值）
         Returns:
-            包含照片ID、拍摄时间、地点和一句话描述的 JSON 字符串。
+            包含照片ID、拍摄时间、地点、所在文件夹、文件名和一句话描述的 JSON 字符串。
         """
         logging.info(f"search_photos_tool: {locals()}")
         with SessionLocal() as db:
@@ -109,6 +112,11 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
 
             if persons:
                 query = query.filter(Photo.faces.any(Face.identity.has(FaceIdentity.identity_name.in_(persons))))
+
+            if folders:
+                folder_conditions = [Photo.file_path.ilike(f"%{f}%") for f in folders if f]
+                if folder_conditions:
+                    query = query.filter(or_(*folder_conditions))
             distance = None
             if description:
                 # 1. Get Text Embedding from AI Service
@@ -132,12 +140,16 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             if not results:
                 return "没有找到符合条件的照片。"
 
+            roots = get_user_roots(user_id, db)
             response_data = []
             for photo, meta, desc in results:
+                folder, filename = compute_browse_path(photo.file_path, roots)
                 response_data.append({
                     "photo_id": str(photo.id),
                     "photo_time": photo.photo_time.strftime("%Y-%m-%d %H:%M:%S") if photo.photo_time else None,
                     "location": meta.address if meta else "未知地点",
+                    "folder": folder or None,
+                    "filename": filename or None,
                     "narrative": desc.narrative if desc else "无描述",
                     "quality_score": desc.quality_score if desc else None
                 })

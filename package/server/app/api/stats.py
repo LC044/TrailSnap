@@ -29,9 +29,15 @@ def get_timeline_stats(
     models: Optional[List[str]] = Query(None),
     image_types: Optional[List[str]] = Query(None),
     file_types: Optional[List[str]] = Query(None),
+    folder: Optional[str] = None,
+    folder_direct: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    folder_roots = None
+    if folder_direct and not (folder and folder.strip()):
+        from app.utils.path import get_user_roots
+        folder_roots = get_user_roots(current_user.id, db)
     return app.crud.photo.get_timeline_stats(
         db,
         album_id=album_id,
@@ -41,6 +47,9 @@ def get_timeline_stats(
         models=models,
         image_types=image_types,
         file_types=file_types,
+        folder=folder,
+        folder_direct=folder_direct,
+        folder_roots=folder_roots,
         user_id=current_user.id
     )
 

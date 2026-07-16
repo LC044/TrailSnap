@@ -40,6 +40,17 @@ export const albumService = {
       return data.data;
   },
 
+  // Folders（按层级浏览，Issue #78）：parent 为相对父路径，空字符串为根层
+  async getFolders(parent: string = '') {
+    const data = await request.get<{
+      parent: string
+      breadcrumb: { name: string; path: string }[]
+      own_count: number
+      children: { name: string; path: string; count: number; has_children: boolean }[]
+    }>('/api/photos/folders', { params: { parent } });
+    return data.data;
+  },
+
   // Photos
   async getAllPhotos(skip: number = 0, limit: number = 100, filters?: any) {
     const data = await request.get<Photo[]>('/api/photos', {

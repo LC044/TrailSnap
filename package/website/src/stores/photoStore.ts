@@ -122,6 +122,10 @@ export const photoStoreSetup = () => {
   const currentContext = ref<{ type: 'all' | 'album' | 'search', id?: string }>({ type: 'all' })
   const timelineStats = ref<TimelineStats>()
   const availableFilters = ref<FilterOptions | null>(null);
+  // 文件夹浏览模式：设置后，timeline 统计与按月加载都会自动按该文件夹过滤（Issue #78）
+  const folderPath = ref<string | null>(null);
+  // 仅看「本层直属」照片（不含子目录）
+  const folderDirect = ref<boolean>(false);
   const selectedFilters = reactive<FilterState>({
       years: [],
       cities: [],
@@ -161,6 +165,13 @@ export const photoStoreSetup = () => {
           if (Array.isArray(filters[key]) && filters[key].length === 0) {
               delete filters[key];
           }
+      }
+      // 文件夹浏览模式下注入 folder 过滤条件
+      if (folderPath.value !== null) {
+          filters.folder = folderPath.value;
+      }
+      if (folderDirect.value) {
+          filters.folder_direct = true;
       }
       return filters;
   }
@@ -340,6 +351,19 @@ export const photoStoreSetup = () => {
       await fetchTimelineStats(albumId);
   }
 
+  const loadFolderPhotos = async (folder: string, reset: boolean = false, direct: boolean = false) => {
+      if (reset) {
+          images.value = [];
+          photoOffsetMap.clear();
+          loadedDates.clear();
+      }
+      folderPath.value = folder;
+      folderDirect.value = direct;
+      // 文件夹模式复用「全部照片」上下文（albumId 为空），由 cleanFilters 注入 folder 过滤
+      currentContext.value = { type: 'all' };
+      await fetchTimelineStats();
+  }
+
   const removeLocalPhoto = (photoId: string) => {
       images.value = images.value.filter(img => img.id !== photoId);
       // Clean map
@@ -374,6 +398,8 @@ export const photoStoreSetup = () => {
       photoOffsetMap.clear();
       loadedDates.clear();
       currentContext.value = { type: 'all' };
+      folderPath.value = null;
+      folderDirect.value = false;
   }
 
   const fetchThumbnail = async (photoId: string) => {
@@ -396,10 +422,13 @@ export const photoStoreSetup = () => {
     photoOffsetMap,
     availableFilters,
     selectedFilters,
+    folderPath,
+    folderDirect,
     fetchAvailableFilters,
     fetchTimelineStats,
     loadPhotos,
     loadAlbumPhotos,
+    loadFolderPhotos,
     loadPhotosByMonth,
     removeLocalPhoto,
     deletePhoto,
