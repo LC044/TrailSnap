@@ -134,7 +134,7 @@
                 @click="navigateTo(folder.path)"
                 class="group flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               >
-                <Folder class="w-14 h-14 text-primary-400 group-hover:text-primary-500 transition-colors" fill="currentColor" fill-opacity="0.15" />
+                <Folder class="w-14 h-14 text-primary-500 group-hover:text-primary-500 transition-colors" fill="currentColor" fill-opacity="0.15" />
                 <div class="w-full min-w-0">
                   <div class="text-sm text-gray-800 dark:text-white truncate" :title="folder.name">{{ folder.name }}</div>
                   <div class="text-xs text-gray-400 dark:text-gray-500">{{ folder.count }} 项</div>
@@ -189,7 +189,7 @@
                 class="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <div class="w-6 flex-shrink-0"></div>
-                <Folder class="w-5 h-5 text-primary-400 flex-shrink-0" fill="currentColor" fill-opacity="0.15" />
+                <Folder class="w-5 h-5 text-primary-500 flex-shrink-0" fill="currentColor" fill-opacity="0.15" />
                 <span class="flex-1 min-w-0 truncate text-sm text-gray-800 dark:text-white" :title="folder.name">{{ folder.name }}</span>
                 <span class="w-40 hidden sm:block flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">—</span>
                 <span class="w-24 text-right flex-shrink-0 text-xs text-gray-400 dark:text-gray-500">{{ folder.count }} 项</span>

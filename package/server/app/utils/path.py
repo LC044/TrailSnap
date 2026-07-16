@@ -39,17 +39,17 @@ def get_user_roots(user_id: UUID, db) -> List[str]:
         from app.core.config_manager import config_manager
         config = config_manager.get_user_config(user_id, db)
         storage_cfg = config.storage
-        primary = storage_cfg.photo_storage_path or "./data/uploads"
+        primary = storage_cfg.photo_storage_path or "./data/uploads/uploads"
+        uploads = os.path.join(primary, "uploads")
         external = storage_cfg.external_directories or []
     except Exception:
-        primary = "./data/uploads"
+        primary = "./data/uploads/uploads"
+        uploads = "./data/uploads/uploads"
         external = []
 
     roots = set()
-    if primary:
-        roots.add(_normalize(primary))
-        # 上传文件落在 {primary}/uploads 下，把它也作为根，剥离后更贴近用户视角
-        roots.add(_normalize(os.path.join(primary, "uploads")))
+    if uploads:
+        roots.add(_normalize(uploads))
     for ext in external:
         if ext:
             roots.add(_normalize(ext))

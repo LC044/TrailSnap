@@ -205,19 +205,169 @@ def read_photo_folders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """按文件夹层级返回某个父目录下的下一层内容（Issue #78）。
+    """按文件夹层级返回某个父目录下的下一层内容（优化版）。
 
-    返回 {parent, breadcrumb, own_count, children[]}；
-    children 每项含 name/path/count/has_children，前端据此逐级下钻。
+    采用 os.listdir 快速读取真实硬盘结构，同时利用 SQL 聚合查询获取每个目录的照片数量，
+    极大提升大批量照片库下的目录树展开速度。
     """
-    from app.utils.path import get_user_roots, build_folder_tree_level
-    rows = db.query(Photo.file_path).filter(
-        Photo.owner_id == current_user.id,
-        Photo.is_deleted == False
-    ).all()
+    import os
+    from sqlalchemy import func, or_
+    from app.utils.path import get_user_roots, _normalize
+
+    parent_path = (parent or "").replace("\\", "/").strip("/")
     roots = get_user_roots(current_user.id, db)
-    data = build_folder_tree_level(rows, roots, parent or "")
-    return BaseResponse.success(data=data)
+
+    def get_root_label(r):
+        return os.path.basename(r) or r
+
+    def _esc(s):
+        return s.replace('%', '\\%').replace('_', '\\_')
+
+    def _stored_prefix_candidates(abs_dir):
+        """针对某个绝对目录，给出它在 DB file_path 里可能出现的所有前缀形式。
+
+        DB 里的 file_path 形态不统一：外部扫描目录存的是绝对路径，而 uploads 因
+        storage._get_storage_root 硬编码 './data/uploads'，存成相对路径
+        ('./data/uploads/uploads/年/月/...')。func.replace(file_path,'\\','/')
+        只统一分隔符、无法把相对路径转绝对，因此这里对每个根同时生成「绝对」与
+        「相对」两种前缀，用 OR 匹配，保证两种形态都能命中。
+        """
+        abs_dir = (abs_dir or "").replace("\\", "/").rstrip("/")
+        if not abs_dir:
+            return []
+        cands = {abs_dir}
+        try:
+            rel = os.path.relpath(abs_dir).replace("\\", "/").rstrip("/")
+            if rel and rel != abs_dir:
+                cands.add(rel)
+                cands.add("./" + rel)
+        except ValueError:
+            # Windows 下跨盘符 os.path.relpath 会抛错，绝对形态已足够覆盖
+            pass
+        return [c + "/" for c in cands]
+
+    def _under(expr, abs_dir):
+        """file_path 位于 abs_dir 子树下（含更深层级）。"""
+        cands = _stored_prefix_candidates(abs_dir)
+        if not cands:
+            return False
+        likes = [expr.like(_esc(c) + "%", escape='\\') for c in cands]
+        return or_(*likes) if len(likes) > 1 else likes[0]
+
+    children = []
+    own_count = 0
+    breadcrumb = []
+
+    norm_expr = func.replace(Photo.file_path, '\\', '/')
+
+    if not parent_path:
+        for r in roots:
+            name = get_root_label(r)
+            norm_r = _normalize(r)
+
+            # 计算该根目录下所有照片的总数
+            count = db.query(func.count(Photo.id)).filter(
+                Photo.owner_id == current_user.id,
+                Photo.is_deleted == False,
+                _under(norm_expr, norm_r)
+            ).scalar()
+            
+            has_children = False
+            if os.path.exists(norm_r) and os.path.isdir(norm_r):
+                try:
+                    for item in os.listdir(norm_r):
+                        if os.path.isdir(os.path.join(norm_r, item)):
+                            has_children = True
+                            break
+                except Exception:
+                    pass
+                    
+            children.append({
+                "name": name,
+                "path": name,
+                "count": count,
+                "has_children": has_children
+            })
+            
+    else:
+        parts = parent_path.split("/")
+        root_label = parts[0]
+        remainder = "/".join(parts[1:])
+        
+        matched_root = None
+        for r in roots:
+            if get_root_label(r) == root_label:
+                matched_root = r
+                break
+                
+        if matched_root:
+            norm_r = _normalize(matched_root)
+            abs_dir = _normalize(os.path.join(norm_r, remainder)) if remainder else norm_r
+
+            if os.path.exists(abs_dir) and os.path.isdir(abs_dir):
+                # 一次性取出 abs_dir 子树下所有照片的 file_path，在 Python 里按
+                # 「直属 / 各一级子目录」分桶统计，避免每个子目录各跑一次 count 查询。
+                abs_dir_norm = _normalize(abs_dir)
+                subtree_rows = db.query(Photo.file_path).filter(
+                    Photo.owner_id == current_user.id,
+                    Photo.is_deleted == False,
+                    _under(norm_expr, abs_dir)
+                ).all()
+
+                own_count = 0
+                child_counts = {}  # 一级子目录名 -> 该子树照片总数
+                for fp, in subtree_rows:
+                    if not fp:
+                        continue
+                    norm_fp = _normalize(fp)
+                    if norm_fp == abs_dir_norm:
+                        own_count += 1
+                        continue
+                    if not norm_fp.startswith(abs_dir_norm + "/"):
+                        continue
+                    remainder = norm_fp[len(abs_dir_norm) + 1:]
+                    first_sep = remainder.find("/")
+                    if first_sep == -1:
+                        own_count += 1
+                    else:
+                        child_name = remainder[:first_sep]
+                        child_counts[child_name] = child_counts.get(child_name, 0) + 1
+
+                try:
+                    for item in os.listdir(abs_dir):
+                        item_path = os.path.join(abs_dir, item)
+                        if os.path.isdir(item_path):
+                            has_children = False
+                            try:
+                                for sub_item in os.listdir(item_path):
+                                    if os.path.isdir(os.path.join(item_path, sub_item)):
+                                        has_children = True
+                                        break
+                            except Exception:
+                                pass
+
+                            children.append({
+                                "name": item,
+                                "path": parent_path + "/" + item,
+                                "count": child_counts.get(item, 0),
+                                "has_children": has_children
+                            })
+                except Exception:
+                    pass
+                    
+        acc = []
+        for seg in parts:
+            acc.append(seg)
+            breadcrumb.append({"name": seg, "path": "/".join(acc)})
+            
+    children.sort(key=lambda x: x["name"].lower())
+    
+    return BaseResponse.success(data={
+        "parent": parent_path,
+        "breadcrumb": breadcrumb,
+        "own_count": own_count,
+        "children": children
+    })
 
 @router.get("/detail", response_model=List[PhotoDetail])
 def read_all_photos_with_detail(
