@@ -352,6 +352,12 @@ watch(scrollContainerRef, (container) => {
   }
 }, { immediate: true })
 
+// 父级可能传入一个挂载后才就绪的内部滚动容器（如 FolderBrowser 的 scrollArea），
+// 此时 onMounted 里拿到的还是 null，这里在 prop 真正就绪后再切换过去。
+watch(() => props.scrollContainer, (c) => {
+  if (c) scrollContainerRef.value = c
+})
+
 let resizeObserver: ResizeObserver | null = null
 onMounted(() => {
     if (props.scrollContainer) {

@@ -554,6 +554,7 @@ def get_all_photos(
     center_lng: Optional[float] = None,
     ids: Optional[List[UUID]] = None,
     order_by: Optional[str] = None,
+    order_dir: Optional[str] = None,
     folder: Optional[str] = None,
     folder_direct: bool = False,
     folder_roots: Optional[List[str]] = None,
@@ -604,9 +605,21 @@ def get_all_photos(
 
     # Optimization for user albums / eager load albums
     query = query.options(joinedload(Photo.albums))
-    if not order_by or order_by == 'photo_time':
-        # 按拍摄时间倒序
-        query = query.order_by(Photo.photo_time.desc())
+    # 排序：name/size/photo_time 在此统一处理（nulls 一律置末）；
+    # quality_score/memory_score 已在 _build_photo_filter_query 内排序，此处跳过。
+    if order_by == 'filename':
+        col, default_dir = Photo.filename, 'asc'
+    elif order_by == 'size':
+        col, default_dir = Photo.size, 'desc'
+    elif order_by in (None, 'photo_time'):
+        col, default_dir = Photo.photo_time, 'desc'
+    else:
+        col, default_dir = None, None
+    if col is not None:
+        direction = order_dir if order_dir in ('asc', 'desc') else default_dir
+        query = query.order_by(
+            col.asc().nulls_last() if direction == 'asc' else col.desc().nulls_last()
+        )
     return query.offset(skip).limit(limit).all()
 
 

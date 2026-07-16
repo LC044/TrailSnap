@@ -154,7 +154,7 @@
       <slot name="intro"></slot>
 
       <!-- 文件夹视图（作为一种布局模式，与自适应/正方形/朋友圈并列） -->
-      <FolderBrowser v-if="layoutMode === 'folder'" :view-size="viewSize" />
+      <FolderBrowser v-if="layoutMode === 'folder'" v-model:view-size="viewSize" />
 
       <PhotoGallery
         v-else

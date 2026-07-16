@@ -171,6 +171,7 @@ def read_all_photos(
         center_lng: Optional[float] = None,
         ids: Optional[List[UUID]] = Query(None),
         order_by: Optional[str] = None,
+        order_dir: Optional[str] = None,
         folder: Optional[str] = None,
         folder_direct: bool = False,
         db: Session = Depends(get_db),
@@ -192,7 +193,7 @@ def read_all_photos(
         face_id=face_id, face_ids=face_ids, tag_id=tag_id, tag_ids=tag_ids,
         lat_min=lat_min, lat_max=lat_max, lng_min=lng_min, lng_max=lng_max,
         radius=radius, center_lat=center_lat, center_lng=center_lng,
-        order_by=order_by, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
+        order_by=order_by, order_dir=order_dir, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
         ids=ids, user_id=current_user.id
     )
     logging.info(f"read_all_photos time: {time.time() - st_time}")
