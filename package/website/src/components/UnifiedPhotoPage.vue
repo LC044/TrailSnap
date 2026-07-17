@@ -1,7 +1,7 @@
 <template>
   <div class="unified-photo-page container mx-auto py-1 px-4 min-h-screen">
-    <!-- Toolbar & Header -->
-    <div class="sticky md:top-0 z-30 pointer-events-none">
+    <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
+    <div v-if="layoutMode !== 'folder'" class="sticky md:top-0 z-30 pointer-events-none">
       <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-4 py-3 pointer-events-auto">
         <!-- Back & Title -->
         <slot name="header-left">
@@ -154,7 +154,11 @@
       <slot name="intro"></slot>
 
       <!-- 文件夹视图（作为一种布局模式，与自适应/正方形/朋友圈并列） -->
-      <FolderBrowser v-if="layoutMode === 'folder'" v-model:view-size="viewSize" />
+      <FolderBrowser
+        v-if="layoutMode === 'folder'"
+        v-model:view-size="viewSize"
+        @switch-layout="(m) => layoutMode = m as any"
+      />
 
       <PhotoGallery
         v-else

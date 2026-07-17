@@ -110,6 +110,29 @@
             <Maximize v-else class="w-4 h-4" />
           </button>
         </div>
+
+        <!-- 切换布局视图（退出文件夹 / 切到其他视图） -->
+        <el-dropdown trigger="click" placement="bottom-end" @command="(cmd) => emit('switch-layout', cmd as string)">
+          <button class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" title="切换视图">
+            <LayoutDashboard class="w-4 h-4" />
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="waterfall">
+                <div class="flex items-center gap-2"><LayoutDashboard class="w-4 h-4" /><span>自适应</span></div>
+              </el-dropdown-item>
+              <el-dropdown-item command="grid">
+                <div class="flex items-center gap-2"><LayoutGrid class="w-4 h-4" /><span>正方形</span></div>
+              </el-dropdown-item>
+              <el-dropdown-item command="moments">
+                <div class="flex items-center gap-2"><List class="w-4 h-4" /><span>朋友圈</span></div>
+              </el-dropdown-item>
+              <el-dropdown-item command="folder">
+                <div class="flex items-center gap-2 text-primary-500"><FolderTree2 class="w-4 h-4" /><span>文件夹</span></div>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
 
       <!-- 内容滚动区 -->
@@ -344,7 +367,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   Folder, FolderOpen, FolderTree as FolderTree2, HardDrive, ChevronRight,
-  ArrowLeft, Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, List,
+  ArrowLeft, Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, LayoutDashboard, List,
   ArrowUpDown, ArrowUp, ArrowDown, Check, X, Download, Trash2, ImagePlusIcon,
   MoreHorizontal, UserPlus, CheckSquare
 } from 'lucide-vue-next'
@@ -377,7 +400,10 @@ type SortDir = 'asc' | 'desc'
 const props = withDefaults(defineProps<{ viewSize?: ViewSize }>(), {
   viewSize: 'md'
 })
-const emit = defineEmits<{ (e: 'update:viewSize', v: ViewSize): void }>()
+const emit = defineEmits<{
+  (e: 'update:viewSize', v: ViewSize): void
+  (e: 'switch-layout', v: string): void
+}>()
 
 const sizeTitleMap: Record<ViewSize, string> = { sm: '小', md: '中', lg: '大' }
 const setViewSize = (size: ViewSize) => emit('update:viewSize', size)
