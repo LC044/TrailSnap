@@ -28,7 +28,7 @@ from app.service import storage
 from app.utils.exif import extract_metadata
 
 
-def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[UUID] = None):
+def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[UUID] = None) -> List[UUID]:
     """
     Batch create photos and metadata.
     photos_data: List of dicts containing:
@@ -36,9 +36,14 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
         - metadata: PhotoMetadataCreate schema (optional)
         - photo_id: UUID
         - file_path: str
+    Returns the list of photo_ids that were actually inserted (i.e. after the
+    file_path dedup filter). Callers that write child rows keyed by photo_id
+    (e.g. PhotoColor) or enqueue downstream tasks must scope their work to
+    this returned set — deduped photo_ids never make it into the `photos`
+    table, so referencing them triggers foreign-key violations.
     """
     if not photos_data:
-        return 0
+        return []
 
     try:
         # 兜底去重：过滤掉数据库中已存在的 (owner_id, file_path)，避免并发扫描
@@ -73,7 +78,7 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
             photos_data = deduped
 
         if not photos_data:
-            return 0
+            return []
 
         photos = []
         metadatas = []
@@ -111,12 +116,12 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
             db.bulk_save_objects(metadatas)
 
         db.commit()
-        
+
         if user_id:
             from app.crud.album import trigger_conditional_albums_update
             trigger_conditional_albums_update(db, user_id, [p.id for p in photos])
-            
-        return len(photos)
+
+        return [p.id for p in photos]
     except Exception as e:
         db.rollback()
         raise e

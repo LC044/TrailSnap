@@ -262,12 +262,22 @@ class BasicTaskStrategy(BaseTaskStrategy):
                     worker.scan_status['processed_files'] += 1
 
         if photos_to_create:
+            # 收集真正入库的 photo_id。batch_create_photos 会按 file_path 去重，
+            # 被去重丢弃的 photo_id 不会进入 photos 表，后续写 PhotoColor 或入队
+            # 下游任务时若引用它们会触发外键违反（photo_colors_photo_id_fkey），
+            # 并连坐回滚同一 flush 批次里所有已完成任务的删除，导致任务卡在
+            # PROCESSING 反复重跑。因此颜色写入与下游入队必须限定在 inserted_ids 内。
+            inserted_ids = set()
             for uid, photos in photos_to_create.items():
-                app.crud.photo.batch_create_photos(db, photos, user_id=uid)
+                inserted_ids.update(
+                    str(pid) for pid in app.crud.photo.batch_create_photos(db, photos, user_id=uid)
+                )
             db.add_all(index_logs)
 
-            # Save color info for each photo
+            # Save color info for each photo (only those actually inserted)
             for photo_id, info in processed_photos.items():
+                if photo_id not in inserted_ids:
+                    continue
                 color_info = info.get('color_info')
                 if color_info and color_info.get('dominant_colors'):
                     try:
@@ -283,6 +293,8 @@ class BasicTaskStrategy(BaseTaskStrategy):
                         logging.getLogger(__name__).warning(f"Failed to save color info for photo {photo_id}: {e}")
 
             for photo_id, info in processed_photos.items():
+                if photo_id not in inserted_ids:
+                    continue
                 file_path = info['path']
                 owner_id = info['owner_id']
 

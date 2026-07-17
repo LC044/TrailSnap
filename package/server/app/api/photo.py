@@ -443,8 +443,8 @@ def batch_create_photos(
             'photo_id': item.photo_id,
         })
     try:
-        count = app.crud.photo.batch_create_photos(db, photos_data, user_id=current_user.id)
-        return BaseResponse.success(data={"message": f"Successfully created {count} photos"})
+        inserted_ids = app.crud.photo.batch_create_photos(db, photos_data, user_id=current_user.id)
+        return BaseResponse.success(data={"message": f"Successfully created {len(inserted_ids)} photos"})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
