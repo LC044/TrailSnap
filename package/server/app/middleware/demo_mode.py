@@ -103,7 +103,7 @@ class DemoModeMiddleware:
         # 1) 拦截非白名单写操作
         if method in WRITE_METHODS and not is_whitelisted_write(method, path):
             response = JSONResponse(
-                status_code=403,
+                status_code=200,
                 content={"code": 403, "msg": DEMO_BLOCK_MSG, "data": None},
             )
             await response(scope, receive, send)
