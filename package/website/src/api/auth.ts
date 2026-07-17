@@ -47,6 +47,18 @@ export interface ResetConfirmParams {
   new_password: string;
 }
 
+export interface BaseResponseData<T = any> {
+  code: number;
+  msg: string;
+  data: T | null;
+}
+
+export interface LogResetCodeConfirmParams {
+  username_or_email: string;
+  code: string;
+  new_password: string;
+}
+
 export const authService = {
   async login(data: LoginParams) {
     // API requires x-www-form-urlencoded
@@ -100,6 +112,25 @@ export const authService = {
       data
     });
     return res.data;
+  },
+
+  async sendLogResetCode(data: ResetCheckParams) {
+    const res = await request<BaseResponseData>({
+      url: '/api/auth/send-log-reset-code',
+      method: 'post',
+      data
+    });
+    // 响应拦截器已将 BaseResponse 透出：返回 { code, msg, data }
+    return res as unknown as BaseResponseData;
+  },
+
+  async resetPasswordByCode(data: LogResetCodeConfirmParams) {
+    const res = await request<BaseResponseData>({
+      url: '/api/auth/reset-password-by-code',
+      method: 'post',
+      data
+    });
+    return res as unknown as BaseResponseData;
   },
 
   async getAuthStatus() {

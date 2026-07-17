@@ -1,3 +1,4 @@
+import logging
 from datetime import timedelta, datetime
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -5,18 +6,22 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.crud import user as crud_user
 from app.schemas.user import (
-    UserCreate, 
-    UserResponse, 
-    PasswordResetCheck, 
+    UserCreate,
+    UserResponse,
+    PasswordResetCheck,
     PasswordResetCheckResponse,
-    PasswordResetConfirm
+    PasswordResetConfirm,
+    LogResetCodeConfirm
 )
 from app.schemas.token import Token
 from app.core import security
 from app.core.config_manager import config_manager
 from app.core.system_config import system_config
 from app.core.migration import migrate_system_config
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
+from app.service import reset_code_store
+
+logger = logging.getLogger("app.auth")
 
 router = APIRouter()
 
@@ -124,6 +129,53 @@ def confirm_password_reset(
 
     user = crud_user.reset_password(db, user, payload.new_password)
     return user
+
+@router.post("/send-log-reset-code")
+def send_log_reset_code(
+    payload: PasswordResetCheck,
+    db: Session = Depends(get_db)
+) -> BaseResponse:
+    """
+    生成密码重置验证码并写入服务器日志（兜底重置方式）。
+
+    验证码只会出现在服务器日志中，绝不返回给前端。
+    同一用户 60 秒内只能生成一次。
+    """
+    user = crud_user.get_by_username_or_email(db, identifier=payload.username_or_email)
+    if not user:
+        return BaseResponse.fail(code=404, msg="用户不存在")
+
+    code = reset_code_store.issue_code(str(user.id), payload.username_or_email)
+    if code is None:
+        return BaseResponse.fail(code=429, msg=f"发送过于频繁，请 {reset_code_store.RESEND_INTERVAL_SECONDS} 秒后再试")
+
+    return BaseResponse.success(
+        msg=f"验证码已写入服务器日志（有效期 {reset_code_store.CODE_TTL_SECONDS // 60} 分钟），请联系管理员查看日志获取"
+    )
+
+@router.post("/reset-password-by-code")
+def reset_password_by_code(
+    payload: LogResetCodeConfirm,
+    db: Session = Depends(get_db)
+) -> BaseResponse:
+    """
+    通过服务器日志验证码重置密码。
+
+    校验验证码正确且未过期后立即重置密码，验证码用一次即焚。
+    """
+    if len(payload.new_password) < 6:
+        return BaseResponse.fail(code=400, msg="密码长度至少 6 位")
+
+    user = crud_user.get_by_username_or_email(db, identifier=payload.username_or_email)
+    if not user:
+        return BaseResponse.fail(code=404, msg="用户不存在")
+
+    if not reset_code_store.verify_code(str(user.id), payload.code, payload.username_or_email):
+        return BaseResponse.fail(code=400, msg="验证码错误或已过期")
+
+    crud_user.reset_password(db, user, payload.new_password)
+    logger.info("用户 %s 通过服务器日志验证码重置密码成功", payload.username_or_email)
+    return BaseResponse.success(msg="密码重置成功")
 
 @router.get("/status")
 def get_auth_status(db: Session = Depends(get_db)):

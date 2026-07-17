@@ -57,3 +57,9 @@ class PasswordResetConfirm(BaseModel):
     username_or_email: str
     security_answer: str
     new_password: str
+
+# 通过服务器日志验证码重置密码（兜底方案，无需安全问题）
+class LogResetCodeConfirm(BaseModel):
+    username_or_email: str
+    code: str
+    new_password: str
