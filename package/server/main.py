@@ -192,6 +192,12 @@ class FieldsFilterMiddleware:
 
         await self.app(scope, receive, custom_send)
 
+# 演示模式中间件（最内层）：DEMO_MODE=true 时拦截写操作 + 脱敏敏感配置。
+# 放在最内层的原因：CORS 在最外层，保证 403 响应也带 CORS 头；
+# GZip 在外层，保证脱敏时拿到的是未压缩 JSON。
+from app.middleware.demo_mode import DemoModeMiddleware
+app.add_middleware(DemoModeMiddleware)
+
 app.add_middleware(FieldsFilterMiddleware)
 
 # 添加 GZip 中间件

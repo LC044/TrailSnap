@@ -181,4 +181,10 @@ def reset_password_by_code(
 def get_auth_status(db: Session = Depends(get_db)):
     has_users = db.query(crud_user.User).count() > 0
     allow_registration = system_config.config.security.allow_registration
-    return {"has_users": has_users, "allow_registration": allow_registration}
+    # demo_mode 供前端可选地展示「演示模式」横幅；不设置时为 False，零影响。
+    from app.middleware.demo_mode import DEMO_MODE
+    return {
+        "has_users": has_users,
+        "allow_registration": allow_registration,
+        "demo_mode": DEMO_MODE,
+    }
