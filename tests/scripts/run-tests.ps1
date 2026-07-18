@@ -270,18 +270,58 @@ function Get-ServicePorts {
     return ($ports | Sort-Object -Unique)
 }
 
+# 一次性查出哪些端口被哪个 PID 监听。用 netstat -ano 而非 Get-NetTCPConnection：
+# 后者依赖 NetTCPIP 的 CIM provider，该 provider 在某些 Windows 状态下会无限阻塞
+# （已知问题，无超时参数可设），会导致整个脚本卡死在端口清理环节。netstat 稳定且更快。
+function Get-PortListeners {
+    param([int[]]$Ports)
+    $result = @{}
+    if (-not $Ports -or $Ports.Count -eq 0) { return $result }
+    $portSet = @{}
+    foreach ($p in $Ports) { $portSet[[int]$p] = $true }
+    try {
+        # netstat -ano -p TCP 输出形如：
+        #   TCP    127.0.0.1:9000      0.0.0.0:0              LISTENING       12345
+        #   TCP    [::1]:9000          [::]:0                 LISTENING       12345
+        $lines = netstat -ano -p TCP 2>$null
+        foreach ($line in $lines) {
+            if ($line -notmatch '\bLISTENING\b') { continue }
+            $cols = ($line -split '\s+') | Where-Object { $_ }
+            if ($cols.Count -lt 5) { continue }
+            if ($cols[1] -notmatch ':(\d+)$') { continue }
+            $port = [int]$matches[1]
+            if (-not $portSet.ContainsKey($port)) { continue }
+            $listenerPid = 0
+            if (-not [int]::TryParse($cols[-1], [ref]$listenerPid)) { continue }
+            if ($listenerPid -le 0) { continue }
+            if (-not $result.ContainsKey($port)) { $result[$port] = @() }
+            if ($result[$port] -notcontains $listenerPid) { $result[$port] += $listenerPid }
+        }
+    } catch {}
+    return $result
+}
+
 # 杀掉占用指定端口的进程（含其子进程树）。用于：启动前清理 + 测试后兜底清理。
 function Clear-ServicePorts {
     param([int[]]$Ports, [string]$Reason = '清理')
+    if (-not $Ports -or $Ports.Count -eq 0) { return }
+    $listeners = Get-PortListeners -Ports $Ports
     foreach ($port in ($Ports | Sort-Object -Unique)) {
-        $conns = @()
-        try { $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue } catch {}
-        foreach ($c in $conns) {
-            $holderPid = $c.OwningProcess
-            if (-not $holderPid) { continue }
+        $holderPids = $listeners[$port]
+        if (-not $holderPids) { continue }
+        foreach ($holderPid in $holderPids) {
             try { $holder = Get-Process -Id $holderPid -ErrorAction Stop } catch { continue }
-            Write-Host "  [$Reason] 端口 $port <- PID $holderPid ($($holder.ProcessName))，强制关闭进程树..." -ForegroundColor Yellow
-            & taskkill /F /T /PID $holderPid 2>&1 | Out-Null
+            Write-Host "  [$Reason] 端口 $port <- PID $holderPid ($($holder.ProcessName))，强制关闭..." -ForegroundColor Yellow
+            # Stop-Process -Force 走 .NET TerminateProcess，即时且稳定。
+            # taskkill /F /T 在本机 CIM/WMI 异常时会卡在子进程枚举上报"超时"，
+            # 且其 stderr 在 ErrorActionPreference=Stop 下会被当终止错误抛出中断脚本，
+            # 故仅作兜底并用 2>$null 丢弃 stderr。
+            try {
+                Stop-Process -Id $holderPid -Force -ErrorAction Stop
+            } catch {
+                Write-Host "    Stop-Process 失败，回退 taskkill /F /T：$($_.Exception.Message)" -ForegroundColor DarkYellow
+                & taskkill /F /T /PID $holderPid 2>$null
+            }
         }
     }
 }
@@ -542,8 +582,9 @@ finally {
             if ($keepPorts.Count -gt 0) {
                 Write-Host "  端口: $($keepPorts -join ', ')"
                 # 生成一键停止命令：按端口清理占用进程（含被 reparent 的孤儿子进程），
-                # 比 taskkill 单个 PID 更稳妥。用户在 PowerShell 直接粘贴即可。
-                $stopCmd = "foreach (`$p in $($keepPorts -join ',')) { Get-NetTCPConnection -LocalPort `$p -State Listen -EA SilentlyContinue | ForEach-Object { taskkill /F /T /PID `$_.OwningProcess } }"
+                # 比 taskkill 单个 PID 更稳妥。用 netstat 解析（Get-NetTCPConnection 的
+                # CIM provider 在部分 Windows 环境会无限阻塞，不可用）。用户直接粘贴即可。
+                $stopCmd = "foreach (`$p in $($keepPorts -join ',')) { netstat -ano -p TCP 2>`$null | Where-Object { `$_ -match `":`$p\s.*LISTENING`" } | ForEach-Object { (`$_ -split '\s+')[-1] } | Sort-Object -Unique | ForEach-Object { taskkill /F /T /PID `$_ } }"
                 Write-Host "  一键停止全部服务（直接复制到 PowerShell 运行）:" -ForegroundColor Cyan
                 Write-Host "    $stopCmd" -ForegroundColor White
             }
@@ -563,7 +604,11 @@ finally {
                 try { $proc.Refresh() } catch {}
                 if ($proc -and -not $proc.HasExited) {
                     Write-Host "  关闭进程树 PID: $($proc.Id)"
-                    & taskkill /F /T /PID $proc.Id 2>&1 | Out-Null
+                    try {
+                        Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+                    } catch {
+                        & taskkill /F /T /PID $proc.Id 2>$null
+                    }
                 }
             }
             Start-Sleep -Milliseconds 500

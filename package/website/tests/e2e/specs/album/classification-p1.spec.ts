@@ -1,6 +1,6 @@
 import { test, expect, type APIRequestContext } from '@playwright/test'
 
-import { ensureAuthSession } from '../../helpers/auth'
+import { ensureAuthSession, ensureApiAccessToken, authHeaders } from '../../helpers/auth'
 import { requireAnyTag, requirePhotos, type BaseResponse, type TagSummary } from '../../helpers/data-probe'
 import { e2eEnv } from '../../../../playwright/e2e-env'
 
@@ -13,19 +13,23 @@ import { e2eEnv } from '../../../../playwright/e2e-env'
  * 没有 tag 的环境会 testInfo.skip，不阻塞 nightly 其它用例。
  */
 
-async function getTagPhotos(request: APIRequestContext, name: string): Promise<Array<{ id: string; filename?: string }>> {
+async function getTagPhotos(request: APIRequestContext, name: string, token: string): Promise<Array<{ id: string; filename?: string }>> {
   const res = await request.get(
     `${e2eEnv.apiBaseUrl}/tags/${encodeURIComponent(name)}/photos?skip=0&limit=200`,
+    { headers: authHeaders(token) }
   )
   if (!res.ok()) return []
   const body = (await res.json()) as Array<{ id: string; filename?: string }> | BaseResponse<Array<{ id: string; filename?: string }>>
   return Array.isArray(body) ? body : body.data ?? []
 }
 
-async function setTagCover(request: APIRequestContext, name: string, photoId: string): Promise<void> {
+async function setTagCover(request: APIRequestContext, name: string, photoId: string, token: string): Promise<void> {
   const res = await request.post(
     `${e2eEnv.apiBaseUrl}/tags/${encodeURIComponent(name)}/cover`,
-    { data: { photo_id: photoId } },
+    { 
+      data: { photo_id: photoId },
+      headers: authHeaders(token)
+    },
   )
   expect(res.ok(), `set cover for ${name}`).toBeTruthy()
 }
@@ -34,10 +38,14 @@ async function removePhotosFromTag(
   request: APIRequestContext,
   name: string,
   photoIds: string[],
+  token: string,
 ): Promise<void> {
   const res = await request.post(
     `${e2eEnv.apiBaseUrl}/tags/${encodeURIComponent(name)}/remove-photos`,
-    { data: { photo_ids: photoIds } },
+    { 
+      data: { photo_ids: photoIds },
+      headers: authHeaders(token)
+    },
   )
   expect(res.ok(), `remove ${photoIds.length} photo(s) from ${name}`).toBeTruthy()
 }
@@ -91,8 +99,9 @@ test.describe('P1 - 智能分类', () => {
     const probe = await requireAnyTag(request, testInfo)
     if (!probe.ok) return
     const name = probe.tag.tag_name
+    const token = await ensureApiAccessToken(request, testInfo)
 
-    const photos = await getTagPhotos(request, name)
+    const photos = await getTagPhotos(request, name, token)
     if (photos.length === 0) {
       testInfo.skip(true, `Tag "${name}" has 0 photos; cannot test set-cover.`)
       return
@@ -101,10 +110,10 @@ test.describe('P1 - 智能分类', () => {
 
     // 直接调 setCover API（UI 路径需要进 lightbox + 批量操作，依赖选择模式触发，路径长）
     // 这里覆盖核心行为：API 调通 + 列表重新拉取时能看到新 cover
-    await setTagCover(request, name, target.id)
+    await setTagCover(request, name, target.id, token)
 
     // 重新拉 tag 列表
-    const listRes = await request.get(`${e2eEnv.apiBaseUrl}/tags?limit=200`)
+    const listRes = await request.get(`${e2eEnv.apiBaseUrl}/tags?limit=200`, { headers: authHeaders(token) })
     const listBody = (await listRes.json()) as TagSummary[] | BaseResponse<TagSummary[]>
     const tags = Array.isArray(listBody) ? listBody : listBody.data ?? []
     const me = tags.find((t) => t.tag_name === name)
@@ -118,17 +127,18 @@ test.describe('P1 - 智能分类', () => {
     const probe = await requireAnyTag(request, testInfo)
     if (!probe.ok) return
     const name = probe.tag.tag_name
+    const token = await ensureApiAccessToken(request, testInfo)
 
-    const before = await getTagPhotos(request, name)
+    const before = await getTagPhotos(request, name, token)
     if (before.length === 0) {
       testInfo.skip(true, `Tag "${name}" has 0 photos; cannot test remove.`)
       return
     }
     const victim = before[0].id
 
-    await removePhotosFromTag(request, name, [victim])
+    await removePhotosFromTag(request, name, [victim], token)
 
-    const after = await getTagPhotos(request, name)
+    const after = await getTagPhotos(request, name, token)
     expect(after.map((p) => p.id)).not.toContain(victim)
   })
 })

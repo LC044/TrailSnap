@@ -95,6 +95,12 @@ test.describe.serial('P0 - 人物相册', () => {
   // dev 套件下 fullyParallel 偶发 Vite ERR_ABORTED；serial 文件给 1 次重试吸收。
   test.use({ retries: 1 })
 
+  // PEOPLE_MUTEX is shared with people-p1.spec.ts. Under fullyParallel, both files
+  // start at the same time and the sibling file's serial tests may cumulatively hold
+  // the lock beyond Playwright's 30s default. Extend timeout to 180s so
+  // acquireMutex(120s) has headroom.
+  test.setTimeout(180_000)
+
   // 人物用例共享两类可变状态：用户配置 ai.face_recognition_min_photos（lower/restore）
   // 与真实 identity（hide/delete/merge/rename）。fullyParallel 下并发会互相踩踏，
   // 故用跨进程互斥锁把 people-p0/p1 全部串行化（与 people-p1 共用同一把锁）。

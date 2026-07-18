@@ -78,6 +78,12 @@ test.describe.serial('P0 - 位置相册', () => {
   // dev 套件下 fullyParallel 偶发 Vite ERR_ABORTED；serial 文件给 1 次重试吸收。
   test.use({ retries: 1 })
 
+  // LOCATION_MUTEX is also held by location-p1.spec.ts. Under fullyParallel, both files
+  // start at the same time and p1's 8 serial tests may cumulatively hold the lock for
+  // more than 30s, exceeding Playwright's default test timeout. Extend the timeout to
+  // 180s so acquireMutex(120s) has enough headroom.
+  test.setTimeout(180_000)
+
   // Location 用例会创建/删除 Scene 共享 DB 资源，与 location-p1 共用一把互斥锁防止并发踩踏。
   const LOCATION_MUTEX = 'location-scenes'
   let releaseMutex: (() => Promise<void>) | undefined
