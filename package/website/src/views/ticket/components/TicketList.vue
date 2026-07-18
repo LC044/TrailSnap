@@ -11,7 +11,7 @@
       <button @click="$emit('fetch-tickets')" class="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors">重试</button>
     </div>
 
-    <div v-else-if="filteredTickets.length > 0">
+    <div v-else-if="filteredTickets.length > 0" class="px-4">
       <TicketTimeline
         v-if="viewMode === 'timeline'"
         :tickets="filteredTickets"

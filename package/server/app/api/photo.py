@@ -718,6 +718,9 @@ def get_on_this_day_photos(
 ):
     """
     获取那年今日的照片
+
+    演示模式（DEMO_MODE）下，若按「同月同日」过滤后照片不足，则用随机照片补足，
+    保证页面始终有内容展示（不一定按时间匹配）。
     """
     if month is None or day is None or year is None:
         now = datetime.now()
@@ -725,4 +728,19 @@ def get_on_this_day_photos(
         day = day or now.day
         year = year or now.year
 
-    return app.crud.photo.get_on_this_day_photos(db, user_id=current_user.id, month=month, day=day, year=year, limit=limit)
+    photos = app.crud.photo.get_on_this_day_photos(db, user_id=current_user.id, month=month, day=day, year=year, limit=limit)
+
+    # 演示模式：时间匹配不足时，用随机照片补足到 limit，确保「那年今日」不为空
+    from app.middleware.demo_mode import DEMO_MODE
+    if DEMO_MODE and len(photos) < limit:
+        existing_ids = {p.id for p in photos}
+        need = limit - len(photos)
+        random_photos = app.crud.photo.get_random_photos(db, user_id=current_user.id, limit=need + 10)
+        for p in random_photos:
+            if len(photos) >= limit:
+                break
+            if p.id not in existing_ids:
+                photos.append(p)
+                existing_ids.add(p.id)
+
+    return photos

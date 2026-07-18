@@ -9,11 +9,14 @@
 - 默认 quality=82 + optimize=True + subsampling=4:2:0，是 libjpeg 在视觉无明显
   差异下的常规甜点；可调。
 - 只处理 .jpg / .jpeg / .JPG / .JPEG。其他格式不碰，避免误伤 RAW/HEIC。
+- 防退化：原地压缩后若新文件反而比原文件大（说明原图本身已经极高压缩比），
+  跳过该文件保留原图，不替换。
 
 用法：
     python tests/scripts/compress_images.py <folder> [--quality 82] [--dry-run]
     python tests/scripts/compress_images.py <folder> --backup
     python tests/scripts/compress_images.py <folder> --max-dim 4096
+    python tests/scripts/compress_images.py <folder> --recursive
 """
 
 from __future__ import annotations
@@ -36,8 +39,9 @@ def human_size(num_bytes: int) -> str:
     return f"{n:.1f} TB"
 
 
-def collect_jpegs(folder: Path):
-    for p in sorted(folder.iterdir()):
+def collect_jpegs(folder: Path, recursive: bool = False):
+    it = folder.rglob("*") if recursive else folder.iterdir()
+    for p in sorted(it):
         if p.is_file() and p.suffix in JPEG_SUFFIXES:
             yield p
 
@@ -52,6 +56,7 @@ def compress_one(path: Path, *, quality: int, max_dim: int | None,
         "new_size": orig_size,
         "ratio": 1.0,
         "exif_kept": False,
+        "orig_exif_size": 0,
         "skipped": False,
         "note": "",
     }
@@ -93,10 +98,23 @@ def compress_one(path: Path, *, quality: int, max_dim: int | None,
             }
             if exif_bytes is not None:
                 save_kwargs["exif"] = exif_bytes
+                summary["orig_exif_size"] = len(exif_bytes)
             work_img.save(tmp, **save_kwargs)
         # with 已退出，Image 句柄一定已释放
 
         new_size = tmp.stat().st_size
+        # 防退化：原地压缩后若新文件反而比原文件大（说明原图本身已经极高
+        # 压缩比、JPEG encoder 重编码产生更大输出），保留原图不要替换。
+        if new_size >= orig_size:
+            try: tmp.unlink()
+            except OSError: pass
+            summary["skipped"] = True
+            summary["note"] = (
+                summary["note"] +
+                f"kept-original(new={new_size} >= orig={orig_size})"
+            ).strip("; ")
+            return summary
+
         # 优先用 Path.replace（atomic）。失败时回退 shutil.move
         # （Windows 上杀软/索引服务扫描 .tmp 偶尔会让 rename 失败，
         # move 会自动改用 copy+remove，更宽容）。
@@ -118,13 +136,25 @@ def compress_one(path: Path, *, quality: int, max_dim: int | None,
     return summary
 
 
-def verify_exif_roundtrip(path: Path) -> tuple[bool, str]:
-    """校验压缩后的 EXIF 段字节与原始是否一致。"""
+def verify_exif_roundtrip(path: Path, orig_exif_size: int) -> tuple[str, str]:
+    """校验压缩后的 EXIF 段字节与原始是否一致。
+
+    返回 (status, msg)：
+      "skip" - 原图本身就没有 EXIF，跳过校验
+      "ok"   - 输出 EXIF 字节数与原始一致
+      "lost" - 原图有 EXIF 但输出丢了
+      "diff" - 原图有 EXIF 但输出长度不一致
+    """
     with Image.open(path) as img:
         exif = img.info.get("exif")
-        if exif is None:
-            return False, "no exif in output"
-    return True, f"exif {len(exif)} bytes"
+    new_size = len(exif) if exif else 0
+    if orig_exif_size == 0:
+        return "skip", f"orig had no exif (output exif={new_size} B)"
+    if new_size == orig_exif_size:
+        return "ok", f"exif {new_size} bytes unchanged"
+    if new_size == 0:
+        return "lost", f"orig had {orig_exif_size} B exif, output lost it"
+    return "diff", f"orig {orig_exif_size} B -> output {new_size} B"
 
 
 def main() -> int:
@@ -144,13 +174,15 @@ def main() -> int:
                         help="只处理前 N 张（调试用）")
     parser.add_argument("--verify", action="store_true",
                         help="每张图处理完后比对 EXIF 段字节")
+    parser.add_argument("--recursive", action="store_true",
+                        help="递归处理子目录")
     args = parser.parse_args()
 
     if not args.folder.is_dir():
         print(f"错误：{args.folder} 不是有效文件夹", file=sys.stderr)
         return 2
 
-    files = list(collect_jpegs(args.folder))
+    files = list(collect_jpegs(args.folder, recursive=args.recursive))
     if not files:
         print(f"未找到 JPEG 文件：{args.folder}")
         return 0
@@ -160,7 +192,8 @@ def main() -> int:
 
     print(f"扫描到 {len(files)} 张 JPEG"
           + ("（DRY-RUN）" if args.dry_run else ""))
-    print(f"  文件夹: {args.folder}")
+    print(f"  文件夹: {args.folder}"
+          + (" (recursive)" if args.recursive else ""))
     print(f"  quality={args.quality}, optimize=True, subsampling=4:2:0"
           + (f", max-dim={args.max_dim}" if args.max_dim else ""))
     if args.backup:
@@ -171,6 +204,7 @@ def main() -> int:
     total_new = 0
     ok_count = 0
     fail_count = 0
+    skipped_larger = 0
     verify_fail = []
 
     for i, path in enumerate(files, 1):
@@ -187,9 +221,14 @@ def main() -> int:
             ok_count += 1
 
             if s["skipped"]:
-                line = f"  [{i:>3}/{len(files)}] {path.name}  (dry-run) {s['note']}"
+                if "kept-original" in s["note"]:
+                    skipped_larger += 1
+                    line = (f"  [{i:>3}/{len(files)}] {path.name}  "
+                            f"kept (compressed larger)")
+                else:
+                    line = (f"  [{i:>3}/{len(files)}] {path.name}  "
+                            f"(dry-run)")
             else:
-                ratio = s["ratio"]
                 delta = (s["new_size"] - s["orig_size"]) / s["orig_size"] * 100
                 sign = "+" if delta >= 0 else ""
                 line = (
@@ -201,10 +240,13 @@ def main() -> int:
             print(line)
 
             if args.verify and not s["skipped"]:
-                ok, msg = verify_exif_roundtrip(path)
-                if not ok:
+                status, msg = verify_exif_roundtrip(path, s.get("orig_exif_size", 0))
+                if status == "lost":
                     verify_fail.append((path, msg))
                     print(f"        VERIFY FAIL: {msg}")
+                elif status == "diff":
+                    print(f"        VERIFY WARN: {msg}")
+                # "skip" 和 "ok" 不打印（避免噪音）
         except Exception as e:
             fail_count += 1
             print(f"  [{i:>3}/{len(files)}] {path.name}  FAIL: {e}")
@@ -218,6 +260,8 @@ def main() -> int:
         print(f"  总原始: {human_size(total_orig)}")
         print(f"  总压缩: {human_size(total_new)}")
         print(f"  节省:   {human_size(saved)} ({pct:.1f}%)")
+        if skipped_larger:
+            print(f"  跳过(压缩后变大): {skipped_larger} 张（原样保留）")
     if args.verify and verify_fail:
         print(f"  EXIF 校验失败: {len(verify_fail)} 张")
         for p, m in verify_fail:

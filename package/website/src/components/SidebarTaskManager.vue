@@ -94,6 +94,12 @@ const expanded = ref(false)
 const groupedStatus = ref<TaskCategoryStatus[]>([])
 let pollTimer: number | null = null
 let successTimer: number | null = null // 用于清理 success 定时器
+// 同步置位的生命周期标志：跨 await 生效，防止并发 startPolling 重复启动 loop
+let polling = false
+// 当前是否有 fetch 在途：防止 SSE 事件在请求中途触发第二个并发 loop
+let fetchInFlight = false
+// 请求在途时收到的事件，标记需要在当前 fetch 结束后立即再拉一次
+let pendingRefresh = false
 
 const activeCategories = computed(() => {
   return groupedStatus.value.filter(cat => cat.pending > 0)
@@ -149,17 +155,42 @@ const toggleExpand = () => {
 }
 
 // 优化轮询机制：基于 setTimeout 的递归，避免网络阻塞时请求堆积
-const startPolling = () => {
-  if (pollTimer) return
-  
-  const loop = async () => {
-    await fetchStatus()
-    pollTimer = window.setTimeout(loop, 5000)
+const scheduleNext = (delay: number) => {
+  if (pollTimer) window.clearTimeout(pollTimer)
+  pollTimer = window.setTimeout(loop, delay)
+}
+
+const loop = async () => {
+  // 已在请求中：不重复发起，仅标记需要补刷一次
+  if (!polling || fetchInFlight) {
+    pendingRefresh = true
+    return
   }
+  fetchInFlight = true
+  pollTimer = null
+  try {
+    await fetchStatus()
+  } finally {
+    fetchInFlight = false
+  }
+  if (!polling) return
+  // 请求在途期间收到过事件，立即再拉一次；否则按 5 秒倒计时
+  if (pendingRefresh) {
+    pendingRefresh = false
+    loop()
+  } else {
+    scheduleNext(5000)
+  }
+}
+
+const startPolling = () => {
+  if (polling) return
+  polling = true
   loop()
 }
 
 const stopPolling = () => {
+  polling = false
   if (pollTimer) {
     window.clearTimeout(pollTimer)
     pollTimer = null
@@ -172,13 +203,10 @@ const stopPolling = () => {
 
 // 监听后端事件推送，加上防抖，限制 1 秒内最多触发 1 次
 const handleEvent = useDebounceFn(() => {
-  // 收到推送说明状态有变，先停止当前轮询
-  if (pollTimer) {
-    window.clearTimeout(pollTimer)
-    pollTimer = null
-  }
-  // 重新发起请求，并自动开启新一轮的 5 秒倒计时
-  startPolling()
+  if (!polling) return
+  // 收到推送说明状态有变：立即拉取并重置 5 秒倒计时
+  // loop() 内部用 fetchInFlight 兜底，不会重复发起并发请求
+  loop()
 }, 1000)
 
 watch(() => store.lastEventAt, () => {
