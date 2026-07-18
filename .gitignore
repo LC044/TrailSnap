@@ -5,12 +5,15 @@ tests/artifacts/
 node_modules
 temp*
 *.log*
+*.err
 dist
 .trae
 .workbuddy/
 *uploads*
 data/*
 .env
+tests/.env.test
+tests/.env.docker
 .claude/
 *test-local*
 .playwright-cli

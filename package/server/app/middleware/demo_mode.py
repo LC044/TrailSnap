@@ -12,6 +12,8 @@
 """
 import os
 import json
+import time
+import threading
 from typing import Any, List, Tuple
 
 from starlette.requests import Request
@@ -50,6 +52,20 @@ SENSITIVE_KEYS = {
 
 DEMO_BLOCK_MSG = "演示模式已开启：写操作与敏感接口已被禁用"
 
+# —— 演示模式限流（仅 DEMO_MODE 下生效，防白名单接口被刷 DoS）——
+# 白名单写接口（登录 / 搜索 / 猜城市）虽放行，但每次都可能触发
+# AI 服务推理或 bcrypt 计算，被高频刷会打满演示站。按 (IP, 路径)
+# 维护令牌桶限流。
+RATE_LIMIT_CAPACITY = 20           # 令牌桶容量（瞬时突发上限）
+RATE_LIMIT_REFILL_PER_MIN = 20     # 每分钟补充令牌数
+RATE_LIMIT_STORE_MAX = 10000       # 令牌桶字典上限，防止 IP 爆炸撑爆内存
+RATE_LIMIT_MSG = "演示模式：请求过于频繁，请稍后再试"
+
+# /search/image 上传体大小上限（字节）。仅校验 Content-Length，
+# 防止超大图片打爆 AI 服务推理。
+SEARCH_IMAGE_MAX_BYTES = 20 * 1024 * 1024  # 20 MB
+SEARCH_IMAGE_TOO_LARGE_MSG = "演示模式：图片过大（上限 20MB）"
+
 
 def is_whitelisted_write(method: str, path: str) -> bool:
     for m, prefix in WHITELIST:
@@ -61,6 +77,55 @@ def is_whitelisted_write(method: str, path: str) -> bool:
         if path.startswith(boundary):
             return True
     return False
+
+
+# 令牌桶状态：key=f"{ip}:{path}" -> (剩余令牌, 上次补充的 monotonic 时间)
+_rate_store: dict[str, tuple[float, float]] = {}
+_rate_lock = threading.Lock()
+
+
+def _client_ip(request: Request) -> str:
+    """取客户端 IP。优先 X-Forwarded-For 首段（演示站通常在 nginx 后），
+    否则回退到 TCP 对端地址。注意：XFF 可被客户端伪造，演示场景下够用。"""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        first = xff.split(",")[0].strip()
+        if first:
+            return first
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _rate_limit_allow(ip: str, path: str) -> bool:
+    """令牌桶限流：每个 (ip, path) 一个独立桶。返回 True 表示放行。"""
+    key = f"{ip}:{path}"
+    now = time.monotonic()
+    refill_per_sec = RATE_LIMIT_REFILL_PER_MIN / 60.0
+    with _rate_lock:
+        tokens, last = _rate_store.get(key, (RATE_LIMIT_CAPACITY, now))
+        # 按时间差补充令牌，上限为容量
+        tokens = min(RATE_LIMIT_CAPACITY, tokens + (now - last) * refill_per_sec)
+        allowed = tokens >= 1.0
+        if allowed:
+            tokens -= 1.0
+        _rate_store[key] = (tokens, now)
+        # 字典过大时清理 2 分钟未活跃的桶，防止内存无限增长
+        if len(_rate_store) > RATE_LIMIT_STORE_MAX:
+            cutoff = now - 120
+            for k in [k for k, (_, t) in _rate_store.items() if t < cutoff]:
+                _rate_store.pop(k, None)
+        return allowed
+
+
+def _content_length(request: Request) -> int | None:
+    val = request.headers.get("content-length")
+    if not val:
+        return None
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return None
 
 
 def _mask_value(value: Any) -> Any:
@@ -108,6 +173,25 @@ class DemoModeMiddleware:
             )
             await response(scope, receive, send)
             return
+
+        # 1.5) 白名单写接口限流 + /search/image 体积限制（防 DoS）
+        if method in WRITE_METHODS and is_whitelisted_write(method, path):
+            if not _rate_limit_allow(_client_ip(request), path):
+                response = JSONResponse(
+                    status_code=200,
+                    content={"code": 429, "msg": RATE_LIMIT_MSG, "data": None},
+                )
+                await response(scope, receive, send)
+                return
+            if path == "/search/image" or path.startswith("/search/image/"):
+                cl = _content_length(request)
+                if cl is not None and cl > SEARCH_IMAGE_MAX_BYTES:
+                    response = JSONResponse(
+                        status_code=200,
+                        content={"code": 413, "msg": SEARCH_IMAGE_TOO_LARGE_MSG, "data": None},
+                    )
+                    await response(scope, receive, send)
+                    return
 
         # 2) 脱敏 JSON 响应
         is_json = False

@@ -23,7 +23,9 @@
 
 .PARAMETER EnvFile
     环境变量文件路径（第一个位置参数）。不传则默认 tests\.env.test。
-    相对路径以仓库根为基准解析。
+    相对路径以仓库根为基准解析。仓库只提交模板 tests\.env.test.example；
+    本地配置需先从模板复制一份（tests\.env.test 或 tests\.env.test-local），
+    若文件不存在本脚本会提示复制命令后退出。
 
 .PARAMETER Layer
     unit       后端/AI 纯函数与契约测试（无外部服务，秒级）
@@ -83,7 +85,24 @@ $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests\.env.test' }
 # 允许相对路径：以仓库根为基准解析
 if (-not [System.IO.Path]::IsPathRooted($EnvFile)) {
-    $EnvFile = (Resolve-Path (Join-Path $RepoRoot $EnvFile) -ErrorAction Stop).Path
+    $EnvFile = Join-Path $RepoRoot $EnvFile
+}
+# 找不到环境变量文件时，提示从仓库自带的模板复制一份，而不是直接抛 Resolve-Path 错误。
+# 仓库只提交 tests\.env.test.example；真正的本地配置（tests\.env.test / *.test-local）
+# 由用户复制模板后自行编辑，且已被 .gitignore 忽略。
+if (-not (Test-Path $EnvFile)) {
+    $exampleRel = 'tests\.env.test.example'
+    $exampleAbs = Join-Path $RepoRoot $exampleRel
+    Write-Host "找不到环境变量文件：$EnvFile" -ForegroundColor Red
+    Write-Host '请先从仓库自带的模板复制一份本地配置，按需编辑后再重跑：' -ForegroundColor Yellow
+    if (Test-Path $exampleAbs) {
+        Write-Host "    Copy-Item '$exampleRel' 'tests\.env.test'" -ForegroundColor Cyan
+        Write-Host '    # 或复制成 tests\.env.test-local 并作为第一个参数传入：'
+        Write-Host "    # .\tests\scripts\run-tests.ps1 tests\.env.test-local ..." -ForegroundColor Cyan
+    } else {
+        Write-Host "（模板 $exampleRel 也不存在，请确认仓库完整性。）" -ForegroundColor Yellow
+    }
+    exit 1
 }
 
 # 1) 加载单一数据源到会话 —— 四方共享的关键
@@ -308,6 +327,15 @@ try {
             $resetDb = Test-ResetDbFlag
             $uv = Resolve-Uv
             if (-not $uv) { throw "找不到 uv" }
+            $serviceLogTag = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
+            $serviceLogDir = Join-Path $RepoRoot 'tests\artifacts'
+            New-Item -ItemType Directory -Path $serviceLogDir -Force | Out-Null
+            $serverLog = Join-Path $serviceLogDir "server-$serviceLogTag.log"
+            $serverErr = Join-Path $serviceLogDir "server-$serviceLogTag.err"
+            $aiLog = Join-Path $serviceLogDir "ai-$serviceLogTag.log"
+            $aiErr = Join-Path $serviceLogDir "ai-$serviceLogTag.err"
+            $webLog = Join-Path $serviceLogDir "dev-$serviceLogTag.log"
+            $webErr = Join-Path $serviceLogDir "dev-$serviceLogTag.err"
 
             if (-not (Test-Port $apiUri.Port)) {
                 if ($resetDb) {
@@ -315,7 +343,14 @@ try {
                     Invoke-TestDatabaseDrop -Reason '启动前重置'
                 }
                 Write-Host "  启动 Server ($($apiUri.Port))..."
-                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$uv`"", "run", "python", "start.py", "--port", "$($apiUri.Port)", ">", "server.log", "2>&1" -WorkingDirectory (Join-Path $RepoRoot "package\server") -WindowStyle Hidden -PassThru
+                $serverDir = Join-Path $RepoRoot "package\server"
+                $proc = Start-Process -FilePath $uv `
+                    -ArgumentList @('run', 'python', 'start.py', '--port', "$($apiUri.Port)") `
+                    -WorkingDirectory $serverDir `
+                    -RedirectStandardOutput $serverLog `
+                    -RedirectStandardError $serverErr `
+                    -WindowStyle Hidden `
+                    -PassThru
                 $startedProcesses += $proc
             } elseif ($resetDb) {
                 Write-Host "  警告：TS_TEST_RESET_DB=true，但 server 端口 $($apiUri.Port) 已被占用（服务已在运行），跳过重置以免破坏运行中的服务。先停掉该端口服务再重试。" -ForegroundColor Yellow
@@ -324,7 +359,14 @@ try {
             $aiUri = [System.Uri]$env:TS_AI_API_URL
             if (-not (Test-Port $aiUri.Port)) {
                 Write-Host "  启动 AI 服务 ($($aiUri.Port))..."
-                $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "`"$uv`"", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$($aiUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\ai") -WindowStyle Hidden -PassThru
+                $aiDir = Join-Path $RepoRoot "package\ai"
+                $proc = Start-Process -FilePath $uv `
+                    -ArgumentList @('run', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', "$($aiUri.Port)") `
+                    -WorkingDirectory $aiDir `
+                    -RedirectStandardOutput $aiLog `
+                    -RedirectStandardError $aiErr `
+                    -WindowStyle Hidden `
+                    -PassThru
                 $startedProcesses += $proc
             }
 
@@ -332,7 +374,14 @@ try {
                 $webUri = [System.Uri]$env:TS_WEB_BASE_URL
                 if (-not (Test-Port $webUri.Port)) {
                     Write-Host "  启动 Frontend ($($webUri.Port))..."
-                    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "pnpm", "dev", "--port", "$($webUri.Port)" -WorkingDirectory (Join-Path $RepoRoot "package\website") -WindowStyle Hidden -PassThru
+                    $webDir = Join-Path $RepoRoot "package\website"
+                    $proc = Start-Process -FilePath "pnpm.cmd" `
+                        -ArgumentList @('dev', '--port', "$($webUri.Port)") `
+                        -WorkingDirectory $webDir `
+                        -RedirectStandardOutput $webLog `
+                        -RedirectStandardError $webErr `
+                        -WindowStyle Hidden `
+                        -PassThru
                     $startedProcesses += $proc
                 }
             }
@@ -350,7 +399,11 @@ try {
                     $maxWait--
                 }
                 if ($maxWait -eq 0) {
-                    Write-Host "  警告: 部分服务启动超时，可能影响测试！" -ForegroundColor Yellow
+                    $failedServices = @()
+                    if (-not $serverReady) { $failedServices += "Server:$($apiUri.Port)" }
+                    if (-not $aiReady) { $failedServices += "AI:$($aiUri.Port)" }
+                    if (-not $webReady) { $failedServices += "Frontend:$($webUri.Port)" }
+                    throw "本地服务启动超时：$($failedServices -join ', ')。请查看 $serverErr、$aiErr 和 $webErr。"
                 } else {
                     Write-Host "  服务已就绪！" -ForegroundColor Green
                 }

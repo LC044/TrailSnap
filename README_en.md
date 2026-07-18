@@ -44,6 +44,8 @@
   </a>
 <br/>
 
+> 🎉 **Try it online**: Don't want to self-host yet? Explore the full feature set on the demo site 👉 **[https://demo.siyuan.ink](https://demo.siyuan.ink)** (account / password are both `trailsnap`)
+
 ## ✨ Key Features
 
 - **📷 Smart Album**: Footprint map, person recognition, smart categorization, OCR, intelligent search.

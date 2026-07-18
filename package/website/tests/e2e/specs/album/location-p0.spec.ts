@@ -195,6 +195,7 @@ test.describe.serial('P0 - 位置相册', () => {
   })
 
   test('2.4.5 点击位置卡片跳详情 - /album/location/:name 路由正常 @p0', async ({ page, request }, testInfo) => {
+    test.setTimeout(60_000) // 探针 + 照片 fixture 预备 + 串行互斥锁，30s 不够
     const probe = await requireAnyLocation(request, testInfo)
     if (!probe.ok) return
 
@@ -204,10 +205,11 @@ test.describe.serial('P0 - 位置相册', () => {
     const card = locationGridCard(page).first()
     await expect(card).toBeVisible({ timeout: 15_000 })
 
-    await card.click()
-
-    // 等待路由变化到 /album/location/*
-    await page.waitForURL(/\/album\/location\//, { timeout: 10_000 })
+    // 先挂导航监听再点击，消除 click-then-wait 竞态；锚定详情路由，避免误匹配列表页
+    await Promise.all([
+      page.waitForURL(/\/album\/location\/[^/?#]+/, { timeout: 15_000 }),
+      card.click(),
+    ])
   })
 
   test('2.4.6 位置详情页加载 - 子标题"N 个项目"+ 至少一张照片 @p0', async ({ page, request }, testInfo) => {

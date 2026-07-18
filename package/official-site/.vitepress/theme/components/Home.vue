@@ -77,8 +77,12 @@
             <!-- Actions -->
             <div class="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
               <button class="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:bg-primary-dark hover:scale-105 transition-all shadow-lg hover:shadow-xl" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.hero.download }}</button>
-              <button class="px-8 py-3 text-neutral-dark dark:text-gray-200 hover:text-primary dark:hover:text-primary transition-colors font-medium flex items-center justify-center gap-1" @click="goLink(lang === 'zh-CN' ? '/docs/guide/overview' : '/en/docs/guide/overview')">{{ t.hero.details }} <span class="text-xl">→</span></button>
+              <a href="https://demo.siyuan.ink" target="_blank" rel="noopener" class="px-8 py-3 rounded-lg border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white hover:scale-105 transition-all flex items-center justify-center gap-1">{{ t.hero.demo }} <span class="text-xl">→</span></a>
+              <!-- <button class="px-8 py-3 text-neutral-dark dark:text-gray-200 hover:text-primary dark:hover:text-primary transition-colors font-medium flex items-center justify-center gap-1" @click="goLink(lang === 'zh-CN' ? '/docs/guide/overview' : '/en/docs/guide/overview')">{{ t.hero.details }} <span class="text-xl">→</span></button> -->
             </div>
+
+            <!-- Demo Credentials Hint -->
+            <p class="text-xs text-neutral-gray dark:text-gray-500 mt-4 text-center lg:text-left" v-html="t.hero.demoHint"></p>
           </div>
 
           <!-- Visual Content (Chat Demo) -->
@@ -466,7 +470,9 @@ const i18n = {
       desc: 'AI智能分析、整理相册照片、生成专属记忆报告，<br class="hidden md:inline">让每一段出行都值得珍藏',
       tags: ['AI相册', '足迹相册', '故事相册'],
       download: '快速开始',
-      details: '查看功能详情',
+      demo: '在线体验',
+      demoHint: '演示站账号 / 密码均为 <strong class="text-neutral-dark dark:text-gray-300">trailsnap</strong>',
+      details: '查看详情',
       chat: {
         online: '在线',
         userMsg: '我去年国庆去哪玩了，帮我整理一个旅游攻略，我准备发一个小红书',
@@ -566,6 +572,8 @@ const i18n = {
       desc: 'Smartly record itineraries, organize travel photos, generate exclusive memory reports, <br class="hidden md:inline">making every trip worth cherishing.',
       tags: ['AI Album', 'Footprint Album', 'Story Album'],
       download: 'Download',
+      demo: 'Live Demo',
+      demoHint: 'Demo account / password are both <strong class="text-neutral-dark dark:text-gray-300">trailsnap</strong>',
       details: 'View Features',
       chat: {
         online: 'Online',
