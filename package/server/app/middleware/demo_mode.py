@@ -39,6 +39,12 @@ WHITELIST: List[Tuple[str, str]] = [
     ("POST", "/search/text"),       # 文本搜索（只读）
     ("POST", "/search/image"),      # 以图搜图（只读）
     ("POST", "/guess-city/guess"),  # 根据坐标猜测城市（只读）
+    # AI 助手对话：Agent 的工具均为只读查询（搜索/标签/人物/足迹/照片详情），
+    # 不会修改相册数据；会话与消息为当前用户私有，演示模式下放行。
+    ("POST", "/agent/chat"),        # 对话 + 终止流（/agent/chat/{id}/abort）
+    ("DELETE", "/agent/sessions"),  # 删除会话（/agent/sessions/{id}）
+    ("PUT", "/agent/sessions"),     # 置顶/取消置顶（/agent/sessions/{id}/pin）
+    ("DELETE", "/agent/messages"),  # 删除会话消息
 ]
 
 # JSON 响应中需要脱敏的字段名（小写精确匹配）。
@@ -60,6 +66,11 @@ RATE_LIMIT_CAPACITY = 20           # 令牌桶容量（瞬时突发上限）
 RATE_LIMIT_REFILL_PER_MIN = 20     # 每分钟补充令牌数
 RATE_LIMIT_STORE_MAX = 10000       # 令牌桶字典上限，防止 IP 爆炸撑爆内存
 RATE_LIMIT_MSG = "演示模式：请求过于频繁，请稍后再试"
+
+# /agent/chat 触发 LLM 推理，单次成本远高于登录/搜索，单独收紧限流，
+# 防止演示站被刷爆推理费用。
+AGENT_CHAT_RATE_LIMIT_CAPACITY = 6
+AGENT_CHAT_RATE_LIMIT_REFILL_PER_MIN = 6
 
 # /search/image 上传体大小上限（字节）。仅校验 Content-Length，
 # 防止超大图片打爆 AI 服务推理。
@@ -97,15 +108,20 @@ def _client_ip(request: Request) -> str:
     return "unknown"
 
 
-def _rate_limit_allow(ip: str, path: str) -> bool:
+def _rate_limit_allow(
+    ip: str,
+    path: str,
+    capacity: float = RATE_LIMIT_CAPACITY,
+    refill_per_min: float = RATE_LIMIT_REFILL_PER_MIN,
+) -> bool:
     """令牌桶限流：每个 (ip, path) 一个独立桶。返回 True 表示放行。"""
     key = f"{ip}:{path}"
     now = time.monotonic()
-    refill_per_sec = RATE_LIMIT_REFILL_PER_MIN / 60.0
+    refill_per_sec = refill_per_min / 60.0
     with _rate_lock:
-        tokens, last = _rate_store.get(key, (RATE_LIMIT_CAPACITY, now))
+        tokens, last = _rate_store.get(key, (capacity, now))
         # 按时间差补充令牌，上限为容量
-        tokens = min(RATE_LIMIT_CAPACITY, tokens + (now - last) * refill_per_sec)
+        tokens = min(capacity, tokens + (now - last) * refill_per_sec)
         allowed = tokens >= 1.0
         if allowed:
             tokens -= 1.0
@@ -176,7 +192,13 @@ class DemoModeMiddleware:
 
         # 1.5) 白名单写接口限流 + /search/image 体积限制（防 DoS）
         if method in WRITE_METHODS and is_whitelisted_write(method, path):
-            if not _rate_limit_allow(_client_ip(request), path):
+            # /agent/chat（含 abort）触发 LLM 推理，单独收紧令牌桶
+            is_agent_chat = path == "/agent/chat" or path.startswith("/agent/chat/")
+            if is_agent_chat:
+                cap, ref = AGENT_CHAT_RATE_LIMIT_CAPACITY, AGENT_CHAT_RATE_LIMIT_REFILL_PER_MIN
+            else:
+                cap, ref = RATE_LIMIT_CAPACITY, RATE_LIMIT_REFILL_PER_MIN
+            if not _rate_limit_allow(_client_ip(request), path, cap, ref):
                 response = JSONResponse(
                     status_code=200,
                     content={"code": 429, "msg": RATE_LIMIT_MSG, "data": None},
