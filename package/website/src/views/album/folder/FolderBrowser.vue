@@ -1,5 +1,5 @@
 <template>
-  <div class="folder-browser flex h-[calc(100vh-150px)] gap-3 mt-2">
+  <div class="folder-browser flex h-[calc(100vh-50px)] gap-3 mt-2">
     <!-- 左侧目录树 -->
     <aside class="hidden md:flex flex-col w-56 lg:w-64 flex-shrink-0 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 overflow-hidden">
       <div class="px-3 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
@@ -63,9 +63,8 @@
                 v-for="opt in sortOptions"
                 :key="opt.key"
                 :command="opt.key"
-                :class="{ 'text-primary-500': opt.key === sortKey }"
               >
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2" :class="{ 'text-primary-500': opt.key === sortKey }">
                   <Check v-if="opt.key === sortKey" class="w-3.5 h-3.5" />
                   <span v-else class="w-3.5"></span>
                   <span>{{ opt.label }}</span>
@@ -75,46 +74,34 @@
           </template>
         </el-dropdown>
 
-        <!-- 视图切换：网格 / 列表 -->
-        <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1 flex-shrink-0">
-          <button
-            @click="setViewMode('grid')"
-            class="p-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-            :class="viewMode === 'grid' ? 'bg-white dark:bg-gray-700 shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400'"
-            title="网格视图"
-          >
-            <LayoutGrid class="w-4 h-4" />
+        <!-- 视图切换：列表 / 大 / 中 / 小图标（合并为下拉） -->
+        <el-dropdown trigger="click" placement="bottom-end" @command="onViewCommand">
+          <button class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" title="视图">
+            <component :is="currentViewIcon" class="w-4 h-4" />
+            <ChevronDown class="w-3.5 h-3.5" />
           </button>
-          <button
-            @click="setViewMode('list')"
-            class="p-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-            :class="viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400'"
-            title="列表视图"
-          >
-            <List class="w-4 h-4" />
-          </button>
-        </div>
-
-        <!-- 图片大小：小 / 中 / 大（仅网格视图） -->
-        <div v-if="viewMode === 'grid'" class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-1 flex-shrink-0">
-          <button
-            v-for="size in (['sm', 'md', 'lg'] as const)"
-            :key="size"
-            @click="setViewSize(size)"
-            class="p-1.5 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-            :class="props.viewSize === size ? 'bg-white dark:bg-gray-700 shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-            :title="sizeTitleMap[size]"
-          >
-            <Grid3x3 v-if="size === 'sm'" class="w-4 h-4" />
-            <Grid2x2 v-else-if="size === 'md'" class="w-4 h-4" />
-            <Maximize v-else class="w-4 h-4" />
-          </button>
-        </div>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="opt in viewOptions"
+                :key="opt.key"
+                :command="opt.key"
+              >
+                <div class="flex items-center gap-2" :class="{ 'text-primary-500': opt.key === currentViewKey }">
+                  <Check v-if="opt.key === currentViewKey" class="w-3.5 h-3.5 flex-shrink-0" />
+                  <span v-else class="w-3.5 flex-shrink-0"></span>
+                  <component :is="opt.icon" class="w-4 h-4 flex-shrink-0" />
+                  <span>{{ opt.label }}</span>
+                </div>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
 
         <!-- 切换布局视图（退出文件夹 / 切到其他视图） -->
-        <el-dropdown trigger="click" placement="bottom-end" @command="(cmd) => emit('switch-layout', cmd as string)">
+        <el-dropdown trigger="click" placement="bottom-end" @command="(cmd:any) => emit('switch-layout', cmd as string)">
           <button class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" title="切换视图">
-            <LayoutDashboard class="w-4 h-4" />
+            <Settings2 class="w-4 h-4" />
           </button>
           <template #dropdown>
             <el-dropdown-menu>
@@ -366,10 +353,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
-  Folder, FolderOpen, FolderTree as FolderTree2, HardDrive, ChevronRight,
+  Folder, FolderOpen, FolderTree as FolderTree2, HardDrive, ChevronRight, ChevronDown,
   ArrowLeft, Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, LayoutDashboard, List,
   ArrowUpDown, ArrowUp, ArrowDown, Check, X, Download, Trash2, ImagePlusIcon,
-  MoreHorizontal, UserPlus, CheckSquare
+  MoreHorizontal, UserPlus, CheckSquare, Settings2
 } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { albumService } from '@/api/album'
@@ -405,7 +392,6 @@ const emit = defineEmits<{
   (e: 'switch-layout', v: string): void
 }>()
 
-const sizeTitleMap: Record<ViewSize, string> = { sm: '小', md: '中', lg: '大' }
 const setViewSize = (size: ViewSize) => emit('update:viewSize', size)
 
 const PAGE_SIZE = 100
@@ -421,6 +407,27 @@ const setViewMode = (m: ViewMode) => {
   // 切换视图时退出各自的选择模式
   galleryRef.value?.exitSelectionMode()
   exitSelectionMode()
+}
+
+// 合并后的视图选项：列表 / 大 / 中 / 小图标（类似 Windows 文件管理器）
+const viewOptions = [
+  { key: 'list', label: '列表', icon: List },
+  { key: 'lg', label: '大图标', icon: Maximize },
+  { key: 'md', label: '中图标', icon: Grid2x2 },
+  { key: 'sm', label: '小图标', icon: Grid3x3 }
+] as const
+const currentViewKey = computed(() => viewMode.value === 'list' ? 'list' : props.viewSize)
+const currentViewIcon = computed(() => {
+  const opt = viewOptions.find(o => o.key === currentViewKey.value)
+  return opt ? opt.icon : LayoutGrid
+})
+const onViewCommand = (key: string) => {
+  if (key === 'list') {
+    setViewMode('list')
+  } else {
+    setViewMode('grid')
+    setViewSize(key as ViewSize)
+  }
 }
 
 // 排序：默认按时间倒序（与服务端默认一致）
@@ -503,8 +510,9 @@ const sortedChildren = computed(() => {
 })
 
 const folderGridClass = computed(() => ({
-  sm: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8',
-  md: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6',
+  // 移动端：小 4 列 / 中 3 列 / 大 2 列
+  sm: 'grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8',
+  md: 'grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6',
   lg: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4'
 }[props.viewSize]))
 

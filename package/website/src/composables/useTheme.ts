@@ -108,6 +108,20 @@ export function useTheme(): ThemeProvide {
     { immediate: true }
   );
 
+  // 同步主题 CSS 变量到 <html> 根元素。
+  // el-dropdown / el-popover / el-select 等弹层默认 teleport 到 <body>，
+  // 脱离了 MainLayout（--theme-primary 仅在其根节点上声明）的作用域，
+  // 导致弹层内 var(--theme-primary) 失效、回退成 Element Plus 默认灰色。
+  // 写到 document.documentElement 后全局可用。
+  watch(
+    themeStyle,
+    (style) => {
+      const root = document.documentElement;
+      Object.entries(style).forEach(([k, v]) => root.style.setProperty(k, v));
+    },
+    { immediate: true }
+  );
+
   // 返回所有状态和方法（严格匹配 ThemeProvide 类型）
   return {
     isDarkMode,

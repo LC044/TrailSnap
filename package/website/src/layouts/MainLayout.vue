@@ -80,7 +80,6 @@ const showAgentFab = computed(() => route.meta.layout !== 'blank');
 const FAB_SIZE = 56;            // w-14 h-14 = 56px
 const EDGE_MARGIN = 20;         // 默认距视口边缘的留白
 const DOCK_THRESHOLD = 70;      // 距左右边缘小于该值则自动靠边半隐藏
-const DOCK_HIDE_RATIO = 0.32;   // 靠边时隐藏的比例（约三分之一，留足可见部分）
 const HOVER_PEEK = 26;          // 悬浮时再往内探出的像素，完全脱离边缘/滚动条
 
 const fabRef = ref<HTMLElement | null>(null);
@@ -90,6 +89,9 @@ const fabPos = ref({ x: 0, y: 0 });
 const fabDockedEdge = ref<'left' | 'right' | null>(null);
 const isFabDragging = ref(false);
 const isFabHovering = ref(false);
+// 移动端视口更窄，半隐藏时露出的部分更小，避免遮挡内容
+const isMobile = ref(false);
+const updateIsMobile = () => { isMobile.value = window.innerWidth < 768; };
 
 // 拖动过程中的临时状态
 let dragOrigin = { mouseX: 0, mouseY: 0, posX: 0, posY: 0 };
@@ -106,6 +108,8 @@ const initFabPosition = () => {
     window.innerWidth - FAB_SIZE - EDGE_MARGIN,
     window.innerHeight - FAB_SIZE - EDGE_MARGIN
   );
+  // 默认即靠右半隐藏，避免一进来就遮挡内容
+  fabDockedEdge.value = 'right';
 };
 
 const onFabPointerDown = (e: PointerEvent) => {
@@ -159,6 +163,7 @@ const onFabClick = () => {
 const onWindowResize = () => {
   // 视口变化时把按钮拉回可视范围
   fabPos.value = clampPos(fabPos.value.x, fabPos.value.y);
+  updateIsMobile();
 };
 
 // 外层热区：固定不动，覆盖按钮从“半隐藏”到“悬浮探出”的整个活动范围，
@@ -184,7 +189,9 @@ const fabZoneStyle = computed(() => {
 
 // 内层按钮：在热区内做位移（半隐藏 / 悬浮探出），用 transform 避免触发布局
 const fabBtnStyle = computed(() => {
-  const hideOffset = FAB_SIZE * DOCK_HIDE_RATIO;
+  // 靠边半隐藏时露出的可见宽度：移动端更靠里（更小），桌面端略大便于发现
+  const dockVisible = isMobile.value ? 8 : 16;
+  const hideOffset = FAB_SIZE - dockVisible; // 平移出视口的距离
   let tx = 0;
   let opacity = 1;
 
@@ -192,8 +199,7 @@ const fabBtnStyle = computed(() => {
     tx = isFabHovering.value ? HOVER_PEEK : -hideOffset;
     opacity = isFabHovering.value ? 1 : 0.7;
   } else if (fabDockedEdge.value === 'right') {
-    // 热区左边相对按钮基础位置向内缩了 HOVER_PEEK，故隐藏时需多偏移 HOVER_PEEK
-    tx = isFabHovering.value ? 0 : hideOffset + HOVER_PEEK;
+    tx = isFabHovering.value ? 0 : hideOffset;
     opacity = isFabHovering.value ? 1 : 0.7;
   }
 
@@ -207,6 +213,7 @@ const fabBtnStyle = computed(() => {
 });
 
 onMounted(() => {
+  updateIsMobile();
   initFabPosition();
   window.addEventListener('resize', onWindowResize);
 });
