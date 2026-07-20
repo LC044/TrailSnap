@@ -15,8 +15,8 @@ import BlankLayout from '@/layouts/BlankLayout.vue';
 import { provideTheme } from '@/composables/useTheme';
 import { provideNavItems } from '@/composables/useNavItems';
 import { useUserStore } from '@/stores/user';
-import { useTaskNotifyStore } from '@/stores/taskNotifyStore';
-import { useTaskSSE } from '@/composables/useTaskSSE';
+import { useNotificationStore } from '@/stores/notificationStore';
+import { useNotificationSSE } from '@/composables/useNotificationSSE';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {
@@ -44,11 +44,12 @@ const currentLayout = computed(() => {
   return layoutMap[layoutType] || MainLayout;
 });
 
-// Wire the task-notification SSE channel. The token ref watches the Pinia
+// Wire the unified notification SSE channel. The token ref watches the Pinia
 // user store, so a logout / re-login automatically disconnects / reconnects
-// without us having to manage EventSource lifetimes by hand.
+// without us having to manage EventSource lifetimes by hand. This single
+// channel carries both task.* (live) and notification.* (persisted) events.
 const userStore = useUserStore();
-const taskStore = useTaskNotifyStore();
+const notifyStore = useNotificationStore();
 const token = computed(() => userStore.token);
 const sseEnabled = ref(false);
 
@@ -56,15 +57,19 @@ watch(
   token,
   (val) => {
     sseEnabled.value = !!val;
+    if (val) {
+      // Pull persisted unread notifications on (re)login.
+      notifyStore.fetchUnread();
+    }
   },
   { immediate: true }
 );
 
-useTaskSSE({
+useNotificationSSE({
   token,
   enabled: sseEnabled,
   onEvent: (event, data) => {
-    taskStore.handleEvent(event, data);
+    notifyStore.handleEvent(event, data);
   },
 });
 

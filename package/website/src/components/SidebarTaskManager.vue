@@ -8,7 +8,7 @@
     >
       <Loader2 v-if="hasPending" class="w-5 h-5 shrink-0 text-primary-500 animate-spin" />
       <CheckCircle2 v-else class="w-5 h-5 shrink-0 text-emerald-500" />
-      
+
       <transition name="fade">
         <div v-if="!isCollapsed" class="ml-3 flex-1 flex items-center justify-between overflow-hidden">
           <span class="text-sm text-slate-700 dark:text-slate-300 truncate">
@@ -49,7 +49,7 @@
           :indeterminate="true"
         />
       </div>
-      
+
       <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
         <span v-if="totalFailed > 0" class="text-xs text-red-500">
           {{ totalFailed }} 个任务失败
@@ -57,7 +57,7 @@
         <span v-else></span>
         <button
           @click="goToTasks"
-          class="text-xs text-primary-500 hover:text-primary-600 dark:hover:text-primary-400 font-medium"
+          class="text-xs text-primary-500 hover:text-primary-600 dark:hover:text-primary-400 font-medium focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none rounded"
         >
           查看详情 →
         </button>
@@ -67,15 +67,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Loader2, ChevronDown, CheckCircle2 } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { useDebounceFn } from '@vueuse/core'
 import { tasksApi } from '@/api/tasks'
-import { useTaskNotifyStore } from '@/stores/taskNotifyStore'
+import { useNotificationStore } from '@/stores/notificationStore'
 
-// 定义数据类型，消灭 any
 interface TaskCategoryStatus {
   category: string
   task_name: string
@@ -88,17 +87,12 @@ const props = defineProps<{
 }>()
 
 const router = useRouter()
-const store = useTaskNotifyStore()
+const store = useNotificationStore()
 
 const expanded = ref(false)
 const groupedStatus = ref<TaskCategoryStatus[]>([])
-let pollTimer: number | null = null
-let successTimer: number | null = null // 用于清理 success 定时器
-// 同步置位的生命周期标志：跨 await 生效，防止并发 startPolling 重复启动 loop
-let polling = false
-// 当前是否有 fetch 在途：防止 SSE 事件在请求中途触发第二个并发 loop
+// 拉取在途标记：防止 SSE 事件在请求中途触发并发刷新
 let fetchInFlight = false
-// 请求在途时收到的事件，标记需要在当前 fetch 结束后立即再拉一次
 let pendingRefresh = false
 
 const activeCategories = computed(() => {
@@ -116,14 +110,14 @@ const totalFailed = computed(() => {
 const hasPending = computed(() => totalPending.value > 0)
 const wasPending = ref(false)
 const showSuccess = ref(false)
+let successTimer: number | null = null
 const shouldShow = computed(() => hasPending.value || showSuccess.value)
 
 const fetchStatus = async () => {
   try {
     const data = await tasksApi.getGroupedStatus()
     groupedStatus.value = data
-    
-    // Logic for completion
+
     if (totalPending.value > 0) {
       wasPending.value = true
       showSuccess.value = false
@@ -132,81 +126,47 @@ const fetchStatus = async () => {
         successTimer = null
       }
     } else if (wasPending.value && totalPending.value === 0) {
-      // Transitioned from pending to completed
+      // 从有任务过渡到全部完成
       ElMessage.success('所有后台任务已处理完成')
       wasPending.value = false
       showSuccess.value = true
       expanded.value = false
-      
-      // 清理旧定时器，防止竞态条件导致状态异常
+
       if (successTimer) window.clearTimeout(successTimer)
       successTimer = window.setTimeout(() => {
         showSuccess.value = false
       }, 3000)
     }
-  } catch (e) {
+  } catch {
     // Ignore
   }
 }
 
-const toggleExpand = () => {
-  if (props.isCollapsed) return // Do nothing if sidebar is collapsed
-  expanded.value = !expanded.value
-}
-
-// 优化轮询机制：基于 setTimeout 的递归，避免网络阻塞时请求堆积
-const scheduleNext = (delay: number) => {
-  if (pollTimer) window.clearTimeout(pollTimer)
-  pollTimer = window.setTimeout(loop, delay)
-}
-
-const loop = async () => {
-  // 已在请求中：不重复发起，仅标记需要补刷一次
-  if (!polling || fetchInFlight) {
+const refresh = async () => {
+  if (fetchInFlight) {
     pendingRefresh = true
     return
   }
   fetchInFlight = true
-  pollTimer = null
   try {
     await fetchStatus()
   } finally {
     fetchInFlight = false
   }
-  if (!polling) return
-  // 请求在途期间收到过事件，立即再拉一次；否则按 5 秒倒计时
   if (pendingRefresh) {
     pendingRefresh = false
-    loop()
-  } else {
-    scheduleNext(5000)
+    refresh()
   }
 }
 
-const startPolling = () => {
-  if (polling) return
-  polling = true
-  loop()
+const toggleExpand = () => {
+  if (props.isCollapsed) return
+  expanded.value = !expanded.value
 }
 
-const stopPolling = () => {
-  polling = false
-  if (pollTimer) {
-    window.clearTimeout(pollTimer)
-    pollTimer = null
-  }
-  if (successTimer) {
-    window.clearTimeout(successTimer)
-    successTimer = null
-  }
-}
-
-// 监听后端事件推送，加上防抖，限制 1 秒内最多触发 1 次
+// SSE 事件驱动刷新（防抖 1s），不再做 5 秒固定轮询
 const handleEvent = useDebounceFn(() => {
-  if (!polling) return
-  // 收到推送说明状态有变：立即拉取并重置 5 秒倒计时
-  // loop() 内部用 fetchInFlight 兜底，不会重复发起并发请求
-  loop()
+  refresh()
 }, 1000)
 
 watch(() => store.lastEventAt, () => {
@@ -214,16 +174,9 @@ watch(() => store.lastEventAt, () => {
 })
 
 onMounted(() => {
-  startPolling()
+  // 挂载时拉一次初始状态；后续刷新完全由 SSE 事件驱动
+  refresh()
 })
-
-onUnmounted(() => {
-  stopPolling()
-})
-
-const goToTasks = () => {
-  router.push({ path: '/settings', query: { tab: 'tasks' } })
-}
 </script>
 
 <style scoped>

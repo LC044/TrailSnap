@@ -100,6 +100,7 @@
       <button class="bg-transparent p-2 text-slate-600 dark:text-slate-300 hover:text-primary-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors" title="筛选">
         <Filter class="w-4 h-4" />
       </button>
+      <NotificationBell />
     </div>
   </header>
 
@@ -153,7 +154,8 @@
         </button>
       </div>
 
-      <!-- Task bell (mobile) removed -->
+      <!-- 通知铃铛（移动端） -->
+      <NotificationBell />
 
       <!-- More Menu -->
       <div class="relative" ref="moreMenuRef">
@@ -228,6 +230,7 @@ import { onClickOutside, useDebounceFn, useBreakpoints, breakpointsTailwind } fr
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, type ResolvedNavItem } from '@/composables/useNavItems'
+import NotificationBell from '@/components/NotificationBell.vue'
 import { parseDateRange } from '@/utils/date'
 
 const navLinks = [

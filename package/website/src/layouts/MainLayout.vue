@@ -45,6 +45,9 @@
 
     <!-- Agent 聊天弹窗 -->
     <AgentChat v-model="isAgentOpen" />
+
+    <!-- 通知抽屉 + 设置弹窗（全局唯一一份，由 NavBar/Sidebar 的铃铛按钮触发） -->
+    <NotificationDrawer />
   </div>
 </template>
 
@@ -55,6 +58,7 @@ import { useRoute } from 'vue-router';
 import NavBar from '@/layouts/NavBar.vue';
 import Sidebar from '@/layouts/Sidebar.vue';
 import AgentChat from '@/views/agent/AgentChat.vue';
+import NotificationDrawer from '@/components/NotificationDrawer.vue';
 import { Bot } from 'lucide-vue-next';
 // 从根组件注入主题（避免重复 provide 导致主题状态分裂）
 import { injectTheme } from '@/composables/useTheme';

@@ -51,17 +51,28 @@ class TaskManager:
         return cls._instance
 
     def start_worker_if_needed(self):
-        """安全地启动后台工作进程"""
+        """安全地启动后台工作进程。
+
+        若确实（重新）启动了 worker，说明有待处理任务即将运行——典型场景是
+        用户重试/恢复任务时触发的冷启动。此时立即把当前活跃任务快照推给
+        前端，避免界面停留在旧状态（worker 真正开始处理并发出 task.updated
+        之前可能有一段延迟）。
+        """
         with self._worker_lock:
             self._stopping = False
-            self._start_worker_locked()
+            started = self._start_worker_locked()
+        if started:
+            self._publish_active_tasks_snapshot()
 
-    def _start_worker_locked(self):
-        """启动后台工作进程（调用方需持有 _worker_lock）"""
+    def _start_worker_locked(self) -> bool:
+        """启动后台工作进程（调用方需持有 _worker_lock）。
+
+        返回 True 表示本次实际启动了新的 worker 进程；False 表示进程已存活，
+        无需启动。"""
         # 1. 如果进程存在且活着 → 不处理
         if self.worker_process is not None:
             if self.worker_process.is_alive():
-                return
+                return False
             else:
                 # 进程已死，必须 join 清理僵尸进程
                 try:
@@ -89,6 +100,7 @@ class TaskManager:
         )
         self.worker_process.start()
         logging.info(f"Worker process started with PID: {self.worker_process.pid}")
+        return True
 
     def _event_queue_reader(self):
         """Drain events pushed by the worker subprocess and forward them to
@@ -403,12 +415,24 @@ class TaskManager:
 
     def retry_all_failed_tasks(self, db: Session, types: Optional[List[str]] = None):
         """Retry all failed tasks. Optionally filter by task types."""
-        result = crud_task.retry_all_failed_tasks(
-            db,
-            types=types
-        )
+        # 先记录待重试的失败任务 id，重试后逐条推送 task.retry，让前端立即把
+        # 这些任务从「失败」列表移走——即便 worker 已经在运行、不会冷启动，
+        # 也能即时反馈重试结果。
+        failed_q = db.query(Task).filter(Task.status == TaskStatus.FAILED)
+        if types:
+            failed_q = failed_q.filter(Task.type.in_(types))
+        failed_ids = [row.id for row in failed_q.order_by(Task.created_at.desc()).limit(500).all()]
+
+        result = crud_task.retry_all_failed_tasks(db, types=types)
         if result > 0:
             self.start_worker_if_needed()
+            if failed_ids:
+                retried = crud_task.get_tasks_by_ids(db, failed_ids)
+                for task in retried:
+                    try:
+                        self.publish_task_update(task, event='task.retry')
+                    except Exception as e:
+                        logging.debug(f'publish task.retry failed: {e}')
         return {"message": f"Retried {result} failed tasks", "count": result}
 
     def add_task(self, db: Session, type: str, payload: dict, priority: int = 0, owner_id: UUID = None):
@@ -504,6 +528,18 @@ class TaskManager:
             except Exception:
                 # Subscriber went away mid-flight; ignore.
                 pass
+        # 桥接到通用通知通道（按 owner_id 路由，纯内存转发，不落库）。
+        # 前端只需订阅 /notifications/events 一条 SSE 即可同时收到
+        # task.* live 事件与 notification.* 落库通知。
+        try:
+            from app.service.notification_manager import NotificationManager
+            NotificationManager.get_instance().publish_to_user(
+                data.get('owner_id') if isinstance(data, dict) else None,
+                event,
+                data,
+            )
+        except Exception as e:
+            logging.debug(f'bridge task event to NotificationManager failed: {e}')
 
     def publish_task_update(self, task: Task, event: str = 'task.updated'):
         payload = {
@@ -520,6 +556,33 @@ class TaskManager:
             'payload': task.payload or {},
         }
         self.publish_event(event, payload)
+
+    def _publish_active_tasks_snapshot(self):
+        """Worker（重新）启动时，把当前 PENDING / PROCESSING 任务快照推给前端。
+
+        覆盖「用户重试/恢复任务 → worker 冷启动」的场景：此时 worker 尚未发出
+        自身的 PENDING→PROCESSING 事件，前端界面可能仍停留在旧状态。逐条推送
+        task.updated 让侧栏/铃铛立即刷新（前端按 id 去重 upsert，重复无害）。
+        """
+        try:
+            db = SessionLocal()
+            try:
+                tasks = (
+                    db.query(Task)
+                    .filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
+                    .order_by(Task.created_at.desc())
+                    .limit(200)
+                    .all()
+                )
+                for task in tasks:
+                    try:
+                        self.publish_task_update(task, event='task.updated')
+                    except Exception as e:
+                        logging.debug(f'snapshot publish failed for task {task.id}: {e}')
+            finally:
+                db.close()
+        except Exception as e:
+            logging.debug(f'_publish_active_tasks_snapshot failed: {e}')
 
     def add_tasks(self, db: Session, tasks_data: List[Dict], owner_id: UUID = None):
         """Batch add tasks"""

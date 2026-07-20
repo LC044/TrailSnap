@@ -102,10 +102,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Sun, Moon, Palette, Check, Info, Download, Loader2, Trash2 } from 'lucide-vue-next'
+import { useNotificationStore } from '@/stores/notificationStore'
 
 interface GroupedTask {
     task_name: string
@@ -120,12 +121,11 @@ interface GroupedTask {
 
 const groupedTasks = ref<GroupedTask[]>([])
 const fastMode = ref(false)
+const notifyStore = useNotificationStore()
 
 const failedTasksVisible = ref(false)
 const failedTasksList = ref<any[]>([])
 const failedTasksLoading = ref(false)
-
-let taskPollTimer: number | null = null
 
 const fetchTasks = async () => {
     try {
@@ -328,15 +328,33 @@ const formatCategory = (cat: string) => {
     return names[cat] || cat
 }
 
+// 任务列表刷新：挂载拉一次 + SSE 事件驱动（防抖 1s）+ 60s 兜底轮询。
+let taskPollTimer: number | null = null
+let refreshDebounce: number | null = null
+const scheduleRefresh = () => {
+    if (refreshDebounce) window.clearTimeout(refreshDebounce)
+    refreshDebounce = window.setTimeout(() => {
+        refreshDebounce = null
+        fetchTasks()
+    }, 1000)
+}
+watch(() => notifyStore.lastEventAt, () => {
+    scheduleRefresh()
+})
+
 onMounted(() => {
     fetchTasks()
-    taskPollTimer = window.setInterval(fetchTasks, 5000)
+    taskPollTimer = window.setInterval(fetchTasks, 60000)
 })
 
 onUnmounted(() => {
     if (taskPollTimer) {
         clearInterval(taskPollTimer)
         taskPollTimer = null
+    }
+    if (refreshDebounce) {
+        window.clearTimeout(refreshDebounce)
+        refreshDebounce = null
     }
 })
 </script>

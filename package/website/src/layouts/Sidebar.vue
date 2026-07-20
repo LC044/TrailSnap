@@ -215,7 +215,9 @@
     <!-- 底部设置与回收站入口 -->
     <div class="p-2 border-t border-slate-200 dark:border-slate-800 shrink-0 flex flex-col space-y-1">
       <SidebarTaskManager :is-collapsed="isCollapsed" />
-      
+
+      <NotificationBell variant="row" :collapsed="isCollapsed" />
+
       <RouterLink
         to="/swipe-filter"
         :title="isCollapsed ? '断舍离' : undefined"
@@ -295,6 +297,7 @@ import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, type ResolvedNavItem } from '@/composables/useNavItems'
 import NavAddDialog from '@/components/NavAddDialog.vue'
 import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
+import NotificationBell from '@/components/NotificationBell.vue'
 import { parseDateRange } from '@/utils/date'
 
 const route = useRoute()

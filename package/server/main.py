@@ -27,7 +27,8 @@ load_dotenv('./data/.env')
 from app.api import (
     user, train_ticket, flight_ticket, album, index, settings, face, ocr,
     location, location_stats, search, classification, system, media, stats, photo, tasks,
-    annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav, guess_city, storage
+    annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav, guess_city, storage,
+    notification
 )
 from railway.api import router as railway_router
 from app.db.session import engine, SessionLocal
@@ -53,6 +54,10 @@ async def lifespan(app: FastAPI):
     mgr.start_scheduler()
     # Watchdog restarts the worker if it dies with unfinished work left.
     mgr.start_watchdog()
+
+    # 通用通知通道：task.* 事件会桥接到此，前端一条 SSE 收两类事件。
+    from app.service.notification_manager import NotificationManager
+    NotificationManager.get_instance().attach_loop(asyncio.get_running_loop())
 
     yield
 
@@ -207,7 +212,7 @@ app.add_middleware(
     minimum_size=1000,
     compresslevel=9,
     exclude_paths=exclude_paths,
-    exclude_exact={'/tasks/events'},
+    exclude_exact={'/tasks/events', '/notifications/events'},
 )
 
 # 配置允许跨域的源（生产环境建议指定具体域名，不要用 "*"）
@@ -250,6 +255,7 @@ app.include_router(index.router, prefix="/index", tags=["Index"])
 app.include_router(media.router, prefix="/medias", tags=["Media"])
 app.include_router(stats.router, prefix="/stats", tags=["Stats"])
 app.include_router(tasks.router, prefix="/tasks", tags=["Tasks"])
+app.include_router(notification.router, prefix="/notifications", tags=["Notifications"])
 app.include_router(toolbox.router, prefix="/toolbox", tags=["Toolbox"])
 app.include_router(face.router, prefix="/faces", tags=["Faces"])
 app.include_router(ocr.router, prefix="/ocr", tags=["OCR"])

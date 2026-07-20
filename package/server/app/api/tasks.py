@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body, Query, Request
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, resolve_user_from_token
 from app.db.models import User
 from app.dependencies import get_db, BaseResponse
 from app.db.models.task import Task, TaskStatus, TaskType
@@ -136,44 +136,8 @@ def _serialize_task(task) -> dict:
 
 
 def _resolve_user_from_token(token: str, db: Session) -> User:
-    """Resolve the user from a query-param token. EventSource cannot send
-    an Authorization header, so SSE / polling-fallback endpoints accept
-    the JWT (or `ts_` prefixed agent token) as a `?token=` query param
-    instead. Mirrors the logic in `app.api.deps.get_current_user`."""
-    from datetime import datetime as _now
-    from jose import jwt, JWTError, ExpiredSignatureError
-    from pydantic import ValidationError
-    from app.core.system_config import system_config as _cfg
-    from app.schemas.token import TokenPayload
-    from app.crud import user as _crud_user
-    from app.crud.agent_token import get_token_by_string
-    if not token:
-        raise HTTPException(status_code=401, detail='Missing token')
-    if token.startswith('ts_'):
-        agent_token = get_token_by_string(db, token)
-        if not agent_token:
-            raise HTTPException(status_code=401, detail='Invalid token')
-        if agent_token.expires_at < _now.utcnow():
-            raise HTTPException(status_code=401, detail='Token has expired')
-        user = _crud_user.get(db, id=agent_token.user_id)
-        if not user:
-            raise HTTPException(status_code=401, detail='User not found')
-        return user
-    try:
-        payload = jwt.decode(
-            token,
-            _cfg.config.security.secret_key,
-            algorithms=[_cfg.config.security.algorithm],
-        )
-        token_data = TokenPayload(**payload)
-    except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail='Token has expired')
-    except (JWTError, ValidationError):
-        raise HTTPException(status_code=403, detail='Could not validate credentials')
-    user = _crud_user.get(db, id=token_data.sub)
-    if not user:
-        raise HTTPException(status_code=401, detail='User not found')
-    return user
+    """Backwards-compatible wrapper around `app.api.deps.resolve_user_from_token`."""
+    return resolve_user_from_token(token, db)
 
 
 @router.get("/events", summary="任务状态 SSE 事件流")

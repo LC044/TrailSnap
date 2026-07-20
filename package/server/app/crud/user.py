@@ -1,4 +1,4 @@
-from typing import Optional, Union, Any
+from typing import Optional, Union, Any, List
 from uuid import UUID
 from datetime import datetime, timedelta
 
@@ -27,6 +27,9 @@ def get_by_email(db: Session, email: str) -> Optional[User]:
 
 def get_by_username(db: Session, username: str) -> Optional[User]:
     return db.query(User).filter(User.username == username).first()
+
+def get_all_users(db: Session) -> List[User]:
+    return db.query(User).all()
 
 def get_by_username_or_email(db: Session, identifier: str) -> Optional[User]:
     return db.query(User).filter(

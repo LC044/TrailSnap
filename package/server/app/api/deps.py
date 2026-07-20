@@ -1,5 +1,6 @@
 import traceback
 from typing import Generator, Optional
+from datetime import datetime
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError, ExpiredSignatureError
@@ -53,4 +54,39 @@ def get_current_user(
     user = crud_user.get(db, id=token_data.sub)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
+def resolve_user_from_token(token: str, db: Session) -> User:
+    """Resolve the user from a query-param token. EventSource cannot send
+    an Authorization header, so SSE / polling-fallback endpoints accept
+    the JWT (or `ts_` prefixed agent token) as a `?token=` query param
+    instead. Mirrors the logic in `get_current_user`."""
+    if not token:
+        raise HTTPException(status_code=401, detail='Missing token')
+    if token.startswith('ts_'):
+        from app.crud.agent_token import get_token_by_string
+        agent_token = get_token_by_string(db, token)
+        if not agent_token:
+            raise HTTPException(status_code=401, detail='Invalid token')
+        if agent_token.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=401, detail='Token has expired')
+        user = crud_user.get(db, id=agent_token.user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail='User not found')
+        return user
+    try:
+        payload = jwt.decode(
+            token,
+            system_config.config.security.secret_key,
+            algorithms=[system_config.config.security.algorithm],
+        )
+        token_data = TokenPayload(**payload)
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail='Token has expired')
+    except (JWTError, ValidationError):
+        raise HTTPException(status_code=403, detail='Could not validate credentials')
+    user = crud_user.get(db, id=token_data.sub)
+    if not user:
+        raise HTTPException(status_code=401, detail='User not found')
     return user
