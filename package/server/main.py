@@ -41,17 +41,12 @@ async def lifespan(app: FastAPI):
     global log_listener
     log_listener = setup_logging('api')
 
-    # Start Worker Process if there are pending tasks
-    # We can just check if we need to start it, or simply start it once and it will exit if idle
-    # TaskManager.get_instance().start_worker_if_needed()
-    # Wait, when the app starts, we might have unfinished tasks. Let's start the worker just in case.
     mgr = TaskManager.get_instance()
     # Attach the running loop so cross-thread SSE publishes can be scheduled
     # onto the loop thread via call_soon_threadsafe (asyncio.Queue is not
     # thread-safe).
     mgr.attach_loop(asyncio.get_running_loop())
     mgr.start_worker_if_needed()
-    mgr.start_scheduler()
     # Watchdog restarts the worker if it dies with unfinished work left.
     mgr.start_watchdog()
 
@@ -59,11 +54,41 @@ async def lifespan(app: FastAPI):
     from app.service.notification_manager import NotificationManager
     NotificationManager.get_instance().attach_loop(asyncio.get_running_loop())
 
+    # 统一后台任务调度：扫描 / 回收站清理 / 版本更新检查
+    # 全部交给 APScheduler 单线程按 cron / interval 触发，替代原先
+    # TaskManager._scheduler_loop 和 UpdateCheckScheduler 各自的守护线程。
+    from app.core.system_config import system_config
+    from app.service.scheduler import JobScheduler
+    from app.service.jobs.scan_folder import scan_folder_job
+    from app.service.jobs.recycle_bin_cleanup import recycle_bin_cleanup_job
+    from app.service.jobs.update_check import update_check_job
+
+    job_scheduler = JobScheduler()
+    job_scheduler.register_cron_job(
+        "scan_folder",
+        system_config.config.scan_schedule.to_cron_expression(),
+        scan_folder_job,
+    )
+    # recycle_bin.cleanup_time "HH:MM" -> cron "M H * * *"
+    cleanup_cron = None
+    try:
+        hh, mm = system_config.config.recycle_bin.cleanup_time.split(":")
+        cleanup_cron = f"{int(mm)} {int(hh)} * * *"
+    except Exception:
+        pass
+    job_scheduler.register_cron_job("recycle_bin_cleanup", cleanup_cron, recycle_bin_cleanup_job)
+    # 服务启动后立即跑一次版本检查（去重键保证同一版本不会重复推送），
+    # 之后每 6 小时再触发一次。
+    from datetime import datetime
+    job_scheduler.register_interval_job("update_check", 6 * 3600, update_check_job, next_run_time=datetime.now())
+    job_scheduler.start()
+
     yield
+
+    job_scheduler.stop()
 
     # Stop Worker Process
     mgr.stop_watchdog()
-    mgr.stop_scheduler()
     mgr.stop_worker()
 
     if log_listener:
