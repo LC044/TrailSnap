@@ -312,15 +312,18 @@ function Clear-ServicePorts {
         foreach ($holderPid in $holderPids) {
             try { $holder = Get-Process -Id $holderPid -ErrorAction Stop } catch { continue }
             Write-Host "  [$Reason] 端口 $port <- PID $holderPid ($($holder.ProcessName))，强制关闭..." -ForegroundColor Yellow
-            # Stop-Process -Force 走 .NET TerminateProcess，即时且稳定。
-            # taskkill /F /T 在本机 CIM/WMI 异常时会卡在子进程枚举上报"超时"，
-            # 且其 stderr 在 ErrorActionPreference=Stop 下会被当终止错误抛出中断脚本，
-            # 故仅作兜底并用 2>$null 丢弃 stderr。
+            # 主路径走 taskkill /F /T：tree-kill 会递归杀整棵进程树，
+            # 才能干掉 FastAPI lifespan 起的 worker 子进程、AI 服务的
+            # llama-server 子进程、Vite esbuild watcher 等被 reparent 成
+            # 孤儿的后代进程；只 Stop-Process 不杀子树，会留残余。
+            # taskkill 是原生 exe，stderr 用 2>$null 吞掉（错误仅设
+            # $LASTEXITCODE，不会触发 ErrorActionPreference=Stop），仅在
+            # taskkill 自身不可用（如 PATH 找不到）时才降级到 Stop-Process。
             try {
-                Stop-Process -Id $holderPid -Force -ErrorAction Stop
-            } catch {
-                Write-Host "    Stop-Process 失败，回退 taskkill /F /T：$($_.Exception.Message)" -ForegroundColor DarkYellow
                 & taskkill /F /T /PID $holderPid 2>$null
+            } catch {
+                Write-Host "    taskkill 不可用，回退 Stop-Process：$($_.Exception.Message)" -ForegroundColor DarkYellow
+                try { Stop-Process -Id $holderPid -Force -ErrorAction Stop } catch {}
             }
         }
     }
@@ -462,26 +465,6 @@ try {
         }
     }
 
-    # ---------- unit / integration（pytest）----------
-    if ($Layer -in 'unit', 'integration', 'all') {
-        $markerArg = Get-MarkerArg -c $Cover -s $Scope
-        $testPath = if ($Layer -eq 'integration') { 'tests/integration' } else { 'tests/unit' }
-        $aiTestPath = if ($Layer -eq 'integration') { 'tests' } else { 'tests' }
-
-        if ($Component -in 'server', 'all') {
-            Write-Host "==> 后端 $Layer 测试 (server)" -ForegroundColor Green
-            Invoke-Pytest -PackageDir 'package\server' -TestPath $testPath -ExtraArgs $markerArg
-        }
-        if ($Component -in 'ai', 'all') {
-            Write-Host "==> AI $Layer 测试 (ai)" -ForegroundColor Green
-            Invoke-Pytest -PackageDir 'package\ai' -TestPath $aiTestPath -ExtraArgs $markerArg
-        }
-        if ($Component -in 'cli', 'all') {
-            Write-Host "==> CLI $Layer 测试 (cli)" -ForegroundColor Green
-            Invoke-Pytest -PackageDir 'package\trailsnap-cli' -TestPath 'tests' -ExtraArgs $markerArg
-        }
-    }
-
     # ---------- e2e（Playwright，env 已注入，e2e-env.ts 自动读取）----------
     if ($Layer -in 'e2e', 'all') {
         if ($Component -in 'website', 'all') {
@@ -521,6 +504,29 @@ try {
             }
             finally { Pop-Location }
         }
+    }
+
+    # ---------- unit / integration（pytest）----------
+    if ($Layer -in 'unit', 'integration', 'all') {
+        $markerArg = Get-MarkerArg -c $Cover -s $Scope
+        $testPath = if ($Layer -eq 'integration') { 'tests/integration' } else { 'tests/unit' }
+        $aiTestPath = if ($Layer -eq 'integration') { 'tests' } else { 'tests' }
+
+        if ($Component -in 'server', 'all') {
+            Write-Host "==> 后端 $Layer 测试 (server)" -ForegroundColor Green
+            Invoke-Pytest -PackageDir 'package\server' -TestPath $testPath -ExtraArgs $markerArg
+        }
+        if ($Component -in 'ai', 'all') {
+            Write-Host "==> AI $Layer 测试 (ai)" -ForegroundColor Green
+            Invoke-Pytest -PackageDir 'package\ai' -TestPath $aiTestPath -ExtraArgs $markerArg
+        }
+    }
+
+    # ---------- CLI（在 E2E 完成后运行，确保 E2E 测试账号先初始化）----------
+    if ($Layer -in 'unit', 'integration', 'all' -and $Component -in 'cli', 'all') {
+        $markerArg = Get-MarkerArg -c $Cover -s $Scope
+        Write-Host "==> CLI $Layer 测试 (cli)" -ForegroundColor Green
+        Invoke-Pytest -PackageDir 'package\trailsnap-cli' -TestPath 'tests' -ExtraArgs $markerArg
     }
 
     # ---------- docker（启动测试栈）----------
@@ -604,10 +610,12 @@ finally {
                 try { $proc.Refresh() } catch {}
                 if ($proc -and -not $proc.HasExited) {
                     Write-Host "  关闭进程树 PID: $($proc.Id)"
+                    # tree-kill（详见 Clear-ServicePorts 注释），确保 uv → uvicorn →
+                    # worker / llama-server / esbuild watcher 一起退出。
                     try {
-                        Stop-Process -Id $proc.Id -Force -ErrorAction Stop
-                    } catch {
                         & taskkill /F /T /PID $proc.Id 2>$null
+                    } catch {
+                        try { Stop-Process -Id $proc.Id -Force -ErrorAction Stop } catch {}
                     }
                 }
             }

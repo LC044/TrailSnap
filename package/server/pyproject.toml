@@ -61,6 +61,7 @@ markers = [
     "model: 需要加载 AI 模型/显存，默认跳过",
     "module_photo: 照片域",
     "module_album: 相册域",
+    "module_user: 用户与认证域",
     "module_face: 人脸域",
     "module_ocr: OCR 域",
     "module_ticket: 票据域",

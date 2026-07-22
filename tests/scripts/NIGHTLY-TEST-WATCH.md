@@ -56,11 +56,7 @@ if (-not (Test-Path 'tests\.env.test')) {
 }
 ```
 
-1.4. 后端连通性（仅记录，不修复）：
-   - `Test-NetConnection -ComputerName 127.0.0.1 -Port 8000 -InformationLevel Quiet`
-   - 不通 → 不跑测试，直接进入 §4（盲区扫描），summary 标注 `ENV_SKIP`。
-
-1.5. 创建当次目录：
+1.4. 创建当次目录：
    ```powershell
    $stamp = Get-Date -Format 'yyyy-MM-dd'
    $runDir = "tests\artifacts\nightly\$stamp"
@@ -156,13 +152,13 @@ $exit = $LASTEXITCODE
    - 写入 `$runDir\coverage-gaps-frontend.md`
 
 4.4. **优先级排序**：
-   1. `app/api/*.py` 中的 router（最高，缺一个就补一个）
-   2. `app/service/*.py` 业务逻辑
-   3. `app/utils/*.py`、`app/schemas/*.py`
-   4. AI service 的 routers
-   5. 前端未覆盖的 view
+   1. 前端未覆盖的 view 或 现有测试中覆盖不全的 view（最高，缺一个就补一个）
+   2. `app/api/*.py` 中的 router
+   3. `app/service/*.py` 业务逻辑
+   4. `app/utils/*.py`、`app/schemas/*.py`
+   5. AI service 的 routers
 
-4.5. 选 **1 - 5 个**最高优先级模块。
+4.5. 选 **5 - 10 个**最高优先级模块。
 
 ---
 
@@ -197,6 +193,11 @@ $exit = $LASTEXITCODE
    - 新测试连续 **3 次**失败 → 停止本轮，写 ALERT；
    - 已写但失败的新测试文件 `git checkout -- <file>` 回滚到 HEAD；
    - 不进入 §6。
+
+5.7. 关闭所有服务（server+ai+website）：
+   ```powershell
+   .\tests\scripts\run-tests.ps1 -StopServices
+   ```
 
 ---
 
@@ -310,6 +311,7 @@ ALERT:  tests\artifacts\nightly\YYYY-MM-DD\ALERT.md
 | 起 AI 服务            | `cd package\ai && uvicorn main:app --port 8001`                      |
 | 看某文件最近改动      | `git log -p -3 -- <path>`                                            |
 | 回滚单文件            | `git checkout -- <path>`                                             |
+| 关闭所有服务（server+ai+website） | ` .\tests\scripts\run-tests.ps1 -StopServices`                                             |
 
 ---
 

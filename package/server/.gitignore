@@ -242,6 +242,10 @@ cython_debug/
 .idea/
 .vscode
 test*
+!tests/
+tests/*
+!tests/integration/
+!tests/integration/*.py
 
 *.db
 

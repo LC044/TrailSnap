@@ -27,7 +27,7 @@ export async function waitForTasksToSettle(
   options: WaitOptions = {},
 ) {
   const intervalMs = options.intervalMs ?? 5_000
-  const stableRounds = options.stableRounds ?? 3
+  const stableRounds = options.stableRounds ?? 5
   const tasksUrl = options.tasksUrl ?? '/tasks/'
   const groupedUrl = tasksUrl.endsWith('/') ? `${tasksUrl}grouped-status` : `${tasksUrl}/grouped-status`
   
