@@ -63,7 +63,10 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             limit: 返回的照片数量上限
             sort_by: 排序方式，可选 "photo_time"（按时间）, "quality_score"（按美观度）, "memory_score"（按回忆价值）
         Returns:
-            包含照片ID、拍摄时间、地点、所在文件夹、文件名和一句话描述的 JSON 字符串。
+            JSON 字符串，结构为 {"total": 符合条件的照片总数, "returned": 本次返回数量, "photos": [...]}。
+            其中 total 可能大于 returned（受 limit 限制），据此可判断是否还有更多照片、是否需要进一步缩小范围。
+            每张照片包含 photo_id、拍摄时间、地点、所在文件夹、文件名和一句话描述；
+            当使用 description 以文搜图时，还会附带 similarity（0~1，越大越相关）字段。
         """
         logging.info(f"search_photos_tool: {locals()}")
         with SessionLocal() as db:
@@ -121,10 +124,16 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             if description:
                 # 1. Get Text Embedding from AI Service
                 embedding = get_embedding(description, user_id, db)
-                
+
                 distance = ImageVector.embedding.cosine_distance(embedding)
                 query = query.join(ImageVector, Photo.id == ImageVector.photo_id)
-                query = query.filter(distance < 0.78)
+                # 放宽硬阈值，改为 top-k 策略：仅过滤明显不相关项（宽松阈值兜底），
+                # 最终相关性由 distance 升序排序 + limit 控制，并向模型返回 similarity 分数。
+                query = query.filter(distance < 0.85)
+                query = query.add_columns(distance.label("distance"))
+
+            # 统计符合筛选条件的总数（在排序/分页之前），供模型判断是否还有更多结果
+            total = query.order_by(None).count()
 
             if sort_by == "quality_score":
                 query = query.order_by(ImageDescription.quality_score.desc().nulls_last())
@@ -138,13 +147,19 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             results = query.limit(limit).all()
 
             if not results:
-                return "没有找到符合条件的照片。"
+                return json.dumps({"total": total, "returned": 0, "photos": []}, ensure_ascii=False)
 
             roots = get_user_roots(user_id, db)
             response_data = []
-            for photo, meta, desc in results:
+            for row in results:
+                # 使用 description 以文搜图时，行末会多出一列 distance
+                if distance is not None:
+                    photo, meta, desc, dist = row
+                else:
+                    photo, meta, desc = row
+                    dist = None
                 folder, filename = compute_browse_path(photo.file_path, roots)
-                response_data.append({
+                item = {
                     "photo_id": str(photo.id),
                     "photo_time": photo.photo_time.strftime("%Y-%m-%d %H:%M:%S") if photo.photo_time else None,
                     "location": meta.address if meta else "未知地点",
@@ -152,9 +167,17 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
                     "filename": filename or None,
                     "narrative": desc.narrative if desc else "无描述",
                     "quality_score": desc.quality_score if desc else None
-                })
+                }
+                if dist is not None:
+                    # cosine_distance ∈ [0, 2]，转换为直观的相似度分数（越大越相关）
+                    item["similarity"] = round(1 - float(dist), 4)
+                response_data.append(item)
 
-            return json.dumps(response_data, ensure_ascii=False)
+            return json.dumps({
+                "total": total,
+                "returned": len(response_data),
+                "photos": response_data
+            }, ensure_ascii=False)
 
     @tool
     def get_photo_locations_tool(

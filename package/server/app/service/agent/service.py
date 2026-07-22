@@ -6,7 +6,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, trim_messages
 from sqlalchemy.orm import Session
 
 from app.core.config_manager import config_manager
@@ -37,6 +37,33 @@ def get_session_history(db: Session, session_id: str) -> List[BaseMessage]:
         elif msg.role == "system":
             messages.append(SystemMessage(content=msg.content))
     return messages
+
+# 滑动窗口大小：传给模型的历史最多保留最近 N 条消息（不按 token 预算，仅按条数）
+MAX_HISTORY_MESSAGES = 20
+
+def trim_history_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
+    """
+    基于消息条数的滑动窗口裁剪：保留 system 提示，并只保留最近的 MAX_HISTORY_MESSAGES 条对话。
+    使用 token_counter=len 表示"按消息条数计数"，因此这是纯滑动窗口，不涉及 token 预算估算。
+    裁剪只影响传给模型的上下文，不影响数据库中的完整历史记录。
+    """
+    if not messages:
+        return messages
+    try:
+        trimmed = trim_messages(
+            messages,
+            max_tokens=MAX_HISTORY_MESSAGES,
+            strategy="last",
+            token_counter=len,  # 按消息条数计数 => 滑动窗口
+            include_system=True,
+            allow_partial=False,
+            start_on="human",
+        )
+        # 兜底：裁剪结果异常（如空）时回退到原始历史
+        return trimmed if trimmed else messages
+    except Exception as e:
+        logger.warning(f"滑动窗口裁剪失败，回退到完整历史：{e}")
+        return messages
 
 class FixedChatOpenAI(ChatOpenAI):
     def _convert_chunk_to_generation_chunk(self, chunk: dict,
@@ -157,6 +184,9 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
         role="user",
         content=user_input,
     ))
+
+    # 滑动窗口裁剪历史，只保留最近若干条消息
+    messages = trim_history_messages(messages)
     
     try:
         response = agent.invoke({"messages": messages})
@@ -267,7 +297,10 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
             future_title_task = asyncio.create_task(
                 asyncio.to_thread(generate_session_title_task, user_id, session_id, user_input)
             )
-        
+
+        # 滑动窗口裁剪历史，只保留最近若干条消息（在首轮判断之后执行，避免影响标题生成逻辑）
+        messages = trim_history_messages(messages)
+
         # 使用 langgraph astream 模式
         async for chunk, metadata in agent.astream({"messages": messages}, stream_mode="messages"):
             if _aborted_sessions.get(session_id, False):
