@@ -67,4 +67,68 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.locator('h2', { hasText: '外部图库管理' })).toHaveCount(0);
     await expect(page.locator('h2', { hasText: '任务管理' })).toHaveCount(0);
   });
+  test('外部图库可切换到图片文件过滤并返回目录管理', async ({ page }) => {
+    await page.goto('/settings');
+    await clickSettingTab(page, 'external');
+
+    await page.getByRole('tab', { name: '图片文件过滤' }).click();
+    await expect(page.getByText('启用过滤', { exact: true })).toBeVisible();
+
+    await page.getByRole('tab', { name: '目录管理' }).click();
+    await expect(page.getByPlaceholder('输入外部文件夹绝对路径')).toBeVisible();
+    await expect(page.getByRole('button', { name: '添加目录' })).toBeVisible();
+  });
+
+  test('外部图库空路径提交保持输入态且不发起添加请求', async ({ page }) => {
+    await page.goto('/settings');
+    await clickSettingTab(page, 'external');
+
+    let addDirectoryRequests = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().includes('/api/settings/directories')) {
+        addDirectoryRequests += 1;
+      }
+    });
+
+    const directoryInput = page.getByPlaceholder('输入外部文件夹绝对路径');
+    await page.getByRole('button', { name: '添加目录' }).click();
+    await expect(directoryInput).toHaveValue('');
+    await expect(page.getByRole('tab', { name: '目录管理' })).toHaveAttribute('aria-selected', 'true');
+    expect(addDirectoryRequests).toBe(0);
+  });
+
+  test('性能测试空路径提交显示校验提示且保持停止状态', async ({ page }) => {
+    await page.goto('/settings');
+    await clickSettingTab(page, 'performance');
+
+    const startButton = page.getByRole('button', { name: '开始测试' });
+    const stopButton = page.getByRole('button', { name: '停止监控' });
+    await expect(stopButton).toBeDisabled();
+
+    await startButton.click();
+    await expect(page.getByText('请输入测试用的外部文件夹绝对路径', { exact: true })).toBeVisible();
+    await expect(startButton).toBeEnabled();
+    await expect(stopButton).toBeDisabled();
+  });
+
+  test('性能测试填写路径后可取消确认且不会添加目录', async ({ page }) => {
+    await page.goto('/settings');
+    await clickSettingTab(page, 'performance');
+
+    let addDirectoryRequests = 0;
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().includes('/api/settings/directories')) {
+        addDirectoryRequests += 1;
+      }
+    });
+
+    await page.getByPlaceholder(/输入测试用的外部文件夹绝对路径/).fill('C:\\Photos\\E2E-Cancel');
+    await page.getByRole('button', { name: '开始测试' }).click();
+    await expect(page.getByRole('dialog', { name: '确认测试' })).toBeVisible();
+    await page.getByRole('button', { name: '取消' }).click();
+
+    await expect(page.getByRole('dialog', { name: '确认测试' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '停止监控' })).toBeDisabled();
+    expect(addDirectoryRequests).toBe(0);
+  });
 });
