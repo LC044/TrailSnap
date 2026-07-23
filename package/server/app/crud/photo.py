@@ -188,7 +188,32 @@ def save_and_create_photo(db: Session, file_path: str, file_name: str, album_id:
         photo_time=extracted_meta["photo_time"]
     )
 
-    return create_photo(db, photo_create, album_id, file_path, photo_id=photo_id, user_id=user_id)
+    db_photo = create_photo(db, photo_create, album_id, file_path, photo_id=photo_id, user_id=user_id)
+
+    # 预写 PhotoMetadata，避免上传后立刻查询 /metadata 返回 404。
+    # 后台 EXTRACT_METADATA 任务走 "先查再插" 逻辑，会 update 而非 insert，不会冲突。
+    try:
+        existing_meta = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo_id).first()
+        if not existing_meta:
+            exif_info = extracted_meta.get("exif_info")
+            exif_info_str = None
+            if exif_info:
+                import json as _json
+                def _default(obj):
+                    if isinstance(obj, (bytes, bytearray)):
+                        return str(obj)
+                    return str(obj)
+                exif_info_str = _json.dumps(exif_info, default=_default, ensure_ascii=False)
+            db.add(PhotoMetadata(photo_id=photo_id, exif_info=exif_info_str))
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            f"save_and_create_photo: pre-create PhotoMetadata failed for {photo_id}: {e}"
+        )
+
+    return db_photo
 
 
 def get_photos(db: Session, album_id: UUID, skip: int = 0, limit: int = 100, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None, user_id: UUID = None):
