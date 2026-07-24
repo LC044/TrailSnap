@@ -68,4 +68,6 @@ markers = [
     "module_search: 搜索域",
     "module_agent: Agent 域",
     "module_toolbox: 工具箱域",
+    "module_system: 系统域 (config/version/update-check)",
+    "module_classification: 智能分类域",
 ]
