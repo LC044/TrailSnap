@@ -40,8 +40,8 @@ test.describe('Smoke - 找回密码 @smoke', () => {
   test('找回密码页面渲染方式切换与第一步输入框', async ({ page }) => {
     await page.goto('/forgot-password');
 
-    // 两种重置方式 radio 按钮文本
-    await expect(page.getByText('安全问题')).toBeVisible();
+    // 两种重置方式 radio 按钮文本（CI 上组件挂载偏晚，放宽到 15s，与 h2 断言一致）
+    await expect(page.getByText('安全问题')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('服务器验证码')).toBeVisible();
 
     // 用户名 / 邮箱输入框（placeholder 模板硬编码）
@@ -52,8 +52,10 @@ test.describe('Smoke - 找回密码 @smoke', () => {
   test('找回密码页面切换到"服务器验证码"模式显示对应字段', async ({ page }) => {
     await page.goto('/forgot-password');
 
-    // 默认是「安全问题」模式，点击切换到「服务器验证码」
-    await page.getByText('服务器验证码').click();
+    // 默认是「安全问题」模式，点击切换到「服务器验证码」（先等 radio 渲染，CI 挂载偏晚）
+    const serverRadio = page.getByText('服务器验证码');
+    await expect(serverRadio).toBeVisible({ timeout: 15_000 });
+    await serverRadio.click();
 
     // 等待 Vue 响应式更新
     await page.waitForTimeout(300);

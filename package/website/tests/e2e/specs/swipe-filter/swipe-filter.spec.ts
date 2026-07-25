@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 
 /**
  * Smoke 测试 — 断舍离筛选（src/views/toolbox/SwipeFilter.vue）
@@ -8,12 +8,22 @@ import { test, expect } from '@playwright/test';
  *  - 路由 /swipe-filter 能正常打开（不跳 /login）。
  *  - 标题「照片筛选」渲染（模板硬编码 h1）。
  *  - 顶部 "处理中 / 撤销" 控件可见（撤销按钮初始是 disabled 状态）。
+ *
+ * 隔离说明：system 模式下 config.use.storageState 给默认 page 注入全局 token；
+ * 该 token 被并行用例失效后，访问 /swipe-filter 会被守卫踢到 /login（toHaveURL 收到
+ * /login、h1 永不渲染）。test.use({ storageState: ... }) 在 Playwright 1.60 下无法
+ * 覆盖 config，故 override page fixture，用 browser.newContext() 起干净上下文。
  */
+const test = base.extend({
+  page: async ({ browser }, use) => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+})
 
 test.describe('Smoke - 断舍离筛选 @smoke', () => {
-  // /swipe-filter 是 blank layout 独立路由，无需登录。用空 storageState 起干净 context，
-  // 不继承全局登录态——避免共享 token 被并行用例失效后页面被守卫干扰、h1 不渲染。
-  test.use({ storageState: { cookies: [], origins: [] } });
 
   test('断舍离页面正常加载 - 无需登录即可打开', async ({ page }) => {
     await page.goto('/swipe-filter');
