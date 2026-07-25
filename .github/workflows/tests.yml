@@ -180,6 +180,9 @@ jobs:
     env:
       DB_URL: postgresql://trailsnap:trailsnap@localhost:55432/trailsnap
       TS_DB_URL: postgresql://trailsnap:trailsnap@localhost:55432/trailsnap
+      # railway 子应用导入时校验 RAILWAY_DB_URL（package/server/railway/db/session.py），
+      # 不设会直接 raise 导致 uvicorn 起不来。create_engine 惰性连接，integration 不碰 /railway，指向同库即可。
+      RAILWAY_DB_URL: postgresql://trailsnap:trailsnap@localhost:55432/trailsnap
       TS_API_BASE_URL: http://localhost:58000
       TS_AI_API_URL: http://127.0.0.1:65535  # integration 不依赖 AI；死端口，与 .env.test.ci 保持一致
       TS_TEST_ENV: ci
