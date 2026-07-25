@@ -20,3 +20,6 @@ tests/.env.docker
 releases/
 pg_data/
 doc/plan/
+
+# AI 模型权重缓存（e2e docker compose 挂载；CI 用 actions/cache 持久化）
+tests/.cache/

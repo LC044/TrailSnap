@@ -52,6 +52,22 @@ uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 On non-Windows, the AI service runs an idle-check task that calls `sys.exit(0)` after `IDLE_TIMEOUT` (default 600s) so the container orchestrator can restart it and free memory. LLM is managed as a subprocess via `app/services/llm_manager.py` (port 8002, default 5-min idle).
 
+### Tests
+
+CI 与本地共用**同一个入口** `tests/scripts/run-tests.ps1`（PowerShell）。完整约定见 [`tests/README.md`](tests/README.md)。
+
+```powershell
+.\tests\scripts\run-tests.ps1 -Layer unit -Level smoke            # 后端+AI 单元（秒级，无服务）
+.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0                # 前端 e2e p0（本地 dev 进程）
+.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker   # 起 compose 栈跑（同 CI 路径）
+.\tests\scripts\run-tests.ps1 -StopServices                       # 按端口清理服务
+```
+
+- `-Layer` unit/integration/e2e/all；`-Level` dev/scan/smoke/p0/p1/all/light/full（e2e 套件名，也是 unit 的 `-m` 映射）；`-Mode` dev/docker（默认按 `TS_TEST_ENV`）。
+- 服务生命周期由 `services-up.ps1` / `services-down.ps1` 负责（dev 起本地 uv/pnpm 进程，docker 起 `tests/docker/docker-compose.yml`）；`run-tests.ps1` 在 e2e/integration 层自动调它们。
+- 环境变量单一来源 `tests/.env.test`（模板 `tests/.env.test.example`，CI 用 `tests/.env.test.ci`）。`TS_DB_URL`/`TS_AI_API_URL` 也被 production 代码读取，勿改名。
+- CI 在 `.github/workflows/tests.yml`：cli/server/ai unit + server integration + e2e（`-Mode docker`）。AI 模型权重用 `actions/cache` 持久化（`tests/.cache/ai-models`）。
+
 ### Database Migrations
 ```bash
 cd package/server

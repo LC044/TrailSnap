@@ -1,8 +1,9 @@
-# TrailSnap 测试用 docker compose 栈。
+# TrailSnap 测试用 docker compose 栈（CI 与本地 -Mode docker 共用）。
 # 端口由 tests/.env.test 的 TS_DOCKER_* 变量驱动（--env-file 注入）；
 # 容器内部互联（postgres:5432 / ai:8001）静态写死，属 compose 职责。
 #
-# 启动：tests/scripts/run-tests.ps1 -Layer docker
+# 镜像统一引用 :master；CI 在 .github/workflows/tests.yml 里 sed 替换成本地 build 的 :ci。
+# 启动：tests/scripts/services-up.ps1 -Mode docker
 #       （等价于 docker compose -f 此文件 --env-file tests/.env.test up -d）
 name: trailsnap-test
 
@@ -42,15 +43,27 @@ services:
       - "${TS_DOCKER_SERVER_PORT:-8800}:8000"
     volumes:
       - trailsnap-test-data:/app/data
-      - ${TS_PHOTO_HOST_DIR:-../../package/official-site/public/examples/images}:${TS_PHOTO_DIR:-/testdata/photos}
+      - ${TS_PHOTO_HOST_DIR:-../../tests/fixtures/e2e-photos}:${TS_PHOTO_DIR:-/testdata/photos}
 
   ai:
     image: siyuan044/trailsnap-ai:master
     restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MODEL_PATH: /app/data/models
+      # e2e（尤其 full 套件）可能跑较久；关闭 idle 自杀，避免容器中途退出
+      IDLE_TIMEOUT: 86400
     ports:
       - "${TS_DOCKER_AI_PORT:-8801}:8001"
     volumes:
-      - trailsnap-test-data:/app/data
+      # 模型权重持久化到宿主机；CI 用 actions/cache 跨 run 缓存，避免每次重下数百 MB
+      - ${TS_AI_MODEL_HOST_DIR:-../../tests/.cache/ai-models}:/app/data/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health-check || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
 
   frontend:
     image: siyuan044/trailsnap-frontend:master

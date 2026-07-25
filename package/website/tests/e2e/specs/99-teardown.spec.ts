@@ -10,6 +10,10 @@ const ADMIN = {
 };
 
 test.describe('Test Environment Teardown @teardown', () => {
+  // 与 00-setup 对齐：teardown 自带登录（Bearer token），不依赖预存 storageState；
+  // 且 setup 若失败，storage-state.json 可能不存在，置空避免 teardown 再因读不到文件而报错。
+  test.use({ storageState: undefined });
+
   test('Clean up test data and delete account', async ({ request }) => {
     // TS_TEST_KEEP_SERVICES=true 时跳过清理，保留服务与数据以便查看测试完成后的现场状态。
     test.skip(

@@ -15,6 +15,12 @@ const ADMIN = {
 };
 
 test.describe('Test Environment Setup @setup', () => {
+  // full/light 套件 globalSetup=undefined，storage-state.json 在本 spec 运行前尚不存在
+  // （本 spec 才是创建者）。若沿用 config 的 use.storageState，Playwright 创建 context
+  // 时会去读这个不存在的文件 → "Error reading storage state" 直接失败。本 spec 自带
+  // 注册/登录逻辑，不依赖预存登录态，故显式置空。
+  test.use({ storageState: undefined });
+
   test('Create test account and scan folder', async ({ page, request }) => {
     // 1. Check if user exists, if not create admin user
     // request fixture 的 baseURL 是前端地址，必须带 /api 前缀走 Vite 代理到后端，

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 
 /**
  * Smoke 测试 — 找回密码（src/views/login/ForgotPassword.vue）
@@ -9,7 +9,21 @@ import { test, expect } from '@playwright/test';
  *  - 「找回密码」标题渲染。
  *  - 「安全问题 / 服务器验证码」两种重置方式 radio 可见。
  *  - 用户名/邮箱输入框可见，placeholder 与模板一致。
+ *
+ * 隔离说明：system 模式下 config.use.storageState 会给默认 page 注入全局登录态 token；
+ * 该 token 一旦被并行跑的 login-flow「找回密码改密码」用例失效，本 spec 访问
+ * /forgot-password 就会被守卫踢到 /login。test.use({ storageState: ... }) 在
+ * Playwright 1.60 下无法可靠覆盖 config 的 storageState，故直接 override page
+ * fixture，用 browser.newContext() 起一个完全不带 storageState 的干净上下文。
  */
+const test = base.extend({
+  page: async ({ browser }, use) => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    await use(page)
+    await context.close()
+  },
+})
 
 test.describe('Smoke - 找回密码 @smoke', () => {
   test('找回密码页面正常加载 - 标题与重置方式可见', async ({ page }) => {
@@ -26,8 +40,8 @@ test.describe('Smoke - 找回密码 @smoke', () => {
   test('找回密码页面渲染方式切换与第一步输入框', async ({ page }) => {
     await page.goto('/forgot-password');
 
-    // 两种重置方式 radio 按钮文本
-    await expect(page.getByText('安全问题')).toBeVisible();
+    // 两种重置方式 radio 按钮文本（CI 上组件挂载偏晚，放宽到 15s，与 h2 断言一致）
+    await expect(page.getByText('安全问题')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('服务器验证码')).toBeVisible();
 
     // 用户名 / 邮箱输入框（placeholder 模板硬编码）
@@ -38,8 +52,10 @@ test.describe('Smoke - 找回密码 @smoke', () => {
   test('找回密码页面切换到"服务器验证码"模式显示对应字段', async ({ page }) => {
     await page.goto('/forgot-password');
 
-    // 默认是「安全问题」模式，点击切换到「服务器验证码」
-    await page.getByText('服务器验证码').click();
+    // 默认是「安全问题」模式，点击切换到「服务器验证码」（先等 radio 渲染，CI 挂载偏晚）
+    const serverRadio = page.getByText('服务器验证码');
+    await expect(serverRadio).toBeVisible({ timeout: 15_000 });
+    await serverRadio.click();
 
     // 等待 Vue 响应式更新
     await page.waitForTimeout(300);

@@ -204,7 +204,11 @@ export const e2eEnv = {
   get globalSetup(): string | undefined {
     if (this.suite === 'scan') return './e2e-system/helpers/scan-global-setup.ts'
     if (this.suite === 'dev') return './tests/e2e/helpers/dev-global-setup.ts'
-    if (this.suite === 'light' || this.suite === 'full') return undefined
+    // full：仅写 storageState 占位文件，真实登录/扫描交给 00-setup.spec.ts。
+    // full_setup / full_teardown 都 resolve 到 full，故两者都走这里。
+    if (this.suite === 'full') return './e2e-system/helpers/full-global-setup.ts'
+    // light：复用 full_setup 已落盘的真实 storageState，不再覆盖。
+    if (this.suite === 'light') return undefined
     return './e2e-system/helpers/bootstrap.ts'
   },
 
