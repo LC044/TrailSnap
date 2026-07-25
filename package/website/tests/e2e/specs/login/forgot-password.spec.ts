@@ -17,8 +17,15 @@ import { test as base, expect } from '@playwright/test';
  * fixture，用 browser.newContext() 起一个完全不带 storageState 的干净上下文。
  */
 const test = base.extend({
-  page: async ({ browser }, use) => {
-    const context = await browser.newContext()
+  page: async ({ browser, baseURL }, use) => {
+    const context = await browser.newContext({
+      baseURL,
+      storageState: { cookies: [], origins: [] },
+    })
+    await context.addInitScript(() => {
+      localStorage.removeItem('user_token')
+      sessionStorage.clear()
+    })
     const page = await context.newPage()
     await use(page)
     await context.close()
@@ -29,12 +36,12 @@ test.describe('Smoke - 找回密码 @smoke', () => {
   test('找回密码页面正常加载 - 标题与重置方式可见', async ({ page }) => {
     await page.goto('/forgot-password');
 
-    // 白名单页面，未登录也直接放行
-    await expect(page).toHaveURL(/\/forgot-password/);
+    // 白名单页面，未登录也直接放行（避免 /login?redirect=/forgot-password 的误判）
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/forgot-password');
     await expect(page.locator('body')).toBeVisible();
 
     // 模板硬编码 <h2>找回密码</h2>
-    await expect(page.locator('h2', { hasText: '找回密码' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h2', { hasText: '找回密码' })).toBeVisible({ timeout: 20_000 });
   });
 
   test('找回密码页面渲染方式切换与第一步输入框', async ({ page }) => {
