@@ -263,9 +263,9 @@ jobs:
 
   # ==========================================================================
   # 前端 E2E - 复用 tests/scripts/e2e-up/run/down 流程（与本地 run-tests.ps1 一致）
-  #   PR + push master: 跑 p0 档（默认）
-  #   nightly cron:     workflow_dispatch 切到 full 档
-  #   手动 dispatch:    可选 level
+  #   PR + push master: 跑 full 档（与本地 -Level full 一致，全量 ~200 用例）
+  #   nightly cron:     full 兜底
+  #   手动 dispatch:    可选 level（默认 p0，用于快速验证）
   # ==========================================================================
   e2e:
     name: E2E (Playwright + docker compose)
@@ -322,12 +322,11 @@ jobs:
         id: e2e-level
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            LEVEL="full"
-          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             LEVEL="${{ inputs.e2e_level }}"
           else
-            LEVEL="p0"
+            # pull_request / push / schedule 都跑 full，与本地 -Level full 对齐（全量 ~200 用例）
+            LEVEL="full"
           fi
           echo "level=$LEVEL" >> $GITHUB_OUTPUT
           echo "E2E level decided: $LEVEL"

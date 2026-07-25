@@ -88,19 +88,23 @@ if (suite === 'all') {
   ;(async () => {
     console.log('[Full Test] 1. Checking and starting services...')
     const startInfo = await startServices()
+    let failed = false
     try {
+      // 三个阶段独立 try/catch：任一阶段失败也继续跑后续阶段，保证 teardown 一定执行
+      // （否则 light 失败会跳过 teardown，full 等于没跑完）。最后统一按失败情况退出。
       console.log('[Full Test] 2. Running setup tests...')
-      runPlaywright('full_setup')
-      
+      try { runPlaywright('full_setup') } catch (e) { failed = true; console.error('[Full Test] setup 阶段失败:', e.message) }
+
       console.log('[Full Test] 3. Running normal tests...')
-      runPlaywright('light')
-      
+      try { runPlaywright('light') } catch (e) { failed = true; console.error('[Full Test] normal 阶段失败:', e.message) }
+
       console.log('[Full Test] 4. Running teardown tests...')
-      runPlaywright('full_teardown')
+      try { runPlaywright('full_teardown') } catch (e) { failed = true; console.error('[Full Test] teardown 阶段失败:', e.message) }
     } finally {
       console.log('[Full Test] 5. Stopping services...')
       stopServices(startInfo)
     }
+    if (failed) process.exit(1)
   })()
 } else {
   runPlaywright(suite)
