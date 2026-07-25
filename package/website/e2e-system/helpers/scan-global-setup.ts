@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { request as playwrightRequest, type FullConfig } from '@playwright/test'
 
 import { adminUser, apiBaseUrl, ensureRuntimeDir } from './env'
@@ -74,6 +75,14 @@ async function ensureAccessToken(): Promise<string> {
 
 export default async function globalSetup(_config: FullConfig) {
   ensureRuntimeDir()
+
+  // scan 套件 config.use.storageState 指向 .playwright-system/storage-state.json，
+  // 全新 CI checkout 下该文件不存在 → scan-prep spec 创建 context 时 ENOENT。
+  // 写空占位（与 full-global-setup / dev-global-setup 一致），scan 阶段不依赖预存登录态。
+  const statePath = e2eEnv.storageState
+  if (statePath && !fs.existsSync(statePath)) {
+    fs.writeFileSync(statePath, JSON.stringify({ cookies: [], origins: [] }), 'utf8')
+  }
 
   if (!e2eEnv.enableFixtureScan) {
     return
