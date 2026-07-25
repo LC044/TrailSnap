@@ -15,7 +15,7 @@
 | AI 服务 | `package/ai/tests` | pytest | `run-tests.ps1 -Layer unit -Component ai` | 部分需模型/显存 |
 | 前端 E2E | `package/website/tests/e2e`、`package/website/e2e-system` | Playwright | `run-tests.ps1 -Layer e2e` | 慢，需 server+ai+web 全起 |
 
-**统一入口**：`tests/scripts/run-tests.ps1`。它会按 `.env` 文件拉起服务、注入环境变量、调度对应测试运行器（uv/pytest、pnpm/playwright、docker compose）。
+**统一入口**：`tests/scripts/run-tests.ps1`（CI 与本地共用）。它按 `.env` 文件委托 `services-up.ps1` 拉起服务（dev 本地进程 或 docker compose 栈）、注入环境变量、调度对应测试运行器（uv/pytest、pnpm/playwright），测后委托 `services-down.ps1` 关闭服务。
 
 **单一数据源**：`tests/.env.test`（默认）或你传入的 `.env` 文件。改这一份，docker / 前端 e2e / 后端 / AI 四方共享。子进程（uv、pnpm、docker）全部继承。
 
@@ -27,13 +27,12 @@
 
 | 变量 | 作用 | 默认 |
 |---|---|---|
-| `TS_TEST_ENV` | `dev`（本地手起服务）/ `docker` / `ci` | dev |
+| `TS_TEST_ENV` | `dev`（本地手起服务）/ `docker` / `ci`；决定 `-Mode` 默认值 | dev |
 | `TS_API_BASE_URL` / `TS_WEB_BASE_URL` / `TS_AI_API_URL` / `TS_DB_URL` | 各服务端点 | dev: 8000/5176/8001/5532 |
-| `TS_TEST_COVER` | `smoke` / `regression` / `full`，决定跑多深 | smoke |
-| `TS_TEST_SCOPE` | `all` / `photo` / `album` / ... 业务域过滤 | all |
+| `TS_E2E_SUITE` | e2e 套件=`-Level` 默认值：`dev`/`p0`/`p1`/`smoke`/`scan`/`all`/`light`/`full` | dev |
+| `TS_TEST_SCOPE` | `all` / `photo` / `album` / ... 业务域过滤（unit/integration） | all |
 | `TS_TEST_RESET_DB` | `true` 时启动 server 前 DROP 目标库 → 全新数据 | false |
 | `TS_TEST_KEEP_SERVICES` | `true` 时测后保留服务与数据，方便查看现场 | false |
-| `TS_E2E_SUITE` | e2e 套件：`dev`/`p0`/`p1`/`smoke`/`scan`/`all`/`light`/`full` | dev |
 | `TS_E2E_ENABLE_FIXTURE_SCAN` | e2e 前是否自动添加照片目录 + 触发扫描 | false |
 | `TS_TEST_PHOTOS_REPO` | 测试照片所在的独立 LFS 仓库 URL | `LC044/trailsnap-test-photos` |
 | `TS_PHOTO_HOST_DIR` / `TS_PHOTO_DIR` | 测试照片源目录（host）/ server 视角路径 | — |
@@ -50,16 +49,22 @@
 .\tests\scripts\run-tests.ps1
 
 # 前端 e2e 全量（用自己的 env 文件）
-.\tests\scripts\run-tests.ps1 .\tests\.env.test-local -Layer e2e -Cover full
+.\tests\scripts\run-tests.ps1 .\tests\.env.test-local -Layer e2e -Level full
 
 # 先 scan 预扫描再跑 e2e
 .\tests\scripts\run-tests.ps1 -Layer e2e -ScanPrep true
 
 # 后端 album 域 smoke 单元
-.\tests\scripts\run-tests.ps1 -Layer unit -Component server -Cover smoke -Scope album
+.\tests\scripts\run-tests.ps1 -Layer unit -Component server -Level smoke -Scope album
 
-# 启动 docker 测试栈
-.\tests\scripts\run-tests.ps1 -Layer docker
+# 起 docker compose 栈跑 p0（与 CI 同路径）
+.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker
+
+# 只起 docker 测试栈不跑测试
+.\tests\scripts\services-up.ps1 -Mode docker
+
+# 按端口清理所有服务（含孤儿子进程）
+.\tests\scripts\run-tests.ps1 -StopServices
 ```
 
 ### `run-tests.ps1` 参数
@@ -67,12 +72,14 @@
 | 参数 | 取值 | 说明 |
 |---|---|---|
 | `EnvFile`（位置参数） | 路径 | 默认 `tests\.env.test` |
-| `-Layer` | unit/integration/e2e/docker/all | 测哪一层 |
-| `-Component` | server/ai/website/all | 测哪个组件 |
-| `-Cover` | smoke/regression/full | 跑多深 |
-| `-Scope` | all/photo/album/... | 业务域 |
+| `-Layer` | unit/integration/e2e/all | 测哪一层 |
+| `-Level` | dev/scan/smoke/p0/p1/all/light/full | 深度/套件；默认读 `TS_E2E_SUITE` |
+| `-Component` | server/ai/website/cli/all | 测哪个组件 |
+| `-Mode` | dev/docker | 服务载体；默认按 `TS_TEST_ENV` |
+| `-Scope` | all/photo/album/... | 业务域（unit/integration） |
 | `-ScanPrep` | auto/true/false | e2e 是否先 scan；覆盖 `.env` |
 | `-Cleanup` | switch | 测后删库 |
+| `-StopServices` | switch | 只关服务，不启动/不测 |
 
 ---
 
@@ -82,7 +89,7 @@
 
 - 用例：`package/server/tests/unit/`（纯函数/契约，无外部服务）、`package/server/tests/`（集成，需 DB）。
 - marker 体系（`pyproject.toml`）：覆盖度 `smoke`/`regression`/`slow` × 资源 `postgres`/`model` × 模块 `module_photo`/`module_album`/...。
-- `run-tests.ps1` 把 `-Cover`/`-Scope` 组合成 `-m` 表达式：`smoke + album` → `-m "smoke and module_album"`；`full`/`all` → 不加 `-m`（跑全部）。
+- `run-tests.ps1` 把 `-Level`/`-Scope` 组合成 `-m` 表达式：`smoke + album` → `-m "smoke and module_album"`；非 `smoke` → 不加 cover marker（可叠加 `-Scope`）；`-Level full`/`all` → 跑全部。
 - `slow`/`postgres`/`model` 默认跳过（需显式 `-m` 才跑）。
 
 ### 单独跑
@@ -278,9 +285,9 @@ unit（秒级，必跑）           .\run-tests.ps1 -Layer unit
   ↓
 integration（需 DB）          .\run-tests.ps1 -Layer integration
   ↓
-e2e smoke（页面能打开）       .\run-tests.ps1 -Layer e2e -Cover smoke
+e2e smoke（页面能打开）       .\run-tests.ps1 -Layer e2e -Level smoke
   ↓
-e2e full（全量功能）          .\run-tests.ps1 -Layer e2e -Cover full
+e2e full（全量功能）          .\run-tests.ps1 -Layer e2e -Level full
   ↓
 提 PR（CONTRIBUTING.md 流程，CLA 必填）
 ```

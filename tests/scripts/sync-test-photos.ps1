@@ -5,7 +5,7 @@
 .DESCRIPTION
     e2e 测试的 photos 夹具放在独立 Git 仓库 siyuan044/trailsnap-test-photos，
     用 Git LFS 存储（避免大量 jpg 进入主 repo）。本脚本把该仓库拉（克隆或更新）
-    到 tests/fixtures/e2e-photos/，供 docker-compose.e2e.yml 挂载。
+    到 tests/fixtures/e2e-photos/，供 docker-compose.yml 挂载。
 
     行为：
       - 目标目录是空目录 → git clone + git lfs pull

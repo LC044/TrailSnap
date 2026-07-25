@@ -347,9 +347,9 @@ jobs:
           sed -i.bak \
             -e 's|siyuan044/trailsnap-server:master|siyuan044/trailsnap-server:ci|' \
             -e 's|siyuan044/trailsnap-frontend:master|siyuan044/trailsnap-frontend:ci|' \
-            tests/docker/docker-compose.e2e.yml
-          rm tests/docker/docker-compose.e2e.yml.bak
-          grep -nE 'image:' tests/docker/docker-compose.e2e.yml
+            tests/docker/docker-compose.yml
+          rm tests/docker/docker-compose.yml.bak
+          grep -nE 'image:' tests/docker/docker-compose.yml
 
       - name: Restore AI model weights cache
         id: ai-models-restore
@@ -361,56 +361,16 @@ jobs:
           key: ai-models-v1
 
       - name: Pull AI image
-        # e2e-up.ps1 -SkipPull 不会拉任何镜像，所以 ai:master 需预先拉到本地，
+        # run-tests -Mode docker 起栈时不会 compose pull，ai:master 需预先拉到本地，
         # 否则 compose up 找不到镜像。server/frontend 是本地 :ci build，pgvector 由 up 自动拉。
         run: docker pull siyuan044/trailsnap-ai:master
 
-      - name: Start E2E environment
+      - name: Run E2E (services-up → run-e2e → services-down)
+        # 单一入口：run-tests.ps1 内部 try/finally 保证 services-down 无论成败都执行，
+        # docker logs 落到 tests/artifacts/。AI 模型预热在 services-up 内完成（轮询 /embedding/text）。
+        # 本地用同样命令：run-tests.ps1 -Layer e2e -Level <level> -Mode docker
         shell: pwsh
-        # SkipPull：server/frontend 是本地 :ci，ai:master 已在上一步拉好，无需 compose pull
-        run: ./tests/scripts/e2e-up.ps1 -SkipPull
-
-      - name: Wait for AI service & warm up models
-        # AI 容器 lifespan 会在后台并发下载模型；这里等 HTTP 起来，再轮询 embedding 端点
-        # 确认 clip_text 已下载并加载（其余模型同步并发下载，基本就绪）。
-        # 模型未就绪只告警不 fail——e2e 探针会自动 skip AI 用例，避免阻塞整条流水线。
-        shell: bash
-        run: |
-          set +e
-          echo "Waiting for AI health-check (http://localhost:8801/health-check)..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:8801/health-check >/dev/null; then
-              echo "AI container up after ${i}x2s"
-              break
-            fi
-            sleep 2
-          done
-          if ! curl -sf http://localhost:8801/health-check >/dev/null; then
-            echo "::error::AI container did not become healthy"
-            docker compose -f tests/docker/docker-compose.e2e.yml logs ai --tail=100
-            exit 1
-          fi
-
-          echo "Warming up embedding model (poll POST /embedding/text until 200)..."
-          ready=0
-          for i in $(seq 1 450); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8801/embedding/text \
-              -H 'Content-Type: application/json' -d '{"texts":["warmup"]}' 2>/dev/null || echo 000)
-            if [ "$code" = "200" ]; then
-              echo "AI embedding ready after ${i}x2s"
-              ready=1
-              break
-            fi
-            sleep 2
-          done
-          if [ "$ready" != "1" ]; then
-            echo "::warning::AI models not ready after 900s; e2e AI specs will be skipped. Last status=$code"
-            docker compose -f tests/docker/docker-compose.e2e.yml logs ai --tail=80
-          fi
-
-      - name: Run E2E tests
-        shell: pwsh
-        run: ./tests/scripts/e2e-run.ps1 -Level ${{ steps.e2e-level.outputs.level }}
+        run: ./tests/scripts/run-tests.ps1 -Layer e2e -Level ${{ steps.e2e-level.outputs.level }} -Mode docker -EnvFile tests/.env.test
 
       - name: Save AI model weights cache
         # 仅在缓存未命中时保存（命中时无需覆写）；if: always() 保证测试失败也能存下权重
@@ -419,11 +379,6 @@ jobs:
         with:
           path: tests/.cache/ai-models
           key: ai-models-v1
-
-      - name: Stop E2E environment and collect logs
-        if: always()
-        shell: pwsh
-        run: ./tests/scripts/e2e-down.ps1
 
       - name: Upload Playwright report
         if: always()

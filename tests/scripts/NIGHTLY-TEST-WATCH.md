@@ -68,7 +68,7 @@ if (-not (Test-Path 'tests\.env.test')) {
 ## 2. 运行测试
 
 ```powershell
-.\tests\scripts\run-tests.ps1 -Layer e2e -Cover full `
+.\tests\scripts\run-tests.ps1 -Layer e2e -Level full `
     2>&1 | Tee-Object -FilePath "$runDir\run.log"
 $exit = $LASTEXITCODE
 "$exit" | Set-Content "$runDir\exit.txt"
@@ -117,7 +117,7 @@ $exit = $LASTEXITCODE
 
 3.6. 全部失败修完，跑一次完整 e2e 确认无回归：
    ```powershell
-   .\tests\scripts\run-tests.ps1 -Layer e2e -Cover full
+   .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
    ```
    - 通过 → §4。
    - 仍有失败 → §3.5 处理剩余失败；如果只是「测试运行慢导致超时」这种 C 类，retry 后仍超时则整体放弃本轮 commit。
@@ -304,7 +304,7 @@ ALERT:  tests\artifacts\nightly\YYYY-MM-DD\ALERT.md
 
 | 用途                  | 命令                                                                 |
 |-----------------------|----------------------------------------------------------------------|
-| 跑全部 e2e            | `.\tests\scripts\run-tests.ps1 -Layer e2e -Cover full`               |
+| 跑全部 e2e            | `.\tests\scripts\run-tests.ps1 -Layer e2e -Level full`               |
 | 跑单个 pytest 用例    | `python -m pytest tests/test_x.py::test_y -v`                        |
 | 跑单个 playwright     | `pnpm --dir package/website exec playwright test --grep "用例名"`    |
 | 重建后端 DB + 起服务  | `python start.py`                                                    |
