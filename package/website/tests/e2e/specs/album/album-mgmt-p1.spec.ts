@@ -153,6 +153,9 @@ test.describe.serial('P1 - 相册管理', () => {
   })
 
   test('2.2.2 创建条件相册 - 带 time_range 入库后被任务扫描', async ({ page, request }, testInfo) => {
+    // SCAN_ALBUM 任务在 CI docker（2 worker 并发 + 照片处理任务抢占 worker）下可能要
+    // 30s+ 才把匹配照片回填到条件相册；默认 30s 测试超时太紧，放宽到 120s。
+    test.setTimeout(120_000)
     const name = `${UNIQUE_TAG}-conditional`
     const created = await createAlbumViaApi(request, {
       name,
@@ -167,7 +170,7 @@ test.describe.serial('P1 - 相册管理', () => {
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
 
     let numPhotos = 0
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       const res = await request.get(`${e2eEnv.apiBaseUrl}/albums/${created.id}`, {
         headers: authHeaders(authToken),
       })

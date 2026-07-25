@@ -12,6 +12,11 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Smoke - 找回密码 @smoke', () => {
+  // /forgot-password 是未登录即可访问的白名单页面。用空 storageState 起干净 context，
+  // 不继承全局登录态——避免并行跑 login-flow 的「找回密码改密码」用例把共享 token
+  // 失效后，本 spec 被路由守卫踢到 /login（toHaveURL 收到 /login 而非 /forgot-password）。
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test('找回密码页面正常加载 - 标题与重置方式可见', async ({ page }) => {
     await page.goto('/forgot-password');
 

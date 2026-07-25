@@ -11,6 +11,10 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('Smoke - 断舍离筛选 @smoke', () => {
+  // /swipe-filter 是 blank layout 独立路由，无需登录。用空 storageState 起干净 context，
+  // 不继承全局登录态——避免共享 token 被并行用例失效后页面被守卫干扰、h1 不渲染。
+  test.use({ storageState: { cookies: [], origins: [] } });
+
   test('断舍离页面正常加载 - 无需登录即可打开', async ({ page }) => {
     await page.goto('/swipe-filter');
 
