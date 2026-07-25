@@ -12,6 +12,8 @@
 - [数据库迁移](#数据库迁移)
 - [问题反馈](#问题反馈)
 
+> 测试统一入口 `tests/scripts/run-tests.ps1`（CI 与本地共用），详见 [`tests/README.md`](tests/README.md)。
+
 ## 开发环境设置
 
 ### 前置要求
@@ -161,6 +163,26 @@ black .
 cd package/website
 pnpm lint
 ```
+
+### 跑测试
+
+测试统一入口是 `tests/scripts/run-tests.ps1`（CI 与本地共用），详细约定见 [`tests/README.md`](tests/README.md)。
+
+```powershell
+# 后端 + AI 的 smoke 单元测试（秒级，无外部服务）
+.\tests\scripts\run-tests.ps1 -Layer unit -Level smoke
+
+# 前端 e2e p0（本地 dev 进程）
+.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0
+
+# 起 docker compose 栈跑 p0（与 CI 同路径，验证发布镜像）
+.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker
+
+# 按端口清理所有测试服务
+.\tests\scripts\run-tests.ps1 -StopServices
+```
+
+首次跑 e2e 前需要同步测试照片（独立 LFS 仓库）：`.\tests\scripts\sync-test-photos.ps1`。提交前至少跑通 `-Layer unit`；改动涉及 UI/接口时补跑 `-Layer e2e -Level p0`。
 
 ## Pull Request 流程
 

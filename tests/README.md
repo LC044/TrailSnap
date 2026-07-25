@@ -19,6 +19,27 @@
 
 **单一数据源**：`tests/.env.test`（默认）或你传入的 `.env` 文件。改这一份，docker / 前端 e2e / 后端 / AI 四方共享。子进程（uv、pnpm、docker）全部继承。
 
+### 脚本结构（`tests/scripts/`）
+
+```
+run-tests.ps1            ← 唯一入口（CI + 本地都用它）
+  ├─ services-up.ps1        启动服务（dev 本地进程 / docker compose）+ AI 模型预热
+  ├─ services-down.ps1      关闭服务 + 收集 docker 日志
+  ├─ test-services-lib.ps1  共享函数库（端口探测 / 进程树清理 / uv 解析 / DB 删除 / AI 预热）
+  └─ Import-EnvFile.ps1     .env 文件加载器（注入 $env:，子进程继承）
+```
+
+`run-tests.ps1` 在 e2e/integration 层的 `try` 块里调 `services-up` → 跑测试 → `finally` 调 `services-down`（`TS_TEST_KEEP_SERVICES=true` 时跳过）。unit 层不需要服务，直接跑 pytest。`-StopServices` 直接委托 `services-down`，不启动/不测。
+
+### dev 模式 vs docker 模式（`-Mode`）
+
+| 模式 | 服务载体 | 适用场景 | 速度 |
+|---|---|---|---|
+| `dev`（本地默认） | 本地进程：`uv run python start.py`（server）/ `uv run uvicorn main:app`（AI）/ `pnpm dev`（前端） | 日常迭代，改代码可热重载 | 启动快 |
+| `docker` | `docker compose` 起 `tests/docker/docker-compose.yml`（postgres + server + ai + frontend） | 复现 CI、验证发布镜像、干净隔离环境 | 启动慢但可复现 |
+
+两种模式都走同一个 `run-tests.ps1`，只是 `-Mode` 不同。CI 的 e2e job 用 `run-tests.ps1 -Layer e2e -Level <level> -Mode docker`，和本地 `-Mode docker` 完全同路径——本地过了 CI 就过。`-Mode` 不传时按 `TS_TEST_ENV` 推断：`docker`/`ci` → docker，否则 dev。
+
 ---
 
 ## 2. 环境变量（`tests/.env.test`）
@@ -122,16 +143,18 @@ uv run python -m pytest -m "smoke and module_album" -v
 
 ### 套件体系
 
-`TS_E2E_SUITE` 决定 testDir / testMatch / globalSetup / 登录方式：
+`TS_E2E_SUITE`（=`-Level`）决定 testDir / testMatch / globalSetup / 登录方式：
 
 | 套件 | 用途 | 登录 | 典型命令 |
 |---|---|---|---|
-| `dev` | 日常开发，全量 spec | globalSetup 登录一次落盘 | `pnpm test:e2e` |
-| `p0` | 核心路径功能（`@p0`） | bootstrap 注册+登录 | `run-e2e.mjs p0` |
-| `p1` | 业务深测（`P1 - `） | 同 p0 | `run-e2e.mjs p1` |
-| `smoke` | 页面打开+系统冒烟（`@smoke`） | 同 p0 | `run-e2e.mjs smoke` |
-| `scan` | 仅扫描准备，不跑断言 | — | `run-e2e.mjs scan` |
-| `light`/`full` | 不走 globalSetup 的轻量/全量 | 每 spec 自登录 | `run-e2e.mjs full` |
+| `dev` | 日常开发，全量 spec | globalSetup 登录一次落盘 | `run-tests.ps1 -Layer e2e -Level dev` |
+| `p0` | 核心路径功能（`@p0`） | bootstrap 注册+登录 | `run-tests.ps1 -Layer e2e -Level p0` |
+| `p1` | 业务深测（`P1 - `） | 同 p0 | `run-tests.ps1 -Layer e2e -Level p1` |
+| `smoke` | 页面打开+系统冒烟（`@smoke`） | 同 p0 | `run-tests.ps1 -Layer e2e -Level smoke` |
+| `scan` | 仅扫描准备，不跑断言 | — | `run-tests.ps1 -Layer e2e -Level scan` |
+| `light`/`full` | 不走 globalSetup 的轻量/全量 | 每 spec 自登录 | `run-tests.ps1 -Layer e2e -Level full` |
+
+> 不传 `-Level` 时读 `TS_E2E_SUITE`（`.env.test` 默认 `dev`）。`run-tests.ps1` 统一委托 `node playwright/run-e2e.mjs <level>`，不再有 `-Cover full` 实际跑 `pnpm test:e2e` 的歧义。
 
 ### 标签约定（写进 `test.describe` 标题）
 
@@ -160,20 +183,27 @@ package/website/
    └─ helpers/                   # bootstrap.ts / scan-global-setup.ts / task-poller.ts
 ```
 
-### 一次 e2e run 的时序（dev 套件）
+### 一次 e2e run 的时序
 
 ```
-run-tests.ps1 加载 .env → 注入 TS_E2E_PREP_RUN_ID（RESET_DB 时唯一）→ pnpm test:e2e
+run-tests.ps1 -Layer e2e -Level <level> -Mode <dev|docker>
    │
-   ├─ globalSetup (dev-global-setup.ts)
-   │    登录 testUsername → preparePhotoFixturesForSuite(smoke+p0)
-   │    → 落盘 .playwright-dev/storage-state.json
-   ├─ 所有 spec（worker 进程，复用 storageState）
-   │    00-setup.spec.ts → ...业务 spec... → 99-teardown.spec.ts
-   └─ globalTeardown (global-teardown.ts)
-        KEEP_SERVICES=true → 直接返回，不清
-        否则 → cleanupPreparedPhotoFixtures（删测试目录+关联照片）
+   ├─ services-up.ps1
+   │    dev    : 清理占用端口 → start.py / uvicorn / pnpm dev（端口幂等）→ 等 ready → AI 模型预热
+   │    docker : docker compose up -d → 等 server health → AI 模型预热（轮询 /embedding/text 到 200）
+   ├─ run-e2e.mjs <level>           # 设 TS_E2E_SUITE=<level>，注入 TS_E2E_PREP_RUN_ID（RESET_DB 时唯一）
+   │    ├─ globalSetup (dev-global-setup.ts)            # dev 套件：登录+落盘 storageState
+   │    │    登录 testUsername → preparePhotoFixturesForSuite(smoke+p0)
+   │    ├─ 所有 spec（worker 进程，复用 storageState）
+   │    │    00-setup.spec.ts → ...业务 spec... → 99-teardown.spec.ts
+   │    └─ globalTeardown (global-teardown.ts)
+   │         KEEP_SERVICES=true → 直接返回；否则 cleanupPreparedPhotoFixtures
+   └─ services-down.ps1           # finally 块，KEEP_SERVICES=true 时跳过
+        dev    : taskkill /F /T 进程树 + 端口兜底清扫
+        docker : docker compose logs → tests/artifacts/ → down -v
 ```
+
+`full` 套件内部 `run-e2e.mjs` 会再调 `startServices()`/`stopServices()`（`service-manager.mjs`）；`services-up` 已预起栈，`startServices` 检测到端口在用 → 复用、不重复起，`stopServices` no-op，真正的 `down` 由 `services-down` 负责。
 
 ### 测试照片来源（独立 LFS 仓库）
 
@@ -300,3 +330,23 @@ pnpm test:e2e --grep "@login"              # 按 grep 跑
 pnpm test:e2e:ui                            # Playwright UI 模式
 pnpm test:e2e:headed                       # 可见浏览器
 ```
+
+---
+
+## 9. CI（GitHub Actions）
+
+`.github/workflows/tests.yml` 是 CI 与本地的**同一套脚本**，没有第二条路径。
+
+| Job | 命令 | 说明 |
+|---|---|---|
+| CLI unit | `uv run pytest tests/ --ignore=tests/integration` | 纯单元，不起服务 |
+| Server unit | `uv run python -m pytest tests/unit` | `python -m` 把 cwd 加进 sys.path，使 `from app...` 可导入 |
+| AI unit | `uv run python -m pytest tests/` | router 测试 mock 模型，不下载权重 |
+| Server integration | service container pgvector(55432) + uvicorn(58000) + `pytest tests/integration` | HTTP 级集成 |
+| E2E | `run-tests.ps1 -Layer e2e -Level <level> -Mode docker` | 本地 `-Mode docker` 同路径 |
+
+**E2E level 选择**：PR / push master → `p0`；nightly cron → `full`；手动 dispatch → 可选。同一 PR 多次推送用 `concurrency` 取消旧 run；nightly 与 push 落在不同 group，互不打断。
+
+**AI 模型权重缓存**：e2e 栈的 ai 容器把 `tests/.cache/ai-models` bind-mount 进去；CI 用 `actions/cache`（key `ai-models-v1`）跨 run 持久化。首次 run 下载数百 MB（modelscope），后续秒级恢复。`services-up` 的 AI 预热轮询 `POST /embedding/text` 到 200 确认模型就绪。
+
+**镜像来源**：server/frontend 用本地 `docker build :ci`（测当前代码）；ai 直接 `docker pull siyuan044/trailsnap-ai:master`（由 `构建ai` 关键字推送，省掉 insightface/torch 重编译）。改了 `package/ai/` 后记得先走一次带 `构建ai` 的提交再跑 e2e，避免 ai 镜像版本漂移。
