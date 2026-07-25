@@ -16,6 +16,7 @@ from app.core.config_manager import config_manager
 from PIL import Image
 
 from app.schemas.ocr import OCRCreate
+from app.service.tasks.ci_limit import is_ci, ci_task_limit_reached, ci_remaining_budget, CI_TASK_PHOTO_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,10 @@ class OcrStrategy(BaseTaskStrategy):
                     if tasks_status.get('ocr'):
                          return {'status': 'skipped', 'reason': 'already processed'}
 
+                # CI 限速：最多处理 5 张照片，已达上限直接跳过
+                if ci_task_limit_reached(db, OCR):
+                    return {'status': 'skipped', 'reason': f'CI ocr limit reached ({CI_TASK_PHOTO_LIMIT} photos)'}
+
                 return await self.process_single_photo(worker, photo, db)
 
             # 2. Generator Mode (Scan all)
@@ -53,7 +58,9 @@ class OcrStrategy(BaseTaskStrategy):
             offset = 0
             
             generated_count = 0
-            
+            # CI 限速：只生成到上限为止的子任务，避免入队大量会被跳过的任务
+            remaining = ci_remaining_budget(db, OCR)
+
             while True:
                 batch = db.query(Photo).offset(offset).limit(batch_size).all()
                 if not batch:
@@ -73,6 +80,8 @@ class OcrStrategy(BaseTaskStrategy):
                             should_process = True
                     
                     if should_process:
+                        if remaining is not None and generated_count >= remaining:
+                            break
                         tasks_to_create.append({
                             'type': TaskType.OCR,
                             'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
@@ -85,6 +94,9 @@ class OcrStrategy(BaseTaskStrategy):
                     generated_count += len(tasks_to_create)
 
                 offset += batch_size
+
+                if remaining is not None and generated_count >= remaining:
+                    break
 
             return {
                 'processed': 0,
@@ -164,7 +176,12 @@ class OcrStrategy(BaseTaskStrategy):
                         if tasks_status.get('ocr'):
                             results.append({'task_id': task.id, 'task_type': task.type, 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'already processed'}})
                             continue
-                            
+
+                    # CI 限速：最多处理 5 张照片，已达上限直接跳过（不调 AI 服务）
+                    if ci_task_limit_reached(db, OCR):
+                        results.append({'task_id': task.id, 'task_type': task.type, 'status': 'completed', 'result': {'status': 'skipped', 'reason': f'CI ocr limit reached ({CI_TASK_PHOTO_LIMIT} photos)'}})
+                        continue
+
                     target_path = storage.get_preview_path(photo.owner_id, photo.id)
                     if not os.path.exists(target_path):
                         target_path = photo.file_path

@@ -16,6 +16,7 @@ from app.db.models.image_description import ImageDescription
 from app.core.config_manager import config_manager
 from app.service import storage
 from app.utils.path import get_user_roots, compute_browse_path
+from app.service.tasks.ci_limit import ci_task_limit_reached, ci_remaining_budget, CI_TASK_PHOTO_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,10 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                     if tasks_status.get('visual_description'):
                          return {'status': 'skipped', 'reason': 'already processed'}
 
+                # CI 限速：最多处理 5 张照片，已达上限直接跳过
+                if ci_task_limit_reached(db, ImageDescription):
+                    return {'status': 'skipped', 'reason': f'CI visual_description limit reached ({CI_TASK_PHOTO_LIMIT} photos)'}
+
                 return await self.process_single_photo(worker, photo, db, settings)
 
             # 2. Generator Mode (Scan all)
@@ -136,6 +141,8 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             offset = 0
 
             generated_count = 0
+            # CI 限速：只生成到上限为止的子任务
+            remaining = ci_remaining_budget(db, ImageDescription)
 
             while True:
                 query = db.query(Photo).filter(Photo.file_type != FileType.video, Photo.image_type != ImageType.SCREENSHOT)
@@ -157,6 +164,8 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                             should_process = True
 
                     if should_process:
+                        if remaining is not None and generated_count >= remaining:
+                            break
                         tasks_to_create.append({
                             'type': TaskType.VISUAL_DESCRIPTION,
                             'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
@@ -169,6 +178,9 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                     generated_count += len(tasks_to_create)
 
                 offset += batch_size
+
+                if remaining is not None and generated_count >= remaining:
+                    break
 
             return {
                 'processed': 0,

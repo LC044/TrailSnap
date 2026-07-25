@@ -39,6 +39,9 @@ services:
       DB_URL: postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       RAILWAY_DB_URL: postgresql://trailsnap:trailsnap@postgres:5432/railway
       AI_API_URL: http://ai:8001
+      # 透传 runner 的 CI 标志进容器：server 据此对 OCR/VISUAL_DESCRIPTION 等任务限速
+      # （CI 下最多处理 5 张照片）。本地 docker/dev 模式 CI 未设 → 不限制。
+      CI: ${CI:-}
     ports:
       - "${TS_DOCKER_SERVER_PORT:-8800}:8000"
     volumes:
