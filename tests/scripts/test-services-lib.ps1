@@ -44,6 +44,31 @@ function Test-Port {
     }
 }
 
+# 轮询 HTTP 健康端点直到返回 200，或超时返回 $false。
+# 必须用应用层探测而非 Test-Port：docker compose 的端口发布在容器一启动就由
+# docker-proxy 在宿主侧监听，但此时容器内 uvicorn 可能还没 bind（start.py 仍在
+# 跑迁移/导 CSV，冷启动可达 ~100s）。docker-proxy 在后端未就绪时会 accept 再立即
+# 关闭连接 → TCP 探测"假就绪"，Playwright 此时请求会 socket hang up。直接打
+# /health-check 直到 200 才能确认 uvicorn 已开始服务。
+function Wait-HttpReady {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [int]$TimeoutSeconds = 180,
+        [int]$IntervalSeconds = 2
+    )
+    $attempts = [int]([math]::Max(1, [math]::Floor($TimeoutSeconds / $IntervalSeconds)))
+    for ($i = 1; $i -le $attempts; $i++) {
+        try {
+            $resp = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 5 -ErrorAction Stop
+            if ($resp.StatusCode -eq 200) { return $true }
+        } catch {
+            # 连接被 reset（docker-proxy 后端未就绪）/ 拒绝 / 5xx → 继续轮询
+        }
+        Start-Sleep -Seconds $IntervalSeconds
+    }
+    return $false
+}
+
 # 计算本次运行“关心的”服务端口（server + ai，web 仅当 Component 含 website）
 function Get-ServicePorts {
     param([string]$Component = 'all')
@@ -137,7 +162,7 @@ function Invoke-TestDatabaseDrop {
 import sys
 from sqlalchemy import create_engine, text
 try:
-    engine = create_engine('postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/postgres', isolation_level='AUTOCOMMIT')
+    engine = create_engine('postgresql://${dbUser}:${dbPass}@${dbHost}:${dbPort}/postgres?connect_timeout=5', isolation_level='AUTOCOMMIT')
     with engine.connect() as conn:
         conn.execute(text('DROP DATABASE IF EXISTS "$dbName" WITH (FORCE);'))
     print('  数据库 $dbName 已删除')

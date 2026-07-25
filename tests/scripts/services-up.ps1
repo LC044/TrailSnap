@@ -160,21 +160,18 @@ elseif ($Mode -eq 'docker') {
         Write-Host "  docker compose up -d（$composeFile）..." -ForegroundColor Cyan
         & docker compose -f $composeFile --env-file $EnvFile up -d
         if ($LASTEXITCODE -ne 0) { throw "docker compose up 失败，退出码 $LASTEXITCODE" }
-
-        # 等 server health-check
-        Write-Host "  等待 server health-check..." -ForegroundColor Cyan
-        $maxWait = 90
-        while ($maxWait -gt 0) {
-            if (Test-Port $apiUri.Port) { break }
-            Start-Sleep -Seconds 2
-            $maxWait--
-        }
-        if ($maxWait -eq 0) {
-            & docker compose -f $composeFile --env-file $EnvFile logs --tail=80
-            throw "server 容器未在 180s 内监听 $($apiUri.Port)。"
-        }
-        Write-Host "  server 已就绪" -ForegroundColor Green
     }
+
+    # 等 server 应用就绪：直接打 /health-check 直到 200（最多 180s）。
+    # 不能只用 Test-Port：docker-proxy 在容器内 uvicorn 真正监听前就会 accept 再立刻
+    # 关闭连接，TCP 探测会"假就绪"，Playwright 此时请求会 socket hang up。
+    $healthUrl = "$($env:TS_API_BASE_URL.TrimEnd('/'))/health-check"
+    Write-Host "  等待 server 就绪（轮询 $healthUrl 直到 200，最多 180s）..." -ForegroundColor Cyan
+    if (-not (Wait-HttpReady -Url $healthUrl -TimeoutSeconds 180 -IntervalSeconds 2)) {
+        & docker compose -f $composeFile --env-file $EnvFile logs --tail=80 server
+        throw "server 未在 180s 内通过健康检查 ($healthUrl)。"
+    }
+    Write-Host "  server 已就绪" -ForegroundColor Green
 
     # AI 模型预热（docker 栈里 AI 容器后台下载模型）
     Wait-AiReady

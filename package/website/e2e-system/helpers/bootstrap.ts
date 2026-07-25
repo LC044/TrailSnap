@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 
-import { chromium, request as playwrightRequest, type FullConfig } from '@playwright/test'
+import { chromium, request as playwrightRequest, type APIResponse, type FullConfig } from '@playwright/test'
 
 import {
   adminUser,
@@ -22,12 +22,23 @@ async function registerAdminIfNeeded() {
   })
 
   try {
-    const statusResponse = await request.get('/auth/status')
-    if (!statusResponse.ok()) {
-      throw new Error(`获取认证状态失败: ${statusResponse.status()} ${statusResponse.statusText()}`)
+    // server 刚通过 /health-check 后仍可能有极短的接收窗口；带退避重试，避免瞬时
+    // socket hang up 直接让整个 globalSetup 失败。
+    let statusResponse: APIResponse | undefined
+    for (let attempt = 1; ; attempt++) {
+      try {
+        statusResponse = await request.get('/auth/status')
+        if (statusResponse.ok()) break
+      } catch {
+        // socket hang up / 连接被 reset → 重试
+      }
+      if (attempt >= 15) {
+        throw new Error('获取认证状态失败：server 在 30s 内未稳定响应 /auth/status')
+      }
+      await new Promise((r) => setTimeout(r, 2000))
     }
 
-    const status = await statusResponse.json() as { has_users: boolean }
+    const status = await statusResponse!.json() as { has_users: boolean }
     if (!status.has_users) {
       const registerResponse = await request.post('/auth/register', {
         data: {
