@@ -23,6 +23,17 @@ if ($IsWindows -or ($env:OS -eq 'Windows_NT')) {
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $WebsiteDir = Join-Path $RepoRoot 'package\website'
+
+# 加载共享 env 文件（单一来源 tests/.env.test）。
+# CI：.github/workflows/tests.yml 会先把 tests/.env.test.ci 复制为 tests/.env.test；
+# 本地：run-tests.ps1 已预先加载过，此处幂等再载一次。
+# 文件不存在时跳过，由下方默认值兜底。
+$EnvFile = Join-Path $RepoRoot 'tests\.env.test'
+if (Test-Path $EnvFile) {
+  . (Join-Path $PSScriptRoot 'Import-EnvFile.ps1')
+  Import-EnvFile -Path $EnvFile
+}
+
 Push-Location $WebsiteDir
 try {
   if (-not (Test-Path (Join-Path $WebsiteDir 'node_modules'))) { Write-Host 'Installing website dependencies...'; pnpm install --frozen-lockfile }

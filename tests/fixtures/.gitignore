@@ -1,0 +1,4 @@
+# e2e-photos/ 是从独立 LFS 仓库拉取的测试照片目录，不入主 repo。
+# 跑 e2e 前请执行：.\tests\scripts\sync-test-photos.ps1
+# （CI 上由 .github/workflows/tests.yml 自动 checkout）
+e2e-photos/

@@ -1,0 +1,438 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+  schedule:
+    # Nightly 04:00 UTC ≈ 12:00 Asia/Shanghai; 跑 e2e full 兜底
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      e2e_level:
+        description: 'E2E 套件档位（仅 e2e job 消费）'
+        required: false
+        default: 'p0'
+        type: choice
+        options:
+          - scan
+          - p0
+          - p1
+          - smoke
+          - light
+          - all
+          - full
+      skip_e2e:
+        description: '跳过 e2e job（本地复跑 unit/integration 时省时间）'
+        required: false
+        default: false
+        type: boolean
+
+# 同一 PR 多次推送时取消旧 run，节省 CI 资源。
+# group 带 event_name：schedule(nightly full) 与 push 落在不同 group，
+# 避免一次普通 master push 把夜间 full 兜底跑打断。
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_DEFAULT: '3.12'
+  PYTHON_CLI: '3.10'
+  NODE_VERSION: '20'
+  TEST_PHOTOS_REPO: 'LC044/trailsnap-test-photos'
+
+jobs:
+  # ==========================================================================
+  # CLI 单元测试 - 无外部依赖，秒级
+  # ==========================================================================
+  cli-unit:
+    name: CLI unit (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_CLI }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'package/trailsnap-cli/pyproject.toml'
+
+      - name: Install + test
+        working-directory: package/trailsnap-cli
+        run: |
+          uv sync --group dev
+          uv run pytest tests/ -v --tb=short --junitxml=junit.xml
+
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-unit-junit
+          path: package/trailsnap-cli/junit.xml
+          retention-days: 7
+
+  # ==========================================================================
+  # Server 单元测试 - 无外部依赖，秒级
+  # ==========================================================================
+  server-unit:
+    name: Server unit (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'package/server/pyproject.toml'
+
+      - name: Prepare shared test env
+        run: cp tests/.env.test.ci tests/.env.test
+
+      - name: Install + test
+        working-directory: package/server
+        run: |
+          uv sync
+          uv run pytest tests/unit -v --tb=short --junitxml=junit.xml
+
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-unit-junit
+          path: package/server/junit.xml
+          retention-days: 7
+
+  # ==========================================================================
+  # AI 单元测试 - 完整 deps（router 测试会 import 服务模块），无外部服务
+  # ==========================================================================
+  ai-unit:
+    name: AI unit (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'package/ai/pyproject.toml'
+
+      - name: Prepare shared test env
+        run: cp tests/.env.test.ci tests/.env.test
+
+      - name: Install + test
+        working-directory: package/ai
+        run: |
+          uv sync --extra cpu
+          uv run pytest tests/ -v --tb=short --junitxml=junit.xml
+
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-unit-junit
+          path: package/ai/junit.xml
+          retention-days: 7
+
+  # ==========================================================================
+  # Server 集成测试 - 起 pgvector service + 同 step 内启 uvicorn + 跑 HTTP-level pytest
+  # ==========================================================================
+  server-integration:
+    name: Server integration (pytest + live server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18-trixie
+        env:
+          POSTGRES_DB: trailsnap
+          POSTGRES_USER: trailsnap
+          POSTGRES_PASSWORD: trailsnap
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U trailsnap -d trailsnap -p 5432"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DB_URL: postgresql://trailsnap:trailsnap@localhost:55432/trailsnap
+      TS_DB_URL: postgresql://trailsnap:trailsnap@localhost:55432/trailsnap
+      TS_API_BASE_URL: http://localhost:58000
+      TS_AI_API_URL: http://127.0.0.1:65535  # integration 不依赖 AI；死端口，与 .env.test.ci 保持一致
+      TS_TEST_ENV: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_DEFAULT }}
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'package/server/pyproject.toml'
+
+      - name: Prepare shared test env
+        run: cp tests/.env.test.ci tests/.env.test
+
+      - name: Enable pgvector extension
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=trailsnap psql -h localhost -U trailsnap -d trailsnap \
+            -c "CREATE EXTENSION IF NOT EXISTS vector"
+
+      - name: Install deps + alembic upgrade
+        working-directory: package/server
+        run: |
+          uv sync
+          uv run alembic upgrade head
+
+      - name: Run integration tests (uvicorn in same step)
+        working-directory: package/server
+        run: |
+          set -e
+          mkdir -p logs
+          # 后台启 uvicorn，与本 step 同一进程组
+          uv run uvicorn main:app --host 127.0.0.1 --port 58000 \
+            > logs/server.log 2>&1 &
+          UVICORN_PID=$!
+          trap "kill $UVICORN_PID 2>/dev/null || true" EXIT
+
+          # 等 health-check，最多 60 秒
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:58000/health-check >/dev/null; then
+              echo "Server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -sf http://localhost:58000/health-check >/dev/null; then
+            echo "::error::Server failed to start; tail of logs/server.log:"
+            tail -200 logs/server.log
+            exit 1
+          fi
+
+          # 跑测试（uvicorn 在本 step 进程组内仍存活）
+          uv run pytest tests/integration -v --tb=short --junitxml=junit.xml
+
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-integration-junit
+          path: package/server/junit.xml
+          retention-days: 7
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-integration-log
+          path: package/server/logs/server.log
+          retention-days: 3
+
+  # ==========================================================================
+  # 前端 E2E - 复用 tests/scripts/e2e-up/run/down 流程（与本地 run-tests.ps1 一致）
+  #   PR + push master: 跑 p0 档（默认）
+  #   nightly cron:     workflow_dispatch 切到 full 档
+  #   手动 dispatch:    可选 level
+  # ==========================================================================
+  e2e:
+    name: E2E (Playwright + docker compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Prepare shared test env
+        run: cp tests/.env.test.ci tests/.env.test
+
+      - name: Install website deps
+        working-directory: package/website
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright chromium
+        working-directory: package/website
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Checkout test photos (Git LFS)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TEST_PHOTOS_REPO }}
+          path: tests/fixtures/e2e-photos
+          lfs: true
+          clean: false
+
+      - name: Decide E2E level
+        id: e2e-level
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            LEVEL="full"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            LEVEL="${{ inputs.e2e_level }}"
+          else
+            LEVEL="p0"
+          fi
+          echo "level=$LEVEL" >> $GITHUB_OUTPUT
+          echo "E2E level decided: $LEVEL"
+
+      - name: Build local server + frontend images
+        # AI 镜像不本地构建——直接拉 Docker Hub 已发布的 siyuan044/trailsnap-ai:master
+        #（由 ‘构建ai’ 关键字触发的流水线推送），省掉 insightface/torch 的重度编译。
+        run: |
+          docker build -t siyuan044/trailsnap-server:ci \
+            -f package/server/Dockerfile package/server
+          docker build -t siyuan044/trailsnap-frontend:ci \
+            -f package/website/Dockerfile package/website
+
+      - name: Override image tags for e2e stack
+        # server/frontend 用本地刚 build 的 :ci；ai 保持 :master（下一步 docker pull 拉取）
+        run: |
+          sed -i.bak \
+            -e 's|siyuan044/trailsnap-server:master|siyuan044/trailsnap-server:ci|' \
+            -e 's|siyuan044/trailsnap-frontend:master|siyuan044/trailsnap-frontend:ci|' \
+            tests/docker/docker-compose.e2e.yml
+          rm tests/docker/docker-compose.e2e.yml.bak
+          grep -nE 'image:' tests/docker/docker-compose.e2e.yml
+
+      - name: Restore AI model weights cache
+        id: ai-models-restore
+        # 模型权重数百 MB，首次下载后缓存到 Actions cache，后续 run 秒级恢复，避免每次重下。
+        # 模型由代码版本锁定（modelscope repo 固定）；如需强制重下，把 key 升到 v2。
+        uses: actions/cache/restore@v4
+        with:
+          path: tests/.cache/ai-models
+          key: ai-models-v1
+
+      - name: Pull AI image
+        # e2e-up.ps1 -SkipPull 不会拉任何镜像，所以 ai:master 需预先拉到本地，
+        # 否则 compose up 找不到镜像。server/frontend 是本地 :ci build，pgvector 由 up 自动拉。
+        run: docker pull siyuan044/trailsnap-ai:master
+
+      - name: Start E2E environment
+        shell: pwsh
+        # SkipPull：server/frontend 是本地 :ci，ai:master 已在上一步拉好，无需 compose pull
+        run: ./tests/scripts/e2e-up.ps1 -SkipPull
+
+      - name: Wait for AI service & warm up models
+        # AI 容器 lifespan 会在后台并发下载模型；这里等 HTTP 起来，再轮询 embedding 端点
+        # 确认 clip_text 已下载并加载（其余模型同步并发下载，基本就绪）。
+        # 模型未就绪只告警不 fail——e2e 探针会自动 skip AI 用例，避免阻塞整条流水线。
+        shell: bash
+        run: |
+          set +e
+          echo "Waiting for AI health-check (http://localhost:8801/health-check)..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8801/health-check >/dev/null; then
+              echo "AI container up after ${i}x2s"
+              break
+            fi
+            sleep 2
+          done
+          if ! curl -sf http://localhost:8801/health-check >/dev/null; then
+            echo "::error::AI container did not become healthy"
+            docker compose -f tests/docker/docker-compose.e2e.yml logs ai --tail=100
+            exit 1
+          fi
+
+          echo "Warming up embedding model (poll POST /embedding/text until 200)..."
+          ready=0
+          for i in $(seq 1 450); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://localhost:8801/embedding/text \
+              -H 'Content-Type: application/json' -d '{"texts":["warmup"]}' 2>/dev/null || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "AI embedding ready after ${i}x2s"
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then
+            echo "::warning::AI models not ready after 900s; e2e AI specs will be skipped. Last status=$code"
+            docker compose -f tests/docker/docker-compose.e2e.yml logs ai --tail=80
+          fi
+
+      - name: Run E2E tests
+        shell: pwsh
+        run: ./tests/scripts/e2e-run.ps1 -Level ${{ steps.e2e-level.outputs.level }}
+
+      - name: Save AI model weights cache
+        # 仅在缓存未命中时保存（命中时无需覆写）；if: always() 保证测试失败也能存下权重
+        if: always() && steps.ai-models-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: tests/.cache/ai-models
+          key: ai-models-v1
+
+      - name: Stop E2E environment and collect logs
+        if: always()
+        shell: pwsh
+        run: ./tests/scripts/e2e-down.ps1
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-report
+          path: package/website/.playwright-system/report/
+          retention-days: 7
+
+      - name: Upload docker logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-docker-logs
+          path: tests/artifacts/
+          retention-days: 7
+
+
+

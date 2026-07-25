@@ -31,12 +31,32 @@ services:
       TZ: Asia/Shanghai
       DB_URL: postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       RAILWAY_DB_URL: postgresql://trailsnap:trailsnap@postgres:5432/railway
-      AI_API_URL: http://127.0.0.1:65535
+      AI_API_URL: http://ai:8001
     ports:
       - "8800:8000"
     volumes:
       - trailsnap-e2e-data:/app/data
-      - ../../package/official-site/public/examples/images:/testdata/photos
+      - ../../tests/fixtures/e2e-photos:/testdata/photos  # from LC044/trailsnap-test-photos (LFS)
+
+  ai:
+    image: siyuan044/trailsnap-ai:master
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      MODEL_PATH: /app/data/models
+      # e2e（尤其 full 套件）可能跑较久；关闭 idle 自杀，避免容器中途退出导致 AI 用例批量 fail
+      IDLE_TIMEOUT: 86400
+    ports:
+      - "8801:8001"
+    volumes:
+      # 模型权重持久化到宿主机；CI 用 actions/cache 跨 run 缓存，避免每次重下数百 MB
+      - ../../tests/.cache/ai-models:/app/data/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8001/health-check || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 30s
 
   frontend:
     image: siyuan044/trailsnap-frontend:master

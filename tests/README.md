@@ -35,6 +35,7 @@
 | `TS_TEST_KEEP_SERVICES` | `true` 时测后保留服务与数据，方便查看现场 | false |
 | `TS_E2E_SUITE` | e2e 套件：`dev`/`p0`/`p1`/`smoke`/`scan`/`all`/`light`/`full` | dev |
 | `TS_E2E_ENABLE_FIXTURE_SCAN` | e2e 前是否自动添加照片目录 + 触发扫描 | false |
+| `TS_TEST_PHOTOS_REPO` | 测试照片所在的独立 LFS 仓库 URL | `LC044/trailsnap-test-photos` |
 | `TS_PHOTO_HOST_DIR` / `TS_PHOTO_DIR` | 测试照片源目录（host）/ server 视角路径 | — |
 | `TS_TEST_USERNAME` / `TS_TEST_PASSWORD` | e2e 登录账号（本地 dev 通常就是首个超级用户） | e2e-admin / Passw0rd!123 |
 
@@ -166,6 +167,27 @@ run-tests.ps1 加载 .env → 注入 TS_E2E_PREP_RUN_ID（RESET_DB 时唯一）�
         KEEP_SERVICES=true → 直接返回，不清
         否则 → cleanupPreparedPhotoFixtures（删测试目录+关联照片）
 ```
+
+### 测试照片来源（独立 LFS 仓库）
+
+照片夹具**不进主 repo**,而是从独立仓库 [LC044/trailsnap-test-photos](https://github.com/LC044/trailsnap-test-photos)（Git LFS）拉取。结构：
+
+```
+trailsnap-test-photos/
+└── fixtures/
+    ├── smoke/   ← smoke 套件 photoBucket
+    └── p0/      ← p0/p1 套件 photoBucket
+```
+
+本地首次跑 e2e 前先同步（需要本机装 `git-lfs`）：
+
+```bash
+./tests/scripts/sync-test-photos.sh           # Linux / macOS
+# 或
+.\tests\scripts\sync-test-photos.ps1        # Windows
+```
+
+环境变量 `TS_TEST_PHOTOS_REPO` 可覆盖默认仓库（用于 fork / 内网部署）。CI 上由 `.github/workflows/tests.yml` 的 `actions/checkout@v4` 自动拉 LFS 对象，无需手动同步。
 
 ### 照片夹具（`photo-fixtures.ts`）
 
