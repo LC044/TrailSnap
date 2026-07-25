@@ -183,7 +183,7 @@ function Wait-AiReady {
     for ($i = 1; $i -le $attempts; $i++) {
         try {
             $resp = Invoke-WebRequest -UseBasicParsing -Method Post -Uri "$aiUrl/embedding/text" `
-                -ContentType 'application/json' -Body '{"texts":["warmup"]}' -TimeoutSec 5 `
+                -ContentType 'application/json' -Body '{"texts":["warmup"]}' -TimeoutSec 30 `
                 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) {
                 Write-Host "  AI 模型就绪（${i}x${interval}s）" -ForegroundColor Green

@@ -121,10 +121,10 @@ if ($Mode -eq 'dev') {
         $started += $proc
     }
 
-    # 等待端口就绪
+    # 等待端口就绪（start.py 冷启动：建库 + alembic + 导 5A CSV 可能要 ~100s，给到 180s）
     if ($started.Count -gt 0) {
         Write-Host "  等待服务就绪..." -ForegroundColor Cyan
-        $maxWait = 60
+        $maxWait = 180
         while ($maxWait -gt 0) {
             $serverReady = if ($Component -in 'server', 'all') { Test-Port $apiUri.Port } else { $true }
             $aiReady     = if ($Component -in 'ai', 'all')     { Test-Port $aiUri.Port }  else { $true }
