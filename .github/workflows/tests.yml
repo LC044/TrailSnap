@@ -67,7 +67,8 @@ jobs:
         working-directory: package/trailsnap-cli
         run: |
           uv sync --group dev
-          uv run pytest tests/ -v --tb=short --junitxml=junit.xml
+          # 只跑纯单元测试；tests/integration/ 需要真实后端 server，归 e2e 栈覆盖
+          uv run pytest tests/ --ignore=tests/integration -v --tb=short --junitxml=junit.xml
 
       - name: Upload JUnit
         if: always()
@@ -105,7 +106,8 @@ jobs:
         working-directory: package/server
         run: |
           uv sync
-          uv run pytest tests/unit -v --tb=short --junitxml=junit.xml
+          # python -m pytest 把 cwd（package/server）加入 sys.path，使 `from app...` 可导入
+          uv run python -m pytest tests/unit -v --tb=short --junitxml=junit.xml
 
       - name: Upload JUnit
         if: always()
@@ -143,7 +145,8 @@ jobs:
         working-directory: package/ai
         run: |
           uv sync --extra cpu
-          uv run pytest tests/ -v --tb=short --junitxml=junit.xml
+          # python -m pytest 把 cwd（package/ai）加入 sys.path，使 `from app...` 可导入
+          uv run python -m pytest tests/ -v --tb=short --junitxml=junit.xml
 
       - name: Upload JUnit
         if: always()
@@ -201,7 +204,8 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
-          PGPASSWORD=trailsnap psql -h localhost -U trailsnap -d trailsnap \
+          # service container 映射到 host 55432；psql 默认连 5432，必须显式指定端口
+          PGPASSWORD=trailsnap psql -h localhost -p 55432 -U trailsnap -d trailsnap \
             -c "CREATE EXTENSION IF NOT EXISTS vector"
 
       - name: Install deps + alembic upgrade
