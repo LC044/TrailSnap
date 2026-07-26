@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/auth-page';
 
 /**
  * Smoke 测试 — 找回密码（src/views/login/ForgotPassword.vue）
@@ -10,23 +10,15 @@ import { test as base, expect } from '@playwright/test';
  *  - 「安全问题 / 服务器验证码」两种重置方式 radio 可见。
  *  - 用户名/邮箱输入框可见，placeholder 与模板一致。
  *
- * 隔离说明：system 模式下 config.use.storageState 会给默认 page 注入全局登录态 token；
- * 该 token 一旦被并行跑的 login-flow「找回密码改密码」用例失效，本 spec 访问
- * /forgot-password 就会被守卫踢到 /login。test.use({ storageState: ... }) 在
- * Playwright 1.60 下无法可靠覆盖 config 的 storageState，故直接 override page
- * fixture，用 browser.newContext() 起一个完全不带 storageState 的干净上下文。
+ * 隔离说明：system 模式下 config.use.storageState 注入的全局共享 token 会被并行用例
+ * 失效；原 spec 用 browser.newContext() 想起干净上下文，但 Playwright 1.60 下
+ * storageState 会泄漏进手动 newContext()，并不干净。改用 cleanPage fixture —— 它在
+ * SPA 任何脚本执行前 addInitScript(localStorage.clear)，保证 userStore.token 启动即
+ * 读到 null，与 storageState 是否泄漏无关，白名单页稳定放行不踢 /login。
  */
-const test = base.extend({
-  page: async ({ browser }, use) => {
-    const context = await browser.newContext()
-    const page = await context.newPage()
-    await use(page)
-    await context.close()
-  },
-})
 
 test.describe('Smoke - 找回密码 @smoke', () => {
-  test('找回密码页面正常加载 - 标题与重置方式可见', async ({ page }) => {
+  test('找回密码页面正常加载 - 标题与重置方式可见', async ({ cleanPage: page }) => {
     await page.goto('/forgot-password');
 
     // 白名单页面，未登录也直接放行
@@ -37,7 +29,7 @@ test.describe('Smoke - 找回密码 @smoke', () => {
     await expect(page.locator('h2', { hasText: '找回密码' })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('找回密码页面渲染方式切换与第一步输入框', async ({ page }) => {
+  test('找回密码页面渲染方式切换与第一步输入框', async ({ cleanPage: page }) => {
     await page.goto('/forgot-password');
 
     // 两种重置方式 radio 按钮文本（CI 上组件挂载偏晚，放宽到 15s，与 h2 断言一致）
@@ -49,7 +41,7 @@ test.describe('Smoke - 找回密码 @smoke', () => {
     await expect(usernameInput).toBeVisible();
   });
 
-  test('找回密码页面切换到"服务器验证码"模式显示对应字段', async ({ page }) => {
+  test('找回密码页面切换到"服务器验证码"模式显示对应字段', async ({ cleanPage: page }) => {
     await page.goto('/forgot-password');
 
     // 默认是「安全问题」模式，点击切换到「服务器验证码」（先等 radio 渲染，CI 挂载偏晚）
