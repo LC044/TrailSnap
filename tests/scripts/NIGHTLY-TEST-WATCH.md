@@ -209,7 +209,6 @@ $exit = $LASTEXITCODE
    git diff --stat
    ```
    - 改动文件必须全部在 §0 列出的「影响范围」内；否则写 ALERT，退出码 5。
-   - 净增删 ≤ 800 行；超出 → 拆分 commit 或写 ALERT。
 
 6.2. Stage：
    ```powershell

@@ -30,7 +30,7 @@ export async function waitForTasksToSettle(
   // CI runner（4 vCPU）性能差，后端任务（face/OCR/embedding 等）处理慢，轮询状态可能
   // 在任务仍在排队/处理时出现短暂空窗。本地 5 轮即可，CI 放宽到 12 轮（5s×12=60s 无变化）
   // 才认为稳定，避免任务还没跑完就提前退出导致后续用例拿不到数据。
-  const stableRounds = options.stableRounds ?? (process.env.CI ? 12 : 5)
+  const stableRounds = options.stableRounds ?? (process.env.CI ? 18 : 5)
   const tasksUrl = options.tasksUrl ?? '/tasks/'
   const groupedUrl = tasksUrl.endsWith('/') ? `${tasksUrl}grouped-status` : `${tasksUrl}/grouped-status`
   
