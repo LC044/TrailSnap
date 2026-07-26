@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.2"
+SCRIPT_VERSION="1.5.3"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -1307,17 +1307,18 @@ health_check() {
     90 || failed=true
 
   # AI 首次启动需加载 OCR/人脸/CLIP 等模型（openvino 尤慢），给到 5 分钟
+  # 用 127.0.0.1 而非 localhost：WSL2 走 Windows Docker Desktop 时，IPv6 ::1 多不真正监听
   wait_for_service "AI 服务" \
-    "curl -sf http://localhost:${AI_PORT}/health-check" \
+    "curl -sf http://127.0.0.1:${AI_PORT}/health-check" \
     300 || failed=true
 
   # 后端首次启动需跑 alembic 迁移 + 导入 5A 景点 CSV，给到 4 分钟
   wait_for_service "后端" \
-    "curl -sf http://localhost:${SERVER_PORT}/health-check -o /dev/null" \
+    "curl -sf http://127.0.0.1:${SERVER_PORT}/health-check -o /dev/null" \
     240 || failed=true
 
   wait_for_service "前端" \
-    "curl -sf http://localhost:${FRONTEND_PORT} -o /dev/null" \
+    "curl -sf http://127.0.0.1:${FRONTEND_PORT} -o /dev/null" \
     90 || failed=true
 
   if [[ "$failed" == true ]]; then

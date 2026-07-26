@@ -121,9 +121,9 @@
 
         <!-- 手动添加（高级，仅管理员） -->
         <el-collapse v-if="isSuperuser" v-model="manualCollapse" class="mb-2">
-          <el-collapse-item title="高级：手动输入容器内路径" name="manual">
+          <el-collapse-item title="高级：手动输入路径" name="manual">
             <p class="text-sm text-gray-500 mb-2 dark:text-gray-400">
-              适用于非标准部署。请填写容器内绝对路径，如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/family</code>。
+              适用于非标准部署。请填写绝对路径，如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/family</code>。
             </p>
             <div class="flex flex-col sm:flex-row gap-2">
               <el-input v-model="manualPath" placeholder="/app/Photos/family" class="w-full sm:max-w-[400px]" />

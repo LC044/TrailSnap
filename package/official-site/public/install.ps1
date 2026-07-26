@@ -53,7 +53,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.5.2"
+$ScriptVersion = "1.5.3"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -1165,9 +1165,11 @@ function Test-HealthCheck {
     if (-not $pgOk) { $failed = $true }
 
     # AI 首次启动需加载 OCR/人脸/CLIP 等模型（openvino 尤慢），给到 5 分钟
+    # 用 127.0.0.1 而非 localhost：Windows 下 Invoke-WebRequest 会优先解析到 IPv6 ::1，
+    # 而 Docker Desktop 的 [::]:port 多不真正监听，导致连接挂起误报失败
     $aiOk = Wait-ForService "AI 服务" {
         try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:${AiPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${AiPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
     } -TimeoutSeconds 300
@@ -1176,7 +1178,7 @@ function Test-HealthCheck {
     # 后端首次启动需跑 alembic 迁移 + 导入 5A 景点 CSV，给到 4 分钟
     $srvOk = Wait-ForService "后端" {
         try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:${ServerPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${ServerPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
     } -TimeoutSeconds 240
@@ -1184,7 +1186,7 @@ function Test-HealthCheck {
 
     $feOk = Wait-ForService "前端" {
         try {
-            $resp = Invoke-WebRequest -Uri "http://localhost:${FrontendPort}" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${FrontendPort}" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
     } -TimeoutSeconds 90
