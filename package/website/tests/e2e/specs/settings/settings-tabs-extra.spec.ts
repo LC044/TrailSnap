@@ -75,11 +75,11 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.getByText('启用过滤', { exact: true })).toBeVisible();
 
     await page.getByRole('tab', { name: '目录管理' }).click();
-    await expect(page.getByPlaceholder('输入外部文件夹绝对路径')).toBeVisible();
-    await expect(page.getByRole('button', { name: '添加目录' })).toBeVisible();
+    // 新版目录管理 tab：已接入图库列表始终渲染（管理员/普通用户均可见）
+    await expect(page.locator('h3', { hasText: '已接入图库' })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('外部图库空路径提交保持输入态且不发起添加请求', async ({ page }) => {
+  test('外部图库空路径时手动添加禁用且不发起添加请求', async ({ page }) => {
     await page.goto('/settings');
     await clickSettingTab(page, 'external');
 
@@ -90,9 +90,12 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
       }
     });
 
-    const directoryInput = page.getByPlaceholder('输入外部文件夹绝对路径');
-    await page.getByRole('button', { name: '添加目录' }).click();
-    await expect(directoryInput).toHaveValue('');
+    // 展开手动添加高级折叠（仅管理员可见；e2e-admin 是首个注册的超级用户）
+    await page.getByText('高级：手动输入容器内路径').click();
+    // 空路径时「添加并扫描」禁用；点「校验」提示请输入路径；且不发起 add 请求
+    await expect(page.getByRole('button', { name: '添加并扫描' })).toBeDisabled();
+    await page.getByRole('button', { name: '校验' }).click();
+    await expect(page.getByText('请输入路径')).toBeVisible();
     await expect(page.getByRole('tab', { name: '目录管理' })).toHaveAttribute('aria-selected', 'true');
     expect(addDirectoryRequests).toBe(0);
   });

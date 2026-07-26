@@ -503,10 +503,16 @@ const applyFilter = async () => {
 }
 
 onMounted(async () => {
-  if (userStore.userInfo?.is_superuser) {
+  // 刷新页面后 store.userInfo 为 null（仅在 login / Profile / UserManagement 时拉取）。
+  // 主动补拉一次，保证 is_superuser 判断与管理员 UI 在直进 /settings 时也生效；
+  // 失败则降级为非管理员只读视图。
+  if (userStore.token && !userStore.userInfo) {
+    try { await userStore.getUserInfo() } catch { /* ignore */ }
+  }
+  if (isSuperuser.value) {
     try {
       users.value = await userService.getUsers()
-      if (userStore.userInfo.id) {
+      if (userStore.userInfo?.id) {
         selectedUserId.value = userStore.userInfo.id
       }
     } catch (e) {
