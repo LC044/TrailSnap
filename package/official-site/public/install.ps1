@@ -53,7 +53,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.5.1"
+$ScriptVersion = "1.5.2"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -901,6 +901,26 @@ function Show-ConfirmSummary {
 
 # ── 文件生成 ──────────────────────────────────────────────────────────────────
 
+function Resolve-PgPassword {
+    # 重新安装到同一目录时，pg_data 仍是用旧密码初始化的。若此时生成新密码写入
+    # .env，server 会因密码不匹配连不上 postgres。故目录下已有 .env 且含密码时复用之。
+    $envPath = Join-Path $script:InstallDir ".env"
+    if (Test-Path $envPath) {
+        $existing = $null
+        Get-Content $envPath -ErrorAction SilentlyContinue | ForEach-Object {
+            if ($_ -match '^POSTGRES_PASSWORD=(.*)$') {
+                $existing = $Matches[1].Trim().Trim('"')
+            }
+        }
+        if ($existing) {
+            $script:PgPassword = $existing
+            Write-Info "复用已有数据库密码（避免与现存 pg_data 不匹配）"
+            return
+        }
+    }
+    if (-not $script:PgPassword) { $script:PgPassword = New-RandomPassword }
+}
+
 function Generate-EnvFile {
     Write-Step "生成 .env 配置文件..."
 
@@ -1708,6 +1728,9 @@ Collect-Config
 
 # 检查硬件资源（依赖安装目录以判断磁盘空间）
 Test-Hardware
+
+# 复用已有 .env 中的数据库密码（重新安装到同一目录时避免与 pg_data 不匹配）
+Resolve-PgPassword
 
 # 安装前确认摘要
 Show-ConfirmSummary

@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.5.2"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -1058,6 +1058,22 @@ show_confirm_summary() {
 
 # ── 文件生成 ──────────────────────────────────────────────────────────────────
 
+resolve_pg_password() {
+  # 重新安装到同一目录时，pg_data 仍是用旧密码初始化的。若此时生成新密码写入
+  # .env，server 会因密码不匹配连不上 postgres。故目录下已有 .env 且含密码时复用之。
+  local env_path="${INSTALL_DIR}/.env"
+  if [[ -f "$env_path" ]]; then
+    local existing
+    existing="$(grep -E '^POSTGRES_PASSWORD=' "$env_path" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+    if [[ -n "$existing" ]]; then
+      PG_PASSWORD="$existing"
+      info "复用已有数据库密码（避免与现存 pg_data 不匹配）"
+      return
+    fi
+  fi
+  [[ -z "$PG_PASSWORD" ]] && PG_PASSWORD="$(generate_random_password)"
+}
+
 generate_env() {
   step "生成 .env 配置文件..."
   cat > "${INSTALL_DIR}/.env" << EOF
@@ -1827,6 +1843,9 @@ main() {
 
   # 硬件预检（在收集配置后执行，确保检查正确的磁盘）
   check_hardware
+
+  # 复用已有 .env 中的数据库密码（重新安装到同一目录时避免与 pg_data 不匹配）
+  resolve_pg_password
 
   # 安装前确认摘要
   show_confirm_summary
