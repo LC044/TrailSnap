@@ -80,6 +80,8 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   });
 
   test('外部图库空路径时手动添加禁用且不发起添加请求', async ({ page }) => {
+    // 该用例依赖异步 getUserInfo（isSuperuser gating）+ 折叠展开，CI 偶发 30s 预算吃紧
+    test.setTimeout(60000);
     await page.goto('/settings');
     await clickSettingTab(page, 'external');
 
@@ -90,9 +92,12 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
       }
     });
 
-    // 展开手动添加高级折叠（仅管理员可见；e2e-admin 是首个注册的超级用户）
-    await page.getByText('高级：手动输入容器内路径').click();
+    // 先等管理员区就绪（isSuperuser 依赖异步 getUserInfo），再展开手动添加折叠；
+    // 用子串匹配折叠标题，兼容「手动输入容器内路径 / 手动输入路径」两种文案
+    await expect(page.locator('h3', { hasText: '照片目录接入' })).toBeVisible({ timeout: 20_000 });
+    await page.getByText('高级：手动输入').click();
     // 空路径时「添加并扫描」禁用；点「校验」提示请输入路径；且不发起 add 请求
+    await expect(page.getByRole('button', { name: '添加并扫描' })).toBeVisible();
     await expect(page.getByRole('button', { name: '添加并扫描' })).toBeDisabled();
     await page.getByRole('button', { name: '校验' }).click();
     await expect(page.getByText('请输入路径')).toBeVisible();
