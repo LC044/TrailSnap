@@ -187,12 +187,15 @@ test.describe("StatsHeatmapCard \u70ed\u529b\u56fe\u5361 @views-coverage", () =>
   test("\u70ed\u529b\u56fe\u5355\u5143\u683c \u70b9\u51fb\u540e \u70ed\u529b\u56fe\u672a\u62a5\u9519 (click \u4e0d\u5d29)", async ({ page }) => {
     await page.goto("/album/location")
     await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible({ timeout: 15_000 })
-    // \u9a8c\u8bc1\u70b9\u51fb\u5355\u5143\u683c\u4e0d\u5d29\uff1a\u70b9\u51fb\u540e\u540c\u4e00\u4e2a\u70ed\u529b\u56fe\u5361\u4ecd\u53ef\u89c1\uff0c\u4e14 retry \u6309\u94ae\u4ecd\u4e0d\u51fa\u73b0
+    // \u70b9\u51fb\u5355\u5143\u683c\u4f1a narrow \u65e5\u671f\u8303\u56f4\u5e76\u628a viewMode \u5207\u5230 'grid'\uff08LocationList.handleNarrowRange
+    // \u8bbe\u8ba1\u5982\u6b64\uff09\uff0cLocationStatsView \u968f v-if \u5378\u8f7d\uff0c\u70ed\u529b\u56fe\u6807\u9898\u81ea\u7136\u6d88\u5931\u2014\u2014\u8fd9\u4e0d\u662f\u5d29\u6e83\u3002
+    // \u6545\u53ea\u9a8c\u8bc1\u300c\u70b9\u51fb\u672a\u62a5\u9519\u300d\uff1a\u4ecd\u505c\u7559\u5728 /album/location\u3001body \u4ecd\u53ef\u89c1\u3001\u65e0\u300c\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25\u300d\u3002
     const cells = page.locator("button[title*=\u5f20\u7167\u7247]")
     const count = await cells.count()
     if (count > 0) {
       await cells.first().click()
-      await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible()
+      await expect(page).toHaveURL(/\/album\/location/)
+      await expect(page.locator("body")).toBeVisible()
       await expect(page.getByText("\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25")).not.toBeVisible()
     }
   })
