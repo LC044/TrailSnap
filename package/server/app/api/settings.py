@@ -9,7 +9,7 @@ import json
 import re
 import logging
 import requests
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.core.config_manager import config_manager
@@ -19,6 +19,7 @@ from app.service.storage import delete_thumbnails, update_storage_root_cache, _g
 from app.service.indexer import rebuild_index as service_rebuild_index, status as index_status
 from app.db.models.index_log import IndexLog
 from app.service.task_manager import TaskManager
+from app.service import gallery_service
 from app.db.session import SessionLocal
 # Import reverse_geocoder from the local package
 # Assuming package/server is in sys.path or accessible
@@ -253,8 +254,8 @@ def add_directory(
     # Update via manager
     config_manager.update_user_config(target_user.id, settings, db)
 
-    # Trigger scan to update index
-    TaskManager.get_instance().add_task(db, TaskType.SCAN_FOLDER, {'scan_roots': external, 'user_id': str(target_user.id)})
+    # Trigger scan to update index — 只扫描本次新增目录，而非全部 external
+    TaskManager.get_instance().add_task(db, TaskType.SCAN_FOLDER, {'scan_roots': [path], 'user_id': str(target_user.id)})
     return {'primary': get_storage_root(target_user.id, db), 'external': external}
 
 @router.delete('/directories')
@@ -297,12 +298,13 @@ def remove_directory(
         config_manager.update_user_config(target_user.id, settings.model_dump(), db)
 
         # Cleanup photos belonging to this directory and user
-        norm_path = os.path.normpath(path)
+        # 用结构化层级判断而非字符串前缀，避免 /app/Photos/family 误删
+        # /app/Photos/family2 下的照片
         photos = db.query(Photo).filter(Photo.owner_id == target_user.id).all()
 
         photo_ids_to_delete = []
         for p in photos:
-            if os.path.normpath(p.file_path).startswith(norm_path):
+            if gallery_service.relation(p.file_path, path) in ("equal", "child"):
                 photo_ids_to_delete.append(p.id)
                 db.add(IndexLog(action='deleted', file_path=p.file_path, photo_id=p.id, owner_id=target_user.id))
         
@@ -314,6 +316,71 @@ def remove_directory(
         db.refresh(target_user)
 
     return {'primary': get_storage_root(target_user.id, db), 'external': external}
+
+# ------------------------- 外部图库一键接入 ------------------------- #
+
+@router.get('/directories/candidates')
+def get_directory_candidates(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    user_id: str = None
+):
+    """枚举发现根目录（默认 /app/Photos）下的一级子目录作为候选图库。
+
+    普通用户只能查看自己的；超级管理员可通过 user_id 查看任意用户。
+    """
+    target_user = current_user
+    if user_id and current_user.is_superuser:
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+    data = gallery_service.list_candidates(str(target_user.id), db)
+    return BaseResponse.success(data=data)
+
+@router.post('/directories/validate')
+def validate_directory(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """校验单个容器内路径是否可登记，返回结构化错误码。"""
+    user_id = payload.get('user_id')
+    target_user = current_user
+    if user_id and current_user.is_superuser:
+        target_user = db.query(User).filter(User.id == user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="User not found")
+    path = payload.get('path') or ''
+    data = gallery_service.validate_path(path, str(target_user.id), db)
+    return BaseResponse.success(data=data)
+
+@router.post('/directories/batch')
+def batch_add_directories(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """批量登记外部图库并创建单个扫描任务（仅超级管理员）。"""
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    user_id = payload.get('user_id') or str(current_user.id)
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    paths = payload.get('paths') or []
+    if not isinstance(paths, list):
+        raise HTTPException(status_code=400, detail='paths must be a list')
+
+    try:
+        data = gallery_service.batch_add(paths, str(target_user.id), db)
+    except ValueError as e:
+        return BaseResponse.fail(code=400, msg=str(e))
+    if data.get('errors'):
+        # 全有或全无：任一路径失败 → 不写入，返回逐项错误供前端展示
+        return BaseResponse.fail(code=400, msg='部分路径校验未通过', data=data)
+    return BaseResponse.success(data=data)
 
 @router.get('/storage-root')
 def read_storage_root(
