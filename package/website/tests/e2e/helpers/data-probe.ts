@@ -249,6 +249,43 @@ export async function requireAnyIdentity(
   return { ok: true, identity: identities[0] }
 }
 
+/**
+ * 探测至少一个「已命名」人物身份（types=named）。
+ *
+ * requireAnyIdentity 接受 named 或 unnamed；但 2.5.10 这类用例会把筛选切到
+ * types=named，若库中只有 unnamed 身份，named 列表为空 → .flow-grid 不渲染 →
+ * 用例误报失败。本探针只取 named，缺则 skip，避免假失败。
+ */
+export async function requireNamedIdentity(
+  request: APIRequestContext,
+  testInfo: SkipCapable,
+): Promise<{ ok: true; identity: FaceIdentitySummary } | { ok: false }> {
+  const token = await ensureP0Fixtures(request, testInfo)
+  if (!token) {
+    return { ok: false }
+  }
+
+  const res = await tryGet<FaceIdentitySummary[] | BaseResponse<FaceIdentitySummary[]>>(
+    request,
+    `/faces/identities?skip=0&limit=100&types=named`,
+    token,
+  )
+  if (!res.ok) {
+    if (skipIfUnreachable(testInfo, res.status)) return { ok: false }
+    testInfo.skip(true, `Faces identities (named) endpoint failed (HTTP ${res.status})`)
+    return { ok: false }
+  }
+  const identities = Array.isArray(res.data) ? res.data : (res.data as BaseResponse<FaceIdentitySummary[]>).data ?? []
+  if (identities.length === 0) {
+    testInfo.skip(
+      true,
+      `Need at least 1 NAMED face identity for this case (filtering types=named), found 0. Name an identity first or run a prior people case that names one.`,
+    )
+    return { ok: false }
+  }
+  return { ok: true, identity: identities[0] }
+}
+
 /** 探测至少一个含封面照片的人物（face_count > 0）。 */
 export async function requireIdentityWithPhotos(
   request: APIRequestContext,
