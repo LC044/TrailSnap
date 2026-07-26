@@ -7,11 +7,18 @@ on:
     paths:
       - 'package/ai/**'
       - '.github/workflows/docker-build-push-ai.yml'
+  workflow_dispatch:
+    inputs:
+      push_latest:
+        description: '同时打 latest 标签推送（含 cpu/gpu/openvino 各自的 -latest 后缀）'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-and-push-ai:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建ai' ) || contains(github.event.head_commit.message, '构建AI')
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建ai' ) || contains(github.event.head_commit.message, '构建AI') || github.event_name == 'workflow_dispatch'
     strategy:
       matrix:
         include:
@@ -46,6 +53,7 @@ jobs:
         id: set-tags
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PUSH_LATEST: ${{ inputs.push_latest }}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             RAW_BASE_TAG=${GITHUB_REF#refs/tags/v}
@@ -54,8 +62,13 @@ jobs:
             RAW_BASE_TAG=${GITHUB_REF#refs/heads/}
             RAW_EXTRA_TAGS=""
           fi
-          
+
           if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
+            RAW_EXTRA_TAGS="latest"
+          fi
+
+          # 手动触发时按入参决定是否打 latest
+          if [[ "$PUSH_LATEST" == "true" ]]; then
             RAW_EXTRA_TAGS="latest"
           fi
           

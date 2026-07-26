@@ -7,10 +7,17 @@ on:
     paths:
       - 'package/trailsnap-cli/**'
       - '.github/workflows/build-publish-cli.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '构建后是否发布（创建 GitHub Release + 推送 PyPI/npm）'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-binaries:
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli')
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || github.event_name == 'workflow_dispatch'
     name: Build binaries on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -71,6 +78,7 @@ jobs:
   create-release:
     needs: build-binaries
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -102,6 +110,7 @@ jobs:
   publish-pypi:
     needs: create-release
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -126,6 +135,7 @@ jobs:
   publish-npm:
     needs: create-release
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
