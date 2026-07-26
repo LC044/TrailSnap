@@ -3,12 +3,14 @@ import { test, expect } from "../../fixtures/auth-page"
 
 /**
  * 本文件所有用例都是 mock 型：page.route 拦截 /api/annual-report/**，不真连后端业务接口。
- * 改用 cleanPage（启动前 localStorage.clear，不带任何 token）后：
- *  - /annual-report 路由守卫对无 token 仍放行（to.path.startsWith('/annual-report')）；
- *  - blank layout 无任何启动期鉴权调用，App.vue 的 SSE 也因 token 为空不连接；
- *  - 视图只调被 mock 的 /api/annual-report/**。
- * 从而彻底脱钩全局共享 token——共享 token 在 CI 并发下会失效，失效后启动期某个接口
- * 401 → request.ts 拦截器 resetState() → /login，正是本文件此前首个用例偶发被踢的根因。
+ * 改用 authedPage（worker 级现登录注入有效 token）：
+ *  - /annual-report 路由守卫对带 token 直接放行；
+ *  - SPA 首帧 MainLayout 的启动期鉴权接口（/nav/items、/tasks/grouped-status 等）因
+ *    token 有效返 200，不再 401 触发 resetState() → /login（docker 真后端下无 token 会被
+ *    踢，dev 无后端以网络错误收场不触发，故本地复现不到）；
+ *  - 视图本身只调被 mock 的 /api/annual-report/**，与登录态无关。
+ * 用 authedPage 而非默认共享 storageState：共享 token 在 CI 并发下会被别的用例失效，
+ * 失效后同样 401 跳 /login；authedPage 的 token 独立、保证有效。
  */
 test.describe.configure({ mode: "serial" })
 
@@ -144,19 +146,19 @@ async function mockAnnualReportApis(page: Page, opts: MockOpts = {}) {
   await page.route("**/api/annual-report/transport-analysis**", (route: Route) => route.fulfill(f(fakeTransport)))
 }
 
-test.beforeEach(async ({ cleanPage: page }) => {
+test.beforeEach(async ({ authedPage: page }) => {
   await mockAnnualReportApis(page)
 })
 
 test.describe("AnnualReport 时光报告 @views-coverage", () => {
-  test("首次访问 -> 渲染「时光旅人」封面 + 用户昵称 + 向上滑动提示", async ({ cleanPage: page }) => {
+  test("首次访问 -> 渲染「时光旅人」封面 + 用户昵称 + 向上滑动提示", async ({ authedPage: page }) => {
     await page.goto("/annual-report")
     await expect(page.getByText("时光旅人").first()).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText("E2E 行影者").first()).toBeVisible()
     await expect(page.getByText("向上滑动，开启你的时光回忆录")).toBeVisible()
   })
 
-  test("数据加载完成后 -> 时间/季节/位置/交通四大主板块标题全部出现", async ({ cleanPage: page }) => {
+  test("数据加载完成后 -> 时间/季节/位置/交通四大主板块标题全部出现", async ({ authedPage: page }) => {
     await page.goto("/annual-report")
     await expect(page.getByText("时光旅人").first()).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText(/这一年，你用镜头收藏了\s*366\s*个珍贵瞬间/)).toBeVisible()
@@ -165,7 +167,7 @@ test.describe("AnnualReport 时光报告 @views-coverage", () => {
     await expect(page.getByText("交通出行年度分析")).toBeVisible()
   })
 
-  test("数据加载完成后 -> 季节卡片渲染春/夏/秋/冬四张", async ({ cleanPage: page }) => {
+  test("数据加载完成后 -> 季节卡片渲染春/夏/秋/冬四张", async ({ authedPage: page }) => {
     await page.goto("/annual-report")
     await expect(page.getByText("时光旅人").first()).toBeVisible({ timeout: 15_000 })
     await expect(page.getByText("春 · 嫩芽").first()).toBeVisible()
@@ -174,7 +176,7 @@ test.describe("AnnualReport 时光报告 @views-coverage", () => {
     await expect(page.getByText("冬 · 暖意").first()).toBeVisible()
   })
 
-  test("Easter Egg 彩蛋数据存在 -> 渲染「夜行者」主标签 + 副标签", async ({ cleanPage: page }) => {
+  test("Easter Egg 彩蛋数据存在 -> 渲染「夜行者」主标签 + 副标签", async ({ authedPage: page }) => {
     await page.unroute("**/api/annual-report/easter-egg**").catch(() => {})
     await mockAnnualReportApis(page, { includeEasterEgg: true })
     await page.goto("/annual-report")
@@ -184,7 +186,7 @@ test.describe("AnnualReport 时光报告 @views-coverage", () => {
     await expect(page.getByText("深夜食堂").first()).toBeVisible()
   })
 
-  test("Easter Egg 彩蛋数据缺失 (mock 返 null) -> 不渲染彩蛋主标签", async ({ cleanPage: page }) => {
+  test("Easter Egg 彩蛋数据缺失 (mock 返 null) -> 不渲染彩蛋主标签", async ({ authedPage: page }) => {
     await page.unroute("**/api/annual-report/easter-egg**").catch(() => {})
     await mockAnnualReportApis(page, { includeEasterEgg: false })
     await page.goto("/annual-report")
@@ -192,7 +194,7 @@ test.describe("AnnualReport 时光报告 @views-coverage", () => {
     await expect(page.getByText("夜行者")).toHaveCount(0)
   })
 
-  test("所有 /api/annual-report/* 返回 500 -> 渲染「时光数据加载失败」错误态", async ({ cleanPage: page }) => {
+  test("所有 /api/annual-report/* 返回 500 -> 渲染「时光数据加载失败」错误态", async ({ authedPage: page }) => {
     await page.unroute("**/api/annual-report/**").catch(() => {})
     await mockAnnualReportApis(page, { failAll: true })
     await page.goto("/annual-report")
@@ -200,7 +202,7 @@ test.describe("AnnualReport 时光报告 @views-coverage", () => {
     await expect(page.getByText("正在开启时光信笺...")).toHaveCount(0)
   })
 
-  test("Expense 接口返 null (无支出数据) -> 不渲染「交通费用年度分析」标题", async ({ cleanPage: page }) => {
+  test("Expense 接口返 null (无支出数据) -> 不渲染「交通费用年度分析」标题", async ({ authedPage: page }) => {
     await page.unroute("**/api/annual-report/**").catch(() => {})
     await mockAnnualReportApis(page, { includeExpense: "null" })
     await page.goto("/annual-report")
