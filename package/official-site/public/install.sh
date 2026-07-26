@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.0"
+SCRIPT_VERSION="1.5.1"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -1280,6 +1280,7 @@ wait_for_service() {
 
 health_check() {
   step "运行健康检查..."
+  info "首次启动需初始化数据库并加载 AI 模型，可能需要几分钟，请耐心等待..."
 
   source "${INSTALL_DIR}/.env" 2>/dev/null || true
 
@@ -1287,19 +1288,21 @@ health_check() {
 
   wait_for_service "PostgreSQL" \
     "docker inspect --format='{{.State.Health.Status}}' trailsnap-postgres 2>/dev/null | grep -q healthy" \
-    60 || failed=true
+    90 || failed=true
 
+  # AI 首次启动需加载 OCR/人脸/CLIP 等模型（openvino 尤慢），给到 5 分钟
   wait_for_service "AI 服务" \
     "curl -sf http://localhost:${AI_PORT}/health-check" \
-    90 || failed=true
+    300 || failed=true
 
+  # 后端首次启动需跑 alembic 迁移 + 导入 5A 景点 CSV，给到 4 分钟
   wait_for_service "后端" \
     "curl -sf http://localhost:${SERVER_PORT}/health-check -o /dev/null" \
-    90 || failed=true
+    240 || failed=true
 
   wait_for_service "前端" \
     "curl -sf http://localhost:${FRONTEND_PORT} -o /dev/null" \
-    60 || failed=true
+    90 || failed=true
 
   if [[ "$failed" == true ]]; then
     echo ""

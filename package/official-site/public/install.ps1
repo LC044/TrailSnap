@@ -53,7 +53,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.5.0"
+$ScriptVersion = "1.5.1"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -1125,6 +1125,7 @@ function Wait-ForService {
 
 function Test-HealthCheck {
     Write-Step "运行健康检查..."
+    Write-Info "首次启动需初始化数据库并加载 AI 模型，可能需要几分钟，请耐心等待..."
 
     $envFilePath = Join-Path $script:InstallDir ".env"
     if (Test-Path $envFilePath) {
@@ -1140,23 +1141,25 @@ function Test-HealthCheck {
     $pgOk = Wait-ForService "PostgreSQL" {
         $status = docker inspect --format='{{.State.Health.Status}}' trailsnap-postgres 2>$null
         $status -match "healthy"
-    } -TimeoutSeconds 60
+    } -TimeoutSeconds 90
     if (-not $pgOk) { $failed = $true }
 
+    # AI 首次启动需加载 OCR/人脸/CLIP 等模型（openvino 尤慢），给到 5 分钟
     $aiOk = Wait-ForService "AI 服务" {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:${AiPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
-    } -TimeoutSeconds 90
+    } -TimeoutSeconds 300
     if (-not $aiOk) { $failed = $true }
 
+    # 后端首次启动需跑 alembic 迁移 + 导入 5A 景点 CSV，给到 4 分钟
     $srvOk = Wait-ForService "后端" {
         try {
             $resp = Invoke-WebRequest -Uri "http://localhost:${ServerPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
-    } -TimeoutSeconds 90
+    } -TimeoutSeconds 240
     if (-not $srvOk) { $failed = $true }
 
     $feOk = Wait-ForService "前端" {
@@ -1164,7 +1167,7 @@ function Test-HealthCheck {
             $resp = Invoke-WebRequest -Uri "http://localhost:${FrontendPort}" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
-    } -TimeoutSeconds 60
+    } -TimeoutSeconds 90
     if (-not $feOk) { $failed = $true }
 
     if ($failed) {
