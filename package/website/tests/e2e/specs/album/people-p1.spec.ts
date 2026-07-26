@@ -609,16 +609,16 @@ test.describe.serial('P1 - 人物相册', () => {
         await page.waitForTimeout(400)
       })
 
-      // 等 PeopleList 重新拉取（fetchIdentities 在 handleBulkHide finally 后触发）。
-      // 给网络请求一点时间，再用 filter 验证。
-      await page.waitForTimeout(500)
-
-      // 默认筛选（named+unnamed）下临时 identities 已隐藏 → 列表中找不到它们
+      // 等 PeopleList 重新拉取。handleBulkHide 里的 fetchIdentities() 是
+      // fire-and-forget（不 await），固定 waitForTimeout 在负载下来不及等它完成，
+      // 会读到残留卡片 → 误报 "should be hidden"。默认筛选（named+unnamed）会排除
+      // hidden，故隐藏落库 + 重拉后卡片必然从 DOM 消失；用 expect.poll 等到 0。
       for (const name of ids.map((_, i) => `P1-BatchHS-${i}-`)) {
         // 用 regex 而不是精确字符串（Date.now() 部分动态）
-        await page.waitForTimeout(500)
-        const after = await page.locator('.flow-grid > div').filter({ hasText: new RegExp(name) }).count()
-        expect(after, `identity ${name} should be hidden after batch hide`).toBe(0)
+        const hiddenCard = page.locator('.flow-grid > div').filter({ hasText: new RegExp(name) })
+        await expect
+          .poll(async () => hiddenCard.count(), { timeout: 15_000, message: `identity ${name} should be hidden after batch hide` })
+          .toBe(0)
       }
 
       // 验证后端：拿含 hidden 的列表，应能看到这些 identity 已 is_hidden=true。

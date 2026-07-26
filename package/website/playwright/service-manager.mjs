@@ -3,7 +3,9 @@ import path from 'node:path'
 
 export async function isPortInUse(port) {
   try {
-    const res = await fetch(`http://localhost:${port}/system/version`, { signal: AbortSignal.timeout(2000) })
+    // 用 127.0.0.1 而非 localhost：Windows 下 localhost 可能先解析到 IPv6 ::1，
+    // 若服务只绑了 IPv4 会误判端口空闲（参见 commit 2569165 健康检查同类问题）。
+    const res = await fetch(`http://127.0.0.1:${port}/system/version`, { signal: AbortSignal.timeout(2000) })
     return res.ok || res.status < 500
   } catch {
     return false
@@ -17,15 +19,20 @@ export async function startServices() {
   const serverRunning8000 = await isPortInUse(8000)
   const serverRunning8800 = await isPortInUse(8800)
   const serverRunning = serverRunning8000 || serverRunning8800
-  
+
   if (serverRunning) {
     console.log('Services are already running.')
+    // 只在未设置时兜底，绝不覆盖 .env.test 已注入的 TS_API_BASE_URL / TS_WEB_BASE_URL。
+    // photo-fixtures 的 state cache 以 apiBaseUrl 为 key（photo-fixtures.ts getStatePaths），
+    // scan-prep 用的是 .env.test 里的 127.0.0.1:8000；若这里把 127.0.0.1 改写成 localhost，
+    // full_setup 阶段会算出不同的 cache key → 缓存未命中 → 00-setup 重复 POST /settings/directories，
+    // 撞上瞬时状态就回 400 Path does not exist。统一用 127.0.0.1 也可避开 IPv6 ::1 歧义。
     if (serverRunning8800) {
-      process.env.TS_API_BASE_URL = 'http://localhost:8800'
-      process.env.TS_WEB_BASE_URL = 'http://localhost:8082'
+      process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8800'
+      process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:8082'
     } else {
-      process.env.TS_API_BASE_URL = 'http://localhost:8000'
-      process.env.TS_WEB_BASE_URL = 'http://localhost:5176'
+      process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8000'
+      process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:5176'
     }
     return { startedByUs: false }
   }
@@ -35,8 +42,8 @@ export async function startServices() {
   if (isCI || isDocker) {
     // Docker compose start
     execSync('node playwright/e2e-up.mjs up', { stdio: 'inherit' })
-    process.env.TS_API_BASE_URL = 'http://localhost:8800'
-    process.env.TS_WEB_BASE_URL = 'http://localhost:8082'
+    process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8800'
+    process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:8082'
     return { startedByUs: true, method: 'docker' }
   } else {
     // Dev environment start
@@ -62,8 +69,8 @@ export async function startServices() {
       retries--
     }
     
-    process.env.TS_API_BASE_URL = 'http://localhost:8000'
-    process.env.TS_WEB_BASE_URL = 'http://localhost:5176'
+    process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8000'
+    process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:5176'
     return { startedByUs: true, method: 'dev', processes: [serverProcess, aiProcess] }
   }
 }
