@@ -171,6 +171,61 @@ test.describe("LocationStatsView 统计视图 @views-coverage", () => {
   })
 })
 
+
+test.describe("StatsHeatmapCard \u70ed\u529b\u56fe\u5361 @views-coverage", () => {
+  test("\u70ed\u529b\u56fe\u5361 \u5355\u5143\u683c\u53ef\u89c1 (\u9ed8\u8ba4 mock \u4e09\u6761\u6570\u636e)", async ({ page }) => {
+    await page.goto("/album/location")
+    await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible({ timeout: 15_000 })
+    // count > 0 \u4f1a\u6e32\u67d3\u4e3a button\uff0c\u9ed8\u8ba4 mock \u91cc 5/10/3 \u90fd > 0\uff0c\u5e94\u8be5\u51fa\u73b0 3 \u4e2a\u53ef\u70b9\u51fb\u5355\u5143\u683c
+    const cells = page.locator("button[title*=\u5f20\u7167\u7247]")
+    await expect(cells).toHaveCount(3)
+    // \u56fe\u4f8b\u6587\u6848\uff1a\u5c11 / \u591a \u6807\u7b7e\u53ef\u89c1
+    await expect(page.getByText("\u5c11").first()).toBeVisible()
+    await expect(page.getByText("\u591a").first()).toBeVisible()
+  })
+
+  test("\u70ed\u529b\u56fe\u5355\u5143\u683c \u70b9\u51fb\u540e \u70ed\u529b\u56fe\u672a\u62a5\u9519 (click \u4e0d\u5d29)", async ({ page }) => {
+    await page.goto("/album/location")
+    await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible({ timeout: 15_000 })
+    // \u9a8c\u8bc1\u70b9\u51fb\u5355\u5143\u683c\u4e0d\u5d29\uff1a\u70b9\u51fb\u540e\u540c\u4e00\u4e2a\u70ed\u529b\u56fe\u5361\u4ecd\u53ef\u89c1\uff0c\u4e14 retry \u6309\u94ae\u4ecd\u4e0d\u51fa\u73b0
+    const cells = page.locator("button[title*=\u5f20\u7167\u7247]")
+    const count = await cells.count()
+    if (count > 0) {
+      await cells.first().click()
+      await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible()
+      await expect(page.getByText("\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25")).not.toBeVisible()
+    }
+  })
+
+  test("\u70ed\u529b\u56fe\u52a0\u8f7d\u5931\u8d25 -> \u663e\u793a\u91cd\u8bd5\u6309\u94ae", async ({ page }) => {
+    await page.unroute("**/api/location-stats/heatmap**").catch(() => {})
+    await page.route("**/api/location-stats/heatmap**", async (route: Route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ code: 500, message: "boom", data: null }),
+      })
+    })
+    await page.goto("/album/location")
+    await expect(page.getByText("\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25")).toBeVisible({ timeout: 15_000 })
+    const retry = page.getByRole("button", { name: "\u91cd\u8bd5" })
+    await expect(retry).toBeVisible()
+    await retry.click()
+  })
+
+  test("\u70ed\u529b\u56fe\u7a7a\u6570\u636e -> \u663e\u793a\u201c\u6682\u65e0\u6570\u636e\u201d", async ({ page }) => {
+    await page.unroute("**/api/location-stats/heatmap**").catch(() => {})
+    await page.route("**/api/location-stats/heatmap**", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(ok({ total_photos: 0, total_days: 0, data: [] })),
+      })
+    })
+    await page.goto("/album/location")
+    await expect(page.getByText("\u6682\u65e0\u6570\u636e").first()).toBeVisible({ timeout: 15_000 })
+  })
+})
 test.describe("LocationDetail 位置详情 @views-coverage", () => {
   test("访问位置详情路由 -> 调用 /api/locations/<name>/photos", async ({ page }) => {
     const photosCalls: string[] = []
@@ -186,3 +241,5 @@ test.describe("LocationDetail 位置详情 @views-coverage", () => {
     await expect.poll(() => photosCalls.length, { timeout: 15_000 }).toBeGreaterThan(0)
   })
 })
+
+
