@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.5.0"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -71,6 +71,7 @@ YES_FLAG=false
 UPGRADE_FLAG=false
 UNINSTALL_FLAG=false
 PURGE_FLAG=false
+ADD_PHOTO_DIR=""
 LOG_FILE=""
 
 # ── 输入读取 ──────────────────────────────────────────────────────────────────
@@ -1096,19 +1097,74 @@ EOF
 generate_compose() {
   step "生成 docker-compose.yml..."
 
+  # 升级 / 追加兼容：若已存在 docker-compose.yml 且含 /app/Photos 挂载行，则原样
+  # 保留旧挂载目标（如 /app/Photos/ 或 /app/Photos1/ 或 /app/Photos/<name>），否则
+  # 升级后容器内路径变化会让数据库里已索引的 file_path 全部失效。仅超出已有数量
+  # 的新增目录才按 /app/Photos/<源目录名> 约定生成新挂载。同时去掉 :ro，保证照片
+  # 删除等功能可用。
+  local compose_path="${INSTALL_DIR}/docker-compose.yml"
+  local preserved_lines=()
+  local preserved_targets=()
+  if [[ -f "$compose_path" ]]; then
+    while IFS= read -r line; do
+      if [[ "$line" == *":/app/Photos"* ]]; then
+        local trimmed="${line#"${line%%[![:space:]]*}"}"  # 去前导空白
+        preserved_lines+=("$trimmed")
+        # 提取目标路径用于去重
+        local target
+        target="$(echo "$trimmed" | grep -oE '/app/Photos[^":]*' | head -1)"
+        [[ -n "$target" ]] && preserved_targets+=("$target")
+      fi
+    done < "$compose_path"
+  fi
+
   local photo_volumes=""
-  local mount_index=1
-  IFS=',' read -ra PHOTO_DIRS <<< "$PHOTO_DIR"
-  for dir in "${PHOTO_DIRS[@]}"; do
-    dir="$(echo "$dir" | xargs)"
-    if [[ ${#PHOTO_DIRS[@]} -eq 1 ]]; then
-      photo_volumes+="      - \"${dir}:/app/Photos/:ro\""
+  local used_names=""
+  local used_targets=""
+  # 已有挂载目标名 / 目标路径加入占用集合（换行分隔，便于 grep -qxF 精确匹配）
+  for t in "${preserved_targets[@]:-}"; do
+    local seg="${t##*/}"
+    [[ -n "$seg" ]] && used_names+="${seg}"$'\n'
+    used_targets+="${t}"$'\n'
+  done
+
+  # 先过滤出非空目录，保证与已保留挂载行的下标对齐
+  local dirs=()
+  if [[ -n "$PHOTO_DIR" ]]; then
+    IFS=',' read -ra raw_dirs <<< "$PHOTO_DIR"
+    for d in "${raw_dirs[@]}"; do
+      d="$(echo "$d" | xargs)"
+      [[ -n "$d" ]] && dirs+=("$d")
+    done
+  fi
+
+  local i=0
+  for dir in "${dirs[@]:-}"; do
+    # `${dirs[@]:-}` 在空数组下会展开为一个空串，跳过以免生成 `- ":/app/Photos/gallery"` 之类空挂载
+    [[ -z "$dir" ]] && continue
+    if [[ $i -lt ${#preserved_lines[@]} ]]; then
+      # 复用已有挂载行，并去掉 :ro（转为可写，支持删除照片）：:ro 可能出现在结尾引号之前
+      local pl="${preserved_lines[$i]}"
+      pl="$(echo "$pl" | sed -E 's/:ro("?)$/\1/')"
+      photo_volumes+="      ${pl}"$'\n'
     else
-      photo_volumes+="      - \"${dir}:/app/Photos${mount_index}/:ro\""
-      mount_index=$((mount_index + 1))
+      # 新增目录：取源目录名作为图库标识（保留中文等 UTF-8 名称），清理非法字符
+      local base_name
+      base_name="$(basename "$dir")"
+      base_name="$(echo "$base_name" | sed 's#[/\\]#_#g; s/^[[:space:]]*//;s/[[:space:]]*$//')"
+      [[ -z "$base_name" ]] && base_name="gallery"
+      local final_name="$base_name"
+      local n=2
+      while echo "$used_names" | grep -qxF "$final_name" \
+            || echo "$used_targets" | grep -qxF "/app/Photos/$final_name"; do
+        final_name="${base_name}_${n}"
+        n=$((n + 1))
+      done
+      used_names+="${final_name}"$'\n'
+      used_targets+="/app/Photos/${final_name}"$'\n'
+      photo_volumes+="      - \"${dir}:/app/Photos/${final_name}\""$'\n'
     fi
-    # 保证换行
-    photo_volumes+=$'\n'
+    i=$((i + 1))
   done
 
   local gpu_block=""
@@ -1304,27 +1360,6 @@ print_service_urls() {
   echo ""
 }
 
-# 按 generate_compose 的挂载规则，计算容器内照片路径列表（空格分隔）
-# 单目录：/app/Photos/；多目录：/app/Photos1/ /app/Photos2/ ...
-get_internal_photo_paths() {
-  local photo_dir="${PHOTO_DIR:-}"
-  [[ -z "$photo_dir" ]] && { echo "/app/Photos/"; return; }
-  local dirs=()
-  IFS=',' read -ra dirs <<< "$photo_dir"
-  if [[ ${#dirs[@]} -eq 1 ]]; then
-    echo "/app/Photos/"
-  else
-    local i=1
-    local out=""
-    for _ in "${dirs[@]}"; do
-      [[ -n "$out" ]] && out+=" "
-      out+="/app/Photos${i}/"
-      i=$((i + 1))
-    done
-    echo "$out"
-  fi
-}
-
 print_success() {
   source "${INSTALL_DIR}/.env" 2>/dev/null || true
 
@@ -1340,23 +1375,14 @@ print_success() {
   echo -e "  ${CYAN}下一步：${NC}"
   echo "  1. 在浏览器中打开上面的访问地址"
   echo "  2. 进入 更多 → 设置 → 外部图库"
-  local photo_paths
-  photo_paths="$(get_internal_photo_paths)"
-  if [[ "$(echo "$photo_paths" | wc -w)" -le 1 ]]; then
-    echo "  3. 添加 ${photo_paths} 以扫描照片"
-  else
-    echo "  3. 添加以下路径以扫描照片（对应您挂载的多个照片文件夹）："
-    local p
-    for p in $photo_paths; do
-      echo "       - ${p}"
-    done
-  fi
+  echo "  3. 页面会自动检测到挂载的照片目录，勾选后点击「添加选中的图库并扫描」即可"
   echo ""
   echo -e "  ${CYAN}管理命令（在 ${INSTALL_DIR} 目录下运行）：${NC}"
   echo "    停止:    ${COMPOSE_CMD} --env-file .env down"
   echo "    重启:    ${COMPOSE_CMD} --env-file .env restart"
   echo "    日志:    ${COMPOSE_CMD} --env-file .env logs -f"
   echo "    升级:    ./install.sh --upgrade"
+  echo "    加目录:  ./install.sh --add-photo-dir /path/to/new-photos"
   echo ""
 
   # 自动打开浏览器
@@ -1455,6 +1481,119 @@ do_uninstall() {
   log "卸载完成"
 }
 
+# ── 添加新照片文件夹 ──────────────────────────────────────────────────────────
+
+add_photo_dir() {
+  local new_dir="$1"
+
+  if [[ ! -f "${INSTALL_DIR}/docker-compose.yml" ]] || [[ ! -f "${INSTALL_DIR}/.env" ]]; then
+    die "未在 ${INSTALL_DIR} 找到已安装的实例。请先安装 TrailSnap。"
+  fi
+  LOG_FILE="${INSTALL_DIR}/install.log"
+
+  if [[ -z "$new_dir" ]]; then
+    new_dir="$(prompt_default "请输入要添加的照片文件夹路径" "")"
+    [[ -z "$new_dir" ]] && die "未输入路径。"
+  fi
+  # 去引号与空格
+  new_dir="$(echo "$new_dir" | xargs)"
+  new_dir="${new_dir#\"}"; new_dir="${new_dir%\"}"
+  new_dir="${new_dir#\'}"; new_dir="${new_dir%\'}"
+
+  # 校验目录存在；不存在时询问是否创建
+  while [[ ! -d "$new_dir" ]]; do
+    if [[ "$YES_FLAG" == true ]]; then
+      die "照片目录不存在：$new_dir"
+    fi
+    warn "目录不存在：${new_dir}"
+    echo "  1) 创建此目录"
+    echo "  2) 输入其他路径"
+    echo "  3) 取消"
+    local choice
+    read_line -rp "$(printf '\033[0;36m请选择 [1/2/3]: \033[0m')" choice || true
+    case "$choice" in
+      1)
+        if mkdir -p "$new_dir" 2>/dev/null; then
+          info "已创建目录：$new_dir"
+        else
+          error "创建目录失败：$new_dir，请检查权限。"
+          continue
+        fi
+        ;;
+      2)
+        local alt
+        alt="$(prompt_default "照片文件夹路径" "")"
+        [[ -z "$alt" ]] && die "已取消。"
+        alt="$(echo "$alt" | xargs)"
+        alt="${alt#\"}"; alt="${alt%\"}"
+        alt="${alt#\'}"; alt="${alt%\'}"
+        new_dir="$alt"
+        continue
+        ;;
+      3|*)
+        die "已取消。"
+        ;;
+    esac
+  done
+
+  # 读取现有 .env，保留全部配置
+  while IFS='=' read -r key value; do
+    key="$(echo "$key" | xargs)"
+    value="${value#\"}"; value="${value%\"}"
+    case "$key" in
+      FRONTEND_PORT)   FRONTEND_PORT="$value" ;;
+      SERVER_PORT)     SERVER_PORT="$value" ;;
+      AI_PORT)         AI_PORT="$value" ;;
+      POSTGRES_PORT)   POSTGRES_PORT="$value" ;;
+      TZ)              TZ="$value" ;;
+      IMAGE_TAG)       IMAGE_TAG="$value" ;;
+      AI_MODE)         DETECTED_AI_MODE="$value" ;;
+      PHOTO_DIR)       PHOTO_DIR="$value" ;;
+      POSTGRES_PASSWORD) PG_PASSWORD="$value" ;;
+    esac
+  done < <(grep -v '^#' "${INSTALL_DIR}/.env" 2>/dev/null || true)
+
+  # 去重：若已登记则直接提示
+  new_dir="$(cd "$new_dir" && pwd)"
+  local existing
+  if [[ -n "$PHOTO_DIR" ]]; then
+    IFS=',' read -ra existing_dirs <<< "$PHOTO_DIR"
+    for d in "${existing_dirs[@]}"; do
+      d="$(echo "$d" | xargs)"
+      [[ -z "$d" ]] && continue
+      local resolved=""
+      [[ -d "$d" ]] && resolved="$(cd "$d" && pwd)"
+      [[ "$resolved" == "$new_dir" ]] && {
+        info "该照片文件夹已挂载，无需重复添加：$new_dir"
+        return
+      }
+    done
+  fi
+
+  # 追加到 PHOTO_DIR
+  if [[ -n "$PHOTO_DIR" ]]; then
+    PHOTO_DIR="${PHOTO_DIR},${new_dir}"
+  else
+    PHOTO_DIR="$new_dir"
+  fi
+
+  log "添加新照片文件夹：$new_dir"
+  generate_env
+  generate_compose
+
+  # 重建容器使新挂载生效
+  step "应用新挂载并重启服务..."
+  cd "$INSTALL_DIR"
+  $COMPOSE_CMD --env-file .env up -d --remove-orphans
+
+  info "已添加照片文件夹：$new_dir"
+  info "请在「更多 → 设置 → 外部图库」中点击「重新检测」，勾选新目录并添加扫描。"
+  echo ""
+  echo -e "  ${CYAN}管理命令（在 ${INSTALL_DIR} 目录下运行）：${NC}"
+  echo "    日志:    ${COMPOSE_CMD} --env-file .env logs -f"
+  echo ""
+}
+
 # ── 命令行参数解析 ────────────────────────────────────────────────────────────
 
 parse_args() {
@@ -1474,6 +1613,7 @@ parse_args() {
       --upgrade)         UPGRADE_FLAG=true; shift ;;
       --uninstall)       UNINSTALL_FLAG=true; shift ;;
       --purge)           PURGE_FLAG=true; shift ;;
+      --add-photo-dir)   ADD_PHOTO_DIR="$2"; shift 2 ;;
       --help|-h)         usage; exit 0 ;;
       --version|-v)      echo "install.sh v${SCRIPT_VERSION}"; exit 0 ;;
       *)                 die "未知选项：$1。使用 --help 查看帮助。" ;;
@@ -1512,6 +1652,7 @@ TrailSnap (行影集) — 一键安装脚本
   --upgrade              升级已安装的实例
   --uninstall            卸载 TrailSnap
   --purge                删除所有数据（与 --uninstall 配合使用）
+  --add-photo-dir 路径   向已安装实例追加一个新的照片文件夹
   --help, -h             显示此帮助信息
   --version, -v          显示版本号
 
@@ -1527,6 +1668,9 @@ TrailSnap (行影集) — 一键安装脚本
 
   # 升级
   ./install.sh --upgrade
+
+  # 添加新的照片文件夹
+  ./install.sh --add-photo-dir /home/user/new-photos
 
   # 卸载（保留数据）
   ./install.sh --uninstall
@@ -1554,6 +1698,14 @@ main() {
     exit 0
   fi
 
+  # 处理添加新照片文件夹
+  if [[ -n "$ADD_PHOTO_DIR" ]]; then
+    detect_os
+    ensure_docker
+    add_photo_dir "$ADD_PHOTO_DIR"
+    exit 0
+  fi
+
   # 检查是否已有安装
   if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
     local is_service_running=false
@@ -1576,10 +1728,11 @@ main() {
     else
       echo "  5) 启动服务"
     fi
+    echo "  7) 添加新的照片文件夹"
     echo "  0) 退出"
 
     local choice
-    read_line -rp "$(printf '\033[0;36m请选择 [0-6]: \033[0m')" choice || true
+    read_line -rp "$(printf '\033[0;36m请选择 [0-7]: \033[0m')" choice || true
     case "$choice" in
       1)
         detect_os
@@ -1635,6 +1788,12 @@ main() {
         else
           die "无效选择。"
         fi
+        ;;
+      7)
+        detect_os
+        ensure_docker
+        add_photo_dir ""
+        exit 0
         ;;
       0)
         die "已退出。"

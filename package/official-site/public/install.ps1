@@ -40,6 +40,7 @@ param(
     [switch]$Upgrade,
     [switch]$Uninstall,
     [switch]$Purge,
+    [string]$AddPhotoDir = "",
     [switch]$Help
 )
 
@@ -52,7 +53,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.4.0"
+$ScriptVersion = "1.5.0"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -941,18 +942,61 @@ POSTGRES_PASSWORD="$($script:PgPassword)"
 function Generate-ComposeFile {
     Write-Step "生成 docker-compose.yml..."
 
-    $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() }
+    $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+
+    # 升级 / 追加兼容：若已存在 docker-compose.yml 且含 /app/Photos 挂载行，则原样
+    # 保留旧挂载目标（如 /app/Photos/ 或 /app/Photos1/ 或 /app/Photos/<name>），否则
+    # 升级后容器内路径变化会让数据库里已索引的 file_path 全部失效。仅超出已有数量
+    # 的新增目录才按 /app/Photos/<源目录名> 约定生成新挂载。
+    # 同时去掉 :ro，保证照片删除等功能可用。
+    $existingComposePath = Join-Path $script:InstallDir "docker-compose.yml"
+    $preservedLines = @()
+    $preservedTargets = @{}
+    if (Test-Path $existingComposePath) {
+        try {
+            $oldLines = Get-Content $existingComposePath -Encoding UTF8
+            foreach ($line in $oldLines) {
+                if ($line -match ':\s*/app/Photos') {
+                    $preservedLines += $line.TrimStart()
+                    if ($line -match '/app/Photos[^":\s]*') {
+                        $preservedTargets[$Matches[0]] = $true
+                    }
+                }
+            }
+        } catch {}
+    }
+
     $photoVolumes = @()
-    $mountIndex = 1
-    foreach ($dir in $photoDirs) {
-        # 处理 Windows 路径可能包含空格的问题，并在 Compose 中使用双引号包裹映射
-        $escapedDir = $dir -replace '\\', '\\' -replace '"', '\"'
-        if ($photoDirs.Count -eq 1) {
-            $photoVolumes += "      - `"${escapedDir}:/app/Photos/:ro`""
-        } else {
-            $photoVolumes += "      - `"${escapedDir}:/app/Photos${mountIndex}/:ro`""
+    $usedNames = @{}
+    # 已有挂载目标名加入占用集合，避免新增目录撞名
+    foreach ($t in $preservedTargets.Keys) {
+        $seg = ($t -split '/')[-1]
+        if ($seg) { $usedNames[$seg] = $true }
+    }
+
+    for ($i = 0; $i -lt $photoDirs.Count; $i++) {
+        $dir = $photoDirs[$i]
+        if ($i -lt $preservedLines.Count) {
+            # 复用已有挂载行，并去掉 :ro（转为可写，支持删除照片）
+            $pl = $preservedLines[$i] -replace ':ro\s*(?=")', ''
+            $photoVolumes += "      $pl"
+            continue
         }
-        $mountIndex++
+        # 新增目录：取源目录名作为图库标识（保留中文等 UTF-8 名称），清理非法字符
+        $baseName = Split-Path $dir -Leaf
+        $baseName = ($baseName -replace '[\\/]+', '_').Trim()
+        if ([string]::IsNullOrWhiteSpace($baseName)) { $baseName = "gallery" }
+        $finalName = $baseName
+        $n = 2
+        while ($usedNames.ContainsKey($finalName) -or $preservedTargets.ContainsKey("/app/Photos/$finalName")) {
+            $finalName = "${baseName}_${n}"
+            $n++
+        }
+        $usedNames[$finalName] = $true
+
+        # 处理 Windows 路径反斜杠与空格，用双引号包裹映射；不使用 :ro
+        $escapedDir = $dir -replace '\\', '\\' -replace '"', '\"'
+        $photoVolumes += "      - `"${escapedDir}:/app/Photos/${finalName}`""
     }
     $photoVolumeStr = $photoVolumes -join "`n"
 
@@ -1210,7 +1254,7 @@ function Write-Success {
     Write-Host "  下一步：" -ForegroundColor Cyan
     Write-Host "  1. 在浏览器中打开上面的访问地址"
     Write-Host "  2. 进入 更多 → 设置 → 外部图库"
-    Write-Host "  3. 添加 /app/Photos/ 以扫描照片"
+    Write-Host "  3. 页面会自动检测到挂载的照片目录，勾选后点击「添加选中的图库并扫描」即可"
     Write-Host ""
     Write-Host "  管理命令（在 $($script:InstallDir) 目录下运行）：" -ForegroundColor Cyan
     Write-Host "    停止:    $($script:ComposeCmd) --env-file .env down"
@@ -1288,6 +1332,114 @@ function Do-Upgrade {
     Write-Info "升级完成。您的 .env 配置已保留。"
 }
 
+# ── 添加新照片文件夹 ──────────────────────────────────────────────────────────
+
+function Add-PhotoDir {
+    param([string]$NewDir)
+
+    $composePath = Join-Path $script:InstallDir "docker-compose.yml"
+    $envPath = Join-Path $script:InstallDir ".env"
+    if (-not (Test-Path $composePath) -or -not (Test-Path $envPath)) {
+        Stop-Script "未在 $($script:InstallDir) 找到已安装的实例。请先安装 TrailSnap。"
+    }
+    $script:LogFile = Join-Path $script:InstallDir "install.log"
+
+    if ([string]::IsNullOrWhiteSpace($NewDir)) {
+        $NewDir = Read-Prompt "请输入要添加的照片文件夹路径" ""
+        if ([string]::IsNullOrWhiteSpace($NewDir)) {
+            Stop-Script "未输入路径。"
+        }
+    }
+    $NewDir = $NewDir.Trim().Trim('"', "'")
+
+    # 校验目录存在（不可读时给出明确错误）；不存在时询问是否创建
+    while (-not (Test-Path $NewDir)) {
+        if ($Yes) {
+            Stop-Script "照片目录不存在：$NewDir"
+        }
+        Write-Warn "目录不存在：$NewDir"
+        Write-Host "  1) 创建此目录"
+        Write-Host "  2) 输入其他路径"
+        Write-Host "  3) 取消"
+        $choice = Read-Host "请选择 [1/2/3]"
+        switch ($choice) {
+            "1" {
+                try {
+                    New-Item -ItemType Directory -Path $NewDir -Force | Out-Null
+                    Write-Info "已创建目录：$NewDir"
+                } catch {
+                    Write-Err "创建目录失败：$NewDir，请检查权限。"
+                    continue
+                }
+                break
+            }
+            "2" {
+                $alt = Read-Prompt "照片文件夹路径" ""
+                if ([string]::IsNullOrWhiteSpace($alt)) { Stop-Script "已取消。" }
+                $NewDir = $alt.Trim().Trim('"', "'")
+                continue
+            }
+            default { Stop-Script "已取消。" }
+        }
+    }
+
+    # 读取现有 .env，保留全部配置
+    Get-Content $envPath | ForEach-Object {
+        if ($_ -match "^([^#][^=]+)=(.*)$") {
+            $key = $Matches[1].Trim()
+            $value = $Matches[2].Trim().Trim('"')
+            Set-Item -Path "env:$key" -Value $value
+            switch ($key) {
+                "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
+                "SERVER_PORT"     { $script:ServerPort = [int]$value }
+                "AI_PORT"         { $script:AiPort = [int]$value }
+                "POSTGRES_PORT"   { $script:PostgresPort = [int]$value }
+                "TZ"              { $script:Timezone = $value }
+                "IMAGE_TAG"       { $script:Tag = $value }
+                "AI_MODE"         { $script:DetectedAiMode = $value }
+                "PHOTO_DIR"       { $script:PhotoDir = $value }
+                "POSTGRES_PASSWORD" { $script:PgPassword = $value }
+            }
+        }
+    }
+
+    # 去重：若已登记则直接提示
+    $existing = if ($script:PhotoDir) { $script:PhotoDir -split "," | ForEach-Object { $_.Trim() } } else { @() }
+    $existingResolved = $existing | ForEach-Object { (Resolve-Path $_ -ErrorAction SilentlyContinue).Path }
+    $newResolved = (Resolve-Path $NewDir).Path
+    if ($existingResolved -and ($existingResolved -contains $newResolved)) {
+        Write-Info "该照片文件夹已挂载，无需重复添加：$NewDir"
+        return
+    }
+
+    # 追加到 PHOTO_DIR
+    if ($script:PhotoDir) {
+        $script:PhotoDir = "$($script:PhotoDir),$NewDir"
+    } else {
+        $script:PhotoDir = $NewDir
+    }
+
+    Write-Log "添加新照片文件夹：$NewDir"
+    Generate-EnvFile
+    Generate-ComposeFile
+
+    # 重建 server 容器使新挂载生效（其它容器不受影响）
+    Write-Step "应用新挂载并重启服务..."
+    Push-Location $script:InstallDir
+    try {
+        Invoke-Compose "--env-file .env up -d --remove-orphans"
+    } finally {
+        Pop-Location
+    }
+
+    Write-Info "已添加照片文件夹：$NewDir"
+    Write-Info "请在「更多 → 设置 → 外部图库」中点击「重新检测」，勾选新目录并添加扫描。"
+    Write-Host ""
+    Write-Host "  管理命令（在 $($script:InstallDir) 目录下运行）：" -ForegroundColor Cyan
+    Write-Host "    日志:    $($script:ComposeCmd) --env-file .env logs -f"
+    Write-Host ""
+}
+
 # ── 卸载 ──────────────────────────────────────────────────────────────────────
 
 function Do-Uninstall {
@@ -1349,6 +1501,7 @@ TrailSnap (行影集) — Windows 一键安装脚本
   -Upgrade               升级已安装的实例
   -Uninstall             卸载 TrailSnap
   -Purge                 删除所有数据（与 -Uninstall 配合使用）
+  -AddPhotoDir <路径>    向已安装实例追加一个新的照片文件夹
   -Help                  显示此帮助信息
 
 示例：
@@ -1363,6 +1516,9 @@ TrailSnap (行影集) — Windows 一键安装脚本
 
   # 升级
   .\install.ps1 -Upgrade
+
+  # 添加新的照片文件夹
+  .\install.ps1 -AddPhotoDir "E:\NewPhotos"
 
   # 卸载（保留数据）
   .\install.ps1 -Uninstall
@@ -1393,6 +1549,16 @@ if ($Uninstall) {
     }
     $script:LogFile = Join-Path $script:InstallDir "install.log"
     Do-Uninstall
+    exit 0
+}
+
+# 处理添加新照片文件夹
+if ($AddPhotoDir -ne "") {
+    if ([string]::IsNullOrWhiteSpace($script:InstallDir)) {
+        $script:InstallDir = Read-Prompt "安装目录" $DefaultInstallDir
+    }
+    Ensure-Docker
+    Add-PhotoDir -NewDir $AddPhotoDir
     exit 0
 }
 
@@ -1446,9 +1612,10 @@ if (Test-Path $existingCompose) {
     } else {
         Write-Host "  5) 启动服务"
     }
+    Write-Host "  7) 添加新的照片文件夹"
     Write-Host "  0) 退出"
-    
-    $choice = Read-Host "请选择 [0-6]"
+
+    $choice = Read-Host "请选择 [0-7]"
     switch ($choice) {
         "1" {
             Ensure-Docker
@@ -1508,6 +1675,11 @@ if (Test-Path $existingCompose) {
             } else {
                 Stop-Script "无效选择。"
             }
+        }
+        "7" {
+            Ensure-Docker
+            Add-PhotoDir -NewDir ""
+            exit 0
         }
         "0" {
             Stop-Script "已退出。"
