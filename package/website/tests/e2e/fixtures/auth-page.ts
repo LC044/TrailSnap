@@ -59,7 +59,14 @@ export const test = freshToken.extend<{
   authedPage: Page
 }>({
   cleanPage: async ({ browser }, use) => {
-    const context = await browser.newContext({ baseURL: e2eEnv.webBaseUrl })
+    // 显式传 storageState: { cookies: [], origins: [] } 覆盖 config.use.storageState
+    // 的泄漏——Playwright 1.60 下 browser.newContext() 会继承 use.storageState（含共享
+    // token），addInitScript(localStorage.clear) 在 storageState 重注入后失效。直接参数
+    // 优先级高于 config，强制空状态，保证 userStore.token 启动即 null。
+    const context = await browser.newContext({
+      baseURL: e2eEnv.webBaseUrl,
+      storageState: { cookies: [], origins: [] },
+    })
     await context.addInitScript(() => {
       try {
         localStorage.clear()
