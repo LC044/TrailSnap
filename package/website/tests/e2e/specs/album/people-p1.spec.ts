@@ -3,6 +3,7 @@ import { test, expect, type APIRequestContext, type Page, type Locator } from '@
 import { ensureAuthSession, authHeaders } from '../../helpers/auth'
 import {
   requireAnyIdentity,
+  requireNamedIdentity,
   requireIdentityWithPhotos,
   type BaseResponse,
   type FaceIdentitySummary,
@@ -216,7 +217,9 @@ test.describe.serial('P1 - 人物相册', () => {
   })
 
   test('2.5.10 筛选 named - 关闭 unnamed 后 API 调用只带 types=named', async ({ page, request }, testInfo) => {
-    const probe = await requireAnyIdentity(request, testInfo)
+    // 本用例会把筛选切到 types=named 并断言列表渲染，必须有「已命名」身份；
+    // requireAnyIdentity 接受 unnamed，named 列表为空时 .flow-grid 不渲染会误报。
+    const probe = await requireNamedIdentity(request, testInfo)
     if (!probe.ok) return
 
     await gotoRetry(page, '/album/people')
