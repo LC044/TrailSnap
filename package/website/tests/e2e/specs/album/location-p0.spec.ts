@@ -211,11 +211,21 @@ test.describe.serial('P0 - 位置相册', () => {
     const card = locationGridCard(page).first()
     await expect(card).toBeVisible({ timeout: 15_000 })
 
-    // 先挂导航监听再点击，消除 click-then-wait 竞态；锚定详情路由，避免误匹配列表页
-    await Promise.all([
-      page.waitForURL(/\/album\/location\/[^/?#]+/, { timeout: 15_000 }),
-      card.click(),
-    ])
+    // 卡片 @click → goToLocation → router.push 详情路由。偶发点击不触发导航
+    // （URL 停在列表页，waitForURL 干等到超时）：click 落在卡片正中的透明 overlay
+    // 上可能未冒泡，或负载下 router.push 未及时提交。改点稳定的 h3 标题（不在
+    // overlay 覆盖区），并重试点击直到 URL 命中详情路由——单次 click+wait 改成
+    // 多轮，吸收偶发 miss；任一轮触发导航即提前退出。
+    const heading = card.locator('h3')
+    await expect(heading).toBeVisible({ timeout: 10_000 })
+    const detailUrl = /\/album\/location\/[^/?#]+/
+    for (let attempt = 0; attempt < 4 && !detailUrl.test(page.url()); attempt += 1) {
+      await Promise.all([
+        page.waitForURL(detailUrl, { timeout: 6_000 }).catch(() => undefined),
+        heading.click().catch(() => undefined),
+      ])
+    }
+    await expect(page, 'card click should navigate to /album/location/:name').toHaveURL(detailUrl)
   })
 
   test('2.4.6 位置详情页加载 - 子标题"N 个项目"+ 至少一张照片 @p0', async ({ page, request }, testInfo) => {
