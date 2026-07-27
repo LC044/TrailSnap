@@ -24,8 +24,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests\.env.test' }
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests' '.env.test' }
 if (-not [System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile = Join-Path $RepoRoot $EnvFile }
 # EnvFile 可能不存在（例如从未生成），不加载也不报错——端口清理只依赖 TS_* 是否已在会话中。
 if (Test-Path $EnvFile) {
@@ -38,7 +38,7 @@ if (-not $Mode) {
     $Mode = if ($env:TS_TEST_ENV -in 'docker', 'ci') { 'docker' } else { 'dev' }
 }
 
-$ArtifactsDir = Join-Path $RepoRoot 'tests\artifacts'
+$ArtifactsDir = Join-Path $RepoRoot 'tests' 'artifacts'
 New-Item -ItemType Directory -Force -Path $ArtifactsDir | Out-Null
 
 if (Test-KeepServicesFlag) {
@@ -58,7 +58,7 @@ if ($Mode -eq 'dev') {
     }
 }
 elseif ($Mode -eq 'docker') {
-    $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.yml'
+    $composeFile = Join-Path $RepoRoot 'tests' 'docker' 'docker-compose.yml'
     if (Test-Path $composeFile) {
         $logFile = Join-Path $ArtifactsDir 'docker-compose.log'
         Write-Host "  收集 docker compose logs → $logFile" -ForegroundColor Cyan

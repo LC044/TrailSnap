@@ -78,16 +78,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests\.env.test' }
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests' '.env.test' }
 if (-not [System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile = Join-Path $RepoRoot $EnvFile }
 if (-not (Test-Path $EnvFile)) {
-    $exampleRel = 'tests\.env.test.example'
+    $exampleRel = Join-Path 'tests' '.env.test.example'
     $exampleAbs = Join-Path $RepoRoot $exampleRel
     Write-Host "找不到环境变量文件：$EnvFile" -ForegroundColor Red
     Write-Host '请先从仓库自带的模板复制一份本地配置，按需编辑后再重跑：' -ForegroundColor Yellow
     if (Test-Path $exampleAbs) {
-        Write-Host "    Copy-Item '$exampleRel' 'tests\.env.test'" -ForegroundColor Cyan
+        $targetRel = Join-Path 'tests' '.env.test'
+        Write-Host "    Copy-Item '$exampleRel' '$targetRel'" -ForegroundColor Cyan
     } else {
         Write-Host "（模板 $exampleRel 也不存在，请确认仓库完整性。）" -ForegroundColor Yellow
     }
@@ -157,7 +158,11 @@ function Invoke-Pytest {
             & $uv run python -m pytest $TestPath @ExtraArgs -v
         }
         else {
-            $py = Join-Path $pkgAbs '.venv\Scripts\python.exe'
+            $py = if ($IsWindows) {
+                Join-Path $pkgAbs '.venv' 'Scripts' 'python.exe'
+            } else {
+                Join-Path $pkgAbs '.venv' 'bin' 'python'
+            }
             if (-not (Test-Path $py)) { throw "找不到 uv，且 $py 不存在" }
             & $py -m pytest $TestPath @ExtraArgs -v
         }
@@ -196,7 +201,7 @@ try {
             $env:TS_TEST_PASSWORD = if ($env:TS_TEST_PASSWORD) { $env:TS_TEST_PASSWORD } else { 'Passw0rd!123' }
 
             Write-Host "==> 前端 E2E  suite=$Level  mode=$Mode" -ForegroundColor Green
-            $webDir = Join-Path $RepoRoot 'package\website'
+            $webDir = Join-Path $RepoRoot 'package' 'website'
             Push-Location $webDir
             try {
                 if (-not (Test-Path (Join-Path $webDir 'node_modules'))) {
@@ -204,7 +209,7 @@ try {
                 }
                 Write-Host '  确保 Playwright chromium 已安装...'; pnpm exec playwright install chromium
                 # 统一委托给 run-e2e.mjs，由其处理 scan/p0/p1/smoke/all/light/full
-                & node playwright/run-e2e.mjs $Level
+                & node (Join-Path 'playwright' 'run-e2e.mjs') $Level
                 if ($LASTEXITCODE -ne 0) { throw "playwright 失败，退出码 $LASTEXITCODE" }
             }
             finally { Pop-Location }
@@ -219,11 +224,11 @@ try {
 
         if ($Component -in 'server', 'all') {
             Write-Host "==> 后端 $Layer 测试 (server)" -ForegroundColor Green
-            Invoke-Pytest -PackageDir 'package\server' -TestPath $testPath -ExtraArgs $markerArg
+            Invoke-Pytest -PackageDir (Join-Path 'package' 'server') -TestPath $testPath -ExtraArgs $markerArg
         }
         if ($Component -in 'ai', 'all') {
             Write-Host "==> AI $Layer 测试 (ai)" -ForegroundColor Green
-            Invoke-Pytest -PackageDir 'package\ai' -TestPath $aiTestPath -ExtraArgs $markerArg
+            Invoke-Pytest -PackageDir (Join-Path 'package' 'ai') -TestPath $aiTestPath -ExtraArgs $markerArg
         }
     }
 
@@ -232,7 +237,7 @@ try {
         $markerArg = Get-MarkerArg -Lvl $Level -Scp $Scope
         Write-Host "==> CLI $Layer 测试 (cli)" -ForegroundColor Green
         # CLI unit 测试不依赖 server；跳过需要真实后端的 tests/integration
-        Invoke-Pytest -PackageDir 'package\trailsnap-cli' -TestPath 'tests' -ExtraArgs (@('--ignore=tests/integration') + $markerArg)
+        Invoke-Pytest -PackageDir (Join-Path 'package' 'trailsnap-cli') -TestPath 'tests' -ExtraArgs (@('--ignore=tests/integration') + $markerArg)
     }
 
     Write-Host ""

@@ -27,12 +27,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests\.env.test' }
+$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
+if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests' '.env.test' }
 if (-not [System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile = Join-Path $RepoRoot $EnvFile }
 if (-not (Test-Path $EnvFile)) {
     Write-Host "找不到环境变量文件：$EnvFile" -ForegroundColor Red
-    Write-Host "请先复制模板：Copy-Item 'tests\.env.test.example' 'tests\.env.test' 后按需编辑。" -ForegroundColor Yellow
+    $tplRel = Join-Path 'tests' '.env.test.example'
+    $dstRel = Join-Path 'tests' '.env.test'
+    Write-Host "请先复制模板：Copy-Item '$tplRel' '$dstRel' 后按需编辑。" -ForegroundColor Yellow
     exit 1
 }
 
@@ -44,7 +46,7 @@ if (-not $Mode) {
     $Mode = if ($env:TS_TEST_ENV -in 'docker', 'ci') { 'docker' } else { 'dev' }
 }
 
-$ArtifactsDir = Join-Path $RepoRoot 'tests\artifacts'
+$ArtifactsDir = Join-Path $RepoRoot 'tests' 'artifacts'
 New-Item -ItemType Directory -Force -Path $ArtifactsDir | Out-Null
 
 Write-Host "==> 启动测试服务  Mode=$Mode  Component=$Component  Env=$EnvFile" -ForegroundColor Cyan
@@ -79,6 +81,11 @@ if ($Mode -eq 'dev') {
 
     $started = @()
 
+    # Start-Process 的 -WindowStyle 参数在非 Windows 版 PowerShell 上不支持。
+    # 用 splatting 统一注入：Windows 加 -WindowStyle Hidden 隐藏窗口；mac/Linux 空 hashtable。
+    $winStyleArgs = @{}
+    if ($IsWindows) { $winStyleArgs['WindowStyle'] = 'Hidden' }
+
     # TS_TEST_RESET_DB=true 时启动 server 前先删库（全新数据）
     if (Test-ResetDbFlag) {
         Write-Host "  TS_TEST_RESET_DB=true，启动 server 前先删除目标测试库..." -ForegroundColor Cyan
@@ -88,36 +95,50 @@ if ($Mode -eq 'dev') {
     # Server
     if ($Component -in 'server', 'all') {
         Write-Host "  启动 Server ($($apiUri.Port))..."
-        $serverDir = Join-Path $RepoRoot "package\server"
+        $serverDir = Join-Path $RepoRoot 'package' 'server'
         $proc = Start-Process -FilePath $uv `
             -ArgumentList @('run', 'python', 'start.py', '--port', "$($apiUri.Port)") `
             -WorkingDirectory $serverDir `
             -RedirectStandardOutput $serverLog -RedirectStandardError $serverErr `
-            -WindowStyle Hidden -PassThru
+            @winStyleArgs -PassThru
         $started += $proc
     }
 
     # AI
     if ($Component -in 'ai', 'all') {
         Write-Host "  启动 AI 服务 ($($aiUri.Port))..."
-        $aiDir = Join-Path $RepoRoot "package\ai"
+        $aiDir = Join-Path $RepoRoot 'package' 'ai'
         $proc = Start-Process -FilePath $uv `
             -ArgumentList @('run', 'uvicorn', 'main:app', '--host', '0.0.0.0', '--port', "$($aiUri.Port)") `
             -WorkingDirectory $aiDir `
             -RedirectStandardOutput $aiLog -RedirectStandardError $aiErr `
-            -WindowStyle Hidden -PassThru
+            @winStyleArgs -PassThru
         $started += $proc
     }
 
     # Frontend
     if ($Component -in 'website', 'all') {
         Write-Host "  启动 Frontend ($($webUri.Port))..."
-        $webDir = Join-Path $RepoRoot "package\website"
-        $proc = Start-Process -FilePath "pnpm.cmd" `
-            -ArgumentList @('dev', '--port', "$($webUri.Port)") `
-            -WorkingDirectory $webDir `
-            -RedirectStandardOutput $webLog -RedirectStandardError $webErr `
-            -WindowStyle Hidden -PassThru
+        $webDir = Join-Path $RepoRoot 'package' 'website'
+        # Windows 上 pnpm 入口是 pnpm.cmd；非 Windows 无后缀。统一用 Get-Command 解析真实可执行路径。
+        $pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue
+        if (-not $pnpmCmd) { throw '找不到 pnpm（前端 dev 服务启动需要 pnpm）' }
+        $pnpmPath = $pnpmCmd.Source
+        if (-not $pnpmPath) { $pnpmPath = $pnpmCmd.Path }
+        # Windows 下 Start-Process 无法直接启 .cmd，需 cmd /c；mac/Linux 用真实二进制直启。
+        if ($IsWindows) {
+            $proc = Start-Process -FilePath 'cmd.exe' `
+                -ArgumentList @('/c', $pnpmPath, 'dev', '--port', "$($webUri.Port)") `
+                -WorkingDirectory $webDir `
+                -RedirectStandardOutput $webLog -RedirectStandardError $webErr `
+                @winStyleArgs -PassThru
+        } else {
+            $proc = Start-Process -FilePath $pnpmPath `
+                -ArgumentList @('dev', '--port', "$($webUri.Port)") `
+                -WorkingDirectory $webDir `
+                -RedirectStandardOutput $webLog -RedirectStandardError $webErr `
+                -PassThru
+        }
         $started += $proc
     }
 
@@ -150,7 +171,7 @@ if ($Mode -eq 'dev') {
 # docker 模式：compose 栈
 # ===========================================================================
 elseif ($Mode -eq 'docker') {
-    $composeFile = Join-Path $RepoRoot 'tests\docker\docker-compose.yml'
+    $composeFile = Join-Path $RepoRoot 'tests' 'docker' 'docker-compose.yml'
     if (-not (Test-Path $composeFile)) { throw "找不到 compose 文件：$composeFile" }
 
     $apiUri = [System.Uri]$env:TS_API_BASE_URL
