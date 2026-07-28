@@ -371,6 +371,13 @@ jobs:
         shell: pwsh
         run: ./tests/scripts/run-tests.ps1 -Layer e2e -Level ${{ steps.e2e-level.outputs.level }} -Mode docker -EnvFile tests/.env.test
 
+      - name: Fix AI model cache permissions
+        # AI 容器以 root 挂载写入 tests/.cache/ai-models，产生 runner 用户无权读取的
+        # .msc 元数据文件，导致 actions/cache/save 的 tar 打包 Permission denied。
+        # 缓存保存前统一把属主/权限修回 runner 可读。
+        if: always() && steps.ai-models-restore.outputs.cache-hit != 'true'
+        run: sudo chown -R "$USER:$USER" tests/.cache/ai-models
+
       - name: Save AI model weights cache
         # 仅在缓存未命中时保存（命中时无需覆写）；if: always() 保证测试失败也能存下权重
         if: always() && steps.ai-models-restore.outputs.cache-hit != 'true'
