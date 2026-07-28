@@ -44,3 +44,20 @@ class MomentDayCaptionGenerateRequest(BaseModel):
     stream: bool = Field(default=True, description="是否走 SSE 流式返回")
     connection_id: Optional[str] = None
     model_name: Optional[str] = None
+
+
+class MomentDayLocationItem(BaseModel):
+    """朋友圈日位置里的单个位置条目。"""
+
+    name: str
+    level: str = Field(default="unknown", description="scene / city / district / province")
+    count: int = 0
+
+
+class MomentDayLocations(BaseModel):
+    """按天聚合的位置数据（不落库，实时从 photo_metadata 计算）。"""
+
+    day: date
+    primary: str = Field(..., description="首选展示的位置名，等于 locations[0].name")
+    level: str = Field(default="unknown")
+    locations: List[MomentDayLocationItem] = Field(default_factory=list)

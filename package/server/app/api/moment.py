@@ -18,8 +18,10 @@ from app.schemas.moment import (
     MomentDayCaption,
     MomentDayCaptionGenerateRequest,
     MomentDayCaptionUpsert,
+    MomentDayLocations,
 )
 from app.service.moment.day_caption_service import (
+    day_bounds_utc,
     generate_caption_stream,
     generate_caption_sync,
 )
@@ -71,6 +73,45 @@ def delete_day_caption(
 ):
     ok = moment_crud.delete_caption(db, current_user.id, scope_type, scope_id, day)
     return {"deleted": ok}
+
+
+@router.get(
+    "/day-locations",
+    response_model=List[MomentDayLocations],
+    summary="批量获取每日位置（景区优先，实时聚合，不落库）",
+)
+def list_day_locations(
+    start: date = Query(..., description="起始日期（含），YYYY-MM-DD"),
+    end: date = Query(..., description="截止日期（含），YYYY-MM-DD"),
+    timezone: str = Query("UTC", description="IANA 时区名，例如 Asia/Shanghai"),
+    top_n: int = Query(3, ge=1, le=10, description="每天最多返回的位置数（去重后）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """按用户本地时区聚合每一天的位置数据。
+
+    - 时区语义：先按用户传入的 ``timezone`` 计算 ``start`` 那天的本地零点，转成 UTC 作为下界；
+      ``end`` 后一天的本地零点作为上界（左闭右开）。
+    - 名称降级：``Scene.name`` > ``city`` > ``district`` > ``province``，都空则该照片不计入。
+    - 同一天有多个位置时按 (level_rank, count) 排序，返回 Top N。景区永远排在城市之前。
+    """
+    if start > end:
+        raise HTTPException(status_code=400, detail="start 必须早于或等于 end")
+    if (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="日期区间过长（最多 366 天）")
+
+    # 区间左边界：start 那天本地零点
+    start_utc, _ = day_bounds_utc(start, timezone)
+    # 区间右边界：end 那天的下一天本地零点（左闭右开）
+    _, end_utc = day_bounds_utc(end, timezone)
+
+    return moment_crud.get_day_locations(
+        db,
+        current_user.id,
+        start_utc,
+        end_utc,
+        top_n_per_day=top_n,
+    )
 
 
 @router.post("/day-captions/generate", summary="AI 生成日文案（可流式）")
