@@ -134,7 +134,16 @@ test.beforeEach(async ({ page }) => {
 // ===========================================================================
 
 test.describe("Moments 朋友圈视图 @views-coverage", () => {
-  test("切换到「朋友圈」布局 -> 渲染用户昵称 + 「这是 X年X月X日 的美好回忆」文案", async ({ page }) => {
+  test("切换到「朋友圈」布局 -> 渲染用户昵称 + 未生成文案时的占位与「AI 生成」按钮", async ({ page }) => {
+    // 拦截朋友圈日文案列表接口：返回空数组，保证进入"未生成"占位态
+    await page.route("**/api/moments/day-captions**", (route) => {
+      const method = route.request().method()
+      if (method === "GET") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: "[]" })
+      }
+      return route.continue()
+    })
+
     await page.goto("/photos")
     // 等首屏 grid 渲染（grid 是默认布局）
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
@@ -144,11 +153,15 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
     await expect(momentsItem).toBeVisible({ timeout: 5_000 })
     await momentsItem.click()
 
-    // Moments 视图特征：用户名 + 朋友圈固定文案
+    // Moments 视图特征：用户名 + 朋友圈默认占位文案（未生成时显示）
     // 注意：dev-global-setup 只设置 user_token，未填充 user_info；store 内的 userInfo 为 null，
     // 因此 PhotoGallery 会显示默认昵称「行影集用户」。此处断言默认名以保持 spec 自包含。
     await expect(page.getByText("行影集用户").first()).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)).toBeVisible()
+    await expect(
+      page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
+    ).toBeVisible()
+    // 首屏第一天的"AI 生成"按钮应可见（悬浮才展开的按钮组，因此使用 attached 判定即可）
+    await expect(page.locator('button:has-text("AI 生成")').first()).toHaveCount(1, { timeout: 5_000 })
   })
 
   test("朋友圈视图 -> 同日多张照片在 grid 内渲染对应数量的缩略图", async ({ page }) => {
@@ -178,6 +191,257 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
     await page.locator('button:has-text("朋友圈")').first().click()
     // PhotosPage empty 模板硬编码「欢迎来到 TrailSnap」
     await expect(page.getByText("欢迎来到 TrailSnap")).toBeVisible({ timeout: 10_000 })
+  })
+})
+
+// ===========================================================================
+// Moments 朋友圈日文案生成 / 编辑 / 清除 交互
+// 依赖：/api/moments/day-captions 与 /api/moments/day-captions/generate 两个后端接口。
+// 所有场景通过 page.route mock，不依赖真实后端或 LLM。
+// ===========================================================================
+
+test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
+  // 该 describe 内所有用例统一走"无历史文案"的 GET stub
+  const stubEmptyListRoute = async (page: Page) => {
+    await page.route("**/api/moments/day-captions?**", (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ status: 200, contentType: "application/json", body: "[]" })
+      }
+      return route.continue()
+    })
+  }
+
+  // 打开 /photos 并切换到朋友圈视图的公共步骤
+  const enterMomentsView = async (page: Page) => {
+    await page.goto("/photos")
+    await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
+    await page.locator('button[title="视图设置"]').click()
+    await page.locator('button:has-text("朋友圈")').first().click()
+    await expect(page.locator(".day-block").first()).toBeVisible({ timeout: 10_000 })
+  }
+
+  test("点击「AI 生成」 -> SSE 流式返回，DOM 逐步累加最终展示完整文案", async ({ page }) => {
+    await stubEmptyListRoute(page)
+
+    // 记录 SSE POST 请求 payload，验证 body 正确
+    let capturedBody: any = null
+    await page.route("**/api/moments/day-captions/generate", async (route) => {
+      capturedBody = JSON.parse(route.request().postData() || "{}")
+      // 一次性发多帧 SSE，客户端会按 \n 拆分逐块回调 onChunk
+      const sseBody = [
+        `data: ${JSON.stringify({ content: "外滩" })}`,
+        `data: ${JSON.stringify({ content: "的风比想象里咸一点。" })}`,
+        `data: ${JSON.stringify({
+          done: true,
+          caption: "外滩的风比想象里咸一点。",
+          source: "ai",
+          updated_at: "2025-08-05T20:00:00Z",
+        })}`,
+        "data: [DONE]",
+        "",
+      ].join("\n\n")
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: { "Cache-Control": "no-cache", Connection: "keep-alive" },
+        body: sseBody,
+      })
+    })
+
+    await enterMomentsView(page)
+
+    // 点击第一个 day-block 内的 "AI 生成" 按钮（悬浮才展开，直接 click 也能触发）
+    const aiBtn = page.locator('button:has-text("AI 生成")').first()
+    await expect(aiBtn).toBeVisible({ timeout: 5_000 })
+    await aiBtn.click({ force: true })
+
+    // 断言最终文案渲染到 DOM
+    await expect(page.getByText("外滩的风比想象里咸一点。")).toBeVisible({ timeout: 10_000 })
+
+    // 校验请求 body 包含关键字段
+    expect(capturedBody).toBeTruthy()
+    expect(capturedBody.day).toBe("2025-08-05")
+    expect(capturedBody.stream).toBe(true)
+    expect(capturedBody.scope_type).toBe("all")
+    // timezone 由浏览器决定，只断言字段存在
+    expect(typeof capturedBody.timezone).toBe("string")
+  })
+
+  test("已有 caption -> 进入 moments 视图时直接展示，且默认按钮变为「重新生成」", async ({ page }) => {
+    // GET 返回一条已经生成好的文案
+    await page.route("**/api/moments/day-captions?**", (route) => {
+      if (route.request().method() !== "GET") return route.continue()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: 1,
+            user_id: "u-e2e",
+            scope_type: "all",
+            scope_id: null,
+            day: "2025-08-05",
+            caption: "云低到能碰到山头。",
+            source: "ai",
+            model_name: "e2e-mock",
+            photo_count: 3,
+            created_at: "2025-08-05T20:00:00Z",
+            updated_at: "2025-08-05T20:00:00Z",
+          },
+        ]),
+      })
+    })
+
+    await enterMomentsView(page)
+    await expect(page.getByText("云低到能碰到山头。")).toBeVisible({ timeout: 10_000 })
+    // 已有文案时按钮文案切换为「重新生成」，不应再显示占位文本
+    await expect(page.locator('button:has-text("重新生成")').first()).toHaveCount(1, { timeout: 5_000 })
+    await expect(page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)).toHaveCount(0)
+  })
+
+  test("SSE 返回 error 帧 -> 显示原占位文案且未持久化任何内容", async ({ page }) => {
+    await stubEmptyListRoute(page)
+    await page.route("**/api/moments/day-captions/generate", async (route) => {
+      const sseBody = [
+        `data: ${JSON.stringify({ error: "LLM 返回为空，请稍后重试。" })}`,
+        "data: [DONE]",
+        "",
+      ].join("\n\n")
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: sseBody,
+      })
+    })
+
+    await enterMomentsView(page)
+    await page.locator('button:has-text("AI 生成")').first().click({ force: true })
+
+    // 出错后应该回退到占位文案
+    await expect(
+      page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
+    ).toBeVisible({ timeout: 10_000 })
+    // "AI 生成"按钮依然存在，允许用户重试
+    await expect(page.locator('button:has-text("AI 生成")').first()).toBeVisible()
+  })
+
+  test("手动编辑并保存 -> 触发 PUT /api/moments/day-captions/{day}，DOM 更新为新文案", async ({ page }) => {
+    // 先给一条已有文案，才会出现「编辑」按钮
+    await page.route("**/api/moments/day-captions?**", (route) => {
+      if (route.request().method() !== "GET") return route.continue()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: 2,
+            user_id: "u-e2e",
+            scope_type: "all",
+            scope_id: null,
+            day: "2025-08-05",
+            caption: "初稿：随便写点什么。",
+            source: "ai",
+            model_name: "e2e-mock",
+            photo_count: 3,
+            created_at: "2025-08-05T20:00:00Z",
+            updated_at: "2025-08-05T20:00:00Z",
+          },
+        ]),
+      })
+    })
+
+    let putBody: any = null
+    await page.route("**/api/moments/day-captions/2025-08-05*", async (route) => {
+      if (route.request().method() !== "PUT") return route.continue()
+      putBody = JSON.parse(route.request().postData() || "{}")
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 2,
+          user_id: "u-e2e",
+          scope_type: "all",
+          scope_id: null,
+          day: "2025-08-05",
+          caption: putBody.caption,
+          source: "manual",
+          model_name: null,
+          photo_count: 3,
+          created_at: "2025-08-05T20:00:00Z",
+          updated_at: "2025-08-05T21:00:00Z",
+        }),
+      })
+    })
+
+    await enterMomentsView(page)
+    await expect(page.getByText("初稿：随便写点什么。")).toBeVisible({ timeout: 10_000 })
+
+    // 点「编辑」按钮 -> 出现 textarea
+    await page.locator('button:has-text("编辑")').first().click({ force: true })
+    const textarea = page.locator("textarea").first()
+    await expect(textarea).toBeVisible({ timeout: 5_000 })
+    await textarea.fill("手写的一句：夜里的江面比白天更沉。")
+
+    // 保存
+    await page.locator('button:has-text("保存")').first().click()
+
+    // DOM 应更新为新文案
+    await expect(page.getByText("手写的一句：夜里的江面比白天更沉。")).toBeVisible({ timeout: 10_000 })
+    // PUT payload 校验
+    expect(putBody).toBeTruthy()
+    expect(putBody.caption).toBe("手写的一句：夜里的江面比白天更沉。")
+  })
+
+  test("清除文案 -> 触发 DELETE /api/moments/day-captions/{day}，DOM 回到占位态", async ({ page }) => {
+    // 先给一条已有文案，让「清除」按钮出现
+    await page.route("**/api/moments/day-captions?**", (route) => {
+      if (route.request().method() !== "GET") return route.continue()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: 3,
+            user_id: "u-e2e",
+            scope_type: "all",
+            scope_id: null,
+            day: "2025-08-05",
+            caption: "临时文案。",
+            source: "manual",
+            model_name: null,
+            photo_count: 3,
+            created_at: "2025-08-05T20:00:00Z",
+            updated_at: "2025-08-05T20:00:00Z",
+          },
+        ]),
+      })
+    })
+
+    let deleteHit = false
+    await page.route("**/api/moments/day-captions/2025-08-05*", async (route) => {
+      if (route.request().method() !== "DELETE") return route.continue()
+      deleteHit = true
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ deleted: true }),
+      })
+    })
+
+    await enterMomentsView(page)
+    await expect(page.getByText("临时文案。")).toBeVisible({ timeout: 10_000 })
+
+    // 点「清除」
+    await page.locator('button:has-text("清除")').first().click({ force: true })
+
+    // 期望：DELETE 命中 + 回到占位态
+    await expect
+      .poll(() => deleteHit, { timeout: 5_000 })
+      .toBe(true)
+    await expect(
+      page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
+    ).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText("临时文案。")).toHaveCount(0)
   })
 })
 

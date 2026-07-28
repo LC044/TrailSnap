@@ -117,8 +117,22 @@ service.interceptors.response.use(
         case 500:
           errorMsg = '服务器内部错误';
           break;
-        default:
-          errorMsg = `请求错误（${(error.response?.data as any)?.detail || error.response?.statusText || error.message}）`;
+        default: {
+          const raw = (error.response?.data as any)?.detail;
+          let detailStr: string | undefined;
+          if (typeof raw === 'string') {
+            detailStr = raw;
+          } else if (Array.isArray(raw)) {
+            // FastAPI 校验错误 detail 是数组：[{loc, msg, type}, ...]
+            detailStr = raw
+              .map((it: any) => it?.msg || (typeof it === 'string' ? it : JSON.stringify(it)))
+              .join('; ');
+          } else if (raw && typeof raw === 'object') {
+            detailStr = (raw as any).msg || JSON.stringify(raw);
+          }
+          errorMsg = `请求错误（${detailStr || error.response?.statusText || error.message}）`;
+          break;
+        }
       }
     } else if (error.request) {
       errorMsg = '请求超时，请检查网络';

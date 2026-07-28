@@ -32,6 +32,8 @@ interface UseVirtualLayoutOptions {
   viewSize: Ref<'sm' | 'md' | 'lg'>
   photos: Ref<AlbumImage[]> // Added photos dependency
   expandedDays?: Ref<Set<string>>
+  // 朋友圈布局下，用于按 caption 字数动态计算 day 卡片头部高度
+  dayCaptions?: Ref<Record<string, { caption: string }>>
 }
 
 export function useVirtualLayout(options: UseVirtualLayoutOptions) {
@@ -206,13 +208,34 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
             let effectiveHeaderHeight = isDummy ? 0 : DAY_HEADER_HEIGHT
             
             if (mode === 'moments') {
-                effectiveHeaderHeight = 120 // Header (Avatar, Name, Text) + Footer (Date, Actions) + Margins
-                if (options.expandedDays?.value.has(isDummy ? 'all' : `${dayItem.year}-${dayItem.month}-${dayItem.day}`) && dayItem.count > 9) {
+                // 头部：头像 40 + 昵称 20 + 单行占位文案 24 + 上下 margin ≈ 36
+                effectiveHeaderHeight = 120
+
+                // 如果该天已生成 caption，按字数估算多行文本占用的额外高度
+                const dayKeyForCap = isDummy ? 'all' : `${dayItem.year}-${dayItem.month}-${dayItem.day}`
+                const cap = options.dayCaptions?.value?.[dayKeyForCap]?.caption
+                if (cap) {
+                    // 每行字数按内容区宽度粗算：文案宽 = min(fullContentWidth, 600) - 内边距
+                    const captionMaxWidth = Math.min(width - 32 - 40 - 12, 600) - 8
+                    const perLine = Math.max(16, Math.floor(captionMaxWidth / 15)) // 15px 一个字大约
+                    // caption 里的显式换行也算行数
+                    const explicitBreaks = (cap.match(/\n/g) || []).length
+                    const lines = Math.max(1, Math.ceil(cap.length / perLine) + explicitBreaks)
+                    // 首行已经算在 120 里，超过一行的每行按 22px 累加；再为按钮/操作条留 4px
+                    effectiveHeaderHeight += Math.max(0, lines - 1) * 22 + 4
+                }
+
+                if (options.expandedDays?.value.has(dayKeyForCap) && dayItem.count > 9) {
                     effectiveHeaderHeight += 30 // "Collapse" button height
                 }
             }
 
-            const dayHeight = effectiveHeaderHeight + contentHeight + gap 
+            // moments 布局给每张卡片再多 32px 的底部留白：
+            // - 8px 视觉呼吸
+            // - 24px 兜底冗余，覆盖字体渲染差异、按钮组常驻高度、行距误差，避免下一个 day-block 覆盖当前操作按钮
+            const bottomSpacing = (mode === 'moments') ? 32 : 0
+
+            const dayHeight = effectiveHeaderHeight + contentHeight + gap + bottomSpacing
             
             dayBlocks.push({
                 key: isDummy ? 'all' : `${dayItem.year}-${dayItem.month}-${dayItem.day}`,
@@ -252,8 +275,21 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
   }
 
   // Watchers
-  // Added photos to watch list
-  watch([() => timelineStats.value, containerWidth, layoutMode, viewSize, () => photos.value.length, () => options.expandedDays?.value.size], () => {
+  // Added photos to watch list; 朋友圈日文案变化也需要重算布局（不同 caption 高度不同）
+  watch([
+      () => timelineStats.value,
+      containerWidth,
+      layoutMode,
+      viewSize,
+      () => photos.value.length,
+      () => options.expandedDays?.value.size,
+      () => {
+          const map = options.dayCaptions?.value
+          if (!map) return ''
+          // 用 "key|长度" 组合作为签名，字符串或键变化都会触发重算
+          return Object.keys(map).map(k => `${k}|${(map[k]?.caption || '').length}`).sort().join(',')
+      }
+  ], () => {
     recalculateLayout()
   }, { immediate: true })
 
