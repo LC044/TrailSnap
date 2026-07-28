@@ -31,6 +31,9 @@ def upgrade() -> None:
         sa.Column('source', sa.String(length=16), nullable=False, server_default='ai'),
         sa.Column('model_name', sa.String(length=64), nullable=True),
         sa.Column('photo_count', sa.Integer(), nullable=False, server_default='0'),
+        # 预留评论能力：冗余的评论计数与最近评论时间，评论正文将来放到独立表 moment_day_caption_comments
+        sa.Column('comment_count', sa.Integer(), nullable=False, server_default='0'),
+        sa.Column('last_commented_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),

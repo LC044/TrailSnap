@@ -16,6 +16,9 @@ class MomentDayCaption(BaseModel):
     source: str = "ai"
     model_name: Optional[str] = None
     photo_count: int = 0
+    # 预留评论能力（本期只读取，不接受写入；写入由未来评论 API 维护）
+    comment_count: int = 0
+    last_commented_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
