@@ -230,10 +230,13 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
                 }
             }
 
-            // moments 布局给每张卡片再多 32px 的底部留白：
-            // - 8px 视觉呼吸
-            // - 24px 兜底冗余，覆盖字体渲染差异、按钮组常驻高度、行距误差，避免下一个 day-block 覆盖当前操作按钮
-            const bottomSpacing = (mode === 'moments') ? 32 : 0
+            // moments 布局给每张卡片额外的底部留白，防止下一个 day-block 覆盖当前操作按钮：
+            // - 桌面端：32px 冗余（原始设计）
+            // - 移动端：72px 冗余（+8px mb-10 组间距、+4px mb-4 文案下方、+4px mt-2 按钮上方、+24px 按钮组常显高度）
+            //   桌面端 hover 才显示按钮，故不占实际高度；移动端按钮组常驻显示，必须给它留位置
+            const bottomSpacing = (mode === 'moments')
+                ? (width < 640 ? 72 : 32)
+                : 0
 
             const dayHeight = effectiveHeaderHeight + contentHeight + gap + bottomSpacing
             

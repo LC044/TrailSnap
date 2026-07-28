@@ -76,8 +76,10 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
 
     // 优先使用 photo_time，其次 upload_time，最后取当前时间
     let timestamp = Date.now();
+    let hasPhotoTime = false;
     if (photo.photo_time) {
         timestamp = new Date(photo.photo_time).getTime();
+        hasPhotoTime = true;
     } else if (photo.upload_time) {
         timestamp = new Date(photo.upload_time).getTime();
     }
@@ -98,6 +100,7 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
       preview,
       srcset: '', // 暂不分发多尺寸，后端按需动态处理
       timestamp,
+      hasPhotoTime,
       albumIds: photo.album_ids || [],
       width: photo.width || 300,
       height: photo.height || 300,

@@ -25,6 +25,21 @@ export interface GenerateCaptionPayload {
   model_name?: string;
 }
 
+/** 单个位置条目（Top N 展开时使用）。 */
+export interface MomentDayLocationItem {
+  name: string;
+  level: 'scene' | 'city' | 'district' | 'province' | 'unknown';
+  count: number;
+}
+
+/** 按天聚合的位置。primary 即"日期后同一行展示的那段文字"的首选值。 */
+export interface MomentDayLocations {
+  day: string; // YYYY-MM-DD
+  primary: string;
+  level: 'scene' | 'city' | 'district' | 'province' | 'unknown';
+  locations: MomentDayLocationItem[];
+}
+
 /** 获取浏览器时区（例如 'Asia/Shanghai'），失败回退 UTC。 */
 export function getBrowserTimezone(): string {
   try {
@@ -42,6 +57,21 @@ export const momentApi = {
     scope_id?: string | null;
   }) {
     return request.get<MomentDayCaption[]>('/api/moments/day-captions', { params });
+  },
+
+  listDayLocations(params: {
+    start: string;
+    end: string;
+    timezone?: string;
+    top_n?: number;
+  }) {
+    return request.get<MomentDayLocations[]>('/api/moments/day-locations', {
+      params: {
+        timezone: getBrowserTimezone(),
+        top_n: 3,
+        ...params,
+      },
+    });
   },
 
   saveDayCaption(day: string, caption: string, scope_type: string = 'all', scope_id: string | null = null) {

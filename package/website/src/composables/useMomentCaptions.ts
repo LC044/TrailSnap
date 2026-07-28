@@ -93,6 +93,11 @@ export function useMomentCaptions() {
     loadingDays.value = new Set([...loadingDays.value, dayKey]);
     setCaption(dayKey, { caption: '', source: 'ai_streaming', streaming: true });
 
+    // 关键：onError 是 generateStream 内部循环里的 callback，在里面 throw
+    // 只会让 for 循环退出、Promise 正常 resolve，导致外层 await 拿不到错误
+    // ——用户就看到"点了没反应"。改成用捕获变量兜住，await 结束后统一抛出。
+    let caughtErrorMsg: string | null = null;
+
     try {
       await momentApi.generateStream(
         {
@@ -116,22 +121,33 @@ export function useMomentCaptions() {
           });
         },
         (err) => {
-          // 若报错时已有旧文案，恢复它
+          // 记录错误，等 stream 循环走完再统一 reject 外层 Promise
+          caughtErrorMsg = err || 'AI 生成失败，请稍后重试';
+          // 报错时恢复占位或旧文案，避免残留 streaming 状态
           if (previous) {
             setCaption(dayKey, previous);
           } else {
             setCaption(dayKey, null);
           }
-          throw new Error(err);
         },
         controller.signal,
       );
+
+      // stream 结束但拿到过 error 帧 → 抛给上层 handleGenerateCaption
+      if (caughtErrorMsg) {
+        throw new Error(caughtErrorMsg);
+      }
     } catch (e) {
       if ((e as any)?.name === 'AbortError') {
         // 主动中止不视为错误
         if (previous) setCaption(dayKey, previous);
         else setCaption(dayKey, null);
         return;
+      }
+      // 兜底：网络错误 / HTTPError / 其它 —— 也要让占位态收敛
+      if (!caughtErrorMsg) {
+        if (previous) setCaption(dayKey, previous);
+        else setCaption(dayKey, null);
       }
       throw e;
     } finally {

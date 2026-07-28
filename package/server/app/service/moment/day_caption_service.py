@@ -34,6 +34,7 @@ from app.db.models.face import Face, FaceIdentity
 from app.db.models.image_description import ImageDescription
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
+from app.db.models.scene import Scene
 from app.crud import moment as moment_crud
 
 logger = logging.getLogger(__name__)
@@ -123,18 +124,22 @@ def _build_materials(db: Session, photos: List[Photo]) -> Dict:
 
     photo_ids = [p.id for p in photos]
 
-    # locations
-    metas = (
-        db.query(PhotoMetadata)
+    # locations —— 景区优先，退化到 city / district / address
+    # 通过 outerjoin 让没有 scene_id 的照片也能落到 PhotoMetadata
+    metas_with_scene = (
+        db.query(PhotoMetadata, Scene.name)
+        .outerjoin(Scene, PhotoMetadata.scene_id == Scene.id)
         .filter(PhotoMetadata.photo_id.in_(photo_ids))
         .all()
     )
     loc_set: List[str] = []
     seen_loc = set()
-    for m in metas:
-        # 优先 address，退化到 city / district
-        parts = [p for p in (m.city, m.district) if p]
-        candidate = " · ".join(parts) if parts else (m.address or "").strip()
+    for m, scene_name in metas_with_scene:
+        if scene_name:
+            candidate = scene_name.strip()
+        else:
+            parts = [p for p in (m.city, m.district) if p]
+            candidate = " · ".join(parts) if parts else (m.address or "").strip()
         if candidate and candidate not in seen_loc:
             seen_loc.add(candidate)
             loc_set.append(candidate)
