@@ -174,6 +174,9 @@
         :group-by-date="true"
         :delete-label="deleteLabel"
         :pending-remove-ids="pendingRemoveIds"
+        :day-captions="captionMap"
+        :show-moment-caption="showMomentCaption"
+        :loading-days="loadingDays"
         v-model:active-date="activeDate"
         @click-photo="openLightbox"
         @load-more="$emit('load-more')"
@@ -185,6 +188,10 @@
         @retry="$emit('retry')"
         @transfer="handleBatchTransfer"
         @batch-edit-location="handleBatchEditLocation"
+        @generate-caption="handleGenerateCaption"
+        @save-caption="handleSaveCaption"
+        @clear-caption="handleClearCaption"
+        @visible-months-change="handleVisibleMonthsChange"
       >
         <template #batch-actions="{ selectedIds, clearSelection }">
             <slot name="batch-actions" :selected-ids="selectedIds" :clear-selection="clearSelection"></slot>
@@ -262,13 +269,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
   UploadCloud, CheckSquare, Settings2, FolderTree
 } from 'lucide-vue-next'
-import { ElMessageBox } from 'element-plus'
+import { ElMessageBox, ElMessage } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
 import FolderBrowser from '@/views/album/folder/FolderBrowser.vue'
@@ -283,6 +290,7 @@ import type { AlbumImage } from '@/types/album'
 
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
+import { useMomentCaptions } from '@/composables/useMomentCaptions'
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -354,6 +362,62 @@ onUnmounted(() => {
 const albumStore = useAlbumStore()
 const photoStore = usePhotoStore()
 const store = computed(() => props.store || photoStore)
+
+// ---- Moments 朋友圈日文案 ----
+// MVP 阶段只在 "全部照片" 视图启用（scope='all'）
+const showMomentCaption = computed(() =>
+  layoutMode.value === 'moments' && (store.value?.currentContext?.type === 'all')
+)
+const {
+  captionMap,
+  loadingDays,
+  loadMonth,
+  generate: generateCaption,
+  save: saveCaption,
+  clear: clearCaption,
+  abortAll: abortAllCaptions,
+} = useMomentCaptions()
+
+const handleVisibleMonthsChange = (months: { year: number; month: number }[]) => {
+  if (!showMomentCaption.value) return
+  months.forEach((m) => {
+    loadMonth(m.year, m.month)
+  })
+}
+
+const handleGenerateCaption = async (payload: { day: { key: string }; force?: boolean }) => {
+  try {
+    await generateCaption(payload.day.key, { force: !!payload.force })
+  } catch (e: any) {
+    const msg = e?.message || 'AI 生成失败，请稍后重试'
+    ElMessage.error(msg)
+  }
+}
+
+const handleSaveCaption = async (payload: { day: { key: string }; text: string }) => {
+  try {
+    await saveCaption(payload.day.key, payload.text)
+    ElMessage.success('已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '保存失败')
+  }
+}
+
+const handleClearCaption = async (payload: { day: { key: string } }) => {
+  try {
+    await clearCaption(payload.day.key)
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.detail || e?.message || '操作失败')
+  }
+}
+
+// 切换布局或组件卸载时，中止所有进行中的 SSE 流
+watch(showMomentCaption, (v) => {
+  if (!v) abortAllCaptions()
+})
+onUnmounted(() => {
+  abortAllCaptions()
+})
 
 // Delete/Remove State
 const showDeleteConfirm = ref(false)

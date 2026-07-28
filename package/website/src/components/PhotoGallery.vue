@@ -161,14 +161,15 @@
         <template v-if="visibleBlockKeys.has(block.key)">
             <!-- Days Container -->
             <div
-                v-for="day in block.days"
+                v-for="(day, dayIdx) in block.days"
                 :key="day.key"
                 :style="{
                     position: 'absolute',
                     top: day.top + 'px',
                     left: 0,
                     width: '100%',
-                    height: day.height + 'px'
+                    height: day.height + 'px',
+                    zIndex: block.days.length - dayIdx
                 }"
                 class="day-block"
             >
@@ -190,7 +191,7 @@
                     </div>
 
                     <!-- Moments Layout Block -->
-                    <div v-if="layoutMode === 'moments'" class="flex gap-3 mb-6 relative">
+                    <div v-if="layoutMode === 'moments'" class="flex gap-3 mb-8 relative">
                         <!-- Avatar placeholder -->
                         <div class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0 flex items-center justify-center text-gray-400 font-bold overflow-hidden">
                             <img v-if="userStore.userInfo?.avatar" :src="userStore.userInfo.avatar" class="w-full h-full object-cover" />
@@ -205,8 +206,70 @@
                             </div>
                             
                             <!-- Simulated Text Placeholder -->
-                            <div class="text-[15px] text-gray-800 dark:text-gray-200 mb-2 whitespace-pre-wrap break-words">
-                                这是 {{ day.year }}年{{ day.month }}月{{ day.day }}日 的美好回忆。
+                            <div class="mb-3 group/caption">
+                                <div class="text-[15px] leading-[22px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
+                                    <template v-if="editingCaptionDay === day.key">
+                                        <textarea
+                                            v-model="captionDraft"
+                                            class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md p-2 text-[15px] text-gray-800 dark:text-gray-200 outline-none focus:border-primary-400"
+                                            rows="3"
+                                            maxlength="500"
+                                            @keydown.esc.stop="cancelEditCaption"
+                                            @keydown.ctrl.enter.stop="commitEditCaption(day)"
+                                            @keydown.meta.enter.stop="commitEditCaption(day)"
+                                        ></textarea>
+                                        <div class="flex items-center gap-2 mt-1 text-xs">
+                                            <button class="px-2 py-1 rounded bg-primary-500 text-white hover:bg-primary-600" @click="commitEditCaption(day)">保存</button>
+                                            <button class="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200" @click="cancelEditCaption">取消</button>
+                                            <span class="text-gray-400">Ctrl / ⌘ + Enter 保存 · Esc 取消</span>
+                                        </div>
+                                    </template>
+                                    <template v-else-if="dayCaptions[day.key]?.caption">
+                                        <span>{{ dayCaptions[day.key].caption }}</span>
+                                        <span v-if="dayCaptions[day.key]?.streaming" class="inline-block ml-1 w-1.5 h-4 align-middle bg-primary-400 animate-pulse"></span>
+                                    </template>
+                                    <template v-else>
+                                        <span class="text-gray-400">这是 {{ day.year }}年{{ day.month }}月{{ day.day }}日 的美好回忆。</span>
+                                    </template>
+                                </div>
+
+                                <div
+                                    v-if="showMomentCaption && editingCaptionDay !== day.key"
+                                    class="relative z-20 flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500 opacity-0 group-hover/caption:opacity-100 transition-opacity"
+                                    :class="{ 'opacity-100': loadingDays.has(day.key) }"
+                                >
+                                    <button
+                                        type="button"
+                                        class="flex items-center gap-1 hover:text-primary-500 bg-transparent cursor-pointer"
+                                        :disabled="loadingDays.has(day.key)"
+                                        :title="dayCaptions[day.key]?.caption ? '重新生成文案' : 'AI 生成文案'"
+                                        @click.stop="$emit('generate-caption', { day, force: !!dayCaptions[day.key]?.caption })"
+                                    >
+                                        <Loader2 v-if="loadingDays.has(day.key)" class="w-3.5 h-3.5 animate-spin" />
+                                        <Sparkles v-else class="w-3.5 h-3.5" />
+                                        <span>{{ loadingDays.has(day.key) ? '生成中…' : (dayCaptions[day.key]?.caption ? '重新生成' : 'AI 生成') }}</span>
+                                    </button>
+                                    <button
+                                        v-if="dayCaptions[day.key]?.caption && !loadingDays.has(day.key)"
+                                        type="button"
+                                        class="flex items-center gap-1 hover:text-primary-500 bg-transparent cursor-pointer"
+                                        title="编辑文案"
+                                        @click.stop="startEditCaption(day)"
+                                    >
+                                        <Pencil class="w-3.5 h-3.5" />
+                                        <span>编辑</span>
+                                    </button>
+                                    <button
+                                        v-if="dayCaptions[day.key]?.caption && !loadingDays.has(day.key)"
+                                        type="button"
+                                        class="flex items-center gap-1 hover:text-red-500 bg-transparent cursor-pointer"
+                                        title="清除文案"
+                                        @click.stop="$emit('clear-caption', { day })"
+                                    >
+                                        <RotateCcw class="w-3.5 h-3.5" />
+                                        <span>清除</span>
+                                    </button>
+                                </div>
                             </div>
                             
                             <!-- Photos Grid for Moments -->
@@ -413,7 +476,7 @@ import {
   ref, computed, watch, onMounted, onUnmounted, nextTick, toRef, reactive
 } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy } from 'lucide-vue-next'
+import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy, Sparkles, Pencil, RotateCcw } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -443,6 +506,11 @@ interface Props {
   store?: any
   scrollContainer?: HTMLElement | null,
   showActionBar?: boolean
+  // moments 布局下的日文案外部注入。key 为 day.key（同 groupedPhotos 中的 dayKey 格式）
+  dayCaptions?: Record<string, { caption: string; source?: string; streaming?: boolean; updated_at?: string }>
+  // 是否显示 moments 布局中的 AI 文案区（生成/编辑/清除按钮）
+  showMomentCaption?: boolean
+  loadingDays?: Set<string>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -454,10 +522,13 @@ const props = withDefaults(defineProps<Props>(), {
   hasMore: false,
   pendingRemoveIds: () => new Set(),
   error: null,
-  showActionBar: true
+  showActionBar: true,
+  dayCaptions: () => ({}),
+  showMomentCaption: false,
+  loadingDays: () => new Set()
 })
 
-const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-location'])
+const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
 
     // --- Selection State ---
 const { 
@@ -612,7 +683,8 @@ const layoutOptions = {
     layoutMode: toRef(props, 'layoutMode'),
     viewSize: toRef(props, 'viewSize'),
     photos: toRef(props, 'photos'),
-    expandedDays
+    expandedDays,
+    dayCaptions: toRef(props, 'dayCaptions')
 }
 
 const { monthBlocks, totalHeight, getVisibleBlocks, recalculateLayout, colCount, rowHeight, gap } = useVirtualLayout(layoutOptions)
@@ -770,6 +842,11 @@ const checkAndLoadVisibleMonths = (refresh = false) => {
 
 watch(visibleBlockKeys, () => {
     checkAndLoadVisibleMonths()
+    // 广播当前可见月份，用于外部按月批量拉取附加数据（如朋友圈日文案）
+    if (props.layoutMode === 'moments' && props.showMomentCaption) {
+        const months = visibleBlocksList.value.map(b => ({ year: b.year, month: b.month }))
+        emit('visible-months-change', months)
+    }
 }, { deep: true, immediate: true })
 
 
@@ -931,6 +1008,32 @@ const showPersonSelector = ref(false)
 
 const openPersonSelector = () => {
   showPersonSelector.value = true
+}
+
+// --- Moment Caption Editing State（moments 布局） ---
+const editingCaptionDay = ref<string | null>(null)
+const captionDraft = ref('')
+
+const startEditCaption = (day: DayBlock) => {
+    editingCaptionDay.value = day.key
+    captionDraft.value = props.dayCaptions[day.key]?.caption || ''
+}
+
+const cancelEditCaption = () => {
+    editingCaptionDay.value = null
+    captionDraft.value = ''
+}
+
+const commitEditCaption = (day: DayBlock) => {
+    const text = captionDraft.value.trim()
+    if (!text) {
+        // 视为清除
+        emit('clear-caption', { day })
+    } else {
+        emit('save-caption', { day, text })
+    }
+    editingCaptionDay.value = null
+    captionDraft.value = ''
 }
 
 const handleDelete = () => {
