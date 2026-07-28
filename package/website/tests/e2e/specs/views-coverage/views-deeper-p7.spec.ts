@@ -3,15 +3,27 @@ import { expect, test } from '@playwright/test'
 const hostPath = '/tests/e2e/fixtures/nightly-view-host.html'
 const pixel =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
+// Fixture imports Vue + ElementPlus + Pinia + global CSS + the heavy SFCs; on a cold
+// CI runner the bundle can take >5s to mount the first time. The helper waits for
+// networkidle and bumps the first toBeVisible timeout to absorb the cold load.
+const COLD_LOAD_TIMEOUT = 30_000
+
+async function loadFixture(page, fixture) {
+  await page.goto(`${hostPath}?fixture=${fixture}`, { waitUntil: 'domcontentloaded' })
+  await page.waitForLoadState('networkidle')
+  // Note: do not wait on #nightly-view-host visibility here; the screenshots fixture
+  // wraps a closed dialog so the host is hidden until the dialog opens. Individual
+  // tests wait for the specific element they need with COLD_LOAD_TIMEOUT.
+}
 
 test.describe.configure({ mode: 'serial' })
 
 test.describe('P1 - nightly component coverage @views-coverage', () => {
   test('RegionDetailsPanel renders metrics and emits navigation events', async ({ page }) => {
-    await page.goto(`${hostPath}?fixture=region`, { waitUntil: 'domcontentloaded' })
+    await loadFixture(page, 'region')
 
     const host = page.locator('#nightly-view-host')
-    await expect(host.getByRole('heading', { name: '\u6e56\u5317\u7701' })).toBeVisible()
+    await expect(host.getByRole('heading', { name: '\u6e56\u5317\u7701' })).toBeVisible({ timeout: COLD_LOAD_TIMEOUT })
     await expect(host.getByText('12', { exact: true })).toBeVisible()
     await expect(host.getByText('50%', { exact: true })).toBeVisible()
     await expect(host.getByText('#\u6c5f\u57ce', { exact: true })).toBeVisible()
@@ -26,7 +38,7 @@ test.describe('P1 - nightly component coverage @views-coverage', () => {
   })
 
   test('RegionDetailsPanel renders empty states and clears selection', async ({ page }) => {
-    await page.goto(`${hostPath}?fixture=region-empty`, { waitUntil: 'domcontentloaded' })
+    await loadFixture(page, 'region-empty')
 
     const host = page.locator('#nightly-view-host')
     await expect(host.getByText('\u8fd9\u91cc\u8fd8\u662f\u4e00\u7247\u672a\u77e5\u9886\u57df\uff0c\u5feb\u53bb\u63a2\u7d22\u5427\uff01')).toBeVisible()
@@ -78,9 +90,9 @@ test.describe('P1 - nightly component coverage @views-coverage', () => {
       })
     })
 
-    await page.goto(`${hostPath}?fixture=screenshots`, { waitUntil: 'domcontentloaded' })
+    await loadFixture(page, 'screenshots')
 
-    await expect(page.getByRole('dialog')).toBeVisible()
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: COLD_LOAD_TIMEOUT })
     await expect(page.getByText('\u7ba1\u7406\u622a\u56fe\u4e0e\u8868\u60c5\u5305')).toBeVisible()
     await expect(page.getByText('\u5171 2 \u5f20\u622a\u56fe\uff0c\u5360\u7528 3 KB')).toBeVisible()
     await expect(page.locator('img[alt="capture-a.png"]')).toBeVisible()
@@ -97,7 +109,7 @@ test.describe('P1 - nightly component coverage @views-coverage', () => {
       })
     })
 
-    await page.goto(`${hostPath}?fixture=screenshots`, { waitUntil: 'domcontentloaded' })
+    await loadFixture(page, 'screenshots')
 
     await expect(page.getByText('\u592a\u68d2\u4e86\uff0c\u6ca1\u6709\u627e\u5230\u622a\u56fe\uff01')).toBeVisible()
     await expect(page.getByText('\u5171 0 \u5f20\u622a\u56fe\uff0c\u5360\u7528 0 B')).toBeVisible()
@@ -112,8 +124,8 @@ test.describe('P1 - nightly component coverage @views-coverage', () => {
       })
     })
 
-    await page.goto(`${hostPath}?fixture=screenshots`, { waitUntil: 'domcontentloaded' })
+    await loadFixture(page, 'screenshots')
 
-    await expect(page.locator('.el-message', { hasText: '\u52a0\u8f7d\u622a\u56fe\u5931\u8d25' })).toBeVisible()
+    await expect(page.locator('.el-message', { hasText: '\u52a0\u8f7d\u622a\u56fe\u5931\u8d25' })).toBeVisible({ timeout: COLD_LOAD_TIMEOUT })
   })
 })
