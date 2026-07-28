@@ -276,7 +276,7 @@ import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
   UploadCloud, CheckSquare, Settings2, FolderTree
 } from 'lucide-vue-next'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
 import FolderBrowser from '@/views/album/folder/FolderBrowser.vue'
@@ -396,8 +396,41 @@ const handleGenerateCaption = async (payload: { day: { key: string }; force?: bo
   try {
     await generateCaption(payload.day.key, { force: !!payload.force })
   } catch (e: any) {
-    const msg = e?.message || 'AI 生成失败，请稍后重试'
-    ElMessage.error(msg)
+    const raw = (e?.message || e?.response?.data?.detail || '').toString()
+    // 根据错误关键字给出类型化提示，避免用户看到模糊的 "生成失败"
+    // 共 3 种常见情形：
+    //   1) 未配置 AI 模型            → 引导到设置页（不跳转、只提示）
+    //   2) 当天没有可识别的照片      → 说明 photo_time 缺失，请先完成元数据提取
+    //   3) LLM 返回为空 / 内部错误  → 提示重试
+    if (/AI\s*模型|AI\s*连接|API\s*Key/i.test(raw)) {
+      ElNotification({
+        type: 'warning',
+        title: '还没配置 AI 模型',
+        message: '请到「设置 → AI 相关配置」选一个对话模型后再试。',
+        duration: 6000,
+      })
+      return
+    }
+    if (/没有照片|无法生成文案/i.test(raw)) {
+      ElNotification({
+        type: 'info',
+        title: '这一天暂时无法生成',
+        message: '这一天的照片还没识别到拍摄时间，稍后再试。也可以自己点「手动写」写一段。',
+        duration: 6000,
+      })
+      return
+    }
+    if (/LLM\s*返回为空|内部错误/i.test(raw)) {
+      ElNotification({
+        type: 'error',
+        title: 'AI 没返回内容',
+        message: '稍后再试一次。如果一直这样，检查一下 AI 配置。',
+        duration: 6000,
+      })
+      return
+    }
+    // 其他未知错误：保底提示，但把系统消息完整展示。
+    ElMessage.error(raw || 'AI 生成失败，请稍后重试')
   }
 }
 

@@ -191,7 +191,7 @@
                     </div>
 
                     <!-- Moments Layout Block -->
-                    <div v-if="layoutMode === 'moments'" class="flex gap-3 mb-8 relative">
+                    <div v-if="layoutMode === 'moments'" class="flex gap-3 mb-10 md:mb-8 relative">
                         <!-- Avatar placeholder -->
                         <div class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0 flex items-center justify-center text-gray-400 font-bold overflow-hidden">
                             <img v-if="userStore.userInfo?.avatar" :src="userStore.userInfo.avatar" class="w-full h-full object-cover" />
@@ -206,7 +206,7 @@
                             </div>
                             
                             <!-- Simulated Text Placeholder -->
-                            <div class="mb-3 group/caption">
+                            <div class="mb-4 md:mb-3 group/caption">
                                 <div class="text-[15px] leading-[22px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
                                     <template v-if="editingCaptionDay === day.key">
                                         <textarea
@@ -228,6 +228,12 @@
                                         <span>{{ dayCaptions[day.key].caption }}</span>
                                         <span v-if="dayCaptions[day.key]?.streaming" class="inline-block ml-1 w-1.5 h-4 align-middle bg-primary-400 animate-pulse"></span>
                                     </template>
+                                    <template v-else-if="showMomentCaption && !dayHasPhotoTime(day.key)">
+                                        <span class="text-amber-600 dark:text-amber-500">
+                                            <span class="iconify" data-icon="mdi:clock-alert-outline" style="display:inline-block;vertical-align:-2px;margin-right:4px;"></span>
+                                            这一天的照片没有拍摄时间（EXIF 缺失），AI 无法自动生成文案。你可以点右边的「编辑」手动写一段。
+                                        </span>
+                                    </template>
                                     <template v-else>
                                         <span class="text-gray-400">这是 {{ day.year }}年{{ day.month }}月{{ day.day }}日 的美好回忆。</span>
                                     </template>
@@ -235,10 +241,12 @@
 
                                 <div
                                     v-if="showMomentCaption && editingCaptionDay !== day.key"
-                                    class="relative z-20 flex items-center gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500 opacity-0 group-hover/caption:opacity-100 transition-opacity"
-                                    :class="{ 'opacity-100': loadingDays.has(day.key) }"
+                                    class="relative z-20 flex items-center gap-3 mt-2 md:mt-1 text-xs text-gray-400 dark:text-gray-500 md:opacity-0 md:group-hover/caption:opacity-100 transition-opacity"
+                                    :class="{ 'md:opacity-100': loadingDays.has(day.key) }"
                                 >
+                                    <!-- AI 生成：当天至少一张照片有真实拍摄时间时才允许，否则后端会直接报错 -->
                                     <button
+                                        v-if="dayHasPhotoTime(day.key)"
                                         type="button"
                                         class="flex items-center gap-1 hover:text-primary-500 bg-transparent cursor-pointer"
                                         :disabled="loadingDays.has(day.key)"
@@ -249,15 +257,16 @@
                                         <Sparkles v-else class="w-3.5 h-3.5" />
                                         <span>{{ loadingDays.has(day.key) ? '生成中…' : (dayCaptions[day.key]?.caption ? '重新生成' : 'AI 生成') }}</span>
                                     </button>
+                                    <!-- 编辑：无论当前是否已有文案都允许手动编辑，方便无 EXIF 时间的天手写文案 -->
                                     <button
-                                        v-if="dayCaptions[day.key]?.caption && !loadingDays.has(day.key)"
+                                        v-if="!loadingDays.has(day.key)"
                                         type="button"
                                         class="flex items-center gap-1 hover:text-primary-500 bg-transparent cursor-pointer"
-                                        title="编辑文案"
+                                        :title="dayCaptions[day.key]?.caption ? '编辑文案' : '手动写文案'"
                                         @click.stop="startEditCaption(day)"
                                     >
                                         <Pencil class="w-3.5 h-3.5" />
-                                        <span>编辑</span>
+                                        <span>{{ dayCaptions[day.key]?.caption ? '编辑' : '手动写' }}</span>
                                     </button>
                                     <button
                                         v-if="dayCaptions[day.key]?.caption && !loadingDays.has(day.key)"
@@ -312,7 +321,7 @@
                                            <!-- Selection Checkbox -->
                                            <div
                                                class="absolute top-1 left-1 z-30 transition-opacity duration-200 cursor-pointer"
-                                               :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'"
+                                               :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'"
                                                @click.stop="toggleSelection(img)"
                                            >
                                                <div
@@ -409,7 +418,7 @@
                                 <!-- Selection Checkbox (Top Left) -->
                                 <div
                                     class="absolute top-2 left-2 z-30 transition-opacity duration-200 cursor-pointer"
-                                    :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'"
+                                    :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none md:group-hover:opacity-100 md:group-hover:pointer-events-auto'"
                                     @click.stop="toggleSelection(img)"
                                 >
                                     <div
@@ -436,7 +445,7 @@
                                     <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90"></span>
                                 </div>
                                 <!-- Info Overlay -->
-                                <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-end">
+                                <div class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 md:group-hover:opacity-100 transition-opacity duration-300 flex justify-between items-end">
                                     <p class="text-white text-xs font-medium truncate flex items-center gap-1">
                                       <MapPin v-if="img.filename" class="w-3 h-3 text-white/80" />
                                       {{ img.filename || formatTime(img.timestamp) }}
@@ -1026,6 +1035,20 @@ const openPersonSelector = () => {
 // --- Moment Caption Editing State（moments 布局） ---
 const editingCaptionDay = ref<string | null>(null)
 const captionDraft = ref('')
+
+/**
+ * 判断某一天的照片是否至少有一张具备真实拍摄时间。
+ * 后端 `_fetch_day_photos` 只把 `photo_time IS NOT NULL` 的照片纳入计算，
+ * 如果这一天前端展示的照片全部靠 upload_time / Date.now() 兜底进入分组，
+ * 后端会认为「这一天没有照片」并抛错。此时应禁用 AI 生成，
+ * 但仍然允许用户手写文案。
+ */
+const dayHasPhotoTime = (dayKey: string): boolean => {
+    const list = groupedPhotos.value.get(dayKey) || []
+    if (list.length === 0) return false
+    // 未提供 hasPhotoTime 字段的旧数据视为 true（向后兼容）
+    return list.some(p => p.hasPhotoTime !== false)
+}
 
 const startEditCaption = (day: DayBlock) => {
     editingCaptionDay.value = day.key

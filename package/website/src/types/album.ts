@@ -96,6 +96,14 @@ export interface AlbumImage {
   preview: string
   srcset: string
   timestamp: number
+  /**
+   * 该照片是否具有真实的 EXIF/拍摄时间。
+   * true  → timestamp 来源于 photo_time（可作为「拍摄这一天」的可靠证据）
+   * false → timestamp 来自 upload_time 或 Date.now() 兜底
+   *          （不能用于依赖拍摄时间的后端任务，例如朋友圈 AI 文案）
+   * 未提供时默认按 true 处理，保持向后兼容。
+   */
+  hasPhotoTime?: boolean
   albumIds: string[]
   width?: number
   height?: number
