@@ -120,8 +120,13 @@ if ($Mode -eq 'dev') {
     if ($Component -in 'website', 'all') {
         Write-Host "  启动 Frontend ($($webUri.Port))..."
         $webDir = Join-Path $RepoRoot 'package' 'website'
-        # Windows 上 pnpm 入口是 pnpm.cmd；非 Windows 无后缀。统一用 Get-Command 解析真实可执行路径。
-        $pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue
+        # Windows 上 Get-Command pnpm 会优先解析到 npm 全局安装的 pnpm.ps1（ExternalScript），
+        # 该脚本依赖 pwsh 冷启动 + JIT，在沙箱/服务环境里耗时可达 1~3 分钟，远超 180s 端口就绪预算。
+        # 显式优先 pnpm.cmd（同一目录下的 batch 包装，仅 1 行 node 调用），非 Windows 再退回无后缀二进制。
+        if ($IsWindows) {
+            $pnpmCmd = Get-Command 'pnpm.cmd' -ErrorAction SilentlyContinue
+        }
+        if (-not $pnpmCmd) { $pnpmCmd = Get-Command pnpm -ErrorAction SilentlyContinue }
         if (-not $pnpmCmd) { throw '找不到 pnpm（前端 dev 服务启动需要 pnpm）' }
         $pnpmPath = $pnpmCmd.Source
         if (-not $pnpmPath) { $pnpmPath = $pnpmCmd.Path }
