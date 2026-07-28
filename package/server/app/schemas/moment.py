@@ -1,0 +1,43 @@
+from datetime import date, datetime
+from typing import List, Optional
+from uuid import UUID
+from pydantic import BaseModel, Field
+
+
+class MomentDayCaption(BaseModel):
+    """朋友圈日文案响应模型。"""
+
+    id: int
+    user_id: UUID
+    scope_type: str = "all"
+    scope_id: Optional[str] = None
+    day: date
+    caption: str
+    source: str = "ai"
+    model_name: Optional[str] = None
+    photo_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class MomentDayCaptionUpsert(BaseModel):
+    """用户手动保存/编辑文案的请求体。"""
+
+    caption: str = Field(..., min_length=1, max_length=1000)
+
+
+class MomentDayCaptionGenerateRequest(BaseModel):
+    """请求 AI 生成某日文案。"""
+
+    day: date = Field(..., description="用户本地时区下的日期，格式 YYYY-MM-DD")
+    timezone: str = Field(default="UTC", description="IANA 时区名，例如 Asia/Shanghai")
+    scope_type: str = Field(default="all")
+    scope_id: Optional[str] = Field(default=None)
+    style: Optional[str] = Field(default=None, description="可选文案风格：日常/幽默/诗意/自嘲 等")
+    force: bool = Field(default=False, description="即使已有文案也重新生成")
+    stream: bool = Field(default=True, description="是否走 SSE 流式返回")
+    connection_id: Optional[str] = None
+    model_name: Optional[str] = None
