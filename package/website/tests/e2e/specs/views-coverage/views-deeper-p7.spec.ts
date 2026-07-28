@@ -5,18 +5,21 @@ const pixel =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='
 // Fixture imports Vue + ElementPlus + Pinia + global CSS + the heavy SFCs; on a cold
 // CI runner the bundle can take >5s to mount the first time. The helper waits for
-// networkidle and bumps the first toBeVisible timeout to absorb the cold load.
-const COLD_LOAD_TIMEOUT = 30_000
+// the host element to absorb the Vite + Vue cold compile. Test-level timeout is
+// bumped via test.describe.configure below to handle the worst-case cold start.
+const COLD_LOAD_TIMEOUT = 60_000
 
 async function loadFixture(page, fixture) {
   await page.goto(`${hostPath}?fixture=${fixture}`, { waitUntil: 'domcontentloaded' })
-  await page.waitForLoadState('networkidle')
-  // Note: do not wait on #nightly-view-host visibility here; the screenshots fixture
-  // wraps a closed dialog so the host is hidden until the dialog opens. Individual
-  // tests wait for the specific element they need with COLD_LOAD_TIMEOUT.
+  // Fixture serves Vue + ElementPlus + Pinia + the heavy SFCs through Vite; on a
+  // cold CI runner the bundle can take well over 30s to compile. Wait for the root
+  // <main id="nightly-view-host"> to be attached (it is always rendered, even for
+  // the screenshots fixture whose inner dialog opens later in onMounted). networkidle
+  // is unreliable here because the Vite dev server keeps HMR/websockets active.
+  await page.waitForSelector('#nightly-view-host', { state: "attached", timeout: COLD_LOAD_TIMEOUT })
 }
 
-test.describe.configure({ mode: 'serial' })
+test.describe.configure({ mode: 'serial', timeout: 120_000 })
 
 test.describe('P1 - nightly component coverage @views-coverage', () => {
   test('RegionDetailsPanel renders metrics and emits navigation events', async ({ page }) => {
@@ -129,3 +132,4 @@ test.describe('P1 - nightly component coverage @views-coverage', () => {
     await expect(page.locator('.el-message', { hasText: '\u52a0\u8f7d\u622a\u56fe\u5931\u8d25' })).toBeVisible({ timeout: COLD_LOAD_TIMEOUT })
   })
 })
+
