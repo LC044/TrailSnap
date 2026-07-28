@@ -443,6 +443,52 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     ).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText("临时文案。")).toHaveCount(0)
   })
+
+  test("朋友圈日位置 -> GET /api/moments/day-locations 返回后，日期行拼接位置文字", async ({ page }) => {
+    // caption 走空数组，避免与本用例断言干扰
+    await page.route("**/api/moments/day-captions?**", (route) => {
+      if (route.request().method() !== "GET") return route.continue()
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
+      })
+    })
+
+    // 关键：mock /api/moments/day-locations 返回该月一天的多位置
+    let locationHit = false
+    await page.route("**/api/moments/day-locations**", (route) => {
+      if (route.request().method() !== "GET") return route.continue()
+      locationHit = true
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            day: "2025-08-05",
+            primary: "外滩",
+            level: "scene",
+            locations: [
+              { name: "外滩", level: "scene", count: 3 },
+              { name: "陆家嘴", level: "scene", count: 2 },
+              { name: "上海", level: "city", count: 5 },
+            ],
+          },
+        ]),
+      })
+    })
+
+    await enterMomentsView(page)
+
+    // 接口被真正调用（可见月份变化后会触发）
+    await expect
+      .poll(() => locationHit, { timeout: 10_000 })
+      .toBe(true)
+
+    // 日期行同时包含日期与"外滩 · 陆家嘴 · 上海"的位置字符串
+    await expect(page.getByText("2025-08-05").first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText("外滩 · 陆家嘴 · 上海").first()).toBeVisible({ timeout: 10_000 })
+  })
 })
 
 // ===========================================================================
