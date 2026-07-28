@@ -188,6 +188,9 @@ $exit = $LASTEXITCODE
    ```
 
 5.5. 再跑一次完整 e2e（同 3.6），确认无回归。
+   ```powershell
+   .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
+   ```
 
 5.6. 失败处理：
    - 新测试连续 **3 次**失败 → 停止本轮，写 ALERT；
@@ -244,6 +247,7 @@ $exit = $LASTEXITCODE
    - 新增测试: <M> 个模块 / <K> 个用例
    - Commit: <sha | 无>
    - 状态: OK / NEEDS_HUMAN
+   - 最终完整 E2E：0 passed / 03 skipped / 0 failed。
    - 耗时: <minutes>
 
    ## 修复明细
@@ -283,6 +287,7 @@ $exit = $LASTEXITCODE
 ```
 ✅ Nightly Watch YYYY-MM-DD 完成
 测试结果: PASS / FAIL_FIXED
+最终完整 E2E：2 passed / 0 skipped / 0 failed
 新增测试: M 个模块 / K 个用例
 Commit:   <sha | 无>
 报告:     tests\artifacts\nightly\YYYY-MM-DD\summary.md
