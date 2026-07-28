@@ -348,8 +348,17 @@
                             
                             <!-- Date & Action -->
                             <div class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 mt-2">
-                                <span>{{ day.year }}-{{ String(day.month).padStart(2, '0') }}-{{ String(day.day).padStart(2, '0') }}</span>
-                                <div class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="flex-shrink-0">{{ day.year }}-{{ String(day.month).padStart(2, '0') }}-{{ String(day.day).padStart(2, '0') }}</span>
+                                    <template v-if="dayLocations[day.key]?.locations?.length">
+                                        <span class="flex-shrink-0" aria-hidden="true">·</span>
+                                        <span
+                                            class="truncate text-[#576b95] dark:text-primary-400"
+                                            :title="dayLocations[day.key].locations.map(l => l.name).join(' · ')"
+                                        >{{ dayLocations[day.key].locations.map(l => l.name).join(' · ') }}</span>
+                                    </template>
+                                </div>
+                                <div class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-700 flex-shrink-0">
                                     <MoreHorizontal class="w-4 h-4" />
                                 </div>
                             </div>
@@ -508,6 +517,9 @@ interface Props {
   showActionBar?: boolean
   // moments 布局下的日文案外部注入。key 为 day.key（同 groupedPhotos 中的 dayKey 格式）
   dayCaptions?: Record<string, { caption: string; source?: string; streaming?: boolean; updated_at?: string }>
+  // moments 布局下每天的位置（景区优先 → city → district → province，实时聚合不落库）。
+  // key 为 day.key（同 groupedPhotos 中的 dayKey 格式，月/日不补零）
+  dayLocations?: Record<string, { primary: string; level: string; locations: Array<{ name: string; level: string; count: number }> }>
   // 是否显示 moments 布局中的 AI 文案区（生成/编辑/清除按钮）
   showMomentCaption?: boolean
   loadingDays?: Set<string>
@@ -524,6 +536,7 @@ const props = withDefaults(defineProps<Props>(), {
   error: null,
   showActionBar: true,
   dayCaptions: () => ({}),
+  dayLocations: () => ({}),
   showMomentCaption: false,
   loadingDays: () => new Set()
 })

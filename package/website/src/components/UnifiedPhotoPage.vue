@@ -175,6 +175,7 @@
         :delete-label="deleteLabel"
         :pending-remove-ids="pendingRemoveIds"
         :day-captions="captionMap"
+        :day-locations="locationMap"
         :show-moment-caption="showMomentCaption"
         :loading-days="loadingDays"
         v-model:active-date="activeDate"
@@ -291,6 +292,7 @@ import type { AlbumImage } from '@/types/album'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useMomentCaptions } from '@/composables/useMomentCaptions'
+import { useMomentLocations } from '@/composables/useMomentLocations'
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -378,10 +380,15 @@ const {
   abortAll: abortAllCaptions,
 } = useMomentCaptions()
 
+// 朋友圈日位置：实时从 photo_metadata 聚合（景区优先），不落库；
+// 与 caption 服从相同的可见月份触发机制，同一个朋友圈视图中共享。
+const { locationMap, loadMonth: loadLocationMonth } = useMomentLocations()
+
 const handleVisibleMonthsChange = (months: { year: number; month: number }[]) => {
   if (!showMomentCaption.value) return
   months.forEach((m) => {
     loadMonth(m.year, m.month)
+    loadLocationMonth(m.year, m.month)
   })
 }
 
