@@ -666,6 +666,17 @@ watch(scrollContainerRef, (container) => {
   }
 }, { immediate: true })
 
+// 父级可能传入一个挂载后才就绪的内部滚动容器（如 PhotoSelector 在弹窗内的 scrollContainer），
+// 此时 onMounted 里拿到的还是 null，会错误地回退到 window / <main>，
+// 导致弹窗内滚动时 scrollTop 不更新、虚拟列表只渲染首屏、向下滚动出现空白。
+// 这里在 prop 真正就绪后再切换过去。
+watch(() => props.scrollContainer, (c) => {
+  if (c) {
+    scrollContainerRef.value = c
+    nextTick(() => updateVisibleBlocks())
+  }
+})
+
 const expandedDays = ref(new Set<string>())
 
 const toggleExpand = (dayKey: string) => {
