@@ -8,19 +8,17 @@
 
 ## 0. 角色、时间、范围
 
-- **执行者**：具备 shell + git 写权限、对 Python / TypeScript 有基本阅读能力的 AI 或人。
+- **执行者**：具备 shell + git 写权限、对 Python / TypeScript 有基本阅读能力的 Agent。
 - **仓库根**：`E:\Project\TrailSnap`（绝对路径优先）。
 - **时区**：Asia/Shanghai（机器已设）。
-- **影响范围**：只能新增 / 修改以下路径，超出即停止：
+- **影响范围**：只能新增 / 修改以下路径：
   - `tests/`
   - `package/server/app/`
   - `package/server/tests/`
   - `package/ai/app/`
   - `package/website/tests/`
 - **禁止动作**：
-  - 推送到远端（`git push`）。
   - 修改 `tests/scripts/run-tests.ps1` 本身（除非有明确 bug，改完加 `// [skip-nightly]` 注释）。
-  - 在 commit message 里出现：`构建后端`、`构建前端`、`构建ai`、`构建AI`、`构建cli`（这些字面量会触发 Docker 构建 / npm 发布 CI）。
   - 删除数据库 / 清理用户上传的 `data/uploads/`，除非是测试自己产生的临时文件。
 
 ---
@@ -152,7 +150,7 @@ $exit = $LASTEXITCODE
    - 写入 `$runDir\coverage-gaps-frontend.md`
 
 4.4. **优先级排序**：
-   1. 前端未覆盖的 view 或 现有测试中覆盖不全的 view（最高，缺一个就补一个）
+   1. 前端未覆盖的 e2e 或 现有测试中覆盖不全的 e2e（最高，缺一个就补一个）
    2. `app/api/*.py` 中的 router
    3. `app/service/*.py` 业务逻辑
    4. `app/utils/*.py`、`app/schemas/*.py`
@@ -179,6 +177,7 @@ $exit = $LASTEXITCODE
    - E2E：用现有 `storageState` 复用登录态；不写新的全局 setup。
    - 不修改任何现有测试，只新增文件或新增 `def test_xxx` 函数。
    - 不修改 `tests/.env.test`，需要新环境变量时改 `.env.test.example` 并在 summary 说明。
+   - CI环境是Docker容器，所有测试不能依赖本地文件，只能依赖容器内能访问的文件。
 
 5.4. 单独跑新测试，必须全绿：
    ```powershell
@@ -193,8 +192,9 @@ $exit = $LASTEXITCODE
    ```
 
 5.6. 失败处理：
+   - 新测试失败 → 修复用例，写 ALERT；
    - 新测试连续 **3 次**失败 → 停止本轮，写 ALERT；
-   - 已写但失败的新测试文件 `git checkout -- <file>` 回滚到 HEAD；
+   - 已写但失败的新测试文件 `git checkout -- <file>` 回滚到 HEAD，再跑一次完整 e2e，确保测试全部通过；
    - 不进入 §6。
 
 5.7. 关闭所有服务（server+ai+website）：
