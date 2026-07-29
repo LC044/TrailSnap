@@ -1,13 +1,15 @@
 """朋友圈日文案生成服务。
 
 职责：
-1. 按 (user, scope, day, timezone) 聚合当天照片素材（地点 / 人物 / 单图描述 / 标签）；
-2. 组装 prompt，调用用户配置的 LLM（走对话或分析连接），支持同步与 SSE 流式；
-3. 通过用户级 asyncio.Lock 串行化，避免并发把本地 llama.cpp / 外部 API 打爆；
+1. 按 (user, scope, day) 聚合当天照片素材（地点 / 人物 / 单图描述 / 标签）；
+2. 组装 prompt，调用用户配置的 LLM，支持同步与 SSE 流式；
+3. 通过用户级 asyncio.Lock 串行化，避免并发把本地 LLM / 外部 API 打爆；
 4. 生成完成后持久化到 moment_day_captions 表。
 
-时区处理：前端按用户本地时区聚合日期，服务端也必须按用户传入的 IANA 时区把
-photos.photo_time（naive UTC）归到"用户视角下的同一天"，两侧才对得上。
+photos.photo_time 存的是拍摄本地墙上时间（naive datetime，EXIF 原样），
+因此当天聚合直接按 naive 边界 ``[day 00:00, day+1 00:00)`` 切分，无需 tz 换算；
+前端也是按浏览器本地 tz 从同一份 naive 字段分组，两侧语义一致。
+``tz_name`` 参数保留只为兼容既有调用签名，函数内部不再使用。
 """
 
 from __future__ import annotations
@@ -36,6 +38,8 @@ from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.crud import moment as moment_crud
+from app.service.agent.service import FixedChatOpenAI
+
 
 logger = logging.getLogger(__name__)
 
@@ -71,18 +75,15 @@ def _resolve_tz(tz_name: str):
 
 
 def day_bounds_utc(day: date, tz_name: str) -> Tuple[datetime, datetime]:
-    """把"用户时区下的某一天"转成 photos.photo_time 可查询的 UTC naive 边界。
+    """返回 ``day`` 那天在 photos.photo_time 语义下的查询边界 ``[start, end)``。
 
-    photos.photo_time 存的是 naive datetime（历史上按拍摄本地时刻写入），
-    所以返回也用 naive datetime，直接与 DB 字段比较。
+    photo_time 是 naive 的墙上时间，直接构造 naive 边界即可，无需 tz 换算。
+    ``tz_name`` 与函数名 ``_utc`` 均只为兼容既有调用签名保留。
     """
-    tz = _resolve_tz(tz_name)
-    start_local = datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=tz)
-    end_local = start_local + timedelta(days=1)
-    # 转换到 UTC 并去掉时区信息，用于与 DB naive datetime 比较
-    start_utc = start_local.astimezone(_tz.utc).replace(tzinfo=None)
-    end_utc = end_local.astimezone(_tz.utc).replace(tzinfo=None)
-    return start_utc, end_utc
+    _ = tz_name  # 兼容保留
+    start_naive = datetime(day.year, day.month, day.day, 0, 0, 0)
+    end_naive = start_naive + timedelta(days=1)
+    return start_naive, end_naive
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +266,10 @@ def _resolve_connection_and_model(
 
 
 def _build_llm(connection, model_name: str, streaming: bool) -> ChatOpenAI:
-    return ChatOpenAI(
+    # 与 app.service.agent.service.get_agent_executor 对齐：使用 FixedChatOpenAI
+    # 把 OpenRouter 兼容格式下 delta.reasoning 从 content 里剥离到 additional_kwargs；
+    # 不再往请求体里注入任何 "关闭思考" 兼容字段（严格网关会 400 Unknown parameter）。
+    return FixedChatOpenAI(
         model=model_name,
         api_key=connection.api_key,
         base_url=connection.api_base if connection.api_base else None,
@@ -273,8 +277,6 @@ def _build_llm(connection, model_name: str, streaming: bool) -> ChatOpenAI:
         temperature=0.8,
         streaming=streaming,
         max_completion_tokens=512,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-        reasoning_effort="none",
     )
 
 
@@ -348,7 +350,15 @@ async def generate_caption_sync(
             HumanMessage(content=materials["_user_prompt"]),
         ]
         response = await asyncio.to_thread(llm.invoke, messages)
-        caption = (response.content or "").strip().strip('"').strip()
+        # 思考走 additional_kwargs，正文走 content，直接取即可。
+        raw = response.content or ""
+        if isinstance(raw, list):
+            # 部分模型 content 为分段 list，只取 type=='text' 段
+            raw = "".join(
+                c.get("text", "") for c in raw
+                if isinstance(c, dict) and c.get("type") == "text"
+            )
+        caption = raw.strip().strip('"').strip()
         if not caption:
             raise RuntimeError("LLM 返回为空，请稍后重试。")
 
@@ -372,9 +382,8 @@ async def generate_caption_stream(
     model_name: Optional[str] = None,
     force: bool = False,
 ) -> AsyncGenerator[str, None]:
-    """SSE 流式生成。每 chunk 以 ``data: {...}\\n\\n`` 输出，结束以 ``data: [DONE]\\n\\n``。"""
+    """SSE 流式生成。每 chunk 以 ``data: {...}\n\n`` 输出，结束以 ``data: [DONE]\n\n``。"""
     import json
-
     lock = await _get_user_lock(str(user_id))
     async with lock:
         try:
@@ -403,25 +412,37 @@ async def generate_caption_stream(
             HumanMessage(content=materials["_user_prompt"]),
         ]
 
+        # 与 agent.service.stream_chat_with_agent 对齐的流式处理：
+        #   - str content，非空 -> 正文，外发
+        #   - list content，type=='text' -> 正文，外发
+        #   - additional_kwargs.summary / type=='reasoning' -> 思考，识别但丢弃
+        # 使用 llm.astream + async for，chunk 一到即 yield。
         full_caption_parts: List[str] = []
-        try:
-            # ChatOpenAI.stream 是同步生成器，转到线程里 pull
-            def _pull():
-                return list(llm.stream(messages))
 
-            chunks = await asyncio.to_thread(_pull)
-            for chunk in chunks:
-                text = getattr(chunk, "content", None)
-                if isinstance(text, list):
-                    for c in text:
-                        if isinstance(c, dict) and c.get("type") == "text":
-                            piece = c.get("text", "")
-                            if piece:
-                                full_caption_parts.append(piece)
-                                yield f"data: {json.dumps({'content': piece})}\n\n"
-                elif isinstance(text, str) and text:
-                    full_caption_parts.append(text)
-                    yield f"data: {json.dumps({'content': text})}\n\n"
+        try:
+            async for chunk in llm.astream(messages):
+                contents = getattr(chunk, "content", None)
+                additional_kwargs = getattr(chunk, "additional_kwargs", None) or {}
+                if isinstance(contents, str):
+                    if contents:
+                        full_caption_parts.append(contents)
+                        yield f"data: {json.dumps({'content': contents})}\n\n"
+                    elif additional_kwargs:
+                        # 思考通道：识别但不外发
+                        _ = additional_kwargs.get('summary') or []
+                elif isinstance(contents, list):
+                    for c in contents:
+                        if not isinstance(c, dict):
+                            continue
+                        content_type = c.get('type')
+                        if content_type == 'text':
+                            text = c.get("text", "")
+                            if text:
+                                full_caption_parts.append(text)
+                                yield f"data: {json.dumps({'content': text})}\n\n"
+                        elif content_type == 'reasoning':
+                            # 思考通道：识别但不外发
+                            _ = c.get('summary') or []
 
             caption = "".join(full_caption_parts).strip().strip('"').strip()
             if not caption:

@@ -88,10 +88,10 @@ def list_day_locations(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """按用户本地时区聚合每一天的位置数据。
+    """按 photo_time 的墙上时间聚合每一天的位置数据。
 
-    - 时区语义：先按用户传入的 ``timezone`` 计算 ``start`` 那天的本地零点，转成 UTC 作为下界；
-      ``end`` 后一天的本地零点作为上界（左闭右开）。
+    - photo_time 为 naive 墙上时间，按 ``[start 00:00, end+1 00:00)`` naive 边界切分，
+      与前端按浏览器本地 tz 分组语义一致；``timezone`` 参数保留仅为向后兼容。
     - 名称降级：``Scene.name`` > ``city`` > ``district`` > ``province``，都空则该照片不计入。
     - 同一天有多个位置时按 (level_rank, count) 排序，返回 Top N。景区永远排在城市之前。
     """
@@ -100,9 +100,8 @@ def list_day_locations(
     if (end - start).days > 366:
         raise HTTPException(status_code=400, detail="日期区间过长（最多 366 天）")
 
-    # 区间左边界：start 那天本地零点
+    # 区间：[start 00:00, end+1 00:00)，naive
     start_utc, _ = day_bounds_utc(start, timezone)
-    # 区间右边界：end 那天的下一天本地零点（左闭右开）
     _, end_utc = day_bounds_utc(end, timezone)
 
     return moment_crud.get_day_locations(
