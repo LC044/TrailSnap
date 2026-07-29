@@ -1,9 +1,10 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { authService, type LoginParams, type UserInfo } from '@/api/auth';
 import router from '@/router';
 
 const PERSIST_KEY_PREFIXES = ['trailsnap:', 'ticket-', 'trailsnap-location-'];
+const USER_INFO_KEY = 'user_info';
 
 const clearPersistedState = () => {
   for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -15,9 +16,32 @@ const clearPersistedState = () => {
   }
 };
 
+const loadUserInfo = (): UserInfo | null => {
+  const raw = localStorage.getItem(USER_INFO_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as UserInfo;
+  } catch {
+    return null;
+  }
+};
+
+const persistUserInfo = (info: UserInfo | null) => {
+  if (info) {
+    localStorage.setItem(USER_INFO_KEY, JSON.stringify(info));
+  } else {
+    localStorage.removeItem(USER_INFO_KEY);
+  }
+};
+
 export const useUserStore = defineStore('user', () => {
   const token = ref<string | null>(localStorage.getItem('user_token') || null);
-  const userInfo = ref<UserInfo | null>(null);
+  const userInfo = ref<UserInfo | null>(loadUserInfo());
+
+  // Keep localStorage in sync with userInfo across every mutation path
+  // (getUserInfo, updateUserInfo, resetState, and the 401 interceptor in
+  // utils/request.ts that assigns userStore.userInfo = null directly).
+  watch(userInfo, (val) => persistUserInfo(val), { deep: true });
 
   const setToken = (newToken: string | null) => {
     token.value = newToken;
