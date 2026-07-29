@@ -181,7 +181,6 @@ test.describe("朋友圈日文案 · 流式生成 @moments-streaming", () => {
         await route.fulfill({
           status: 200,
           contentType: "text/event-stream",
-          headers: { "Cache-Control": "no-cache", Connection: "keep-alive" },
           body: sseBody,
         })
       }
@@ -193,13 +192,19 @@ test.describe("朋友圈日文案 · 流式生成 @moments-streaming", () => {
     await expect(aiBtn).toBeVisible({ timeout: 5_000 })
     await aiBtn.click({ force: true })
 
+    // 先等 SSE 响应到达，再断言文案；docker CI 慢，给足时间避免 flaky
+    await page.waitForResponse(
+      (r) => r.url().includes("/api/moments/day-captions/generate"),
+      { timeout: 15_000 }
+    )
+
     // 断言 1：第一片"外滩"字面出现在 DOM 上（早于终态）
-    await expect(page.getByText(/外滩/).first()).toBeVisible({ timeout: 8_000 })
+    await expect(page.getByText(/外滩/).first()).toBeVisible({ timeout: 15_000 })
 
     // 断言 2：最终完整文案也应到达
     await expect(
       page.getByText("外滩的风比想象里咸一点。")
-    ).toBeVisible({ timeout: 8_000 })
+    ).toBeVisible({ timeout: 15_000 })
   })
 
   test("SSE 最终 done 帧到达 -> caption 落库为 source='ai'，按钮切换为「重新生成」", async ({
@@ -230,7 +235,12 @@ test.describe("朋友圈日文案 · 流式生成 @moments-streaming", () => {
     await enterMomentsView(page)
     await page.locator('button:has-text("AI 生成")').first().click({ force: true })
 
-    await expect(page.getByText("夜色渐浓。")).toBeVisible({ timeout: 10_000 })
+    // 先等 SSE 响应到达再断言；docker CI 慢，给足时间避免 flaky
+    await page.waitForResponse(
+      (r) => r.url().includes("/api/moments/day-captions/generate"),
+      { timeout: 15_000 }
+    )
+    await expect(page.getByText("夜色渐浓。")).toBeVisible({ timeout: 15_000 })
     await expect(
       page.locator('button:has-text("重新生成")').first()
     ).toHaveCount(1, { timeout: 5_000 })

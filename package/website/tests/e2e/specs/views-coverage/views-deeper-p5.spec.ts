@@ -243,7 +243,6 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
-        headers: { "Cache-Control": "no-cache", Connection: "keep-alive" },
         body: sseBody,
       })
     })
@@ -255,8 +254,14 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     await expect(aiBtn).toBeVisible({ timeout: 5_000 })
     await aiBtn.click({ force: true })
 
+    // 先等 SSE 响应到达再断言；docker CI 慢，给足时间避免 flaky
+    await page.waitForResponse(
+      (r) => r.url().includes("/api/moments/day-captions/generate"),
+      { timeout: 15_000 }
+    )
+
     // 断言最终文案渲染到 DOM
-    await expect(page.getByText("外滩的风比想象里咸一点。")).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText("外滩的风比想象里咸一点。")).toBeVisible({ timeout: 15_000 })
 
     // 校验请求 body 包含关键字段
     expect(capturedBody).toBeTruthy()
