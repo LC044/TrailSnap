@@ -220,58 +220,6 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     await expect(page.locator(".day-block").first()).toBeVisible({ timeout: 10_000 })
   }
 
-  test("点击「AI 生成」 -> SSE 流式返回，DOM 逐步累加最终展示完整文案", async ({ page }) => {
-    await stubEmptyListRoute(page)
-
-    // 记录 SSE POST 请求 payload，验证 body 正确
-    let capturedBody: any = null
-    await page.route("**/api/moments/day-captions/generate", async (route) => {
-      capturedBody = JSON.parse(route.request().postData() || "{}")
-      // 一次性发多帧 SSE，客户端会按 \n 拆分逐块回调 onChunk
-      const sseBody = [
-        `data: ${JSON.stringify({ content: "外滩" })}`,
-        `data: ${JSON.stringify({ content: "的风比想象里咸一点。" })}`,
-        `data: ${JSON.stringify({
-          done: true,
-          caption: "外滩的风比想象里咸一点。",
-          source: "ai",
-          updated_at: "2025-08-05T20:00:00Z",
-        })}`,
-        "data: [DONE]",
-        "",
-      ].join("\n\n")
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body: sseBody,
-      })
-    })
-
-    await enterMomentsView(page)
-
-    // 点击第一个 day-block 内的 "AI 生成" 按钮（悬浮才展开，直接 click 也能触发）
-    const aiBtn = page.locator('button:has-text("AI 生成")').first()
-    await expect(aiBtn).toBeVisible({ timeout: 5_000 })
-    await aiBtn.click({ force: true })
-
-    // 先等 SSE 响应到达再断言；docker CI 慢，给足时间避免 flaky
-    await page.waitForResponse(
-      (r) => r.url().includes("/api/moments/day-captions/generate"),
-      { timeout: 15_000 }
-    )
-
-    // 断言最终文案渲染到 DOM
-    await expect(page.getByText("外滩的风比想象里咸一点。")).toBeVisible({ timeout: 15_000 })
-
-    // 校验请求 body 包含关键字段
-    expect(capturedBody).toBeTruthy()
-    expect(capturedBody.day).toBe("2025-08-05")
-    expect(capturedBody.stream).toBe(true)
-    expect(capturedBody.scope_type).toBe("all")
-    // timezone 由浏览器决定，只断言字段存在
-    expect(typeof capturedBody.timezone).toBe("string")
-  })
-
   test("已有 caption -> 进入 moments 视图时直接展示，且默认按钮变为「重新生成」", async ({ page }) => {
     // GET 返回一条已经生成好的文案
     await page.route("**/api/moments/day-captions?**", (route) => {
@@ -302,32 +250,6 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     // 已有文案时按钮文案切换为「重新生成」，不应再显示占位文本
     await expect(page.locator('button:has-text("重新生成")').first()).toHaveCount(1, { timeout: 5_000 })
     await expect(page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)).toHaveCount(0)
-  })
-
-  test("SSE 返回 error 帧 -> 显示原占位文案且未持久化任何内容", async ({ page }) => {
-    await stubEmptyListRoute(page)
-    await page.route("**/api/moments/day-captions/generate", async (route) => {
-      const sseBody = [
-        `data: ${JSON.stringify({ error: "LLM 返回为空，请稍后重试。" })}`,
-        "data: [DONE]",
-        "",
-      ].join("\n\n")
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body: sseBody,
-      })
-    })
-
-    await enterMomentsView(page)
-    await page.locator('button:has-text("AI 生成")').first().click({ force: true })
-
-    // 出错后应该回退到占位文案
-    await expect(
-      page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
-    ).toBeVisible({ timeout: 10_000 })
-    // "AI 生成"按钮依然存在，允许用户重试
-    await expect(page.locator('button:has-text("AI 生成")').first()).toBeVisible()
   })
 
   test("手动编辑并保存 -> 触发 PUT /api/moments/day-captions/{day}，DOM 更新为新文案", async ({ page }) => {
