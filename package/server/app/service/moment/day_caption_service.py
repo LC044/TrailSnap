@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone as _tz
 from typing import AsyncGenerator, Dict, List, Optional, Tuple
@@ -42,6 +43,82 @@ from app.service.agent.service import FixedChatOpenAI
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 思考剥离：部分模型（MiniMax / Qwen 等）会把 <think>...</think> 直接混在
+# content 字符串里流式吐出，需要在跨 chunk 边界上做状态机剥离。
+# ---------------------------------------------------------------------------
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+class _ThinkStripper:
+    """跨 chunk 状态机，剥离 content 字符串中的 <think>...</think> 段。
+
+    - 正常态：遇到 '<' 起进入缓冲观察，累计够 '<think>' 即切到思考态；
+      若缓冲后续字符与 '<think>' 前缀不符，则整段缓冲作为正文补发。
+    - 思考态：所有字符丢弃，直到检测到 '</think>' 后切回正常态。
+    - flush()：流结束时把未定型的缓冲当作正文补发（若还在思考态则丢弃）。
+    """
+
+    def __init__(self) -> None:
+        self._in_think = False
+        self._buf = ""
+
+    def feed(self, text: str) -> str:
+        if not text:
+            return ""
+        out: List[str] = []
+        for ch in text:
+            if self._in_think:
+                self._buf += ch
+                # 命中闭合标签，切回正常态并清空缓冲
+                if self._buf.lower().endswith(_THINK_CLOSE):
+                    self._in_think = False
+                    self._buf = ""
+                # 缓冲过长且未见闭合，保留末尾足够识别 </think> 的窗口即可
+                elif len(self._buf) > len(_THINK_CLOSE) * 4:
+                    self._buf = self._buf[-len(_THINK_CLOSE):]
+                continue
+
+            # 正常态
+            if self._buf:
+                self._buf += ch
+                lower = self._buf.lower()
+                if lower == _THINK_OPEN:
+                    # 命中开标签，进入思考态，丢弃缓冲
+                    self._in_think = True
+                    self._buf = ""
+                elif _THINK_OPEN.startswith(lower):
+                    # 仍是 <think> 的前缀，继续等
+                    continue
+                else:
+                    # 前缀失配，缓冲整体判定为正文，补发
+                    out.append(self._buf)
+                    self._buf = ""
+            elif ch == "<":
+                self._buf = ch
+            else:
+                out.append(ch)
+        return "".join(out)
+
+    def flush(self) -> str:
+        if self._in_think:
+            # 思考未闭合，直接丢弃缓冲
+            self._buf = ""
+            return ""
+        remainder = self._buf
+        self._buf = ""
+        return remainder
+
+
+def _strip_think_blocks(text: str) -> str:
+    """落库前兜底：全局清掉所有 <think>...</think>（含跨行）。"""
+    if not text:
+        return text
+    return _THINK_BLOCK_RE.sub("", text)
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +435,8 @@ async def generate_caption_sync(
                 c.get("text", "") for c in raw
                 if isinstance(c, dict) and c.get("type") == "text"
             )
+        # 兜底剥离 content 内嵌 <think>...</think>（MiniMax / Qwen 等）
+        raw = _strip_think_blocks(raw)
         caption = raw.strip().strip('"').strip()
         if not caption:
             raise RuntimeError("LLM 返回为空，请稍后重试。")
@@ -413,11 +492,12 @@ async def generate_caption_stream(
         ]
 
         # 与 agent.service.stream_chat_with_agent 对齐的流式处理：
-        #   - str content，非空 -> 正文，外发
-        #   - list content，type=='text' -> 正文，外发
+        #   - str content，非空 -> 正文，外发（先经 _ThinkStripper 剥离 <think> 段）
+        #   - list content，type=='text' -> 正文，外发（同样经状态机剥离）
         #   - additional_kwargs.summary / type=='reasoning' -> 思考，识别但丢弃
         # 使用 llm.astream + async for，chunk 一到即 yield。
         full_caption_parts: List[str] = []
+        stripper = _ThinkStripper()
 
         try:
             async for chunk in llm.astream(messages):
@@ -425,8 +505,10 @@ async def generate_caption_stream(
                 additional_kwargs = getattr(chunk, "additional_kwargs", None) or {}
                 if isinstance(contents, str):
                     if contents:
-                        full_caption_parts.append(contents)
-                        yield f"data: {json.dumps({'content': contents})}\n\n"
+                        visible = stripper.feed(contents)
+                        if visible:
+                            full_caption_parts.append(visible)
+                            yield f"data: {json.dumps({'content': visible})}\n\n"
                     elif additional_kwargs:
                         # 思考通道：识别但不外发
                         _ = additional_kwargs.get('summary') or []
@@ -438,13 +520,22 @@ async def generate_caption_stream(
                         if content_type == 'text':
                             text = c.get("text", "")
                             if text:
-                                full_caption_parts.append(text)
-                                yield f"data: {json.dumps({'content': text})}\n\n"
+                                visible = stripper.feed(text)
+                                if visible:
+                                    full_caption_parts.append(visible)
+                                    yield f"data: {json.dumps({'content': visible})}\n\n"
                         elif content_type == 'reasoning':
                             # 思考通道：识别但不外发
                             _ = c.get('summary') or []
 
-            caption = "".join(full_caption_parts).strip().strip('"').strip()
+            # 冲洗剥离器残留缓冲
+            tail = stripper.flush()
+            if tail:
+                full_caption_parts.append(tail)
+                yield f"data: {json.dumps({'content': tail})}\n\n"
+
+            # 落库前再兜底一次，防状态机 corner case 漏切
+            caption = _strip_think_blocks("".join(full_caption_parts)).strip().strip('"').strip()
             if not caption:
                 yield f"data: {json.dumps({'error': 'LLM 返回为空，请稍后重试。'})}\n\n"
                 yield "data: [DONE]\n\n"
