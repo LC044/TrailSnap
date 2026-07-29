@@ -44,9 +44,6 @@ dev = [
     "pytest-asyncio>=0.24",
 ]
 
-[tool.uv]
-index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
