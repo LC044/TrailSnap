@@ -294,8 +294,9 @@
                                          class="relative group bg-gray-100 dark:bg-gray-800 overflow-hidden cursor-pointer rounded-sm"
                                          :class="{
                                              'aspect-square': getPhotos(day.key).length > 1,
-                                             'max-h-[250px] flex justify-start': getPhotos(day.key).length === 1
+                                             'flex justify-start': getPhotos(day.key).length === 1
                                          }"
+                                         :style="getPhotos(day.key).length === 1 ? singlePhotoBoxStyle(img) : {}"
                                          @click="handlePhotoClick(img)"
                                          @vue:mounted="loadImage(img)"
                                          @vue:unmounted="cancelImageLoad(img.id)"
@@ -684,9 +685,30 @@ const getGridColumns = (dayKey: string, isExpanded: boolean) => {
         const minWidth = window.innerWidth < 640 ? '80px' : '120px'
         return `repeat(auto-fill, minmax(${minWidth}, 1fr))`
     }
-    if (count === 1) return '1fr'
+    if (count === 1) return 'auto'
     if (count === 4) return 'repeat(2, minmax(0, 1fr))'
     return 'repeat(3, minmax(0, 1fr))'
+}
+
+// 朋友圈单图：按照片真实比例在 240×250 边界框内计算盒子尺寸，
+// 使容器与图片同比例，object-contain 不再留出灰色 letterbox。
+const SINGLE_MAX_W = 240
+const SINGLE_MAX_H = 250
+const singlePhotoBoxStyle = (img: { width?: number; height?: number }) => {
+  const w = img?.width
+  const h = img?.height
+  if (w && h) {
+    const ratio = w / h
+    let dw = SINGLE_MAX_W
+    let dh = SINGLE_MAX_W / ratio
+    if (dh > SINGLE_MAX_H) {
+      dh = SINGLE_MAX_H
+      dw = SINGLE_MAX_H * ratio
+    }
+    return { width: `${Math.round(dw)}px`, height: `${Math.round(dh)}px` }
+  }
+  // 无尺寸元数据时退化为固定边界框（object-contain 保比例）
+  return { width: `${SINGLE_MAX_W}px`, maxHeight: `${SINGLE_MAX_H}px` }
 }
 
 const getGridMaxWidth = (dayKey: string, isExpanded: boolean) => {

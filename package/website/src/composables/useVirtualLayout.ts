@@ -187,7 +187,17 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
                     const baseItemWidth = (Math.min(contentWidth, 360) - 2 * actualGap) / 3
                     if (displayCount === 1) {
                         rows = 1
-                        contentHeight = 200 // Single large image estimate
+                        // 与 PhotoGallery 的 singlePhotoBoxStyle 口径一致：
+                        // 按照片真实比例在 240×250 边界框内取高度，避免预留高度小于实际
+                        // 渲染高度导致下一天块压上来、间距变小。
+                        const p = photos.value[globalIndex]
+                        if (p?.width && p?.height) {
+                            let dh = 240 / (p.width / p.height)
+                            if (dh > 250) dh = 250
+                            contentHeight = dh
+                        } else {
+                            contentHeight = 200 // 无尺寸元数据时的退化估值
+                        }
                     } else if (displayCount === 4) {
                         rows = 2
                         contentHeight = rows * baseItemWidth + actualGap
