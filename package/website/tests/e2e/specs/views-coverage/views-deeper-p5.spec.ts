@@ -153,10 +153,10 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
     await expect(momentsItem).toBeVisible({ timeout: 5_000 })
     await momentsItem.click()
 
-    // Moments 视图特征：用户名 + 朋友圈默认占位文案（未生成时显示）
-    // 注意：dev-global-setup 只设置 user_token，未填充 user_info；store 内的 userInfo 为 null，
-    // 因此 PhotoGallery 会显示默认昵称「行影集用户」。此处断言默认名以保持 spec 自包含。
-    await expect(page.getByText("行影集用户").first()).toBeVisible({ timeout: 10_000 })
+    // Moments 视图特征：用户昵称 + 朋友圈默认占位文案（未生成时显示）
+    // injectFakeAuth 注入的 user_info 里 nickname 为「E2E 行影者」，store 会从 localStorage
+    // 恢复 userInfo（见 stores/user.ts 的持久化），因此 PhotoGallery 渲染该昵称而非默认值。
+    await expect(page.getByText("E2E 行影者").first()).toBeVisible({ timeout: 10_000 })
     await expect(
       page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
     ).toBeVisible()
@@ -171,7 +171,7 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
     await page.locator('button:has-text("朋友圈")').first().click()
 
     // moments 单日 block 内的 img 数量应等于 fakePhotosByDay.length (3)
-    await expect(page.getByText("行影集用户").first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText("E2E 行影者").first()).toBeVisible({ timeout: 10_000 })
     const dayBlock = page.locator(".day-block").first()
     await expect(dayBlock).toBeVisible({ timeout: 10_000 })
     const imgs = dayBlock.locator("img")
