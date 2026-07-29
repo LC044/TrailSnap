@@ -1,19 +1,22 @@
 """朋友圈日文案生成服务。
 
 职责：
-1. 按 (user, scope, day, timezone) 聚合当天照片素材（地点 / 人物 / 单图描述 / 标签）；
-2. 组装 prompt，调用用户配置的 LLM（走对话或分析连接），支持同步与 SSE 流式；
-3. 通过用户级 asyncio.Lock 串行化，避免并发把本地 llama.cpp / 外部 API 打爆；
+1. 按 (user, scope, day) 聚合当天照片素材（地点 / 人物 / 单图描述 / 标签）；
+2. 组装 prompt，调用用户配置的 LLM，支持同步与 SSE 流式；
+3. 通过用户级 asyncio.Lock 串行化，避免并发把本地 LLM / 外部 API 打爆；
 4. 生成完成后持久化到 moment_day_captions 表。
 
-时区处理：前端按用户本地时区聚合日期，服务端也必须按用户传入的 IANA 时区把
-photos.photo_time（naive UTC）归到"用户视角下的同一天"，两侧才对得上。
+photos.photo_time 存的是拍摄本地墙上时间（naive datetime，EXIF 原样），
+因此当天聚合直接按 naive 边界 ``[day 00:00, day+1 00:00)`` 切分，无需 tz 换算；
+前端也是按浏览器本地 tz 从同一份 naive 字段分组，两侧语义一致。
+``tz_name`` 参数保留只为兼容既有调用签名，函数内部不再使用。
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone as _tz
 from typing import AsyncGenerator, Dict, List, Optional, Tuple
@@ -36,8 +39,86 @@ from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.crud import moment as moment_crud
+from app.service.agent.service import FixedChatOpenAI
+
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 思考剥离：部分模型（MiniMax / Qwen 等）会把 <think>...</think> 直接混在
+# content 字符串里流式吐出，需要在跨 chunk 边界上做状态机剥离。
+# ---------------------------------------------------------------------------
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+class _ThinkStripper:
+    """跨 chunk 状态机，剥离 content 字符串中的 <think>...</think> 段。
+
+    - 正常态：遇到 '<' 起进入缓冲观察，累计够 '<think>' 即切到思考态；
+      若缓冲后续字符与 '<think>' 前缀不符，则整段缓冲作为正文补发。
+    - 思考态：所有字符丢弃，直到检测到 '</think>' 后切回正常态。
+    - flush()：流结束时把未定型的缓冲当作正文补发（若还在思考态则丢弃）。
+    """
+
+    def __init__(self) -> None:
+        self._in_think = False
+        self._buf = ""
+
+    def feed(self, text: str) -> str:
+        if not text:
+            return ""
+        out: List[str] = []
+        for ch in text:
+            if self._in_think:
+                self._buf += ch
+                # 命中闭合标签，切回正常态并清空缓冲
+                if self._buf.lower().endswith(_THINK_CLOSE):
+                    self._in_think = False
+                    self._buf = ""
+                # 缓冲过长且未见闭合，保留末尾足够识别 </think> 的窗口即可
+                elif len(self._buf) > len(_THINK_CLOSE) * 4:
+                    self._buf = self._buf[-len(_THINK_CLOSE):]
+                continue
+
+            # 正常态
+            if self._buf:
+                self._buf += ch
+                lower = self._buf.lower()
+                if lower == _THINK_OPEN:
+                    # 命中开标签，进入思考态，丢弃缓冲
+                    self._in_think = True
+                    self._buf = ""
+                elif _THINK_OPEN.startswith(lower):
+                    # 仍是 <think> 的前缀，继续等
+                    continue
+                else:
+                    # 前缀失配，缓冲整体判定为正文，补发
+                    out.append(self._buf)
+                    self._buf = ""
+            elif ch == "<":
+                self._buf = ch
+            else:
+                out.append(ch)
+        return "".join(out)
+
+    def flush(self) -> str:
+        if self._in_think:
+            # 思考未闭合，直接丢弃缓冲
+            self._buf = ""
+            return ""
+        remainder = self._buf
+        self._buf = ""
+        return remainder
+
+
+def _strip_think_blocks(text: str) -> str:
+    """落库前兜底：全局清掉所有 <think>...</think>（含跨行）。"""
+    if not text:
+        return text
+    return _THINK_BLOCK_RE.sub("", text)
 
 
 # ---------------------------------------------------------------------------
@@ -71,18 +152,15 @@ def _resolve_tz(tz_name: str):
 
 
 def day_bounds_utc(day: date, tz_name: str) -> Tuple[datetime, datetime]:
-    """把"用户时区下的某一天"转成 photos.photo_time 可查询的 UTC naive 边界。
+    """返回 ``day`` 那天在 photos.photo_time 语义下的查询边界 ``[start, end)``。
 
-    photos.photo_time 存的是 naive datetime（历史上按拍摄本地时刻写入），
-    所以返回也用 naive datetime，直接与 DB 字段比较。
+    photo_time 是 naive 的墙上时间，直接构造 naive 边界即可，无需 tz 换算。
+    ``tz_name`` 与函数名 ``_utc`` 均只为兼容既有调用签名保留。
     """
-    tz = _resolve_tz(tz_name)
-    start_local = datetime(day.year, day.month, day.day, 0, 0, 0, tzinfo=tz)
-    end_local = start_local + timedelta(days=1)
-    # 转换到 UTC 并去掉时区信息，用于与 DB naive datetime 比较
-    start_utc = start_local.astimezone(_tz.utc).replace(tzinfo=None)
-    end_utc = end_local.astimezone(_tz.utc).replace(tzinfo=None)
-    return start_utc, end_utc
+    _ = tz_name  # 兼容保留
+    start_naive = datetime(day.year, day.month, day.day, 0, 0, 0)
+    end_naive = start_naive + timedelta(days=1)
+    return start_naive, end_naive
 
 
 # ---------------------------------------------------------------------------
@@ -265,7 +343,10 @@ def _resolve_connection_and_model(
 
 
 def _build_llm(connection, model_name: str, streaming: bool) -> ChatOpenAI:
-    return ChatOpenAI(
+    # 与 app.service.agent.service.get_agent_executor 对齐：使用 FixedChatOpenAI
+    # 把 OpenRouter 兼容格式下 delta.reasoning 从 content 里剥离到 additional_kwargs；
+    # 不再往请求体里注入任何 "关闭思考" 兼容字段（严格网关会 400 Unknown parameter）。
+    return FixedChatOpenAI(
         model=model_name,
         api_key=connection.api_key,
         base_url=connection.api_base if connection.api_base else None,
@@ -273,8 +354,6 @@ def _build_llm(connection, model_name: str, streaming: bool) -> ChatOpenAI:
         temperature=0.8,
         streaming=streaming,
         max_completion_tokens=512,
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
-        reasoning_effort="none",
     )
 
 
@@ -348,7 +427,17 @@ async def generate_caption_sync(
             HumanMessage(content=materials["_user_prompt"]),
         ]
         response = await asyncio.to_thread(llm.invoke, messages)
-        caption = (response.content or "").strip().strip('"').strip()
+        # 思考走 additional_kwargs，正文走 content，直接取即可。
+        raw = response.content or ""
+        if isinstance(raw, list):
+            # 部分模型 content 为分段 list，只取 type=='text' 段
+            raw = "".join(
+                c.get("text", "") for c in raw
+                if isinstance(c, dict) and c.get("type") == "text"
+            )
+        # 兜底剥离 content 内嵌 <think>...</think>（MiniMax / Qwen 等）
+        raw = _strip_think_blocks(raw)
+        caption = raw.strip().strip('"').strip()
         if not caption:
             raise RuntimeError("LLM 返回为空，请稍后重试。")
 
@@ -372,9 +461,8 @@ async def generate_caption_stream(
     model_name: Optional[str] = None,
     force: bool = False,
 ) -> AsyncGenerator[str, None]:
-    """SSE 流式生成。每 chunk 以 ``data: {...}\\n\\n`` 输出，结束以 ``data: [DONE]\\n\\n``。"""
+    """SSE 流式生成。每 chunk 以 ``data: {...}\n\n`` 输出，结束以 ``data: [DONE]\n\n``。"""
     import json
-
     lock = await _get_user_lock(str(user_id))
     async with lock:
         try:
@@ -403,27 +491,51 @@ async def generate_caption_stream(
             HumanMessage(content=materials["_user_prompt"]),
         ]
 
+        # 与 agent.service.stream_chat_with_agent 对齐的流式处理：
+        #   - str content，非空 -> 正文，外发（先经 _ThinkStripper 剥离 <think> 段）
+        #   - list content，type=='text' -> 正文，外发（同样经状态机剥离）
+        #   - additional_kwargs.summary / type=='reasoning' -> 思考，识别但丢弃
+        # 使用 llm.astream + async for，chunk 一到即 yield。
         full_caption_parts: List[str] = []
+        stripper = _ThinkStripper()
+
         try:
-            # ChatOpenAI.stream 是同步生成器，转到线程里 pull
-            def _pull():
-                return list(llm.stream(messages))
+            async for chunk in llm.astream(messages):
+                contents = getattr(chunk, "content", None)
+                additional_kwargs = getattr(chunk, "additional_kwargs", None) or {}
+                if isinstance(contents, str):
+                    if contents:
+                        visible = stripper.feed(contents)
+                        if visible:
+                            full_caption_parts.append(visible)
+                            yield f"data: {json.dumps({'content': visible})}\n\n"
+                    elif additional_kwargs:
+                        # 思考通道：识别但不外发
+                        _ = additional_kwargs.get('summary') or []
+                elif isinstance(contents, list):
+                    for c in contents:
+                        if not isinstance(c, dict):
+                            continue
+                        content_type = c.get('type')
+                        if content_type == 'text':
+                            text = c.get("text", "")
+                            if text:
+                                visible = stripper.feed(text)
+                                if visible:
+                                    full_caption_parts.append(visible)
+                                    yield f"data: {json.dumps({'content': visible})}\n\n"
+                        elif content_type == 'reasoning':
+                            # 思考通道：识别但不外发
+                            _ = c.get('summary') or []
 
-            chunks = await asyncio.to_thread(_pull)
-            for chunk in chunks:
-                text = getattr(chunk, "content", None)
-                if isinstance(text, list):
-                    for c in text:
-                        if isinstance(c, dict) and c.get("type") == "text":
-                            piece = c.get("text", "")
-                            if piece:
-                                full_caption_parts.append(piece)
-                                yield f"data: {json.dumps({'content': piece})}\n\n"
-                elif isinstance(text, str) and text:
-                    full_caption_parts.append(text)
-                    yield f"data: {json.dumps({'content': text})}\n\n"
+            # 冲洗剥离器残留缓冲
+            tail = stripper.flush()
+            if tail:
+                full_caption_parts.append(tail)
+                yield f"data: {json.dumps({'content': tail})}\n\n"
 
-            caption = "".join(full_caption_parts).strip().strip('"').strip()
+            # 落库前再兜底一次，防状态机 corner case 漏切
+            caption = _strip_think_blocks("".join(full_caption_parts)).strip().strip('"').strip()
             if not caption:
                 yield f"data: {json.dumps({'error': 'LLM 返回为空，请稍后重试。'})}\n\n"
                 yield "data: [DONE]\n\n"
