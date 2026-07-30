@@ -148,3 +148,129 @@ def test_auth_status_allows_empty_installation_state():
     result = auth.get_auth_status(db=db)
 
     assert result["has_users"] is False
+# ---------------------------------------------------------------------------
+# Moment router (package/server/app/api/moment.py)
+# ---------------------------------------------------------------------------
+from datetime import date as _date
+
+import pytest
+from fastapi import HTTPException
+
+from app.api import moment as moment_api
+from app.schemas.moment import MomentDayCaptionGenerateRequest, MomentDayCaptionUpsert
+
+
+def test_moment_list_captions_rejects_inverted_date_range():
+    db = MagicMock()
+    user = SimpleNamespace(id="user-moment-1")
+
+    with pytest.raises(HTTPException) as exc:
+        moment_api.list_day_captions(
+            start=_date(2025, 8, 6),
+            end=_date(2025, 8, 5),
+            scope_type="all",
+            scope_id=None,
+            current_user=user,
+            db=db,
+        )
+
+    assert exc.value.status_code == 400
+    assert "start" in exc.value.detail
+
+
+def test_moment_list_captions_rejects_range_longer_than_one_year():
+    db = MagicMock()
+    user = SimpleNamespace(id="user-moment-2")
+
+    with pytest.raises(HTTPException) as exc:
+        moment_api.list_day_captions(
+            start=_date(2024, 1, 1),
+            end=_date(2025, 12, 31),
+            scope_type="all",
+            scope_id=None,
+            current_user=user,
+            db=db,
+        )
+
+    assert exc.value.status_code == 400
+    assert "366" in exc.value.detail or "区间" in exc.value.detail
+
+
+def test_moment_upsert_caption_strips_and_validates_payload():
+    db = MagicMock()
+    user = SimpleNamespace(id="user-moment-3")
+
+    payload = MomentDayCaptionUpsert(caption="   ")
+    with pytest.raises(HTTPException) as exc:
+        moment_api.upsert_day_caption(
+            day=_date(2025, 8, 5),
+            payload=payload,
+            scope_type="all",
+            scope_id=None,
+            current_user=user,
+            db=db,
+        )
+    assert exc.value.status_code == 400
+    assert "不能为空" in exc.value.detail
+
+
+def test_moment_upsert_caption_delegates_to_crud_with_source_manual():
+    db = MagicMock()
+    user = SimpleNamespace(id="user-moment-4")
+    expected = SimpleNamespace(id=42, caption="hello")
+    with patch.object(
+        moment_api.moment_crud, "upsert_caption", return_value=expected
+    ) as upsert:
+        result = moment_api.upsert_day_caption(
+            day=_date(2025, 8, 5),
+            payload=MomentDayCaptionUpsert(caption="  hello  "),
+            scope_type="all",
+            scope_id=None,
+            current_user=user,
+            db=db,
+        )
+    upsert.assert_called_once_with(
+        db,
+        user.id,
+        "all",
+        None,
+        _date(2025, 8, 5),
+        "hello",
+        source="manual",
+    )
+    assert result is expected
+
+
+def test_moment_generate_rejects_non_all_scope():
+    db = MagicMock()
+    user = SimpleNamespace(id="user-moment-5")
+    request = MomentDayCaptionGenerateRequest(
+        day=_date(2025, 8, 5),
+        scope_type="album",
+        scope_id="abc",
+    )
+
+    # 非 all 场景在 router 内被直接拒绝为 400，未触达下游服务。
+    import asyncio
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(moment_api.generate_day_caption(request=request, current_user=user, db=db))
+    assert exc.value.status_code == 400
+    assert "scope_type" in exc.value.detail
+
+
+def test_moment_generate_wraps_internal_errors_in_500():
+    db = MagicMock()
+    user = SimpleNamespace(id="user-moment-6")
+    # stream=False 走 generate_caption_sync 路径，便于同步断言 500 包装。
+    request = MomentDayCaptionGenerateRequest(day=_date(2025, 8, 5), stream=False)
+
+    # 当下游服务（非 ValueError 非 HTTPException）抛异常时，router 应包装为 500。
+    import asyncio
+    async def _boom(**_kwargs):
+        raise RuntimeError("LLM down")
+
+    with patch.object(moment_api, "generate_caption_sync", side_effect=_boom):
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(moment_api.generate_day_caption(request=request, current_user=user, db=db))
+    assert exc.value.status_code == 500
+    assert "LLM" in exc.value.detail
