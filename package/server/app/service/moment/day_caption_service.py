@@ -194,17 +194,10 @@ def _dedup_similar_photos(
     day: date,
     photos: List[Photo],
 ) -> Tuple[List[Photo], int]:
-    """对当天照片做"相似只保留一张"去重，供文案素材聚合使用。
+    """相似只保留一张。视频/无 embedding 图片原样保留；不截断。
 
-    去重规则：
-    - 视频（无 embedding）原样保留；
-    - 无 embedding 的图片（早期未跑过 embedding 任务）原样保留，避免误伤；
-    - 有 embedding 的图片走 5 分钟窗切段 + 余弦 0.9 聚类，每 burst 组只留 1 张代表；
-    - 不做数量截断：保留全天所有"不同瞬间"，保证 LLM 素材多样性；
-    - 输出保持 photo_time 升序。
-
-    返回 ``(deduped_photos, original_image_count)``；``original_image_count``
-    是当天图片（不含视频）原始张数，供 prompt 里展示"去重前 Y 张"。
+    返回 ``(deduped_photos, original_image_count)``：``original_image_count`` 为
+    当天图片（不含视频）去重前总数，供 prompt 展示"去重前 Y 张"。
     """
     if not photos:
         return photos, 0

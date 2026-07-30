@@ -1,9 +1,6 @@
-"""朋友圈"每日精选"服务。
-
-流程：拉当天已 embedding 的照片 → 按 photo_time 排序、5 分钟 gap 切段 →
-段内跑余弦相似度聚类 (阈值 0.9) → 组内取 ``memory_score+quality_score`` 最大者 →
-全天代表按 (score, photo_time) 倒序取前 ``limit``。视频无 embedding 自动排除；
-每次实时计算，不落库。
+"""朋友圈"每日精选"服务：5 分钟切段 + 余弦相似度 0.9 聚类 → 组内取
+``memory_score+quality_score`` 最大者 → 按 (score, photo_time) 倒序取前 ``limit``。
+视频无 embedding 自动排除；每次实时计算，不落库。
 """
 
 from __future__ import annotations
@@ -236,16 +233,11 @@ def dedup_day_photo_ids(
     user_id: UUID,
     day: date,
 ) -> Tuple[set, dict]:
-    """返回当天"相似照片去重后"保留下来的 photo_id 集合。
+    """与 ``get_day_highlights`` 同样的聚类但**不截断**：返回当天所有 burst 代表。
 
-    与 ``get_day_highlights`` 复用同一套 5 分钟切段 + 余弦 0.9 聚类算法，
-    但**不做 top-N 截断**：每个 burst 组只留代表，无 embedding / 视频不参与聚类
-    （由调用方负责保留）。适合"文案素材去重"这种需要保留全天所有不同瞬间的场景。
-
-    返回 ``(kept_ids, stats)``：
-    - ``kept_ids``: 保留下来的 photo_id 集合；
-    - ``stats``: ``{"total_candidates": N, "kept": M}``，即"参与聚类的总数"
-       与"去重后剩余组数"。空数据时两者均为 0。
+    返回 ``(kept_ids, stats)``：``kept_ids`` 为代表 photo_id 集合；
+    ``stats = {"total_candidates": N, "kept": M}``（N=参与聚类总数，M=去重后组数）。
+    供文案素材去重使用（需保留全天不同瞬间，不适合取 top-N）。
     """
     candidates = _fetch_day_candidates(db, user_id, day)
     if not candidates:

@@ -127,13 +127,7 @@ def list_day_highlights(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """按 photo_time 的墙上时间聚合每一天的精选照片。
-
-    - 视频无 embedding，自动被排除；
-    - 每天按"5 分钟窗切段 → 段内余弦相似度 0.9 聚类 → 组内取 memory+quality 最高者"生成
-      候选，再按 score/时间倒序取前 ``limit``；
-    - 无数据的天不会返回，前端按 dayKey 匹配即可。
-    """
+    """语义同当天照片分组：按 photo_time 墙上时间。无数据的天不返回，前端按 dayKey 匹配。"""
     if start > end:
         raise HTTPException(status_code=400, detail="start 必须早于或等于 end")
     if (end - start).days > 366:

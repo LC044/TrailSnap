@@ -1,15 +1,9 @@
 """定时批量生成"朋友圈日文案" job。
 
-遍历所有用户，对每个用户拉出"有照片但尚未生成 caption"的所有日期，
-依次调用 ``generate_caption_sync``（force=False 天然幂等）。为了不把 LLM
-打爆，加入 3 个软保护：
-
-- 单次 job 最长 ``max_run_seconds`` 秒，超时后本次结束，剩余日期下次继续；
-- 每天 caption 之间 sleep ``per_caption_delay_sec`` 秒；
-- 单用户连续失败 ``max_consecutive_failures_per_user`` 次后跳过该用户。
-
-调度由 ``JobScheduler`` 根据 ``system_config.moment_caption_schedule`` 触发；
-``mode='off'`` 时 job 不会被注册（对齐 scan_folder_job 行为）。
+遍历所有 is_active 用户，拉出"有照片但没 caption"的日期，依次调
+``generate_caption_sync``（force=False 天然幂等）。三层软保护：单次总时限、
+单天 sleep、单用户连续失败跳过。调度由 ``JobScheduler`` 根据
+``system_config.moment_caption_schedule`` 触发；``mode='off'`` 时不注册。
 """
 from __future__ import annotations
 
@@ -20,7 +14,7 @@ from datetime import date
 from typing import List
 from uuid import UUID
 
-from sqlalchemy import cast, Date, func, select
+from sqlalchemy import cast, Date, select
 
 from app.core.config_manager import config_manager
 from app.core.system_config import system_config

@@ -54,13 +54,7 @@ class ScanScheduleSettings(BaseModel):
 
 
 class MomentCaptionScheduleSettings(BaseModel):
-    """定时批量生成"朋友圈日文案"的调度配置。
-
-    与 ``ScanScheduleSettings`` 保持相同的 mode/interval/weekdays/time 语义，
-    额外提供两个软保护参数（不在 UI 暴露）：
-    - ``max_run_seconds``: 单次 job 最长运行时间，超过则本次结束，剩余等下次；
-    - ``max_consecutive_failures_per_user``: 单个用户连续失败多少次后跳过该用户。
-    """
+    """朋友圈日文案定时生成调度。与 ``ScanScheduleSettings`` 保持相同调度字段。"""
 
     mode: str = Field(default='off', description="Options: 'off', 'interval', 'weekly'")
     interval: int = Field(default=60, description="分钟；interval 模式生效")

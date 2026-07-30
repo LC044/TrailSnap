@@ -79,16 +79,11 @@ class MomentHighlightPhoto(BaseModel):
 
 
 class MomentDayHighlights(BaseModel):
-    """按天聚合的朋友圈精选照片。
-
-    - 实时计算，不落库；
-    - 服务端已完成"5 分钟窗内相似照片去重 + memory_score+quality_score 打分"；
-    - ``photos`` 顺序即建议的展示顺序（score desc, photo_time desc）。
-    """
+    """按天聚合的朋友圈精选照片（实时计算不落库）。``photos`` 顺序即展示顺序。"""
 
     day: date
     photos: List[MomentHighlightPhoto] = Field(default_factory=list)
     total_candidates: int = Field(
         default=0,
-        description="该天参与精选池的候选照片总数（不含视频、未 embedding 的照片），供调试/展示",
+        description="参与精选池的候选总数（不含视频/未 embedding 的照片）",
     )

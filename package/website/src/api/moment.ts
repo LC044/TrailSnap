@@ -90,13 +90,7 @@ export const momentApi = {
     });
   },
 
-  /**
-   * 批量拉取一段日期区间内每一天的朋友圈精选照片。
-   *
-   * - 后端已完成"相似照片 0.9 阈值去重 + memory+quality 打分排序"；
-   * - 视频不参与精选；
-   * - 只返回有精选的天。
-   */
+  /** 批量拉取一段日期区间内每一天的朋友圈精选照片（服务端完成去重与排序，无数据的天不返回）。 */
   listDayHighlights(params: {
     start: string;
     end: string;
