@@ -1,17 +1,9 @@
 """朋友圈"每日精选"服务。
 
-职责：
-1. 按 (user, day) 从数据库拉出当天所有已 embedding 的照片（视频天然无 embedding，会被
-   ``JOIN ImageVector`` 排除掉），同时 LEFT JOIN ``ImageDescription`` 拿评分；
-2. 按 photo_time 排序，按 5 分钟 gap 切段；
-3. 段内跑 ``AgglomerativeClustering(cosine, average, distance_threshold=1-0.9)``，把 burst
-   聚成一组；
-4. 每组只留 ``memory_score + quality_score`` 最大者（同分取 ``photo_time`` 更晚的）；
-5. 全天代表按 ``score desc, photo_time desc`` 排序，取前 ``limit`` 张；
-6. 结果不落库，每次实时计算。
-
-photos.photo_time 是 naive 的墙上时间（EXIF 原样），当天区间直接构造 naive 边界
-``[day 00:00, day+1 00:00)`` 即可，与 ``day_caption_service`` 保持一致。
+流程：拉当天已 embedding 的照片 → 按 photo_time 排序、5 分钟 gap 切段 →
+段内跑余弦相似度聚类 (阈值 0.9) → 组内取 ``memory_score+quality_score`` 最大者 →
+全天代表按 (score, photo_time) 倒序取前 ``limit``。视频无 embedding 自动排除；
+每次实时计算，不落库。
 """
 
 from __future__ import annotations
@@ -32,14 +24,10 @@ from app.db.models.photo import Photo
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# 常量：与 app/service/tasks/similar.py 保持一致
-# ---------------------------------------------------------------------------
-# 5 分钟以内的连续照片视为同一段 burst，段内才做相似度聚类，避免全天两两比较导致 O(N²)。
+# 与 app/service/tasks/similar.py 保持一致：5 分钟切段 + 余弦相似度 0.9；
+# 单段上限 200 张防止极端旅行导入触发 O(N²) 聚类。
 _GAP_SECONDS = 300
-# 与工具箱"相似照片清理"保持同一相似度阈值 0.9（余弦距离 0.1）。
 _SIMILARITY_THRESHOLD = 0.9
-# 单段照片数上限。超过则再按硬时间点强制切段，避免极端旅行导入把段撑爆。
 _MAX_SEGMENT_SIZE = 200
 
 
@@ -99,13 +87,7 @@ def _fetch_day_candidates(
 
 
 def _segment_by_time(candidates: List[dict]) -> List[List[dict]]:
-    """按 photo_time 5 分钟 gap 切段，并对超长段做二次硬切。
-
-    切段是为了：
-    - 避免全天照片两两比较（O(N²)）；
-    - burst 语义上本来就限定"相隔很近的拍摄"；
-    - 极端情况下（几千张）也能把每段控制在 ``_MAX_SEGMENT_SIZE`` 以内。
-    """
+    """按 photo_time 5 分钟 gap 切段，超长段再按 ``_MAX_SEGMENT_SIZE`` 硬切。"""
     if not candidates:
         return []
 
@@ -114,7 +96,6 @@ def _segment_by_time(candidates: List[dict]) -> List[List[dict]]:
     last_ts: Optional[float] = None
 
     def _flush_current():
-        # 超长段进一步硬切
         if len(current) <= _MAX_SEGMENT_SIZE:
             segments.append(current[:])
         else:
@@ -174,20 +155,14 @@ def _cluster_segment(segment: List[dict]) -> List[List[dict]]:
 
 
 def _pick_group_representative(group: List[dict]) -> Tuple[dict, int]:
-    """挑组内代表 + 返回该组大小。
-
-    排序规则：``score`` 降序；``score`` 相同取 ``photo_time`` 更晚的。
-    """
+    """``score`` 降序；``score`` 相同取 ``photo_time`` 更晚的。返回 (代表, 组大小)。"""
     if not group:
         raise ValueError("empty group")
 
-    # datetime.min 用于兜底 None，虽然当前上游已过滤 photo_time None，但保险
     def _key(item: dict):
-        pt = item.get("photo_time") or datetime.min
-        return (item["score"], pt)
+        return (item["score"], item.get("photo_time") or datetime.min)
 
-    representative = max(group, key=_key)
-    return representative, len(group)
+    return max(group, key=_key), len(group)
 
 
 def get_day_highlights(
@@ -222,7 +197,6 @@ def get_day_highlights(
                 }
             )
 
-    # 全天代表按 score desc, photo_time desc 排序
     reps.sort(
         key=lambda r: (r["score"], r["photo_time"] or datetime.min),
         reverse=True,
@@ -237,10 +211,7 @@ def get_range_highlights(
     end: date,
     limit: int = 9,
 ) -> List[dict]:
-    """批量计算 ``[start, end]`` 每一天的精选。
-
-    调用方通常按可见月份触发，一次请求 30~31 天。逐天独立计算，方便日后单天缓存。
-    """
+    """批量计算 ``[start, end]`` 每一天的精选。逐天独立计算，方便日后按天缓存。"""
     if start > end:
         return []
 

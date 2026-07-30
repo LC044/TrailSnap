@@ -386,8 +386,7 @@ const {
 // 与 caption 服从相同的可见月份触发机制，同一个朋友圈视图中共享。
 const { locationMap, loadMonth: loadLocationMonth } = useMomentLocations()
 
-// 朋友圈日精选：后端做相似照片去重 + memory/quality 打分，实时计算不落库。
-// 只在 moments 布局启用，与 caption/location 共用可见月份触发。
+// 朋友圈日精选：服务端做相似去重 + memory/quality 打分排序，实时计算不落库。
 const { highlightMap, loadMonth: loadHighlightMonth } = useMomentHighlights()
 
 const handleVisibleMonthsChange = (months: { year: number; month: number }[]) => {

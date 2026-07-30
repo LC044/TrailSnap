@@ -695,7 +695,6 @@ const toggleExpand = (dayKey: string) => {
 }
 
 const getGridColumns = (dayKey: string, isExpanded: boolean) => {
-    // 展开态看当天全部照片；折叠态只看精选后的数量
     const count = isExpanded ? getPhotos(dayKey).length : getMomentPhotos(dayKey).length
     if (isExpanded && count > 9) {
         // 向右展开，移动端最小80px，PC端最小120px
@@ -955,13 +954,8 @@ const getPhotos = (dayKey: string) => {
 }
 
 /**
- * moments 布局下"折叠态"要展示的精选照片列表。
- *
- * - 若 props.dayHighlights[dayKey] 提供了 photoIds：按该顺序在当天已加载的照片里过滤取值
- *   （视频等未被后端选中的照片自然被排除）；
- * - 若未提供 / 空数组：回退到当天前 9 张，保持精选接口挂了/未加载时的兜底行为。
- *
- * 不做数量截断（截断由后端 limit 完成），如果后端给了 15 张这里就展示 15 张。
+ * moments 布局折叠态展示的精选照片。
+ * 有 dayHighlights 则按后端顺序返回；否则回退为当天前 9 张。
  */
 const getMomentPhotos = (dayKey: string) => {
     const ids = props.dayHighlights?.[dayKey]?.photoIds
@@ -969,7 +963,6 @@ const getMomentPhotos = (dayKey: string) => {
         const all = getPhotos(dayKey)
         const idSet = new Set(ids)
         const byId = new Map(all.filter(p => idSet.has(p.id)).map(p => [p.id, p]))
-        // 按 ids 顺序（后端已排好序）恢复展示顺序，避免受本地 groupedPhotos 顺序影响
         const ordered: AlbumImage[] = []
         ids.forEach(id => {
             const p = byId.get(id)
