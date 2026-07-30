@@ -325,6 +325,10 @@
               </div>
               <div v-if="!aiForm.chat_model_name && aiForm.chat_connection_id" class="text-red-500 text-xs mt-1">建议指定模型名称</div>
             </el-form-item>
+
+            <el-form-item label="朋友圈文案提示词">
+                <el-input v-model="aiForm.moment_day_caption_prompt" type="textarea" :rows="4" placeholder="用于生成朋友圈日文案的提示词" />
+            </el-form-item>
           </el-collapse-item>
 
           <!-- Face Recognition -->
@@ -675,6 +679,7 @@ const aiForm = ref({
   face_recognition_min_photos: 5,
   visual_evaluation_prompt: '',
   visual_narrative_prompt: '',
+  moment_day_caption_prompt: '',
   connections: [] as Array<{
     id: string;
     provider: string;
@@ -1047,7 +1052,8 @@ const loadData = async () => {
             chat_connection_id: settings.ai.chat_connection_id || '',
             chat_model_name: settings.ai.chat_model_name || '',
             visual_evaluation_prompt: settings.ai.visual_evaluation_prompt || '',
-            visual_narrative_prompt: settings.ai.visual_narrative_prompt || ''
+            visual_narrative_prompt: settings.ai.visual_narrative_prompt || '',
+            moment_day_caption_prompt: settings.ai.moment_day_caption_prompt || ''
           }
       }
       if (settings.image) {
