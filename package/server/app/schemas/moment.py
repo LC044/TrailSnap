@@ -61,3 +61,34 @@ class MomentDayLocations(BaseModel):
     primary: str = Field(..., description="首选展示的位置名，等于 locations[0].name")
     level: str = Field(default="unknown")
     locations: List[MomentDayLocationItem] = Field(default_factory=list)
+
+
+class MomentHighlightPhoto(BaseModel):
+    """朋友圈精选中的单张照片（只暴露前端渲染需要的最小字段）。"""
+
+    id: UUID
+    photo_time: Optional[datetime] = None
+    score: float = 0.0
+    group_size: int = Field(
+        default=1,
+        description="该精选照片所代表的 burst 组内实际照片总数（含被去重掉的），供 UI 提示",
+    )
+
+    class Config:
+        from_attributes = True
+
+
+class MomentDayHighlights(BaseModel):
+    """按天聚合的朋友圈精选照片。
+
+    - 实时计算，不落库；
+    - 服务端已完成"5 分钟窗内相似照片去重 + memory_score+quality_score 打分"；
+    - ``photos`` 顺序即建议的展示顺序（score desc, photo_time desc）。
+    """
+
+    day: date
+    photos: List[MomentHighlightPhoto] = Field(default_factory=list)
+    total_candidates: int = Field(
+        default=0,
+        description="该天参与精选池的候选照片总数（不含视频、未 embedding 的照片），供调试/展示",
+    )

@@ -18,6 +18,7 @@ from app.schemas.moment import (
     MomentDayCaption,
     MomentDayCaptionGenerateRequest,
     MomentDayCaptionUpsert,
+    MomentDayHighlights,
     MomentDayLocations,
 )
 from app.service.moment.day_caption_service import (
@@ -25,6 +26,7 @@ from app.service.moment.day_caption_service import (
     generate_caption_stream,
     generate_caption_sync,
 )
+from app.service.moment.day_highlight_service import get_range_highlights
 
 router = APIRouter()
 
@@ -110,6 +112,39 @@ def list_day_locations(
         start_utc,
         end_utc,
         top_n_per_day=top_n,
+    )
+
+
+@router.get(
+    "/day-highlights",
+    response_model=List[MomentDayHighlights],
+    summary="批量获取每日朋友圈精选照片（相似去重 + 分数排序，实时计算不落库）",
+)
+def list_day_highlights(
+    start: date = Query(..., description="起始日期（含），YYYY-MM-DD"),
+    end: date = Query(..., description="截止日期（含），YYYY-MM-DD"),
+    limit: int = Query(9, ge=1, le=30, description="每天返回的精选照片数上限，默认 9（九宫格）"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """按 photo_time 的墙上时间聚合每一天的精选照片。
+
+    - 视频无 embedding，自动被排除；
+    - 每天按"5 分钟窗切段 → 段内余弦相似度 0.9 聚类 → 组内取 memory+quality 最高者"生成
+      候选，再按 score/时间倒序取前 ``limit``；
+    - 无数据的天不会返回，前端按 dayKey 匹配即可。
+    """
+    if start > end:
+        raise HTTPException(status_code=400, detail="start 必须早于或等于 end")
+    if (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="日期区间过长（最多 366 天）")
+
+    return get_range_highlights(
+        db,
+        current_user.id,
+        start,
+        end,
+        limit=limit,
     )
 
 

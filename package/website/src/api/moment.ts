@@ -40,6 +40,22 @@ export interface MomentDayLocations {
   locations: MomentDayLocationItem[];
 }
 
+/** 朋友圈日精选中的单张照片（后端只返回渲染所需的最小字段）。 */
+export interface MomentHighlightPhoto {
+  id: string;
+  photo_time: string | null;
+  score: number;
+  /** 该精选照片代表的 burst 组大小（含被相似去重掉的） */
+  group_size: number;
+}
+
+/** 按天聚合的朋友圈精选照片。 */
+export interface MomentDayHighlights {
+  day: string; // YYYY-MM-DD
+  photos: MomentHighlightPhoto[];
+  total_candidates: number;
+}
+
 /** 获取浏览器时区（例如 'Asia/Shanghai'），失败回退 UTC。 */
 export function getBrowserTimezone(): string {
   try {
@@ -69,6 +85,26 @@ export const momentApi = {
       params: {
         timezone: getBrowserTimezone(),
         top_n: 3,
+        ...params,
+      },
+    });
+  },
+
+  /**
+   * 批量拉取一段日期区间内每一天的朋友圈精选照片。
+   *
+   * - 后端已完成"相似照片 0.9 阈值去重 + memory+quality 打分排序"；
+   * - 视频不参与精选；
+   * - 只返回有精选的天。
+   */
+  listDayHighlights(params: {
+    start: string;
+    end: string;
+    limit?: number;
+  }) {
+    return request.get<MomentDayHighlights[]>('/api/moments/day-highlights', {
+      params: {
+        limit: 9,
         ...params,
       },
     });
