@@ -289,14 +289,14 @@
                                     maxWidth: getGridMaxWidth(day.key, expandedDays.has(day.key))
                                 }"
                             >
-                                <template v-for="(img, idx) in (expandedDays.has(day.key) ? getPhotos(day.key) : getPhotos(day.key).slice(0, 9))" :key="img.id">
+                                <template v-for="(img, idx) in (expandedDays.has(day.key) ? getPhotos(day.key) : getMomentPhotos(day.key))" :key="img.id">
                                     <div
                                          class="relative group bg-gray-100 dark:bg-gray-800 overflow-hidden cursor-pointer rounded-sm"
                                          :class="{
-                                             'aspect-square': getPhotos(day.key).length > 1,
-                                             'flex justify-start': getPhotos(day.key).length === 1
+                                             'aspect-square': (expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) > 1,
+                                             'flex justify-start': (expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1
                                          }"
-                                         :style="getPhotos(day.key).length === 1 ? singlePhotoBoxStyle(img) : {}"
+                                         :style="(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? singlePhotoBoxStyle(img) : {}"
                                          @click="handlePhotoClick(img)"
                                          @vue:mounted="loadImage(img)"
                                          @vue:unmounted="cancelImageLoad(img.id)"
@@ -304,7 +304,7 @@
                                          <img
                                               :src="loadedImages[img.id] || placeholderSrc"
                                               class="w-full h-full transition-opacity duration-300"
-                                              :class="getPhotos(day.key).length === 1 ? 'object-contain object-left' : 'object-cover'"
+                                              :class="(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? 'object-contain object-left' : 'object-cover'"
                                               :alt="img.filename"
                                           />
                                           
@@ -339,20 +339,20 @@
                                                class="absolute inset-0 bg-black/10 z-10 pointer-events-none"
                                            ></div>
                                         
-                                        <!-- "+N" Overlay for 9th photo if > 9 -->
+                                        <!-- "+N" Overlay for last collapsed photo when more photos exist -->
                                         <div 
-                                            v-if="idx === 8 && getPhotos(day.key).length > 9 && !expandedDays.has(day.key)"
+                                            v-if="idx === getMomentPhotos(day.key).length - 1 && getPhotos(day.key).length > getMomentPhotos(day.key).length && !expandedDays.has(day.key)"
                                             class="absolute inset-0 bg-black/50 flex items-center justify-center cursor-pointer"
                                             @click.stop="toggleExpand(day.key)"
                                         >
-                                            <span class="text-white text-xl font-medium">+{{ getPhotos(day.key).length - 9 }}</span>
+                                            <span class="text-white text-xl font-medium">+{{ getPhotos(day.key).length - getMomentPhotos(day.key).length }}</span>
                                         </div>
                                     </div>
                                 </template>
                             </div>
 
                             <!-- Collapse Button -->
-                            <div v-if="expandedDays.has(day.key) && getPhotos(day.key).length > 9" class="mt-2 mb-2">
+                            <div v-if="expandedDays.has(day.key) && getPhotos(day.key).length > getMomentPhotos(day.key).length" class="mt-2 mb-2">
                                 <span class="text-sm text-[#576b95] dark:text-primary-400 cursor-pointer hover:opacity-80" @click="toggleExpand(day.key)">收起</span>
                             </div>
                             
@@ -530,6 +530,10 @@ interface Props {
   // moments 布局下每天的位置（景区优先 → city → district → province，实时聚合不落库）。
   // key 为 day.key（同 groupedPhotos 中的 dayKey 格式，月/日不补零）
   dayLocations?: Record<string, { primary: string; level: string; locations: Array<{ name: string; level: string; count: number }> }>
+  // moments 布局下每天的"精选照片 ID 列表"（服务端已做相似去重 + 分数排序，顺序即展示顺序）。
+  // key 为 day.key（同 groupedPhotos 中的 dayKey 格式，月/日不补零）
+  // 未提供 / 空数组 时，moments 布局回退到"当天前 9 张"的原始行为。
+  dayHighlights?: Record<string, { photoIds: string[]; totalCandidates?: number }>
   // 是否显示 moments 布局中的 AI 文案区（生成/编辑/清除按钮）
   showMomentCaption?: boolean
   loadingDays?: Set<string>
@@ -547,6 +551,7 @@ const props = withDefaults(defineProps<Props>(), {
   showActionBar: true,
   dayCaptions: () => ({}),
   dayLocations: () => ({}),
+  dayHighlights: () => ({}),
   showMomentCaption: false,
   loadingDays: () => new Set()
 })
@@ -690,7 +695,7 @@ const toggleExpand = (dayKey: string) => {
 }
 
 const getGridColumns = (dayKey: string, isExpanded: boolean) => {
-    const count = getPhotos(dayKey).length
+    const count = isExpanded ? getPhotos(dayKey).length : getMomentPhotos(dayKey).length
     if (isExpanded && count > 9) {
         // 向右展开，移动端最小80px，PC端最小120px
         const minWidth = window.innerWidth < 640 ? '80px' : '120px'
@@ -723,7 +728,7 @@ const singlePhotoBoxStyle = (img: { width?: number; height?: number }) => {
 }
 
 const getGridMaxWidth = (dayKey: string, isExpanded: boolean) => {
-    const count = getPhotos(dayKey).length
+    const count = isExpanded ? getPhotos(dayKey).length : getMomentPhotos(dayKey).length
     if (isExpanded && count > 9) {
         return '100%' // 占满剩余可用空间
     }
@@ -946,6 +951,26 @@ const hasPhotosForMonth = (monthKey: string) => {
 
 const getPhotos = (dayKey: string) => {
     return groupedPhotos.value.get(dayKey) || []
+}
+
+/**
+ * moments 布局折叠态展示的精选照片。
+ * 有 dayHighlights 则按后端顺序返回；否则回退为当天前 9 张。
+ */
+const getMomentPhotos = (dayKey: string) => {
+    const ids = props.dayHighlights?.[dayKey]?.photoIds
+    if (ids && ids.length > 0) {
+        const all = getPhotos(dayKey)
+        const idSet = new Set(ids)
+        const byId = new Map(all.filter(p => idSet.has(p.id)).map(p => [p.id, p]))
+        const ordered: AlbumImage[] = []
+        ids.forEach(id => {
+            const p = byId.get(id)
+            if (p) ordered.push(p)
+        })
+        return ordered
+    }
+    return getPhotos(dayKey).slice(0, 9)
 }
 
 // --- Interaction Helpers ---

@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI):
     from app.service.jobs.scan_folder import scan_folder_job
     from app.service.jobs.recycle_bin_cleanup import recycle_bin_cleanup_job
     from app.service.jobs.update_check import update_check_job
+    from app.service.jobs.moment_caption import moment_caption_job
 
     job_scheduler = JobScheduler()
     job_scheduler.register_cron_job(
@@ -77,6 +78,12 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     job_scheduler.register_cron_job("recycle_bin_cleanup", cleanup_cron, recycle_bin_cleanup_job)
+    # 朋友圈日文案定时批量生成：遍历所有用户 × 所有缺失 caption 的天。
+    job_scheduler.register_cron_job(
+        "moment_caption",
+        system_config.config.moment_caption_schedule.to_cron_expression(),
+        moment_caption_job,
+    )
     # 服务启动后立即跑一次版本检查（去重键保证同一版本不会重复推送），
     # 之后每 6 小时再触发一次。
     from datetime import datetime

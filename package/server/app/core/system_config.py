@@ -52,6 +52,35 @@ class ScanScheduleSettings(BaseModel):
                 return None
         return None
 
+
+class MomentCaptionScheduleSettings(BaseModel):
+    """朋友圈日文案定时生成调度。与 ``ScanScheduleSettings`` 保持相同调度字段。"""
+
+    mode: str = Field(default='off', description="Options: 'off', 'interval', 'weekly'")
+    interval: int = Field(default=60, description="分钟；interval 模式生效")
+    weekdays: List[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4, 5, 6], description="0=Monday")
+    time: str = Field(default="03:00", description="Format HH:mm；建议凌晨错开扫描任务")
+    per_caption_delay_sec: int = Field(default=2, description="每次生成之间的间隔秒数，保护 LLM")
+    max_run_seconds: int = Field(default=300, description="单次 job 最长运行秒数；软超时后剩余天数留待下次")
+    max_consecutive_failures_per_user: int = Field(default=5, description="单个用户连续失败多少次后跳过")
+
+    def to_cron_expression(self) -> Optional[str]:
+        if self.mode == 'off':
+            return None
+        elif self.mode == 'interval':
+            return f"*/{self.interval} * * * *"
+        elif self.mode == 'weekly':
+            try:
+                hour, minute = self.time.split(":")
+                hour_int = int(hour)
+                minute_int = int(minute)
+                weekdays_str = ",".join(map(str, self.weekdays))
+                return f"{minute_int} {hour_int} * * {weekdays_str}"
+            except ValueError:
+                return None
+        return None
+
+
 class RecycleBinSettings(BaseModel):
     retention_days: int = Field(default=7, description="Number of days to keep photos in recycle bin before permanent deletion")
     cleanup_time: str = Field(default="00:00", description="Time of day to run the cleanup task, format HH:mm")
@@ -60,6 +89,7 @@ class SystemSettings(BaseModel):
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     task: TaskSettings = Field(default_factory=TaskSettings)
     scan_schedule: ScanScheduleSettings = Field(default_factory=ScanScheduleSettings)
+    moment_caption_schedule: MomentCaptionScheduleSettings = Field(default_factory=MomentCaptionScheduleSettings)
     recycle_bin: RecycleBinSettings = Field(default_factory=RecycleBinSettings)
 
 class SystemConfigManager:

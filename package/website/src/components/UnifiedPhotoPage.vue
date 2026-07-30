@@ -176,6 +176,7 @@
         :pending-remove-ids="pendingRemoveIds"
         :day-captions="captionMap"
         :day-locations="locationMap"
+        :day-highlights="highlightMap"
         :show-moment-caption="showMomentCaption"
         :loading-days="loadingDays"
         v-model:active-date="activeDate"
@@ -293,6 +294,7 @@ import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useMomentCaptions } from '@/composables/useMomentCaptions'
 import { useMomentLocations } from '@/composables/useMomentLocations'
+import { useMomentHighlights } from '@/composables/useMomentHighlights'
 
 const props = withDefaults(defineProps<{
   title?: string
@@ -384,11 +386,15 @@ const {
 // 与 caption 服从相同的可见月份触发机制，同一个朋友圈视图中共享。
 const { locationMap, loadMonth: loadLocationMonth } = useMomentLocations()
 
+// 朋友圈日精选：服务端做相似去重 + memory/quality 打分排序，实时计算不落库。
+const { highlightMap, loadMonth: loadHighlightMonth } = useMomentHighlights()
+
 const handleVisibleMonthsChange = (months: { year: number; month: number }[]) => {
   if (!showMomentCaption.value) return
   months.forEach((m) => {
     loadMonth(m.year, m.month)
     loadLocationMonth(m.year, m.month)
+    loadHighlightMonth(m.year, m.month)
   })
 }
 
