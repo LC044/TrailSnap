@@ -466,6 +466,70 @@
       </el-collapse-item>
     </el-collapse>
 
+    <!-- Moment Caption Schedule -->
+    <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+      <el-collapse-item name="moment_caption_schedule">
+        <template #title>
+           <h2 class="text-lg font-semibold dark:text-white px-6">朋友圈文案定时生成设置</h2>
+        </template>
+        <div class="px-6 pb-6">
+          <el-form label-position="top" class="max-w-3xl">
+            <el-form-item label="生成模式">
+              <el-radio-group v-model="momentCaptionScheduleForm.mode">
+                <el-radio value="off">关闭</el-radio>
+                <el-radio value="interval">间隔循环</el-radio>
+                <el-radio value="weekly">每周定时</el-radio>
+              </el-radio-group>
+              <div class="text-sm text-gray-500 mt-1 w-full">到点自动为所有用户补齐"有照片但还没文案"的天。命中缓存的天会跳过，天然幂等。</div>
+            </el-form-item>
+
+            <el-form-item v-if="momentCaptionScheduleForm.mode === 'interval'" label="间隔时间 (分钟)">
+              <el-select v-model="momentCaptionScheduleForm.interval" placeholder="选择间隔时间" class="w-full sm:w-auto" style="min-width: 120px;">
+                <el-option label="30分钟" :value="30" />
+                <el-option label="60分钟" :value="60" />
+                <el-option label="120分钟" :value="120" />
+                <el-option label="360分钟" :value="360" />
+              </el-select>
+            </el-form-item>
+
+            <template v-if="momentCaptionScheduleForm.mode === 'weekly'">
+              <el-form-item label="执行日期">
+                <el-checkbox-group v-model="momentCaptionScheduleForm.weekdays">
+                  <el-checkbox :value="0">周一</el-checkbox>
+                  <el-checkbox :value="1">周二</el-checkbox>
+                  <el-checkbox :value="2">周三</el-checkbox>
+                  <el-checkbox :value="3">周四</el-checkbox>
+                  <el-checkbox :value="4">周五</el-checkbox>
+                  <el-checkbox :value="5">周六</el-checkbox>
+                  <el-checkbox :value="6">周日</el-checkbox>
+                </el-checkbox-group>
+              </el-form-item>
+              <el-form-item label="执行时间">
+                <el-time-select
+                  v-model="momentCaptionScheduleForm.time"
+                  start="00:00"
+                  step="00:30"
+                  end="23:30"
+                  placeholder="选择时间"
+                />
+                <div class="text-sm text-gray-500 mt-1 w-full">建议凌晨 03:00 左右执行，与扫描任务错开。</div>
+              </el-form-item>
+            </template>
+
+            <el-form-item v-if="momentCaptionScheduleForm.mode !== 'off'" label="每次生成间隔 (秒)">
+              <el-input-number v-model="momentCaptionScheduleForm.per_caption_delay_sec" :min="0" :max="60" class="w-full sm:w-auto" />
+              <div class="text-sm text-gray-500 mt-1 w-full">两次文案生成之间的间隔，保护 LLM 不被打爆（默认 2 秒）。</div>
+            </el-form-item>
+
+            <el-form-item>
+              <el-button type="primary" @click="saveMomentCaptionScheduleSettings">保存朋友圈文案设置</el-button>
+              <span class="text-sm text-gray-500 ml-2">修改后需重启服务生效</span>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-collapse-item>
+    </el-collapse>
+
     <!-- Recycle Bin Settings -->
     <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
       <el-collapse-item name="recycle_bin">
@@ -848,6 +912,14 @@ const scanScheduleForm = ref({
   time: '02:00'
 })
 
+const momentCaptionScheduleForm = ref({
+  mode: 'off',
+  interval: 60,
+  weekdays: [0, 1, 2, 3, 4, 5, 6],
+  time: '03:00',
+  per_caption_delay_sec: 2
+})
+
 const recycleBinForm = ref({
   retention_days: 7,
   cleanup_time: '00:00'
@@ -869,6 +941,19 @@ const saveScanScheduleSettings = async () => {
   try {
     await settingsApi.updateSystemConfig({ scan_schedule: scanScheduleForm.value })
     ElMessage.success('定时扫描设置已保存')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  }
+}
+
+const saveMomentCaptionScheduleSettings = async () => {
+  if (momentCaptionScheduleForm.value.mode === 'weekly' && momentCaptionScheduleForm.value.weekdays.length === 0) {
+    ElMessage.warning('请至少选择一天执行日期')
+    return
+  }
+  try {
+    await settingsApi.updateSystemConfig({ moment_caption_schedule: momentCaptionScheduleForm.value })
+    ElMessage.success('朋友圈文案定时设置已保存，重启后生效')
   } catch (e) {
     ElMessage.error('保存失败')
   }
@@ -1064,6 +1149,9 @@ const loadData = async () => {
         const sysConfig = await settingsApi.getSystemConfig()
         if (sysConfig.scan_schedule) {
             scanScheduleForm.value = { ...sysConfig.scan_schedule }
+        }
+        if (sysConfig.moment_caption_schedule) {
+            momentCaptionScheduleForm.value = { ...momentCaptionScheduleForm.value, ...sysConfig.moment_caption_schedule }
         }
         if (sysConfig.recycle_bin) {
             recycleBinForm.value = { ...sysConfig.recycle_bin }
