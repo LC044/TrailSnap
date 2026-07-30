@@ -142,6 +142,10 @@ const fetchStatus = async () => {
   }
 }
 
+const goToTasks = () => {
+  router.push({ path: '/settings', query: { tab: 'tasks' } })
+}
+
 const refresh = async () => {
   if (fetchInFlight) {
     pendingRefresh = true

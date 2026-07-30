@@ -189,7 +189,7 @@ def validate_path(path: str, user_id: str, db: Session) -> Dict[str, Any]:
 
     if not os.path.exists(norm):
         return _validate_result(norm, valid=False, error=ERR_NOT_FOUND,
-                                msg="目录在 TrailSnap 容器中不存在，请检查 Docker 挂载配置")
+                                msg="该目录不存在，请确认路径是否正确")
     if not os.path.isdir(norm):
         return _validate_result(norm, valid=False, error=ERR_INVALID, msg="路径不是目录")
     if not os.access(norm, os.R_OK):

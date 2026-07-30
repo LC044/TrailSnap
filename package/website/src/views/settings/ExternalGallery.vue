@@ -32,13 +32,15 @@
 
           <!-- 未检测到挂载 -->
           <div v-else-if="!candidates.root_exists" class="p-6 text-center bg-gray-50 dark:bg-gray-900 rounded border border-dashed border-gray-300 dark:border-gray-600">
-            <p class="text-gray-600 dark:text-gray-300 mb-1">还没有接入照片文件夹</p>
+            <p class="text-gray-600 dark:text-gray-300 mb-1">尚未接入照片文件夹</p>
             <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              请先把电脑或 NAS 中的照片目录挂载到 TrailSnap 后端容器的
-              <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/&lt;图库名&gt;</code> 下。
+              TrailSnap 默认在
+              <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">{{ candidates.root }}</code>
+              下自动发现照片图库，当前该目录不存在。可直接手动添加本机任意照片文件夹路径；若使用 Docker 部署，也可按挂载示例把照片目录挂到该路径下。
             </p>
             <div class="flex justify-center gap-2 flex-wrap">
-              <el-button type="primary" @click="showDockerGuide = true">查看 Docker 配置</el-button>
+              <el-button type="primary" @click="focusManual">手动添加路径</el-button>
+              <el-button @click="showDockerGuide = true">查看 Docker 配置</el-button>
             </div>
           </div>
 
@@ -47,7 +49,7 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">
               在 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">{{ candidates.root }}</code> 下未检测到子目录。
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">请按 Docker 配置示例挂载照片目录后重新检测，或使用下方手动添加。</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">可将照片目录放入该路径后重新检测，或使用下方手动添加任意路径。</p>
           </div>
 
           <!-- 候选列表 -->
@@ -123,10 +125,10 @@
         <el-collapse v-if="isSuperuser" v-model="manualCollapse" class="mb-2">
           <el-collapse-item title="高级：手动输入路径" name="manual">
             <p class="text-sm text-gray-500 mb-2 dark:text-gray-400">
-              适用于非标准部署。请填写绝对路径，如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/family</code>。
+              填写照片文件夹的绝对路径。本机部署如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">D:/Photos/family</code>，Docker 部署如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/family</code>。
             </p>
             <div class="flex flex-col sm:flex-row gap-2">
-              <el-input v-model="manualPath" placeholder="/app/Photos/family" class="w-full sm:max-w-[400px]" />
+              <el-input ref="manualInputRef" v-model="manualPath" placeholder="D:/Photos/family 或 /app/Photos/family" class="w-full sm:max-w-[400px]" />
               <el-button @click="validateManual" :loading="validating">校验</el-button>
               <el-button type="primary" @click="addManual" :loading="submitting" :disabled="!manualValid">添加并扫描</el-button>
             </div>
@@ -233,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { settingsApi } from '@/api/settings'
 import { tasksApi } from '@/api/tasks'
 import { userService, type User } from '@/api/user'
@@ -273,6 +275,7 @@ const manualPath = ref('')
 const manualValid = ref(false)
 const manualMsg = ref('')
 const validating = ref(false)
+const manualInputRef = ref<any>(null)
 
 const submitting = ref(false)
 const showDockerGuide = ref(false)
@@ -387,6 +390,13 @@ const batchAdd = async () => {
   } finally {
     submitting.value = false
   }
+}
+
+const focusManual = () => {
+  manualCollapse.value = ['manual']
+  nextTick(() => {
+    manualInputRef.value?.focus?.()
+  })
 }
 
 const validateManual = async () => {
