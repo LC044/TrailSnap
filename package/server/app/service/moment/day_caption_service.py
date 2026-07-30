@@ -40,6 +40,7 @@ from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.crud import moment as moment_crud
 from app.service.agent.service import FixedChatOpenAI
+from app.service.moment.day_highlight_service import dedup_day_photo_ids
 
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,76 @@ def _fetch_day_photos(
     return q.all()
 
 
-def _build_materials(db: Session, photos: List[Photo]) -> Dict:
+def _dedup_similar_photos(
+    db: Session,
+    user_id: UUID,
+    day: date,
+    photos: List[Photo],
+) -> Tuple[List[Photo], int]:
+    """对当天照片做"相似只保留一张"去重，供文案素材聚合使用。
+
+    去重规则：
+    - 视频（无 embedding）原样保留；
+    - 无 embedding 的图片（早期未跑过 embedding 任务）原样保留，避免误伤；
+    - 有 embedding 的图片走 5 分钟窗切段 + 余弦 0.9 聚类，每 burst 组只留 1 张代表；
+    - 不做数量截断：保留全天所有"不同瞬间"，保证 LLM 素材多样性；
+    - 输出保持 photo_time 升序。
+
+    返回 ``(deduped_photos, original_image_count)``；``original_image_count``
+    是当天图片（不含视频）原始张数，供 prompt 里展示"去重前 Y 张"。
+    """
+    if not photos:
+        return photos, 0
+
+    original_image_count = sum(1 for p in photos if p.file_type != FileType.video)
+
+    kept_ids, stats = dedup_day_photo_ids(db, user_id, day)
+    if stats["total_candidates"] == 0:
+        # 当天没有任何图片进入聚类候选池（全是视频 / 全无 embedding）→ 无需去重
+        return photos, original_image_count
+
+    # 参与过聚类的 photo_id 集合 = 有 embedding 的所有图片
+    clustered_ids = _fetch_clustered_photo_ids(db, user_id, day)
+
+    result: List[Photo] = []
+    for p in photos:
+        if p.file_type == FileType.video:
+            result.append(p)  # 视频总是保留
+        elif p.id in kept_ids:
+            result.append(p)  # 有 embedding 且是组代表
+        elif p.id not in clustered_ids:
+            result.append(p)  # 没 embedding：不敢丢，保留
+        # 否则（有 embedding 但被去重掉）→ 相似 burst 内的重复照 → 丢弃
+
+    return result, original_image_count
+
+
+def _fetch_clustered_photo_ids(
+    db: Session,
+    user_id: UUID,
+    day: date,
+) -> set:
+    """当天所有有 ``ImageVector`` 记录的 photo_id（= 参与过相似聚类候选池的图片）。"""
+    from app.db.models.image_vector import ImageVector
+
+    start_naive = datetime(day.year, day.month, day.day, 0, 0, 0)
+    end_naive = start_naive + timedelta(days=1)
+    rows = (
+        db.query(Photo.id)
+        .join(ImageVector, ImageVector.photo_id == Photo.id)
+        .filter(
+            Photo.owner_id == user_id,
+            Photo.is_deleted.is_(False),
+            Photo.photo_time.isnot(None),
+            Photo.photo_time >= start_naive,
+            Photo.photo_time < end_naive,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def _build_materials(db: Session, photos: List[Photo], image_original_count: Optional[int] = None) -> Dict:
     """把当日照片聚合成给 LLM 用的素材字典。
 
     素材层次由粗到细：
@@ -195,10 +265,10 @@ def _build_materials(db: Session, photos: List[Photo]) -> Dict:
     - people: 该天有身份的人脸姓名（去重，按出现次数排序取 Top 5）
     - descriptions: 每张照片的简短描述（首选 narrative，退化到 description）
     - tags: 全部照片标签的 Top 10
-    - counts: 图片/视频数量
+    - counts: 图片/视频数量；若传入 image_original_count，录为去重前总图片数
     """
     if not photos:
-        return {"locations": [], "people": [], "descriptions": [], "tags": [], "counts": {"image": 0, "video": 0}}
+        return {"locations": [], "people": [], "descriptions": [], "tags": [], "counts": {"image": 0, "video": 0, "image_original": image_original_count or 0}}
 
     photo_ids = [p.id for p in photos]
 
@@ -273,7 +343,12 @@ def _build_materials(db: Session, photos: List[Photo]) -> Dict:
         "people": people,
         "descriptions": descriptions,
         "tags": top_tags,
-        "counts": {"image": image_cnt, "video": video_cnt},
+        "counts": {
+            "image": image_cnt,
+            "video": video_cnt,
+            # 去重前原始图片数（不含视频）；未传入时退化为去重后数（无去重发生）
+            "image_original": image_original_count if image_original_count is not None else image_cnt,
+        },
     }
 
 
@@ -284,7 +359,14 @@ def _format_materials_for_prompt(day: date, materials: Dict, style: Optional[str
         lines.append(f"期望风格：{style}")
     counts = materials.get("counts", {})
     if counts:
-        lines.append(f"照片数量：{counts.get('image', 0)} 张图 / {counts.get('video', 0)} 个视频")
+        image_cnt = counts.get("image", 0)
+        image_original = counts.get("image_original", image_cnt)
+        video_cnt = counts.get("video", 0)
+        if image_original > image_cnt:
+            # 发生了去重，把"原始总数 vs 不同瞬间数"都给 LLM，帮它判断拍摄密度
+            lines.append(f"照片数量：{image_cnt} 个不同瞬间（当天共拍 {image_original} 张图） / {video_cnt} 个视频")
+        else:
+            lines.append(f"照片数量：{image_cnt} 张图 / {video_cnt} 个视频")
     people = materials.get("people") or []
     if people:
         lines.append("一起出现的人物：" + "、".join(people))
@@ -385,8 +467,13 @@ def _prepare_context(
     if not photos:
         raise ValueError("这一天没有照片，无法生成文案。")
 
-    materials = _build_materials(db, photos)
-    materials["_photo_count"] = len(photos)
+    original_photo_count = len(photos)
+    # 相似照片只保留一张，避免 LLM 拿到大量重复描述/标签而生成同质化文案
+    deduped_photos, image_original_count = _dedup_similar_photos(db, user_id, day, photos)
+
+    materials = _build_materials(db, deduped_photos, image_original_count=image_original_count)
+    # 落库的 photo_count 保留原始总数（包含视频 & 未去重），与用户直觉上"当天拍了多少张"一致
+    materials["_photo_count"] = original_photo_count
 
     connection, m_name, system_prompt = _resolve_connection_and_model(
         user_id, db, connection_id, model_name, prefer="chat"

@@ -229,3 +229,32 @@ def get_range_highlights(
             )
         day = day + timedelta(days=1)
     return result
+
+
+def dedup_day_photo_ids(
+    db: Session,
+    user_id: UUID,
+    day: date,
+) -> Tuple[set, dict]:
+    """返回当天"相似照片去重后"保留下来的 photo_id 集合。
+
+    与 ``get_day_highlights`` 复用同一套 5 分钟切段 + 余弦 0.9 聚类算法，
+    但**不做 top-N 截断**：每个 burst 组只留代表，无 embedding / 视频不参与聚类
+    （由调用方负责保留）。适合"文案素材去重"这种需要保留全天所有不同瞬间的场景。
+
+    返回 ``(kept_ids, stats)``：
+    - ``kept_ids``: 保留下来的 photo_id 集合；
+    - ``stats``: ``{"total_candidates": N, "kept": M}``，即"参与聚类的总数"
+       与"去重后剩余组数"。空数据时两者均为 0。
+    """
+    candidates = _fetch_day_candidates(db, user_id, day)
+    if not candidates:
+        return set(), {"total_candidates": 0, "kept": 0}
+
+    kept: set = set()
+    for seg in _segment_by_time(candidates):
+        for group in _cluster_segment(seg):
+            rep, _size = _pick_group_representative(group)
+            kept.add(rep["id"])
+
+    return kept, {"total_candidates": len(candidates), "kept": len(kept)}
