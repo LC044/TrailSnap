@@ -47,11 +47,15 @@ export const PROVINCE_DEFAULTS: PuzzleConfig = {
  *
  * 该值同时决定了「照片少时自动增大格子」的触发点：拉得太少会让大省
  * 明明有很多照片却被迫用大格子。实测新疆在 2000 格时需要约 354 格，
- * 故取 400 以覆盖滑块上限；图片本身按需懒加载，不会一次性全部请求。
+ * 故原取 400 以覆盖滑块上限；图片本身按需懒加载，不会一次性全部请求。
+ *
+ * 开启 dedup_similar 后会移除 30~40% 的 burst 近重复，故上调到 600，
+ * 使去重后池子仍接近原来的 400 张。真正的「数量足够」由 buildGrid 的
+ * 自适应放大 + assignPhotos 的循环复用兜底，这里只是减少格子被迫放大的程度。
  */
-const NATION_PER_PROVINCE_LIMIT = 400
-/** 单省图拉取上限，留出余量供用户手动换图 */
-const PROVINCE_FETCH_LIMIT = 500
+const NATION_PER_PROVINCE_LIMIT = 600
+/** 单省图拉取上限，开启 dedup_similar 后上调到 800 留出去重 + 手动换图余量 */
+const PROVINCE_FETCH_LIMIT = 800
 
 /**
  * 碎小岛礁裁剪阈值（相对区域内最大面的面积比例）。
@@ -133,6 +137,9 @@ export function useMapPuzzle() {
       // 用单数 province（ilike 模糊匹配）以兼容「河南省」与「河南」两种写法
       province: provinceName,
       file_type: 'image',
+      // 按策略拉取后服务端再做 CLIP 相似度去重，避免相邻格子铺出近重复/burst 照片。
+      // 无 embedding 的照片会原样透传，去重不截断，数量由 buildGrid 自适应放大兜底。
+      dedup_similar: true,
     }
     if (startDate) filters.start_time = startDate
     if (endDate) filters.end_time = endDate

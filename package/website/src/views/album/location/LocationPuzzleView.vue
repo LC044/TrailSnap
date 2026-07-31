@@ -45,7 +45,7 @@
         :cells="cells"
         :assignments="assignments"
         :region-counts="regionCounts"
-        :show-label="config.showLabel"
+        :show-label="config.showLabel && scope !== 'province'"
         :interactive="true"
         :thumbnail-size="scope === 'nation' ? 'small' : 'medium'"
         @select-region="handleSelectRegion"
@@ -53,15 +53,29 @@
         @resize="resize"
       />
 
-      <!-- 返回全国按钮（单省模式，浮在画布左上） -->
-      <button
+      <!-- 面包屑导航（单省模式，浮在画布左上，与地图视图保持一致） -->
+      <div
         v-if="scope === 'province'"
-        class="absolute top-3 left-3 z-20 px-3 py-1.5 rounded-lg bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-md text-sm text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-        @click="handleDrillUp"
+        class="absolute top-6 left-6 z-20 flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md px-3 py-2 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 animate-fade-in"
       >
-        <ChevronLeft class="w-4 h-4" />
-        全国
-      </button>
+        <button
+          class="p-1 -ml-1 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary-500 dark:hover:text-primary-400 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          title="返回全国"
+          @click="handleDrillUp"
+        >
+          <ArrowLeft class="w-4 h-4" />
+        </button>
+        <div class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+        <button
+          class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors flex items-center gap-1 px-1 rounded-lg focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          @click="handleDrillUp"
+        >
+          <MapPin class="w-4 h-4" />
+          全国
+        </button>
+        <ChevronRight class="w-4 h-4 text-gray-400" />
+        <span class="text-sm font-bold text-gray-800 dark:text-white pr-1">{{ activeProvince }}</span>
+      </div>
     </div>
 
     <!-- 右侧配置面板 -->
@@ -126,7 +140,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ChevronLeft, ImageOff, MapPin } from 'lucide-vue-next'
+import { ArrowLeft, ChevronRight, ImageOff, MapPin } from 'lucide-vue-next'
 import PuzzleCanvas from './components/PuzzleCanvas.vue'
 import PuzzlePanel from './components/PuzzlePanel.vue'
 import { useMapPuzzle, type PuzzleConfig } from '@/composables/useMapPuzzle'
@@ -230,3 +244,11 @@ onMounted(() => {
   loadNation(props.startDate, props.endDate)
 })
 </script>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>

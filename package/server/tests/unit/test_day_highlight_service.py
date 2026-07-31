@@ -41,6 +41,16 @@ def _make_db(rows):
     return db
 
 
+def _emb_row(photo_id, embedding):
+    """构造 dedup_photo_ids 的 select() 结果行（ImageVector JOIN Photo）。"""
+    return SimpleNamespace(photo_id=photo_id, embedding=embedding)
+
+
+def _make_emb_db(rows):
+    """dedup_photo_ids 只调用一次 db.execute(stmt).all()，复用 _make_db 即可。"""
+    return _make_db(rows)
+
+
 # ---------------------------------------------------------------------------
 # _fetch_day_candidates: 空、无评分兜底
 # ---------------------------------------------------------------------------
@@ -196,3 +206,95 @@ def test_range_returns_empty_when_start_after_end():
     result = svc.get_range_highlights(db, uuid4(), date(2025, 8, 10), date(2025, 8, 1))
     assert result == []
     db.execute.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# dedup_photo_ids：任意 id 集合的相似度去重（拼图按省池复用）
+# ---------------------------------------------------------------------------
+
+def test_dedup_photo_ids_empty_returns_empty():
+    """空输入 → 空输出，不查库。"""
+    db = MagicMock()
+    assert svc.dedup_photo_ids(db, uuid4(), []) == []
+    db.execute.assert_not_called()
+
+
+def test_dedup_photo_ids_distinct_all_kept_in_order():
+    """向量两两正交 → 各自成簇 → 全部保留且保持输入顺序。"""
+    a, b, c = uuid4(), uuid4(), uuid4()
+    db = _make_emb_db([
+        _emb_row(a, [1.0, 0.0, 0.0]),
+        _emb_row(b, [0.0, 1.0, 0.0]),
+        _emb_row(c, [0.0, 0.0, 1.0]),
+    ])
+    assert svc.dedup_photo_ids(db, uuid4(), [a, b, c]) == [a, b, c]
+
+
+def test_dedup_photo_ids_similar_first_kept():
+    """两张同向量（cosine=1）→ 聚成一簇 → 保留输入序最早的。"""
+    a, b = uuid4(), uuid4()
+    db = _make_emb_db([
+        _emb_row(a, [1.0, 0.0, 0.0]),
+        _emb_row(b, [1.0, 0.0, 0.0]),
+    ])
+    assert svc.dedup_photo_ids(db, uuid4(), [a, b]) == [a]
+    # 顺序反过来 → 保留 b
+    db2 = _make_emb_db([
+        _emb_row(a, [1.0, 0.0, 0.0]),
+        _emb_row(b, [1.0, 0.0, 0.0]),
+    ])
+    assert svc.dedup_photo_ids(db2, uuid4(), [b, a]) == [b]
+
+
+def test_dedup_photo_ids_no_embedding_passthrough():
+    """无 embedding 的 id 原样透传、保持原位（不敢丢，保证数量足够）。"""
+    a, b, c = uuid4(), uuid4(), uuid4()
+    # 只有 a 有 embedding；b、c 不在 emb_map 里
+    db = _make_emb_db([_emb_row(a, [1.0, 0.0, 0.0])])
+    assert svc.dedup_photo_ids(db, uuid4(), [a, b, c]) == [a, b, c]
+
+
+def test_dedup_photo_ids_mixed_order_preserved():
+    """混合：a/b 相似、c 独立、d 无 embedding → [a, c, d]，顺序保持。"""
+    a, b, c, d = uuid4(), uuid4(), uuid4(), uuid4()
+    db = _make_emb_db([
+        _emb_row(a, [1.0, 0.0, 0.0]),
+        _emb_row(b, [1.0, 0.0, 0.0]),  # 与 a 同向量 → 被去重
+        _emb_row(c, [0.0, 1.0, 0.0]),  # 独立
+        # d 无 embedding → 透传
+    ])
+    assert svc.dedup_photo_ids(db, uuid4(), [a, b, c, d]) == [a, c, d]
+
+
+def test_dedup_photo_ids_sklearn_failure_returns_input(monkeypatch):
+    """sklearn 聚类抛异常时回退为全保留（不去重是永远安全的状态）。"""
+    a, b = uuid4(), uuid4()
+
+    class _BoomCluster:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fit_predict(self, _X):
+            raise RuntimeError("boom")
+
+    # _cluster_ids_by_embedding 内部 `from sklearn.cluster import AgglomerativeClustering`
+    # 在调用时才执行，patch 模块属性即可生效
+    import sklearn.cluster as sk_cluster
+    monkeypatch.setattr(sk_cluster, "AgglomerativeClustering", _BoomCluster)
+
+    db = _make_emb_db([
+        _emb_row(a, [1.0, 0.0, 0.0]),
+        _emb_row(b, [1.0, 0.0, 0.0]),
+    ])
+    # 即使 a/b 同向量，聚类失败 → 全保留
+    assert svc.dedup_photo_ids(db, uuid4(), [a, b]) == [a, b]
+
+
+def test_dedup_photo_ids_dedupes_input_duplicates():
+    """输入里同一个 id 出现两次 → 仅返回一次（保序去重在聚类之前）。"""
+    a, b = uuid4(), uuid4()
+    db = _make_emb_db([
+        _emb_row(a, [1.0, 0.0, 0.0]),
+        _emb_row(b, [0.0, 1.0, 0.0]),
+    ])
+    assert svc.dedup_photo_ids(db, uuid4(), [a, a, b]) == [a, b]
