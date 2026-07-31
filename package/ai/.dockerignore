@@ -1,8 +1,27 @@
-alembic
-.trae
-.log*
-data
-test
+# 版本控制 / 本地环境
 .git
 .venv
+.idea
+.trae
+
+# Python 缓存
 __pycache__/
+.pytest_cache
+
+# 运行时下载的模型权重（由 app/services/model_downloader.py 在容器内按需下载，不打包）
+data
+
+# 本地产物 / 测试脚本（运行时不需要）
+# 注意：app/services/ticket_service.py 会用 os.makedirs("output", exist_ok=True)
+# 在运行时自行创建 output/ 目录，这里只排除本地累积的 15G 历史 temp_crop 文件。
+test
+test-local
+output
+
+# alembic 迁移属 server 专用，ai 包不需要
+alembic
+
+# 日志
+.log*
+*.log
+*.err

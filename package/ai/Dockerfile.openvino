@@ -1,16 +1,17 @@
-# OpenVINO 版本：基于 CPU 镜像，切换 uv extra 为 openvino。
+# syntax=docker/dockerfile:1
+#
+# TrailSnap AI 服务 —— OpenVINO 版（onnxruntime-openvino + openvino）
+# 三阶段构建：llama 拉取 → builder 编译 → runtime 精简。
 # OpenVINO 在 Intel CPU/NPU 上通常比 ONNX Runtime 更快。
 # 注意：onnxruntime-openvino / openvino 官方 wheel 主要面向 linux/amd64，
 # 因此该镜像仅在 linux/amd64 平台构建（见 docker-build-push-ai.yml matrix）。
-FROM python:3.12.12-slim
 
-WORKDIR /app
-
-# 下载预编译的 llama.cpp 二进制文件
-# 根据 CPU 架构 (arm64 或 x86_64) 下载对应的 ubuntu 包
-# 提取 TARGETARCH 参数 (由 docker buildx 提供，如 amd64 或 arm64)
+# ============ stage 1: 拉取 llama.cpp 预编译二进制 ============
+# 独立成 stage，让 runtime 不必安装 curl/tar。
+FROM python:3.12.12-slim AS llama
 ARG TARGETARCH
-RUN apt-get update && apt-get install -y curl tar && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates tar && \
+    rm -rf /var/lib/apt/lists/* && \
     if [ "$TARGETARCH" = "arm64" ]; then \
         curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-arm64.tar.gz; \
     else \
@@ -20,38 +21,41 @@ RUN apt-get update && apt-get install -y curl tar && \
     tar -xzf llama.tar.gz -C /usr/local/llama --strip-components=1 && \
     rm llama.tar.gz
 
-# 注册动态链接库并将 bin 目录加入环境变量
-ENV LD_LIBRARY_PATH="/usr/local/llama:/usr/local/llama/lib64:${LD_LIBRARY_PATH}"
-ENV PATH="/usr/local/llama:${PATH}"
-RUN ldconfig
-
-# 安装编译依赖（g++等），这是解决insightface编译失败的关键
+# ============ stage 2: builder —— 编译 insightface C++ 扩展 + uv sync ============
+FROM python:3.12.12-slim AS builder
+WORKDIR /app
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_PYTHON_DOWNLOADS=never
 RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
-    # insightface编译依赖
     build-essential \
     g++ \
     cmake \
-    # OpenVINO CPU 推理依赖 OpenMP 运行库 libgomp.so.1。
-    # 虽然 build-essential 会间接带入 libgomp1，但显式声明避免其被精简后 OpenVINO
-    # 加载时报 "libgomp.so.1: cannot open shared object file"。
-    libgomp1 \
-    # OpenCV核心运行依赖（仅保留必需项）
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir uv
+COPY pyproject.toml uv.lock ./
+RUN uv sync --extra openvino --no-dev --no-cache
+
+# ============ stage 3: runtime —— 只含运行时依赖 ============
+FROM python:3.12.12-slim AS runtime
+WORKDIR /app
+# OpenVINO CPU 推理依赖 OpenMP 运行库 libgomp.so.1。
+# 显式声明避免其被精简后 OpenVINO 加载时报 "libgomp.so.1: cannot open shared object file"。
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制项目所有文件到工作目录
+COPY --from=llama /usr/local/llama /usr/local/llama
+ENV LD_LIBRARY_PATH="/usr/local/llama:/usr/local/llama/lib64"
+ENV PATH="/usr/local/llama:/app/.venv/bin:${PATH}"
+RUN ldconfig
+
+COPY --from=builder /app/.venv /app/.venv
+
 COPY . .
 
-# 复制依赖文件并安装
-RUN pip install uv
-RUN uv sync --extra openvino
-
-# 暴露端口
 EXPOSE 8001
-# 核心：将虚拟环境的bin目录加入PATH
-ENV PATH="/app/.venv/bin:$PATH"
-# 运行应用
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

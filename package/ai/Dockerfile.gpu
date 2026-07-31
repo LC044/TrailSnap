@@ -1,44 +1,21 @@
+# syntax=docker/dockerfile:1
+#
+# TrailSnap AI 服务 —— GPU 版（onnxruntime-gpu，CUDA 12 + cuDNN 9）
+# 三阶段构建：llama 拉取 → builder 编译 → runtime 精简。
+#
 # 使用带 cuDNN 的 runtime 镜像：自带 libcudart + libcudnn.so.9（位于标准库搜索路径），
 # 供 onnxruntime-gpu(>=1.19, 基于 CUDA 12 + cuDNN 9 编译) 使用，无需再用 pip 安装 cuDNN。
 # 注意：cuDNN 由基础镜像提供，故务必保持此 tag 为 *-cudnn-runtime；若改回普通 *-runtime
 # 镜像，会因缺 libcudnn.so.9 导致 CUDAExecutionProvider 初始化失败、静默降级到 CPU。
-FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu22.04
 
-# 避免 tzdata 等交互式配置卡住
-ENV DEBIAN_FRONTEND=noninteractive
-
-# 安装 Python 3.12 及系统运行依赖
-RUN apt-get update && apt-get install -y software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3.12-venv \
-    python3.12-dev \
-    curl \
-    tar \
-    build-essential \
-    g++ \
-    cmake \
-    # OpenCV核心运行依赖（仅保留必需项）
-    libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    && rm -rf /var/lib/apt/lists/*
-
-# 设置 python 指向 python3.12
-RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
-    ln -sf /usr/bin/python3.12 /usr/bin/python3
-
-WORKDIR /app
-
-# 下载预编译的 llama.cpp 二进制文件
-# 由于 NVIDIA CUDA 主要在 x86_64 平台上提供预编译的 llama.cpp，
-# 但为了兼容性，依然读取 TARGETARCH
+# ============ stage 1: 拉取 llama.cpp 预编译二进制 ============
+# 独立成 stage，让 runtime 不必安装 curl/tar。
+# NVIDIA CUDA 预编译包仅提供 x86_64；arm64 暂 fallback 到 CPU 版（Jetson 等需自行编译）。
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu22.04 AS llama
 ARG TARGETARCH
-# 注意: 官方没有直接提供 arm64 的 CUDA 预编译包，如果有的话需要替换这里，
-# 目前暂时 fallback 到普通的 arm64 CPU 版，或者你需要为 Jetson 等平台自行编译
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates tar && \
+    rm -rf /var/lib/apt/lists/* && \
+    if [ "$TARGETARCH" = "arm64" ]; then \
         curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-arm64.tar.gz; \
     else \
         curl -L -o llama.tar.gz https://github.com/ggml-org/llama.cpp/releases/download/b9354/llama-b9354-bin-ubuntu-x64.tar.gz; \
@@ -47,24 +24,58 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     tar -xzf llama.tar.gz -C /usr/local/llama --strip-components=1 && \
     rm llama.tar.gz
 
-# 注册动态链接库并将 bin 目录加入环境变量
+# ============ stage 2: builder —— python3.12 + 编译工具链 + uv sync ============
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu22.04 AS builder
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
+    UV_PYTHON_DOWNLOADS=never
+# python3.12-dev + build-essential 仅为编译 insightface C++ 扩展，不进入 runtime。
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    build-essential \
+    g++ \
+    cmake \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3
+# deadsnakes 的 python3.12 不自带 pip，需 bootstrap
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+RUN python3.12 -m pip install --no-cache-dir uv -i https://pypi.tuna.tsinghua.edu.cn/simple
+COPY pyproject.toml uv.lock ./
+RUN uv sync --extra gpu --no-dev --no-cache
+
+# ============ stage 3: runtime —— 不含编译工具链 / python3.12-dev ============
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu22.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+WORKDIR /app
+# 仅需 python3.12 运行时（不需要 -dev / build-essential / cmake）+ OpenCV 运行库
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-venv \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
+    ln -sf /usr/bin/python3.12 /usr/bin/python3
+
+COPY --from=llama /usr/local/llama /usr/local/llama
 ENV LD_LIBRARY_PATH="/usr/local/llama:/usr/local/llama/lib64:${LD_LIBRARY_PATH}"
-ENV PATH="/usr/local/llama:${PATH}"
+ENV PATH="/usr/local/llama:/app/.venv/bin:${PATH}"
 RUN ldconfig
 
-# 复制项目所有文件到工作目录
+COPY --from=builder /app/.venv /app/.venv
+
 COPY . .
 
-# 安装 pip 和 uv
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
-RUN python3.12 -m pip install uv -i https://pypi.tuna.tsinghua.edu.cn/simple
-
-# 安装 Python 项目依赖
-RUN uv sync --extra gpu
-
-# 暴露端口
 EXPOSE 8001
-# 核心：将虚拟环境的bin目录加入PATH
-ENV PATH="/app/.venv/bin:$PATH"
-# 运行应用
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
