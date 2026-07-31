@@ -248,3 +248,7 @@ test*
 .trae
 .log*
 data
+
+# 顶层 uploads/ 是本地历史遗留的上传文件（运行时照片走挂载卷 photo_storage_path，
+# 默认 ./data/uploads/uploads），不需要打包进镜像。
+uploads/
