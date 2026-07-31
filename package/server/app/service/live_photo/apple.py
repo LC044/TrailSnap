@@ -17,7 +17,15 @@ class AppleLivePhotoParser(LivePhotoParser):
         return None
 
     def _parse_image(self, file_path: str) -> Optional[str]:
-        return file_path.replace('.HEIC', '')
+        # Strip the image extension case-insensitively so paths normalised
+        # by Linux / NAS tools (``IMG.heic``) still pair with the .MOV clip.
+        import re as _re
+        return _re.sub(r'\.[Hh][Ee][Ii][Cc]$', '', file_path)
 
     def _parse_video(self, file_path: str) -> Optional[str]:
-        return file_path.replace('.MOV', '')
+        # Mirror of _parse_image for the video side; same case-insensitive
+        # rationale. ``ScanFolderStrategy`` compares the two stems to decide
+        # whether a pair is a live photo, so a case mismatch silently
+        # disabled live-photo detection for every lowercase path.
+        import re as _re
+        return _re.sub(r'\.[Mm][Oo][Vv]$', '', file_path)
