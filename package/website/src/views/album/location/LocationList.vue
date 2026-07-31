@@ -1,5 +1,5 @@
 <template>
-  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory') ? 'h-screen' : 'container mx-auto']">
+  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-screen' : 'container mx-auto']">
     <!-- Header -->
     <div class="container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="flex flex-col gap-3">
@@ -304,6 +304,13 @@
               <BarChart3 class="w-4 h-4" />
               统计视图
             </button>
+            <button
+              @click="viewMode = 'puzzle'; showViewMenu = false"
+              :class="['w-full px-4 py-2 text-left text-sm dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-2', viewMode === 'puzzle' ? 'text-primary-500 font-medium' : 'text-gray-700 dark:text-gray-200']"
+            >
+              <Shapes class="w-4 h-4" />
+              照片拼图
+            </button>
           </div>
 
           <!-- Desktop Buttons -->
@@ -342,6 +349,13 @@
               title="统计视图"
             >
               <BarChart3 class="w-4 h-4" />
+            </button>
+            <button
+              @click="viewMode = 'puzzle'"
+              :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'puzzle' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+              title="照片拼图"
+            >
+              <Shapes class="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -404,6 +418,13 @@
       @narrow-range="handleNarrowRange"
       @go-location="goToLocation"
     />
+    <!-- Puzzle View -->
+    <LocationPuzzleView
+      v-if="viewMode === 'puzzle'"
+      :start-date="dateRange?.[0]"
+      :end-date="dateRange?.[1]"
+      class="flex-1"
+    />
     <AddSceneDialog v-model="showAddScene" :edit-data="editingScene" @success="fetchLocations" />
   </div>
 </template>
@@ -416,7 +437,7 @@ import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3 } from 'lucide-vue-next'
+import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LocationMap from './LocationMap.vue'
@@ -426,6 +447,7 @@ import LocationMapView from './LocationMapView.vue'
 import LocationTimelineView from './LocationTimelineView.vue'
 import LocationTrajectoryView from './LocationTrajectoryView.vue'
 import LocationStatsView from './LocationStatsView.vue'
+import LocationPuzzleView from './LocationPuzzleView.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const router = useRouter()
@@ -550,6 +572,7 @@ const currentViewIcon = computed(() => {
     case 'timeline': return Clock
     case 'trajectory': return Route
     case 'statistics': return BarChart3
+    case 'puzzle': return Shapes
     default: return LayoutGrid
   }
 })
