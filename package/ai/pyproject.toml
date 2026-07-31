@@ -36,6 +36,7 @@ gpu = [
 dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
+  "pytest-cov>=5.0",
 ]
 
 [tool.uv]
@@ -61,4 +62,23 @@ markers = [
     "module_ocr: OCR 域",
     "module_ticket: 票据域",
     "module_embedding: 向量/CLIP 域",
+]
+
+# 覆盖率配置。与 server 一致：不写进 addopts，需要时显式带 --cov：
+#   uv run python -m pytest tests --cov=app --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
 ]

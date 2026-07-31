@@ -9,7 +9,7 @@
 ## 0. 角色、时间、范围
 
 - **执行者**：具备 shell + git 写权限、对 Python / TypeScript 有基本阅读能力的 Agent。
-- **仓库根**：`E:\Project\TrailSnap`（绝对路径优先）。
+- **仓库根**：以执行机上的实际克隆路径为准。**本文档中所有 `cd`／绝对路径均须先替换为本机真实仓库根**；下文用 `$repo` 代指仓库根，脚本开头统一 `$repo = (git rev-parse --show-toplevel)`。
 - **时区**：Asia/Shanghai（机器已设）。
 - **影响范围**：只能新增 / 修改以下路径：
   - `tests/`
@@ -26,7 +26,8 @@
 ## 1. 预检（每次必做，失败立刻中止并写 ALERT）
 
 ```powershell
-cd E:\Project\TrailSnap
+$repo = (git rev-parse --show-toplevel)
+Set-Location $repo
 
 # 1.1 工作区脏检查
 $dirty = git status --porcelain
@@ -124,39 +125,66 @@ $exit = $LASTEXITCODE
 
 ## 4. 盲区扫描（每次必做，独立于 §3 结果）
 
-4.1. **后端 Python 盲区**：
+> 盲区判定**以真实覆盖率为准**，不再用「有没有同名测试文件」来猜。
+> 后端/AI 用 `pytest --cov` 的行号；前端 E2E 用「view 是否被任一 spec 引用」。
+> 说明：实际测试布局是 `package/<pkg>/tests/unit/test_*.py`（多数 API 测试命名为 `test_<域>_api.py`），
+> 与「模块名 == 文件名」并不一一对应，因此**不要用文件名匹配判定覆盖**。
+
+4.1. **后端 Python 盲区（按覆盖率行号）**：
    ```powershell
-   $serverRoot = (Resolve-Path 'package\server').Path
-   $candidates = Get-ChildItem -Recurse -Filter *.py 'package\server\app' `
-       | Where-Object { $_.FullName -notmatch 'migrations|__pycache__|db\\models' }
-   $gaps = foreach ($f in $candidates) {
-       $rel = $f.FullName.Substring($serverRoot.Length + 1) -replace '\\','/'
-       $testA = "package\server\tests\$($f.BaseName).py"
-       $testB = "package\server\tests\$($f.BaseName)\test_*.py"
-       if (-not (Test-Path $testA) -and -not (Get-ChildItem -Path $testB -ErrorAction SilentlyContinue)) {
-           [PSCustomObject]@{ Module = $rel; Layer = 'server' }
+   Push-Location "$repo\package\server"
+   uv run python -m pytest tests/unit `
+       --cov=app --cov-branch `
+       --cov-report="xml:$runDir\coverage-backend.xml" `
+       --cov-report=term-missing `
+       2>&1 | Tee-Object -FilePath "$runDir\cov-backend.log" | Out-Null
+   Pop-Location
+   ```
+   解析 `coverage-backend.xml`（Cobertura 格式），按「未覆盖行数 / 覆盖率」排序，产出候选清单：
+   ```powershell
+   [xml]$cov = Get-Content "$runDir\coverage-backend.xml"
+   $rows = foreach ($cls in $cov.coverage.packages.package.classes.class) {
+       $lines = @($cls.lines.line)
+       $total = $lines.Count
+       $miss  = ($lines | Where-Object { $_.hits -eq '0' }).Count
+       if ($total -gt 0) {
+           [PSCustomObject]@{
+               Module   = $cls.filename
+               Rate     = [math]::Round(($total-$miss)/$total*100,1)
+               MissLine = $miss
+               Total    = $total
+           }
        }
    }
-   $gaps | Sort-Object Module | ConvertTo-Markdown | Set-Content "$runDir\coverage-gaps-backend.md"
+   $rows | Sort-Object Rate, @{Expression='MissLine';Descending=$true} `
+         | Format-Table Module,Rate,MissLine,Total -Auto `
+         | Out-String | Set-Content "$runDir\coverage-gaps-backend.txt"
    ```
-   若没有 `ConvertTo-Markdown` 模块，改用 `Format-Table Module,Layer | Out-String`。
+   > 若本机 `uv sync` 未装 `pytest-cov`，先 `uv sync --group dev`（server/ai 的 dev 组已包含 `pytest-cov`）。
 
-4.2. **AI 服务盲区**：把上面 `package\server\app` 换成 `package\ai\app`，`tests` 换成 `package\ai\tests`。
+4.2. **AI 服务盲区**：同 4.1，把 `package\server` 换成 `package\ai`，`tests/unit` 换成 `tests`，报告名换成 `coverage-ai.*` / `coverage-gaps-ai.txt`。
 
-4.3. **前端 E2E 盲区**：
-   - 列出 `package\website\src\views\**\*.vue`
-   - 在 `package\website\tests\e2e\*.spec.ts` 中 grep 每个 view 的路径 / 组件名 / 路由 path
-   - 未被任何 spec 引用过的 view 视为候选
-   - 写入 `$runDir\coverage-gaps-frontend.md`
+4.3. **前端 E2E 盲区（按 view 引用，不用行覆盖率）**：
+   前端主力是 Playwright E2E（无 vitest 单测），因此**不追行覆盖率**，改用「哪些 view 从没被任何 spec 触达」判定：
+   ```powershell
+   $views = Get-ChildItem -Recurse -Filter *.vue "$repo\package\website\src\views" |
+       ForEach-Object { $_.BaseName }
+   $specText = Get-Content -Raw (Get-ChildItem -Recurse -Filter *.spec.ts "$repo\package\website\tests\e2e")
+   $gaps = $views | Where-Object { $specText -notmatch [regex]::Escape($_) } | Sort-Object -Unique
+   $gaps | Set-Content "$runDir\coverage-gaps-frontend.txt"
+   ```
+   已有 `package\website\tests\e2e\specs\views-coverage\` 正是做「逐个 view 点一遍」的兜底套件；新增前端盲区**优先补进该目录**，与既有风格保持一致。
 
-4.4. **优先级排序**：
-   1. 前端未覆盖的 e2e 或 现有测试中覆盖不全的 e2e（最高，缺一个就补一个）
-   2. `app/api/*.py` 中的 router
-   3. `app/service/*.py` 业务逻辑
+4.4. **既有基线**：后端已有 `package\server\tests\unit\test_nightly_api_gaps.py`（记录当前 API 盲区基线）。补测前先读它，**避免重复**已登记/已覆盖的模块。
+
+4.5. **优先级排序**：
+   1. 前端未被任何 spec 引用的 view（最高，缺一个补一个）
+   2. `app/api/*.py` 中覆盖率最低的 router
+   3. `app/service/*.py` 业务逻辑（未覆盖行最多者优先）
    4. `app/utils/*.py`、`app/schemas/*.py`
    5. AI service 的 routers
 
-4.5. 选 **5 - 10 个**最高优先级模块。
+4.6. 选 **5 - 10 个**最高优先级模块（后端/AI 以 §4.1/§4.2 覆盖率清单前几名为准，前端以 §4.3 未引用清单为准）。
 
 ---
 
@@ -164,8 +192,8 @@ $exit = $LASTEXITCODE
 
 5.1. 写之前必读：
    - 被测模块 docstring、类型注解、`git log -3 -- <file>`。
-   - 同目录已有测试文件，模仿 fixture 命名 / async 模式 / 断言库。
-   - E2E 参考 `package\website\tests\e2e\global-setup.ts` 与现有 spec 的 `storageState` 复用方式。
+   - 同目录已有测试文件（后端在 `package\<pkg>\tests\unit\`，命名多为 `test_<域>_api.py`），模仿 fixture 命名 / async 模式 / 断言库。
+   - E2E 参考 `package\website\tests\e2e\helpers\dev-global-setup.ts` 与 `tests\e2e\specs\00-setup.spec.ts` 的登录态建立方式，及现有 spec 的 `storageState` 复用方式；新 spec 放到 `tests\e2e\specs\<域>\` 下对应子目录。
 
 5.2. 每个模块写 **1 - 3 个**用例，覆盖：
    - Happy path（正常输入返回正常结果）
@@ -173,10 +201,10 @@ $exit = $LASTEXITCODE
    - Error（非法输入、未授权、依赖不可用）
 
 5.3. 必须遵守：
-   - 后端：使用 `tests/conftest.py` 已有的 fixture；不要新建 DB 连接。
+   - 后端：使用 `package\<pkg>\tests\conftest.py` 已有的 fixture；不要新建 DB 连接。
    - E2E：用现有 `storageState` 复用登录态；不写新的全局 setup。
    - 不修改任何现有测试，只新增文件或新增 `def test_xxx` 函数。
-   - 不修改 `tests/.env.test`，需要新环境变量时改 `.env.test.example` 并在 summary 说明。
+   - 不修改 `tests/.env.test`，需要新环境变量时改 `tests/.env.test.example` 并在 summary 说明。
    - CI环境是Docker容器，所有测试不能依赖本地文件，只能依赖容器内能访问的文件。
 
 5.4. 单独跑新测试，必须全绿：
@@ -274,10 +302,15 @@ $exit = $LASTEXITCODE
 7.3. **append 到全局日志**：
    ```powershell
    "YYYY-MM-DD HH:MM | PASS/FAIL_FIXED/ENV_SKIP | A=$a B=$b C=$c | new=$m mod/$k case | commit=$sha" `
-       | Add-Content 'data\logs\test-nightly.log' -Encoding UTF8
+       | Add-Content "$repo\tests\artifacts\nightly\test-nightly.log" -Encoding UTF8
    ```
 
-7.4. 清理：保留最近 7 天的 `$runDir`，更早的移到 `$runDir\_archive\` 或删除（首期保守保留 7 天）。
+7.4. 清理：保留最近 7 天的 `$runDir`，更早的移到 `tests\artifacts\nightly\_archive\` 或删除（首期保守保留 7 天）。
+
+7.5. **时间预算**：整轮软上限 **120 分钟**（`-Level full` + 起栈 + §3.6/§5.5 各一次完整 e2e，很容易超 90 分钟）。为省时：
+   - 盲区补测阶段验证新测试时，优先用 §5.4 的单文件/单用例最小重跑，不要每加一个就跑 full。
+   - 仅在 §3.6（修复后）与 §5.5（全部新测试写完后）各跑一次 full 收口。
+   - 超过 120 分钟仍未收口 → 放弃本轮 commit，写 ALERT（退出码 6）。
 
 ---
 
@@ -309,7 +342,9 @@ ALERT:  tests\artifacts\nightly\YYYY-MM-DD\ALERT.md
 | 用途                  | 命令                                                                 |
 |-----------------------|----------------------------------------------------------------------|
 | 跑全部 e2e            | `.\tests\scripts\run-tests.ps1 -Layer e2e -Level full`               |
-| 跑单个 pytest 用例    | `python -m pytest tests/test_x.py::test_y -v`                        |
+| 跑单个 pytest 用例    | `uv run python -m pytest tests/unit/test_x.py::test_y -v`（在 `package\<pkg>` 下） |
+| 后端覆盖率盲区        | `uv run python -m pytest tests/unit --cov=app --cov-branch --cov-report=term-missing`（在 `package\server` 下） |
+| AI 覆盖率盲区         | `uv run python -m pytest tests --cov=app --cov-branch --cov-report=term-missing`（在 `package\ai` 下） |
 | 跑单个 playwright     | `pnpm --dir package/website exec playwright test --grep "用例名"`    |
 | 重建后端 DB + 起服务  | `python start.py`                                                    |
 | 起 AI 服务            | `cd package\ai && uvicorn main:app --port 8001`                      |

@@ -42,6 +42,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
 ]
 
 [tool.pytest.ini_options]
@@ -67,4 +68,26 @@ markers = [
     "module_toolbox: 工具箱域",
     "module_system: 系统域 (config/version/update-check)",
     "module_classification: 智能分类域",
+]
+
+# 覆盖率配置。注意：不写进 addopts，默认跑 unit 时不启用覆盖率（避免拖慢秒级单测）。
+# 需要盲区扫描时显式带 --cov：
+#   uv run python -m pytest tests/unit --cov=app --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml
+[tool.coverage.run]
+source = ["app"]
+branch = true
+omit = [
+    "app/db/migrations/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+# 排除无需覆盖的样板行
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
 ]
