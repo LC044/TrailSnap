@@ -15,7 +15,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { ensureAuthSession, authHeaders } from '../../helpers/auth';
+import { ensureAuthSession, ensureApiAccessToken, authHeaders } from '../../helpers/auth';
 
 test.describe('P1 - 回收站深层 @recycle-bin', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
@@ -120,7 +120,10 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
   });
 
   test('DELETE /api/photos/recycle-bin/permanent 路径存在且带 photo_ids 数组', async ({ request }, testInfo) => {
-    const token = await ensureAuthSession(request, request as never, testInfo);
+    // API-only test：使用 ensureApiAccessToken 直接拿 token，避免 ensureAuthSession 在
+    // storageState 占位但 user_token 未落盘时回退到 page.context().addInitScript 分支
+    // （该分支要求 page fixture，本测试只用 request，传 page 会触发 TypeError）。
+    const token = await ensureApiAccessToken(request, testInfo);
     if (!token) return;
     // 即便后端返 400/404 也行 —— 关键是路由命中，不是 404 或 405
     const res = await request.post(
