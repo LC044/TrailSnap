@@ -1,5 +1,8 @@
-# 使用 nvidia/cuda runtime 镜像，以确保存在 libcudart 等运行共享库
-FROM nvidia/cuda:12.2.2-runtime-ubuntu22.04
+# 使用带 cuDNN 的 runtime 镜像：自带 libcudart + libcudnn.so.9（位于标准库搜索路径），
+# 供 onnxruntime-gpu(>=1.19, 基于 CUDA 12 + cuDNN 9 编译) 使用，无需再用 pip 安装 cuDNN。
+# 注意：cuDNN 由基础镜像提供，故务必保持此 tag 为 *-cudnn-runtime；若改回普通 *-runtime
+# 镜像，会因缺 libcudnn.so.9 导致 CUDAExecutionProvider 初始化失败、静默降级到 CPU。
+FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu22.04
 
 # 避免 tzdata 等交互式配置卡住
 ENV DEBIAN_FRONTEND=noninteractive

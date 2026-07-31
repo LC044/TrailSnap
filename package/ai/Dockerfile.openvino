@@ -31,6 +31,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
     build-essential \
     g++ \
     cmake \
+    # OpenVINO CPU 推理依赖 OpenMP 运行库 libgomp.so.1。
+    # 虽然 build-essential 会间接带入 libgomp1，但显式声明避免其被精简后 OpenVINO
+    # 加载时报 "libgomp.so.1: cannot open shared object file"。
+    libgomp1 \
     # OpenCV核心运行依赖（仅保留必需项）
     libgl1 \
     libglib2.0-0 \
