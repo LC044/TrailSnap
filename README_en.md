@@ -171,13 +171,20 @@ services:
   ai:
     image: siyuan044/trailsnap-ai:latest
     restart: always
+    stop_grace_period: 15s
     expose: [ "8001" ]
     ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data        # Data directory mount
     environment:
-      - TZ: Asia/Shanghai
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health-check', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   frontend:
     image: siyuan044/trailsnap-frontend:latest

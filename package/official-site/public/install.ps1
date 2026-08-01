@@ -1081,6 +1081,7 @@ $photoVolumeStr
     image: siyuan044/trailsnap-ai:`${IMAGE_TAG}-`${AI_MODE}
     container_name: trailsnap-ai
     restart: always
+    stop_grace_period: 15s
     expose: ["8001"]
     ports:
       - "`${AI_PORT}:8001"
@@ -1089,6 +1090,12 @@ $photoVolumeStr
       - ./data:/app/data
     environment:
       - TZ=`${TZ}$gpuBlock
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health-check', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   frontend:
     image: siyuan044/trailsnap-frontend:`${IMAGE_TAG}

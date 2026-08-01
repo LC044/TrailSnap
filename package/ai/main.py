@@ -1,10 +1,12 @@
-import uvicorn
-import logging
-import time
 import asyncio
+import logging
+import os
+import signal
 import sys
+import time
 from contextlib import asynccontextmanager
 
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,8 +38,13 @@ async def check_idle_and_restart():
                     f"Service idle for {idle_duration:.0f} seconds (Threshold: {settings.IDLE_TIMEOUT}s). "
                     f"Restarting to release memory..."
                 )
-                # Exit the process. The container orchestrator or process manager should restart it.
-                sys.exit(0)
+                # Ask Uvicorn to perform its normal graceful shutdown sequence.
+                logging.getLogger("app.main").info(
+                    "Requesting graceful shutdown after idle timeout (idle_seconds=%.0f)",
+                    idle_duration,
+                )
+                os.kill(os.getpid(), signal.SIGTERM)
+                break
 
         except asyncio.CancelledError:
             break
@@ -97,7 +104,9 @@ log_listener = None
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     global active_requests, last_request_time
-    active_requests += 1
+    tracks_activity = request.url.path != "/health-check"
+    if tracks_activity:
+        active_requests += 1
 
     start_time = time.time()
     operation = f"{request.method} {request.url.path}"
@@ -128,8 +137,9 @@ async def log_requests(request: Request, call_next):
         logging.getLogger("app.middleware").error(f"Request failed: {str(e)}", exc_info=e, extra=extra)
         raise e
     finally:
-        active_requests -= 1
-        last_request_time = time.time()
+        if tracks_activity:
+            active_requests -= 1
+            last_request_time = time.time()
 
 
 
