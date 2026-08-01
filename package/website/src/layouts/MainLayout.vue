@@ -10,21 +10,21 @@
 
     <!-- 右侧主体内容区 -->
     <div class="flex-1 flex flex-col min-w-0 transition-all duration-300 relative" id="main-content-wrapper">
-      <!-- 顶部导航 -->
-      <NavBar class="flex md:hidden" />
-
-      <!-- 页面内容 -->
-      <main class="flex-1 overflow-y-auto bg-slate-50 dark:bg-gray-900 box-border dark:from-gray-900 dark:to-gray-800 relative pt-[60px] md:pt-0">
+      <!-- 页面内容（移动端底部留出 Tab 栏 + safe-area 高度） -->
+      <main class="flex-1 overflow-y-auto bg-slate-50 dark:bg-gray-900 box-border dark:from-gray-900 dark:to-gray-800 relative pb-[calc(var(--ts-tabbar-h)_+_env(safe-area-inset-bottom))] md:pb-0">
         <transition name="fade-slide" mode="out-in">
           <router-view />
         </transition>
       </main>
     </div>
 
+    <!-- 移动端底部 Tab 栏（fixed，仅 <768px 显示） -->
+    <BottomNav />
+
     <!-- 悬浮的 Agent 助手按钮（可全屏拖动，靠近左右边缘自动半隐藏，鼠标悬浮再出现） -->
     <!-- 外层为固定不动的透明热区，hover 监听在它身上，避免按钮位移导致光标脱离而抖动 -->
     <div
-      v-show="!isAgentOpen && showAgentFab"
+      v-show="!isAgentOpen && showAgentFab && !(isMobile && uiStore.selectionActive)"
       class="fixed z-50"
       :style="fabZoneStyle"
       @mouseenter="isFabHovering = true"
@@ -46,7 +46,7 @@
     <!-- Agent 聊天弹窗 -->
     <AgentChat v-model="isAgentOpen" />
 
-    <!-- 通知抽屉 + 设置弹窗（全局唯一一份，由 NavBar/Sidebar 的铃铛按钮触发） -->
+    <!-- 通知抽屉 + 设置弹窗（全局唯一一份，由 Sidebar 的铃铛 / 移动端 BottomNav 更多 sheet 里的铃铛触发） -->
     <NotificationDrawer />
   </div>
 </template>
@@ -54,16 +54,18 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
-// 导入导航栏、侧边栏
-import NavBar from '@/layouts/NavBar.vue';
+// 导入侧边栏（桌面）/ 底部 Tab 栏（移动）
+import BottomNav from '@/layouts/BottomNav.vue';
 import Sidebar from '@/layouts/Sidebar.vue';
 import AgentChat from '@/views/agent/AgentChat.vue';
 import NotificationDrawer from '@/components/NotificationDrawer.vue';
 import { Bot } from 'lucide-vue-next';
 // 从根组件注入主题（避免重复 provide 导致主题状态分裂）
 import { injectTheme } from '@/composables/useTheme';
+import { useUiStore } from '@/stores/uiStore';
 
 const isAgentOpen = ref(false);
+const uiStore = useUiStore();
 
 // 注入由 App.vue 提供的主题状态
 const {
@@ -85,6 +87,8 @@ const FAB_SIZE = 56;            // w-14 h-14 = 56px
 const EDGE_MARGIN = 20;         // 默认距视口边缘的留白
 const DOCK_THRESHOLD = 70;      // 距左右边缘小于该值则自动靠边半隐藏
 const HOVER_PEEK = 26;          // 悬浮时再往内探出的像素，完全脱离边缘/滚动条
+const TABBAR_H = 56;            // 移动端底部 Tab 栏高度（与 --ts-tabbar-h 一致）
+const TABBAR_GAP = 12;          // FAB 与 Tab 栏之间的间距
 
 const fabRef = ref<HTMLElement | null>(null);
 // 按钮左上角坐标（基于 fixed 定位）
@@ -97,20 +101,23 @@ const isFabHovering = ref(false);
 const isMobile = ref(false);
 const updateIsMobile = () => { isMobile.value = window.innerWidth < 768; };
 
+// 移动端 FAB 不得压到底部 Tab 栏：y 下限抬高 Tab 栏高度 + 间距
+const fabYFloor = () => (isMobile.value ? TABBAR_H + TABBAR_GAP : 0);
+
 // 拖动过程中的临时状态
 let dragOrigin = { mouseX: 0, mouseY: 0, posX: 0, posY: 0 };
 let dragMoved = false;
 
 const clampPos = (x: number, y: number) => ({
   x: Math.max(0, Math.min(x, window.innerWidth - FAB_SIZE)),
-  y: Math.max(0, Math.min(y, window.innerHeight - FAB_SIZE)),
+  y: Math.max(fabYFloor(), Math.min(y, window.innerHeight - FAB_SIZE)),
 });
 
 const initFabPosition = () => {
-  // 默认右下角
+  // 默认右下角（移动端落在 Tab 栏上方，避开底部 Tab 栏）
   fabPos.value = clampPos(
     window.innerWidth - FAB_SIZE - EDGE_MARGIN,
-    window.innerHeight - FAB_SIZE - EDGE_MARGIN
+    window.innerHeight - FAB_SIZE - EDGE_MARGIN - fabYFloor()
   );
   // 默认即靠右半隐藏，避免一进来就遮挡内容
   fabDockedEdge.value = 'right';
@@ -165,9 +172,10 @@ const onFabClick = () => {
 };
 
 const onWindowResize = () => {
-  // 视口变化时把按钮拉回可视范围
-  fabPos.value = clampPos(fabPos.value.x, fabPos.value.y);
+  // 先更新移动端判定，再 clamp（clamp 依赖 fabYFloor → isMobile）
   updateIsMobile();
+  // 视口变化时把按钮拉回可视范围（移动端同时抬离底部 Tab 栏）
+  fabPos.value = clampPos(fabPos.value.x, fabPos.value.y);
 };
 
 // 外层热区：固定不动，覆盖按钮从“半隐藏”到“悬浮探出”的整个活动范围，

@@ -155,6 +155,7 @@ import type { AlbumImage } from '@/types/album'
 import request from '@/utils/request'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import { useScroll } from '@vueuse/core'
+import { useUiStore } from '@/stores/uiStore'
 
 const router = useRouter()
 const loading = ref(false)
@@ -167,6 +168,10 @@ const hasMore = ref(true)
 const galleryRef = ref<InstanceType<typeof FlatPhotoGallery> | null>(null)
 const selectedIds = ref<string[]>([])
 const isSelectionMode = ref(false)
+
+// 同步到全局 UI 状态：移动端底部 Tab 栏 / Agent FAB 在选择模式激活时隐藏
+const uiStore = useUiStore()
+watch(isSelectionMode, (v) => uiStore.setSelectionActive(v))
 
 const isAllSelected = computed(() => {
   return photos.value.length > 0 && selectedIds.value.length === photos.value.length
