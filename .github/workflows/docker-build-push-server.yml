@@ -48,6 +48,12 @@ jobs:
             EXTRA_TAGS=""
           fi
 
+          # Docker tag 不允许包含分支名中的 / 等字符。
+          BASE_TAG=$(printf '%s' "$BASE_TAG" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//' | cut -c1-128)
+          if [[ -z "$BASE_TAG" ]]; then
+            BASE_TAG="sha-${GITHUB_SHA:0:12}"
+          fi
+
           if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
             EXTRA_TAGS="latest"
           fi

@@ -10,6 +10,7 @@ const isOnline = ref(navigator.onLine)
 const updateAvailable = ref(false)
 const isInstalled = ref(window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true)
 let registration: ServiceWorkerRegistration | undefined
+let updateRequested = false
 
 const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
 const canInstall = computed(() => !!deferredPrompt.value)
@@ -39,7 +40,9 @@ export function registerPwa() {
     })
   }, { once: true })
 
-  navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload())
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (updateRequested) window.location.reload()
+  })
 }
 
 export async function installPwa() {
@@ -53,7 +56,11 @@ export async function installPwa() {
 }
 
 export function applyPwaUpdate() {
-  registration?.waiting?.postMessage({ type: 'SKIP_WAITING' })
+  const waitingWorker = registration?.waiting
+  if (!waitingWorker) return
+
+  updateRequested = true
+  waitingWorker.postMessage({ type: 'SKIP_WAITING' })
 }
 
 export function usePwa() {
