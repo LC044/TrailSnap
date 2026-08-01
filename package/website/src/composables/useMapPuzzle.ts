@@ -79,6 +79,21 @@ export function useMapPuzzle() {
   const canvasWidth = ref(800)
   const canvasHeight = ref(600)
 
+  /**
+   * 移动端判定：单省图投影时底部预留 peek 抽屉高度，让竖条形省份（陕西/甘肃）
+   * 整体上移，避免主体被底部抽屉遮挡。沿用 MainLayout 的 ref + resize 监听模式。
+   */
+  const isMobile = ref(false)
+  const updateIsMobile = () => { isMobile.value = window.innerWidth < 768 }
+  /**
+   * 移动端单省图底部预留高度。
+   * = peek 抽屉高度（128，与 LocationPuzzleView 的 PEEK_H 一致）
+   * + 轮廓描边的 glow 外溢（renderer 的 shadowBlur=18）
+   * + 少量余量（圆角/手柄阴影/格子描边），共 +24。
+   * 不留这 24px 时，竖省最底一行格子的照片会被抽屉圆角 + 描边 glow 啃掉半张。
+   */
+  const SHEET_PEEK_H = 128 + 24
+
   const loading = ref(false)
   const error = ref<string | null>(null)
 
@@ -288,7 +303,12 @@ export function useMapPuzzle() {
     // ISLAND_RATIO 必须在 computeBBox 与 buildRegionGeometry 间保持一致，
     // 否则包围盒与实际绘制的面不匹配，形状会偏移出画布。
     const bbox = computeBBox(features, ISLAND_RATIO)
-    const projector = createProjector(bbox, canvasWidth.value, canvasHeight.value, 24)
+    // 移动端单省图：底部多留 peek 抽屉高度，竖条形省份整体上移、不被抽屉遮挡。
+    // 全国图/桌面端：均匀 padding（bottomPadding 默认等于 padding）。
+    // updateIsMobile 兜底：首次 load 时 isMobile 尚未初始化，此处读最新值。
+    updateIsMobile()
+    const bottomPadding = isMobile.value && scope.value === 'province' ? SHEET_PEEK_H : 24
+    const projector = createProjector(bbox, canvasWidth.value, canvasHeight.value, 24, bottomPadding)
     geometries.value = features.map((f) => buildRegionGeometry(f, projector, ISLAND_RATIO))
   }
 
@@ -411,9 +431,11 @@ export function useMapPuzzle() {
   const resize = (width: number, height: number) => {
     if (width <= 0 || height <= 0) return
     // 变化小于 2px 时忽略，避免 ResizeObserver 抖动导致频繁重算
-    if (Math.abs(width - canvasWidth.value) < 2 && Math.abs(height - canvasHeight.value) < 2) {
-      return
-    }
+    const sizeChanged =
+      Math.abs(width - canvasWidth.value) >= 2 || Math.abs(height - canvasHeight.value) >= 2
+    // 同步移动端判定（跨档时底部留白策略需切换）
+    updateIsMobile()
+    if (!sizeChanged) return
     canvasWidth.value = width
     canvasHeight.value = height
     if (activeFeatures.value.length) {
