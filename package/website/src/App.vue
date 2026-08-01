@@ -3,6 +3,7 @@
   <el-config-provider :locale="zhCn">
     <!-- 动态渲染当前路由对应的布局 -->
     <component :is="currentLayout" />
+    <PwaInstallPrompt />
   </el-config-provider>
 </template>
 
@@ -17,6 +18,7 @@ import { provideNavItems } from '@/composables/useNavItems';
 import { useUserStore } from '@/stores/user';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useNotificationSSE } from '@/composables/useNotificationSSE';
+import PwaInstallPrompt from '@/components/PwaInstallPrompt.vue';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {

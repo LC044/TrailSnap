@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <title>行影集 - 当前离线</title>
+    <style>
+      :root { color: #1f2937; background: #f8fafc; font-family: system-ui, sans-serif; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; }
+      main { max-width: 22rem; padding: 2rem; text-align: center; }
+      img { width: 5rem; height: 5rem; }
+      h1 { font-size: 1.25rem; }
+      p { color: #6b7280; line-height: 1.65; }
+      button { border: 0; border-radius: .5rem; padding: .7rem 1rem; background: #0ea5e9; color: white; font: inherit; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="/logo.svg" alt="行影集" />
+      <h1>当前处于离线状态</h1>
+      <p>请检查网络后重试。已访问过的页面可能仍可查看，但相册数据和上传功能需要连接到你的 TrailSnap 服务。</p>
+      <button type="button" onclick="location.reload()">重新连接</button>
+    </main>
+  </body>
+</html>
