@@ -9,6 +9,7 @@ import './style.css'
 
 import App from './App.vue'
 import router from '@/router';
+import { registerPwa } from '@/composables/usePwa'
 const app = createApp(App);
 // 2. 创建 Pinia 实例
 const pinia = createPinia()
@@ -17,4 +18,5 @@ app.use(router);
 app.use(ElementPlus)
 app.mount('#app');
 
+registerPwa()
 

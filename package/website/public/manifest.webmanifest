@@ -1,0 +1,19 @@
+{
+  "name": "行影集 TrailSnap",
+  "short_name": "行影集",
+  "description": "由 AI 驱动的自托管相册",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0ea5e9",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
