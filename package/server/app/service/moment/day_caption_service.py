@@ -426,9 +426,10 @@ def _build_llm(connection, model_name: str, streaming: bool) -> ChatOpenAI:
         api_key=connection.api_key,
         base_url=connection.api_base if connection.api_base else None,
         timeout=60,
-        temperature=0.8,
+        temperature=0.7,
         streaming=streaming,
-        max_completion_tokens=512,
+        max_completion_tokens=8192,
+        reasoning_effort='none',
     )
 
 
@@ -570,11 +571,12 @@ async def generate_caption_stream(
             SystemMessage(content=materials["_system_prompt"]),
             HumanMessage(content=materials["_user_prompt"]),
         ]
-
+        print(messages)
         # 与 agent.service.stream_chat_with_agent 对齐的流式处理：
         #   - str content，非空 -> 正文，外发（先经 _ThinkStripper 剥离 <think> 段）
         #   - list content，type=='text' -> 正文，外发（同样经状态机剥离）
-        #   - additional_kwargs.summary / type=='reasoning' -> 思考，识别但丢弃
+        #   - additional_kwargs.summary / type=='reasoning' -> 思考，外发为 reasoning 帧
+        #     （前端实时展示"思考过程"做生成反馈；落库 caption 只取 content，不含思考）
         # 使用 llm.astream + async for，chunk 一到即 yield。
         full_caption_parts: List[str] = []
         stripper = _ThinkStripper()
@@ -583,6 +585,7 @@ async def generate_caption_stream(
             async for chunk in llm.astream(messages):
                 contents = getattr(chunk, "content", None)
                 additional_kwargs = getattr(chunk, "additional_kwargs", None) or {}
+                print(chunk)
                 if isinstance(contents, str):
                     if contents:
                         visible = stripper.feed(contents)
@@ -590,8 +593,12 @@ async def generate_caption_stream(
                             full_caption_parts.append(visible)
                             yield f"data: {json.dumps({'content': visible})}\n\n"
                     elif additional_kwargs:
-                        # 思考通道：识别但不外发
-                        _ = additional_kwargs.get('summary') or []
+                        # 思考通道：把 reasoning 摘要流式推给前端展示"思考过程"，
+                        # 落库 caption 只取 content，不含思考。
+                        for s in (additional_kwargs.get('summary') or []):
+                            text = s.get("text", "") if isinstance(s, dict) else ""
+                            if text:
+                                yield f"data: {json.dumps({'reasoning': text})}\n\n"
                 elif isinstance(contents, list):
                     for c in contents:
                         if not isinstance(c, dict):
@@ -605,8 +612,11 @@ async def generate_caption_stream(
                                     full_caption_parts.append(visible)
                                     yield f"data: {json.dumps({'content': visible})}\n\n"
                         elif content_type == 'reasoning':
-                            # 思考通道：识别但不外发
-                            _ = c.get('summary') or []
+                            # 思考通道：同上，外发为 reasoning 帧
+                            for s in (c.get('summary') or []):
+                                text = s.get("text", "") if isinstance(s, dict) else ""
+                                if text:
+                                    yield f"data: {json.dumps({'reasoning': text})}\n\n"
 
             # 冲洗剥离器残留缓冲
             tail = stripper.flush()

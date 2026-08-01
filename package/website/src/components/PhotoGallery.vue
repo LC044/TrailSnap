@@ -207,6 +207,22 @@
                             
                             <!-- Simulated Text Placeholder -->
                             <div class="mb-4 md:mb-3 group/caption">
+                                <!-- 思考过程：仅 streaming 期间展示，完成后随 reasoning 清空自动消失 -->
+                                <div v-if="dayCaptions[day.key]?.streaming && dayCaptions[day.key]?.reasoning"
+                                     class="mb-2 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 overflow-hidden">
+                                    <div class="flex items-center gap-1.5 px-2 py-1 cursor-pointer select-none text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                         @click.stop="toggleReasoningCollapse(day.key)">
+                                        <Brain class="w-3.5 h-3.5" />
+                                        <span>思考过程</span>
+                                        <Loader2 class="w-3 h-3 animate-spin ml-auto" />
+                                        <ChevronDown class="w-3.5 h-3.5 transition-transform" :class="{ 'rotate-180': !collapsedReasoningDays.has(day.key) }" />
+                                    </div>
+                                    <div v-show="!collapsedReasoningDays.has(day.key)"
+                                         :ref="(el) => setReasoningRef(day.key, el)"
+                                         class="px-2 py-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+                                        <span>{{ dayCaptions[day.key].reasoning }}</span><span class="inline-block w-0.5 h-3 align-middle ml-0.5 bg-primary-400 animate-pulse"></span>
+                                    </div>
+                                </div>
                                 <div class="text-[15px] leading-[22px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words">
                                     <template v-if="editingCaptionDay === day.key">
                                         <textarea
@@ -227,6 +243,9 @@
                                     <template v-else-if="dayCaptions[day.key]?.caption">
                                         <span>{{ dayCaptions[day.key].caption }}</span>
                                         <span v-if="dayCaptions[day.key]?.streaming" class="inline-block ml-1 w-1.5 h-4 align-middle bg-primary-400 animate-pulse"></span>
+                                    </template>
+                                    <template v-else-if="dayCaptions[day.key]?.streaming">
+                                        <span class="inline-block w-1.5 h-4 align-middle bg-primary-400 animate-pulse"></span>
                                     </template>
                                     <template v-else-if="showMomentCaption && !dayHasPhotoTime(day.key)">
                                         <span class="text-amber-600 dark:text-amber-500">
@@ -495,7 +514,7 @@ import {
   ref, computed, watch, onMounted, onUnmounted, nextTick, toRef, reactive
 } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy, Sparkles, Pencil, RotateCcw } from 'lucide-vue-next'
+import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy, Sparkles, Pencil, RotateCcw, Brain, ChevronDown } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -526,7 +545,7 @@ interface Props {
   scrollContainer?: HTMLElement | null,
   showActionBar?: boolean
   // moments 布局下的日文案外部注入。key 为 day.key（同 groupedPhotos 中的 dayKey 格式）
-  dayCaptions?: Record<string, { caption: string; source?: string; streaming?: boolean; updated_at?: string }>
+  dayCaptions?: Record<string, { caption: string; source?: string; streaming?: boolean; updated_at?: string; reasoning?: string }>
   // moments 布局下每天的位置（景区优先 → city → district → province，实时聚合不落库）。
   // key 为 day.key（同 groupedPhotos 中的 dayKey 格式，月/日不补零）
   dayLocations?: Record<string, { primary: string; level: string; locations: Array<{ name: string; level: string; count: number }> }>
@@ -1093,6 +1112,37 @@ const openPersonSelector = () => {
 // --- Moment Caption Editing State（moments 布局） ---
 const editingCaptionDay = ref<string | null>(null)
 const captionDraft = ref('')
+// 思考过程折叠态：默认展开，用户可点击折叠以专注看正文；生成结束 reasoning 清空后整块自动消失。
+const collapsedReasoningDays = ref<Set<string>>(new Set())
+const toggleReasoningCollapse = (dayKey: string) => {
+  const next = new Set(collapsedReasoningDays.value)
+  if (next.has(dayKey)) next.delete(dayKey)
+  else next.add(dayKey)
+  collapsedReasoningDays.value = next
+}
+
+// 思考过程滚动容器 ref（按天）：打字机效果——光标始终跟在最新文字后面，
+// 容器随文字增长自动滚到底，保证尾部光标可见。
+const reasoningScrollEls = new Map<string, HTMLElement>()
+const setReasoningRef = (dayKey: string, el: any) => {
+  if (el) reasoningScrollEls.set(dayKey, el as HTMLElement)
+  else reasoningScrollEls.delete(dayKey)
+}
+const scrollReasoningToBottom = (dayKey: string) => {
+  const el = reasoningScrollEls.get(dayKey)
+  if (!el) return
+  // 仅当用户已贴近底部时跟随滚动，避免抢走向上翻阅已生成思考的用户
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+  if (nearBottom) el.scrollTop = el.scrollHeight
+}
+watch(() => props.dayCaptions, () => {
+  for (const dayKey of Object.keys(props.dayCaptions)) {
+    const c = props.dayCaptions[dayKey]
+    if (c && c.streaming && c.reasoning) {
+      nextTick(() => scrollReasoningToBottom(dayKey))
+    }
+  }
+}, { deep: true })
 
 /**
  * 判断某一天的照片是否至少有一张具备真实拍摄时间。

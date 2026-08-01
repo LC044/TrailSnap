@@ -6,6 +6,8 @@ export interface CaptionState {
   source: 'ai' | 'manual' | 'ai_streaming';
   streaming?: boolean;
   updated_at?: string;
+  /** 思考过程：仅 streaming 期间累积展示，生成结束后清空，最终结果不含。 */
+  reasoning?: string;
 }
 
 /**
@@ -91,7 +93,7 @@ export function useMomentCaptions() {
     controllers.set(dayKey, controller);
 
     loadingDays.value = new Set([...loadingDays.value, dayKey]);
-    setCaption(dayKey, { caption: '', source: 'ai_streaming', streaming: true });
+    setCaption(dayKey, { caption: '', source: 'ai_streaming', streaming: true, reasoning: '' });
 
     // 关键：onError 是 generateStream 内部循环里的 callback，在里面 throw
     // 只会让 for 循环退出、Promise 正常 resolve，导致外层 await 拿不到错误
@@ -118,6 +120,7 @@ export function useMomentCaptions() {
             source: (info.source as any) === 'existing' ? 'ai' : 'ai',
             streaming: false,
             updated_at: info.updated_at,
+            // 不保留 reasoning：最终展示结果只显示文案，思考过程随生成结束消失
           });
         },
         (err) => {
@@ -128,6 +131,13 @@ export function useMomentCaptions() {
             setCaption(dayKey, previous);
           } else {
             setCaption(dayKey, null);
+          }
+        },
+        (reasoningChunk) => {
+          // 思考过程：实时累积，给用户"正在思考"的反馈；onDone 时不保留。
+          const cur = captionMap[dayKey];
+          if (cur) {
+            setCaption(dayKey, { ...cur, reasoning: (cur.reasoning || '') + reasoningChunk });
           }
         },
         controller.signal,

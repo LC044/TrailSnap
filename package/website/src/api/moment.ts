@@ -118,7 +118,8 @@ export const momentApi = {
 
   /**
    * SSE 流式生成朋友圈日文案。
-   * onChunk：每收到一小段文本会被调用一次；
+   * onChunk：每收到一小段正文文本就会被调用一次（最终文案内容）；
+   * onReasoning：每收到一小段思考过程文本会被调用一次，仅用于生成期反馈，最终结果不含；
    * onDone：完整文案落库成功时回调，携带 server 返回的 MomentDayCaption 摘要；
    * onError：LLM 或后端错误。
    */
@@ -127,6 +128,7 @@ export const momentApi = {
     onChunk: (text: string) => void,
     onDone?: (info: { caption: string; source: string; updated_at?: string; cached?: boolean }) => void,
     onError?: (err: string) => void,
+    onReasoning?: (text: string) => void,
     signal?: AbortSignal,
   ) {
     const userStore = (await import('@/stores/user')).useUserStore();
@@ -188,6 +190,9 @@ export const momentApi = {
           }
           if (parsed.content) {
             onChunk(parsed.content);
+          }
+          if (parsed.reasoning) {
+            onReasoning?.(parsed.reasoning);
           }
           if (parsed.done) {
             onDone?.({
