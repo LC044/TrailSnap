@@ -50,6 +50,7 @@ import type { PuzzleCell } from '@/utils/mapPuzzle/gridFill'
 import {
   DARK_THEME,
   LIGHT_THEME,
+  MAX_CANVAS_DPR,
   renderPuzzle,
   setupCanvas,
   type RenderTheme,
@@ -129,7 +130,9 @@ const litRegions = computed(() => {
 // zoom/pan 是 screen↔world 映射的独立变换层，不改世界坐标（geometries/cells），
 // 也不触发 useMapPuzzle.resize()（那是容器 CSS 尺寸变化用的重投影）。
 // 仅在 draw() 里用 ctx.translate/scale 包住 renderPuzzle 应用变换。
-const DPR = window.devicePixelRatio || 1
+// 注意：devicePixelRatio 必须每次绘制时实时读取（不能缓存为模块常量）——
+// 移动端 Safari 在页面加载/缩放/旋转时 dpr 可能变化，缓存会导致 setTransform
+// 与 setupCanvas 设置的画布后备尺寸不匹配，内容只填一角、其余空白。
 const MIN_ZOOM = 1
 const MAX_ZOOM = 5
 const zoom = ref(1)
@@ -200,7 +203,9 @@ const draw = () => {
   const ctx = ctxRef.value
   if (!ctx) return
   // setupCanvas 会 setTransform(dpr,...)，resize 后变换被抹掉；此处每次重置并重应用 zoom/pan。
-  ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
+  // dpr 封顶 MAX_CANVAS_DPR，与 setupCanvas 一致（移动端高 dpr 会让 canvas 后备尺寸超 Safari 上限）。
+  const dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   ctx.clearRect(0, 0, size.width, size.height)
   if (theme.value.background) {
     ctx.fillStyle = theme.value.background
@@ -225,6 +230,14 @@ const draw = () => {
     },
   })
   ctx.restore()
+  // 真机 Safari 的 canvas 2D 命令缓冲是延迟执行的：fillRect/drawImage 进缓冲后不立即渲染，
+  // 直到一次同步读取（getImageData/toDataURL）触发 flush 才真正执行。无此触发则画面空白。
+  // 读 1×1 像素开销可忽略，但能强制 Safari 提交全部待处理绘制命令。
+  try {
+    ctx.getImageData(0, 0, 1, 1)
+  } catch {
+    // 某些隐私模式可能禁用 getImageData，忽略不影响功能
+  }
 }
 
 /** 初始化 / 重建画布（尺寸或 dpr 变化时） */

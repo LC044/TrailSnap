@@ -284,11 +284,18 @@ export function renderPuzzle(context: RenderContext): void {
  * 按设备像素比初始化画布，避免高分屏下模糊。
  * 返回 CSS 像素下的绘制上下文（已 scale，绘制时无需关心 dpr）。
  */
+/**
+ * 移动端 Safari 对单 canvas 后备尺寸有较严上限（远低于桌面），
+ * 高 dpr 机型（dpr=3+）会让 canvas 像素数翻 9 倍，触达上限后整块画布拒绝渲染
+ * （表现为完全空白 + 主线程卡死）。封顶 2：清晰度足够，且把像素数压回 4 倍以内。
+ */
+export const MAX_CANVAS_DPR = 2
+
 export function setupCanvas(
   canvas: HTMLCanvasElement,
   width: number,
   height: number,
-  dpr = window.devicePixelRatio || 1
+  dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR)
 ): CanvasRenderingContext2D | null {
   const ctx = canvas.getContext('2d')
   if (!ctx) return null

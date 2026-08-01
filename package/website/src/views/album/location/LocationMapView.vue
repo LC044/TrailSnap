@@ -1,7 +1,8 @@
 <template>
   <div class="flex flex-col md:flex-row w-full h-full relative">
     <!-- 左侧地图区域（移动端撑满，抽屉浮于其上） -->
-    <div class="flex-1 relative overflow-hidden shadow-sm h-full md:h-full">
+    <!-- min-h-0 让 flex-1 在移动端 flex-col 下正确分配高度（见 LocationPuzzleView 同名注释） -->
+    <div class="flex-1 min-h-0 relative overflow-hidden shadow-sm md:h-full">
       <MapContainer
         ref="mapContainerRef"
         :level="level"

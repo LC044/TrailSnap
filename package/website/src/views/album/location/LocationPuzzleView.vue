@@ -1,7 +1,10 @@
 <template>
   <div class="location-puzzle flex flex-col md:flex-row w-full h-full relative">
     <!-- 左侧拼图画布（移动端撑满，抽屉浮于其上） -->
-    <div class="flex-1 relative overflow-hidden bg-gray-50 dark:bg-gray-900 h-full md:h-full">
+    <!-- min-h-0 让 flex-1 在移动端 flex-col 下正确分配高度，避免 h-full 百分比链
+         在 overflow-y-auto 的 flex 父容器内解析为 0（移动端 Safari 真机表现），
+         导致 ResizeObserver 测得 0 高 → setup() 跳过 → 画布空白 -->
+    <div class="flex-1 min-h-0 relative overflow-hidden bg-gray-50 dark:bg-gray-900 md:h-full">
       <!-- 加载遮罩 -->
       <div
         v-if="loading"
