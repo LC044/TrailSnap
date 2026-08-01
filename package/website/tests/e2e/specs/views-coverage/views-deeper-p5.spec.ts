@@ -344,10 +344,8 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
       })
     })
 
-    let deleteHit = false
     await page.route("**/api/moments/day-captions/2025-08-05*", async (route) => {
       if (route.request().method() !== "DELETE") return route.continue()
-      deleteHit = true
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -358,13 +356,16 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     await enterMomentsView(page)
     await expect(page.getByText("临时文案。")).toBeVisible({ timeout: 10_000 })
 
-    // 点「清除」
+    // 点「清除」并等待 DELETE 落地（替代旧版 expect.poll(deleteHit, 5s)；
+    // 旧版本在 docker CI 高负载下 5s 内偶发不触发是因为 click 较慢，
+    // 改用 waitForResponse(15s) 更稳健，与 moment-caption-streaming 用法一致）
     await page.locator('button:has-text("清除")').first().click({ force: true })
-
-    // 期望：DELETE 命中 + 回到占位态
-    await expect
-      .poll(() => deleteHit, { timeout: 5_000 })
-      .toBe(true)
+    await page.waitForResponse(
+      (r) =>
+        r.url().includes("/api/moments/day-captions/2025-08-05") &&
+        r.request().method() === "DELETE",
+      { timeout: 15_000 }
+    )
     await expect(
       page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
     ).toBeVisible({ timeout: 10_000 })

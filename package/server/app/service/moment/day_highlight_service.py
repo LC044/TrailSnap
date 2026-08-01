@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
 import numpy as np
@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 _GAP_SECONDS = 300
 _SIMILARITY_THRESHOLD = 0.9
 _MAX_SEGMENT_SIZE = 200
+# 泛化去重（dedup_photo_ids）的 O(N²) 安全上限：超过则分批聚类，
+# 可能漏掉跨批的重复，但保底不崩。拼图单省池上限 800，远低于此值。
+_MAX_CLUSTER_INPUT = 1000
 
 
 def _day_bounds_naive(day: date) -> Tuple[datetime, datetime]:
@@ -250,3 +253,105 @@ def dedup_day_photo_ids(
             kept.add(rep["id"])
 
     return kept, {"total_candidates": len(candidates), "kept": len(kept)}
+
+
+def _cluster_ids_by_embedding(
+    items: List[Tuple[UUID, Any]],
+    threshold: float,
+) -> set:
+    """对 ``(photo_id, embedding)`` 列表跑余弦聚类，返回每簇**首个出现**的 photo_id 集合。
+
+    ``items`` 必须按期望的代表优先级排序——单遍扫描时 ``setdefault`` 取到的就是
+    输入序最早的 id，与 moments「组内最高分代表」语义一致（拼图按策略拉取，
+    最早出现 = 该簇最高分 / 最新 / 任意，取决于策略，均可接受）。
+
+    与 ``_cluster_segment`` 同样的 sklearn 配置（cosine + average linkage +
+    ``distance_threshold = 1 - threshold``）；sklearn 失败时回退为全保留
+    （不去重是永远安全的状态，只是池里多一些重复）。
+    """
+    from sklearn.cluster import AgglomerativeClustering
+
+    X = np.stack([np.asarray(emb, dtype=np.float32) for _, emb in items])
+    # 归一化到单位球，与 _cluster_segment 保持一致；零向量兜底避免除零
+    norms = np.linalg.norm(X, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    X = X / norms
+
+    clustering = AgglomerativeClustering(
+        n_clusters=None,
+        metric="cosine",
+        linkage="average",
+        distance_threshold=1 - threshold,
+    )
+    try:
+        labels = clustering.fit_predict(X)
+    except Exception as e:  # pragma: no cover - 极端 embedding 场景保底
+        logger.warning("[dedup] cluster failed (%s), skip dedup", e)
+        return {pid for pid, _ in items}
+
+    cluster_first: Dict[int, UUID] = {}
+    for (pid, _), label in zip(items, labels):
+        cluster_first.setdefault(int(label), pid)
+    return set(cluster_first.values())
+
+
+def dedup_photo_ids(
+    db: Session,
+    user_id: UUID,
+    photo_ids: List[UUID],
+    threshold: float = _SIMILARITY_THRESHOLD,
+) -> List[UUID]:
+    """对给定 photo_id 列表按 CLIP embedding 余弦相似度去重，保持输入顺序，**不截断**。
+
+    与按天的 ``dedup_day_photo_ids`` 区别在于：① 接受任意 id 集合（不限定某天），
+    供拼图按省 / 按筛选条件去重；② 整池一次聚类，不做 5 分钟时间切段——拼图池
+    按策略排序而非时间，且跨时间的近重复（cosine > 0.9 本就是近乎同一张）也该合并，
+    拼图要的是视觉多样性；③ 无 embedding 的照片**原样透传**而非丢弃（不能判重的不
+    敢丢，避免破坏「数量足够」；对齐 ``day_caption_service._dedup_similar_photos``
+    的「没 embedding：保留」策略）。
+
+    - 相似度 >= ``threshold`` 归为一组，保留组内输入序最早的那张；
+    - 无 ``ImageVector`` 记录的 id 原样保留在原位；
+    - 返回 = 全部组代表 + 无向量透传项，按输入顺序输出；
+    - 超过 ``_MAX_CLUSTER_INPUT`` 时分批聚类（可能漏跨批重复，保底不崩）。
+    """
+    if not photo_ids:
+        return []
+
+    # 输入里可能有重复 id，按首次出现位置去重并保序
+    seen: set = set()
+    ordered_ids: List[UUID] = []
+    for pid in photo_ids:
+        if pid not in seen:
+            seen.add(pid)
+            ordered_ids.append(pid)
+
+    # 拉取这些 id 的 embedding（owner + is_deleted 防御性过滤，对齐 _fetch_day_candidates）
+    stmt = (
+        select(ImageVector.photo_id, ImageVector.embedding)
+        .join(Photo, ImageVector.photo_id == Photo.id)
+        .where(
+            Photo.owner_id == user_id,
+            Photo.is_deleted.is_(False),
+            ImageVector.photo_id.in_(ordered_ids),
+        )
+    )
+    rows = db.execute(stmt).all()
+    emb_map: Dict[UUID, Any] = {r.photo_id: r.embedding for r in rows}
+
+    # 按输入顺序整理出有 embedding 的子序列（顺序决定代表选择）
+    embeddable: List[Tuple[UUID, Any]] = [
+        (pid, emb_map[pid]) for pid in ordered_ids if pid in emb_map
+    ]
+    no_embedding: set = set(ordered_ids) - set(emb_map.keys())
+
+    if len(embeddable) <= 1:
+        return list(ordered_ids)
+
+    kept_embeddable: set = set()
+    for i in range(0, len(embeddable), _MAX_CLUSTER_INPUT):
+        chunk = embeddable[i : i + _MAX_CLUSTER_INPUT]
+        kept_embeddable |= _cluster_ids_by_embedding(chunk, threshold)
+
+    kept_set = kept_embeddable | no_embedding
+    return [pid for pid in ordered_ids if pid in kept_set]

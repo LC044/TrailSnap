@@ -51,9 +51,14 @@
         <el-option label="画质优先" value="quality_score" />
         <el-option label="最新拍摄优先" value="photo_time" />
         <el-option label="随机" value="random" />
+        <el-option label="手动选择" value="manual" />
       </el-select>
       <p class="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5 leading-relaxed">
-        评分来自 AI 分析结果，未分析的照片会自动排在后面。
+        {{
+          config.strategy === 'manual'
+            ? '手动模式：点击任意格子自行选择照片，选择会按省份保存在本地，刷新不丢。'
+            : '评分来自 AI 分析结果，未分析的照片会自动排在后面。'
+        }}
       </p>
     </div>
 
@@ -96,7 +101,8 @@
 
       <button
         class="w-full py-2.5 rounded-xl bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-        :disabled="loading"
+        :disabled="loading || config.strategy === 'manual'"
+        :title="config.strategy === 'manual' ? '手动模式下不支持换一批' : undefined"
         @click="emit('reshuffle')"
       >
         <Shuffle class="w-4 h-4" />

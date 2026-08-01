@@ -45,7 +45,8 @@
         :cells="cells"
         :assignments="assignments"
         :region-counts="regionCounts"
-        :show-label="config.showLabel"
+        :show-label="config.showLabel && scope !== 'province'"
+        :scope="scope"
         :interactive="true"
         :thumbnail-size="scope === 'nation' ? 'small' : 'medium'"
         @select-region="handleSelectRegion"
@@ -53,15 +54,29 @@
         @resize="resize"
       />
 
-      <!-- 返回全国按钮（单省模式，浮在画布左上） -->
-      <button
+      <!-- 面包屑导航（单省模式，浮在画布左上，与地图视图保持一致） -->
+      <div
         v-if="scope === 'province'"
-        class="absolute top-3 left-3 z-20 px-3 py-1.5 rounded-lg bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-md text-sm text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-800 transition-colors flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-        @click="handleDrillUp"
+        class="absolute top-6 left-6 z-20 flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md px-3 py-2 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 animate-fade-in"
       >
-        <ChevronLeft class="w-4 h-4" />
-        全国
-      </button>
+        <button
+          class="p-1 -ml-1 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary-500 dark:hover:text-primary-400 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          title="返回全国"
+          @click="handleDrillUp"
+        >
+          <ArrowLeft class="w-4 h-4" />
+        </button>
+        <div class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
+        <button
+          class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors flex items-center gap-1 px-1 rounded-lg focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          @click="handleDrillUp"
+        >
+          <MapPin class="w-4 h-4" />
+          全国
+        </button>
+        <ChevronRight class="w-4 h-4 text-gray-400" />
+        <span class="text-sm font-bold text-gray-800 dark:text-white pr-1">{{ activeProvince }}</span>
+      </div>
     </div>
 
     <!-- 右侧配置面板 -->
@@ -105,30 +120,114 @@
         <div v-else class="w-full aspect-square rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-sm text-gray-400">
           这个位置是空的
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
+          <!-- 主操作：手动模式选照片；自动模式从该省照片池换一张 -->
           <button
-            class="flex-1 py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            v-if="config.strategy === 'manual'"
+            class="flex-1 min-w-[7rem] py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            @click="openManualPicker"
+          >
+            选择照片
+          </button>
+          <button
+            v-else
+            class="flex-1 min-w-[7rem] py-2 rounded-lg bg-primary-500 hover:bg-primary-600 text-white text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
             @click="handleReplaceCell"
           >
             换一张
           </button>
+          <!-- 自动模式：选择照片（选完自动切到手动模式） -->
           <button
-            class="flex-1 py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            v-if="config.strategy !== 'manual'"
+            class="flex-1 min-w-[5rem] py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            @click="openManualPicker"
+          >
+            选择照片
+          </button>
+          <!-- 手动模式：留空（也是一种手选意图，会持久化） -->
+          <button
+            v-else
+            class="flex-1 min-w-[5rem] py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
             @click="handleRemoveCell"
           >
             留空
           </button>
+          <!-- 手动模式且该格已有手选覆盖：可恢复自动 -->
+          <button
+            v-if="
+              config.strategy === 'manual' &&
+              activeCellIndex !== null &&
+              manualAssignments[String(activeCellIndex)] !== undefined
+            "
+            class="flex-1 min-w-[5rem] py-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            @click="handleClearManualCell"
+          >
+            恢复自动
+          </button>
         </div>
       </div>
     </el-dialog>
+
+    <!-- 手动选择照片全屏 Picker（复用相册「添加照片」选择器） -->
+    <Transition name="slide-up">
+      <div
+        v-if="manualPickerVisible"
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm md:p-4"
+        @click.self="closeManualPicker"
+      >
+        <div
+          class="bg-white dark:bg-gray-900 md:rounded-2xl shadow-2xl w-full h-full md:max-w-7xl md:h-[90vh] overflow-hidden flex flex-col"
+        >
+          <!-- 顶部切换：默认只展示当前省份，可一键切到全库 -->
+          <div
+            class="flex items-center gap-2 px-4 py-2 border-b border-gray-100 dark:border-gray-800 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md"
+          >
+            <span class="text-xs text-gray-500 dark:text-gray-400">展示范围：</span>
+            <button
+              class="px-3 py-1 rounded-full text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              :class="
+                pickerScope === 'province'
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              "
+              @click="setPickerScope('province')"
+            >
+              仅{{ activeProvince ?? '本省' }}
+            </button>
+            <button
+              class="px-3 py-1 rounded-full text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              :class="
+                pickerScope === 'all'
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+              "
+              @click="setPickerScope('all')"
+            >
+              全部照片
+            </button>
+          </div>
+          <!-- :key 让切换展示范围时 PhotoSelector 重新挂载，重新按新过滤条件加载 -->
+          <PhotoSelector
+            :key="pickerScope"
+            :is-selector="true"
+            :store="selectionStore"
+            :title="`为「${activeProvince ?? ''}」选择照片`"
+            @select="handleManualPick"
+            @cancel="closeManualPicker"
+          />
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ChevronLeft, ImageOff, MapPin } from 'lucide-vue-next'
+import { ArrowLeft, ChevronRight, ImageOff, MapPin } from 'lucide-vue-next'
 import PuzzleCanvas from './components/PuzzleCanvas.vue'
 import PuzzlePanel from './components/PuzzlePanel.vue'
+import PhotoSelector from '@/components/PhotoSelector.vue'
+import { useSelectionStore } from '@/stores/selectionStore'
 import { useMapPuzzle, type PuzzleConfig } from '@/composables/useMapPuzzle'
 
 const props = defineProps<{
@@ -156,8 +255,16 @@ const {
   recompute,
   replaceCellPhoto,
   removeCellPhoto,
+  setManualCell,
+  clearManualCell,
+  manualAssignments,
   reshuffle,
 } = useMapPuzzle()
+
+// --- 手动选择照片 ---
+const selectionStore = useSelectionStore()
+const manualPickerVisible = ref(false)
+const manualPickerCellIndex = ref<number | null>(null)
 
 // --- 格子编辑 ---
 const cellDialogVisible = ref(false)
@@ -191,7 +298,63 @@ const handleReplaceCell = () => {
 
 const handleRemoveCell = () => {
   if (activeCellIndex.value === null) return
-  removeCellPhoto(activeCellIndex.value)
+  // 手动模式：留空也是一种手选意图，需要持久化
+  if (config.value.strategy === 'manual') {
+    setManualCell(activeCellIndex.value, null)
+  } else {
+    removeCellPhoto(activeCellIndex.value)
+  }
+  cellDialogVisible.value = false
+}
+
+// --- 手动选择 ---
+// 默认只展示当前省份照片，可切到全库。provinceFilter 与全局 selectedFilters 解耦，
+// 不写入持久化缓存，关掉选择器即清空，避免污染相册主列表的筛选状态。
+const pickerScope = ref<'province' | 'all'>('province')
+
+const openManualPicker = () => {
+  if (activeCellIndex.value === null) return
+  manualPickerCellIndex.value = activeCellIndex.value
+  cellDialogVisible.value = false
+  pickerScope.value = 'province'
+  selectionStore.provinceFilter = activeProvince.value
+  manualPickerVisible.value = true
+}
+
+const setPickerScope = (scope: 'province' | 'all') => {
+  if (pickerScope.value === scope) return
+  pickerScope.value = scope
+  // PhotoSelector 用 :key 重新挂载，重新加载前先把过滤条件设好
+  selectionStore.provinceFilter = scope === 'province' ? activeProvince.value : null
+}
+
+const closeManualPicker = () => {
+  manualPickerVisible.value = false
+  // 清掉瞬时省份过滤，避免 selectionStore 复用时残留
+  selectionStore.provinceFilter = null
+}
+
+// PhotoSelector 是多选，手动填格只取一张 —— 沿用 ProfileSettings.vue 头像选择的 ids[0] 约定
+const handleManualPick = (ids: string[]) => {
+  if (ids.length === 0) return
+  if (manualPickerCellIndex.value === null) {
+    closeManualPicker()
+    return
+  }
+  // 自动模式下首次手选：自动切到手动模式。
+  // 不走 reload（reload 会清掉 manualAssignments 再从空 localStorage 重建，丢失本次选择），
+  // 而是先切策略、再 setManualCell 直接覆盖当前 assignments 并落盘——
+  // 后续 recompute 时 manualAssignments 已有值，overlay 能正确套用。
+  if (config.value.strategy !== 'manual') {
+    config.value = { ...config.value, strategy: 'manual' }
+  }
+  setManualCell(manualPickerCellIndex.value, ids[0])
+  closeManualPicker()
+}
+
+const handleClearManualCell = () => {
+  if (activeCellIndex.value === null) return
+  clearManualCell(activeCellIndex.value)
   cellDialogVisible.value = false
 }
 
@@ -230,3 +393,11 @@ onMounted(() => {
   loadNation(props.startDate, props.endDate)
 })
 </script>
+
+<style scoped>
+.animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>

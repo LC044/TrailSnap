@@ -16,8 +16,8 @@ import { assignPhotos, buildGrid, shuffle, type PuzzleCell } from '@/utils/mapPu
 /** 拼图层级：全国 / 单省 */
 export type PuzzleScope = 'nation' | 'province'
 
-/** 选片策略 */
-export type PhotoStrategy = 'memory_score' | 'quality_score' | 'photo_time' | 'random'
+/** 选片策略；manual = 用户手动为每个格子挑照片（结果按省份存本地） */
+export type PhotoStrategy = 'memory_score' | 'quality_score' | 'photo_time' | 'random' | 'manual'
 
 export interface PuzzleConfig {
   /** 目标格子数量 */
@@ -47,11 +47,15 @@ export const PROVINCE_DEFAULTS: PuzzleConfig = {
  *
  * 该值同时决定了「照片少时自动增大格子」的触发点：拉得太少会让大省
  * 明明有很多照片却被迫用大格子。实测新疆在 2000 格时需要约 354 格，
- * 故取 400 以覆盖滑块上限；图片本身按需懒加载，不会一次性全部请求。
+ * 故原取 400 以覆盖滑块上限；图片本身按需懒加载，不会一次性全部请求。
+ *
+ * 开启 dedup_similar 后会移除 30~40% 的 burst 近重复，故上调到 600，
+ * 使去重后池子仍接近原来的 400 张。真正的「数量足够」由 buildGrid 的
+ * 自适应放大 + assignPhotos 的循环复用兜底，这里只是减少格子被迫放大的程度。
  */
-const NATION_PER_PROVINCE_LIMIT = 400
-/** 单省图拉取上限，留出余量供用户手动换图 */
-const PROVINCE_FETCH_LIMIT = 500
+const NATION_PER_PROVINCE_LIMIT = 600
+/** 单省图拉取上限，开启 dedup_similar 后上调到 800 留出去重 + 手动换图余量 */
+const PROVINCE_FETCH_LIMIT = 800
 
 /**
  * 碎小岛礁裁剪阈值（相对区域内最大面的面积比例）。
@@ -84,6 +88,89 @@ export function useMapPuzzle() {
   const cells = shallowRef<PuzzleCell[]>([])
   /** 格子 → 照片 id */
   const assignments = shallowRef<(string | null)[]>([])
+
+  /**
+   * 手动模式下用户覆盖的格子（稀疏）。
+   * key = 格子索引(string)，value = 照片 id 或 null（留空）。
+   * 只记录被用户手动改过的格子，auto-assign 的结果不入此表。
+   * 按省份持久化到 localStorage，刷新后恢复。
+   */
+  const manualAssignments = ref<Record<string, string | null>>({})
+
+  const manualKey = (province: string) => `trailsnap:puzzle-manual:${province}`
+
+  const loadManualAssignments = (province: string): Record<string, string | null> => {
+    try {
+      const raw = localStorage.getItem(manualKey(province))
+      if (!raw) return {}
+      const record = JSON.parse(raw)
+      return record?.overrides ?? {}
+    } catch {
+      return {}
+    }
+  }
+
+  const persistManualAssignments = (province: string) => {
+    try {
+      localStorage.setItem(
+        manualKey(province),
+        JSON.stringify({ overrides: manualAssignments.value })
+      )
+    } catch (e) {
+      console.warn('[puzzle] 手动分配持久化失败', e)
+    }
+  }
+
+  /**
+   * 在 auto-assign 结果上叠加手动覆盖。
+   *
+   * 两遍策略，让 targetCount / 画布尺寸变化时自愈，无需存额外元数据：
+   *   Pass 1: 原索引在范围内且未被占用 → 按索引套用（刷新场景保持布局不变）；
+   *   Pass 2: 剩余（原索引越界或已被占用）→ first-fit 找空位塞（改精细度时尽力保留）。
+   *
+   * 返回新数组（[...base]），满足 assignments shallowRef 的整体替换要求。
+   * `remapped` 是按新索引重写后的 overrides，供调用方同步内存状态。
+   */
+  const applyManualOverlay = (
+    base: (string | null)[],
+    overrides: Record<string, string | null>
+  ): { assignments: (string | null)[]; remapped: Record<string, string | null> } => {
+    const result = [...base]
+    const overridden = new Set<number>()
+    const applied = new Set<string>()
+    const remapped: Record<string, string | null> = {}
+
+    // Pass 1: 按原索引
+    for (const [key, photoId] of Object.entries(overrides)) {
+      const idx = Number(key)
+      if (Number.isInteger(idx) && idx >= 0 && idx < result.length && !overridden.has(idx)) {
+        result[idx] = photoId
+        overridden.add(idx)
+        remapped[String(idx)] = photoId
+        applied.add(key)
+      }
+    }
+
+    // Pass 2: first-fit
+    for (const [key, photoId] of Object.entries(overrides)) {
+      if (applied.has(key)) continue
+      let target = -1
+      for (let i = 0; i < result.length; i++) {
+        if (!overridden.has(i)) {
+          target = i
+          break
+        }
+      }
+      if (target >= 0) {
+        result[target] = photoId
+        overridden.add(target)
+        remapped[String(target)] = photoId
+      }
+      // 否则无空位，丢弃该覆盖（极端情况：手选数 > 格子数）
+    }
+
+    return { assignments: result, remapped }
+  }
 
   /** 省份全称 → 照片 id 池。拼图严格按省取图，不存在跨省的全局池。 */
   const photosByRegion = shallowRef<Map<string, string[]>>(new Map())
@@ -133,6 +220,9 @@ export function useMapPuzzle() {
       // 用单数 province（ilike 模糊匹配）以兼容「河南省」与「河南」两种写法
       province: provinceName,
       file_type: 'image',
+      // 按策略拉取后服务端再做 CLIP 相似度去重，避免相邻格子铺出近重复/burst 照片。
+      // 无 embedding 的照片会原样透传，去重不截断，数量由 buildGrid 自适应放大兜底。
+      dedup_similar: true,
     }
     if (startDate) filters.start_time = startDate
     if (endDate) filters.end_time = endDate
@@ -177,7 +267,20 @@ export function useMapPuzzle() {
       skipEmptyRegions: true,
     })
     cells.value = grid
-    assignments.value = assignPhotos(grid, photosByRegion.value)
+    const base = assignPhotos(grid, photosByRegion.value)
+    // 手动模式：在 auto-assign 之上叠加用户的手选覆盖（单省图才有手选）
+    if (
+      config.value.strategy === 'manual' &&
+      scope.value === 'province' &&
+      Object.keys(manualAssignments.value).length
+    ) {
+      const { assignments: final, remapped } = applyManualOverlay(base, manualAssignments.value)
+      assignments.value = final
+      // 同步内存中的索引（remap 后可能变了）；不在此落盘，落盘交给 setManualCell / loadProvince
+      manualAssignments.value = remapped
+    } else {
+      assignments.value = base
+    }
   }
 
   /** 依据当前画布尺寸重新投影几何（尺寸变化时调用） */
@@ -276,6 +379,9 @@ export function useMapPuzzle() {
       const fullName = feature.properties.name
       activeProvince.value = fullName
       activeFeatures.value = [feature]
+      // 手动模式：进入省份时先恢复持久化的手选覆盖，recompute 才能立即套用
+      manualAssignments.value =
+        config.value.strategy === 'manual' ? loadManualAssignments(fullName) : {}
       reproject([feature])
 
       const ids = await fetchProvincePhotos(
@@ -289,6 +395,10 @@ export function useMapPuzzle() {
       regionCounts.value = new Map([[fullName, ids.length]])
 
       recompute()
+      // 手动模式：recompute 可能 remap 了索引，把对齐后的结果落盘一次
+      if (config.value.strategy === 'manual') {
+        persistManualAssignments(fullName)
+      }
     } catch (e: any) {
       console.error('[puzzle] 加载单省拼图失败', e)
       error.value = e?.message ?? '加载失败'
@@ -360,6 +470,41 @@ export function useMapPuzzle() {
     assignments.value = next
   }
 
+  /**
+   * 手动模式下设置某个格子的照片（或留空）。
+   * 复用 replaceCellPhoto / removeCellPhoto 更新画面，同时记录覆盖并按省份持久化。
+   * 仅在 strategy==='manual' 且单省 scope 下有意义。
+   */
+  const setManualCell = (cellIndex: number, photoId: string | null) => {
+    if (photoId) {
+      replaceCellPhoto(cellIndex, photoId)
+    } else {
+      removeCellPhoto(cellIndex)
+    }
+    if (scope.value === 'province' && activeProvince.value) {
+      manualAssignments.value = {
+        ...manualAssignments.value,
+        [String(cellIndex)]: photoId,
+      }
+      persistManualAssignments(activeProvince.value)
+    }
+  }
+
+  /**
+   * 清除某个格子的手动覆盖，恢复 auto-assign。
+   * 从 manualAssignments 删除该 key 并落盘，再用 replaceCellPhoto(auto-pick) 填一张。
+   */
+  const clearManualCell = (cellIndex: number) => {
+    if (scope.value === 'province' && activeProvince.value) {
+      const next = { ...manualAssignments.value }
+      delete next[String(cellIndex)]
+      manualAssignments.value = next
+      persistManualAssignments(activeProvince.value)
+    }
+    // 不传 photoId → 走池内 auto-pick
+    replaceCellPhoto(cellIndex)
+  }
+
   /** 重新随机分配（换一批）。各省独立打乱，照片不会跨省流动。 */
   const reshuffle = () => {
     const seed = Date.now() & 0xffff
@@ -386,6 +531,7 @@ export function useMapPuzzle() {
     canvasWidth,
     canvasHeight,
     usedPhotoCount,
+    manualAssignments,
     // 动作
     loadNation,
     loadProvince,
@@ -395,6 +541,8 @@ export function useMapPuzzle() {
     recompute,
     replaceCellPhoto,
     removeCellPhoto,
+    setManualCell,
+    clearManualCell,
     reshuffle,
   }
 }

@@ -129,6 +129,9 @@ export const photoStoreSetup = () => {
   const folderPath = ref<string | null>(null);
   // 仅看「本层直属」照片（不含子目录）
   const folderDirect = ref<boolean>(false);
+  // 瞬时省份过滤（不持久化）：拼图手动选择器默认只展示当前省份照片，
+  // 与 selectedFilters 解耦，避免污染全局筛选缓存。置空则不过滤。
+  const provinceFilter = ref<string | null>(null);
   const selectedFilters = reactive<FilterState>({
       years: [],
       cities: [],
@@ -175,6 +178,10 @@ export const photoStoreSetup = () => {
       }
       if (folderDirect.value) {
           filters.folder_direct = true;
+      }
+      // 瞬时省份过滤（拼图手动选择器用），后端 /api/photos 已支持 province 参数
+      if (provinceFilter.value) {
+          filters.province = provinceFilter.value;
       }
       return filters;
   }
@@ -403,6 +410,7 @@ export const photoStoreSetup = () => {
       currentContext.value = { type: 'all' };
       folderPath.value = null;
       folderDirect.value = false;
+      provinceFilter.value = null;
   }
 
   const fetchThumbnail = async (photoId: string) => {
@@ -427,6 +435,7 @@ export const photoStoreSetup = () => {
     selectedFilters,
     folderPath,
     folderDirect,
+    provinceFilter,
     fetchAvailableFilters,
     fetchTimelineStats,
     loadPhotos,

@@ -47,6 +47,7 @@ import {
 } from '@/utils/mapPuzzle/renderer'
 import { usePuzzleImageLoader } from '@/composables/usePuzzleImageLoader'
 import { injectTheme } from '@/composables/useTheme'
+import type { PuzzleScope } from '@/composables/useMapPuzzle'
 
 const props = defineProps<{
   geometries: RegionGeometry[]
@@ -54,6 +55,8 @@ const props = defineProps<{
   assignments: (string | null)[]
   regionCounts: Map<string, number>
   showLabel: boolean
+  /** 当前层级：全国图点省下钻，单省图点格子编辑 */
+  scope: PuzzleScope
   /** 是否响应 hover / 点击（全国图开启，单省图用于换图） */
   interactive?: boolean
   /** 缩略图尺寸：全国图用 small，单省用 medium */
@@ -186,17 +189,24 @@ const handleClick = (e: MouseEvent) => {
   const x = e.clientX - rect.left
   const y = e.clientY - rect.top
 
+  // 全国图：点省下钻（格子太小不做编辑）。
+  // 单省图：整省都是点亮的，findRegionAt 必然命中本省；要让格子可点，
+  // 必须先判格子命中，点中格子就走编辑，否则才按区域处理。
+  if (props.scope === 'province') {
+    const index = props.cells.findIndex(
+      (c) => x >= c.x && x <= c.x + c.size && y >= c.y && y <= c.y + c.size
+    )
+    if (index >= 0) {
+      emit('select-cell', index)
+      return
+    }
+  }
+
   const hit = findRegionAt(x, y, props.geometries)
   // 未点亮的省份不允许下钻（进去必然是空拼图）
   if (hit && litRegions.value.has(hit.name)) {
     emit('select-region', hit.name)
-    return
   }
-  // 未命中区域时，尝试命中格子（单省模式下用于换图）
-  const index = props.cells.findIndex(
-    (c) => x >= c.x && x <= c.x + c.size && y >= c.y && y <= c.y + c.size
-  )
-  if (index >= 0) emit('select-cell', index)
 }
 
 let resizeObserver: ResizeObserver | null = null

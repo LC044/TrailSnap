@@ -105,7 +105,7 @@
         <MapPin class="w-4 h-4 text-primary-500" /> 最近去过
       </h3>
       <div v-if="recentTrips.length > 0" class="space-y-2">
-        <div v-for="(trip, index) in recentTrips" :key="index" class="flex items-center justify-between bg-white dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50 hover:border-primary-200 dark:hover:border-primary-800/50 cursor-pointer transition-colors" @click="emit('click-location', trip.locationName, 'city')">
+        <div v-for="(trip, index) in recentTrips" :key="index" class="flex items-center justify-between bg-white dark:bg-gray-800/50 p-3 rounded-xl border border-gray-100 dark:border-gray-700/50 hover:border-primary-200 dark:hover:border-primary-800/50 cursor-pointer transition-colors" @click="emit('click-location', trip.locationName, trip.level)">
           <div class="flex flex-col">
             <span class="text-sm font-medium text-gray-800 dark:text-white">{{ trip.locationName }}</span>
             <span class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ trip.startDate }}</span>

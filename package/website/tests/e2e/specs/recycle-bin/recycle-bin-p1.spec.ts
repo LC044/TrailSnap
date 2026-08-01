@@ -16,6 +16,7 @@
 
 import { test, expect } from '@playwright/test';
 import { ensureAuthSession, ensureApiAccessToken, authHeaders } from '../../helpers/auth';
+import { e2eEnv } from '../../../../playwright/e2e-env';
 
 test.describe('P1 - 回收站深层 @recycle-bin', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
@@ -127,7 +128,7 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
     if (!token) return;
     // 即便后端返 400/404 也行 —— 关键是路由命中，不是 404 或 405
     const res = await request.post(
-      'http://127.0.0.1:8800/api/photos/recycle-bin/permanent',
+      `${e2eEnv.apiBaseUrl}/api/photos/recycle-bin/permanent`,
       {
         headers: authHeaders(token),
         data: { photo_ids: ['__probe__'] },

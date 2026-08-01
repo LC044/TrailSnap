@@ -174,6 +174,7 @@ def read_all_photos(
         order_dir: Optional[str] = None,
         folder: Optional[str] = None,
         folder_direct: bool = False,
+        dedup_similar: bool = False,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
@@ -197,6 +198,13 @@ def read_all_photos(
         ids=ids, user_id=current_user.id
     )
     logging.info(f"read_all_photos time: {time.time() - st_time}")
+    if dedup_similar and photos:
+        # 按策略拉取后，按 CLIP embedding 相似度去重近重复/burst 照片。
+        # 局部 import 避免模块加载时拉起 sklearn（对齐 _cluster_segment）。
+        # skip/limit 作用于去重前，返回数可能小于 limit（拼图恒 skip=0，无影响）。
+        from app.service.moment.day_highlight_service import dedup_photo_ids
+        kept_set = set(dedup_photo_ids(db, current_user.id, [p.id for p in photos]))
+        photos = [p for p in photos if p.id in kept_set]
     return photos
 
 @router.get("/folders", response_model=BaseResponse[Dict[str, Any]])
