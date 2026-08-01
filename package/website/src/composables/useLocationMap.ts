@@ -99,6 +99,21 @@ export function useLocationMap(callbacks?: {
       enableMarkerDrag()
     }
 
+    // 无初始坐标时没有 marker，拖动无从谈起；允许点击地图落点（覆盖有/无坐标两种场景）。
+    // 仅在可编辑（enableDrag）地图启用，避免影响只读地图。
+    if (opts.enableDrag && map) {
+      map.addEventListener('click', (e: any) => {
+        const ll = e?.lnglat
+        if (!ll) return
+        const lng = typeof ll.getLng === 'function' ? ll.getLng() : ll.lng
+        const lat = typeof ll.getLat === 'function' ? ll.getLat() : ll.lat
+        if (typeof lat !== 'number' || typeof lng !== 'number') return
+        setMarker(lat, lng)
+        enableMarkerDrag()
+        reverseGeocode(lat, lng)
+      })
+    }
+
     applyDarkMode(opts.containerId)
     mapReady.value = true
   }
@@ -200,12 +215,17 @@ export function useLocationMap(callbacks?: {
       if (result && result.getStatus() === 0) {
         const addr = result.getAddress()
         const comp = result.getAddressComponent()
+        // 天地图 getAddressComponent() 返回结构：
+        //   { addressComponent: { province, city, county, town, nation, ... }, city, ... }
+        // 区县字段叫 county（不是 district），且真正的字段表在 addressComponent 下；
+        // 顶层只平铺了部分字段（如 city），province/county 必须取 addressComponent。
+        const ac = comp?.addressComponent || comp || {}
         const detail: LocationDetail = {
           address: typeof addr === 'string' ? addr : (addr?.address || ''),
-          province: comp?.province || '',
-          city: comp?.city || '',
-          district: comp?.district || '',
-          country: '中国'
+          province: ac?.province || '',
+          city: ac?.city || '',
+          district: ac?.district || ac?.county || '',
+          country: ac?.nation || '中国'
         }
         currentLocationDetail.value = detail
         callbacks?.onPositionChange?.(lat, lng, detail)
