@@ -2,12 +2,16 @@
   <div v-if="modelValue" :class="['agent-chat-overlay', { 'is-fullscreen': isFullscreen }]" @click.self="handleClose">
     <div :class="['agent-chat-container', { 'is-fullscreen': isFullscreen, 'has-sidebar': isSidebarOpen }]">
       
+      <!-- 移动端侧边栏遮罩：侧边栏以 absolute 抽屉展开时遮住主区域，点击空白处关闭 -->
+      <div v-if="isSidebarOpen" class="agent-sidebar-backdrop sm:hidden" @click="isSidebarOpen = false"></div>
+
       <!-- Sidebar for Sessions -->
-      <AgentSidebar 
+      <AgentSidebar
         :is-open="isSidebarOpen"
         :sessions="sessions"
         :current-session-id="currentSession?.id"
         @create="createNewSession"
+        @close="isSidebarOpen = false"
         @switch="switchSession"
         @command="handleSessionCommand"
       />
@@ -782,7 +786,19 @@ onMounted(() => {
 }
 
 .agent-chat-container.is-fullscreen {
-  @apply sm:w-full sm:h-full sm:rounded-none sm:border-none sm:p-0;
+  @apply w-full h-full sm:w-full sm:h-full sm:rounded-none sm:border-none sm:p-0;
+}
+
+/* 移动端侧边栏遮罩：z-index 15 位于 header(10) 与 sidebar(20) 之间，遮住主区域并点击关闭侧边栏 */
+.agent-sidebar-backdrop {
+  @apply absolute inset-0 bg-black/40 sm:hidden;
+  z-index: 15;
+  animation: backdropFadeIn 0.2s ease;
+}
+
+@keyframes backdropFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes slideUp {

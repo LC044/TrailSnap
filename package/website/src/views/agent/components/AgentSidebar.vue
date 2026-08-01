@@ -2,13 +2,19 @@
   <div v-if="isOpen" class="agent-sidebar">
     <div class="sidebar-header">
       <span class="font-semibold text-slate-800 dark:text-white text-sm">历史会话</span>
-      <button @click="emit('create')" class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 dark:bg-slate-800 p-1 rounded-md" title="新建会话">
-        <Plus class="w-5 h-5" />
-      </button>
+      <div class="flex items-center gap-1">
+        <button @click="emit('create')" class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 dark:bg-slate-800 p-1 rounded-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="新建会话">
+          <Plus class="w-5 h-5" />
+        </button>
+        <!-- 移动端关闭按钮：抽屉模式下侧边栏会遮住 Header 的菜单按钮，提供一个显式关闭入口 -->
+        <button @click="emit('close')" class="sm:hidden text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 dark:bg-slate-800 p-1 rounded-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="关闭侧边栏" aria-label="关闭侧边栏">
+          <X class="w-5 h-5" />
+        </button>
+      </div>
     </div>
     <div class="sidebar-content">
-      <div 
-        v-for="session in sortedSessions" 
+      <div
+        v-for="session in sortedSessions"
         :key="session.id"
         @click="emit('switch', session)"
         :class="['session-item group', { 'active': currentSessionId === session.id }]"
@@ -47,7 +53,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Plus, Trash2, Pin, MessageSquare, MoreHorizontal } from 'lucide-vue-next';
+import { Plus, Trash2, Pin, MessageSquare, MoreHorizontal, X } from 'lucide-vue-next';
 import type { AgentSession } from '@/api/agent';
 
 const props = defineProps<{
@@ -58,6 +64,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'create'): void;
+  (e: 'close'): void;
   (e: 'switch', session: AgentSession): void;
   (e: 'command', command: string, session: AgentSession): void;
 }>();
