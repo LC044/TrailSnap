@@ -149,16 +149,19 @@ def test_daily_rotating_handler_cleanup_deletes_oldest(tmp_path):
     deleted in chronological order. ``os.utime`` forces deterministic
     mtimes so the sort is reproducible across platforms."""
     import os
+    from datetime import timedelta
     handler = DailySizeRotatingFileHandler(
         filename="server",
         log_dir=str(tmp_path),
         maxBytes=1024,
         backupCount=2,
     )
-    # Five older files plus the one opened by the handler init.
+    # Five older files (week-old names) plus the one opened by the handler init.
     base = time.time() - 1000
+    today = date.today()
+    fixture_oldest = today - timedelta(days=7)
     for i in range(5):
-        p = tmp_path / f"server-2026-07-{i:02d}.log"
+        p = tmp_path / f"server-{fixture_oldest.year}-{fixture_oldest.month:02d}-{fixture_oldest.day + i:02d}.log"
         p.write_text("log", encoding="utf-8")
         os.utime(p, (base + i * 60, base + i * 60))
 
@@ -166,7 +169,10 @@ def test_daily_rotating_handler_cleanup_deletes_oldest(tmp_path):
 
     remaining = sorted(p.name for p in tmp_path.glob("*.log"))
     # backupCount=2 -> only the two newest (one we created, one the handler opened) survive.
-    assert remaining == ["server-2026-07-04.log", "server-2026-07-31.log"]
+    # newest of the five fixtures is index 4 (highest mtime); today is the handler init file.
+    newest_fixture = f"server-{fixture_oldest.year}-{fixture_oldest.month:02d}-{fixture_oldest.day + 4:02d}.log"
+    today_file = f"server-{today.year}-{today.month:02d}-{today.day:02d}.log"
+    assert remaining == [newest_fixture, today_file]
     handler.close()
 
 
