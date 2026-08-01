@@ -1,8 +1,14 @@
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
+import { useUiStore } from '@/stores/uiStore'
 
 export function useSelection() {
   const isSelectionMode = ref(false)
   const selectedIds = reactive(new Set<string>())
+
+  // 同步到全局 UI 状态：移动端底部 Tab 栏 / Agent FAB 在选择模式激活时隐藏，
+  // 避免与画廊底部批量操作条重叠。watch 可捕获直接对 isSelectionMode.value 赋值的路径。
+  const uiStore = useUiStore()
+  watch(isSelectionMode, (v) => uiStore.setSelectionActive(v))
 
   const enterSelectionMode = () => {
     isSelectionMode.value = true

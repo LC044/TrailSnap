@@ -294,7 +294,7 @@ import {
 import { useDebounceFn } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
 import searchService, { type SearchSuggestion } from '@/api/search'
-import { injectNavItems, type ResolvedNavItem } from '@/composables/useNavItems'
+import { injectNavItems, getNavIcon, getThumbnailUrl } from '@/composables/useNavItems'
 import NavAddDialog from '@/components/NavAddDialog.vue'
 import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
@@ -368,26 +368,6 @@ const openAddDialogFromCollapsed = () => {
   nextTick(() => {
     openAddDialog()
   })
-}
-
-const getNavIcon = (entityType: string) => {
-  const map: Record<string, any> = {
-    'album': Images,
-    'person': User,
-    'location': MapPin,
-    'classification': Tag
-  }
-  return map[entityType] || Bookmark
-}
-
-const getThumbnailUrl = (item: ResolvedNavItem) => {
-  if (item.entity_type === 'person' && item.cover_photo_id) {
-    return `/api/medias/${item.cover_photo_id}/thumbnail?size=medium`
-  }
-  if (item.cover_photo_id) {
-    return `/api/medias/${item.cover_photo_id}/thumbnail`
-  }
-  return ''
 }
 
 watch(() => store.currentContext, (ctx) => {

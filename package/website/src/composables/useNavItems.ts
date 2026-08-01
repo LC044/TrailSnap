@@ -1,5 +1,6 @@
 import { ref, provide, inject, type Ref, type InjectionKey, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { Images, User, MapPin, Tag, Bookmark } from 'lucide-vue-next'
 import { navApi, type NavItemRef, type ResolvedNavItem } from '@/api/nav'
 
 // --- Types ---
@@ -15,6 +16,30 @@ export interface NavItemsProvide {
   removeItem(entityType: string, entityId: string): Promise<void>
   addItem(ref: NavItemRef): Promise<void>
   isAdded(entityType: string, entityId: string): boolean
+}
+
+// --- 共享辅助：快捷访问项的图标与缩略图 ---
+
+/** 自定义导航项的实体类型 -> 图标组件（Sidebar / BottomNav 共用） */
+export const getNavIcon = (entityType: string) => {
+  const map: Record<string, any> = {
+    'album': Images,
+    'person': User,
+    'location': MapPin,
+    'classification': Tag
+  }
+  return map[entityType] || Bookmark
+}
+
+/** 自定义导航项的封面缩略图 URL（person 用 medium 尺寸，其余默认） */
+export const getThumbnailUrl = (item: ResolvedNavItem) => {
+  if (item.entity_type === 'person' && item.cover_photo_id) {
+    return `/api/medias/${item.cover_photo_id}/thumbnail?size=medium`
+  }
+  if (item.cover_photo_id) {
+    return `/api/medias/${item.cover_photo_id}/thumbnail`
+  }
+  return ''
 }
 
 // --- Cache ---

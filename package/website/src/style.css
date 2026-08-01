@@ -75,6 +75,8 @@ html.dark {
   --bg-color: #fafafa;
   --text-color: #333333;
   --accent-color: #4FC3F7;
+  /* 移动端底部 Tab 栏高度，供 <main> 底 padding 与 Agent FAB 定位引用 */
+  --ts-tabbar-h: 56px;
 }
 
 .dark {

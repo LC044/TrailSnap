@@ -112,19 +112,23 @@ export function computeBBox(features: any[], islandRatio = 0.05): BBox {
 /**
  * 基于包围盒创建投影器，让形状在 (canvasWidth x canvasHeight) 内等比居中。
  *
- * @param bbox    目标区域经纬度范围
- * @param width   画布宽度（CSS 像素）
- * @param height  画布高度（CSS 像素）
- * @param padding 四周留白（CSS 像素）
+ * @param bbox          目标区域经纬度范围
+ * @param width         画布宽度（CSS 像素）
+ * @param height        画布高度（CSS 像素）
+ * @param padding       上/左/右留白（CSS 像素）
+ * @param bottomPadding 底部留白（CSS 像素），默认等于 padding。
+ *                      移动端单省图传 peek 抽屉高度，让竖条形省份（陕西/甘肃）
+ *                      整体上移、底部预留抽屉遮挡区，避免主体被抽屉盖住。
  */
 export function createProjector(
   bbox: BBox,
   width: number,
   height: number,
-  padding = 24
+  padding = 24,
+  bottomPadding = padding
 ): Projector {
   const availW = Math.max(1, width - padding * 2)
-  const availH = Math.max(1, height - padding * 2)
+  const availH = Math.max(1, height - padding - bottomPadding)
 
   // 纬度中心用于经度方向的 cos 校正，使形状接近真实观感
   const centerLat = (bbox.minLat + bbox.maxLat) / 2
@@ -139,6 +143,7 @@ export function createProjector(
   const shapeW = spanLng * scale
   const shapeH = spanLat * scale
   const offsetX = padding + (availW - shapeW) / 2
+  // 在 [padding, height - bottomPadding] 区间内垂直居中
   const offsetY = padding + (availH - shapeH) / 2
 
   const project = (lng: number, lat: number): [number, number] => {

@@ -1,7 +1,8 @@
 <template>
-  <div class="flex flex-col md:flex-row w-full h-full">
-    <!-- 左侧地图区域 -->
-    <div class="flex-1 relative overflow-hidden shadow-sm h-[50vh] md:h-full">
+  <div class="flex flex-col md:flex-row w-full h-full relative">
+    <!-- 左侧地图区域（移动端撑满，抽屉浮于其上） -->
+    <!-- min-h-0 让 flex-1 在移动端 flex-col 下正确分配高度（见 LocationPuzzleView 同名注释） -->
+    <div class="flex-1 min-h-0 relative overflow-hidden shadow-sm md:h-full">
       <MapContainer
         ref="mapContainerRef"
         :level="level"
@@ -16,8 +17,26 @@
       />
     </div>
 
-    <!-- 右侧信息面板 -->
-    <div class="w-full md:w-80 lg:w-96 flex flex-col bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 h-[50vh] md:h-full z-10 transition-all duration-300">
+    <!-- 右侧信息面板：移动端为 fixed 底部抽屉（peek/expand），桌面端为侧栏 -->
+    <div
+      class="fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+env(safe-area-inset-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
+      :class="{ '!transition-none': isDragging }"
+      :style="isMobile ? { height: sheetHeight + 'px' } : {}"
+    >
+      <!-- 拖拽手柄区（仅移动端：点击切换 peek/expand，拖拽连续调高度） -->
+      <div
+        class="md:hidden shrink-0 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        @pointerdown="onHandlePointerDown"
+        @click="onHandleClick"
+        @keydown.enter="onHandleClick"
+        @keydown.space.prevent="onHandleClick"
+        role="button"
+        tabindex="0"
+        aria-label="拖动调整信息面板高度"
+      >
+        <div class="w-10 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+      </div>
+
       <el-scrollbar class="flex-1">
         <div class="p-4 md:p-6 space-y-8">
           
@@ -57,7 +76,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { locationService } from '@/api/location'
 import { albumService } from '@/api/album'
 import type { LocationStatistics, TimelineNode } from '@/types/location'
@@ -300,8 +319,76 @@ const clearSelection = () => {
   regionRecentVisits.value = []
 }
 
+/* ----------------------- 移动端底部抽屉：peek / expand ----------------------- */
+// 桌面端为侧栏（md:static md:h-full），sheetHeight 仅移动端生效（内联高度门控 isMobile）。
+const PEEK_H = 128                                   // 收起态：露手柄 + 标题 + 首张统计卡
+const expandedH = () => Math.min(                    // 展开态：~70vh，但至少留 header + 120px 地图可点
+  Math.round(window.innerHeight * 0.7),
+  window.innerHeight - 240
+)
+const sheetHeight = ref(PEEK_H)
+const isDragging = ref(false)
+let dragMoved = false
+let dragOrigin = { startY: 0, startH: 0 }
+
+const clampSheetH = (h: number) => Math.max(PEEK_H, Math.min(h, expandedH()))
+
+const onHandlePointerDown = (e: PointerEvent) => {
+  if (e.button !== 0) return
+  dragOrigin = { startY: e.clientY, startH: sheetHeight.value }
+  isDragging.value = true
+  dragMoved = false
+  window.addEventListener('pointermove', onHandlePointerMove)
+  window.addEventListener('pointerup', onHandlePointerUp)
+}
+
+const onHandlePointerMove = (e: PointerEvent) => {
+  if (!isDragging.value) return
+  const dy = e.clientY - dragOrigin.startY
+  if (Math.abs(dy) > 3) dragMoved = true
+  // 上拖 dy<0 → 高度增大（抽屉向上展开）
+  sheetHeight.value = clampSheetH(dragOrigin.startH - dy)
+}
+
+const onHandlePointerUp = () => {
+  isDragging.value = false
+  window.removeEventListener('pointermove', onHandlePointerMove)
+  window.removeEventListener('pointerup', onHandlePointerUp)
+  // 释放后按中点 snap 到最近档位
+  const mid = (PEEK_H + expandedH()) / 2
+  sheetHeight.value = sheetHeight.value > mid ? expandedH() : PEEK_H
+}
+
+const onHandleClick = () => {
+  // 拖动产生的位移不触发切换
+  if (dragMoved) return
+  sheetHeight.value = sheetHeight.value > PEEK_H + 1 ? PEEK_H : expandedH()
+}
+
+// 移动端判定（沿用 MainLayout 的 ref + resize 监听模式，仓内无响应式 isMobile 组合式）
+const isMobile = ref(false)
+const updateIsMobile = () => { isMobile.value = window.innerWidth < 768 }
+
+const onWindowResize = () => {
+  updateIsMobile()
+  if (isMobile.value) sheetHeight.value = clampSheetH(sheetHeight.value)
+}
+
+// 选中区块自动展开、清除自动收起（桌面端 sheetHeight 被 md:h-full 忽略，写入无害）
+watch(selectedRegion, (v) => {
+  if (isMobile.value) sheetHeight.value = v ? expandedH() : PEEK_H
+})
+
 onMounted(() => {
+  updateIsMobile()
+  window.addEventListener('resize', onWindowResize)
   fetchGlobalData()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', onWindowResize)
+  window.removeEventListener('pointermove', onHandlePointerMove)
+  window.removeEventListener('pointerup', onHandlePointerUp)
 })
 
 </script>
