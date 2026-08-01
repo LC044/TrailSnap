@@ -82,6 +82,11 @@ const isDark = isDarkMode
 let cachedMapData: { data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] } } | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 
+// 双击下钻检测：记录上一次单击的区块名与时间，用于区分「单击选中」与「双击进入下一级」
+let lastClickName = ''
+let lastClickTime = 0
+const DBL_CLICK_THRESHOLD = 350
+
 const handleZoom = (type: 'in' | 'out') => {
   if (!myMap) return
   const currentOption = myMap.getOption()
@@ -122,6 +127,10 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
   if (myMap) {
     myMap.dispose()
   }
+
+  // 地图重建后，上一次的点击记录失效，避免跨级别误判为双击
+  lastClickName = ''
+  lastClickTime = 0
 
   myMap = echarts.init(mapContainer.value)
   myMap.showLoading({
@@ -178,13 +187,33 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
     myMap.hideLoading()
 
     myMap.on('click', (params: any) => {
-      if (params.name) {
-        if (props.selectedRegion === params.name) {
-          clearSelection()
-          emit('select-region', '', 0) // emit empty string to signal clear
-        } else {
-          emit('select-region', params.name, params.value || 0)
+      if (!params.name) return
+      const name = params.name
+      const value = params.value || 0
+      const now = Date.now()
+
+      // 双击同一区块 → 下钻到下一级（等价于右侧「进入城市/区县地图」按钮）
+      const nextLevel = props.level === 'province' ? 'city' : props.level === 'city' ? 'district' : null
+      if (nextLevel && lastClickName === name && now - lastClickTime < DBL_CLICK_THRESHOLD) {
+        lastClickName = ''
+        lastClickTime = 0
+        // 首次点击若落在已选区块上会触发「取消选中」，此处需重新选中，
+        // 以保证下钻后右侧仍展示该区域详情（与「先单击选中再点进入按钮」的既有路径一致）
+        if (props.selectedRegion !== name) {
+          emit('select-region', name, value)
         }
+        emit('change-level', nextLevel, { zoom: 0.9, center: [], parentRegion: name })
+        return
+      }
+
+      // 普通单击：选中或取消选中
+      lastClickName = name
+      lastClickTime = now
+      if (props.selectedRegion === name) {
+        clearSelection()
+        emit('select-region', '', 0) // emit empty string to signal clear
+      } else {
+        emit('select-region', name, value)
       }
     })
 
