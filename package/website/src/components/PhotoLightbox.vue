@@ -88,6 +88,9 @@
         </div>
       </div>
 
+      <!-- Feature pages can add compact contextual information without forking the lightbox. -->
+      <slot name="context-overlay"></slot>
+
       <!-- Photo Editor (replaces viewer when editing) -->
       <PhotoEditor
         v-if="isEditing && image"

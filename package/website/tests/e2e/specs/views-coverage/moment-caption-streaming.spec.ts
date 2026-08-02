@@ -193,14 +193,22 @@ test.describe("朋友圈 · photo_time 按墙上时间归日 @moments-timezone",
     ).toBeVisible({ timeout: 10_000 })
 
     // 断言 2：点击"AI 生成"，服务端接收的 day 参数是 2025-08-05
-    await page.locator('button:has-text("AI 生成")').first().click({ force: true })
-
-    // 等 generate 响应返回（capturedBody 在 route handler 里、fulfill 之前赋值）；
-    // 不依赖 SSE 文案渲染，避免 mocked event-stream 在 docker 下抖动
-    await page.waitForResponse(
+    const dayBlock = page.locator(".day-block").first()
+    await dayBlock.hover()
+    const generateButton = dayBlock.getByRole("button", {
+      name: "AI 生成",
+      exact: true,
+    })
+    await expect(generateButton).toBeVisible()
+    const generateResponse = page.waitForResponse(
       (r) => r.url().includes("/api/moments/day-captions/generate"),
       { timeout: 15_000 }
     )
+    await generateButton.click()
+
+    // 等 generate 响应返回（capturedBody 在 route handler 里、fulfill 之前赋值）；
+    // 不依赖 SSE 文案渲染，避免 mocked event-stream 在 docker 下抖动
+    await generateResponse
 
     expect(capturedBody).toBeTruthy()
     // 关键断言：day 一定是 2025-08-05，绝不能因时区偏移到 08-04 / 08-06

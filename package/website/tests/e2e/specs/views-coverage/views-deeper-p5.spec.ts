@@ -304,13 +304,15 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     await expect(page.getByText("初稿：随便写点什么。")).toBeVisible({ timeout: 10_000 })
 
     // 点「编辑」按钮 -> 出现 textarea
-    await page.locator('button:has-text("编辑")').first().click({ force: true })
-    const textarea = page.locator("textarea").first()
+    const dayBlock = page.locator(".day-block").first()
+    await dayBlock.hover()
+    await dayBlock.getByRole("button", { name: "编辑", exact: true }).click()
+    const textarea = dayBlock.locator("textarea")
     await expect(textarea).toBeVisible({ timeout: 5_000 })
     await textarea.fill("手写的一句：夜里的江面比白天更沉。")
 
     // 保存
-    await page.locator('button:has-text("保存")').first().click()
+    await dayBlock.getByRole("button", { name: "保存", exact: true }).click()
 
     // DOM 应更新为新文案
     await expect(page.getByText("手写的一句：夜里的江面比白天更沉。")).toBeVisible({ timeout: 10_000 })
@@ -359,13 +361,14 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     // 点「清除」并等待 DELETE 落地（替代旧版 expect.poll(deleteHit, 5s)；
     // 旧版本在 docker CI 高负载下 5s 内偶发不触发是因为 click 较慢，
     // 改用 waitForResponse(15s) 更稳健，与 moment-caption-streaming 用法一致）
-    await page.locator('button:has-text("清除")').first().click({ force: true })
-    await page.waitForResponse(
+    const deleteResponse = page.waitForResponse(
       (r) =>
         r.url().includes("/api/moments/day-captions/2025-08-05") &&
         r.request().method() === "DELETE",
       { timeout: 15_000 }
     )
+    await page.locator('button:has-text("清除")').first().click({ force: true })
+    await deleteResponse
     await expect(
       page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
     ).toBeVisible({ timeout: 10_000 })

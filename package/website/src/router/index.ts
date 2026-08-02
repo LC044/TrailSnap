@@ -17,6 +17,7 @@ const LocationList = () => import('@/views/album/location/LocationList.vue');
 const LocationDetail = () => import('@/views/album/location/LocationDetail.vue');
 const ClassificationList = () => import('@/views/album/intelligent-classification/ClassificationList.vue');
 const ClassificationDetail = () => import('@/views/album/intelligent-classification/ClassificationDetail.vue');
+const MoonJournal = () => import('@/views/moon/MoonJournal.vue');
 const SearchResult = () => import('@/views/search/SearchResult.vue');
 const MobileSearch = () => import('@/views/search/MobileSearch.vue');
 const CleanupPage = () => import('@/views/toolbox/CleanupPage.vue');
@@ -54,6 +55,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/album/location/:name', name: 'LocationDetail', component: LocationDetail, meta: { title: '位置详情' } },
       { path: '/album/classification', name: 'ClassificationList', component: ClassificationList, meta: { title: '智能分类' } },
       { path: '/album/classification/:name', name: 'ClassificationDetail', component: ClassificationDetail, meta: { title: '分类详情' } },
+      { path: '/moon', name: 'MoonJournal', component: MoonJournal, meta: { title: '月迹' } },
       { path: '/search', name: 'SearchResult', component: SearchResult, meta: { title: '搜索结果' } },
       { path: '/toolbox', name: 'Toolbox', component: ToolboxPage, meta: { title: '工具箱' } },
       { path: '/toolbox/similar', name: 'SimilarPhotoCleanup', component: SimilarPhotoCleanup, meta: { title: '相似照片清理' } },
