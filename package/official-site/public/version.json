@@ -98,5 +98,10 @@
         "version": "0.9.0",
         "update_info": "- 新增朋友圈日记 AI 文案、每日地点与照片高光<br>- 新增位置相册拼图视图，支持全国/省份浏览、手动选片与相似照片去重<br>- 移动端新增底部 Tab 导航、地图/拼图手势操作与 Agent 抽屉<br>- 优化 Docker 部署与 AI 服务监控<br>- 修复时区聚合、移动端拼图空白、位置解析和图库管理等问题",
         "download_url": "https://trailsnap.cn"
+    },
+    {
+        "version": "0.9.1",
+        "update_info": "- 新增 Android/iOS App 工程，支持配置自托管 Server 地址<br>- 新增 PWA 安装支持和 APK 自动发布<br>- 优化 Android 返回键与手势体验<br>- 朋友圈 AI 文案支持实时展示思考过程<br>- 统一 App、CLI 与 GitHub Release 发布流程",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.9.1"
     }
 ]

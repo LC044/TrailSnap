@@ -65,7 +65,7 @@ pnpm android:build
 ```
 
 APK 同时输出到 `android/app/build/outputs/apk/debug/app-debug.apk` 和
-`artifacts/TrailSnap-0.9.0-debug.apk`。iOS 工程位于 `ios/App`，
+`artifacts/TrailSnap-0.9.1-debug.apk`。iOS 工程位于 `ios/App`，
 需在 macOS + Xcode 上签名和构建。
 
 GitHub Actions 会在手动运行 `Build Mobile App`、提交信息包含 `构建app`，或推送

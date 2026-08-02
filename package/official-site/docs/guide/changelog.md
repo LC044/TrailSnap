@@ -1,5 +1,25 @@
 # 更新日志
 
+## 2026-08-02 (0.9.1)
+
+### 新增功能
+
+- 新增基于 Capacitor 的 Android/iOS App 工程，支持在首次启动时填写并保存自托管 TrailSnap Server 地址
+- 新增 Android APK 自动构建，推送 `v*.*.*` 标签后会将安装包与 CLI 产物上传到同一个 GitHub Release
+- Web 前端新增 PWA 支持，可安装到桌面或手机主屏幕，并优化离线资源与刷新体验
+- 朋友圈 AI 文案生成支持实时展示思考过程
+
+### 优化功能
+
+- 优化 Android 返回键和返回手势：优先关闭弹窗或返回上一级，在首页时切换到后台而不是直接退出
+- 统一 App 与 CLI 发布规则：手动构建只保留 Actions Artifacts，正式版本标签才创建或更新 Release
+- 官网新增移动 App 安装、Server 地址配置、更新与隐私安全说明
+
+### Bug 修复
+
+- 修复 Linux GitHub Runner 无法执行 Android Gradle Wrapper 的权限问题
+- 修复 PWA 刷新和分支镜像标签相关问题
+
 ## 2026-08-02 (0.9.0)
 
 ### 新增功能
