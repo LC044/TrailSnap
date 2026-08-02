@@ -62,6 +62,7 @@ export default defineConfig({
           '/docs/guide/': [
             { text: '概览', link: '/docs/guide/overview' },
             { text: '安装指南', link: '/docs/guide/install' },
+            { text: '移动 App', link: '/docs/guide/mobile-app' },
             {
               text: 'Docker 部署',
               collapsed: true,
@@ -186,6 +187,7 @@ export default defineConfig({
               items: [
                 { text: 'Overview', link: '/en/docs/guide/overview' },
                 { text: 'Installation', link: '/en/docs/guide/install' },
+                { text: 'Mobile App', link: '/en/docs/guide/mobile-app' },
                 {
                   text: 'Docker Deployment',
                   collapsed: true,

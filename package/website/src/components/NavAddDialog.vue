@@ -20,7 +20,7 @@
             :class="{ 'opacity-50 cursor-default': isNavAdded('album', album.id) }"
           >
             <div class="w-9 h-9 rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-600 shrink-0">
-              <img v-if="album.cover?.id" :src="`/api/medias/${album.cover.id}/thumbnail`" class="w-full h-full object-cover" loading="lazy" />
+              <img v-if="album.cover?.id" :src="toServerUrl(`/api/medias/${album.cover.id}/thumbnail`)" class="w-full h-full object-cover" loading="lazy" />
               <Images v-else class="w-5 h-5 m-auto text-slate-400 mt-2" />
             </div>
             <span class="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{{ album.name }}</span>
@@ -42,7 +42,7 @@
             :class="{ 'opacity-50 cursor-default': isNavAdded('person', person.id) }"
           >
             <div class="w-9 h-9 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-600 shrink-0">
-              <img v-if="person.cover_photo?.photo_id" :src="`/api/medias/${person.cover_photo.photo_id}/thumbnail?size=medium`" class="w-full h-full object-cover" loading="lazy" />
+              <img v-if="person.cover_photo?.photo_id" :src="toServerUrl(`/api/medias/${person.cover_photo.photo_id}/thumbnail?size=medium`)" class="w-full h-full object-cover" loading="lazy" />
               <User v-else class="w-5 h-5 m-auto text-slate-400 mt-2" />
             </div>
             <span class="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{{ person.identity_name }}</span>
@@ -64,7 +64,7 @@
             :class="{ 'opacity-50 cursor-default': isNavAdded('location', loc.name) }"
           >
             <div class="w-9 h-9 rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-600 shrink-0">
-              <img v-if="loc.cover?.id" :src="`/api/medias/${loc.cover.id}/thumbnail`" class="w-full h-full object-cover" loading="lazy" />
+              <img v-if="loc.cover?.id" :src="toServerUrl(`/api/medias/${loc.cover.id}/thumbnail`)" class="w-full h-full object-cover" loading="lazy" />
               <MapPin v-else class="w-5 h-5 m-auto text-slate-400 mt-2" />
             </div>
             <span class="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{{ loc.name }}</span>
@@ -86,7 +86,7 @@
             :class="{ 'opacity-50 cursor-default': isNavAdded('classification', tag.id) }"
           >
             <div class="w-9 h-9 rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-600 shrink-0">
-              <img v-if="tag.cover?.id" :src="`/api/medias/${tag.cover.id}/thumbnail`" class="w-full h-full object-cover" loading="lazy" />
+              <img v-if="tag.cover?.id" :src="toServerUrl(`/api/medias/${tag.cover.id}/thumbnail`)" class="w-full h-full object-cover" loading="lazy" />
               <TagIcon v-else class="w-5 h-5 m-auto text-slate-400 mt-2" />
             </div>
             <span class="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{{ tag.tag_name }}</span>
@@ -110,6 +110,7 @@ import { locationService } from '@/api/location'
 import type { Location } from '@/types/location'
 import { classificationService, type TagStats } from '@/api/classification'
 import { injectNavItems, type NavEntityType } from '@/composables/useNavItems'
+import { toServerUrl } from '@/config/server'
 
 defineProps<{ visible: boolean }>()
 defineEmits<{ 'update:visible': [value: boolean] }>()

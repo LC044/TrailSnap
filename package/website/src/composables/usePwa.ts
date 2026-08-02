@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue'
+import { isNativeApp } from '@/config/server'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -27,6 +28,7 @@ window.addEventListener('appinstalled', () => {
 })
 
 export function registerPwa() {
+  if (isNativeApp()) return
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
 
   window.addEventListener('load', async () => {

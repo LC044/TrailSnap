@@ -1,0 +1,121 @@
+name: Build Mobile App
+
+on:
+  push:
+    branches: [ "master" ]
+    tags: [ "app-v*.*.*" ]
+    paths:
+      - 'package/website/**'
+      - '.github/workflows/build-mobile-app.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '构建后是否创建 GitHub prerelease'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build-android-apk:
+    name: Build Android debug APK
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/app-v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: package/website
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: package/website/pnpm-lock.yaml
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build APK
+        run: pnpm android:build
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrailSnap-${{ steps.version.outputs.version }}-android-debug
+          path: package/website/artifacts/TrailSnap-${{ steps.version.outputs.version }}-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  create-prerelease:
+    name: Publish APK prerelease
+    needs: build-android-apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/app-v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read release tag
+        id: release
+        working-directory: package/website
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/app-v* ]]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="app-v$VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: TrailSnap-*-android-debug
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create or update GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          name: TrailSnap App v${{ steps.release.outputs.version }}
+          prerelease: true
+          generate_release_notes: true
+          files: artifacts/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

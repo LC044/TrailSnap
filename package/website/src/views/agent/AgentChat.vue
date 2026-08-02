@@ -106,6 +106,7 @@ import AgentSidebar from './components/AgentSidebar.vue';
 import AgentHeader from './components/AgentHeader.vue';
 import AgentMessageItem from './components/AgentMessageItem.vue';
 import AgentInput from './components/AgentInput.vue';
+import { getServerUrl } from '@/config/server';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -389,7 +390,7 @@ const getCorrectImageUrl = (src: string) => {
   if (!src) return '';
   if (src.startsWith('http') || src.startsWith('data:')) return src;
 
-  let baseUrl = import.meta.env.VITE_API_BASE_URL || '';
+  let baseUrl = getServerUrl();
   if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.slice(0, -1);
   }

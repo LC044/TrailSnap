@@ -10,13 +10,24 @@ import './style.css'
 import App from './App.vue'
 import router from '@/router';
 import { registerPwa } from '@/composables/usePwa'
-const app = createApp(App);
-// 2. 创建 Pinia 实例
-const pinia = createPinia()
-app.use(pinia)  // 关键步骤：激活 Pinia
-app.use(router);
-app.use(ElementPlus)
-app.mount('#app');
+import { initializeServerConfig, isNativeApp } from '@/config/server'
+import { registerNativeBackButton } from '@/composables/useNativeBackButton'
 
-registerPwa()
+async function bootstrap() {
+  await initializeServerConfig()
+  document.documentElement.classList.toggle('capacitor-native', isNativeApp())
+  const app = createApp(App);
+  // 2. 创建 Pinia 实例
+  const pinia = createPinia()
+  app.use(pinia)  // 关键步骤：激活 Pinia
+  app.use(router);
+  app.use(ElementPlus)
+  app.mount('#app');
+
+  await router.isReady()
+  await registerNativeBackButton(router)
+  registerPwa()
+}
+
+void bootstrap()
 

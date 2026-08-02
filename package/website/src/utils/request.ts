@@ -8,6 +8,7 @@ import axios, {
 import { ElMessage } from 'element-plus';
 import router from '@/router';
 import { useUserStore } from '@/stores/user';
+import { getServerUrl, hasConfiguredServer, isNativeApp } from '@/config/server';
 
 // 创建 Axios 实例（类型不变）
 const service: AxiosInstance = axios.create({
@@ -35,6 +36,10 @@ const service: AxiosInstance = axios.create({
 service.interceptors.request.use(
   // 1. 参数类型改为 InternalAxiosRequestConfig
   (config: InternalAxiosRequestConfig) => {
+    if ((isNativeApp() || hasConfiguredServer()) && getServerUrl()) {
+      config.baseURL = getServerUrl();
+      if (config.url) config.url = config.url.replace(/^\/api(?=\/|$)/, '');
+    }
     // 2. 处理 headers 可选性：确保 headers 存在（避免 undefined 报错）
     const headers = config.headers as AxiosRequestHeaders; // 类型断言（或用可选链）
     

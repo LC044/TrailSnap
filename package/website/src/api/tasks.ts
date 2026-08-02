@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+import { toServerUrl } from '@/config/server';
 
 export interface Task {
   id: string
@@ -15,19 +16,16 @@ export interface Task {
   owner_id?: string | null
 }
 
-const SSE_BASE = (import.meta.env.VITE_API_BASE_URL ?? '') || '';
-
 /**
  * Build the URL for the task-event SSE stream. EventSource cannot set
  * headers, so we pass the JWT as a query param. The backend accepts both
  * `Authorization: Bearer <token>` and `?token=<token>`.
  */
 export function buildTaskEventsUrl(token: string | null | undefined): string {
-  const base = SSE_BASE || '';
   const params = new URLSearchParams();
   if (token) params.set('token', token);
   const qs = params.toString();
-  return `${base}/api/tasks/events${qs ? '?' + qs : ''}`;
+  return `${toServerUrl('/api/tasks/events')}${qs ? '?' + qs : ''}`;
 }
 
 export const tasksApi = {

@@ -1,0 +1,7 @@
+allowBuilds:
+  canvas: true
+  core-js: true
+  es5-ext: true
+  esbuild: true
+  sharp: true
+  vue-demi: true
