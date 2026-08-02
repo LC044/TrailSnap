@@ -89,6 +89,10 @@ const fetchTags = async () => {
 }
 
 const goToTag = (name: string) => {
+  if (['月亮', 'moon'].includes(name.trim().toLowerCase())) {
+    router.push({ name: 'MoonJournal' })
+    return
+  }
   router.push({
     name: 'ClassificationDetail',
     params: { name: name }
