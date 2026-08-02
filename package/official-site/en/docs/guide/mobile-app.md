@@ -18,7 +18,7 @@ recommended.
 ## Install on Android
 
 1. Open the project's [GitHub Releases](https://github.com/LC044/TrailSnap/releases).
-2. Find a release named `TrailSnap App` or with a tag beginning with `app-v`.
+2. Find the required stable release (tags use the `v*.*.*` format, for example `v0.9.1`).
 3. Download the APK from **Assets**. Early test packages may include `debug` in the file name.
 4. Open the APK and allow your browser or file manager to install unknown apps when Android asks.
 5. Open TrailSnap after installation.

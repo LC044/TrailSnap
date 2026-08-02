@@ -149,7 +149,7 @@ FastAPI 服务**并不是**单进程。`app/main.py` 的 lifespan 会通过 `app
   - `构建后端` —— 触发 **Server** Docker 构建与推送（`.github/workflows/docker-build-push-server.yml`），仅当 `package/server/` 下的文件发生变化时生效。
   - `构建前端` —— 触发 **Frontend** Docker 构建与推送（`.github/workflows/docker-build-push-frontend.yml`），仅当 `package/website/` 下的文件发生变化时生效。
   - `构建ai` —— 触发 **AI 服务** Docker 构建与推送（`.github/workflows/docker-build-push-ai.yml`），仅当 `package/ai/` 下的文件发生变化时生效。
-  - `构建cli` —— 触发 **CLI** 二进制构建与 npm 发布（`.github/workflows/build-publish-cli.yml`），仅当 `package/trailsnap-cli/` 下的文件发生变化时生效。
+  - `构建cli` —— 触发 **CLI** 二进制构建并将产物保留在 Actions Artifacts（`.github/workflows/build-publish-cli.yml`），仅当 `package/trailsnap-cli/` 下的文件发生变化时生效；只有推送 `v*.*.*` 标签才会创建 Release 并发布 npm/PyPI。
   - **原则**：只有用户明确要求时才加上。
 - **PR 模板**：见 `.github/pull_request_template.md`。在 PR 评论中需要确认 CLA（“I have read and agree to the CLA”，基于 AGPLv3）。
 - **push规则**：

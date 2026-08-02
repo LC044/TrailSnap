@@ -8,16 +8,14 @@ on:
       - 'package/trailsnap-cli/**'
       - '.github/workflows/build-publish-cli.yml'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: '构建后是否发布（创建 GitHub Release + 推送 PyPI/npm）'
-        required: false
-        default: false
-        type: boolean
+
+concurrency:
+  group: ${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.ref_name) || format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: false
 
 jobs:
   build-binaries:
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建cli') || github.event_name == 'workflow_dispatch'
     name: Build binaries on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -78,17 +76,12 @@ jobs:
   create-release:
     needs: build-binaries
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Get Version
-        id: get_version
-        working-directory: package/trailsnap-cli
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=v$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -99,8 +92,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_version.outputs.version }}
-          name: Release ${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
           files: artifacts/*
@@ -110,7 +103,7 @@ jobs:
   publish-pypi:
     needs: create-release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -135,7 +128,7 @@ jobs:
   publish-npm:
     needs: create-release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建cli') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

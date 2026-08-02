@@ -69,8 +69,8 @@ APK 同时输出到 `android/app/build/outputs/apk/debug/app-debug.apk` 和
 需在 macOS + Xcode 上签名和构建。
 
 GitHub Actions 会在手动运行 `Build Mobile App`、提交信息包含 `构建app`，或推送
-`app-v*.*.*` 标签时构建 APK。手动运行时勾选 `publish`，或使用关键字/标签触发，
-会同时创建带 APK 的 GitHub prerelease。
+`v*.*.*` 标签时构建 APK。只有版本标签会把 APK 追加到同标签的正式 GitHub Release；
+手动运行和提交关键字触发的安装包只保留在对应 Actions 运行的 Artifacts 中。
 
 ## 环境变量（暂不需要）
 

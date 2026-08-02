@@ -3,23 +3,21 @@ name: Build Mobile App
 on:
   push:
     branches: [ "master" ]
-    tags: [ "app-v*.*.*" ]
+    tags: [ "v*.*.*" ]
     paths:
       - 'package/website/**'
       - '.github/workflows/build-mobile-app.yml'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: '构建后是否创建 GitHub prerelease'
-        required: false
-        default: false
-        type: boolean
+
+concurrency:
+  group: ${{ startsWith(github.ref, 'refs/tags/v') && format('release-{0}', github.ref_name) || format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: false
 
 jobs:
   build-android-apk:
     name: Build Android debug APK
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/app-v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || github.event_name == 'workflow_dispatch'
     defaults:
       run:
         working-directory: package/website
@@ -61,11 +59,21 @@ jobs:
       - name: Build APK
         run: pnpm android:build
 
-      - name: Read app version
+      - name: Prepare APK artifact
         id: version
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$PACKAGE_VERSION"
+          fi
+          SOURCE="artifacts/TrailSnap-$PACKAGE_VERSION-debug.apk"
+          TARGET="artifacts/TrailSnap-$VERSION-debug.apk"
+          if [[ "$SOURCE" != "$TARGET" ]]; then
+            mv "$SOURCE" "$TARGET"
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
@@ -76,31 +84,17 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  create-prerelease:
-    name: Publish APK prerelease
+  create-release:
+    name: Add APK to GitHub release
     needs: build-android-apk
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    if: startsWith(github.ref, 'refs/tags/app-v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Read release tag
-        id: release
-        working-directory: package/website
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          if [[ "$GITHUB_REF" == refs/tags/app-v* ]]; then
-            TAG="$GITHUB_REF_NAME"
-          else
-            TAG="app-v$VERSION"
-          fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Download APK artifact
         uses: actions/download-artifact@v4
@@ -109,12 +103,12 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Create or update GitHub prerelease
+      - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release.outputs.tag }}
-          name: TrailSnap App v${{ steps.release.outputs.version }}
-          prerelease: true
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          prerelease: false
           generate_release_notes: true
           files: artifacts/*.apk
         env:

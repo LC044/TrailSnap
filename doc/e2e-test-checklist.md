@@ -340,7 +340,7 @@
 - [ ] **后端 Docker 构建**：commit 含 "构建后端" 触发 `.github/workflows/docker-build-push-server.yml`，镜像推送到 Docker Hub。
 - [ ] **前端 Docker 构建**：commit 含 "构建前端" 触发 `docker-build-push-frontend.yml`。
 - [ ] **AI Docker 构建**：commit 含 "构建ai" / "构建AI" 触发 `docker-build-push-ai.yml`（matrix: CPU/GPU）。
-- [ ] **CLI npm 发布**：commit 含 "构建cli" 触发 `build-publish-cli.yml`，发布到 npm。
+- [ ] **CLI 构建**：commit 含 "构建cli" 触发 `build-publish-cli.yml`，产物保留在 Actions Artifacts；推送 `v*.*.*` 标签时才发布到 Release、npm 和 PyPI。
 - [ ] **E2E CI**：commit 含 "执行测试" 触发 `e2e-system-tests.yml`，Playwright 20min timeout。
 - [ ] **Tag 触发**：push `v*.*.*` tag 触发所有构建/发布流水线。
 - [ ] **AI GPU 镜像**：`Dockerfile.gpu`（CUDA 12.8）正确构建并启动。

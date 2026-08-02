@@ -17,7 +17,7 @@ TrailSnap App 是 Web 版的移动端原生容器，使用 Capacitor 构建。�
 ## Android 安装
 
 1. 打开项目的 [GitHub Releases](https://github.com/LC044/TrailSnap/releases)。
-2. 找到名称以 `TrailSnap App` 或标签以 `app-v` 开头的版本。
+2. 找到所需的正式版本（标签格式为 `v*.*.*`，例如 `v0.9.1`）。
 3. 在 **Assets** 中下载 APK。早期测试包的文件名可能带有 `debug`。
 4. 在手机上打开 APK，并按系统提示允许浏览器或文件管理器“安装未知应用”。
 5. 安装完成后打开 TrailSnap。
