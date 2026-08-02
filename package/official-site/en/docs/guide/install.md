@@ -19,6 +19,9 @@ If you have never used Docker and are using Windows, it is recommended to read t
 
 - [Docker Deployment (Windows)](/en/docs/guide/docker/windows)
 
+After deploying the server, you can also use TrailSnap on your phone. See the
+[Mobile App Guide](/en/docs/guide/mobile-app) for installation and server configuration.
+
 ### One-Click Install Script (Recommended)
 
 TrailSnap provides a one-click installation script that automatically handles Docker installation, mirror configuration, and service deployment — no manual configuration files needed.

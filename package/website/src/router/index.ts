@@ -1,5 +1,6 @@
 // src/router/index.ts
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
+import { hasConfiguredServer, isNativeApp } from '@/config/server';
 
 // 路由懒加载（优化首屏性能，TS 自动推断类型）
 const HomePage = () => import('@/views/HomePage.vue');
@@ -31,6 +32,13 @@ const SwipeFilter = () => import('@/views/toolbox/SwipeFilter.vue');
 
 // 路由配置：TS 类型为 RouteRecordRaw 数组，强制类型校验
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/server-settings',
+    name: 'ServerSettings',
+    component: () => import('@/views/ServerSettings.vue'),
+    meta: { layout: 'blank', title: '服务器设置' },
+  },
+
   // 主布局组：所有子页面都使用 MainLayout
   {
     path: '/',
@@ -130,7 +138,12 @@ router.beforeEach((to, from, next) => {
   }
 
   const userStore = useUserStore();
-  const whiteList = ['/login', '/register', '/forgot-password', '/404'];
+  const whiteList = ['/login', '/register', '/forgot-password', '/server-settings', '/404'];
+
+  if (isNativeApp() && !hasConfiguredServer() && to.path !== '/server-settings') {
+    next({ path: '/server-settings', query: { redirect: to.fullPath } });
+    return;
+  }
 
   if (userStore.token) {
     if (to.path === '/login') {

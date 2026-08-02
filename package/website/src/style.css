@@ -117,7 +117,8 @@ a:hover {
 
 body {
   margin: 0;
-  padding: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  box-sizing: border-box;
   /* overflow: hidden; */
   display: flex;
   place-items: center;
@@ -136,7 +137,7 @@ body {
   color: var(--text-color);
   transition: background-color 0.3s, color 0.3s;
   min-height: 100vh;
-  width: 100vw;
+  width: 100%;
   margin: 0 auto;
   padding: 0rem;
   /* display: flex; */
@@ -144,6 +145,12 @@ body {
   justify-content: center;
   align-items: center;
   /* text-align: center; */
+}
+
+/* The main layout uses h-screen. Compensate for the top safe-area padding
+   applied to body so a native WebView never becomes taller than its viewport. */
+html.capacitor-native .h-screen {
+  height: calc(100dvh - env(safe-area-inset-top));
 }
 
 /* 页面过渡动画 (从 MainLayout.vue 移动过来) */

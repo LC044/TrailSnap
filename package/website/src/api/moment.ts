@@ -134,8 +134,8 @@ export const momentApi = {
     const userStore = (await import('@/stores/user')).useUserStore();
     const token = userStore.token;
 
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
-    const url = `${baseUrl}/api/moments/day-captions/generate`;
+    const { toServerUrl } = await import('@/config/server');
+    const url = toServerUrl('/api/moments/day-captions/generate');
 
     const body = {
       timezone: getBrowserTimezone(),

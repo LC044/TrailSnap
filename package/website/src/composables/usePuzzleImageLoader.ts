@@ -9,6 +9,7 @@
  */
 
 import { onUnmounted, ref } from 'vue'
+import { toServerUrl } from '@/config/server'
 
 export interface ImageLoaderOptions {
   /** 并发上限 */
@@ -59,7 +60,7 @@ export function usePuzzleImageLoader(options: ImageLoaderOptions = {}) {
       // 同源请求（Vite /api 代理），无需 crossOrigin；
       // 但显式声明可避免未来接入 CDN 时 canvas 被污染。
       img.decoding = 'async'
-      img.src = `/api/medias/${photoId}/thumbnail?size=${size}`
+      img.src = toServerUrl(`/api/medias/${photoId}/thumbnail?size=${size}`)
 
       const finalize = (ok: boolean) => {
         active--

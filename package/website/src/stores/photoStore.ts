@@ -6,6 +6,7 @@ import { ref, reactive, watch } from 'vue'
 import { albumService } from '@/api/album'
 import searchService, { type TextSearchRequest } from '@/api/search'
 import type { Photo, TimelineStats, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
+import { toServerUrl } from '@/config/server'
 
 // --- 缓存工具 ---
 const CACHE_PREFIX = 'trailsnap:';
@@ -69,10 +70,10 @@ const formatDuration = (duration: number | null) => {
 
 export const mapPhotoToImage = (photo: Photo): AlbumImage => {
     // 新 API 在 url 和 thumbnail_url 字段中返回相对地址
-    const url = `/api/medias/${photo.id}/file`;
-    const thumbnail = `/api/medias/${photo.id}/thumbnail`;
+    const url = toServerUrl(`/api/medias/${photo.id}/file`);
+    const thumbnail = toServerUrl(`/api/medias/${photo.id}/thumbnail`);
     // const thumbnail = `https://picsum.photos/seed/${photo.id}/400/600`
-    const preview = `/api/medias/${photo.id}/thumbnail?size=medium`;
+    const preview = toServerUrl(`/api/medias/${photo.id}/thumbnail?size=medium`);
 
     // 优先使用 photo_time，其次 upload_time，最后取当前时间
     let timestamp = Date.now();
@@ -90,7 +91,7 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
     // Construct live photo video URL if applicable
     let live_photo_video_url = undefined;
     if (photo.file_type === 'live_photo') {
-        live_photo_video_url = `/api/medias/${photo.id}/video`;
+        live_photo_video_url = toServerUrl(`/api/medias/${photo.id}/video`);
     }
 
     return {

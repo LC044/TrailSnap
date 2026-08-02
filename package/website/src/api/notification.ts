@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+import { toServerUrl } from '@/config/server';
 
 export type NotificationType = 'TASK' | 'UPDATE' | 'SYSTEM';
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error';
@@ -28,8 +29,6 @@ export interface NotificationCreateInput {
   broadcast?: boolean;
 }
 
-const SSE_BASE = (import.meta.env.VITE_API_BASE_URL ?? '') || '';
-
 /**
  * Build the URL for the notification SSE stream. EventSource cannot set
  * headers, so we pass the JWT as a query param — same pattern as the task
@@ -37,11 +36,10 @@ const SSE_BASE = (import.meta.env.VITE_API_BASE_URL ?? '') || '';
  * and `notification.*` (persisted) events.
  */
 export function buildNotificationsEventsUrl(token: string | null | undefined): string {
-  const base = SSE_BASE || '';
   const params = new URLSearchParams();
   if (token) params.set('token', token);
   const qs = params.toString();
-  return `${base}/api/notifications/events${qs ? '?' + qs : ''}`;
+  return `${toServerUrl('/api/notifications/events')}${qs ? '?' + qs : ''}`;
 }
 
 export const notificationsApi = {

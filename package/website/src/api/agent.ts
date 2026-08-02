@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+import { toServerUrl } from '@/config/server';
 
 export interface ChatRequest {
   message: string;
@@ -56,8 +57,7 @@ export const agentApi = {
     const userStore = (await import('@/stores/user')).useUserStore();
     const token = userStore.token;
     
-    const baseUrl = import.meta.env.VITE_API_BASE_URL || '';
-    const url = `${baseUrl}/api/agent/chat`;
+    const url = toServerUrl('/api/agent/chat');
 
     const response = await fetch(url, {
       method: 'POST',

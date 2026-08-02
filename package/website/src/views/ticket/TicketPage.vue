@@ -165,6 +165,7 @@ import FlightTicketFormModal from '@/components/FlightTicketFormModal.vue';
 import TrainTicket from '@/components/TrainTicket.vue';
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import type { AlbumImage } from '@/types/album';
+import { toServerUrl } from '@/config/server';
 
 const { isDarkMode, currentTheme } = injectTheme();
 const ticketStore = useTicketStore();
@@ -557,9 +558,9 @@ const openPhotoLightbox = (ticket: TicketFrontend) => {
   if (!ticket.photo_id) return;
   currentPhoto.value = {
     id: ticket.photo_id,
-    url: `/api/medias/${ticket.photo_id}/file`,
-    thumbnail: `/api/medias/${ticket.photo_id}/thumbnail`,
-    preview: `/api/medias/${ticket.photo_id}/thumbnail?size=medium`,
+    url: toServerUrl(`/api/medias/${ticket.photo_id}/file`),
+    thumbnail: toServerUrl(`/api/medias/${ticket.photo_id}/thumbnail`),
+    preview: toServerUrl(`/api/medias/${ticket.photo_id}/thumbnail?size=medium`),
     srcset: '',
     timestamp: new Date(ticket.dateTime).getTime(),
     albumIds: [],

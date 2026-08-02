@@ -46,3 +46,6 @@ build
 .playwright-dev
 playwright-report
 test-results
+
+# Local mobile build outputs (GitHub Actions uploads these as artifacts)
+artifacts/

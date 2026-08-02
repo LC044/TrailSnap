@@ -7,6 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "mobile:sync": "pnpm build && cap sync",
+    "mobile:assets": "capacitor-assets generate --assetPath public",
+    "android:build": "node scripts/build-android.mjs",
+    "android:open": "cap open android",
+    "ios:open": "cap open ios",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
@@ -21,6 +26,11 @@
     "test:e2e:down": "node playwright/e2e-up.mjs down"
   },
   "dependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/core": "8.5.0",
+    "@capacitor/ios": "8.5.0",
+    "@capacitor/preferences": "8.0.1",
     "@element-plus/icons-vue": "^2.3.2",
     "@types/dompurify": "^3.2.0",
     "@types/markdown-it": "^14.1.2",
@@ -45,6 +55,8 @@
     "xgplayer": "^3.0.23"
   },
   "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "8.5.0",
     "@iconify/json": "^2.2.428",
     "@iconify/tailwind": "^1.2.0",
     "@playwright/test": "^1.60.0",

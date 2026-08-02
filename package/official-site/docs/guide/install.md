@@ -17,6 +17,9 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
 
 - [Docker 部署（Windows）](/docs/guide/docker/windows)
 
+服务部署完成后，也可以在手机上使用 TrailSnap。安装方法和服务器地址配置参见
+[移动 App 使用指南](/docs/guide/mobile-app)。
+
 ### 一键安装脚本 (推荐)
 
 TrailSnap 提供了一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署，无需手动编写配置文件。

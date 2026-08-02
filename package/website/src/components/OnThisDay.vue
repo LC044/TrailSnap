@@ -121,6 +121,7 @@ import { photoApi } from '@/api/photo';
 import type { Photo } from '@/types/album';
 import { format } from 'date-fns';
 import { useHotkeys } from '@/composables/useHotkeys';
+import { toServerUrl } from '@/config/server';
 
 const photos = ref<Photo[]>([]);
 const currentIndex = ref(0);
@@ -145,12 +146,12 @@ const fetchOnThisDay = async () => {
 };
 
 const getThumbnailUrl = (photo: Photo) => {
-    return `/api/medias/${photo.id}/thumbnail?size=medium`;
+  return toServerUrl(`/api/medias/${photo.id}/thumbnail?size=medium`);
 };
 
 const getFullImageUrl = (photo: Photo) => {
     // Use the raw file endpoint for high quality in full screen
-    return `/api/medias/${photo.id}/file`;
+  return toServerUrl(`/api/medias/${photo.id}/file`);
 };
 
 const formatDate = (photo: Photo) => {
