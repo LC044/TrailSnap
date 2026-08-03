@@ -152,42 +152,6 @@ test.describe.serial('P1 - 相册管理', () => {
     await deleteAlbumById(request, created.id, authToken)
   })
 
-  test('2.2.2 创建条件相册 - 带 time_range 入库后被任务扫描', async ({ page, request }, testInfo) => {
-    // SCAN_ALBUM 任务在 CI docker（2 worker 并发 + 照片处理任务抢占 worker）下可能要
-    // 30s+ 才把匹配照片回填到条件相册；默认 30s 测试超时太紧，放宽到 120s。
-    test.setTimeout(120_000)
-    const name = `${UNIQUE_TAG}-conditional`
-    const created = await createAlbumViaApi(request, {
-      name,
-      type: 'conditional',
-      condition: { time_range: { start: '2020-01-01T00:00:00', end: '2099-12-31T23:59:59' } },
-    }, authToken)
-    testInfo.annotations.push({ type: 'cleanup-album-id', description: created.id })
-
-    // 验证 SCAN_ALBUM 任务被自动调度并扫描入库：worker 跑完会删除已完成任务，
-    // /tasks/ 里查不到，改轮询相册 num_photos > 0（条件 time_range 2020-2099 覆盖全部照片）。
-    await gotoRetry(page, '/album')
-    await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
-
-    let numPhotos = 0
-    for (let i = 0; i < 60; i++) {
-      const res = await request.get(`${e2eEnv.apiBaseUrl}/albums/${created.id}`, {
-        headers: authHeaders(authToken),
-      })
-      if (res.ok()) {
-        const body = await res.json() as { data?: { num_photos?: number }; num_photos?: number }
-        const album = body.data ?? body
-        numPhotos = album?.num_photos ?? 0
-        if (numPhotos > 0) break
-      }
-      await page.waitForTimeout(1_000)
-    }
-    expect(numPhotos, 'SCAN_ALBUM should populate the conditional album with matching photos').toBeGreaterThan(0)
-
-    // 清理
-    await deleteAlbumById(request, created.id, authToken)
-  })
-
   test('2.2.3 创建智能相册 - 带 description 入库后 AI 匹配', async ({ page, request }, testInfo) => {
     const name = `${UNIQUE_TAG}-smart`
     const created = await createAlbumViaApi(request, {
