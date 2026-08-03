@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/utils/echarts'
 import { locationService } from '@/api/location'
 import { useTheme } from '@/composables/useTheme'
 import { MapPin, ChevronRight, ZoomIn, ZoomOut, RotateCcw, ArrowLeft } from 'lucide-vue-next'

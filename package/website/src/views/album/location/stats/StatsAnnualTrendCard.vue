@@ -25,7 +25,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount, nextTick } from 'vue';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 import { Download } from 'lucide-vue-next';
 import { useIntersectionObserver } from '@vueuse/core';
 import { injectTheme } from '@/composables/useTheme';

@@ -57,6 +57,10 @@ import { useRoute } from 'vue-router';
 // 导入侧边栏（桌面）/ 底部 Tab 栏（移动）
 import BottomNav from '@/layouts/BottomNav.vue';
 import Sidebar from '@/layouts/Sidebar.vue';
+// AgentChat 仍用同步 import：dev 模式下 defineAsyncComponent 会让 vite 在首次点击 FAB 时
+// 现编译整条依赖链（PhotoLightbox / markdown-it / dompurify），耗时超过 e2e 的 10s 超时。
+// 生产构建时，AgentChat 的重依赖（xgplayer / fabric 等）已被 PhotoLightbox / PhotoEditor
+// 内部的动态 import 切到独立 chunk，不会回流到 entry，首屏体积不受影响。
 import AgentChat from '@/views/agent/AgentChat.vue';
 import NotificationDrawer from '@/components/NotificationDrawer.vue';
 import { Bot } from 'lucide-vue-next';

@@ -29,7 +29,7 @@
 import ReportPage from './ReportPage.vue';
 import type { ComprehensiveMetrics } from '@/types/annualReport';
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 
 const props = defineProps<{
   data: ComprehensiveMetrics;

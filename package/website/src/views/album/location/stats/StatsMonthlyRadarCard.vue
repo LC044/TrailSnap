@@ -28,7 +28,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 import { useIntersectionObserver } from '@vueuse/core';
 import { injectTheme } from '@/composables/useTheme';
 import type { MonthlyRadarItem } from '@/api/location';

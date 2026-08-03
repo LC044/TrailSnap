@@ -360,7 +360,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed, onUnmounted, nextTick, onMounted } from 'vue'
+import { ref, watch, computed, onUnmounted, nextTick, onMounted, defineAsyncComponent } from 'vue'
 import {
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info,
     ImagePlus,
@@ -377,8 +377,9 @@ import {
     Pencil,
     MapPin,
 } from 'lucide-vue-next'
-import Player from 'xgplayer'
-import 'xgplayer/dist/index.min.css'
+// xgplayer 体积大（~数百 KB），且只在查看视频时需要，故改为按需动态导入；
+// 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
+import type Player from 'xgplayer'
 import { albumService } from '@/api/album'
 import { ocrApi, type OCRRecord } from '@/api/ocr'
 import { faceApi } from '@/api/face'
@@ -387,7 +388,8 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import PhotoMetadataSidebar from './PhotoMetadataSidebar.vue'
 import PhotoOCRPanel from './PhotoOCRPanel.vue'
 import PersonSelector from './PersonSelector.vue'
-import PhotoEditor from './PhotoEditor.vue'
+// PhotoEditor 依赖 fabric（~数百 KB），只在用户点击编辑时才需要，异步化以延迟加载。
+const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
 
 
@@ -537,14 +539,20 @@ const initialDistance = ref(0)
 const videoPlayer = ref<HTMLElement | null>(null)
 const player = ref<Player | null>(null)
 
-const initPlayer = () => {
+const initPlayer = async () => {
     if (videoPlayer.value && props.image) {
         if (player.value) {
             player.value.destroy()
             player.value = null
         }
-        
-        player.value = new Player({
+        // 按需加载 xgplayer 及其样式（首次加载后由浏览器/构建缓存命中）
+        const [{ default: XgPlayer }] = await Promise.all([
+            import('xgplayer'),
+            import('xgplayer/dist/index.min.css'),
+        ])
+        // 动态导入期间组件可能已卸载或切换了图片，再次校验避免在失效节点上创建播放器
+        if (!videoPlayer.value || !props.image) return
+        player.value = new XgPlayer({
             el: videoPlayer.value,
             url: props.image.url,
             poster: props.image.thumbnail,
@@ -640,7 +648,7 @@ watch(() => props.image, async (newImg, oldImg) => {
         // Init new player if switching to video
         if (newImg.file_type === 'video') {
             await nextTick()
-            initPlayer()
+            await initPlayer()
         }
 
         // Fetch Data
@@ -668,7 +676,7 @@ watch(() => props.visible, async (newVal) => {
 
         if (props.image.file_type === 'video') {
             await nextTick()
-            initPlayer()
+            await initPlayer()
         }
 
         if (!metadata.value || metadata.value.photo_id !== props.image.id) {
