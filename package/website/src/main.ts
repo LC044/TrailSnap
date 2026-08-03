@@ -1,9 +1,15 @@
 import 'mingcute_icon/font/Mingcute.css';
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'  // 1. 导入 createPinia
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+// Element Plus 按需引入：模板组件（el-dialog / el-select 等）与 v-loading 指令由
+// unplugin-vue-components + ElementPlusResolver 自动注册并注入对应样式，无需 app.use(ElementPlus)
+// 与全量 dist/index.css。这里仅补齐以函数方式调用的 programmatic service 所需样式：
+// ElMessage / ElMessageBox / ElNotification / ElLoading（v-loading 指令复用 loading 样式）。
 import 'element-plus/theme-chalk/dark/css-vars.css'
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
+import 'element-plus/es/components/notification/style/css'
+import 'element-plus/es/components/loading/style/css'
 
 import './style.css'
 
@@ -21,7 +27,6 @@ async function bootstrap() {
   const pinia = createPinia()
   app.use(pinia)  // 关键步骤：激活 Pinia
   app.use(router);
-  app.use(ElementPlus)
   app.mount('#app');
 
   await router.isReady()

@@ -181,7 +181,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, onUnmounted, computed } from 'vue';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 import { ArrowLeft, Route, MapPin, Clock, ChevronDown } from 'lucide-vue-next';
 import { onClickOutside } from '@vueuse/core';
 import { injectTheme } from '@/composables/useTheme';

@@ -126,7 +126,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import * as echarts from 'echarts'
+import { echarts } from '@/utils/echarts'
 import { useTheme } from '@/composables/useTheme'
 import { MapPin, Trophy, TrendingUp, Images } from 'lucide-vue-next'
 import type { LocationStatistics, TimelineNode } from '@/types/location'

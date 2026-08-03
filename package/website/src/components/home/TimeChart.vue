@@ -37,7 +37,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch, PropType, nextTick, computed } from 'vue';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 import { DashboardTime } from '@/api/dashboard';
 
 const props = defineProps({

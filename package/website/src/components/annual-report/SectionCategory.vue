@@ -49,7 +49,7 @@
 import ReportPage from './ReportPage.vue';
 import type { MemoryMetrics } from '@/types/annualReport';
 import { onMounted, ref, computed } from 'vue';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 
 const props = defineProps<{
   data: MemoryMetrics;

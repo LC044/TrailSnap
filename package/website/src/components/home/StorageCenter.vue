@@ -242,7 +242,7 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick, shallowRef, computed, reactive, type Component } from 'vue';
 import { useRouter } from 'vue-router';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 import { Copy, Image as ImageIcon, Smartphone, Video } from 'lucide-vue-next';
 import { storageApi, type StorageOverview, type LargeFile } from '@/api/storage';
 import { tasksApi } from '@/api/tasks';

@@ -126,7 +126,7 @@ import type { ExpenseMetrics, TicketDetail } from '@/types/annualReport';
 import { getReportExpenseDetails } from '@/api/annualReport';
 import { ref, onMounted, watch, nextTick, onUnmounted } from 'vue';
 import { useIntersectionObserver } from '@vueuse/core';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 
 const props = defineProps<{
   data: ExpenseMetrics;

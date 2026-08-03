@@ -78,7 +78,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import ReportPage from './ReportPage.vue';
 import type { LocationMetrics } from '@/types/annualReport';
-import * as echarts from 'echarts';
+import { echarts } from '@/utils/echarts';
 import { useIntersectionObserver } from '@vueuse/core';
 
 const props = defineProps<{
