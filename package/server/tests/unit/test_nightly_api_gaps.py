@@ -274,3 +274,181 @@ def test_moment_generate_wraps_internal_errors_in_500():
             asyncio.run(moment_api.generate_day_caption(request=request, current_user=user, db=db))
     assert exc.value.status_code == 500
     assert "LLM" in exc.value.detail
+
+
+# ---------------------------------------------------------------------------
+# Dashboard CRUD (package/server/app/crud/dashboard.py) — 7.2% → 目标 ≥ 60%
+# 覆盖 §4.5 优先级 3：crud 业务逻辑。get_dashboard_stats / get_heatmap_stats。
+# ---------------------------------------------------------------------------
+from collections import namedtuple
+from datetime import date as _date
+from uuid import uuid4
+
+from app.crud import dashboard as crud_dashboard
+
+_YearRow = namedtuple("_YearRow", ["year", "count"])
+_YearAvail = namedtuple("_YearAvail", ["year"])
+
+
+def _make_query_mock(*, count=0, scalar=0, first=None, all_value=()):
+    """生成一个独立的 SQLAlchemy-like query mock：chain 操作均返回 self。"""
+    q = MagicMock(name="query")
+    q.filter.return_value = q
+    q.filter_by.return_value = q
+    q.join.return_value = q
+    q.group_by.return_value = q
+    q.order_by.return_value = q
+    q.offset.return_value = q
+    q.limit.return_value = q
+    q.count.return_value = count
+    q.scalar.return_value = scalar
+    q.first.return_value = first
+    q.all.return_value = list(all_value)
+    return q
+
+
+def _build_dashboard_queries(*, total_media=0, today_new=0, storage_bytes=0,
+                             year_rows=(), month_peak=None):
+    """按 dashboard.py 调用顺序生成 12 个 query mock。"""
+    return [
+        _make_query_mock(count=total_media),       # 0 total_media
+        _make_query_mock(count=today_new),         # 1 today_new
+        _make_query_mock(scalar=storage_bytes),    # 2 storage sum
+        _make_query_mock(count=0),                 # 3 total_identified
+        _make_query_mock(count=0),                 # 4 pending_faces
+        _make_query_mock(scalar=0),                # 5 unidentified_photos
+        _make_query_mock(count=0),                 # 6 scenery_count
+        _make_query_mock(count=0),                 # 7 food_count
+        _make_query_mock(count=0),                 # 8 photos_count
+        _make_query_mock(count=0),                 # 9 videos_count
+        _make_query_mock(all_value=list(year_rows)),  # 10 year_stats
+        _make_query_mock(first=month_peak),        # 11 month_stats
+    ]
+
+
+def test_dashboard_stats_returns_zero_totals_on_empty_library():
+    user_id = uuid4()
+    queries = _build_dashboard_queries()
+    db = MagicMock()
+    db.query.side_effect = lambda *a, **kw: queries[db.query.call_count - 1]
+
+    with patch("app.crud.dashboard.get_identities_with_details", return_value=[]):
+        result = crud_dashboard.get_dashboard_stats(db, user_id)
+
+    assert result.card.total_media == 0
+    assert result.card.today_new == 0
+    assert result.card.storage_used == "0.0GB"
+    assert result.face.total_identified == 0
+    assert result.face.top_faces == []
+    assert result.face.pending_faces_count == 0
+    assert result.content.photos.total == 0
+    assert result.content.videos.total == 0
+    assert result.time.chart_data == []
+    assert result.time.monthly_peak == "暂无数据"
+
+
+def test_dashboard_stats_aggregates_year_groups_and_monthly_peak():
+    user_id = uuid4()
+    # year_stats 需同时支持 .count 属性访问 + (year, count) tuple 解包
+    year_rows = [_YearRow(2024, 5), _YearRow(2025, 3)]
+    month_peak = MagicMock(year=2025, month=7, count=4)
+    queries = _build_dashboard_queries(
+        total_media=1, today_new=1, storage_bytes=2 * 1024 ** 3,
+        year_rows=year_rows, month_peak=month_peak,
+    )
+    db = MagicMock()
+    db.query.side_effect = lambda *a, **kw: queries[db.query.call_count - 1]
+
+    with patch("app.crud.dashboard.get_identities_with_details", return_value=[]):
+        result = crud_dashboard.get_dashboard_stats(db, user_id)
+
+    assert result.card.total_media == 1
+    assert result.card.storage_used == "2.0GB"
+    assert len(result.time.chart_data) == 2
+    current_year_item = next((c for c in result.time.chart_data if c.year == 2025), None)
+    assert current_year_item is not None
+    assert current_year_item.percentage == 37.5
+    assert result.time.monthly_peak == "2025年7月拍摄最多：4张"
+
+
+def test_heatmap_stats_year_filter_collects_consecutive_days():
+    user_id = uuid4()
+    rows = [
+        MagicMock(photo_date=_date(2025, 1, 1), count=2),
+        MagicMock(photo_date=_date(2025, 1, 2), count=3),
+        MagicMock(photo_date=_date(2025, 1, 3), count=1),
+        MagicMock(photo_date=_date(2025, 1, 6), count=4),
+    ]
+    year_rows = [_YearAvail(2025), _YearAvail(2024)]
+    queries = [_make_query_mock(all_value=rows), _make_query_mock(all_value=year_rows)]
+    db = MagicMock()
+    db.query.side_effect = lambda *a, **kw: queries[db.query.call_count - 1]
+
+    result = crud_dashboard.get_heatmap_stats(db, user_id, year=2025)
+
+    assert result.total_photos == 10
+    assert result.total_days == 4
+    assert result.max_consecutive_days == 3
+    assert result.data[0].count == 2
+    assert result.available_years == [2025, 2024]
+
+
+# ---------------------------------------------------------------------------
+# Vector CRUD (package/server/app/crud/crud_vector.py) — 34.6% → 目标 ≥ 80%
+# 覆盖 §4.5 优先级 5：create_or_update_vector / get_vector / search_similar_vectors。
+# ---------------------------------------------------------------------------
+from app.crud import crud_vector
+from app.db.models.image_vector import ImageVector
+
+
+def test_crud_vector_create_inserts_new_row_when_missing():
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+
+    crud_vector.create_or_update_vector(db, photo_id=uuid4(), embedding=[0.1] * 4, model_name="clip-test")
+
+    db.add.assert_called_once()
+    db.commit.assert_called_once()
+    db.refresh.assert_called_once()
+
+
+def test_crud_vector_update_overwrites_existing_row():
+    db = MagicMock()
+    existing = MagicMock()
+    existing.embedding = [0.0] * 4
+    existing.model_name = "old-model"
+    db.query.return_value.filter.return_value.first.return_value = existing
+
+    crud_vector.create_or_update_vector(db, photo_id=uuid4(), embedding=[0.9] * 4, model_name="new-model")
+
+    assert existing.embedding == [0.9] * 4
+    assert existing.model_name == "new-model"
+    db.add.assert_not_called()
+    db.commit.assert_called_once()
+
+
+def test_crud_vector_get_returns_existing_or_none():
+    db = MagicMock()
+    existing = MagicMock(spec=ImageVector)
+    db.query.return_value.filter.return_value.first.return_value = existing
+
+    result = crud_vector.get_vector(db, photo_id=uuid4())
+
+    assert result is existing
+    db.query.return_value.filter.return_value.first.assert_called_once()
+
+
+def test_crud_vector_search_similar_applies_user_and_limit_filters():
+    db = MagicMock()
+    db.query.return_value.join.return_value.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = [
+        (MagicMock(spec=ImageVector), 0.05),
+        (MagicMock(spec=ImageVector), 0.12),
+    ]
+
+    results = crud_vector.search_similar_vectors(
+        db, embedding=[0.1] * 4, limit=2, offset=0, user_id=uuid4()
+    )
+
+    assert len(results) == 2
+    db.query.assert_called_once()
+    db.query.return_value.join.assert_called_once()
