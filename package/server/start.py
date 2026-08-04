@@ -10,9 +10,13 @@ from sqlalchemy.engine.url import make_url
 
 from dotenv import load_dotenv
 
-if not os.path.exists('./data'):
-    os.mkdir('./data')
-load_dotenv('./data/.env')
+from app.core.paths import DATA_DIR, ensure_rg_seed
+
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+load_dotenv(os.path.join(DATA_DIR, '.env'))
+# 播种默认离线反向编码数据（CN.csv），在启动 uvicorn 前完成
+ensure_rg_seed()
 
 def import_scenes(database_url):
     print("Importing scenes data...")

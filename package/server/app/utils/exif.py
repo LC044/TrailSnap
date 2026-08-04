@@ -25,12 +25,7 @@ import json
 import reverse_geocoder as rg
 
 from app.utils.filename import extract_datetime_from_filename
-
-# Helper Functions for Metadata
-# resources/rg_data
-RG_DIR = os.path.join(os.path.dirname(__file__), '../../resources/rg_data')
-if not os.path.exists(RG_DIR):
-    os.makedirs(RG_DIR)
+from app.core.paths import RG_DATA_DIR as RG_DIR
 
 def _convert_to_degrees(value):
     """

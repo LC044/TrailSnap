@@ -20,9 +20,13 @@ from dotenv import load_dotenv
 from starlette.datastructures import Headers
 from starlette.types import Receive, Scope, Send
 
-if not os.path.exists('./data'):
-    os.mkdir('./data')
-load_dotenv('./data/.env')
+from app.core.paths import DATA_DIR, ensure_rg_seed
+
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+load_dotenv(os.path.join(DATA_DIR, '.env'))
+# 数据目录就绪后播种默认离线反向编码数据（CN.csv），需在任何 API 模块导入前完成
+ensure_rg_seed()
 
 from app.api import (
     user, train_ticket, flight_ticket, album, index, settings, face, ocr,

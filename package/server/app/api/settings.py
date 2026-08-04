@@ -21,6 +21,7 @@ from app.db.models.index_log import IndexLog
 from app.service.task_manager import TaskManager
 from app.service import gallery_service
 from app.db.session import SessionLocal
+from app.core.paths import RG_DATA_DIR, COUNTRIES_JSON_FILE
 # Import reverse_geocoder from the local package
 # Assuming package/server is in sys.path or accessible
 try:
@@ -35,9 +36,6 @@ except ImportError:
     from reverse_geocoder import download_country_data
 
 router = APIRouter()
-
-RG_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'resources', 'rg_data')
-COUNTRIES_JSON_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'resources', 'rg_data', 'countries.json')
 
 def get_storage_root(user_id: str, db: Session = Depends(get_db)) -> str:
     try:

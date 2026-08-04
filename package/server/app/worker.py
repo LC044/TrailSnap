@@ -7,6 +7,7 @@ import signal
 from dotenv import load_dotenv
 
 from app.core.logger import setup_logging
+from app.core.paths import DATA_DIR, ensure_rg_seed
 from app.service.task_worker import TaskWorker
 
 async def _run(event_queue=None):
@@ -19,11 +20,13 @@ async def _run(event_queue=None):
         await asyncio.sleep(1)
 
 def run_worker(event_queue=None):
-    load_dotenv('./data/.env')
+    load_dotenv(os.path.join(DATA_DIR, '.env'))
     """Entry point for the worker process"""
     # Setup logging for this process
     setup_logging('task')
     logging.info(f"Starting Worker Process (PID: {os.getpid()})...")
+    # 确保反向编码数据目录就绪并播种（worker 进程独立于 API 进程，需自行初始化）
+    ensure_rg_seed()
 
     # Windows compatibility for asyncio loop
     if sys.platform == 'win32':
