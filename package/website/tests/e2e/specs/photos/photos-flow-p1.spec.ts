@@ -167,8 +167,12 @@ test.describe('P1 - 照片流核心功能', () => {
     await expect(batchBtn).toBeVisible({ timeout: 10_000 })
     await batchBtn.click()
 
+    // 进入批量模式后 PhotoGallery 经历一次重渲染，期间 nth(1) 可能短暂未挂载；
+    // 先等底部'已选 X 项'工具栏可见再断言图片可见，避免 element(s) not found。
+    const actionBarInBatch = page.locator('text=/已选\\s*\\d+\\s*项/').first()
+    await expect(actionBarInBatch).toBeVisible({ timeout: 10_000 })
     const imgs = page.locator('.photo-gallery img')
-    await expect(imgs.nth(1)).toBeVisible({ timeout: 5_000 })
+    await expect(imgs.nth(1)).toBeVisible({ timeout: 10_000 })
     // 选择模式下 click = toggle（PhotoGallery handlePhotoClick）
     await imgs.nth(0).click({ force: true })
     await imgs.nth(1).click({ force: true })
