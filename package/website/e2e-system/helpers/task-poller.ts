@@ -21,6 +21,74 @@ interface WaitOptions {
   tasksUrl?: string
 }
 
+/**
+ * 拉取 grouped-status，返回当前后端跟踪的任务分类列表（9 个照片处理分类）。
+ * 用于在轮询前后对这批分类统一执行 pause/resume。
+ */
+async function fetchGroupedCategories(
+  request: APIRequestContext,
+  token: string,
+  tasksUrl: string,
+): Promise<string[]> {
+  const groupedUrl = tasksUrl.endsWith('/') ? `${tasksUrl}grouped-status` : `${tasksUrl}/grouped-status`
+  try {
+    const response = await request.get(groupedUrl, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 10_000,
+    })
+    if (!response.ok()) return []
+    const raw = (await response.json()) as GroupedTask[] | { data?: GroupedTask[] }
+    const tasks = Array.isArray(raw) ? raw : (raw.data ?? [])
+    return tasks.map(t => t.category).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 对 grouped-status 跟踪的全部处理分类逐个调用 pause/resume。
+ *
+ * 必须串行：后端 TaskManager.pause_category / resume_category 是「读 DB → 改内存 set →
+ * 写 DB」的非原子 read-modify-write，并发调用会互相覆盖（最后一个写赢，丢分类）。
+ *
+ * best-effort：任一分类请求失败只记录日志、不抛错，不影响轮询本身的成功/失败。
+ */
+async function setAllCategoryStates(
+  request: APIRequestContext,
+  token: string,
+  tasksUrl: string,
+  action: 'pause' | 'resume',
+): Promise<void> {
+  const categoriesBase = tasksUrl.endsWith('/') ? `${tasksUrl}categories` : `${tasksUrl}/categories`
+  const categories = await fetchGroupedCategories(request, token, tasksUrl)
+  if (categories.length === 0) {
+    process.stdout.write(`[Task Progress] 未获取到任务分类，跳过 ${action}\n`)
+    return
+  }
+
+  const failed: string[] = []
+  for (const category of categories) {
+    try {
+      const response = await request.post(`${categoriesBase}/${category}/${action}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 10_000,
+      })
+      if (!response.ok()) {
+        failed.push(`${category}:${response.status()}`)
+      }
+    } catch {
+      failed.push(`${category}:ERR`)
+    }
+  }
+
+  const verb = action === 'pause' ? '暂停' : '恢复'
+  if (failed.length > 0) {
+    process.stdout.write(`[Task Progress] ${verb}部分失败: ${failed.join(', ')}\n`)
+  } else {
+    process.stdout.write(`[Task Progress] 已${verb}全部 ${categories.length} 个处理分类\n`)
+  }
+}
+
 export async function waitForTasksToSettle(
   request: APIRequestContext,
   token: string,
@@ -45,6 +113,10 @@ export async function waitForTasksToSettle(
     process.stdout.write(`\r${line}${pad}`)
     lastLine = line
   }
+
+  // 轮询开始前先 resume 全部分类，清除上一轮（dev 模式跨轮）残留的 paused_categories，
+  // 否则残留的暂停状态会让本轮 setup 的处理任务被跳过、拿不到数据。
+  await setAllCategoryStates(request, token, tasksUrl, 'resume')
 
   while (true) {
     try {
@@ -114,6 +186,9 @@ export async function waitForTasksToSettle(
         process.stdout.write('\n')
         lastLine = ''
       }
+      // 稳定后暂停全部分类，冻结仍处于 pending/processing 的任务，避免它们在后续测试中
+      // 被调度执行、改动数据导致用例异常。best-effort：失败只打日志，不影响轮询结果。
+      await setAllCategoryStates(request, token, tasksUrl, 'pause')
       return
     }
 
