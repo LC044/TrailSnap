@@ -1,0 +1,18 @@
+# pnpm 11+ 的 onlyBuiltDependencies 等价配置（写在 pnpm-workspace.yaml 而非 package.json，
+# 因为 pnpm 11 已停止读 package.json 里的 "pnpm" 字段）。
+#
+# ERR_PNPM_IGNORED_BUILDS 不再阻断 dev/test，仅作提示。
+# esbuild 是 vite 依赖的 native binary，必须允许构建；sharp 需联网下 libvips（沙箱环境易失败），
+# canvas/core-js/es5-ext/vue-demi 不参与构建，显式禁用以减少 noise。
+#
+# 注意：packages 字段在此是必需的占位，pnpm install 会校验非空；
+# 单 package 场景下用 '.' 自指即可，等价于"此目录是一个 workspace 根"。
+packages:
+  - .
+allowBuilds:
+  esbuild: true
+  sharp: false
+  canvas: false
+  core-js: false
+  es5-ext: false
+  vue-demi: false
