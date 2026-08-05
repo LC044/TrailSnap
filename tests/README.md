@@ -67,25 +67,25 @@ run-tests.ps1            ← 唯一入口（CI + 本地都用它）
 
 ```powershell
 # 最简：后端 + AI 的 smoke 单元测试（默认 env 文件）
-.\tests\scripts\run-tests.ps1
+pwsh .\tests\scripts\run-tests.ps1
 
 # 前端 e2e 全量（用自己的 env 文件）
-.\tests\scripts\run-tests.ps1 .\tests\.env.test-local -Layer e2e -Level full
+pwsh .\tests\scripts\run-tests.ps1 .\tests\.env.test-local -Layer e2e -Level full
 
 # 先 scan 预扫描再跑 e2e
-.\tests\scripts\run-tests.ps1 -Layer e2e -ScanPrep true
+pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -ScanPrep true
 
 # 后端 album 域 smoke 单元
-.\tests\scripts\run-tests.ps1 -Layer unit -Component server -Level smoke -Scope album
+pwsh .\tests\scripts\run-tests.ps1 -Layer unit -Component server -Level smoke -Scope album
 
 # 起 docker compose 栈跑 p0（与 CI 同路径）
-.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker
+pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker
 
 # 只起 docker 测试栈不跑测试
-.\tests\scripts\services-up.ps1 -Mode docker
+pwsh .\tests\scripts\services-up.ps1 -Mode docker
 
 # 按端口清理所有服务（含孤儿子进程）
-.\tests\scripts\run-tests.ps1 -StopServices
+pwsh .\tests\scripts\run-tests.ps1 -StopServices
 ```
 
 ### `run-tests.ps1` 参数
@@ -135,7 +135,7 @@ uv run python -m pytest -m "smoke and module_album" -v
 
 - 用例：`package/ai/tests/`，`conftest.py` 同样加载 `tests/.env.test`。
 - 需模型/显存的打 `@pytest.mark.model`，默认跳过。
-- 跑：`.\tests\scripts\run-tests.ps1 -Layer unit -Component ai`。
+- 跑：`pwsh .\tests\scripts\run-tests.ps1 -Layer unit -Component ai`。
 
 ---
 
@@ -221,7 +221,7 @@ trailsnap-test-photos/
 ```bash
 ./tests/scripts/sync-test-photos.sh           # Linux / macOS
 # 或
-.\tests\scripts\sync-test-photos.ps1        # Windows
+pwsh .\tests\scripts\sync-test-photos.ps1        # Windows
 ```
 
 环境变量 `TS_TEST_PHOTOS_REPO` 可覆盖默认仓库（用于 fork / 内网部署）。CI 上由 `.github/workflows/tests.yml` 的 `actions/checkout@v4` 自动拉 LFS 对象，无需手动同步。

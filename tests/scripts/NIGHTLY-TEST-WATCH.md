@@ -67,7 +67,7 @@ if (-not (Test-Path 'tests\.env.test')) {
 ## 2. 运行测试
 
 ```powershell
-.\tests\scripts\run-tests.ps1 -Layer e2e -Level full `
+pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level full `
     2>&1 | Tee-Object -FilePath "$runDir\run.log"
 $exit = $LASTEXITCODE
 "$exit" | Set-Content "$runDir\exit.txt"
@@ -116,7 +116,7 @@ $exit = $LASTEXITCODE
 
 3.6. 全部失败修完，跑一次完整 e2e 确认无回归：
    ```powershell
-   .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
+   pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
    ```
    - 通过 → §4。
    - 仍有失败 → §3.5 处理剩余失败；如果只是「测试运行慢导致超时」这种 C 类，retry 后仍超时则整体放弃本轮 commit。
@@ -216,7 +216,7 @@ $exit = $LASTEXITCODE
 
 5.5. 再跑一次完整 e2e（同 3.6），确认无回归。
    ```powershell
-   .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
+   pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
    ```
 
 5.6. 失败处理：
@@ -227,7 +227,7 @@ $exit = $LASTEXITCODE
 
 5.7. 关闭所有服务（server+ai+website）：
    ```powershell
-   .\tests\scripts\run-tests.ps1 -StopServices
+   pwsh .\tests\scripts\run-tests.ps1 -StopServices
    ```
 
 ---

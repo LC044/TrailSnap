@@ -56,10 +56,10 @@ uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 CI 与本地共用**同一个入口** `tests/scripts/run-tests.ps1`（PowerShell）。完整约定见 [`tests/README.md`](tests/README.md)。
 
 ```powershell
-.\tests\scripts\run-tests.ps1 -Layer unit -Level smoke            # 后端 + AI 单元（秒级，无需启动服务）
-.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0                # 前端 e2e p0（本地 dev 进程）
-.\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker   # 启动 compose 栈跑（与 CI 路径一致）
-.\tests\scripts\run-tests.ps1 -StopServices                       # 按端口清理服务
+pwsh .\tests\scripts\run-tests.ps1 -Layer unit -Level smoke            # 后端 + AI 单元（秒级，无需启动服务）
+pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level p0                # 前端 e2e p0（本地 dev 进程）
+pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level p0 -Mode docker   # 启动 compose 栈跑（与 CI 路径一致）
+pwsh .\tests\scripts\run-tests.ps1 -StopServices                       # 按端口清理服务
 ```
 
 - `-Layer` 取 unit/integration/e2e/all；`-Level` 取 dev/scan/smoke/p0/p1/all/light/full（既是 e2e 套件名，也是 unit 的 `-m` 映射）；`-Mode` 取 dev/docker。
