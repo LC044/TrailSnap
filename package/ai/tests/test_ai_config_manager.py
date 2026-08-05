@@ -17,6 +17,36 @@ from app.services.ai_config_manager import AIConfigManager
 pytestmark = [pytest.mark.smoke]
 
 
+def test_get_model_selection_returns_none_for_unknown_task():
+    manager = AIConfigManager.__new__(AIConfigManager)
+    manager._initialized = True
+    manager._config = {"models": {}}
+
+    assert manager.get_model_selection("unknown") is None
+
+
+def test_set_model_selection_rejects_unknown_model():
+    manager = AIConfigManager.__new__(AIConfigManager)
+    manager._initialized = True
+    manager._config = {"models": {"ocr": {"selected": "mobile", "available": ["mobile"]}}}
+
+    with pytest.raises(ValueError, match="Invalid model"):
+        manager.set_model_selection("ocr", "server")
+
+
+def test_set_model_selection_saves_only_when_value_changes():
+    manager = AIConfigManager.__new__(AIConfigManager)
+    manager._initialized = True
+    manager._config = {"models": {"ocr": {"selected": "mobile", "available": ["mobile", "server"]}}}
+
+    with patch.object(manager, "_save_config") as save:
+        assert manager.set_model_selection("ocr", "server") is True
+        assert manager.set_model_selection("ocr", "server") is False
+
+    assert manager.get_model_selection("ocr") == "server"
+    save.assert_called_once_with()
+
+
 def _fresh_manager(tmp_path, config_data=None, file_exists=True):
     """Build a fresh AIConfigManager with ``_config`` seeded and no I/O."""
     mgr = AIConfigManager.__new__(AIConfigManager)
