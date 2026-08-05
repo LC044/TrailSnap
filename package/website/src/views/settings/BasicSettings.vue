@@ -131,6 +131,28 @@
           </div>
         </div>
         
+        <!-- 下载进度提示：模拟进度推进，完成时以真实列表命中收尾 -->
+        <div v-if="downloadPhase !== 'idle'" class="mt-4 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-100 dark:border-gray-700">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Loader2 v-if="downloadPhase === 'downloading'" class="w-4 h-4 animate-spin text-primary-500" />
+              <CheckCircle2 v-else-if="downloadPhase === 'done'" class="w-4 h-4 text-green-500" />
+              <AlertCircle v-else class="w-4 h-4" :class="downloadPhase === 'timeout' ? 'text-amber-500' : 'text-red-500'" />
+              {{ downloadStatusText }}
+            </span>
+            <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">{{ Math.round(downloadProgress) }}%</span>
+          </div>
+          <el-progress
+            :percentage="Math.round(downloadProgress)"
+            :status="downloadProgressStatus"
+            :stroke-width="12"
+            :show-text="false"
+            striped
+            :striped-flow="downloadPhase === 'downloading'"
+          />
+          <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">{{ downloadHint }}</div>
+        </div>
+
         <div class="mt-6">
            <div class="flex items-center justify-between mb-2">
              <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">已下载数据</h4>
@@ -706,7 +728,7 @@ import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { settingsApi } from '@/api/settings'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme.js'
-import { Sun, Moon, Palette, Check, Info, Download, Loader2, Trash2, RefreshCw } from 'lucide-vue-next'
+import { Sun, Moon, Palette, Check, CheckCircle2, AlertCircle, Info, Download, Loader2, Trash2, RefreshCw } from 'lucide-vue-next'
 
 const {
   currentMode,
@@ -999,7 +1021,37 @@ let pollTimer: number | null = null
 const countries = ref<any[]>([])
 const downloadedCountries = ref<any[]>([])
 const selectedCountry = ref('')
-const downloading = ref(false)
+const downloadPhase = ref<'idle' | 'downloading' | 'done' | 'failed' | 'timeout'>('idle')
+const downloadProgress = ref(0)
+const downloadingCountryName = ref('')
+const downloading = computed(() => downloadPhase.value === 'downloading')
+const downloadProgressStatus = computed(() => {
+  if (downloadPhase.value === 'done') return 'success'
+  if (downloadPhase.value === 'failed') return 'exception'
+  return ''
+})
+const downloadStatusText = computed(() => {
+  const name = downloadingCountryName.value
+  switch (downloadPhase.value) {
+    case 'downloading': return `正在下载${name ? ` ${name}` : ''} 离线数据...`
+    case 'done': return `${name || ''} 数据下载完成`
+    case 'failed': return '下载失败'
+    case 'timeout': return '下载仍在后台进行'
+    default: return ''
+  }
+})
+const downloadHint = computed(() => {
+  switch (downloadPhase.value) {
+    case 'downloading':
+      return downloadProgress.value >= 85
+        ? '数据较多，正在后台处理...'
+        : '正在从数据源获取城市坐标，完成后即可用于离线解析'
+    case 'done': return '可在「任务管理」中重新执行元数据提取任务以应用新数据'
+    case 'failed': return '请检查网络后重试，或使用「上传自定义数据」导入'
+    case 'timeout': return '后台仍在下载，可稍后点击「刷新」查看'
+    default: return ''
+  }
+})
 const downloadingFiles = ref(new Set<string>())
 const refreshingMapData = ref(false)
 
@@ -1023,21 +1075,93 @@ const handleRefreshMapData = async () => {
   ElMessage.success('数据已刷新')
 }
 
+// 下载进度模拟与完成检测定时器
+let mapProgressTimer: number | null = null
+let mapPollTimer: number | null = null
+let mapDeadlineTimer: number | null = null
+let mapFinishTimer: number | null = null
+
+const clearMapTimers = () => {
+  if (mapProgressTimer) { clearInterval(mapProgressTimer); mapProgressTimer = null }
+  if (mapPollTimer) { clearInterval(mapPollTimer); mapPollTimer = null }
+  if (mapDeadlineTimer) { clearTimeout(mapDeadlineTimer); mapDeadlineTimer = null }
+}
+
+const resetDownload = () => {
+  if (mapFinishTimer) { clearTimeout(mapFinishTimer); mapFinishTimer = null }
+  downloadPhase.value = 'idle'
+  downloadProgress.value = 0
+  downloadingCountryName.value = ''
+}
+
+// 模拟进度：渐进收敛到 90%，越接近越慢，留余量等真实完成检测收尾
+const startProgressSim = () => {
+  downloadProgress.value = 0
+  mapProgressTimer = window.setInterval(() => {
+    const remaining = 90 - downloadProgress.value
+    if (remaining > 0.5) {
+      downloadProgress.value = Math.min(90, downloadProgress.value + remaining * 0.12)
+    }
+  }, 500)
+}
+
+// 真实完成检测：轮询已下载列表，目标国家 CSV 一出现即收尾
+const startCompletionPoll = (code: string) => {
+  mapPollTimer = window.setInterval(async () => {
+    await loadMapDataInfo()
+    if (downloadedCountries.value.some(it => it.code === code)) {
+      finishDownload('done')
+    }
+  }, 2500)
+  // 3 分钟超时兜底：后台仍可能在跑，但不让用户无限等
+  mapDeadlineTimer = window.setTimeout(() => {
+    if (downloadPhase.value === 'downloading') {
+      finishDownload('timeout')
+    }
+  }, 180_000)
+}
+
+const finishDownload = (phase: 'done' | 'timeout') => {
+  clearMapTimers()
+  downloadPhase.value = phase
+  const name = downloadingCountryName.value
+  if (phase === 'done') {
+    downloadProgress.value = 100
+    ElMessage.success(`${name} 数据下载完成`)
+    mapFinishTimer = window.setTimeout(resetDownload, 1800)
+  } else {
+    ElMessage.warning(`${name} 下载耗时较长，请稍后刷新查看`)
+    mapFinishTimer = window.setTimeout(resetDownload, 2800)
+  }
+}
+
+const finishFailed = () => {
+  clearMapTimers()
+  downloadPhase.value = 'failed'
+  ElMessage.error('下载请求失败')
+  mapFinishTimer = window.setTimeout(resetDownload, 2200)
+}
+
 const downloadCountry = async () => {
   if (!selectedCountry.value) return
-  downloading.value = true
+  const code = selectedCountry.value
+  const country = countries.value.find(c => c.code === code)
+  const name = country?.name || code
+
+  // 进入下载态，立即给用户反馈
+  clearMapTimers()
+  downloadPhase.value = 'downloading'
+  downloadingCountryName.value = name
+  downloadProgress.value = 0
+  selectedCountry.value = ''
+
   try {
-    await settingsApi.downloadMapData(selectedCountry.value)
-    ElMessage.success('已开始后台下载，请稍候刷新查看')
-    // We might want to poll or just reload after a delay?
-    // Since it's background, immediate reload might not show it.
-    // Just tell user it started.
-    selectedCountry.value = ''
-    setTimeout(loadMapDataInfo, 2000)
+    await settingsApi.downloadMapData(code)
+    // 请求成功发出，启动模拟进度 + 完成轮询
+    startProgressSim()
+    startCompletionPoll(code)
   } catch (e) {
-    ElMessage.error('下载请求失败')
-  } finally {
-    downloading.value = false
+    finishFailed()
   }
 }
 
@@ -1303,5 +1427,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (pollTimer) clearTimeout(pollTimer)
+  clearMapTimers()
+  if (mapFinishTimer) clearTimeout(mapFinishTimer)
 })
 </script>
