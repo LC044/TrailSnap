@@ -79,8 +79,11 @@ test.describe('P1 - 照片流核心功能', () => {
 
     // 打开 Lightbox（默认显示 preview=medium 缩略图，不会请求 /file）
     await thumb.click()
-    const lightboxImg = page.locator('img[draggable="false"]').first()
-    await expect(lightboxImg).toBeVisible({ timeout: 10_000 })
+    // 不要用 img[draggable="false"].first() 断言可见：PhotoLightbox 的 img 在 fade-in
+    // 过渡中可能短暂被父容器尺寸为 0 判为 hidden；改为等待"查看原图"按钮可见，
+    // 该按钮仅在 lightbox 打开后渲染，是更可靠的"lightbox 已就绪"信号。
+    const originalBtn = page.getByTitle('查看原图 (Shift+O)')
+    await expect(originalBtn).toBeVisible({ timeout: 10_000 })
 
     // 点「查看原图」才请求 /api/medias/{id}/file（displayImageSrc 在 showOriginal 时用 image.url）
     const fileRequest = page.waitForRequest(
