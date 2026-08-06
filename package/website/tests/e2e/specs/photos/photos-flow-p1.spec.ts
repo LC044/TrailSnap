@@ -79,8 +79,11 @@ test.describe('P1 - 照片流核心功能', () => {
 
     // 打开 Lightbox（默认显示 preview=medium 缩略图，不会请求 /file）
     await thumb.click()
-    const lightboxImg = page.locator('img[draggable="false"]').first()
-    await expect(lightboxImg).toBeVisible({ timeout: 10_000 })
+    // 不要用 img[draggable="false"].first() 断言可见：PhotoLightbox 的 img 在 fade-in
+    // 过渡中可能短暂被父容器尺寸为 0 判为 hidden；改为等待"查看原图"按钮可见，
+    // 该按钮仅在 lightbox 打开后渲染，是更可靠的"lightbox 已就绪"信号。
+    const originalBtn = page.getByTitle('查看原图 (Shift+O)')
+    await expect(originalBtn).toBeVisible({ timeout: 10_000 })
 
     // 点「查看原图」才请求 /api/medias/{id}/file（displayImageSrc 在 showOriginal 时用 image.url）
     const fileRequest = page.waitForRequest(
@@ -132,21 +135,18 @@ test.describe('P1 - 照片流核心功能', () => {
     // 视频卡片在筛选后由画廊按可见月份懒加载。并行压测下月份加载可能延迟，
     // 用「边滚边等」兜底：定期滚动触发更多月份加载，最长等 30s。
     const card = page.locator('.photo-gallery .group:has(svg.lucide-circle-play)').first()
-    let cardVisible = false
-    for (let i = 0; i < 20; i++) {
-      if (await card.count() > 0) {
-        cardVisible = true
-        break
-      }
+    // 'video card should render after filtering by 视频'：用 expect.poll 轮询 + 边询边滚动触发更多月份加载，
+    // 看到卡片立刻退出，省掉固定 1500ms sleep 在高负载下的边界越限。
+    await expect.poll(async () => {
+      if (await card.count() > 0) return true
       // 滚动主容器触发懒加载月份（gallery 以 main 或 window 为滚动容器）
       await page.evaluate(() => {
         const main = document.querySelector('main')
         if (main) main.scrollBy(0, 800)
         window.scrollBy(0, 800)
       })
-      await page.waitForTimeout(1500)
-    }
-    expect(cardVisible, 'video card should render after filtering by 视频').toBeTruthy()
+      return false
+    }, { timeout: 30_000, intervals: [500, 1_000, 2_000] }).toBe(true)
     await card.click()
 
     // PhotoLightbox 视频分支渲染 xgplayer（div 含 .videoPlayer ref）或 video 元素
@@ -167,8 +167,12 @@ test.describe('P1 - 照片流核心功能', () => {
     await expect(batchBtn).toBeVisible({ timeout: 10_000 })
     await batchBtn.click()
 
+    // 进入批量模式后 PhotoGallery 经历一次重渲染，期间 nth(1) 可能短暂未挂载；
+    // 先等底部'已选 X 项'工具栏可见再断言图片可见，避免 element(s) not found。
+    const actionBarInBatch = page.locator('text=/已选\\s*\\d+\\s*项/').first()
+    await expect(actionBarInBatch).toBeVisible({ timeout: 10_000 })
     const imgs = page.locator('.photo-gallery img')
-    await expect(imgs.nth(1)).toBeVisible({ timeout: 5_000 })
+    await expect(imgs.nth(1)).toBeVisible({ timeout: 10_000 })
     // 选择模式下 click = toggle（PhotoGallery handlePhotoClick）
     await imgs.nth(0).click({ force: true })
     await imgs.nth(1).click({ force: true })
@@ -290,21 +294,18 @@ test.describe('P1 - 照片流核心功能', () => {
     //    Tailwind 的 icon-[tabler--live-photo] 在 CSS 选择器中需要转义方括号；改用属性包含匹配 [class*="tabler--live-photo"]
     //    避免引号转义问题。
     const targetCardImg = page.locator(`.photo-gallery img[src*="${photoId}/thumbnail"]`).first()
-    let cardImgVisible = false
-    for (let i = 0; i < 20; i++) {
-      if (await targetCardImg.count() > 0) {
-        cardImgVisible = true
-        break
-      }
+    // `live photo card for ${photoId} should render after filtering by 实况图`：用 expect.poll 轮询 + 边询边滚动触发更多月份加载，
+    // 看到卡片立刻退出，省掉固定 1500ms sleep 在高负载下的边界越限。
+    await expect.poll(async () => {
+      if (await targetCardImg.count() > 0) return true
       // 月份按需懒加载，滚动 main 容器触发更多月份
       await page.evaluate(() => {
         const main = document.querySelector('main')
         if (main) main.scrollBy(0, 800)
         window.scrollBy(0, 800)
       })
-      await page.waitForTimeout(1500)
-    }
-    expect(cardImgVisible, `live photo card for ${photoId} should render after filtering by 实况图`).toBeTruthy()
+      return false
+    }, { timeout: 30_000, intervals: [500, 1_000, 2_000] }).toBe(true)
 
     // 3. 验证「缩略图请求」已发出 —— gallery 用 img.thumbnail 作为缩略图 src，
     //    PhotoGallery.vue 在 mounted 后立即触发 fetch(image.thumbnail)。

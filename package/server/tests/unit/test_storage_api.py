@@ -24,12 +24,25 @@ def _user():
 
 
 def _photo(pid=None, size=1024, ftype_value="image", filename="a.jpg"):
+    from datetime import datetime
+    # file_type 既支持 .value 取值（top-large-files 用），又能让 schema 通过校验
+    # (PhotoSchema.file_type 是 str enum, Pydantic v2 在 enum 输入 string 时也接受).
     return SimpleNamespace(
         id=pid or uuid4(),
         size=size,
         file_type=SimpleNamespace(value=ftype_value),
         filename=filename,
         file_path=f"/Photos/{filename}",
+        upload_time=datetime(2026, 8, 6, 10, 0, 0),
+        photo_time=datetime(2026, 8, 6, 10, 0, 0),
+        image_type="Screenshot",
+        is_deleted=False,
+        duration=0.0,
+        md5=None,
+        processed_tasks={},
+        owner_id=uuid4(),
+        width=1920,
+        height=1080,
     )
 
 
@@ -209,3 +222,80 @@ def test_storage_top_large_files_returns_serialized_top20():
     # 默认 desc 排序：最大在前
     assert response.data[0]["size"] == 1024 * 5
     assert response.data[-1]["size"] == 1024
+
+# ----------------------- GET /storage/time-distribution -----------------------
+
+
+def test_storage_time_distribution_groups_by_month_by_default():
+    user = _user()
+    db = MagicMock()
+    rows = [
+        SimpleNamespace(time_group="2026-01", size=2_000, count=4),
+        SimpleNamespace(time_group="2026-02", size=1_500, count=3),
+        SimpleNamespace(time_group=None, size=99, count=1),
+    ]
+    db.query.return_value.filter.return_value.group_by.return_value.all.return_value = rows
+
+    response = storage_api.get_time_distribution(start_date=None, end_date=None, db=db, current_user=user)
+    assert response.code == 0
+    # None time_group 被跳过
+    assert len(response.data) == 2
+    assert response.data[0] == {"name": "2026-01", "size": 2_000, "count": 4}
+    assert response.data[1] == {"name": "2026-02", "size": 1_500, "count": 3}
+
+
+def test_storage_time_distribution_group_by_year_switches_label():
+    user = _user()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.group_by.return_value.all.return_value = [
+        SimpleNamespace(time_group="2025", size=10_000, count=20),
+        SimpleNamespace(time_group="2026", size=12_000, count=25),
+    ]
+
+    response = storage_api.get_time_distribution(
+        group_by="year", start_date=None, end_date=None, db=db, current_user=user,
+    )
+    names = [r["name"] for r in response.data]
+    assert names == ["2025", "2026"]
+
+
+def test_storage_time_distribution_returns_empty_when_no_photos():
+    user = _user()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
+
+    response = storage_api.get_time_distribution(start_date=None, end_date=None, db=db, current_user=user)
+    assert response.code == 0
+    assert response.data == []
+
+
+# ----------------------- GET /storage/screenshots -----------------------
+
+
+def test_storage_screenshots_filters_screenshot_type_and_paginates():
+    """screenshot 接口应当只返回 image_type=SCREENSHOT 的照片并支持 skip/limit。"""
+    user = _user()
+    db = MagicMock()
+    photos = [_photo(filename=f"shot_{i}.png") for i in range(3)]
+    db.query.return_value.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = photos
+
+    # 避免 PhotoSchema 严格枚举校验失败（mock 出来的属性无法通过 pydantic）。
+    # PhotoSchema 是函数内 import，需要 patch app.schemas.photo.Photo。
+    with patch("app.schemas.photo.Photo") as PhotoSchemaMock:
+        PhotoSchemaMock.model_validate.return_value.model_dump.side_effect = [
+            {"filename": f"shot_{i}.png", "id": str(photos[i].id)} for i in range(3)
+        ]
+        response = storage_api.get_screenshots(skip=10, limit=25, db=db, current_user=user)
+    assert response.code == 0
+    assert len(response.data) == 3
+    assert all("filename" in item for item in response.data)
+
+
+def test_storage_screenshots_returns_empty_list_when_none():
+    user = _user()
+    db = MagicMock()
+    db.query.return_value.filter.return_value.order_by.return_value.offset.return_value.limit.return_value.all.return_value = []
+
+    response = storage_api.get_screenshots(db=db, current_user=user)
+    assert response.code == 0
+    assert response.data == []
