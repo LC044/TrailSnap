@@ -21,7 +21,18 @@
           </div>
 
           <!-- Desktop Buttons -->
-          <div class="hidden md:flex items-center flex-shrink-0">
+          <div class="hidden md:flex items-center gap-3 flex-shrink-0">
+            <a
+              href="https://github.com/LC044/TrailSnap"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-full text-neutral-dark transition-colors hover:bg-gray-100 hover:text-primary dark:text-white dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-[#141414]"
+              aria-label="Open TrailSnap on GitHub"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.168 6.839 9.49.5.092.683-.217.683-.483 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.004.07 1.532 1.03 1.532 1.03.892 1.529 2.341 1.087 2.91.831.091-.646.349-1.087.635-1.338-2.22-.253-4.555-1.11-4.555-4.942 0-1.092.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.805c.85.004 1.705.115 2.504.337 1.909-1.294 2.748-1.025 2.748-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.591 1.028 2.683 0 3.842-2.339 4.686-4.566 4.934.359.31.678.92.678 1.852 0 1.337-.012 2.416-.012 2.744 0 .268.18.58.688.482A10.002 10.002 0 0022 12c0-5.523-4.477-10-10-10z" />
+              </svg>
+            </a>
             <button class="px-5 py-2 rounded-full bg-primary text-white text-sm font-bold hover:bg-primary-dark hover:scale-105 transition-transform shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
           </div>
 
@@ -40,6 +51,10 @@
         <button type="button" class="text-left w-fit transition-colors" :class="navClass('core-features')" @click="scrollTo('core-features')">{{ t.nav.features }}</button>
         <button type="button" class="text-left w-fit transition-colors text-neutral-dark dark:text-gray-300 hover:text-primary" @click="goLink(lang === 'zh-CN' ? '/cli' : '/en/cli')">CLI</button>
         <button type="button" class="text-left w-fit transition-colors text-neutral-dark dark:text-gray-300 hover:text-primary" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.quickStart }}</button>
+        <a href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener noreferrer" class="inline-flex w-fit items-center gap-2 text-neutral-dark transition-colors hover:text-primary dark:text-gray-300" @click="isMobileMenuOpen = false">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.168 6.839 9.49.5.092.683-.217.683-.483 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.004.07 1.532 1.03 1.532 1.03.892 1.529 2.341 1.087 2.91.831.091-.646.349-1.087.635-1.338-2.22-.253-4.555-1.11-4.555-4.942 0-1.092.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.805c.85.004 1.705.115 2.504.337 1.909-1.294 2.748-1.025 2.748-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.591 1.028 2.683 0 3.842-2.339 4.686-4.566 4.934.359.31.678.92.678 1.852 0 1.337-.012 2.416-.012 2.744 0 .268.18.58.688.482A10.002 10.002 0 0022 12c0-5.523-4.477-10-10-10z" /></svg>
+          GitHub
+        </a>
         <div class="flex space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
           <button class="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
         </div>
@@ -327,7 +342,7 @@
       </div>
     </section>
 
-    <!-- 6. Testimonials -->
+    <!-- 6. Before you start -->
     <section class="py-20 bg-secondary/30 dark:bg-[#141414]/30">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 class="text-[28px] font-bold text-neutral-dark dark:text-white text-center mb-12">{{ t.testimonials.title }}</h2>
@@ -441,7 +456,10 @@
 
         <div class="border-t border-white/10 pt-8 text-center">
           <p class="text-xs opacity-60">
-            {{ t.footer.copyright }} <span class="mx-2">|</span> {{ t.footer.privacy }} <span class="mx-2">|</span> {{ t.footer.agreement }}
+            {{ t.footer.copyright }} <span class="mx-2">|</span>
+            <a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/docs/guide/data-safety' : '/en/docs/guide/data-safety')">{{ t.footer.privacy }}</a>
+            <span class="mx-2">|</span>
+            <a href="#" class="hover:text-primary transition-colors" @click.prevent="goLink(lang === 'zh-CN' ? '/docs/guide/preflight' : '/en/docs/guide/preflight')">{{ t.footer.agreement }}</a>
           </p>
         </div>
       </div>
@@ -467,7 +485,7 @@ const i18n = {
     hero: {
       title1: 'AI赋能家庭相册',
       title2: '你的专属行影集',
-      desc: 'AI智能分析、整理相册照片、生成专属记忆报告，<br class="hidden md:inline">让每一段出行都值得珍藏',
+      desc: '自托管保存你的照片，用 AI 整理、检索和回顾旅行记忆。<br class="hidden md:inline">让每一段出行都值得珍藏',
       tags: ['AI相册', '足迹相册', '故事相册'],
       download: '快速开始',
       demo: '在线体验',
@@ -543,7 +561,7 @@ const i18n = {
       ]
     },
     testimonials: {
-      title: '用户心声 · 用行影集珍藏每一段旅程'
+      title: '开始前先确认 · 用得安心，导入更稳妥'
     },
     trust: {
       title: '安全保障 · 数据真正属于你',
@@ -555,8 +573,8 @@ const i18n = {
       contact: { title: '联系我们', email: '邮箱', wechat: '微信公众号', qq: 'QQ群', scan: '扫码加入' },
       follow: { title: '关注我们' },
       copyright: '© 2025-2026 TrailSnap行影集 版权所有',
-      privacy: '隐私政策',
-      agreement: '用户协议'
+      privacy: '数据、隐私与备份',
+      agreement: '部署前检查'
     }
   },
   'en-US': {
@@ -569,7 +587,7 @@ const i18n = {
     hero: {
       title1: 'AI-Empowered Travel Memories',
       title2: 'Your Exclusive TrailSnap',
-      desc: 'Smartly record itineraries, organize travel photos, generate exclusive memory reports, <br class="hidden md:inline">making every trip worth cherishing.',
+      desc: 'Self-host your photos and use AI to organize, search, and revisit travel memories. <br class="hidden md:inline">You control the data and deployment.',
       tags: ['AI Album', 'Footprint Album', 'Story Album'],
       download: 'Download',
       demo: 'Live Demo',
@@ -645,7 +663,7 @@ const i18n = {
       ]
     },
     testimonials: {
-      title: 'User Voice · Cherish Every Journey'
+      title: 'Before you begin · import with confidence'
     },
     trust: {
       title: 'Security · Your Data Truly Belongs to You',
@@ -657,8 +675,8 @@ const i18n = {
       contact: { title: 'Contact Us', email: 'Email', wechat: 'WeChat', qq: 'QQ Group', scan: 'Scan to Join' },
       follow: { title: 'Follow Us' },
       copyright: '© 2025-2026 TrailSnap All Rights Reserved',
-      privacy: 'Privacy Policy',
-      agreement: 'User Agreement'
+      privacy: 'Data, Privacy & Backups',
+      agreement: 'Pre-deployment Checklist'
     }
   }
 }
@@ -702,7 +720,6 @@ const featuresList = {
     title: '行程记录',
     icon: '🎫',
     desc: '专属火车票、景区门票、演唱会门票管理功能，自动识别票据信息，识别国内5A级景区，清晰回顾每一段出行轨迹。',
-    status: '开发中',
     tags: ['智能识别', '行程管理', '旅行足迹'],
     statusColor: 'bg-orange-100 text-orange-600'
   },
@@ -724,16 +741,14 @@ const featuresList = {
   {
     title: 'Itinerary Record',
     icon: '🎫',
-    desc: 'Exclusive management for train tickets, scenic spot tickets, concert tickets, automatic ticket info recognition, 5A scenic spot recognition.',
-    status: 'In Dev',
+    desc: 'Basic recognition and management for train, flight, and other tickets. Recognition quality depends on the ticket type and photo clarity.',
     tags: ['Smart Recognition', 'Itinerary Mgmt', 'Travel Footprint'],
-    statusColor: 'bg-orange-100 text-orange-600'
+    statusColor: 'bg-green-100 text-green-700'
   },
   {
     title: 'AI Empowerment',
     icon: '🤖',
-    desc: 'One-sentence travel diary generation, auto-edit 15s travel Vlog, smart photo retouching and selection.',
-    status: 'Planned',
+    desc: 'AI analysis, search, and content generation are available. Auto Vlogs and smart retouching remain planned.',
     statusColor: 'bg-blue-100 text-blue-600'
   }
   ]
@@ -765,26 +780,26 @@ const overviewFeatures = computed(() => overviewFeaturesList[lang.value as keyof
 const testimonialsList = {
   'zh-CN': [
     {
-    text: '每次旅行拍的照片都乱七八糟，用了行影集后自动分类，还能识别车票生成行程，年底的年度报告更是惊喜，满满的回忆！',
-    user: '旅行爱好者小A',
-    role: '行影集内测用户'
+    text: '先用少量照片完成一次导入和扫描，再逐步接入完整图库。这样既能确认目录权限，也能了解 AI 分析所需的时间。',
+    user: '部署建议',
+    role: '首次使用'
   },
   {
-    text: '最喜欢它的AI功能，自动剪辑的Vlog非常有感觉，省去了我大量剪辑视频的时间，强烈推荐给喜欢记录生活的朋友。',
-    user: '摄影师大白',
-    role: '资深用户'
+    text: '照片目录和数据库都应备份；使用外部 AI 服务或 Agent 时，请仅授予必要权限，并避免公开 Token。',
+    user: '数据建议',
+    role: '隐私与安全'
   }
   ],
   'en-US': [
     {
-    text: 'My travel photos used to be a mess. TrailSnap sorted them automatically and even generated itineraries from tickets. The annual report was a huge surprise!',
-    user: 'Travel Enthusiast A',
-    role: 'Beta User'
+    text: 'Start with a small folder and complete one import and scan before connecting a full library. It verifies directory permissions and gives you a realistic idea of AI processing time.',
+    user: 'Deployment tip',
+    role: 'First use'
   },
   {
-    text: 'I love the AI features the most. The auto-edited Vlog has great vibes and saved me tons of time. Highly recommended for life recorders.',
-    user: 'Photographer Baymax',
-    role: 'Power User'
+    text: 'Back up both your photo directory and database. When using external AI services or an Agent, grant only necessary access and never publish tokens.',
+    user: 'Data tip',
+    role: 'Privacy and security'
   }
   ]
 }

@@ -53,6 +53,7 @@ export default defineConfig({
         nav: [
           { text: '首页', link: '/' },
           { text: 'CLI', link: '/cli' },
+          { text: '识别演示', link: '/docs/guide/demo' },
           { text: '用户指南', link: '/docs/guide/install' },
           { text: '开发者文档', link: '/docs/dev/guide' },
           { text: '博客', link: '/docs/blog/' },
@@ -61,6 +62,7 @@ export default defineConfig({
         sidebar: {
           '/docs/guide/': [
             { text: '概览', link: '/docs/guide/overview' },
+            { text: '部署前检查', link: '/docs/guide/preflight' },
             { text: '安装指南', link: '/docs/guide/install' },
             { text: '移动 App', link: '/docs/guide/mobile-app' },
             {
@@ -98,6 +100,7 @@ export default defineConfig({
               ]
             },
             { text: '常见问题', link: '/docs/guide/questions' },
+            { text: '数据、隐私与备份', link: '/docs/guide/data-safety' },
             { text: '问题反馈', link: '/docs/guide/feedback' },
             { text: '更新日志', link: '/docs/guide/changelog' },
           ],
@@ -186,6 +189,7 @@ export default defineConfig({
               text: 'User Guide',
               items: [
                 { text: 'Overview', link: '/en/docs/guide/overview' },
+                { text: 'Pre-deployment Checklist', link: '/en/docs/guide/preflight' },
                 { text: 'Installation', link: '/en/docs/guide/install' },
                 { text: 'Mobile App', link: '/en/docs/guide/mobile-app' },
                 {
@@ -222,6 +226,7 @@ export default defineConfig({
                   ]
                 },
                 { text: 'Questions', link: '/en/docs/guide/questions' },
+                { text: 'Data, Privacy & Backups', link: '/en/docs/guide/data-safety' },
                 { text: 'Feedback', link: '/en/docs/guide/feedback' },
                 { text: 'Changelog', link: '/en/docs/guide/changelog' },
               ]

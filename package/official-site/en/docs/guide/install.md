@@ -4,6 +4,8 @@
 TrailSnap currently supports Docker deployment only. Docker Compose is recommended for quick setup.
 :::
 
+Before you begin, complete the [pre-deployment checklist](/en/docs/guide/preflight), especially the photo-directory permissions, free storage, and LAN-access checks.
+
 ## Docker Deployment (Recommended)
 
 Using Docker Compose allows you to start all services with one click, including the frontend, backend, database, and AI services.

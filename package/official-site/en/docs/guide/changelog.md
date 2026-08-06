@@ -1,5 +1,61 @@
 # Changelog
 
+## 2026-08-02 (0.9.1)
+
+### New
+
+- Added Capacitor-based Android/iOS App projects. On first launch, the App lets users enter and save their self-hosted TrailSnap Server address.
+- Added automated Android APK builds. Pushing a `v*.*.*` tag uploads the APK and CLI artifacts to the same GitHub Release.
+- Added PWA support to the Web frontend, including installability and improved offline / refresh behavior.
+- AI Moments copy generation can now show its reasoning progress in real time.
+
+### Improvements
+
+- Improved Android back-button and gesture behavior: close overlays first, navigate back next, then move to the background from the home screen.
+- Unified App and CLI publishing rules: manual builds keep Actions artifacts, while version tags create or update Releases.
+- Added mobile App installation, server configuration, update, and privacy guidance to the official site.
+
+### Bug Fixes
+
+- Fixed executable permissions for the Android Gradle Wrapper on Linux GitHub runners.
+- Fixed PWA refresh behavior and branch image-tag handling.
+
+## 2026-08-02 (0.9.0)
+
+### New
+
+- Added **Moments Diary**: generate, edit, and clear AI social copy by day, with main locations and photo highlights.
+- Added **location album collage view** with nationwide / province browsing, automatic or manual photo selection, tile replacement, and similar-photo removal.
+- Added map double-click drill-down and collage selection strategies including memory value, quality, latest, and random.
+- Added mobile bottom-tab navigation, map/collage gestures, and an Agent drawer.
+
+### Improvements
+
+- Reduced Server and AI image size and startup overhead; added graceful stopping and health monitoring to the AI service.
+- Improved social-image aspect ratios, mobile layout, and collage rendering performance.
+
+### Bug Fixes
+
+- Fixed timezone aggregation, streaming generation, and single-image aspect ratio issues for Moments copy.
+- Fixed mobile collage blank screens, reverse-geocoding parsing, and several external-library and task-navigation issues.
+
+## 2026-07-28 (0.8.1)
+
+### New
+
+- Added an **external photo library setup wizard** for directory selection, path mapping, and scan configuration.
+- Added a global notification center for background tasks and system messages.
+- Added scheduled version-update checks.
+
+### Improvements
+
+- Improved AI assistant context trimming and photo retrieval for long conversations and complex libraries.
+- Expanded automated coverage for the frontend, server, and AI service.
+
+### Bug Fixes
+
+- Fixed reinstall, health-check, metadata dispatch, and AI-timeout issues affecting some deployments.
+
 ## 2026-07-11 (0.7.0)
 
 ### New

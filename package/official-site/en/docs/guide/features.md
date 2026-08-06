@@ -2,6 +2,21 @@
 
 This document lists the complete feature set of TrailSnap, helping you quickly understand all its capabilities.
 
+::: tip Reading feature status
+The list below describes current project capabilities. Features that need the AI service, an external model, or more hardware are called out; roadmap items should not be treated as a promise for the current release.
+:::
+
+## Current capabilities and requirements
+
+| Capability | Status | Requirements / notes |
+| --- | --- | --- |
+| Photo browsing, albums, timeline, metadata | Available | Import or scan photos first |
+| Faces, OCR, scene classification, similar/duplicate detection | Available | Requires the AI service; duration depends on library size and hardware |
+| Maps, footprints, 5A scenic spots | Available | Depends on photo location metadata and map configuration |
+| Train, flight, and other ticket features | Available | Recognition quality depends on photo clarity and ticket type |
+| AI assistant, external models, Agent CLI | Optional | Requires model or token configuration; external models may transmit data to their provider |
+| Auto Vlogs and smart retouching | Planned | Not a current release capability |
+
 ---
 
 ## 1. Album Management

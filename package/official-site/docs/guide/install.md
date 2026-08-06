@@ -2,6 +2,8 @@
 TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速部署。
 :::
 
+在开始前，请先完成[部署前检查](/docs/guide/preflight)，特别是照片目录权限、可用存储空间和局域网访问方式。
+
 ## Docker 部署 (推荐)
 
 使用 Docker Compose 可以一键启动所有服务，包括前端、后端、数据库和 AI 服务。
