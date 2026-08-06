@@ -134,7 +134,7 @@ export const authService = {
   },
 
   async getAuthStatus() {
-    const res = await request<{has_users: boolean; allow_registration: boolean}>({
+    const res = await request<{has_users: boolean; allow_registration: boolean; demo_mode: boolean}>({
       url: '/api/auth/status',
       method: 'get'
     });

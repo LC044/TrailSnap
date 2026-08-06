@@ -28,6 +28,10 @@
             class="space-y-6"
             @submit.prevent="handleLogin"
           >
+            <!-- 演示模式：自动填充演示账号后的提示条 -->
+            <div v-if="demoMode" class="rounded-lg bg-primary-50 dark:bg-primary-900/20 px-4 py-3 text-sm text-primary-600 dark:text-primary-300">
+              演示模式：已为你自动填充演示账号，点击「登录」即可体验
+            </div>
             <el-form-item label="用户名" prop="username" class="!mb-4">
               <el-input 
                 v-model="loginForm.username" 
@@ -100,6 +104,7 @@ const loading = ref(false);
 const rememberMe = ref(false);
 const hasUsers = ref(true)
 const allowRegistration = ref(false);
+const demoMode = ref(false);
 
 // Character interaction state
 const focusTarget = ref<'username' | 'password' | null>(null);
@@ -138,6 +143,12 @@ onMounted(async () => {
     if (!status.has_users) {
       router.replace('/register');
       return;
+    }
+    // 演示模式：自动填充演示账号 trailsnap / trailsnap，游客无需手动输入
+    if (status.demo_mode) {
+      loginForm.username = 'trailsnap';
+      loginForm.password = 'trailsnap';
+      demoMode.value = true;
     }
   } catch (error) {
     console.error('Failed to get auth status:', error);
