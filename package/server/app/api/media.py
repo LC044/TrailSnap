@@ -163,7 +163,7 @@ async def get_media_file(
     # Determine media type
     ext = os.path.splitext(file_path)[1].lower()
     if ext == '.heic':
-        file_path = _get_thumbnail_path, photo.owner_id, photo_id, db, 'medium'
+        file_path = _get_thumbnail_path(photo.owner_id, photo_id, db, 'medium')
     file_size = await run_in_threadpool(os.path.getsize, file_path)
 
     media_type = "application/octet-stream"
