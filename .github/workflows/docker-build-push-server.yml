@@ -7,6 +7,9 @@ on:
     paths:
       - 'package/server/**'
       - '.github/workflows/docker-build-push-server.yml'
+  schedule:
+    # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送后端镜像
+    - cron: '0 20 * * *'
   workflow_dispatch:
     inputs:
       push_latest:
@@ -18,7 +21,11 @@ on:
 jobs:
   build-and-push-server:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建后端') || github.event_name == 'workflow_dispatch'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      contains(github.event.head_commit.message, '构建后端')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -63,6 +70,7 @@ jobs:
             EXTRA_TAGS="latest"
           fi
 
+          # 定时触发默认不带 latest（日常构建走 :master，便于回滚）
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
           echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV

@@ -5,8 +5,8 @@ on:
   push:
     branches: [master, main]
   schedule:
-    # Nightly 04:00 UTC ≈ 12:00 Asia/Shanghai; 跑 e2e full 兜底
-    - cron: '0 4 * * *'
+    # 凌晨 3 点（北京时间，UTC+8）= UTC 19:00；每日 e2e full 兜底
+    - cron: '0 19 * * *'
   workflow_dispatch:
     inputs:
       e2e_level:

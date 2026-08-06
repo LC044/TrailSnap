@@ -7,6 +7,9 @@ on:
     paths:
       - 'package/ai/**'
       - '.github/workflows/docker-build-push-ai.yml'
+  schedule:
+    # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送 AI 镜像（cpu/gpu/openvino）
+    - cron: '0 20 * * *'
   workflow_dispatch:
     inputs:
       push_latest:
@@ -18,7 +21,12 @@ on:
 jobs:
   build-and-push-ai:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || contains(github.event.head_commit.message, '构建ai' ) || contains(github.event.head_commit.message, '构建AI') || github.event_name == 'workflow_dispatch'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      contains(github.event.head_commit.message, '构建ai') ||
+      contains(github.event.head_commit.message, '构建AI')
     strategy:
       matrix:
         include:
@@ -71,7 +79,7 @@ jobs:
           if [[ "$PUSH_LATEST" == "true" ]]; then
             RAW_EXTRA_TAGS="latest"
           fi
-          
+
           # Append suffix from matrix
           BASE_TAG="${RAW_BASE_TAG}${{ matrix.tag_suffix }}"
           if [ -n "$RAW_EXTRA_TAGS" ]; then
@@ -79,7 +87,9 @@ jobs:
           else
             EXTRA_TAGS=""
           fi
-          
+
+          # 定时触发默认不带 latest（日常构建走 :master，便于回滚）
+
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
           echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
           echo "RAW_BASE_TAG=$RAW_BASE_TAG" >> $GITHUB_ENV
