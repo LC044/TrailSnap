@@ -135,21 +135,18 @@ test.describe('P1 - 照片流核心功能', () => {
     // 视频卡片在筛选后由画廊按可见月份懒加载。并行压测下月份加载可能延迟，
     // 用「边滚边等」兜底：定期滚动触发更多月份加载，最长等 30s。
     const card = page.locator('.photo-gallery .group:has(svg.lucide-circle-play)').first()
-    let cardVisible = false
-    for (let i = 0; i < 20; i++) {
-      if (await card.count() > 0) {
-        cardVisible = true
-        break
-      }
+    // 'video card should render after filtering by 视频'：用 expect.poll 轮询 + 边询边滚动触发更多月份加载，
+    // 看到卡片立刻退出，省掉固定 1500ms sleep 在高负载下的边界越限。
+    await expect.poll(async () => {
+      if (await card.count() > 0) return true
       // 滚动主容器触发懒加载月份（gallery 以 main 或 window 为滚动容器）
       await page.evaluate(() => {
         const main = document.querySelector('main')
         if (main) main.scrollBy(0, 800)
         window.scrollBy(0, 800)
       })
-      await page.waitForTimeout(1500)
-    }
-    expect(cardVisible, 'video card should render after filtering by 视频').toBeTruthy()
+      return false
+    }, { timeout: 30_000, intervals: [500, 1_000, 2_000] }).toBe(true)
     await card.click()
 
     // PhotoLightbox 视频分支渲染 xgplayer（div 含 .videoPlayer ref）或 video 元素
@@ -297,21 +294,18 @@ test.describe('P1 - 照片流核心功能', () => {
     //    Tailwind 的 icon-[tabler--live-photo] 在 CSS 选择器中需要转义方括号；改用属性包含匹配 [class*="tabler--live-photo"]
     //    避免引号转义问题。
     const targetCardImg = page.locator(`.photo-gallery img[src*="${photoId}/thumbnail"]`).first()
-    let cardImgVisible = false
-    for (let i = 0; i < 20; i++) {
-      if (await targetCardImg.count() > 0) {
-        cardImgVisible = true
-        break
-      }
+    // `live photo card for ${photoId} should render after filtering by 实况图`：用 expect.poll 轮询 + 边询边滚动触发更多月份加载，
+    // 看到卡片立刻退出，省掉固定 1500ms sleep 在高负载下的边界越限。
+    await expect.poll(async () => {
+      if (await targetCardImg.count() > 0) return true
       // 月份按需懒加载，滚动 main 容器触发更多月份
       await page.evaluate(() => {
         const main = document.querySelector('main')
         if (main) main.scrollBy(0, 800)
         window.scrollBy(0, 800)
       })
-      await page.waitForTimeout(1500)
-    }
-    expect(cardImgVisible, `live photo card for ${photoId} should render after filtering by 实况图`).toBeTruthy()
+      return false
+    }, { timeout: 30_000, intervals: [500, 1_000, 2_000] }).toBe(true)
 
     // 3. 验证「缩略图请求」已发出 —— gallery 用 img.thumbnail 作为缩略图 src，
     //    PhotoGallery.vue 在 mounted 后立即触发 fetch(image.thumbnail)。

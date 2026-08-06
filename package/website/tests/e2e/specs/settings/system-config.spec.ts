@@ -39,6 +39,9 @@ test.describe('系统设置-开放注册开关 @settings @system-config', () => 
   test('切换「允许新用户注册」后实时影响注册可用性，并以关闭态收尾', async ({
     page,
   }) => {
+    // 3 次 setSwitch (save + toast 出现 + toast 消失) 累计 ≈ 66s，超过 Playwright 默认 test 级 timeout (30s) 会触发
+    // "page, context or browser has been closed"。提前开口，给进程变化与任务队列预留余量。
+    test.setTimeout(90_000);
     // 1) 以管理员身份登录（开关仅在超级用户下可用）
     await page.goto('/login');
     await page.fill('input[placeholder="请输入用户名"]', ADMIN.username);
