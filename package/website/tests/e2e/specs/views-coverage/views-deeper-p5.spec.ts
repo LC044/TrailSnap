@@ -358,17 +358,19 @@ test.describe("Moments 日文案 AI 生成 & 编辑 @views-coverage", () => {
     await enterMomentsView(page)
     await expect(page.getByText("临时文案。")).toBeVisible({ timeout: 10_000 })
 
-    // 点「清除」并等待 DELETE 落地（替代旧版 expect.poll(deleteHit, 5s)；
-    // 旧版本在 docker CI 高负载下 5s 内偶发不触发是因为 click 较慢，
-    // 改用 waitForResponse(15s) 更稳健，与 moment-caption-streaming 用法一致）
+    // 点首个 day block 内的「清除」并等待 DELETE 落地；
+    // 将触发与监听绑定，避免高负载下 click 完成后才开始等待响应。
     const deleteResponse = page.waitForResponse(
       (r) =>
         r.url().includes("/api/moments/day-captions/2025-08-05") &&
         r.request().method() === "DELETE",
-      { timeout: 15_000 }
+      { timeout: 25_000 }
     )
-    await page.locator('button:has-text("清除")').first().click({ force: true })
-    await deleteResponse
+    const dayBlock = page.locator(".day-block").first()
+    await dayBlock.hover()
+    const clearButton = dayBlock.locator('button[title="清除文案"]')
+    await expect(clearButton).toBeVisible({ timeout: 5_000 })
+    await Promise.all([deleteResponse, clearButton.click()])
     await expect(
       page.getByText(/这是\s*2025\s*年\s*8\s*月\s*5\s*日\s*的美好回忆/)
     ).toBeVisible({ timeout: 10_000 })
