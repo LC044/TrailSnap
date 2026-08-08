@@ -36,7 +36,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/pgvector/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
     container_name: postgres_container
     restart: always
     environment:

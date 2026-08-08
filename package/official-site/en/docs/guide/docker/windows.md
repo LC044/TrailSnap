@@ -41,7 +41,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/pgvector/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
     container_name: postgres_container
     restart: always
     environment:
@@ -165,7 +165,7 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 [+] up 51/51
  ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest Pulled                                                               38.2s
  ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest       Pulled                                                              155.8s
- ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/pgvector/pgvector:pg18-trixie       Pulled                                                               76.8s
+ ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie       Pulled                                                               76.8s
  ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest   Pulled                                                              112.8s
  ✔ Network trailsnap_app-network             Created                                                                0.1s
  ✔ Container postgres_container              Healthy                                                                28.0s
