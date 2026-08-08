@@ -182,7 +182,7 @@ pnpm lint
 .\tests\scripts\run-tests.ps1 -StopServices
 ```
 
-首次跑 e2e 前需要同步测试照片（独立 LFS 仓库）：`.\tests\scripts\sync-test-photos.ps1`。提交前至少跑通 `-Layer unit`；改动涉及 UI/接口时补跑 `-Layer e2e -Level p0`。
+首次跑 e2e 前需要同步测试照片（独立 git 仓库）：`.\tests\scripts\sync-test-photos.ps1`。提交前至少跑通 `-Layer unit`；改动涉及 UI/接口时补跑 `-Layer e2e -Level p0`。
 
 ## Pull Request 流程
 

@@ -310,12 +310,11 @@ jobs:
         working-directory: package/website
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: Checkout test photos (Git LFS)
+      - name: Checkout test photos
         uses: actions/checkout@v4
         with:
           repository: ${{ env.TEST_PHOTOS_REPO }}
           path: tests/fixtures/e2e-photos
-          lfs: true
           clean: false
 
       - name: Decide E2E level
