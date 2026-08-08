@@ -55,6 +55,9 @@ FROM nvidia/cuda:12.9.1-cudnn-runtime-ubuntu22.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 # 仅需 python3.12 运行时（不需要 -dev / build-essential / cmake）+ OpenCV 运行库
+# libgomp1：llama-server（预编译 llama.cpp 二进制）依赖 OpenMP 运行库 libgomp.so.1。
+#   多阶段后 build 工具仅存在于 builder，runtime 必须显式安装，否则 llama-server
+#   启动报 "libgomp.so.1: cannot open shared object file: No such file or directory"。
 RUN apt-get update && apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -64,6 +67,7 @@ RUN apt-get update && apt-get install -y software-properties-common && \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/bin/python3.12 /usr/bin/python && \
     ln -sf /usr/bin/python3.12 /usr/bin/python3

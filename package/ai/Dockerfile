@@ -41,11 +41,16 @@ RUN uv sync --extra cpu --no-dev --no-cache
 FROM python:3.12.12-slim AS runtime
 WORKDIR /app
 # OpenCV 核心运行依赖。python:3.12-slim 自带 libstdc++6，满足 insightface 编译产物链接需求。
+# libgomp1：llama-server（预编译 llama.cpp 二进制）依赖 OpenMP 运行库 libgomp.so.1。
+#   旧单阶段构建靠 build-essential/g++ 经 gcc→libgomp1 顺带带入；多阶段后 build 工具
+#   仅存在于 builder，runtime 必须显式安装，否则 llama-server 启动即报
+#   "libgomp.so.1: cannot open shared object file: No such file or directory"。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # llama-server 二进制及其动态库，并注册到库搜索路径
