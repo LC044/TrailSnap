@@ -454,7 +454,7 @@ test.describe.serial('P1 - 人物相册', () => {
     }
   })
 
-  test('2.5.14 重新扫描人脸 - 上下文菜单动作 API 调用正确', async ({ page, request }, testInfo) => {
+  test('2.5.14 重新扫描人脸 - 上下文菜单先调用预览 API', async ({ page, request }, testInfo) => {
     const probe = await requireAnyIdentity(request, testInfo)
     if (!probe.ok) return
 
@@ -469,7 +469,7 @@ test.describe.serial('P1 - 人物相册', () => {
     // 用 URL 唯一过滤（避免 .method() 在不同 Playwright 版本上有歧义）
     const rescanReq = page.waitForResponse(
       (res) =>
-        res.url().includes(`/api/faces/identities/${probe.identity.id}/rescan`) &&
+        res.url().includes(`/api/faces/identities/${probe.identity.id}/rescan/preview`) &&
         (res.status() === 200 || res.status() >= 400),
       { timeout: 30_000 },
     )

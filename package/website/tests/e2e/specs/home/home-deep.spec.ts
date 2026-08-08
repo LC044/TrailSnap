@@ -67,4 +67,47 @@ test.describe('Smoke - 首页深度 @smoke', () => {
     const notFoundCount = await page.getByText(/页面不存在|404|Not Found|未找到页面/).count();
     expect(notFoundCount).toBe(0);
   });
+
+  test('首页 - 那年今日操作菜单可查看详情或退出回忆', async ({ page }) => {
+    await page.route('**/api/photos/on-this-day**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: 'success',
+          data: [{
+            id: '00000000-0000-0000-0000-000000000112',
+            filename: 'on-this-day.jpg',
+            photo_time: '2020-08-08T12:00:00',
+            upload_time: '2020-08-08T12:00:00',
+            url: '',
+            thumbnail_url: '',
+            file_type: 'image',
+            size: 1024,
+            width: 800,
+            height: 600,
+          }],
+        }),
+      });
+    });
+
+    await page.goto('/');
+    const memoryCard = page.getByRole('button', { name: /打开 2020-08-08 的回忆卡片/ });
+    await expect(memoryCard).toBeVisible({ timeout: 15_000 });
+    await memoryCard.click();
+
+    const actionsButton = page.getByRole('button', { name: '回忆操作' });
+    await expect(actionsButton).toBeVisible({ timeout: 5_000 });
+    await actionsButton.click();
+
+    const memoryMenu = page.getByRole('menu', { name: '回忆操作菜单' });
+    await expect(memoryMenu).toBeVisible();
+    await expect(memoryMenu.getByRole('menuitem', { name: '退出回忆' })).toBeVisible();
+    const detailsButton = memoryMenu.getByRole('menuitem', { name: '查看详情' });
+    await expect(detailsButton).toBeVisible({ timeout: 5_000 });
+    await detailsButton.click();
+
+    await expect(page.getByTitle('查看元数据 (I)')).toBeVisible({ timeout: 10_000 });
+  });
 });

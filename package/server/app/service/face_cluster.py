@@ -16,9 +16,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+class FaceRescanError(RuntimeError):
+    """Raised when an identity rescan fails and its transaction is rolled back."""
+
+
+class FaceRescanConflictError(FaceRescanError):
+    """Raised when a reviewed rescan selection is no longer valid."""
+
+
 from app.core.config_manager import config_manager
 
 class FaceClusterService:
+    MAX_RESCAN_PROTOTYPES = 12
+    MAX_RESCAN_REFERENCE_SAMPLE = 200
+    MANUAL_ASSIGNMENT_CONFIDENCE = 0.999
+
     def __init__(self, db: Session, user_id: uuid.UUID = None):
         self.db = db
         # Initialize from config
@@ -26,11 +38,23 @@ class FaceClusterService:
             config = config_manager.get_user_config(user_id, db)
             self.SIMILARITY_THRESHOLD = config.ai.face_recognition_threshold
             self.DISTANCE_THRESHOLD = config.ai.face_cluster_threshold
+            self.RESCAN_AUTO_MATCH_THRESHOLD = config.ai.face_rescan_auto_match_threshold
+            self.RESCAN_CANDIDATE_THRESHOLD = max(
+                self.RESCAN_AUTO_MATCH_THRESHOLD,
+                config.ai.face_rescan_candidate_threshold,
+            )
+            self.RESCAN_REMOVAL_THRESHOLD = max(
+                self.RESCAN_CANDIDATE_THRESHOLD,
+                config.ai.face_rescan_removal_threshold,
+            )
             self.MIN_CLUSTER_SIZE_FOR_IDENTITY = config.ai.face_recognition_min_photos
         else:
             # Fallback (should be avoided)
             self.SIMILARITY_THRESHOLD = 0.7
             self.DISTANCE_THRESHOLD = 0.4
+            self.RESCAN_AUTO_MATCH_THRESHOLD = 0.35
+            self.RESCAN_CANDIDATE_THRESHOLD = 0.45
+            self.RESCAN_REMOVAL_THRESHOLD = 0.52
             self.MIN_CLUSTER_SIZE_FOR_IDENTITY = 5
             
         self.DBSCAN_EPS = self.DISTANCE_THRESHOLD
@@ -119,71 +143,391 @@ class FaceClusterService:
             logger.error(f"分配Identity异常：{str(e)}", exc_info=True)
             raise
 
-    def rescan_identity(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None) -> int:
-        """
-        重新扫描指定人物的人脸：
-        1. 计算当前人物的人脸中心向量
-        2. 查找未分配的人脸中与中心向量距离小于阈值的人脸
-        3. 将符合条件的人脸关联到该人物
-        :return: 关联的人脸数量
-        """
+    def preview_identity_rescan(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None) -> dict:
+        """Return add/remove candidates without changing any face assignment."""
         try:
-            # 1. 获取人物关联的人脸
-            assigned_faces = self.db.query(Face).filter(
-                Face.face_identity_id == identity_id,
-                Face.is_deleted == False,
-                Face.face_feature.isnot(None)
-            ).all()
+            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=False)
+            return self._serialize_rescan_preview(analysis)
+        except Exception as exc:
+            self.db.rollback()
+            logger.error("预览人物 %s 重新扫描失败：%s", identity_id, exc, exc_info=True)
+            raise FaceRescanError(f"Failed to preview identity rescan {identity_id}") from exc
 
-            if not assigned_faces:
-                return 0
+    def apply_identity_rescan(
+        self,
+        identity_id: uuid.UUID,
+        owner_id: uuid.UUID,
+        add_face_ids: list[int],
+        remove_face_ids: list[int],
+    ) -> dict:
+        """Recompute and atomically apply only the candidates confirmed by the user."""
+        try:
+            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True)
+            valid_add_ids = {item["face"].id for item in analysis["add_candidates"]}
+            valid_remove_ids = {item["face"].id for item in analysis["remove_candidates"]}
+            selected_add_ids = set(add_face_ids)
+            selected_remove_ids = set(remove_face_ids)
+            if not selected_add_ids.issubset(valid_add_ids) or not selected_remove_ids.issubset(valid_remove_ids):
+                raise FaceRescanConflictError("Rescan candidates changed; preview again")
+            return self._apply_rescan_analysis(analysis, selected_add_ids, selected_remove_ids)
+        except FaceRescanConflictError:
+            self.db.rollback()
+            raise
+        except Exception as exc:
+            self.db.rollback()
+            logger.error("应用人物 %s 重新扫描失败：%s", identity_id, exc, exc_info=True)
+            raise FaceRescanError(f"Failed to apply identity rescan {identity_id}") from exc
 
-            # 2. 计算中心向量
-            embeddings = []
-            for face in assigned_faces:
-                embeddings.append(self.normalize_embedding(face.face_feature))
-
-            if not embeddings:
-                return 0
-
-            center = np.mean(embeddings, axis=0)
-            center = self.normalize_embedding(center)
-
-            # 3. 查找未分配的人脸
-            # 这里先获取一部分候选（按距离排序），再精确过滤
-            candidates_query = self.db.query(Face).join(Photo).filter(
-                Face.face_identity_id == None,
-                Face.is_deleted == False,
-                Face.face_feature.isnot(None)
+    def rescan_identity(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None) -> dict:
+        """Apply high-confidence additions and all removal candidates for API compatibility."""
+        try:
+            analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True)
+            return self._apply_rescan_analysis(
+                analysis,
+                {
+                    item["face"].id
+                    for item in analysis["add_candidates"]
+                    if item["distance"] <= self.RESCAN_AUTO_MATCH_THRESHOLD
+                },
+                {item["face"].id for item in analysis["remove_candidates"]},
             )
-            
+        except Exception as exc:
+            self.db.rollback()
+            logger.error("重新扫描人物 %s 失败：%s", identity_id, exc, exc_info=True)
+            if isinstance(exc, FaceRescanError):
+                raise
+            raise FaceRescanError(f"Failed to rescan identity {identity_id}") from exc
+
+    def _analyze_identity_rescan(
+        self,
+        identity_id: uuid.UUID,
+        owner_id: uuid.UUID | None,
+        lock: bool,
+    ) -> dict:
+        assigned_query = self.db.query(Face).join(Photo).filter(
+            Face.face_identity_id == identity_id,
+            Face.is_deleted.is_(False),
+            Face.face_feature.isnot(None),
+            Photo.is_deleted.is_(False),
+        )
+        if owner_id:
+            assigned_query = assigned_query.filter(Photo.owner_id == owner_id)
+        assigned_query = assigned_query.order_by(Face.id)
+        if lock:
+            assigned_query = assigned_query.with_for_update(of=Face)
+        assigned_faces = assigned_query.all()
+
+        removal_threshold = self.RESCAN_REMOVAL_THRESHOLD
+        if not assigned_faces:
+            return {
+                "identity_id": identity_id,
+                "owner_id": owner_id,
+                "reason": "no_reference_faces",
+                "prototypes": [],
+                "add_candidates": [],
+                "remove_candidates": [],
+                "removal_threshold": removal_threshold,
+            }
+
+        embeddings = [self.normalize_embedding(face.face_feature) for face in assigned_faces]
+        identity = crud_face.get_identity(self.db, identity_id, owner_id=owner_id)
+        default_face_id = identity.default_face_id if identity else None
+        sample_indices = self._sample_reference_indices(len(assigned_faces), assigned_faces, default_face_id)
+        trusted_sample_indices = self._select_consistent_component(
+            [embeddings[index] for index in sample_indices],
+            [assigned_faces[index].id for index in sample_indices],
+            default_face_id,
+        )
+        trusted_indices = [sample_indices[index] for index in trusted_sample_indices]
+        manually_confirmed_indices = {
+            index for index, face in enumerate(assigned_faces) if self._is_manually_confirmed(face)
+        }
+        trusted_indices = sorted(set(trusted_indices) | manually_confirmed_indices)
+        prototypes = self._select_diverse_prototypes([embeddings[index] for index in trusted_indices])
+
+        remove_candidates = []
+        if len(assigned_faces) >= 3:
+            trusted_index_set = set(trusted_indices)
+            for index, face in enumerate(assigned_faces):
+                if index in trusted_index_set or index in manually_confirmed_indices:
+                    continue
+                min_distance = min(self._cosine_distance(embeddings[index], ref) for ref in prototypes)
+                if min_distance > removal_threshold:
+                    remove_candidates.append({"face": face, "distance": min_distance})
+
+        matching_face_ids = self._find_matching_face_ids(
+            prototypes,
+            owner_id,
+            threshold=self.RESCAN_CANDIDATE_THRESHOLD,
+        )
+        candidate_faces = []
+        if matching_face_ids:
+            candidate_query = self.db.query(Face).join(Photo).filter(
+                Face.id.in_(matching_face_ids),
+                Face.is_deleted.is_(False),
+                Face.face_feature.isnot(None),
+                Photo.is_deleted.is_(False),
+            )
             if owner_id:
-                candidates_query = candidates_query.filter(Photo.owner_id == owner_id)
-                
-            candidates = candidates_query.order_by(
-                Face.face_feature.cosine_distance(center)
-            ).all()
+                candidate_query = candidate_query.filter(Photo.owner_id == owner_id)
+            if lock:
+                candidate_query = candidate_query.with_for_update(of=Face)
+            candidate_faces = candidate_query.all()
 
-            count = 0
-            for face in candidates:
-                face_emb = self.normalize_embedding(face.face_feature)
-                dist = 1.0 - np.dot(center, face_emb)
+        removal_ids = {item["face"].id for item in remove_candidates}
+        currently_kept_ids = {face.id for face in assigned_faces} - removal_ids
+        add_candidates = []
+        for face in candidate_faces:
+            if face.id in currently_kept_ids:
+                continue
+            min_distance = min(
+                self._cosine_distance(self.normalize_embedding(face.face_feature), prototype)
+                for prototype in prototypes
+            )
+            if min_distance > self.RESCAN_CANDIDATE_THRESHOLD:
+                continue
+            if face.face_identity_id and face.face_identity_id != identity_id and self._is_manually_confirmed(face):
+                continue
+            add_candidates.append({"face": face, "distance": min_distance})
 
-                if dist < self.DISTANCE_THRESHOLD:
-                    # 关联到该人物
-                    update_data = schemas.FaceUpdate(
-                        face_identity_id=identity_id,
-                        recognize_confidence=float(1.0 - dist)
-                    )
-                    crud_face.update_face(self.db, face.id, update_data, owner_id=owner_id)
-                    count += 1
+        return {
+            "identity_id": identity_id,
+            "owner_id": owner_id,
+            "reason": None,
+            "prototypes": prototypes,
+            "add_candidates": add_candidates,
+            "remove_candidates": remove_candidates,
+            "removal_threshold": removal_threshold,
+        }
 
-            return count
+    def _serialize_rescan_preview(self, analysis: dict) -> dict:
+        identity_ids = {
+            item["face"].face_identity_id
+            for item in analysis["add_candidates"]
+            if item["face"].face_identity_id
+        }
+        identity_names = {}
+        if identity_ids:
+            identity_query = self.db.query(FaceIdentity.id, FaceIdentity.identity_name).filter(
+                FaceIdentity.id.in_(identity_ids)
+            )
+            if analysis.get("owner_id"):
+                identity_query = identity_query.filter(FaceIdentity.owner_id == analysis["owner_id"])
+            identity_names = dict(identity_query.all())
 
-        except Exception as e:
-            logger.error(f"重新扫描人物 {identity_id} 失败：{str(e)}", exc_info=True)
-            # 不抛出异常，以免影响 API 返回
-            return 0
+        def serialize(item: dict, action: str) -> dict:
+            face = item["face"]
+            distance = float(item["distance"])
+            current_identity_id = face.face_identity_id
+            return {
+                "face_id": face.id,
+                "photo_id": str(face.photo_id),
+                "face_rect": face.face_rect,
+                "distance": distance,
+                "confidence": max(0.0, min(1.0, 1.0 - distance)),
+                "recommended": action == "add" and distance <= self.RESCAN_AUTO_MATCH_THRESHOLD,
+                "current_identity_id": str(current_identity_id) if current_identity_id else None,
+                "current_identity_name": identity_names.get(current_identity_id),
+                "assignment_type": (
+                    "remove" if action == "remove"
+                    else "reassign" if current_identity_id and current_identity_id != analysis["identity_id"]
+                    else "unassigned"
+                ),
+            }
+
+        add_candidates = [serialize(item, "add") for item in analysis["add_candidates"]]
+        remove_candidates = [serialize(item, "remove") for item in analysis["remove_candidates"]]
+        return {
+            "status": "success",
+            "reason": analysis["reason"],
+            "reference_count": len(analysis["prototypes"]),
+            "threshold": self.RESCAN_AUTO_MATCH_THRESHOLD,
+            "candidate_threshold": self.RESCAN_CANDIDATE_THRESHOLD,
+            "removal_threshold": analysis["removal_threshold"],
+            "add_candidates": add_candidates,
+            "remove_candidates": remove_candidates,
+            "summary": {
+                "add_count": len(add_candidates),
+                "remove_count": len(remove_candidates),
+                "reassign_count": sum(item["assignment_type"] == "reassign" for item in add_candidates),
+            },
+        }
+
+    def _apply_rescan_analysis(
+        self,
+        analysis: dict,
+        selected_add_ids: set[int],
+        selected_remove_ids: set[int],
+    ) -> dict:
+        affected_identity_ids = {analysis["identity_id"]}
+        affected_photo_ids = set()
+        reassigned_count = 0
+
+        for item in analysis["remove_candidates"]:
+            face = item["face"]
+            if face.id not in selected_remove_ids:
+                continue
+            face.face_identity_id = None
+            face.recognize_confidence = None
+            affected_photo_ids.add(face.photo_id)
+
+        for item in analysis["add_candidates"]:
+            face = item["face"]
+            if face.id not in selected_add_ids:
+                continue
+            previous_identity_id = face.face_identity_id
+            if previous_identity_id and previous_identity_id != analysis["identity_id"]:
+                affected_identity_ids.add(previous_identity_id)
+                reassigned_count += 1
+            face.face_identity_id = analysis["identity_id"]
+            face.recognize_confidence = float(1.0 - item["distance"])
+            affected_photo_ids.add(face.photo_id)
+
+        self.db.flush()
+        self._repair_default_faces(affected_identity_ids)
+        self.db.commit()
+        return {
+            "status": "success",
+            "added_count": len(selected_add_ids),
+            "removed_count": len(selected_remove_ids),
+            "reassigned_count": reassigned_count,
+            "count": len(selected_add_ids),
+            "reference_count": len(analysis["prototypes"]),
+            "threshold": self.RESCAN_AUTO_MATCH_THRESHOLD,
+            "candidate_threshold": self.RESCAN_CANDIDATE_THRESHOLD,
+            "affected_photo_ids": [str(photo_id) for photo_id in affected_photo_ids],
+        }
+
+    @staticmethod
+    def _cosine_distance(left: np.ndarray, right: np.ndarray) -> float:
+        return float(np.clip(1.0 - np.dot(left, right), 0.0, 2.0))
+
+    def _is_manually_confirmed(self, face: Face) -> bool:
+        return (
+            face.recognize_confidence is not None
+            and float(face.recognize_confidence) >= self.MANUAL_ASSIGNMENT_CONFIDENCE
+        )
+
+    def _select_consistent_component(
+        self,
+        embeddings: list[np.ndarray],
+        face_ids: list[int],
+        default_face_id: int | None,
+    ) -> list[int]:
+        """Select the largest connected face component; use the cover only as a tie-breaker."""
+        if len(embeddings) <= 2:
+            return list(range(len(embeddings)))
+
+        remaining = set(range(len(embeddings)))
+        components = []
+        while remaining:
+            start = remaining.pop()
+            component = {start}
+            frontier = [start]
+            while frontier:
+                current = frontier.pop()
+                neighbours = {
+                    index for index in remaining
+                    if self._cosine_distance(embeddings[current], embeddings[index]) < self.DISTANCE_THRESHOLD
+                }
+                remaining.difference_update(neighbours)
+                component.update(neighbours)
+                frontier.extend(neighbours)
+            components.append(sorted(component))
+
+        def component_rank(component: list[int]):
+            contains_default = default_face_id in {face_ids[index] for index in component}
+            return len(component), contains_default
+
+        return max(components, key=component_rank)
+
+    def _select_diverse_prototypes(self, embeddings: list[np.ndarray]) -> list[np.ndarray]:
+        """Choose multiple representative embeddings with farthest-first sampling."""
+        if len(embeddings) <= self.MAX_RESCAN_PROTOTYPES:
+            return embeddings
+
+        selected = [0]
+        min_distances = np.array([
+            self._cosine_distance(embedding, embeddings[0])
+            for embedding in embeddings
+        ])
+        while len(selected) < self.MAX_RESCAN_PROTOTYPES:
+            min_distances[selected] = -1
+            next_index = int(np.argmax(min_distances))
+            if min_distances[next_index] <= 0:
+                break
+            selected.append(next_index)
+            min_distances = np.minimum(
+                min_distances,
+                np.array([
+                    self._cosine_distance(embedding, embeddings[next_index])
+                    for embedding in embeddings
+                ]),
+            )
+        return [embeddings[index] for index in selected]
+
+    def _sample_reference_indices(
+        self,
+        face_count: int,
+        faces: list[Face],
+        default_face_id: int | None,
+    ) -> list[int]:
+        if face_count <= self.MAX_RESCAN_REFERENCE_SAMPLE:
+            return list(range(face_count))
+
+        sampled = {
+            int(index)
+            for index in np.linspace(0, face_count - 1, self.MAX_RESCAN_REFERENCE_SAMPLE)
+        }
+        if default_face_id is not None:
+            default_index = next(
+                (index for index, face in enumerate(faces) if face.id == default_face_id),
+                None,
+            )
+            if default_index is not None:
+                sampled.add(default_index)
+        return sorted(sampled)
+
+    def _find_matching_face_ids(
+        self,
+        prototypes: list[np.ndarray],
+        owner_id: uuid.UUID | None,
+        threshold: float | None = None,
+    ) -> set[int]:
+        """Use pgvector distance predicates so non-matching library faces never leave PostgreSQL."""
+        distance_threshold = self.DISTANCE_THRESHOLD if threshold is None else threshold
+        face_ids = set()
+        for prototype in prototypes:
+            distance = Face.face_feature.cosine_distance(prototype.tolist())
+            query = self.db.query(Face.id).join(Photo).filter(
+                Face.is_deleted.is_(False),
+                Face.face_feature.isnot(None),
+                Photo.is_deleted.is_(False),
+                distance <= distance_threshold,
+            )
+            if owner_id:
+                query = query.filter(Photo.owner_id == owner_id)
+            face_ids.update(row[0] for row in query.all())
+        return face_ids
+
+    def _repair_default_faces(self, identity_ids: set[uuid.UUID]) -> None:
+        for identity in self.db.query(FaceIdentity).filter(FaceIdentity.id.in_(identity_ids)).all():
+            valid_default = None
+            if identity.default_face_id:
+                valid_default = self.db.query(Face.id).join(Photo).filter(
+                    Face.id == identity.default_face_id,
+                    Face.face_identity_id == identity.id,
+                    Face.is_deleted.is_(False),
+                    Photo.is_deleted.is_(False),
+                ).first()
+            if valid_default:
+                continue
+            replacement = self.db.query(Face.id).join(Photo).filter(
+                Face.face_identity_id == identity.id,
+                Face.is_deleted.is_(False),
+                Photo.is_deleted.is_(False),
+            ).order_by(Face.recognize_confidence.desc().nullslast(), Face.id).first()
+            identity.default_face_id = replacement[0] if replacement else None
 
     def process_unassigned_faces(self, owner_id: uuid.UUID = None):
         """

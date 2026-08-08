@@ -20,19 +20,23 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+import numpy as np
 from PIL import Image
 
 from app.service import storage
 from app.service.storage import (
     _ensure_unique_path,
+    _score_video_thumbnail_frame,
+    _video_thumbnail_candidate_seconds,
     delete_thumbnails,
+    generate_video_thumbnail,
     get_file_size,
     get_image_dimensions,
     get_preview_path,
 )
 
 
-pytestmark = [pytest.mark.smoke, pytest.mark.module_storage]
+pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
 
 @pytest.fixture
@@ -169,3 +173,97 @@ def test_delete_thumbnails_removes_existing_files_and_empty_dirs(isolated_storag
 def test_delete_thumbnails_is_noop_when_nothing_to_delete(isolated_storage):
     # Should not raise even though the directories do not exist.
     delete_thumbnails(uuid.uuid4(), uuid.uuid4())
+
+
+# ----------------------- video thumbnails -----------------------
+
+
+def test_video_thumbnail_candidates_include_later_frames_without_exceeding_duration():
+    positions = _video_thumbnail_candidate_seconds(10.0)
+
+    assert positions[0] == 0.0
+    assert any(position >= 1.0 for position in positions)
+    assert len(positions) == len(set(positions))
+    assert all(0.0 <= position < 10.0 for position in positions)
+
+
+def test_video_thumbnail_frame_score_rejects_black_frame():
+    black = np.zeros((8, 8, 3), dtype=np.uint8)
+    detailed = np.indices((8, 8)).sum(axis=0) % 2 * 180 + 30
+    detailed = np.repeat(detailed[:, :, None], 3, axis=2).astype(np.uint8)
+
+    assert _score_video_thumbnail_frame(black) == float("-inf")
+    assert _score_video_thumbnail_frame(detailed) > 0
+
+
+class _FakeVideoCapture:
+    def __init__(self, opened=True):
+        self.opened = opened
+        self.position_ms = 0.0
+        self.released = False
+
+    def isOpened(self):
+        return self.opened
+
+    def get(self, prop):
+        if prop == _FakeCV2.CAP_PROP_FPS:
+            return 10.0
+        if prop == _FakeCV2.CAP_PROP_FRAME_COUNT:
+            return 100.0
+        return 0.0
+
+    def set(self, prop, value):
+        assert prop == _FakeCV2.CAP_PROP_POS_MSEC
+        self.position_ms = value
+        return True
+
+    def read(self):
+        if self.position_ms == 0:
+            return True, np.zeros((8, 8, 3), dtype=np.uint8)
+        detailed = np.indices((8, 8)).sum(axis=0) % 2 * 180 + 30
+        frame = np.repeat(detailed[:, :, None], 3, axis=2).astype(np.uint8)
+        return True, frame
+
+    def release(self):
+        self.released = True
+
+
+class _FakeCV2:
+    CAP_PROP_FPS = 1
+    CAP_PROP_FRAME_COUNT = 2
+    CAP_PROP_POS_MSEC = 3
+    COLOR_BGR2RGB = 4
+
+    def __init__(self, capture):
+        self.capture = capture
+
+    def VideoCapture(self, _path):
+        return self.capture
+
+    @staticmethod
+    def cvtColor(frame, _conversion):
+        return frame[:, :, ::-1]
+
+
+def test_generate_video_thumbnail_skips_black_first_frame_and_releases_capture():
+    capture = _FakeVideoCapture()
+    fake_cv2 = _FakeCV2(capture)
+
+    with patch.object(storage, "cv2", fake_cv2), \
+         patch.object(storage, "_save_thumbnails", return_value="thumbnail.webp") as save_mock:
+        result = generate_video_thumbnail("video.mp4", uuid.uuid4(), uuid.uuid4())
+
+    assert result == "thumbnail.webp"
+    assert capture.released is True
+    selected_image = save_mock.call_args.args[0]
+    assert np.asarray(selected_image).mean() > 0
+
+
+def test_generate_video_thumbnail_releases_capture_when_video_cannot_open():
+    capture = _FakeVideoCapture(opened=False)
+
+    with patch.object(storage, "cv2", _FakeCV2(capture)):
+        result = generate_video_thumbnail("broken.mp4", uuid.uuid4(), uuid.uuid4())
+
+    assert result is None
+    assert capture.released is True

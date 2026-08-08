@@ -5,7 +5,7 @@
       <h3 class="text-base font-bold text-gray-800 dark:text-gray-100">人物相册</h3>
       <span 
         class="text-xs text-blue-500 cursor-pointer"
-        @click="$router.push('/people')"
+        @click="$router.push('/album/people')"
       >
         {{ data.total_identified }}位已识别
       </span>

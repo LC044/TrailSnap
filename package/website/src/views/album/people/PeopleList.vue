@@ -158,6 +158,12 @@
       @saved="handleEditSaved"
     />
 
+    <FaceRescanDialog
+      v-model:visible="rescanDialogVisible"
+      :identity="rescanIdentity"
+      @applied="fetchIdentities"
+    />
+
     <!-- Context Menu -->
     <Teleport to="body">
       <div 
@@ -212,11 +218,11 @@ import {
   ArrowLeft,
   Eye as EyeIcon,
   EyeOff as EyeOffIcon,
-  RefreshCw as RefreshCwIcon,
   Filter as FilterIcon,
   Trash2 as TrashIcon
 } from 'lucide-vue-next'
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
+import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
 import PersonAvatar from '@/components/PersonAvatar.vue'
 
 
@@ -239,6 +245,8 @@ try {
 
 const editDialogVisible = ref(false)
 const currentEditingIdentity = ref<FaceIdentity | null>(null)
+const rescanDialogVisible = ref(false)
+const rescanIdentity = ref<FaceIdentity | null>(null)
 
 // Context Menu State
 const menuVisible = ref(false)
@@ -305,17 +313,8 @@ const handleCommand = (cmd: string, person: FaceIdentity) => {
       ElMessage.error('显示失败')
     }
   } else if (cmd === 'rescan') {
-    ElMessage.info('正在重新扫描...')
-    faceApi.rescanIdentity(person.id).then((res: any) => {
-      if (res.status === 'success') {
-        ElMessage.success(`重新扫描完成，关联了 ${res.count} 张人脸`)
-        fetchIdentities()
-      } else {
-        ElMessage.error('重新扫描失败')
-      }
-    }).catch(() => {
-      ElMessage.error('重新扫描失败')
-    })
+    rescanIdentity.value = person
+    rescanDialogVisible.value = true
   } else if (cmd === 'delete') {
     ElMessageBox.confirm('确定要删除这个人物吗？删除后将无法恢复，但关联的照片不会被删除。', '删除确认', { 
       type: 'error',

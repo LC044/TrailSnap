@@ -370,6 +370,24 @@
                 <span class="text-sm text-gray-500">判定为同一人的距离阈值 (默认 0.4，越小越严格)</span>
               </div>
             </el-form-item>
+            <el-form-item label="重扫高置信度阈值">
+              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
+                <el-slider v-model="aiForm.face_rescan_auto_match_threshold" :min="0.2" :max="aiForm.face_rescan_candidate_threshold" :step="0.01" class="w-full sm:w-64" show-input />
+                <span class="text-sm text-gray-500 dark:text-gray-400">低于该距离时默认勾选新增（默认 0.35）</span>
+              </div>
+            </el-form-item>
+            <el-form-item label="重扫候选阈值">
+              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
+                <el-slider v-model="aiForm.face_rescan_candidate_threshold" :min="aiForm.face_rescan_auto_match_threshold" :max="aiForm.face_rescan_removal_threshold" :step="0.01" class="w-full sm:w-64" show-input />
+                <span class="text-sm text-gray-500 dark:text-gray-400">低于该距离时展示为潜在新增（默认 0.45）</span>
+              </div>
+            </el-form-item>
+            <el-form-item label="重扫移出阈值">
+              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
+                <el-slider v-model="aiForm.face_rescan_removal_threshold" :min="aiForm.face_rescan_candidate_threshold" :max="0.8" :step="0.01" class="w-full sm:w-64" show-input />
+                <span class="text-sm text-gray-500 dark:text-gray-400">高于该距离时展示为潜在移出（默认 0.52）</span>
+              </div>
+            </el-form-item>
             <el-form-item label="最少照片数">
               <el-input-number v-model="aiForm.face_recognition_min_photos" :min="1" />
               <span class="text-sm text-gray-500 ml-2">形成人物聚类所需的最少照片数量 (默认 5)</span>
@@ -762,6 +780,9 @@ const aiForm = ref({
   ai_api_url: 'http://localhost:8001',
   face_recognition_threshold: 0.6,
   face_cluster_threshold: 0.4,
+  face_rescan_auto_match_threshold: 0.35,
+  face_rescan_candidate_threshold: 0.45,
+  face_rescan_removal_threshold: 0.52,
   face_recognition_min_photos: 5,
   visual_evaluation_prompt: '',
   visual_narrative_prompt: '',

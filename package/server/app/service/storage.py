@@ -70,25 +70,88 @@ def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID) -> s
         shutil.copyfileobj(upload_file.file, buffer)
     return target_path
 
+def _video_thumbnail_candidate_seconds(duration: float) -> list[float]:
+    """Return ordered, unique seek positions for automatic video thumbnailing."""
+    if duration <= 0:
+        return [0.0]
+
+    positions = [
+        0.0,
+        min(0.5, duration * 0.05),
+        min(1.0, duration * 0.1),
+        duration * 0.25,
+        duration * 0.5,
+    ]
+    upper_bound = max(0.0, duration - 0.05)
+    unique_positions = []
+    for position in positions:
+        position = round(min(max(position, 0.0), upper_bound), 3)
+        if position not in unique_positions:
+            unique_positions.append(position)
+    return unique_positions
+
+
+def _score_video_thumbnail_frame(frame) -> float:
+    """Score a decoded frame and reject near-black or near-white blank frames."""
+    if frame is None or getattr(frame, "size", 0) == 0:
+        return float("-inf")
+
+    pixels = frame.astype(np.float32)
+    gray = pixels.mean(axis=2) if pixels.ndim == 3 else pixels
+    brightness = float(gray.mean())
+    dark_ratio = float(np.mean(gray < 16))
+    light_ratio = float(np.mean(gray > 245))
+
+    if brightness < 12 or brightness > 250 or dark_ratio > 0.9 or light_ratio > 0.95:
+        return float("-inf")
+
+    contrast = float(gray.std())
+    horizontal_edges = float(np.abs(np.diff(gray, axis=1)).mean()) if gray.shape[1] > 1 else 0.0
+    vertical_edges = float(np.abs(np.diff(gray, axis=0)).mean()) if gray.shape[0] > 1 else 0.0
+    balanced_brightness = min(brightness, 255.0 - brightness)
+    return contrast + horizontal_edges + vertical_edges + balanced_brightness * 0.1
+
+
 def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, config: ImageSettings = None):
     if cv2 is None:
         logging.warning("opencv-python not installed, skipping video thumbnail generation")
         return None
+    cap = None
     try:
         cap = cv2.VideoCapture(file_path)
         if not cap.isOpened():
             return None
-        ret, frame = cap.read()
-        cap.release()
-        if not ret:
+
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0)
+        frame_count = float(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        duration = frame_count / fps if fps > 0 and frame_count > 0 else 0.0
+
+        best_frame = None
+        fallback_frame = None
+        best_score = float("-inf")
+        for second in _video_thumbnail_candidate_seconds(duration):
+            cap.set(cv2.CAP_PROP_POS_MSEC, second * 1000)
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                continue
+            if fallback_frame is None:
+                fallback_frame = frame.copy()
+            score = _score_video_thumbnail_frame(frame)
+            if score > best_score:
+                best_score = score
+                best_frame = frame.copy()
+
+        selected_frame = best_frame if best_frame is not None else fallback_frame
+        if selected_frame is None:
             return None
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb_frame = cv2.cvtColor(selected_frame, cv2.COLOR_BGR2RGB)
         img = Image.fromarray(rgb_frame)
         return _save_thumbnails(img, file_id, user_id, config=config)
     except Exception as e:
         logging.error(f"Error generating video thumbnail for {file_path}: {e}")
     finally:
-        del frame
+        if cap is not None:
+            cap.release()
     return None
 
 def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None) -> str:
