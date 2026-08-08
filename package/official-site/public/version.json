@@ -103,5 +103,10 @@
         "version": "0.9.1",
         "update_info": "- 新增 Android/iOS App 工程，支持配置自托管 Server 地址<br>- 新增 PWA 安装支持和 APK 自动发布<br>- 优化 Android 返回键与手势体验<br>- 朋友圈 AI 文案支持实时展示思考过程<br>- 统一 App、CLI 与 GitHub Release 发布流程",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.9.1"
+    },
+    {
+        "version": "0.9.2",
+        "update_info": "- 已审核人物支持重新扫描，便于在人脸数据更新后刷新识别结果<br>- 离线地图下载新增进度提示，逆地理编码数据持久化保存<br>- 演示模式支持自动填充登录账号和密码<br>- 国内部署可使用阿里云镜像仓库，优化前端首屏加载<br>- 修复 AI 服务缺少 libgomp1 时 llama-server 无法启动的问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.9.2"
     }
 ]

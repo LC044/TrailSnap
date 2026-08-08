@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-08 (0.9.2)
+
+### New
+
+- Added rescan support for reviewed identities, making it easier to refresh person recognition after face-data updates.
+- Added download progress for offline map data.
+- Persisted offline reverse-geocoding data to avoid repeated downloads and lookups.
+- Demo mode can now prefill the login credentials automatically.
+
+### Improvements
+
+- Added an Alibaba Cloud registry option for deployments in China.
+- Improved initial frontend loading and Nginx delivery.
+- Added pre-deployment and data-safety guidance, and improved the home page and FAQ.
+- Expanded automated coverage for photo, settings, media, face, and album modules.
+
+### Bug Fixes
+
+- Fixed llama-server startup failures caused by a missing `libgomp1` runtime dependency in the AI service image.
+
 ## 2026-08-02 (0.9.1)
 
 ### New
