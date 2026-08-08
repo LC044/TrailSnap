@@ -1184,7 +1184,7 @@ generate_compose() {
   cat > "${INSTALL_DIR}/docker-compose.yml" << COMPOSE_EOF
 services:
   postgres:
-    image: ${IMAGE_REGISTRY}pgvector/pgvector:pg18-trixie
+    image: ${IMAGE_REGISTRY}siyuan044/pgvector:pg18-trixie
     container_name: trailsnap-postgres
     restart: always
     environment:

@@ -165,7 +165,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: pgvector/pgvector:pg18-trixie
+        image: siyuan044/pgvector:pg18-trixie
         env:
           POSTGRES_DB: trailsnap
           POSTGRES_USER: trailsnap

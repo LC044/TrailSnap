@@ -9,7 +9,7 @@ name: trailsnap-test
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    image: siyuan044/pgvector:pg18-trixie
     restart: unless-stopped
     environment:
       POSTGRES_DB: trailsnap

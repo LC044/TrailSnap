@@ -958,7 +958,7 @@ function Generate-ComposeFile {
     $composeContent = @"
 services:
   postgres:
-    image: $($script:ImageRegistry)pgvector/pgvector:pg18-trixie
+    image: $($script:ImageRegistry)siyuan044/pgvector:pg18-trixie
     container_name: trailsnap-postgres
     restart: always
     environment:

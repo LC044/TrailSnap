@@ -128,7 +128,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    image: siyuan044/pgvector:pg18-trixie
     container_name: postgres_container
     restart: always
     environment:
