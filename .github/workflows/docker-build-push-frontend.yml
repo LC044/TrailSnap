@@ -84,3 +84,97 @@ jobs:
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-frontend:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAGS != '' && format('{0}/trailsnap-frontend:latest', env.DOCKER_HUB_USERNAME) || '' }}
+
+  # ============ 同步多架构镜像到阿里云 ACR（国内加速拉取） ============
+  # docker buildx imagetools create 把完整镜像（manifest list + 各平台 manifest + layer）
+  # 从 Docker Hub 复制到阿里云 ACR，不重新构建，秒级完成。国内用户拉
+  #   registry.cn-hangzhou.aliyuncs.com/<ACR_NAMESPACE>/trailsnap-frontend:<tag>
+  # 走阿里云内网/CDN，远快于直连 Docker Hub。
+  # 需仓库 secrets（未配置时本 job 自动跳过）：ACR_REGISTRY / ACR_NAMESPACE / ACR_USERNAME / ACR_PASSWORD。
+  sync-to-cn:
+    needs: build-and-push-frontend
+    runs-on: ubuntu-latest
+    if: ${{ needs.build-and-push-frontend.result == 'success' }}
+    steps:
+      - name: Check ACR secrets
+        id: acr_check
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+        run: |
+          if [ -z "$ACR_REGISTRY" ]; then
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "::notice::未配置 ACR_REGISTRY secret，跳过国内镜像同步。配置后见 sync-to-cn job 注释。"
+          else
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.acr_check.outputs.enabled == 'true'
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Login to Docker Hub
+        if: steps.acr_check.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Login to Aliyun ACR
+        if: steps.acr_check.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      # tag 计算逻辑与 build-and-push-frontend job 完全一致（含分支名 sanitize）
+      - name: Determine image tags
+        if: steps.acr_check.outputs.enabled == 'true'
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          PUSH_LATEST: ${{ inputs.push_latest }}
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            BASE_TAG=${GITHUB_REF#refs/tags/v}
+            EXTRA_TAGS="latest"
+          else
+            BASE_TAG=${GITHUB_REF#refs/heads/}
+            EXTRA_TAGS=""
+          fi
+
+          BASE_TAG=$(printf '%s' "$BASE_TAG" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//' | cut -c1-128)
+          if [[ -z "$BASE_TAG" ]]; then
+            BASE_TAG="sha-${GITHUB_SHA:0:12}"
+          fi
+
+          if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
+            EXTRA_TAGS="latest"
+          fi
+          if [[ "$PUSH_LATEST" == "true" ]]; then
+            EXTRA_TAGS="latest"
+          fi
+
+          echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
+          echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
+          echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
+
+      # -t 指定目标，位置参数为源；imagetools create 拉取源完整内容并推送到目标 registry
+      - name: Sync multi-arch images to Aliyun ACR
+        if: steps.acr_check.outputs.enabled == 'true'
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+        run: |
+          set -e
+          SRC="${DOCKER_HUB_USERNAME}/trailsnap-frontend"
+          DST="${ACR_REGISTRY}/${ACR_NAMESPACE}/trailsnap-frontend"
+
+          TAGS="$BASE_TAG"
+          [ -n "$EXTRA_TAGS" ] && TAGS="$TAGS latest"
+
+          for TAG in $TAGS; do
+            echo "==> 同步 $SRC:$TAG -> $DST:$TAG"
+            docker buildx imagetools create -t "$DST:$TAG" "$SRC:$TAG"
+          done
