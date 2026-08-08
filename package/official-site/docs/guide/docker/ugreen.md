@@ -15,6 +15,8 @@ title: 绿联 NAS（UGREEN）部署
 在 UGOS Pro 系统中，打开 Docker 应用，点击【项目】 > 【创建】，启动项目创建向导。
 项目名称填为 `trailsnap`，其他默认即可。
 
+![Alt text](/images/ugos.png)
+
 ## 2. 配置 Docker Compose 文件
 
 填入[/docs/guide/docker/](/docs/guide/docker/)中的 Docker Compose 模板。
@@ -27,7 +29,19 @@ volumes:
   - /你的照片文件夹真实路径:/app/Photos
 ```
 
-如果你希望最大化安全性，可以把照片目录挂载为只读：
+绿联的默认照片路径通常为：`/home/用户名/Photos`
+
+如果有多个文件夹需要挂载，推荐使用下面的格式，/app/Photos子目录下会简化后续的一些操作：
+
+```yaml
+volumes:
+  - ./data:/app/data
+  - /你的照片文件夹真实路径1:/app/Photos/旅行
+  - /你的照片文件夹真实路径2:/app/Photos/航拍
+  - /你的照片文件夹真实路径3:/app/Photos/家庭
+```
+
+如果你希望最大化安全性，可以把照片目录挂载为只读，但这样会导致删除功能和其他一些修改本地文件的工具不可用：
 
 ```yaml
 - /你的照片文件夹真实路径:/app/Photos/:ro
@@ -49,6 +63,8 @@ TrailSnap 默认端口：
 启动后在浏览器访问：
 
 - `http://<NAS_IP>:8082`
+
+![Alt text](/images/ugos-start.png)
 
 打开设置->外部图库，填入容器内的照片路径：`/app/Photos`，添加外部图库之后会自动扫描并在后台运行任务（可以在设置->任务管理查看任务详情）。
 
