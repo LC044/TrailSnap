@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-from app.service.face_cluster import FaceClusterService
+from app.service.face_cluster import FaceClusterService, FaceRescanConflictError, FaceRescanError
 
 @router.post("/identities", response_model=BaseResponse[FaceIdentitySchema], summary="创建新人物", description="创建一个新的人物记录")
 def create_identity(
@@ -300,9 +300,61 @@ def rescan_identity(
     if not crud_face.get_identity(db, id, owner_id=current_user.id):
         raise HTTPException(status_code=404, detail="Identity not found")
         
-    service = FaceClusterService(db)
-    count = service.rescan_identity(id, owner_id=current_user.id)
+    try:
+        service = FaceClusterService(db, user_id=current_user.id)
+        result = service.rescan_identity(id, owner_id=current_user.id)
+    except FaceRescanError as exc:
+        raise HTTPException(status_code=500, detail="Face identity rescan failed") from exc
 
     from app.crud.album import trigger_conditional_albums_update
-    trigger_conditional_albums_update(db, current_user.id, None)
-    return BaseResponse(code=200, msg="扫描成功", data={"status": "success", "count": count})
+    affected_photo_ids = [UUID(photo_id) for photo_id in result.pop("affected_photo_ids", [])]
+    if affected_photo_ids:
+        trigger_conditional_albums_update(db, current_user.id, affected_photo_ids)
+    return BaseResponse(code=200, msg="扫描成功", data=result)
+
+
+@router.post("/identities/{id}/rescan/preview", summary="预览人物重新扫描结果", description="扫描全部有效人脸并返回待新增、改归属和待移出候选，不修改数据")
+def preview_identity_rescan(
+    id: UUID = Path(..., description="人物ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    if not crud_face.get_identity(db, id, owner_id=current_user.id):
+        raise HTTPException(status_code=404, detail="Identity not found")
+
+    try:
+        service = FaceClusterService(db, user_id=current_user.id)
+        result = service.preview_identity_rescan(id, owner_id=current_user.id)
+    except FaceRescanError as exc:
+        raise HTTPException(status_code=500, detail="Face identity rescan preview failed") from exc
+    return BaseResponse(code=200, msg="扫描预览成功", data=result)
+
+
+@router.post("/identities/{id}/rescan/apply", summary="应用人物重新扫描结果", description="重新校验候选项后，在一个事务中应用用户确认的新增和移出操作")
+def apply_identity_rescan(
+    payload: schemas.FaceRescanApplyRequest,
+    id: UUID = Path(..., description="人物ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    if not crud_face.get_identity(db, id, owner_id=current_user.id):
+        raise HTTPException(status_code=404, detail="Identity not found")
+
+    try:
+        service = FaceClusterService(db, user_id=current_user.id)
+        result = service.apply_identity_rescan(
+            id,
+            owner_id=current_user.id,
+            add_face_ids=payload.add_face_ids,
+            remove_face_ids=payload.remove_face_ids,
+        )
+    except FaceRescanConflictError as exc:
+        raise HTTPException(status_code=409, detail="Face rescan candidates changed; preview again") from exc
+    except FaceRescanError as exc:
+        raise HTTPException(status_code=500, detail="Face identity rescan apply failed") from exc
+
+    from app.crud.album import trigger_conditional_albums_update
+    affected_photo_ids = [UUID(photo_id) for photo_id in result.pop("affected_photo_ids", [])]
+    if affected_photo_ids:
+        trigger_conditional_albums_update(db, current_user.id, affected_photo_ids)
+    return BaseResponse(code=200, msg="重新扫描结果已应用", data=result)

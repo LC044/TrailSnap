@@ -1,6 +1,30 @@
 import request from '@/utils/request';
 import type { FaceIdentity } from '@/types/album';
 
+export interface FaceRescanCandidate {
+  face_id: number;
+  photo_id: string;
+  face_rect?: number[] | null;
+  distance: number;
+  confidence: number;
+  recommended: boolean;
+  current_identity_id?: string | null;
+  current_identity_name?: string | null;
+  assignment_type: 'unassigned' | 'reassign' | 'remove';
+}
+
+export interface FaceRescanPreview {
+  status: string;
+  reason?: string | null;
+  reference_count: number;
+  threshold: number;
+  candidate_threshold: number;
+  removal_threshold: number;
+  add_candidates: FaceRescanCandidate[];
+  remove_candidates: FaceRescanCandidate[];
+  summary: { add_count: number; remove_count: number; reassign_count: number };
+}
+
 export const faceApi = {
   async listIdentities(page = 1, limit = 20, types?: string[]) {
     const data = await request.get<FaceIdentity[]>('/api/faces/identities', {
@@ -28,6 +52,16 @@ export const faceApi = {
 
   async rescanIdentity(id: string) {
     const data = await request.post(`/api/faces/identities/${id}/rescan`);
+    return data.data;
+  },
+
+  async previewIdentityRescan(id: string) {
+    const data = await request.post<FaceRescanPreview>(`/api/faces/identities/${id}/rescan/preview`);
+    return data.data;
+  },
+
+  async applyIdentityRescan(id: string, selection: { add_face_ids: number[]; remove_face_ids: number[] }) {
+    const data = await request.post(`/api/faces/identities/${id}/rescan/apply`, selection);
     return data.data;
   },
 

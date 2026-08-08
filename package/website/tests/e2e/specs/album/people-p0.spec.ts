@@ -195,6 +195,59 @@ test.describe.serial('P0 - 人物相册', () => {
     await expect(imgs.first()).toBeVisible({ timeout: 10_000 })
   })
 
+  test('2.5.3b 人物详情页重新扫描先展示候选确认页 @p0', async ({ page, request }, testInfo) => {
+    const probe = await requireAnyIdentity(request, testInfo)
+    if (!probe.ok) return
+
+    await page.route(`**/api/faces/identities/${probe.identity.id}/rescan/preview`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 200,
+          msg: '扫描预览成功',
+          data: {
+            status: 'success',
+            reason: null,
+            reference_count: 3,
+            threshold: 0.35,
+            candidate_threshold: 0.45,
+            removal_threshold: 0.52,
+            add_candidates: [
+              { face_id: 101, photo_id: '00000000-0000-0000-0000-000000000101', distance: 0.1, confidence: 0.9, recommended: true, assignment_type: 'unassigned' },
+              { face_id: 102, photo_id: '00000000-0000-0000-0000-000000000102', distance: 0.4, confidence: 0.6, recommended: false, assignment_type: 'reassign', current_identity_name: '其他人物' },
+            ],
+            remove_candidates: [
+              { face_id: 201, photo_id: '00000000-0000-0000-0000-000000000201', distance: 0.6, confidence: 0.4, recommended: false, assignment_type: 'remove' },
+            ],
+            summary: { add_count: 2, remove_count: 1, reassign_count: 1 },
+          },
+        }),
+      })
+    })
+
+    await gotoRetry(page, `/album/people/${probe.identity.id}`)
+
+    const actionsButton = page.getByRole('button', { name: '人物操作' })
+    await expect(actionsButton).toBeVisible({ timeout: 10_000 })
+    await expect(actionsButton).toBeEnabled()
+
+    await actionsButton.click()
+    await page.getByRole('menuitem', { name: '编辑人物信息' }).click()
+    const editDialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
+    await expect(editDialog).toBeVisible({ timeout: 5_000 })
+    await editDialog.getByRole('button', { name: '取消' }).click()
+
+    await actionsButton.click()
+    await page.getByRole('menuitem', { name: '重新扫描人脸' }).click()
+    const rescanDialog = page.getByRole('dialog').filter({ hasText: '重新扫描确认' })
+    await expect(rescanDialog).toBeVisible({ timeout: 5_000 })
+    await expect(rescanDialog.getByText('找到 2 个待新增、1 个待移出人脸')).toBeVisible()
+    await expect(rescanDialog.getByText('相似度 90%')).toBeVisible()
+    await expect(rescanDialog.getByText('当前：其他人物')).toBeVisible()
+    await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeEnabled()
+  })
+
   test('2.5.4 筛选 popover - named + unnamed 默认勾选 @p0', async ({ page }) => {
     await gotoRetry(page, '/album/people')
     // 头部 FilterIcon 触发弹层（lucide 0.555: Filter → Funnel，class 为 lucide-funnel）

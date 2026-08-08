@@ -161,3 +161,115 @@ def test_merge_identities_triggers_album_update_on_success():
 
     trigger.assert_called_once_with(db, user.id, None)
     assert response.code == 200
+
+
+# ----------------------------- POST /identities/{id}/rescan -----------
+
+
+def test_rescan_identity_uses_user_config_and_returns_two_phase_counts():
+    user = _user()
+    db = MagicMock()
+    identity_id = uuid4()
+    result = {
+        "status": "success",
+        "added_count": 3,
+        "removed_count": 1,
+        "reassigned_count": 1,
+        "count": 3,
+        "affected_photo_ids": [],
+    }
+
+    with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
+         patch.object(face_api, "FaceClusterService") as service_class:
+        service_class.return_value.rescan_identity.return_value = result
+        response = face_api.rescan_identity(id=identity_id, db=db, current_user=user)
+
+    service_class.assert_called_once_with(db, user_id=user.id)
+    service_class.return_value.rescan_identity.assert_called_once_with(identity_id, owner_id=user.id)
+    assert response.data["added_count"] == 3
+    assert response.data["removed_count"] == 1
+
+
+def test_rescan_identity_exposes_execution_failure_as_http_500():
+    from app.service.face_cluster import FaceRescanError
+
+    user = _user()
+    db = MagicMock()
+    identity_id = uuid4()
+
+    with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
+         patch.object(face_api, "FaceClusterService") as service_class:
+        service_class.return_value.rescan_identity.side_effect = FaceRescanError("failed")
+        with pytest.raises(HTTPException) as exc_info:
+            face_api.rescan_identity(id=identity_id, db=db, current_user=user)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "Face identity rescan failed"
+
+
+def test_preview_identity_rescan_returns_candidates_without_applying():
+    user = _user()
+    db = MagicMock()
+    identity_id = uuid4()
+    preview = {
+        "status": "success",
+        "add_candidates": [{"face_id": 10}],
+        "remove_candidates": [{"face_id": 20}],
+        "summary": {"add_count": 1, "remove_count": 1, "reassign_count": 0},
+    }
+
+    with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
+         patch.object(face_api, "FaceClusterService") as service_class:
+        service_class.return_value.preview_identity_rescan.return_value = preview
+        response = face_api.preview_identity_rescan(id=identity_id, db=db, current_user=user)
+
+    service_class.assert_called_once_with(db, user_id=user.id)
+    service_class.return_value.preview_identity_rescan.assert_called_once_with(identity_id, owner_id=user.id)
+    assert response.data["summary"]["add_count"] == 1
+
+
+def test_apply_identity_rescan_passes_selection_and_updates_affected_photos():
+    user = _user()
+    db = MagicMock()
+    identity_id = uuid4()
+    photo_id = uuid4()
+    payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[20])
+    result = {
+        "status": "success",
+        "added_count": 1,
+        "removed_count": 1,
+        "affected_photo_ids": [str(photo_id)],
+    }
+
+    with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
+         patch.object(face_api, "FaceClusterService") as service_class, \
+         patch("app.crud.album.trigger_conditional_albums_update") as trigger:
+        service_class.return_value.apply_identity_rescan.return_value = result
+        response = face_api.apply_identity_rescan(payload=payload, id=identity_id, db=db, current_user=user)
+
+    service_class.return_value.apply_identity_rescan.assert_called_once_with(
+        identity_id,
+        owner_id=user.id,
+        add_face_ids=[10],
+        remove_face_ids=[20],
+    )
+    trigger.assert_called_once_with(db, user.id, [photo_id])
+    assert response.data["added_count"] == 1
+    assert "affected_photo_ids" not in response.data
+
+
+def test_apply_identity_rescan_exposes_stale_preview_as_http_409():
+    from app.service.face_cluster import FaceRescanConflictError
+
+    user = _user()
+    db = MagicMock()
+    identity_id = uuid4()
+    payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[])
+
+    with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
+         patch.object(face_api, "FaceClusterService") as service_class:
+        service_class.return_value.apply_identity_rescan.side_effect = FaceRescanConflictError("stale")
+        with pytest.raises(HTTPException) as exc_info:
+            face_api.apply_identity_rescan(payload=payload, id=identity_id, db=db, current_user=user)
+
+    assert exc_info.value.status_code == 409

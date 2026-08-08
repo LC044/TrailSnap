@@ -69,3 +69,8 @@ class SetCoverRequest(BaseModel):
 
 class AddPhotosToIdentityRequest(BaseModel):
     photo_ids: List[UUID] = Field(..., description="要添加的照片ID列表")
+
+
+class FaceRescanApplyRequest(BaseModel):
+    add_face_ids: List[int] = Field(default_factory=list, description="确认新增或改归属的人脸ID")
+    remove_face_ids: List[int] = Field(default_factory=list, description="确认从当前人物移出的人脸ID")
