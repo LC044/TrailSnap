@@ -53,7 +53,14 @@ SENSITIVE_KEYS = {
     "api_key", "api_keys", "api_base", "ai_api_url",
     "secret_key", "secret", "password", "passwd", "passphrase",
     "photo_storage_path", "external_directories",
-    "map_key", "map_keys", "tianditu_key", "amap_key", "baidu_key",
+}
+
+# 地图 Key 由服务商的域名白名单保护，演示站需要把它返回给浏览器才能正常
+# 加载地图。显式命名的旧字段始终放行；通用 api_key/api_keys 只在 map 配置
+# 节点下放行，避免同时泄露 AI 连接等其它凭据。
+PUBLIC_MAP_KEY_FIELDS = {
+    "api_key", "api_keys", "map_key", "map_keys",
+    "tianditu_key", "amap_key", "baidu_key",
 }
 
 DEMO_BLOCK_MSG = "演示模式已开启：写操作与敏感接口已被禁用"
@@ -152,17 +159,21 @@ def _mask_value(value: Any) -> Any:
     return "******"
 
 
-def mask_sensitive(obj: Any) -> Any:
+def mask_sensitive(obj: Any, *, in_map_settings: bool = False) -> Any:
     """递归地将 dict/list 中的敏感字段值替换为占位符。原对象会被就地修改。"""
     if isinstance(obj, dict):
         for k, v in list(obj.items()):
-            if k.lower() in SENSITIVE_KEYS:
+            key = k.lower()
+            is_map_node = in_map_settings or key == "map"
+            if is_map_node and key in PUBLIC_MAP_KEY_FIELDS:
+                continue
+            if key in SENSITIVE_KEYS:
                 obj[k] = _mask_value(v)
             else:
-                mask_sensitive(v)
+                mask_sensitive(v, in_map_settings=is_map_node)
     elif isinstance(obj, list):
         for item in obj:
-            mask_sensitive(item)
+            mask_sensitive(item, in_map_settings=in_map_settings)
     return obj
 
 

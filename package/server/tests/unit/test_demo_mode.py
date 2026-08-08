@@ -202,3 +202,16 @@ def test_mask_sensitive_keeps_non_sensitive_payloads_intact():
     payload = {"name": "demo", "tags": ["a", "b"]}
     demo_mode.mask_sensitive(payload)
     assert payload == {"name": "demo", "tags": ["a", "b"]}
+
+
+def test_mask_sensitive_preserves_map_keys_for_demo_map_loading():
+    payload = {
+        "map": {"provider": "tianditu", "api_keys": ["map-key-1"]},
+        "ai": {"api_keys": ["ai-key-1"], "api_key": "ai-key-2"},
+    }
+
+    demo_mode.mask_sensitive(payload)
+
+    assert payload["map"]["api_keys"] == ["map-key-1"]
+    assert payload["ai"]["api_keys"] == []
+    assert payload["ai"]["api_key"] == "******"

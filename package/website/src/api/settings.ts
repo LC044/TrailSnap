@@ -118,5 +118,9 @@ export const settingsApi = {
   async verifyConnection(apiBase: string, apiKey: string) {
     const { data } = await request.post('/api/settings/verify-connection', { api_base: apiBase, api_key: apiKey })
     return data
+  },
+  async verifyAIService(apiUrl: string) {
+    const { data } = await request.post('/api/settings/verify-ai-service', { api_url: apiUrl })
+    return data
   }
 }

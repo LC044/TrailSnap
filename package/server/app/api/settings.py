@@ -9,6 +9,8 @@ import json
 import re
 import logging
 import requests
+import time
+from urllib.parse import urlparse
 from app.dependencies import get_db, BaseResponse
 from app.api.deps import get_current_user
 from app.db.models.user import User
@@ -135,6 +137,60 @@ def verify_connection(
         return {"success": False, "message": f"HTTP {resp.status_code}: {resp.text}"}
     except Exception as e:
         return {"success": False, "message": "无效的连接" + str(e)}
+
+
+class VerifyAIServiceRequest(BaseModel):
+    api_url: str
+
+
+@router.post('/verify-ai-service', response_model=BaseResponse)
+def verify_ai_service(
+    req: VerifyAIServiceRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """从 Server 进程检查 AI 微服务健康状态，匹配真实调用网络。"""
+    api_url = req.api_url.strip().rstrip('/')
+    parsed = urlparse(api_url)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc:
+        return BaseResponse.fail(code=400, msg="AI API 地址格式无效，请使用 http:// 或 https://")
+
+    started_at = time.monotonic()
+    try:
+        response = requests.get(f"{api_url}/health-check", timeout=5)
+        elapsed_ms = round((time.monotonic() - started_at) * 1000)
+        if response.status_code != 200:
+            return BaseResponse.success(data={
+                "success": False,
+                "message": f"AI 服务返回 HTTP {response.status_code}",
+                "elapsed_ms": elapsed_ms,
+            })
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict) or body.get("status") != "ok":
+            return BaseResponse.success(data={
+                "success": False,
+                "message": "目标地址可访问，但不是可识别的 TrailSnap AI 服务",
+                "elapsed_ms": elapsed_ms,
+            })
+        return BaseResponse.success(data={
+            "success": True,
+            "service": body.get("service", "TrailSnap AI"),
+            "elapsed_ms": elapsed_ms,
+        })
+    except requests.Timeout:
+        return BaseResponse.success(data={
+            "success": False,
+            "message": "连接超时，请检查地址、端口和容器网络",
+        })
+    except requests.RequestException:
+        logging.exception("Failed to connect to AI service at %s", api_url)
+        return BaseResponse.success(data={
+            "success": False,
+            "message": "无法连接 AI 服务，请检查服务是否启动及网络配置",
+        })
 
 @router.get('/directories')
 def get_directories(

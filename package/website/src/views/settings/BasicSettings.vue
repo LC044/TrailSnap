@@ -71,28 +71,88 @@
         <template #title>
            <h2 class="text-lg font-semibold dark:text-white px-6">地图设置</h2>
         </template>
-        <div class="px-6 pb-6">
-          <el-form label-position="top" class="max-w-3xl">
-        <el-form-item label="地图提供商">
-          <el-select v-model="mapForm.provider" placeholder="选择地图提供商" class="w-full sm:w-auto">
-             <el-option label="天地图 (Tianditu)" value="tianditu" />
-             <el-option label="高德地图 (Amap)" value="amap" disabled />
-             <el-option label="百度地图 (Baidu)" value="baidu" disabled />
-          </el-select>
-          <span class="text-sm text-gray-500 ml-2">目前仅支持天地图，其他地图开发中</span>
-        </el-form-item>
-        
-        <el-form-item label="API Keys">
-           <el-input v-model="mapApiKeysText" type="textarea" :rows="3" placeholder="请输入 API Key (每行一个)" />
-           <p class="text-xs text-gray-500 mt-1">
-             <span v-if="mapForm.provider === 'tianditu'"><a href="http://trailsnap.cn/docs/guide/settings/mapsetting.html" target="_blank" class="text-blue-500 hover:underline">获取API Key</a> (支持设置多个Key，每行一个，系统将随机选择使用)</span>
-           </p>
-        </el-form-item>
-        
-        <el-form-item>
-          <el-button type="primary" @click="saveMapSettings">保存地图配置</el-button>
-        </el-form-item>
-      </el-form>
+        <div class="px-4 sm:px-6 pb-6">
+          <div class="max-w-3xl rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5 dark:border-gray-700 dark:bg-gray-900">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div class="flex min-w-0 items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-500">
+                  <KeyRound class="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 class="font-medium text-gray-900 dark:text-white">天地图 Web API</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">配置一个或多个 Key，系统会随机选择使用。保存前会自动验证每个 Key。</p>
+                </div>
+              </div>
+              <el-select v-model="mapForm.provider" aria-label="地图提供商" class="w-full sm:w-48" @change="resetMapKeyTests">
+                <el-option label="天地图 (Tianditu)" value="tianditu" />
+                <el-option label="高德地图 (开发中)" value="amap" disabled />
+                <el-option label="百度地图 (开发中)" value="baidu" disabled />
+              </el-select>
+            </div>
+
+            <div class="mt-5 space-y-3">
+              <div
+                v-for="(_, index) in mapForm.api_keys"
+                :key="index"
+                class="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <el-input
+                    v-model="mapForm.api_keys[index]"
+                    class="min-w-0 flex-1"
+                    type="password"
+                    show-password
+                    clearable
+                    :placeholder="`API Key ${index + 1}`"
+                    :aria-label="`地图 API Key ${index + 1}`"
+                    @input="resetMapKeyTest(index)"
+                  />
+                  <div class="flex gap-2">
+                    <el-button class="flex-1 sm:flex-none" :loading="mapKeyTests[index]?.status === 'testing'" @click="testMapKey(index)">测试</el-button>
+                    <el-button
+                      circle
+                      plain
+                      aria-label="删除 API Key"
+                      :disabled="mapForm.api_keys.length === 1"
+                      @click="removeMapKey(index)"
+                    >
+                      <Trash2 class="h-4 w-4" />
+                    </el-button>
+                  </div>
+                </div>
+                <div v-if="mapKeyTests[index]?.status !== 'idle'" class="mt-2 flex items-center gap-1.5 text-xs">
+                  <Loader2 v-if="mapKeyTests[index]?.status === 'testing'" class="h-3.5 w-3.5 animate-spin text-primary-500" />
+                  <CheckCircle2 v-else-if="mapKeyTests[index]?.status === 'valid'" class="h-3.5 w-3.5 text-green-500" />
+                  <XCircle v-else class="h-3.5 w-3.5 text-red-500" />
+                  <span :class="mapKeyTests[index]?.status === 'valid' ? 'text-green-600 dark:text-green-400' : mapKeyTests[index]?.status === 'invalid' ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'">
+                    {{ mapKeyTests[index]?.message }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 dark:text-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                @click="addMapKey"
+              >
+                <Plus class="h-4 w-4" /> 添加 Key
+              </button>
+              <a
+                v-if="mapForm.provider === 'tianditu'"
+                href="http://trailsnap.cn/docs/guide/settings/mapsetting.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-sm text-primary-600 hover:text-primary-700 hover:underline dark:text-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              >获取与配置 API Key</a>
+            </div>
+
+            <div class="mt-5 flex flex-col-reverse gap-2 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:justify-end">
+              <el-button :loading="testingAllMapKeys" @click="testAllMapKeys">测试全部</el-button>
+              <el-button type="primary" :loading="savingMapSettings" @click="saveMapSettings">验证并保存</el-button>
+            </div>
+          </div>
 
       <div class="mt-6 pt-6 border-t border-gray-100 dark:border-gray-700">
         <h3 class="text-md font-semibold mb-3 dark:text-white">离线地图数据</h3>
@@ -213,7 +273,27 @@
         <div class="px-6 pb-6">
           <el-form label-position="top" class="max-w-3xl">
         <el-form-item label="AI API 地址（人脸识别、OCR等AI微服务地址）">
-          <el-input v-model="aiForm.ai_api_url" placeholder="http://localhost:8001" />
+          <div class="w-full">
+            <div class="flex flex-col gap-2 sm:flex-row">
+              <el-input
+                v-model="aiForm.ai_api_url"
+                class="min-w-0 flex-1"
+                placeholder="http://localhost:8001"
+                aria-label="AI API 地址"
+                @input="resetAIServiceTest"
+              />
+              <el-button :loading="aiServiceTest.status === 'testing'" @click="testAIServiceConnection">测试连通性</el-button>
+            </div>
+            <div v-if="aiServiceTest.status !== 'idle'" class="mt-2 flex items-center gap-1.5 text-xs">
+              <Loader2 v-if="aiServiceTest.status === 'testing'" class="h-3.5 w-3.5 animate-spin text-primary-500" />
+              <CheckCircle2 v-else-if="aiServiceTest.status === 'valid'" class="h-3.5 w-3.5 text-green-500" />
+              <XCircle v-else class="h-3.5 w-3.5 text-red-500" />
+              <span :class="aiServiceTest.status === 'valid' ? 'text-green-600 dark:text-green-400' : aiServiceTest.status === 'invalid' ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'">
+                {{ aiServiceTest.message }}
+              </span>
+            </div>
+            <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">检查由 TrailSnap Server 发起，可正确验证 Docker 或内网中的 AI 服务地址。</p>
+          </div>
         </el-form-item>
 
         <el-collapse v-model="aiActiveNames" class="my-4 border-none">
@@ -744,9 +824,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { settingsApi } from '@/api/settings'
+import { testTiandituBrowserKey } from '@/utils/mapKeyTester'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme.js'
-import { Sun, Moon, Palette, Check, CheckCircle2, AlertCircle, Info, Download, Loader2, Trash2, RefreshCw } from 'lucide-vue-next'
+import { Sun, Moon, Palette, Check, CheckCircle2, AlertCircle, Info, Download, Loader2, Trash2, RefreshCw, KeyRound, Plus, XCircle } from 'lucide-vue-next'
 
 const {
   currentMode,
@@ -766,15 +847,36 @@ const storageForm = ref({
 
 const mapForm = ref({
   provider: 'tianditu',
-  api_keys: [] as string[]
+  api_keys: [''] as string[]
 })
 
-const mapApiKeysText = computed({
-  get: () => mapForm.value.api_keys.join('\n'),
-  set: (val) => {
-    mapForm.value.api_keys = val.split('\n').map(k => k.trim()).filter(k => k)
-  }
-})
+type MapKeyTestState = { status: 'idle' | 'testing' | 'valid' | 'invalid'; message: string }
+const idleMapKeyTest = (): MapKeyTestState => ({ status: 'idle', message: '' })
+const mapKeyTests = ref<MapKeyTestState[]>([idleMapKeyTest()])
+const testingAllMapKeys = ref(false)
+const savingMapSettings = ref(false)
+
+const syncMapKeyTests = () => {
+  mapKeyTests.value = mapForm.value.api_keys.map((_, index) => mapKeyTests.value[index] || idleMapKeyTest())
+}
+
+const resetMapKeyTest = (index: number) => {
+  mapKeyTests.value[index] = idleMapKeyTest()
+}
+
+const resetMapKeyTests = () => {
+  mapKeyTests.value = mapForm.value.api_keys.map(() => idleMapKeyTest())
+}
+
+const addMapKey = () => {
+  mapForm.value.api_keys.push('')
+  mapKeyTests.value.push(idleMapKeyTest())
+}
+
+const removeMapKey = (index: number) => {
+  mapForm.value.api_keys.splice(index, 1)
+  mapKeyTests.value.splice(index, 1)
+}
 
 const aiForm = ref({
   ai_api_url: 'http://localhost:8001',
@@ -800,6 +902,37 @@ const aiForm = ref({
   chat_connection_id: '',
   chat_model_name: ''
 })
+
+type ConnectionTestState = { status: 'idle' | 'testing' | 'valid' | 'invalid'; message: string }
+const aiServiceTest = ref<ConnectionTestState>({ status: 'idle', message: '' })
+
+const resetAIServiceTest = () => {
+  aiServiceTest.value = { status: 'idle', message: '' }
+}
+
+const testAIServiceConnection = async () => {
+  const apiUrl = aiForm.value.ai_api_url.trim()
+  if (!apiUrl) {
+    aiServiceTest.value = { status: 'invalid', message: '请先填写 AI API 地址' }
+    return false
+  }
+
+  aiServiceTest.value = { status: 'testing', message: '正在从 Server 连接 AI 服务…' }
+  try {
+    const result = await settingsApi.verifyAIService(apiUrl)
+    if (result?.success) {
+      const serviceName = result.service || 'TrailSnap AI'
+      const elapsed = typeof result.elapsed_ms === 'number' ? `，耗时 ${result.elapsed_ms} ms` : ''
+      aiServiceTest.value = { status: 'valid', message: `${serviceName} 连接正常${elapsed}` }
+      return true
+    }
+    aiServiceTest.value = { status: 'invalid', message: result?.message || 'AI 服务不可用' }
+    return false
+  } catch (error: any) {
+    aiServiceTest.value = { status: 'invalid', message: error?.msg || error?.message || '连通性检查失败' }
+    return false
+  }
+}
 
 const addConnection = () => {
   const newConn = {
@@ -1262,15 +1395,16 @@ const loadData = async () => {
       if (settings.map) {
           const mapData = settings.map
           if (mapData.api_keys) {
-             mapForm.value = { ...mapData }
+             mapForm.value = { ...mapData, api_keys: mapData.api_keys.length ? mapData.api_keys : [''] }
           } else if (mapData.api_key) {
              mapForm.value = { 
                  provider: mapData.provider, 
                  api_keys: [mapData.api_key] 
              }
           } else {
-             mapForm.value = { ...mapData, api_keys: [] }
+             mapForm.value = { ...mapData, api_keys: [''] }
           }
+          resetMapKeyTests()
       }
       if (settings.ai) {
           aiForm.value = { 
@@ -1332,12 +1466,70 @@ const saveAISettings = async () => {
   }
 }
 
-const saveMapSettings = async () => {
+const testMapKey = async (index: number): Promise<boolean> => {
+  const apiKey = mapForm.value.api_keys[index]?.trim()
+  if (!apiKey) {
+    mapKeyTests.value[index] = { status: 'invalid', message: '请先输入 API Key' }
+    return false
+  }
+
+  mapKeyTests.value[index] = { status: 'testing', message: '正在连接天地图…' }
   try {
+    if (mapForm.value.provider !== 'tianditu') {
+      mapKeyTests.value[index] = { status: 'invalid', message: '暂不支持测试该地图提供商' }
+      return false
+    }
+    const result = await testTiandituBrowserKey(apiKey)
+    if (result?.valid) {
+      mapKeyTests.value[index] = { status: 'valid', message: '连接成功，Key 可用' }
+      return true
+    }
+    mapKeyTests.value[index] = { status: 'invalid', message: result?.reason || 'Key 不可用，请检查配置' }
+    return false
+  } catch (error: any) {
+    mapKeyTests.value[index] = {
+      status: 'invalid',
+      message: error?.msg || error?.message || '测试失败，请稍后重试'
+    }
+    return false
+  }
+}
+
+const testAllMapKeys = async (): Promise<boolean> => {
+  syncMapKeyTests()
+  testingAllMapKeys.value = true
+  try {
+    const results = await Promise.all(mapForm.value.api_keys.map((_, index) => testMapKey(index)))
+    const allValid = results.length > 0 && results.every(Boolean)
+    if (allValid) ElMessage.success('所有地图 API Key 均可用')
+    return allValid
+  } finally {
+    testingAllMapKeys.value = false
+  }
+}
+
+const saveMapSettings = async () => {
+  const normalizedKeys = [...new Set(mapForm.value.api_keys.map(key => key.trim()).filter(Boolean))]
+  if (!normalizedKeys.length) {
+    mapKeyTests.value[0] = { status: 'invalid', message: '至少需要填写一个 API Key' }
+    ElMessage.warning('请先填写地图 API Key')
+    return
+  }
+  mapForm.value.api_keys = normalizedKeys
+  resetMapKeyTests()
+  savingMapSettings.value = true
+  try {
+    const allValid = await testAllMapKeys()
+    if (!allValid) {
+      ElMessage.error('存在不可用的地图 API Key，请修正后再保存')
+      return
+    }
     await settingsApi.updateSettings({ map: mapForm.value })
     ElMessage.success('地图配置已保存')
   } catch (e) {
     ElMessage.error('保存失败')
+  } finally {
+    savingMapSettings.value = false
   }
 }
 

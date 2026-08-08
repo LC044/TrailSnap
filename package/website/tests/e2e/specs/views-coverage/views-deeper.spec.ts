@@ -155,6 +155,88 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     expect(updateCalls[0].body).toMatchObject({ security: { allow_registration: true } })
   })
 
+  test('地图设置测试 Key 成功后再保存配置', async ({ page }) => {
+    let savedMap: unknown = null
+
+    await page.route('https://api.tianditu.gov.cn/geocoder**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          status: '0',
+          msg: 'ok',
+          result: { formatted_address: '北京市东城区东华门街道' },
+        }),
+      })
+    })
+    await page.route('**/api/settings/', async (route) => {
+      if (route.request().method() !== 'PUT') return route.continue()
+      savedMap = JSON.parse(route.request().postData() || '{}')
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'success' }),
+      })
+    })
+
+    await page.goto('/settings#basic')
+    await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
+    const keyInput = page.getByLabel('地图 API Key 1')
+    await expect(keyInput).toBeVisible({ timeout: 10_000 })
+    await keyInput.fill('e2e-valid-map-key')
+
+    await page.getByRole('button', { name: '测试' }).first().click()
+    await expect(page.getByText('连接成功，Key 可用')).toBeVisible()
+    await page.getByRole('button', { name: '验证并保存' }).click()
+
+    await expect.poll(() => savedMap).not.toBeNull()
+    expect(savedMap).toMatchObject({ map: { provider: 'tianditu', api_keys: ['e2e-valid-map-key'] } })
+    await expect(page.locator('.el-message', { hasText: '地图配置已保存' })).toBeVisible()
+  })
+
+  test('地图设置拒绝无法完成逆地理编码的 Key', async ({ page }) => {
+    await page.route('https://api.tianditu.gov.cn/geocoder**', async (route) => {
+      await route.fulfill({
+        status: 403,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 301001, msg: '非法key' }),
+      })
+    })
+
+    await page.goto('/settings#basic')
+    await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
+    await page.getByLabel('地图 API Key 1').fill('invalid-map-key')
+    await page.getByRole('button', { name: '测试' }).first().click()
+
+    await expect(page.getByText('非法key')).toBeVisible()
+  })
+
+  test('AI API 地址连通性检查展示服务名和耗时', async ({ page }) => {
+    let testedUrl = ''
+    await page.route('**/api/settings/verify-ai-service', async (route) => {
+      testedUrl = JSON.parse(route.request().postData() || '{}').api_url
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: 'success',
+          data: { success: true, service: 'TrailSnap AI', elapsed_ms: 18 },
+        }),
+      })
+    })
+
+    await page.goto('/settings#basic')
+    await page.locator('.el-collapse-item__header', { hasText: 'AI 相关设置' }).first().click()
+    const apiInput = page.getByLabel('AI API 地址')
+    await expect(apiInput).toBeVisible({ timeout: 10_000 })
+    await apiInput.fill('http://ai:8001')
+    await page.getByRole('button', { name: '测试连通性' }).click()
+
+    await expect.poll(() => testedUrl).toBe('http://ai:8001')
+    await expect(page.getByText('TrailSnap AI 连接正常，耗时 18 ms')).toBeVisible()
+  })
+
   test('导出配置按钮 -> 触发 GET /api/settings/export 并成功提示', async ({ page }) => {
     let exportHit = false
     await page.route('**/api/settings/export', async (route) => {

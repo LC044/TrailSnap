@@ -258,6 +258,55 @@ def test_download_map_data_rejects_missing_code():
     assert exc_info.value.status_code == 400
 
 
+# ----------------------- POST /settings/verify-ai-service -----------------------
+
+
+def test_verify_ai_service_returns_service_and_elapsed_time():
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"status": "ok", "service": "TrailSnap AI"}
+    with patch.object(settings_api.requests, "get", return_value=response) as get_call:
+        result = settings_api.verify_ai_service(
+            req=settings_api.VerifyAIServiceRequest(api_url=" http://ai:8001/ "),
+            current_user=_user(),
+        )
+
+    assert result.code == 0
+    assert result.data["success"] is True
+    assert result.data["service"] == "TrailSnap AI"
+    assert isinstance(result.data["elapsed_ms"], int)
+    get_call.assert_called_once_with("http://ai:8001/health-check", timeout=5)
+
+
+def test_verify_ai_service_rejects_invalid_url():
+    result = settings_api.verify_ai_service(
+        req=settings_api.VerifyAIServiceRequest(api_url="ai:8001"),
+        current_user=_user(),
+    )
+
+    assert result.code == 400
+    assert "http://" in result.msg
+
+
+def test_verify_ai_service_reports_wrong_service_and_network_errors():
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"status": "something-else"}
+    with patch.object(settings_api.requests, "get", return_value=response):
+        wrong_service = settings_api.verify_ai_service(
+            req=settings_api.VerifyAIServiceRequest(api_url="http://example:8001"),
+            current_user=_user(),
+        )
+    assert wrong_service.data["success"] is False
+    assert "不是可识别" in wrong_service.data["message"]
+
+    with patch.object(settings_api.requests, "get", side_effect=settings_api.requests.Timeout):
+        timeout = settings_api.verify_ai_service(
+            req=settings_api.VerifyAIServiceRequest(api_url="http://ai:8001"),
+            current_user=_user(),
+        )
+    assert timeout.data["success"] is False
+    assert "连接超时" in timeout.data["message"]
+
+
 
 
 
