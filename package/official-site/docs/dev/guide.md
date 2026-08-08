@@ -168,11 +168,11 @@ docker-compose up -d --build
 
 ```bash
 # 打包前端镜像
-docker build -t siyuan044/trailsnap-frontend:master -f package/website/Dockerfile .
+docker build -t crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:master -f package/website/Dockerfile .
 
 # 打包后端镜像
-docker build -t siyuan044/trailsnap-backend:master -f package/server/Dockerfile .
+docker build -t crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-backend:master -f package/server/Dockerfile .
 
 # 打包AI镜像
-docker build -t siyuan044/trailsnap-ai:master -f package/ai/Dockerfile .
+docker build -t crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:master -f package/ai/Dockerfile .
 ```

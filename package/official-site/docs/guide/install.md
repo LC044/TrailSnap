@@ -147,7 +147,7 @@ docker compose --env-file .env restart
 
    services:
      postgres:
-       image: pgvector/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/pgvector/pgvector:pg18-trixie
        container_name: postgres_container
        restart: always
        environment:
@@ -168,7 +168,7 @@ docker compose --env-file .env restart
          start_period: 10s
 
      server:
-       image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
        restart: always
        expose: [ "8000" ]
        ports: [ "8800:8000" ]
@@ -186,7 +186,7 @@ docker compose --env-file .env restart
            condition: service_healthy
 
      ai:
-       image: siyuan044/trailsnap-ai:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
        restart: always
        stop_grace_period: 15s
        expose: [ "8001" ]
@@ -204,7 +204,7 @@ docker compose --env-file .env restart
          start_period: 30s
        
      frontend:
-       image: siyuan044/trailsnap-frontend:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
        restart: always
        ports: [ "8082:80" ]
        depends_on: [ server ]

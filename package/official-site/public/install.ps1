@@ -3,7 +3,7 @@
 TrailSnap - Windows 一键安装脚本
 
 .DESCRIPTION
-自动配置 Docker、设置镜像加速源、启动 TrailSnap。
+自动配置 Docker、按地区选择镜像仓库、启动 TrailSnap。
 支持交互式和非交互式模式、GPU 加速、升级和卸载。
 
 .EXAMPLE
@@ -53,16 +53,19 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.5.3"
+$ScriptVersion = "1.5.4"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
+$AliyunRegistry = "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com"
 
 # Promote param to script scope so functions can access it
 $script:InstallDir = $InstallDir
 $script:ComposeCmd = ""
 $script:LogFile = ""
 $script:PgPassword = ""
+$script:ImageRegistry = ""
+$script:ImageRegistryResolved = $false
 
 $ChinaMirrorList = @(
     "https://docker.1ms.run",
@@ -490,7 +493,7 @@ function Test-GpuSupport {
     return $true
 }
 
-# ── 国内镜像源 ────────────────────────────────────────────────────────────────
+# ── 镜像仓库地区判断 ──────────────────────────────────────────────────────────
 
 # 判断当前是否位于中国大陆：依次看时区、系统区域设置、公网 IP 归属地
 function Test-InChina {
@@ -584,105 +587,21 @@ function Restart-DockerDesktop {
     return $true
 }
 
-# 自动写入 Docker daemon.json 并重启 Docker Desktop 使镜像加速源生效
-# 仅当显式 -ChinaMirrors 或检测到位于中国大陆时才配置；仅写入可达的镜像源
+# 中国大陆使用阿里云镜像仓库，其他地区继续使用 Docker Hub。
+# 保留 -ChinaMirrors 参数作为强制使用国内仓库的兼容开关，不再修改 Docker daemon 配置。
 function Configure-Mirrors {
-    # 决定是否配置：显式 -ChinaMirrors 或检测到位于中国大陆
-    if (-not $ChinaMirrors) {
-        if (Test-InChina) {
-            Write-Info "检测到当前位于中国大陆，自动配置 Docker 镜像加速源。"
-        } else {
-            Write-Info "未检测到位于中国大陆，跳过镜像加速源配置。（如需启用请加 -ChinaMirrors 参数）"
-            return
-        }
-    }
+    if ($script:ImageRegistryResolved) { return }
+    $script:ImageRegistryResolved = $true
 
-    Write-Step "配置 Docker 镜像加速源..."
-
-    # 测试每个镜像源的可达性，仅保留可用者
-    Write-Info "测试镜像源可达性（仅保留可用源）..."
-    $availableMirrors = @()
-    foreach ($mirror in $ChinaMirrorList) {
-        Write-Host -NoNewline "  测试 ${mirror} ... "
-        if (Test-Mirror $mirror) {
-            Write-Host "可用" -ForegroundColor Green
-            $availableMirrors += $mirror
-        } else {
-            Write-Host "不可达，跳过" -ForegroundColor Yellow
-        }
-    }
-
-    if ($availableMirrors.Count -eq 0) {
-        Write-Warn "没有可用的镜像源，跳过配置。"
-        return
-    }
-
-    $dockerConfigDir = Join-Path $env:USERPROFILE ".docker"
-    $daemonJsonPath = Join-Path $dockerConfigDir "daemon.json"
-
-    if (-not (Test-Path $dockerConfigDir)) {
-        New-Item -ItemType Directory -Path $dockerConfigDir -Force | Out-Null
-    }
-
-    # 读取并解析现有 daemon.json，保留已有字段（兼容 PowerShell 5.1 与 7+）
-    $config = $null
-    if (Test-Path $daemonJsonPath) {
-        try {
-            $raw = Get-Content $daemonJsonPath -Raw -Encoding UTF8
-            if (-not [string]::IsNullOrWhiteSpace($raw)) {
-                $config = $raw | ConvertFrom-Json
-            }
-        } catch {
-            $backupPath = "$daemonJsonPath.bak"
-            Copy-Item $daemonJsonPath $backupPath -Force
-            Write-Warn "现有 daemon.json 解析失败，已备份至 $backupPath"
-            $config = $null
-        }
-    }
-
-    # 构建有序字典，保留原配置并覆盖 registry-mirrors
-    $newConfig = [ordered]@{}
-    if ($config) {
-        $config.PSObject.Properties | ForEach-Object {
-            $newConfig[$_.Name] = $_.Value
-        }
-    }
-
-    # 若已配置相同的镜像源集合（忽略顺序），则无需重复写入与重启
-    $existing = @($newConfig["registry-mirrors"] | Where-Object { $_ })
-    if ($existing.Count -gt 0) {
-        $existingSorted = ($existing | Sort-Object) -join ","
-        $availableSorted = ($availableMirrors | Sort-Object) -join ","
-        if ($existingSorted -eq $availableSorted) {
-            Write-Info "镜像加速源已配置且与当前可用集合一致，无需重复操作。"
-            Write-Log "镜像加速源已存在，跳过写入"
-            return
-        }
-    }
-
-    $newConfig["registry-mirrors"] = $availableMirrors
-    $jsonOut = $newConfig | ConvertTo-Json -Depth 10
-    Set-Content -Path $daemonJsonPath -Value $jsonOut -Encoding UTF8
-
-    Write-Info "已写入可用镜像加速源到 $daemonJsonPath"
-    Write-Host ""
-    Write-Host "  {" -ForegroundColor White
-    Write-Host "    `"registry-mirrors`": [" -ForegroundColor White
-    foreach ($mirror in $availableMirrors) {
-        Write-Host "      `"$mirror`"," -ForegroundColor White
-    }
-    Write-Host "    ]" -ForegroundColor White
-    Write-Host "  }" -ForegroundColor White
-    Write-Host ""
-    Write-Log "已写入 Docker 镜像加速源配置: $daemonJsonPath"
-
-    # 重启 Docker Desktop 使配置生效
-    if (-not (Restart-DockerDesktop)) {
-        Write-Warn "配置已写入，但 Docker Desktop 未能自动重启。"
-        Write-Info "请手动重启 Docker Desktop 后重新运行本脚本。"
-        if (-not (Read-YesNo "是否在手动重启后继续？" "y")) {
-            Stop-Script "请重启 Docker Desktop 后重新运行脚本。"
-        }
+    if (Test-InChina) {
+        $script:ImageRegistry = "$AliyunRegistry/"
+        $script:ChinaMirrors = $true
+        Write-Info "检测到当前位于中国大陆，将从阿里云镜像仓库拉取镜像。"
+        Write-Log "镜像仓库: $AliyunRegistry"
+    } else {
+        $script:ImageRegistry = ""
+        Write-Info "未检测到位于中国大陆，将从 Docker Hub 拉取镜像。"
+        Write-Log "镜像仓库: Docker Hub"
     }
 }
 
@@ -960,6 +879,8 @@ POSTGRES_PASSWORD="$($script:PgPassword)"
 }
 
 function Generate-ComposeFile {
+    Configure-Mirrors
+
     Write-Step "生成 docker-compose.yml..."
 
     $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ }
@@ -1037,7 +958,7 @@ function Generate-ComposeFile {
     $composeContent = @"
 services:
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    image: $($script:ImageRegistry)pgvector/pgvector:pg18-trixie
     container_name: trailsnap-postgres
     restart: always
     environment:
@@ -1058,7 +979,7 @@ services:
       start_period: 10s
 
   server:
-    image: siyuan044/trailsnap-server:`${IMAGE_TAG}
+    image: $($script:ImageRegistry)siyuan044/trailsnap-server:`${IMAGE_TAG}
     container_name: trailsnap-server
     restart: always
     expose: ["8000"]
@@ -1078,7 +999,7 @@ $photoVolumeStr
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:`${IMAGE_TAG}-`${AI_MODE}
+    image: $($script:ImageRegistry)siyuan044/trailsnap-ai:`${IMAGE_TAG}-`${AI_MODE}
     container_name: trailsnap-ai
     restart: always
     stop_grace_period: 15s
@@ -1098,7 +1019,7 @@ $photoVolumeStr
       start_period: 30s
 
   frontend:
-    image: siyuan044/trailsnap-frontend:`${IMAGE_TAG}
+    image: $($script:ImageRegistry)siyuan044/trailsnap-frontend:`${IMAGE_TAG}
     container_name: trailsnap-frontend
     restart: always
     ports:
@@ -1528,7 +1449,7 @@ TrailSnap (行影集) — Windows 一键安装脚本
   -Timezone <时区>       时区（默认：Asia/Shanghai）
   -AiMode <cpu|gpu>      AI 模式（默认：cpu）
   -Tag <版本号>          Docker 镜像版本标签（默认：latest）
-  -ChinaMirrors          配置国内 Docker 镜像加速源
+  -ChinaMirrors          强制使用国内阿里云镜像仓库
   -Yes                   非交互模式：接受所有默认值
   -Upgrade               升级已安装的实例
   -Uninstall             卸载 TrailSnap
@@ -1753,7 +1674,7 @@ New-Item -ItemType Directory -Path (Join-Path $script:InstallDir "data") -Force 
 Generate-EnvFile
 Generate-ComposeFile
 
-# 配置国内镜像加速源（在拉取镜像之前，加速后续下载）
+# 确认镜像仓库（中国大陆使用阿里云，其他地区使用 Docker Hub）
 Configure-Mirrors
 
 # 拉取并启动

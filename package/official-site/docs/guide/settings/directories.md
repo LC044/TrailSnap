@@ -6,7 +6,7 @@
 
 ```yml
   server:
-    image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
     ports: [ "8800:8000" ]

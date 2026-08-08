@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.3"
+SCRIPT_VERSION="1.5.4"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -25,6 +25,7 @@ DEFAULT_AI_MODE="cpu"
 DEFAULT_INSTALL_DIR="$HOME/trailsnap"
 DEFAULT_PG_DB="trailsnap"
 DEFAULT_PG_USER="trailsnap"
+ALIYUN_REGISTRY="crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com"
 
 CHINA_MIRRORS=(
   "https://docker.1ms.run"
@@ -73,6 +74,8 @@ UNINSTALL_FLAG=false
 PURGE_FLAG=false
 ADD_PHOTO_DIR=""
 LOG_FILE=""
+IMAGE_REGISTRY=""
+IMAGE_REGISTRY_RESOLVED=false
 
 # ── 输入读取 ──────────────────────────────────────────────────────────────────
 # 通过 curl | bash 运行时 stdin 是管道而非终端，直接 read 会读到 EOF。
@@ -505,7 +508,7 @@ ensure_docker() {
   info "Compose 命令：${COMPOSE_CMD}"
 }
 
-# ── 国内镜像源 ────────────────────────────────────────────────────────────────
+# ── 镜像仓库地区判断 ──────────────────────────────────────────────────────────
 
 test_mirror() {
   local mirror="$1"
@@ -712,40 +715,21 @@ print(json.dumps(cfg, indent=2))
 }
 
 configure_mirrors() {
-  # 决定是否配置：显式 --china-mirrors 或检测到位于中国大陆
-  if [[ "$CHINA_MIRRORS_FLAG" != true ]]; then
-    if detect_in_china; then
-      info "检测到当前位于中国大陆，自动配置 Docker 镜像加速源。"
-    else
-      info "未检测到位于中国大陆，跳过镜像加速源配置。（如需启用请加 --china-mirrors）"
-      return
-    fi
-  fi
-
-  step "配置国内 Docker 镜像加速源..."
-
-  # 测试可达性，仅保留可用镜像源
-  local available_mirrors=()
-  for mirror in "${CHINA_MIRRORS[@]}"; do
-    info "测试镜像源：${mirror}..."
-    if test_mirror "$mirror"; then
-      available_mirrors+=("$mirror")
-      info "  ✓ 可用"
-    else
-      warn "  ✗ 不可达"
-    fi
-  done
-  if [[ ${#available_mirrors[@]} -eq 0 ]]; then
-    warn "没有可用的镜像源，跳过配置。"
+  if [[ "$IMAGE_REGISTRY_RESOLVED" == true ]]; then
     return
   fi
+  IMAGE_REGISTRY_RESOLVED=true
 
-  case "$OS" in
-    linux)      configure_mirrors_linux "${available_mirrors[@]}" ;;
-    macos|wsl2) configure_mirrors_desktop "${available_mirrors[@]}" ;;
-    *)          warn "未知系统 $OS，跳过镜像源配置。" ;;
-  esac
-  log "镜像源配置完成"
+  if detect_in_china; then
+    IMAGE_REGISTRY="${ALIYUN_REGISTRY}/"
+    CHINA_MIRRORS_FLAG=true
+    info "检测到当前位于中国大陆，将从阿里云镜像仓库拉取镜像。"
+    log "镜像仓库: ${ALIYUN_REGISTRY}"
+  else
+    IMAGE_REGISTRY=""
+    info "未检测到位于中国大陆，将从 Docker Hub 拉取镜像。"
+    log "镜像仓库: Docker Hub"
+  fi
 }
 
 # ── 端口检查（自动分配） ─────────────────────────────────────────────────────
@@ -1111,6 +1095,8 @@ EOF
 }
 
 generate_compose() {
+  configure_mirrors
+
   step "生成 docker-compose.yml..."
 
   # 升级 / 追加兼容：若已存在 docker-compose.yml 且含 /app/Photos 挂载行，则原样
@@ -1198,7 +1184,7 @@ generate_compose() {
   cat > "${INSTALL_DIR}/docker-compose.yml" << COMPOSE_EOF
 services:
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    image: ${IMAGE_REGISTRY}pgvector/pgvector:pg18-trixie
     container_name: trailsnap-postgres
     restart: always
     environment:
@@ -1219,7 +1205,7 @@ services:
       start_period: 10s
 
   server:
-    image: siyuan044/trailsnap-server:\${IMAGE_TAG}
+    image: ${IMAGE_REGISTRY}siyuan044/trailsnap-server:\${IMAGE_TAG}
     container_name: trailsnap-server
     restart: always
     expose: ["8000"]
@@ -1239,7 +1225,7 @@ ${photo_volumes}
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:\${IMAGE_TAG}-\${AI_MODE}
+    image: ${IMAGE_REGISTRY}siyuan044/trailsnap-ai:\${IMAGE_TAG}-\${AI_MODE}
     container_name: trailsnap-ai
     restart: always
     stop_grace_period: 15s
@@ -1259,7 +1245,7 @@ ${photo_volumes}
       start_period: 30s
 
   frontend:
-    image: siyuan044/trailsnap-frontend:\${IMAGE_TAG}
+    image: ${IMAGE_REGISTRY}siyuan044/trailsnap-frontend:\${IMAGE_TAG}
     container_name: trailsnap-frontend
     restart: always
     ports:
@@ -1674,7 +1660,7 @@ TrailSnap (行影集) — 一键安装脚本
   --timezone 时区        时区（默认：Asia/Shanghai）
   --ai-mode cpu|gpu      AI 模式（默认：cpu）
   --tag 版本号           Docker 镜像版本标签（默认：latest）
-  --china-mirrors        配置国内 Docker 镜像加速源
+  --china-mirrors        强制使用国内阿里云镜像仓库
   --yes, -y              非交互模式：接受所有默认值
   --upgrade              升级已安装的实例
   --uninstall            卸载 TrailSnap
@@ -1843,7 +1829,7 @@ main() {
     exit 0
   fi
 
-  # 配置镜像源（国内用户）
+  # 确认镜像仓库（中国大陆使用阿里云，其他地区使用 Docker Hub）
   configure_mirrors
 
   # 收集配置

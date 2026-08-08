@@ -38,7 +38,7 @@ version: '3.8'
 
 services:
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/pgvector/pgvector:pg18-trixie
     container_name: postgres_container
     restart: always
     environment:
@@ -58,7 +58,7 @@ services:
       start_period: 10s
 
   server:
-    image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
     ports: [ "8800:8000" ]
@@ -75,7 +75,7 @@ services:
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
@@ -93,7 +93,7 @@ services:
       start_period: 30s
 
   frontend:
-    image: siyuan044/trailsnap-frontend:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
     restart: always
     ports: [ "8082:80" ]
     depends_on: [ server ]
@@ -111,7 +111,7 @@ networks:
 
 ```yml
   server:
-    image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
     ports: [ "8800:8000" ]
@@ -132,7 +132,7 @@ networks:
 
 ```yml
   server:
-    image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
     ports: [ "8800:8000" ]
@@ -163,10 +163,10 @@ networks:
 PS C:\ProgramData\TrailSnap> docker-compose up -d
 time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
 [+] up 51/51
- ✔ Image siyuan044/trailsnap-frontend:latest Pulled                                                               38.2ss
- ✔ Image siyuan044/trailsnap-ai:latest       Pulled                                                               155.8s
- ✔ Image pgvector/pgvector:pg18-trixie       Pulled                                                               76.8ss
- ✔ Image siyuan044/trailsnap-server:latest   Pulled                                                               112.8s
+ ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest Pulled                                                               38.2ss
+ ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest       Pulled                                                               155.8s
+ ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/pgvector/pgvector:pg18-trixie       Pulled                                                               76.8ss
+ ✔ Image crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest   Pulled                                                               112.8s
  ✔ Network trailsnap_app-network             Created                                                              0.1s
  ✔ Container postgres_container              Healthy                                                              28.0s
  ✔ Container trailsnap-ai-1                  Created                                                              1.1s

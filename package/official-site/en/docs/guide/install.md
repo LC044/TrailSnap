@@ -148,7 +148,7 @@ If you prefer to configure manually, or are deploying on a NAS or other special 
 
    services:
      postgres:
-       image: pgvector/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
        container_name: postgres_container
        restart: always
        environment:
@@ -171,7 +171,7 @@ If you prefer to configure manually, or are deploying on a NAS or other special 
          start_period: 10s
 
      server:
-      image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
        restart: always
        expose: [ "8000" ]
        ports: [ "8800:8000" ]
@@ -189,7 +189,7 @@ If you prefer to configure manually, or are deploying on a NAS or other special 
            condition: service_healthy
 
      ai:
-      image: siyuan044/trailsnap-ai:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
        restart: always
        expose: [ "8001" ]
        ports: [ "8801:8001" ]
@@ -200,7 +200,7 @@ If you prefer to configure manually, or are deploying on a NAS or other special 
         - TZ=Asia/Shanghai
        
      frontend:
-      image: siyuan044/trailsnap-frontend:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
        restart: always
        ports: [ "8082:80" ]
        depends_on: [ server ]
