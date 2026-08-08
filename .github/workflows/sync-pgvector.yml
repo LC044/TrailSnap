@@ -1,0 +1,129 @@
+name: Sync pgvector Image
+
+# 将官方 pgvector/pgvector:pg18-trixie 多架构镜像（amd64+arm64）整体复制到
+# 阿里云 ACR 与 Docker Hub siyuan044 命名空间下。
+# 用 docker buildx imagetools create 复制完整 manifest list + 各平台 layer，不重新构建。
+#
+# 触发：手动（workflow_dispatch）。可指定源 tag（默认 pg18-trixie）与目标 tag。
+#
+# 需仓库 secrets（未配置的 registry 自动跳过）：
+#   ACR_REGISTRY    阿里云 ACR 实例公网地址，如 crpi-xxx.cn-hangzhou.personal.cr.aliyuncs.com
+#   ACR_NAMESPACE   命名空间，如 siyuan044
+#   ACR_USERNAME    ACR 登录用户名
+#   ACR_PASSWORD    ACR 访问凭证固定密码
+#   DOCKER_HUB_USERNAME   Docker Hub 用户名（如 siyuan044）
+#   DOCKER_HUB_ACCESS_TOKEN  Docker Hub access token
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "源镜像 tag（官方 pgvector/pgvector）"
+        required: true
+        default: "pg18-trixie"
+      target_tag:
+        description: "目标 tag（默认与源一致）"
+        required: true
+        default: "pg18-trixie"
+      namespace:
+        description: "命名空间（ACR 与 Docker Hub 共用，默认 siyuan044）"
+        required: true
+        default: "siyuan044"
+
+jobs:
+  sync-pgvector:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+
+      - name: Resolve targets
+        id: resolve
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          INPUT_NS: ${{ inputs.namespace }}
+          DH_USER: ${{ secrets.DOCKER_HUB_USERNAME }}
+        run: |
+          NS="${INPUT_NS:-siyuan044}"
+          echo "namespace=$NS" >> $GITHUB_OUTPUT
+
+          # 阿里云 ACR：优先用 secret 里的命名空间，其次用入参
+          ACR_NS="${ACR_NAMESPACE:-$NS}"
+          if [ -n "$ACR_REGISTRY" ]; then
+            ACR_TARGET="${ACR_REGISTRY}/${ACR_NS}/pgvector:${{ inputs.target_tag }}"
+            echo "acr_enabled=true" >> $GITHUB_OUTPUT
+          else
+            ACR_TARGET=""
+            echo "acr_enabled=false" >> $GITHUB_OUTPUT
+            echo "::notice::未配置 ACR_REGISTRY secret，跳过阿里云 ACR 同步。"
+          fi
+          echo "acr_target=$ACR_TARGET" >> $GITHUB_OUTPUT
+
+          # Docker Hub：用 secret 用户名（与入参命名空间一致时直接用入参）
+          DH_NS="${DH_USER:-$NS}"
+          if [ -n "$DH_USER" ]; then
+            DH_TARGET="${DH_NS}/pgvector:${{ inputs.target_tag }}"
+            echo "dh_enabled=true" >> $GITHUB_OUTPUT
+          else
+            DH_TARGET=""
+            echo "dh_enabled=false" >> $GITHUB_OUTPUT
+            echo "::notice::未配置 DOCKER_HUB_USERNAME secret，跳过 Docker Hub 同步。"
+          fi
+          echo "dh_target=$DH_TARGET" >> $GITHUB_OUTPUT
+
+      - name: Login to Docker Hub
+        if: steps.resolve.outputs.dh_enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Login to Aliyun ACR
+        if: steps.resolve.outputs.acr_enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      # imagetools create 一次复制到多个目标：-t 指定每个目标，最后位置参数为源
+      # 源是官方多架构镜像，复制后目标也是完整 manifest list（amd64+arm64）
+      - name: Copy multi-arch image to both registries
+        env:
+          ACR_TARGET: ${{ steps.resolve.outputs.acr_target }}
+          DH_TARGET: ${{ steps.resolve.outputs.dh_target }}
+          ACR_ENABLED: ${{ steps.resolve.outputs.acr_enabled }}
+          DH_ENABLED: ${{ steps.resolve.outputs.dh_enabled }}
+        run: |
+          set -e
+          SOURCE="pgvector/pgvector:${{ inputs.source_tag }}"
+          echo "==> 源镜像: $SOURCE"
+
+          # 先校验源是真正的多架构 manifest list
+          echo "==> 源 manifest 概览:"
+          docker buildx imagetools inspect "$SOURCE" | head -20
+
+          ARGS=()
+          if [ "$ACR_ENABLED" = "true" ]; then
+            ARGS+=(-t "$ACR_TARGET")
+            echo "==> 目标(阿里云): $ACR_TARGET"
+          fi
+          if [ "$DH_ENABLED" = "true" ]; then
+            ARGS+=(-t "$DH_TARGET")
+            echo "==> 目标(Docker Hub): $DH_TARGET"
+          fi
+
+          if [ ${#ARGS[@]} -eq 0 ]; then
+            echo "::error::没有任何目标 registry 可用，请配置 secrets。"
+            exit 1
+          fi
+
+          echo "==> 开始复制（多架构整体，不重新构建）..."
+          docker buildx imagetools create "${ARGS[@]}" "$SOURCE"
+
+          echo "==> 完成。校验目标 manifest:"
+          [ "$ACR_ENABLED" = "true" ] && docker buildx imagetools inspect "$ACR_TARGET" | head -20
+          [ "$DH_ENABLED" = "true" ] && docker buildx imagetools inspect "$DH_TARGET" | head -20
