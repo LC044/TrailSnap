@@ -400,6 +400,10 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 - 实现按需启动 AI Sidecar；
 - 验证不同 Windows 机器和 CPU 环境。
 
+当前实现将 AI 运行时与模型彻底拆分：扩展归桌面壳管理，模型通过 Server 鉴权接口
+管理并保存到稳定的用户数据目录。版本发布分别生成 `ai-extensions.json` 和
+`ai-models.json`，两类资产均执行 SHA-256 校验。
+
 预估：2～4 周。
 
 ### 阶段 3：人脸与向量检索

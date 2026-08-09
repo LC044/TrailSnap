@@ -122,5 +122,17 @@ export const settingsApi = {
   async verifyAIService(apiUrl: string) {
     const { data } = await request.post('/api/settings/verify-ai-service', { api_url: apiUrl })
     return data
+  },
+  async getAIModels() {
+    const { data } = await request.get('/api/settings/ai-models')
+    return data
+  },
+  async downloadAIModel(modelId: string) {
+    const { data } = await request.post(`/api/settings/ai-models/${encodeURIComponent(modelId)}/download`)
+    return data
+  },
+  async deleteAIModel(modelId: string) {
+    const { data } = await request.delete(`/api/settings/ai-models/${encodeURIComponent(modelId)}`)
+    return data
   }
 }

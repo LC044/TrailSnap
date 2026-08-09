@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "desktop-core-models",
+      "name": "桌面 AI 基础模型",
+      "version": "0.9.2",
+      "description": "OCR、火车票/机票识别和图片分类所需的 CPU 模型。",
+      "capabilities": ["ocr", "tickets", "classification"],
+      "requirements": {
+        "diskMB": 600
+      },
+      "asset": null
+    }
+  ]
+}

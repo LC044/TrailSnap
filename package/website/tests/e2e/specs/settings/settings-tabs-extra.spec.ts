@@ -63,7 +63,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
           version: '0.9.2',
           description: '提供 OCR、票据识别和图片分类',
           capabilities: ['ocr', 'tickets', 'classification'],
-          requirements: { memoryMB: 2048, diskMB: 1500 },
+          requirements: { memoryMB: 2048, diskMB: 500 },
           available: true,
           downloadSize: 200 * 1024 * 1024,
           installed: null,
@@ -78,6 +78,36 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.getByText('TrailSnap AI 基础扩展')).toBeVisible();
     await expect(page.getByText('文字识别')).toBeVisible();
     await expect(page.getByRole('button', { name: '安装' })).toBeEnabled();
+  });
+
+  test('AI 扩展已安装后通过 Server 展示模型管理', async ({ page }) => {
+    await page.route('**/desktop-api/ai/extensions', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        platform: 'win32-x64', catalogError: null, gateway: { running: false },
+        extensions: [{
+          id: 'core-ai', name: 'TrailSnap AI 基础扩展', version: '0.9.2',
+          description: '仅包含运行时', capabilities: ['ocr', 'tickets', 'classification'],
+          requirements: { memoryMB: 2048, diskMB: 500 }, available: true,
+          installed: { version: '0.9.2' }, job: null,
+        }],
+      }),
+    }));
+    await page.route('**/api/settings/ai-models', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, msg: 'success', data: { models: [{
+        id: 'desktop-core-models', name: '桌面 AI 基础模型', status: 'pending',
+        description: 'OCR、票据和分类模型', requirements: { diskMB: 600 },
+      }] } }),
+    }));
+    await page.goto('/settings');
+    await clickSettingTab(page, 'ai-extensions');
+
+    await expect(page.getByText('AI 模型管理')).toBeVisible();
+    await expect(page.getByText('桌面 AI 基础模型')).toBeVisible();
+    await expect(page.getByRole('button', { name: '下载模型' })).toBeEnabled();
   });
 
   test('连续切换 tasks → external → performance - 内容独立渲染不残留', async ({ page }) => {

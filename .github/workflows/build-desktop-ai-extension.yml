@@ -56,9 +56,40 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  models:
+    name: Build downloadable AI models
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: '1'
+      EXTENSION_VERSION: '0.9.2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: package/ai/uv.lock
+      - name: Install model packaging dependencies
+        working-directory: package/ai
+        run: uv sync --frozen --extra cpu --group desktop
+      - name: Assemble downloadable model pack
+        working-directory: package/ai
+        run: uv run python scripts/build_desktop_models.py --version ${{ env.EXTENSION_VERSION }}
+      - name: Upload model pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrailSnap-AI-models-${{ github.run_number }}
+          path: |
+            package/ai/extension-dist/TrailSnap-AI-models-*.tar.gz
+            package/ai/extension-dist/models.asset.json
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, models]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -70,9 +101,12 @@ jobs:
           path: artifacts
       - name: Build extension catalog
         run: python package/ai/scripts/merge_extension_catalog.py artifacts --version "${GITHUB_REF_NAME#v}" --output artifacts/ai-extensions.json
+      - name: Build model catalog
+        run: python package/ai/scripts/merge_model_catalog.py artifacts --version "${GITHUB_REF_NAME#v}" --output artifacts/ai-models.json
       - name: Publish extension assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/**/*.tar.gz
             artifacts/ai-extensions.json
+            artifacts/ai-models.json

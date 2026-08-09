@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog } = require('electron')
+const { app, BrowserWindow, dialog, Menu } = require('electron')
 const { spawn, spawnSync } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
@@ -252,6 +252,7 @@ async function startWebServer(apiPort) {
 }
 
 async function createWindow(url) {
+  Menu.setApplicationMenu(null)
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -259,6 +260,7 @@ async function createWindow(url) {
     minHeight: 640,
     show: false,
     title: 'TrailSnap 行影集',
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -305,6 +307,8 @@ app.whenReady().then(async () => {
   try {
     const catalogUrl = process.env.TS_AI_EXTENSION_CATALOG_URL ||
       `https://github.com/LC044/TrailSnap/releases/download/v${app.getVersion()}/ai-extensions.json`
+    const modelCatalogUrl = process.env.TS_AI_MODEL_CATALOG_URL ||
+      `https://github.com/LC044/TrailSnap/releases/download/v${app.getVersion()}/ai-models.json`
     aiExtensionManager = new AIExtensionManager({
       userData: app.getPath('userData'),
       catalogPath: path.join(__dirname, 'ai-extensions.json'),
@@ -312,7 +316,12 @@ app.whenReady().then(async () => {
       beforeRemove: async () => aiGateway?.stopSidecar(),
     })
     await aiExtensionManager.initialize()
-    aiGateway = new AIGateway({ manager: aiExtensionManager, reservePort, userData: app.getPath('userData') })
+    aiGateway = new AIGateway({
+      manager: aiExtensionManager,
+      reservePort,
+      userData: app.getPath('userData'),
+      modelCatalogUrl,
+    })
     const aiGatewayPort = await aiGateway.listen()
     const apiPort = await reservePort()
     startSidecar(apiPort, aiGatewayPort)

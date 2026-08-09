@@ -23,16 +23,19 @@ macOS DMG，以及 Linux AppImage/DEB。
 
 ## AI 扩展包
 
-基础安装包不包含 AI 运行时和模型。桌面设置中心的“AI 扩展包”支持：
+基础安装包不包含 AI 运行时和模型。AI 扩展包本身也只包含 CPU 运行时，模型作为
+独立资源由 Server 下载到 `%LOCALAPPDATA%\TrailSnap\models`。桌面设置中心的
+“AI 扩展包”支持：
 
 - 在线下载、SHA-256 校验、进度显示、暂停和断点续传；
 - `.tar.gz` 扩展包离线导入与平台校验；
-- 卸载运行时和模型，同时保留 PostgreSQL 中已有分析结果；
+- 独立安装或卸载运行时，模型与 PostgreSQL 分析结果均不会随之删除；
+- 通过 Server 鉴权接口查看、下载、重试和删除 AI 模型；
 - OCR、票据识别、图片分类首次请求时启动 AI Sidecar；
 - 空闲 10 分钟自动退出，关闭桌面应用时清理整个进程树。
 
 扩展清单默认从当前版本对应的 GitHub Release 读取，也可通过
 `TS_AI_EXTENSION_CATALOG_URL` 指向镜像源。GitHub workflow
 `build-desktop-ai-extension.yml` 在 Windows、macOS 和 Linux 原生 runner 上分别构建
-CPU 扩展，并在版本标签发布时生成带精确版本、大小和 SHA-256 的
-`ai-extensions.json`。
+CPU 扩展和平台无关的模型包，并在版本标签发布时生成带精确版本、大小和 SHA-256
+的 `ai-extensions.json` 与 `ai-models.json`。

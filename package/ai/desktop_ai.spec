@@ -8,13 +8,16 @@ hiddenimports = (
     collect_submodules("rapidocr")
     + collect_submodules("uvicorn")
 )
-datas = [(str(root / "app" / "data"), "app/data")]
+datas = [
+    (str(root / "app" / "data"), "app/data"),
+    (str(root / "app" / "desktop_model_catalog.json"), "app"),
+]
 for package in ("fastapi", "pydantic", "rapidocr", "onnxruntime"):
     try:
         datas += copy_metadata(package)
     except Exception:
         pass
-datas += collect_data_files("rapidocr")
+datas += collect_data_files("rapidocr", excludes=["models/**"])
 
 a = Analysis(
     [str(root / "desktop_entry.py")],

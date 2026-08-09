@@ -92,12 +92,13 @@ class TicketService:
         # Note: Since load_yolo_model now handles download internally/synchronously if needed,
         # we might not strictly need this check if we relied solely on load_yolo_model.
         # However, keeping it consistent with the model_downloader pattern is good practice.
+        model_downloader.refresh_statuses()
         if not model_downloader.is_ready("tickets_yolo"):
              # If model_downloader is used, we respect its status.
              # If strictly following the user's synchronous load pattern, this might be redundant but safe.
              # For now, we'll keep it as a fast check.
              if not os.path.exists(os.path.join(settings.MODEL_PATH, 'photo-cls', 'ticket-recognition.onnx')):
-                 raise Exception("Ticket recognition model is not ready yet. Please try again later.")
+                  raise Exception("Ticket model is not ready. 票据识别模型尚未安装，请前往设置中的 AI 扩展包下载模型。")
 
         # 获取模型实例
         yolo_session = model_manager.get_model("tickets_yolo")

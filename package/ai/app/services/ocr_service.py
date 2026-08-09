@@ -56,6 +56,16 @@ def load_paddleocr_model():
             "Rec.ocr_version": OCRVersion.PPOCRV5,
             "EngineConfig.onnxruntime.use_cuda": True,
         }
+        if os.environ.get("TS_DESKTOP_AI") == "1":
+            ocr_root = os.path.join(model_root, "ocr")
+            params.update(
+                {
+                    "Det.model_path": os.path.join(ocr_root, "ch_PP-OCRv5_mobile_det.onnx"),
+                    "Cls.model_path": os.path.join(ocr_root, "ch_ppocr_mobile_v2.0_cls_infer.onnx"),
+                    "Rec.model_path": os.path.join(ocr_root, "ch_PP-OCRv5_rec_mobile_infer.onnx"),
+                    "Rec.rec_keys_path": os.path.join(ocr_root, "ppocrv5_dict.txt"),
+                }
+            )
         use_torch_gpu = False
         try:
             import torch
@@ -162,6 +172,11 @@ class OCRService:
         """
         Detect text in image bytes
         """
+        if os.environ.get("TS_DESKTOP_AI") == "1":
+            model_downloader.refresh_statuses()
+            if not model_downloader.is_ready("desktop-core-models"):
+                raise Exception("桌面 AI 模型尚未安装，请前往设置中的 AI 扩展包下载模型。")
+
         # if not model_downloader.is_ready("ocr"):
         #      raise Exception("OCR model is not ready yet. Please try again later.")
 

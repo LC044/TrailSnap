@@ -23,7 +23,6 @@ def main() -> None:
     parser.add_argument("--platform-key", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--output", type=Path, default=Path("extension-dist"))
-    parser.add_argument("--skip-model-download", action="store_true")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
@@ -31,24 +30,11 @@ def main() -> None:
     if not runtime.is_dir():
         raise SystemExit(f"PyInstaller runtime not found: {runtime}")
 
-    model_dir = root / "extension-models" / "photo-cls"
-    if not args.skip_model_download:
-        from modelscope.hub.snapshot_download import snapshot_download
-
-        snapshot_download(
-            "SiYuan044/photo-cls",
-            local_dir=str(model_dir),
-            revision="v0.3.10.1",
-        )
-
     args.output.mkdir(parents=True, exist_ok=True)
     staging = args.output / f"staging-{args.platform_key}"
     shutil.rmtree(staging, ignore_errors=True)
     (staging / "runtime").mkdir(parents=True)
     shutil.copytree(runtime, staging / "runtime" / "trailsnap-ai")
-    if model_dir.is_dir():
-        shutil.copytree(model_dir, staging / "models" / "photo-cls")
-
     executable = "trailsnap-ai.exe" if args.platform_key.startswith("win32-") else "trailsnap-ai"
     manifest = {
         "schemaVersion": 1,
@@ -58,8 +44,7 @@ def main() -> None:
         "platform": args.platform_key,
         "capabilities": ["ocr", "tickets", "classification"],
         "entrypoint": f"runtime/trailsnap-ai/{executable}",
-        "modelPath": "models",
-        "modelRevision": "v0.3.10.1",
+        "modelManagement": "server",
     }
     (staging / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 

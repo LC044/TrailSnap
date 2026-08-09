@@ -14,6 +14,8 @@ args = parser.parse_args()
 assets = {}
 for asset_file in args.root.rglob("*.asset.json"):
     asset = json.loads(asset_file.read_text(encoding="utf-8"))
+    if "platform" not in asset:
+        continue
     assets[asset.pop("platform")] = asset
 
 if not assets:
@@ -25,9 +27,9 @@ catalog = {
         "id": "core-ai",
         "name": "TrailSnap AI 基础扩展",
         "version": args.version,
-        "description": "提供 OCR、火车票/机票识别和图片分类，首次使用时按需启动。",
+        "description": "提供 OCR、火车票/机票识别和图片分类运行时；模型由 Server 单独下载。",
         "capabilities": ["ocr", "tickets", "classification"],
-        "requirements": {"memoryMB": 2048, "diskMB": 1500, "gpuRequired": False},
+        "requirements": {"memoryMB": 2048, "diskMB": 500, "gpuRequired": False},
         "assets": assets,
     }],
 }

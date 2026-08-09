@@ -52,7 +52,7 @@
     ],
     "win": {
       "target": ["nsis"],
-      "icon": "../website/public/avatar.png",
+      "icon": "../website/public/favicon.ico",
       "artifactName": "TrailSnap-${version}-${arch}-Setup.${ext}"
     },
     "nsis": {

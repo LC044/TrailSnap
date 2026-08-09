@@ -10,7 +10,7 @@ import re
 import logging
 import requests
 import time
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 from app.dependencies import get_db, BaseResponse
 from app.api.deps import get_current_user
 from app.db.models.user import User
@@ -191,6 +191,53 @@ def verify_ai_service(
             "success": False,
             "message": "无法连接 AI 服务，请检查服务是否启动及网络配置",
         })
+
+
+def _ai_model_request(method: str, path: str, current_user: User, db: Session):
+    config = config_manager.get_user_config(current_user.id, db)
+    api_url = config.ai.ai_api_url.rstrip('/')
+    try:
+        response = requests.request(method, f"{api_url}{path}", timeout=120)
+        try:
+            body = response.json()
+        except ValueError:
+            body = {"detail": response.text or f"HTTP {response.status_code}"}
+        if response.status_code >= 400:
+            message = body.get("detail") if isinstance(body, dict) else None
+            return BaseResponse.fail(code=response.status_code, msg=message or "AI 模型服务请求失败")
+        return BaseResponse.success(data=body)
+    except requests.Timeout:
+        return BaseResponse.fail(code=504, msg="AI 模型服务响应超时")
+    except requests.RequestException:
+        logging.exception("Failed to access AI model service at %s", api_url)
+        return BaseResponse.fail(code=503, msg="AI 模型服务不可用，请先安装 AI 扩展包")
+
+
+@router.get('/ai-models', response_model=BaseResponse)
+def get_ai_models(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """通过 Server 查询 AI Sidecar 管理的可下载模型包。"""
+    return _ai_model_request('GET', '/ai/models', current_user, db)
+
+
+@router.post('/ai-models/{model_id}/download', response_model=BaseResponse)
+def download_ai_model(
+    model_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _ai_model_request('POST', f"/ai/models/{quote(model_id, safe='')}/download", current_user, db)
+
+
+@router.delete('/ai-models/{model_id}', response_model=BaseResponse)
+def delete_ai_model(
+    model_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return _ai_model_request('DELETE', f"/ai/models/{quote(model_id, safe='')}", current_user, db)
 
 @router.get('/directories')
 def get_directories(

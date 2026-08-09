@@ -266,8 +266,9 @@ class ImageClassificationService:
         return {"label": big_category, "confidence": confidence}
 
     def classify_yolo(self, images_base64: List[str]) -> List[dict]:
+        model_downloader.refresh_statuses()
         if not model_downloader.is_ready("yolo_photo_cls_general"):
-            raise Exception("General model is not ready yet. Please try again later.")
+            raise Exception("General model is not ready. 图片分类模型尚未安装，请前往设置中的 AI 扩展包下载模型。")
 
         results = []
         valid_images = []
