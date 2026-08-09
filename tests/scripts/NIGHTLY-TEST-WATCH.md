@@ -31,12 +31,8 @@ Set-Location $repo
 
 # 1.1 工作区脏检查
 $dirty = git status --porcelain
-if ($dirty) {
-    # 排除预期内的 .env.test、__pycache__ 等
-    $allowed = $dirty | Where-Object { $_ -match '^\?\? (tests\\.env\.test|.*\\__pycache__\\|.*\.pyc|tests\\artifacts\\)' }
-    $real = $dirty | Where-Object { $_ -notmatch '^\?\? (tests\\.env\.test|.*\\__pycache__\\|.*\.pyc|tests\\artifacts\\)' }
-    if ($real) { Write-ALERT "工作区有非预期改动" $real; exit 2 }
-}
+
+判断是否是临时文件，如果是临时文件则清理之后再继续，否则立刻中止并写 ALERT
 
 # 1.2 分支检查
 $branch = git rev-parse --abbrev-ref HEAD
