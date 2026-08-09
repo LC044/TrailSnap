@@ -100,7 +100,7 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: TrailSnap-${{ matrix.artifact }}-${{ github.ref_name }}
+          name: TrailSnap-${{ matrix.artifact }}-${{ github.run_number }}
           path: |
             package/desktop/dist/*.exe
             package/desktop/dist/*.dmg
