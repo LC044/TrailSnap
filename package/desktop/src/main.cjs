@@ -4,6 +4,8 @@ const fs = require('node:fs')
 const http = require('node:http')
 const net = require('node:net')
 const path = require('node:path')
+const { AIExtensionManager } = require('./ai-extension-manager.cjs')
+const { AIGateway } = require('./ai-gateway.cjs')
 
 if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
   app.setPath('userData', path.join(process.env.LOCALAPPDATA, 'TrailSnap'))
@@ -12,6 +14,8 @@ if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
 let mainWindow
 let apiProcess
 let webServer
+let aiExtensionManager
+let aiGateway
 let shuttingDown = false
 
 const mimeTypes = {
@@ -62,7 +66,7 @@ function openLogStreams() {
   }
 }
 
-function startSidecar(port) {
+function startSidecar(port, aiGatewayPort) {
   const executable = sidecarExecutable()
   if (!fs.existsSync(executable)) throw new Error(`找不到后端程序：${executable}`)
 
@@ -73,7 +77,7 @@ function startSidecar(port) {
     fs.writeFileSync(envFile, [
       'DB_URL=postgresql://trailsnap:trailsnap@127.0.0.1:5532/trailsnap',
       'RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@127.0.0.1:5532/railway',
-      'AI_API_URL=http://127.0.0.1:8001',
+      '# AI_API_URL is injected by the desktop AI gateway at runtime.',
       '',
     ].join('\n'), { encoding: 'utf8', mode: 0o600 })
   }
@@ -81,6 +85,9 @@ function startSidecar(port) {
   const env = {
     ...process.env,
     TS_DATA_DIR: dataDir,
+    AI_API_URL: `http://127.0.0.1:${aiGatewayPort}`,
+    TS_AI_API_URL: `http://127.0.0.1:${aiGatewayPort}`,
+    TS_DESKTOP_AI_GATEWAY: `http://127.0.0.1:${aiGatewayPort}`,
   }
 
   apiProcess = spawn(executable, ['--port', String(port), '--parent-pid', String(process.pid)], {
@@ -93,6 +100,64 @@ function startSidecar(port) {
   apiProcess.once('exit', (code, signal) => {
     if (!shuttingDown) console.error(`TrailSnap server exited unexpectedly (${code ?? signal})`)
   })
+}
+
+function jsonResponse(response, status, data) {
+  response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
+  response.end(JSON.stringify(data))
+}
+
+async function readJsonBody(request, maxBytes = 1024 * 1024) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of request) {
+    size += chunk.length
+    if (size > maxBytes) throw new Error('请求体过大')
+    chunks.push(chunk)
+  }
+  if (!chunks.length) return {}
+  return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+}
+
+async function handleDesktopApi(request, response) {
+  const url = new URL(request.url, 'http://desktop.local')
+  const segments = url.pathname.split('/').filter(Boolean)
+  try {
+    if (request.method === 'GET' && url.pathname === '/desktop-api/ai/extensions') {
+      return jsonResponse(response, 200, { ...aiExtensionManager.list(), gateway: aiGateway.status() })
+    }
+    if (request.method === 'POST' && url.pathname === '/desktop-api/ai/extensions/refresh') {
+      await aiExtensionManager.refreshCatalog()
+      return jsonResponse(response, 200, aiExtensionManager.list())
+    }
+    if (request.method === 'POST' && url.pathname === '/desktop-api/ai/extensions/import') {
+      const selection = await dialog.showOpenDialog(mainWindow, {
+        title: '导入 TrailSnap AI 扩展包',
+        properties: ['openFile'],
+        filters: [{ name: 'TrailSnap AI 扩展包', extensions: ['gz', 'tgz'] }],
+      })
+      if (selection.canceled || !selection.filePaths[0]) return jsonResponse(response, 200, { canceled: true })
+      const installed = await aiExtensionManager.importArchive(selection.filePaths[0])
+      return jsonResponse(response, 200, { canceled: false, installed })
+    }
+    if (segments.length === 5 && segments[0] === 'desktop-api' && segments[1] === 'ai' && segments[2] === 'extensions') {
+      const id = decodeURIComponent(segments[3])
+      const action = segments[4]
+      if (request.method === 'POST' && action === 'install') {
+        const body = await readJsonBody(request)
+        return jsonResponse(response, 202, aiExtensionManager.startInstall(id, body))
+      }
+      if (request.method === 'POST' && action === 'pause') return jsonResponse(response, 200, aiExtensionManager.pause(id))
+      if (request.method === 'POST' && action === 'retry') return jsonResponse(response, 202, aiExtensionManager.retry(id))
+      if (request.method === 'DELETE' && action === 'uninstall') {
+        await aiExtensionManager.uninstall(id)
+        return jsonResponse(response, 200, { removed: true })
+      }
+    }
+    return jsonResponse(response, 404, { message: 'Desktop API not found' })
+  } catch (error) {
+    return jsonResponse(response, 400, { message: error.message })
+  }
 }
 
 function waitForHealth(port, timeoutMs = 45000) {
@@ -152,6 +217,20 @@ async function startWebServer(apiPort) {
   if (!fs.existsSync(path.join(webRoot, 'index.html'))) throw new Error(`找不到前端构建产物：${webRoot}`)
   const port = await reservePort()
   webServer = http.createServer((request, response) => {
+    const expectedHost = `127.0.0.1:${port}`
+    if (request.headers.host !== expectedHost) {
+      response.writeHead(403)
+      return response.end('Forbidden host')
+    }
+    if (/^\/desktop-api(?:\/|\?|$)/.test(request.url)) {
+      const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(request.method)
+      if (mutating && request.headers.origin !== `http://${expectedHost}`) {
+        response.writeHead(403)
+        return response.end('Forbidden origin')
+      }
+      handleDesktopApi(request, response)
+      return
+    }
     if (/^\/api(?:\/|\?|$)/.test(request.url)) return proxyApi(request, response, apiPort)
     const file = safeWebFile(webRoot, request.url)
     if (!file) {
@@ -197,6 +276,7 @@ async function createWindow(url) {
 async function stopSidecar() {
   shuttingDown = true
   if (webServer) await new Promise((resolve) => webServer.close(resolve))
+  if (aiGateway) await aiGateway.close()
   if (!apiProcess || apiProcess.exitCode !== null) return
 
   if (process.platform === 'win32') {
@@ -223,8 +303,19 @@ async function stopSidecar() {
 
 app.whenReady().then(async () => {
   try {
+    const catalogUrl = process.env.TS_AI_EXTENSION_CATALOG_URL ||
+      `https://github.com/LC044/TrailSnap/releases/download/v${app.getVersion()}/ai-extensions.json`
+    aiExtensionManager = new AIExtensionManager({
+      userData: app.getPath('userData'),
+      catalogPath: path.join(__dirname, 'ai-extensions.json'),
+      catalogUrl,
+      beforeRemove: async () => aiGateway?.stopSidecar(),
+    })
+    await aiExtensionManager.initialize()
+    aiGateway = new AIGateway({ manager: aiExtensionManager, reservePort, userData: app.getPath('userData') })
+    const aiGatewayPort = await aiGateway.listen()
     const apiPort = await reservePort()
-    startSidecar(apiPort)
+    startSidecar(apiPort, aiGatewayPort)
     await waitForHealth(apiPort)
     const webPort = await startWebServer(apiPort)
     await createWindow(`http://127.0.0.1:${webPort}`)

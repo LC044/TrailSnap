@@ -354,6 +354,14 @@ class ConfigManager:
             return target
 
         merged_data = deep_merge(current_data, user_settings)
+
+        # The desktop shell owns a random-port lazy AI gateway. It must win over
+        # an older persisted localhost:8001 value so upgraded desktop installs
+        # transparently use the optional extension without changing PostgreSQL
+        # user settings on disk.
+        desktop_ai_gateway = os.getenv("TS_DESKTOP_AI_GATEWAY")
+        if desktop_ai_gateway:
+            merged_data.setdefault('ai', {})['ai_api_url'] = desktop_ai_gateway
         
         # Ensure built-in AI connection exists and is synced with ai_api_url
         ai_settings = merged_data.get('ai', {})

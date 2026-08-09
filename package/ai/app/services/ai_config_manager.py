@@ -20,7 +20,9 @@ class AIConfigManager:
         
         # Path relative to app root (app/data)
         # app/services/ai_config_manager.py -> app/services -> app
-        self.config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "ai_config.json")
+        self.config_path = os.environ.get("AI_CONFIG_PATH") or os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "data", "ai_config.json"
+        )
         self._load_config()
         self._initialized = True
 

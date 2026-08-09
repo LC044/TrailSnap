@@ -22,7 +22,7 @@ from typing import Any
 
 # Configuration Defaults
 # In a real app, these should probably come from env vars or a config file
-LOG_DIR = "./data/logs"
+LOG_DIR = os.environ.get("TS_AI_LOG_DIR", "./data/logs")
 MAX_BYTES = 10 * 1024 * 1024  # 10MB
 BACKUP_COUNT = 30
 LOG_LEVEL = "INFO"

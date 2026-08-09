@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "extensions": [
+    {
+      "id": "core-ai",
+      "name": "TrailSnap AI 基础扩展",
+      "version": "0.9.2",
+      "description": "提供 OCR、火车票/机票识别和图片分类，首次使用时按需启动。",
+      "capabilities": ["ocr", "tickets", "classification"],
+      "requirements": {
+        "memoryMB": 2048,
+        "diskMB": 1500,
+        "gpuRequired": false
+      },
+      "assets": {}
+    }
+  ]
+}

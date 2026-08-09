@@ -38,6 +38,10 @@ dev = [
   "pytest-asyncio>=0.24",
   "pytest-cov>=5.0",
 ]
+desktop = [
+  "pyinstaller>=6.17.0",
+  "psutil>=7.2.1",
+]
 
 [tool.uv]
 conflicts = [
