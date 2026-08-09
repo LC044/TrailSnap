@@ -7,15 +7,12 @@ from fastapi import FastAPI
 from app.core.logger import setup_logging
 from app.routers import ai_config, image_classification, ocr, system, tickets
 from app.services.model_downloader import model_downloader
-from app.services.desktop_model_pack import register_desktop_model_pack
-
-
-register_desktop_model_pack()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     listener = setup_logging("desktop-ai")
+    model_downloader.start_downloads()
     try:
         yield
     finally:

@@ -171,3 +171,15 @@ def test_managed_model_can_be_listed_and_deleted(downloader, tmp_path):
     downloader.delete_model("managed")
     assert not model_file.exists()
     assert downloader.get_status("managed") == ModelStatus.PENDING
+
+
+def test_refresh_downgrades_ready_status_when_files_are_removed(downloader, tmp_path):
+    model_file = tmp_path / "managed.bin"
+    model_file.write_bytes(b"model")
+    downloader.register_model("managed", model_file.exists, lambda: str(model_file))
+    downloader.refresh_statuses()
+    assert downloader.is_ready("managed")
+
+    model_file.unlink()
+    downloader.refresh_statuses()
+    assert downloader.get_status("managed") == ModelStatus.PENDING

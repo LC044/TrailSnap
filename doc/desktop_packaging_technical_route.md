@@ -400,9 +400,10 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 - 实现按需启动 AI Sidecar；
 - 验证不同 Windows 机器和 CPU 环境。
 
-当前实现将 AI 运行时与模型彻底拆分：扩展归桌面壳管理，模型通过 Server 鉴权接口
-管理并保存到稳定的用户数据目录。版本发布分别生成 `ai-extensions.json` 和
-`ai-models.json`，两类资产均执行 SHA-256 校验。
+当前实现由桌面壳管理 AI 扩展：RapidOCR 随包提供的小型资源直接包含在运行时中，
+图片分类和票据识别模型则由 AI 服务在运行时从 ModelScope 下载，并通过 Server
+鉴权接口查看、重试和删除。GitHub Release 仅发布带 SHA-256 校验的扩展运行时，
+不再重复发布独立模型包。
 
 预估：2～4 周。
 

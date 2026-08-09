@@ -4,11 +4,10 @@ const path = require('node:path')
 const { spawn, spawnSync } = require('node:child_process')
 
 class AIGateway {
-  constructor({ manager, reservePort, userData, modelCatalogUrl, parentPid = process.pid, idleTimeoutMs = 10 * 60 * 1000 }) {
+  constructor({ manager, reservePort, userData, parentPid = process.pid, idleTimeoutMs = 10 * 60 * 1000 }) {
     this.manager = manager
     this.reservePort = reservePort
     this.userData = userData
-    this.modelCatalogUrl = modelCatalogUrl
     this.parentPid = parentPid
     this.idleTimeoutMs = idleTimeoutMs
     this.lastRequestAt = 0
@@ -74,8 +73,6 @@ class AIGateway {
         MODEL_PATH: modelDir,
         AI_CONFIG_PATH: path.join(this.userData, 'ai-config.json'),
         TS_AI_LOG_DIR: logDir,
-        TS_DESKTOP_AI: '1',
-        TS_AI_MODEL_CATALOG_URL: this.modelCatalogUrl || '',
       },
       detached: process.platform !== 'win32',
       windowsHide: true,

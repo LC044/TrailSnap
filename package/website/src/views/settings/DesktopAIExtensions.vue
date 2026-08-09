@@ -104,7 +104,7 @@
         <div class="flex flex-wrap items-start gap-3">
           <div class="min-w-0 flex-1">
             <h3 class="font-semibold text-gray-800 dark:text-gray-100">AI 模型管理</h3>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">模型独立于扩展运行时，由 TrailSnap Server 下载并保存在用户数据目录。</p>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">RapidOCR 小型资源已包含在扩展中；图片分类和票据模型由 AI 服务从 ModelScope 下载，Server 提供管理入口。</p>
           </div>
           <button
             class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"

@@ -61,6 +61,7 @@ class ModelDownloader:
                 logging.info(f"Model '{key}' already exists.")
                 with self.lock:
                     model_info["status"] = ModelStatus.READY
+                    model_info["error"] = None
                 return
 
             logging.info(f"Starting download for model '{key}'...")
@@ -69,15 +70,15 @@ class ModelDownloader:
 
             # Execute download
             path = model_info["download_fn"]()
-            
+
+            # A shared ModelScope snapshot may satisfy other registered
+            # checks (for example classification and ticket recognition).
+            self.refresh_statuses()
+
             logging.info(f"Model '{key}' downloaded successfully at {path}.")
             with self.lock:
                 model_info["status"] = ModelStatus.READY
                 model_info["error"] = None
-
-            # A managed pack may satisfy several lower-level model checks at
-            # once (OCR, classification and tickets in the desktop build).
-            self.refresh_statuses()
 
         except Exception as e:
             logging.error(f"Failed to download model '{key}': {e}")
@@ -108,10 +109,13 @@ class ModelDownloader:
             if model_info["status"] == ModelStatus.DOWNLOADING:
                 continue
             try:
-                if model_info["check_fn"]():
-                    with self.lock:
+                is_ready = model_info["check_fn"]()
+                with self.lock:
+                    if is_ready:
                         model_info["status"] = ModelStatus.READY
                         model_info["error"] = None
+                    elif model_info["status"] == ModelStatus.READY:
+                        model_info["status"] = ModelStatus.PENDING
             except Exception:
                 continue
 

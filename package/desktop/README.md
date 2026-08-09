@@ -23,8 +23,9 @@ macOS DMG，以及 Linux AppImage/DEB。
 
 ## AI 扩展包
 
-基础安装包不包含 AI 运行时和模型。AI 扩展包本身也只包含 CPU 运行时，模型作为
-独立资源由 Server 下载到 `%LOCALAPPDATA%\TrailSnap\models`。桌面设置中心的
+基础安装包不包含 AI 运行时。AI 扩展包内置 RapidOCR 随包提供的小型资源；图片
+分类和票据识别模型在运行时直接从 ModelScope 下载到
+`%LOCALAPPDATA%\TrailSnap\models`。桌面设置中心的
 “AI 扩展包”支持：
 
 - 在线下载、SHA-256 校验、进度显示、暂停和断点续传；
@@ -37,5 +38,5 @@ macOS DMG，以及 Linux AppImage/DEB。
 扩展清单默认从当前版本对应的 GitHub Release 读取，也可通过
 `TS_AI_EXTENSION_CATALOG_URL` 指向镜像源。GitHub workflow
 `build-desktop-ai-extension.yml` 在 Windows、macOS 和 Linux 原生 runner 上分别构建
-CPU 扩展和平台无关的模型包，并在版本标签发布时生成带精确版本、大小和 SHA-256
-的 `ai-extensions.json` 与 `ai-models.json`。
+CPU 扩展，并在版本标签发布时生成带精确版本、大小和 SHA-256 的
+`ai-extensions.json`。ModelScope 模型不再重复制作 GitHub Release 资源包。

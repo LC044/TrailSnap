@@ -11,6 +11,12 @@ import numpy as np
 
 from app.config import settings
 from app.services.model_downloader import model_downloader
+from app.services.photo_model_repository import (
+    MANAGED_METADATA,
+    delete_models,
+    ensure_models,
+    models_ready,
+)
 from app.services.model_manager import model_manager
 from app.services.onnx_providers import create_inference_session
 
@@ -129,9 +135,10 @@ class ImageClassificationService:
     }
 
     def __init__(self):
-        self._category_model_map = self._discover_category_models()
+        self._category_model_map = {}
         self._register_models()
         self._register_downloads()
+        self._register_available_category_models()
         self.version = 'v0.3.10.1'
 
     def _translate_label(self, label: str) -> str:
@@ -151,33 +158,28 @@ class ImageClassificationService:
     def _register_downloads(self):
 
         def check_general_model():
-            try:
-                path = os.path.join(settings.MODEL_PATH, "photo-cls")
-                if not os.path.exists(path):
-                    return False
-                model_path = os.path.join(path, "photo-cls-general.onnx")
-                if not os.path.exists(model_path):
-                    return False
-                version_file = os.path.join(path, ".mv")
-                if not os.path.exists(version_file):
-                    return False
-                with open(version_file, 'r') as f:
-                    version = f.read().strip().split(',')[0].split(':')[1]
-                if version != self.version:
-                    return False
-                return True
-            except:
-                return False
+            return models_ready()
 
         def download_general_model():
-            path = os.path.join(settings.MODEL_PATH, "photo-cls")
-            from modelscope.hub.snapshot_download import snapshot_download
-            logging.info(f"Downloading ONNX model SiYuan044/photo-cls to {path}...")
-            return snapshot_download('SiYuan044/photo-cls', local_dir=path, revision=self.version)
+            logging.info("Downloading ONNX models SiYuan044/photo-cls from ModelScope...")
+            result = ensure_models()
+            self._register_available_category_models()
+            return result
 
-        model_downloader.register_model("yolo_photo_cls_general", check_general_model, download_general_model)
+        model_downloader.register_model(
+            "yolo_photo_cls_general",
+            check_general_model,
+            download_general_model,
+            delete_fn=delete_models,
+            metadata=MANAGED_METADATA,
+            managed=True,
+        )
 
-        for category, model_file in self._category_model_map.items():
+    def _register_available_category_models(self):
+        for category, model_file in self._discover_category_models().items():
+            if category in self._category_model_map:
+                continue
+            self._category_model_map[category] = model_file
             model_key = f"yolo_photo_cls_{category}"
 
             def make_check(model_file=model_file):
@@ -196,6 +198,11 @@ class ImageClassificationService:
                 return download
 
             model_downloader.register_model(model_key, make_check(), make_download())
+            model_manager.register_model(
+                model_key,
+                lambda c=category: self._load_category_model(c),
+                self._release_model,
+            )
 
     def _load_general_model(self):
         path = os.path.join(settings.MODEL_PATH, "photo-cls")
@@ -231,8 +238,6 @@ class ImageClassificationService:
 
     def _register_models(self):
         model_manager.register_model("yolo_photo_cls_general", self._load_general_model, self._release_model)
-        for category in self._category_model_map.keys():
-            model_manager.register_model(f"yolo_photo_cls_{category}", lambda c=category: self._load_category_model(c), self._release_model)
 
     def _get_top_prediction(self, probs, model):
         if probs is not None and len(probs) > 0:

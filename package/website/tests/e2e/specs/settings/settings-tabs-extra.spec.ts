@@ -98,15 +98,15 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ code: 0, msg: 'success', data: { models: [{
-        id: 'desktop-core-models', name: '桌面 AI 基础模型', status: 'pending',
-        description: 'OCR、票据和分类模型', requirements: { diskMB: 600 },
+        id: 'yolo_photo_cls_general', name: '图片分类与票据识别模型', status: 'pending',
+        description: '运行时从 ModelScope 下载', requirements: { diskMB: 130 },
       }] } }),
     }));
     await page.goto('/settings');
     await clickSettingTab(page, 'ai-extensions');
 
     await expect(page.getByText('AI 模型管理')).toBeVisible();
-    await expect(page.getByText('桌面 AI 基础模型')).toBeVisible();
+    await expect(page.getByText('图片分类与票据识别模型')).toBeVisible();
     await expect(page.getByRole('button', { name: '下载模型' })).toBeEnabled();
   });
 

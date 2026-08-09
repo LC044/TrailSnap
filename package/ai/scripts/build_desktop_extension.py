@@ -44,7 +44,7 @@ def main() -> None:
         "platform": args.platform_key,
         "capabilities": ["ocr", "tickets", "classification"],
         "entrypoint": f"runtime/trailsnap-ai/{executable}",
-        "modelManagement": "server",
+        "modelManagement": "modelscope",
     }
     (staging / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -63,7 +63,7 @@ def main() -> None:
     (args.output / f"{args.platform_key}.asset.json").write_text(
         json.dumps(asset, indent=2), encoding="utf-8"
     )
-    shutil.rmtree(staging)
+    shutil.rmtree(staging, ignore_errors=True)
     print(json.dumps(asset, indent=2))
 
 

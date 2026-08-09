@@ -12,6 +12,7 @@ from app.services.ticket_parser import parse_ticket_info, extract_text
 from app.services.fly_ticket_parser import extract_flight_info
 from app.services.onnx_providers import create_inference_session
 from app.services.ocr_service import openvino_infer_lock
+from app.services.photo_model_repository import ensure_models
 
 def load_modelscope_model():
     """
@@ -19,8 +20,7 @@ def load_modelscope_model():
     Returns the local directory path of the downloaded model.
     """
     try:
-        model_dir = os.path.join(settings.MODEL_PATH, 'photo-cls')
-        return model_dir
+        return ensure_models()
     except Exception as e:
         logging.error(f"Failed to download Ticket Recognition model: {e}")
         raise e

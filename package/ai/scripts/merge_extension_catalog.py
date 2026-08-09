@@ -27,7 +27,7 @@ catalog = {
         "id": "core-ai",
         "name": "TrailSnap AI 基础扩展",
         "version": args.version,
-        "description": "提供 OCR、火车票/机票识别和图片分类运行时；模型由 Server 单独下载。",
+        "description": "内置 RapidOCR 资源；图片分类和票据模型在运行时从 ModelScope 下载。",
         "capabilities": ["ocr", "tickets", "classification"],
         "requirements": {"memoryMB": 2048, "diskMB": 500, "gpuRequired": False},
         "assets": assets,
