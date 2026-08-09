@@ -22,20 +22,26 @@ TrailSnap 的可写数据统一放在 ``DATA_DIR`` 下：
 import os
 import shutil
 import logging
+import sys
 
 logger = logging.getLogger(__name__)
 
 # <server>/  —— Docker 里为 /app，本地开发为 package/server
 SERVER_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# PyInstaller extracts bundled read-only files below ``sys._MEIPASS``.  Keep
+# writable desktop data outside the installation directory and allow the
+# desktop launcher to select that location explicitly.
+BUNDLE_ROOT = getattr(sys, '_MEIPASS', SERVER_ROOT)
+
 # 统一的可写数据目录（Docker 挂载卷）
-DATA_DIR = os.path.join(SERVER_ROOT, 'data')
+DATA_DIR = os.path.abspath(os.environ.get('TS_DATA_DIR') or os.path.join(SERVER_ROOT, 'data'))
 
 # 反向地理编码的可写数据目录：用户下载/上传的 CSV，持久化
 RG_DATA_DIR = os.path.join(DATA_DIR, 'rg_data')
 
 # 反向地理编码的只读种子目录：镜像内置，含 countries.json 与默认 CN.csv
-RG_SEED_DIR = os.path.join(SERVER_ROOT, 'resources', 'rg_data')
+RG_SEED_DIR = os.path.join(BUNDLE_ROOT, 'resources', 'rg_data')
 
 # 国家下拉框元数据：只读，始终从镜像内置种子读取
 COUNTRIES_JSON_FILE = os.path.join(RG_SEED_DIR, 'countries.json')

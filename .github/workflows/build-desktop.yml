@@ -1,0 +1,139 @@
+name: Build Desktop Installers
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'package/desktop/**'
+      - 'package/website/**'
+      - 'package/server/**'
+      - '.github/workflows/build-desktop.yml'
+  push:
+    branches: [ "master" ]
+    tags: [ "v*.*.*" ]
+    paths:
+      - 'package/desktop/**'
+      - 'package/website/**'
+      - 'package/server/**'
+      - '.github/workflows/build-desktop.yml'
+
+concurrency:
+  group: ${{ startsWith(github.ref, 'refs/tags/v') && format('desktop-release-{0}', github.ref_name) || format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }} installer
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建桌面') || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            artifact: windows
+          - name: macOS
+            os: macos-latest
+            artifact: macos
+          - name: Linux
+            os: ubuntu-latest
+            artifact: linux
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      PYTHONUTF8: '1'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: |
+            package/website/pnpm-lock.yaml
+            package/desktop/pnpm-lock.yaml
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: package/server/uv.lock
+
+      - name: Install frontend and desktop dependencies
+        run: |
+          pnpm --dir package/website install --frozen-lockfile
+          pnpm --dir package/desktop install --frozen-lockfile
+
+      - name: Build Vue frontend
+        run: pnpm --dir package/website build
+
+      - name: Install and freeze FastAPI sidecar
+        shell: bash
+        working-directory: package/server
+        run: |
+          uv sync --frozen --group dev
+          uv run pyinstaller --noconfirm --clean desktop_server.spec
+
+      - name: Stage sidecar for Electron
+        shell: bash
+        run: |
+          mkdir -p package/desktop/server-dist
+          cp -R package/server/dist/trailsnap-server package/desktop/server-dist/trailsnap-server
+
+      - name: Build native installer
+        run: pnpm --dir package/desktop dist
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrailSnap-${{ matrix.artifact }}-${{ github.ref_name }}
+          path: |
+            package/desktop/dist/*.exe
+            package/desktop/dist/*.dmg
+            package/desktop/dist/*.AppImage
+            package/desktop/dist/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Add desktop installers to GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: TrailSnap-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create or update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/*.exe
+            artifacts/*.dmg
+            artifacts/*.AppImage
+            artifacts/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

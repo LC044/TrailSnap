@@ -59,6 +59,9 @@ export default defineConfig({
     // （本地组件仍走各文件显式 import，避免行为变化）。
     Components({
       dirs: [],
+      // The declaration file is checked in. Rewriting it concurrently while
+      // Rollup transforms lazy views intermittently fails on Windows builds.
+      dts: false,
       resolvers: [ElementPlusResolver({ importStyle: 'css' })],
     }),
     pwaPlugin(),

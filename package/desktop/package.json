@@ -1,0 +1,76 @@
+{
+  "name": "trailsnap-desktop",
+  "productName": "TrailSnap",
+  "version": "0.9.2",
+  "private": true,
+  "description": "TrailSnap desktop shell",
+  "homepage": "https://github.com/LC044/TrailSnap",
+  "author": {
+    "name": "SiYuan",
+    "email": "sixyuan044@gmail.com"
+  },
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "electron-winstaller"
+    ]
+  },
+  "build": {
+    "appId": "com.trailsnap.desktop",
+    "productName": "TrailSnap",
+    "asar": true,
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../website/dist",
+        "to": "web",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "server-dist/trailsnap-server",
+        "to": "server",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "../website/public/avatar.png",
+      "artifactName": "TrailSnap-${version}-${arch}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.photography",
+      "artifactName": "TrailSnap-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Graphics",
+      "artifactName": "TrailSnap-${version}-${arch}.${ext}"
+    }
+  }
+}
