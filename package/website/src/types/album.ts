@@ -190,6 +190,8 @@ export interface FilterOptions {
   models: string[];
   image_types: string[];
   file_types: string[];
+  uploaded_after?: string;
+  uploaded_before?: string;
 }
 
 export interface SimilarPhoto {

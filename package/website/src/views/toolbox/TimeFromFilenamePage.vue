@@ -1,7 +1,7 @@
 <template>
   <div class="container mx-auto py-6 px-4 max-w-4xl">
     <div class="flex items-center gap-4 mb-6">
-      <button @click="$router.back()" class="p-2 hover:bg-gray-100 bg-transparent dark:hover:bg-gray-800 rounded-full transition-colors">
+      <button @click="goBack" class="p-2 hover:bg-gray-100 bg-transparent dark:hover:bg-gray-800 rounded-full transition-colors">
         <ArrowLeft class="w-6 h-6 text-gray-600 dark:text-gray-300" />
       </button>
       <div>
@@ -144,12 +144,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useAppBack } from '@/composables/useAppBack'
 import { ArrowLeft, Folder, Loader2, CheckCircle2, XCircle } from 'lucide-vue-next'
 import { toolboxApi } from '@/api/toolbox'
 import { tasksApi } from '@/api/tasks'
 import { settingsApi } from '@/api/settings'
 import { ElMessage } from 'element-plus'
 import type { Task as TaskResponse } from '@/api/tasks'
+
+const goBack = useAppBack('/toolbox')
 
 const targetRootPath = ref('')
 const tempSelectedPath = ref('')

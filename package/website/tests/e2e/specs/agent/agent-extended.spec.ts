@@ -9,8 +9,7 @@ import { ensureAuthSession } from '../../helpers/auth'
  * 2. AgentMessageItem -- 消息渲染、copy/regenerate 操作、selection-mode 复选框
  * 3. AgentHeader  -- 侧边栏 toggle、全屏 toggle、selection-mode 切换
  *
- * 统一入口：从 / 主页打开 FAB -> AgentChat overlay -> 在 overlay 内操作。
- * 与 agent-chat.spec.ts 共享相同 fixture 模式（dispatchEvent 跳过 FAB 拖动守卫）。
+ * 统一入口：从 / 主页的侧边栏打开 AI 助手 -> AgentChat overlay -> 在 overlay 内操作。
  */
 
 test.describe.configure({ mode: 'serial' })
@@ -34,9 +33,9 @@ function mockSessions(route: Route) {
 /** 进入 AgentChat overlay */
 async function openAgentChat(page: Page) {
   await page.goto('/')
-  const fab = page.locator('[aria-label="打开 AI 助手"]')
-  await expect(fab).toBeVisible({ timeout: 10_000 })
-  await fab.dispatchEvent('click')
+  const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+  await expect(agentEntry).toBeVisible({ timeout: 10_000 })
+  await agentEntry.click()
   await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
 }
 

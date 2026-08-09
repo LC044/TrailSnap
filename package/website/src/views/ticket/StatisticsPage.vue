@@ -4,7 +4,7 @@
     <div class="mx-auto mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <button 
-          @click="router.back()" 
+          @click="goBack"
           class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
         >
           <ArrowLeft class="w-4 h-4" />
@@ -208,8 +208,10 @@ let myBar: echarts.ECharts | null = null;
 
 // --- 车票数据接入与统计 ---
 import { useRouter } from 'vue-router';
+import { useAppBack } from '@/composables/useAppBack';
 
 const router = useRouter();
+const goBack = useAppBack('/ticket');
 const ticketStore = useTicketStore();
 const loading = ref(false);
 const error = ref('');

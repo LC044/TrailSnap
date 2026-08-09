@@ -60,6 +60,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { Server } from 'lucide-vue-next'
 import { getServerUrl, hasConfiguredServer, saveServerUrl, testServerConnection } from '@/config/server'
 import { useUserStore } from '@/stores/user'
@@ -94,8 +95,5 @@ const connectAndSave = async () => {
   }
 }
 
-const goBack = () => {
-  if (window.history.length > 1) router.back()
-  else router.replace(userStore.token ? '/settings' : '/login')
-}
+const goBack = useAppBack(() => router.replace(userStore.token ? '/settings' : '/login'))
 </script>

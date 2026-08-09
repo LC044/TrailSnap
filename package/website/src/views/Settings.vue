@@ -49,14 +49,16 @@ import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
 import { useSwipeNavigation } from '@/composables/useSwipeNavigation'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
 
 const activeTab = ref('profile')
-const menuItems = [
+const baseMenuItems = [
   { key: 'profile', label: '个人资料', icon: UserCircle },
-  { key: 'user', label: '用户管理', icon: User },
+  { key: 'user', label: '用户管理', icon: User, superuserOnly: true },
   { key: 'tasks', label: '任务管理', icon: List },
   { key: 'basic', label: '基础设置', icon: Settings },
   { key: 'external', label: '外部图库', icon: FolderOpen },
@@ -65,6 +67,7 @@ const menuItems = [
   { key: 'about', label: '关于行影集', icon: Info },
   { key: 'feedback', label: '问题反馈', icon: MessageSquare },
 ]
+const menuItems = computed(() => baseMenuItems.filter(item => !item.superuserOnly || userStore.userInfo?.is_superuser))
 
 // Map each tab key to its component so the content area can render a single
 // keyed <component>, which lets <Transition> animate the tab swap.
@@ -86,17 +89,17 @@ const currentComponent = computed(() => tabComponents[activeTab.value] ?? Profil
 const transitionName = ref<'slide-left' | 'slide-right' | 'slide-none'>('slide-none')
 
 const goNext = () => {
-  const i = menuItems.findIndex(item => item.key === activeTab.value)
-  if (i >= 0 && i < menuItems.length - 1) {
+  const i = menuItems.value.findIndex(item => item.key === activeTab.value)
+  if (i >= 0 && i < menuItems.value.length - 1) {
     transitionName.value = 'slide-left'
-    activeTab.value = menuItems[i + 1].key
+    activeTab.value = menuItems.value[i + 1].key
   }
 }
 const goPrev = () => {
-  const i = menuItems.findIndex(item => item.key === activeTab.value)
+  const i = menuItems.value.findIndex(item => item.key === activeTab.value)
   if (i > 0) {
     transitionName.value = 'slide-right'
-    activeTab.value = menuItems[i - 1].key
+    activeTab.value = menuItems.value[i - 1].key
   }
 }
 
@@ -107,8 +110,8 @@ const selectTab = (key: string) => {
   if (key === activeTab.value) return
   const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
   if (isMobile) {
-    const cur = menuItems.findIndex(item => item.key === activeTab.value)
-    const next = menuItems.findIndex(item => item.key === key)
+    const cur = menuItems.value.findIndex(item => item.key === activeTab.value)
+    const next = menuItems.value.findIndex(item => item.key === key)
     transitionName.value = next > cur ? 'slide-left' : 'slide-right'
   } else {
     transitionName.value = 'slide-none'
@@ -132,13 +135,17 @@ watch(
   () => [route.hash, route.query.tab],
   ([newHash, queryTab]) => {
     const key = (newHash ? String(newHash).replace('#', '') : '') || (queryTab ? String(queryTab) : '')
-    if (key && menuItems.some(item => item.key === key)) {
+    if (key && menuItems.value.some(item => item.key === key)) {
       transitionName.value = 'slide-none'
       activeTab.value = key
     }
   },
   { immediate: true }
 )
+
+watch(menuItems, (items) => {
+  if (!items.some(item => item.key === activeTab.value)) activeTab.value = 'profile'
+})
 
 watch(activeTab, (newTab) => {
   router.replace({ hash: `#${newTab}` })

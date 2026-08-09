@@ -1,11 +1,12 @@
 <template>
-  <Transition name="slide-in">
-    <div v-if="visible" class="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none">
-      <div class="absolute inset-0 z-10 bg-black/50 backdrop-blur-sm pointer-events-auto transition-opacity" @click="cancel"></div>
-      <div class="bg-white dark:bg-gray-800 z-20 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden pointer-events-auto m-4">
-        <div class="p-6">
-          <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">{{ title }}</h3>
-          <p class="text-gray-500 text-sm mb-6">{{ message }}</p>
+  <ResponsiveDialog
+    :model-value="visible"
+    :title="title"
+    max-width="24rem"
+    @update:model-value="value => !value && cancel()"
+  >
+    <p class="text-sm text-gray-600 dark:text-gray-300">{{ message }}</p>
+    <template #footer>
           <div class="flex gap-3 justify-end">
              <button 
                @click="cancel"
@@ -21,13 +22,12 @@
                {{ confirmText }}
              </button>
           </div>
-        </div>
-      </div>
-    </div>
-  </Transition>
+    </template>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 const props = withDefaults(defineProps<{
   visible: boolean
   title?: string
@@ -55,16 +55,3 @@ const confirm = () => {
   emit('confirm')
 }
 </script>
-
-<style scoped>
-.slide-in-enter-active, .slide-in-leave-active {
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.slide-in-enter-from, .slide-in-leave-to {
-  transform: translateY(100%);
-  opacity: 0;
-}
-.slide-in-leave-active {
-  transition-duration: 0.2s;
-}
-</style>

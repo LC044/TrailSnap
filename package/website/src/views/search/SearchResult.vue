@@ -4,7 +4,7 @@
     <div class="sticky top-0 z-30 backdrop-blur-md">
       <div class="mx-auto px-4 py-3 flex items-center gap-4">
         <button 
-          @click="router.back()" 
+          @click="goBack"
           class="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800 transition-colors"
         >
           <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -60,14 +60,24 @@
     <!-- Lightbox -->
     <PhotoLightbox
       :visible="showLightbox"
-      :image="photos[lightboxIndex]"
+      :image="photos[lightboxIndex] ?? null"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex < photos.length - 1"
+      :allow-edit="true"
+      :allow-delete="true"
+      :allow-add-to-album="true"
+      :allow-add-to-person="true"
+      :allow-move-to-folder="true"
       @close="closeLightbox"
       @prev="prevPhoto"
       @next="nextPhoto"
       @delete="handlePhotoDelete"
+      @update="performSearch(false)"
+      @add-to-album="image => organizeActions?.openAlbum(image.id)"
+      @transfer="organizeActions?.openMove(photos[lightboxIndex]?.id || '')"
     />
+
+    <PhotoOrganizeActions ref="organizeActions" @transfer-success="performSearch(false)" />
     
     <!-- Album Select Modal -->
     <AlbumSelector
@@ -81,12 +91,14 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { ArrowLeft, Search } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import searchService from '@/api/search'
 import { albumService } from '@/api/album'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
+import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
 import type { AlbumImage } from '@/types/album'
@@ -94,6 +106,7 @@ import { parseDateRange } from '@/utils/date'
 
 const route = useRoute()
 const router = useRouter()
+const goBack = useAppBack('/photos')
 
 const query = computed(() => route.query.q as string || '')
 const type = computed(() => route.query.type as string | undefined)
@@ -122,6 +135,7 @@ const limit = 50 // Increased from 3 to 50 for grid view
 const hasMore = ref(true)
 const loadMoreTrigger = ref<HTMLElement | null>(null)
 const galleryRef = ref<InstanceType<typeof FlatPhotoGallery> | null>(null)
+const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 
 // Lightbox State
 const showLightbox = ref(false)
