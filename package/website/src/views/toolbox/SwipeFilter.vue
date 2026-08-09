@@ -208,6 +208,7 @@
       v-if="currentPhoto"
       :visible="isLightboxVisible"
       :image="mapPhotoToImage(currentPhoto)"
+      :allow-delete="true"
       :photos="photos"
       :initial-index="0"
       @close="isLightboxVisible = false"
@@ -303,6 +304,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { ArrowLeft, Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin, Sparkles, Hand, Play } from 'lucide-vue-next'
 import { photoApi } from '@/api/photo'
 import { albumService } from '@/api/album'
@@ -313,6 +315,7 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import { mapPhotoToImage } from '@/stores/photoStore'
 
 const router = useRouter()
+const appBack = useAppBack('/toolbox')
 
 // 状态
 const loading = ref(false)
@@ -544,9 +547,9 @@ const openLightbox = () => {
   }
 }
 
-const handleLightboxDelete = (deletedPhoto: Photo) => {
+const handleLightboxDelete = (deletedPhotoId: string) => {
   // If user deletes photo from lightbox, we treat it as a "swipe left" (delete)
-  if (currentPhoto.value && deletedPhoto.id === currentPhoto.value.id) {
+  if (currentPhoto.value && deletedPhotoId === currentPhoto.value.id) {
     isLightboxVisible.value = false
     swipeLeft()
   }
@@ -910,7 +913,7 @@ const submitDeletions = async () => {
 }
 
 const handleBack = () => {
-  router.back()
+  appBack()
 }
 
 onBeforeRouteLeave(async (to, from, next) => {

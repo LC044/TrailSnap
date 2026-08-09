@@ -12,10 +12,18 @@ import { ref } from 'vue'
  */
 export const useUiStore = defineStore('ui', () => {
   const selectionActive = ref(false)
+  const agentOpen = ref(false)
 
   const setSelectionActive = (v: boolean) => {
     selectionActive.value = v
   }
 
-  return { selectionActive, setSelectionActive }
+  const setAgentOpen = (v: boolean) => {
+    agentOpen.value = v
+  }
+
+  const openAgent = () => setAgentOpen(true)
+  const closeAgent = () => setAgentOpen(false)
+
+  return { selectionActive, agentOpen, setSelectionActive, setAgentOpen, openAgent, closeAgent }
 })

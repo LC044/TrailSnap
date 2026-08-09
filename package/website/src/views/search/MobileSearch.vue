@@ -1,14 +1,26 @@
 <template>
-  <div class="fixed inset-0 bg-white dark:bg-gray-950 z-[1000] flex flex-col animate-in slide-in-from-bottom duration-300">
+  <div class="h-full bg-white dark:bg-gray-950 flex flex-col animate-in slide-in-from-bottom duration-300">
+    <div class="flex items-center gap-3 border-b border-gray-100 p-3 dark:border-gray-800">
+      <IconButton label="返回" @click="goBack">
+        <ArrowLeft class="w-6 h-6" />
+      </IconButton>
+      <div class="grid flex-1 grid-cols-2 rounded-xl bg-gray-100 p-1 dark:bg-gray-900" aria-label="搜索模式">
+        <button
+          v-for="mode in modes"
+          :key="mode.value"
+          type="button"
+          class="flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+          :class="activeMode === mode.value ? 'bg-white text-primary-600 shadow-sm dark:bg-gray-800 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'"
+          @click="activeMode = mode.value"
+        >
+          <component :is="mode.icon" class="h-4 w-4" />{{ mode.label }}
+        </button>
+      </div>
+    </div>
+
+    <template v-if="activeMode === 'search'">
     <!-- Header with Search Input -->
     <div class="flex items-center gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
-      <button 
-        @click="goBack" 
-        class="p-2 -ml-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 dark:text-gray-300 dark:bg-gray-800"
-      >
-        <ArrowLeft class="w-6 h-6" />
-      </button>
-      
       <div class="flex-1 relative">
         <input
           ref="searchInputRef"
@@ -84,6 +96,22 @@
         <p class="text-sm">开始搜索您的精彩瞬间</p>
       </div>
     </div>
+    </template>
+
+    <div v-else class="flex flex-1 flex-col items-center justify-center px-8 pb-20 text-center">
+      <div class="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+        <Bot class="h-10 w-10" />
+      </div>
+      <h1 class="text-xl font-bold text-gray-900 dark:text-white">AI 照片助手</h1>
+      <p class="mt-2 max-w-sm text-sm leading-6 text-gray-500 dark:text-gray-400">用自然语言查找照片、整理相册，或询问旅程与拍摄统计。</p>
+      <button
+        type="button"
+        class="mt-6 rounded-xl bg-primary-600 px-6 py-3 font-medium text-white shadow-lg shadow-primary-500/20 transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+        @click="uiStore.openAgent()"
+      >
+        打开 AI 助手
+      </button>
+    </div>
   </div>
 </template>
 
@@ -104,24 +132,32 @@ import {
   Mountain,
   Sparkles,
   ChevronRight,
-  Calendar
+  Calendar,
+  Bot,
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { parseDateRange } from '@/utils/date'
+import IconButton from '@/components/ui/IconButton.vue'
+import { useAppBack } from '@/composables/useAppBack'
+import { useUiStore } from '@/stores/uiStore'
 
 const router = useRouter()
 const searchText = ref('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const suggestions = ref<SearchSuggestion[]>([])
+const uiStore = useUiStore()
+const activeMode = ref<'search' | 'agent'>('search')
+const modes = [
+  { value: 'search' as const, label: '照片搜索', icon: Search },
+  { value: 'agent' as const, label: 'AI 助手', icon: Bot },
+]
 
 onMounted(() => {
   searchInputRef.value?.focus()
 })
 
-const goBack = () => {
-  router.back()
-}
+const goBack = useAppBack('/')
 
 const clearSearch = () => {
   searchText.value = ''

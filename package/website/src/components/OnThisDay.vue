@@ -161,12 +161,20 @@
     :image="selectedImage"
     :has-prev="hasPrev"
     :has-next="hasNext"
+    :allow-edit="true"
+    :allow-delete="true"
+    :allow-add-to-album="true"
+    :allow-add-to-person="true"
+    :allow-move-to-folder="true"
     @close="closePhotoViewer"
     @delete="handleDelete"
     @update="fetchOnThisDay"
     @prev="showPrevious"
     @next="showNext"
+    @add-to-album="image => organizeActions?.openAlbum(image.id)"
+    @transfer="organizeActions?.openMove(selectedImage?.id || '')"
   />
+  <PhotoOrganizeActions ref="organizeActions" @transfer-success="fetchOnThisDay" />
 </template>
 
 <script setup lang="ts">
@@ -178,9 +186,11 @@ import { photoApi } from '@/api/photo'
 import { albumService } from '@/api/album'
 import type { Photo } from '@/types/album'
 import { useHotkeys } from '@/composables/useHotkeys'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 import { toServerUrl } from '@/config/server'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
+import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 
 const photos = ref<Photo[]>([])
 const currentIndex = ref(0)
@@ -188,6 +198,7 @@ const isFullScreen = ref(false)
 const selectedIndex = ref<number | null>(null)
 const returnToMemoryView = ref(false)
 const memoryMenuOpen = ref(false)
+const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 const carouselHeight = ref('480px')
 
 const selectedImage = computed(() => {
@@ -249,6 +260,9 @@ const toggleFullScreen = (index: number) => {
     document.body.style.overflow = ''
   }
 }
+useOverlayStack(isFullScreen, () => {
+  if (isFullScreen.value) toggleFullScreen(currentIndex.value)
+})
 
 const handleMemoryCardClick = (index: number) => {
   if (isFullScreen.value) {

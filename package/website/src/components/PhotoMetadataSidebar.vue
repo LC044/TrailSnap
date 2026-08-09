@@ -25,7 +25,7 @@
                     <Info class="w-3.5 h-3.5" />
                     <span>基本信息</span>
                 </div>
-                <button @click="openBasicEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑">
+                <button v-if="allowEdit" @click="openBasicEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑">
                     <Pencil class="w-3.5 h-3.5" />
                 </button>
             </div>
@@ -52,7 +52,7 @@
                     <CalendarDays class="w-3.5 h-3.5" />
                     <span>拍摄时间</span>
                 </div>
-                <button @click="openBasicEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑">
+                <button v-if="allowEdit" @click="openBasicEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑">
                     <Pencil class="w-3.5 h-3.5" />
                 </button>
             </div>
@@ -80,7 +80,7 @@
                     <MapPin class="w-3.5 h-3.5" />
                     <span>地理位置</span>
                 </div>
-                <button @click="openLocationEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑位置">
+                <button v-if="allowEdit" @click="openLocationEditDialog" class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑位置">
                     <Pencil class="w-3.5 h-3.5" />
                 </button>
             </div>
@@ -99,7 +99,7 @@
                     <span>标签</span>
                 </div>
                 <button
-                    v-if="!isEditing"
+                    v-if="allowEdit && !isEditing"
                     @click="startEdit"
                     class="p-1 rounded-md text-gray-400 bg-transparent hover:text-primary-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="编辑"
                 >
@@ -190,7 +190,7 @@
             </button>
         </div>
 
-         <div v-if="!isEditing" class="pt-4 border-t border-gray-100 dark:border-gray-800">
+         <div v-if="allowDelete && !isEditing" class="pt-4 border-t border-gray-100 dark:border-gray-800">
             <button 
                  @click="handleDelete"
                  class="w-full flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 py-2 rounded-lg transition-colors text-sm dark:text-red-300 dark:bg-gray-800"
@@ -337,7 +337,7 @@ import { format } from 'date-fns'
 import { albumService } from '@/api/album'
 import PersonAvatar from '@/components/PersonAvatar.vue'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo, Tag } from '@/types/album'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useLocationMap, type LocationDetail } from '@/composables/useLocationMap'
 
@@ -346,6 +346,8 @@ interface Props {
   image: AlbumImage | null
   metadata: PhotoMetadata | null
   loading: boolean
+  allowEdit?: boolean
+  allowDelete?: boolean
   forceOpenLocationEdit?: boolean
 }
 
@@ -395,7 +397,7 @@ const {
 })
 
 watch(() => props.forceOpenLocationEdit, (val) => {
-  if (val && props.visible) {
+  if (val && props.visible && props.allowEdit) {
     nextTick(() => openLocationEditDialog())
   }
 })
@@ -617,21 +619,7 @@ const saveEdit = async () => {
 }
 
 const handleDelete = () => {
-    if (!props.image) return
-    ElMessageBox.confirm(
-        '确定要删除这张照片吗？此操作不可恢复。',
-        '删除确认',
-        {
-            confirmButtonText: '删除',
-            cancelButtonText: '取消',
-            type: 'warning',
-        }
-    )
-    .then(() => {
-        if (props.image) {
-             emit('delete', props.image.id)
-        }
-    })
+    if (props.image && props.allowDelete) emit('delete', props.image.id)
 }
 
 // Location edit methods

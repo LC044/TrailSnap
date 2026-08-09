@@ -80,7 +80,6 @@ import { faceApi, type FaceRescanCandidate, type FaceRescanPreview } from '@/api
 import type { FaceIdentity } from '@/types/album'
 import { toServerUrl } from '@/config/server'
 import { useWindowSize } from '@vueuse/core'
-import { useModalBack } from '@/composables/useModalBack'
 
 const props = defineProps<{ visible: boolean; identity: FaceIdentity | null }>()
 const emit = defineEmits<{
@@ -91,7 +90,6 @@ const emit = defineEmits<{
 const { width } = useWindowSize()
 const dialogWidth = computed(() => width.value < 640 ? '94%' : '880px')
 const visibleRef = computed({ get: () => props.visible, set: value => emit('update:visible', value) })
-useModalBack(visibleRef)
 
 const loading = ref(false)
 const applying = ref(false)

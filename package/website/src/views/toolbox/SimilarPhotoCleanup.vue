@@ -18,7 +18,7 @@
     empty-hint="您的相册很整洁！"
     :task-status="task?.status ?? null"
     :task-error="task?.error ?? null"
-    @back="$router.back()"
+    @back="goBack"
     @rescan="startNewScan"
     @bulk-action="handleDeleteAll"
     @cancel="cancelTask"
@@ -145,6 +145,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed, onUnmounted } from 'vue';
+import { useAppBack } from '@/composables/useAppBack';
 import { photoApi } from '@/api/photo';
 import type { Task as TaskResponse } from '@/api/tasks'
 import type { Photo, AlbumImage } from '@/types/album';
@@ -155,6 +156,8 @@ import CleanupTaskShell from '@/components/CleanupTaskShell.vue';
 import request from '@/utils/request';
 import {usePhotoStore, mapPhotoToImage} from '@/stores/photoStore'
 import { useInfiniteScroll } from '@vueuse/core';
+
+const goBack = useAppBack('/toolbox')
 
 const groups = ref<AlbumImage[][]>([]);
 const loading = ref(false);

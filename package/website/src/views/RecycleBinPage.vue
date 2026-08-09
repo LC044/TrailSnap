@@ -1,13 +1,39 @@
 <template>
   <div class="recycle-bin-page container mx-auto flex flex-col">
+    <MobilePageHeader
+      v-if="isMobileViewport"
+      :title="isSelectionMode ? `已选择 ${selectedIds.length} 项` : '最近删除'"
+      :subtitle="isSelectionMode ? undefined : `已删除的内容仅保留${retentionDays}天`"
+      :show-back="!isSelectionMode"
+      fallback="/photos"
+    >
+      <template v-if="isSelectionMode" #leading>
+        <button
+          type="button"
+          class="rounded-lg px-2 py-1 text-sm font-medium text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-primary-400"
+          @click="toggleSelectAll"
+        >{{ isAllSelected ? '取消全选' : '全选' }}</button>
+      </template>
+      <template #actions>
+        <IconButton v-if="!isSelectionMode" label="选择照片" size="sm" @click="handleEnterSelectionMode">
+          <CheckSquare class="h-5 w-5" />
+        </IconButton>
+        <button
+          v-else
+          type="button"
+          class="rounded-lg px-2 py-1 text-sm font-medium text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-primary-400"
+          @click="cancelSelection"
+        >取消</button>
+      </template>
+    </MobilePageHeader>
     <!-- Header -->
-    <div class="sticky top-0 z-30 mb-4 md:mb-6 bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800">
+    <div v-else class="sticky top-0 z-30 mb-6 bg-white/90 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/90 dark:border-gray-800">
       <!-- Responsive Header -->
       <div class="flex items-center justify-between px-4 py-3">
         <!-- Left Side -->
         <div class="flex items-center gap-2">
           <!-- Back button: visible unless we are in mobile selection mode -->
-          <button @click="router.back()" class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" :class="{ 'hidden md:block': isSelectionMode }">
+          <button @click="goBack" class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" :class="{ 'hidden md:block': isSelectionMode }">
             <ArrowLeft class="w-6 h-6 text-gray-800 dark:text-gray-200" />
           </button>
           
@@ -123,7 +149,8 @@
       :image="lightboxImage"
       :has-prev="hasPrev"
       :has-next="hasNext"
-      delete-title="永久删除"
+      :allow-delete="true"
+      :confirm-delete="false"
       @close="closeLightbox"
       @delete="handlePhotoDelete"
       @prev="handlePrev"
@@ -146,6 +173,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { ElMessage } from 'element-plus'
 import { RefreshCcw, ArrowLeft, Trash2, Clock, X, CheckSquare, MoreVertical, Disc } from 'lucide-vue-next'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
@@ -154,10 +182,14 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { AlbumImage } from '@/types/album'
 import request from '@/utils/request'
 import { mapPhotoToImage } from '@/stores/photoStore'
-import { useScroll } from '@vueuse/core'
+import { useMediaQuery, useScroll } from '@vueuse/core'
 import { useUiStore } from '@/stores/uiStore'
+import MobilePageHeader from '@/components/ui/MobilePageHeader.vue'
+import IconButton from '@/components/ui/IconButton.vue'
 
 const router = useRouter()
+const goBack = useAppBack('/')
+const isMobileViewport = useMediaQuery('(max-width: 767px)')
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])
 const pendingRemoveIds = ref(new Set<string>())
@@ -264,10 +296,10 @@ const handleNext = () => {
   }
 }
 
-const handlePhotoDelete = async (photo: AlbumImage) => {
+const handlePhotoDelete = (photoId: string) => {
   showDeleteConfirm.value = true
   confirmMessage.value = '确定要永久删除这张照片吗？该操作不可恢复！'
-  pendingDeleteIds.value = [photo.id]
+  pendingDeleteIds.value = [photoId]
 }
 
 // Delete Confirm state

@@ -19,7 +19,7 @@
     empty-hint="您的相册很整洁，没有多余的副本！"
     :task-status="task?.status ?? null"
     :task-error="task?.error ?? null"
-    @back="$router.back()"
+    @back="goBack"
     @rescan="startNewScan"
     @bulk-action="handleDeleteAll"
     @cancel="cancelTask"
@@ -142,6 +142,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed, onUnmounted } from 'vue';
+import { useAppBack } from '@/composables/useAppBack';
 import { tasksApi, type Task } from '@/api/tasks';
 import { toolboxApi } from '@/api/toolbox';
 import type { AlbumImage } from '@/types/album';
@@ -151,6 +152,8 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import CleanupTaskShell from '@/components/CleanupTaskShell.vue';
 import request from '@/utils/request';
 import { mapPhotoToImage } from '@/stores/photoStore';
+
+const goBack = useAppBack('/toolbox')
 
 interface DuplicateGroup {
     md5: string;

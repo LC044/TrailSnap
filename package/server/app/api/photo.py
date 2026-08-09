@@ -144,6 +144,8 @@ def read_all_photos(
         tag_ids: Optional[List[UUID]] = Query(None),
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
+        uploaded_after: Optional[datetime] = None,
+        uploaded_before: Optional[datetime] = None,
         years: Optional[List[int]] = Query(None),
         city: Optional[str] = None,
         cities: Optional[List[str]] = Query(None),
@@ -186,6 +188,7 @@ def read_all_photos(
         folder_roots = get_user_roots(current_user.id, db)
     photos = app.crud.photo.get_all_photos(
         db, skip=skip, limit=limit, start_time=start_time, end_time=end_time,
+        uploaded_after=uploaded_after, uploaded_before=uploaded_before,
         years=years, city=city, cities=cities, scene=scene, scenes=scenes, province=province, provinces=provinces, country=country, countries=countries, 
         make=make, makes=makes, model=model, models=models, 
         image_type=image_type, image_types=image_types, 

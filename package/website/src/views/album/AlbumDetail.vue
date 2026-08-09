@@ -6,11 +6,11 @@
     :photos="images"
     :timeline-stats="photoStore.timelineStats"
     :timeline-items="timelineItems"
-    :allow-upload="album?.type === 'custom'"
-    :delete-label="album?.type === 'custom' ? '从相册中移除' : '删除'"
+    :allow-upload="isUserAlbum"
+    :delete-label="isUserAlbum ? '从相册中移除' : '删除'"
     :pending-remove-ids="pendingRemoveIds"
     :has-more="photoStore.hasMore"
-    @back="router.back()"
+    @back="goBack"
     @upload="triggerUpload"
     @load-more="loadMorePhotos"
     @retry="photoStore.loadAlbumPhotos(albumId, true)"
@@ -67,6 +67,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useSelectionStore } from '@/stores/selectionStore'
@@ -80,6 +82,7 @@ import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
+const goBack = useAppBack('/album')
 const albumStore = useAlbumStore()
 const photoStore = usePhotoStore()
 const selectionStore = useSelectionStore()
@@ -88,10 +91,14 @@ const albumId = route.params.id as string
 // State
 const album = computed(() => albumStore.getAlbumDetails(albumId))
 const images = computed(() => photoStore.images)
+// 当前后端创建的普通相册类型为 user；兼容已有的 legacy custom 数据。
+const isUserAlbum = computed(() => album.value?.type === 'user' || album.value?.type === 'custom')
 
 // UI State
 const showUploadModal = ref(false)
 const showPhotoSelector = ref(false)
+useOverlayStack(showUploadModal, () => { showUploadModal.value = false })
+useOverlayStack(showPhotoSelector, () => { showPhotoSelector.value = false })
 const pendingRemoveIds = ref(new Set<string>())
 
 // Used by UnifiedPhotoPage for sidebar
@@ -141,10 +148,8 @@ const setCover = async (ids: string[]) => {
 
 const handleConfirmDelete = async (ids: string[], callback: (success: boolean) => void) => {
     try {
-        if (album.value?.type === 'custom') {
-             // Should not happen as custom albums use 'remove-from-album' event usually
-             // But if it does, we treat it as remove
-             await albumStore.removePhotosFromAlbum(albumId, ids)
+        if (isUserAlbum.value) {
+            await albumStore.removePhotosFromAlbum(albumId, ids)
         } else {
             await photoStore.deletePhotos(ids)
         }

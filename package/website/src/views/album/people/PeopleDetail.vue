@@ -11,7 +11,7 @@
     delete-label="从人物中移除"
     :pending-remove-ids="pendingRemoveIds"
     confirm-remove
-    @back="router.back()"
+    @back="goBack"
     @confirm-delete="handleConfirmDelete"
     @set-cover="handleSetCover"
   >
@@ -74,6 +74,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { faceApi } from '@/api/face'
 import type { FaceIdentity } from '@/types/album'
 
@@ -89,6 +90,7 @@ const photoStore = usePhotoStore()
 
 const route = useRoute()
 const router = useRouter()
+const goBack = useAppBack('/album/people')
 const identityId = route.params.id as string
 
 // State

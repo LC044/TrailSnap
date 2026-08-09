@@ -4,7 +4,7 @@
     <div class="container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="flex flex-col gap-3">
         <div class="flex items-center gap-3 w-full md:w-auto dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <button @click="router.back()" class="p-0 md:p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
+          <button @click="goBack" class="p-0 md:p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
           <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">位置</h1>
@@ -432,6 +432,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { storeToRefs } from 'pinia'
 import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
@@ -451,6 +452,7 @@ import LocationPuzzleView from './LocationPuzzleView.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const router = useRouter()
+const goBack = useAppBack('/album')
 const locationStore = useLocationStore()
 const { level, viewMode, filterStatus } = storeToRefs(locationStore)
 const locationsRaw = ref<Location[]>([])
