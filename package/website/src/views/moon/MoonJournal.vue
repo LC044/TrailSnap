@@ -18,7 +18,7 @@
                 type="button"
                 class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
                 aria-label="返回"
-                @click="router.back()"
+                @click="goBack"
               >
                 <ArrowLeft class="h-5 w-5" />
               </button>
@@ -270,10 +270,18 @@
       :image="lightboxPhoto"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex >= 0 && lightboxIndex < lightboxPhotos.length - 1"
+      :allow-edit="true"
+      :allow-delete="true"
+      :allow-add-to-album="true"
+      :allow-add-to-person="true"
+      :allow-move-to-folder="true"
       @close="closeLightbox"
       @prev="moveLightbox(-1)"
       @next="moveLightbox(1)"
       @delete="handleLightboxDelete"
+      @update="loadPhotos"
+      @add-to-album="image => organizeActions?.openAlbum(image.id)"
+      @transfer="organizeActions?.openMove(lightboxPhoto?.id || '')"
     >
       <template #context-overlay>
         <div v-if="lightboxObservation" class="pointer-events-none fixed inset-x-0 bottom-5 z-[103] flex justify-center px-4 md:bottom-8">
@@ -287,18 +295,21 @@
         </div>
       </template>
     </PhotoLightbox>
+    <PhotoOrganizeActions ref="organizeActions" @transfer-success="loadPhotos" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { ArrowLeft, CalendarDays, ImageMinus } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 
 import { classificationService } from '@/api/classification'
 import MoonPhaseIcon from '@/components/moon/MoonPhaseIcon.vue'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
+import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import { createMoonObservation, findNextChineseLunarDay, formatChineseLunarDay, formatIllumination, getMoonPhaseForLunarDay, MOON_PHASES } from '@/composables/useMoonPhase'
 import { mapPhotoToImage, usePhotoStore } from '@/stores/photoStore'
@@ -308,6 +319,7 @@ import type { MoonObservation, MoonPhase, MoonPhaseGroup, MoonView } from '@/typ
 const MOON_TAG_NAME = '月亮'
 const route = useRoute()
 const router = useRouter()
+const goBack = useAppBack('/album')
 const photoStore = usePhotoStore()
 
 const viewTabs: Array<{ value: MoonView; label: string }> = [
@@ -331,6 +343,7 @@ const selectedGroup = ref<'all' | MoonPhaseGroup>('all')
 const selectedPhase = ref<MoonPhase | null>(null)
 const lightboxPhotos = ref<AlbumImage[]>([])
 const lightboxIndex = ref(-1)
+const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 
 const queryLunarDay = Number.parseInt(String(route.query.day ?? ''), 10)
 const selectedLunarDay = ref(queryLunarDay >= 1 && queryLunarDay <= 30 ? queryLunarDay : 15)

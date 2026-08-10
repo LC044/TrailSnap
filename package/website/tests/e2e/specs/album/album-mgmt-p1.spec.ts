@@ -236,6 +236,38 @@ test.describe.serial('P1 - 相册管理', () => {
     await deleteAlbumById(request, album.id, authToken)
   })
 
+  test('2.2.5b 普通相册灯箱删除走 remove_from_album，不全局删除照片', async ({ request, page }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 50)
+    if (!probe.ok) return
+    const album = await createAlbumViaApi(request, { name: `${UNIQUE_TAG}-ui-remove`, type: 'user' }, authToken)
+    const photoId = probe.photos[0].id
+    await request.post(`${e2eEnv.apiBaseUrl}/photos/batch`, {
+      data: { photo_ids: [photoId], action: 'add_to_album', album_id: album.id },
+      headers: authHeaders(authToken),
+    })
+
+    await gotoRetry(page, `/album/${album.id}`)
+    const thumb = page.locator('.photo-gallery img').first()
+    await expect(thumb).toBeVisible({ timeout: 15_000 })
+    await thumb.click()
+    await expect(page.getByTitle('删除图片 (Del)')).toBeVisible()
+
+    const batchRequest = page.waitForRequest(req => req.url().includes('/api/photos/batch') && req.method() === 'POST')
+    await page.getByTitle('删除图片 (Del)').click()
+    const dialog = page.getByText(/从相册中移除选中的 1 张照片/).locator('xpath=ancestor::div[contains(@class, "fixed")][1]')
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('button', { name: '确定' }).click()
+    const payload = (await batchRequest).postDataJSON()
+    expect(payload).toMatchObject({ photo_ids: [photoId], action: 'remove_from_album', album_id: album.id })
+
+    const photoRes = await request.get(`${e2eEnv.apiBaseUrl}/photos?ids=${photoId}`, { headers: authHeaders(authToken) })
+    expect(photoRes.ok(), 'photo list query should remain available after removing it from a user album').toBeTruthy()
+    const photoBody = (await photoRes.json()) as BaseResponse<Array<{ id: string }>> | Array<{ id: string }>
+    const remainingPhotoIds = (Array.isArray(photoBody) ? photoBody : photoBody.data ?? []).map(photo => photo.id)
+    expect(remainingPhotoIds, 'photo must not be globally deleted').toContain(photoId)
+    await deleteAlbumById(request, album.id, authToken)
+  })
+
   test('2.2.6 设封面 - 调 setAlbumCover 后相册 cover_id 更新', async ({ request, page }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 1, 50)
     if (!probe.ok) return

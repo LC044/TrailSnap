@@ -18,6 +18,7 @@ import router from '@/router';
 import { registerPwa } from '@/composables/usePwa'
 import { initializeServerConfig, isNativeApp } from '@/config/server'
 import { registerNativeBackButton } from '@/composables/useNativeBackButton'
+import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
 
 async function bootstrap() {
   await initializeServerConfig()
@@ -28,6 +29,7 @@ async function bootstrap() {
   app.use(pinia)  // 关键步骤：激活 Pinia
   app.use(router);
   app.mount('#app');
+  registerElementPlusOverlayBridge()
 
   await router.isReady()
   await registerNativeBackButton(router)

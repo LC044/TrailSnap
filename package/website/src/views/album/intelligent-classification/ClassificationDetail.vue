@@ -8,7 +8,7 @@
     :timeline-items="timeline"
     :timeline-stats="{ timeline }"
     @confirm-delete="handleConfirmDelete"
-    @back="router.back()"
+    @back="goBack"
     @load-more="loadMore"
     >
     <template #batch-actions="{ selectedIds, clearSelection }">
@@ -36,6 +36,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { classificationService } from '@/api/classification'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import { mapPhotoToImage, usePhotoStore } from '@/stores/photoStore'
@@ -45,6 +46,7 @@ import { ImageMinus, ImageIcon } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
+const goBack = useAppBack('/album/classification')
 const name = route.params.name as string
 const photoStore = usePhotoStore()
 const loading = ref(false)

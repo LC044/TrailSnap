@@ -6,14 +6,13 @@
     ]"
   >
     <!-- 顶部 Logo 区域 (可折叠) -->
-    <div class="h-14 flex items-center justify-between px-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
-      <div class="flex items-center overflow-hidden whitespace-nowrap">
+    <div
+      class="h-14 flex items-center border-b border-slate-200 dark:border-slate-800 shrink-0"
+      :class="isCollapsed ? 'justify-center px-2' : 'justify-between px-4'"
+    >
+      <div v-if="!isCollapsed" class="flex items-center overflow-hidden whitespace-nowrap">
         <img src="@/assets/logo.svg" alt="Logo" class="w-8 h-8 shrink-0" />
-        <transition name="fade">
-          <h1 v-if="!isCollapsed" class="ml-3 font-bold text-lg text-slate-800 dark:text-slate-100">
-            行影集
-          </h1>
-        </transition>
+        <h1 class="ml-3 font-bold text-lg text-slate-800 dark:text-slate-100">行影集</h1>
       </div>
       <!-- 折叠按钮 (仅在非手机端显示？也可以手机端隐藏侧边栏) -->
       <button
@@ -127,36 +126,35 @@
         </button>
       </div>
 
-      <RouterLink
-        v-for="item in navLinks"
-        :key="item.href"
-        :to="item.href"
-        :title="isCollapsed ? item.label : undefined"
-        class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative"
-        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute(item.href) }"
+      <button
+        type="button"
+        class="mb-2 flex w-full items-center rounded-lg px-3 py-2.5 text-slate-700 transition-colors hover:bg-slate-100 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-primary-400"
+        :title="isCollapsed ? 'AI 助手' : undefined"
+        @click="uiStore.openAgent()"
       >
-        <component :is="item.icon" class="w-5 h-5 shrink-0" />
-        <transition name="fade">
-          <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
-        </transition>
-      </RouterLink>
+        <Bot class="h-5 w-5 shrink-0" />
+        <span v-if="!isCollapsed" class="ml-3 truncate">AI 助手</span>
+      </button>
 
-      <div class="my-4 border-t border-slate-200 dark:border-slate-800"></div>
-
-      <!-- 更多工具 -->
-      <RouterLink
-        v-for="item in moreLinks"
-        :key="item.href"
-        :to="item.href"
-        :title="isCollapsed ? item.label : undefined"
-        class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
-        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute(item.href) }"
-      >
-        <component :is="item.icon" class="w-5 h-5 shrink-0" />
-        <transition name="fade">
-          <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
-        </transition>
-      </RouterLink>
+      <section v-for="(section, sectionIndex) in desktopNavSections" :key="section.label">
+        <div v-if="sectionIndex" class="my-3 border-t border-slate-200 dark:border-slate-800" />
+        <h2 v-if="!isCollapsed" class="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          {{ section.label }}
+        </h2>
+        <RouterLink
+          v-for="item in section.items"
+          :key="item.href"
+          :to="item.href"
+          :title="isCollapsed ? item.label : undefined"
+          class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative"
+          :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isDesktopNavActive(item) }"
+        >
+          <component :is="item.icon" class="w-5 h-5 shrink-0" />
+          <transition name="fade">
+            <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
+          </transition>
+        </RouterLink>
+      </section>
       <div class="my-4 border-t border-slate-200 dark:border-slate-800"></div>
       <!-- 快捷访问 -->
       <div v-if="!isCollapsed" class="px-1">
@@ -201,13 +199,28 @@
           </button>
         </div>
       </div>
-      <div v-else class="px-2 flex justify-center">
+      <div v-else class="space-y-1 px-1">
         <button
-          @click="openAddDialogFromCollapsed"
-          class="flex items-center justify-center w-full py-2.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          title="快捷访问"
+          v-for="item in navItemsList"
+          :key="`${item.entity_type}-${item.entity_id}`"
+          type="button"
+          class="flex w-full items-center justify-center rounded-lg py-2 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800"
+          :class="isActiveRoute(item.route_path) ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400' : 'text-slate-500 dark:text-slate-400'"
+          :title="item.name"
+          @click="router.push(item.route_path)"
         >
-          <Bookmark class="w-5 h-5" />
+          <span class="flex h-7 w-7 items-center justify-center overflow-hidden rounded-md bg-slate-200 dark:bg-slate-700">
+            <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" :alt="item.name" class="h-full w-full object-cover" loading="lazy" />
+            <component v-else :is="getNavIcon(item.entity_type)" class="h-4 w-4" />
+          </span>
+        </button>
+        <button
+          type="button"
+          class="flex w-full items-center justify-center rounded-lg py-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800"
+          title="添加快捷访问"
+          @click="openAddDialogFromCollapsed"
+        >
+          <Plus class="h-4 w-4" />
         </button>
       </div>
     </nav>
@@ -219,40 +232,43 @@
       <NotificationBell variant="row" :collapsed="isCollapsed" />
 
       <RouterLink
-        to="/swipe-filter"
-        :title="isCollapsed ? '断舍离' : undefined"
+        v-for="item in desktopSystemNavItems"
+        :key="item.href"
+        :to="item.href"
+        :title="isCollapsed ? item.label : undefined"
         class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
-        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute('/swipe-filter') }"
+        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': route.path === item.href }"
       >
-        <Layers class="w-5 h-5 shrink-0" />
+        <component :is="item.icon" class="w-5 h-5 shrink-0" />
         <transition name="fade">
-          <span v-if="!isCollapsed" class="ml-3 truncate">断舍离</span>
+          <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
         </transition>
       </RouterLink>
 
-      <RouterLink
-        to="/recycle-bin"
-        :title="isCollapsed ? '回收站' : undefined"
-        class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
-        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute('/recycle-bin') }"
-      >
-        <Trash2 class="w-5 h-5 shrink-0" />
-        <transition name="fade">
-          <span v-if="!isCollapsed" class="ml-3 truncate">回收站</span>
-        </transition>
-      </RouterLink>
-      
-      <RouterLink
-        to="/settings"
-        :title="isCollapsed ? '设置' : undefined"
-        class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
-        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute('/settings') }"
-      >
-        <Settings class="w-5 h-5 shrink-0" />
-        <transition name="fade">
-          <span v-if="!isCollapsed" class="ml-3 truncate">设置</span>
-        </transition>
-      </RouterLink>
+      <el-dropdown trigger="click" placement="top-start" @command="handleAccountCommand">
+        <button
+          type="button"
+          :title="isCollapsed ? accountName : undefined"
+          class="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          <span class="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+            <img v-if="userStore.userInfo?.avatar" :src="userStore.userInfo.avatar" :alt="accountName" class="h-full w-full object-cover" />
+            <span v-else>{{ accountInitial }}</span>
+          </span>
+          <span v-if="!isCollapsed" class="ml-3 min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">{{ accountName }}</span>
+            <span class="block truncate text-xs text-slate-400 dark:text-slate-500">{{ userStore.userInfo?.username }}</span>
+          </span>
+          <ChevronDown v-if="!isCollapsed" class="ml-2 h-4 w-4 shrink-0 text-slate-400" />
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="profile"><UserCircle class="mr-2 h-4 w-4" />个人资料</el-dropdown-item>
+            <el-dropdown-item command="settings"><Settings class="mr-2 h-4 w-4" />设置</el-dropdown-item>
+            <el-dropdown-item divided command="logout"><LogOut class="mr-2 h-4 w-4" />退出登录</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
 
     <!-- 添加快捷导航对话框 -->
@@ -267,15 +283,9 @@
 import { ref, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
-  Home,
-  Image as ImageIcon,
   Images,
-  Ticket,
-  Wrench,
-  Settings,
   ChevronLeft,
   Menu,
-  Trash2,
   Search,
   X,
   User,
@@ -287,9 +297,12 @@ import {
   Mountain,
   Sparkles,
   Plus,
-  Bookmark,
   Calendar,
-  Layers
+  ChevronDown,
+  UserCircle,
+  Settings,
+  LogOut,
+  Bot,
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -299,10 +312,48 @@ import NavAddDialog from '@/components/NavAddDialog.vue'
 import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
 import NotificationBell from '@/components/NotificationBell.vue'
 import { parseDateRange } from '@/utils/date'
+import { desktopNavSections, systemNavItems } from '@/config/navigation'
+import type { AppNavItem } from '@/config/navigation'
+import { useUserStore } from '@/stores/user'
+import { ElMessageBox } from 'element-plus'
+import { useUiStore } from '@/stores/uiStore'
 
 const route = useRoute()
 const router = useRouter()
 const store = usePhotoStore()
+const userStore = useUserStore()
+const uiStore = useUiStore()
+const desktopSystemNavItems = computed(() => systemNavItems.filter(item => item.href === '/recycle-bin'))
+const accountName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '账号')
+const accountInitial = computed(() => accountName.value.slice(0, 1).toUpperCase())
+
+const handleAccountCommand = async (command: string) => {
+  if (command === 'profile') {
+    await router.push('/settings#profile')
+  } else if (command === 'settings') {
+    await router.push('/settings')
+  } else if (command === 'logout') {
+    try {
+      await ElMessageBox.confirm('确定要退出当前账号吗？', '退出登录', {
+        confirmButtonText: '退出',
+        cancelButtonText: '取消',
+        type: 'warning',
+      })
+      await userStore.logout()
+    } catch (error) {
+      if (error !== 'cancel' && error !== 'close') console.error('Logout failed', error)
+    }
+  }
+}
+
+const isDesktopNavActive = (item: AppNavItem) => {
+  if (item.excludePaths?.some(path => route.path === path || route.path.startsWith(`${path}/`))) return false
+  if (item.activeMatch === 'exact') return route.path === item.href
+  if (item.activeMatch === 'path') {
+    return route.path === item.href || route.path.startsWith(`${item.href}/`)
+  }
+  return route.meta.navGroup === item.navGroup
+}
 
 // 路由激活状态判断：完全匹配，避免首页（/）一直处于激活状态
 const isActiveRoute = (path: string) => {
@@ -317,17 +368,6 @@ const isCollapsed = ref(false)
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
-
-const navLinks = [
-  { label: '首页', href: '/', icon: Home },
-  { label: '照片', href: '/photos', icon: ImageIcon },
-  { label: '相册', href: '/album', icon: Images },
-]
-
-const moreLinks = [
-  { label: '车票', href: '/ticket', icon: Ticket },
-  { label: '工具箱', href: '/toolbox', icon: Wrench },
-]
 
 // 搜索相关状态和逻辑
 const searchText = ref('')

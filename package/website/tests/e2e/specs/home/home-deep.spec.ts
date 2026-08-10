@@ -69,6 +69,28 @@ test.describe('Smoke - 首页深度 @smoke', () => {
     await expect(page.locator('.not-found')).toHaveCount(0);
   });
 
+  test('首页 - 内容细分入口使用照片类型与智能分类的真实路由', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /内容细分/ }).click();
+    await expect(page.getByRole('link', { name: /照片：/ })).toHaveAttribute('href', '/photos?file_types=image');
+    await expect(page.getByRole('link', { name: /视频：/ })).toHaveAttribute('href', '/photos?file_types=video,live_photo');
+    await expect(page.getByRole('link', { name: /风景：/ })).toHaveAttribute('href', /\/album\/classification\//);
+    await expect(page.getByRole('link', { name: /美食：/ })).toHaveAttribute('href', /\/album\/classification\//);
+  });
+
+  test('首页 - 今日新增携带当天导入时间范围进入照片页', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /今日新增/ }).click();
+    await expect(page).toHaveURL(/\/photos\?.*uploaded_after=.*uploaded_before=/);
+    const url = new URL(page.url());
+    expect(url.searchParams.get('uploaded_after')).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00$/);
+    expect(url.searchParams.get('uploaded_before')).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00$/);
+  });
+
   test('首页 - 那年今日操作菜单可查看详情或退出回忆', async ({ page }) => {
     await page.route('**/api/photos/on-this-day**', async (route) => {
       await route.fulfill({

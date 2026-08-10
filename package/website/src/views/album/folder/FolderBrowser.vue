@@ -327,11 +327,25 @@
       :image="lightboxImage"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex >= 0 && lightboxIndex < photos.length - 1"
+      :allow-edit="true"
+      :allow-delete="true"
+      :allow-add-to-album="true"
+      :allow-add-to-person="true"
+      :allow-move-to-folder="true"
       delete-title="删除"
       @close="closeLightbox"
       @prev="lightboxIndex = Math.max(0, lightboxIndex - 1)"
       @next="lightboxIndex = Math.min(photos.length - 1, lightboxIndex + 1)"
       @delete="handleDelete"
+      @update="loadLevel(currentParent)"
+      @add-to-album="image => organizeActions?.openAlbum(image.id)"
+      @transfer="organizeActions?.openMove(lightboxImage?.id || '')"
+    />
+
+    <PhotoOrganizeActions
+      ref="organizeActions"
+      :default-sub-folder="currentParent"
+      @transfer-success="loadLevel(currentParent)"
     />
 
     <!-- 添加到相册弹窗 -->
@@ -369,6 +383,7 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
 import PersonSelector from '@/components/PersonSelector.vue'
+import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 import FolderTree from './FolderTree.vue'
 
 interface FolderChild {
@@ -556,6 +571,7 @@ const tempSelectedIds = ref<string[]>([])
 const showPersonSelector = ref(false)
 const isAddingPerson = ref(false)
 const isDownloading = ref(false)
+const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 
 const scrollArea = ref<HTMLElement | null>(null)
 const sentinel = ref<HTMLElement | null>(null)

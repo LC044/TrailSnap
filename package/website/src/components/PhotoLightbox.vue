@@ -25,10 +25,10 @@
             <button @click.stop="downloadImage" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="下载图片 (D)">
                 <Download class="w-6 h-6" />
             </button>
-             <button v-if="image && image.file_type === 'image'" @click.stop="enterEditMode" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="编辑图片 (E)">
+             <button v-if="allowEdit && image && image.file_type === 'image'" @click.stop="enterEditMode" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="编辑图片 (E)">
                 <Pencil class="w-6 h-6" />
             </button>
-             <button @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片 (Del)">
+             <button v-if="allowDelete" @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片 (Del)">
                 <Trash2 class="w-6 h-6" />
             </button>
             <button @click.stop="toggleOriginal" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'text-primary-400': showOriginal }" title="查看原图 (Shift+O)">
@@ -51,25 +51,25 @@
                                     <span>{{ showOCR ? '关闭识别' : '文字识别 (O)' }}</span>
                                 </div>
                             </el-dropdown-item>
-                            <el-dropdown-item command="addToAlbum">
+                            <el-dropdown-item v-if="allowAddToAlbum" command="addToAlbum">
                                 <div class="flex items-center gap-2">
                                     <ImagePlus class="w-4 h-4" />
                                     <span>添加到相册 (A)</span>
                                 </div>
                             </el-dropdown-item>
-                            <el-dropdown-item command="addToPerson">
+                            <el-dropdown-item v-if="allowAddToPerson" command="addToPerson">
                                 <div class="flex items-center gap-2">
                                     <UserPlus class="w-4 h-4" />
                                     <span>添加到人物 (P)</span>
                                 </div>
                             </el-dropdown-item>
-                            <el-dropdown-item command="moveToFolder">
+                            <el-dropdown-item v-if="allowMoveToFolder" command="moveToFolder">
                                 <div class="flex items-center gap-2">
                                     <FolderOutput class="w-4 h-4" />
                                     <span>移动到目录 (F)</span>
                                 </div>
                             </el-dropdown-item>
-                            <el-dropdown-item command="adjustLocation">
+                            <el-dropdown-item v-if="allowEdit" command="adjustLocation">
                                 <div class="flex items-center gap-2">
                                     <MapPin class="w-4 h-4" />
                                     <span>调整位置 (L)</span>
@@ -219,10 +219,12 @@
         :image="image"
         :metadata="metadata"
         :loading="loading"
+        :allow-edit="allowEdit"
+        :allow-delete="allowDelete"
         :force-open-location-edit="forceOpenLocationEdit"
         @close="showSidebar = false"
         @update="handleSidebarUpdate"
-        @delete="handleSidebarDelete"
+        @delete="handleDelete"
         @highlight-face="handleHighlightFace"
       />
 
@@ -286,11 +288,11 @@
             </div>
           </div>
           <!-- Edit -->
-          <div>
+          <div v-if="allowEdit || allowDelete">
             <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">编辑</h4>
             <div class="space-y-1.5">
-              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">进入编辑</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">E</kbd></div></div>
-              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">删除图片</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">Del</kbd></div></div>
+              <div v-if="allowEdit" class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">进入编辑</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">E</kbd></div></div>
+              <div v-if="allowDelete" class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">删除图片</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">Del</kbd></div></div>
             </div>
           </div>
           <!-- Media -->
@@ -310,12 +312,12 @@
             </div>
           </div>
           <!-- Organize -->
-          <div>
+          <div v-if="allowAddToAlbum || allowAddToPerson || allowMoveToFolder">
             <h4 class="text-gray-500 dark:text-gray-400 font-medium mb-2 text-xs uppercase tracking-wider">整理</h4>
             <div class="space-y-1.5">
-              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">添加到相册</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">A</kbd></div></div>
-              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">添加到人物</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">P</kbd></div></div>
-              <div class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">移动到目录</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">F</kbd></div></div>
+              <div v-if="allowAddToAlbum" class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">添加到相册</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">A</kbd></div></div>
+              <div v-if="allowAddToPerson" class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">添加到人物</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">P</kbd></div></div>
+              <div v-if="allowMoveToFolder" class="flex items-center justify-between gap-3"><span class="text-gray-600 dark:text-gray-300">移动到目录</span><div class="flex gap-1"><kbd class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-xs font-mono border border-gray-200 dark:border-gray-700">F</kbd></div></div>
             </div>
           </div>
         </div>
@@ -391,6 +393,7 @@ import PersonSelector from './PersonSelector.vue'
 // PhotoEditor 依赖 fabric（~数百 KB），只在用户点击编辑时才需要，异步化以延迟加载。
 const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 
 
 interface Props {
@@ -398,13 +401,25 @@ interface Props {
     image: AlbumImage | null
     hasPrev?: boolean
     hasNext?: boolean
+    allowEdit?: boolean
+    allowDelete?: boolean
+    allowAddToAlbum?: boolean
+    allowAddToPerson?: boolean
+    allowMoveToFolder?: boolean
+    confirmDelete?: boolean
     deleteTitle?: string
     deleteMessage?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
+    allowEdit: false,
+    allowDelete: false,
+    allowAddToAlbum: false,
+    allowAddToPerson: false,
+    allowMoveToFolder: false,
+    confirmDelete: true,
     deleteTitle: '删除确认',
-    deleteMessage: '确定要删除这张照片吗？此操作不可恢复。'
+    deleteMessage: '确定要删除这张照片吗？删除后将移入回收站，可稍后恢复。'
 })
 
 const showOriginal = ref(false)
@@ -460,18 +475,18 @@ useHotkeys([
   { key: 'O', handler: () => toggleOriginal(), shift: true },
   { key: 'd', handler: () => downloadImage() },
   { key: 'D', handler: () => downloadImage() },
-  { key: 'e', handler: () => enterEditMode(), when: () => !!props.image && props.image.file_type === 'image' },
-  { key: 'E', handler: () => enterEditMode(), when: () => !!props.image && props.image.file_type === 'image' },
-  { key: 'Delete', handler: () => handleDelete() },
-  { key: 'Backspace', handler: () => handleDelete() },
-  { key: 'a', handler: () => emit('add-to-album', props.image) },
-  { key: 'A', handler: () => emit('add-to-album', props.image) },
-  { key: 'p', handler: () => { showPersonSelector.value = true } },
-  { key: 'P', handler: () => { showPersonSelector.value = true } },
-  { key: 'f', handler: () => emit('transfer', 'move') },
-  { key: 'F', handler: () => emit('transfer', 'move') },
-  { key: 'l', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) } },
-  { key: 'L', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) } },
+  { key: 'e', handler: () => enterEditMode(), when: () => props.allowEdit && !!props.image && props.image.file_type === 'image' },
+  { key: 'E', handler: () => enterEditMode(), when: () => props.allowEdit && !!props.image && props.image.file_type === 'image' },
+  { key: 'Delete', handler: () => handleDelete(), when: () => props.allowDelete },
+  { key: 'Backspace', handler: () => handleDelete(), when: () => props.allowDelete },
+  { key: 'a', handler: () => emit('add-to-album', props.image), when: () => props.allowAddToAlbum },
+  { key: 'A', handler: () => emit('add-to-album', props.image), when: () => props.allowAddToAlbum },
+  { key: 'p', handler: () => { showPersonSelector.value = true }, when: () => props.allowAddToPerson },
+  { key: 'P', handler: () => { showPersonSelector.value = true }, when: () => props.allowAddToPerson },
+  { key: 'f', handler: () => emit('transfer', 'move'), when: () => props.allowMoveToFolder },
+  { key: 'F', handler: () => emit('transfer', 'move'), when: () => props.allowMoveToFolder },
+  { key: 'l', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) }, when: () => props.allowEdit },
+  { key: 'L', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) }, when: () => props.allowEdit },
   { key: '?', handler: () => toggleShortcutHelp() },
   { key: 'h', handler: () => toggleShortcutHelp() },
   { key: 'H', handler: () => toggleShortcutHelp() },
@@ -716,6 +731,8 @@ const close = () => {
     emit('close')
 }
 
+useOverlayStack(computed(() => props.visible), close)
+
 const toggleSidebar = () => {
     showSidebar.value = !showSidebar.value
     if (showSidebar.value) {
@@ -726,13 +743,13 @@ const toggleSidebar = () => {
 const handleCommand = (command: string) => {
     if (command === 'ocr') {
         toggleOCR()
-    } else if (command === 'addToAlbum') {
+    } else if (command === 'addToAlbum' && props.allowAddToAlbum) {
         emit('add-to-album', props.image)
-    } else if (command === 'addToPerson') {
+    } else if (command === 'addToPerson' && props.allowAddToPerson) {
         showPersonSelector.value = true
-    } else if (command === 'moveToFolder') {
+    } else if (command === 'moveToFolder' && props.allowMoveToFolder) {
         emit('transfer', 'move')
-    } else if (command === 'adjustLocation') {
+    } else if (command === 'adjustLocation' && props.allowEdit) {
         showSidebar.value = true
         forceOpenLocationEdit.value = true
         nextTick(() => { forceOpenLocationEdit.value = false })
@@ -886,11 +903,6 @@ const handleSidebarUpdate = (updates: any) => {
     }
 }
 
-const handleSidebarDelete = (id: string) => {
-    emit('delete', id)
-    close()
-}
-
 // Zoom & Pan Methods
 const resetZoom = () => {
     scale.value = 1
@@ -1025,22 +1037,24 @@ const next = () => {
 }
 
 const handleDelete = () => {
-    if (!props.image) return
+    if (!props.image || !props.allowDelete) return
+    const emitDelete = () => {
+        if (props.image) emit('delete', props.image.id)
+    }
+    if (!props.confirmDelete) {
+        emitDelete()
+        return
+    }
     ElMessageBox.confirm(
-        '确定要删除这张照片吗？此操作不可恢复。',
-        '删除确认',
+        props.deleteMessage,
+        props.deleteTitle,
         {
             confirmButtonText: '删除',
             cancelButtonText: '取消',
             type: 'warning',
         }
     )
-    .then(() => {
-        if (props.image) {
-             emit('delete', props.image.id)
-             close() // Close after delete, or let parent handle if it switches to next
-        }
-    })
+    .then(emitDelete)
 }
 
 // Edit Mode

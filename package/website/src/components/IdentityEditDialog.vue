@@ -42,7 +42,6 @@ import type { FaceIdentity } from '@/types/album'
 import { faceApi } from '@/api/face'
 import { ElMessage } from 'element-plus'
 import { useWindowSize } from '@vueuse/core'
-import { useModalBack } from '@/composables/useModalBack'
 
 const props = defineProps<{
   visible: boolean
@@ -61,7 +60,6 @@ const visibleRef = computed({
   get: () => props.visible,
   set: (val) => emit('update:visible', val)
 })
-useModalBack(visibleRef)
 
 const form = ref({
   identity_name: '',

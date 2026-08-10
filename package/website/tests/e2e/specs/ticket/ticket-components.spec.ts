@@ -126,4 +126,42 @@ test.describe('P1 - 车票子组件 @ticket-components', () => {
     await select.selectOption('flight')
     await expect(select).toHaveValue('flight')
   })
+
+  test('编辑飞机票会提交 PUT，成功提示建立在真实更新请求上', async ({ page }) => {
+    const flight = {
+      id: 'flight-ux-regression',
+      flight_code: 'MU2393',
+      departure_city: '上海',
+      arrival_city: '成都',
+      date_time: '2026-08-09T10:30:00',
+      price: 680,
+      name: '测试乘客',
+      total_running_time: 180,
+      total_mileage: 1700,
+      comments: '',
+    }
+    await page.route('**/api/train-ticket**', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { items: [], total: 0 } }) })
+    })
+    await page.route('**/api/flight-ticket**', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { items: [flight], total: 1 } }) })
+    })
+    await gotoTicketPage(page)
+
+    const card = page.getByText('MU2393', { exact: true }).locator('xpath=ancestor::div[contains(@class, "group")][1]')
+    await card.hover()
+    await card.locator('button').filter({ has: page.locator('svg.lucide-pencil') }).click()
+    await expect(page.getByRole('heading', { name: '编辑飞机票' })).toBeVisible()
+
+    let updatedPayload: Record<string, unknown> | null = null
+    await page.route('**/api/flight-ticket/flight-ux-regression', async route => {
+      updatedPayload = route.request().postDataJSON()
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { ...flight, ...updatedPayload } }) })
+    })
+    await page.getByPlaceholder('如：MU2393').fill('MU2393A')
+    await page.getByRole('heading', { name: '编辑飞机票' }).locator('xpath=ancestor::div[contains(@class, "fixed")][1]').getByRole('button', { name: '保存' }).click()
+
+    await expect.poll(() => updatedPayload?.flight_code).toBe('MU2393A')
+    await expect(page.locator('.el-message', { hasText: '更新成功' }).last()).toBeVisible()
+  })
 })

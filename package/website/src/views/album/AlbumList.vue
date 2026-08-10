@@ -293,7 +293,6 @@ import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { format } from 'date-fns'
-import { useModalBack } from '@/composables/useModalBack'
 import { useWindowSize } from '@vueuse/core'
 
 const router = useRouter()
@@ -346,7 +345,6 @@ const navigateToAlbum = (id: string) => {
 
 // Modal Logic
 const showModal = ref(false)
-useModalBack(showModal)
 const isEditing = ref(false)
 const loading = ref(false)
 const currentAlbumId = ref<string | null>(null)

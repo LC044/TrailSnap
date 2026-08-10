@@ -5,7 +5,7 @@
       <div class="flex px-4 py-3 items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-4">
             <button 
-            @click="router.back()" 
+            @click="goBack"
             class="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800 transition-colors"
             >
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
@@ -68,6 +68,7 @@
       :image="photos[lightboxIndex]"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex < photos.length - 1"
+      :allow-delete="true"
       @close="closeLightbox"
       @prev="prevPhoto"
       @next="nextPhoto"
@@ -86,6 +87,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { ArrowLeft, Image as ImageIcon } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { photoApi } from '@/api/photo'
@@ -97,6 +99,7 @@ import AlbumSelector from '@/components/AlbumSelector.vue'
 import type { AlbumImage } from '@/types/album'
 
 const router = useRouter()
+const goBack = useAppBack('/toolbox')
 
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])

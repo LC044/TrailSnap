@@ -389,9 +389,9 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('打开 AgentChat -> 输入文字 -> update:modelValue 触发 send', async ({ page }) => {
     await page.goto('/')
-    const fab = page.locator('[aria-label="打开 AI 助手"]')
-    await expect(fab).toBeVisible({ timeout: 10_000 })
-    await fab.dispatchEvent('click')
+    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+    await expect(agentEntry).toBeVisible({ timeout: 10_000 })
+    await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
 
     const input = page.locator('.agent-chat-overlay input.agent-input')
@@ -405,9 +405,9 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('生成态 isGenerating=true -> 按钮切到 agent-stop-btn', async ({ page }) => {
     await page.goto('/')
-    const fab = page.locator('[aria-label="打开 AI 助手"]')
-    await expect(fab).toBeVisible({ timeout: 10_000 })
-    await fab.dispatchEvent('click')
+    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+    await expect(agentEntry).toBeVisible({ timeout: 10_000 })
+    await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
 
     await page.locator('.agent-chat-overlay input.agent-input').fill('查询照片')

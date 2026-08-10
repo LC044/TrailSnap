@@ -103,6 +103,7 @@ import { ref, computed, onMounted } from 'vue'
 import { X, Loader2, Check, Folder, Plus, Search } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { useAlbumStore } from '@/stores/albumStore'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 
 const props = defineProps<{
   visible: boolean
@@ -156,6 +157,8 @@ const errorAlbumId = ref<string | null>(null)
 const close = () => {
   emit('update:visible', false)
 }
+
+useOverlayStack(computed(() => props.visible), close)
 
 const confirmAddToAlbum = async (targetAlbumId: string) => {
   if (loadingAlbumId.value) return

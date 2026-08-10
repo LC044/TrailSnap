@@ -3,7 +3,7 @@
     <!-- Header -->
     <div class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
       <div class="flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-        <button @click="router.back()" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
+        <button @click="goBack" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
           <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
         </button>
         <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">智能分类</h1>
@@ -69,11 +69,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { classificationService, type TagStats } from '@/api/classification'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import { ArrowLeft, Tag } from 'lucide-vue-next'
 
 const router = useRouter()
+const goBack = useAppBack('/album')
 const tags = ref<TagStats[]>([])
 const loading = ref(true)
 

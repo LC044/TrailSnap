@@ -310,6 +310,8 @@ def _build_photo_filter_query(
     db: Session,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
+    uploaded_after: Optional[datetime] = None,
+    uploaded_before: Optional[datetime] = None,
     years: Optional[List[int]] = None,
     city: Optional[str] = None,
     cities: Optional[List[str]] = None,
@@ -399,6 +401,12 @@ def _build_photo_filter_query(
         if not end_time:
             end_time = datetime.max
         photo_query = photo_query.filter(Photo.photo_time >= start_time, Photo.photo_time <= end_time)
+
+    # 导入时间过滤，与拍摄时间过滤分离，用于“今日新增”等入口。
+    if uploaded_after is not None:
+        photo_query = photo_query.filter(Photo.upload_time >= uploaded_after)
+    if uploaded_before is not None:
+        photo_query = photo_query.filter(Photo.upload_time < uploaded_before)
 
     # Years Filter
     if years:
@@ -551,6 +559,8 @@ def get_all_photos(
     limit: int = 100,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
+    uploaded_after: Optional[datetime] = None,
+    uploaded_before: Optional[datetime] = None,
     years: Optional[List[int]] = None,
     city: Optional[str] = None,
     cities: Optional[List[str]] = None,
@@ -594,6 +604,8 @@ def get_all_photos(
         db=db,
         start_time=start_time,
         end_time=end_time,
+        uploaded_after=uploaded_after,
+        uploaded_before=uploaded_before,
         years=years,
         city=city,
         cities=cities,
@@ -657,6 +669,8 @@ def get_timeline_stats(
     db: Session,
     start_time: Optional[datetime] = None,
     end_time: Optional[datetime] = None,
+    uploaded_after: Optional[datetime] = None,
+    uploaded_before: Optional[datetime] = None,
     years: Optional[List[int]] = None,
     city: Optional[str] = None,
     cities: Optional[List[str]] = None,
@@ -698,6 +712,8 @@ def get_timeline_stats(
         db=db,
         start_time=start_time,
         end_time=end_time,
+        uploaded_after=uploaded_after,
+        uploaded_before=uploaded_before,
         years=years,
         city=city,
         cities=cities,

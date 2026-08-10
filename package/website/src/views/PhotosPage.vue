@@ -110,6 +110,7 @@ import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import MultiFileUpload from '@/components/MultiFileUpload.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import { ElMessage } from 'element-plus'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 
 defineOptions({
   name: 'PhotosPage'
@@ -123,6 +124,7 @@ const photoStore = usePhotoStore()
 // State
 const images = computed(() => photoStore.images)
 const showUploadModal = ref(false)
+useOverlayStack(showUploadModal, () => { showUploadModal.value = false })
 const showFilterPanel = ref(false)
 const filterButtonRef = ref<HTMLElement | null>(null)
 const filterPanelRef = ref<HTMLElement | null>(null)
@@ -173,18 +175,22 @@ const applyQueryFilters = () => {
   // 先清空已有筛选，避免上一次访问残留
   f.image_types = []
   f.file_types = []
+  f.uploaded_after = undefined
+  f.uploaded_before = undefined
   f.years = []
   f.cities = []
   f.makes = []
   f.models = []
 
-  const { image_types, file_types, years, cities, makes, models } = route.query
+  const { image_types, file_types, years, cities, makes, models, uploaded_after, uploaded_before } = route.query
   f.image_types = parseQueryFilter(image_types)
   f.file_types = parseQueryFilter(file_types)
   f.makes = parseQueryFilter(makes)
   f.models = parseQueryFilter(models)
   f.cities = parseQueryFilter(cities)
   f.years = parseQueryFilter(years).map(y => Number(y)).filter(n => !Number.isNaN(n))
+  f.uploaded_after = parseQueryFilter(uploaded_after)[0]
+  f.uploaded_before = parseQueryFilter(uploaded_before)[0]
 }
 
 let lastQueryStr = ''

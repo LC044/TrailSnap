@@ -248,6 +248,7 @@ import PuzzlePanel from './components/PuzzlePanel.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useMapPuzzle, type PuzzleConfig } from '@/composables/useMapPuzzle'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 
 const props = defineProps<{
   startDate?: string
@@ -352,6 +353,7 @@ const closeManualPicker = () => {
   // 清掉瞬时省份过滤，避免 selectionStore 复用时残留
   selectionStore.provinceFilter = null
 }
+useOverlayStack(manualPickerVisible, closeManualPicker)
 
 // PhotoSelector 是多选，手动填格只取一张 —— 沿用 ProfileSettings.vue 头像选择的 ids[0] 约定
 const handleManualPick = (ids: string[]) => {

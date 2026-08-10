@@ -211,15 +211,12 @@ test.describe('\u767b\u5f55\u5168\u6d41\u7a0b @login', () => {
     );
 
     // Settings \u9875\u9ed8\u8ba4\u663e示 "\u4e2a\u4eba\u8d44\u6599" \u6807\u7b7e\u9875\uff0c\u9000\u51fa\u767b\u5f55\u5728 "\u7528\u6237\u7ba1\u7406" \u6807\u7b7e
-    await page.goto('/settings');
-    await page
-      .waitForLoadState('networkidle', { timeout: 15_000 })
-      .catch(() => {});
+    const accountMenu = page.getByRole('button', { name: new RegExp(FLOW_USER.username) });
+    await expect(accountMenu).toBeVisible({ timeout: 10_000 });
+    await accountMenu.click();
 
-    // \u5207\u6362\u5230"\u7528\u6237\u7ba1\u7406"\u6807\u7b7e
-    await page.getByText('\u7528\u6237\u7ba1\u7406', { exact: true }).click();
-
-    await page.locator('button:has-text("\u9000\u51fa\u767b\u5f55")').first().click();
+    await page.getByText('\u9000\u51fa\u767b\u5f55', { exact: true }).click();
+    await page.getByRole('button', { name: '\u9000\u51fa', exact: true }).click();
 
     await page.waitForURL(/\/login/, { timeout: 10_000 });
     const token = await page.evaluate(() =>

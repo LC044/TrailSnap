@@ -8,7 +8,7 @@
     :timeline-items="timeline"
     :timeline-stats="{ timeline }"
     @confirm-delete="handleConfirmDelete"
-    @back="router.back()"
+    @back="goBack"
     @load-more="loadMore"
   />
 </template>
@@ -16,6 +16,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAppBack } from '@/composables/useAppBack'
 import { locationService } from '@/api/location'
 import { albumService } from '@/api/album'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
@@ -26,6 +27,7 @@ import { ElMessage } from 'element-plus'
 
 const route = useRoute()
 const router = useRouter()
+const goBack = useAppBack('/album/location')
 const locationStore = useLocationStore()
 const name = route.params.name as string
 const level = (route.query.level as 'city' | 'province' | 'district' | 'scene') || 'city'

@@ -215,6 +215,12 @@
       :image="lightboxImage"
       :has-prev="hasPrev"
       :has-next="hasNext"
+      :allow-edit="true"
+      :allow-delete="true"
+      :allow-add-to-album="true"
+      :allow-add-to-person="true"
+      :allow-move-to-folder="true"
+      :confirm-delete="false"
       :delete-title="deleteLabel"
       @close="closeLightbox"
       @delete="handlePhotoDelete"
@@ -469,6 +475,7 @@ onUnmounted(() => {
 const showDeleteConfirm = ref(false)
 const showAlbumSelectModal = ref(false)
 const idsToDelete = ref<string[]>([])
+const lightboxDeleteId = ref<string | null>(null)
 const showParticle = ref(false)
 const pendingRemoveIds = ref(new Set<string>())
 // UI State
@@ -569,6 +576,7 @@ const handleNext = () => {
 // Delete Logic
 const handleBatchDelete = (ids: string[]) => {
   if (ids.length === 0) return
+  lightboxDeleteId.value = null
   idsToDelete.value = ids
   showDeleteConfirm.value = true
 }
@@ -594,8 +602,9 @@ const handleBatchRemoveFromAlbum = (ids: string[]) => {
 }
 
 const handlePhotoDelete = (id: string) => {
-    handleBatchDelete([id])
-    closeLightbox()
+    lightboxDeleteId.value = id
+    idsToDelete.value = [id]
+    showDeleteConfirm.value = true
 }
 
 const confirmMessage = computed(() => {
@@ -613,7 +622,9 @@ const confirmDelete = () => {
                 showParticle.value = true
             }
             galleryRef.value?.exitSelectionMode()
+            if (lightboxDeleteId.value) closeLightbox()
         }
+        lightboxDeleteId.value = null
     })
 }
 

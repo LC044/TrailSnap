@@ -166,6 +166,7 @@ import TrainTicket from '@/components/TrainTicket.vue';
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import type { AlbumImage } from '@/types/album';
 import { toServerUrl } from '@/config/server';
+import { useOverlayStack } from '@/composables/useOverlayStack';
 
 const { isDarkMode, currentTheme } = injectTheme();
 const ticketStore = useTicketStore();
@@ -208,6 +209,11 @@ const currentFlightTicket = ref<Partial<FlightTicketFormData>>({});
 
 const isPhotoLightboxVisible = ref(false);
 const currentPhoto = ref<AlbumImage | null>(null);
+
+useOverlayStack(isModalOpen, () => { isModalOpen.value = false; });
+useOverlayStack(isFlightModalOpen, () => { isFlightModalOpen.value = false; });
+useOverlayStack(showTypeSelector, () => { showTypeSelector.value = false; });
+useOverlayStack(showCityModal, () => { showCityModal.value = false; });
 
 // --- 统计与导入导出 ---
 const goToStatistics = () => {
@@ -532,7 +538,7 @@ const handleFlightModalSave = async (formData: FlightTicketFormData) => {
     };
     
     if (isEditing.value && formData.id) {
-       // await ticketService.updateFlightTicket(formData.id, backendData);
+       await ticketService.updateFlightTicket(formData.id, backendData);
     } else {
        await ticketService.createFlightTicket(backendData);
     }
