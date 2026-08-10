@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
 
 root = Path(SPECPATH)
 
@@ -22,10 +22,27 @@ for package in ("fastapi", "pydantic", "passlib", "langchain", "langchain_core",
     except Exception:
         pass
 
+# scipy / numpy / scikit-learn ship native Fortran/BLAS libraries (e.g.
+# libgfortran-<hash>.so.5.0.0) inside <pkg>.libs directories. PyInstaller's
+# default hooks do not always bundle them, which leaves the frozen sidecar
+# referencing a .so that cannot be found later — and when Tauri's linuxdeploy
+# walks the ELF dependencies to assemble the AppImage it aborts with
+# "Could not find dependency: libgfortran-...so.5.0.0". collect_all pulls the
+# submodules, data files AND the .libs binaries for each package.
+binaries = []
+for package in ("numpy", "scipy", "sklearn"):
+    try:
+        pkg_datas, pkg_binaries, pkg_hiddenimports = collect_all(package)
+    except Exception:
+        continue
+    datas += pkg_datas
+    binaries += pkg_binaries
+    hiddenimports += pkg_hiddenimports
+
 a = Analysis(
     [str(root / "desktop_entry.py")],
     pathex=[str(root)],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
