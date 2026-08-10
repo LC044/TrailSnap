@@ -30,7 +30,6 @@ param(
     [int]$FrontendPort = 8082,
     [int]$ServerPort = 8800,
     [int]$AiPort = 8801,
-    [int]$PostgresPort = 5532,
     [string]$Timezone = "Asia/Shanghai",
     [ValidateSet("cpu", "gpu")]
     [string]$AiMode = "cpu",
@@ -762,8 +761,7 @@ function Collect-Config {
     $portPairs = @(
         @{ Name = "前端";      Var = "FrontendPort";  Default = 8082 },
         @{ Name = "后端 API";  Var = "ServerPort";    Default = 8800 },
-        @{ Name = "AI 服务";   Var = "AiPort";        Default = 8801 },
-        @{ Name = "PostgreSQL"; Var = "PostgresPort";  Default = 5532 }
+        @{ Name = "AI 服务";   Var = "AiPort";        Default = 8801 }
     )
 
     foreach ($pair in $portPairs) {
@@ -854,7 +852,6 @@ PHOTO_DIR="$PhotoDir"
 FRONTEND_PORT=$FrontendPort
 SERVER_PORT=$ServerPort
 AI_PORT=$AiPort
-POSTGRES_PORT=$PostgresPort
 
 # 时区
 TZ="$Timezone"
@@ -883,7 +880,14 @@ function Generate-ComposeFile {
 
     Write-Step "生成 docker-compose.yml..."
 
-    $photoDirs = $PhotoDir -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    # 注意：必须用 @(...) 包裹，强制结果为数组。否则当只有一个照片目录时，
+    # pipeline 会退化为标量 System.String，下面 $photoDirs[$i] 会变成"字符索引"
+    # （返回路径首字符，如 "D"），最终生成形如 "D:/app/Photos/D" 的错误挂载。
+    $photoDirs = @(
+        $PhotoDir -split "," |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ }
+    )
 
     # 升级 / 追加兼容：若已存在 docker-compose.yml 且含 /app/Photos 挂载行，则原样
     # 保留旧挂载目标（如 /app/Photos/ 或 /app/Photos1/ 或 /app/Photos/<name>），否则
@@ -1257,7 +1261,6 @@ function Do-Upgrade {
                 "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
                 "SERVER_PORT"     { $script:ServerPort = [int]$value }
                 "AI_PORT"         { $script:AiPort = [int]$value }
-                "POSTGRES_PORT"   { $script:PostgresPort = [int]$value }
                 "TZ"              { $script:Timezone = $value }
                 "IMAGE_TAG"       { $script:Tag = $value }
                 "AI_MODE"         { $script:DetectedAiMode = $value }
@@ -1346,7 +1349,6 @@ function Add-PhotoDir {
                 "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
                 "SERVER_PORT"     { $script:ServerPort = [int]$value }
                 "AI_PORT"         { $script:AiPort = [int]$value }
-                "POSTGRES_PORT"   { $script:PostgresPort = [int]$value }
                 "TZ"              { $script:Timezone = $value }
                 "IMAGE_TAG"       { $script:Tag = $value }
                 "AI_MODE"         { $script:DetectedAiMode = $value }
@@ -1430,6 +1432,51 @@ function Do-Uninstall {
     }
 }
 
+# ── 重新安装：备份 / 删除原有数据 ──────────────────────────────────────────────
+
+# 备份安装目录下的 pg_data、data、.env、docker-compose.yml 到 backup-<时间戳>/
+# 全部成功返回备份目录路径；任一项失败返回 $null（已逐项打印警告，部分副本可能已写入）。
+function Backup-InstallData {
+    param([string]$TargetDir)
+    $ts = Get-Date -Format "yyyyMMddHHmmss"
+    $backupDir = Join-Path $TargetDir "backup-$ts"
+    try {
+        New-Item -ItemType Directory -Path $backupDir -Force -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Warn "无法创建备份目录：$backupDir"
+        return $null
+    }
+    $allOk = $true
+    foreach ($item in @("pg_data", "data", ".env", "docker-compose.yml")) {
+        $src = Join-Path $TargetDir $item
+        if (Test-Path $src) {
+            Write-Info "正在备份 $item ..."
+            try {
+                Copy-Item -Path $src -Destination $backupDir -Recurse -Force -ErrorAction Stop
+            } catch {
+                Write-Warn "备份失败：$item — $($_.Exception.Message)"
+                $allOk = $false
+            }
+        }
+    }
+    if ($allOk) { return $backupDir } else { return $null }
+}
+
+# 删除安装目录下的 pg_data、data、.env、docker-compose.yml（全新安装前清理）
+function Remove-InstallData {
+    param([string]$TargetDir)
+    foreach ($item in @("pg_data", "data", ".env", "docker-compose.yml")) {
+        $src = Join-Path $TargetDir $item
+        if (Test-Path $src) {
+            try {
+                Remove-Item -Path $src -Recurse -Force -ErrorAction Stop
+            } catch {
+                Write-Warn "删除失败：$src（可能被占用，请手动删除后重试）"
+            }
+        }
+    }
+}
+
 # ── 使用帮助 ──────────────────────────────────────────────────────────────────
 
 function Write-Usage {
@@ -1445,7 +1492,6 @@ TrailSnap (行影集) — Windows 一键安装脚本
   -FrontendPort <端口>   前端端口（默认：8082）
   -ServerPort <端口>     后端 API 端口（默认：8800）
   -AiPort <端口>         AI 服务端口（默认：8801）
-  -PostgresPort <端口>   PostgreSQL 端口（默认：5532）
   -Timezone <时区>       时区（默认：Asia/Shanghai）
   -AiMode <cpu|gpu>      AI 模式（默认：cpu）
   -Tag <版本号>          Docker 镜像版本标签（默认：latest）
@@ -1577,7 +1623,55 @@ if (Test-Path $existingCompose) {
             exit 0
         }
         "2" {
-            # 继续执行重新安装流程
+            Ensure-Docker
+            # 重新安装：让用户选择安装目录（默认为当前检测到的目录）
+            $script:InstallDir = Read-Prompt "安装目录（重装到已有目录会询问是否保留数据）" $script:InstallDir
+
+            # 检查所选目录是否已有安装
+            $reinstallCompose = Join-Path $script:InstallDir "docker-compose.yml"
+            if (Test-Path $reinstallCompose) {
+                # 先停止服务：保证 pg_data 备份一致，并释放端口供重装复用
+                Write-Step "停止现有服务以便备份/清理..."
+                Push-Location $script:InstallDir
+                try {
+                    Invoke-Compose "--env-file .env down" 2>$null
+                } finally {
+                    Pop-Location
+                }
+
+                Write-Warn "在 $($script:InstallDir) 检测到已有安装的数据。"
+                $keepData = Read-YesNo "是否保留原有配置和数据？（保留=备份后重装；不保留=删除全部数据后全新安装）" "y"
+                if ($keepData) {
+                    $backupDir = Backup-InstallData $script:InstallDir
+                    if ($backupDir) {
+                        Write-Info "已备份原有数据到：$backupDir"
+                        Write-Warn "备份保留在安装目录内，-Uninstall -Purge 不会删除它；如需彻底清理请手动删除。"
+                        Write-Log "重新安装（保留）：已备份到 $backupDir"
+                    } else {
+                        Write-Warn "备份未完整完成（见上方警告），但将继续重装。建议手动备份后重试。"
+                        Write-Log "重新安装（保留）：备份部分失败"
+                    }
+                    # 保留配置 = 走升级流程：复用 .env 与挂载，拉取镜像并重启
+                    Configure-Mirrors
+                    Do-Upgrade
+                    exit 0
+                } else {
+                    Write-Host ""
+                    Write-Err "⚠️ 警告：此操作将永久删除以下数据，不可恢复："
+                    Write-Host "  - pg_data（数据库）：所有相册、人脸识别、OCR、标签、已索引的文件路径"
+                    Write-Host "  - data（数据目录）：AI 模型缓存、上传文件、缩略图等"
+                    Write-Host "  - .env / docker-compose.yml（配置文件）"
+                    Write-Host ""
+                    Write-Warn "你的照片文件本身不会被删除（它们在挂载的 PHOTO_DIR 中）。"
+                    if (-not (Read-YesNo "确定要删除全部数据并全新安装吗？" "n")) {
+                        Stop-Script "已取消。"
+                    }
+                    Remove-InstallData $script:InstallDir
+                    Write-Info "已删除原有数据，将进行全新安装。"
+                    Write-Log "重新安装（不保留）：已删除 pg_data/data/.env/docker-compose.yml"
+                }
+            }
+            # 无已有安装，或已删除数据：继续走全新安装主流程
         }
         "3" {
             Ensure-Docker

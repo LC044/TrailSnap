@@ -18,7 +18,6 @@ SCRIPT_VERSION="1.5.4"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
-DEFAULT_POSTGRES_PORT=5532
 DEFAULT_TZ="Asia/Shanghai"
 DEFAULT_IMAGE_TAG="latest"
 DEFAULT_AI_MODE="cpu"
@@ -62,7 +61,6 @@ PHOTO_DIR=""
 FRONTEND_PORT=""
 SERVER_PORT=""
 AI_PORT=""
-POSTGRES_PORT=""
 TZ=""
 IMAGE_TAG=""
 AI_MODE=""
@@ -76,6 +74,8 @@ ADD_PHOTO_DIR=""
 LOG_FILE=""
 IMAGE_REGISTRY=""
 IMAGE_REGISTRY_RESOLVED=false
+REINSTALL_DIR_CHOSEN=false
+BACKUP_DIR=""
 
 # ── 输入读取 ──────────────────────────────────────────────────────────────────
 # 通过 curl | bash 运行时 stdin 是管道而非终端，直接 read 会读到 EOF。
@@ -792,7 +792,8 @@ collect_config() {
   step "收集配置信息..."
 
   # 安装目录
-  if [[ -z "$INSTALL_DIR" || "$INSTALL_DIR" == "$DEFAULT_INSTALL_DIR" ]]; then
+  # 重新安装时已在菜单中选过目录，不再重复询问（仅默认目录才需要确认，避免静默使用默认值）
+  if [[ -z "$INSTALL_DIR" || ("$INSTALL_DIR" == "$DEFAULT_INSTALL_DIR" && "$REINSTALL_DIR_CHOSEN" != true) ]]; then
     INSTALL_DIR="$(prompt_default "安装目录" "$DEFAULT_INSTALL_DIR")"
   fi
   while true; do
@@ -975,9 +976,8 @@ collect_config() {
   FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
   SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
   AI_PORT="${AI_PORT:-$DEFAULT_AI_PORT}"
-  POSTGRES_PORT="${POSTGRES_PORT:-$DEFAULT_POSTGRES_PORT}"
 
-  for port_var in FRONTEND_PORT SERVER_PORT AI_PORT POSTGRES_PORT; do
+  for port_var in FRONTEND_PORT SERVER_PORT AI_PORT; do
     local port="${!port_var}"
     if ! check_port_available "$port"; then
       local suggested
@@ -1071,7 +1071,6 @@ PHOTO_DIR="${PHOTO_DIR}"
 FRONTEND_PORT=${FRONTEND_PORT}
 SERVER_PORT=${SERVER_PORT}
 AI_PORT=${AI_PORT}
-POSTGRES_PORT=${POSTGRES_PORT}
 
 # 时区
 TZ="${TZ}"
@@ -1431,7 +1430,6 @@ do_upgrade() {
       FRONTEND_PORT)   FRONTEND_PORT="$value" ;;
       SERVER_PORT)     SERVER_PORT="$value" ;;
       AI_PORT)         AI_PORT="$value" ;;
-      POSTGRES_PORT)   POSTGRES_PORT="$value" ;;
       TZ)              TZ="$value" ;;
       IMAGE_TAG)       IMAGE_TAG="$value" ;;
       AI_MODE)         DETECTED_AI_MODE="$value" ;;
@@ -1492,6 +1490,41 @@ do_uninstall() {
 
   info "卸载完成。"
   log "卸载完成"
+}
+
+# ── 重新安装：备份 / 删除原有数据 ──────────────────────────────────────────────
+
+# 备份安装目录下的 pg_data、data、.env、docker-compose.yml 到 backup-<时间戳>/
+# 备份目录路径写入全局 BACKUP_DIR；全部成功返回 0，任一失败返回 1（已逐项打印警告）。
+backup_install_data() {
+  local target_dir="$1"
+  local ts
+  ts="$(date +%Y%m%d%H%M%S 2>/dev/null || echo backup)"
+  BACKUP_DIR="${target_dir}/backup-${ts}"
+  mkdir -p "$BACKUP_DIR" 2>/dev/null || { warn "无法创建备份目录：$BACKUP_DIR"; return 1; }
+  local ok=true
+  for item in pg_data data .env docker-compose.yml; do
+    if [[ -e "${target_dir}/${item}" ]]; then
+      info "正在备份 ${item} ..."
+      if ! cp -a "${target_dir}/${item}" "$BACKUP_DIR/" 2>/dev/null; then
+        warn "备份失败：${item}"
+        ok=false
+      fi
+    fi
+  done
+  [[ "$ok" == true ]]
+}
+
+# 删除安装目录下的 pg_data、data、.env、docker-compose.yml（全新安装前清理）
+remove_install_data() {
+  local target_dir="$1"
+  for item in pg_data data .env docker-compose.yml; do
+    if [[ -e "${target_dir}/${item}" ]]; then
+      if ! rm -rf "${target_dir}/${item}" 2>/dev/null; then
+        warn "删除失败：${item}（可能被占用，请手动删除后重试）"
+      fi
+    fi
+  done
 }
 
 # ── 添加新照片文件夹 ──────────────────────────────────────────────────────────
@@ -1557,7 +1590,6 @@ add_photo_dir() {
       FRONTEND_PORT)   FRONTEND_PORT="$value" ;;
       SERVER_PORT)     SERVER_PORT="$value" ;;
       AI_PORT)         AI_PORT="$value" ;;
-      POSTGRES_PORT)   POSTGRES_PORT="$value" ;;
       TZ)              TZ="$value" ;;
       IMAGE_TAG)       IMAGE_TAG="$value" ;;
       AI_MODE)         DETECTED_AI_MODE="$value" ;;
@@ -1617,7 +1649,6 @@ parse_args() {
       --frontend-port)   FRONTEND_PORT="$2"; shift 2 ;;
       --server-port)     SERVER_PORT="$2"; shift 2 ;;
       --ai-port)         AI_PORT="$2"; shift 2 ;;
-      --postgres-port)   POSTGRES_PORT="$2"; shift 2 ;;
       --timezone)        TZ="$2"; shift 2 ;;
       --ai-mode)         AI_MODE="$2"; shift 2 ;;
       --tag)             IMAGE_TAG="$2"; shift 2 ;;
@@ -1637,7 +1668,6 @@ parse_args() {
   FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
   SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
   AI_PORT="${AI_PORT:-$DEFAULT_AI_PORT}"
-  POSTGRES_PORT="${POSTGRES_PORT:-$DEFAULT_POSTGRES_PORT}"
   TZ="${TZ:-$DEFAULT_TZ}"
   IMAGE_TAG="${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
   AI_MODE="${AI_MODE:-$DEFAULT_AI_MODE}"
@@ -1656,7 +1686,6 @@ TrailSnap (行影集) — 一键安装脚本
   --frontend-port 端口   前端端口（默认：8082）
   --server-port 端口     后端 API 端口（默认：8800）
   --ai-port 端口         AI 服务端口（默认：8801）
-  --postgres-port 端口   PostgreSQL 端口（默认：5532）
   --timezone 时区        时区（默认：Asia/Shanghai）
   --ai-mode cpu|gpu      AI 模式（默认：cpu）
   --tag 版本号           Docker 镜像版本标签（默认：latest）
@@ -1754,7 +1783,51 @@ main() {
         exit 0
         ;;
       2)
-        # 继续执行重新安装流程
+        detect_os
+        ensure_docker
+        # 重新安装：让用户选择安装目录（默认为当前检测到的目录）
+        INSTALL_DIR="$(prompt_default "安装目录（重装到已有目录会询问是否保留数据）" "$INSTALL_DIR")"
+        REINSTALL_DIR_CHOSEN=true
+
+        # 检查所选目录是否已有安装
+        if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
+          # 先停止服务：保证 pg_data 备份一致，并释放端口供重装复用
+          step "停止现有服务以便备份/清理..."
+          cd "$INSTALL_DIR"
+          $COMPOSE_CMD --env-file .env down 2>/dev/null || true
+
+          warn "在 ${INSTALL_DIR} 检测到已有安装的数据。"
+          local keep_data
+          keep_data="$(prompt_yes_no "是否保留原有配置和数据？（保留=备份后重装；不保留=删除全部数据后全新安装）" "y")"
+          if [[ "$keep_data" == "y" ]]; then
+            if backup_install_data "$INSTALL_DIR"; then
+              info "已备份原有数据到：${BACKUP_DIR}"
+              warn "备份保留在安装目录内，--uninstall --purge 不会删除它；如需彻底清理请手动删除。"
+              log "重新安装（保留）：已备份到 ${BACKUP_DIR}"
+            else
+              warn "备份未完整完成（见上方警告），但仍将继续重装。建议手动备份后重试。"
+              log "重新安装（保留）：备份部分失败，备份目录 ${BACKUP_DIR:-未知}"
+            fi
+            # 保留配置 = 走升级流程：复用 .env 与挂载，拉取镜像并重启
+            do_upgrade
+            exit 0
+          else
+            echo ""
+            error "⚠️ 警告：此操作将永久删除以下数据，不可恢复："
+            echo "  - pg_data（数据库）：所有相册、人脸识别、OCR、标签、已索引的文件路径"
+            echo "  - data（数据目录）：AI 模型缓存、上传文件、缩略图等"
+            echo "  - .env / docker-compose.yml（配置文件）"
+            echo ""
+            warn "你的照片文件本身不会被删除（它们在挂载的 PHOTO_DIR 中）。"
+            local confirm_del
+            confirm_del="$(prompt_yes_no "确定要删除全部数据并全新安装吗？" "n")"
+            [[ "$confirm_del" != "y" ]] && die "已取消。"
+            remove_install_data "$INSTALL_DIR"
+            info "已删除原有数据，将进行全新安装。"
+            log "重新安装（不保留）：已删除 pg_data/data/.env/docker-compose.yml"
+          fi
+        fi
+        # 无已有安装，或已删除数据：继续走全新安装主流程
         ;;
       3)
         detect_os

@@ -15,18 +15,15 @@ TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速
 - [极空间部署](/docs/guide/docker/zspace)
 - [飞牛OS 部署](/docs/guide/docker/fnos)
 
-如果你没用过docker，并且用的是Windows系统，建议阅读：
-
-- [Docker 部署（Windows）](/docs/guide/docker/windows)
-
-服务部署完成后，也可以在手机上使用 TrailSnap。安装方法和服务器地址配置参见
-[移动 App 使用指南](/docs/guide/mobile-app)。
+如果你没用过docker或者没有NAS，建议继续往下阅读！
 
 ### 一键安装脚本 (推荐)
 
 TrailSnap 提供了一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署，无需手动编写配置文件。
 
-#### Windows PowerShell
+#### Windows PowerShell（不是CMD）
+
+打开方式：win + R -> 输入cmd -> 点击弹窗左上角的加号 -> 输入下面的命令
 
 如果首次使用可能需要重启计算机，才能完成安装，重启后请重新运行脚本。
 
@@ -39,9 +36,6 @@ irm https://trailsnap.cn/install.ps1 -O install.ps1; powershell -ExecutionPolicy
 ```powershell
 # 交互式安装（按提示操作）
 .\install.ps1
-
-# 非交互式安装（指定照片目录，使用国内镜像加速）
-.\install.ps1 -PhotoDir "D:\Photos" -ChinaMirrors -Yes
 
 # 启用 GPU 加速
 .\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
@@ -59,14 +53,8 @@ curl -fsSL https://trailsnap.cn/install.sh | bash
 # 交互式安装（按提示操作）
 ./install.sh
 
-# 非交互式安装（指定照片目录，使用国内镜像加速）
-./install.sh --photo-dir /home/user/photos --china-mirrors --yes
-
 # 启用 GPU 加速
 ./install.sh --photo-dir /home/user/photos --ai-mode gpu
-
-# 指定自定义端口
-./install.sh --photo-dir /home/user/photos --frontend-port 8082 --server-port 8800
 ```
 
 #### 脚本功能
@@ -81,7 +69,7 @@ curl -fsSL https://trailsnap.cn/install.sh | bash
 
 #### 管理命令
 
-安装完成后，在安装目录（默认 `~/trailsnap`）下执行：
+安装完成后，在安装目录（默认 `~/trailsnap`，Windows一般是`C:\Users\用户名\trailsnap`）下执行：
 
 ```bash
 # 查看服务状态
@@ -125,126 +113,12 @@ docker compose --env-file .env restart
 | `--uninstall` | 卸载 | - |
 | `--purge` | 删除所有数据（配合 `--uninstall`） | - |
 
----
+服务部署完成后，也可以在手机上使用 TrailSnap。安装方法和服务器地址配置参见
+[移动 App 使用指南](/docs/guide/mobile-app)。
 
 ### 手动部署
 
-如果你更倾向于手动配置，或是在 NAS 等特殊环境下部署，可以按照以下步骤操作。
-
-#### 前置要求
-
-- 安装 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)。
-- 确保本地 5532, 8800, 8801, 8082 端口未被占用。
-
-#### 部署步骤
-
-1. **获取 `docker-compose.yml`**
-
-   在项目根目录下创建一个 `docker-compose.yml` 文件，内容如下：
-
-   ```yaml
-   version: '3.8'
-
-   services:
-     postgres:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
-       container_name: postgres_container
-       restart: always
-       environment:
-         TZ: Asia/Shanghai
-         POSTGRES_DB: trailsnap
-         POSTGRES_USER: trailsnap
-         POSTGRES_PASSWORD: trailsnap
-         POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
-         PGDATA: /var/lib/postgresql/data/pgdata
-       networks: [ app-network ]
-       volumes:
-         - ./pg_data:/var/lib/postgresql/data
-       healthcheck:
-         test: ["CMD-SHELL", "pg_isready -U trailsnap -d trailsnap -p 5432"]
-         interval: 5s
-         timeout: 5s
-         retries: 5
-         start_period: 10s
-
-     server:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
-       restart: always
-       expose: [ "8000" ]
-       ports: [ "8800:8000" ]
-       networks: [ app-network ]
-       volumes:
-         - ./data:/app/data
-         - /path/to/your/photos:/app/Photos  # 请修改为你的照片目录路径
-       environment:
-         - TZ=Asia/Shanghai
-         - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
-         - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
-         - AI_API_URL=http://ai:8001
-       depends_on:
-         postgres:
-           condition: service_healthy
-
-     ai:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
-       restart: always
-       stop_grace_period: 15s
-       expose: [ "8001" ]
-       ports: [ "8801:8001" ]
-       networks: [ app-network ]
-       volumes:
-         - ./data:/app/data
-       environment:
-         - TZ=Asia/Shanghai
-       healthcheck:
-         test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health-check', timeout=3)"]
-         interval: 30s
-         timeout: 5s
-         retries: 3
-         start_period: 30s
-       
-     frontend:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
-       restart: always
-       ports: [ "8082:80" ]
-       depends_on: [ server ]
-       networks: [ app-network ]
-       environment:
-         - TZ=Asia/Shanghai
-
-   networks:
-     app-network:
-       driver: bridge
-   ```
-
-2. **配置照片目录**
-
-   修改 `server` 服务下的 `volumes` 配置，将 `/path/to/your/photos` 替换为你实际存放照片的本地目录路径。
-   
-   Windows 用户示例：
-   ```yaml
-   - F:\Photos:/app/Photos
-   ```
-   
-   Linux/macOS 用户示例：
-   ```yaml
-   - /home/user/photos:/app/Photos
-   ```
-
-3. **启动服务**
-
-   在 `docker-compose.yml` 所在目录下执行：
-
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **访问应用**
-   服务启动后，通过浏览器访问: `http://localhost:8082`
-
-5. **访问后端 API**
-   - 后端 API: `http://localhost:8800/docs`
-   - AI 服务文档: `http://localhost:8801/docs`
+如果你更倾向于手动配置，或是在 NAS 等特殊环境下部署，可以阅读[Docker部署](/docs/guide/docker)。
 
 #### 注意事项
 
