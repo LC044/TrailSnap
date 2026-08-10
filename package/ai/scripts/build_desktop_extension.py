@@ -28,7 +28,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1]
     runtime = root / "dist" / "trailsnap-ai"
     if not runtime.is_dir():
-        raise SystemExit(f"Nuitka runtime not found: {runtime}")
+        raise SystemExit(f"AI runtime not found: {runtime}")
 
     args.output.mkdir(parents=True, exist_ok=True)
     staging = args.output / f"staging-{args.platform_key}"

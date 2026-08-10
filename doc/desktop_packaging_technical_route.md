@@ -39,9 +39,9 @@ TrailSnap 打包成桌面安装包在技术上可行，生成安装包本身不�
 推荐的长期方案是“同一套业务代码 + 两种运行配置”，而不是彻底将整个项目迁移到 SQLite。
 
 桌面壳技术选型不再保留 Electron 过渡方案，统一采用 **Tauri 2**。Python Sidecar
-打包从 PyInstaller 迁移到 **Nuitka standalone（目录模式）**，先迁移主 Server，再迁移
-AI 扩展；PyInstaller 仅在某个平台或原生依赖尚未通过兼容性验证时作为临时回退，不再
-作为默认发布链路。
+打包采用 **PyInstaller onedir（目录模式）**；曾评估 Nuitka standalone，但其在 CI 上的
+C 编译耗时显著（三平台单次构建近 1 小时），而桌面冷启动收益未达门槛，故不作为默认
+发布链路。
 
 ## 3. 路线对比
 
@@ -76,11 +76,11 @@ AI 扩展；PyInstaller 仅在某个平台或原生依赖尚未通过兼容性�
 flowchart LR
     Shell["Tauri 2 / Rust 桌面壳"] --> UI["内嵌 Vue 静态资源"]
     Shell --> Bootstrap["启动状态与运行时配置"]
-    Bootstrap --> Server["Nuitka FastAPI Server Sidecar"]
+    Bootstrap --> Server["PyInstaller FastAPI Server Sidecar"]
     Server --> DB["SQLite 主数据库"]
     Server --> Files["照片、缩略图与缓存"]
     Server -.按需请求.-> Gateway["Rust AI Gateway"]
-    Gateway -.首次调用再启动.-> AI["Nuitka AI Sidecar"]
+    Gateway -.首次调用再启动.-> AI["PyInstaller AI Sidecar"]
     AI -.可选.-> Vector["本地向量索引"]
 ```
 
@@ -119,7 +119,7 @@ Rust command 暴露。
 
 ### 4.3 Python Sidecar
 
-默认采用 Nuitka `--mode=standalone` 生成目录型 Sidecar，不采用 onefile。目录模式的
+默认采用 PyInstaller onedir 生成目录型 Sidecar，不采用 onefile。目录模式的
 原因是：
 
 - Python 原生扩展和动态库较多；
@@ -127,11 +127,11 @@ Rust command 暴露。
 - ONNX、OpenCV、Pillow、HEIF 等依赖的动态库定位更难；
 - 目录模式更利于增量升级和问题诊断。
 
-选择 Nuitka 的目标是减少 Python 模块加载与解释器启动开销，并通过编译报告继续裁剪
-无用依赖；它不保证对所有依赖都比 PyInstaller 快，因此迁移必须以基准结果为准。主
-Server 先迁移，AI Sidecar 因 ONNX Runtime、RapidOCR、OpenCV 等原生依赖较多，需在
-三个原生 CI runner 分别通过冷启动和推理回归后再切换。若某平台未达标，仅该平台临时
-回退到 PyInstaller onedir。
+选择 PyInstaller onedir 的原因是：工具链稳定、跨平台一致、CI 构建快（分钟级），
+且 `app/core/paths.py` 已通过 `sys._MEIPASS` 锚定只读资源路径，与 onedir 解包目录
+天然吻合。早期评估过 Nuitka standalone 以减少模块加载与解释器启动开销，但其在 CI 上
+需要 Scons 调用本机 C 编译器逐文件编译，三平台单次构建耗时近 1 小时，而桌面冷启动
+收益未达门槛，故不作为默认链路；如后续基准表明某平台收益明显，可再单独评估。
 
 不采用以下方案作为近期主线：
 
@@ -410,7 +410,7 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 
 ```text
 pnpm build (website)
-  -> Nuitka standalone (server sidecar)
+  -> PyInstaller onedir (server sidecar)
   -> 按 Tauri target triple 重命名/暂存 externalBin
   -> cargo tauri build
   -> NSIS / DMG / AppImage / DEB
@@ -418,7 +418,7 @@ pnpm build (website)
 
 Tauri Sidecar 文件名需要纳入 target triple，构建脚本不得直接复制固定名称的
 `trailsnap-server.exe`。Windows、macOS 和 Linux 继续使用各自原生 runner 构建；不把
-原生 Python 依赖或 Nuitka 产物跨平台复用。
+原生 Python 依赖或 PyInstaller 产物跨平台复用。
 
 公开分发前需要 Windows 代码签名。否则 SmartScreen 和杀毒软件会显著影响用户信任，Python 打包产物、多进程启动和自更新程序也更容易触发误报。
 
@@ -464,16 +464,15 @@ Tauri Sidecar 文件名需要纳入 target triple，构建脚本不得直接复�
 
 预估：4～7 个开发日。
 
-### 阶段 0.5：Nuitka Sidecar 迁移与启动裁剪
+### 阶段 0.5：Sidecar 打包工具选型与启动裁剪
 
-- 主 Server 改用 Nuitka standalone，生成编译报告并维护显式 include/exclude；
-- 增加 PyInstaller/Nuitka 冷启动、热启动、体积和内存对照基准；
+- 评估 Nuitka standalone 与 PyInstaller onedir 在冷启动、热启动、体积和内存上的对照基准；
+- 结论：Nuitka 的 Scons C 编译在 CI 上耗时近 1 小时，桌面冷启动收益未达门槛，主 Server 与 AI Sidecar 均回退并固定使用 PyInstaller onedir；
 - 将桌面模式不需要的 LangChain、Railway、模型和向量依赖移出启动导入链；
 - 将 worker 延迟到首页可操作后启动；
-- 三平台原生 CI 执行打包烟测、健康检查和优雅退出测试；
-- 达到门槛的平台切换到 Nuitka，未达到的平台记录原因并临时回退。
+- 三平台原生 CI 执行打包烟测、健康检查和优雅退出测试。
 
-预估：3～7 个开发日；AI Sidecar 的 Nuitka 迁移另计入阶段 2。
+预估：3～7 个开发日。
 
 ### 阶段 1：SQLite 桌面 Lite
 
@@ -504,8 +503,8 @@ Tauri Sidecar 文件名需要纳入 target triple，构建脚本不得直接复�
 - 再加入图片分类；
 - 完成模型下载、校验、版本和卸载管理；
 - 实现按需启动 AI Sidecar；
-- 在各平台验证 Nuitka standalone 对 ONNX Runtime、RapidOCR 和 OpenCV 的兼容性，
-  达标后替换 AI 扩展的 PyInstaller 构建；
+- 在各平台验证 PyInstaller onedir 对 ONNX Runtime、RapidOCR 和 OpenCV 的兼容性，
+  确保按需启动的 AI Sidecar 冷启动与推理回归达标；
 - 验证不同 Windows 机器和 CPU 环境。
 
 当前实现由桌面壳管理 AI 扩展：RapidOCR 随包提供的小型资源直接包含在运行时中，
@@ -564,7 +563,7 @@ AI 扩展应另行定义模型下载大小、首次推理时间、峰值内存�
 - Windows 优先；
 - Tauri 2 + NSIS；
 - Vue 静态资源由 Tauri 直接加载，应用窗口不等待 Python；
-- FastAPI 使用 Nuitka standalone 目录型 Sidecar，PyInstaller 仅作按平台回退；
+- FastAPI 使用 PyInstaller onedir 目录型 Sidecar；
 - Axios/SSE 使用 Tauri 提供的随机本地 API 地址和启动令牌；
 - 桌面 Lite 使用 SQLite WAL；
 - 服务端完整版继续使用 PostgreSQL + pgvector；
