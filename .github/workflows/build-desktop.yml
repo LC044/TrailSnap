@@ -110,6 +110,22 @@ jobs:
           mkdir -p package/desktop/server-dist
           cp -R package/server/dist/trailsnap-server package/desktop/server-dist/trailsnap-server
 
+      - name: Diagnose sidecar native libs (Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -x
+          echo "=== libgfortran in staged sidecar ==="
+          find package/desktop/server-dist/trailsnap-server -iname "libgfortran*" || true
+          echo "=== .libs dirs in staged sidecar ==="
+          find package/desktop/server-dist/trailsnap-server -type d -iname "*.libs" || true
+          echo "=== _dfitpack + its NEEDED libs ==="
+          DFP=$(find package/desktop/server-dist/trailsnap-server -iname "_dfitpack*" | head -1)
+          echo "_dfitpack: $DFP"
+          [ -n "$DFP" ] && objdump -p "$DFP" | grep NEEDED || true
+          echo "=== ldd on _dfitpack (shows unresolved) ==="
+          [ -n "$DFP" ] && ldd "$DFP" || true
+
       - name: Build Tauri 2 installer
         # Invoke `tauri` directly via `pnpm exec` so `--bundles` is consumed by
         # the Tauri CLI. Using `pnpm build -- --bundles ...` forwards the `--`
@@ -124,7 +140,11 @@ jobs:
         # tools extract to a temp dir and run from there, sidestepping FUSE.
         env:
           APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}
-        run: pnpm --dir package/desktop exec tauri build --bundles ${{ matrix.bundles }}
+          # Tauri's bundler hides linuxdeploy stderr by default, leaving only a
+          # generic "failed to run linuxdeploy". Surface the real error.
+          TAURI_BUNDLER_VERBOSE: '1'
+          LINUXDEPLOY_DEBUG: ${{ runner.os == 'Linux' && '1' || '' }}
+        run: pnpm --dir package/desktop exec tauri build --verbose --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
