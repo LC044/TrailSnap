@@ -122,9 +122,15 @@ jobs:
         # installed, so those tools cannot mount themselves and Tauri aborts with
         # "failed to run linuxdeploy". APPIMAGE_EXTRACT_AND_RUN=1 makes AppImage
         # tools extract to a temp dir and run from there, sidestepping FUSE.
+        #
+        # TAURI_BUNDLER_VERBOSE + --verbose + LINUXDEPLOY_DEBUG surface the real
+        # linuxdeploy stderr that Tauri otherwise swallows behind that generic
+        # message, so we can see the actual failure cause.
         env:
           APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}
-        run: pnpm --dir package/desktop exec tauri build --bundles ${{ matrix.bundles }}
+          TAURI_BUNDLER_VERBOSE: '1'
+          LINUXDEPLOY_DEBUG: ${{ runner.os == 'Linux' && '1' || '' }}
+        run: pnpm --dir package/desktop exec tauri build --verbose --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
