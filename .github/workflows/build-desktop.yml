@@ -115,6 +115,15 @@ jobs:
         # the Tauri CLI. Using `pnpm build -- --bundles ...` forwards the `--`
         # separator into `tauri build -- --bundles ...`, which makes Tauri pass
         # `--bundles` down to `cargo build` (cargo rejects it; suggests --benches).
+        #
+        # On Linux, AppImage bundling runs linuxdeploy and
+        # linuxdeploy-plugin-appimage, which are themselves AppImages. GitHub's
+        # ubuntu-latest runner has no usable /dev/fuse even with libfuse2
+        # installed, so those tools cannot mount themselves and Tauri aborts with
+        # "failed to run linuxdeploy". APPIMAGE_EXTRACT_AND_RUN=1 makes AppImage
+        # tools extract to a temp dir and run from there, sidestepping FUSE.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}
         run: pnpm --dir package/desktop exec tauri build --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifact
