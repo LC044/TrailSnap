@@ -118,7 +118,7 @@ docker compose --env-file .env restart
 
 ### 手动部署
 
-如果你更倾向于手动配置，或是在 NAS 等特殊环境下部署，可以阅读[Docker部署](/docs/guide/docker)。
+如果你更倾向于手动配置，或是在 NAS 等特殊环境下部署，可以阅读[Docker部署](/docs/guide/docker/)。
 
 #### 注意事项
 
