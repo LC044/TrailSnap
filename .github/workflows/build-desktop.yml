@@ -72,7 +72,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          # libfuse2 is required to run linuxdeploy / linuxdeploy-plugin-appimage
+          # (both are AppImages) during AppImage bundling. ubuntu-latest (24.04)
+          # no longer ships libfuse2 preinstalled, which makes Tauri abort with
+          # "failed to run linuxdeploy".
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2
 
       - name: Set up Python
         uses: actions/setup-python@v5
