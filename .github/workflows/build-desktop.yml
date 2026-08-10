@@ -126,6 +126,21 @@ jobs:
           echo "=== ldd on _dfitpack (shows unresolved) ==="
           [ -n "$DFP" ] && ldd "$DFP" || true
 
+      - name: Expose sidecar .libs to linuxdeploy (Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          # scipy / numpy / opencv ship hash-suffixed Fortran/BLAS libraries
+          # (libgfortran-<hash>.so, libscipy_openblas64_-<hash>.so) inside
+          # <pkg>.libs/ directories, which the extension modules locate via
+          # $ORIGIN-relative RUNPATHs. linuxdeploy usually honors $ORIGIN, but
+          # some bundled versions fail to expand it and abort with
+          # "Could not find dependency: libgfortran-<hash>.so". Exposing every
+          # .libs dir via LD_LIBRARY_PATH gives linuxdeploy an absolute-path
+          # fallback resolver so the AppImage build never trips on these libs.
+          libs=$(find package/desktop/server-dist/trailsnap-server -type d -name '*.libs' -printf '%p:' 2>/dev/null)
+          echo "LD_LIBRARY_PATH=${libs}${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+
       - name: Build Tauri 2 installer
         # Invoke `tauri` directly via `pnpm exec` so `--bundles` is consumed by
         # the Tauri CLI. Using `pnpm build -- --bundles ...` forwards the `--`
