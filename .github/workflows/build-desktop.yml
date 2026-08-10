@@ -107,7 +107,11 @@ jobs:
           cp -R package/server/dist/trailsnap-server package/desktop/server-dist/trailsnap-server
 
       - name: Build Tauri 2 installer
-        run: pnpm --dir package/desktop build -- --bundles ${{ matrix.bundles }}
+        # Invoke `tauri` directly via `pnpm exec` so `--bundles` is consumed by
+        # the Tauri CLI. Using `pnpm build -- --bundles ...` forwards the `--`
+        # separator into `tauri build -- --bundles ...`, which makes Tauri pass
+        # `--bundles` down to `cargo build` (cargo rejects it; suggests --benches).
+        run: pnpm --dir package/desktop exec tauri build --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
