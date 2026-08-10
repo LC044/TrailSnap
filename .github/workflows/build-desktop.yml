@@ -125,21 +125,34 @@ jobs:
           [ -n "$DFP" ] && objdump -p "$DFP" | grep NEEDED || true
           echo "=== ldd on _dfitpack (shows unresolved) ==="
           [ -n "$DFP" ] && ldd "$DFP" || true
+          echo "=== libmvec in staged sidecar ==="
+          find package/desktop/server-dist/trailsnap-server -iname "libmvec*" || true
+          echo "=== libx265 + its NEEDED libs ==="
+          X265=$(find package/desktop/server-dist/trailsnap-server -iname "libx265*" | head -1)
+          echo "libx265: $X265"
+          [ -n "$X265" ] && objdump -p "$X265" | grep NEEDED || true
+          echo "=== top-level hash libs flattened into _internal/ ==="
+          find package/desktop/server-dist/trailsnap-server/_internal -maxdepth 1 -name 'lib*-*.so*' | head -40 || true
 
-      - name: Expose sidecar .libs to linuxdeploy (Linux only)
+      - name: Expose sidecar vendored libs to linuxdeploy (Linux only)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          # scipy / numpy / opencv ship hash-suffixed Fortran/BLAS libraries
-          # (libgfortran-<hash>.so, libscipy_openblas64_-<hash>.so) inside
-          # <pkg>.libs/ directories, which the extension modules locate via
-          # $ORIGIN-relative RUNPATHs. linuxdeploy usually honors $ORIGIN, but
-          # some bundled versions fail to expand it and abort with
-          # "Could not find dependency: libgfortran-<hash>.so". Exposing every
-          # .libs dir via LD_LIBRARY_PATH gives linuxdeploy an absolute-path
-          # fallback resolver so the AppImage build never trips on these libs.
-          libs=$(find package/desktop/server-dist/trailsnap-server -type d -name '*.libs' -printf '%p:' 2>/dev/null)
+          # PyInstaller scatters hash-suffixed vendored libraries
+          # (libgfortran-<hash>.so, libmvec-<hash>.so, libx265-<hash>.so,
+          # libscipy_openblas64_-<hash>.so, ...) across the _internal/ tree:
+          # some live in <pkg>.libs/ subdirs, many are flattened to the
+          # _internal/ top level. Extension modules locate them via
+          # $ORIGIN-relative RUNPATHs, but linuxdeploy's $ORIGIN expansion is
+          # unreliable across nested paths and it aborts with
+          # "Could not find dependency: lib<name>-<hash>.so" the moment a
+          # dependent ELF's $ORIGIN doesn't point at the dir holding the lib.
+          # Expose EVERY directory under _internal/ via LD_LIBRARY_PATH so
+          # linuxdeploy's ldd-based resolver has an absolute-path fallback
+          # regardless of where PyInstaller placed each vendored lib.
+          libs=$(find package/desktop/server-dist/trailsnap-server/_internal -type d -printf '%p:' 2>/dev/null)
           echo "LD_LIBRARY_PATH=${libs}${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+          echo "Added $(find package/desktop/server-dist/trailsnap-server/_internal -type d | wc -l) dirs under _internal/ to LD_LIBRARY_PATH"
 
       - name: Build Tauri 2 installer
         # Invoke `tauri` directly via `pnpm exec` so `--bundles` is consumed by
