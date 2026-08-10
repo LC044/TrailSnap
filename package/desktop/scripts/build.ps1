@@ -19,7 +19,7 @@ if (-not $SkipInstall) {
 pnpm --dir $websiteDir build
 Push-Location $serverDir
 try {
-    uv run pyinstaller --noconfirm --clean desktop_server.spec
+    uv run python scripts/build_desktop_runtime.py
 }
 finally {
     Pop-Location
@@ -38,4 +38,4 @@ if (Test-Path -LiteralPath $sidecarTarget) {
 New-Item -ItemType Directory -Path (Split-Path $sidecarTarget) -Force | Out-Null
 Copy-Item -LiteralPath $sidecarSource -Destination $sidecarTarget -Recurse
 
-pnpm --dir $desktopDir dist
+pnpm --dir $desktopDir build

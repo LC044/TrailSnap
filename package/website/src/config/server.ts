@@ -7,7 +7,8 @@ const LEGACY_STORAGE_KEY = 'trailsnap:server-url'
 let configuredServerUrl = ''
 let initialized = false
 
-export const isNativeApp = () => Capacitor.isNativePlatform()
+export const isTauriApp = () => '__TAURI_INTERNALS__' in window
+export const isNativeApp = () => Capacitor.isNativePlatform() || isTauriApp()
 
 export function normalizeServerUrl(value: string): string {
   let candidate = value.trim()
@@ -26,6 +27,20 @@ export function normalizeServerUrl(value: string): string {
 
 export async function initializeServerConfig(): Promise<void> {
   if (initialized) return
+  if (isTauriApp()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    const deadline = Date.now() + 10_000
+    while (Date.now() < deadline) {
+      const status = await invoke<{ apiUrl: string }>('desktop_runtime_status')
+      if (status.apiUrl) {
+        configuredServerUrl = normalizeServerUrl(status.apiUrl)
+        initialized = true
+        return
+      }
+      await new Promise(resolve => window.setTimeout(resolve, 50))
+    }
+    throw new Error('Tauri 本地服务未能分配运行端口')
+  }
   let saved = ''
   try {
     saved = (await Preferences.get({ key: SERVER_URL_KEY })).value || ''

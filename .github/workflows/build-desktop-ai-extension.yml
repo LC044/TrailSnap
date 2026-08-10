@@ -6,7 +6,7 @@ on:
     branches: ["master"]
     paths:
       - 'package/ai/**'
-      - 'package/desktop/src/ai-*'
+      - 'package/desktop/src-tauri/**'
       - '.github/workflows/build-desktop-ai-extension.yml'
   push:
     tags: ["v*.*.*"]
@@ -43,9 +43,9 @@ jobs:
       - name: Prepare bundled RapidOCR resources
         working-directory: package/ai
         run: uv run python -c "from app.services.ocr_service import load_paddleocr_model; load_paddleocr_model()"
-      - name: Freeze AI sidecar
+      - name: Compile AI sidecar
         working-directory: package/ai
-        run: uv run pyinstaller --noconfirm --clean desktop_ai.spec
+        run: uv run python scripts/build_desktop_runtime.py
       - name: Assemble runtime extension
         working-directory: package/ai
         run: uv run python scripts/build_desktop_extension.py --platform-key ${{ matrix.platform }} --version ${{ env.EXTENSION_VERSION }}

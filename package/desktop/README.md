@@ -1,42 +1,37 @@
-# TrailSnap Desktop（阶段 0 + 阶段 2 AI 扩展）
+# TrailSnap Desktop（Tauri 2）
 
-桌面原型使用 Electron 管理 FastAPI sidecar，并通过随机本地端口同源提供 Vue 页面和
-`/api` 反向代理。当前阶段仍依赖 PostgreSQL，尚未包含阶段 1 的 SQLite 改造。
+桌面应用使用 Tauri 2 管理 Nuitka standalone 打包的 FastAPI Sidecar。Vue 构建产物
+直接内嵌到 WebView，Rust 在后台选择随机本地端口、启动后端、执行健康检查，并在退出
+时清理后端进程树。当前阶段仍依赖 PostgreSQL，尚未包含 SQLite Lite 改造。
 
 ## Windows 本地构建
 
+需要预先安装 Node.js/pnpm、Python/uv、Rust stable，以及 Tauri 对应平台的系统依赖。
 在仓库根目录执行：
 
 ```powershell
 pwsh .\package\desktop\scripts\build.ps1
 ```
 
-安装包输出到 `package/desktop/dist/TrailSnap-*-Setup.exe`。默认数据库地址为
-`postgresql://trailsnap:trailsnap@127.0.0.1:5532/trailsnap`，首次启动会生成
-`%LOCALAPPDATA%\TrailSnap\data\.env`，也可通过 `TS_DB_URL` / `DB_URL` 和
-`RAILWAY_DB_URL` 环境变量覆盖。运行日志位于
-`%LOCALAPPDATA%\TrailSnap\logs`，持久数据位于 `%LOCALAPPDATA%\TrailSnap\data`。
+构建脚本依次完成 Vue 构建、Nuitka Server 编译、Sidecar 暂存和 `tauri build`。
+Windows NSIS 安装包位于：
 
-阶段 0 的应用安装包不会安装 PostgreSQL；可复用仓库 `docker-compose.yml` 中的
-PostgreSQL 服务。GitHub Actions 会在三个原生 runner 上分别构建 Windows NSIS、
-macOS DMG，以及 Linux AppImage/DEB。
+```text
+package/desktop/src-tauri/target/release/bundle/nsis/
+```
 
-## AI 扩展包
+默认数据库地址为
+`postgresql://trailsnap:trailsnap@127.0.0.1:5532/trailsnap`。首次启动会生成
+`%LOCALAPPDATA%\TrailSnap\data\.env`；运行日志位于同级 `logs` 目录。
+阶段 0 安装包不会安装 PostgreSQL，可复用仓库 Docker Compose 中的 PostgreSQL。
 
-基础安装包不包含 AI 运行时。AI 扩展包内置 RapidOCR 随包提供的小型资源；图片
-分类和票据识别模型在运行时直接从 ModelScope 下载到
-`%LOCALAPPDATA%\TrailSnap\models`。桌面设置中心的
-“AI 扩展包”支持：
+GitHub Actions 在 Windows、macOS 和 Linux 原生 runner 上分别编译 Nuitka Sidecar 与
+Tauri 安装包，产出 NSIS、DMG、AppImage 和 DEB。
 
-- 在线下载、SHA-256 校验、进度显示、暂停和断点续传；
-- `.tar.gz` 扩展包离线导入与平台校验；
-- 独立安装或卸载运行时，模型与 PostgreSQL 分析结果均不会随之删除；
-- 通过 Server 鉴权接口查看、下载、重试和删除 AI 模型；
-- OCR、票据识别、图片分类首次请求时启动 AI Sidecar；
-- 空闲 10 分钟自动退出，关闭桌面应用时清理整个进程树。
+## 当前迁移边界
 
-扩展清单默认从当前版本对应的 GitHub Release 读取，也可通过
-`TS_AI_EXTENSION_CATALOG_URL` 指向镜像源。GitHub workflow
-`build-desktop-ai-extension.yml` 在 Windows、macOS 和 Linux 原生 runner 上分别构建
-CPU 扩展，并在版本标签发布时生成带精确版本、大小和 SHA-256 的
-`ai-extensions.json`。ModelScope 模型不再重复制作 GitHub Release 资源包。
+Electron 时代由 Node 主进程实现的 AI 扩展下载、离线导入和本地 AI Gateway 尚未迁移
+到 Rust，因此本轮 Tauri 构建先验证基础 Server、Vue 页面、API/SSE 和进程生命周期。
+AI 运行时已经切换为 Nuitka 构建，但需要完成 Rust 扩展管理器后才重新接入桌面设置页。
+
+该边界不影响服务端完整版的远程 AI 配置，也不改变已有 AI 模型与数据库数据。

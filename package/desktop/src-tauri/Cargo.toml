@@ -1,0 +1,19 @@
+[package]
+name = "trailsnap-desktop"
+version = "0.9.2"
+description = "TrailSnap desktop shell"
+authors = ["SiYuan <sixyuan044@gmail.com>"]
+edition = "2021"
+
+[lib]
+name = "trailsnap_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2", features = [] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tokio = { version = "1", features = ["time"] }

@@ -1,8 +1,8 @@
 # TrailSnap 桌面安装包技术路线
 
-> 文档状态：初步可行性方案
+> 文档状态：技术选型已确认，待按阶段实施
 >
-> 更新时间：2026-08-09
+> 更新时间：2026-08-10
 >
 > 适用范围：Windows 优先，后续评估 macOS 与 Linux
 
@@ -38,6 +38,11 @@ TrailSnap 打包成桌面安装包在技术上可行，生成安装包本身不�
 
 推荐的长期方案是“同一套业务代码 + 两种运行配置”，而不是彻底将整个项目迁移到 SQLite。
 
+桌面壳技术选型不再保留 Electron 过渡方案，统一采用 **Tauri 2**。Python Sidecar
+打包从 PyInstaller 迁移到 **Nuitka standalone（目录模式）**，先迁移主 Server，再迁移
+AI 扩展；PyInstaller 仅在某个平台或原生依赖尚未通过兼容性验证时作为临时回退，不再
+作为默认发布链路。
+
 ## 3. 路线对比
 
 | 路线 | 数据库形态 | 改造量 | 用户体验 | 功能完整度 | 适用阶段 |
@@ -69,47 +74,71 @@ TrailSnap 打包成桌面安装包在技术上可行，生成安装包本身不�
 
 ```mermaid
 flowchart LR
-    Shell["Tauri 桌面壳"] --> UI["Vue 前端"]
-    Shell --> Server["FastAPI Server Sidecar"]
+    Shell["Tauri 2 / Rust 桌面壳"] --> UI["内嵌 Vue 静态资源"]
+    Shell --> Bootstrap["启动状态与运行时配置"]
+    Bootstrap --> Server["Nuitka FastAPI Server Sidecar"]
     Server --> DB["SQLite 主数据库"]
     Server --> Files["照片、缩略图与缓存"]
-    Server -.按需启动.-> AI["AI Service Sidecar"]
+    Server -.按需请求.-> Gateway["Rust AI Gateway"]
+    Gateway -.首次调用再启动.-> AI["Nuitka AI Sidecar"]
     AI -.可选.-> Vector["本地向量索引"]
 ```
 
 ### 4.1 桌面壳
 
-长期推荐使用 Tauri 2：
+桌面壳固定使用 Tauri 2，不再维护 Electron 构建产物：
 
 - 可以直接复用现有 Vue/Vite 前端；
 - Windows 可生成 NSIS Setup 或 MSI；
 - 默认使用系统 WebView2，桌面壳本身体积较小；
-- 支持将 FastAPI 打包产物作为 Sidecar 管理；
+- 使用 Tauri Sidecar 管理 FastAPI 打包产物，并由 Rust 层持有子进程句柄；
 - 后续可以接入系统托盘、文件选择器、自动更新和原生菜单。
 
-如果目标是尽快得到第一个可安装原型，可以先使用 Electron Forge。Electron 对 Node.js 子进程管理更直接，但会随应用分发 Chromium，基础安装包和运行内存更大。由于完整 AI 包本身可能远大于桌面壳，最终仍应通过实际构建结果决定 Tauri 与 Electron，而不是只比较壳层体积。
+现有 `package/desktop/src/*.cjs` 中的进程管理、本地 HTTP 代理、AI 扩展管理和下载逻辑
+需要迁移到 `package/desktop/src-tauri/`。迁移完成后删除 Electron、electron-builder 及其
+Node 主进程代码，避免同时维护两套生命周期实现。Vue 前端仍由 pnpm/Vite 构建；Rust
+只承担桌面能力和本地进程编排。
 
 ### 4.2 前端加载方式
 
-现有前端大量使用 `/api/*` 相对地址，开发模式由 Vite 将 `/api` 重写到 FastAPI。桌面版不宜直接用 `file://` 打开构建后的 `index.html`，否则会遇到 API 地址、SSE、跨域和前端路由刷新问题。
+Vue 构建产物直接作为 Tauri `frontendDist` 内嵌，不再由 Node HTTP Server 或 FastAPI
+提供。这样 Tauri 窗口可以在 Python 启动前显示，路由刷新也由 Tauri 的资源协议处理，
+不会因为后端尚未就绪而出现白屏。
 
-推荐由本地 Server 同时提供：
+现有 `/api/*` 相对地址需要集中改为桌面运行时 API 基址：
 
-- Vue 构建后的静态文件；
-- `/api` 到现有 FastAPI 路由的同源入口；
-- Vue Router 的 history fallback；
-- 媒体文件、缩略图和 SSE 接口。
+1. Rust 选择随机空闲端口并生成一次性启动令牌；
+2. Tauri 立即显示 Vue 启动页，同时异步启动 Server Sidecar；
+3. Rust 通过 command/event 向前端提供 `http://127.0.0.1:<port>` 和启动状态；
+4. Axios 实例统一切换 `baseURL`，SSE 客户端使用同一运行时基址；
+5. 健康检查成功后解除页面只读/加载状态，失败时直接显示日志与重试入口。
 
-桌面壳启动时先选择空闲本地端口，生成一次性启动令牌，启动 Server，等待健康检查通过，再加载本地页面。Server 仅监听 `127.0.0.1`，不监听 `0.0.0.0`。
+FastAPI 仅监听 `127.0.0.1`，校验随机令牌、`Host` 和允许的 Tauri Origin。生产构建
+禁止前端直接调用任意 shell 命令；Sidecar 启动、终止和外部链接打开只通过最小权限的
+Rust command 暴露。
 
 ### 4.3 Python Sidecar
 
-主后端推荐使用 PyInstaller 或 Nuitka 打包。首选目录模式而不是单文件模式，原因是：
+默认采用 Nuitka `--mode=standalone` 生成目录型 Sidecar，不采用 onefile。目录模式的
+原因是：
 
 - Python 原生扩展和动态库较多；
-- 单文件模式每次启动需要解压，启动较慢；
+- 单文件模式需要自解压或缓存展开，会引入额外启动路径；
 - ONNX、OpenCV、Pillow、HEIF 等依赖的动态库定位更难；
 - 目录模式更利于增量升级和问题诊断。
+
+选择 Nuitka 的目标是减少 Python 模块加载与解释器启动开销，并通过编译报告继续裁剪
+无用依赖；它不保证对所有依赖都比 PyInstaller 快，因此迁移必须以基准结果为准。主
+Server 先迁移，AI Sidecar 因 ONNX Runtime、RapidOCR、OpenCV 等原生依赖较多，需在
+三个原生 CI runner 分别通过冷启动和推理回归后再切换。若某平台未达标，仅该平台临时
+回退到 PyInstaller onedir。
+
+不采用以下方案作为近期主线：
+
+- PyOxidizer：对大型动态依赖和原生扩展的适配、排障与维护成本高；
+- PEX/Shiv/zipapp：目标机仍需兼容 Python 运行时，不满足零依赖安装；
+- 将 FastAPI 全量重写为 Rust：运行效率最高，但改造范围远超桌面打包，应只考虑逐步
+  下沉启动编排、静态资源、下载、校验和本地代理等壳层职责。
 
 桌面壳需要负责：
 
@@ -119,6 +148,57 @@ flowchart LR
 4. 应用退出时通知 Server 优雅停止；
 5. 超时后再终止遗留 worker 和 AI 进程；
 6. 检测上次异常退出并恢复未完成任务。
+
+### 4.4 启动链路优化
+
+当前 Electron 实现先启动 Server、等待健康检查，再创建窗口，Python 冷启动时间完全
+阻塞首屏。Tauri 迁移后的启动链路调整为：
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant T as Tauri 2
+    participant V as Vue 启动页
+    participant S as Server Sidecar
+    U->>T: 启动应用
+    T->>V: 立即创建并显示窗口
+    par 后台启动
+        T->>S: 启动 Sidecar
+        T->>S: 轮询 /health-check
+    and 前端渲染
+        V->>V: 加载主题、基础布局和启动状态
+    end
+    S-->>T: ready
+    T-->>V: server-ready(port, token)
+    V->>S: 加载业务数据
+```
+
+后端还需配套执行以下优化：
+
+- 将 `desktop_entry.py` 顶层保持为最小依赖，解析参数后再导入 Uvicorn 和应用；
+- 为桌面模式增加轻量 bootstrap lifespan，避免启动阶段导入 LangChain、OpenAI、
+  Railway 和未启用的 AI/向量模块；
+- worker 在 UI 可操作后再启动，或在首个后台任务创建时懒启动；
+- 数据库迁移与基础配置检查保留为阻塞任务，但通过 Tauri event 持续报告阶段和进度；
+- AI Sidecar 继续只在首次 AI 请求时启动，不参与基础应用冷启动；
+- 禁止在启动路径执行模型下载、网络版本检查或扩展清单同步，这些操作全部后台化；
+- Windows 发布包预热阶段记录杀毒软件扫描影响，避免把签名缺失导致的延迟误判为
+  Python 启动性能。
+
+### 4.5 基准与回退门槛
+
+同一台干净 Windows 测试机连续执行至少 10 次冷启动和 20 次热启动，分别记录：
+
+- `T0`：进程创建；
+- `T1`：窗口可见且启动页完成首帧；
+- `T2`：Server 健康检查成功；
+- `T3`：照片首页完成首个可交互数据请求；
+- 安装包大小、安装后体积、空闲内存和残留进程数。
+
+Nuitka 只有在目标平台满足以下条件时替代 PyInstaller：功能回归全部通过，`T2` 的冷
+启动 P50 至少改善 20% 或 P95 至少改善 15%，且安装后体积不增加超过 20%。如果收益
+不足，仍保留 Tauri 的即时首屏和懒加载优化，因为这两项通常比更换冻结工具更直接地
+改善用户感知速度。
 
 ## 5. SQLite 迁移范围
 
@@ -326,6 +406,20 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 - 安装包只包含 CPU 基础运行时；
 - GPU/OpenVINO 作为后续高级选项。
 
+构建链路统一为：
+
+```text
+pnpm build (website)
+  -> Nuitka standalone (server sidecar)
+  -> 按 Tauri target triple 重命名/暂存 externalBin
+  -> cargo tauri build
+  -> NSIS / DMG / AppImage / DEB
+```
+
+Tauri Sidecar 文件名需要纳入 target triple，构建脚本不得直接复制固定名称的
+`trailsnap-server.exe`。Windows、macOS 和 Linux 继续使用各自原生 runner 构建；不把
+原生 Python 依赖或 Nuitka 产物跨平台复用。
+
 公开分发前需要 Windows 代码签名。否则 SmartScreen 和杀毒软件会显著影响用户信任，Python 打包产物、多进程启动和自更新程序也更容易触发误报。
 
 自动更新需要分别处理：
@@ -355,19 +449,31 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 
 ## 12. 分阶段实施计划
 
-### 阶段 0：桌面壳技术验证
+### 阶段 0：Tauri 2 壳与启动性能基线
 
 目标：验证现有前端和服务可以在 Windows 安装包中运行。
 
-- 创建 Tauri 或 Electron 最小壳；
-- 打包 Vue 前端；
-- 打包并启动 FastAPI Server；
+- 创建 Tauri 2 壳并移除 Electron 二选一；
+- 将 Vue 构建产物直接内嵌为 `frontendDist`；
+- 保留现有 PyInstaller Sidecar，先测得迁移前启动基线；
+- 实现窗口即时显示、启动状态事件和运行时 API 基址；
 - 暂时连接现有 PostgreSQL；
 - 验证 `/api`、SSE、媒体预览和 Vue Router；
 - 验证进程退出、日志、端口冲突和崩溃恢复；
 - 生成未签名 NSIS 测试安装包。
 
-预估：2～4 个开发日。
+预估：4～7 个开发日。
+
+### 阶段 0.5：Nuitka Sidecar 迁移与启动裁剪
+
+- 主 Server 改用 Nuitka standalone，生成编译报告并维护显式 include/exclude；
+- 增加 PyInstaller/Nuitka 冷启动、热启动、体积和内存对照基准；
+- 将桌面模式不需要的 LangChain、Railway、模型和向量依赖移出启动导入链；
+- 将 worker 延迟到首页可操作后启动；
+- 三平台原生 CI 执行打包烟测、健康检查和优雅退出测试；
+- 达到门槛的平台切换到 Nuitka，未达到的平台记录原因并临时回退。
+
+预估：3～7 个开发日；AI Sidecar 的 Nuitka 迁移另计入阶段 2。
 
 ### 阶段 1：SQLite 桌面 Lite
 
@@ -398,6 +504,8 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 - 再加入图片分类；
 - 完成模型下载、校验、版本和卸载管理；
 - 实现按需启动 AI Sidecar；
+- 在各平台验证 Nuitka standalone 对 ONNX Runtime、RapidOCR 和 OpenCV 的兼容性，
+  达标后替换 AI 扩展的 PyInstaller 构建；
 - 验证不同 Windows 机器和 CPU 环境。
 
 当前实现由桌面壳管理 AI 扩展：RapidOCR 随包提供的小型资源直接包含在运行时中，
@@ -434,7 +542,10 @@ Windows 首版建议输出按用户安装的 NSIS `setup.exe`：
 桌面 Lite 首版至少满足：
 
 - 全新 Windows 环境无需安装 Docker、Python、Node.js 或 PostgreSQL；
-- 安装后可以在 30 秒内进入可操作界面；
+- 点击快捷方式后，窗口首帧 P50 不超过 1.5 秒、P95 不超过 3 秒；
+- Server 健康检查冷启动 P50 不超过 5 秒、P95 不超过 8 秒；
+- 安装后最迟 10 秒进入可操作界面；数据库首次迁移等一次性任务需单独显示进度，
+  不计入日常冷启动指标；
 - 可以选择照片目录、完成扫描并浏览缩略图；
 - 退出应用后不遗留 Server、worker 或 AI 进程；
 - 应用升级不丢失数据库和照片目录配置；
@@ -448,23 +559,31 @@ AI 扩展应另行定义模型下载大小、首次推理时间、峰值内存�
 
 ## 14. 近期决策建议
 
-在开始正式编码前，先完成阶段 0，并通过原型回答以下问题：
-
-1. 使用 Tauri 还是 Electron；
-2. Vue 静态资源由桌面壳加载，还是由 FastAPI 统一提供；
-3. PyInstaller 与 Nuitka 哪个对现有依赖更稳定；
-4. Windows 基础安装包的实际体积和首次启动时间；
-5. Server 和 worker 能否在打包环境中稳定退出；
-6. 是否将 SQLite Lite 定义为独立产品配置；
-7. 首版是否完全不包含 AI，还是内置一个最小 OCR 能力。
-
-当前推荐默认决策为：
+当前确认的默认决策为：
 
 - Windows 优先；
 - Tauri 2 + NSIS；
-- FastAPI 目录型 Sidecar；
-- FastAPI 统一提供前端和 API；
+- Vue 静态资源由 Tauri 直接加载，应用窗口不等待 Python；
+- FastAPI 使用 Nuitka standalone 目录型 Sidecar，PyInstaller 仅作按平台回退；
+- Axios/SSE 使用 Tauri 提供的随机本地 API 地址和启动令牌；
 - 桌面 Lite 使用 SQLite WAL；
 - 服务端完整版继续使用 PostgreSQL + pgvector；
 - 首版关闭向量、Agent、Railway 和重型 AI；
-- AI 模型独立下载和升级。
+- AI 模型独立下载和升级，AI Sidecar 按需启动；
+- 是否切换某个平台的冻结工具，以可重复的启动基准和兼容性测试为准。
+
+仍需通过原型量化而不是继续讨论选型的问题：
+
+1. Windows 基础安装包和安装后目录的实际体积；
+2. PyInstaller 与 Nuitka 在 Server/AI 两类依赖上的冷、热启动差异；
+3. Server 和 worker 在 Tauri 管理下能否稳定优雅退出；
+4. SQLite 首次迁移和大照片库初始化对 `T3` 的影响；
+5. 首版是否预装最小 OCR 资源，或完全通过 AI 扩展下载。
+
+## 15. 实施参考
+
+- [Tauri 2 Shell 与 Sidecar](https://v2.tauri.app/plugin/shell/)
+- [Tauri 2 Vite 前端配置](https://v2.tauri.app/start/frontend/vite/)
+- [Tauri 2 Windows Installer](https://v2.tauri.app/distribute/windows-installer/)
+- [Tauri 2 Updater](https://v2.tauri.app/plugin/updater/)
+- [Nuitka standalone / onefile 官方手册](https://nuitka.net/user-documentation/user-manual.html)

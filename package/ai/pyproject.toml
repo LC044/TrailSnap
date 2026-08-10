@@ -39,6 +39,7 @@ dev = [
   "pytest-cov>=5.0",
 ]
 desktop = [
+  "nuitka>=4.0",
   "pyinstaller>=6.17.0",
   "psutil>=7.2.1",
 ]
