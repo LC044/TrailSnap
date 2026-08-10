@@ -33,12 +33,15 @@ jobs:
           - name: Windows
             os: windows-latest
             artifact: windows
+            bundles: nsis
           - name: macOS
             os: macos-latest
             artifact: macos
+            bundles: dmg
           - name: Linux
             os: ubuntu-latest
             artifact: linux
+            bundles: appimage,deb
     runs-on: ${{ matrix.os }}
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -104,7 +107,7 @@ jobs:
           cp -R package/server/dist/trailsnap-server package/desktop/server-dist/trailsnap-server
 
       - name: Build Tauri 2 installer
-        run: pnpm --dir package/desktop build
+        run: pnpm --dir package/desktop build -- --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
