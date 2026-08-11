@@ -136,7 +136,8 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
         data_dir.join("railway.sqlite").to_string_lossy().replace('\\', "/")
     );
 
-    let child = Command::new(&executable)
+    let mut command = Command::new(&executable);
+    command
         .args([
             "--port",
             &port.to_string(),
@@ -150,7 +151,10 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
         .env("RAILWAY_DB_URL", railway_database_url)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+    #[cfg(windows)]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    let child = command
         .spawn()
         .map_err(|error| format!("启动本地服务失败：{error}"))?;
     *app.state::<DesktopState>()

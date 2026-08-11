@@ -64,9 +64,9 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    # Electron starts the process with windowsHide and redirects both streams.
-    # Keeping a console-subsystem executable makes early import failures and
-    # PyInstaller multiprocessing diagnostics observable in server.err.log.
+    # Keep the console subsystem so redirected diagnostics remain available in
+    # server.err.log. The Tauri shell starts this executable with Windows'
+    # CREATE_NO_WINDOW flag, so no console is shown to the user.
     console=True,
 )
 

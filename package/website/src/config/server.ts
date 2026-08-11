@@ -33,6 +33,10 @@ export async function initializeServerConfig(): Promise<void> {
     const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
       const status = await invoke<{ apiUrl: string; sessionSecret: string; ready: boolean; phase: string; message?: string }>('desktop_runtime_status')
+      if (status.message) {
+        const startupMessage = document.querySelector<HTMLElement>('[data-startup-message]')
+        if (startupMessage) startupMessage.textContent = status.message
+      }
       if (status.apiUrl && status.ready) {
         configuredServerUrl = normalizeServerUrl(status.apiUrl)
         desktopSessionSecret = status.sessionSecret
