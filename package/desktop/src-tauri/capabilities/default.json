@@ -3,5 +3,5 @@
   "identifier": "main-capability",
   "description": "Minimal permissions for the TrailSnap main window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

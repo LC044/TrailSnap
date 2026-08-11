@@ -1,4 +1,10 @@
+mod ai_extension;
+mod ai_gateway;
+
+use ai_extension::AIExtensionManager;
+use ai_gateway::AIGateway;
 use serde::Serialize;
+use serde_json::{json, Value};
 use std::{
     fs::{self, OpenOptions},
     net::TcpListener,
@@ -34,6 +40,77 @@ fn desktop_runtime_status(state: tauri::State<'_, DesktopState>) -> RuntimeStatu
         .clone()
 }
 
+fn extension_snapshot(manager: &AIExtensionManager, gateway: &AIGateway) -> Value {
+    let mut snapshot = manager.list();
+    snapshot["gateway"] = gateway.status();
+    snapshot
+}
+
+#[tauri::command]
+fn ai_extension_list(
+    manager: tauri::State<'_, AIExtensionManager>,
+    gateway: tauri::State<'_, AIGateway>,
+) -> Value {
+    extension_snapshot(&manager, &gateway)
+}
+
+#[tauri::command]
+async fn ai_extension_refresh(
+    manager: tauri::State<'_, AIExtensionManager>,
+    gateway: tauri::State<'_, AIGateway>,
+) -> Result<Value, String> {
+    let _ = manager.refresh_catalog().await;
+    Ok(extension_snapshot(&manager, &gateway))
+}
+
+#[tauri::command]
+fn ai_extension_install(
+    id: String,
+    manager: tauri::State<'_, AIExtensionManager>,
+    gateway: tauri::State<'_, AIGateway>,
+) -> Result<Value, String> {
+    gateway.stop_sidecar();
+    manager.start_install(&id)
+}
+
+#[tauri::command]
+fn ai_extension_pause(
+    id: String,
+    manager: tauri::State<'_, AIExtensionManager>,
+) -> Result<Value, String> {
+    manager.pause(&id)
+}
+
+#[tauri::command]
+fn ai_extension_retry(
+    id: String,
+    manager: tauri::State<'_, AIExtensionManager>,
+) -> Result<Value, String> {
+    manager.retry(&id)
+}
+
+#[tauri::command]
+fn ai_extension_import(
+    path: String,
+    manager: tauri::State<'_, AIExtensionManager>,
+    gateway: tauri::State<'_, AIGateway>,
+) -> Result<Value, String> {
+    gateway.stop_sidecar();
+    let installed = manager.import_archive(Path::new(&path))?;
+    Ok(json!({ "canceled": false, "installed": installed }))
+}
+
+#[tauri::command]
+fn ai_extension_uninstall(
+    id: String,
+    manager: tauri::State<'_, AIExtensionManager>,
+    gateway: tauri::State<'_, AIGateway>,
+) -> Result<Value, String> {
+    gateway.stop_sidecar();
+    manager.uninstall(&id)?;
+    Ok(json!({ "removed": true }))
+}
+
 fn reserve_port() -> Result<u16, String> {
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .map_err(|error| format!("无法分配本地端口：{error}"))?;
@@ -55,14 +132,14 @@ fn server_executable(resource_dir: &Path) -> PathBuf {
     resource_dir.join("server").join(name)
 }
 
-fn prepare_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+fn prepare_data_dir(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
     #[cfg(windows)]
     let root = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .map(|path| path.join("TrailSnap"))
         .ok_or_else(|| "无法读取 LOCALAPPDATA".to_string())?;
     #[cfg(not(windows))]
-    let root = app
+    let root = _app
         .path()
         .app_local_data_dir()
         .map_err(|error| format!("无法确定数据目录：{error}"))?;
@@ -98,7 +175,7 @@ fn update_status(app: &tauri::AppHandle, next: RuntimeStatus) {
     let _ = app.emit("desktop-runtime-status", next);
 }
 
-fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
+fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), String> {
     let port = reserve_port()?;
     let api_url = format!("http://127.0.0.1:{port}");
     update_status(
@@ -129,11 +206,17 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
     let stderr = log_file(log_dir.join("server.err.log"))?;
     let database_url = format!(
         "sqlite:///{}",
-        data_dir.join("trailsnap.sqlite").to_string_lossy().replace('\\', "/")
+        data_dir
+            .join("trailsnap.sqlite")
+            .to_string_lossy()
+            .replace('\\', "/")
     );
     let railway_database_url = format!(
         "sqlite:///{}",
-        data_dir.join("railway.sqlite").to_string_lossy().replace('\\', "/")
+        data_dir
+            .join("railway.sqlite")
+            .to_string_lossy()
+            .replace('\\', "/")
     );
 
     let mut command = Command::new(&executable);
@@ -149,6 +232,15 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
         .env("TS_DESKTOP", "1")
         .env("TS_DB_URL", database_url)
         .env("RAILWAY_DB_URL", railway_database_url)
+        .env(
+            "TS_DESKTOP_AI_GATEWAY",
+            format!("http://127.0.0.1:{ai_gateway_port}"),
+        )
+        .env(
+            "TS_AI_API_URL",
+            format!("http://127.0.0.1:{ai_gateway_port}"),
+        )
+        .env("AI_API_URL", format!("http://127.0.0.1:{ai_gateway_port}"))
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
@@ -236,12 +328,52 @@ use std::os::windows::process::CommandExt;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(DesktopState::default())
-        .invoke_handler(tauri::generate_handler![desktop_runtime_status])
+        .invoke_handler(tauri::generate_handler![
+            desktop_runtime_status,
+            ai_extension_list,
+            ai_extension_refresh,
+            ai_extension_install,
+            ai_extension_pause,
+            ai_extension_retry,
+            ai_extension_import,
+            ai_extension_uninstall,
+        ])
         .setup(|app| {
             let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                if let Err(message) = spawn_server(handle.clone()) {
+            let data_dir = prepare_data_dir(&handle).map_err(std::io::Error::other)?;
+            let app_root = data_dir
+                .parent()
+                .expect("desktop data directory has parent")
+                .to_path_buf();
+            let catalog_path = app
+                .path()
+                .resource_dir()
+                .map_err(|error| std::io::Error::other(format!("无法定位 AI 扩展清单：{error}")))?
+                .join("ai-extensions.json");
+            let catalog_url = std::env::var("TS_AI_EXTENSION_CATALOG_URL").unwrap_or_else(|_| {
+                format!(
+                    "https://github.com/LC044/TrailSnap/releases/download/v{}/ai-extensions.json",
+                    env!("CARGO_PKG_VERSION")
+                )
+            });
+            let manager = AIExtensionManager::initialize(&app_root, &catalog_path, catalog_url)
+                .map_err(std::io::Error::other)?;
+            let gateway = AIGateway::new(manager.clone(), app_root, std::process::id());
+            app.manage(manager.clone());
+            app.manage(gateway.clone());
+            tauri::async_runtime::spawn(async move {
+                let result = async {
+                    let gateway_port = gateway.listen().await?;
+                    let refresh_manager = manager.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = refresh_manager.refresh_catalog().await;
+                    });
+                    spawn_server(handle.clone(), gateway_port)
+                }
+                .await;
+                if let Err(message) = result {
                     update_status(
                         &handle,
                         RuntimeStatus {
@@ -261,6 +393,9 @@ pub fn run() {
 
     app.run(|app, event| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
+            if let Some(gateway) = app.try_state::<AIGateway>() {
+                gateway.stop_sidecar();
+            }
             stop_server(app);
         }
     });

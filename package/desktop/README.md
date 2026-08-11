@@ -34,11 +34,19 @@ SQLite Alembic 迁移并创建本地管理员。界面启动时会自动换取�
 GitHub Actions 在 Windows、macOS 和 Linux 原生 runner 上分别打包 PyInstaller Sidecar 与
 Tauri 安装包，产出 NSIS、DMG、AppImage 和 DEB。
 
+## AI 扩展包
+
+AI 运行时作为独立扩展包发布，不增加基础安装包体积。桌面设置页支持在线安装、断点续传、
+暂停/重试、SHA-256 校验、离线导入和卸载。Tauri 在本地启动固定生命周期的 AI Gateway，
+主 Server 始终连接 Gateway；OCR、票据识别或图片分类首次请求时才按需启动已安装的 AI
+Sidecar，空闲十分钟后自动退出。日志写入桌面数据目录下的 `logs/ai.log` 和
+`logs/ai.err.log`。
+
+在线安装依赖对应版本 GitHub Release 中的 `ai-extensions.json` 和平台扩展包。在预发布阶段，
+也可以从 GitHub Actions 下载 `.tar.gz` 扩展包，在设置页选择“离线导入”。
+
 ## 当前 SQLite 边界
 
-Electron 时代由 Node 主进程实现的 AI 扩展下载、离线导入和本地 AI Gateway 尚未迁移
-到 Rust。SQLite 首轮覆盖用户/认证、照片、相册、标签、元数据、任务和向量存储；
-PostgreSQL 专属统计查询需要逐项补充方言实现。
-AI 运行时已经切换为 PyInstaller 构建，但需要完成 Rust 扩展管理器后才重新接入桌面设置页。
-
-该边界不影响服务端完整版的远程 AI 配置，也不改变已有 AI 模型与数据库数据。
+SQLite 首轮覆盖用户/认证、照片、相册、标签、元数据、任务和向量存储；PostgreSQL 专属统计
+查询需要逐项补充方言实现。该边界不影响服务端完整版的远程 AI 配置，也不改变已有 AI 模型
+与数据库数据。

@@ -147,6 +147,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
+import { isTauriApp } from '@/config/server'
 
 const desktopAvailable = ref(true)
 const extensions = ref<any[]>([])
@@ -163,6 +164,16 @@ const statusLabels: Record<string, string> = { downloading: '下载中', paused:
 const modelStatusLabels: Record<string, string> = { pending: '未下载', downloading: '下载中', ready: '已就绪', failed: '下载失败' }
 
 async function desktopRequest(path: string, options?: RequestInit) {
+  if (isTauriApp()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    if (!path) return invoke('ai_extension_list')
+    if (path === '/refresh') return invoke('ai_extension_refresh')
+    const match = path.match(/^\/([^/]+)\/(install|pause|retry|uninstall)$/)
+    if (!match) throw new Error(`未知桌面扩展操作：${path}`)
+    const [, encodedId, action] = match
+    const command = `ai_extension_${action}`
+    return invoke(command, { id: decodeURIComponent(encodedId) })
+  }
   const response = await fetch(`/desktop-api/ai/extensions${path}`, {
     ...options,
     headers: { 'content-type': 'application/json', ...(options?.headers || {}) },
@@ -205,6 +216,22 @@ async function uninstall(id: string) {
 }
 async function importPackage() {
   try {
+    if (isTauriApp()) {
+      const [{ invoke }, { open }] = await Promise.all([
+        import('@tauri-apps/api/core'),
+        import('@tauri-apps/plugin-dialog'),
+      ])
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: 'TrailSnap AI 扩展包', extensions: ['gz', 'tgz'] }],
+      })
+      if (!selected) return
+      await invoke('ai_extension_import', { path: selected })
+      ElMessage.success('AI 扩展包导入成功')
+      await load()
+      return
+    }
     const result = await desktopRequest('/import', { method: 'POST', body: '{}' })
     if (!result.canceled) ElMessage.success('AI 扩展包导入成功')
     await load()

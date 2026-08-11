@@ -26,7 +26,8 @@
     "active": true,
     "targets": "all",
     "resources": {
-      "../server-dist/trailsnap-server": "server/"
+      "../server-dist/trailsnap-server": "server/",
+      "resources/ai-extensions.json": "ai-extensions.json"
     },
     "icon": [
       "icons/32x32.png",
