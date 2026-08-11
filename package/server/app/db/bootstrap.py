@@ -11,7 +11,8 @@ from app.core.security import get_password_hash
 from app.db.models.user import User
 
 DESKTOP_ADMIN_USERNAME = "desktop-admin"
-DESKTOP_ADMIN_EMAIL = "desktop@trailsnap.local"
+DESKTOP_ADMIN_EMAIL = "desktop@trailsnap.app"
+LEGACY_DESKTOP_ADMIN_EMAIL = "desktop@trailsnap.local"
 
 
 def is_desktop_mode() -> bool:
@@ -26,6 +27,14 @@ def ensure_desktop_admin(db: Session) -> User:
 
     user = db.query(User).filter(User.username == DESKTOP_ADMIN_USERNAME).first()
     if user:
+        # `.local` is a reserved domain and is rejected by Pydantic's EmailStr
+        # when `/users/me` serializes the desktop account. Repair databases
+        # created by early desktop builds during the normal startup bootstrap.
+        if user.email == LEGACY_DESKTOP_ADMIN_EMAIL:
+            user.email = DESKTOP_ADMIN_EMAIL
+            db.add(user)
+            db.commit()
+            db.refresh(user)
         return user
 
     user = User(

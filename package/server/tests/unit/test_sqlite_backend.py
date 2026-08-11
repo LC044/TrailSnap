@@ -10,10 +10,16 @@ from sqlalchemy.orm import sessionmaker
 import app.db.models  # noqa: F401
 from app.crud.crud_vector import search_similar_vectors
 from app.db.base import Base
-from app.db.bootstrap import ensure_desktop_admin
+from app.db.bootstrap import (
+    DESKTOP_ADMIN_EMAIL,
+    DESKTOP_ADMIN_USERNAME,
+    LEGACY_DESKTOP_ADMIN_EMAIL,
+    ensure_desktop_admin,
+)
 from app.db.models.image_vector import ImageVector
 from app.db.models.photo import FileType, Photo
 from app.db.models.user import User
+from app.schemas.user import UserResponse
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
@@ -82,7 +88,29 @@ def test_desktop_admin_is_created_once(sqlite_session, monkeypatch):
     second = ensure_desktop_admin(sqlite_session)
 
     assert first.id == second.id
+    assert first.email == DESKTOP_ADMIN_EMAIL
     assert first.is_superuser is True
+    assert UserResponse.model_validate(first).email == DESKTOP_ADMIN_EMAIL
+    assert sqlite_session.query(User).count() == 1
+
+
+def test_desktop_admin_repairs_legacy_reserved_email(sqlite_session, monkeypatch):
+    monkeypatch.setenv("TS_DESKTOP", "1")
+    legacy_user = User(
+        username=DESKTOP_ADMIN_USERNAME,
+        email=LEGACY_DESKTOP_ADMIN_EMAIL,
+        hashed_password="unused",
+        is_active=True,
+        is_superuser=True,
+    )
+    sqlite_session.add(legacy_user)
+    sqlite_session.commit()
+
+    user = ensure_desktop_admin(sqlite_session)
+
+    assert user.id == legacy_user.id
+    assert user.email == DESKTOP_ADMIN_EMAIL
+    assert UserResponse.model_validate(user).email == DESKTOP_ADMIN_EMAIL
     assert sqlite_session.query(User).count() == 1
 
 
