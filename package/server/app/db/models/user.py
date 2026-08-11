@@ -10,7 +10,7 @@
 """
 
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import UUID
 import uuid
 from app.db.base import Base
 

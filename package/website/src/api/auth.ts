@@ -1,4 +1,5 @@
 import request from '@/utils/request';
+import { getDesktopSessionSecret } from '@/config/server';
 
 export interface LoginParams {
   username?: string;
@@ -60,6 +61,17 @@ export interface LogResetCodeConfirmParams {
 }
 
 export const authService = {
+  async createDesktopSession() {
+    const res = await request<LoginResponse>({
+      url: '/api/auth/desktop-session',
+      method: 'post',
+      headers: {
+        'X-TrailSnap-Desktop-Secret': getDesktopSessionSecret()
+      }
+    });
+    return res.data as unknown as LoginResponse;
+  },
+
   async login(data: LoginParams) {
     // API requires x-www-form-urlencoded
     const formData = new URLSearchParams();

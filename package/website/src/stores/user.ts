@@ -69,6 +69,12 @@ export const useUserStore = defineStore('user', () => {
     }
   };
 
+  const initializeDesktopSession = async () => {
+    const session = await authService.createDesktopSession();
+    setToken(session.access_token);
+    await getUserInfo();
+  };
+
   const getUserInfo = async () => {
     try {
       const res = await authService.getUserInfo();
@@ -108,6 +114,7 @@ export const useUserStore = defineStore('user', () => {
     token,
     userInfo,
     login,
+    initializeDesktopSession,
     logout,
     resetState,
     getUserInfo,

@@ -1,6 +1,5 @@
 from sqlalchemy import Column, DateTime, ForeignKey, String
-from sqlalchemy.dialects.postgresql import UUID
-from pgvector.sqlalchemy import Vector
+from app.db.types import UUID, Vector
 from app.db.base import Base
 from datetime import datetime
 

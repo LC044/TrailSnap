@@ -77,6 +77,41 @@ def test_login_returns_token_for_valid_credentials():
     assert response["token_type"] == "bearer"
 
 
+def test_desktop_session_returns_wrapped_admin_token():
+    db = MagicMock()
+    user = SimpleNamespace(id=uuid4(), is_active=True, is_superuser=True)
+
+    with patch.dict("os.environ", {"TS_DESKTOP_SESSION_SECRET": "HANDSHAKE"}), \
+         patch("app.db.bootstrap.is_desktop_mode", return_value=True), \
+         patch("app.db.bootstrap.ensure_desktop_admin", return_value=user), \
+         patch.object(auth_api.security, "create_access_token", return_value="DESKTOP_JWT"):
+        response = auth_api.create_desktop_session(db=db, desktop_secret="HANDSHAKE")
+
+    assert response.code == 0
+    assert response.data["access_token"] == "DESKTOP_JWT"
+    assert response.data["token_type"] == "bearer"
+
+
+def test_desktop_session_is_hidden_on_server():
+    with patch("app.db.bootstrap.is_desktop_mode", return_value=False):
+        with pytest.raises(HTTPException) as exc_info:
+            auth_api.create_desktop_session(db=MagicMock())
+
+    assert exc_info.value.status_code == 404
+
+
+def test_desktop_session_rejects_invalid_handshake():
+    with patch.dict("os.environ", {"TS_DESKTOP_SESSION_SECRET": "HANDSHAKE"}), \
+         patch("app.db.bootstrap.is_desktop_mode", return_value=True):
+        with pytest.raises(HTTPException) as exc_info:
+            auth_api.create_desktop_session(
+                db=MagicMock(),
+                desktop_secret="WRONG",
+            )
+
+    assert exc_info.value.status_code == 404
+
+
 def test_login_rejects_inactive_user_with_400():
     db = MagicMock()
     user = SimpleNamespace(id=uuid4(), is_active=False)

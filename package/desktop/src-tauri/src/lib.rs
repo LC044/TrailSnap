@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager, RunEvent};
 #[serde(rename_all = "camelCase")]
 struct RuntimeStatus {
     api_url: String,
+    session_secret: String,
     phase: String,
     message: Option<String>,
     ready: bool,
@@ -74,8 +75,8 @@ fn prepare_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         fs::write(
             &env_file,
             concat!(
-                "DB_URL=postgresql://trailsnap:trailsnap@127.0.0.1:5532/trailsnap\n",
-                "RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@127.0.0.1:5532/railway\n",
+                "# TrailSnap Desktop uses SQLite in this data directory.\n",
+                "TS_DESKTOP=1\n",
             ),
         )
         .map_err(|error| format!("无法创建桌面配置：{error}"))?;
@@ -104,6 +105,7 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
         &app,
         RuntimeStatus {
             api_url: api_url.clone(),
+            session_secret: String::new(),
             phase: "starting".into(),
             message: Some("正在启动本地服务".into()),
             ready: false,
@@ -125,6 +127,14 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
         .join("logs");
     let stdout = log_file(log_dir.join("server.log"))?;
     let stderr = log_file(log_dir.join("server.err.log"))?;
+    let database_url = format!(
+        "sqlite:///{}",
+        data_dir.join("trailsnap.sqlite").to_string_lossy().replace('\\', "/")
+    );
+    let railway_database_url = format!(
+        "sqlite:///{}",
+        data_dir.join("railway.sqlite").to_string_lossy().replace('\\', "/")
+    );
 
     let child = Command::new(&executable)
         .args([
@@ -136,6 +146,8 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
         .current_dir(&data_dir)
         .env("TS_DATA_DIR", &data_dir)
         .env("TS_DESKTOP", "1")
+        .env("TS_DB_URL", database_url)
+        .env("RAILWAY_DB_URL", railway_database_url)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
@@ -156,6 +168,7 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
                     &app,
                     RuntimeStatus {
                         api_url,
+                        session_secret: String::new(),
                         phase: "failed".into(),
                         message: Some("等待本地服务启动超时，请检查日志".into()),
                         ready: false,
@@ -170,16 +183,22 @@ fn spawn_server(app: tauri::AppHandle) -> Result<(), String> {
                 .await
             {
                 if response.status().is_success() {
-                    update_status(
-                        &app,
-                        RuntimeStatus {
-                            api_url,
-                            phase: "ready".into(),
-                            message: None,
-                            ready: true,
-                        },
-                    );
-                    break;
+                    let secret_path = data_dir.join("desktop_session.secret");
+                    let session_secret = fs::read_to_string(&secret_path).unwrap_or_default();
+                    if !session_secret.is_empty() {
+                        let _ = fs::remove_file(secret_path);
+                        update_status(
+                            &app,
+                            RuntimeStatus {
+                                api_url,
+                                session_secret,
+                                phase: "ready".into(),
+                                message: None,
+                                ready: true,
+                            },
+                        );
+                        break;
+                    }
                 }
             }
             tokio::time::sleep(Duration::from_millis(300)).await;
@@ -223,6 +242,7 @@ pub fn run() {
                         &handle,
                         RuntimeStatus {
                             api_url: String::new(),
+                            session_secret: String::new(),
                             phase: "failed".into(),
                             message: Some(message),
                             ready: false,

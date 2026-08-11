@@ -15,6 +15,7 @@ hiddenimports = (
 
 datas = [
     (str(root / "resources"), "resources"),
+    (str(root / "alembic_sqlite"), "alembic_sqlite"),
 ]
 for package in ("fastapi", "pydantic", "passlib", "langchain", "langchain_core", "langgraph"):
     try:

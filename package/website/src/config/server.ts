@@ -5,6 +5,7 @@ const SERVER_URL_KEY = 'trailsnap_server_url'
 const LEGACY_STORAGE_KEY = 'trailsnap:server-url'
 
 let configuredServerUrl = ''
+let desktopSessionSecret = ''
 let initialized = false
 
 export const isTauriApp = () => '__TAURI_INTERNALS__' in window
@@ -29,13 +30,17 @@ export async function initializeServerConfig(): Promise<void> {
   if (initialized) return
   if (isTauriApp()) {
     const { invoke } = await import('@tauri-apps/api/core')
-    const deadline = Date.now() + 10_000
+    const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
-      const status = await invoke<{ apiUrl: string }>('desktop_runtime_status')
-      if (status.apiUrl) {
+      const status = await invoke<{ apiUrl: string; sessionSecret: string; ready: boolean; phase: string; message?: string }>('desktop_runtime_status')
+      if (status.apiUrl && status.ready) {
         configuredServerUrl = normalizeServerUrl(status.apiUrl)
+        desktopSessionSecret = status.sessionSecret
         initialized = true
         return
+      }
+      if (status.phase === 'failed') {
+        throw new Error(status.message || 'TrailSnap 本地服务启动失败')
       }
       await new Promise(resolve => window.setTimeout(resolve, 50))
     }
@@ -61,6 +66,10 @@ export async function initializeServerConfig(): Promise<void> {
 export function getServerUrl(): string {
   if (configuredServerUrl) return configuredServerUrl
   return (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '')
+}
+
+export function getDesktopSessionSecret(): string {
+  return desktopSessionSecret
 }
 
 export function hasConfiguredServer(): boolean {

@@ -8,12 +8,11 @@
 @File        : server-album.py 
 @Description : 
 """
-from sqlalchemy import Column, String, DateTime, Text, Integer, ForeignKey, JSON, UUID, UniqueConstraint, Float
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, String, DateTime, Text, Integer, ForeignKey, JSON, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime
-from pgvector.sqlalchemy import Vector
+from app.db.types import UUID, Vector
 
 from app.db.base import Base
 
