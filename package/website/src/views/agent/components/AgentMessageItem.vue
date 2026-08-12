@@ -74,7 +74,8 @@
       </div>
 
       <div v-if="msg.role === 'user'" class="message-avatar user">
-        <User class="w-4 h-4" />
+        <img v-if="userStore.userInfo?.avatar" :src="userStore.userInfo.avatar" alt="我" class="w-full h-full object-cover rounded-full" />
+        <User v-else class="w-4 h-4" />
       </div>
     </div>
   </div>
@@ -82,6 +83,9 @@
 
 <script setup lang="ts">
 import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, ChevronDown } from 'lucide-vue-next';
+import { useUserStore } from '@/stores/user';
+
+const userStore = useUserStore();
 
 interface MessageItem {
   id?: number;
