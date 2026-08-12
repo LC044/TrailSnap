@@ -34,6 +34,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
+          version: v0.36.1
           install: true
           # Keep the image/attestation format compatible with Aliyun ACR.
           driver-opts: image=moby/buildkit:v0.31.2
@@ -105,6 +106,7 @@ jobs:
         if: steps.acr_check.outputs.enabled == 'true'
         uses: docker/setup-buildx-action@v3
         with:
+          version: v0.36.1
           install: true
           # BuildKit v0.32 rewrites copied manifests with OCI empty descriptors,
           # which Aliyun ACR currently rejects.
