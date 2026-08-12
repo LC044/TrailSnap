@@ -72,6 +72,9 @@ jobs:
           context: ./package/server
           platforms: linux/amd64,linux/arm64
           push: true
+          # ACR rejects BuildKit v0.32+'s OCI artifact attestation manifests
+          # (application/vnd.oci.empty.v1+json) during cross-registry copy.
+          provenance: false
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-server:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-server:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}

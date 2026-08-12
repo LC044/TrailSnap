@@ -93,6 +93,9 @@ jobs:
           file: ./package/ai/${{ matrix.dockerfile }}
           platforms: ${{ matrix.platforms }}
           push: true
+          # ACR rejects BuildKit v0.32+'s OCI artifact attestation manifests
+          # (application/vnd.oci.empty.v1+json) during cross-registry copy.
+          provenance: false
           tags: |
             ${{ github.event_name != 'pull_request' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.BASE_TAG) || '' }}
             ${{ matrix.type == 'cpu' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_BASE_TAG) || '' }}
