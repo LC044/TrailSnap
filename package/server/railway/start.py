@@ -23,6 +23,22 @@ def create_database():
         url = make_url(database_url)
         db_name = url.database
 
+        if url.get_backend_name() == 'sqlite':
+            if db_name and db_name != ':memory:':
+                os.makedirs(os.path.dirname(os.path.abspath(db_name)), exist_ok=True)
+                is_db_exists = os.path.exists(db_name)
+            from railway.db.dependencies import init_db
+            init_db()
+            print("Railway SQLite tables are ready")
+            if not is_db_exists:
+                from railway import build_database
+                with build_database.SessionLocal() as db:
+                    build_database.build_database(db)
+            return
+
+        if url.get_backend_name() != 'postgresql':
+            raise ValueError(f"Unsupported Railway database backend: {url.get_backend_name()}")
+
         # We need to connect to the 'postgres' database to check/create the target database
         # Create a copy of the URL but with 'postgres' as the database
         postgres_url = url.set(database='postgres')

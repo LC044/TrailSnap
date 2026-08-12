@@ -1,13 +1,14 @@
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, extract, desc, cast, Date
+from sqlalchemy import func, extract, desc
 from datetime import datetime, date, timedelta
 
 from app.crud.face import get_identities_with_details
 from app.db.models.photo import Photo, FileType
 from app.db.models.face import Face, FaceIdentity
 from app.db.models.tag import PhotoTag, PhotoTagRelation
+from app.db.sql import as_date, as_date_string, date_only
 from app.schemas.dashboard import (
     DashboardCard, DashboardFace,
     DashboardContentStats, ContentDetail, DashboardTime,
@@ -157,8 +158,9 @@ def get_dashboard_stats(db: Session, owner_id: UUID) -> DashboardResponse:
 
 def get_heatmap_stats(db: Session, owner_id: UUID, year: int | None = None) -> HeatmapResponse:
     today = datetime.now().date()
+    date_expr = date_only(db, Photo.photo_time)
     query = db.query(
-        cast(Photo.photo_time, Date).label('photo_date'),
+        date_expr.label('photo_date'),
         func.count(Photo.id).label('count')
     ).filter(Photo.owner_id == owner_id, Photo.photo_time != None)
     
@@ -179,7 +181,7 @@ def get_heatmap_stats(db: Session, owner_id: UUID, year: int | None = None) -> H
             Photo.photo_time <= datetime.combine(end_date, datetime.max.time())
         )
         
-    query = query.group_by(cast(Photo.photo_time, Date)).order_by(cast(Photo.photo_time, Date))
+    query = query.group_by(date_expr).order_by(date_expr)
     results = query.all()
     
     total_photos = 0
@@ -191,16 +193,17 @@ def get_heatmap_stats(db: Session, owner_id: UUID, year: int | None = None) -> H
     prev_date = None
     
     for r in results:
+        photo_date = as_date(r.photo_date)
         total_photos += r.count
-        data.append(HeatmapItem(date=r.photo_date.isoformat(), count=r.count))
+        data.append(HeatmapItem(date=photo_date.isoformat(), count=r.count))
         
-        if prev_date and (r.photo_date - prev_date).days == 1:
+        if prev_date and (photo_date - prev_date).days == 1:
             current_consecutive += 1
         else:
             current_consecutive = 1
             
         max_consecutive_days = max(max_consecutive_days, current_consecutive)
-        prev_date = r.photo_date
+        prev_date = photo_date
         
     # Find available years
     years_query = db.query(
@@ -240,22 +243,24 @@ def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = N
         Photo.photo_time <= datetime.combine(end_date, datetime.max.time()),
     )
 
+    date_expr = date_only(db, Photo.photo_time)
+
     # 1. Per-day photo counts
     date_counts = db.query(
-        cast(Photo.photo_time, Date).label('photo_date'),
+        date_expr.label('photo_date'),
         func.count(Photo.id).label('count'),
     ).filter(Photo.owner_id == owner_id, Photo.photo_time != None, *time_filter) \
-        .group_by(cast(Photo.photo_time, Date)).order_by(cast(Photo.photo_time, Date)).all()
+        .group_by(date_expr).order_by(date_expr).all()
 
     # 2. Photo IDs per date
     photo_date_rows = db.query(
-        cast(Photo.photo_time, Date).label('photo_date'),
+        date_expr.label('photo_date'),
         Photo.id.label('photo_id'),
     ).filter(Photo.owner_id == owner_id, Photo.photo_time != None, *time_filter).all()
 
     photo_by_date: dict = {}
     for row in photo_date_rows:
-        d = row.photo_date.isoformat()
+        d = as_date_string(row.photo_date)
         photo_by_date.setdefault(d, []).append(row.photo_id)
 
     all_photo_ids = [pid for ids in photo_by_date.values() for pid in ids]
@@ -303,7 +308,7 @@ def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = N
 
     for r in date_counts:
         total_photos += r.count
-        date_str = r.photo_date.isoformat()
+        date_str = as_date_string(r.photo_date)
         photo_ids = photo_by_date.get(date_str, [])
 
         dominant_color = None

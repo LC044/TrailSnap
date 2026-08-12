@@ -4,6 +4,7 @@ from sqlalchemy import func, desc, extract, case
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
+from app.db.sql import as_date_string, date_only
 
 def get_location_years(db: Session, owner_id: UUID):
     years = db.query(extract('year', Photo.photo_time))\
@@ -184,9 +185,9 @@ def get_map_markers(db: Session, owner_id: UUID, start_date: str = None, end_dat
 
 def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: int = 0, limit: int = 100, start_date: str = None, end_date: str = None):
     from app.schemas.location import TimelineResponse, TimelineNode
-    from sqlalchemy import cast, String, Date
+    from sqlalchemy import cast, String
 
-    date_expr = cast(Photo.photo_time, Date)
+    date_expr = date_only(db, Photo.photo_time)
 
     if level == 'province':
         base_loc = func.nullif(PhotoMetadata.province, '')
@@ -255,7 +256,7 @@ def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: i
     nodes = []
 
     for row in results:
-        date_str = str(row.date)
+        date_str = as_date_string(row.date)
         loc_name = row.loc_name
         level = row.level
         lat = float(row.lat)

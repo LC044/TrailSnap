@@ -7,7 +7,7 @@ import time
 from typing import List, Dict, Set, Any, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func, cast, String
+from sqlalchemy import or_, cast, String
 
 from app.db.session import SessionLocal
 from app.db.models.task import Task, TaskType, TaskStatus
@@ -325,7 +325,7 @@ class TaskManager:
                     # 兼容两种情况：payload 里带 user_id，或 owner_id 列匹配
                     query = query.filter(or_(
                         cast(Task.owner_id, String) == str(target_user_id),
-                        func.json_extract_path_text(Task.payload, 'user_id') == str(target_user_id),
+                        Task.payload['user_id'].as_string() == str(target_user_id),
                     ))
                 existing_scan = query.order_by(Task.created_at.desc()).first()
                 if existing_scan:

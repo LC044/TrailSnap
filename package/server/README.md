@@ -11,7 +11,8 @@ TrailSnap 的后端核心服务，基于 FastAPI 构建，负责业务逻辑处�
 
 ## 前置条件
 
-在启动 Server 之前，必须先启动 PostgreSQL 数据库，并确保安装了 `pgvector` 插件。
+生产部署推荐 PostgreSQL + `pgvector`。本地网页调试也可使用 SQLite；SQLite
+只改变 Server 的持久化方式，Vue 网页仍通过 HTTP API 访问 Server。
 
 ### 数据库启动 (Docker Compose)
 
@@ -51,6 +52,19 @@ RAILWAY_DB_URL=postgresql://msi:msi4090@localhost:5532/railway
 AI_API_URL=http://localhost:8001
 ```
 
+本地无 PostgreSQL 调试时可改为：
+
+```env
+# TS_DB_URL 优先于兼容变量 DB_URL
+TS_DB_URL=sqlite:///./data/trailsnap.sqlite
+# Railway 仍有独立数据库配置
+RAILWAY_DB_URL=sqlite:///./data/railway.sqlite
+AI_API_URL=http://localhost:8001
+```
+
+`start.py` 会根据 URL 方言自动选择迁移：PostgreSQL 使用 `alembic/`，SQLite
+使用 `alembic_sqlite/`。更换 URL 后必须重启 Server；这不是运行中热切换。
+
 ### 3. 运行服务
 
 建议使用 `start.py` 脚本启动服务，它会自动执行以下操作：
@@ -87,6 +101,8 @@ python -m uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
   ```bash
   alembic upgrade head
   ```
+
+SQLite 的迁移说明和命令见 [`alembic_sqlite/README.md`](alembic_sqlite/README.md)。
 
 ## 目录结构
 

@@ -78,6 +78,10 @@ export const settingsApi = {
     const { data } = await request.get('/api/settings/map/countries')
     return data
   },
+  async browseExternalDirectories(path?: string) {
+    const { data } = await request.get('/api/settings/directories/browse', { params: { path } })
+    return data
+  },
   async getDownloadedMapData() {
     const { data } = await request.get('/api/settings/map/downloaded')
     return data

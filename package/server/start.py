@@ -73,6 +73,51 @@ def import_scenes(database_url):
     except Exception as e:
         print(f"Error importing scenes: {e}")
 
+
+def is_sqlite_url(database_url):
+    return make_url(database_url).get_backend_name() == "sqlite"
+
+
+def initialize_database(database_url):
+    """Prepare prerequisites for the configured database dialect."""
+    url = make_url(database_url)
+    backend = url.get_backend_name()
+    if backend == "sqlite":
+        database_path = url.database
+        if database_path and database_path != ":memory:":
+            os.makedirs(os.path.dirname(os.path.abspath(database_path)), exist_ok=True)
+        print(f"Using SQLite database at {database_path or ':memory:'}.")
+        return
+    if backend != "postgresql":
+        raise ValueError(f"Unsupported database backend: {backend}")
+
+    db_name = url.database
+    postgres_url = url.set(database="postgres")
+    print(f"Connecting to database server at {url.host}...")
+    engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :name"),
+            {"name": db_name},
+        ).scalar()
+        if not result:
+            conn.execute(text(f'CREATE DATABASE "{db_name}"'))
+            print(f"Database '{db_name}' created successfully.")
+    engine.dispose()
+
+    target_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
+    with target_engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    target_engine.dispose()
+
+
+def run_migrations(database_url):
+    command = ["alembic"]
+    if is_sqlite_url(database_url):
+        command.extend(["-c", "alembic_sqlite.ini"])
+    command.extend(["upgrade", "head"])
+    subprocess.run(command, check=True)
+
 def main():
     parser = argparse.ArgumentParser(description="Start the TrailSnap server")
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
@@ -89,41 +134,7 @@ def main():
         sys.exit(1)
 
     try:
-        url = make_url(database_url)
-        db_name = url.database
-        
-        # Connect to 'postgres' database to check/create target DB
-        postgres_url = url.set(database='postgres')
-        print(f"Connecting to database server at {url.host}...")
-        
-        # Connect to default 'postgres' database
-        engine = create_engine(postgres_url, isolation_level="AUTOCOMMIT")
-        
-        with engine.connect() as conn:
-            print("Successfully connected to database server.")
-            
-            # Check if target database exists
-            query = text("SELECT 1 FROM pg_database WHERE datname = :name")
-            result = conn.execute(query, {"name": db_name}).scalar()
-            
-            if not result:
-                print(f"Database '{db_name}' does not exist. Creating...")
-                conn.execute(text(f'CREATE DATABASE "{db_name}"'))
-                print(f"Database '{db_name}' created successfully.")
-            else:
-                print(f"Database '{db_name}' already exists.")
-        
-        engine.dispose()
-        
-        # 3. 检查数据库是否启用了vector扩展，不存在则启用（启用失败报错退出）
-        print(f"Connecting to target database '{db_name}'...")
-        target_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
-        with target_engine.connect() as conn:
-             print("Enabling 'vector' extension if not exists...")
-             conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-             print("'vector' extension enabled.")
-        target_engine.dispose()
-
+        initialize_database(database_url)
     except Exception as e:
         print(f"Error during database initialization: {e}")
         print("Ensure the database server is running and reachable.")
@@ -132,7 +143,7 @@ def main():
     # 4. 使用alembic迁移数据库（alembic upgrade head）
     print("Running Alembic migrations...")
     try:
-        subprocess.run(["alembic", "upgrade", "head"], check=True)
+        run_migrations(database_url)
         print("Alembic migrations completed successfully.")
     except subprocess.CalledProcessError as e:
         print(f"Alembic migration failed with exit code {e.returncode}")

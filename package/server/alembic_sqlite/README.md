@@ -1,25 +1,23 @@
 # SQLite migrations
 
-TrailSnap Desktop uses this Alembic history independently from the PostgreSQL
-history in `alembic/`. The desktop sidecar upgrades this history before the API
-application is imported.
+TrailSnap keeps SQLite and PostgreSQL in separate Alembic branches. The SQLite
+branch is selected whenever `TS_DB_URL` (preferred) or `DB_URL` is a SQLite
+SQLAlchemy URL.
 
-When an ORM schema changes, maintain both histories:
+`0001_initial_sqlite_schema.py` is a bootstrap revision used by the desktop
+edition. It calls `Base.metadata.create_all()` and creates a usable database,
+but it is a dynamic metadata snapshot rather than a frozen historical schema.
+Future revisions must therefore be idempotent on a fresh database: inspect
+tables, columns, and indexes before adding them, and use Alembic batch operations
+for SQLite table changes. Before declaring the SQLite format stable, `0001` can
+be replaced with explicit frozen `op.create_table()` operations.
+
+Create and apply a follow-up revision with:
 
 ```powershell
-# PostgreSQL
-alembic revision --autogenerate -m "describe change"
-
-# SQLite (set TS_DB_URL to a disposable current SQLite database first)
-alembic -c alembic_sqlite.ini revision --autogenerate -m "describe change"
+$env:TS_DB_URL = "sqlite:///./data/trailsnap.sqlite"
+alembic -c alembic_sqlite.ini revision -m "describe change"
+alembic -c alembic_sqlite.ini upgrade head
 ```
 
-SQLite migrations must use Alembic batch operations for table alterations.
-The initial revision creates the cross-database metadata baseline; subsequent
-revisions should contain explicit operations generated and reviewed against an
-up-to-date SQLite database.
-
-The desktop core currently covers users/authentication, photos, albums, tags,
-metadata, tasks and JSON-backed embeddings. PostgreSQL-only reporting or
-specialized queries must add a dialect implementation before being considered
-part of the desktop core.
+Do not point the PostgreSQL migration branch at a SQLite database.

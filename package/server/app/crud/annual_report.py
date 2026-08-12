@@ -2,6 +2,7 @@ from typing import List, Optional, Dict
 from datetime import datetime
 import math
 import logging
+import numpy as np
 from uuid import UUID
 
 from fastapi import Depends, Query, HTTPException
@@ -261,7 +262,25 @@ def find_best_match_photo(
          query = query.filter(extract('month', Photo.photo_time).in_(months))
          
     # Order by cosine distance (lower is better/more similar)
-    best_photo = query.order_by(ImageVector.embedding.cosine_distance(embedding)).first()
+    if db.bind.dialect.name == "sqlite":
+        target = np.asarray(embedding, dtype=float)
+        target_norm = np.linalg.norm(target)
+        rows = query.with_entities(Photo, ImageVector.embedding).all()
+
+        def sqlite_distance(row):
+            if not row[1] or target_norm == 0:
+                return 1.0
+            candidate = np.asarray(row[1], dtype=float)
+            denominator = np.linalg.norm(candidate) * target_norm
+            return 1.0 if denominator == 0 else 1.0 - float(np.dot(candidate, target) / denominator)
+
+        best_photo = min(
+            rows,
+            key=sqlite_distance,
+            default=(None, None),
+        )[0]
+    else:
+        best_photo = query.order_by(ImageVector.embedding.cosine_distance(embedding)).first()
     return best_photo
 
 

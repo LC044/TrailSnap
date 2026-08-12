@@ -1,4 +1,8 @@
-"""Create the initial TrailSnap SQLite schema."""
+"""Create the initial TrailSnap SQLite schema.
+
+This bootstrap revision creates the current metadata. Follow-up revisions must
+therefore be defensive on fresh databases; see ``alembic_sqlite/README.md``.
+"""
 
 from alembic import op
 

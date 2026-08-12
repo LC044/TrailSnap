@@ -4,11 +4,12 @@ from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, extract, cast, Date, case
+from sqlalchemy import func, desc, extract, case
 
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
+from app.db.sql import as_date_string, date_only
 from app.schemas.location_stats import (
     OverviewStats, AnnualTrendItem, MonthlyRadarItem,
     PlaceStats, PlacesResponse, HeatmapItem, HeatmapRangeResponse,
@@ -34,7 +35,7 @@ def _apply_date_filter(query, start_date: Optional[str], end_date: Optional[str]
 
 def _day_city_centroids(db: Session, owner_id: UUID, start_date: Optional[str], end_date: Optional[str], with_year: bool = False):
     """Return chronological (year?, date, city, avg_lat, avg_lng) rows for photos with GPS."""
-    date_expr = cast(Photo.photo_time, Date)
+    date_expr = date_only(db, Photo.photo_time)
     city_expr = func.coalesce(
         func.nullif(PhotoMetadata.city, ''),
         func.nullif(PhotoMetadata.province, ''),
@@ -99,7 +100,7 @@ def get_overview(db: Session, owner_id: UUID, start_date: Optional[str] = None, 
         .filter(PhotoMetadata.scene_id.isnot(None))
     scene_count = _apply_date_filter(scene_count, start_date, end_date).scalar() or 0
 
-    travel_days = db.query(func.count(func.distinct(cast(Photo.photo_time, Date)))) \
+    travel_days = db.query(func.count(func.distinct(date_only(db, Photo.photo_time)))) \
         .filter(Photo.owner_id == owner_id, Photo.is_deleted == False) \
         .filter(Photo.photo_time.isnot(None))
     travel_days = _apply_date_filter(travel_days, start_date, end_date).scalar() or 0
@@ -203,7 +204,7 @@ def get_places(db: Session, owner_id: UUID, level: str = 'city', start_date: Opt
     else:
         group_col = PhotoMetadata.city
 
-    date_expr = cast(Photo.photo_time, Date)
+    date_expr = date_only(db, Photo.photo_time)
     query = db.query(
         group_col.label('name'),
         date_expr.label('d'),
@@ -228,7 +229,7 @@ def get_places(db: Session, owner_id: UUID, level: str = 'city', start_date: Opt
     places: dict = {}
     for r in rows:
         name = r.name
-        d_str = str(r.d)
+        d_str = as_date_string(r.d)
         entry = places.setdefault(name, {'name': name, 'photo_count': 0, 'dates': []})
         entry['photo_count'] += r.cnt
         entry['dates'].append(d_str)
@@ -252,7 +253,7 @@ def get_places(db: Session, owner_id: UUID, level: str = 'city', start_date: Opt
 
 
 def get_heatmap_range(db: Session, owner_id: UUID, start_date: Optional[str] = None, end_date: Optional[str] = None) -> HeatmapRangeResponse:
-    date_expr = cast(Photo.photo_time, Date)
+    date_expr = date_only(db, Photo.photo_time)
     query = db.query(
         date_expr.label('d'),
         func.count(Photo.id).label('cnt'),
@@ -265,6 +266,6 @@ def get_heatmap_range(db: Session, owner_id: UUID, start_date: Optional[str] = N
     data = []
     for r in rows:
         total_photos += r.cnt
-        data.append(HeatmapItem(date=str(r.d), count=r.cnt))
+        data.append(HeatmapItem(date=as_date_string(r.d), count=r.cnt))
 
     return HeatmapRangeResponse(total_photos=total_photos, total_days=len(data), data=data)

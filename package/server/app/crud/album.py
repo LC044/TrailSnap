@@ -12,6 +12,7 @@ from app.db.models.face import Face
 from app.db.models.image_vector import ImageVector
 from app.db.models.user import User
 from app.schemas import album as album_schemas
+import numpy as np
 
 
 # Album CRUD
@@ -84,7 +85,19 @@ def _build_album_query(db: Session, album: Album):
         # Clamp distance threshold to avoid logical errors
         dist_threshold = max(0.0, min(1.0, dist_threshold))
 
-        query = query.filter(distance < dist_threshold)
+        if db.bind.dialect.name == "sqlite":
+            target = np.asarray(album.query_embedding, dtype=float)
+            target_norm = np.linalg.norm(target)
+            matching_ids = []
+            for photo_id, embedding in query.with_entities(Photo.id, ImageVector.embedding).all():
+                candidate = np.asarray(embedding, dtype=float)
+                denominator = np.linalg.norm(candidate) * target_norm
+                cosine_distance = 1.0 if denominator == 0 else 1.0 - float(np.dot(candidate, target) / denominator)
+                if cosine_distance < dist_threshold:
+                    matching_ids.append(photo_id)
+            query = query.filter(Photo.id.in_(matching_ids)) if matching_ids else query.filter(False)
+        else:
+            query = query.filter(distance < dist_threshold)
 
     else:
         # Standard User Album

@@ -83,6 +83,39 @@ def test_list_candidates_root_missing(monkeypatch):
     assert data['directories'] == []
 
 
+def test_directory_tree_is_limited_to_gallery_root(tmp_path, monkeypatch):
+    root = tmp_path / 'Photos'
+    child = root / 'family'
+    nested = child / '2026'
+    nested.mkdir(parents=True)
+    monkeypatch.setattr(gallery_service, 'EXTERNAL_GALLERY_ROOT', str(root))
+
+    top = gallery_service.list_directory_tree()
+    assert top['root'] == str(root.resolve())
+    assert top['directories'][0]['path'] == str(child.resolve())
+    assert top['directories'][0]['is_leaf'] is False
+
+    below = gallery_service.list_directory_tree(str(child))
+    assert below['directories'][0]['path'] == str(nested.resolve())
+    assert below['directories'][0]['is_leaf'] is True
+
+    with pytest.raises(PermissionError):
+        gallery_service.list_directory_tree(str(tmp_path))
+
+
+def test_directory_tree_hides_symlink_escape(tmp_path, monkeypatch):
+    root = tmp_path / 'Photos'; root.mkdir()
+    outside = tmp_path / 'private'; outside.mkdir()
+    link = root / 'escape'
+    try:
+        os.symlink(str(outside), link)
+    except (OSError, NotImplementedError):
+        pytest.skip('symlink not supported')
+    monkeypatch.setattr(gallery_service, 'EXTERNAL_GALLERY_ROOT', str(root))
+
+    assert gallery_service.list_directory_tree()['directories'] == []
+
+
 def test_list_candidates_marks_registered(tmp_path, monkeypatch):
     family = tmp_path / 'family'
     family.mkdir()

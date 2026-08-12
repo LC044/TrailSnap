@@ -32,6 +32,7 @@ EXTERNAL_GALLERY_ROOT: str = os.getenv("EXTERNAL_GALLERY_ROOT", "/app/Photos")
 
 # 批量添加单次路径上限，防止误传巨型列表
 BATCH_MAX_PATHS = 50
+TREE_MAX_ENTRIES = 500
 
 # 结构化错误码 —— 前端按 code 显示针对性处理建议
 ERR_NOT_FOUND = "DIRECTORY_NOT_FOUND"
@@ -171,6 +172,54 @@ def list_candidates(user_id: str, db: Session) -> Dict[str, Any]:
 
     directories.sort(key=lambda d: d["name"].lower())
     return {"root": root, "root_exists": root_exists, "directories": directories}
+
+
+def list_directory_tree(path: Optional[str] = None) -> Dict[str, Any]:
+    """List folders below the configured gallery root for the web picker.
+
+    Clients cannot choose a host path directly from a browser. This endpoint
+    deliberately exposes only the server/container-visible gallery root.
+    """
+    root = normalize_path(EXTERNAL_GALLERY_ROOT)
+    target = normalize_path(path) if path else root
+    if relation(target, root) not in ("equal", "child"):
+        raise PermissionError("Directory is outside the external gallery root")
+    if not os.path.isdir(target):
+        raise FileNotFoundError(target)
+
+    directories: List[Dict[str, Any]] = []
+    with os.scandir(target) as entries:
+        for entry in entries:
+            if len(directories) >= TREE_MAX_ENTRIES:
+                break
+            try:
+                if not entry.is_dir(follow_symlinks=True):
+                    continue
+                resolved = normalize_path(entry.path)
+                if relation(resolved, root) not in ("equal", "child"):
+                    continue
+                directories.append({
+                    "name": entry.name,
+                    "path": resolved,
+                    "is_leaf": not _has_visible_subdirectory(resolved, root),
+                })
+            except OSError:
+                continue
+    directories.sort(key=lambda item: item["name"].lower())
+    return {"root": root, "path": target, "directories": directories}
+
+
+def _has_visible_subdirectory(path: str, root: str) -> bool:
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=True):
+                    resolved = normalize_path(entry.path)
+                    if relation(resolved, root) in ("equal", "child"):
+                        return True
+    except OSError:
+        return False
+    return False
 
 
 # --------------------------------------------------------------------------- #

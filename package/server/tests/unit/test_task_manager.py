@@ -22,6 +22,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
@@ -270,3 +272,35 @@ def test_attach_loop_loop_closed_falls_back(monkeypatch):
     )
     # Should not raise, even though the loop is unusable.
     manager.publish_event("task.updated", {"id": "abc"})
+
+
+def test_scan_folder_dedup_query_works_on_sqlite(tmp_path):
+    """JSON user_id lookup must compile for SQLite as well as PostgreSQL."""
+    from app.db.base import Base
+    from app.db.models.task import Task, TaskStatus, TaskType
+    from app.service.task_manager import TaskManager
+
+    engine = create_engine(f"sqlite:///{(tmp_path / 'tasks.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    try:
+        existing = Task(
+            type=TaskType.SCAN_FOLDER,
+            status=TaskStatus.PENDING,
+            payload={"user_id": "sqlite-user", "scan_roots": ["/photos"]},
+        )
+        session.add(existing)
+        session.commit()
+
+        manager = TaskManager.get_instance()
+        reused = manager.add_task(
+            session,
+            TaskType.SCAN_FOLDER,
+            {"user_id": "sqlite-user", "scan_roots": ["/photos"]},
+        )
+
+        assert reused.id == existing.id
+        assert session.query(Task).count() == 1
+    finally:
+        session.close()
+        engine.dispose()

@@ -420,6 +420,22 @@ def remove_directory(
 
 # ------------------------- 外部图库一键接入 ------------------------- #
 
+@router.get('/directories/browse')
+def browse_external_directories(
+    path: str = None,
+    current_user: User = Depends(get_current_user),
+):
+    """Browse the server-visible external gallery root (superuser only)."""
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    try:
+        data = gallery_service.list_directory_tree(path)
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Directory not allowed")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Directory not found")
+    return BaseResponse.success(data=data)
+
 @router.get('/directories/candidates')
 def get_directory_candidates(
     db: Session = Depends(get_db),
