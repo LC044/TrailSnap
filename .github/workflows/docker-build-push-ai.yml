@@ -53,10 +53,7 @@ jobs:
         if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         uses: docker/setup-buildx-action@v3
         with:
-          version: v0.36.1
           install: true
-          # Keep the image/attestation format compatible with Aliyun ACR.
-          driver-opts: image=moby/buildkit:v0.31.2
 
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request' || matrix.type == 'cpu'
@@ -118,7 +115,9 @@ jobs:
   sync-to-cn:
     needs: build-and-push-ai
     runs-on: ubuntu-latest
-    if: ${{ needs.build-and-push-ai.result == 'success' }}
+    # PR preview images are test-only and remain on Docker Hub; keep the
+    # existing ACR synchronization path unchanged for regular publishing.
+    if: ${{ github.event_name != 'pull_request' && needs.build-and-push-ai.result == 'success' }}
     strategy:
       matrix:
         include:
@@ -146,11 +145,7 @@ jobs:
         if: steps.acr_check.outputs.enabled == 'true'
         uses: docker/setup-buildx-action@v3
         with:
-          version: v0.36.1
           install: true
-          # BuildKit v0.32 rewrites copied manifests with OCI empty descriptors,
-          # which Aliyun ACR currently rejects.
-          driver-opts: image=moby/buildkit:v0.31.2
 
       - name: Login to Docker Hub
         if: steps.acr_check.outputs.enabled == 'true'
