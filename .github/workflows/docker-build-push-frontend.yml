@@ -35,6 +35,8 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           install: true
+          # Keep the image/attestation format compatible with Aliyun ACR.
+          driver-opts: image=moby/buildkit:v0.31.2
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -72,9 +74,6 @@ jobs:
           context: ./package/website
           platforms: linux/amd64,linux/arm64
           push: true
-          # ACR rejects BuildKit v0.32+'s OCI artifact attestation manifests
-          # (application/vnd.oci.empty.v1+json) during cross-registry copy.
-          provenance: false
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-frontend:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-frontend:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}
@@ -107,6 +106,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           install: true
+          # BuildKit v0.32 rewrites copied manifests with OCI empty descriptors,
+          # which Aliyun ACR currently rejects.
+          driver-opts: image=moby/buildkit:v0.31.2
 
       - name: Login to Docker Hub
         if: steps.acr_check.outputs.enabled == 'true'
