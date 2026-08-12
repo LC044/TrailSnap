@@ -78,6 +78,10 @@ export const settingsApi = {
     const { data } = await request.get('/api/settings/map/countries')
     return data
   },
+  async browseExternalDirectories(path?: string) {
+    const { data } = await request.get('/api/settings/directories/browse', { params: { path } })
+    return data
+  },
   async getDownloadedMapData() {
     const { data } = await request.get('/api/settings/map/downloaded')
     return data
@@ -121,6 +125,18 @@ export const settingsApi = {
   },
   async verifyAIService(apiUrl: string) {
     const { data } = await request.post('/api/settings/verify-ai-service', { api_url: apiUrl })
+    return data
+  },
+  async getAIModels() {
+    const { data } = await request.get('/api/settings/ai-models')
+    return data
+  },
+  async downloadAIModel(modelId: string) {
+    const { data } = await request.post(`/api/settings/ai-models/${encodeURIComponent(modelId)}/download`)
+    return data
+  },
+  async deleteAIModel(modelId: string) {
+    const { data } = await request.delete(`/api/settings/ai-models/${encodeURIComponent(modelId)}`)
     return data
   }
 }

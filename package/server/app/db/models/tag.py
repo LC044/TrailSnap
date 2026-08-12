@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, Integer, UniqueConstraint, Float
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid

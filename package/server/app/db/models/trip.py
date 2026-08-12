@@ -11,7 +11,7 @@
 
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text, Enum, Numeric, DECIMAL
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import UUID
 from datetime import datetime
 import uuid
 

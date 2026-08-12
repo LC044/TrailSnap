@@ -16,9 +16,10 @@ import './style.css'
 import App from './App.vue'
 import router from '@/router';
 import { registerPwa } from '@/composables/usePwa'
-import { initializeServerConfig, isNativeApp } from '@/config/server'
+import { initializeServerConfig, isNativeApp, isTauriApp } from '@/config/server'
 import { registerNativeBackButton } from '@/composables/useNativeBackButton'
 import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
+import { useUserStore } from '@/stores/user'
 
 async function bootstrap() {
   await initializeServerConfig()
@@ -26,7 +27,10 @@ async function bootstrap() {
   const app = createApp(App);
   // 2. 创建 Pinia 实例
   const pinia = createPinia()
-  app.use(pinia)  // 关键步骤：激活 Pinia
+  app.use(pinia)
+  if (isTauriApp()) {
+    await useUserStore().initializeDesktopSession()
+  }
   app.use(router);
   app.mount('#app');
   registerElementPlusOverlayBridge()

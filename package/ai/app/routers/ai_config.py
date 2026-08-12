@@ -17,6 +17,35 @@ async def get_config():
     """Get the current AI configuration."""
     return ai_config_manager.get_config()
 
+
+@router.get("/models", response_model=Dict[str, Any])
+async def get_managed_models():
+    """List downloadable model packs managed by the AI service."""
+    return {"models": model_downloader.list_models(managed_only=True)}
+
+
+@router.post("/models/{model_id}/download", response_model=Dict[str, Any])
+async def download_managed_model(model_id: str):
+    try:
+        model_downloader.reset_status(model_id)
+        model_downloader.trigger_download(model_id)
+        return {"status": "downloading", "model": model_id}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="未知的模型包")
+
+
+@router.delete("/models/{model_id}", response_model=Dict[str, Any])
+async def delete_managed_model(model_id: str):
+    try:
+        for wrapper in model_manager.models.values():
+            wrapper.release()
+        model_downloader.delete_model(model_id)
+        return {"status": "deleted", "model": model_id}
+    except KeyError:
+        raise HTTPException(status_code=404, detail="未知的模型包")
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
 @router.post("/config/model", response_model=Dict[str, Any])
 async def set_model(request: ModelSelectionRequest, background_tasks: BackgroundTasks):
     """

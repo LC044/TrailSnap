@@ -226,12 +226,30 @@ function Test-KeepServicesFlag {
     return @('true', '1', 'yes') -contains $v.Trim().ToLower()
 }
 
-# 删除 TS_DB_URL 指向的目标库：连到维护库 postgres 执行 DROP DATABASE ... WITH (FORCE)。
+# 删除 TS_DB_URL 指向的目标库。SQLite 仅允许删除仓库 tests/artifacts 下的文件；
+# PostgreSQL 则连接维护库 postgres 执行 DROP DATABASE ... WITH (FORCE)。
 # 复用于：① services-up dev 模式启动 server 前重置（TS_TEST_RESET_DB=true）；② run-tests -Cleanup。
 function Invoke-TestDatabaseDrop {
     param([string]$Reason = '清理', [string]$RepoRoot)
+    if ($env:TS_DB_URL -match '^sqlite(?:\+[^:]*)?:///(.+?)(?:\?.*)?$') {
+        $rawPath = [System.Uri]::UnescapeDataString($matches[1])
+        if ($rawPath -eq ':memory:') { return }
+        if ($IsWindows -and $rawPath -match '^/[A-Za-z]:/') { $rawPath = $rawPath.Substring(1) }
+        $dbPath = [System.IO.Path]::GetFullPath($rawPath.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+        $allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $RepoRoot 'tests' 'artifacts'))
+        $allowedPrefix = $allowedRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+        if (-not $dbPath.StartsWith($allowedPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  跳过 SQLite 删除：数据库不在 tests/artifacts 安全目录内 ($dbPath)" -ForegroundColor Yellow
+            return
+        }
+        foreach ($candidate in @($dbPath, "$dbPath-wal", "$dbPath-shm")) {
+            if (Test-Path -LiteralPath $candidate) { Remove-Item -LiteralPath $candidate -Force }
+        }
+        Write-Host "  ${Reason}测试 SQLite 数据库: $dbPath" -ForegroundColor Cyan
+        return
+    }
     if ($env:TS_DB_URL -notmatch '^postgresql(?:[^:]*)://([^:]+):([^@]+)@([^:]+):(\d+)/(.*)$') {
-        Write-Host "  跳过数据库删除：TS_DB_URL 不是合法的 postgresql 连接串" -ForegroundColor Yellow
+        Write-Host "  跳过数据库删除：TS_DB_URL 不是支持的 SQLite/PostgreSQL 连接串" -ForegroundColor Yellow
         return
     }
     $dbUser = $matches[1]; $dbPass = $matches[2]; $dbHost = $matches[3]; $dbPort = $matches[4]

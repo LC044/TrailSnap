@@ -101,9 +101,23 @@ class FaceClusterService:
             if owner_id:
                 query = query.filter(Photo.owner_id == owner_id)
                 
-            nearest_face = query.order_by(
-                Face.face_feature.cosine_distance(target_emb)
-            ).limit(1).first()
+            if self.db.bind.dialect.name == "sqlite":
+                # SQLite stores vectors as JSON and has no pgvector <=> operator.
+                # Desktop libraries are expected to be smaller, so evaluate the
+                # filtered candidate set in memory.
+                candidates = query.all()
+                nearest_face = min(
+                    candidates,
+                    key=lambda item: 1.0 - float(np.dot(
+                        target_emb,
+                        self.normalize_embedding(item.face_feature),
+                    )),
+                    default=None,
+                )
+            else:
+                nearest_face = query.order_by(
+                    Face.face_feature.cosine_distance(target_emb)
+                ).limit(1).first()
 
             if not nearest_face:
                 # 无参考人脸，返回None由外部决定是否触发聚类
@@ -496,6 +510,19 @@ class FaceClusterService:
     ) -> set[int]:
         """Use pgvector distance predicates so non-matching library faces never leave PostgreSQL."""
         distance_threshold = self.DISTANCE_THRESHOLD if threshold is None else threshold
+        if self.db.bind.dialect.name == "sqlite":
+            query = self.db.query(Face).join(Photo).filter(
+                Face.is_deleted.is_(False),
+                Face.face_feature.isnot(None),
+                Photo.is_deleted.is_(False),
+            )
+            if owner_id:
+                query = query.filter(Photo.owner_id == owner_id)
+            candidates = query.all()
+            return {
+                face.id for face in candidates
+                if any(self._cosine_distance(face.face_feature, prototype) <= distance_threshold for prototype in prototypes)
+            }
         face_ids = set()
         for prototype in prototypes:
             distance = Face.face_feature.cosine_distance(prototype.tolist())

@@ -1,7 +1,9 @@
 import logging
+import os
+import secrets
 from datetime import timedelta, datetime
 from typing import Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from app.crud import user as crud_user
@@ -24,6 +26,43 @@ from app.service import reset_code_store
 logger = logging.getLogger("app.auth")
 
 router = APIRouter()
+
+
+@router.post("/desktop-session", response_model=BaseResponse[Token])
+def create_desktop_session(
+    db: Session = Depends(get_db),
+    desktop_secret: str | None = Header(
+        default=None,
+        alias="X-TrailSnap-Desktop-Secret",
+    ),
+) -> Any:
+    """Issue the normal administrator JWT used by the local desktop UI."""
+
+    from app.db.bootstrap import ensure_desktop_admin, is_desktop_mode
+
+    expected_secret = os.environ.get("TS_DESKTOP_SESSION_SECRET")
+    if (
+        not is_desktop_mode()
+        or not expected_secret
+        or not isinstance(desktop_secret, str)
+        or not desktop_secret
+        or not secrets.compare_digest(desktop_secret, expected_secret)
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    user = ensure_desktop_admin(db)
+    access_token_expires = timedelta(
+        minutes=system_config.config.security.access_token_expire_minutes
+    )
+    return BaseResponse.success(
+        data={
+            "access_token": security.create_access_token(
+                {"sub": str(user.id)}, expires_delta=access_token_expires
+            ),
+            "token_type": "bearer",
+        }
+    )
+
 
 @router.post("/login", response_model=Token)
 def login_access_token(

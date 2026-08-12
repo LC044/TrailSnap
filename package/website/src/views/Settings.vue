@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity } from 'lucide-vue-next'
+import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -48,6 +48,7 @@ import PerformanceTest from './settings/PerformanceTest.vue'
 import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
+import DesktopAIExtensions from './settings/DesktopAIExtensions.vue'
 import { useSwipeNavigation } from '@/composables/useSwipeNavigation'
 import { useUserStore } from '@/stores/user'
 
@@ -61,6 +62,7 @@ const baseMenuItems = [
   { key: 'user', label: '用户管理', icon: User, superuserOnly: true },
   { key: 'tasks', label: '任务管理', icon: List },
   { key: 'basic', label: '基础设置', icon: Settings },
+  { key: 'ai-extensions', label: 'AI 扩展包', icon: BrainCircuit },
   { key: 'external', label: '外部图库', icon: FolderOpen },
   { key: 'performance', label: '性能测试', icon: Activity },
   { key: 'tokens', label: '令牌管理', icon: Key },
@@ -76,6 +78,7 @@ const tabComponents: Record<string, typeof ProfileSettings> = {
   user: UserManagement,
   tasks: TaskManagement,
   basic: BasicSettings,
+  'ai-extensions': DesktopAIExtensions,
   external: ExternalGallery,
   performance: PerformanceTest,
   tokens: Tokens,

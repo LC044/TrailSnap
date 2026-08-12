@@ -1,0 +1,16 @@
+{
+  "name": "trailsnap-desktop",
+  "productName": "TrailSnap",
+  "version": "0.9.2",
+  "private": true,
+  "description": "TrailSnap Tauri 2 desktop shell",
+  "scripts": {
+    "start": "tauri dev",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "dist": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4"
+  }
+}

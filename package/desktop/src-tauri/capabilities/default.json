@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Minimal permissions for the TrailSnap main window",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open"]
+}

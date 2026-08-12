@@ -129,6 +129,10 @@
             </p>
             <div class="flex flex-col sm:flex-row gap-2">
               <el-input ref="manualInputRef" v-model="manualPath" placeholder="D:/Photos/family 或 /app/Photos/family" class="w-full sm:max-w-[400px]" />
+              <el-button
+                class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                @click="chooseFolder"
+              >选择文件夹</el-button>
               <el-button @click="validateManual" :loading="validating">校验</el-button>
               <el-button type="primary" @click="addManual" :loading="submitting" :disabled="!manualValid">添加并扫描</el-button>
             </div>
@@ -231,6 +235,7 @@
         <el-button type="primary" @click="showDockerGuide = false">知道了</el-button>
       </template>
     </el-dialog>
+    <ExternalGalleryPickerDialog v-model:visible="showServerPicker" @select="useSelectedFolder" />
   </div>
 </template>
 
@@ -242,6 +247,8 @@ import { userService, type User } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
+import ExternalGalleryPickerDialog from '@/components/ExternalGalleryPickerDialog.vue'
+import { isTauriApp } from '@/config/server'
 
 interface Candidate {
   name: string
@@ -279,6 +286,7 @@ const manualInputRef = ref<any>(null)
 
 const submitting = ref(false)
 const showDockerGuide = ref(false)
+const showServerPicker = ref(false)
 
 const filterConfig = reactive({
   enable: false,
@@ -417,6 +425,27 @@ const validateManual = async () => {
     manualMsg.value = e?.data?.msg || '校验失败'
   } finally {
     validating.value = false
+  }
+}
+
+const useSelectedFolder = (path: string) => {
+  manualPath.value = path
+  manualValid.value = false
+  manualMsg.value = '已选择文件夹，请校验后添加'
+  focusManual()
+}
+
+const chooseFolder = async () => {
+  if (!isTauriApp()) {
+    showServerPicker.value = true
+    return
+  }
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const selected = await open({ directory: true, multiple: false, title: '选择照片文件夹' })
+    if (typeof selected === 'string') useSelectedFolder(selected)
+  } catch {
+    ElMessage.error('无法打开系统文件夹选择器')
   }
 }
 

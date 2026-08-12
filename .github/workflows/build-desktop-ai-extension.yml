@@ -1,0 +1,81 @@
+name: Build Desktop AI Extension
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["master"]
+    paths:
+      - 'package/ai/**'
+      - 'package/desktop/src-tauri/**'
+      - '.github/workflows/build-desktop-ai-extension.yml'
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  build:
+    name: Build AI extension (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win32-x64
+          - os: macos-latest
+            platform: darwin-arm64
+          - os: ubuntu-latest
+            platform: linux-x64
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+      EXTENSION_VERSION: '0.9.2'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: package/ai/uv.lock
+      - name: Install CPU AI runtime
+        working-directory: package/ai
+        run: uv sync --frozen --extra cpu --group desktop
+      - name: Prepare bundled RapidOCR resources
+        working-directory: package/ai
+        run: uv run python -c "from app.services.ocr_service import load_paddleocr_model; load_paddleocr_model()"
+      - name: Compile AI sidecar
+        working-directory: package/ai
+        run: uv run python scripts/build_desktop_runtime.py
+      - name: Assemble runtime extension
+        working-directory: package/ai
+        run: uv run python scripts/build_desktop_extension.py --platform-key ${{ matrix.platform }} --version ${{ env.EXTENSION_VERSION }}
+      - name: Upload extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrailSnap-AI-${{ matrix.platform }}-${{ github.run_number }}
+          path: |
+            package/ai/extension-dist/*.tar.gz
+            package/ai/extension-dist/*.asset.json
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: TrailSnap-AI-*
+          path: artifacts
+      - name: Build extension catalog
+        run: python package/ai/scripts/merge_extension_catalog.py artifacts --version "${GITHUB_REF_NAME#v}" --output artifacts/ai-extensions.json
+      - name: Publish extension assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/ai-extensions.json

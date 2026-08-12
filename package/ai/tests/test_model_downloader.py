@@ -144,3 +144,42 @@ def test_wait_for_model_times_out_when_never_ready(downloader):
 def test_get_status_returns_failed_for_unknown_key(downloader):
     assert downloader.get_status("never-registered") == ModelStatus.FAILED
     assert downloader.is_ready("never-registered") is False
+
+
+def test_managed_model_can_be_listed_and_deleted(downloader, tmp_path):
+    model_file = tmp_path / "managed.bin"
+    model_file.write_bytes(b"model")
+
+    downloader.register_model(
+        "managed",
+        check_fn=model_file.exists,
+        download_fn=lambda: str(model_file),
+        delete_fn=model_file.unlink,
+        metadata={"name": "Managed model", "capabilities": ["ocr"]},
+        managed=True,
+    )
+
+    listed = downloader.list_models(managed_only=True)
+    assert listed == [{
+        "id": "managed",
+        "name": "Managed model",
+        "capabilities": ["ocr"],
+        "status": "ready",
+        "error": None,
+    }]
+
+    downloader.delete_model("managed")
+    assert not model_file.exists()
+    assert downloader.get_status("managed") == ModelStatus.PENDING
+
+
+def test_refresh_downgrades_ready_status_when_files_are_removed(downloader, tmp_path):
+    model_file = tmp_path / "managed.bin"
+    model_file.write_bytes(b"model")
+    downloader.register_model("managed", model_file.exists, lambda: str(model_file))
+    downloader.refresh_statuses()
+    assert downloader.is_ready("managed")
+
+    model_file.unlink()
+    downloader.refresh_statuses()
+    assert downloader.get_status("managed") == ModelStatus.PENDING

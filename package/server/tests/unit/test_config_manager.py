@@ -285,6 +285,17 @@ def test_merge_user_settings_refreshes_existing_builtin_api_base():
     assert builtin.api_base == "http://rotated.test:1234/v1"
 
 
+def test_desktop_ai_gateway_overrides_persisted_ai_url(monkeypatch):
+    """The random desktop gateway must override an old fixed-port setting."""
+    monkeypatch.setenv("TS_DESKTOP_AI_GATEWAY", "http://127.0.0.1:43123")
+    cfg = config_manager.merge_user_settings(
+        {"ai": {"ai_api_url": "http://127.0.0.1:8001"}}
+    )
+    builtin = next(c for c in cfg.ai.connections if c.id == "builtin")
+    assert cfg.ai.ai_api_url == "http://127.0.0.1:43123"
+    assert builtin.api_base == "http://127.0.0.1:43123/v1"
+
+
 def test_merge_user_settings_strips_legacy_ai_settings():
     """The legacy ``llm_settings`` / ``llm_vl_settings`` keys are scrubbed
     even when merged in isolation (no DB row)."""

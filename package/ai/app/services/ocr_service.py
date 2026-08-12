@@ -39,7 +39,6 @@ def openvino_infer_lock():
 def load_paddleocr_model():
     global _ocr_engine_is_openvino
     try:
-        model_root = settings.MODEL_PATH
         from rapidocr import EngineType, LangDet, LangRec, ModelType, OCRVersion, RapidOCR
         # 引擎优先级：CUDA(TORCH) > OpenVINO > ONNX Runtime(CPU)。
         # OCR 走 RapidOCR 自己的引擎配置口，不经过 onnx_providers.get_onnx_providers()，

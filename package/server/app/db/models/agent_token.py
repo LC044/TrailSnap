@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import UUID
 import uuid
 from datetime import datetime
 from app.db.base import Base

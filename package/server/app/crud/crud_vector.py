@@ -3,7 +3,7 @@ from app.db.models.image_vector import ImageVector
 from app.db.models.photo import Photo
 from typing import List, Optional, Any
 from uuid import UUID
-from pgvector.sqlalchemy import Vector
+import numpy as np
 
 def create_or_update_vector(db: Session, photo_id: UUID, embedding: List[float], model_name: str = "clip-ViT-B-32"):
     """
@@ -32,7 +32,26 @@ def search_similar_vectors(db: Session, embedding: List[float], limit: int = 10,
     CLIP embeddings are usually normalized, so inner product is cosine similarity.
     However, pgvector's cosine distance operator <=> returns 1 - cosine_similarity.
     """
-    # Using cosine distance operator <=>
+    if db.bind.dialect.name == "sqlite":
+        query = db.query(ImageVector)
+        if user_id:
+            query = query.join(Photo, ImageVector.photo_id == Photo.id).filter(
+                Photo.owner_id == user_id,
+                Photo.is_deleted == False,
+            )
+        target = np.asarray(embedding, dtype=float)
+        target_norm = np.linalg.norm(target)
+        rows = []
+        for item in query.all():
+            candidate = np.asarray(item.embedding, dtype=float)
+            denominator = np.linalg.norm(candidate) * target_norm
+            distance = 1.0 if denominator == 0 else 1.0 - float(np.dot(candidate, target) / denominator)
+            if threshold is None or distance <= threshold:
+                rows.append((item, distance))
+        rows.sort(key=lambda row: row[1])
+        return rows[offset:offset + limit]
+
+    # PostgreSQL uses pgvector's cosine distance operator <=>.
     # Order by distance ascending
     distance = ImageVector.embedding.cosine_distance(embedding).label("distance")
     query = db.query(ImageVector, distance)

@@ -1,7 +1,5 @@
 import type { Component } from 'vue'
 import {
-  BarChart3,
-  Gamepad2,
   Home,
   Image as ImageIcon,
   Images,
@@ -48,17 +46,15 @@ export const desktopNavSections: AppNavSection[] = [
     label: '探索',
     items: [
       { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums', activeMatch: 'path' },
-      { label: '位置', href: '/album/location', icon: MapPin, navGroup: 'albums', activeMatch: 'path' },
       { label: '智能分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums', activeMatch: 'path' },
-      { label: '猜城市', href: '/game', icon: Gamepad2, navGroup: 'tools', activeMatch: 'path' },
     ],
   },
   {
     label: '旅程',
     items: [
+      { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums', activeMatch: 'path' },
       { label: '车票', href: '/ticket', icon: Ticket, navGroup: 'tickets', activeMatch: 'exact' },
-      { label: '行程统计', href: '/statistics', icon: BarChart3, navGroup: 'tickets', activeMatch: 'path' },
     ],
   },
   {
@@ -75,7 +71,6 @@ export const mobileMoreSections: AppNavSection[] = [
     label: '回忆与行程',
     items: [
       { label: '行程票据', href: '/ticket', icon: Ticket, navGroup: 'tickets' },
-      { label: '行程统计', href: '/statistics', icon: BarChart3, navGroup: 'tickets' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums' },
     ],
   },
@@ -84,7 +79,6 @@ export const mobileMoreSections: AppNavSection[] = [
     items: [
       { label: '工具箱', href: '/toolbox', icon: Wrench, navGroup: 'tools' },
       { label: '断舍离', href: '/swipe-filter', icon: Layers, navGroup: 'tools' },
-      { label: '猜城市', href: '/game', icon: Gamepad2, navGroup: 'tools' },
     ],
   },
   {

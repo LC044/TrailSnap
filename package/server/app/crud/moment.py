@@ -2,13 +2,14 @@ from datetime import date
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import case, cast, func, Date
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.db.models.moment_day_caption import MomentDayCaption
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
+from app.db.sql import as_date, date_only
 
 
 def list_captions(
@@ -139,7 +140,7 @@ def get_day_locations(
     未落到任何位置的天不会返回。
     """
     tz_col = Photo.photo_time
-    day_expr = cast(tz_col, Date).label("day")
+    day_expr = date_only(db, tz_col).label("day")
 
     # 名称：Scene.name > city > district > province（第一个非空的胜出）
     name_expr = func.coalesce(
@@ -184,7 +185,7 @@ def get_day_locations(
     _LEVEL_RANK = {"scene": 0, "city": 1, "district": 2, "province": 3, "unknown": 4}
     buckets: dict = {}
     for r in rows:
-        entry = buckets.setdefault(r.day, [])
+        entry = buckets.setdefault(as_date(r.day), [])
         entry.append({"name": r.name, "level": r.level, "count": int(r.cnt)})
 
     result: List[dict] = []

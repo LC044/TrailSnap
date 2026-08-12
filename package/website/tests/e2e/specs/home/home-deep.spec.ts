@@ -64,8 +64,9 @@ test.describe('Smoke - 首页深度 @smoke', () => {
     await page.goto('/');
     // 不被重定向（已登录态）也不到 catch-all 触发 NotFound
     await expect(page).toHaveURL(/\/$/);
-    const notFoundCount = await page.getByText(/页面不存在|404|Not Found|未找到页面/).count();
-    expect(notFoundCount).toBe(0);
+    // NotFound 组件有稳定的根类；不要在整个首页模糊搜索数字 "404"，
+    // 正常的照片统计、文件名或业务数据也可能包含该数字。
+    await expect(page.locator('.not-found')).toHaveCount(0);
   });
 
   test('首页 - 内容细分入口使用照片类型与智能分类的真实路由', async ({ page }) => {

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from sqlalchemy import Column, String, ForeignKey, Text, JSON, DECIMAL, Index
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 

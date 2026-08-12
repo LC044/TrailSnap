@@ -11,9 +11,131 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Capacitor 使用 viewport-fit=cover 暴露异形屏安全区，布局通过 env() 留白。 -->
     <title>行影集 ✨</title>
+    <style>
+      /* Vue waits for the desktop sidecar before mounting. Keep this startup
+         screen inline so it paints immediately and is replaced by Vue. */
+      .boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        color: #25315f;
+        background:
+          radial-gradient(circle at 25% 20%, rgba(72, 199, 160, 0.17), transparent 34%),
+          radial-gradient(circle at 78% 75%, rgba(50, 70, 180, 0.14), transparent 38%),
+          linear-gradient(145deg, #f8fbff 0%, #f3f7ff 48%, #f7fffc 100%);
+        font-family: Inter, "Microsoft YaHei", system-ui, sans-serif;
+      }
+      .boot-splash__content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 32px;
+        text-align: center;
+      }
+      .boot-splash__logo-wrap {
+        position: relative;
+        width: 112px;
+        height: 112px;
+        margin-bottom: 24px;
+      }
+      .boot-splash__logo-wrap::before,
+      .boot-splash__logo-wrap::after {
+        position: absolute;
+        inset: -10px;
+        content: "";
+        border: 1px solid rgba(50, 70, 180, 0.2);
+        border-radius: 34px;
+        animation: boot-ring 2.4s ease-out infinite;
+      }
+      .boot-splash__logo-wrap::after {
+        animation-delay: 1.2s;
+      }
+      .boot-splash__logo {
+        position: relative;
+        z-index: 1;
+        display: block;
+        width: 112px;
+        height: 112px;
+        filter: drop-shadow(0 14px 24px rgba(50, 70, 180, 0.22));
+        animation: boot-float 2.4s ease-in-out infinite;
+      }
+      .boot-splash__title {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+      }
+      .boot-splash__tagline {
+        min-height: 22px;
+        margin: 12px 0 16px;
+        color: #69739b;
+        font-size: 14px;
+        letter-spacing: 0.08em;
+      }
+      .boot-splash__dots {
+        display: flex;
+        gap: 7px;
+        height: 12px;
+        align-items: center;
+      }
+      .boot-splash__dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: #48c7a0;
+        animation: boot-dot 1.2s ease-in-out infinite;
+      }
+      .boot-splash__dots span:nth-child(2) { animation-delay: 0.16s; }
+      .boot-splash__dots span:nth-child(3) { animation-delay: 0.32s; }
+      @keyframes boot-float {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(-7px) scale(1.02); }
+      }
+      @keyframes boot-ring {
+        0% { opacity: 0.65; transform: scale(0.9); }
+        75%, 100% { opacity: 0; transform: scale(1.35); }
+      }
+      @keyframes boot-dot {
+        0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+        30% { opacity: 1; transform: translateY(-4px); }
+      }
+      @media (prefers-color-scheme: dark) {
+        .boot-splash {
+          color: #eef2ff;
+          background:
+            radial-gradient(circle at 25% 20%, rgba(72, 199, 160, 0.13), transparent 34%),
+            radial-gradient(circle at 78% 75%, rgba(82, 104, 220, 0.18), transparent 38%),
+            #0f172a;
+        }
+        .boot-splash__tagline { color: #aab3d3; }
+        .boot-splash__logo-wrap::before,
+        .boot-splash__logo-wrap::after { border-color: rgba(126, 143, 235, 0.3); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .boot-splash *,
+        .boot-splash *::before,
+        .boot-splash *::after { animation: none !important; }
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="boot-splash" role="status" aria-live="polite" aria-label="行影集正在启动">
+        <div class="boot-splash__content">
+          <div class="boot-splash__logo-wrap">
+            <img class="boot-splash__logo" src="/logo.svg" alt="行影集" />
+          </div>
+          <h1 class="boot-splash__title">行影集</h1>
+          <p class="boot-splash__tagline" data-startup-message>正在准备你的光影记忆</p>
+          <div class="boot-splash__dots" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

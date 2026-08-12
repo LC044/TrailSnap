@@ -118,6 +118,42 @@ def test_export_settings_matches_get_settings():
     assert result == {"storage": {"photo_storage_path": "G:/photos"}}
 
 
+def test_get_ai_models_proxies_configured_ai_service():
+    db = MagicMock()
+    user = _user()
+    cfg = SimpleNamespace(ai=SimpleNamespace(ai_api_url="http://127.0.0.1:18001"))
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"models": [{"id": "desktop-core-models", "status": "ready"}]}
+
+    with patch.object(settings_api.config_manager, "get_user_config", return_value=cfg), \
+         patch.object(settings_api.requests, "request", return_value=response) as request_call:
+        result = settings_api.get_ai_models(db=db, current_user=user)
+
+    request_call.assert_called_once_with(
+        "GET", "http://127.0.0.1:18001/ai/models", timeout=120
+    )
+    assert result.code == 0
+    assert result.data["models"][0]["status"] == "ready"
+
+
+def test_download_ai_model_encodes_identifier_and_returns_upstream_error():
+    db = MagicMock()
+    user = _user()
+    cfg = SimpleNamespace(ai=SimpleNamespace(ai_api_url="http://127.0.0.1:18001/"))
+    response = MagicMock(status_code=409)
+    response.json.return_value = {"detail": "模型正在下载"}
+
+    with patch.object(settings_api.config_manager, "get_user_config", return_value=cfg), \
+         patch.object(settings_api.requests, "request", return_value=response) as request_call:
+        result = settings_api.download_ai_model("core/model", db=db, current_user=user)
+
+    request_call.assert_called_once_with(
+        "POST", "http://127.0.0.1:18001/ai/models/core%2Fmodel/download", timeout=120
+    )
+    assert result.code == 409
+    assert result.msg == "模型正在下载"
+
+
 # ----------------------- POST /settings/import -----------------------
 
 

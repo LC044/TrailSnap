@@ -18,6 +18,15 @@ tests/.env.docker
 *test-local*
 .playwright-cli
 releases/
+package/desktop/dist/
+package/desktop/server-dist/
+package/server/build/
+package/server/dist/
+package/ai/build/
+package/ai/dist_retry/
+package/ai/extension-dist/
+package/ai/extension-models/
+.codex-runtime/
 pg_data/
 doc/plan/
 

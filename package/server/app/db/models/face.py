@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, DECIMAL, JSON, Integer, Index
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
-from pgvector.sqlalchemy import VECTOR
+from app.db.types import VECTOR
 
 from app.db.base import Base
 
@@ -53,5 +53,10 @@ class Face(Base):
         # 为face_identity_id加索引
         Index("idx_face_identity_id", "face_identity_id"),
         # 向量索引
-        Index("idx_face_feature", "face_feature", postgresql_using="hnsw", postgresql_ops={"face_feature": "vector_cosine_ops"}),
+        Index(
+            "idx_face_feature",
+            "face_feature",
+            postgresql_using="hnsw",
+            postgresql_ops={"face_feature": "vector_cosine_ops"},
+        ).ddl_if(dialect="postgresql"),
     )

@@ -9,6 +9,7 @@
 @Description : 
 """
 import os
+import numpy as np
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
@@ -225,10 +226,17 @@ def get_photos(db: Session, album_id: UUID, skip: int = 0, limit: int = 100, sta
     query = _build_album_query(db, album)
 
     # Ordering
+    sqlite_smart_sort = bool(
+        album.type == 'smart'
+        and album.query_embedding is not None
+        and db.bind.dialect.name == "sqlite"
+    )
     if album.type == 'smart' and album.query_embedding is not None:
-        # Order by similarity
-        distance = ImageVector.embedding.cosine_distance(album.query_embedding)
-        query = query.order_by(distance)
+        if sqlite_smart_sort:
+            pass
+        else:
+            distance = ImageVector.embedding.cosine_distance(album.query_embedding)
+            query = query.order_by(distance)
     else:
         # Default order by time
         query = query.order_by(Photo.photo_time.desc())
@@ -242,6 +250,22 @@ def get_photos(db: Session, album_id: UUID, skip: int = 0, limit: int = 100, sta
     # Optimization for user albums
     if album.type == 'user':
         query = query.options(joinedload(Photo.albums))
+
+    if sqlite_smart_sort:
+        rows = query.with_entities(Photo, ImageVector.embedding).all()
+        target = np.asarray(album.query_embedding, dtype=float)
+        target_norm = np.linalg.norm(target)
+
+        def sqlite_distance(row):
+            if not row[1] or target_norm == 0:
+                return 1.0
+            candidate = np.asarray(row[1], dtype=float)
+            denominator = np.linalg.norm(candidate) * target_norm
+            return 1.0 if denominator == 0 else 1.0 - float(np.dot(candidate, target) / denominator)
+
+        rows.sort(key=sqlite_distance)
+        photos = [row[0] for row in rows]
+        return photos[skip:] if limit == 0 else photos[skip:skip + limit]
 
     if limit == 0:
         return query.offset(skip).all()
@@ -1110,7 +1134,10 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
     )
     
     # 重新应用排序
-    if POSITIVE_SENTIMENT_VECTOR.embedding:
+    sqlite_vector_sort = bool(
+        POSITIVE_SENTIMENT_VECTOR.embedding and db.bind.dialect.name == "sqlite"
+    )
+    if POSITIVE_SENTIMENT_VECTOR.embedding and not sqlite_vector_sort:
         distance = ImageVector.embedding.cosine_distance(POSITIVE_SENTIMENT_VECTOR.embedding)
         photo_query = photo_query.order_by(ai_score.desc(), distance.asc(), Photo.photo_time.desc())
     else:
@@ -1138,6 +1165,23 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
         if norm1 == 0 or norm2 == 0:
             return 0.0
         return np.dot(v1, v2) / (norm1 * norm2)
+
+    if sqlite_vector_sort:
+        # Preserve the PostgreSQL ordering semantics without emitting pgvector's
+        # unsupported <=> operator. AI score remains the primary key, followed
+        # by positive-sentiment cosine distance and capture time.
+        target = POSITIVE_SENTIMENT_VECTOR.embedding
+        candidates.sort(
+            key=lambda photo: (
+                -float(
+                    (photo.image_description.memory_score or 0)
+                    + (photo.image_description.quality_score or 0)
+                ) if photo.image_description else 0.0,
+                1.0 - cosine_similarity(embeddings_map.get(photo.id), target)
+                if embeddings_map.get(photo.id) is not None else 1.0,
+                -(photo.photo_time.timestamp() if photo.photo_time else 0.0),
+            )
+        )
 
     result_photos = []
     selected_embeddings = []

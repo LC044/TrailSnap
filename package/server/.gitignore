@@ -111,6 +111,7 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!desktop_server.spec
 
 # Installer logs
 pip-log.txt
