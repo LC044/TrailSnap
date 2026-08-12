@@ -1,6 +1,12 @@
 name: Build and Push AI
 
 on:
+  pull_request:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'package/ai/**'
+      - '.github/workflows/docker-build-push-ai.yml'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -11,12 +17,6 @@ on:
     # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送 AI 镜像（cpu/gpu/openvino）
     - cron: '0 20 * * *'
   workflow_dispatch:
-    inputs:
-      push_latest:
-        description: '同时打 latest 标签推送（含 cpu/gpu/openvino 各自的 -latest 后缀）'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   build-and-push-ai:
@@ -24,6 +24,7 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       startsWith(github.ref, 'refs/tags/') ||
       contains(github.event.head_commit.message, '构建ai') ||
       contains(github.event.head_commit.message, '构建AI')
@@ -42,61 +43,50 @@ jobs:
             dockerfile: Dockerfile.openvino
             platforms: linux/amd64
             tag_suffix: "-openvino"
+    # PR previews only build the CPU image; release/manual/scheduled builds keep the full matrix.
     steps:
       - name: Checkout code
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         uses: docker/setup-buildx-action@v3
         with:
           install: true
 
       - name: Login to Docker Hub
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
       - name: Determine image tags
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         id: set-tags
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          PUSH_LATEST: ${{ inputs.push_latest }}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             RAW_BASE_TAG=${GITHUB_REF#refs/tags/v}
-            RAW_EXTRA_TAGS="latest"
+            RAW_EXTRA_TAG="latest"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            RAW_BASE_TAG="preview"
+            RAW_EXTRA_TAG=""
           else
             RAW_BASE_TAG=${GITHUB_REF#refs/heads/}
-            RAW_EXTRA_TAGS=""
-          fi
-
-          if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
-            RAW_EXTRA_TAGS="latest"
-          fi
-
-          # 手动触发时按入参决定是否打 latest
-          if [[ "$PUSH_LATEST" == "true" ]]; then
-            RAW_EXTRA_TAGS="latest"
+            RAW_EXTRA_TAG=""
           fi
 
           # Append suffix from matrix
           BASE_TAG="${RAW_BASE_TAG}${{ matrix.tag_suffix }}"
-          if [ -n "$RAW_EXTRA_TAGS" ]; then
-            EXTRA_TAGS="${RAW_EXTRA_TAGS}${{ matrix.tag_suffix }}"
-          else
-            EXTRA_TAGS=""
-          fi
-
-          # 定时触发默认不带 latest（日常构建走 :master，便于回滚）
 
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
-          echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
           echo "RAW_BASE_TAG=$RAW_BASE_TAG" >> $GITHUB_ENV
-          echo "RAW_EXTRA_TAGS=$RAW_EXTRA_TAGS" >> $GITHUB_ENV
+          echo "RAW_EXTRA_TAG=$RAW_EXTRA_TAG" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
 
       - name: Build and push ai
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         uses: docker/build-push-action@v5
         with:
           context: ./package/ai
@@ -104,10 +94,10 @@ jobs:
           platforms: ${{ matrix.platforms }}
           push: true
           tags: |
-            ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-ai:${{ env.BASE_TAG }}
-            ${{ env.EXTRA_TAGS != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAGS) || '' }}
+            ${{ github.event_name != 'pull_request' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.BASE_TAG) || '' }}
             ${{ matrix.type == 'cpu' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_BASE_TAG) || '' }}
-            ${{ matrix.type == 'cpu' && env.RAW_EXTRA_TAGS != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_EXTRA_TAGS) || '' }}
+            ${{ env.RAW_EXTRA_TAG != '' && format('{0}/trailsnap-ai:{1}{2}', env.DOCKER_HUB_USERNAME, env.RAW_EXTRA_TAG, matrix.tag_suffix) || '' }}
+            ${{ matrix.type == 'cpu' && env.RAW_EXTRA_TAG != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_EXTRA_TAG) || '' }}
           cache-from: type=gha,scope=build-ai-${{ matrix.type }}
           cache-to: type=gha,mode=max,scope=build-ai-${{ matrix.type }}
 
@@ -137,6 +127,7 @@ jobs:
             tag_suffix: "-openvino"
     steps:
       - name: Check ACR secrets
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         id: acr_check
         env:
           ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
@@ -171,38 +162,24 @@ jobs:
 
       # tag 计算逻辑与 build-and-push-ai job 完全一致，保证同步的 tag 集合对齐
       - name: Determine image tags
-        if: steps.acr_check.outputs.enabled == 'true'
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          PUSH_LATEST: ${{ inputs.push_latest }}
+        if: (github.event_name != 'pull_request' || matrix.type == 'cpu') && steps.acr_check.outputs.enabled == 'true'
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             RAW_BASE_TAG=${GITHUB_REF#refs/tags/v}
-            RAW_EXTRA_TAGS="latest"
+            RAW_EXTRA_TAG="latest"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            RAW_BASE_TAG="preview"
+            RAW_EXTRA_TAG=""
           else
             RAW_BASE_TAG=${GITHUB_REF#refs/heads/}
-            RAW_EXTRA_TAGS=""
-          fi
-
-          if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
-            RAW_EXTRA_TAGS="latest"
-          fi
-
-          if [[ "$PUSH_LATEST" == "true" ]]; then
-            RAW_EXTRA_TAGS="latest"
+            RAW_EXTRA_TAG=""
           fi
 
           BASE_TAG="${RAW_BASE_TAG}${{ matrix.tag_suffix }}"
-          if [ -n "$RAW_EXTRA_TAGS" ]; then
-            EXTRA_TAGS="${RAW_EXTRA_TAGS}${{ matrix.tag_suffix }}"
-          else
-            EXTRA_TAGS=""
-          fi
 
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
-          echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
           echo "RAW_BASE_TAG=$RAW_BASE_TAG" >> $GITHUB_ENV
-          echo "RAW_EXTRA_TAGS=$RAW_EXTRA_TAGS" >> $GITHUB_ENV
+          echo "RAW_EXTRA_TAG=$RAW_EXTRA_TAG" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
 
       # -t 指定目标，位置参数为源；imagetools create 会拉取源完整内容并推送到目标 registry
@@ -217,11 +194,15 @@ jobs:
           DST_PREFIX="${ACR_REGISTRY}/${ACR_NAMESPACE}/trailsnap-ai"
 
           # 收集要同步的 tag（与 build job 的 tags 列表保持一致）
-          TAGS="$BASE_TAG"
-          [ -n "$EXTRA_TAGS" ] && TAGS="$TAGS $EXTRA_TAGS"
-          if [ "${{ matrix.type }}" = "cpu" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TAGS="$RAW_BASE_TAG"
+          else
+            TAGS="$BASE_TAG"
+            [ -n "$RAW_EXTRA_TAG" ] && TAGS="$TAGS ${RAW_EXTRA_TAG}${{ matrix.tag_suffix }}"
+          fi
+          if [ "${{ matrix.type }}" = "cpu" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
             TAGS="$TAGS $RAW_BASE_TAG"
-            [ -n "$RAW_EXTRA_TAGS" ] && TAGS="$TAGS $RAW_EXTRA_TAGS"
+            [ -n "$RAW_EXTRA_TAG" ] && TAGS="$TAGS $RAW_EXTRA_TAG"
           fi
 
           for TAG in $TAGS; do

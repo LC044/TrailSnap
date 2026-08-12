@@ -210,6 +210,17 @@ def get_preview_path(user_id: UUID, file_id: UUID) -> Optional[str]:
             return m_path
     return None
 
+
+def get_available_photo_path(user_id: UUID, file_id: UUID, original_path: Optional[str]) -> Optional[str]:
+    """Return an existing preview path, falling back to the original photo."""
+    preview_path = get_preview_path(user_id, file_id)
+    if preview_path and os.path.exists(preview_path):
+        return preview_path
+    if original_path and os.path.exists(original_path):
+        return original_path
+    return None
+
+
 def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: Optional[Image.Image] = None, config: ImageSettings = None):
     try:
         ext = os.path.splitext(file_path)[1].lower()

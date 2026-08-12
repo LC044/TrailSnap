@@ -32,6 +32,7 @@ from app.service.storage import (
     generate_video_thumbnail,
     get_file_size,
     get_image_dimensions,
+    get_available_photo_path,
     get_preview_path,
 )
 
@@ -142,6 +143,19 @@ def test_get_preview_path_falls_back_to_jpg(isolated_storage):
 
 def test_get_preview_path_returns_none_when_no_thumb(isolated_storage):
     assert get_preview_path(uuid.uuid4(), uuid.uuid4()) is None
+
+
+def test_get_available_photo_path_falls_back_to_original(isolated_storage, tmp_path):
+    original = tmp_path / "original.jpg"
+    original.write_bytes(b"photo")
+
+    found = get_available_photo_path(uuid.uuid4(), uuid.uuid4(), str(original))
+
+    assert found == str(original)
+
+
+def test_get_available_photo_path_returns_none_when_all_paths_are_missing(isolated_storage):
+    assert get_available_photo_path(uuid.uuid4(), uuid.uuid4(), None) is None
 
 
 # ----------------------- delete_thumbnails -----------------------

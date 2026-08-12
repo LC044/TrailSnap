@@ -2,7 +2,6 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
 import logging
-import os
 import json
 import aiohttp
 from aiohttp import FormData
@@ -222,11 +221,8 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'photo not found'}})
                         continue
 
-                    target_path = storage.get_preview_path(photo.owner_id, photo.id)
-                    if not os.path.exists(target_path):
-                        target_path = photo.file_path
-
-                    if not target_path or not os.path.exists(target_path):
+                    target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+                    if not target_path:
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': 'file not found'})
                         continue
 
@@ -366,11 +362,9 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
 
     async def process_single_photo(self, worker, photo: Photo, db: Session) -> Dict[str, Any]:
         try:
-            target_path = storage.get_preview_path(photo.owner_id, photo.id)
-            if not os.path.exists(target_path):
-                target_path = photo.file_path
-                if not target_path or not os.path.exists(target_path):
-                    return {'status': 'failed', 'error': 'file not found'}
+            target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+            if not target_path:
+                return {'status': 'failed', 'error': 'file not found'}
             # 删除photo对应的车票和机票
             crud_train_tickets.delete_train_ticket_by_photo_id(db, photo.id)
             crud_flight_tickets.delete_flight_ticket_by_photo_id(db, photo.id)

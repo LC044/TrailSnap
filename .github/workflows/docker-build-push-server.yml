@@ -1,6 +1,12 @@
 name: Build and Push Server
 
 on:
+  pull_request:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'package/server/**'
+      - '.github/workflows/docker-build-push-server.yml'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -11,12 +17,6 @@ on:
     # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送后端镜像
     - cron: '0 20 * * *'
   workflow_dispatch:
-    inputs:
-      push_latest:
-        description: '同时打 latest 标签推送'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   build-and-push-server:
@@ -24,6 +24,7 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       startsWith(github.ref, 'refs/tags/') ||
       contains(github.event.head_commit.message, '构建后端')
     steps:
@@ -43,16 +44,16 @@ jobs:
 
       - name: Determine image tags
         id: set-tags
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          PUSH_LATEST: ${{ inputs.push_latest }}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             BASE_TAG=${GITHUB_REF#refs/tags/v}
-            EXTRA_TAGS="latest"
+            EXTRA_TAG="latest"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_TAG="preview"
+            EXTRA_TAG=""
           else
             BASE_TAG=${GITHUB_REF#refs/heads/}
-            EXTRA_TAGS=""
+            EXTRA_TAG=""
           fi
 
           # Docker tag 不允许包含分支名中的 / 等字符。
@@ -61,18 +62,8 @@ jobs:
             BASE_TAG="sha-${GITHUB_SHA:0:12}"
           fi
 
-          if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
-            EXTRA_TAGS="latest"
-          fi
-
-          # 手动触发时按入参决定是否打 latest
-          if [[ "$PUSH_LATEST" == "true" ]]; then
-            EXTRA_TAGS="latest"
-          fi
-
-          # 定时触发默认不带 latest（日常构建走 :master，便于回滚）
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
-          echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
+          echo "EXTRA_TAG=$EXTRA_TAG" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
 
       - name: Build and push server
@@ -83,7 +74,7 @@ jobs:
           push: true
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-server:${{ env.BASE_TAG }}
-            ${{ env.EXTRA_TAGS != '' && format('{0}/trailsnap-server:latest', env.DOCKER_HUB_USERNAME) || '' }}
+            ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-server:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}
 
   # ============ 同步多架构镜像到阿里云 ACR（国内加速拉取） ============
   # docker buildx imagetools create 把完整镜像（manifest list + 各平台 manifest + layer）
@@ -132,16 +123,16 @@ jobs:
       # tag 计算逻辑与 build-and-push-server job 完全一致（含分支名 sanitize）
       - name: Determine image tags
         if: steps.acr_check.outputs.enabled == 'true'
-        env:
-          COMMIT_MSG: ${{ github.event.head_commit.message }}
-          PUSH_LATEST: ${{ inputs.push_latest }}
         run: |
           if [[ $GITHUB_REF == refs/tags/* ]]; then
             BASE_TAG=${GITHUB_REF#refs/tags/v}
-            EXTRA_TAGS="latest"
+            EXTRA_TAG="latest"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_TAG="preview"
+            EXTRA_TAG=""
           else
             BASE_TAG=${GITHUB_REF#refs/heads/}
-            EXTRA_TAGS=""
+            EXTRA_TAG=""
           fi
 
           BASE_TAG=$(printf '%s' "$BASE_TAG" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9_.-]+/-/g; s/^[.-]+//; s/[.-]+$//' | cut -c1-128)
@@ -149,15 +140,8 @@ jobs:
             BASE_TAG="sha-${GITHUB_SHA:0:12}"
           fi
 
-          if [[ "$COMMIT_MSG" == *"-latest"* ]]; then
-            EXTRA_TAGS="latest"
-          fi
-          if [[ "$PUSH_LATEST" == "true" ]]; then
-            EXTRA_TAGS="latest"
-          fi
-
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
-          echo "EXTRA_TAGS=$EXTRA_TAGS" >> $GITHUB_ENV
+          echo "EXTRA_TAG=$EXTRA_TAG" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
 
       # -t 指定目标，位置参数为源；imagetools create 拉取源完整内容并推送到目标 registry
@@ -172,8 +156,7 @@ jobs:
           DST="${ACR_REGISTRY}/${ACR_NAMESPACE}/trailsnap-server"
 
           TAGS="$BASE_TAG"
-          [ -n "$EXTRA_TAGS" ] && TAGS="$TAGS latest"
-
+          [ -n "$EXTRA_TAG" ] && TAGS="$TAGS $EXTRA_TAG"
           for TAG in $TAGS; do
             echo "==> 同步 $SRC:$TAG -> $DST:$TAG"
             docker buildx imagetools create -t "$DST:$TAG" "$SRC:$TAG"

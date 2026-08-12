@@ -1,10 +1,10 @@
 """Unit tests for task-worker queue ordering and lightweight coordination."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.db.models.task import TaskType
+from app.db.models.task import TaskStatus, TaskType
 from app.service import task_worker
 
 
@@ -51,3 +51,108 @@ def test_publish_sends_event_envelope_and_swallows_queue_errors():
 
     queue.put_nowait.side_effect = RuntimeError("queue closed")
     worker._publish("task.failed", {"task_id": "task-2"})
+
+
+@pytest.mark.asyncio
+async def test_completed_event_keeps_task_payload_for_targeted_ui_refresh():
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+
+    task_id = "00000000-0000-0000-0000-000000000123"
+    row = MagicMock()
+    row.id = task_id
+    row.type = TaskType.SCAN_ALBUM
+    row.priority = 1
+    row.total_items = 0
+    row.processed_items = 0
+    row.owner_id = "user-123"
+    row.created_at = None
+    row.payload = {"album_id": "album-123"}
+
+    query = MagicMock()
+    query.filter.return_value.all.return_value = [row]
+    db = MagicMock()
+    db.query.return_value = query
+
+    with (
+        patch.object(task_worker.TaskStrategyFactory, "get_strategy", return_value=None),
+        patch.object(task_worker.crud_task, "delete_tasks_by_ids"),
+        patch.object(task_worker, "SessionLocal", return_value=db),
+    ):
+        await worker._flush_results([{
+            "task_id": task_id,
+            "task_type": TaskType.SCAN_ALBUM,
+            "status": TaskStatus.COMPLETED,
+        }])
+
+    event = worker._publish.call_args.args
+    assert event[0] == "task.updated"
+    assert event[1]["status"] == TaskStatus.COMPLETED.value
+    assert event[1]["payload"] == {"album_id": "album-123"}
+    assert event[1]["owner_id"] == "user-123"
+
+
+@pytest.mark.asyncio
+async def test_process_batch_survives_unknown_dimensions():
+    """get_image_dimensions 对损坏图 / 无 cv2 视频会返回 (None, None, None)，
+    此时开启分辨率过滤不应让整批 PROCESS_BASIC 因 `None < int` 崩溃。"""
+    from app.service.tasks.basic import BasicTaskStrategy
+
+    task_id = "00000000-0000-0000-0000-000000000abc"
+    user_id = "user-abc"
+    file_path = r"E:\fake\bad.png"
+
+    task = MagicMock()
+    task.id = task_id
+    task.type = TaskType.PROCESS_BASIC
+    task.owner_id = user_id
+    task.payload = {"file_path": file_path, "user_id": user_id}
+
+    # DB: no pre-existing photo for this file_path
+    query = MagicMock()
+    query.filter.return_value.first.return_value = None
+    db = MagicMock()
+    db.query.return_value = query
+
+    # filter enabled with non-zero thresholds — the crash trigger
+    filter_cfg = MagicMock()
+    filter_cfg.enable = True
+    filter_cfg.min_width = 100
+    filter_cfg.min_height = 100
+    user_cfg = MagicMock()
+    user_cfg.filter = filter_cfg
+
+    # cpu batch returns success but unknown dimensions
+    batch_results = [{
+        "success": True,
+        "thumb_path": "/tmp/thumb.webp",
+        "meta": {"photo_time": None, "exif_info": None},
+        "size": 1234,
+        "width": None,
+        "height": None,
+        "duration": None,
+        "file_name": "bad.png",
+        "is_motion_photo": False,
+        "md5_hash": "abc",
+        "color_info": None,
+        "task_id": task_id,
+    }]
+
+    loop = MagicMock()
+    loop.run_in_executor = AsyncMock(return_value=batch_results)
+
+    worker = MagicMock()
+
+    with (
+        patch("app.service.tasks.basic.os.path.exists", return_value=True),
+        patch("app.service.tasks.basic.config_manager.get_user_config", return_value=user_cfg),
+        patch("app.service.tasks.basic.storage._get_storage_root", return_value="/storage/root"),
+        patch("app.service.tasks.basic.asyncio.get_running_loop", return_value=loop),
+    ):
+        results = await BasicTaskStrategy().process_batch(worker, [task], db)
+
+    assert len(results) == 1
+    assert results[0]["status"] == "completed"
+    # 尺寸未知时不应被按分辨率过滤丢弃，应正常进入 photo_create_data
+    assert "photo_create_data" in results[0]["result"]
+    assert results[0]["result"]["photo_create_data"]["photo"].width is None

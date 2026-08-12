@@ -2,7 +2,6 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 from typing import List, Dict
 import logging
-import os
 import json
 import base64
 from typing import Dict, Any, List
@@ -200,11 +199,9 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             settings = user_config.ai
             client =self.create_client(settings)
  
-            target_path = storage.get_preview_path(photo.owner_id, photo.id)
-            if not target_path or not os.path.exists(target_path):
-                target_path = photo.file_path
-                if not target_path or not os.path.exists(target_path):
-                    return {'status': 'failed', 'error': 'file not found'}
+            target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+            if not target_path:
+                return {'status': 'failed', 'error': 'file not found'}
 
             eval_prompt = user_config.ai.visual_evaluation_prompt
             narrative_prompt = user_config.ai.visual_narrative_prompt

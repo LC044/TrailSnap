@@ -216,12 +216,21 @@ class BasicTaskStrategy(BaseTaskStrategy):
             user_id = data['user_id']
             filter_config = config_manager.get_user_config(user_id, db).filter
             if filter_config.enable:
-                if filter_config.min_width > 0 and res['width'] < filter_config.min_width:
-                     results.append({'task_id': data['task_id'], 'task_type': data['task_type'], 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'filtered_by_width'}})
-                     continue
-                if filter_config.min_height > 0 and res['height'] < filter_config.min_height:
-                     results.append({'task_id': data['task_id'], 'task_type': data['task_type'], 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'filtered_by_height'}})
-                     continue
+                # get_image_dimensions 对损坏图片 / 未装 cv2 的视频 / 不支持的扩展名
+                # 会返回 (None, None, None)，且异常被底层裸 except 吞掉。
+                # 这里若不守卫，None < int 会抛 TypeError 并拖垮整批任务。
+                if res['width'] is None or res['height'] is None:
+                    logging.getLogger(__name__).warning(
+                        f"BasicTaskStrategy: dimensions unknown for {data['file_path']} "
+                        f"(width={res['width']}, height={res['height']}), skip resolution filter"
+                    )
+                else:
+                    if filter_config.min_width > 0 and res['width'] < filter_config.min_width:
+                         results.append({'task_id': data['task_id'], 'task_type': data['task_type'], 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'filtered_by_width'}})
+                         continue
+                    if filter_config.min_height > 0 and res['height'] < filter_config.min_height:
+                         results.append({'task_id': data['task_id'], 'task_type': data['task_type'], 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'filtered_by_height'}})
+                         continue
 
             # Construct PhotoCreate data
             meta = res['meta']

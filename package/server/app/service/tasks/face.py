@@ -2,7 +2,6 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
 import logging
-import os
 import aiohttp
 from aiohttp import FormData
 from sqlalchemy.orm import Session
@@ -156,11 +155,8 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                             results.append({'task_id': task.id, 'task_type': task.type, 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'already processed'}})
                             continue
 
-                    target_path = storage.get_preview_path(photo.owner_id, photo.id)
-                    if not os.path.exists(target_path):
-                        target_path = photo.file_path
-
-                    if not target_path or not os.path.exists(target_path):
+                    target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+                    if not target_path:
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': 'file not found'})
                         continue
 
@@ -267,11 +263,9 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
     async def process_single_photo(self, worker, photo: Photo, db: Session) -> Dict[str, Any]:
         try:
             cluster_service = FaceClusterService(db, photo.owner_id)
-            target_path = storage.get_preview_path(photo.owner_id, photo.id)
-            if not os.path.exists(target_path):
-                target_path = photo.file_path
-                if not target_path or not os.path.exists(target_path):
-                    return {'status': 'failed', 'error': 'file not found'}
+            target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+            if not target_path:
+                return {'status': 'failed', 'error': 'file not found'}
 
             async with aiohttp.ClientSession() as session:
                 with open(target_path, 'rb') as f:
