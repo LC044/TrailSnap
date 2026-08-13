@@ -3,6 +3,7 @@
 // 均复用本文件，保证列数/间距完全一致，避免口径漂移。
 
 export type ViewSize = 'sm' | 'md' | 'lg'
+export type MobileDateHeaderMode = 'day' | 'month' | 'year'
 // Preserve the familiar large-thumbnail steps, then collapse progressively
 // into a dense timeline overview similar to the native Photos experience.
 export const MOBILE_GRID_COLUMNS = [2, 3, 4, 6, 8, 12, 16, 20, 24, 28] as const
@@ -40,4 +41,23 @@ export function getMobileGridGap(columns: number): number {
   if (columns === 4) return 4
   if (columns >= 20) return 0
   return columns >= 10 ? 1 : 2
+}
+
+export function getMobileDateHeaderMode(columns: number): MobileDateHeaderMode {
+  if (columns >= 24) return 'year'
+  if (columns >= 12) return 'month'
+  return 'day'
+}
+
+export function getMobileDateHeaderHeight(
+  mode: MobileDateHeaderMode,
+  isFirstDayOfMonth: boolean,
+  isFirstMonthOfYear: boolean,
+  isDummy = false,
+): number {
+  if (isDummy) return 0
+  if (mode === 'day') return 50
+  if (!isFirstDayOfMonth) return 0
+  if (mode === 'month') return 34
+  return isFirstMonthOfYear ? 38 : 0
 }

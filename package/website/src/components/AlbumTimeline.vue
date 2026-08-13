@@ -1,7 +1,11 @@
 <template>
   <div 
     ref="containerRef"
-    class="fixed cursor-pointer right-1 md:right-2 top-1/2 transform -translate-y-1/2 z-40 flex flex-col items-end select-none py-4 pr-1 md:pr-2 touch-none max-h-[80vh] overflow-y-auto no-scrollbar"
+    data-testid="album-timeline"
+    class="fixed cursor-pointer right-1 md:right-2 top-1/2 transform -translate-y-1/2 z-40 flex flex-col items-end select-none py-4 pr-1 md:pr-2 touch-none max-h-[80vh] no-scrollbar transition-opacity duration-200"
+    :class="isMobile
+      ? (mobileVisible || mobileDragging ? 'opacity-100 pointer-events-auto h-[52vh] w-12' : 'opacity-0 pointer-events-none h-[52vh] w-12')
+      : 'opacity-100 overflow-y-auto'"
     @mousemove="handleMouseMove"
     @mouseleave="handleMouseLeave"
     @touchstart="handleTouchStart"
@@ -13,7 +17,7 @@
       v-for="item in displayItems"
       :key="item.key"
       :ref="el => setItemRef(el, item.key)"
-      class="flex items-center justify-end group relative transition-all duration-200 w-12 md:w-24"
+      class="hidden md:flex items-center justify-end group relative transition-all duration-200 w-12 md:w-24"
       :class="[
         item.isYearStart ? 'mt-4 mb-1' : 'my-[2px]'
       ]"
@@ -50,6 +54,16 @@
       ></div>
     </div>
 
+    <!-- Mobile: a transient scrubber replaces the dense desktop year/month rail. -->
+    <div v-if="isMobile" class="absolute right-2 inset-y-4 w-1 rounded-full bg-gray-300/70 dark:bg-gray-600/70">
+      <div
+        data-testid="mobile-timeline-thumb"
+        class="absolute right-1/2 translate-x-1/2 w-3 h-10 rounded-full bg-primary-500 shadow-lg shadow-primary-500/30 transition-[top] duration-100"
+        :class="{ '!duration-0 scale-110': mobileDragging }"
+        :style="{ top: `${mobileThumbTop}px` }"
+      ></div>
+    </div>
+
     <!-- Independent Pointer -->
     <div 
       v-show="isHovering"
@@ -63,7 +77,7 @@
   <!-- Tooltip (teleported to body) -->
   <teleport to="body">
     <div 
-      v-show="isHovering && hoveredDate"
+      v-show="(isHovering || mobileDragging) && hoveredDate"
       class="fixed bg-gray-900/90 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap pointer-events-none z-[9999] backdrop-blur-sm shadow-lg transition-transform duration-50"
       :style="tooltipStyle"
     >
@@ -73,7 +87,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import type { TimelineItem as ApiTimelineItem } from '@/types/album'
 
 const props = defineProps<{
@@ -81,7 +95,9 @@ const props = defineProps<{
   activeDate: string
 }>()
 
-const emit = defineEmits(['select'])
+const emit = defineEmits<{
+  (event: 'select', date: string, behavior?: ScrollBehavior): void
+}>()
 
 // State
 const containerRef = ref<HTMLElement | null>(null)
@@ -90,6 +106,11 @@ const hoveredDate = ref<string | null>(null)
 const isHovering = ref(false)
 const pointerTop = ref(0)
 const tooltipTop = ref(0)
+const isMobile = ref(typeof window !== 'undefined' && window.innerWidth < 768)
+const mobileVisible = ref(false)
+const mobileDragging = ref(false)
+let mobileHideTimer: ReturnType<typeof setTimeout> | null = null
+let scrollElement: HTMLElement | Window | null = null
 
 // Collect refs
 const setItemRef = (el: any, key: string) => {
@@ -101,6 +122,7 @@ interface DisplayItem {
   key: string
   year: number
   month: number
+  day?: number
   dateStr: string
   isYearStart: boolean
   isActive: boolean
@@ -115,6 +137,26 @@ const displayItems = computed(() => {
   const activeMatch = props.activeDate ? (props.activeDate.match(/(\d+)年(\d+)月/) || props.activeDate.match(/(\d+)-(\d+)/)) : null
   const activeYear = activeMatch ? parseInt(activeMatch[1]) : null
   const activeMonth = activeMatch ? parseInt(activeMatch[2]) : null
+
+  if (isMobile.value) {
+    const dayMap = new Map<string, { year: number; month: number; day: number }>()
+    props.items.forEach(item => {
+      const key = `${item.year}-${item.month}-${item.day}`
+      if (!dayMap.has(key)) dayMap.set(key, { year: item.year, month: item.month, day: item.day })
+    })
+    return Array.from(dayMap.values())
+      .sort((a, b) => b.year - a.year || b.month - a.month || b.day - a.day)
+      .map((item, index, list) => ({
+        key: `${item.year}-${item.month}-${item.day}`,
+        year: item.year,
+        month: item.month,
+        day: item.day,
+        dateStr: `${item.year}-${String(item.month).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`,
+        isYearStart: index === 0 || list[index - 1].year !== item.year,
+        isActive: activeYear === item.year && activeMonth === item.month,
+        isActiveYear: activeYear === item.year,
+      }))
+  }
   
   // Aggregate by Month
   const monthMap = new Map<string, { year: number, month: number }>()
@@ -155,8 +197,20 @@ const displayItems = computed(() => {
   return items
 })
 
+const activeItemIndex = computed(() => {
+  const index = displayItems.value.findIndex(item => item.isActive)
+  return index < 0 ? 0 : index
+})
+
+const mobileTrackHeight = computed(() => Math.max(1, (containerRef.value?.clientHeight ?? 400) - 72))
+const mobileThumbTop = computed(() => {
+  const count = displayItems.value.length
+  return count <= 1 ? 16 : 16 + activeItemIndex.value / (count - 1) * mobileTrackHeight.value
+})
+
 // Click logic
 const handleItemClick = (e: MouseEvent) => {
+  if (isMobile.value) return
   updatePosition(e.clientY)
   if (hoveredDate.value) {
     emit('select', hoveredDate.value)
@@ -236,22 +290,30 @@ const handleMouseLeave = () => {
 
 const handleTouchStart = (e: TouchEvent) => {
   e.preventDefault()
-  if (e.touches.length > 0) updatePosition(e.touches[0].clientY)
+  mobileDragging.value = isMobile.value
+  if (e.touches.length > 0) {
+    if (isMobile.value) updateMobilePosition(e.touches[0].clientY, true)
+    else updatePosition(e.touches[0].clientY)
+  }
 }
 
 const handleTouchMove = (e: TouchEvent) => {
   e.preventDefault()
   if (rafId) cancelAnimationFrame(rafId)
   rafId = requestAnimationFrame(() => {
-    if (e.touches.length > 0) updatePosition(e.touches[0].clientY)
+    if (e.touches.length > 0) {
+      if (isMobile.value) updateMobilePosition(e.touches[0].clientY, true)
+      else updatePosition(e.touches[0].clientY)
+    }
   })
 }
 
 const handleTouchEnd = (e: TouchEvent) => {
   e.preventDefault()
-  if (hoveredDate.value) {
+  if (!isMobile.value && hoveredDate.value) {
     emit('select', hoveredDate.value)
   }
+  mobileDragging.value = false
   
   // Small delay before hiding to provide visual feedback
   setTimeout(() => {
@@ -260,8 +322,42 @@ const handleTouchEnd = (e: TouchEvent) => {
   }, 200)
 }
 
+const updateMobilePosition = (clientY: number, select: boolean) => {
+  const rect = containerRef.value?.getBoundingClientRect()
+  if (!rect || !displayItems.value.length) return
+  const ratio = Math.max(0, Math.min(1, (clientY - rect.top - 16) / Math.max(1, rect.height - 32)))
+  const index = Math.round(ratio * (displayItems.value.length - 1))
+  const item = displayItems.value[index]
+  hoveredDate.value = item.dateStr
+  tooltipTop.value = Math.max(20, Math.min(window.innerHeight - 40, clientY - 12))
+  if (select) emit('select', item.dateStr, 'auto')
+}
+
+const showMobileTimeline = () => {
+  if (!isMobile.value || mobileDragging.value) return
+  mobileVisible.value = true
+  if (mobileHideTimer) clearTimeout(mobileHideTimer)
+  mobileHideTimer = setTimeout(() => {
+    if (!mobileDragging.value) mobileVisible.value = false
+  }, 900)
+}
+
+const handleResize = () => {
+  isMobile.value = window.innerWidth < 768
+}
+
+onMounted(() => {
+  const main = document.querySelector<HTMLElement>('main')
+  scrollElement = main && getComputedStyle(main).overflowY === 'auto' ? main : window
+  scrollElement.addEventListener('scroll', showMobileTimeline, { passive: true })
+  window.addEventListener('resize', handleResize)
+})
+
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId)
+  if (mobileHideTimer) clearTimeout(mobileHideTimer)
+  scrollElement?.removeEventListener('scroll', showMobileTimeline)
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 

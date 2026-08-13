@@ -587,8 +587,8 @@ onClickOutside(viewOptionsRef, () => {
   showViewOptions.value = false
 })
 
-const scrollToDate = (date: string) => {
-  galleryRef.value?.scrollToDate(date)
+const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
+  galleryRef.value?.scrollToDate(date, behavior)
   activeDate.value = date
 }
 

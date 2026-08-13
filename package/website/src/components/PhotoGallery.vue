@@ -178,11 +178,23 @@
                     zIndex: block.days.length - dayIdx
                 }"
                 class="day-block"
+                :data-day-key="day.key"
             >
                 <template v-if="visibleDayRanges.has(day.key)">
                     <!-- Day Header -->
-                    <div v-if="layoutMode !== 'moments'" class="h-[50px] flex items-center mb-0 sticky top-[80px] z-20 py-2 transition-opacity duration-300 pointer-events-none">
-                        <div class="flex items-center gap-3 group cursor-pointer text-sm font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 flex items-center gap-2 pointer-events-auto cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" @click="toggleDaySelection(day)">
+                    <div
+                      v-if="layoutMode !== 'moments' && shouldShowDateHeader(day, dayIdx)"
+                      data-testid="photo-date-header"
+                      :data-date-mode="mobileDateHeaderMode"
+                      class="flex items-center mb-0 sticky top-[80px] z-20 transition-opacity duration-300 pointer-events-none"
+                      :class="dateHeaderContainerClass"
+                    >
+                        <div
+                          class="flex items-center font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm pointer-events-auto"
+                          :class="dateHeaderContentClass"
+                          @click="mobileDateHeaderMode === 'day' && toggleDaySelection(day)"
+                        >
+                             <template v-if="mobileDateHeaderMode === 'day'">
                              <div 
                                 class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"
                                 :class="isDaySelected(day) ? 'bg-primary-500 border-primary-500' : 'border-gray-300 dark:border-gray-600 group-hover:border-primary-400'"
@@ -193,6 +205,11 @@
                                 {{ day.year }}-{{ String(day.month).padStart(2, '0') }}-{{ String(day.day).padStart(2, '0') }}
                              </span>
                             <CalendarDays class="w-4 h-4 text-primary-500" />
+                             </template>
+                             <span v-else-if="mobileDateHeaderMode === 'month'">
+                               {{ day.year }}年{{ String(day.month).padStart(2, '0') }}月
+                             </span>
+                             <span v-else>{{ day.year }}年</span>
                         </div>
                     </div>
 
@@ -421,8 +438,10 @@
                                 v-for="img in getPhotos(day.key).slice(getRange(day.key).start, getRange(day.key).end)"
                                 :key="img.id"
                                 :data-photo-id="img.id"
-                                class="relative group rounded-lg overflow-hidden cursor-pointer transform transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:z-10 flex items-center justify-center"
+                                class="relative group overflow-hidden cursor-pointer transform transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:z-10 flex items-center justify-center"
                                 :class="{
+                                  'rounded-lg': !useSquareMobileThumbnails,
+                                  'rounded-none': useSquareMobileThumbnails,
                                   'aspect-square bg-gray-100 dark:bg-gray-800': layoutMode === 'grid',
                                   'aspect-[3/2] bg-gray-100 dark:bg-gray-800': layoutMode === 'masonry',
                                   'flex-grow bg-gray-100 dark:bg-gray-800': layoutMode === 'waterfall',
@@ -537,6 +556,7 @@ import { faceApi } from '@/api/face'
 import { photoApi } from '@/api/photo'
 import {
   MOBILE_GRID_COLUMNS,
+  getMobileDateHeaderMode,
   getMobileGridGap,
   getNearestMobileGridColumns,
 } from '@/utils/photoGridLayout'
@@ -786,6 +806,9 @@ let pinchStartDistance = 0
 let pinchStartColumns = 3
 let pinchAnchorId = ''
 let pinchAnchorViewportTop = 0
+let pinchAnchorDayKey = ''
+let pinchAnchorIndex = 0
+let pinchAnchorCenterY = 0
 let pinchFrame = 0
 let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -798,6 +821,36 @@ const effectiveGridGap = computed(() => {
   const columns = effectiveGridColumns.value
   return columns ? getMobileGridGap(columns) : null
 })
+
+const mobileDateHeaderMode = computed(() =>
+  containerWidth.value < 768
+    ? getMobileDateHeaderMode(effectiveGridColumns.value ?? colCount.value)
+    : 'day',
+)
+const useSquareMobileThumbnails = computed(() =>
+  containerWidth.value < 768 && (effectiveGridColumns.value ?? colCount.value) >= 6,
+)
+const dateHeaderContainerClass = computed(() => {
+  if (mobileDateHeaderMode.value === 'day') return 'h-[50px] py-2'
+  if (mobileDateHeaderMode.value === 'month') return 'h-[34px] py-1'
+  return 'h-[38px] py-1'
+})
+const dateHeaderContentClass = computed(() => {
+  if (mobileDateHeaderMode.value === 'day') {
+    return 'gap-3 group cursor-pointer text-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
+  }
+  return mobileDateHeaderMode.value === 'month'
+    ? 'text-xs px-2 py-1 rounded-md'
+    : 'text-sm px-2 py-1 rounded-md'
+})
+
+const shouldShowDateHeader = (day: DayBlock, dayIndex: number) => {
+  if (mobileDateHeaderMode.value === 'day') return true
+  if (dayIndex !== 0) return false
+  if (mobileDateHeaderMode.value === 'month') return true
+  const blockIndex = monthBlocks.value.findIndex(block => block.key === `${day.year}-${day.month}`)
+  return blockIndex === 0 || monthBlocks.value[blockIndex - 1]?.year !== day.year
+}
 
 const touchDistance = (touches: TouchList) => Math.hypot(
   touches[1].clientX - touches[0].clientX,
@@ -832,18 +885,40 @@ const animateGridReflow = (before: Map<string, DOMRect>) => {
   })
 }
 
+const setGridScrollTop = (top: number) => {
+  const container = scrollContainerRef.value
+  if (container && container !== window) {
+    ;(container as HTMLElement).scrollTop = top
+  } else {
+    window.scrollTo({ top, behavior: 'auto' })
+  }
+}
+
 const restoreGridPinchAnchor = () => {
-  if (!pinchAnchorId) return
+  const anchorId = pinchAnchorId
+  const block = monthBlocks.value.find(month => month.days.some(day => day.key === pinchAnchorDayKey))
+  const day = block?.days.find(item => item.key === pinchAnchorDayKey)
+  if (!block || !day) return
+  const container = scrollContainerRef.value
+  const viewportTop = container && container !== window
+    ? (container as HTMLElement).getBoundingClientRect().top
+    : 0
+  const galleryContentTop = scrollTop.value + (galleryEl.value?.getBoundingClientRect().top ?? 0) - viewportTop
+  const row = Math.floor(pinchAnchorIndex / Math.max(1, colCount.value))
+  const anchorLocalTop = block.top + day.top + getDateHeaderHeight(day, block)
+    + row * (rowHeight.value + gap.value)
+    + rowHeight.value / 2
+  const targetTop = galleryContentTop + anchorLocalTop - (pinchAnchorCenterY - viewportTop)
+  setGridScrollTop(Math.max(0, targetTop))
+
   requestAnimationFrame(() => {
-    const anchor = galleryEl.value?.querySelector<HTMLElement>(`[data-photo-id="${CSS.escape(pinchAnchorId)}"]`)
+    updateVisibleBlocks()
+    requestAnimationFrame(() => {
+    const anchor = galleryEl.value?.querySelector<HTMLElement>(`[data-photo-id="${CSS.escape(anchorId)}"]`)
     if (!anchor) return
     const delta = anchor.getBoundingClientRect().top - pinchAnchorViewportTop
-    const container = scrollContainerRef.value
-    if (container && container !== window) {
-      ;(container as HTMLElement).scrollTop += delta
-    } else {
-      window.scrollBy(0, delta)
-    }
+    setGridScrollTop(Math.max(0, scrollTop.value + delta))
+    })
   })
 }
 
@@ -858,7 +933,6 @@ const applyGridPinch = (distance: number) => {
   localStorage.setItem(GRID_COLUMNS_STORAGE_KEY, String(nextColumns))
   nextTick(() => {
     recalculateLayout()
-    updateVisibleBlocks()
     restoreGridPinchAnchor()
     animateGridReflow(before)
   })
@@ -875,7 +949,6 @@ const stopGridPinch = () => {
   if (!isGridPinching.value) return
   isGridPinching.value = false
   pinchStartDistance = 0
-  pinchAnchorId = ''
   if (pinchFrame) cancelAnimationFrame(pinchFrame)
   pinchFrame = 0
   window.removeEventListener('touchmove', handleGridTouchMove)
@@ -904,6 +977,10 @@ const handleGridTouchStart = (event: TouchEvent) => {
   const anchor = document.elementFromPoint(centerX, centerY)?.closest<HTMLElement>('[data-photo-id]')
   pinchAnchorId = anchor?.dataset.photoId ?? ''
   pinchAnchorViewportTop = anchor?.getBoundingClientRect().top ?? centerY
+  pinchAnchorCenterY = centerY
+  const anchorDay = anchor?.closest<HTMLElement>('.day-block')
+  pinchAnchorDayKey = anchorDay?.dataset.dayKey ?? ''
+  pinchAnchorIndex = Math.max(0, getPhotos(pinchAnchorDayKey).findIndex(photo => photo.id === pinchAnchorId))
 
   window.addEventListener('touchmove', handleGridTouchMove, { passive: false })
   window.addEventListener('touchend', stopGridPinch)
@@ -923,6 +1000,7 @@ const layoutOptions = {
     viewSize: toRef(props, 'viewSize'),
     columnCount: effectiveGridColumns,
     gridGap: effectiveGridGap,
+    dateHeaderMode: mobileDateHeaderMode,
     photos: toRef(props, 'photos'),
     expandedDays,
     dayCaptions: toRef(props, 'dayCaptions')
@@ -930,14 +1008,18 @@ const layoutOptions = {
 
 const { monthBlocks, totalHeight, getVisibleBlocks, recalculateLayout, colCount, rowHeight, gap } = useVirtualLayout(layoutOptions)
 
+const getDateHeaderHeight = (day: DayBlock, block: MonthBlock) => {
+  if (!shouldShowDateHeader(day, block.days.indexOf(day))) return 0
+  if (mobileDateHeaderMode.value === 'day') return 50
+  return mobileDateHeaderMode.value === 'month' ? 34 : 38
+}
+
 // Visible Blocks Calculation
 const visibleBlockKeys = ref(new Set<string>())
 // Map<dayKey, { start: number, end: number, topH: number, bottomH: number }>
 const visibleDayRanges = ref(new Map<string, { start: number, end: number, topH: number, bottomH: number }>())
 // We keep a reference to visible blocks for active date calculation
 const visibleBlocksList = ref<MonthBlock[]>([])
-
-const DAY_HEADER_HEIGHT = 40
 
 const getRange = (key: string) => {
   return visibleDayRanges.value.get(key) || { start: 0, end: 0, topH: 0, bottomH: 0 }
@@ -974,7 +1056,7 @@ const updateVisibleBlocks = () => {
             if (dayBottomAbs > startY && dayTopAbs < endY) {
                 // Calculate visible rows within the day
                 // The photos start after the header
-                const photosTopAbs = dayTopAbs + DAY_HEADER_HEIGHT
+                const photosTopAbs = dayTopAbs + getDateHeaderHeight(d, m)
                 
                 // Relative to photos start
                 const relStart = startY - photosTopAbs
@@ -1155,19 +1237,22 @@ const getMomentPhotos = (dayKey: string) => {
 }
 
 // --- Interaction Helpers ---
-const scrollToDate = (date: string) => {
+const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
     // date format "YYYY年MM月" or "YYYY-MM-DD"
-    const match = date.match(/(\d+)年(\d+)月/) || date.match(/(\d+)-(\d+)/)
+    const dayMatch = date.match(/(\d+)-(\d+)-(\d+)/)
+    const match = dayMatch || date.match(/(\d+)年(\d+)月/) || date.match(/(\d+)-(\d+)/)
     if (match) {
         const year = parseInt(match[1])
         const month = parseInt(match[2])
         const block = monthBlocks.value.find(b => b.year === year && b.month === month)
         if (block) {
+            const day = dayMatch ? block.days.find(item => item.day === parseInt(dayMatch[3])) : null
+            const targetTop = block.top + (day?.top ?? 0) + 60
             const container = scrollContainerRef.value
             if (container && container !== window) {
-                (container as HTMLElement).scrollTo({ top: block.top + 60, behavior: 'smooth' })
+                (container as HTMLElement).scrollTo({ top: targetTop, behavior })
             } else {
-                window.scrollTo({ top: block.top + 60, behavior: 'smooth' })
+                window.scrollTo({ top: targetTop, behavior })
             }
         }
     }

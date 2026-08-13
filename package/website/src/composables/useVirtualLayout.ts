@@ -1,6 +1,11 @@
 import { ref, computed, watch, type Ref } from 'vue'
 import type { TimelineStats, TimelineItem, AlbumImage } from '@/types/album'
-import { getPhotoColumns, getPhotoGap } from '@/utils/photoGridLayout'
+import {
+  getMobileDateHeaderHeight,
+  getPhotoColumns,
+  getPhotoGap,
+  type MobileDateHeaderMode,
+} from '@/utils/photoGridLayout'
 
 export interface DayBlock {
   key: string // YYYY-MM-DD
@@ -32,6 +37,7 @@ interface UseVirtualLayoutOptions {
   viewSize: Ref<'sm' | 'md' | 'lg'>
   columnCount?: Ref<number | null>
   gridGap?: Ref<number | null>
+  dateHeaderMode?: Ref<MobileDateHeaderMode>
   photos: Ref<AlbumImage[]> // Added photos dependency
   expandedDays?: Ref<Set<string>>
   // 朋友圈布局下，用于按 caption 字数动态计算 day 卡片头部高度
@@ -139,13 +145,16 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
     const blocks: MonthBlock[] = []
     let currentTop = 0
     let globalIndex = 0
+    let previousYear: number | null = null
 
     months.forEach((data, key) => {
+        const isFirstMonthOfYear = data.year !== previousYear
+        previousYear = data.year
         const dayBlocks: DayBlock[] = []
         let currentMonthTop = HEADER_HEIGHT 
         let monthCount = 0
 
-        data.days.forEach(dayItem => {
+        data.days.forEach((dayItem, dayIndex) => {
             let rows = 0
             let contentHeight = 0
             
@@ -218,7 +227,14 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
             // If it's the dummy day, don't show header?
             // Or just show 0 height header.
             const isDummy = dayItem.year === 0
-            let effectiveHeaderHeight = isDummy ? 0 : DAY_HEADER_HEIGHT
+            let effectiveHeaderHeight = options.dateHeaderMode
+                ? getMobileDateHeaderHeight(
+                    options.dateHeaderMode.value,
+                    dayIndex === 0,
+                    isFirstMonthOfYear,
+                    isDummy,
+                  )
+                : (isDummy ? 0 : DAY_HEADER_HEIGHT)
             
             if (mode === 'moments') {
                 // 头部：头像 40 + 昵称 20 + 单行占位文案 24 + 上下 margin ≈ 36
@@ -299,6 +315,7 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
       viewSize,
       () => options.columnCount?.value,
       () => options.gridGap?.value,
+      () => options.dateHeaderMode?.value,
       () => photos.value.length,
       () => options.expandedDays?.value.size,
       () => {

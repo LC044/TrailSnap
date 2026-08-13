@@ -128,4 +128,90 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
       getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length,
     )).toBe(savedColumns)
   })
+
+  test('高密度照片墙使用方形缩略图并按月/年折叠日期', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 12, 50)
+    if (!probe.ok) return
+    await page.addInitScript(() => {
+      const initializationKey = 'trailsnap_date_density_test_initialized'
+      if (sessionStorage.getItem(initializationKey)) return
+      localStorage.setItem('trailsnap_mobile_grid_columns', '12')
+      sessionStorage.setItem(initializationKey, '1')
+    })
+    await page.goto('/photos')
+
+    const photo = page.locator('[data-photo-id]').first()
+    await expect(photo).toBeVisible({ timeout: 20_000 })
+    await expect(photo).toHaveCSS('border-radius', '0px')
+    await expect(page.getByTestId('photo-date-header').first()).toHaveAttribute('data-date-mode', 'month')
+
+    await page.evaluate(() => localStorage.setItem('trailsnap_mobile_grid_columns', '24'))
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(page.getByTestId('photo-date-header').first()).toHaveAttribute('data-date-mode', 'year')
+  })
+
+  test('从满屏照片放大时双指中心照片保持在视口内', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 24, 50)
+    if (!probe.ok) return
+    await page.addInitScript(() => localStorage.setItem('trailsnap_mobile_grid_columns', '24'))
+    await page.goto('/photos')
+
+    const photos = page.locator('[data-photo-id]')
+    await expect(photos.first()).toBeVisible({ timeout: 20_000 })
+    const anchor = photos.nth(Math.min(12, await photos.count() - 1))
+    const id = await anchor.getAttribute('data-photo-id')
+    const before = await anchor.boundingBox()
+    expect(id).toBeTruthy()
+    expect(before).not.toBeNull()
+    const centerX = before!.x + before!.width / 2
+    const centerY = before!.y + before!.height / 2
+
+    await anchor.dispatchEvent('touchstart', {
+      touches: [
+        { identifier: 1, clientX: centerX - 40, clientY: centerY },
+        { identifier: 2, clientX: centerX + 40, clientY: centerY },
+      ],
+      changedTouches: [],
+    })
+    await anchor.dispatchEvent('touchmove', {
+      touches: [
+        { identifier: 1, clientX: centerX - 120, clientY: centerY },
+        { identifier: 2, clientX: centerX + 120, clientY: centerY },
+      ],
+      changedTouches: [],
+    })
+    await page.waitForTimeout(80)
+    await anchor.dispatchEvent('touchend', { touches: [], changedTouches: [] })
+
+    const anchoredPhoto = page.locator(`[data-photo-id="${id}"]`)
+    await expect(anchoredPhoto).toBeVisible()
+    const after = await anchoredPhoto.boundingBox()
+    expect(after).not.toBeNull()
+    expect(after!.y + after!.height / 2).toBeGreaterThan(0)
+    expect(after!.y + after!.height / 2).toBeLessThan(844)
+  })
+
+  test('移动端时间轴默认隐藏，滚动显示并支持拖动日期', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 12, 50)
+    if (!probe.ok) return
+    await page.goto('/photos')
+
+    const timeline = page.getByTestId('album-timeline')
+    await expect(timeline).toHaveClass(/opacity-0/)
+    await page.mouse.wheel(0, 500)
+    await expect(timeline).toHaveClass(/opacity-100/)
+
+    const box = await timeline.boundingBox()
+    expect(box).not.toBeNull()
+    await timeline.dispatchEvent('touchstart', {
+      touches: [{ identifier: 1, clientX: box!.x + box!.width / 2, clientY: box!.y + 30 }],
+      changedTouches: [],
+    })
+    await timeline.dispatchEvent('touchmove', {
+      touches: [{ identifier: 1, clientX: box!.x + box!.width / 2, clientY: box!.y + box!.height - 30 }],
+      changedTouches: [],
+    })
+    await expect(page.getByTestId('mobile-timeline-thumb')).toBeVisible()
+    await timeline.dispatchEvent('touchend', { touches: [], changedTouches: [] })
+  })
 })
