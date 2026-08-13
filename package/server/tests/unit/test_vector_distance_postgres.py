@@ -5,6 +5,7 @@ import os
 import pytest
 from pgvector.sqlalchemy import Vector as PostgreSQLVector
 from sqlalchemy import cast, create_engine, literal, select, type_coerce
+from sqlalchemy.exc import OperationalError
 
 from app.db.types import Vector
 
@@ -34,7 +35,11 @@ def test_pgvector_cosine_distance_decodes_as_float():
     right = cast(literal(raw_vector, type_=PostgreSQLVector(512)), PostgreSQLVector(512))
 
     try:
-        with engine.connect() as connection:
+        try:
+            connection = engine.connect()
+        except OperationalError:
+            pytest.skip("PostgreSQL is not reachable for this optional pgvector regression")
+        with connection:
             distance = connection.scalar(select(left.cosine_distance(right)))
     finally:
         engine.dispose()

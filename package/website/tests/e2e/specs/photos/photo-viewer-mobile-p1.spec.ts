@@ -82,7 +82,14 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
   test('照片墙双指捏合可切换每行照片数量并记住密度', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 12, 50)
     if (!probe.ok) return
-    await page.addInitScript(() => localStorage.removeItem('trailsnap_mobile_grid_columns'))
+    // addInitScript runs again after page.reload(). Only clear the persisted
+    // density once, otherwise the reload assertion erases the value it tests.
+    await page.addInitScript(() => {
+      const initializationKey = 'trailsnap_grid_density_test_initialized'
+      if (sessionStorage.getItem(initializationKey)) return
+      localStorage.removeItem('trailsnap_mobile_grid_columns')
+      sessionStorage.setItem(initializationKey, '1')
+    })
     await page.goto('/photos')
 
     const grid = page.getByTestId('photo-grid').first()
