@@ -12,11 +12,14 @@
     :show-back="false"
     :allow-folder-view="true"
     :store="photoStore"
+    :update-available="photoStore.dataStale"
+    update-message="发现新照片或照片信息更新，点击刷新"
     @load-more="photoStore.loadPhotos"
     @retry="photoStore.loadPhotos(true)"
     @upload="triggerUpload"
     @confirm-delete="handleConfirmDelete"
     @photo-update="handlePhotoUpdate"
+    @refresh-data="refreshPhotoData"
   >
     <!-- Header Controls (Filter Button) -->
     <template #header-controls-start>
@@ -163,6 +166,18 @@ const handlePhotoUpdate = (event: { id: string, location?: string, tags?: string
   console.log('Update photo:', event)
 }
 
+const refreshPhotoData = async (done: () => void = () => {}) => {
+  try {
+    await photoStore.refreshCurrentContext()
+    await Promise.all([
+      photoStore.fetchAvailableFilters(),
+      store.fetchAlbums(),
+    ])
+  } finally {
+    done()
+  }
+}
+
 // 将路由 query 中的筛选值解析为数组（支持逗号分隔或重复参数）
 const parseQueryFilter = (value: unknown): string[] => {
   if (value == null) return []
@@ -216,10 +231,14 @@ onActivated(() => {
   if (currentQueryStr !== lastQueryStr) {
     initData()
   } else {
-    // 如果 query 没有变化，静默更新筛选条件、相册列表、时间轴统计以防后台数据有变化
-    photoStore.fetchAvailableFilters()
-    store.fetchAlbums()
-    photoStore.fetchTimelineStats()
+    // keep-alive 会保留已加载月份。重新进入页面时使照片缓存失效，
+    // 否则即使时间线统计更新，已有月份仍不会重新请求。
+    if (photoStore.dataStale) {
+      refreshPhotoData()
+    } else {
+      photoStore.fetchAvailableFilters()
+      store.fetchAlbums()
+    }
   }
 })
 

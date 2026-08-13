@@ -709,6 +709,7 @@ class TaskWorker:
 
             task_ids_completed = []
             task_ids_failed = []
+            completed_task_events = {}
 
             # Tasks that should be preserved in DB after completion.
             # Only reference real TaskType members here — a non-existent
@@ -724,6 +725,28 @@ class TaskWorker:
                         logging.info(f"Preserving completed task {item['task_id']} of type {item['task_type']}")
                 else:
                     task_ids_failed.append(item['task_id'])
+
+            # Completion events are emitted after the rows are deleted. Keep a
+            # snapshot first so consumers still receive the task target (for
+            # example SCAN_ALBUM's album_id) and can invalidate the right UI.
+            if task_ids_completed:
+                completed_rows = db.query(Task).filter(Task.id.in_(task_ids_completed)).all()
+                completed_task_events = {
+                    row.id: {
+                        'id': str(row.id),
+                        'type': row.type,
+                        'status': TaskStatus.COMPLETED.value,
+                        'priority': row.priority,
+                        'total_items': row.total_items or 0,
+                        'processed_items': row.processed_items or 0,
+                        'error': None,
+                        'owner_id': str(row.owner_id) if row.owner_id else None,
+                        'created_at': row.created_at.isoformat() if row.created_at else None,
+                        'updated_at': datetime.now().isoformat(),
+                        'payload': row.payload or {},
+                    }
+                    for row in completed_rows
+                }
 
             if task_ids_completed:
                 crud_task.delete_tasks_by_ids(db, task_ids_completed)
@@ -760,7 +783,7 @@ class TaskWorker:
             # terminal state (the row will be removed from the DB right after).
             for item in items:
                 if item.get('status') == TaskStatus.COMPLETED:
-                    self._publish('task.updated', {
+                    event_data = completed_task_events.get(item['task_id'], {
                         'id': str(item['task_id']),
                         'type': item.get('task_type'),
                         'status': TaskStatus.COMPLETED.value,
@@ -773,6 +796,7 @@ class TaskWorker:
                         'updated_at': datetime.now().isoformat(),
                         'payload': {},
                     })
+                    self._publish('task.updated', event_data)
             db.commit()
         except Exception as e:
             logging.error(f"Failed to flush results: {e}", exc_info=True)

@@ -1,6 +1,12 @@
 name: Build Mobile App
 
 on:
+  pull_request:
+    branches: [ "master" ]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'package/website/**'
+      - '.github/workflows/build-mobile-app.yml'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
@@ -17,7 +23,7 @@ jobs:
   build-android-apk:
     name: Build Android debug APK
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建app') || contains(github.event.head_commit.message, '构建APP') || github.event_name == 'workflow_dispatch'
     defaults:
       run:
         working-directory: package/website
@@ -66,6 +72,8 @@ jobs:
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            VERSION="pr-${{ github.event.number }}"
           else
             VERSION="$PACKAGE_VERSION"
           fi
@@ -110,6 +118,34 @@ jobs:
           name: Release ${{ github.ref_name }}
           prerelease: false
           generate_release_notes: true
+          files: artifacts/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  preview-release:
+    name: Add APK to PR preview release
+    needs: build-android-apk
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-preview-release-assets
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: TrailSnap-pr-*-android-debug
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pr-preview
+          name: TrailSnap PR Previews
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          body: Shared test builds for open pull requests. Download assets matching the PR number. The Docker `preview` tag always points to the most recently completed internal PR build.
           files: artifacts/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

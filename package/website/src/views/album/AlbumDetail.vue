@@ -10,6 +10,8 @@
     :delete-label="isUserAlbum ? '从相册中移除' : '删除'"
     :pending-remove-ids="pendingRemoveIds"
     :has-more="photoStore.hasMore"
+    :update-available="photoStore.dataStale"
+    update-message="相册内容已更新，点击刷新"
     @back="goBack"
     @upload="triggerUpload"
     @load-more="loadMorePhotos"
@@ -18,6 +20,7 @@
     @remove-from-album="handleBatchRemoveFromAlbum"
     @photo-update="handlePhotoUpdate"
     @set-cover="setCover"
+    @refresh-data="refreshAlbumData"
   >
     <template #header-actions>
       <button 
@@ -135,6 +138,17 @@ const loadMorePhotos = () => {
 
 const handlePhotoUpdate = (event: { id: string, location?: string, tags?: string[] }) => {
     const img = photoStore.images.find(i => i.id === event.id)
+}
+
+const refreshAlbumData = async (done: () => void = () => {}) => {
+    try {
+        await Promise.all([
+            albumStore.fetchAlbums(),
+            photoStore.refreshCurrentContext(),
+        ])
+    } finally {
+        done()
+    }
 }
 
 const setCover = async (ids: string[]) => {

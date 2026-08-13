@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: ["master"]
+    types: [opened, synchronize, reopened]
     paths:
       - 'package/ai/**'
       - 'package/desktop/src-tauri/**'
@@ -60,6 +61,7 @@ jobs:
           retention-days: 14
 
   release:
+    name: Add AI extensions to GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
@@ -79,3 +81,39 @@ jobs:
           files: |
             artifacts/**/*.tar.gz
             artifacts/ai-extensions.json
+
+  preview-release:
+    name: Add AI extensions to PR preview release
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    needs: build
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-preview-release-assets
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: TrailSnap-AI-*
+          path: artifacts
+      - name: Rename preview assets
+        shell: bash
+        run: |
+          for file in artifacts/**/*.tar.gz; do
+            [ -f "$file" ] || continue
+            mv "$file" "artifacts/TrailSnap-AI-pr-${{ github.event.number }}-${file##*/}"
+          done
+      - name: Update shared PR preview release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pr-preview
+          name: TrailSnap PR Previews
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          body: Shared test builds for open pull requests. Download assets matching the PR number. The Docker `preview` tag always points to the most recently completed internal PR build.
+          files: artifacts/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,7 +2,7 @@
 // 定义照片相关的状态管理
 
 import { defineStore } from 'pinia'
-import { ref, reactive, watch } from 'vue'
+import { ref, reactive, watch, computed } from 'vue'
 import { albumService } from '@/api/album'
 import searchService, { type TextSearchRequest } from '@/api/search'
 import type { Photo, TimelineStats, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
@@ -126,6 +126,11 @@ export const photoStoreSetup = () => {
   const currentContext = ref<{ type: 'all' | 'album' | 'search', id?: string }>({ type: 'all' })
   const timelineStats = ref<TimelineStats>()
   const availableFilters = ref<FilterOptions | null>(null);
+  const dataRevision = ref(0);
+  const globalStaleRevision = ref(0);
+  const albumStaleRevisions = reactive<Record<string, number>>({});
+  const refreshedContextRevisions = reactive<Record<string, number>>({});
+  const staleTaskTypes = ref<string[]>([]);
   // 文件夹浏览模式：设置后，timeline 统计与按月加载都会自动按该文件夹过滤（Issue #78）
   const folderPath = ref<string | null>(null);
   // 仅看「本层直属」照片（不含子目录）
@@ -141,6 +146,33 @@ export const photoStoreSetup = () => {
       image_types: [],
       file_types: []
   });
+
+  const getContextKey = () => {
+      if (currentContext.value.type === 'album' && currentContext.value.id) {
+          return `album:${currentContext.value.id}`;
+      }
+      if (currentContext.value.type === 'search') return 'search';
+      return `all:${folderPath.value || ''}:${folderDirect.value ? 'direct' : 'recursive'}`;
+  }
+
+  const getRequiredRevision = () => {
+      const albumRevision = currentContext.value.type === 'album' && currentContext.value.id
+          ? albumStaleRevisions[currentContext.value.id] || 0
+          : 0;
+      return Math.max(globalStaleRevision.value, albumRevision);
+  }
+
+  const dataStale = computed(() =>
+      (refreshedContextRevisions[getContextKey()] || 0) < getRequiredRevision()
+  );
+
+  const acknowledgeContextRevision = (contextKey: string, revision: number) => {
+      refreshedContextRevisions[contextKey] = Math.max(
+          refreshedContextRevisions[contextKey] || 0,
+          revision
+      );
+      if (!dataStale.value) staleTaskTypes.value = [];
+  }
 
   // 筛选条件持久化到 trailsnap:selectedFilters，刷新/重开后恢复（P1 2.1.9 回归用例依赖）。
   {
@@ -348,7 +380,10 @@ export const photoStoreSetup = () => {
           loadedDates.clear();
           currentContext.value = { type: 'all' };
       }
+      const contextKey = getContextKey();
+      const targetRevision = getRequiredRevision();
       await fetchTimelineStats();
+      acknowledgeContextRevision(contextKey, targetRevision);
       // Logic to load initial view could go here
   }
 
@@ -359,7 +394,10 @@ export const photoStoreSetup = () => {
           loadedDates.clear();
       }
       currentContext.value = { type: 'album', id: albumId };
+      const contextKey = getContextKey();
+      const targetRevision = getRequiredRevision();
       await fetchTimelineStats(albumId);
+      acknowledgeContextRevision(contextKey, targetRevision);
   }
 
   const loadFolderPhotos = async (folder: string, reset: boolean = false, direct: boolean = false) => {
@@ -372,7 +410,59 @@ export const photoStoreSetup = () => {
       folderDirect.value = direct;
       // 文件夹模式复用「全部照片」上下文（albumId 为空），由 cleanFilters 注入 folder 过滤
       currentContext.value = { type: 'all' };
+      const contextKey = getContextKey();
+      const targetRevision = getRequiredRevision();
       await fetchTimelineStats();
+      acknowledgeContextRevision(contextKey, targetRevision);
+  }
+
+  /**
+   * Invalidate loaded photo months without losing the current view context.
+   * PhotoGallery will repopulate the visible months after the fresh timeline
+   * arrives. This is used by keep-alive activation and background task events.
+   */
+  const refreshCurrentContext = async () => {
+      if (currentContext.value.type === 'search') return;
+
+      const context = { ...currentContext.value };
+      const contextKey = getContextKey();
+      const targetRevision = getRequiredRevision();
+      const monthsToReload = [...loadedDates];
+      cancelAllPendingLoads();
+      images.value = [];
+      photoOffsetMap.clear();
+      loadedDates.clear();
+
+      if (context.type === 'album' && context.id) {
+          await fetchTimelineStats(context.id);
+      } else {
+          await fetchTimelineStats();
+      }
+
+      if (currentContext.value.type !== context.type || currentContext.value.id !== context.id) return;
+
+      // Reload months that were already materialized. Merely updating the
+      // timeline is insufficient when its visible month keys stay unchanged.
+      await Promise.all(monthsToReload.map((dateKey) => {
+          const [year, month] = dateKey.split('-').map(Number);
+          const albumId = context.type === 'album'
+              ? context.id
+              : undefined;
+          return loadPhotosByMonth(year, month, albumId, true);
+      }));
+      acknowledgeContextRevision(contextKey, targetRevision);
+  }
+
+  const markDataStale = (taskType?: string, albumId?: string) => {
+      dataRevision.value += 1;
+      if (albumId) {
+          albumStaleRevisions[albumId] = dataRevision.value;
+      } else {
+          globalStaleRevision.value = dataRevision.value;
+      }
+      if (taskType && !staleTaskTypes.value.includes(taskType)) {
+          staleTaskTypes.value = [...staleTaskTypes.value, taskType];
+      }
   }
 
   const removeLocalPhoto = (photoId: string) => {
@@ -433,6 +523,8 @@ export const photoStoreSetup = () => {
     timelineStats,
     photoOffsetMap,
     availableFilters,
+    dataStale,
+    staleTaskTypes,
     selectedFilters,
     folderPath,
     folderDirect,
@@ -442,6 +534,8 @@ export const photoStoreSetup = () => {
     loadPhotos,
     loadAlbumPhotos,
     loadFolderPhotos,
+    refreshCurrentContext,
+    markDataStale,
     loadPhotosByMonth,
     removeLocalPhoto,
     deletePhoto,

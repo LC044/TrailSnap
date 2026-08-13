@@ -151,6 +151,20 @@
 
     <!-- Main Content Area -->
     <div class="mx-auto sm:px-6 lg:px-8">
+      <div
+        v-if="updateAvailable && !isPhotoInteractionActive"
+        class="sticky top-16 z-20 flex justify-center mb-3 pointer-events-none"
+      >
+        <button
+          type="button"
+          class="pointer-events-auto flex items-center gap-2 rounded-full bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-lg shadow-primary-500/30 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          :disabled="refreshingData"
+          @click="handleRefreshData"
+        >
+          <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': refreshingData }" />
+          <span>{{ refreshingData ? '正在刷新…' : updateMessage }}</span>
+        </button>
+      </div>
       <slot name="intro"></slot>
 
       <!-- 文件夹视图（作为一种布局模式，与自适应/正方形/朋友圈并列） -->
@@ -281,7 +295,7 @@ import { ref, computed, onUnmounted, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
-  UploadCloud, CheckSquare, Settings2, FolderTree
+  UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw
 } from 'lucide-vue-next'
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
@@ -319,6 +333,8 @@ const props = withDefaults(defineProps<{
   store?: any
   showBack?: boolean
   allowFolderView?: boolean
+  updateAvailable?: boolean
+  updateMessage?: string
 }>(), {
   title: '',
   subtitle: '',
@@ -334,7 +350,9 @@ const props = withDefaults(defineProps<{
   confirmRemove: false,
   pendingRemoveIds: () => new Set(),
   showBack: true,
-  allowFolderView: false
+  allowFolderView: false,
+  updateAvailable: false,
+  updateMessage: '发现照片更新，点击刷新'
 })
 
 const emit = defineEmits<{
@@ -349,6 +367,7 @@ const emit = defineEmits<{
   (e: 'photo-update', event: any): void
   (e: 'remove-from-album', ids: string[]): void // General delete/remove event
   (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void): void
+  (e: 'refresh-data', done: () => void): void
 }>()
 
 // UI State
@@ -359,7 +378,46 @@ const lightboxImage = ref<AlbumImage | null>(null)
 const showViewOptions = ref(false)
 const viewOptionsRef = ref<HTMLElement | null>(null)
 const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
+const refreshingData = ref(false)
 const isMobile = ref(typeof window !== 'undefined' && window.innerWidth < 768)
+const isPhotoInteractionActive = computed(() =>
+  !!lightboxImage.value || !!galleryRef.value?.isSelectionMode
+)
+
+const getScrollContainer = (): HTMLElement | Window => {
+  const main = document.querySelector('main') as HTMLElement | null
+  return main && window.getComputedStyle(main).overflowY === 'auto' ? main : window
+}
+
+const captureVisibleMonth = () => {
+  const blocks = Array.from(document.querySelectorAll<HTMLElement>('.month-block[data-month]'))
+  const block = blocks.find((item) => {
+    const rect = item.getBoundingClientRect()
+    return rect.bottom > 0 && rect.top < window.innerHeight
+  })
+  return block ? { month: block.dataset.month, top: block.getBoundingClientRect().top } : null
+}
+
+const restoreVisibleMonth = (anchor: { month?: string; top: number } | null) => {
+  if (!anchor?.month) return
+  const block = document.querySelector<HTMLElement>(`.month-block[data-month="${CSS.escape(anchor.month)}"]`)
+  if (!block) return
+  const delta = block.getBoundingClientRect().top - anchor.top
+  const container = getScrollContainer()
+  container.scrollBy({ top: delta, behavior: 'auto' })
+}
+
+const handleRefreshData = () => {
+  if (refreshingData.value || isPhotoInteractionActive.value) return
+  refreshingData.value = true
+  const anchor = captureVisibleMonth()
+  emit('refresh-data', () => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      restoreVisibleMonth(anchor)
+      refreshingData.value = false
+    }))
+  })
+}
 
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768

@@ -2,7 +2,6 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
 import logging
-import os
 import aiohttp
 from aiohttp import FormData
 import json
@@ -19,6 +18,7 @@ from app.schemas.ocr import OCRCreate
 from app.service.tasks.ci_limit import is_ci, ci_task_limit_reached, ci_remaining_budget, CI_TASK_PHOTO_LIMIT
 
 logger = logging.getLogger(__name__)
+
 
 @TaskStrategyFactory.register(TaskType.OCR)
 class OcrStrategy(BaseTaskStrategy):
@@ -182,11 +182,8 @@ class OcrStrategy(BaseTaskStrategy):
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'completed', 'result': {'status': 'skipped', 'reason': f'CI ocr limit reached ({CI_TASK_PHOTO_LIMIT} photos)'}})
                         continue
 
-                    target_path = storage.get_preview_path(photo.owner_id, photo.id)
-                    if not os.path.exists(target_path):
-                        target_path = photo.file_path
-                        
-                    if not target_path or not os.path.exists(target_path):
+                    target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+                    if not target_path:
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': 'file not found'})
                         continue
                         
@@ -291,13 +288,9 @@ class OcrStrategy(BaseTaskStrategy):
 
         try:
             # 1. Resolve file path
-            # Prefer original file for OCR to get best quality
-            target_path = storage.get_preview_path(photo.owner_id, photo.id)
-            if not os.path.exists(target_path):
-                # Fallback to preview if original not available (unlikely for local)
-                target_path = photo.file_path
-                if not target_path or not os.path.exists(target_path):
-                    return {'status': 'failed', 'error': 'file not found'}
+            target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+            if not target_path:
+                return {'status': 'failed', 'error': 'file not found'}
 
             # 读取图片实际宽高
             with Image.open(target_path) as img:

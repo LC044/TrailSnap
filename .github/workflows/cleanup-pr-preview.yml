@@ -1,0 +1,37 @@
+name: Cleanup PR Preview Assets
+
+on:
+  pull_request:
+    types: [closed]
+
+concurrency:
+  group: pr-preview-release-assets
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Remove closed PR assets
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete this PR's assets from the shared preview release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+        shell: bash
+        run: |
+          release_id=$(gh api "repos/$GH_REPO/releases/tags/pr-preview" --jq '.id' 2>/dev/null || true)
+          if [ -z "$release_id" ]; then
+            echo "PR preview release does not exist; nothing to clean."
+            exit 0
+          fi
+
+          gh api --paginate "repos/$GH_REPO/releases/$release_id/assets?per_page=100" \
+            --jq ".[] | select(.name | contains(\"pr-$PR_NUMBER-\")) | .id" |
+          while read -r asset_id; do
+            [ -n "$asset_id" ] || continue
+            gh api --method DELETE "repos/$GH_REPO/releases/assets/$asset_id"
+          done

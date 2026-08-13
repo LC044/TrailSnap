@@ -17,6 +17,8 @@ import { provideTheme } from '@/composables/useTheme';
 import { provideNavItems } from '@/composables/useNavItems';
 import { useUserStore } from '@/stores/user';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { useAlbumStore } from '@/stores/albumStore';
+import { usePhotoStore } from '@/stores/photoStore';
 import { useNotificationSSE } from '@/composables/useNotificationSSE';
 import PwaInstallPrompt from '@/components/PwaInstallPrompt.vue';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
@@ -52,8 +54,19 @@ const currentLayout = computed(() => {
 // channel carries both task.* (live) and notification.* (persisted) events.
 const userStore = useUserStore();
 const notifyStore = useNotificationStore();
+const albumStore = useAlbumStore();
+const photoStore = usePhotoStore();
 const token = computed(() => userStore.token);
 const sseEnabled = ref(false);
+const PHOTO_DATA_TASKS = new Set([
+  'SCAN_FOLDER',
+  'PROCESS_BASIC',
+  'EXTRACT_METADATA',
+  'REBUILD_METADATA',
+  'ORGANIZE_PHOTOS',
+  'BATCH_RENAME',
+  'BATCH_TIME_FROM_FILENAME',
+]);
 
 watch(
   token,
@@ -72,6 +85,21 @@ useNotificationSSE({
   enabled: sseEnabled,
   onEvent: (event, data) => {
     notifyStore.handleEvent(event, data);
+    const taskCompleted =
+      event.startsWith('task.') &&
+      String(data?.status || '').toLowerCase() === 'completed';
+
+    if (taskCompleted && PHOTO_DATA_TASKS.has(data?.type)) {
+      photoStore.markDataStale(data?.type);
+    }
+
+    if (taskCompleted && data?.type === 'SCAN_ALBUM') {
+      const albumId = data?.payload?.album_id;
+      void albumStore.fetchAlbums();
+      if (albumId) {
+        photoStore.markDataStale(data?.type, albumId);
+      }
+    }
   },
 });
 

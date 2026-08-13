@@ -5,7 +5,6 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, TaskStatus, DEFAULT_PRIORITIES
 from typing import List, Dict, Optional
 import logging
-import os
 import aiohttp
 from aiohttp import FormData
 from sqlalchemy.orm import Session
@@ -153,11 +152,8 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                     results.append({'task_id': task.id, 'task_type': task.type, 'status': 'completed', 'result': {'status': 'skipped', 'reason': 'photo not found'}})
                     continue
 
-                target_path = storage.get_preview_path(photo.owner_id, photo.id)
-                if not target_path or not os.path.exists(target_path):
-                    target_path = photo.file_path
-
-                if not target_path or not os.path.exists(target_path):
+                target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+                if not target_path:
                     results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': 'file not found'})
                     continue
 

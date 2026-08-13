@@ -1229,6 +1229,7 @@ defineExpose({
   scrollToDate,
   enterSelectionMode,
   exitSelectionMode,
+  isSelectionMode,
   updateVisibleBlocks,
   checkAndLoadVisibleMonths
 })

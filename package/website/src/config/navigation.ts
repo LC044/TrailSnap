@@ -35,7 +35,7 @@ export const desktopNavSections: AppNavSection[] = [
     label: '图库',
     items: [
       { label: '首页', href: '/', icon: Home, navGroup: 'home' },
-      { label: '所有照片', href: '/photos', icon: ImageIcon, navGroup: 'photos' },
+      { label: '照片', href: '/photos', icon: ImageIcon, navGroup: 'photos' },
       {
         label: '相册', href: '/album', icon: Images, navGroup: 'albums', activeMatch: 'path',
         excludePaths: ['/album/people', '/album/location', '/album/classification'],

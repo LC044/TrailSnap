@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ "master" ]
+    types: [opened, synchronize, reopened]
     paths:
       - 'package/desktop/**'
       - 'package/website/**'
@@ -228,5 +229,41 @@ jobs:
             artifacts/*.dmg
             artifacts/*.AppImage
             artifacts/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  preview-release:
+    name: Add desktop installers to PR preview release
+    needs: build
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pr-preview-release-assets
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: TrailSnap-*
+          path: artifacts
+          merge-multiple: true
+      - name: Prefix assets with PR number
+        shell: bash
+        run: |
+          for file in artifacts/*; do
+            [ -f "$file" ] || continue
+            mv "$file" "artifacts/TrailSnap-pr-${{ github.event.number }}-${file##*/}"
+          done
+      - name: Update shared PR preview release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pr-preview
+          name: TrailSnap PR Previews
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          body: Shared test builds for open pull requests. Download assets matching the PR number. The Docker `preview` tag always points to the most recently completed internal PR build.
+          files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
