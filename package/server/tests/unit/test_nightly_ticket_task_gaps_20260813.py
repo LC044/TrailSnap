@@ -320,7 +320,11 @@ def test_process_batch_generator_status_failed_when_result_failed():
 def test_process_single_photo_returns_file_not_found():
     photo = _photo(file_path="/no/such/file.jpg")
     with patch("app.service.tasks.tickets.storage.get_preview_path", return_value="/no/such/preview.jpg"):
-        with patch("app.service.tasks.tickets.os.path.exists", return_value=False):
+        # patch.object avoids the string-form attribute chain walk
+        # (app.service.tasks.tickets.os.path.exists) which can hit AttributeError
+        # in CI when app.service.tasks is a namespace package whose os attribute
+        # resolution order differs from local dev.
+        with patch.object(ticket_tasks.os.path, "exists", return_value=False):
             res = _run(ticket_tasks.RecognizeTicketStrategy().process_single_photo(MagicMock(), photo, MagicMock()))
     assert res["status"] == "failed"
     assert "file not found" in res["error"]
