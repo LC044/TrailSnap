@@ -54,14 +54,17 @@
       ></div>
     </div>
 
-    <!-- Mobile: a transient scrubber replaces the dense desktop year/month rail. -->
-    <div v-if="isMobile" class="absolute right-2 inset-y-4 w-1 rounded-full bg-gray-300/70 dark:bg-gray-600/70">
-      <div
-        data-testid="mobile-timeline-thumb"
-        class="absolute right-1/2 translate-x-1/2 w-3 h-10 rounded-full bg-primary-500 shadow-lg shadow-primary-500/30 transition-[top] duration-100"
-        :class="{ '!duration-0 scale-110': mobileDragging }"
-        :style="{ top: `${mobileThumbTop}px` }"
-      ></div>
+    <!-- Mobile: floating edge capsule, matching native gallery scrubbers. -->
+    <div
+      v-if="isMobile"
+      data-testid="mobile-timeline-thumb"
+      class="absolute right-[-4px] w-12 h-16 rounded-l-2xl rounded-r-md bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border border-r-0 border-gray-200/80 dark:border-gray-700/80 shadow-[-4px_2px_14px_rgba(0,0,0,0.14)] flex flex-col items-center justify-center gap-1 text-gray-600 dark:text-gray-200 transition-[top,transform] duration-100"
+      :class="mobileDragging ? '!duration-0 scale-105 shadow-[-6px_3px_18px_rgba(0,0,0,0.2)]' : ''"
+      :style="{ top: `${mobileThumbTop}px` }"
+      aria-label="拖动浏览照片日期"
+    >
+      <ChevronUp class="w-5 h-5 stroke-[3]" aria-hidden="true" />
+      <ChevronDown class="w-5 h-5 stroke-[3]" aria-hidden="true" />
     </div>
 
     <!-- Independent Pointer -->
@@ -88,6 +91,7 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { ChevronDown, ChevronUp } from 'lucide-vue-next'
 import type { TimelineItem as ApiTimelineItem } from '@/types/album'
 
 const props = defineProps<{
@@ -202,7 +206,7 @@ const activeItemIndex = computed(() => {
   return index < 0 ? 0 : index
 })
 
-const mobileTrackHeight = computed(() => Math.max(1, (containerRef.value?.clientHeight ?? 400) - 72))
+const mobileTrackHeight = computed(() => Math.max(1, (containerRef.value?.clientHeight ?? 400) - 96))
 const mobileThumbTop = computed(() => {
   const count = displayItems.value.length
   return count <= 1 ? 16 : 16 + activeItemIndex.value / (count - 1) * mobileTrackHeight.value

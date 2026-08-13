@@ -211,7 +211,10 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
       touches: [{ identifier: 1, clientX: box!.x + box!.width / 2, clientY: box!.y + box!.height - 30 }],
       changedTouches: [],
     })
-    await expect(page.getByTestId('mobile-timeline-thumb')).toBeVisible()
+    const thumb = page.getByTestId('mobile-timeline-thumb')
+    await expect(thumb).toBeVisible()
+    await expect(thumb).toHaveAttribute('aria-label', '拖动浏览照片日期')
+    await expect(thumb.locator('svg')).toHaveCount(2)
     await timeline.dispatchEvent('touchend', { touches: [], changedTouches: [] })
   })
 })

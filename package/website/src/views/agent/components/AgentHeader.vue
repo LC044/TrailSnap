@@ -7,14 +7,14 @@
       <div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center hidden sm:flex">
         <Bot class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
       </div>
-      <div class="flex flex-col">
-        <div class="flex items-center gap-2">
+      <div class="flex min-w-0 flex-col">
+        <div class="flex min-w-0 items-center gap-2">
           <h3 class="font-semibold text-slate-800 dark:text-white text-sm m-0">TrailSnap</h3>
           <el-select
             :model-value="modelValue"
             @update:model-value="(val: string) => emit('update:modelValue', val)"
             size="small"
-            class="w-36"
+            class="agent-model-select"
             placeholder="选择模型"
             v-if="availableModels.length > 0 || isModelsLoading"
             :loading="isModelsLoading"
@@ -22,9 +22,11 @@
             <el-option
               v-for="m in availableModels"
               :key="m.conn_id + '|' + m.model"
-              :label="m.label"
+              :label="m.model"
               :value="m.conn_id + '|' + m.model"
-            />
+            >
+              <span>{{ m.label }}</span>
+            </el-option>
           </el-select>
         </div>
         <p class="text-xs text-slate-500 dark:text-slate-400 m-0 hidden sm:block">您的智能相册管家</p>
@@ -79,5 +81,10 @@ const emit = defineEmits<{
 <style scoped>
 .agent-chat-header {
   @apply px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10;
+}
+
+.agent-model-select {
+  width: clamp(7rem, 22vw, 11rem);
+  flex-shrink: 0;
 }
 </style>
