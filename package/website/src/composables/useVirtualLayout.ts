@@ -30,6 +30,8 @@ interface UseVirtualLayoutOptions {
   containerWidth: Ref<number>
   layoutMode: Ref<'grid' | 'masonry' | 'waterfall' | 'list' | 'moments'> // Added 'waterfall' and 'moments'
   viewSize: Ref<'sm' | 'md' | 'lg'>
+  columnCount?: Ref<number | null>
+  gridGap?: Ref<number | null>
   photos: Ref<AlbumImage[]> // Added photos dependency
   expandedDays?: Ref<Set<string>>
   // 朋友圈布局下，用于按 caption 字数动态计算 day 卡片头部高度
@@ -52,12 +54,13 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
   const DAY_HEADER_HEIGHT = 50
   
   const getGap = () => {
-    return getPhotoGap(viewSize.value)
+    return options.gridGap?.value ?? getPhotoGap(viewSize.value)
   }
 
   // Get columns based on viewSize（口径复用 utils/photoGridLayout）
   const getColumns = () => {
-    return getPhotoColumns(containerWidth.value || window.innerWidth, viewSize.value)
+    return options.columnCount?.value
+      ?? getPhotoColumns(containerWidth.value || window.innerWidth, viewSize.value)
   }
 
   const recalculateLayout = () => {
@@ -294,6 +297,8 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
       containerWidth,
       layoutMode,
       viewSize,
+      () => options.columnCount?.value,
+      () => options.gridGap?.value,
       () => photos.value.length,
       () => options.expandedDays?.value.size,
       () => {

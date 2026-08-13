@@ -3,6 +3,9 @@
 // 均复用本文件，保证列数/间距完全一致，避免口径漂移。
 
 export type ViewSize = 'sm' | 'md' | 'lg'
+// Preserve the familiar large-thumbnail steps, then collapse progressively
+// into a dense timeline overview similar to the native Photos experience.
+export const MOBILE_GRID_COLUMNS = [2, 3, 4, 6, 8, 12, 16, 20, 24, 28] as const
 
 /**
  * 根据可用宽度与视图档位计算列数。
@@ -22,4 +25,19 @@ export function getPhotoColumns(width: number, viewSize: ViewSize): number {
 /** 网格间距（px）：大图档 16，其余 8。与原照片页一致。 */
 export function getPhotoGap(viewSize: ViewSize): number {
   return viewSize === 'lg' ? 16 : 8
+}
+
+/** Return the closest supported iOS-style mobile grid density. */
+export function getNearestMobileGridColumns(rawColumns: number): number {
+  return MOBILE_GRID_COLUMNS.reduce((nearest, value) =>
+    Math.abs(value - rawColumns) < Math.abs(nearest - rawColumns) ? value : nearest,
+  )
+}
+
+/** Tighten gutters as the grid zooms out, matching native gallery density. */
+export function getMobileGridGap(columns: number): number {
+  if (columns <= 3) return 8
+  if (columns === 4) return 4
+  if (columns >= 20) return 0
+  return columns >= 10 ? 1 : 2
 }

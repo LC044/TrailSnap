@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { ensureAuthSession } from '../../helpers/auth'
 import { requirePhotos } from '../../helpers/data-probe'
 
-test.describe('P1 - 移动端照片查看器与更多导航', () => {
+test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true })
 
   test.beforeEach(async ({ page, request }, testInfo) => {
@@ -77,5 +77,48 @@ test.describe('P1 - 移动端照片查看器与更多导航', () => {
 
     await page.getByRole('button', { name: '关闭更多导航' }).click()
     await expect(drawer).toBeHidden()
+  })
+
+  test('照片墙双指捏合可切换每行照片数量并记住密度', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 12, 50)
+    if (!probe.ok) return
+    await page.addInitScript(() => localStorage.removeItem('trailsnap_mobile_grid_columns'))
+    await page.goto('/photos')
+
+    const grid = page.getByTestId('photo-grid').first()
+    await expect(grid).toBeVisible({ timeout: 20_000 })
+    const columnCount = () => grid.evaluate((element) =>
+      getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length,
+    )
+    expect(await columnCount()).toBe(3)
+
+    // Pinch inward: distance 240px -> 80px, revealing more photos per row.
+    await grid.dispatchEvent('touchstart', {
+      touches: [
+        { identifier: 1, clientX: 75, clientY: 400 },
+        { identifier: 2, clientX: 315, clientY: 400 },
+      ],
+      changedTouches: [],
+    })
+    await grid.dispatchEvent('touchmove', {
+      touches: [
+        { identifier: 1, clientX: 155, clientY: 400 },
+        { identifier: 2, clientX: 235, clientY: 400 },
+      ],
+      changedTouches: [],
+    })
+    await page.waitForTimeout(50)
+    await grid.dispatchEvent('touchend', { touches: [], changedTouches: [] })
+
+    await expect.poll(columnCount).toBeGreaterThanOrEqual(6)
+    expect(await page.evaluate(() => localStorage.getItem('trailsnap_mobile_grid_columns'))).toBeTruthy()
+
+    // The saved density is restored on the next visit.
+    const savedColumns = await columnCount()
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(page.getByTestId('photo-grid').first()).toBeVisible({ timeout: 20_000 })
+    await expect.poll(() => page.getByTestId('photo-grid').first().evaluate((element) =>
+      getComputedStyle(element).gridTemplateColumns.split(' ').filter(Boolean).length,
+    )).toBe(savedColumns)
   })
 })

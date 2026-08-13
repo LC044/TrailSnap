@@ -1,5 +1,11 @@
 <template>
-  <div class="photo-gallery min-h-screen relative" ref="galleryEl">
+  <div
+    class="photo-gallery min-h-screen relative"
+    :class="{ 'photo-gallery--pinching': isGridPinching }"
+    ref="galleryEl"
+    @touchstart="handleGridTouchStart"
+    @click.capture="handleGridClickCapture"
+  >
     <!-- Skeleton Loader (Initial Load) -->
     <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
 
@@ -397,6 +403,7 @@
                     <!-- Photos Grid (Standard) -->
                     <div 
                         v-if="layoutMode !== 'moments'"
+                        data-testid="photo-grid"
                         :class="layoutMode === 'waterfall' ? 'flex flex-wrap' : 'grid w-full'" 
                         :style="layoutMode === 'waterfall' ? { gap: gap + 'px' } : {
                             gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
@@ -413,6 +420,7 @@
                             <div
                                 v-for="img in getPhotos(day.key).slice(getRange(day.key).start, getRange(day.key).end)"
                                 :key="img.id"
+                                :data-photo-id="img.id"
                                 class="relative group rounded-lg overflow-hidden cursor-pointer transform transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:z-10 flex items-center justify-center"
                                 :class="{
                                   'aspect-square bg-gray-100 dark:bg-gray-800': layoutMode === 'grid',
@@ -527,6 +535,11 @@ import PersonSelector from './PersonSelector.vue'
 import GalleryChrome from './GalleryChrome.vue'
 import { faceApi } from '@/api/face'
 import { photoApi } from '@/api/photo'
+import {
+  MOBILE_GRID_COLUMNS,
+  getMobileGridGap,
+  getNearestMobileGridColumns,
+} from '@/utils/photoGridLayout'
 
 // Props
 interface Props {
@@ -656,6 +669,8 @@ onUnmounted(() => {
     imageLoaders.forEach(c => c.abort())
     imageLoaders.clear()
     if (resizeObserver) resizeObserver.disconnect()
+    stopGridPinch()
+    if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
 })
 // --- End Image Loading Logic ---
 
@@ -756,11 +771,158 @@ const getGridMaxWidth = (dayKey: string, isExpanded: boolean) => {
     return 'min(100%, 360px)' // 3列
 }
 
+// iOS Photos-style grid density pinch. Spreading fingers makes thumbnails
+// larger; pinching inward reveals more photos in each row.
+const GRID_COLUMNS_STORAGE_KEY = 'trailsnap_mobile_grid_columns'
+const storedGridColumns = Number(localStorage.getItem(GRID_COLUMNS_STORAGE_KEY))
+const mobileGridColumns = ref<number | null>(
+  MOBILE_GRID_COLUMNS.includes(storedGridColumns as typeof MOBILE_GRID_COLUMNS[number])
+    ? storedGridColumns
+    : null,
+)
+const isGridPinching = ref(false)
+const suppressGridClick = ref(false)
+let pinchStartDistance = 0
+let pinchStartColumns = 3
+let pinchAnchorId = ''
+let pinchAnchorViewportTop = 0
+let pinchFrame = 0
+let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
+
+const effectiveGridColumns = computed(() => {
+  if (containerWidth.value >= 768 || !['grid', 'masonry'].includes(props.layoutMode)) return null
+  return mobileGridColumns.value
+})
+
+const effectiveGridGap = computed(() => {
+  const columns = effectiveGridColumns.value
+  return columns ? getMobileGridGap(columns) : null
+})
+
+const touchDistance = (touches: TouchList) => Math.hypot(
+  touches[1].clientX - touches[0].clientX,
+  touches[1].clientY - touches[0].clientY,
+)
+
+const visiblePhotoRects = () => new Map(
+  Array.from(galleryEl.value?.querySelectorAll<HTMLElement>('[data-photo-id]') ?? [])
+    .map(element => [element.dataset.photoId ?? '', element.getBoundingClientRect()] as const),
+)
+
+const animateGridReflow = (before: Map<string, DOMRect>) => {
+  requestAnimationFrame(() => {
+    for (const element of Array.from(galleryEl.value?.querySelectorAll<HTMLElement>('[data-photo-id]') ?? [])) {
+      const previous = before.get(element.dataset.photoId ?? '')
+      if (!previous) continue
+      const current = element.getBoundingClientRect()
+      const scaleX = previous.width / current.width
+      const scaleY = previous.height / current.height
+      element.getAnimations().forEach(animation => animation.cancel())
+      element.animate([
+        {
+          transform: `translate3d(${previous.left - current.left}px, ${previous.top - current.top}px, 0) scale(${scaleX}, ${scaleY})`,
+          transformOrigin: 'top left',
+        },
+        { transform: 'translate3d(0, 0, 0) scale(1)', transformOrigin: 'top left' },
+      ], {
+        duration: 280,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      })
+    }
+  })
+}
+
+const restoreGridPinchAnchor = () => {
+  if (!pinchAnchorId) return
+  requestAnimationFrame(() => {
+    const anchor = galleryEl.value?.querySelector<HTMLElement>(`[data-photo-id="${CSS.escape(pinchAnchorId)}"]`)
+    if (!anchor) return
+    const delta = anchor.getBoundingClientRect().top - pinchAnchorViewportTop
+    const container = scrollContainerRef.value
+    if (container && container !== window) {
+      ;(container as HTMLElement).scrollTop += delta
+    } else {
+      window.scrollBy(0, delta)
+    }
+  })
+}
+
+const applyGridPinch = (distance: number) => {
+  pinchFrame = 0
+  if (!pinchStartDistance) return
+  const nextColumns = getNearestMobileGridColumns(pinchStartColumns * pinchStartDistance / distance)
+  if (mobileGridColumns.value === nextColumns) return
+
+  const before = visiblePhotoRects()
+  mobileGridColumns.value = nextColumns
+  localStorage.setItem(GRID_COLUMNS_STORAGE_KEY, String(nextColumns))
+  nextTick(() => {
+    recalculateLayout()
+    updateVisibleBlocks()
+    restoreGridPinchAnchor()
+    animateGridReflow(before)
+  })
+}
+
+const handleGridTouchMove = (event: TouchEvent) => {
+  if (!isGridPinching.value || event.touches.length !== 2) return
+  event.preventDefault()
+  const distance = touchDistance(event.touches)
+  if (!pinchFrame) pinchFrame = requestAnimationFrame(() => applyGridPinch(distance))
+}
+
+const stopGridPinch = () => {
+  if (!isGridPinching.value) return
+  isGridPinching.value = false
+  pinchStartDistance = 0
+  pinchAnchorId = ''
+  if (pinchFrame) cancelAnimationFrame(pinchFrame)
+  pinchFrame = 0
+  window.removeEventListener('touchmove', handleGridTouchMove)
+  window.removeEventListener('touchend', stopGridPinch)
+  window.removeEventListener('touchcancel', stopGridPinch)
+
+  suppressGridClick.value = true
+  if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
+  suppressGridClickTimer = setTimeout(() => {
+    suppressGridClick.value = false
+    suppressGridClickTimer = null
+  }, 350)
+}
+
+const handleGridTouchStart = (event: TouchEvent) => {
+  if (event.touches.length !== 2 || containerWidth.value >= 768) return
+  if (!['grid', 'masonry'].includes(props.layoutMode) || isSelectionMode.value) return
+
+  event.preventDefault()
+  isGridPinching.value = true
+  pinchStartDistance = touchDistance(event.touches)
+  pinchStartColumns = effectiveGridColumns.value ?? colCount.value
+
+  const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2
+  const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2
+  const anchor = document.elementFromPoint(centerX, centerY)?.closest<HTMLElement>('[data-photo-id]')
+  pinchAnchorId = anchor?.dataset.photoId ?? ''
+  pinchAnchorViewportTop = anchor?.getBoundingClientRect().top ?? centerY
+
+  window.addEventListener('touchmove', handleGridTouchMove, { passive: false })
+  window.addEventListener('touchend', stopGridPinch)
+  window.addEventListener('touchcancel', stopGridPinch)
+}
+
+const handleGridClickCapture = (event: MouseEvent) => {
+  if (!suppressGridClick.value) return
+  event.preventDefault()
+  event.stopPropagation()
+}
+
 const layoutOptions = {
     timelineStats: toRef(props, 'timelineStats'),
     containerWidth,
     layoutMode: toRef(props, 'layoutMode'),
     viewSize: toRef(props, 'viewSize'),
+    columnCount: effectiveGridColumns,
+    gridGap: effectiveGridGap,
     photos: toRef(props, 'photos'),
     expandedDays,
     dayCaptions: toRef(props, 'dayCaptions')
