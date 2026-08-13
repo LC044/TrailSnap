@@ -62,6 +62,30 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
+      - name: Check ACR secrets
+        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
+        id: acr_check
+        env:
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          if [ -n "$ACR_REGISTRY" ] && [ -n "$ACR_NAMESPACE" ] && [ -n "$ACR_USERNAME" ] && [ -n "$ACR_PASSWORD" ]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+            echo "::notice::ACR secrets 配置不完整，本次仅推送 Docker Hub。"
+          fi
+
+      - name: Login to Aliyun ACR
+        if: steps.acr_check.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
       - name: Determine image tags
         if: github.event_name != 'pull_request' || matrix.type == 'cpu'
         id: set-tags
@@ -93,123 +117,18 @@ jobs:
           file: ./package/ai/${{ matrix.dockerfile }}
           platforms: ${{ matrix.platforms }}
           push: true
+          # ACR currently rejects BuildKit's OCI attestation manifest
+          # (application/vnd.oci.empty.v1+json). Push the same plain image
+          # manifest to both registries in one build instead.
+          provenance: false
           tags: |
             ${{ github.event_name != 'pull_request' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.BASE_TAG) || '' }}
             ${{ matrix.type == 'cpu' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_BASE_TAG) || '' }}
             ${{ env.RAW_EXTRA_TAG != '' && format('{0}/trailsnap-ai:{1}{2}', env.DOCKER_HUB_USERNAME, env.RAW_EXTRA_TAG, matrix.tag_suffix) || '' }}
             ${{ matrix.type == 'cpu' && env.RAW_EXTRA_TAG != '' && format('{0}/trailsnap-ai:{1}', env.DOCKER_HUB_USERNAME, env.RAW_EXTRA_TAG) || '' }}
+            ${{ steps.acr_check.outputs.enabled == 'true' && github.event_name != 'pull_request' && format('{0}/{1}/trailsnap-ai:{2}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE, env.BASE_TAG) || '' }}
+            ${{ steps.acr_check.outputs.enabled == 'true' && matrix.type == 'cpu' && format('{0}/{1}/trailsnap-ai:{2}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE, env.RAW_BASE_TAG) || '' }}
+            ${{ steps.acr_check.outputs.enabled == 'true' && env.RAW_EXTRA_TAG != '' && format('{0}/{1}/trailsnap-ai:{2}{3}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE, env.RAW_EXTRA_TAG, matrix.tag_suffix) || '' }}
+            ${{ steps.acr_check.outputs.enabled == 'true' && matrix.type == 'cpu' && env.RAW_EXTRA_TAG != '' && format('{0}/{1}/trailsnap-ai:{2}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE, env.RAW_EXTRA_TAG) || '' }}
           cache-from: type=gha,scope=build-ai-${{ matrix.type }}
           cache-to: type=gha,mode=max,scope=build-ai-${{ matrix.type }}
-
-  # ============ 同步多架构镜像到阿里云 ACR（国内加速拉取） ============
-  # docker buildx imagetools create 会把完整镜像（manifest list + 各平台 manifest + layer）
-  # 从 Docker Hub 复制到阿里云 ACR，不重新构建，秒级完成。国内用户拉
-  #   registry.cn-hangzhou.aliyuncs.com/<ACR_NAMESPACE>/trailsnap-ai:<tag>
-  # 走阿里云内网/CDN，速度远快于直连 Docker Hub。
-  #
-  # 需新增仓库 secrets（未配置时本 job 自动跳过，不会让 CI 变红）：
-  #   ACR_REGISTRY    阿里云 ACR 访问地址，按地域选，如 registry.cn-hangzhou.aliyuncs.com
-  #   ACR_NAMESPACE   命名空间（需先在 ACR 控制台创建），如 trailsnap
-  #   ACR_USERNAME    阿里云账号 ID 或 RAM 子账号
-  #   ACR_PASSWORD    ACR 访问凭证（ACR 控制台「访问凭证」里设置的固定密码）
-  sync-to-cn:
-    needs: build-and-push-ai
-    runs-on: ubuntu-latest
-    # PR preview images are test-only and remain on Docker Hub; keep the
-    # existing ACR synchronization path unchanged for regular publishing.
-    if: ${{ github.event_name != 'pull_request' && needs.build-and-push-ai.result == 'success' }}
-    strategy:
-      matrix:
-        include:
-          - type: cpu
-            tag_suffix: "-cpu"
-          - type: gpu
-            tag_suffix: "-gpu"
-          - type: openvino
-            tag_suffix: "-openvino"
-    steps:
-      - name: Check ACR secrets
-        if: github.event_name != 'pull_request' || matrix.type == 'cpu'
-        id: acr_check
-        env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-        run: |
-          if [ -z "$ACR_REGISTRY" ]; then
-            echo "enabled=false" >> $GITHUB_OUTPUT
-            echo "::notice::未配置 ACR_REGISTRY secret，跳过国内镜像同步。配置后见 sync-to-cn job 注释。"
-          else
-            echo "enabled=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Set up Docker Buildx
-        if: steps.acr_check.outputs.enabled == 'true'
-        uses: docker/setup-buildx-action@v3
-        with:
-          install: true
-
-      - name: Login to Docker Hub
-        if: steps.acr_check.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Login to Aliyun ACR
-        if: steps.acr_check.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.ACR_REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
-      # tag 计算逻辑与 build-and-push-ai job 完全一致，保证同步的 tag 集合对齐
-      - name: Determine image tags
-        if: (github.event_name != 'pull_request' || matrix.type == 'cpu') && steps.acr_check.outputs.enabled == 'true'
-        run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            RAW_BASE_TAG=${GITHUB_REF#refs/tags/v}
-            RAW_EXTRA_TAG="latest"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            RAW_BASE_TAG="preview"
-            RAW_EXTRA_TAG=""
-          else
-            RAW_BASE_TAG=${GITHUB_REF#refs/heads/}
-            RAW_EXTRA_TAG=""
-          fi
-
-          BASE_TAG="${RAW_BASE_TAG}${{ matrix.tag_suffix }}"
-
-          echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
-          echo "RAW_BASE_TAG=$RAW_BASE_TAG" >> $GITHUB_ENV
-          echo "RAW_EXTRA_TAG=$RAW_EXTRA_TAG" >> $GITHUB_ENV
-          echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
-
-      # -t 指定目标，位置参数为源；imagetools create 会拉取源完整内容并推送到目标 registry
-      - name: Sync multi-arch images to Aliyun ACR
-        if: steps.acr_check.outputs.enabled == 'true'
-        env:
-          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
-          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
-        run: |
-          set -e
-          SRC_PREFIX="${DOCKER_HUB_USERNAME}/trailsnap-ai"
-          DST_PREFIX="${ACR_REGISTRY}/${ACR_NAMESPACE}/trailsnap-ai"
-
-          # 收集要同步的 tag（与 build job 的 tags 列表保持一致）
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TAGS="$RAW_BASE_TAG"
-          else
-            TAGS="$BASE_TAG"
-            [ -n "$RAW_EXTRA_TAG" ] && TAGS="$TAGS ${RAW_EXTRA_TAG}${{ matrix.tag_suffix }}"
-          fi
-          if [ "${{ matrix.type }}" = "cpu" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
-            TAGS="$TAGS $RAW_BASE_TAG"
-            [ -n "$RAW_EXTRA_TAG" ] && TAGS="$TAGS $RAW_EXTRA_TAG"
-          fi
-
-          for TAG in $TAGS; do
-            echo "==> 同步 $SRC_PREFIX:$TAG -> $DST_PREFIX:$TAG"
-            docker buildx imagetools create \
-              -t "$DST_PREFIX:$TAG" \
-              "$SRC_PREFIX:$TAG"
-          done
