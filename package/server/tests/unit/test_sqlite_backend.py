@@ -52,7 +52,8 @@ def sqlite_session(tmp_path):
         engine.dispose()
 
 
-def test_sqlite_uuid_and_vector_round_trip(sqlite_session):
+def test_sqlite_uuid_and_vector_search_returns_scalar_distances(sqlite_session):
+    """SQLite's in-memory fallback also returns ``(ImageVector, float)`` rows."""
     user = User(
         username="sqlite-user",
         email="sqlite@example.com",
@@ -85,6 +86,7 @@ def test_sqlite_uuid_and_vector_round_trip(sqlite_session):
 
     assert isinstance(photos[0].id, UUID)
     assert results[0][0].photo_id == photos[0].id
+    assert all(isinstance(distance, float) for _, distance in results)
     assert results[0][1] == pytest.approx(0.0)
     assert results[1][1] == pytest.approx(1.0)
 

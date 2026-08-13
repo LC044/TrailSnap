@@ -3,7 +3,8 @@
     <div v-if="visible" class="fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm" @click="close" tabindex="0">
 
       <!-- Top Toolbar (Mobile Adapted) — hidden in edit mode -->
-      <div v-if="!isEditing" class="fixed top-0 left-0 right-0 z-[102] p-2 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+      <Transition name="viewer-controls">
+      <div v-if="!isEditing && controlsVisible" data-testid="photo-lightbox-toolbar" class="fixed top-0 left-0 right-0 z-[102] p-2 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
          <button
             @click.stop="close"
             class="pointer-events-auto w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0"
@@ -87,6 +88,7 @@
             </div>
         </div>
       </div>
+      </Transition>
 
       <!-- Feature pages can add compact contextual information without forking the lightbox. -->
       <slot name="context-overlay"></slot>
@@ -108,27 +110,31 @@
         <button
             v-if="hasPrev"
             @click.stop="prev"
-            class="absolute left-4 z-[101] w-12 h-12 flex items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
+            class="absolute left-4 z-[101] hidden md:flex w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
             <ChevronLeft class="w-8 h-8" />
         </button>
         <button
             v-if="hasNext"
             @click.stop="next"
-            class="absolute right-4 z-[101] w-12 h-12 flex items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
+            class="absolute right-4 z-[101] hidden md:flex w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
             <ChevronRight class="w-8 h-8" />
         </button>
 
 
-        <div class="relative w-full h-full flex items-center justify-center overflow-hidden" @wheel.prevent="handleWheel">
+        <div
+          data-testid="photo-lightbox-media"
+          class="relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
+          @click.stop="handleMediaTap"
+          @wheel.prevent="handleWheel"
+          @touchstart="startTouch"
+        >
             <div
               v-if="image && (!image.file_type || image.file_type === 'image' || image.file_type === 'live_photo')"
               class="relative w-full h-full transition-transform duration-200 ease-out origin-center select-none flex items-center justify-center"
               :style="{ transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)` }"
-              @click.stop
               @mousedown="startDrag"
-              @touchstart="startTouch"
             >
                 <!-- Image Wrapper for Correct Overlay Positioning -->
                 <div class="relative flex justify-center items-center h-full">
@@ -205,7 +211,6 @@
             <div
               v-else-if="image && image.file_type === 'video'"
               class="relative w-full h-full flex items-center justify-center bg-black"
-              @click.stop
             >
               <div ref="videoPlayer" class="w-full h-full"></div>
             </div>
@@ -424,6 +429,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const showOriginal = ref(false)
 const isEditing = ref(false)
+const controlsVisible = ref(true)
 const isPlayingLive = ref(false)
 const liveVideoRef = ref<HTMLVideoElement | null>(null)
 const videoStyle = ref<Record<string, string>>({})
@@ -549,6 +555,13 @@ const translateY = ref(0)
 const startX = ref(0)
 const startY = ref(0)
 const initialDistance = ref(0)
+const touchStartX = ref(0)
+const touchStartY = ref(0)
+const touchStartTime = ref(0)
+const touchDeltaX = ref(0)
+const touchDeltaY = ref(0)
+const suppressNextTap = ref(false)
+let suppressTapTimer: ReturnType<typeof setTimeout> | null = null
 
 // Video Player State
 const videoPlayer = ref<HTMLElement | null>(null)
@@ -631,6 +644,7 @@ onUnmounted(() => {
         clearTimeout(shortcutHintTimer)
         shortcutHintTimer = null
     }
+    if (suppressTapTimer) clearTimeout(suppressTapTimer)
 })
 
 const isDragging = ref(false)
@@ -646,6 +660,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     highlightedFace.value = null
     videoStyle.value = {}
     isDragging.value = false // Ensure dragging is reset
+    controlsVisible.value = true
 
     // 2. Handle Resource Cleanup & Initialization
     if (oldImg?.file_type === 'video') {
@@ -684,6 +699,7 @@ watch(() => props.visible, async (newVal) => {
     if (newVal && props.image) {
         document.body.style.overflow = 'hidden'
         resetZoom()
+        controlsVisible.value = true
 
         if (props.image.file_type === 'live_photo') {
              isPlayingLive.value = true
@@ -729,6 +745,16 @@ watch(() => props.visible, async (newVal) => {
 // Methods
 const close = () => {
     emit('close')
+}
+
+const handleMediaTap = () => {
+    if (suppressNextTap.value) {
+        suppressNextTap.value = false
+        return
+    }
+    if (scale.value === 1 && !showSidebar.value && !showOCR.value) {
+        controlsVisible.value = !controlsVisible.value
+    }
 }
 
 useOverlayStack(computed(() => props.visible), close)
@@ -976,6 +1002,17 @@ const startTouch = (e: TouchEvent) => {
         window.addEventListener('touchmove', onTouchMove, { passive: false })
         window.addEventListener('touchend', stopTouch)
         window.addEventListener('touchcancel', stopTouch)
+    } else if (e.touches.length === 1) {
+        // At the default zoom level, a horizontal gesture navigates between photos.
+        // Keep vertical movement inert so a slightly diagonal swipe does not switch accidentally.
+        touchStartX.value = e.touches[0].clientX
+        touchStartY.value = e.touches[0].clientY
+        touchStartTime.value = performance.now()
+        touchDeltaX.value = 0
+        touchDeltaY.value = 0
+        window.addEventListener('touchmove', onTouchMove, { passive: false })
+        window.addEventListener('touchend', stopTouch)
+        window.addEventListener('touchcancel', stopTouch)
     }
 }
 
@@ -998,12 +1035,35 @@ const onTouchMove = (e: TouchEvent) => {
         e.preventDefault()
         translateX.value = e.touches[0].clientX - startX.value
         translateY.value = e.touches[0].clientY - startY.value
+    } else if (e.touches.length === 1 && scale.value === 1 && touchStartTime.value > 0) {
+        touchDeltaX.value = e.touches[0].clientX - touchStartX.value
+        touchDeltaY.value = e.touches[0].clientY - touchStartY.value
+        if (Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value)) e.preventDefault()
     }
 }
 
 const stopTouch = () => {
+    const elapsed = performance.now() - touchStartTime.value
+    const isHorizontalSwipe = scale.value === 1
+        && Math.abs(touchDeltaX.value) >= 50
+        && Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value) * 1.25
+        && elapsed <= 700
+
+    if (isHorizontalSwipe) {
+        if (touchDeltaX.value < 0 && props.hasNext) next()
+        if (touchDeltaX.value > 0 && props.hasPrev) prev()
+        suppressNextTap.value = true
+        if (suppressTapTimer) clearTimeout(suppressTapTimer)
+        suppressTapTimer = setTimeout(() => {
+            suppressNextTap.value = false
+            suppressTapTimer = null
+        }, 350)
+    }
     isDragging.value = false
     initialDistance.value = 0
+    touchStartTime.value = 0
+    touchDeltaX.value = 0
+    touchDeltaY.value = 0
     window.removeEventListener('touchmove', onTouchMove)
     window.removeEventListener('touchend', stopTouch)
     window.removeEventListener('touchcancel', stopTouch)
@@ -1094,3 +1154,15 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 }
 
 </script>
+
+<style scoped>
+.viewer-controls-enter-active,
+.viewer-controls-leave-active {
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+.viewer-controls-enter-from,
+.viewer-controls-leave-to {
+    opacity: 0;
+    transform: translateY(-0.75rem);
+}
+</style>

@@ -75,11 +75,23 @@
     direction="btt"
     :with-header="false"
     size="auto"
+    :close-on-click-modal="true"
+    :close-on-press-escape="true"
     class="more-sheet"
   >
     <div class="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_12px)]">
       <!-- 拖拽手柄 -->
-      <div class="mx-auto mb-4 w-10 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+      <div class="relative mb-4 flex min-h-8 items-center justify-center">
+        <div class="w-10 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+        <button
+          type="button"
+          class="absolute right-0 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-700"
+          aria-label="关闭更多导航"
+          @click="moreSheetVisible = false"
+        >
+          <X class="h-5 w-5" />
+        </button>
+      </div>
 
       <!-- 通知（复用 NotificationBell 的 row 变体，自带未读徽标 + 开抽屉） -->
       <NotificationBell variant="row" />
@@ -168,7 +180,8 @@ import {
   Search,
   Images,
   Menu,
-  LogOut
+  LogOut,
+  X
 } from 'lucide-vue-next'
 import { injectNavItems, getNavIcon, getThumbnailUrl } from '@/composables/useNavItems'
 import NotificationBell from '@/components/NotificationBell.vue'
@@ -224,9 +237,12 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   border-top-left-radius: 16px;
   border-top-right-radius: 16px;
   overflow: hidden;
+  max-height: min(85dvh, 720px);
 }
 .more-sheet .el-drawer__body {
   padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 </style>
 

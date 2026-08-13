@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from pgvector.sqlalchemy import Vector as PostgreSQLVector
-from sqlalchemy import CHAR, JSON
+from sqlalchemy import CHAR, JSON, Float
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.types import TypeDecorator
 
@@ -36,7 +36,11 @@ class GUID(TypeDecorator[uuid.UUID]):
 
 class _VectorComparator(TypeDecorator.Comparator):
     def cosine_distance(self, other):
-        return self.expr.op("<=>")(other)
+        # pgvector's <=> operator returns a scalar distance, not another vector.
+        # Without an explicit return type SQLAlchemy inherits DatabaseVector from
+        # the left operand and runs pgvector's vector result processor on the
+        # float returned by PostgreSQL (``float is not subscriptable``).
+        return self.expr.op("<=>", return_type=Float())(other)
 
 
 class DatabaseVector(TypeDecorator[list[float]]):
