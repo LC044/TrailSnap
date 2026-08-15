@@ -98,3 +98,13 @@
   background-color: #fff;
   border-radius: 4px;
 }
+
+/* Full-width download landing page */
+.custom-download-page .VPContent,
+.custom-download-page .VPDoc,
+.custom-download-page .container,
+.custom-download-page div[class*="_doc"] {
+  max-width: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}

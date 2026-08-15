@@ -52,6 +52,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '首页', link: '/' },
+          { text: '下载', link: '/download' },
           { text: 'CLI', link: '/cli' },
           { text: '识别演示', link: '/docs/guide/demo' },
           { text: '用户指南', link: '/docs/guide/install' },
@@ -64,6 +65,7 @@ export default defineConfig({
             { text: '概览', link: '/docs/guide/overview' },
             { text: '部署前检查', link: '/docs/guide/preflight' },
             { text: '安装指南', link: '/docs/guide/install' },
+            { text: '桌面版 AI 扩展', link: '/docs/guide/desktop-ai-extension' },
             { text: '移动 App', link: '/docs/guide/mobile-app' },
             {
               text: 'Docker 部署',
@@ -178,6 +180,7 @@ export default defineConfig({
           { text: 'Home', link: '/en/' },
           { text: 'CLI', link: '/en/cli' },
           { text: 'Demo', link: '/en/docs/guide/demo' },
+          { text: 'Download', link: '/en/download' },
           { text: 'Guide', link: '/en/docs/guide/install' },
           { text: 'Developers', link: '/en/docs/dev/guide' },
           { text: 'Blog', link: '/en/docs/blog/' },
@@ -191,6 +194,7 @@ export default defineConfig({
                 { text: 'Overview', link: '/en/docs/guide/overview' },
                 { text: 'Pre-deployment Checklist', link: '/en/docs/guide/preflight' },
                 { text: 'Installation', link: '/en/docs/guide/install' },
+                { text: 'Desktop AI Extension', link: '/en/docs/guide/desktop-ai-extension' },
                 { text: 'Mobile App', link: '/en/docs/guide/mobile-app' },
                 {
                   text: 'Docker Deployment',

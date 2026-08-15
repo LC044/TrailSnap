@@ -1,5 +1,9 @@
 # AI / LLM Settings
 
+::: tip Desktop users
+This page configures model connections for chat and image understanding. Local face recognition, OCR, classification, and semantic search require the [desktop AI extension](/en/docs/guide/desktop-ai-extension) first. Docker deployments do not use the desktop extension.
+:::
+
 ## Built-in Connection
 
 TrailSnap includes a built-in AI connection that works out of the box. It uses the MiniCPM-V-4_6-Q4_K_M multimodal model, supporting image content understanding, tag generation, and other visual tasks.

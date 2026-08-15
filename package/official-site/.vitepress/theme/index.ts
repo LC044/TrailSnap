@@ -4,6 +4,7 @@ import { h, onMounted, watch} from 'vue'
 import Comments from './components/Comments.vue'
 import Home from './components/Home.vue'
 import CliPage from './components/CliPage.vue'
+import DownloadPage from './components/DownloadPage.vue'
 import './style/style.css'
 // import './style/navbar.css'
 import {Mermaid} from "@leelaa/vitepress-plugin-extended";
@@ -52,6 +53,7 @@ export default {
     // 全局组件
     app.component('Home', Home)
     app.component('CliPage', CliPage)
+    app.component('DownloadPage', DownloadPage)
     app.component('Mermaid', Mermaid)
     enhanceAppWithTabs(app)
   },

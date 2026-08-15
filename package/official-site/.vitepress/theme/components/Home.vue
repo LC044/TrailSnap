@@ -33,7 +33,7 @@
                 <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.418 2.865 8.168 6.839 9.49.5.092.683-.217.683-.483 0-.237-.009-.868-.013-1.703-2.782.604-3.369-1.341-3.369-1.341-.454-1.154-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.004.07 1.532 1.03 1.532 1.03.892 1.529 2.341 1.087 2.91.831.091-.646.349-1.087.635-1.338-2.22-.253-4.555-1.11-4.555-4.942 0-1.092.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.805c.85.004 1.705.115 2.504.337 1.909-1.294 2.748-1.025 2.748-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.591 1.028 2.683 0 3.842-2.339 4.686-4.566 4.934.359.31.678.92.678 1.852 0 1.337-.012 2.416-.012 2.744 0 .268.18.58.688.482A10.002 10.002 0 0022 12c0-5.523-4.477-10-10-10z" />
               </svg>
             </a>
-            <button class="px-5 py-2 rounded-full bg-primary text-white text-sm font-bold hover:bg-primary-dark hover:scale-105 transition-transform shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
+            <button class="px-5 py-2 rounded-full bg-primary text-white text-sm font-bold hover:bg-primary-dark hover:scale-105 transition-transform shadow-sm" @click="goLink(lang === 'zh-CN' ? '/download' : '/en/download')">{{ t.nav.download }}</button>
           </div>
 
           <!-- Mobile Hamburger -->
@@ -56,7 +56,7 @@
           GitHub
         </a>
         <div class="flex space-x-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-          <button class="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold shadow-sm" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.nav.download }}</button>
+          <button class="flex-1 py-2.5 rounded-xl bg-primary text-white font-bold shadow-sm" @click="goLink(lang === 'zh-CN' ? '/download' : '/en/download')">{{ t.nav.download }}</button>
         </div>
       </div>
     </div>
@@ -91,7 +91,7 @@
 
             <!-- Actions -->
             <div class="flex flex-col sm:flex-row justify-center lg:justify-start gap-4">
-              <button class="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:bg-primary-dark hover:scale-105 transition-all shadow-lg hover:shadow-xl" @click="goLink(lang === 'zh-CN' ? '/docs/guide/install' : '/en/docs/guide/install')">{{ t.hero.download }}</button>
+              <button class="px-8 py-3 rounded-lg bg-primary text-white font-bold hover:bg-primary-dark hover:scale-105 transition-all shadow-lg hover:shadow-xl" @click="goLink(lang === 'zh-CN' ? '/download' : '/en/download')">{{ t.hero.download }}</button>
               <a href="https://demo.siyuan.ink" target="_blank" rel="noopener" class="px-8 py-3 rounded-lg border-2 border-primary text-primary font-bold hover:bg-primary hover:text-white hover:scale-105 transition-all flex items-center justify-center gap-1">{{ t.hero.demo }} <span class="text-xl">→</span></a>
               <!-- <button class="px-8 py-3 text-neutral-dark dark:text-gray-200 hover:text-primary dark:hover:text-primary transition-colors font-medium flex items-center justify-center gap-1" @click="goLink(lang === 'zh-CN' ? '/docs/guide/overview' : '/en/docs/guide/overview')">{{ t.hero.details }} <span class="text-xl">→</span></button> -->
             </div>

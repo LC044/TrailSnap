@@ -1,139 +1,94 @@
-::: info 安装指南
-TrailSnap 目前仅支持docker部署，推荐使用 Docker Compose 进行快速部署。
+---
+title: 安装指南
+description: 在桌面安装包与 Docker 部署之间选择适合你的 TrailSnap 安装方式。
+---
+
+# 安装 TrailSnap
+
+TrailSnap 同时提供桌面安装包和 Docker 自托管部署。先根据使用场景选择版本：
+
+| 方式 | 适合场景 | 支持平台 | AI 能力 |
+| --- | --- | --- | --- |
+| 桌面版 | 单台个人电脑、希望快速开始 | Windows、macOS、Linux | 安装基础客户端后，按需安装 AI 扩展 |
+| Docker | NAS、家庭服务器、多设备访问 | 支持 Docker Compose 的设备 | AI 服务随 Compose 部署，可选 CPU/GPU |
+
+::: tip 不确定怎么选？
+只在当前电脑使用，选择桌面版；需要手机、平板和多台电脑通过局域网访问同一图库，选择 Docker。
 :::
 
-在开始前，请先完成[部署前检查](/docs/guide/preflight)，特别是照片目录权限、可用存储空间和局域网访问方式。
+## 桌面版
 
-## Docker 部署 (推荐)
+前往[下载页面](/download)，官网会优先标出当前系统的安装包：
 
-使用 Docker Compose 可以一键启动所有服务，包括前端、后端、数据库和 AI 服务。
+- Windows 10/11（x64）：下载 `.exe` 并按向导安装。
+- macOS（Apple Silicon）：下载 `.dmg`，将 TrailSnap 拖入“应用程序”。首次打开若被系统拦截，请在“隐私与安全性”中确认允许。
+- Linux（x64）：Debian/Ubuntu 建议下载 `.deb`；其他发行版可使用 `.AppImage`，并为文件添加执行权限。
 
-如果你是在 NAS（如绿联、极空间、飞牛OS）上部署，建议阅读：
+桌面基础包包含相册管理和本地服务，不会强制下载体积较大的 AI 运行环境。需要人脸识别、OCR、图片分类、语义检索或本地大模型时，请继续阅读 [AI 扩展使用说明](/docs/guide/desktop-ai-extension)。
 
-- [Docker 部署（通用）](/docs/guide/docker/)
-- [绿联 NAS 部署](/docs/guide/docker/ugreen)
-- [极空间部署](/docs/guide/docker/zspace)
-- [飞牛OS 部署](/docs/guide/docker/fnos)
+安装完成后：
 
-如果你没用过docker或者没有NAS，建议继续往下阅读！
+1. 启动 TrailSnap。
+2. 在设置中添加照片目录。
+3. 先用少量照片完成一次扫描，确认目录权限与运行状态。
+4. 按需安装 AI 扩展并创建对应分析任务。
 
-### 一键安装脚本 (推荐)
+::: warning 数据安全
+桌面版不会替代你的照片备份。首次使用批量整理、重命名或清理功能前，请先备份图库。
+:::
 
-TrailSnap 提供了一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署，无需手动编写配置文件。
+## Docker 部署
 
-#### Windows PowerShell（不是CMD）
+Docker 适合 NAS 和常驻服务器，会同时运行前端、后端、PostgreSQL 与 AI 服务。开始前请先完成[部署前检查](/docs/guide/preflight)。
 
-打开方式：win + R -> 输入cmd -> 点击弹窗左上角的加号 -> 输入下面的命令
+### 一键安装脚本
 
-如果首次使用可能需要重启计算机，才能完成安装，重启后请重新运行脚本。
-
-```powershell
-irm https://trailsnap.cn/install.ps1 -O install.ps1; powershell -ExecutionPolicy Bypass -File .\install.ps1
-```
-
-或下载后运行：
+Windows PowerShell：
 
 ```powershell
-# 交互式安装（按提示操作）
-.\install.ps1
-
-# 启用 GPU 加速
-.\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
+irm https://trailsnap.cn/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-#### Linux / macOS / WSL2
+Linux / macOS / WSL2：
 
 ```bash
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-或下载后运行：
+脚本会收集照片目录、端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:8082`。
+
+常用管理命令（在安装目录执行）：
 
 ```bash
-# 交互式安装（按提示操作）
-./install.sh
-
-# 启用 GPU 加速
-./install.sh --photo-dir /home/user/photos --ai-mode gpu
-```
-
-#### 脚本功能
-
-- ✅ 自动检测操作系统，安装 Docker 和 Docker Compose
-- ✅ 自动配置国内 Docker 镜像加速源（解决国内拉取镜像慢的问题）
-- ✅ 交互式收集配置（安装目录、照片目录、端口、时区、CPU/GPU 模式）
-- ✅ 自动生成 `.env` 和 `docker-compose.yml`
-- ✅ 拉取镜像并启动服务
-- ✅ 部署后自动健康检查
-- ✅ 支持升级和卸载
-
-#### 管理命令
-
-安装完成后，在安装目录（默认 `~/trailsnap`，Windows一般是`C:\Users\用户名\trailsnap`）下执行：
-
-```bash
-# 查看服务状态
 docker compose --env-file .env ps
-
-# 查看日志
 docker compose --env-file .env logs -f
-
-# 停止服务
-docker compose --env-file .env down
-
-# 重启服务
 docker compose --env-file .env restart
-
-# 升级到最新版本
-./install.sh --upgrade
-
-# 卸载（保留数据）
-./install.sh --uninstall
-
-# 卸载（删除所有数据）
-./install.sh --uninstall --purge
+docker compose --env-file .env down
 ```
 
-#### 完整参数列表
+升级和卸载：
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--photo-dir` | 照片目录（逗号分隔支持多个） | 必填 |
-| `--install-dir` | 安装目录 | `~/trailsnap` |
-| `--frontend-port` | 前端端口 | `8082` |
-| `--server-port` | 后端 API 端口 | `8800` |
-| `--ai-port` | AI 服务端口 | `8801` |
-| `--postgres-port` | PostgreSQL 端口 | `5532` |
-| `--timezone` | 时区 | `Asia/Shanghai` |
-| `--ai-mode` | AI 模式（`cpu` 或 `gpu`） | `cpu` |
-| `--tag` | 镜像标签（`latest` 或 `master`） | `latest` |
-| `--china-mirrors` | 配置国内 Docker 镜像加速源 | - |
-| `--yes` / `-y` | 非交互模式，接受所有默认值 | - |
-| `--upgrade` | 升级现有安装 | - |
-| `--uninstall` | 卸载 | - |
-| `--purge` | 删除所有数据（配合 `--uninstall`） | - |
+```bash
+./install.sh --upgrade
+./install.sh --uninstall          # 保留数据
+./install.sh --uninstall --purge  # 删除数据，谨慎使用
+```
 
-服务部署完成后，也可以在手机上使用 TrailSnap。安装方法和服务器地址配置参见
-[移动 App 使用指南](/docs/guide/mobile-app)。
+PowerShell 脚本使用对应的 `-Upgrade`、`-Uninstall` 参数；运行 `Get-Help .\install.ps1 -Detailed` 可查看完整参数。
 
-### 手动部署
+### 手动部署与 NAS 教程
 
-如果你更倾向于手动配置，或是在 NAS 等特殊环境下部署，可以阅读[Docker部署](/docs/guide/docker/)。
+- [Docker 通用部署与 GPU 配置](/docs/guide/docker/)
+- [Windows Docker 部署](/docs/guide/docker/windows)
+- [绿联 NAS](/docs/guide/docker/ugreen)
+- [极空间](/docs/guide/docker/zspace)
+- [飞牛 OS](/docs/guide/docker/fnos)
 
-#### 注意事项
+## 下一步
 
-::: warning
-- **数据持久化**: 数据库数据会保存在当前目录下的 `pg_data` 文件夹中，应用数据保存在 `data` 文件夹中。请勿随意删除这些目录，以免丢失数据。
-- **端口冲突**: 如果默认端口被占用，请在 `docker-compose.yml` 中修改 `ports` 映射（例如 `8083:80`）。
-- **照片权限**: 确保 Docker 容器有权限读取挂载的照片目录。
-- **使用 GPU 加速**：如果你的系统支持 GPU 加速，建议在 `docker-compose.yml` 中添加 GPU 支持。详细步骤请参考 [Docker 部署（GPU 支持）](./docker/index.md)。
-- **体验新特性**：如果你想体验最新功能，可以把 `latest` 标签替换为 `master` 版本。
-:::
-
-### 开始使用
-
-[如何使用?](./user.md)
-
-## 源码部署
-
-如果你希望参与开发或进行二次开发，可以选择源码部署。详细步骤请参考 [开发者指南 - 快速开始](../dev/guide.md)。
+- [添加外部图库](/docs/guide/settings/directories)
+- [AI 扩展使用说明](/docs/guide/desktop-ai-extension)
+- [AI 大模型连接配置](/docs/guide/settings/aisetting)
+- [数据、隐私与备份](/docs/guide/data-safety)
+- [开始使用](/docs/guide/user)
