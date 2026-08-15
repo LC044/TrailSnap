@@ -32,6 +32,29 @@
             <div v-if="demoMode" class="rounded-lg bg-primary-50 dark:bg-primary-900/20 px-4 py-3 text-sm text-primary-600 dark:text-primary-300">
               演示模式：已为你自动填充演示账号，点击「登录」即可体验
             </div>
+            <el-form-item v-if="showServerAddress" label="服务器地址" prop="serverUrl" class="!mb-4">
+              <el-select
+                v-model="loginForm.serverUrl"
+                filterable
+                allow-create
+                default-first-option
+                :reserve-keyword="false"
+                placeholder="请输入或选择服务器地址"
+                class="w-full !h-12"
+                data-testid="server-address"
+              >
+                <el-option
+                  v-for="server in serverHistory"
+                  :key="server"
+                  :label="server"
+                  :value="server"
+                />
+              </el-select>
+              <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                例如 http://192.168.1.10:8800，登录时会记住该地址
+              </p>
+            </el-form-item>
+
             <el-form-item label="用户名" prop="username" class="!mb-4">
               <el-input 
                 v-model="loginForm.username" 
@@ -93,6 +116,7 @@ import { useUserStore } from '@/stores/user';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock } from '@element-plus/icons-vue';
 import { authService } from '@/api/auth';
+import { getServerHistory, getServerUrl, isMobileApp, saveServerUrl } from '@/config/server';
 import LoginCharacters from './components/LoginCharacters.vue';
 
 const router = useRouter();
@@ -105,6 +129,8 @@ const rememberMe = ref(false);
 const hasUsers = ref(true)
 const allowRegistration = ref(false);
 const demoMode = ref(false);
+const showServerAddress = isMobileApp();
+const serverHistory = ref<string[]>([]);
 
 // Character interaction state
 const focusTarget = ref<'username' | 'password' | null>(null);
@@ -112,11 +138,15 @@ const isCelebrating = ref(false);
 const isMocking = ref(false);
 
 const loginForm = reactive({
+  serverUrl: showServerAddress ? getServerUrl() : '',
   username: '',
   password: ''
 });
 
 const rules = reactive<FormRules>({
+  serverUrl: showServerAddress
+    ? [{ required: true, message: '请输入或选择服务器地址', trigger: 'change' }]
+    : [],
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
     { min: 3, message: '用户名长度至少为 3 个字符', trigger: 'blur' }
@@ -134,6 +164,11 @@ onMounted(async () => {
     rememberMe.value = true;
   }
   
+  if (showServerAddress) {
+    serverHistory.value = await getServerHistory();
+    if (!loginForm.serverUrl) return;
+  }
+
   try {
     const status = await authService.getAuthStatus();
     hasUsers.value = status.has_users;
@@ -162,7 +197,15 @@ const handleLogin = async () => {
     if (valid) {
       loading.value = true;
       try {
-        await userStore.login(loginForm);
+        if (showServerAddress) {
+          loginForm.serverUrl = await saveServerUrl(loginForm.serverUrl);
+          serverHistory.value = await getServerHistory();
+        }
+
+        await userStore.login({
+          username: loginForm.username,
+          password: loginForm.password,
+        });
 
         // Celebration animation
         isCelebrating.value = true;

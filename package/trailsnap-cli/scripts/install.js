@@ -25,7 +25,7 @@ if (!platform) {
 }
 
 const ext = platform === 'windows' ? '.exe' : '';
-const binaryName = `trailsnap-${platform}-${arch}${ext}`;
+const binaryName = `trailsnap-cli-${platform}-${arch}${ext}`;
 const downloadUrl = `https://github.com/LC044/TrailSnap/releases/download/v${version}/${binaryName}`;
 
 const binDir = path.join(__dirname, '..', 'bin');

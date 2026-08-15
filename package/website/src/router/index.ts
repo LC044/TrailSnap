@@ -142,8 +142,8 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore();
   const whiteList = ['/login', '/register', '/forgot-password', '/server-settings', '/404'];
 
-  if (isNativeApp() && !hasConfiguredServer() && to.path !== '/server-settings') {
-    next({ path: '/server-settings', query: { redirect: to.fullPath } });
+  if (isNativeApp() && !hasConfiguredServer() && !['/login', '/server-settings'].includes(to.path)) {
+    next({ path: '/login', query: { redirect: to.fullPath } });
     return;
   }
 
