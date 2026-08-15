@@ -21,6 +21,11 @@ def _watch_parent(parent_pid: int) -> None:
 
 
 def main() -> None:
+    # InsightFace imports matplotlib through its optional face3d visualisation
+    # package even when TrailSnap only uses FaceAnalysis. Force a headless
+    # backend so the desktop bundle does not require tkinter or open a window.
+    os.environ.setdefault("MPLBACKEND", "Agg")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int)
     parser.add_argument("--parent-pid", type=int)
@@ -53,6 +58,9 @@ def main() -> None:
         # model data. This catches frozen-runtime startup failures that the
         # route-only self-check cannot see.
         os.environ["TS_AI_SKIP_AUTO_DOWNLOAD"] = "1"
+        # Importing FaceAnalysis covers InsightFace's transitive imports,
+        # including matplotlib, without constructing or downloading a model.
+        from insightface.app import FaceAnalysis  # noqa: F401
         from fastapi.testclient import TestClient
         from desktop_app import app
 

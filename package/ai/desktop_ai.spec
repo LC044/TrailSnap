@@ -48,7 +48,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     excludes=[
-        "tkinter", "pytest", "torch", "matplotlib", "pandas",
+        "tkinter", "pytest", "torch", "pandas",
     ],
     noarchive=False,
 )
