@@ -108,5 +108,10 @@
         "version": "0.9.2",
         "update_info": "- 已审核人物支持重新扫描，便于在人脸数据更新后刷新识别结果<br>- 离线地图下载新增进度提示，逆地理编码数据持久化保存<br>- 演示模式支持自动填充登录账号和密码<br>- 国内部署可使用阿里云镜像仓库，优化前端首屏加载<br>- 修复 AI 服务缺少 libgomp1 时 llama-server 无法启动的问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.9.2"
+    },
+    {
+        "version": "0.10.0",
+        "update_info": "- 新增跨平台桌面端，内置 SQLite，可独立运行并按需安装 AI 扩展<br>- 手机 App 登录页支持切换服务器并保存历史地址<br>- 移动端照片网格支持双指缩放调整密度，优化时间线与返回操作<br>- 外部图库新增文件夹选择器，地图 Key 与 AI 服务支持连通性验证<br>- 一键安装支持备份后保留配置升级或清空重装<br>- 修复桌面端兼容性、向量检索、相册管理和 Android 签名问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.10.0"
     }
 ]

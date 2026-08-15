@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-08-15 (0.10.0)
+
+### New
+
+- Added a Tauri 2 cross-platform desktop app with an embedded SQLite database for standalone use on Windows, macOS, and Linux.
+- Added optional desktop AI extensions with on-demand runtime installation and model downloads.
+- Added server switching and recent-server history to the mobile App login screen.
+- Added desktop and server-side folder pickers for selecting external photo-library directories.
+- Added pinch-to-zoom density controls for mobile photo grids while keeping the current photo anchored.
+- Added multi-key Tianditu management and validation, plus direct AI-service connectivity checks in Settings.
+
+### Improvements
+
+- Improved incremental photo loading, cross-page state synchronization, album details, and the mobile timeline navigator.
+- Improved photo viewer, dialog, and Android back-button behavior so the active overlay closes first.
+- Simplified desktop and mobile navigation and regrouped travel-related entries.
+- AI assistant messages now use the user's custom avatar, and the mobile model selector uses a more compact layout.
+- The one-click installer can now back up existing data and either preserve configuration during upgrades or perform a clean reinstall.
+- Improved China-registry compatibility, multi-architecture frontend image builds, and release-asset naming.
+
+### Bug Fixes
+
+- Fixed desktop SQLite date statistics, vector search, startup, and AI-extension runtime issues.
+- Fixed removing photos from regular albums, permanently deleting recycle-bin items, and flight-ticket update feedback.
+- Fixed single-photo-directory mounts and Android debug-signature conflicts during repeat installations.
+
 ## 2026-08-08 (0.9.2)
 
 ### New

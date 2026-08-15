@@ -60,7 +60,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
         extensions: [{
           id: 'core-ai',
           name: 'TrailSnap AI 基础扩展',
-          version: '0.9.2',
+          version: '0.10.0',
           description: '提供 OCR、票据识别和图片分类',
           capabilities: ['ocr', 'tickets', 'classification'],
           requirements: { memoryMB: 2048, diskMB: 500 },
@@ -87,10 +87,10 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
       body: JSON.stringify({
         platform: 'win32-x64', catalogError: null, gateway: { running: false },
         extensions: [{
-          id: 'core-ai', name: 'TrailSnap AI 基础扩展', version: '0.9.2',
+          id: 'core-ai', name: 'TrailSnap AI 基础扩展', version: '0.10.0',
           description: '仅包含运行时', capabilities: ['ocr', 'tickets', 'classification'],
           requirements: { memoryMB: 2048, diskMB: 500 }, available: true,
-          installed: { version: '0.9.2' }, job: null,
+          installed: { version: '0.10.0' }, job: null,
         }],
       }),
     }));
