@@ -18,9 +18,14 @@ on:
     - cron: '0 20 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: frontend-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push-frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
@@ -96,6 +101,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-frontend:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-frontend:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}
