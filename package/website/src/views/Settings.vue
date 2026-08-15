@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit } from 'lucide-vue-next'
+import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit, Database } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -49,6 +49,8 @@ import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
 import DesktopAIExtensions from './settings/DesktopAIExtensions.vue'
+import AIModelManagement from './settings/AIModelManagement.vue'
+import { isTauriApp } from '@/config/server'
 import { useSwipeNavigation } from '@/composables/useSwipeNavigation'
 import { useUserStore } from '@/stores/user'
 
@@ -62,14 +64,22 @@ const baseMenuItems = [
   { key: 'user', label: '用户管理', icon: User, superuserOnly: true },
   { key: 'tasks', label: '任务管理', icon: List },
   { key: 'basic', label: '基础设置', icon: Settings },
-  { key: 'ai-extensions', label: 'AI 扩展包', icon: BrainCircuit },
+  { key: 'ai-extensions', label: 'AI 扩展包', icon: BrainCircuit, desktopOnly: true },
+  { key: 'ai-models', label: 'AI 模型管理', icon: Database },
   { key: 'external', label: '外部图库', icon: FolderOpen },
   { key: 'performance', label: '性能测试', icon: Activity },
   { key: 'tokens', label: '令牌管理', icon: Key },
   { key: 'about', label: '关于行影集', icon: Info },
   { key: 'feedback', label: '问题反馈', icon: MessageSquare },
 ]
-const menuItems = computed(() => baseMenuItems.filter(item => !item.superuserOnly || userStore.userInfo?.is_superuser))
+const requestedTab = computed(() => {
+  const hash = route.hash ? route.hash.replace('#', '') : ''
+  return hash || (typeof route.query.tab === 'string' ? route.query.tab : '')
+})
+const menuItems = computed(() => baseMenuItems.filter(item =>
+  (!item.superuserOnly || userStore.userInfo?.is_superuser)
+  && (!item.desktopOnly || isTauriApp() || requestedTab.value === item.key),
+))
 
 // Map each tab key to its component so the content area can render a single
 // keyed <component>, which lets <Transition> animate the tab swap.
@@ -79,6 +89,7 @@ const tabComponents: Record<string, typeof ProfileSettings> = {
   tasks: TaskManagement,
   basic: BasicSettings,
   'ai-extensions': DesktopAIExtensions,
+  'ai-models': AIModelManagement,
   external: ExternalGallery,
   performance: PerformanceTest,
   tokens: Tokens,

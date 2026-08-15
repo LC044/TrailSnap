@@ -55,7 +55,7 @@ test.describe('P0 核心路径 - 路由守卫 @p0', () => {
   test('白名单 /login 无 token 仍可访问', async ({ page }) => {
     await page.goto('/login');
     await expect(page).toHaveURL(/\/login/);
-    await expect(page.locator('h2', { hasText: '登录 TrailSnap' })).toBeVisible();
+    await expect(page.locator('h2', { hasText: '登录 行影集' })).toBeVisible();
   });
 
   test('白名单 /register 无 token 仍可访问', async ({ page }) => {

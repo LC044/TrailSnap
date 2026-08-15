@@ -15,7 +15,7 @@
       <div class="w-full md:w-1/2 flex items-center justify-center p-8 md:p-12 bg-white dark:bg-gray-900">
         <div class="w-full max-w-md">
           <div class="mb-10 text-center md:text-left">
-            <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">登录 TrailSnap</h2>
+            <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">登录 行影集</h2>
             <p class="text-gray-500 dark:text-gray-400">欢迎回来，请输入您的账号密码</p>
           </div>
           

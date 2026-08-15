@@ -28,7 +28,7 @@ def embedding_service(monkeypatch):
     def fake_register_manager(name, loader, release):
         registered["manager"].append((name, loader, release))
 
-    def fake_register_downloader(name, check, download):
+    def fake_register_downloader(name, check, download, **_metadata):
         registered["downloader"].append((name, check, download))
 
     fake_manager = MagicMock(register_model=MagicMock(side_effect=fake_register_manager))

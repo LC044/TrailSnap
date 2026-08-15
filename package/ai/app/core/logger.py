@@ -144,14 +144,17 @@ def setup_logging(filename="main"):
     file_handler.setFormatter(formatter)
     file_handler.setLevel(LOG_LEVEL)
     
-    # Console Handler (Fallback/Dev)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(LOG_LEVEL)
-    
     # Queue Listener
     # This listener runs in a separate thread and handles the actual writing
-    listener = logging.handlers.QueueListener(log_queue, file_handler, console_handler, respect_handler_level=True)
+    handlers = [file_handler]
+    # PyInstaller's windowed desktop runtime intentionally has no stdout. The
+    # Docker/dev service keeps its console logger as before.
+    if sys.stdout is not None:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        console_handler.setLevel(LOG_LEVEL)
+        handlers.append(console_handler)
+    listener = logging.handlers.QueueListener(log_queue, *handlers, respect_handler_level=True)
     listener.start()
     
     # Queue Handler (this is what the main thread uses)

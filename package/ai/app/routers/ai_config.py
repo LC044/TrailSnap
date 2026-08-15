@@ -4,6 +4,7 @@ from typing import Dict, Any, List
 from app.services.ai_config_manager import ai_config_manager
 from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
+from app.services.llm_manager import llm_manager
 import logging
 
 router = APIRouter()
@@ -20,8 +21,11 @@ async def get_config():
 
 @router.get("/models", response_model=Dict[str, Any])
 async def get_managed_models():
-    """List downloadable model packs managed by the AI service."""
-    return {"models": model_downloader.list_models(managed_only=True)}
+    """List model packs and selections managed by this AI service instance."""
+    return {
+        "models": model_downloader.list_models(managed_only=True),
+        "selections": ai_config_manager.get_config().get("models", {}),
+    }
 
 
 @router.post("/models/{model_id}/download", response_model=Dict[str, Any])
@@ -37,6 +41,8 @@ async def download_managed_model(model_id: str):
 @router.delete("/models/{model_id}", response_model=Dict[str, Any])
 async def delete_managed_model(model_id: str):
     try:
+        if model_id == "llm_minicpm":
+            await llm_manager.stop()
         for wrapper in model_manager.models.values():
             wrapper.release()
         model_downloader.delete_model(model_id)
@@ -61,7 +67,8 @@ async def set_model(request: ModelSelectionRequest, background_tasks: Background
             manager_key_map = {
                 "ocr": "ocr",
                 "face": "face",
-                "classification": ["clip_text", "clip_image"]
+                "classification": ["clip_text", "clip_image"],
+                "llm": "llm_minicpm",
             }
             
             keys = manager_key_map.get(request.task)
@@ -81,6 +88,9 @@ async def set_model(request: ModelSelectionRequest, background_tasks: Background
                              model_manager.models[keys].release()
                     except Exception as e:
                          logging.warning(f"Failed to release model {keys}: {e}")
+
+            if request.task == "llm":
+                await llm_manager.stop()
 
             # Trigger download/check for new models
             if keys:

@@ -96,10 +96,21 @@ class ModelDownloader:
                 model_info["error"] = str(e)
 
     def start_downloads(self):
-        """Start all registered model downloads in separate threads."""
-        for key in self.models:
-            t = threading.Thread(target=self._download_worker, args=(key,), daemon=True)
-            t.start()
+        """Download every registered model in one background worker.
+
+        The service still downloads the complete model set automatically, but
+        serializing the jobs avoids launching several multi-gigabyte ModelScope
+        transfers at once. Some registrations also share one target directory
+        (classification and tickets), so concurrent extraction can corrupt the
+        snapshot and destabilize the frozen desktop runtime.
+        """
+        keys = list(self.models)
+
+        def download_all():
+            for key in keys:
+                self._download_worker(key)
+
+        threading.Thread(target=download_all, daemon=True).start()
 
     def refresh_statuses(self):
         """Synchronize pending model states with files already on disk."""
@@ -131,6 +142,8 @@ class ModelDownloader:
                     **model_info.get("metadata", {}),
                     "status": model_info["status"].value,
                     "error": model_info.get("error"),
+                    "managed": model_info.get("managed", False),
+                    "canDelete": model_info.get("delete_fn") is not None,
                 })
             return result
 

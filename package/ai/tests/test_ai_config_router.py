@@ -32,6 +32,18 @@ def test_get_config_returns_manager_dict():
     assert result == expected
 
 
+def test_get_models_returns_managed_models_and_selections():
+    models = [{"id": "face", "status": "ready"}]
+    config = {"models": {"face": {"selected": "buffalo_l"}}}
+    with patch.object(ai_config_router.model_downloader, "list_models", return_value=models) as list_call, \
+         patch.object(ai_config_router.ai_config_manager, "get_config", return_value=config):
+        import asyncio
+        result = asyncio.run(ai_config_router.get_managed_models())
+
+    list_call.assert_called_once_with(managed_only=True)
+    assert result == {"models": models, "selections": config["models"]}
+
+
 # ----------------------- POST /ai/config/model -----------------------
 
 

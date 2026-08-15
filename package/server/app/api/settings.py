@@ -193,11 +193,14 @@ def verify_ai_service(
         })
 
 
-def _ai_model_request(method: str, path: str, current_user: User, db: Session):
+def _ai_model_request(method: str, path: str, current_user: User, db: Session, json_body=None):
     config = config_manager.get_user_config(current_user.id, db)
     api_url = config.ai.ai_api_url.rstrip('/')
     try:
-        response = requests.request(method, f"{api_url}{path}", timeout=120)
+        request_kwargs = {"timeout": 120}
+        if json_body is not None:
+            request_kwargs["json"] = json_body
+        response = requests.request(method, f"{api_url}{path}", **request_kwargs)
         try:
             body = response.json()
         except ValueError:
@@ -218,7 +221,7 @@ def get_ai_models(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """通过 Server 查询 AI Sidecar 管理的可下载模型包。"""
+    """通过 Server 查询当前 AI 微服务管理的模型；桌面与 Docker 共用。"""
     return _ai_model_request('GET', '/ai/models', current_user, db)
 
 
@@ -238,6 +241,27 @@ def delete_ai_model(
     current_user: User = Depends(get_current_user),
 ):
     return _ai_model_request('DELETE', f"/ai/models/{quote(model_id, safe='')}", current_user, db)
+
+
+class AIModelSelectionRequest(BaseModel):
+    task: str
+    model: str
+
+
+@router.put('/ai-models/selection', response_model=BaseResponse)
+def select_ai_model(
+    req: AIModelSelectionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """切换当前 AI 微服务使用的模型；桌面与 Docker 共用。"""
+    return _ai_model_request(
+        'POST',
+        '/ai/config/model',
+        current_user,
+        db,
+        json_body=req.model_dump(),
+    )
 
 @router.get('/directories')
 def get_directories(

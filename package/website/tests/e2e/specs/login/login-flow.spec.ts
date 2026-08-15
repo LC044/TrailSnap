@@ -110,7 +110,7 @@ test.describe('\u767b\u5f55\u5168\u6d41\u7a0b @login', () => {
   test('\u767b\u5f55\u9875\u6b63\u5e38\u52a0\u8f7d\u5e76\u5c55\u793a\u5173\u952e\u5143\u7d20', async ({ page }) => {
     await page.goto('/login');
     await expect(
-      page.locator('h2', { hasText: '\u767b\u5f55 TrailSnap' }),
+      page.locator('h2', { hasText: '\u767b\u5f55 \u884c\u5f71\u96c6' }),
     ).toBeVisible();
     await expect(
       page.locator('input[placeholder="\u8bf7\u8f93\u5165\u7528\u6237\u540d"]'),

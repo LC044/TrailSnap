@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import gc
+import shutil
 import numpy as np
 import cv2
 
@@ -145,7 +146,27 @@ class FaceRecognitionService:
             repo_id = f'fireicewolf/{model_name}'
             return snapshot_download(repo_id, local_dir=model_dir)
 
-        model_downloader.register_model("face", check_face_model, download_face_model)
+        def delete_face_model():
+            model_name = get_current_model_name()
+            shutil.rmtree(os.path.join(settings.MODEL_PATH, model_name), ignore_errors=True)
+
+        model_downloader.register_model(
+            "face",
+            check_face_model,
+            download_face_model,
+            delete_fn=delete_face_model,
+            metadata={
+                "name": "InsightFace 人脸模型",
+                "description": "用于人脸检测、特征提取和人物聚类。",
+                "capabilities": ["face"],
+                "task": "face",
+                "requirements": {"diskMB": 350},
+                "downloadSize": 330 * 1024 * 1024,
+                "source": "ModelScope",
+                "available": True,
+            },
+            managed=True,
+        )
 
     def process_image(self, image_bytes: bytes):
         """

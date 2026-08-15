@@ -50,6 +50,10 @@ TrailSnap 的 AI 微服务模块，负责处理所有计算机视觉相关的任
 
 TrailSnap 内置 AI 连接使用 MiniCPM-V-4_6-Q4_K_M 多模态模型，需要安装 llama.cpp。
 
+TrailSnap 桌面版可在“设置 → AI 扩展包 → llama.cpp 运行时”中检测安装状态。
+Windows 和 macOS 支持点击“一键安装”；安装完成后会再次执行
+`llama-server --version` 验证。Docker 镜像仍自带 llama-server。
+
 ### Windows
 
 1. 下载 llama.cpp 预编译版本：
@@ -127,6 +131,7 @@ AI 服务的推理后端按 **CUDA > OpenVINO > CoreML（仅 Apple Silicon）> C
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `MODEL_PATH` | `data/models` | 模型文件根目录 |
+| `AI_CONFIG_PATH` | `app/data/ai_config.json` | 当前模型选择配置；Docker 部署应指向持久化卷 |
 | `LLM_MODEL_PATH` | `""` | 本地 LLM 模型路径（留空则首次启动自动下载 MiniCPM-V-4_6-Q4_K_M） |
 | `LLM_SERVER_PORT` | `8002` | llama.cpp 子进程监听端口 |
 | `LLM_IDLE_TIMEOUT` | `300` | LLM 子进程空闲多久后退出（秒） |
@@ -156,6 +161,8 @@ http://localhost:8001/docs
 | `/health-check` | 健康检测 |
 
 各接口的请求 / 响应结构见 Swagger UI，每个路由有独立的 Pydantic 模型（如 `OCRResponse`、`TicketRecognitionResponse`）。
+
+AI 服务启动时会在后台自动下载全部已注册模型，也可以通过 `GET /ai/models` 查看状态，使用 `POST /ai/models/{model_id}/download` 手动下载或重试，使用 `DELETE /ai/models/{model_id}` 删除后按需重新下载。TrailSnap 设置中心的“AI 模型管理”通过 Server 代理这些接口，桌面端与 Docker 端共用。
 
 ## 内存与空闲重启
 
@@ -199,8 +206,12 @@ docker build -t trailsnap-ai -f Dockerfile.gpu .
 # 构建镜像（OpenVINO版本）
 docker build -t trailsnap-ai -f Dockerfile.openvino .
 
-# 运行容器
-docker run -d -p 8001:8001 --name trailsnap-ai trailsnap-ai
+# 运行容器，并持久化模型文件和模型选择配置
+docker run -d -p 8001:8001 --name trailsnap-ai \
+  -v trailsnap-ai-data:/app/data \
+  -e MODEL_PATH=/app/data/models \
+  -e AI_CONFIG_PATH=/app/data/ai_config.json \
+  trailsnap-ai
 ```
 
 CI（`.github/workflows/docker-build-push-ai.yml`）会在 `v*.*.*` tag 推送或提交信息包含 `构建ai` / `构建AI` 时，分别构建 CPU / GPU / OpenVINO 三个变体并推送至 Docker Hub，对应镜像 tag 后缀为空 / `-gpu` / `-openvino`（如 `trailsnap-ai:0.6.0`、`trailsnap-ai:0.6.0-gpu`、`trailsnap-ai:0.6.0-openvino`）。OpenVINO 变体仅在 `linux/amd64` 构建（`onnxruntime-openvino` / `openvino` 官方 wheel 主要面向 x86_64）。

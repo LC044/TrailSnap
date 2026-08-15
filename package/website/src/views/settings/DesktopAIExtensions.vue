@@ -3,8 +3,33 @@
     <div>
       <h2 class="text-xl md:text-2xl font-semibold text-gray-800 dark:text-white">AI 扩展包</h2>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-        AI 能力独立于基础安装包，安装后仅在 OCR、票据识别或图片分类首次使用时启动。
+        AI 能力独立于基础安装包，安装后在人脸、OCR、分类、语义检索或本地 LLM 首次使用时启动。
       </p>
+    </div>
+
+    <div
+      v-if="guideFeature"
+      class="rounded-xl border border-primary-500/30 bg-primary-500/10 p-4 md:p-5"
+    >
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-gray-800 dark:text-gray-100">启用{{ guideFeature.name }}</p>
+          <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            {{ guideFeature.description }}。先安装包含该能力的 AI 扩展包；扩展安装完成后，可在“AI 模型管理”中查看模型下载状态。
+          </p>
+        </div>
+        <button
+          v-if="guideInstalled && guideRedirect"
+          class="shrink-0 rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          @click="returnToFeature"
+        >返回{{ guideFeature.name }}</button>
+        <button
+          v-else-if="recommendedExtension"
+          :disabled="!recommendedExtension.available || isBusy(recommendedExtension)"
+          class="shrink-0 rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          @click="install(recommendedExtension.id)"
+        >{{ isBusy(recommendedExtension) ? '正在下载安装…' : recommendedExtension.available ? '下载并安装 AI 扩展' : '扩展等待发布' }}</button>
+      </div>
     </div>
 
     <div v-if="!desktopAvailable" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
@@ -19,10 +44,11 @@
           AI Sidecar：{{ gateway.running ? '运行中' : '按需待机' }}
         </span>
         <button
+          :disabled="importingPackage"
           class="ml-auto rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           @click="importPackage"
         >
-          离线导入
+          {{ importingPackage ? '正在校验并导入…' : '离线导入' }}
         </button>
         <button
           class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
@@ -35,6 +61,35 @@
       <p v-if="catalogError" class="rounded-lg bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
         在线清单暂不可用：{{ catalogError }}。仍可使用已安装扩展或离线导入。
       </p>
+
+      <section class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="font-semibold text-gray-800 dark:text-gray-100">llama.cpp 运行时</h3>
+              <span
+                class="rounded-full px-2 py-0.5 text-xs"
+                :class="llamaStatus.installed ? 'bg-primary-500/10 text-primary-600 dark:text-primary-500' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'"
+              >{{ llamaStatus.installed ? '已安装' : '未安装' }}</span>
+            </div>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">MiniCPM 本地模型需要 llama-server。它独立于 AI 扩展安装，并在调用前检测可用性。</p>
+            <p v-if="llamaStatus.installed" class="mt-2 break-all text-xs text-gray-400 dark:text-gray-500">可执行文件：{{ llamaStatus.path }}</p>
+            <p v-else class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ llamaStatus.installCommand }}</p>
+          </div>
+          <div class="flex shrink-0 gap-2">
+            <button
+              class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              @click="loadLlamaStatus"
+            >重新检测</button>
+            <button
+              v-if="!llamaStatus.installed"
+              :disabled="installingLlama || !llamaStatus.installSupported"
+              class="rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              @click="installLlama"
+            >{{ installingLlama ? '安装中…' : '一键安装' }}</button>
+          </div>
+        </div>
+      </section>
 
       <article
         v-for="extension in extensions"
@@ -100,68 +155,55 @@
         </div>
       </article>
 
-      <section v-if="extensions.some(item => item.installed)" class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
-        <div class="flex flex-wrap items-start gap-3">
-          <div class="min-w-0 flex-1">
-            <h3 class="font-semibold text-gray-800 dark:text-gray-100">AI 模型管理</h3>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">RapidOCR 小型资源已包含在扩展中；图片分类和票据模型由 AI 服务从 ModelScope 下载，Server 提供管理入口。</p>
-          </div>
-          <button
-            class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-            @click="loadModels"
-          >刷新模型</button>
-        </div>
-        <p v-if="modelsError" class="mt-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{{ modelsError }}</p>
-        <div v-for="model in models" :key="model.id" class="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="font-medium text-gray-800 dark:text-gray-100">{{ model.name }}</span>
-                <span class="rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300">{{ modelStatusLabels[model.status] || model.status }}</span>
-              </div>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ model.description }}</p>
-              <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">下载 {{ formatBytes(model.downloadSize) }} · 磁盘约 {{ model.requirements?.diskMB || '—' }} MB</p>
-            </div>
-            <div class="flex shrink-0 gap-2">
-              <button
-                v-if="model.status !== 'ready'"
-                :disabled="model.status === 'downloading'"
-                class="rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                @click="downloadModel(model.id)"
-              >{{ model.status === 'downloading' ? '下载中' : model.status === 'failed' ? '重试' : '下载模型' }}</button>
-              <button
-                v-if="model.status === 'ready'"
-                class="rounded-lg border border-red-300 dark:border-red-800 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                @click="deleteModel(model.id)"
-              >删除模型</button>
-            </div>
-          </div>
-          <p v-if="model.error" class="mt-2 text-xs text-red-600 dark:text-red-400">{{ model.error }}</p>
-        </div>
-      </section>
     </template>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { settingsApi } from '@/api/settings'
+import { useRoute, useRouter } from 'vue-router'
 import { isTauriApp } from '@/config/server'
+
+const route = useRoute()
+const router = useRouter()
 
 const desktopAvailable = ref(true)
 const extensions = ref<any[]>([])
 const gateway = ref<any>({ running: false })
 const catalogError = ref<string | null>(null)
-const models = ref<any[]>([])
-const modelsError = ref<string | null>(null)
-const modelsLoaded = ref(false)
+const llamaStatus = ref<any>({ installed: false, installSupported: false, installCommand: '正在检测…' })
+const installingLlama = ref(false)
+const importingPackage = ref(false)
 let pollTimer: number | undefined
-let modelPollTimer: number | undefined
 
-const capabilityLabels: Record<string, string> = { ocr: '文字识别', tickets: '票据识别', classification: '图片分类' }
+const capabilityLabels: Record<string, string> = {
+  face: '人脸识别',
+  ocr: '文字识别',
+  object_detection: '目标检测',
+  tickets: '票据识别',
+  classification: '图片分类',
+  embedding: 'CLIP 向量',
+  llm: '本地 LLM',
+  emotion: '情绪色彩',
+}
 const statusLabels: Record<string, string> = { downloading: '下载中', paused: '已暂停', failed: '失败', verifying: '校验中', installing: '安装中' }
-const modelStatusLabels: Record<string, string> = { pending: '未下载', downloading: '下载中', ready: '已就绪', failed: '下载失败' }
+const guideFeatures: Record<string, { name: string; description: string }> = {
+  face: { name: '人脸识别', description: '人脸识别会检测照片中的人脸并生成人物相册' },
+  classification: { name: '智能分类', description: '智能分类会分析照片内容并生成分类相册' },
+}
+const guideCapability = computed(() => typeof route.query.guide === 'string' ? route.query.guide : '')
+const guideFeature = computed(() => guideFeatures[guideCapability.value])
+const guideRedirect = computed(() => {
+  const value = typeof route.query.redirect === 'string' ? route.query.redirect : ''
+  return value.startsWith('/') && !value.startsWith('//') ? value : ''
+})
+const guideInstalled = computed(() => extensions.value.some(extension =>
+  extension.installed?.capabilities?.includes(guideCapability.value),
+))
+const recommendedExtension = computed(() => extensions.value.find(extension =>
+  !extension.installed && extension.capabilities?.includes(guideCapability.value),
+))
 
 async function desktopRequest(path: string, options?: RequestInit) {
   if (isTauriApp()) {
@@ -190,7 +232,6 @@ async function load() {
     extensions.value = data.extensions || []
     gateway.value = data.gateway || { running: false }
     catalogError.value = data.catalogError
-    if (extensions.value.some(item => item.installed) && !modelsLoaded.value) void loadModels()
   } catch {
     desktopAvailable.value = false
   }
@@ -215,6 +256,7 @@ async function uninstall(id: string) {
   } catch (error: any) { if (error !== 'cancel') ElMessage.error(error.message || String(error)) }
 }
 async function importPackage() {
+  importingPackage.value = true
   try {
     if (isTauriApp()) {
       const [{ invoke }, { open }] = await Promise.all([
@@ -236,47 +278,42 @@ async function importPackage() {
     if (!result.canceled) ElMessage.success('AI 扩展包导入成功')
     await load()
   } catch (error: any) { ElMessage.error(error.message) }
+  finally { importingPackage.value = false }
 }
 async function refreshCatalog() {
   try { await desktopRequest('/refresh', { method: 'POST', body: '{}' }); await load() }
   catch (error: any) { ElMessage.error(error.message) }
 }
+function returnToFeature() {
+  if (guideRedirect.value) void router.push(guideRedirect.value)
+}
 
-async function loadModels() {
+async function loadLlamaStatus() {
+  if (!isTauriApp()) return
   try {
-    const result: any = await settingsApi.getAIModels()
-    models.value = result.models || []
-    modelsError.value = null
-    modelsLoaded.value = true
-    if (!models.value.some(model => model.status === 'downloading') && modelPollTimer) {
-      window.clearInterval(modelPollTimer)
-      modelPollTimer = undefined
-    }
+    const { invoke } = await import('@tauri-apps/api/core')
+    llamaStatus.value = await invoke('llama_runtime_status')
   } catch (error: any) {
-    modelsError.value = error.message || 'AI 模型服务不可用'
+    ElMessage.error(error.message || '无法检测 llama-server')
   }
 }
 
-async function downloadModel(id: string) {
+async function installLlama() {
+  installingLlama.value = true
   try {
-    await settingsApi.downloadAIModel(id)
-    ElMessage.success('模型下载已开始')
-    await loadModels()
-    if (!modelPollTimer) modelPollTimer = window.setInterval(loadModels, 1500)
-  } catch (error: any) { ElMessage.error(error.message || String(error)) }
+    const { invoke } = await import('@tauri-apps/api/core')
+    llamaStatus.value = await invoke('llama_runtime_install')
+    ElMessage.success('llama.cpp 安装并验证成功')
+  } catch (error: any) {
+    ElMessage.error(error.message || String(error))
+    await loadLlamaStatus()
+  } finally {
+    installingLlama.value = false
+  }
 }
 
-async function deleteModel(id: string) {
-  try {
-    await ElMessageBox.confirm('删除本地 AI 模型文件？扩展运行时和 PostgreSQL 分析结果不会被删除。', '删除 AI 模型')
-    await settingsApi.deleteAIModel(id)
-    await loadModels()
-  } catch (error: any) { if (error !== 'cancel') ElMessage.error(error.message || String(error)) }
-}
-
-onMounted(() => { load(); pollTimer = window.setInterval(load, 1200) })
+onMounted(() => { load(); void loadLlamaStatus(); pollTimer = window.setInterval(load, 1200) })
 onUnmounted(() => {
   window.clearInterval(pollTimer)
-  if (modelPollTimer) window.clearInterval(modelPollTimer)
 })
 </script>

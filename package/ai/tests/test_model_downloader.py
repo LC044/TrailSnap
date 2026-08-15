@@ -72,6 +72,23 @@ def test_start_downloads_marks_model_ready_when_check_fn_already_true(downloader
     assert len(_SyncThread.instances) == 1
 
 
+def test_start_downloads_downloads_all_models_sequentially(downloader):
+    calls = []
+    downloader.register_model(
+        "first", lambda: "first" in calls, lambda: calls.append("first") or "first"
+    )
+    downloader.register_model(
+        "second", lambda: "second" in calls, lambda: calls.append("second") or "second"
+    )
+
+    downloader.start_downloads()
+
+    assert calls == ["first", "second"]
+    assert downloader.is_ready("first")
+    assert downloader.is_ready("second")
+    assert len(_SyncThread.instances) == 1
+
+
 def test_download_worker_invokes_download_fn_and_records_ready(downloader):
     dl = downloader
     captured = {}
@@ -166,6 +183,8 @@ def test_managed_model_can_be_listed_and_deleted(downloader, tmp_path):
         "capabilities": ["ocr"],
         "status": "ready",
         "error": None,
+        "managed": True,
+        "canDelete": True,
     }]
 
     downloader.delete_model("managed")

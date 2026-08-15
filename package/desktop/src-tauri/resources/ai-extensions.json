@@ -3,13 +3,13 @@
   "extensions": [
     {
       "id": "core-ai",
-      "name": "TrailSnap AI 基础扩展",
+      "name": "TrailSnap AI 完整扩展",
       "version": "0.10.0",
-      "description": "内置 RapidOCR 资源；图片分类和票据模型在运行时从 ModelScope 下载。",
-      "capabilities": ["ocr", "tickets", "classification"],
+      "description": "提供人脸、OCR、票据、图片分类、CLIP、情绪分析和本地 LLM；模型在运行时按需管理。",
+      "capabilities": ["face", "ocr", "object_detection", "tickets", "classification", "embedding", "llm", "emotion"],
       "requirements": {
-        "memoryMB": 2048,
-        "diskMB": 500,
+        "memoryMB": 8192,
+        "diskMB": 8192,
         "gpuRequired": false
       },
       "assets": {}
