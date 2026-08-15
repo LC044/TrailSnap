@@ -27,6 +27,21 @@ async function clickSettingTab(page, key: string) {
 test.describe('P0 - 设置中心子 Tab 切换', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
+    // AboutPage.vue 在 onMounted 时会主动调用 /api/system/update-check；
+    // 如果该接口返回 has_update=true，会弹出「检查更新」对话框拦截后续点击。
+    // 该 bug 与本测试无关，仅在 nightly round 3 (2026-08-15) 真实 update 服务
+    // 升级到 v0.10.0 后才出现，所以这里按 views-deeper-p8 的已有模式桩掉它。
+    await page.route('**/api/system/update-check**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          msg: 'success',
+          data: { has_update: false, latest_version: '0.0.0-e2e', download_url: null },
+        }),
+      }),
+    );
   });
 
   test('切换到「令牌管理」- 渲染 Tokens 子页 H1', async ({ page }) => {
