@@ -44,7 +44,7 @@ test('登录页渲染 LoginCharacters 角色组 @views-coverage', async ({ page 
   // specifically exercises the public login page, so start without that token.
   await page.addInitScript(() => localStorage.removeItem('user_token'))
   await page.goto('/login')
-  await expect(page.locator('h2', { hasText: '登录 TrailSnap' })).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('h2', { hasText: '登录 行影集' })).toBeVisible({ timeout: 10_000 })
   const characterCanvas = page.locator('div.relative.w-\\[400px\\].h-\\[400px\\]')
   await expect(characterCanvas).toBeVisible()
   await expect(characterCanvas.locator('div.bg-\\[\\#6366F1\\]')).toBeVisible()

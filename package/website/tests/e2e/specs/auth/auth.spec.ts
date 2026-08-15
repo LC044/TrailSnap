@@ -27,7 +27,7 @@ test.describe('P0 核心路径 - 账号与会话 @p0', () => {
 
   test('登录页面正常加载并展示关键元素', async ({ page }) => {
     await page.goto('/login');
-    await expect(page.locator('h2', { hasText: '登录 TrailSnap' })).toBeVisible();
+    await expect(page.locator('h2', { hasText: '登录 行影集' })).toBeVisible();
     await expect(page.locator('input[placeholder="请输入用户名"]')).toBeVisible();
     await expect(page.locator('input[placeholder="请输入密码"]')).toBeVisible();
     await expect(page.locator('button:has-text("登录")')).toBeVisible();
