@@ -75,6 +75,11 @@ def test_two(monkeypatch):
         return fake_proc
 
     monkeypatch.setattr("app.services.llm_manager.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        LLMProcessManager,
+        "_llama_server_executable",
+        staticmethod(lambda: "llama-server"),
+    )
 
     async def _noop_wait(self):
         return None
