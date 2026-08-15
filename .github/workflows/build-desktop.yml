@@ -269,7 +269,7 @@ jobs:
           mapfile -d '' files < <(find artifacts -type f -print0)
           ((${#files[@]} > 0)) || { echo "::error::No desktop installers were downloaded"; exit 1; }
           for file in "${files[@]}"; do
-            destination="release-assets/TrailSnap-pr-${{ github.event.number }}-${file##*/}"
+            destination="release-assets/pr-${{ github.event.number }}-${file##*/}"
             [ ! -e "$destination" ] || { echo "::error::Duplicate installer name: ${file##*/}"; exit 1; }
             mv "$file" "$destination"
           done
