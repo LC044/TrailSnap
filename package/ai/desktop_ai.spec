@@ -62,7 +62,10 @@ exe = EXE(
     debug=False,
     strip=False,
     upx=True,
-    console=True,
+    # The Sidecar is controlled by the desktop gateway and writes to files.
+    # Building it as a windowed executable prevents any console flash even if
+    # Windows process flags are lost during an upgrade or manual launch.
+    console=False,
 )
 coll = COLLECT(
     exe,

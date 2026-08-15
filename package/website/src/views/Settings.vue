@@ -72,9 +72,13 @@ const baseMenuItems = [
   { key: 'about', label: '关于行影集', icon: Info },
   { key: 'feedback', label: '问题反馈', icon: MessageSquare },
 ]
+const requestedTab = computed(() => {
+  const hash = route.hash ? route.hash.replace('#', '') : ''
+  return hash || (typeof route.query.tab === 'string' ? route.query.tab : '')
+})
 const menuItems = computed(() => baseMenuItems.filter(item =>
   (!item.superuserOnly || userStore.userInfo?.is_superuser)
-  && (!item.desktopOnly || isTauriApp()),
+  && (!item.desktopOnly || isTauriApp() || requestedTab.value === item.key),
 ))
 
 // Map each tab key to its component so the content area can render a single

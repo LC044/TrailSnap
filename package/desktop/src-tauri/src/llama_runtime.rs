@@ -62,24 +62,16 @@ fn known_locations(executable: &str) -> Vec<PathBuf> {
 
 pub fn status() -> Value {
     let path = find_llama_server();
-    let version = path
-        .as_ref()
-        .and_then(|executable| Command::new(executable).arg("--version").output().ok())
-        .filter(|output| output.status.success())
-        .map(|output| {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            if stdout.is_empty() {
-                stderr
-            } else {
-                stdout
-            }
-        });
-    let installed = path.is_some() && version.is_some();
+    // Automatic status checks run when the settings page opens and polls.
+    // Starting llama-server just to read --version is expensive on some
+    // machines and briefly creates a console window on Windows. A resolved
+    // executable is sufficient here; the real process is still validated when
+    // the AI service launches it for inference.
+    let installed = path.is_some();
     json!({
         "installed": installed,
         "path": path.map(|value| value.to_string_lossy().to_string()),
-        "version": version,
+        "version": Value::Null,
         "installSupported": cfg!(windows) || cfg!(target_os = "macos"),
         "installCommand": if cfg!(windows) {
             "winget install --id ggml.llamacpp --exact"

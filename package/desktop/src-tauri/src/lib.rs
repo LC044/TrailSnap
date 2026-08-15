@@ -91,13 +91,20 @@ fn ai_extension_retry(
 }
 
 #[tauri::command]
-fn ai_extension_import(
+async fn ai_extension_import(
     path: String,
     manager: tauri::State<'_, AIExtensionManager>,
     gateway: tauri::State<'_, AIGateway>,
 ) -> Result<Value, String> {
     gateway.stop_sidecar();
-    let installed = manager.import_archive(Path::new(&path))?;
+    // A complete AI archive is hundreds of megabytes. Hashing and extracting
+    // it in a synchronous Tauri command blocks the desktop UI long enough to
+    // look like a crash, while the former lightweight extension did not.
+    let manager = manager.inner().clone();
+    let installed =
+        tauri::async_runtime::spawn_blocking(move || manager.import_archive(Path::new(&path)))
+            .await
+            .map_err(|error| format!("AI 扩展导入任务异常：{error}"))??;
     Ok(json!({ "canceled": false, "installed": installed }))
 }
 

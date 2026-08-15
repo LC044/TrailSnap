@@ -117,7 +117,6 @@ impl AIGateway {
         if !executable.is_file() {
             return Err("AI 扩展包入口不存在，请重新安装".into());
         }
-        let port = reserve_port()?;
         let log_dir = self.app_root.join("logs");
         let model_dir = match extension.model_path.as_deref() {
             Some(path) => safe_child_path(&directory, path)?,
@@ -125,64 +124,77 @@ impl AIGateway {
         };
         fs::create_dir_all(&log_dir).map_err(|error| error.to_string())?;
         fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
-        let stdout = open_log(log_dir.join("ai.log"))?;
-        let stderr = open_log(log_dir.join("ai.err.log"))?;
-        let mut command = Command::new(&executable);
-        command
-            .args([
-                "--port",
-                &port.to_string(),
-                "--parent-pid",
-                &self.parent_pid.to_string(),
-            ])
-            .current_dir(&self.app_root)
-            .env("MODEL_PATH", &model_dir)
-            .env("AI_CONFIG_PATH", self.app_root.join("ai-config.json"))
-            .env("TS_AI_LOG_DIR", &log_dir)
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr));
-        if let Some(llama_server) = llama_runtime::find_llama_server() {
-            command.env("LLAMA_SERVER_PATH", llama_server);
-        }
-        #[cfg(windows)]
-        command.creation_flags(0x08000000);
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("启动 AI Sidecar 失败：{error}"))?;
-        let health_url = format!("http://127.0.0.1:{port}/health-check");
         let client = reqwest::Client::new();
-        let started = std::time::Instant::now();
-        loop {
-            if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
-                return Err(format!("AI Sidecar 提前退出：{status}"));
+        let mut last_exit = None;
+        for attempt in 1..=2 {
+            let port = reserve_port()?;
+            let stdout = open_log(log_dir.join("ai.log"))?;
+            let stderr = open_log(log_dir.join("ai.err.log"))?;
+            let mut command = Command::new(&executable);
+            command
+                .args([
+                    "--port",
+                    &port.to_string(),
+                    "--parent-pid",
+                    &self.parent_pid.to_string(),
+                ])
+                .current_dir(&self.app_root)
+                .env("MODEL_PATH", &model_dir)
+                .env("AI_CONFIG_PATH", self.app_root.join("ai-config.json"))
+                .env("TS_AI_LOG_DIR", &log_dir)
+                .stdin(Stdio::null())
+                .stdout(Stdio::from(stdout))
+                .stderr(Stdio::from(stderr));
+            if let Some(llama_server) = llama_runtime::find_llama_server() {
+                command.env("LLAMA_SERVER_PATH", llama_server);
             }
-            if started.elapsed() > Duration::from_secs(90) {
-                terminate_process_tree(&mut child);
-                return Err("等待 AI Sidecar 启动超时，请检查 ai.err.log".into());
-            }
-            if let Ok(response) = client
-                .get(&health_url)
-                .timeout(Duration::from_millis(1500))
-                .send()
-                .await
-            {
-                if response.status().is_success() {
+            #[cfg(windows)]
+            command.creation_flags(0x08000000);
+            let mut child = command
+                .spawn()
+                .map_err(|error| format!("启动 AI Sidecar 失败：{error}"))?;
+            let health_url = format!("http://127.0.0.1:{port}/health-check");
+            let started = std::time::Instant::now();
+            loop {
+                if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+                    last_exit = Some(status);
                     break;
                 }
+                if started.elapsed() > Duration::from_secs(90) {
+                    terminate_process_tree(&mut child);
+                    return Err("等待 AI Sidecar 启动超时，请检查 ai.err.log".into());
+                }
+                if let Ok(response) = client
+                    .get(&health_url)
+                    .timeout(Duration::from_millis(1500))
+                    .send()
+                    .await
+                {
+                    if response.status().is_success() {
+                        *self.sidecar.lock().expect("AI sidecar poisoned") = Some(SidecarProcess {
+                            child,
+                            port,
+                            extension_id: extension.id.clone(),
+                        });
+                        *self
+                            .last_request_at
+                            .lock()
+                            .expect("AI last request poisoned") = Some(now_seconds());
+                        return Ok(port);
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(400)).await;
             }
-            tokio::time::sleep(Duration::from_millis(400)).await;
+            if attempt < 2 {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
         }
-        *self.sidecar.lock().expect("AI sidecar poisoned") = Some(SidecarProcess {
-            child,
-            port,
-            extension_id: extension.id,
-        });
-        *self
-            .last_request_at
-            .lock()
-            .expect("AI last request poisoned") = Some(now_seconds());
-        Ok(port)
+        Err(format!(
+            "AI Sidecar 提前退出（已重试）：{}，请检查 ai.err.log",
+            last_exit
+                .map(|status| status.to_string())
+                .unwrap_or_else(|| "未知状态".into())
+        ))
     }
 
     fn running_port(&self) -> Option<u16> {

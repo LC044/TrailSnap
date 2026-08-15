@@ -25,6 +25,7 @@ def main() -> None:
     parser.add_argument("--port", type=int)
     parser.add_argument("--parent-pid", type=int)
     parser.add_argument("--self-check", action="store_true")
+    parser.add_argument("--startup-check", action="store_true")
     args = parser.parse_args()
 
     if args.self_check:
@@ -47,6 +48,19 @@ def main() -> None:
         print(json.dumps({"status": "ok", "routes": len(paths)}))
         return
 
+    if args.startup_check:
+        # Exercise the real FastAPI lifespan without downloading gigabytes of
+        # model data. This catches frozen-runtime startup failures that the
+        # route-only self-check cannot see.
+        os.environ["TS_AI_SKIP_AUTO_DOWNLOAD"] = "1"
+        from fastapi.testclient import TestClient
+        from desktop_app import app
+
+        with TestClient(app) as client:
+            response = client.get("/health-check")
+            response.raise_for_status()
+        return
+
     if args.port is None:
         parser.error("--port is required unless --self-check is used")
     if args.parent_pid:
@@ -55,7 +69,7 @@ def main() -> None:
     import uvicorn
     from desktop_app import app
 
-    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
+    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False, log_config=None)
 
 
 if __name__ == "__main__":

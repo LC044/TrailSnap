@@ -1,6 +1,7 @@
 """CPU-only desktop AI application exposing the complete AI service API."""
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -25,7 +26,8 @@ from app.services.model_downloader import model_downloader
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     listener = setup_logging("desktop-ai")
-    model_downloader.start_downloads()
+    if os.environ.get("TS_AI_SKIP_AUTO_DOWNLOAD") != "1":
+        model_downloader.start_downloads()
     llm_idle_task = asyncio.create_task(llm_manager.idle_checker())
     try:
         yield

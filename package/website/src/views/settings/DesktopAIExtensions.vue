@@ -44,10 +44,11 @@
           AI Sidecar：{{ gateway.running ? '运行中' : '按需待机' }}
         </span>
         <button
+          :disabled="importingPackage"
           class="ml-auto rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           @click="importPackage"
         >
-          离线导入
+          {{ importingPackage ? '正在校验并导入…' : '离线导入' }}
         </button>
         <button
           class="rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
@@ -72,7 +73,7 @@
               >{{ llamaStatus.installed ? '已安装' : '未安装' }}</span>
             </div>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">MiniCPM 本地模型需要 llama-server。它独立于 AI 扩展安装，并在调用前检测可用性。</p>
-            <p v-if="llamaStatus.version" class="mt-2 break-all text-xs text-gray-400 dark:text-gray-500">{{ llamaStatus.version }}</p>
+            <p v-if="llamaStatus.installed" class="mt-2 break-all text-xs text-gray-400 dark:text-gray-500">可执行文件：{{ llamaStatus.path }}</p>
             <p v-else class="mt-2 text-xs text-gray-400 dark:text-gray-500">{{ llamaStatus.installCommand }}</p>
           </div>
           <div class="flex shrink-0 gap-2">
@@ -173,6 +174,7 @@ const gateway = ref<any>({ running: false })
 const catalogError = ref<string | null>(null)
 const llamaStatus = ref<any>({ installed: false, installSupported: false, installCommand: '正在检测…' })
 const installingLlama = ref(false)
+const importingPackage = ref(false)
 let pollTimer: number | undefined
 
 const capabilityLabels: Record<string, string> = {
@@ -254,6 +256,7 @@ async function uninstall(id: string) {
   } catch (error: any) { if (error !== 'cancel') ElMessage.error(error.message || String(error)) }
 }
 async function importPackage() {
+  importingPackage.value = true
   try {
     if (isTauriApp()) {
       const [{ invoke }, { open }] = await Promise.all([
@@ -275,6 +278,7 @@ async function importPackage() {
     if (!result.canceled) ElMessage.success('AI 扩展包导入成功')
     await load()
   } catch (error: any) { ElMessage.error(error.message) }
+  finally { importingPackage.value = false }
 }
 async function refreshCatalog() {
   try { await desktopRequest('/refresh', { method: 'POST', body: '{}' }); await load() }

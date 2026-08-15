@@ -51,11 +51,17 @@ jobs:
         working-directory: package/ai
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ./dist/trailsnap-ai/trailsnap-ai.exe --self-check
-          else
-            ./dist/trailsnap-ai/trailsnap-ai --self-check
-          fi
+          uv run python - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+
+          executable = Path("dist/trailsnap-ai") / (
+              "trailsnap-ai.exe" if os.name == "nt" else "trailsnap-ai"
+          )
+          for check in ("--self-check", "--startup-check"):
+              subprocess.run([str(executable), check], check=True)
+          PY
       - name: Assemble runtime extension
         working-directory: package/ai
         run: uv run python scripts/build_desktop_extension.py --platform-key ${{ matrix.platform }} --version ${{ env.EXTENSION_VERSION }}

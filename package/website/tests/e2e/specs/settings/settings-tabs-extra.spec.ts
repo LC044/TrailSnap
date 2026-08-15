@@ -19,6 +19,14 @@ async function clickSettingTab(page, key: string) {
   await anchor.first().click();
 }
 
+async function mockDesktopExtensionEndpoint(page, extensionStatus: unknown) {
+  await page.route('**/desktop-api/ai/extensions', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(extensionStatus),
+  }));
+}
+
 test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
@@ -50,10 +58,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   });
 
   test('切换到「AI 扩展包」- 展示桌面扩展状态和能力', async ({ page }) => {
-    await page.route('**/desktop-api/ai/extensions', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
+    await mockDesktopExtensionEndpoint(page, {
         platform: 'win32-x64',
         catalogError: null,
         gateway: { running: false },
@@ -69,22 +74,18 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
           installed: null,
           job: null,
         }],
-      }),
-    }));
-    await page.goto('/settings');
+    });
+    await page.goto('/settings?tab=ai-extensions');
     await clickSettingTab(page, 'ai-extensions');
 
     await expect(page.locator('h2', { hasText: 'AI 扩展包' })).toBeVisible();
     await expect(page.getByText('TrailSnap AI 基础扩展')).toBeVisible();
     await expect(page.getByText('文字识别')).toBeVisible();
-    await expect(page.getByRole('button', { name: '安装' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '安装', exact: true })).toBeEnabled();
   });
 
   test('AI 扩展已安装后通过 Server 展示模型管理', async ({ page }) => {
-    await page.route('**/desktop-api/ai/extensions', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
+    await mockDesktopExtensionEndpoint(page, {
         platform: 'win32-x64', catalogError: null, gateway: { running: false },
         extensions: [{
           id: 'core-ai', name: 'TrailSnap AI 基础扩展', version: '0.10.0',
@@ -92,8 +93,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
           requirements: { memoryMB: 2048, diskMB: 500 }, available: true,
           installed: { version: '0.10.0' }, job: null,
         }],
-      }),
-    }));
+    });
     await page.route('**/api/settings/ai-models', route => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -102,12 +102,13 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
         description: '运行时从 ModelScope 下载', requirements: { diskMB: 130 },
       }] } }),
     }));
-    await page.goto('/settings');
+    await page.goto('/settings?tab=ai-extensions');
     await clickSettingTab(page, 'ai-extensions');
+    await clickSettingTab(page, 'ai-models');
 
-    await expect(page.getByText('AI 模型管理')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible();
     await expect(page.getByText('图片分类与票据识别模型')).toBeVisible();
-    await expect(page.getByRole('button', { name: '下载模型' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '立即下载' })).toBeEnabled();
   });
 
   test('连续切换 tasks → external → performance - 内容独立渲染不残留', async ({ page }) => {
