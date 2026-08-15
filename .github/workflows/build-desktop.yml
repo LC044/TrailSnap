@@ -218,17 +218,30 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Collect desktop installers
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          mapfile -d '' files < <(find artifacts -type f -print0)
+          ((${#files[@]} > 0)) || { echo "::error::No desktop installers were downloaded"; exit 1; }
+          for file in "${files[@]}"; do
+            destination="release-assets/${file##*/}"
+            [ ! -e "$destination" ] || { echo "::error::Duplicate installer name: ${file##*/}"; exit 1; }
+            mv "$file" "$destination"
+          done
+
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            artifacts/*.exe
-            artifacts/*.dmg
-            artifacts/*.AppImage
-            artifacts/*.deb
+            release-assets/*.exe
+            release-assets/*.dmg
+            release-assets/*.AppImage
+            release-assets/*.deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -248,13 +261,19 @@ jobs:
           pattern: TrailSnap-*
           path: artifacts
           merge-multiple: true
-      - name: Prefix assets with PR number
+
+      - name: Collect and prefix desktop installers
         shell: bash
         run: |
-          for file in artifacts/*; do
-            [ -f "$file" ] || continue
-            mv "$file" "artifacts/TrailSnap-pr-${{ github.event.number }}-${file##*/}"
+          mkdir -p release-assets
+          mapfile -d '' files < <(find artifacts -type f -print0)
+          ((${#files[@]} > 0)) || { echo "::error::No desktop installers were downloaded"; exit 1; }
+          for file in "${files[@]}"; do
+            destination="release-assets/pr-${{ github.event.number }}-${file##*/}"
+            [ ! -e "$destination" ] || { echo "::error::Duplicate installer name: ${file##*/}"; exit 1; }
+            mv "$file" "$destination"
           done
+
       - name: Update shared PR preview release
         uses: softprops/action-gh-release@v2
         with:
@@ -263,7 +282,8 @@ jobs:
           prerelease: true
           make_latest: false
           overwrite_files: true
+          fail_on_unmatched_files: true
           body: Shared test builds for open pull requests. Download assets matching the PR number. The Docker `preview` tag always points to the most recently completed internal PR build.
-          files: artifacts/*
+          files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

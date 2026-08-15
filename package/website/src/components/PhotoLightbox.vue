@@ -534,6 +534,41 @@ const toggleOriginal = () => {
 
 const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'add-to-album', 'transfer'])
 
+// Keep the lightbox in the browser history so the mobile browser/gesture back
+// action closes it before Vue Router navigates away from the current page.
+const LIGHTBOX_HISTORY_KEY = '__trailsnapPhotoLightbox'
+const lightboxHistoryId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+let historyEntryActive = false
+let historyBackPending = false
+let historyListenerMounted = false
+
+const isCurrentLightboxHistoryEntry = () =>
+    window.history.state?.[LIGHTBOX_HISTORY_KEY] === lightboxHistoryId
+
+const pushLightboxHistoryEntry = () => {
+    if (!historyListenerMounted || historyEntryActive) return
+    window.history.pushState(
+        { ...(window.history.state ?? {}), [LIGHTBOX_HISTORY_KEY]: lightboxHistoryId },
+        '',
+        window.location.href,
+    )
+    historyEntryActive = true
+}
+
+const removeLightboxHistoryEntry = () => {
+    if (!historyEntryActive || historyBackPending) return
+    historyEntryActive = false
+    if (isCurrentLightboxHistoryEntry()) window.history.back()
+}
+
+const handleHistoryPopState = () => {
+    historyBackPending = false
+    if (!historyEntryActive) return
+
+    historyEntryActive = false
+    if (props.visible) emit('close')
+}
+
 // State
 const showSidebar = ref(false)
 const forceOpenLocationEdit = ref(false)
@@ -635,7 +670,16 @@ const disposePlayer = () => {
     }
 }
 
+onMounted(() => {
+    historyListenerMounted = true
+    window.addEventListener('popstate', handleHistoryPopState)
+    if (props.visible) pushLightboxHistoryEntry()
+})
+
 onUnmounted(() => {
+    historyListenerMounted = false
+    window.removeEventListener('popstate', handleHistoryPopState)
+    removeLightboxHistoryEntry()
     disposePlayer()
     document.body.style.overflow = ''
     stopDrag()
@@ -697,6 +741,7 @@ watch(() => props.image, async (newImg, oldImg) => {
 
 watch(() => props.visible, async (newVal) => {
     if (newVal && props.image) {
+        pushLightboxHistoryEntry()
         document.body.style.overflow = 'hidden'
         resetZoom()
         controlsVisible.value = true
@@ -723,6 +768,7 @@ watch(() => props.visible, async (newVal) => {
           }, 3000)
         }
     } else {
+        removeLightboxHistoryEntry()
         document.body.style.overflow = ''
         isEditing.value = false
         disposePlayer()
@@ -744,6 +790,15 @@ watch(() => props.visible, async (newVal) => {
 
 // Methods
 const close = () => {
+    if (historyEntryActive && isCurrentLightboxHistoryEntry()) {
+        if (!historyBackPending) {
+            historyBackPending = true
+            window.history.back()
+        }
+        return
+    }
+
+    historyEntryActive = false
     emit('close')
 }
 

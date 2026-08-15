@@ -72,23 +72,27 @@ jobs:
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+            ASSET="TrailSnap-$VERSION-debug.apk"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             VERSION="pr-${{ github.event.number }}"
+            ASSET="$VERSION-TrailSnap-debug.apk"
           else
             VERSION="$PACKAGE_VERSION"
+            ASSET="TrailSnap-$VERSION-debug.apk"
           fi
           SOURCE="artifacts/TrailSnap-$PACKAGE_VERSION-debug.apk"
-          TARGET="artifacts/TrailSnap-$VERSION-debug.apk"
+          TARGET="artifacts/$ASSET"
           if [[ "$SOURCE" != "$TARGET" ]]; then
             mv "$SOURCE" "$TARGET"
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: TrailSnap-${{ steps.version.outputs.version }}-android-debug
-          path: package/website/artifacts/TrailSnap-${{ steps.version.outputs.version }}-debug.apk
+          path: package/website/artifacts/${{ steps.version.outputs.asset }}
           if-no-files-found: error
           retention-days: 14
 

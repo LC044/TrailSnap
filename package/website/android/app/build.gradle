@@ -16,7 +16,20 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        // 固定的 debug 签名：CI 与本地共用同一把 keystore，覆盖安装不再报签名冲突。
+        // keystore 已提交进仓库（debug 包非敏感，不可用于上架 Play Store）。
+        debug {
+            storeFile file('trailsnap-debug.keystore')
+            storePassword 'android'
+            keyAlias 'trailsnap-debug'
+            keyPassword 'android'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

@@ -28,16 +28,16 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            asset_name: trailsnap-linux-x64
+            asset_name: trailsnap-cli-linux-x64
             executable_name: trailsnap
           - os: windows-latest
-            asset_name: trailsnap-windows-x64.exe
+            asset_name: trailsnap-cli-windows-x64.exe
             executable_name: trailsnap.exe
           # - os: macos-13
-          #   asset_name: trailsnap-macos-x64
+          #   asset_name: trailsnap-cli-macos-x64
           #   executable_name: trailsnap
           - os: macos-14
-            asset_name: trailsnap-macos-arm64
+            asset_name: trailsnap-cli-macos-arm64
             executable_name: trailsnap
 
     steps:

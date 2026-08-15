@@ -1,5 +1,5 @@
 # 第一阶段：构建前端项目
-FROM node:22.14-alpine AS build-stage
+FROM --platform=$BUILDPLATFORM node:22.14-alpine AS build-stage
 
 # 设置工作目录
 WORKDIR /app

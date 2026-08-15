@@ -3,12 +3,15 @@ import { Preferences } from '@capacitor/preferences'
 
 const SERVER_URL_KEY = 'trailsnap_server_url'
 const LEGACY_STORAGE_KEY = 'trailsnap:server-url'
+const SERVER_HISTORY_KEY = 'trailsnap_server_history'
+const MAX_SERVER_HISTORY = 10
 
 let configuredServerUrl = ''
 let desktopSessionSecret = ''
 let initialized = false
 
 export const isTauriApp = () => '__TAURI_INTERNALS__' in window
+export const isMobileApp = () => Capacitor.isNativePlatform()
 export const isNativeApp = () => Capacitor.isNativePlatform() || isTauriApp()
 
 export function normalizeServerUrl(value: string): string {
@@ -80,6 +83,48 @@ export function hasConfiguredServer(): boolean {
   return !!configuredServerUrl
 }
 
+function parseServerHistory(value: string | null): string[] {
+  if (!value) return []
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => {
+        try {
+          return normalizeServerUrl(item)
+        } catch {
+          return ''
+        }
+      })
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+export async function getServerHistory(): Promise<string[]> {
+  let stored: string | null = null
+  try {
+    stored = (await Preferences.get({ key: SERVER_HISTORY_KEY })).value
+  } catch {
+    // Retain the localStorage fallback for web and app upgrades.
+  }
+  stored ||= localStorage.getItem(SERVER_HISTORY_KEY)
+
+  const current = getServerUrl()
+  return [...new Set([current, ...parseServerHistory(stored)].filter(Boolean))]
+    .slice(0, MAX_SERVER_HISTORY)
+}
+
+async function rememberServerUrl(value: string): Promise<void> {
+  const history = [value, ...(await getServerHistory()).filter(item => item !== value)]
+    .slice(0, MAX_SERVER_HISTORY)
+  const serialized = JSON.stringify(history)
+  await Preferences.set({ key: SERVER_HISTORY_KEY, value: serialized })
+  localStorage.setItem(SERVER_HISTORY_KEY, serialized)
+}
+
 export async function saveServerUrl(value: string): Promise<string> {
   const normalized = normalizeServerUrl(value)
   if (!normalized) throw new Error('请输入服务器地址')
@@ -87,6 +132,7 @@ export async function saveServerUrl(value: string): Promise<string> {
   localStorage.setItem(LEGACY_STORAGE_KEY, normalized)
   configuredServerUrl = normalized
   initialized = true
+  await rememberServerUrl(normalized)
   return normalized
 }
 

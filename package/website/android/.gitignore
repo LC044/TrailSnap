@@ -55,6 +55,8 @@ captures/
 # Keystore files
 *.jks
 *.keystore
+# 固定的 debug 签名 keystore，CI 与本地共用，必须提交（见 app/build.gradle）
+!app/trailsnap-debug.keystore
 key.properties
 
 # External native build folder generated in Android Studio 2.2 and later

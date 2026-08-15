@@ -64,6 +64,19 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect(toolbar).toBeVisible()
   })
 
+  test('浏览器返回键优先关闭照片查看器并停留在当前页面', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 20)
+    if (!probe.ok) return
+
+    const media = await openFirstPhoto(page)
+    const photosUrl = page.url()
+
+    await page.goBack()
+
+    await expect(media).toBeHidden()
+    await expect(page).toHaveURL(photosUrl)
+  })
+
   test('更多导航可显式关闭且长内容限制在视口内滚动', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: '更多' }).click()
