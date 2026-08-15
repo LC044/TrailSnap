@@ -3,8 +3,18 @@ name: Tests
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    # 仅当代码包目录发生变动时触发测试；docs / official-site / 根目录脚本等改动不跑 CI
+    paths: &package_paths
+      - 'package/ai/**'
+      - 'package/desktop/**'
+      - 'package/server/**'
+      - 'package/trailsnap-cli/**'
+      - 'package/website/**'
+      - 'tests/**'
+      - '.github/workflows/tests.yml'
   push:
     branches: [master, main]
+    paths: *package_paths
   schedule:
     # 凌晨 3 点（北京时间，UTC+8）= UTC 19:00；每日 e2e full 兜底
     - cron: '0 19 * * *'

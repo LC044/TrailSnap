@@ -6,9 +6,45 @@ title: Docker 部署（通用）
 
 本章面向 NAS/家庭服务器场景：用 Docker Compose 一次性启动 TrailSnap 的前端、后端、数据库与 AI 服务，并把你的照片目录挂载进来。
 
-如果你还没看过安装指南，建议先读：[/docs/guide/install](/docs/guide/install)
+## 一键安装脚本
 
-## 1. 目录规划（建议）
+Windows PowerShell：
+
+```powershell
+irm https://trailsnap.cn/install.ps1 -OutFile install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Linux / macOS / WSL2：
+
+```bash
+curl -fsSL https://trailsnap.cn/install.sh | bash
+```
+
+脚本会收集照片目录、端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:8082`。
+
+常用管理命令（在安装目录执行）：
+
+```bash
+docker compose --env-file .env ps
+docker compose --env-file .env logs -f
+docker compose --env-file .env restart
+docker compose --env-file .env down
+```
+
+升级和卸载：
+
+```bash
+./install.sh --upgrade
+./install.sh --uninstall          # 保留数据
+./install.sh --uninstall --purge  # 删除数据，谨慎使用
+```
+
+PowerShell 脚本使用对应的 `-Upgrade`、`-Uninstall` 参数；运行 `Get-Help .\install.ps1 -Detailed` 可查看完整参数。
+
+## 手动部署
+
+### 1. 目录规划
 
 在 NAS 上先准备一个共享文件夹作为 TrailSnap 的“项目目录”，建议包含两类数据：
 
@@ -24,7 +60,7 @@ trailsnap/
   pg_data/
 ```
 
-## 2. Docker Compose（推荐模板）
+### 2. Docker Compose（推荐模板）
 
 下面的 compose 与安装指南保持一致，你只需要修改两处：
 
@@ -103,7 +139,7 @@ networks:
     driver: bridge
 ```
 
-## 3. 启动与验证
+### 3. 启动与验证
 
 在 `docker-compose.yml` 所在目录执行：
 
@@ -117,7 +153,7 @@ docker-compose up -d
 - 后端 API：`http://<NAS_IP>:8800/docs`
 - AI 服务：`http://<NAS_IP>:8801/docs`
 
-## 4. GPU 加速支持 (可选)
+## GPU 加速支持 (可选)
 
 如果您拥有 NVIDIA 显卡，可以启用 GPU 加速来提升 AI 处理速度。
 
@@ -184,9 +220,9 @@ sudo systemctl restart docker
               capabilities: [gpu]
 ```
 
-## 5. NAS 场景常见问题
+## NAS 场景常见问题
 
-### 5.1 路径怎么写才正确？
+### 路径怎么写才正确？
 
 在 NAS 上请以“文件夹的真实路径”为准。不同系统的路径显示方式不同，但原则只有一个：确保容器内的 `/app/Photos/` 能看到你的照片文件。
 
@@ -200,14 +236,14 @@ volumes:
   - /你的照片文件夹真实路径3:/app/Photos/家庭
 ```
 
-### 5.2 权限不足导致扫描不到照片
+### 权限不足导致扫描不到照片
 
 如果照片目录是只读共享或权限隔离，容器可能无法读取。建议：
 
 - 给容器运行账号授予该共享文件夹的读取权限
 - 或把照片目录挂载为只读并确保宿主机侧权限允许读取
 
-### 5.3 端口冲突
+### 端口冲突
 
 NAS 上常见 80/443/8080 等端口容易被占用。TrailSnap 默认使用 8082/8800/8801，如冲突可自行改映射，例如：
 
@@ -215,7 +251,7 @@ NAS 上常见 80/443/8080 等端口容易被占用。TrailSnap 默认使用 8082
 ports: [ "18082:80" ]
 ```
 
-## 6. NAS 具体教程
+## NAS 具体教程
 
 - [绿联 NAS 部署](/docs/guide/docker/ugreen)
 - [极空间部署](/docs/guide/docker/zspace)

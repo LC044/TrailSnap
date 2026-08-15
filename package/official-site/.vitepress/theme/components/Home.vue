@@ -480,7 +480,7 @@ const i18n = {
       home: '首页',
       features: '功能介绍',
       quickStart: '快速开始',
-      download: '立即体验'
+      download: '下载'
     },
     hero: {
       title1: 'AI赋能家庭相册',

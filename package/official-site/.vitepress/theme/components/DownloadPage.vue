@@ -93,9 +93,9 @@ const isEnglish = computed(() => lang.value.startsWith('en'))
 
 const translations = {
   zh: {
-    badge: '桌面安装包与自托管部署', title: '下载 TrailSnap', description: '桌面版适合个人电脑快速使用；Docker 版适合 NAS、家庭服务器和多设备访问。基础桌面安装包保持轻量，AI 能力可按需扩展。',
-    latest: '最新版本', recommended: '适合当前设备', download: '下载', assetHint: '未识别到对应安装包时，按钮会打开最新 Release 页面。你也可以查看', allAssets: '全部版本与文件',
-    dockerTitle: '在 NAS 或服务器上部署', dockerDescription: 'Docker Compose 会启动前端、后端、PostgreSQL 与 AI 服务，适合集中管理照片库，并通过局域网在手机和电脑上访问。', dockerGuide: '查看 Docker 部署指南', preflight: '部署前检查',
+    badge: '桌面安装包与自托管部署', title: '下载 TrailSnap', description: '桌面版适合个人电脑快速使用；Docker 版适合 NAS、家庭服务器和多设备访问。',
+    latest: '最新版本', recommended: '适合当前设备', download: '下载', assetHint: '你也可以查看', allAssets: '全部版本与文件',
+    dockerTitle: '在 NAS 或服务器上部署', dockerDescription: '适合集中管理照片库，并通过局域网在手机和电脑上访问。', dockerGuide: '查看 Docker 部署指南', preflight: '部署前检查',
     aiTitle: 'AI 扩展按需安装', aiDescription: '桌面版的人脸识别、OCR、图片分类、语义检索和本地大模型能力由独立 AI 扩展提供。先安装基础客户端，再在设置中在线安装或离线导入与你的平台匹配的扩展包。', aiGuide: '查看 AI 扩展说明'
   },
   en: {
@@ -127,8 +127,12 @@ function docLink(path: string) {
 
 function matchesPlatform(name: string, platform: PlatformKey) {
   const lower = name.toLowerCase()
-  if (lower.includes('ai-') || lower.endsWith('.tar.gz')) return false
-  if (platform === 'windows') return lower.endsWith('.exe')
+  // Tauri desktop bundles use the `TrailSnap_<version>_<arch>` naming
+  // convention. Release assets also contain CLI executables, AI archives and
+  // Android packages, so matching by file extension alone is unsafe.
+  if (!lower.startsWith('trailsnap_')) return false
+  if (lower.includes('cli') || lower.includes('-ai-') || lower.endsWith('.apk')) return false
+  if (platform === 'windows') return lower.endsWith('-setup.exe')
   if (platform === 'macos') return lower.endsWith('.dmg')
   return lower.endsWith('.appimage') || lower.endsWith('.deb')
 }
