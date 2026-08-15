@@ -94,6 +94,7 @@ MANAGED_METADATA = {
     "version": MODEL_REVISION,
     "description": "运行时从 ModelScope 下载，用于图片分类、火车票和机票识别。",
     "capabilities": ["tickets", "classification"],
+    "task": "classification",
     "requirements": {"diskMB": 130},
     "downloadSize": 110 * 1024 * 1024,
     "source": "ModelScope",

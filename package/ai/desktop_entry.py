@@ -2,6 +2,7 @@
 """Frozen entry point for the optional desktop AI sidecar."""
 
 import argparse
+import json
 import multiprocessing
 import os
 import signal
@@ -21,9 +22,33 @@ def _watch_parent(parent_pid: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--parent-pid", type=int)
+    parser.add_argument("--self-check", action="store_true")
     args = parser.parse_args()
+
+    if args.self_check:
+        from desktop_app import app
+
+        paths = set(app.openapi()["paths"])
+        required = {
+            "/face/face-recognition",
+            "/ocr/predict",
+            "/tickets/predict",
+            "/classification/",
+            "/embedding/text",
+            "/embedding/image",
+            "/v1/{path}",
+            "/ai/models",
+        }
+        missing = sorted(required - paths)
+        if missing:
+            raise SystemExit(f"Desktop AI self-check failed; missing routes: {missing}")
+        print(json.dumps({"status": "ok", "routes": len(paths)}))
+        return
+
+    if args.port is None:
+        parser.error("--port is required unless --self-check is used")
     if args.parent_pid:
         threading.Thread(target=_watch_parent, args=(args.parent_pid,), daemon=True).start()
 

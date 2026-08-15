@@ -131,6 +131,8 @@ class ModelDownloader:
                     **model_info.get("metadata", {}),
                     "status": model_info["status"].value,
                     "error": model_info.get("error"),
+                    "managed": model_info.get("managed", False),
+                    "canDelete": model_info.get("delete_fn") is not None,
                 })
             return result
 

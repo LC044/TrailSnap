@@ -166,6 +166,8 @@ def test_managed_model_can_be_listed_and_deleted(downloader, tmp_path):
         "capabilities": ["ocr"],
         "status": "ready",
         "error": None,
+        "managed": True,
+        "canDelete": True,
     }]
 
     downloader.delete_model("managed")

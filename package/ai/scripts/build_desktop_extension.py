@@ -39,10 +39,13 @@ def main() -> None:
     manifest = {
         "schemaVersion": 1,
         "id": "core-ai",
-        "name": "TrailSnap AI 基础扩展",
+        "name": "TrailSnap AI 完整扩展",
         "version": args.version,
         "platform": args.platform_key,
-        "capabilities": ["ocr", "tickets", "classification"],
+        "capabilities": [
+            "face", "ocr", "object_detection", "tickets", "classification",
+            "embedding", "llm", "emotion",
+        ],
         "entrypoint": f"runtime/trailsnap-ai/{executable}",
         "modelManagement": "modelscope",
     }

@@ -43,6 +43,11 @@ class AIConfigManager:
                     "selected": "clip-ViT-B-32",
                     "available": ["clip-ViT-B-32"],
                     "description": "Image classification and embedding models."
+                },
+                "llm": {
+                    "selected": "MiniCPM-V-4_6-Q4_K_M",
+                    "available": ["MiniCPM-V-4_6-Q4_K_M"],
+                    "description": "Local multimodal language models served by llama.cpp."
                 }
             }
         }

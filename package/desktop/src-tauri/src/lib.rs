@@ -1,5 +1,6 @@
 mod ai_extension;
 mod ai_gateway;
+mod llama_runtime;
 
 use ai_extension::AIExtensionManager;
 use ai_gateway::AIGateway;
@@ -109,6 +110,20 @@ fn ai_extension_uninstall(
     gateway.stop_sidecar();
     manager.uninstall(&id)?;
     Ok(json!({ "removed": true }))
+}
+
+#[tauri::command]
+fn llama_runtime_status() -> Value {
+    llama_runtime::status()
+}
+
+#[tauri::command]
+async fn llama_runtime_install(gateway: tauri::State<'_, AIGateway>) -> Result<Value, String> {
+    let result = llama_runtime::install().await?;
+    // A running Sidecar inherited the pre-install PATH. Restart it lazily so
+    // the next AI request receives the newly detected LLAMA_SERVER_PATH.
+    gateway.stop_sidecar();
+    Ok(result)
 }
 
 fn reserve_port() -> Result<u16, String> {
@@ -339,6 +354,8 @@ pub fn run() {
             ai_extension_retry,
             ai_extension_import,
             ai_extension_uninstall,
+            llama_runtime_status,
+            llama_runtime_install,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

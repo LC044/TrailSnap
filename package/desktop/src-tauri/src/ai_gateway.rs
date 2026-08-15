@@ -1,4 +1,5 @@
 use crate::ai_extension::AIExtensionManager;
+use crate::llama_runtime;
 use axum::{
     body::{to_bytes, Body},
     extract::State,
@@ -141,6 +142,9 @@ impl AIGateway {
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr));
+        if let Some(llama_server) = llama_runtime::find_llama_server() {
+            command.env("LLAMA_SERVER_PATH", llama_server);
+        }
         #[cfg(windows)]
         command.creation_flags(0x08000000);
         let mut child = command

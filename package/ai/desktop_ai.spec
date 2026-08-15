@@ -7,11 +7,30 @@ root = Path(SPECPATH)
 hiddenimports = (
     collect_submodules("rapidocr")
     + collect_submodules("uvicorn")
+    + collect_submodules("insightface", on_error="ignore")
+    + collect_submodules("transformers", on_error="ignore")
+    + [
+        "modelscope",
+        "modelscope.hub",
+        "modelscope.hub.api",
+        "modelscope.hub.constants",
+        "modelscope.hub.errors",
+        "modelscope.hub.file_download",
+        "modelscope.hub.snapshot_download",
+        "modelscope.utils",
+        "modelscope.utils.config",
+        "modelscope.utils.constant",
+        "modelscope.utils.file_utils",
+        "modelscope.utils.logger",
+    ]
 )
 datas = [
     (str(root / "app" / "data"), "app/data"),
 ]
-for package in ("fastapi", "pydantic", "rapidocr", "onnxruntime"):
+for package in (
+    "fastapi", "pydantic", "rapidocr", "onnxruntime", "insightface",
+    "modelscope", "transformers", "tokenizers", "huggingface-hub",
+):
     try:
         datas += copy_metadata(package)
     except Exception:
@@ -19,6 +38,8 @@ for package in ("fastapi", "pydantic", "rapidocr", "onnxruntime"):
 # The desktop runtime uses ONNX Runtime only. Keep RapidOCR's ONNX models and
 # dictionaries, but omit the duplicate PyTorch weights.
 datas += collect_data_files("rapidocr", excludes=["models/*.pth", "models/**/*.pth"])
+for package in ("insightface", "transformers"):
+    datas += collect_data_files(package)
 
 a = Analysis(
     [str(root / "desktop_entry.py")],
@@ -27,8 +48,7 @@ a = Analysis(
     datas=datas,
     hiddenimports=hiddenimports,
     excludes=[
-        "tkinter", "pytest", "insightface", "torch", "transformers",
-        "modelscope", "matplotlib", "pandas", "scipy", "skimage", "sklearn",
+        "tkinter", "pytest", "torch", "matplotlib", "pandas",
     ],
     noarchive=False,
 )

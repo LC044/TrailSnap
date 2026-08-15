@@ -4,6 +4,7 @@ import logging
 import sys
 import os
 import subprocess
+import shutil
 import httpx
 from app.config import settings
 from app.services.model_downloader import model_downloader
@@ -42,7 +43,26 @@ class LLMProcessManager:
             # We only need the gguf file, ignore other large files if possible, or just download the whole repo
             return snapshot_download(self.repo_id, local_dir=path, allow_patterns=["*.gguf", "*.json"])
 
-        model_downloader.register_model("llm_minicpm", check_model, download_model)
+        def delete_model():
+            shutil.rmtree(os.path.join(settings.MODEL_PATH, self.model_dir_name), ignore_errors=True)
+
+        model_downloader.register_model(
+            "llm_minicpm",
+            check_model,
+            download_model,
+            delete_fn=delete_model,
+            metadata={
+                "name": "MiniCPM-V 本地多模态模型",
+                "description": "通过 llama-server 提供 OpenAI 兼容的本地视觉语言能力。",
+                "capabilities": ["llm", "vision"],
+                "task": "llm",
+                "requirements": {"diskMB": 5000},
+                "downloadSize": 4 * 1024 * 1024 * 1024,
+                "source": "ModelScope",
+                "available": True,
+            },
+            managed=True,
+        )
 
     def _get_resolved_model_path(self) -> str:
         # If user explicitly set LLM_MODEL_PATH in env, use it directly
@@ -71,10 +91,11 @@ class LLMProcessManager:
                 return
             
             logger.info(f"Starting llama.cpp server subprocess on port {self.port} with model {resolved_path}...")
-            # Use native llama-server binary compiled in Docker
+            # Docker resolves llama-server from PATH; desktop passes the path
+            # detected or installed by the Tauri shell.
             self.process = subprocess.Popen(
                 [
-                    "llama-server",
+                    self._llama_server_executable(),
                     "-m", resolved_path,
                     "--mmproj", mmproj,
                     "--host", "127.0.0.1",
@@ -89,6 +110,19 @@ class LLMProcessManager:
                 stderr=sys.stderr
             )
             await self._wait_for_ready()
+
+    @staticmethod
+    def _llama_server_executable():
+        configured = os.getenv("LLAMA_SERVER_PATH")
+        if configured and os.path.isfile(configured):
+            return configured
+        discovered = shutil.which("llama-server")
+        if discovered:
+            return discovered
+        raise RuntimeError(
+            "llama-server 未安装。请在桌面端 AI 扩展设置中安装 llama.cpp，"
+            "或按照 package/ai/README.md 完成安装。"
+        )
 
     async def _wait_for_ready(self):
         # Wait until the server is responsive

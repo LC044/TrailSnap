@@ -53,6 +53,8 @@ services:
       - ./data:/app/data        # 挂载数据目录
     environment:
       - TZ=Asia/Shanghai
+      - MODEL_PATH=/app/data/models
+      - AI_CONFIG_PATH=/app/data/ai_config.json
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health-check', timeout=3)"]
       interval: 30s

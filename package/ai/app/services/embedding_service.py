@@ -3,6 +3,7 @@ import logging
 import os
 import io
 import base64
+import shutil
 from typing import List
 from PIL import Image
 
@@ -112,8 +113,48 @@ class EmbeddingService:
             logging.info(f"Downloading Text model {info['text_model_repo']} to {path}...")
             return snapshot_download(info['text_model_repo'], local_dir=path)
 
-        model_downloader.register_model("clip_text", check_text_model, download_text_model)
-        model_downloader.register_model("clip_image", check_image_model, download_image_model)
+        def delete_text_model():
+            info = self._get_model_info()
+            shutil.rmtree(os.path.join(settings.MODEL_PATH, info["text_dir_name"]), ignore_errors=True)
+
+        def delete_image_model():
+            info = self._get_model_info()
+            shutil.rmtree(os.path.join(settings.MODEL_PATH, info["image_dir_name"]), ignore_errors=True)
+
+        common = {
+            "task": "classification",
+            "requirements": {"diskMB": 500},
+            "source": "ModelScope",
+            "available": True,
+        }
+        model_downloader.register_model(
+            "clip_text",
+            check_text_model,
+            download_text_model,
+            delete_fn=delete_text_model,
+            metadata={
+                **common,
+                "name": "CLIP 文本向量模型",
+                "description": "用于文本语义检索和跨模态匹配。",
+                "capabilities": ["embedding", "search"],
+                "downloadSize": 450 * 1024 * 1024,
+            },
+            managed=True,
+        )
+        model_downloader.register_model(
+            "clip_image",
+            check_image_model,
+            download_image_model,
+            delete_fn=delete_image_model,
+            metadata={
+                **common,
+                "name": "CLIP 图片向量模型",
+                "description": "用于图片向量、相似照片和跨模态匹配。",
+                "capabilities": ["embedding", "similar"],
+                "downloadSize": 350 * 1024 * 1024,
+            },
+            managed=True,
+        )
 
     def _load_text_model(self):
         info = self._get_model_info()

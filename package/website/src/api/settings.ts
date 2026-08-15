@@ -138,5 +138,9 @@ export const settingsApi = {
   async deleteAIModel(modelId: string) {
     const { data } = await request.delete(`/api/settings/ai-models/${encodeURIComponent(modelId)}`)
     return data
+  },
+  async selectAIModel(task: string, model: string) {
+    const { data } = await request.put('/api/settings/ai-models/selection', { task, model })
+    return data
   }
 }

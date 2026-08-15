@@ -13,6 +13,7 @@ we can assert the call contract without the 60 s poll loop.
 """
 
 import asyncio
+import os
 import time
 from unittest.mock import MagicMock
 
@@ -85,7 +86,7 @@ def test_two(monkeypatch):
 
     assert len(popen_calls) == 1
     argv = popen_calls[0]
-    assert argv[0] == "llama-server"
+    assert os.path.basename(argv[0]).lower() in {"llama-server", "llama-server.exe"}
     assert "--port" in argv
     assert str(mgr.port) in argv
     # -m should point at the resolved model file (under MODEL_PATH/model_dir_name).

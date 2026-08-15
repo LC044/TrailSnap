@@ -154,6 +154,27 @@ def test_download_ai_model_encodes_identifier_and_returns_upstream_error():
     assert result.msg == "模型正在下载"
 
 
+def test_select_ai_model_proxies_selection_to_current_ai_service():
+    db = MagicMock()
+    user = _user()
+    cfg = SimpleNamespace(ai=SimpleNamespace(ai_api_url="http://127.0.0.1:18001"))
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"status": "success"}
+    payload = settings_api.AIModelSelectionRequest(task="face", model="buffalo_l")
+
+    with patch.object(settings_api.config_manager, "get_user_config", return_value=cfg), \
+         patch.object(settings_api.requests, "request", return_value=response) as request_call:
+        result = settings_api.select_ai_model(payload, db=db, current_user=user)
+
+    request_call.assert_called_once_with(
+        "POST",
+        "http://127.0.0.1:18001/ai/config/model",
+        timeout=120,
+        json={"task": "face", "model": "buffalo_l"},
+    )
+    assert result.code == 0
+
+
 # ----------------------- POST /settings/import -----------------------
 
 
