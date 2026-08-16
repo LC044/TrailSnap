@@ -21,11 +21,18 @@ from app.crud import album as crud_album
 from app.crud import face as crud_face
 
 from app.schemas import photo as schemas
+from app.core.paths import BUNDLE_ROOT
 from app.service.task_manager import TaskManager
 from app.api.deps import get_current_user
 from app.db.models.user import User
 
 router = APIRouter()
+
+
+def _geojson_path(level_cn: str) -> str:
+    """Resolve bundled GeoJSON independently of the process working directory."""
+    return os.path.join(BUNDLE_ROOT, "resources", "geo_data", f"中国_{level_cn}.geojson")
+
 
 def _get_thumbnail_path(user_id: UUID, photo_id: UUID, db: Session, size: str = 'small') -> str:
     compact = str(photo_id).replace('-', '')
@@ -344,7 +351,7 @@ async def get_geojson(level: str = Query("city"), parent: Optional[str] = Query(
         raise HTTPException(status_code=400, detail="Invalid level. Must be province, city, or district.")
     try:
         level_cn = {"province": "省", "city": "市", "district": "县"}[level]
-        path = os.path.join("resources","geo_data", f"中国_{level_cn}.geojson")
+        path = _geojson_path(level_cn)
         exists = await run_in_threadpool(os.path.exists, path)
         if not exists:
             raise FileNotFoundError
@@ -370,7 +377,7 @@ async def get_geojson(level: str = Query("city"), parent: Optional[str] = Query(
 
             # Pass 1: Exact match or short match
             for parent_level in ["省", "市"]:
-                parent_path = os.path.join("resources","geo_data", f"中国_{parent_level}.geojson")
+                parent_path = _geojson_path(parent_level)
                 if os.path.exists(parent_path):
                     with open(parent_path, 'r', encoding='utf-8') as f:
                         parent_data = json.load(f)
@@ -388,7 +395,7 @@ async def get_geojson(level: str = Query("city"), parent: Optional[str] = Query(
             # Pass 2: Clean match (if exact match fails)
             if not parent_gb:
                 for parent_level in ["省", "市"]:
-                    parent_path = os.path.join("resources","geo_data", f"中国_{parent_level}.geojson")
+                    parent_path = _geojson_path(parent_level)
                     if os.path.exists(parent_path):
                         with open(parent_path, 'r', encoding='utf-8') as f:
                             parent_data = json.load(f)
