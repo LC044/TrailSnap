@@ -71,14 +71,15 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
         }],
       }),
     }));
-    await page.goto('/settings');
+    await page.goto('/settings?tab=ai-extensions');
     await clickSettingTab(page, 'ai-extensions');
 
     await expect(page.locator('h2', { hasText: 'AI 扩展包' })).toBeVisible();
     await expect(page.getByText('TrailSnap AI 基础扩展')).toBeVisible();
     // SidebarTaskManager 也会渲染运行中的 OCR 任务名 '文字识别'，因此把断言限定在主内容区。
     await expect(page.locator('#main-content-wrapper').getByText('文字识别')).toBeVisible();
-    await expect(page.getByRole('button', { name: '安装' })).toBeEnabled();
+    // 'exact: true'：llama.cpp 区在 web 模式下也渲染「一键安装」按钮，子串匹配会同时命中两者。
+    await expect(page.getByRole('button', { name: '安装', exact: true })).toBeEnabled();
   });
 
   test('AI 扩展已安装后通过 Server 展示模型管理', async ({ page }) => {
@@ -103,12 +104,14 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
         description: '运行时从 ModelScope 下载', requirements: { diskMB: 130 },
       }] } }),
     }));
-    await page.goto('/settings');
+    await page.goto('/settings?tab=ai-extensions');
     await clickSettingTab(page, 'ai-extensions');
+    await clickSettingTab(page, 'ai-models');
 
-    await expect(page.getByText('AI 模型管理')).toBeVisible();
+    // 'heading' 角色：侧边栏菜单项「AI 模型管理」是 <a> 锚点而非标题，用 heading 精确命中内容区 <h2>。
+    await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible();
     await expect(page.getByText('图片分类与票据识别模型')).toBeVisible();
-    await expect(page.getByRole('button', { name: '下载模型' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '立即下载' })).toBeEnabled();
   });
 
   test('连续切换 tasks → external → performance - 内容独立渲染不残留', async ({ page }) => {
