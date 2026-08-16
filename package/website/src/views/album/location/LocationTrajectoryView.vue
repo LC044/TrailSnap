@@ -83,6 +83,7 @@ import { locationService } from '@/api/location'
 import type { TimelineNode } from '@/types/location'
 import type { Photo } from '@/types/album'
 import { loadMapScript } from '@/utils/mapLoader'
+import { isNativeApp } from '@/config/server'
 import { ElMessage } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme'
 
@@ -141,9 +142,10 @@ const getThumbnailUrl = (photoId: string) => {
 const initMap = () => {
   if (map.value) return
   
-  const isProd = import.meta.env.PROD;
+  const useTileProxy = import.meta.env.PROD && !isNativeApp()
   
-  if (isProd) {
+  // 原生壳没有 Web 生产部署中的 /tianditu-tiles nginx 代理。
+  if (useTileProxy) {
     map.value = new T.Map('trajectory-map', { layers: [] })
     const tk = currentApiKey.value;
     const vecLayer = new T.TileLayer(`/tianditu-tiles/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=${tk}`, { minZoom: 1, maxZoom: 18 });

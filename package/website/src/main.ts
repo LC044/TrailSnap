@@ -18,6 +18,7 @@ import router from '@/router';
 import { registerPwa } from '@/composables/usePwa'
 import { initializeServerConfig, isNativeApp, isTauriApp } from '@/config/server'
 import { registerNativeBackButton } from '@/composables/useNativeBackButton'
+import { registerExternalLinkOpener } from '@/composables/useExternalLinks'
 import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
 import { useUserStore } from '@/stores/user'
 
@@ -31,6 +32,7 @@ async function bootstrap() {
   if (isTauriApp()) {
     await useUserStore().initializeDesktopSession()
   }
+  await registerExternalLinkOpener()
   app.use(router);
   app.mount('#app');
   registerElementPlusOverlayBridge()

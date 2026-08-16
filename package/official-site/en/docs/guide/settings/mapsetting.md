@@ -34,6 +34,7 @@ Map service providers (such as Tianditu, Amap, Baidu) usually require developers
      - **Application Type**: **Must select "Browser Side"** (because TrailSnap loads the map directly on the browser frontend).
      - **IP Whitelist/Domain Whitelist**:
        - If you use it locally (`localhost`), you can fill in `*` (meaning no restriction).
+       - If you use TrailSnap Desktop, leave it unrestricted; the desktop WebView's internal origin is not suitable for a fixed domain whitelist.
        - If you deploy on the public network, it is recommended to fill in your domain name or IP address to improve security.
 
 5. **Get Key**
@@ -141,6 +142,7 @@ A:
 1. Please check if the API Key is copied correctly, be careful not to include spaces.
 2. Confirm if the **Application Type** selected when applying for the Key is correct (Tianditu must be **Browser Side**).
 3. If a whitelist is set, please confirm whether the current access address (such as `localhost` or `127.0.0.1`) is in the whitelist.
+4. For TrailSnap Desktop, remove the domain restriction and validate the Key again from Settings.
 
 **Q: What if the Tianditu quota is not enough?**
 A: The free quota for individual developers is usually sufficient for daily browsing needs of personal albums. If it really exceeds the limit, you can consider registering multiple accounts or upgrading to enterprise certification.

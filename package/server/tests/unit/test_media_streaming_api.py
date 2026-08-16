@@ -187,6 +187,24 @@ async def test_get_geojson_404_when_file_missing():
     assert "GeoJSON file" in exc_info.value.detail
 
 
+@pytest.mark.asyncio
+async def test_get_geojson_uses_bundle_root_instead_of_working_directory(tmp_path, monkeypatch):
+    bundle_root = tmp_path / "bundle"
+    geo_dir = bundle_root / "resources" / "geo_data"
+    geo_dir.mkdir(parents=True)
+    geo_file = geo_dir / "中国_省.geojson"
+    geo_file.write_text('{"type":"FeatureCollection","features":[]}', encoding="utf-8")
+
+    working_dir = tmp_path / "desktop-data"
+    working_dir.mkdir()
+    monkeypatch.chdir(working_dir)
+    monkeypatch.setattr(media_api, "BUNDLE_ROOT", str(bundle_root))
+
+    response = await media_api.get_geojson(level="province")
+
+    assert response.path == str(geo_file)
+
+
 # ---------------- get_thumbnail format=file ----------------
 
 
