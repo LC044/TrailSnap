@@ -54,7 +54,7 @@ def _download_asset(filename: str, expected_sha256: str, destination: Path) -> N
     partial.unlink(missing_ok=True)
     request = urllib.request.Request(
         f"{MODEL_BASE_URL}/{filename}",
-        headers={"User-Agent": "TrailSnap-Desktop-AI/0.10.0"},
+        headers={"User-Agent": "TrailSnap-Desktop-AI/0.10.1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=120) as response, partial.open("wb") as output:

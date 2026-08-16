@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-08-16 (0.10.1)
+
+### New
+
+- Completed the desktop AI extension's full service capabilities and added an AI model management page for on-demand model viewing and management; stabilized AI runtime startup and bundled face-recognition dependencies.
+- External links on desktop now open in the system browser; mailto and tel links are handed to system apps.
+
+### Improvements
+
+- Switched the Windows MSI installer language to Simplified Chinese.
+- Optimized app icon asset sizes for a smaller installer.
+- Improved the official-site download and deployment docs, added a one-click Docker install guide, and fixed download-page platform-asset matching.
+
+### Bug Fixes
+
+- Fixed Tianditu tile loading on desktop so the album location map and trajectory view render correctly.
+- Fixed map boundary and location data 404 after desktop packaging; map endpoints no longer fail when the working directory differs.
+
 ## 2026-08-15 (0.10.0)
 
 ### New

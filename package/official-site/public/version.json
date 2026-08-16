@@ -113,5 +113,10 @@
         "version": "0.10.0",
         "update_info": "- 新增跨平台桌面端，内置 SQLite，可独立运行并按需安装 AI 扩展<br>- 手机 App 登录页支持切换服务器并保存历史地址<br>- 移动端照片网格支持双指缩放调整密度，优化时间线与返回操作<br>- 外部图库新增文件夹选择器，地图 Key 与 AI 服务支持连通性验证<br>- 一键安装支持备份后保留配置升级或清空重装<br>- 修复桌面端兼容性、向量检索、相册管理和 Android 签名问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.10.0"
+    },
+    {
+        "version": "0.10.1",
+        "update_info": "- 完善桌面端 AI 服务与模型管理，新增模型管理页面<br>- 桌面端外链改为在系统浏览器中打开<br>- 修复桌面端天地图加载与打包后地图数据 404 问题<br>- Windows MSI 安装包改为简体中文，优化应用图标体积",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.10.1"
     }
 ]
