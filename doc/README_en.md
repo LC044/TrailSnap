@@ -24,7 +24,7 @@
       <img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/siyuan044/trailsnap-frontend?color=3eb370">
     </a>
 
-**English** | [中文](README_zh.md)
+**English** | [中文](../README.md)
 
 </div>
 

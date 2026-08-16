@@ -13,10 +13,10 @@ Skips pnpm install and uv sync. Use this for repeated local builds only.
 Opens the installer output directory after a successful build.
 
 .EXAMPLE
-pwsh .\build-windows-installer.ps1
+pwsh .\scripts\build-windows-installer.ps1
 
 .EXAMPLE
-pwsh .\build-windows-installer.ps1 -SkipInstall -OpenOutput
+pwsh .\scripts\build-windows-installer.ps1 -SkipInstall -OpenOutput
 #>
 [CmdletBinding()]
 param(
@@ -62,7 +62,7 @@ if ($unhealthyCommands) {
     throw "Build prerequisites were found but are not working:`n$($unhealthyCommands -join "`n")"
 }
 
-$repoRoot = $PSScriptRoot
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $buildScript = Join-Path $repoRoot 'package\desktop\scripts\build.ps1'
 $outputDir = Join-Path $repoRoot 'package\desktop\src-tauri\target\release\bundle\nsis'
 

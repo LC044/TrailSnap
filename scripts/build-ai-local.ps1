@@ -23,10 +23,10 @@ package\desktop\src-tauri\target\release\trailsnap-desktop.exe 即可用 AI。
 跳过 RapidOCR 资源预缓存（首次构建不要用，否则 OCR 模型不会打进包）。
 
 .EXAMPLE
-pwsh .\build-ai-local.ps1
+pwsh .\scripts\build-ai-local.ps1
 
 .EXAMPLE
-pwsh .\build-ai-local.ps1 -SkipInstall -SkipPrecache
+pwsh .\scripts\build-ai-local.ps1 -SkipInstall -SkipPrecache
 #>
 [CmdletBinding()]
 param(
@@ -50,7 +50,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 & uv --version *> $null
 if ($LASTEXITCODE -ne 0) { throw 'uv 不可用，请重装。' }
 
-$repoRoot = $PSScriptRoot
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $aiDir = Join-Path $repoRoot 'package\ai'
 $desktopDir = Join-Path $repoRoot 'package\desktop'
 $tauriConf = Join-Path $desktopDir 'src-tauri\tauri.conf.json'

@@ -10,7 +10,7 @@
 在仓库根目录执行：
 
 ```powershell
-pwsh .\build-windows-installer.ps1
+pwsh .\scripts\build-windows-installer.ps1
 ```
 
 构建脚本会检查必要工具，并依次完成依赖安装、Vue 构建、PyInstaller Server 打包、
@@ -18,7 +18,7 @@ Sidecar 暂存和 Tauri NSIS 打包。重复构建时可以用 `-SkipInstall` �
 用 `-OpenOutput` 在成功后打开产物目录：
 
 ```powershell
-pwsh .\build-windows-installer.ps1 -SkipInstall -OpenOutput
+pwsh .\scripts\build-windows-installer.ps1 -SkipInstall -OpenOutput
 ```
 
 Windows NSIS 安装包位于：

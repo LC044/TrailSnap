@@ -15,6 +15,7 @@ data/*
 tests/.env.test
 tests/.env.docker
 .claude/
+.agents/
 *test-local*
 .playwright-cli
 releases/
@@ -34,3 +35,6 @@ doc/plan/
 tests/.cache/
 tmp*
 .coverage
+
+# dev-services 运行时状态文件（scripts/dev-services-up.ps1 写入，勿提交）
+scripts/.dev-services.state.json
