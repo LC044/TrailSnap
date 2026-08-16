@@ -17,6 +17,7 @@ import { locationService } from '@/api/location'
 import { useRouter } from 'vue-router'
 import { useLocationStore } from '@/stores/locationStore'
 import { loadMapScript } from '@/utils/mapLoader'
+import { isNativeApp } from '@/config/server'
 import { storeToRefs } from 'pinia'
 import { ElMessageBox, ElMessage } from 'element-plus'
 
@@ -90,10 +91,11 @@ watch([() => props.startDate, () => props.endDate], async () => {
 const initMap = () => {
   if (map.value) return
   
-  const isProd = import.meta.env.PROD;
+  const useTileProxy = import.meta.env.PROD && !isNativeApp()
   
-  // 生产环境下使用 nginx 代理并缓存瓦片资源
-  if (isProd) {
+  // Web 生产部署通过 nginx 代理并缓存瓦片。Tauri/Capacitor 没有该代理，
+  // 必须让天地图 SDK 直接加载官方图层。
+  if (useTileProxy) {
     // 初始化地图时不添加默认图层
     map.value = new T.Map('tianditu-map', {
       layers: []
