@@ -32,9 +32,14 @@
           </div>
           <a
             :href="assetUrl(item.key)"
+            @click="onDownload(item.key, $event)"
             class="mt-6 inline-flex items-center justify-center rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white no-underline transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
           >
-            {{ copy.download }} {{ item.name }}
+            <span v-if="loadingPlatform === item.key" class="inline-flex items-center gap-2">
+              <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              {{ isEnglish ? 'Preparing…' : '准备中…' }}
+            </span>
+            <span v-else>{{ copy.download }} {{ item.name }}</span>
           </a>
         </article>
       </div>
@@ -42,6 +47,9 @@
       <div class="mt-5 rounded-xl border border-gray-200 bg-white px-5 py-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
         {{ copy.assetHint }}
         <a :href="releaseUrl" class="font-semibold text-blue-600 dark:text-blue-400">{{ copy.allAssets }}</a>
+      </div>
+      <div v-if="apiUnavailable" class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-300">
+        {{ isEnglish ? 'The latest release list could not be loaded (GitHub API is unreachable). The button now opens the GitHub Release page where you can pick the installer manually.' : '暂时无法获取最新安装包列表（GitHub API 无法访问）。点击下载按钮将跳转到 GitHub Release 页面，你可以在那里手动选择对应平台的安装包。' }}
       </div>
     </section>
 
@@ -90,11 +98,14 @@ const assets = ref<ReleaseAsset[]>([])
 const releaseName = ref('')
 const detectedPlatform = ref<PlatformKey | ''>('')
 const isEnglish = computed(() => lang.value.startsWith('en'))
+const loadingPlatform = ref<PlatformKey | ''>('')
+// 所有平台都尝试过且都拿不到直链时，提示用户走 Release 页手动下载
+const apiUnavailable = ref(false)
 
 const translations = {
   zh: {
     badge: '桌面安装包与自托管部署', title: '下载 TrailSnap', description: '桌面版适合个人电脑快速使用；Docker 版适合 NAS、家庭服务器和多设备访问。',
-    latest: '最新版本', recommended: '适合当前设备', download: '下载', assetHint: '你也可以查看', allAssets: '全部版本与文件',
+    latest: '最新版本', recommended: '适合当前设备', download: '下载', assetHint: '找不到匹配的安装包时，按钮会打开 GitHub Release 页面，你也可以直接查看', allAssets: '全部版本与文件',
     dockerTitle: '在 NAS 或服务器上部署', dockerDescription: '适合集中管理照片库，并通过局域网在手机和电脑上访问。', dockerGuide: '查看 Docker 部署指南', preflight: '部署前检查',
     aiTitle: 'AI 扩展按需安装', aiDescription: '桌面版的人脸识别、OCR、图片分类、语义检索和本地大模型能力由独立 AI 扩展提供。先安装基础客户端，再在设置中在线安装或离线导入与你的平台匹配的扩展包。', aiGuide: '查看 AI 扩展说明'
   },
@@ -141,17 +152,45 @@ function assetUrl(platform: PlatformKey) {
   return assets.value.find(asset => matchesPlatform(asset.name, platform))?.browser_download_url || releaseUrl
 }
 
-onMounted(async () => {
-  const userAgent = navigator.userAgent.toLowerCase()
-  detectedPlatform.value = userAgent.includes('windows') ? 'windows' : userAgent.includes('mac') ? 'macos' : userAgent.includes('linux') ? 'linux' : ''
+// 尝试从 GitHub API 拉取最新 Release 的资产列表；失败返回 false
+async function fetchAssets(): Promise<boolean> {
   try {
-    const response = await fetch('https://api.github.com/repos/LC044/TrailSnap/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
-    if (!response.ok) return
+    const response = await fetch('https://api.github.com/repos/LC044/TrailSnap/releases/latest', {
+      headers: { Accept: 'application/vnd.github+json' }
+    })
+    if (!response.ok) return false
     const release = await response.json()
     releaseName.value = release.name || release.tag_name || ''
     assets.value = Array.isArray(release.assets) ? release.assets : []
+    return assets.value.length > 0
   } catch {
-    // The release page remains a reliable fallback when GitHub API access is unavailable.
+    return false
   }
+}
+
+// 点击下载：优先用已加载的资产直链；若未加载则临时再拉一次，
+// 仍失败才 fallback 到 Release 页，避免「API 拉取失败就跳中间页」的鲁棒性问题。
+async function onDownload(platform: PlatformKey, event: MouseEvent) {
+  if (assets.value.length === 0) {
+    loadingPlatform.value = platform
+    const ok = await fetchAssets()
+    loadingPlatform.value = ''
+    if (!ok) {
+      apiUnavailable.value = true
+      return // 让 <a> 的默认行为跳转到 releaseUrl（兜底）
+    }
+  }
+  const url = assetUrl(platform)
+  if (url !== releaseUrl) {
+    event.preventDefault()
+    window.location.href = url
+  }
+}
+
+onMounted(async () => {
+  const userAgent = navigator.userAgent.toLowerCase()
+  detectedPlatform.value = userAgent.includes('windows') ? 'windows' : userAgent.includes('mac') ? 'macos' : userAgent.includes('linux') ? 'linux' : ''
+  await fetchAssets()
+  // 若首屏 API 失败，仍保留 releaseUrl 作为兜底，无需额外处理
 })
 </script>
