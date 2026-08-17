@@ -93,6 +93,39 @@ async def test_completed_event_keeps_task_payload_for_targeted_ui_refresh():
 
 
 @pytest.mark.asyncio
+async def test_paused_category_still_executes_interactive_task():
+    worker = task_worker.TaskWorker()
+    worker.paused_categories = {TaskType.OCR.value}
+    worker.result_queue = AsyncMock()
+
+    task = MagicMock()
+    task.id = "interactive-ocr"
+    task.type = TaskType.OCR.value
+    task.priority = task_worker.INTERACTIVE_TASK_PRIORITY
+    db = MagicMock()
+    strategy = MagicMock()
+    strategy.timeout = 30
+    strategy.process_batch = AsyncMock(return_value=[])
+
+    with (
+        patch.object(task_worker, "SessionLocal", return_value=db),
+        patch.object(task_worker.crud_task, "get_tasks_by_ids", return_value=[task]),
+        patch.object(task_worker.TaskStrategyFactory, "get_strategy", return_value=strategy),
+    ):
+        await worker.execute_batch_task_wrapper(
+            [{
+                "id": task.id,
+                "type": task.type,
+                "priority": task.priority,
+            }],
+            "AI",
+        )
+
+    strategy.process_batch.assert_awaited_once_with(worker, [task], db)
+    db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_process_batch_survives_unknown_dimensions():
     """get_image_dimensions 对损坏图 / 无 cv2 视频会返回 (None, None, None)，
     此时开启分辨率过滤不应让整批 PROCESS_BASIC 因 `None < int` 崩溃。"""

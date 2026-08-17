@@ -306,7 +306,7 @@ class TaskManager:
                         logging.debug(f'publish task.retry failed: {e}')
         return {"message": f"Retried {result} failed tasks", "count": result}
 
-    def add_task(self, db: Session, type: str, payload: dict, priority: int = 0, owner_id: UUID = None):
+    def add_task(self, db: Session, type: str, payload: dict, priority: Optional[int] = None, owner_id: UUID = None):
         # 防重复入队：SCAN_FOLDER 是幂等的全量扫描任务，若已有 PENDING/PROCESSING
         # 的同类任务，则直接复用，避免并发扫描导致同一文件被入库多次。。
         if type == TaskType.SCAN_FOLDER or type == TaskType.SCAN_FOLDER.value:

@@ -41,7 +41,12 @@
 
             <div @click.stop @mousedown.stop class="flex items-center">
                 <el-dropdown trigger="click" @command="handleCommand">
-                    <button class="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'bg-white/20 text-white': showOCR }">
+                    <button
+                        class="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                        :class="{ 'bg-white/20 text-white': showOCR }"
+                        aria-label="更多"
+                        title="更多"
+                    >
                         <MoreHorizontal class="w-6 h-6" />
                     </button>
                     <template #dropdown>
@@ -52,6 +57,55 @@
                                     <span>{{ showOCR ? '关闭识别' : '文字识别 (O)' }}</span>
                                 </div>
                             </el-dropdown-item>
+                            <div class="px-1" @click.stop>
+                                <el-popover
+                                    v-model:visible="processingMenuVisible"
+                                    placement="left-start"
+                                    trigger="click"
+                                    :width="220"
+                                    :disabled="!canProcessCurrentPhoto"
+                                >
+                                    <template #reference>
+                                        <button
+                                            type="button"
+                                            data-testid="photo-processing-menu"
+                                            class="w-full min-h-8 px-3 py-1.5 flex items-center gap-2 rounded text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                            :disabled="!canProcessCurrentPhoto"
+                                            title="为当前照片单独执行任务"
+                                        >
+                                            <WandSparkles class="w-4 h-4" />
+                                            <span class="flex-1 text-left">重新识别</span>
+                                            <ChevronLeft class="w-4 h-4" />
+                                        </button>
+                                    </template>
+
+                                    <div class="space-y-1" data-testid="photo-processing-operations">
+                                        <div class="px-2 pb-1 text-xs text-gray-500 dark:text-gray-400">选择要重新执行的任务</div>
+                                        <button
+                                            v-for="item in photoProcessingOperations"
+                                            :key="item.operation"
+                                            type="button"
+                                            class="w-full min-h-9 px-2 py-1.5 flex items-center gap-2 rounded text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-wait disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                            :disabled="isPhotoProcessingActive(item.operation)"
+                                            @click.stop="startPhotoProcessing(item.operation)"
+                                        >
+                                            <component :is="item.icon" class="w-4 h-4 shrink-0" />
+                                            <span class="flex-1 text-left">{{ item.label }}</span>
+                                            <LoaderCircle
+                                                v-if="isPhotoProcessingActive(item.operation)"
+                                                class="w-4 h-4 animate-spin text-primary-500"
+                                            />
+                                            <span
+                                                v-else-if="photoProcessingStatusLabel(item.operation)"
+                                                class="text-xs"
+                                                :class="photoProcessingStatusClass(item.operation)"
+                                            >
+                                                {{ photoProcessingStatusLabel(item.operation) }}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </el-popover>
+                            </div>
                             <el-dropdown-item v-if="allowAddToAlbum" command="addToAlbum">
                                 <div class="flex items-center gap-2">
                                     <ImagePlus class="w-4 h-4" />
@@ -383,6 +437,12 @@ import {
     FolderOutput,
     Pencil,
     MapPin,
+    WandSparkles,
+    ScanFace,
+    Tags,
+    Sparkles,
+    Binary,
+    LoaderCircle,
 } from 'lucide-vue-next'
 // xgplayer 体积大（~数百 KB），且只在查看视频时需要，故改为按需动态导入；
 // 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
@@ -390,6 +450,7 @@ import type Player from 'xgplayer'
 import { albumService } from '@/api/album'
 import { ocrApi, type OCRRecord } from '@/api/ocr'
 import { faceApi } from '@/api/face'
+import { tasksApi, type PhotoProcessingOperation } from '@/api/tasks'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo } from '@/types/album'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import PhotoMetadataSidebar from './PhotoMetadataSidebar.vue'
@@ -582,6 +643,54 @@ const ocrRecords = ref<OCRRecord[]>([])
 const highlightedOCR = ref<OCRRecord | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
 
+interface PhotoProcessingTracker {
+    taskId: string
+    photoId: string
+    operation: PhotoProcessingOperation
+    status: string
+}
+
+const processingMenuVisible = ref(false)
+const photoProcessingTrackers = ref<Record<string, PhotoProcessingTracker>>({})
+let photoProcessingPollTimer: ReturnType<typeof setInterval> | null = null
+
+const photoProcessingOperations = [
+    { operation: 'VISUAL_DESCRIPTION' as const, label: 'AI 智能分析', icon: Sparkles },
+    { operation: 'RECOGNIZE_FACE' as const, label: '人脸识别', icon: ScanFace },
+    { operation: 'OCR' as const, label: '文字识别 OCR', icon: ScanText },
+    { operation: 'CLASSIFY_IMAGE' as const, label: '场景分类', icon: Tags },
+    { operation: 'IMAGE_EMBEDDING' as const, label: '生成搜索特征', icon: Binary },
+]
+
+const canProcessCurrentPhoto = computed(() =>
+    !!props.image && props.image.file_type !== 'video'
+)
+
+const processingTrackerKey = (photoId: string, operation: PhotoProcessingOperation) =>
+    `${photoId}:${operation}`
+
+const currentPhotoProcessingTracker = (operation: PhotoProcessingOperation) => {
+    if (!props.image) return undefined
+    return photoProcessingTrackers.value[processingTrackerKey(props.image.id, operation)]
+}
+
+const isPhotoProcessingActive = (operation: PhotoProcessingOperation) => {
+    const status = currentPhotoProcessingTracker(operation)?.status
+    return status === 'submitting' || status === 'pending' || status === 'processing'
+}
+
+const photoProcessingStatusLabel = (operation: PhotoProcessingOperation) => {
+    const status = currentPhotoProcessingTracker(operation)?.status
+    if (status === 'completed') return '已完成'
+    if (status === 'failed') return '失败'
+    return ''
+}
+
+const photoProcessingStatusClass = (operation: PhotoProcessingOperation) =>
+    currentPhotoProcessingTracker(operation)?.status === 'failed'
+        ? 'text-red-500 dark:text-red-400'
+        : 'text-green-600 dark:text-green-400'
+
 // Zoom & Pan State
 const scale = ref(1)
 const translateX = ref(0)
@@ -689,6 +798,10 @@ onUnmounted(() => {
         shortcutHintTimer = null
     }
     if (suppressTapTimer) clearTimeout(suppressTapTimer)
+    if (photoProcessingPollTimer) {
+        clearInterval(photoProcessingPollTimer)
+        photoProcessingPollTimer = null
+    }
 })
 
 const isDragging = ref(false)
@@ -705,6 +818,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     videoStyle.value = {}
     isDragging.value = false // Ensure dragging is reset
     controlsVisible.value = true
+    processingMenuVisible.value = false
 
     // 2. Handle Resource Cleanup & Initialization
     if (oldImg?.file_type === 'video') {
@@ -838,6 +952,121 @@ const handleCommand = (command: string) => {
         if (props.image) {
             fetchDescription(props.image.id)
         }
+    }
+}
+
+const photoProcessingOperationLabel = (operation: PhotoProcessingOperation) =>
+    photoProcessingOperations.find(item => item.operation === operation)?.label ?? operation
+
+const refreshPhotoProcessingResult = async (tracker: PhotoProcessingTracker) => {
+    if (props.image?.id !== tracker.photoId) return
+
+    if (tracker.operation === 'OCR') {
+        showSidebar.value = false
+        showOCR.value = true
+        await fetchOCR(tracker.photoId)
+    } else if (tracker.operation === 'VISUAL_DESCRIPTION') {
+        await fetchDescription(tracker.photoId)
+    } else if (tracker.operation === 'RECOGNIZE_FACE' || tracker.operation === 'CLASSIFY_IMAGE') {
+        await fetchMetadata(tracker.photoId)
+        emit('update', {
+            photoId: tracker.photoId,
+            taskType: tracker.operation,
+        })
+    }
+}
+
+let photoProcessingPollRunning = false
+
+const pollPhotoProcessingTasks = async () => {
+    if (photoProcessingPollRunning) return
+    const activeTrackers = Object.values(photoProcessingTrackers.value).filter(
+        tracker => tracker.taskId && (tracker.status === 'pending' || tracker.status === 'processing'),
+    )
+    if (!activeTrackers.length) {
+        if (photoProcessingPollTimer) {
+            clearInterval(photoProcessingPollTimer)
+            photoProcessingPollTimer = null
+        }
+        return
+    }
+
+    photoProcessingPollRunning = true
+    try {
+        await Promise.all(activeTrackers.map(async (tracker) => {
+            try {
+                const task = await tasksApi.getTask(tracker.taskId)
+                const status = String(task.status || '').toLowerCase()
+                const key = processingTrackerKey(tracker.photoId, tracker.operation)
+                const latest = photoProcessingTrackers.value[key]
+                if (!latest || latest.taskId !== tracker.taskId) return
+
+                photoProcessingTrackers.value[key] = { ...latest, status }
+                if (status === 'completed') {
+                    await refreshPhotoProcessingResult(photoProcessingTrackers.value[key])
+                    ElMessage.success(`${photoProcessingOperationLabel(tracker.operation)}完成`)
+                } else if (status === 'failed') {
+                    ElMessage.error(`${photoProcessingOperationLabel(tracker.operation)}失败${task.error ? `：${task.error}` : ''}`)
+                }
+            } catch (error) {
+                // The live notification stream remains the primary global
+                // status channel. A transient polling error is retried so a
+                // short network interruption does not turn the task into a
+                // false failure in the lightbox.
+                console.debug('Polling photo processing task failed', error)
+            }
+        }))
+    } finally {
+        photoProcessingPollRunning = false
+    }
+}
+
+const ensurePhotoProcessingPolling = () => {
+    if (!photoProcessingPollTimer) {
+        photoProcessingPollTimer = setInterval(() => {
+            void pollPhotoProcessingTasks()
+        }, 1500)
+    }
+    void pollPhotoProcessingTasks()
+}
+
+const startPhotoProcessing = async (operation: PhotoProcessingOperation) => {
+    const photo = props.image
+    if (!photo || photo.file_type === 'video') return
+
+    const key = processingTrackerKey(photo.id, operation)
+    if (isPhotoProcessingActive(operation)) {
+        ElMessage.info('该任务已经在处理中')
+        return
+    }
+
+    photoProcessingTrackers.value[key] = {
+        taskId: '',
+        photoId: photo.id,
+        operation,
+        status: 'submitting',
+    }
+    processingMenuVisible.value = false
+
+    try {
+        const result = await tasksApi.createPhotoProcessingTask(photo.id, operation, true)
+        photoProcessingTrackers.value[key] = {
+            taskId: result.task.id,
+            photoId: photo.id,
+            operation,
+            status: String(result.task.status || 'pending').toLowerCase(),
+        }
+        ElMessage.success(result.reused ? '该任务已在队列中' : '已加入优先处理队列')
+        ensurePhotoProcessingPolling()
+    } catch (error) {
+        console.error('Failed to create photo processing task', error)
+        photoProcessingTrackers.value[key] = {
+            taskId: '',
+            photoId: photo.id,
+            operation,
+            status: 'failed',
+        }
+        ElMessage.error('创建处理任务失败')
     }
 }
 

@@ -77,6 +77,26 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect(page).toHaveURL(photosUrl)
   })
 
+  test('更多菜单可展开当前照片的单项处理任务', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 20)
+    if (!probe.ok) return
+
+    await openFirstPhoto(page)
+    await page.getByTestId('photo-lightbox-toolbar').getByRole('button', { name: '更多' }).click()
+
+    const processingMenu = page.getByTestId('photo-processing-menu')
+    await expect(processingMenu).toBeVisible()
+    await processingMenu.click()
+
+    const operations = page.getByTestId('photo-processing-operations')
+    await expect(operations).toBeVisible()
+    await expect(operations.getByRole('button', { name: 'AI 智能分析' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '人脸识别' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '文字识别 OCR' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '场景分类' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '生成搜索特征' })).toBeVisible()
+  })
+
   test('更多导航可显式关闭且长内容限制在视口内滚动', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: '更多' }).click()

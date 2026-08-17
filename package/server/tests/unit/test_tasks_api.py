@@ -13,10 +13,14 @@ The SSE endpoint is intentionally not covered here; it relies on
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 
 from app.api import tasks as tasks_api
+from app.db.models.photo import FileType
+from app.db.models.task import TaskStatus, TaskType
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
@@ -156,3 +160,116 @@ def test_resume_category_delegates_to_task_manager():
     get_inst.assert_called_once_with()
     fake_manager.resume_category.assert_called_once_with("FACE")
     success.assert_called_once_with(data={"status": "success"})
+
+
+# ----------------------- POST /photo-processing -----------------------
+
+
+def _query_returning(first=None, all_rows=None):
+    query = MagicMock()
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.first.return_value = first
+    query.all.return_value = [] if all_rows is None else all_rows
+    return query
+
+
+def test_create_photo_processing_task_queues_owned_photo_at_interactive_priority():
+    user_id = uuid4()
+    photo_id = uuid4()
+    photo = SimpleNamespace(
+        id=photo_id,
+        owner_id=user_id,
+        file_type=FileType.image,
+        file_path="/photos/example.jpg",
+    )
+    db = MagicMock()
+    db.query.side_effect = [_query_returning(first=photo), _query_returning(all_rows=[])]
+    current_user = SimpleNamespace(id=user_id)
+    created_task = SimpleNamespace(id=uuid4(), status=TaskStatus.PENDING)
+    manager = MagicMock()
+    manager.add_task.return_value = created_task
+
+    with (
+        patch("app.api.tasks.TaskManager.get_instance", return_value=manager),
+        patch("app.api.tasks.BaseResponse.success") as success,
+    ):
+        tasks_api.create_photo_processing_task(
+            tasks_api.PhotoProcessingCreate(
+                photo_id=photo_id,
+                operation=TaskType.OCR,
+                force=True,
+            ),
+            db=db,
+            current_user=current_user,
+        )
+
+    manager.add_task.assert_called_once()
+    args, kwargs = manager.add_task.call_args
+    assert args[0] is db
+    assert args[1] == TaskType.OCR
+    assert args[2]["photo_id"] == str(photo_id)
+    assert args[2]["force"] is True
+    assert args[2]["source"] == "lightbox"
+    assert kwargs["priority"] == tasks_api.INTERACTIVE_TASK_PRIORITY
+    assert kwargs["owner_id"] == user_id
+    success.assert_called_once_with(data={"task": created_task, "reused": False})
+
+
+def test_create_photo_processing_task_reuses_matching_active_task():
+    user_id = uuid4()
+    photo_id = uuid4()
+    photo = SimpleNamespace(
+        id=photo_id,
+        owner_id=user_id,
+        file_type=FileType.image,
+        file_path="/photos/example.jpg",
+    )
+    active_task = SimpleNamespace(
+        id=uuid4(),
+        status=TaskStatus.PROCESSING,
+        payload={"photo_id": str(photo_id)},
+    )
+    db = MagicMock()
+    db.query.side_effect = [
+        _query_returning(first=photo),
+        _query_returning(all_rows=[active_task]),
+    ]
+
+    with (
+        patch("app.api.tasks.TaskManager.get_instance") as get_manager,
+        patch("app.api.tasks.BaseResponse.success") as success,
+    ):
+        tasks_api.create_photo_processing_task(
+            tasks_api.PhotoProcessingCreate(photo_id=photo_id, operation=TaskType.RECOGNIZE_FACE),
+            db=db,
+            current_user=SimpleNamespace(id=user_id),
+        )
+
+    get_manager.assert_not_called()
+    success.assert_called_once_with(data={"task": active_task, "reused": True})
+
+
+def test_create_photo_processing_task_rejects_missing_or_foreign_photo():
+    db = MagicMock()
+    db.query.return_value = _query_returning(first=None)
+
+    with pytest.raises(HTTPException) as exc:
+        tasks_api.create_photo_processing_task(
+            tasks_api.PhotoProcessingCreate(photo_id=uuid4(), operation=TaskType.OCR),
+            db=db,
+            current_user=SimpleNamespace(id=uuid4()),
+        )
+
+    assert exc.value.status_code == 404
+
+
+def test_create_photo_processing_task_rejects_non_ai_operation():
+    with pytest.raises(HTTPException) as exc:
+        tasks_api.create_photo_processing_task(
+            tasks_api.PhotoProcessingCreate(photo_id=uuid4(), operation=TaskType.EXTRACT_METADATA),
+            db=MagicMock(),
+            current_user=SimpleNamespace(id=uuid4()),
+        )
+
+    assert exc.value.status_code == 400

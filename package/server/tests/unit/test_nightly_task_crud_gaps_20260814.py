@@ -117,6 +117,17 @@ def test_count_dispatchable_tasks_paused_types_filters_out():
     assert crud_task.count_dispatchable_tasks(db, paused_types={"PROCESS_BASIC"}) == 2
 
 
+def test_count_dispatchable_tasks_keeps_interactive_work_dispatchable_when_paused():
+    from app.crud import task as crud_task
+    db = MagicMock()
+    chain = db.query.return_value
+    chain.filter.return_value = chain
+    chain.count.return_value = 1
+
+    assert crud_task.count_dispatchable_tasks(db, paused_types={"OCR"}) == 1
+    assert chain.filter.call_count == 2
+
+
 def test_get_grouped_status_returns_categories_sorted_by_priority_desc():
     from app.crud import task as crud_task
     from app.db.models.task import TaskType
@@ -168,6 +179,20 @@ def test_add_task_uses_default_priority_for_type():
     assert created.type == TaskType.RECOGNIZE_FACE
     assert created.priority == DEFAULT_PRIORITIES[TaskType.RECOGNIZE_FACE]
     assert out is created or out is db.refresh.return_value
+
+
+def test_add_task_honors_explicit_priority_override():
+    from app.crud import task as crud_task
+    from app.db.models.task import TaskType
+    db = MagicMock()
+    created = crud_task.add_task(
+        db,
+        type=TaskType.OCR,
+        payload={"photo_id": "photo-1"},
+        priority=10_000,
+        owner_id=uuid4(),
+    )
+    assert created.priority == 10_000
 
 
 def test_add_tasks_empty_input_does_nothing():

@@ -1,10 +1,11 @@
 from typing import List, Dict, Optional, Any
 from uuid import UUID
 from datetime import datetime
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models.task import Task, TaskStatus, TaskType, DEFAULT_PRIORITIES, CATEGORY_DESCRIPTION_MAP, \
-    CATEGORY_NAME_MAP
+    CATEGORY_NAME_MAP, INTERACTIVE_TASK_PRIORITY
 
 DEFAULT_SCAN_STATUS = {
     'running': False,
@@ -52,15 +53,20 @@ def count_tasks_by_status(db: Session, status: str) -> int:
     return db.query(Task).filter(Task.status == status).count()
 
 def count_dispatchable_tasks(db: Session, paused_types: set = None) -> int:
-    """Count PENDING + PROCESSING tasks whose type is NOT in ``paused_types``.
+    """Count unfinished tasks that the worker is allowed to dispatch.
 
     Used by the worker watchdog to decide whether to restart a dead worker:
     if the only unfinished work belongs to paused categories, the worker's
-    idle-exit was intentional and should not be overridden.
+    idle-exit was intentional and should not be overridden. Interactive tasks
+    are still dispatchable because category pause only controls the automatic
+    processing pipeline.
     """
     q = db.query(Task).filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
     if paused_types:
-        q = q.filter(Task.type.notin_(list(paused_types)))
+        q = q.filter(or_(
+            Task.type.notin_(list(paused_types)),
+            Task.priority >= INTERACTIVE_TASK_PRIORITY,
+        ))
     return q.count()
 
 def get_tasks_by_status(db: Session, status: str) -> List[Task]:
@@ -134,8 +140,12 @@ def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, An
     stats.sort(key=lambda x: x['priority'], reverse=True)
     return stats
 
-def add_task(db: Session, type: str, payload: dict, priority: int = 0, owner_id: Optional[UUID] = None) -> Task:
-    priority = DEFAULT_PRIORITIES.get(type, 0)
+def add_task(db: Session, type: str, payload: dict, priority: Optional[int] = None, owner_id: Optional[UUID] = None) -> Task:
+    # Callers may override the type's default priority for genuinely urgent
+    # work (for example an action explicitly started from the photo viewer).
+    # ``None`` keeps the historical default-priority behaviour.
+    if priority is None:
+        priority = DEFAULT_PRIORITIES.get(type, 0)
     task = Task(type=type, payload=payload, priority=priority, status=TaskStatus.PENDING, owner_id=owner_id)
     db.add(task)
     db.commit()

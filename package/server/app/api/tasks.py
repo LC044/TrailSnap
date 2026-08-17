@@ -7,7 +7,8 @@ from sse_starlette.sse import EventSourceResponse
 from app.api.deps import get_current_user, resolve_user_from_token
 from app.db.models import User
 from app.dependencies import get_db, BaseResponse
-from app.db.models.task import Task, TaskStatus, TaskType
+from app.db.models.task import Task, TaskStatus, TaskType, INTERACTIVE_TASK_PRIORITY
+from app.db.models.photo import Photo, FileType
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
@@ -38,6 +39,27 @@ class TaskCreate(BaseModel):
     """创建任务请求体"""
     type: str
     payload: Optional[Dict[str, Any]] = {}
+
+
+PHOTO_PROCESSING_TYPES = {
+    TaskType.VISUAL_DESCRIPTION,
+    TaskType.RECOGNIZE_FACE,
+    TaskType.OCR,
+    TaskType.CLASSIFY_IMAGE,
+    TaskType.IMAGE_EMBEDDING,
+}
+
+
+class PhotoProcessingCreate(BaseModel):
+    """Create or reuse one interactive processing task for one photo."""
+    photo_id: UUID
+    operation: TaskType
+    force: bool = True
+
+
+class PhotoProcessingResponse(BaseModel):
+    task: TaskSchema
+    reused: bool = False
 
 
 @router.get("/types", response_model=BaseResponse[List[Dict[str, str]]], summary="获取支持的任务类型")
@@ -194,6 +216,63 @@ def list_recent_tasks(
     this to catch up on missed events after a reconnect."""
     tasks = crud_task.list_tasks(db, status=None, type=None, limit=limit, updated_since=since)
     return BaseResponse.success(data=[_serialize_task(t) for t in tasks])
+
+
+@router.post(
+    "/photo-processing",
+    response_model=BaseResponse[PhotoProcessingResponse],
+    summary="为单张照片创建交互式处理任务",
+)
+def create_photo_processing_task(
+    task_in: PhotoProcessingCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Queue one user-triggered AI operation for a photo.
+
+    Completed task rows are intentionally short-lived in this project, so this
+    endpoint only deduplicates active PENDING/PROCESSING rows. The completion
+    SSE event retains this payload before the row is deleted.
+    """
+    if task_in.operation not in PHOTO_PROCESSING_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported photo operation: {task_in.operation.value}")
+
+    photo = db.query(Photo).filter(
+        Photo.id == task_in.photo_id,
+        Photo.owner_id == current_user.id,
+        Photo.is_deleted.is_(False),
+    ).first()
+    if not photo:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    if photo.file_type == FileType.video:
+        raise HTTPException(status_code=400, detail="Video files do not support this operation")
+
+    active_tasks = db.query(Task).filter(
+        Task.owner_id == current_user.id,
+        Task.type == task_in.operation,
+        Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+    ).order_by(Task.priority.desc(), Task.created_at.asc()).all()
+    for active_task in active_tasks:
+        payload = active_task.payload or {}
+        if str(payload.get("photo_id")) == str(photo.id):
+            return BaseResponse.success(data={"task": active_task, "reused": True})
+
+    payload = {
+        "photo_id": str(photo.id),
+        "file_path": photo.file_path,
+        "force": task_in.force,
+        "source": "lightbox",
+        "priority_class": "interactive",
+        "user_id": str(current_user.id),
+    }
+    task = TaskManager.get_instance().add_task(
+        db,
+        task_in.operation,
+        payload,
+        priority=INTERACTIVE_TASK_PRIORITY,
+        owner_id=current_user.id,
+    )
+    return BaseResponse.success(data={"task": task, "reused": False})
 
 
 @router.get("/{task_id}", response_model=BaseResponse[TaskSchema], summary="根据 ID 获取任务详情")

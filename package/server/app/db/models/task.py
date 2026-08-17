@@ -33,6 +33,10 @@ class TaskType(str, enum.Enum):
     BATCH_TIME_FROM_FILENAME = "BATCH_TIME_FROM_FILENAME"
     EXTRACT_EMOTION = "EXTRACT_EMOTION"
 
+# Tasks started explicitly by a user are allowed to run even when the same
+# category is paused for the automatic photo-processing pipeline.
+INTERACTIVE_TASK_PRIORITY = 10_000
+
 DEFAULT_PRIORITIES = {
     TaskType.SCAN_ALBUM: 100,
     TaskType.SCAN_FOLDER: 100,

@@ -16,6 +16,18 @@ export interface Task {
   owner_id?: string | null
 }
 
+export type PhotoProcessingOperation =
+  | 'VISUAL_DESCRIPTION'
+  | 'RECOGNIZE_FACE'
+  | 'OCR'
+  | 'CLASSIFY_IMAGE'
+  | 'IMAGE_EMBEDDING'
+
+export interface PhotoProcessingResponse {
+  task: Task
+  reused: boolean
+}
+
 /**
  * Build the URL for the task-event SSE stream. EventSource cannot set
  * headers, so we pass the JWT as a query param. The backend accepts both
@@ -42,6 +54,19 @@ export const tasksApi = {
 
   async createTask(type: string, payload: any = {}) {
     const data = await request.post<Task>('/api/tasks/', { type, payload })
+    return data.data
+  },
+
+  async createPhotoProcessingTask(
+    photoId: string,
+    operation: PhotoProcessingOperation,
+    force = true,
+  ) {
+    const data = await request.post<PhotoProcessingResponse>('/api/tasks/photo-processing', {
+      photo_id: photoId,
+      operation,
+      force,
+    })
     return data.data
   },
 

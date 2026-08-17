@@ -7,10 +7,17 @@ from re import S
 from typing import List, Dict, Set, Any, Tuple
 from uuid import UUID
 from datetime import datetime
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.session import SessionLocal
-from app.db.models.task import Task, TaskType, TaskStatus, DEFAULT_PRIORITIES
+from app.db.models.task import (
+    Task,
+    TaskType,
+    TaskStatus,
+    DEFAULT_PRIORITIES,
+    INTERACTIVE_TASK_PRIORITY,
+)
 from app.db.models.system import SystemState
 from app.core.system_config import system_config
 from app.crud.task import DEFAULT_SCAN_STATUS
@@ -356,36 +363,57 @@ class TaskWorker:
             chunked_batches = []
             for cat in ['CPU', 'IO', 'AI']:
                 cat_types = [t for t in allowed_types if TaskStrategyFactory.get_strategy(t) and TaskStrategyFactory.get_strategy(t).task_category == cat]
+                # A category pause disables automatic pipeline work, not an
+                # operation the user explicitly started from the lightbox.
+                # Include paused types as candidates here; the SQL eligibility
+                # filter below admits only their interactive-priority rows.
+                cat_types.extend([
+                    t for t in TaskType
+                    if t.value in self.paused_categories
+                    and TaskStrategyFactory.get_strategy(t)
+                    and TaskStrategyFactory.get_strategy(t).task_category == cat
+                ])
                 if not cat_types:
                     continue
 
                 qsize = current_qsizes.get(cat, 0)
-                if qsize < QUEUE_THRESHOLD:
-                    # 队列未满，该 category 的所有类型都可作为候选
-                    candidate_types = cat_types
-                else:
-                    # 队列已满，只允许优先级高于队列中最低优先级的类型插队
-                    lowest_prio = lowest_priorities.get(cat, -9999)
-                    candidate_types = [t for t in cat_types if DEFAULT_PRIORITIES.get(t, 1) > lowest_prio]
+                candidate_types = cat_types
 
                 if not candidate_types:
                     continue
 
                 # 选出候选类型中优先级最高、且尚有 PENDING 任务的那一种
-                top = (db.query(Task.type)
+                top = (db.query(Task.type, Task.priority)
                          .filter(Task.status == TaskStatus.PENDING)
                          .filter(Task.type.in_(candidate_types))
+                         .filter(or_(
+                             Task.type.notin_(list(self.paused_categories)),
+                             Task.priority >= INTERACTIVE_TASK_PRIORITY,
+                         ))
                          .order_by(Task.priority.desc(), Task.created_at.asc())
                          .first())
                 if not top:
                     continue
                 chosen_type = top[0]
+                top_priority = top[1]
+
+                # A full in-memory queue may still accept a genuinely higher
+                # priority batch. This is what lets an interactive single-photo
+                # action jump ahead of prefetched background work.
+                if qsize >= QUEUE_THRESHOLD:
+                    lowest_prio = lowest_priorities.get(cat, -9999)
+                    if top_priority <= lowest_prio:
+                        continue
 
                 # 只取这一种类型的任务，按创建时间顺序最多取 FETCH_BATCH_SIZE 条
                 tasks = (db.query(Task)
                            .filter(Task.status == TaskStatus.PENDING)
                            .filter(Task.type == chosen_type)
-                           .order_by(Task.created_at.asc())
+                           .filter(or_(
+                               Task.type.notin_(list(self.paused_categories)),
+                               Task.priority >= INTERACTIVE_TASK_PRIORITY,
+                           ))
+                           .order_by(Task.priority.desc(), Task.created_at.asc())
                            .limit(FETCH_BATCH_SIZE)
                            .all())
                 if not tasks:
@@ -428,10 +456,19 @@ class TaskWorker:
                     })
 
                 # 拆分成更小的批次放入对应 category 的队列
-                chunk_size = get_chunk_size(chosen_type)
                 for actual_cat, task_list in tasks_by_cat.items():
-                    for i in range(0, len(task_list), chunk_size):
-                        chunk = task_list[i:i + chunk_size]
+                    # Keep interactive work in one-item batches. Besides giving
+                    # the viewer a prompt response, this prevents seven older
+                    # background photos of the same type from hitching a ride in
+                    # the high-priority batch.
+                    interactive = [t for t in task_list if t['priority'] >= INTERACTIVE_TASK_PRIORITY]
+                    background = [t for t in task_list if t['priority'] < INTERACTIVE_TASK_PRIORITY]
+                    for task_info in interactive:
+                        chunked_batches.append((actual_cat, [task_info]))
+
+                    chunk_size = get_chunk_size(chosen_type)
+                    for i in range(0, len(background), chunk_size):
+                        chunk = background[i:i + chunk_size]
                         chunked_batches.append((actual_cat, chunk))
             return chunked_batches
         except Exception as e:
@@ -511,7 +548,10 @@ class TaskWorker:
             tasks = crud_task.get_tasks_by_ids(db, task_ids)
             if not tasks:
                 return
-            if task_type in self.paused_categories:
+            if (
+                task_type in self.paused_categories
+                and not all(t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks)
+            ):
                 for t in tasks:
                     t.status = TaskStatus.PENDING
                 db.commit()
@@ -575,9 +615,6 @@ class TaskWorker:
                         self._save_system_state('scan_status', self.scan_status)
 
                 allowed_types = self._calculate_allowed_task_types()
-                if not allowed_types:
-                    await asyncio.sleep(0.1)
-                    continue
 
                 current_qsizes = {
                     'CPU': self.queue_manager.qsize('CPU'),
@@ -595,8 +632,7 @@ class TaskWorker:
 
                 for cat, chunk in chunked_batches:
                     if chunk:
-                        task_type = chunk[0]['type']
-                        priority = DEFAULT_PRIORITIES.get(task_type, 1)
+                        priority = max(task['priority'] for task in chunk)
                         await self.queue_manager.put_batch(cat, chunk, priority=priority)
                         dispatched_count += len(chunk)
 
@@ -804,7 +840,7 @@ class TaskWorker:
         finally:
             db.close()
 
-    def add_task(self, db: Session, type: str, payload: dict, priority: int = 0, owner_id: UUID = None):
+    def add_task(self, db: Session, type: str, payload: dict, priority: int = None, owner_id: UUID = None):
         return crud_task.add_task(db, type, payload, priority, owner_id)
 
     def add_tasks(self, db: Session, tasks_data: List[Dict], owner_id: UUID = None):
