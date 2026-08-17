@@ -27,10 +27,13 @@ from app.schemas import photo as photo_schemas
 from app.utils import motion_photo
 from app.utils.color import extract_color_info
 
-def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str):
+def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str, image_config=None):
     """
     CPU-intensive task running in a separate process.
     Generates thumbnails and extracts BASIC metadata (no heavy geolocation).
+
+    image_config: 预取的 ImageSettings，用于 _save_thumbnails 时避免再开 DB
+    session（原实现会为批中每张图 SessionLocal() 一次，撑爆连接池）。
     """
     try:
         # Initialize storage root cache in this process
@@ -45,8 +48,8 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
              except Exception:
                  pass
 
-        # 1. Generate thumbnail
-        thumb_path = storage.generate_thumbnail(user_id, file_path, file_id, image_obj=image_obj)
+        # 1. Generate thumbnail（透传 image_config，避免 hot path 上开 DB session）
+        thumb_path = storage.generate_thumbnail(user_id, file_path, file_id, image_obj=image_obj, config=image_config)
 
         # 2. Extract metadata (BASIC ONLY)
         file_name = os.path.basename(file_path)
@@ -78,8 +81,10 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
         md5_hash = calculate_file_md5(file_path)
 
         # Check for Google Motion Photo and extract video
+        # 注意：generate_thumbnail 失败会返回 None，此时不能拿 thumb_path 拼 .mp4 路径
+        # （os.path.splitext(None) 会抛 "expected str, bytes or os.PathLike"）。
         is_motion_photo = False
-        if ext in ('.jpg', '.jpeg'):
+        if ext in ('.jpg', '.jpeg') and thumb_path:
             video_path = motion_photo.extract_video(file_path, video_path=os.path.splitext(thumb_path)[0] + '.mp4')
             if video_path:
                 is_motion_photo = True
@@ -99,6 +104,10 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             "color_info": color_info
         }
     except Exception as e:
+        import traceback
+        logging.getLogger(__name__).error(
+            f"process_basic_cpu_job failed for {file_path}: {e}\n{traceback.format_exc()}"
+        )
         return {
             "success": False,
             "error": str(e)
@@ -115,8 +124,9 @@ def process_basic_cpu_batch_job(tasks_data: List[Dict]) -> List[Dict]:
         file_id = data['file_id']
         storage_root = data['storage_root']
         user_id = data['user_id']
-        
-        res = process_basic_cpu_job(file_path, file_id, storage_root, user_id)
+        image_config = data.get('image_config')
+
+        res = process_basic_cpu_job(file_path, file_id, storage_root, user_id, image_config=image_config)
         res['task_id'] = data['task_id']
         results.append(res)
     return results
@@ -135,7 +145,11 @@ class BasicTaskStrategy(BaseTaskStrategy):
 
         results = []
         batch_jobs_data = []
-        
+        # 按 user_id 预取一次 image_config，避免 _save_thumbnails 在 CPU worker 中
+        # 为批内每张图各开一次 SessionLocal 拉 DB（config_manager 内部有 5s LRU
+        # 缓存，同一 user_id 实际只查一次 DB）。
+        image_config_cache: Dict[str, Any] = {}
+
         for task in tasks:
             file_path = task.payload.get('file_path')
             live_photo_video_path = task.payload.get('live_photo_video_path')
@@ -178,7 +192,17 @@ class BasicTaskStrategy(BaseTaskStrategy):
 
             photo_id = pre_created_photo_id if pre_created_photo_id else uuid4()
             storage_root = storage._get_storage_root(user_id, db)
-            
+
+            # 每个 user_id 预取一次 image_config（本批复用），跨线程传纯 pydantic 对象安全
+            if user_id not in image_config_cache:
+                try:
+                    image_config_cache[user_id] = config_manager.get_user_config(user_id, db).image
+                except Exception as e:
+                    logging.getLogger(__name__).warning(
+                        f"BasicTaskStrategy: prefetch image_config failed for user={user_id}: {e}"
+                    )
+                    image_config_cache[user_id] = None
+
             batch_jobs_data.append({
                 'task_id': task.id,
                 'task_type': task.type,
@@ -189,6 +213,7 @@ class BasicTaskStrategy(BaseTaskStrategy):
                 'live_photo_video_path': live_photo_video_path,
                 'is_live_photo': is_live_photo,
                 'is_pre_created': pre_created_photo_id is not None,
+                'image_config': image_config_cache.get(user_id),
             })
             
         if not batch_jobs_data:

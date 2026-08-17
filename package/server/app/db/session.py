@@ -17,10 +17,18 @@ if not DATABASE_URL:
 IS_SQLITE = DATABASE_URL.startswith("sqlite:")
 
 if IS_SQLITE:
+    # 显式放大连接池，避免 SQLAlchemy 默认（pool_size=5, max_overflow=10）
+    # 在 PROCESS_BASIC 等批量 CPU 任务并发时被打爆，导致 QueuePool 超时并连锁
+    # 拖垮 generate_thumbnail → NoneType 崩溃。SQLite 启用 WAL + busy_timeout
+    # 后可稳定承受数十个并发连接。
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False, "timeout": 30},
         pool_pre_ping=True,
+        pool_size=20,
+        max_overflow=40,
+        pool_timeout=30,
+        pool_recycle=1800,
     )
 
     @event.listens_for(engine, "connect")
