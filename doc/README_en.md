@@ -244,7 +244,7 @@ For more detailed technical documentation, please refer to the `doc/` directory 
 
 ## 🌟 Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=LC044/TrailSnap&type=Date)](https://star-history.com/?utm_source=bestxtools.com#LC044/TrailSnap&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=LC044/TrailSnap&type=Date)](https://star-history.dera.page/#LC044/TrailSnap&Date)
 
 ## 🤝 Contributors
 
