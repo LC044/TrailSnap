@@ -118,5 +118,10 @@
         "version": "0.10.1",
         "update_info": "- 完善桌面端 AI 服务与模型管理，新增模型管理页面<br>- 桌面端外链改为在系统浏览器中打开<br>- 修复桌面端天地图加载与打包后地图数据 404 问题<br>- Windows MSI 安装包改为简体中文，优化应用图标体积",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.10.1"
+    },
+    {
+        "version": "0.10.2",
+        "update_info": "- 照片查看器新增重新识别，支持单张照片重新执行人脸、文字、场景、描述和向量分析<br>- 手动照片处理任务支持优先执行并实时展示进度<br>- 修复 Android App 连接 HTTP 自托管服务器时所有图片被拦截的问题<br>- 修复大量照片首次扫描时缩略图失败和任务级联异常<br>- 优化官网下载按钮的异常回退",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.10.2"
     }
 ]

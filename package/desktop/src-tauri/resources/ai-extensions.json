@@ -4,7 +4,7 @@
     {
       "id": "core-ai",
       "name": "TrailSnap AI 完整扩展",
-      "version": "0.10.1",
+      "version": "0.10.2",
       "description": "提供人脸、OCR、票据、图片分类、CLIP、情绪分析和本地 LLM；模型在运行时按需管理。",
       "capabilities": ["face", "ocr", "object_detection", "tickets", "classification", "embedding", "llm", "emotion"],
       "requirements": {

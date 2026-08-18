@@ -4397,7 +4397,7 @@ dependencies = [
 
 [[package]]
 name = "trailsnap-desktop"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "axum",
  "flate2",

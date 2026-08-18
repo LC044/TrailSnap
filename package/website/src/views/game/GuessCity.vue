@@ -17,7 +17,7 @@
       <div class="flex-1 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden relative group">
         <template v-if="photoId">
           <img
-            :src="`/api/medias/${photoId}/file`"
+            :src="toServerUrl(`/api/medias/${photoId}/file`)"
             class="w-full h-full object-contain bg-gray-100 dark:bg-gray-900"
           />
         </template>
@@ -111,7 +111,7 @@
     <div v-if="gameState !== 'playing'" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 animate-fade-in">
       <img 
         v-if="photoId"
-        :src="`/api/medias/${photoId}/thumbnail?size=medium`" 
+        :src="toServerUrl(`/api/medias/${photoId}/thumbnail?size=medium`)"
         class="absolute inset-0 w-full h-full object-cover blur-2xl opacity-50 scale-110"
       />
       <div class="absolute inset-0 bg-white/30 dark:bg-black/40 backdrop-blur-sm"></div>
@@ -128,7 +128,7 @@
 
       <div class="relative z-10 transition-all duration-500 p-4 xl:p-8 bg-white dark:bg-gray-800 shadow-2xl rounded-lg md:rounded-xl border-[8px] xl:border-[16px] border-gray-100 dark:border-gray-700 max-w-[95vw] md:max-w-[90vw] max-h-[85vh] md:max-h-[90vh] flex flex-col w-fit h-fit overflow-hidden mt-16 md:mt-10">
         <img 
-          :src="`/api/medias/${photoId}/file`" 
+          :src="toServerUrl(`/api/medias/${photoId}/file`)"
           class="w-auto h-auto max-w-full max-h-[50vh] md:max-h-[60vh] object-contain mx-auto rounded-sm shadow-sm"
         />
 
@@ -167,6 +167,7 @@ import { CalendarCheck, MapPin, Loader2, ImageOff, RefreshCw } from 'lucide-vue-
 import { guessCityApi, type CityCoordinate } from '@/api/guessCity'
 import { photoApi } from '@/api/photo'
 import { format } from 'date-fns'
+import { toServerUrl } from '@/config/server'
 
 const photoId = ref<string>('')
 const photoTime = ref<string | null>(null)

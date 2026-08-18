@@ -80,6 +80,7 @@ import ReportPage from './ReportPage.vue';
 import type { LocationMetrics } from '@/types/annualReport';
 import { echarts } from '@/utils/echarts';
 import { useIntersectionObserver } from '@vueuse/core';
+import { toServerUrl } from '@/config/server';
 
 const props = defineProps<{
   data: LocationMetrics;
@@ -156,7 +157,7 @@ const initMap = async () => {
   
   try {
       // 获取地图数据
-      const response = await fetch('/api/medias/geojson?level=city');
+      const response = await fetch(toServerUrl('/api/medias/geojson?level=city'));
       if (!response.ok) throw new Error('Map fetch failed');
       const chinaJson = await response.json();
 

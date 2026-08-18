@@ -26,7 +26,7 @@
         <!-- User Info -->
         <div class="flex items-center gap-4 mt-8 bg-white/50 dark:bg-black/20 p-4 rounded-full backdrop-blur-sm border border-white/20">
             <img 
-              :src="user.avatarUrl || defaultAvatar" 
+              :src="toServerUrl(user.avatarUrl || defaultAvatar)"
               class="w-16 h-16 rounded-full border-2 border-primary-amber shadow-sm object-cover"
               alt="Avatar"
             />
@@ -56,6 +56,7 @@ import ReportPage from './ReportPage.vue';
 import { computed } from 'vue';
 import type { UserInfo } from '@/types/annualReport';
 import { Camera, ArrowUp } from 'lucide-vue-next';
+import { toServerUrl } from '@/config/server';
 
 const props = defineProps<{
   user: UserInfo;

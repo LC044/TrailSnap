@@ -83,7 +83,7 @@ import { locationService } from '@/api/location'
 import type { TimelineNode } from '@/types/location'
 import type { Photo } from '@/types/album'
 import { loadMapScript } from '@/utils/mapLoader'
-import { isNativeApp } from '@/config/server'
+import { isNativeApp, toServerUrl } from '@/config/server'
 import { ElMessage } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme'
 
@@ -135,7 +135,7 @@ const formatDate = (dateStr: string) => {
 
 const getThumbnailUrl = (photoId: string) => {
   // return `https://picsum.photos/seed/${photoId}/400/600`
-  return `/api/medias/${photoId}/thumbnail`
+  return toServerUrl(`/api/medias/${photoId}/thumbnail`)
 }
 
 // Map initialization

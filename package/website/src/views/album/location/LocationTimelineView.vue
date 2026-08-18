@@ -109,6 +109,7 @@ import { MapPin, Map, Plane, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import { locationService } from '@/api/location'
 import type { TimelineNode } from '@/types/location'
 import type { Photo } from '@/types/album'
+import { toServerUrl } from '@/config/server'
 
 const props = defineProps<{
   startDate?: string
@@ -215,7 +216,7 @@ const formatNodeDate = (dateStr: string) => {
 
 const getThumbnailUrl = (photoId: string) => {
   // console.log(photoId)
-  return `/api/medias/${photoId}/thumbnail`
+  return toServerUrl(`/api/medias/${photoId}/thumbnail`)
 }
 
 const goToLocationDetail = (node: TimelineNode) => {

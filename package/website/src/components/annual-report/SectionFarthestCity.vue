@@ -129,6 +129,7 @@ import { useIntersectionObserver } from '@vueuse/core';
 import { Backpack, X } from 'lucide-vue-next';
 
 import { Photo } from '@/types/album';
+import { toServerUrl } from '@/config/server';
 
 const props = defineProps<{
   data: LocationMetrics;
@@ -227,13 +228,13 @@ const showPreview = ref(false);
 const currentPreviewPhoto = ref('');
 
 const previewPhoto = (photo: Photo, index: number) => {
-    currentPreviewPhoto.value = `/api/medias/${photo.id}/thumbnail?size=medium`;
+    currentPreviewPhoto.value = toServerUrl(`/api/medias/${photo.id}/thumbnail?size=medium`);
     showPreview.value = true;
 };
 
 const getPhotoUrl = (photo: Photo) => {
   // return `https://picsum.photos/seed/${photo.id}/400/600`;
-    return `/api/medias/${photo.id}/thumbnail`;
+    return toServerUrl(`/api/medias/${photo.id}/thumbnail`);
 }
 
 </script>

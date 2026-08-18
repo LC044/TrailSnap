@@ -249,6 +249,7 @@ import PhotoSelector from '@/components/PhotoSelector.vue'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useMapPuzzle, type PuzzleConfig } from '@/composables/useMapPuzzle'
 import { useOverlayStack } from '@/composables/useOverlayStack'
+import { toServerUrl } from '@/config/server'
 
 const props = defineProps<{
   startDate?: string
@@ -293,7 +294,7 @@ const activeCellIndex = ref<number | null>(null)
 const activeCellPhotoUrl = computed(() => {
   if (activeCellIndex.value === null) return null
   const id = assignments.value[activeCellIndex.value]
-  return id ? `/api/medias/${id}/thumbnail?size=medium` : null
+  return id ? toServerUrl(`/api/medias/${id}/thumbnail?size=medium`) : null
 })
 
 const handleSelectRegion = async (name: string) => {

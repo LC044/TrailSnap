@@ -6,6 +6,12 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   backgroundColor: '#f8fafc',
   loggingBehavior: 'debug',
+  server: {
+    // The native app connects to user-hosted LAN servers that commonly use
+    // plain HTTP. Keep the app shell on the same scheme so Android WebView
+    // does not block media elements as mixed content.
+    androidScheme: 'http',
+  },
   android: {
     // Self-hosted instances are often exposed on a LAN over HTTP.
     allowMixedContent: true,

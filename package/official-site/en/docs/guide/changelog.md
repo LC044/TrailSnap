@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-08-18 (0.10.2)
+
+### New
+
+- Added **Reprocess** to the photo viewer, allowing face recognition, OCR, scene classification, visual description, and image embedding to be rerun for a single photo with live progress and results.
+
+### Improvements
+
+- Interactive photo-processing tasks now receive priority and can continue while background classification is paused.
+- Improved download-button fallback so users can still reach the matching release page when the GitHub API is temporarily unavailable.
+- Synchronized Android and iOS version metadata for clearer upgrades and repeat installations.
+
+### Bug Fixes
+
+- Fixed Android WebView security rules blocking photos, album covers, avatars, and On This Day images when the App connects to an HTTP self-hosted server.
+- Fixed database connection exhaustion during large first-time scans, which could break thumbnail generation and cascade into downstream task failures.
+
 ## 2026-08-16 (0.10.1)
 
 ### New

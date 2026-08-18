@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "trailsnap-cli"
-version = "0.10.1"
+version = "0.10.2"
 description = "TrailSnap Command Line Interface"
 readme = "README.md"
 requires-python = ">=3.9"

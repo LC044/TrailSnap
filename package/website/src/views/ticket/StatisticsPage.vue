@@ -209,6 +209,7 @@ let myBar: echarts.ECharts | null = null;
 // --- 车票数据接入与统计 ---
 import { useRouter } from 'vue-router';
 import { useAppBack } from '@/composables/useAppBack';
+import { toServerUrl } from '@/config/server';
 
 const router = useRouter();
 const goBack = useAppBack('/ticket');
@@ -523,7 +524,7 @@ const initMap = async () => {
   myMap = echarts.init(mapContainer.value);
 
   try {
-    const response = await fetch('/api/medias/geojson?level=city');
+    const response = await fetch(toServerUrl('/api/medias/geojson?level=city'));
     const chinaJson = await response.json();
     echarts.registerMap('china', chinaJson);
     buildCityCoordsFromGeojson(chinaJson);

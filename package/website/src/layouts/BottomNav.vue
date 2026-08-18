@@ -105,7 +105,7 @@
         >
           <img
             v-if="userStore.userInfo?.avatar"
-            :src="userStore.userInfo.avatar"
+            :src="toServerUrl(userStore.userInfo.avatar)"
             alt=""
             class="h-9 w-9 shrink-0 rounded-full object-cover"
           />
@@ -189,6 +189,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/user'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { mobileMoreSections, type NavGroup } from '@/config/navigation'
+import { toServerUrl } from '@/config/server'
 
 const route = useRoute()
 const uiStore = useUiStore()

@@ -217,7 +217,7 @@
                     <div v-if="layoutMode === 'moments'" class="flex gap-3 mb-10 md:mb-8 relative">
                         <!-- Avatar placeholder -->
                         <div class="w-10 h-10 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0 flex items-center justify-center text-gray-400 font-bold overflow-hidden">
-                            <img v-if="userStore.userInfo?.avatar" :src="userStore.userInfo.avatar" class="w-full h-full object-cover" />
+                            <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" class="w-full h-full object-cover" />
                             <ImageIcon v-else class="w-5 h-5 opacity-50" />
                         </div>
                         
@@ -546,6 +546,7 @@ import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useUserStore } from '@/stores/user'
+import { toServerUrl } from '@/config/server'
 import type { TimelineStats, AlbumImage } from '@/types/album'
 import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/useVirtualLayout'
 import { useSelection } from '@/composables/useSelection'

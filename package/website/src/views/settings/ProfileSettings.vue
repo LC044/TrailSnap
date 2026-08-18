@@ -9,7 +9,7 @@
         <!-- Avatar Section -->
         <el-form-item label="头像">
           <div class="flex items-center gap-6">
-            <el-avatar :size="80" :src="form.avatar || defaultAvatar" class="border-2 border-gray-200 dark:border-gray-700" />
+            <el-avatar :size="80" :src="toServerUrl(form.avatar || defaultAvatar)" class="border-2 border-gray-200 dark:border-gray-700" />
             <div class="flex flex-col gap-2">
               <div class="flex gap-2">
                 <el-upload
@@ -63,6 +63,7 @@ import { useUserStore } from '@/stores/user'
 import { userService } from '@/api/user'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 import request from '@/utils/request'
+import { toServerUrl } from '@/config/server'
 
 const userStore = useUserStore()
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
