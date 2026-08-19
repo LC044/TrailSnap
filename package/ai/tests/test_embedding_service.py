@@ -33,13 +33,10 @@ def embedding_service(monkeypatch):
 
     fake_manager = MagicMock(register_model=MagicMock(side_effect=fake_register_manager))
     fake_downloader = MagicMock(register_model=MagicMock(side_effect=fake_register_downloader))
+    fake_downloader.get_model_dir.return_value = __import__("pathlib").Path("/catalog/clip")
 
     monkeypatch.setattr("app.services.embedding_service.model_manager", fake_manager)
-    monkeypatch.setattr("app.services.embedding_service.model_downloader", fake_downloader)
-    monkeypatch.setattr(
-        "app.services.embedding_service.ai_config_manager",
-        MagicMock(get_model_selection=MagicMock(return_value="clip-ViT-B-32")),
-    )
+    monkeypatch.setattr("app.services.embedding_service.ai_model_manager", fake_downloader)
 
     from app.services.embedding_service import EmbeddingService
 
@@ -52,10 +49,10 @@ def test_init_registers_text_and_image_models(embedding_service):
     assert names == ["clip_text", "clip_image"]
 
 
-def test_init_registers_downloader_for_both_models(embedding_service):
+def test_init_does_not_create_per_service_download_registrations(embedding_service):
     service, registered, _, _ = embedding_service
     names = [entry[0] for entry in registered["downloader"]]
-    assert names == ["clip_text", "clip_image"]
+    assert names == []
 
 
 def test_embed_texts_raises_when_text_model_not_ready(embedding_service):
@@ -109,21 +106,16 @@ def test_embed_images_returns_list_of_floats(embedding_service):
 def test_get_model_info_returns_canonical_clip_vit_b_32_entry(embedding_service):
     service, _, _, _ = embedding_service
     info = service._get_model_info()
-    assert info["text_dir_name"] == "clip-ViT-B-32-multilingual-v1-onnx"
-    assert info["image_dir_name"] == "clip-ViT-B-32-onnx"
-    # Both repos should be set, even when the selection matches the default branch.
-    assert "SiYuan044" in info["text_model_repo"]
-    assert "SiYuan044" in info["image_model_repo"]
+    assert info["text_path"].endswith("text")
+    assert info["image_path"].endswith("image")
 
 
-def test_get_model_info_returns_default_when_selection_is_other(embedding_service):
+def test_get_model_info_is_resolved_by_unified_manager(embedding_service):
     service, _, _, _ = embedding_service
-    # The current implementation always returns the same dict, but record that as a contract.
-    with patch("app.services.embedding_service.ai_config_manager") as fake_cfg:
-        fake_cfg.get_model_selection = MagicMock(return_value="some-other-model")
+    with patch("app.services.embedding_service.ai_model_manager.get_model_dir", return_value=__import__("pathlib").Path("/catalog/clip")):
         info = service._get_model_info()
-    assert info["text_dir_name"] == "clip-ViT-B-32-multilingual-v1-onnx"
-    assert info["image_dir_name"] == "clip-ViT-B-32-onnx"
+    assert info["text_path"].endswith("clip/text") or info["text_path"].endswith("clip\\text")
+    assert info["image_path"].endswith("clip/image") or info["image_path"].endswith("clip\\image")
 
 
 # ---------------------------------------------------------------------------
@@ -133,10 +125,6 @@ def test_get_model_info_returns_default_when_selection_is_other(embedding_servic
 
 def test_load_text_model_returns_wrapper_for_known_text_dir(monkeypatch, embedding_service):
     service, _, _, _ = embedding_service
-    # Pretend the configured model dir already exists on disk.
-    fake_exists = lambda p: p.endswith("clip-ViT-B-32-multilingual-v1-onnx")
-    monkeypatch.setattr("app.services.embedding_service.os.path.exists", fake_exists)
-
     fake_wrapper = MagicMock(name="text_wrapper")
     monkeypatch.setattr(
         "app.services.embedding_service.ONNXCLIPTextWrapper", lambda model_dir: fake_wrapper
@@ -147,10 +135,8 @@ def test_load_text_model_returns_wrapper_for_known_text_dir(monkeypatch, embeddi
     assert result is fake_wrapper
 
 
-def test_load_text_model_falls_back_to_repo_when_dir_missing(monkeypatch, embedding_service):
+def test_load_text_model_never_bypasses_catalog_with_remote_repo(monkeypatch, embedding_service):
     service, _, _, _ = embedding_service
-    # No directory exists → wrapper receives the model repo string.
-    monkeypatch.setattr("app.services.embedding_service.os.path.exists", lambda p: False)
     captured = {}
 
     def fake_ctor(model_name):
@@ -161,15 +147,12 @@ def test_load_text_model_falls_back_to_repo_when_dir_missing(monkeypatch, embedd
         "app.services.embedding_service.ONNXCLIPTextWrapper", fake_ctor
     )
     service._load_text_model()
-    assert captured["model_name"].endswith("multilingual-v1-onnx")
-    assert "/" in captured["model_name"]
+    assert captured["model_name"].endswith("text")
+    assert not captured["model_name"].startswith("SiYuan044/")
 
 
 def test_load_image_model_returns_wrapper_for_known_image_dir(monkeypatch, embedding_service):
     service, _, _, _ = embedding_service
-    fake_exists = lambda p: p.endswith("clip-ViT-B-32-onnx")
-    monkeypatch.setattr("app.services.embedding_service.os.path.exists", fake_exists)
-
     fake_wrapper = MagicMock(name="image_wrapper")
     monkeypatch.setattr(
         "app.services.embedding_service.ONNXCLIPImageWrapper", lambda model_dir: fake_wrapper

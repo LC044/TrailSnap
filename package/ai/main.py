@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import system, face, ocr, object_detection, tickets, image_classification, ai_config, embedding, llm, emotion
 from app.core.logger import setup_logging
-from app.services.model_downloader import model_downloader
+from app.services.unified_model_manager import ai_model_manager
 from app.services.llm_manager import llm_manager
 
 # Memory management globals
@@ -58,8 +58,8 @@ async def lifespan(app: FastAPI):
     global log_listener
     log_listener = setup_logging('ai')
 
-    # Start model downloads in background
-    model_downloader.start_downloads()
+    # Download only the catalog entries selected for each AI capability.
+    ai_model_manager.start_selected_downloads()
     
     # Start LLM idle checker task
     llm_idle_task = asyncio.create_task(llm_manager.idle_checker())

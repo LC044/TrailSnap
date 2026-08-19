@@ -7,7 +7,7 @@ import subprocess
 import shutil
 import httpx
 from app.config import settings
-from app.services.model_downloader import model_downloader
+from app.services.unified_model_manager import ai_model_manager
 
 logger = logging.getLogger(__name__)
 
@@ -17,68 +17,24 @@ class LLMProcessManager:
         self.last_access_time = time.time()
         self.port = settings.LLM_SERVER_PORT
         self.lock = asyncio.Lock()
-        # self.repo_id = "SiYuan044/MiniCPM5-1B-Q4_K_M"
-        # self.model_dir_name = "MiniCPM5-1B-Q4_K_M"
-        self.repo_id = "SiYuan044/MiniCPM-V-4_6-Q4_K_M"
-        self.model_dir_name = "MiniCPM-V-4_6-Q4_K_M"
-        self.model_name = "MiniCPM-V-4_6-Q4_K_M.gguf"
-        self._register_download()
 
-    def _register_download(self):
-        def check_model():
-            if settings.LLM_MODEL_PATH and os.path.exists(settings.LLM_MODEL_PATH):
-                return True
-            path = os.path.join(settings.MODEL_PATH, self.model_dir_name)
-            # Check if directory exists and contains a .gguf file
-            if os.path.exists(path):
-                for file in os.listdir(path):
-                    if file.endswith(".gguf"):
-                        return True
-            return False
-
-        def download_model():
-            path = os.path.join(settings.MODEL_PATH, self.model_dir_name)
-            from modelscope.hub.snapshot_download import snapshot_download
-            logger.info(f"Downloading LLM model {self.repo_id} to {path}...")
-            # We only need the gguf file, ignore other large files if possible, or just download the whole repo
-            return snapshot_download(self.repo_id, local_dir=path, allow_patterns=["*.gguf", "*.json"])
-
-        def delete_model():
-            shutil.rmtree(os.path.join(settings.MODEL_PATH, self.model_dir_name), ignore_errors=True)
-
-        model_downloader.register_model(
-            "llm_minicpm",
-            check_model,
-            download_model,
-            delete_fn=delete_model,
-            metadata={
-                "name": "MiniCPM-V 本地多模态模型",
-                "description": "通过 llama-server 提供 OpenAI 兼容的本地视觉语言能力。",
-                "capabilities": ["llm", "vision"],
-                "task": "llm",
-                "requirements": {"diskMB": 5000},
-                "downloadSize": 4 * 1024 * 1024 * 1024,
-                "source": "ModelScope",
-                "available": True,
-            },
-            managed=True,
-        )
-
-    def _get_resolved_model_path(self) -> str:
+    def _get_resolved_model_path(self) -> tuple[str, str]:
         # If user explicitly set LLM_MODEL_PATH in env, use it directly
         if settings.LLM_MODEL_PATH and os.path.exists(settings.LLM_MODEL_PATH):
             return settings.LLM_MODEL_PATH, ""
             
-        path = os.path.join(settings.MODEL_PATH, self.model_dir_name, self.model_name)
-        mmproj = os.path.join(settings.MODEL_PATH, self.model_dir_name, "mmproj-model-f16.gguf")
-
-        return path, mmproj
+        spec = ai_model_manager.get_selected_spec("llm")
+        base = ai_model_manager.get_model_dir("llm", task=True)
+        gguf_files = [base / item for item in spec.get("requiredFiles", []) if item.endswith(".gguf")]
+        model_path = next((item for item in gguf_files if "mmproj" not in item.name.lower()), None)
+        mmproj = next((item for item in gguf_files if "mmproj" in item.name.lower()), None)
+        return str(model_path) if model_path else "", str(mmproj) if mmproj else ""
 
     async def ensure_running(self):
         self.last_access_time = time.time()
         
         # Ensure model is downloaded and ready
-        if not model_downloader.is_ready("llm_minicpm"):
+        if not settings.LLM_MODEL_PATH and not ai_model_manager.is_ready("llm"):
             raise ValueError("LLM model is still downloading or not ready. Please try again later.")
             
         resolved_path, mmproj = self._get_resolved_model_path()
@@ -93,19 +49,20 @@ class LLMProcessManager:
             logger.info(f"Starting llama.cpp server subprocess on port {self.port} with model {resolved_path}...")
             # Docker resolves llama-server from PATH; desktop passes the path
             # detected or installed by the Tauri shell.
+            command = [self._llama_server_executable(), "-m", resolved_path]
+            if mmproj:
+                command.extend(["--mmproj", mmproj])
+            command.extend([
+                "--host", "127.0.0.1",
+                "--port", str(self.port),
+                "--image-min-tokens", "1024",
+                "--image-max-tokens", "2048",
+                "-c", "8192",
+                "-n", "1024",
+                "--no-webui",
+            ])
             self.process = subprocess.Popen(
-                [
-                    self._llama_server_executable(),
-                    "-m", resolved_path,
-                    "--mmproj", mmproj,
-                    "--host", "127.0.0.1",
-                    "--port", str(self.port),
-                    "--image-min-tokens", "1024",
-                    "--image-max-tokens", "2048",
-                    "-c", "8192",
-                    "-n", "1024",
-                    "--no-webui"
-                ],
+                command,
                 stdout=sys.stdout,
                 stderr=sys.stderr
             )

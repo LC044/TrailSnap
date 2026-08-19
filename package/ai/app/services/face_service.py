@@ -2,14 +2,13 @@ import logging
 import os
 import sys
 import gc
-import shutil
+from pathlib import Path
 import numpy as np
 import cv2
 
 from app.config import settings
-from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
-from app.services.ai_config_manager import ai_config_manager
+from app.services.unified_model_manager import ai_model_manager
 from app.services.onnx_providers import get_onnx_providers
 
 def load_insightface_model():
@@ -17,12 +16,12 @@ def load_insightface_model():
         import insightface
         from insightface.app import FaceAnalysis
 
-        model_name = ai_config_manager.get_model_selection("face")
+        model_name = ai_model_manager.get_model_selection("face")
         logging.info(f"Initializing InsightFace with model: {model_name}")
 
         # 推理后端按 CUDA -> OpenVINO -> CPU 自动选择，与安装的 extra (gpu/openvino/cpu) 对齐。
         providers, provider_options = get_onnx_providers()
-        model_path = settings.MODEL_PATH.rstrip("/").rstrip("models")
+        model_path = str(Path(settings.MODEL_PATH).expanduser().resolve().parent)
         app = FaceAnalysis(
             name=model_name, root=model_path,
             providers=providers,
@@ -111,69 +110,12 @@ def release_model(model):
 model_manager.register_model("face", load_insightface_model, release_model)
 
 class FaceRecognitionService:
-    def __init__(self):
-        self._register_downloads()
-
-    def _register_downloads(self):
-        # InsightFace expects models in {root}/models/{name}
-        # If MODEL_PATH is .../data/models, we want root to be .../data
-        insightface_root = settings.MODEL_PATH.rstrip("/").rstrip("models")
-        # Ensure 'models' is removed correctly if it was at the end
-        if insightface_root.endswith("/") or insightface_root.endswith("\\"):
-             insightface_root = insightface_root[:-1]
-             
-        def get_current_model_name():
-            return ai_config_manager.get_model_selection("face")
-
-        def check_face_model():
-            model_name = get_current_model_name()
-            model_dir = os.path.join(settings.MODEL_PATH, model_name)
-            return os.path.exists(model_dir) and len(os.listdir(model_dir)) > 0
-
-        def download_face_model():
-            model_name = get_current_model_name()
-            model_dir = os.path.join(settings.MODEL_PATH, model_name)
-            from modelscope.hub.snapshot_download import snapshot_download
-            logging.info(f"Downloading InsightFace model {model_name} to {model_dir}...")
-            # Assuming the repo name maps to the model name. 
-            # buffalo_l -> fireicewolf/buffalo_l
-            # buffalo_s -> fireicewolf/buffalo_s ? Need to verify if buffalo_s is available under same user.
-            # Usually InsightFace models are not all on modelscope under same user.
-            # But for buffalo_l it is hardcoded 'fireicewolf/buffalo_l'.
-            # If user switches to buffalo_s, we need to know the repo.
-            # For now, let's assume fireicewolf has it or handle it.
-            # Actually buffalo_s is smaller.
-            repo_id = f'fireicewolf/{model_name}'
-            return snapshot_download(repo_id, local_dir=model_dir)
-
-        def delete_face_model():
-            model_name = get_current_model_name()
-            shutil.rmtree(os.path.join(settings.MODEL_PATH, model_name), ignore_errors=True)
-
-        model_downloader.register_model(
-            "face",
-            check_face_model,
-            download_face_model,
-            delete_fn=delete_face_model,
-            metadata={
-                "name": "InsightFace 人脸模型",
-                "description": "用于人脸检测、特征提取和人物聚类。",
-                "capabilities": ["face"],
-                "task": "face",
-                "requirements": {"diskMB": 350},
-                "downloadSize": 330 * 1024 * 1024,
-                "source": "ModelScope",
-                "available": True,
-            },
-            managed=True,
-        )
-
     def process_image(self, image_bytes: bytes):
         """
         Process image bytes and return face analysis results
         """
-        if not model_downloader.is_ready("face"):
-             raise Exception("Face model is not ready yet. Please try again later.")
+        if not ai_model_manager.is_ready("face"):
+            raise Exception("Face model is not ready yet. Please try again later.")
 
         # Get model instance from manager (lazy load if needed)
         app = model_manager.get_model("face")

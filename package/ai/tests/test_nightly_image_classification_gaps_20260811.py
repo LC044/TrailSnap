@@ -126,7 +126,7 @@ def test_discover_category_models_returns_only_category_specific_files(tmp_path)
     (photo_cls / "other-thing.onnx").write_bytes(b"")
 
     svc = ics.ImageClassificationService.__new__(ics.ImageClassificationService)
-    with patch.object(ics.settings, "MODEL_PATH", str(tmp_path)):
+    with patch.object(ics.ai_model_manager, "get_model_dir", return_value=photo_cls):
         mapping = svc._discover_category_models()
 
     assert mapping == {"dog": "photo-cls-dog.onnx", "cat": "photo-cls-cat.onnx"}
@@ -134,5 +134,5 @@ def test_discover_category_models_returns_only_category_specific_files(tmp_path)
 
 def test_discover_category_models_returns_empty_when_dir_missing(tmp_path):
     svc = ics.ImageClassificationService.__new__(ics.ImageClassificationService)
-    with patch.object(ics.settings, "MODEL_PATH", str(tmp_path)):
+    with patch.object(ics.ai_model_manager, "get_model_dir", return_value=tmp_path / "photo-cls"):
         assert svc._discover_category_models() == {}

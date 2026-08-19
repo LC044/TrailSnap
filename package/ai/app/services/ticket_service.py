@@ -6,24 +6,11 @@ import logging
 import os
 from app.config import settings
 from app.services.model_manager import model_manager
-from app.services.model_downloader import model_downloader
-from app.services.ai_config_manager import ai_config_manager
+from app.services.unified_model_manager import ai_model_manager
 from app.services.ticket_parser import parse_ticket_info, extract_text
 from app.services.fly_ticket_parser import extract_flight_info
 from app.services.onnx_providers import create_inference_session
 from app.services.ocr_service import openvino_infer_lock
-from app.services.photo_model_repository import ensure_models
-
-def load_modelscope_model():
-    """
-    Downloads the Ticket Recognition model from ModelScope.
-    Returns the local directory path of the downloaded model.
-    """
-    try:
-        return ensure_models()
-    except Exception as e:
-        logging.error(f"Failed to download Ticket Recognition model: {e}")
-        raise e
 
 def load_onnx_model():
     """
@@ -33,7 +20,9 @@ def load_onnx_model():
         logging.info("Initializing ONNX model for Ticket Recognition...")
         
         # Ensure model is downloaded and get path
-        model_dir = os.path.join(settings.MODEL_PATH, "photo-cls")
+        if not ai_model_manager.is_ready("tickets_yolo"):
+            raise Exception("Ticket model is not ready. 票据识别模型尚未安装，请前往设置中的 AI 模型管理下载。")
+        model_dir = str(ai_model_manager.get_model_dir("ticket", task=True))
         model_path = os.path.join(model_dir, "ticket-recognition.onnx")
         
         # Initialize ONNX model
@@ -71,19 +60,6 @@ def release_onnx_model(model):
 model_manager.register_model("tickets_yolo", load_onnx_model, release_onnx_model)
 
 class TicketService:
-    def __init__(self):
-        self._register_downloads()
-
-    def _register_downloads(self):
-        def check_model():
-            model_path = os.path.join(settings.MODEL_PATH, 'photo-cls', 'ticket-recognition.onnx')
-            return os.path.exists(model_path)
-
-        def download_model():
-            return load_modelscope_model()
-
-        model_downloader.register_model("tickets_yolo", check_model, download_model)
-
     def detect(self, image_bytes: bytes):
         """
         执行车票检测与识别
@@ -91,14 +67,8 @@ class TicketService:
         # Check if model is ready
         # Note: Since load_yolo_model now handles download internally/synchronously if needed,
         # we might not strictly need this check if we relied solely on load_yolo_model.
-        # However, keeping it consistent with the model_downloader pattern is good practice.
-        model_downloader.refresh_statuses()
-        if not model_downloader.is_ready("tickets_yolo"):
-             # If model_downloader is used, we respect its status.
-             # If strictly following the user's synchronous load pattern, this might be redundant but safe.
-             # For now, we'll keep it as a fast check.
-             if not os.path.exists(os.path.join(settings.MODEL_PATH, 'photo-cls', 'ticket-recognition.onnx')):
-                  raise Exception("Ticket model is not ready. 票据识别模型尚未安装，请前往设置中的 AI 扩展包下载模型。")
+        if not ai_model_manager.is_ready("tickets_yolo"):
+            raise Exception("Ticket model is not ready. 票据识别模型尚未安装，请前往设置中的 AI 模型管理下载。")
 
         # 获取模型实例
         yolo_session = model_manager.get_model("tickets_yolo")

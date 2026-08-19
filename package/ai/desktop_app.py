@@ -20,14 +20,14 @@ from app.routers import (
     tickets,
 )
 from app.services.llm_manager import llm_manager
-from app.services.model_downloader import model_downloader
+from app.services.unified_model_manager import ai_model_manager
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     listener = setup_logging("desktop-ai")
     if os.environ.get("TS_AI_SKIP_AUTO_DOWNLOAD") != "1":
-        model_downloader.start_downloads()
+        ai_model_manager.start_selected_downloads()
     llm_idle_task = asyncio.create_task(llm_manager.idle_checker())
     try:
         yield
