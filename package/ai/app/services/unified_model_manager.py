@@ -271,6 +271,25 @@ class UnifiedModelManager:
             self._errors[model_id] = None
         threading.Thread(target=self._download, args=(model_id,), daemon=True).start()
 
+    def prepare_model(self, task: str) -> Path:
+        """Synchronously make the selected model available for a build/runtime.
+
+        The service normally downloads models in the background so the API can
+        start immediately.  Desktop packaging needs the selected assets before
+        it freezes the sidecar, therefore it uses this explicit synchronous
+        preparation hook while retaining the same catalog and ModelScope path.
+        """
+        model_id = self.get_selected_id(task)
+        spec = self.get_spec(model_id)
+        if not spec.get("available", True):
+            raise ValueError("该候选模型的 ModelScope 仓库尚未发布")
+        if not self.is_ready(model_id):
+            self._download(model_id)
+        if not self.is_ready(model_id):
+            error = self._errors.get(model_id) or "模型下载失败"
+            raise RuntimeError(error)
+        return self.get_model_dir(model_id)
+
     def start_selected_downloads(self) -> None:
         """Download only selected models, sequentially, instead of every candidate."""
         model_ids = list(dict.fromkeys(self._selections.values()))

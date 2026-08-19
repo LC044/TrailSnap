@@ -44,7 +44,7 @@
                 v-for="modelId in taskInfo.available || []"
                 :key="modelId"
                 :value="modelId"
-                :disabled="!modelById(modelId)?.available"
+                :disabled="modelById(modelId)?.available === false"
               >{{ modelById(modelId)?.name || modelId }}{{ modelById(modelId)?.available ? '' : '（待发布）' }}</option>
             </select>
           </label>
@@ -83,7 +83,7 @@
           </div>
           <div class="flex shrink-0 flex-wrap gap-2">
             <button
-              v-if="model.available && model.status !== 'ready'"
+              v-if="model.available !== false && model.status !== 'ready'"
               :disabled="model.status === 'downloading' || activeModel === model.id"
               class="rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               @click="downloadModel(model.id)"
