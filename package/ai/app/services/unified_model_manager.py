@@ -72,6 +72,27 @@ class UnifiedModelManager:
             for task in spec.get("tasks", []):
                 if task not in tasks:
                     raise ValueError(f"模型 {model_id} 引用了未知能力 {task}")
+            if "ocr" in spec.get("tasks", []):
+                runtime = spec.get("runtime", {})
+                required_runtime = {
+                    "ocrVersion", "modelType", "detFile", "recFile",
+                    "clsFile", "clsOcrVersion",
+                }
+                missing_runtime = sorted(required_runtime - runtime.keys())
+                if missing_runtime:
+                    raise ValueError(
+                        f"OCR 模型 {model_id} 缺少 runtime 配置：{', '.join(missing_runtime)}"
+                    )
+                runtime_files = {
+                    runtime["detFile"], runtime["recFile"], runtime["clsFile"],
+                }
+                if runtime.get("recKeysFile"):
+                    runtime_files.add(runtime["recKeysFile"])
+                missing_files = sorted(runtime_files - set(spec.get("requiredFiles", [])))
+                if missing_files:
+                    raise ValueError(
+                        f"OCR 模型 {model_id} 的运行文件未加入 requiredFiles：{', '.join(missing_files)}"
+                    )
         for task, meta in tasks.items():
             default_id = meta.get("default")
             if default_id not in self._models or task not in self._models[default_id].get("tasks", []):

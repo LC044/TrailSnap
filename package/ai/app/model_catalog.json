@@ -2,7 +2,7 @@
   "version": 1,
   "tasks": {
     "face": { "name": "人脸识别", "default": "face-buffalo-l", "runtimeKeys": ["face"] },
-    "ocr": { "name": "文字识别", "default": "ocr-ppocrv5-mobile", "runtimeKeys": ["ocr"] },
+    "ocr": { "name": "文字识别", "default": "ocr-ppocrv6-small", "runtimeKeys": ["ocr"] },
     "embedding": { "name": "语义向量", "default": "embedding-clip-vit-b32", "runtimeKeys": ["clip_text", "clip_image"] },
     "classification": { "name": "图片分类", "default": "photo-classification-v1", "runtimeKeys": ["yolo_photo_cls_general"] },
     "ticket": { "name": "票据识别", "default": "photo-classification-v1", "runtimeKeys": ["tickets_yolo"] },
@@ -52,6 +52,31 @@
       "available": false
     },
     {
+      "id": "ocr-ppocrv6-small",
+      "tasks": ["ocr"],
+      "name": "PP-OCRv6 Small",
+      "runtimeName": "small",
+      "description": "PP-OCRv6 小型检测与识别模型，在精度和资源占用之间取得平衡。",
+      "repoId": "RapidAI/RapidOCR",
+      "revision": "v3.9.2",
+      "localDir": "rapidocr-ppocrv6-small",
+      "allowPatterns": ["onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx", "onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx", "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx", "paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt"],
+      "requiredFiles": ["onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx", "onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx", "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx", "paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt"],
+      "runtime": {
+        "ocrVersion": "PPOCRV6",
+        "modelType": "SMALL",
+        "detFile": "onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx",
+        "recFile": "onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx",
+        "clsFile": "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+        "clsOcrVersion": "PPOCRV4",
+        "recKeysFile": "paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt"
+      },
+      "tags": ["PP-OCRv6", "推荐", "均衡"],
+      "requirements": { "diskMB": 40, "memoryMB": 400 },
+      "downloadSize": 31824356,
+      "available": true
+    },
+    {
       "id": "ocr-ppocrv5-mobile",
       "tasks": ["ocr"],
       "name": "PP-OCRv5 Mobile",
@@ -62,6 +87,14 @@
       "localDir": "rapidocr-ppocrv5-mobile",
       "allowPatterns": ["onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx", "onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx", "onnx/PP-OCRv5/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx"],
       "requiredFiles": ["onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx", "onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx", "onnx/PP-OCRv5/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx"],
+      "runtime": {
+        "ocrVersion": "PPOCRV5",
+        "modelType": "MOBILE",
+        "detFile": "onnx/PP-OCRv5/det/ch_PP-OCRv5_det_mobile.onnx",
+        "recFile": "onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_mobile.onnx",
+        "clsFile": "onnx/PP-OCRv5/cls/ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx",
+        "clsOcrVersion": "PPOCRV5"
+      },
       "tags": ["轻量", "推荐"],
       "requirements": { "diskMB": 80, "memoryMB": 450 },
       "downloadSize": 62914560,
@@ -78,6 +111,14 @@
       "localDir": "rapidocr-ppocrv5-server",
       "allowPatterns": ["onnx/PP-OCRv5/det/ch_PP-OCRv5_det_server.onnx", "onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_server.onnx", "onnx/PP-OCRv5/cls/ch_PP-LCNet_x1_0_textline_ori_cls_server.onnx"],
       "requiredFiles": ["onnx/PP-OCRv5/det/ch_PP-OCRv5_det_server.onnx", "onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_server.onnx", "onnx/PP-OCRv5/cls/ch_PP-LCNet_x1_0_textline_ori_cls_server.onnx"],
+      "runtime": {
+        "ocrVersion": "PPOCRV5",
+        "modelType": "SERVER",
+        "detFile": "onnx/PP-OCRv5/det/ch_PP-OCRv5_det_server.onnx",
+        "recFile": "onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_server.onnx",
+        "clsFile": "onnx/PP-OCRv5/cls/ch_PP-LCNet_x1_0_textline_ori_cls_server.onnx",
+        "clsOcrVersion": "PPOCRV5"
+      },
       "tags": ["精度优先"],
       "requirements": { "diskMB": 260, "memoryMB": 1200 },
       "downloadSize": 230686720,

@@ -9,6 +9,7 @@ Exercises the previously untested branches in:
   openvino flag, no-torch/no-openvino path keeps the flag False.
 """
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 import pytest
 
@@ -82,6 +83,36 @@ def test_load_paddleocr_model_keeps_openvino_false_when_extra_missing(monkeypatc
             model = ocr_service.load_paddleocr_model()
     assert model is not None
     assert ocr_service._ocr_engine_is_openvino is False
+
+
+def test_load_paddleocr_model_uses_v6_small_catalog_runtime(tmp_path):
+    """PP-OCRv6 paths, enums and recognition dictionary come from the catalog."""
+    from rapidocr import ModelType, OCRVersion
+    from app.services import ocr_service
+
+    runtime = {
+        "ocrVersion": "PPOCRV6",
+        "modelType": "SMALL",
+        "detFile": "onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx",
+        "recFile": "onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx",
+        "clsFile": "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+        "clsOcrVersion": "PPOCRV4",
+        "recKeysFile": "paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt",
+    }
+    with (
+        patch("rapidocr.RapidOCR") as rapidocr_ctor,
+        patch.object(ocr_service.ai_model_manager, "get_selected_spec", return_value={"runtime": runtime}),
+        patch.object(ocr_service.ai_model_manager, "get_model_dir", return_value=tmp_path),
+        patch.dict("sys.modules", {"openvino": None}),
+    ):
+        ocr_service.load_paddleocr_model()
+
+    params = rapidocr_ctor.call_args.kwargs["params"]
+    assert params["Det.ocr_version"] is OCRVersion.PPOCRV6
+    assert params["Det.model_type"] is ModelType.SMALL
+    assert params["Det.model_path"] == Path(tmp_path) / runtime["detFile"]
+    assert params["Rec.model_path"] == Path(tmp_path) / runtime["recFile"]
+    assert params["Rec.rec_keys_path"] == Path(tmp_path) / runtime["recKeysFile"]
 
 
 def test_load_paddleocr_model_no_torch_no_openvino_keeps_flag_false(monkeypatch):

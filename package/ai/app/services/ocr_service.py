@@ -38,33 +38,30 @@ def load_paddleocr_model():
     try:
         from rapidocr import EngineType, LangDet, LangRec, ModelType, OCRVersion, RapidOCR
         spec = ai_model_manager.get_selected_spec("ocr")
-        variant = spec["runtimeName"]
         base = ai_model_manager.get_model_dir("ocr", task=True)
-        model_type = ModelType.MOBILE if variant == "mobile" else ModelType.SERVER
-        det_path = base / f"onnx/PP-OCRv5/det/ch_PP-OCRv5_det_{variant}.onnx"
-        rec_path = base / f"onnx/PP-OCRv5/rec/ch_PP-OCRv5_rec_{variant}.onnx"
-        cls_name = (
-            "ch_PP-LCNet_x0_25_textline_ori_cls_mobile.onnx"
-            if variant == "mobile"
-            else "ch_PP-LCNet_x1_0_textline_ori_cls_server.onnx"
-        )
+        runtime = spec["runtime"]
+        model_type = getattr(ModelType, runtime["modelType"])
+        ocr_version = getattr(OCRVersion, runtime["ocrVersion"])
+        cls_ocr_version = getattr(OCRVersion, runtime["clsOcrVersion"])
         params = {
             "Det.engine_type": EngineType.ONNXRUNTIME,
             "Det.lang_type": LangDet.CH,
             "Det.model_type": model_type,
-            "Det.ocr_version": OCRVersion.PPOCRV5,
-            "Det.model_path": det_path,
+            "Det.ocr_version": ocr_version,
+            "Det.model_path": base / runtime["detFile"],
             "Cls.engine_type": EngineType.ONNXRUNTIME,
-            "Cls.model_type": model_type,
-            "Cls.ocr_version": OCRVersion.PPOCRV5,
-            "Cls.model_path": base / "onnx/PP-OCRv5/cls" / cls_name,
+            "Cls.model_type": ModelType.MOBILE,
+            "Cls.ocr_version": cls_ocr_version,
+            "Cls.model_path": base / runtime["clsFile"],
             "Rec.engine_type": EngineType.ONNXRUNTIME,
             "Rec.lang_type": LangRec.CH,
             "Rec.model_type": model_type,
-            "Rec.ocr_version": OCRVersion.PPOCRV5,
-            "Rec.model_path": rec_path,
+            "Rec.ocr_version": ocr_version,
+            "Rec.model_path": base / runtime["recFile"],
             "EngineConfig.onnxruntime.use_cuda": True,
         }
+        if runtime.get("recKeysFile"):
+            params["Rec.rec_keys_path"] = base / runtime["recKeysFile"]
         _ocr_engine_is_openvino = False
         try:
             from openvino import Core  # noqa: F401
