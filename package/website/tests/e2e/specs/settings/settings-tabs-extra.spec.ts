@@ -99,10 +99,17 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await page.route('**/api/settings/ai-models', route => route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ code: 0, msg: 'success', data: { models: [{
-        id: 'yolo_photo_cls_general', name: '图片分类与票据识别模型', status: 'pending',
-        description: '运行时从 ModelScope 下载', requirements: { diskMB: 130 },
-      }] } }),
+      body: JSON.stringify({ code: 0, msg: 'success', data: {
+        models: [{
+          id: 'yolo_photo_cls_general', name: '图片分类与票据识别模型', status: 'pending',
+          description: '用于识别照片和票据', requirements: { memoryMB: 500 },
+        }],
+        tasks: {
+          classification: {
+            name: '图片智能分类', selected: 'yolo_photo_cls_general', available: ['yolo_photo_cls_general'],
+          },
+        },
+      } }),
     }));
     await page.goto('/settings?tab=ai-extensions');
     await clickSettingTab(page, 'ai-extensions');

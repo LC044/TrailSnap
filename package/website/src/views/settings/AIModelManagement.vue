@@ -24,69 +24,67 @@
     </div>
 
     <template v-else>
-      <section v-if="taskEntries.length" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <h3 class="font-semibold text-gray-800 dark:text-gray-100">模型选择</h3>
-        <div class="mt-4 grid gap-4 md:grid-cols-2">
-          <label v-for="[task, taskInfo] in taskEntries" :key="task" class="block">
-            <span class="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-200">{{ taskInfo.name || taskLabels[task] || task }}</span>
+      <div v-if="taskCards.length" class="grid gap-4 xl:grid-cols-2">
+        <article
+          v-for="card in taskCards"
+          :key="card.task"
+          class="flex flex-col rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-semibold text-gray-800 dark:text-gray-100">{{ card.info.name || taskLabels[card.task] || card.task }}</h3>
+            <span class="shrink-0 rounded-full px-2 py-0.5 text-xs" :class="statusClasses[card.model.status] || statusClasses.pending">
+              {{ statusLabels[card.model.status] || card.model.status }}
+            </span>
+          </div>
+
+          <label class="mt-4 block">
+            <span class="sr-only">选择模型</span>
             <select
-              :value="taskInfo.selected"
-              :disabled="switchingTask === task || taskInfo.available?.length < 2"
+              :value="card.info.selected"
+              :disabled="switchingTask === card.task || card.info.available.length < 2"
               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-              @change="selectModel(task, $event)"
+              @change="selectModel(card.task, $event)"
             >
               <option
-                v-for="modelId in taskInfo.available || []"
+                v-for="modelId in card.info.available"
                 :key="modelId"
                 :value="modelId"
               >{{ modelById(modelId)?.name || modelId }}</option>
             </select>
           </label>
-        </div>
-      </section>
 
-      <div v-if="!models.length && !loading" class="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
-        暂无可用模型
-      </div>
-
-      <article v-for="model in models" :key="model.id" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <div class="min-w-0 flex-1">
-            <div class="flex flex-wrap items-center gap-2">
-              <h3 class="font-semibold text-gray-800 dark:text-gray-100">{{ model.name || model.id }}</h3>
-              <span class="rounded-full px-2 py-0.5 text-xs" :class="statusClasses[model.status] || statusClasses.pending">
-                {{ statusLabels[model.status] || model.status }}
-              </span>
-              <span v-for="task in model.selectedTasks || []" :key="task" class="rounded-full bg-primary-500/10 px-2 py-0.5 text-xs text-primary-600 dark:text-primary-500">
-                {{ taskLabels[task] || task }} · 使用中
-              </span>
-            </div>
-            <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ model.description }}</p>
-            <div v-if="model.tags?.length" class="mt-2 flex flex-wrap gap-1.5">
-              <span v-for="tag in model.tags" :key="tag" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ tag }}</span>
+          <div class="mt-4 min-w-0 flex-1">
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ card.model.description }}</p>
+            <div v-if="card.model.tags?.length" class="mt-2 flex flex-wrap gap-1.5">
+              <span v-for="tag in card.model.tags" :key="tag" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ tag }}</span>
             </div>
             <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 dark:text-gray-500">
-              <span>大小 {{ formatBytes(model.downloadSize) }}</span>
-              <span>建议内存 {{ model.requirements?.memoryMB || '—' }} MB</span>
+              <span>大小 {{ formatBytes(card.model.downloadSize) }}</span>
+              <span>建议内存 {{ card.model.requirements?.memoryMB || '—' }} MB</span>
             </div>
-            <p v-if="model.error" class="mt-3 break-words text-xs text-red-600 dark:text-red-400">{{ model.error }}</p>
+            <p v-if="card.model.error" class="mt-3 break-words text-xs text-red-600 dark:text-red-400">{{ card.model.error }}</p>
           </div>
-          <div class="flex shrink-0 flex-wrap gap-2">
+
+          <div class="mt-4 flex flex-wrap gap-2">
             <button
-              v-if="model.status !== 'ready'"
-              :disabled="model.status === 'downloading' || activeModel === model.id"
+              v-if="card.model.status !== 'ready'"
+              :disabled="card.model.status === 'downloading' || activeModel === card.model.id"
               class="rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-              @click="downloadModel(model.id)"
-            >{{ model.status === 'downloading' ? '下载中…' : model.status === 'failed' ? '重试下载' : '下载' }}</button>
+              @click="downloadModel(card.model.id)"
+            >{{ card.model.status === 'downloading' ? '下载中…' : card.model.status === 'failed' ? '重试下载' : '下载' }}</button>
             <button
-              v-if="model.status === 'ready' && model.canDelete"
-              :disabled="activeModel === model.id"
+              v-if="card.model.status === 'ready' && card.model.canDelete"
+              :disabled="activeModel === card.model.id"
               class="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-              @click="deleteModel(model.id)"
+              @click="deleteModel(card.model.id)"
             >删除模型</button>
           </div>
-        </div>
-      </article>
+        </article>
+      </div>
+
+      <div v-if="!taskCards.length && !loading" class="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+        暂无可用模型
+      </div>
     </template>
   </section>
 </template>
@@ -126,9 +124,11 @@ const statusClasses: Record<string, string> = {
   ready: 'bg-primary-500/10 text-primary-600 dark:text-primary-500',
   failed: 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400',
 }
-const taskEntries = computed(() => Object.entries(tasks.value))
 const formatBytes = (value?: number) => value ? `${(value / 1024 / 1024).toFixed(1)} MB` : '未知'
 const modelById = (id: string) => models.value.find(model => model.id === id)
+const taskCards = computed(() => Object.entries(tasks.value)
+  .map(([task, info]) => ({ task, info, model: modelById(info.selected) }))
+  .filter((card): card is { task: string; info: TaskSelection; model: any } => Boolean(card.model)))
 
 function updatePolling() {
   const downloading = models.value.some(model => model.status === 'downloading')
