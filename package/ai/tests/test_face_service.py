@@ -22,7 +22,7 @@ def test_load_insightface_model_raises_when_insightface_init_fails(monkeypatch):
     monkeypatch.setitem(__import__("sys").modules, "insightface", MagicMock())
     monkeypatch.setitem(__import__("sys").modules, "insightface.app", fake_app_module)
     monkeypatch.setattr(
-        face_service.ai_config_manager,
+        face_service.ai_model_manager,
         "get_model_selection",
         MagicMock(return_value="buffalo_l"),
     )
@@ -54,7 +54,7 @@ def test_face_recognition_service_process_image_raises_when_not_ready(monkeypatc
     from app.services import face_service
 
     fake_downloader = MagicMock(is_ready=MagicMock(return_value=False))
-    monkeypatch.setattr(face_service, "model_downloader", fake_downloader)
+    monkeypatch.setattr(face_service, "ai_model_manager", fake_downloader)
 
     service = face_service.FaceRecognitionService()
     with pytest.raises(Exception, match="Face model is not ready"):
@@ -69,7 +69,7 @@ def test_face_recognition_service_process_image_returns_empty_for_no_faces(monke
     fake_app = MagicMock()
     fake_app.get = MagicMock(return_value=[])
     fake_manager = MagicMock(get_model=MagicMock(return_value=fake_app))
-    monkeypatch.setattr(face_service, "model_downloader", fake_downloader)
+    monkeypatch.setattr(face_service, "ai_model_manager", fake_downloader)
     monkeypatch.setattr(face_service, "model_manager", fake_manager)
 
     service = face_service.FaceRecognitionService()
@@ -87,7 +87,7 @@ def test_face_recognition_service_process_image_returns_empty_for_invalid_bytes(
     fake_app = MagicMock()
     fake_app.get = MagicMock(return_value=[])
     fake_manager = MagicMock(get_model=MagicMock(return_value=fake_app))
-    monkeypatch.setattr(face_service, "model_downloader", fake_downloader)
+    monkeypatch.setattr(face_service, "ai_model_manager", fake_downloader)
     monkeypatch.setattr(face_service, "model_manager", fake_manager)
 
     service = face_service.FaceRecognitionService()

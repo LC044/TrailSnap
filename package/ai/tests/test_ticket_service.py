@@ -101,7 +101,7 @@ def patched_env(tmp_path, monkeypatch):
 
     fake_downloader = MagicMock()
     fake_downloader.is_ready = MagicMock(return_value=True)
-    monkeypatch.setattr(ts_mod, "model_downloader", fake_downloader)
+    monkeypatch.setattr(ts_mod, "ai_model_manager", fake_downloader)
 
     # settings.MODEL_PATH -> tmp_path so the disk existence check is irrelevant.
     ts_mod.settings.MODEL_PATH = str(tmp_path)

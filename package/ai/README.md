@@ -162,7 +162,9 @@ http://localhost:8001/docs
 
 各接口的请求 / 响应结构见 Swagger UI，每个路由有独立的 Pydantic 模型（如 `OCRResponse`、`TicketRecognitionResponse`）。
 
-AI 服务启动时会在后台自动下载全部已注册模型，也可以通过 `GET /ai/models` 查看状态，使用 `POST /ai/models/{model_id}/download` 手动下载或重试，使用 `DELETE /ai/models/{model_id}` 删除后按需重新下载。TrailSnap 设置中心的“AI 模型管理”通过 Server 代理这些接口，桌面端与 Docker 端共用。
+所有模型统一由 `app/model_catalog.json` 和 `unified_model_manager.py` 管理。业务服务不再自行配置仓库或下载权重；启动时只从 ModelScope 下载当前选中且允许自动下载的模型。可以通过 `GET /ai/models` 查看候选项和状态，使用 `POST /ai/models/{model_id}/download` 手动下载或重试，使用 `POST /ai/config/model` 切换模型，使用 `DELETE /ai/models/{model_id}` 删除本地文件。TrailSnap 设置中心的“AI 模型管理”通过 Server 代理这些接口，桌面端与 Docker 端共用。
+
+新增模型时只需在 `app/model_catalog.json` 添加条目。尚未上传的候选仓库可先设置 `available: false`，上传到 ModelScope 后更新 `repoId`、`requiredFiles` 并启用；加载器通过 `runtimeName` 和统一模型目录读取当前选择。
 
 ## 内存与空闲重启
 
@@ -179,10 +181,11 @@ package/ai/
 ├── main.py                      # FastAPI 入口，lifespan、中间件、路由挂载、空闲重启
 ├── app/
 │   ├── config.py                # 配置（环境变量 → Settings）
+│   ├── model_catalog.json       # 全部候选模型、ModelScope 仓库与资源要求
 │   ├── routers/                 # FastAPI 路由，按域拆分（face/ocr/tickets/...）
 │   ├── services/                # 模型加载与推理服务（懒加载，由 model_manager 统一管理）
 │   │   ├── model_manager.py     # 单例模型管理：懒加载 + 空闲释放 + 线程安全
-│   │   ├── model_downloader.py  # 启动时后台预下载权重
+│   │   ├── unified_model_manager.py # 统一目录、选择、ModelScope 下载、状态与切换
 │   │   ├── llm_manager.py       # llama.cpp 子进程生命周期与空闲退出
 │   │   ├── onnx_providers.py    # 统一 ONNX EP 探测（CUDA > OpenVINO > CPU）
 │   │   ├── ocr_service.py       # RapidOCR 引擎 + OpenVINO 并发锁

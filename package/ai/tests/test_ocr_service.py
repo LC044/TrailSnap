@@ -75,6 +75,7 @@ def test_detect_text_parses_result_into_pruned_structure(monkeypatch, fake_ocr_r
     fake_ocr = MagicMock(return_value=fake_ocr_result)
     fake_manager = MagicMock(get_model=MagicMock(return_value=fake_ocr))
     monkeypatch.setattr(ocr_service, "model_manager", fake_manager)
+    monkeypatch.setattr(ocr_service.ai_model_manager, "is_ready", MagicMock(return_value=True))
     monkeypatch.setattr(ocr_service, "_ocr_engine_is_openvino", False)
 
     service = ocr_service.OCRService()
@@ -100,6 +101,7 @@ def test_detect_text_handles_none_txts(monkeypatch):
     fake_ocr = MagicMock(return_value=fake_ocr_result)
     fake_manager = MagicMock(get_model=MagicMock(return_value=fake_ocr))
     monkeypatch.setattr(ocr_service, "model_manager", fake_manager)
+    monkeypatch.setattr(ocr_service.ai_model_manager, "is_ready", MagicMock(return_value=True))
     monkeypatch.setattr(ocr_service, "_ocr_engine_is_openvino", False)
 
     service = ocr_service.OCRService()
@@ -117,6 +119,7 @@ def test_detect_text_uses_openvino_lock_when_engine_is_openvino(monkeypatch, fak
     fake_ocr = MagicMock(return_value=fake_ocr_result)
     fake_manager = MagicMock(get_model=MagicMock(return_value=fake_ocr))
     monkeypatch.setattr(ocr_service, "model_manager", fake_manager)
+    monkeypatch.setattr(ocr_service.ai_model_manager, "is_ready", MagicMock(return_value=True))
     monkeypatch.setattr(ocr_service, "_ocr_engine_is_openvino", True)
 
     acquired = {"count": 0}

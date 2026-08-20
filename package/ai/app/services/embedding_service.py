@@ -1,16 +1,12 @@
 import traceback
 import logging
-import os
 import io
 import base64
-import shutil
 from typing import List
 from PIL import Image
 
-from app.config import settings
-from app.services.model_downloader import model_downloader
 from app.services.model_manager import model_manager
-from app.services.ai_config_manager import ai_config_manager
+from app.services.unified_model_manager import ai_model_manager
 from app.services.onnx_providers import create_inference_session
 
 class ONNXCLIPTextWrapper:
@@ -70,103 +66,21 @@ class ONNXCLIPImageWrapper:
 class EmbeddingService:
     def __init__(self):
         self._register_models()
-        self._register_downloads()
 
     def _get_model_info(self):
-        selected = ai_config_manager.get_model_selection("classification")
-        if selected == "clip-ViT-B-32":
-            return {
-                "text_model_repo": "SiYuan044/clip-ViT-B-32-multilingual-v1-onnx",
-                "image_model_repo": "SiYuan044/clip-ViT-B-32-onnx",
-                "text_dir_name": "clip-ViT-B-32-multilingual-v1-onnx",
-                "image_dir_name": "clip-ViT-B-32-onnx"
-            }
+        base = ai_model_manager.get_model_dir("embedding", task=True)
         return {
-                "text_model_repo": "SiYuan044/clip-ViT-B-32-multilingual-v1-onnx",
-                "image_model_repo": "SiYuan044/clip-ViT-B-32-onnx",
-                "text_dir_name": "clip-ViT-B-32-multilingual-v1-onnx",
-                "image_dir_name": "clip-ViT-B-32-onnx"
+            "text_path": str(base / "text"),
+            "image_path": str(base / "image"),
         }
-
-    def _register_downloads(self):
-        def check_image_model():
-            info = self._get_model_info()
-            path = os.path.join(settings.MODEL_PATH, info["image_dir_name"])
-            return os.path.exists(path) and len(os.listdir(path)) > 0
-
-        def download_image_model():
-            info = self._get_model_info()
-            path = os.path.join(settings.MODEL_PATH, info["image_dir_name"])
-            from modelscope.hub.snapshot_download import snapshot_download
-            logging.info(f"Downloading Image model {info['image_model_repo']} to {path}...")
-            return snapshot_download(info['image_model_repo'], local_dir=path)
-
-        def check_text_model():
-            info = self._get_model_info()
-            path = os.path.join(settings.MODEL_PATH, info["text_dir_name"])
-            return os.path.exists(path) and len(os.listdir(path)) > 0
-
-        def download_text_model():
-            info = self._get_model_info()
-            path = os.path.join(settings.MODEL_PATH, info["text_dir_name"])
-            from modelscope.hub.snapshot_download import snapshot_download
-            logging.info(f"Downloading Text model {info['text_model_repo']} to {path}...")
-            return snapshot_download(info['text_model_repo'], local_dir=path)
-
-        def delete_text_model():
-            info = self._get_model_info()
-            shutil.rmtree(os.path.join(settings.MODEL_PATH, info["text_dir_name"]), ignore_errors=True)
-
-        def delete_image_model():
-            info = self._get_model_info()
-            shutil.rmtree(os.path.join(settings.MODEL_PATH, info["image_dir_name"]), ignore_errors=True)
-
-        common = {
-            "task": "classification",
-            "requirements": {"diskMB": 500},
-            "source": "ModelScope",
-            "available": True,
-        }
-        model_downloader.register_model(
-            "clip_text",
-            check_text_model,
-            download_text_model,
-            delete_fn=delete_text_model,
-            metadata={
-                **common,
-                "name": "CLIP 文本向量模型",
-                "description": "用于文本语义检索和跨模态匹配。",
-                "capabilities": ["embedding", "search"],
-                "downloadSize": 450 * 1024 * 1024,
-            },
-            managed=True,
-        )
-        model_downloader.register_model(
-            "clip_image",
-            check_image_model,
-            download_image_model,
-            delete_fn=delete_image_model,
-            metadata={
-                **common,
-                "name": "CLIP 图片向量模型",
-                "description": "用于图片向量、相似照片和跨模态匹配。",
-                "capabilities": ["embedding", "similar"],
-                "downloadSize": 350 * 1024 * 1024,
-            },
-            managed=True,
-        )
 
     def _load_text_model(self):
         info = self._get_model_info()
-        path = os.path.join(settings.MODEL_PATH, info["text_dir_name"])
-        model_name = path if os.path.exists(path) else info["text_model_repo"]
-        return ONNXCLIPTextWrapper(model_name)
+        return ONNXCLIPTextWrapper(info["text_path"])
 
     def _load_image_model(self):
         info = self._get_model_info()
-        path = os.path.join(settings.MODEL_PATH, info["image_dir_name"])
-        model_name = path if os.path.exists(path) else info["image_model_repo"]
-        return ONNXCLIPImageWrapper(model_name)
+        return ONNXCLIPImageWrapper(info["image_path"])
 
     def _release_model(self, wrapper):
         """Release resources associated with the model"""
@@ -188,8 +102,8 @@ class EmbeddingService:
         model_manager.register_model("clip_image", self._load_image_model, self._release_model)
 
     async def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        if not model_downloader.is_ready("clip_text"):
-             raise Exception("Models are not ready yet. Please try again later.")
+        if not ai_model_manager.is_ready("clip_text"):
+            raise Exception("Models are not ready yet. Please try again later.")
         wrapper = model_manager.get_model("clip_text")
         try:
             # Encode texts
@@ -200,8 +114,8 @@ class EmbeddingService:
             raise e
 
     async def embed_images(self, images_base64: List[str]) -> List[List[float]]:
-        if not model_downloader.is_ready("clip_image"):
-             raise Exception("Models are not ready yet. Please try again later.")
+        if not ai_model_manager.is_ready("clip_image"):
+            raise Exception("Models are not ready yet. Please try again later.")
         wrapper = model_manager.get_model("clip_image")
         try:
             images = []

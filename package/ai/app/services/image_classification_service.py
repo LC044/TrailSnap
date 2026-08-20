@@ -9,15 +9,8 @@ from PIL import Image
 import json
 import numpy as np
 
-from app.config import settings
-from app.services.model_downloader import model_downloader
-from app.services.photo_model_repository import (
-    MANAGED_METADATA,
-    delete_models,
-    ensure_models,
-    models_ready,
-)
 from app.services.model_manager import model_manager
+from app.services.unified_model_manager import ai_model_manager
 from app.services.onnx_providers import create_inference_session
 
 class ONNXModelWrapper:
@@ -137,7 +130,6 @@ class ImageClassificationService:
     def __init__(self):
         self._category_model_map = {}
         self._register_models()
-        self._register_downloads()
         self._register_available_category_models()
         self.version = 'v0.3.10.1'
 
@@ -145,7 +137,7 @@ class ImageClassificationService:
         return self._LABEL_TO_CHINESE.get(label, label)
 
     def _discover_category_models(self) -> Dict[str, str]:
-        path = os.path.join(settings.MODEL_PATH, "photo-cls")
+        path = str(ai_model_manager.get_model_dir("classification", task=True))
         if not os.path.exists(path):
             return {}
         category_map = {}
@@ -155,57 +147,34 @@ class ImageClassificationService:
                 category_map[category] = f
         return category_map
 
-    def _register_downloads(self):
-
-        def check_general_model():
-            return models_ready()
-
-        def download_general_model():
-            logging.info("Downloading ONNX models SiYuan044/photo-cls from ModelScope...")
-            result = ensure_models()
-            self._register_available_category_models()
-            return result
-
-        model_downloader.register_model(
-            "yolo_photo_cls_general",
-            check_general_model,
-            download_general_model,
-            delete_fn=delete_models,
-            metadata=MANAGED_METADATA,
-            managed=True,
-        )
-
     def _register_available_category_models(self):
-        for category, model_file in self._discover_category_models().items():
-            if category in self._category_model_map:
-                continue
-            self._category_model_map[category] = model_file
+        discovered = self._discover_category_models()
+        # Replace, rather than merge, so switching to a smaller pack cannot
+        # leave stale category routes pointing at files from the old model.
+        self._category_model_map = discovered
+        for category, model_file in discovered.items():
             model_key = f"yolo_photo_cls_{category}"
 
             def make_check(model_file=model_file):
                 def check():
                     try:
-                        path = os.path.join(settings.MODEL_PATH, "photo-cls")
+                        path = str(ai_model_manager.get_model_dir("classification", task=True))
                         model_path = os.path.join(path, model_file)
                         return os.path.exists(model_path)
                     except:
                         return False
                 return check
 
-            def make_download(model_file=model_file):
-                def download():
-                    return os.path.join(settings.MODEL_PATH, "photo-cls", model_file)
-                return download
-
-            model_downloader.register_model(model_key, make_check(), make_download())
-            model_manager.register_model(
-                model_key,
-                lambda c=category: self._load_category_model(c),
-                self._release_model,
-            )
+            if model_key not in model_manager.models:
+                model_manager.register_model(
+                    model_key,
+                    lambda c=category: self._load_category_model(c),
+                    self._release_model,
+                )
 
     def _load_general_model(self):
-        path = os.path.join(settings.MODEL_PATH, "photo-cls")
+        ai_model_manager.require_ready("classification")
+        path = str(ai_model_manager.get_model_dir("classification", task=True))
         model_path = os.path.join(path, "photo-cls-general.onnx")
         if not os.path.exists(model_path):
             pt_files = [f for f in os.listdir(path) if f.endswith('.onnx') and 'general' in f]
@@ -220,7 +189,7 @@ class ImageClassificationService:
         model_file = self._category_model_map.get(category)
         if not model_file:
             return None
-        path = os.path.join(settings.MODEL_PATH, "photo-cls")
+        path = str(ai_model_manager.get_model_dir("classification", task=True))
         model_path = os.path.join(path, model_file)
         if not os.path.exists(model_path):
             return None
@@ -261,7 +230,7 @@ class ImageClassificationService:
             return {"label": "others", "confidence": confidence}
 
         small_model_key = f"yolo_photo_cls_{big_category}"
-        if big_category in self._category_model_map and model_downloader.is_ready(small_model_key):
+        if big_category in self._category_model_map:
             small_model = model_manager.get_model(small_model_key)
             small_pred = small_model(image)[0]
             final_label, final_conf = self._get_top_prediction(small_pred, small_model)
@@ -271,9 +240,9 @@ class ImageClassificationService:
         return {"label": big_category, "confidence": confidence}
 
     def classify_yolo(self, images_base64: List[str]) -> List[dict]:
-        model_downloader.refresh_statuses()
-        if not model_downloader.is_ready("yolo_photo_cls_general"):
-            raise Exception("General model is not ready. 图片分类模型尚未安装，请前往设置中的 AI 扩展包下载模型。")
+        if not ai_model_manager.is_ready("yolo_photo_cls_general"):
+            raise Exception("General model is not ready. 图片分类模型尚未安装，请前往设置中的 AI 模型管理下载。")
+        self._register_available_category_models()
 
         results = []
         valid_images = []
@@ -315,7 +284,7 @@ class ImageClassificationService:
 
         for category, indices in category_groups.items():
             small_model_key = f"yolo_photo_cls_{category}"
-            if category in self._category_model_map and model_downloader.is_ready(small_model_key):
+            if category in self._category_model_map:
                 small_model = model_manager.get_model(small_model_key)
                 group_images = [valid_images[i[1]] for i in indices]
                 small_preds = small_model(group_images)

@@ -70,7 +70,7 @@ def test_normalize_label_uses_custom_min_confidence(service):
 def test_classify_yolo_raises_when_general_model_not_ready(service):
     from app.services import image_classification_service as ics
 
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.return_value = False
         with pytest.raises(Exception, match="General model is not ready"):
             service.classify_yolo(["aGVsbG8="])  # any base64
@@ -84,7 +84,7 @@ def test_classify_yolo_marks_invalid_base64_as_error(service):
 
     fake_general = MagicMock(return_value=[[0.1, 0.9]])
     fake_general.names = {0: "others", 1: "scenery"}
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.return_value = True
         with patch.object(ics, "model_manager") as manager:
             manager.get_model.return_value = fake_general
@@ -99,7 +99,7 @@ def test_classify_yolo_marks_invalid_base64_as_error(service):
 def test_classify_yolo_handles_empty_input_list(service):
     from app.services import image_classification_service as ics
 
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.return_value = True
         results = service.classify_yolo([])
     assert results == []
@@ -114,7 +114,7 @@ def test_classify_yolo_strips_data_url_prefix(service):
 
     fake_general = MagicMock(return_value=[[0.1, 0.9]])
     fake_general.names = {0: "others", 1: "scenery"}
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.return_value = True
         with patch.object(ics, "model_manager") as manager:
             manager.get_model.return_value = fake_general
@@ -143,7 +143,7 @@ def test_classify_single_returns_others_when_general_model_says_others(service):
     fake_general.return_value = [np.array([0.9, 0.1])]  # others=0, scenery=1
     fake_general.names = {0: "others", 1: "scenery"}
 
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.return_value = True
         with patch.object(ics, "model_manager") as manager:
             manager.get_model.return_value = fake_general
@@ -167,7 +167,7 @@ def test_classify_single_skips_category_model_when_not_discovered(service):
     # Service has no category discovery for any model.
     service._category_model_map = {}
 
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.return_value = True
         with patch.object(ics, "model_manager") as manager:
             manager.get_model.return_value = fake_general
@@ -196,7 +196,7 @@ def test_classify_single_routes_to_category_model_when_ready(service):
 
     service._category_model_map = {"scenery": "photo-cls-scenery.onnx"}
 
-    with patch.object(ics, "model_downloader") as downloader:
+    with patch.object(ics, "ai_model_manager") as downloader:
         downloader.is_ready.side_effect = lambda k: True
         with patch.object(ics, "model_manager") as manager:
             manager.get_model.side_effect = get_model_side_effect
@@ -212,15 +212,15 @@ def test_classify_single_routes_to_category_model_when_ready(service):
 
 
 def test_discover_category_models_returns_empty_when_dir_missing(service, tmp_path):
-    from app.config import settings as app_settings
+    from app.services import image_classification_service as ics
 
-    with patch.object(app_settings, "MODEL_PATH", str(tmp_path / "does-not-exist")):
+    with patch.object(ics.ai_model_manager, "get_model_dir", return_value=tmp_path / "does-not-exist"):
         result = service._discover_category_models()
     assert result == {}
 
 
 def test_discover_category_models_filters_general_and_non_onnx(service, tmp_path):
-    from app.config import settings as app_settings
+    from app.services import image_classification_service as ics
 
     photo_cls = tmp_path / "photo-cls"
     photo_cls.mkdir()
@@ -229,7 +229,7 @@ def test_discover_category_models_filters_general_and_non_onnx(service, tmp_path
     (photo_cls / "photo-cls-portrait.onnx").write_bytes(b"")
     (photo_cls / "README.md").write_text("ignored")
 
-    with patch.object(app_settings, "MODEL_PATH", str(tmp_path)):
+    with patch.object(ics.ai_model_manager, "get_model_dir", return_value=photo_cls):
         result = service._discover_category_models()
 
     assert result == {"scenery": "photo-cls-scenery.onnx",

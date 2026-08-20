@@ -10,6 +10,7 @@ periodically evicts idle ones.  We exercise the public surface:
 Tests reset the singleton between cases to avoid state leakage.
 """
 
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -84,6 +85,37 @@ def test_release_without_custom_func_still_clears_model(fresh_manager):
     assert wrapper.model == 42
     wrapper.release()
     assert wrapper.model is None
+
+
+def test_async_release_blocks_reload_until_old_model_is_cleared(fresh_manager):
+    release_started = threading.Event()
+    allow_release = threading.Event()
+    loaded = []
+
+    def loader():
+        model = f"model-{len(loaded) + 1}"
+        loaded.append(model)
+        return model
+
+    def release(_model):
+        release_started.set()
+        allow_release.wait(timeout=2)
+
+    fresh_manager.register_model("face", load_func=loader, release_func=release)
+    wrapper = fresh_manager.models["face"]
+    assert wrapper.get() == "model-1"
+    assert wrapper.release_async() is True
+    assert release_started.wait(timeout=2)
+
+    result = []
+    getter = threading.Thread(target=lambda: result.append(wrapper.get()))
+    getter.start()
+    getter.join(timeout=0.05)
+    assert getter.is_alive()
+
+    allow_release.set()
+    getter.join(timeout=2)
+    assert result == ["model-2"]
 
 
 def test_idle_eviction_releases_models_past_timeout(monkeypatch, fresh_manager):
