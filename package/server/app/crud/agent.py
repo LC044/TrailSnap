@@ -8,10 +8,9 @@ from sqlalchemy import desc
 from app.db.models.agent import AgentSession, AgentMessage
 from app.schemas.agent import AgentSessionCreate, AgentSessionUpdate, AgentMessageCreate
 
-# 隐藏的"记忆专用会话"标题标记。该会话不面向用户，仅用于承载长期记忆锚点，
-# 因此在会话列表接口中会被过滤掉。
+# 隐藏的"记忆专用会话"标题标记，会话列表中会被过滤
 MEMORY_SESSION_TITLE = "__memory__"
-# 记忆消息的 content_type，区别于普通对话消息。
+# 记忆消息的 content_type
 MEMORY_CONTENT_TYPE = "memory"
 
 # ---- Session CRUD ----
@@ -105,9 +104,8 @@ def delete_messages_by_session(db: Session, session_id: Union[str, UUID]) -> boo
     return True
 
 # ---- 长期记忆（照片即记忆）----
-# 设计：每个用户拥有一个隐藏的"记忆专用会话"（title == MEMORY_SESSION_TITLE），
-# 其下仅保存一条 role="system"、content_type=MEMORY_CONTENT_TYPE 的消息，
-# 记忆锚点全部存放在该消息的 content_ext 中。这样无需新增任何表或字段。
+# 每个用户一个隐藏的记忆专用会话，其下一条 content_type=memory 的消息，
+# 用 content_ext 存放记忆锚点，不新增表/字段。
 
 def get_or_create_memory_session(db: Session, user_id: Union[str, UUID]) -> AgentSession:
     """获取用户的记忆专用会话，不存在则创建。"""
@@ -167,7 +165,7 @@ def upsert_memory_message(
         msg = AgentMessage(
             session_id=session.id,
             role="system",
-            content="",  # content 非空约束：记忆内容放在 content_ext，这里留空字符串
+            content="",  # content 有非空约束，记忆放在 content_ext
             content_type=MEMORY_CONTENT_TYPE,
             content_ext=content_ext,
         )

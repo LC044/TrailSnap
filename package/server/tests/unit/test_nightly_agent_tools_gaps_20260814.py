@@ -200,7 +200,11 @@ def test_search_photos_tool_no_results():
     with patch("app.service.agent.tools.SessionLocal", _ctx(db)):
         out = _tool("search_photos_tool", user_id).func(limit=10)
     parsed = json.loads(out)
-    assert parsed == {"total": 0, "returned": 0, "photos": []}
+    # 渐进式披露：返回结构新增 truncated / summary 字段
+    assert parsed["total"] == 0
+    assert parsed["returned"] == 0
+    assert parsed["photos"] == []
+    assert parsed["truncated"] is False
 
 
 def test_search_photos_tool_basic_happy_path():
@@ -252,3 +256,69 @@ def test_search_photos_tool_invalid_dates_are_ignored():
         out = _tool("search_photos_tool", user_id).func(start_date="not-a-date", end_date="also-bad")
     parsed = json.loads(out)
     assert parsed["returned"] == 0
+
+
+# ---------------------------------------------------------------------------
+# 渐进式披露（降级版）：样本截断 + 九宫格保护
+# ---------------------------------------------------------------------------
+
+def _mk_photo(idx):
+    return SimpleNamespace(
+        id=uuid4(),
+        file_path=f"/photos/IMG_{idx}.jpg",
+        photo_time=None,
+    )
+
+
+def _search_chain(db, sample_rows, total):
+    """构造 search_photos_tool 用的链式 mock：limit(N) 返回前 N 行，count 返回 total。"""
+    chain = db.query.return_value
+    chain.outerjoin.return_value = chain
+    chain.filter.return_value = chain
+    chain.order_by.return_value = chain
+    chain.order_by.return_value.count.return_value = total
+
+    def _limit(n):
+        limited = MagicMock()
+        limited.all.return_value = sample_rows[:n]
+        return limited
+
+    chain.limit.side_effect = _limit
+
+
+def test_search_photos_tool_truncates_large_result_into_sample():
+    """探索性搜索（limit 很大）：命中很多时只返回少量样本，truncated=True。"""
+    user_id = str(uuid4())
+    db = MagicMock()
+    total = 300
+    rows = [(_mk_photo(i), SimpleNamespace(address="杭州"),
+             SimpleNamespace(narrative=None, quality_score=None)) for i in range(50)]
+    _search_chain(db, rows, total)
+
+    with patch("app.service.agent.tools.SessionLocal", _ctx(db)), \
+         patch("app.service.agent.tools.get_user_roots", return_value={}), \
+         patch("app.service.agent.tools.compute_browse_path", return_value=("f", "n")):
+        out = _tool("search_photos_tool", user_id).func(limit=100)
+    parsed = json.loads(out)
+    assert parsed["total"] == 300
+    # 大 limit 下样本被压到 SAMPLE_LIMIT(8)
+    assert parsed["returned"] == 8
+    assert parsed["truncated"] is True
+    assert "summary" in parsed
+
+
+def test_search_photos_tool_gallery_mode_returns_full_no_truncate():
+    """九宫格保护：limit<=12 时按需全量返回，不截断。"""
+    user_id = str(uuid4())
+    db = MagicMock()
+    rows = [(_mk_photo(i), SimpleNamespace(address="上海"),
+             SimpleNamespace(narrative=None, quality_score=None)) for i in range(9)]
+    _search_chain(db, rows, total=9)
+
+    with patch("app.service.agent.tools.SessionLocal", _ctx(db)), \
+         patch("app.service.agent.tools.get_user_roots", return_value={}), \
+         patch("app.service.agent.tools.compute_browse_path", return_value=("f", "n")):
+        out = _tool("search_photos_tool", user_id).func(limit=9)
+    parsed = json.loads(out)
+    assert parsed["returned"] == 9
+    assert parsed["truncated"] is False
