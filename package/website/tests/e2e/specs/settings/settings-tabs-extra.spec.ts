@@ -111,7 +111,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     // 'heading' 角色：侧边栏菜单项「AI 模型管理」是 <a> 锚点而非标题，用 heading 精确命中内容区 <h2>。
     await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible();
     await expect(page.getByText('图片分类与票据识别模型')).toBeVisible();
-    await expect(page.getByRole('button', { name: '立即下载' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '下载', exact: true })).toBeEnabled();
   });
 
   test('连续切换 tasks → external → performance - 内容独立渲染不残留', async ({ page }) => {
