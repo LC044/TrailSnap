@@ -15,7 +15,7 @@
       "name": "Buffalo L",
       "runtimeName": "buffalo_l",
       "description": "精度优先的 InsightFace 人脸检测与 512 维特征模型。",
-      "repoId": "fireicewolf/buffalo_l",
+      "repoId": "SiYuan044/buffalo_l",
       "localDir": "buffalo_l",
       "requiredFiles": ["1k3d68.onnx", "2d106det.onnx", "det_10g.onnx", "genderage.onnx", "w600k_r50.onnx"],
       "tags": ["精度优先", "高性能设备"],
@@ -56,14 +56,14 @@
       "tasks": ["face"],
       "name": "Buffalo SC",
       "runtimeName": "buffalo_sc",
-      "description": "更小的人脸特征模型候选项，适合资源非常有限的设备。仓库上传后启用。",
-      "repoId": "SiYuan044/insightface-buffalo-sc",
+      "description": "更小的人脸特征模型候选项，适合资源非常有限的设备。",
+      "repoId": "SiYuan044/buffalo_sc",
       "localDir": "buffalo_sc",
       "requiredFiles": ["det_500m.onnx", "w600k_mbf.onnx"],
       "tags": ["超轻量"],
       "requirements": { "diskMB": 90, "memoryMB": 350 },
       "downloadSize": 83886080,
-      "available": false
+      "available": true
     },
     {
       "id": "ocr-ppocrv6-tiny",
@@ -230,7 +230,7 @@
       "tags": ["轻量", "4-bit"],
       "requirements": { "diskMB": 1200, "memoryMB": 2200 },
       "downloadSize": 1073741824,
-      "available": false
+      "available": true
     }
   ]
 }
