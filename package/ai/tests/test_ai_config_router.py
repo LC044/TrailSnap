@@ -33,23 +33,30 @@ def test_download_model_delegates_to_unified_manager():
     assert result["status"] == "downloading"
 
 
-def test_set_model_returns_catalog_after_switch():
+def test_delete_model_returns_automatic_switches():
+    with patch.object(router_module.ai_model_manager, "get_spec", return_value={"tasks": ["face"]}), \
+         patch.object(router_module.ai_model_manager, "delete_model", return_value={"face": "face-buffalo-s"}):
+        import asyncio
+        result = asyncio.run(router_module.delete_managed_model("face-buffalo-l"))
+    assert result["status"] == "deleted"
+    assert result["switched"] == {"face": "face-buffalo-s"}
+
+
+def test_set_model_returns_compact_switch_result():
     request = SimpleNamespace(task="face", model="face-buffalo-l")
-    payload = {"tasks": {"face": {"selected": request.model}}, "models": []}
-    with patch.object(router_module.ai_model_manager, "select_model", return_value=True) as select, \
-         patch.object(router_module.ai_model_manager, "list_models", return_value=payload):
+    with patch.object(router_module.ai_model_manager, "select_model", return_value=True) as select:
         import asyncio
         result = asyncio.run(router_module.set_model(request))
     select.assert_called_once_with("face", "face-buffalo-l")
     assert result["changed"] is True
-    assert result["tasks"] == payload["tasks"]
+    assert result["task"] == "face"
+    assert result["model"] == "face-buffalo-l"
 
 
 def test_set_llm_model_stops_process_before_switch():
     request = SimpleNamespace(task="llm", model="llm-minicpm-v-4.6")
     with patch.object(router_module.llm_manager, "stop", new=AsyncMock()) as stop, \
-         patch.object(router_module.ai_model_manager, "select_model", return_value=False), \
-         patch.object(router_module.ai_model_manager, "list_models", return_value={"tasks": {}, "models": []}):
+         patch.object(router_module.ai_model_manager, "select_model", return_value=False):
         import asyncio
         asyncio.run(router_module.set_model(request))
     stop.assert_awaited_once()

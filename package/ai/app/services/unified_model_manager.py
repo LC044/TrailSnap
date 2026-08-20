@@ -333,19 +333,19 @@ class UnifiedModelManager:
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def release_task(self, task: str) -> None:
+    def release_task(self, task: str, *, background: bool = False) -> None:
         task_meta = self._catalog.get("tasks", {}).get(task)
         if not task_meta:
             raise ValueError(f"未知 AI 能力：{task}")
         for key in task_meta.get("runtimeKeys", []):
             wrapper = runtime_model_manager.models.get(key)
             if wrapper:
-                wrapper.release()
+                wrapper.release_async() if background else wrapper.release()
         # Category classifiers are registered dynamically.
         if task == "classification":
             for key, wrapper in list(runtime_model_manager.models.items()):
                 if key.startswith("yolo_photo_cls_"):
-                    wrapper.release()
+                    wrapper.release_async() if background else wrapper.release()
 
     def select_model(self, task: str, model_id: str) -> bool:
         spec = self.get_spec(model_id)
@@ -358,25 +358,52 @@ class UnifiedModelManager:
         with self._lock:
             if self._selections.get(task) == model_id:
                 return False
-            self.release_task(task)
+            # Mark the old runtime for release before exposing the new selection.
+            # Cleanup (including gc/CUDA cache) then runs outside the API request.
+            self.release_task(task, background=True)
             self._selections[task] = model_id
             self._save_selections()
         if not self.is_ready(model_id):
             self.trigger_download(model_id)
         return True
 
-    def delete_model(self, model_id: str) -> None:
+    def _ready_replacement(self, task: str, excluded_id: str) -> str:
+        candidates = [
+            candidate_id for candidate_id, spec in self._models.items()
+            if candidate_id != excluded_id
+            and task in spec.get("tasks", [])
+            and spec.get("available", True)
+            and self.is_ready(candidate_id)
+        ]
+        default_id = self._catalog["tasks"][task].get("default")
+        if default_id in candidates:
+            return default_id
+        if candidates:
+            return candidates[0]
+        raise RuntimeError(
+            f"{self._catalog['tasks'][task]['name']}没有其他已下载模型，请先下载其他模型再删除"
+        )
+
+    def delete_model(self, model_id: str) -> dict[str, str]:
         self.get_spec(model_id)
         with self._lock:
             if self._status.get(model_id) == "downloading":
                 raise RuntimeError("模型正在下载，暂时无法删除")
-        for task, selected in self._selections.items():
-            if selected == model_id:
-                self.release_task(task)
+            selected_tasks = [task for task, selected in self._selections.items() if selected == model_id]
+            replacements = {
+                task: self._ready_replacement(task, model_id)
+                for task in selected_tasks
+            }
+            if replacements:
+                self._selections.update(replacements)
+                self._save_selections()
+        for task in selected_tasks:
+            self.release_task(task)
         shutil.rmtree(self.get_model_dir(model_id), ignore_errors=True)
         with self._lock:
             self._status[model_id] = "pending"
             self._errors[model_id] = None
+        return replacements
 
 
 ai_model_manager = UnifiedModelManager()

@@ -44,8 +44,8 @@ async def delete_managed_model(model_id: str):
     try:
         if "llm" in ai_model_manager.get_spec(model_id).get("tasks", []):
             await llm_manager.stop()
-        ai_model_manager.delete_model(model_id)
-        return {"status": "deleted", "model": model_id}
+        switched = ai_model_manager.delete_model(model_id)
+        return {"status": "deleted", "model": model_id, "switched": switched}
     except KeyError as error:
         raise HTTPException(status_code=404, detail=str(error))
     except RuntimeError as error:
@@ -59,7 +59,7 @@ async def set_model(request: ModelSelectionRequest):
             await llm_manager.stop()
         changed = ai_model_manager.select_model(request.task, request.model)
         logger.info("AI model selection task=%s model=%s changed=%s", request.task, request.model, changed)
-        return {"status": "success", "changed": changed, **ai_model_manager.list_models()}
+        return {"status": "success", "changed": changed, "task": request.task, "model": request.model}
     except (ValueError, KeyError) as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:

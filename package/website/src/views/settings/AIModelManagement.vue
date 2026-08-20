@@ -185,8 +185,13 @@ async function deleteModel(id: string) {
       type: 'warning',
     })
     activeModel.value = id
-    await settingsApi.deleteAIModel(id)
-    ElMessage.success('模型文件已删除')
+    const result: any = await settingsApi.deleteAIModel(id)
+    const switchedNames = [...new Set(
+      Object.values(result.switched || {}).map(modelId => modelById(String(modelId))?.name || String(modelId)),
+    )]
+    ElMessage.success(switchedNames.length
+      ? `模型已删除，已切换到 ${switchedNames.join('、')}`
+      : '模型文件已删除')
     await loadModels(true)
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(error.message || String(error))
@@ -198,12 +203,15 @@ async function deleteModel(id: string) {
 async function selectModel(task: string, event: Event) {
   const model = (event.target as HTMLSelectElement).value
   if (!model || model === tasks.value[task]?.selected) return
+  const previousModel = tasks.value[task]?.selected
   switchingTask.value = task
+  tasks.value[task].selected = model
   try {
     await settingsApi.selectAIModel(task, model)
     ElMessage.success(`${taskLabels[task] || task}模型已切换`)
     await loadModels(true)
   } catch (error: any) {
+    if (previousModel) tasks.value[task].selected = previousModel
     ElMessage.error(error.message || String(error))
     await loadModels(true)
   } finally {

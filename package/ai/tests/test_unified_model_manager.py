@@ -98,10 +98,39 @@ def test_switch_releases_runtime_and_persists_selection(manager):
         runtime.models = {"face": wrapper}
         with patch.object(manager, "trigger_download") as trigger:
             assert manager.select_model("face", "small") is True
-    wrapper.release.assert_called_once()
+    wrapper.release_async.assert_called_once()
     trigger.assert_called_once_with("small")
     saved = json.loads(manager.config_path.read_text(encoding="utf-8"))
     assert saved["selections"]["face"] == "small"
+
+
+def test_delete_selected_model_switches_to_another_ready_model(manager):
+    for model_id in ("large", "small"):
+        model_dir = manager.get_model_dir(model_id)
+        model_dir.mkdir(parents=True)
+        (model_dir / "model.onnx").write_bytes(b"onnx")
+
+    wrapper = MagicMock()
+    with patch("app.services.unified_model_manager.runtime_model_manager") as runtime:
+        runtime.models = {"face": wrapper}
+        switched = manager.delete_model("large")
+
+    assert switched == {"face": "small"}
+    assert manager.get_selected_id("face") == "small"
+    assert not manager.get_model_dir("large").exists()
+    wrapper.release.assert_called_once()
+
+
+def test_delete_selected_model_requires_another_ready_model(manager):
+    model_dir = manager.get_model_dir("large")
+    model_dir.mkdir(parents=True)
+    (model_dir / "model.onnx").write_bytes(b"onnx")
+
+    with pytest.raises(RuntimeError, match="请先下载其他模型"):
+        manager.delete_model("large")
+
+    assert manager.get_selected_id("face") == "large"
+    assert model_dir.exists()
 
 
 def test_unpublished_candidate_cannot_be_selected_or_downloaded(manager):
