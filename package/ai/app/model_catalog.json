@@ -24,18 +24,32 @@
       "available": true
     },
     {
+      "id": "face-buffalo-m",
+      "tasks": ["face"],
+      "name": "Buffalo M",
+      "runtimeName": "buffalo_m",
+      "description": "效果优先，检测速度比 Buffalo L 更快。",
+      "repoId": "SiYuan044/buffalo_m",
+      "localDir": "buffalo_m",
+      "requiredFiles": ["1k3d68.onnx", "2d106det.onnx", "det_2.5g.onnx", "genderage.onnx", "w600k_r50.onnx"],
+      "tags": ["均衡", "高性能设备"],
+      "requirements": { "diskMB": 330, "memoryMB": 1000 },
+      "downloadSize": 327636908,
+      "available": true
+    },
+    {
       "id": "face-buffalo-s",
       "tasks": ["face"],
       "name": "Buffalo S",
       "runtimeName": "buffalo_s",
-      "description": "小参数人脸模型，适合 CPU、低内存或低功耗设备。仓库上传后将 available 改为 true。",
-      "repoId": "SiYuan044/insightface-buffalo-s",
+      "description": "小参数人脸模型，适合 CPU、低内存或低功耗设备。",
+      "repoId": "SiYuan044/buffalo_s",
       "localDir": "buffalo_s",
-      "requiredFiles": ["det_500m.onnx", "w600k_mbf.onnx"],
+      "requiredFiles": ["1k3d68.onnx", "2d106det.onnx", "det_500m.onnx", "genderage.onnx", "w600k_mbf.onnx"],
       "tags": ["轻量", "低性能设备"],
       "requirements": { "diskMB": 170, "memoryMB": 500 },
-      "downloadSize": 157286400,
-      "available": false
+      "downloadSize": 166101955,
+      "available": true
     },
     {
       "id": "face-buffalo-sc",

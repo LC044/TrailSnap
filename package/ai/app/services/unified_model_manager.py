@@ -100,7 +100,12 @@ class UnifiedModelManager:
 
     def _load_selections(self) -> dict[str, str]:
         legacy_map = {
-            "face": {"buffalo_l": "face-buffalo-l", "buffalo_s": "face-buffalo-s"},
+            "face": {
+                "buffalo_l": "face-buffalo-l",
+                "buffalo_m": "face-buffalo-m",
+                "buffalo_s": "face-buffalo-s",
+                "buffalo_sc": "face-buffalo-sc",
+            },
             "ocr": {
                 "mobile": "ocr-ppocrv6-small",
                 "server": "ocr-ppocrv6-small",

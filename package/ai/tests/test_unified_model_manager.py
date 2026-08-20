@@ -24,6 +24,22 @@ def test_builtin_catalog_exposes_only_three_ppocrv6_models():
     assert {item["runtime"]["ocrVersion"] for item in ocr_models} == {"PPOCRV6"}
 
 
+def test_builtin_catalog_contains_complete_buffalo_m_package():
+    catalog_path = Path(__file__).resolve().parents[1] / "app" / "model_catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    buffalo_m = next(item for item in catalog["models"] if item["id"] == "face-buffalo-m")
+
+    assert buffalo_m["repoId"] == "SiYuan044/buffalo_m"
+    assert buffalo_m["runtimeName"] == "buffalo_m"
+    assert buffalo_m["requiredFiles"] == [
+        "1k3d68.onnx",
+        "2d106det.onnx",
+        "det_2.5g.onnx",
+        "genderage.onnx",
+        "w600k_r50.onnx",
+    ]
+
+
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     catalog = {
