@@ -117,7 +117,10 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     // 'heading' 角色：侧边栏菜单项「AI 模型管理」是 <a> 锚点而非标题，用 heading 精确命中内容区 <h2>。
     await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible();
-    await expect(page.getByText('图片分类与票据识别模型')).toBeVisible();
+    // 合并模型卡片后（c0605b5），模型名只在 <select> 的 <option> 中出现，Playwright 视 <option> 不可见；
+    // 改为断言任务卡片标题「图片智能分类」可见——taskCards 会过滤掉 model 缺失的卡片，
+    // 故该 <h3> 可见即说明 yolo_photo_cls_general 已加载并渲染。
+    await expect(page.getByRole('heading', { name: '图片智能分类' })).toBeVisible();
     await expect(page.getByRole('button', { name: '下载', exact: true })).toBeEnabled();
   });
 
