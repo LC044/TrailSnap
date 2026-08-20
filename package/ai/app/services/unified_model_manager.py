@@ -101,7 +101,12 @@ class UnifiedModelManager:
     def _load_selections(self) -> dict[str, str]:
         legacy_map = {
             "face": {"buffalo_l": "face-buffalo-l", "buffalo_s": "face-buffalo-s"},
-            "ocr": {"mobile": "ocr-ppocrv5-mobile", "server": "ocr-ppocrv5-server"},
+            "ocr": {
+                "mobile": "ocr-ppocrv6-small",
+                "server": "ocr-ppocrv6-small",
+                "ocr-ppocrv5-mobile": "ocr-ppocrv6-small",
+                "ocr-ppocrv5-server": "ocr-ppocrv6-small",
+            },
             "embedding": {"clip-ViT-B-32": "embedding-clip-vit-b32"},
             # Older versions incorrectly used classification for CLIP.
             "classification": {"clip-ViT-B-32": "photo-classification-v1"},

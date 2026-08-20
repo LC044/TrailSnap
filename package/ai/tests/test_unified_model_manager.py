@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,6 +8,20 @@ from app.services.unified_model_manager import UnifiedModelManager
 
 
 pytestmark = [pytest.mark.smoke]
+
+
+def test_builtin_catalog_exposes_only_three_ppocrv6_models():
+    catalog_path = Path(__file__).resolve().parents[1] / "app" / "model_catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    ocr_models = [item for item in catalog["models"] if "ocr" in item["tasks"]]
+
+    assert catalog["tasks"]["ocr"]["default"] == "ocr-ppocrv6-small"
+    assert [item["id"] for item in ocr_models] == [
+        "ocr-ppocrv6-tiny",
+        "ocr-ppocrv6-small",
+        "ocr-ppocrv6-medium",
+    ]
+    assert {item["runtime"]["ocrVersion"] for item in ocr_models} == {"PPOCRV6"}
 
 
 @pytest.fixture
