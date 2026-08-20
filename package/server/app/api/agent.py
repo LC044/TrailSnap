@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.service.agent.service import chat_with_agent, stream_chat_with_agent, abort_chat_session
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.crud import agent as agent_crud
 from app.schemas.agent import AgentSession, AgentSessionCreate, AgentSessionUpdate, AgentMessage
 
@@ -204,3 +204,31 @@ def delete_messages(
     else:
         success = agent_crud.delete_messages_by_session(db, session_id)
     return {"message": "Messages deleted successfully"}
+
+@router.get("/memory", summary="获取 AI 记住的长期记忆")
+def get_memory(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    返回 AI 记住的、与当前用户相关的长期记忆锚点（照片即记忆）。
+    返回前会自动校验每条记忆指向的照片仍然存在、归属正确且未被删除，失效项会被剔除。
+    """
+    from app.service.agent.memory import get_valid_memory_anchors
+    anchors = get_valid_memory_anchors(db, str(current_user.id))
+    return BaseResponse.success(data={"anchors": anchors})
+
+@router.delete("/memory/{photo_id}", summary="删除一条长期记忆")
+def delete_memory(
+    photo_id: str = Path(..., description="要遗忘的记忆锚点对应的照片 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    删除指定照片对应的一条长期记忆，让 AI "遗忘"这段回忆。用户对自己的记忆有完全控制权。
+    """
+    from app.service.agent.memory import remove_memory_anchor
+    removed = remove_memory_anchor(db, str(current_user.id), photo_id)
+    if not removed:
+        return BaseResponse.fail(code=404, msg="未找到对应的记忆")
+    return BaseResponse.success(data={"photo_id": photo_id})

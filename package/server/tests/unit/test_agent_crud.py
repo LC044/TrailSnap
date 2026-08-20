@@ -55,16 +55,17 @@ def test_get_sessions_by_user_orders_by_pinned_then_created():
     db = MagicMock()
     user_id = uuid4()
     expected = [SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]
-    db.query.return_value.filter.return_value.order_by.return_value \
+    # 会话列表会额外过滤掉隐藏的"记忆专用会话"，因此链上有两层 filter：
+    # query().filter(owner).filter(title != __memory__).order_by()...
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value \
         .offset.return_value.limit.return_value.all.return_value = expected
 
     out = agent_crud.get_sessions_by_user(db, str(user_id), skip=10, limit=25)
 
     assert out is expected
-    # order_by is chained twice (pinned desc, created_at desc)\n    order_mock = db.query.return_value.filter.return_value.order_by\n    assert order_mock.call_count == 2
-    db.query.return_value.filter.return_value.order_by.return_value \
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value \
         .offset.assert_called_once_with(10)
-    db.query.return_value.filter.return_value.order_by.return_value \
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value \
         .offset.return_value.limit.assert_called_once_with(25)
 
 

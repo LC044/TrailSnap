@@ -160,6 +160,15 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 请使用友好、自然、有温度的中文与用户交流。
 """
 
+    # 注入长期记忆（照片即记忆，抗幻觉）：只注入指向仍然有效照片的记忆锚点
+    try:
+        from app.service.agent.memory import build_memory_prompt
+        memory_prompt = build_memory_prompt(db, user_id)
+        if memory_prompt:
+            system_prompt += memory_prompt
+    except Exception as e:
+        logger.warning(f"注入长期记忆失败（不影响对话）：{e}")
+
     # 并通过手动构建 prompt 状态传入
     agent = create_agent(llm, tools)
 
@@ -204,6 +213,18 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
             reasoning=reasoning,
             tool_calls=tool_calls
         ))
+
+        # 异步抽取长期记忆（照片即记忆）：放到后台线程执行，不阻塞返回
+        if ai_message:
+            try:
+                from app.service.agent.memory import extract_and_store_memory_task
+                tool_calls_for_memory = tool_calls if isinstance(tool_calls, list) else None
+                ThreadPoolExecutor(max_workers=1).submit(
+                    extract_and_store_memory_task,
+                    user_id, user_input, ai_message, tool_calls_for_memory
+                )
+            except Exception as e:
+                logger.warning(f"触发记忆抽取任务失败（不影响对话）：{e}")
 
         return ai_message
     except Exception as e:
@@ -387,6 +408,19 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                 tool_calls=tool_calls_list if tool_calls_list else None
             ))
             is_saved = True
+
+            # 异步抽取长期记忆（照片即记忆）：不阻塞流式返回，失败也不影响对话
+            if full_response and not _aborted_sessions.get(session_id, False):
+                try:
+                    from app.service.agent.memory import extract_and_store_memory_task
+                    asyncio.create_task(
+                        asyncio.to_thread(
+                            extract_and_store_memory_task,
+                            user_id, user_input, full_response, tool_calls_list
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"触发记忆抽取任务失败（不影响对话）：{e}")
 
         # 结束标志
         yield "data: [DONE]\n\n"
