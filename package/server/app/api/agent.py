@@ -232,3 +232,33 @@ def delete_memory(
     if not removed:
         return BaseResponse.fail(code=404, msg="未找到对应的记忆")
     return BaseResponse.success(data={"photo_id": photo_id})
+
+@router.get("/proactive", summary="获取未读的主动消息")
+def get_proactive_messages(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取"那年今日"等主动关怀消息（未读）。用于侧边栏红点与打开助手时置顶展示。"""
+    msgs = agent_crud.get_unread_proactive_messages(db, current_user.id)
+    data = [
+        {
+            "id": m.id,
+            "content": m.content,
+            "anchor_date": (m.content_ext or {}).get("anchor_date"),
+            "created_at": m.created_at,
+        }
+        for m in msgs
+    ]
+    return BaseResponse.success(data={"messages": data, "unread": len(data)})
+
+@router.post("/proactive/{message_id}/read", summary="标记主动消息已读")
+def read_proactive_message(
+    message_id: int = Path(..., description="主动消息 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """把一条主动消息标记为已读，红点随之消失。"""
+    ok = agent_crud.mark_proactive_read(db, current_user.id, message_id)
+    if not ok:
+        return BaseResponse.fail(code=404, msg="未找到对应的主动消息")
+    return BaseResponse.success(data={"message_id": message_id})

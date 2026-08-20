@@ -85,11 +85,37 @@ class RecycleBinSettings(BaseModel):
     retention_days: int = Field(default=7, description="Number of days to keep photos in recycle bin before permanent deletion")
     cleanup_time: str = Field(default="00:00", description="Time of day to run the cleanup task, format HH:mm")
 
+class ProactiveMemoryScheduleSettings(BaseModel):
+    """主动式记忆（那年今日主动关怀）定时调度。默认每天 09:00 触发，可关闭。"""
+
+    mode: str = Field(default='weekly', description="Options: 'off', 'interval', 'weekly'")
+    interval: int = Field(default=1440, description="分钟；interval 模式生效")
+    weekdays: List[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4, 5, 6], description="0=Monday")
+    time: str = Field(default="09:00", description="Format HH:mm")
+    max_run_seconds: int = Field(default=300, description="单次 job 最长运行秒数")
+    max_consecutive_failures_per_user: int = Field(default=5, description="单个用户连续失败多少次后跳过")
+    top_photos: int = Field(default=9, description="每条主动消息展示的高分照片数量")
+
+    def to_cron_expression(self) -> Optional[str]:
+        if self.mode == 'off':
+            return None
+        elif self.mode == 'interval':
+            return f"*/{self.interval} * * * *"
+        elif self.mode == 'weekly':
+            try:
+                hour, minute = self.time.split(":")
+                weekdays_str = ",".join(map(str, self.weekdays))
+                return f"{int(minute)} {int(hour)} * * {weekdays_str}"
+            except ValueError:
+                return None
+        return None
+
 class SystemSettings(BaseModel):
     security: SecuritySettings = Field(default_factory=SecuritySettings)
     task: TaskSettings = Field(default_factory=TaskSettings)
     scan_schedule: ScanScheduleSettings = Field(default_factory=ScanScheduleSettings)
     moment_caption_schedule: MomentCaptionScheduleSettings = Field(default_factory=MomentCaptionScheduleSettings)
+    proactive_memory_schedule: ProactiveMemoryScheduleSettings = Field(default_factory=ProactiveMemoryScheduleSettings)
     recycle_bin: RecycleBinSettings = Field(default_factory=RecycleBinSettings)
 
 class SystemConfigManager:

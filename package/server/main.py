@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
     from app.service.jobs.recycle_bin_cleanup import recycle_bin_cleanup_job
     from app.service.jobs.update_check import update_check_job
     from app.service.jobs.moment_caption import moment_caption_job
+    from app.service.jobs.proactive_memory import proactive_memory_job
 
     job_scheduler = JobScheduler()
     job_scheduler.register_cron_job(
@@ -87,6 +88,12 @@ async def lifespan(app: FastAPI):
         "moment_caption",
         system_config.config.moment_caption_schedule.to_cron_expression(),
         moment_caption_job,
+    )
+    # 主动式记忆：每天为用户生成"那年今日"主动关怀消息。
+    job_scheduler.register_cron_job(
+        "proactive_memory",
+        system_config.config.proactive_memory_schedule.to_cron_expression(),
+        proactive_memory_job,
     )
     # 服务启动后立即跑一次版本检查（去重键保证同一版本不会重复推送），
     # 之后每 6 小时再触发一次。

@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, cast, String
 
 from app.db.models.agent import AgentSession, AgentMessage
 from app.schemas.agent import AgentSessionCreate, AgentSessionUpdate, AgentMessageCreate
@@ -12,6 +12,12 @@ from app.schemas.agent import AgentSessionCreate, AgentSessionUpdate, AgentMessa
 MEMORY_SESSION_TITLE = "__memory__"
 # 记忆消息的 content_type
 MEMORY_CONTENT_TYPE = "memory"
+# 隐藏的"主动消息专用会话"标题标记，会话列表中会被过滤
+PROACTIVE_SESSION_TITLE = "__proactive__"
+# 主动消息的 content_type
+PROACTIVE_CONTENT_TYPE = "proactive"
+# 会话列表中需要隐藏的内部会话标题
+_HIDDEN_SESSION_TITLES = [MEMORY_SESSION_TITLE, PROACTIVE_SESSION_TITLE]
 
 # ---- Session CRUD ----
 
@@ -28,7 +34,7 @@ def get_sessions_by_user(
     return (
         db.query(AgentSession)
         .filter(AgentSession.user_id == user_id)
-        .filter(AgentSession.title != MEMORY_SESSION_TITLE)
+        .filter(AgentSession.title.notin_(_HIDDEN_SESSION_TITLES))
         .order_by(desc(AgentSession.is_pinned), desc(AgentSession.created_at))
         .offset(skip)
         .limit(limit)
@@ -173,3 +179,101 @@ def upsert_memory_message(
     db.commit()
     db.refresh(msg)
     return msg
+
+
+# ---- 主动式记忆（那年今日主动关怀）----
+# 每用户一个隐藏主动会话，content_type=proactive 的消息即一次推送，
+# content_ext 存 {"anchor_date", "read"}，不新增表/字段。
+
+def get_or_create_proactive_session(db: Session, user_id: Union[str, UUID]) -> AgentSession:
+    """获取用户的主动消息会话，不存在则创建。"""
+    if isinstance(user_id, str):
+        user_id = UUID(user_id)
+    session = (
+        db.query(AgentSession)
+        .filter(
+            AgentSession.user_id == user_id,
+            AgentSession.title == PROACTIVE_SESSION_TITLE,
+        )
+        .first()
+    )
+    if session:
+        return session
+    session = AgentSession(
+        user_id=user_id,
+        title=PROACTIVE_SESSION_TITLE,
+        status="active",
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+def has_proactive_for_date(db: Session, user_id: Union[str, UUID], anchor_date: str) -> bool:
+    """幂等检查：指定 anchor_date 的主动消息是否已生成过。"""
+    session = get_or_create_proactive_session(db, user_id)
+    return (
+        db.query(AgentMessage)
+        .filter(
+            AgentMessage.session_id == session.id,
+            AgentMessage.content_type == PROACTIVE_CONTENT_TYPE,
+            cast(AgentMessage.content_ext, String).ilike(f'%"anchor_date": "{anchor_date}"%'),
+        )
+        .first()
+        is not None
+    )
+
+def create_proactive_message(
+    db: Session, user_id: Union[str, UUID], content: str, anchor_date: str
+) -> AgentMessage:
+    """写入一条主动消息（content 为可直接渲染的 Markdown）。"""
+    session = get_or_create_proactive_session(db, user_id)
+    msg = AgentMessage(
+        session_id=session.id,
+        role="assistant",
+        content=content,
+        content_type=PROACTIVE_CONTENT_TYPE,
+        content_ext={"anchor_date": anchor_date, "read": False},
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+def get_unread_proactive_messages(
+    db: Session, user_id: Union[str, UUID], limit: int = 10
+) -> List[AgentMessage]:
+    """拉取未读的主动消息，最新的在前。"""
+    session = get_or_create_proactive_session(db, user_id)
+    msgs = (
+        db.query(AgentMessage)
+        .filter(
+            AgentMessage.session_id == session.id,
+            AgentMessage.content_type == PROACTIVE_CONTENT_TYPE,
+        )
+        .order_by(desc(AgentMessage.created_at))
+        .limit(limit)
+        .all()
+    )
+    return [m for m in msgs if not (m.content_ext or {}).get("read")]
+
+def mark_proactive_read(db: Session, user_id: Union[str, UUID], message_id: int) -> bool:
+    """把一条主动消息标记为已读。"""
+    session = get_or_create_proactive_session(db, user_id)
+    msg = (
+        db.query(AgentMessage)
+        .filter(
+            AgentMessage.id == message_id,
+            AgentMessage.session_id == session.id,
+            AgentMessage.content_type == PROACTIVE_CONTENT_TYPE,
+        )
+        .first()
+    )
+    if not msg:
+        return False
+    ext = dict(msg.content_ext or {})
+    ext["read"] = True
+    msg.content_ext = ext
+    db.add(msg)
+    db.commit()
+    return True

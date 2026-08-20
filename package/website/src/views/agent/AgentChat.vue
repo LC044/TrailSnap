@@ -562,6 +562,30 @@ const loadSessions = async () => {
   }
 };
 
+// 主动式记忆：打开助手时拉取未读的主动消息，作为助手消息置顶展示，并标记已读
+const loadProactiveMessages = async () => {
+  try {
+    const res: any = await agentApi.getProactiveMessages();
+    const list = res?.data?.messages ?? [];
+    if (!list.length) return;
+    const proactiveItems: MessageItem[] = list.map((m: any) => ({
+      id: m.id,
+      role: 'assistant' as const,
+      content: m.content,
+      isMarkdown: true,
+    }));
+    // 置顶插入到欢迎语之后
+    messages.value.splice(1, 0, ...proactiveItems);
+    scrollToBottom(true);
+    // 标记已读，消除红点
+    for (const m of list) {
+      agentApi.markProactiveRead(m.id).catch(() => {});
+    }
+  } catch (e) {
+    // 静默失败，不影响正常对话
+  }
+};
+
 const createNewSession = () => {
   currentSession.value = null;
   messages.value = [ { ...defaultWelcomeMessage } ];
@@ -755,6 +779,7 @@ watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     loadModels();
     loadSessions();
+    loadProactiveMessages();
     scrollToBottom(true);
   }
 });
@@ -763,6 +788,7 @@ onMounted(() => {
   if (props.modelValue) {
     loadModels();
     loadSessions();
+    loadProactiveMessages();
     scrollToBottom();
   }
 });
