@@ -455,12 +455,23 @@ const handleClose = () => {
 
 const renderMarkdown = (content: string) => {
   let rawHtml = md.render(content);
-  
-  rawHtml = rawHtml.replace(/<p>((?:\s*<agent-image[^>]*><\/agent-image>\s*)+)<\/p>/g, (match, p1) => {
-    const imgs = p1.replace(/<agent-image data-src="([^"]+)" data-full-src="([^"]+)" data-alt="([^"]*)"><\/agent-image>/g, 
-      '<div class="agent-gallery-item"><img src="$1" alt="$3" class="agent-gallery-image" data-full-src="$2" /></div>'
-    );
-    return `<div class="agent-gallery-grid">${imgs}</div>`;
+
+  // 合并「连续的、仅包含图片的 <p> 段落」为九宫格网格。
+  // markdown 会把图片间有空行的多张图解析成多个相邻 <p>，这里把这些相邻的纯图片段落
+  // （彼此间只有空白）整体识别，统一渲染成 grid，从而支持 AI/主动消息逐行输出图片的场景。
+  const imageParagraphs = /(?:<p>(?:\s*<agent-image[^>]*><\/agent-image>\s*)+<\/p>\s*)+/g;
+  rawHtml = rawHtml.replace(imageParagraphs, (block) => {
+    const items: string[] = [];
+    const single = /<agent-image data-src="([^"]+)" data-full-src="([^"]+)" data-alt="([^"]*)"><\/agent-image>/g;
+    let m: RegExpExecArray | null;
+    while ((m = single.exec(block)) !== null) {
+      items.push(
+        `<div class="agent-gallery-item"><img src="${m[1]}" alt="${m[3]}" class="agent-gallery-image" data-full-src="${m[2]}" /></div>`
+      );
+    }
+    // 单张图片不组成网格，保持原有的行内小图展示
+    if (items.length <= 1) return block;
+    return `<div class="agent-gallery-grid">${items.join('')}</div>`;
   });
 
   rawHtml = rawHtml.replace(/<agent-image data-src="([^"]+)" data-full-src="([^"]+)" data-alt="([^"]*)"><\/agent-image>/g, 
