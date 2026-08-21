@@ -38,6 +38,18 @@ export interface AgentMessage {
   created_at: string;
 }
 
+export interface ProactiveMessage {
+  id: number;
+  content: string;
+  anchor_date: string | null;
+  created_at: string;
+}
+
+export interface ProactiveResult {
+  messages: ProactiveMessage[];
+  unread: number;
+}
+
 export interface CreateSessionRequest {
   id?: string;
   title?: string;
@@ -153,5 +165,12 @@ export const agentApi = {
         message_ids: messageIds?.join(',')
       }
     });
+  },
+  // 主动式记忆（那年今日主动关怀）。后端返回 BaseResponse，需读取 .data
+  getProactiveMessages() {
+    return request.get<{ code: number; data: ProactiveResult }>('/api/agent/proactive');
+  },
+  markProactiveRead(messageId: number) {
+    return request.post<{ code: number }>(`/api/agent/proactive/${messageId}/read`);
   }
 };

@@ -132,7 +132,14 @@
         :title="isCollapsed ? 'AI 助手' : undefined"
         @click="uiStore.openAgent()"
       >
-        <Bot class="h-5 w-5 shrink-0" />
+        <span class="relative shrink-0">
+          <Bot class="h-5 w-5" />
+          <span
+            v-if="proactiveUnread > 0"
+            class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"
+            aria-hidden="true"
+          />
+        </span>
         <span v-if="!isCollapsed" class="ml-3 truncate">AI 助手</span>
       </button>
 
@@ -280,7 +287,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Images,
@@ -318,12 +325,31 @@ import { useUserStore } from '@/stores/user'
 import { ElMessageBox } from 'element-plus'
 import { useUiStore } from '@/stores/uiStore'
 import { toServerUrl } from '@/config/server'
+import { agentApi } from '@/api/agent'
 
 const route = useRoute()
 const router = useRouter()
 const store = usePhotoStore()
 const userStore = useUserStore()
 const uiStore = useUiStore()
+
+// 主动式记忆红点：未读的主动消息数量
+const proactiveUnread = ref(0)
+const refreshProactiveUnread = async () => {
+  // 未登录时不请求 agent 接口，避免触发 401 拦截器把未登录页面踢到 /login
+  if (!userStore.token) return
+  try {
+    const res: any = await agentApi.getProactiveMessages()
+    proactiveUnread.value = res?.data?.unread ?? 0
+  } catch {
+    // 静默失败，不影响侧边栏
+  }
+}
+onMounted(refreshProactiveUnread)
+// 关闭 Agent 后刷新（用户可能已读了主动消息）
+watch(() => uiStore.agentOpen, (open) => {
+  if (!open) refreshProactiveUnread()
+})
 const desktopSystemNavItems = computed(() => systemNavItems.filter(item => item.href === '/recycle-bin'))
 const accountName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '账号')
 const accountInitial = computed(() => accountName.value.slice(0, 1).toUpperCase())

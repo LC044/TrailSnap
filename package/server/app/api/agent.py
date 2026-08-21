@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.service.agent.service import chat_with_agent, stream_chat_with_agent, abort_chat_session
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.crud import agent as agent_crud
 from app.schemas.agent import AgentSession, AgentSessionCreate, AgentSessionUpdate, AgentMessage
 
@@ -204,3 +204,61 @@ def delete_messages(
     else:
         success = agent_crud.delete_messages_by_session(db, session_id)
     return {"message": "Messages deleted successfully"}
+
+@router.get("/memory", summary="获取 AI 记住的长期记忆")
+def get_memory(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    返回 AI 记住的、与当前用户相关的长期记忆锚点（照片即记忆）。
+    返回前会自动校验每条记忆指向的照片仍然存在、归属正确且未被删除，失效项会被剔除。
+    """
+    from app.service.agent.memory import get_valid_memory_anchors
+    anchors = get_valid_memory_anchors(db, str(current_user.id))
+    return BaseResponse.success(data={"anchors": anchors})
+
+@router.delete("/memory/{photo_id}", summary="删除一条长期记忆")
+def delete_memory(
+    photo_id: str = Path(..., description="要遗忘的记忆锚点对应的照片 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    删除指定照片对应的一条长期记忆，让 AI "遗忘"这段回忆。用户对自己的记忆有完全控制权。
+    """
+    from app.service.agent.memory import remove_memory_anchor
+    removed = remove_memory_anchor(db, str(current_user.id), photo_id)
+    if not removed:
+        return BaseResponse.fail(code=404, msg="未找到对应的记忆")
+    return BaseResponse.success(data={"photo_id": photo_id})
+
+@router.get("/proactive", summary="获取未读的主动消息")
+def get_proactive_messages(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取"那年今日"等主动关怀消息（未读）。用于侧边栏红点与打开助手时置顶展示。"""
+    msgs = agent_crud.get_unread_proactive_messages(db, current_user.id)
+    data = [
+        {
+            "id": m.id,
+            "content": m.content,
+            "anchor_date": (m.content_ext or {}).get("anchor_date"),
+            "created_at": m.created_at,
+        }
+        for m in msgs
+    ]
+    return BaseResponse.success(data={"messages": data, "unread": len(data)})
+
+@router.post("/proactive/{message_id}/read", summary="标记主动消息已读")
+def read_proactive_message(
+    message_id: int = Path(..., description="主动消息 ID"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """把一条主动消息标记为已读，红点随之消失。"""
+    ok = agent_crud.mark_proactive_read(db, current_user.id, message_id)
+    if not ok:
+        return BaseResponse.fail(code=404, msg="未找到对应的主动消息")
+    return BaseResponse.success(data={"message_id": message_id})
