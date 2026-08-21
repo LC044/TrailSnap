@@ -336,6 +336,8 @@ const uiStore = useUiStore()
 // 主动式记忆红点：未读的主动消息数量
 const proactiveUnread = ref(0)
 const refreshProactiveUnread = async () => {
+  // 未登录时不请求 agent 接口，避免触发 401 拦截器把未登录页面踢到 /login
+  if (!userStore.token) return
   try {
     const res: any = await agentApi.getProactiveMessages()
     proactiveUnread.value = res?.data?.unread ?? 0
