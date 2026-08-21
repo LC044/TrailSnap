@@ -170,7 +170,7 @@ def test_get_top_prediction_missing_class_falls_back_to_index():
 
 def test_classify_yolo_raises_when_general_not_ready():
     svc = _make_service()
-    with patch("app.services.image_classification_service.model_downloader") as md:
+    with patch("app.services.image_classification_service.ai_model_manager") as md:
         md.is_ready.return_value = False
         with pytest.raises(Exception, match="General model is not ready"):
             svc.classify_yolo([])
@@ -178,7 +178,7 @@ def test_classify_yolo_raises_when_general_not_ready():
 
 def test_classify_yolo_returns_error_results_for_invalid_base64():
     svc = _make_service()
-    with patch("app.services.image_classification_service.model_downloader") as md:
+    with patch("app.services.image_classification_service.ai_model_manager") as md:
         md.is_ready.return_value = True
         results = svc.classify_yolo(["this-is-not-valid-base64!!"])
     assert len(results) == 1
@@ -187,7 +187,7 @@ def test_classify_yolo_returns_error_results_for_invalid_base64():
 
 def test_classify_yolo_returns_errors_when_no_images_valid():
     svc = _make_service()
-    with patch("app.services.image_classification_service.model_downloader") as md:
+    with patch("app.services.image_classification_service.ai_model_manager") as md:
         md.is_ready.return_value = True
         results = svc.classify_yolo(["not-base64", "also-bad"])
     assert all(r["status"] == "error" for r in results)
@@ -209,7 +209,7 @@ def test_classify_yolo_handles_real_base64_image():
     general_model.return_value = [general_pred]
     general_model.names = {0: "animal", 1: "document", 2: "others"}
 
-    with patch("app.services.image_classification_service.model_downloader") as md, \
+    with patch("app.services.image_classification_service.ai_model_manager") as md, \
          patch("app.services.image_classification_service.model_manager") as mm:
         md.is_ready.return_value = True  # also for category sub-model
         mm.get_model.return_value = general_model

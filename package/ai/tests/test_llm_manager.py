@@ -53,7 +53,11 @@ def _make_manager(monkeypatch, settings, ready=True):
     from app.services import llm_manager as lm
 
     fake = _FakeDownloader(ready=ready)
-    monkeypatch.setattr(lm, "model_downloader", fake)
+    fake.get_selected_spec = lambda _task: {
+        "requiredFiles": ["MiniCPM-V-4_6-Q4_K_M.gguf", "mmproj-model-f16.gguf"]
+    }
+    fake.get_model_dir = lambda _task, task=False: __import__("pathlib").Path(settings.MODEL_PATH) / "MiniCPM-V-4_6-Q4_K_M"
+    monkeypatch.setattr(lm, "ai_model_manager", fake)
     monkeypatch.setattr(lm, "settings", settings)
 
     manager = lm.LLMProcessManager.__new__(lm.LLMProcessManager)
@@ -87,7 +91,7 @@ def test_get_resolved_model_path_finds_gguf_in_model_dir(monkeypatch, tmp_path):
     resolved, _ = manager._get_resolved_model_path()
     # The function returns the composed path regardless of whether the file
     # exists on disk; ``ensure_running`` is responsible for the existence check.
-    assert resolved.endswith(os.path.join("MiniCPM-V", "MiniCPM-V.gguf"))
+    assert resolved.endswith(os.path.join("MiniCPM-V-4_6-Q4_K_M", "MiniCPM-V-4_6-Q4_K_M.gguf"))
 
 
 def test_ensure_running_raises_when_model_not_ready(monkeypatch, tmp_path):

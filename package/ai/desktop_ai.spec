@@ -26,6 +26,10 @@ hiddenimports = (
 )
 datas = [
     (str(root / "app" / "data"), "app/data"),
+    # The unified model manager resolves its catalog relative to app/ when the
+    # sidecar is frozen; keep the same catalog available in every platform
+    # bundle so startup checks and model selection work offline.
+    (str(root / "app" / "model_catalog.json"), "app"),
 ]
 for package in (
     "fastapi", "pydantic", "rapidocr", "onnxruntime", "insightface",

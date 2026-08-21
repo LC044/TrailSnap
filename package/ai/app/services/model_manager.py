@@ -13,36 +13,63 @@ class ModelWrapper:
         self.model = None
         self.last_used = 0
         self.lock = threading.Lock()
+        self.condition = threading.Condition(self.lock)
+        self.releasing = False
 
     def get(self):
-        with self.lock:
+        with self.condition:
+            while self.releasing:
+                self.condition.wait()
             self.last_used = time.time()
             if self.model is None:
                 logger.info(f"Loading model: {self.name}")
                 self.model = self.load_func()
             return self.model
 
-    def release(self):
-        with self.lock:
-            if self.model is not None:
-                logger.info(f"Releasing model: {self.name}")
+    def _release_locked(self):
+        if self.model is not None:
+            logger.info(f"Releasing model: {self.name}")
 
-                # Custom release logic if provided
-                if self.release_func:
-                    try:
-                        self.release_func(self.model)
-                    except Exception as e:
-                        logger.error(f"Error in release function for {self.name}: {e}")
-                # Attempt to clear CUDA cache if torch is available (Global fallback)
+            # Custom release logic if provided
+            if self.release_func:
                 try:
-                    import torch
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                except ImportError:
-                    pass
-                del self.model
-                self.model = None
-                gc.collect()
+                    self.release_func(self.model)
+                except Exception as e:
+                    logger.error(f"Error in release function for {self.name}: {e}")
+            # Attempt to clear CUDA cache if torch is available (Global fallback)
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+            del self.model
+            self.model = None
+            gc.collect()
+
+    def release(self):
+        with self.condition:
+            while self.releasing:
+                self.condition.wait()
+            self._release_locked()
+
+    def release_async(self):
+        """Release in the background while preventing callers from using the old model."""
+        with self.condition:
+            if self.model is None or self.releasing:
+                return False
+            self.releasing = True
+
+        def worker():
+            with self.condition:
+                try:
+                    self._release_locked()
+                finally:
+                    self.releasing = False
+                    self.condition.notify_all()
+
+        threading.Thread(target=worker, daemon=True, name=f"release-{self.name}").start()
+        return True
 
 class ModelManager:
     _instance = None

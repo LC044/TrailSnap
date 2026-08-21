@@ -9,6 +9,7 @@ Exercises the previously untested branches in:
   openvino flag, no-torch/no-openvino path keeps the flag False.
 """
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 import pytest
 
@@ -44,17 +45,10 @@ def test_release_paddleocr_model_swallows_and_logs_exception(caplog):
 # OCRService.__init__
 # ---------------------------------------------------------------------------
 
-def test_ocr_service_init_runs_register_downloads(monkeypatch):
-    """Instantiating OCRService() must eagerly call _register_downloads."""
+def test_ocr_service_has_no_per_service_downloader_registration():
+    """All downloads are owned by the unified model manager."""
     from app.services import ocr_service
-    called = {"count": 0}
-
-    def _fake_register(self):
-        called["count"] += 1
-
-    monkeypatch.setattr(ocr_service.OCRService, "_register_downloads", _fake_register)
-    ocr_service.OCRService()
-    assert called["count"] == 1
+    assert not hasattr(ocr_service.OCRService, "_register_downloads")
 
 
 # ---------------------------------------------------------------------------
@@ -75,8 +69,8 @@ def test_load_paddleocr_model_reraises_on_engine_failure(monkeypatch):
                 ocr_service.load_paddleocr_model()
 
 
-def test_load_paddleocr_model_resets_openvino_flag_to_false_in_torch_path(monkeypatch):
-    """When torch + cuda are available the openvino flag must end as False."""
+def test_load_paddleocr_model_keeps_openvino_false_when_extra_missing(monkeypatch):
+    """ONNX models use CUDA through ORT; without OpenVINO the lock stays disabled."""
     from app.services import ocr_service
 
     rapidocr_mod = MagicMock()
@@ -84,15 +78,41 @@ def test_load_paddleocr_model_resets_openvino_flag_to_false_in_torch_path(monkey
         setattr(rapidocr_mod, name, MagicMock())
     rapidocr_mod.RapidOCR.return_value = MagicMock(name="fake-rapidocr")
 
-    fake_torch = MagicMock()
-    fake_torch.cuda.is_available.return_value = True
-
-    with patch.dict("sys.modules", {"rapidocr": rapidocr_mod, "torch": fake_torch}):
+    with patch.dict("sys.modules", {"rapidocr": rapidocr_mod, "openvino": None}):
         with patch.object(ocr_service, "_ocr_engine_is_openvino", True):
             model = ocr_service.load_paddleocr_model()
     assert model is not None
-    # After load with torch path, the openvino flag must be False.
     assert ocr_service._ocr_engine_is_openvino is False
+
+
+def test_load_paddleocr_model_uses_v6_small_catalog_runtime(tmp_path):
+    """PP-OCRv6 paths, enums and recognition dictionary come from the catalog."""
+    from rapidocr import ModelType, OCRVersion
+    from app.services import ocr_service
+
+    runtime = {
+        "ocrVersion": "PPOCRV6",
+        "modelType": "SMALL",
+        "detFile": "onnx/PP-OCRv6/det/PP-OCRv6_det_small.onnx",
+        "recFile": "onnx/PP-OCRv6/rec/PP-OCRv6_rec_small.onnx",
+        "clsFile": "onnx/PP-OCRv4/cls/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+        "clsOcrVersion": "PPOCRV4",
+        "recKeysFile": "paddle/PP-OCRv6/rec/PP-OCRv6_rec_small/ppocrv6_dict.txt",
+    }
+    with (
+        patch("rapidocr.RapidOCR") as rapidocr_ctor,
+        patch.object(ocr_service.ai_model_manager, "get_selected_spec", return_value={"runtime": runtime}),
+        patch.object(ocr_service.ai_model_manager, "get_model_dir", return_value=tmp_path),
+        patch.dict("sys.modules", {"openvino": None}),
+    ):
+        ocr_service.load_paddleocr_model()
+
+    params = rapidocr_ctor.call_args.kwargs["params"]
+    assert params["Det.ocr_version"] is OCRVersion.PPOCRV6
+    assert params["Det.model_type"] is ModelType.SMALL
+    assert params["Det.model_path"] == Path(tmp_path) / runtime["detFile"]
+    assert params["Rec.model_path"] == Path(tmp_path) / runtime["recFile"]
+    assert params["Rec.rec_keys_path"] == Path(tmp_path) / runtime["recKeysFile"]
 
 
 def test_load_paddleocr_model_no_torch_no_openvino_keeps_flag_false(monkeypatch):

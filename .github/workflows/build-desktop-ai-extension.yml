@@ -43,7 +43,7 @@ jobs:
         run: uv sync --frozen --extra cpu --group desktop
       - name: Prepare bundled RapidOCR resources
         working-directory: package/ai
-        run: uv run python -c "from app.services.ocr_service import load_paddleocr_model; load_paddleocr_model()"
+        run: uv run python -c "from app.services.unified_model_manager import ai_model_manager; ai_model_manager.prepare_model('ocr'); from app.services.ocr_service import load_paddleocr_model; load_paddleocr_model()"
       - name: Compile AI sidecar
         working-directory: package/ai
         run: uv run python scripts/build_desktop_runtime.py

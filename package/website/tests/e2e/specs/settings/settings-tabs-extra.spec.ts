@@ -99,10 +99,17 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await page.route('**/api/settings/ai-models', route => route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ code: 0, msg: 'success', data: { models: [{
-        id: 'yolo_photo_cls_general', name: '图片分类与票据识别模型', status: 'pending',
-        description: '运行时从 ModelScope 下载', requirements: { diskMB: 130 },
-      }] } }),
+      body: JSON.stringify({ code: 0, msg: 'success', data: {
+        models: [{
+          id: 'yolo_photo_cls_general', name: '图片分类与票据识别模型', status: 'pending',
+          description: '用于识别照片和票据', requirements: { memoryMB: 500 },
+        }],
+        tasks: {
+          classification: {
+            name: '图片智能分类', selected: 'yolo_photo_cls_general', available: ['yolo_photo_cls_general'],
+          },
+        },
+      } }),
     }));
     await page.goto('/settings?tab=ai-extensions');
     await clickSettingTab(page, 'ai-extensions');
@@ -110,8 +117,11 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     // 'heading' 角色：侧边栏菜单项「AI 模型管理」是 <a> 锚点而非标题，用 heading 精确命中内容区 <h2>。
     await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible();
-    await expect(page.getByText('图片分类与票据识别模型')).toBeVisible();
-    await expect(page.getByRole('button', { name: '立即下载' })).toBeEnabled();
+    // 合并模型卡片后（c0605b5），模型名只在 <select> 的 <option> 中出现，Playwright 视 <option> 不可见；
+    // 改为断言任务卡片标题「图片智能分类」可见——taskCards 会过滤掉 model 缺失的卡片，
+    // 故该 <h3> 可见即说明 yolo_photo_cls_general 已加载并渲染。
+    await expect(page.getByRole('heading', { name: '图片智能分类' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '下载', exact: true })).toBeEnabled();
   });
 
   test('连续切换 tasks → external → performance - 内容独立渲染不残留', async ({ page }) => {
