@@ -137,7 +137,7 @@
           <span
             v-if="proactiveUnread > 0"
             class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"
-            title="有新的回忆"
+            aria-hidden="true"
           />
         </span>
         <span v-if="!isCollapsed" class="ml-3 truncate">AI 助手</span>
