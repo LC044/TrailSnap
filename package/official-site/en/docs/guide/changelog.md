@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-22 (0.11.0)
+
+### New
+
+- Added photo-anchored memory to the AI assistant, allowing meaningful moments from conversations about specific photos to inform more coherent future responses.
+- Added proactive memories: when On This Day photos are available, the assistant can prepare a personalized greeting and show an unread indicator in the sidebar.
+- Added folder filters to conditional albums, with multi-select support and automatic inclusion of all descendant folders.
+- Added multiple PP-OCRv6 tiers and the Buffalo M face model so users can choose between speed and accuracy for their hardware.
+
+### Improvements
+
+- Unified AI model browsing, downloading, switching, and removal; switching is faster and failed removals can fall back to an available configuration.
+- Improved AI assistant photo search with concise samples and aggregate summaries for exploratory queries, plus automatic grid layouts for multi-photo results.
+- Refreshed Web, PWA, Android, and iOS icons for a more consistent product identity.
+
+### Bug Fixes
+
+- Fixed the assistant sidebar indicator affecting accessible names and unauthenticated proactive requests disrupting login state.
+- Fixed model preparation and URL configuration issues in desktop builds, improving desktop AI extension installation and startup reliability.
+
 ## 2026-08-18 (0.10.2)
 
 ### New
