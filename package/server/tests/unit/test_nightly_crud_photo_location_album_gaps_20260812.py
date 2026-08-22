@@ -299,6 +299,36 @@ def test_build_album_query_conditional_with_bad_time_range_does_not_raise():
     crud_album._build_album_query(db, album)
 
 
+def test_build_album_query_conditional_with_folders():
+    from app.crud import album as crud_album
+    db = MagicMock()
+    chain = _chain(db, [])
+    album = _album(
+        type="conditional",
+        owner_id=uuid4(),
+        condition={"folders": ["Photos/Trips", "Photos/Family"]},
+    )
+
+    crud_album._build_album_query(db, album)
+
+    # owner/deleted filters plus one folder-condition filter are applied.
+    assert chain.filter.call_count >= 3
+    folder_expression = chain.filter.call_args_list[-1].args[0]
+    compiled = str(folder_expression.compile(compile_kwargs={"literal_binds": True}))
+    assert "replace(photos.file_path" in compiled
+    assert "Photos/Trips" in compiled
+    assert "Photos/Family" in compiled
+    assert " OR " in compiled
+
+
+def test_build_folder_condition_ignores_invalid_and_empty_values():
+    from app.crud import album as crud_album
+
+    assert crud_album._build_folder_condition(None) is None
+    assert crud_album._build_folder_condition([]) is None
+    assert crud_album._build_folder_condition(["", None, 123]) is None
+
+
 def test_build_album_query_smart_with_embedding():
     from app.crud import album as crud_album
     db = MagicMock()

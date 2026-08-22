@@ -128,6 +128,7 @@ export interface AlbumCondition {
     district?: string;
   }[];
   people?: string[]; // Face Identity IDs
+  folders?: string[]; // Relative folder paths; descendants are included
 }
 
 export interface ApiAlbum {
