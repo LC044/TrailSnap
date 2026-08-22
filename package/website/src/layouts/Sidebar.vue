@@ -11,7 +11,7 @@
       :class="isCollapsed ? 'justify-center px-2' : 'justify-between px-4'"
     >
       <div v-if="!isCollapsed" class="flex items-center overflow-hidden whitespace-nowrap">
-        <img src="@/assets/logo.svg" alt="Logo" class="w-8 h-8 shrink-0" />
+        <img src="@/assets/logo.svg" alt="Logo" class="w-8 h-8 shrink-0 rounded-lg" />
         <h1 class="ml-3 font-bold text-lg text-slate-800 dark:text-slate-100">行影集</h1>
       </div>
       <!-- 折叠按钮 (仅在非手机端显示？也可以手机端隐藏侧边栏) -->
