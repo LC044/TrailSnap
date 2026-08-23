@@ -455,12 +455,23 @@ const handleClose = () => {
 
 const renderMarkdown = (content: string) => {
   let rawHtml = md.render(content);
-  
-  rawHtml = rawHtml.replace(/<p>((?:\s*<agent-image[^>]*><\/agent-image>\s*)+)<\/p>/g, (match, p1) => {
-    const imgs = p1.replace(/<agent-image data-src="([^"]+)" data-full-src="([^"]+)" data-alt="([^"]*)"><\/agent-image>/g, 
-      '<div class="agent-gallery-item"><img src="$1" alt="$3" class="agent-gallery-image" data-full-src="$2" /></div>'
-    );
-    return `<div class="agent-gallery-grid">${imgs}</div>`;
+
+  // 合并「连续的、仅包含图片的 <p> 段落」为九宫格网格。
+  // markdown 会把图片间有空行的多张图解析成多个相邻 <p>，这里把这些相邻的纯图片段落
+  // （彼此间只有空白）整体识别，统一渲染成 grid，从而支持 AI/主动消息逐行输出图片的场景。
+  const imageParagraphs = /(?:<p>(?:\s*<agent-image[^>]*><\/agent-image>\s*)+<\/p>\s*)+/g;
+  rawHtml = rawHtml.replace(imageParagraphs, (block) => {
+    const items: string[] = [];
+    const single = /<agent-image data-src="([^"]+)" data-full-src="([^"]+)" data-alt="([^"]*)"><\/agent-image>/g;
+    let m: RegExpExecArray | null;
+    while ((m = single.exec(block)) !== null) {
+      items.push(
+        `<div class="agent-gallery-item"><img src="${m[1]}" alt="${m[3]}" class="agent-gallery-image" data-full-src="${m[2]}" /></div>`
+      );
+    }
+    // 单张图片不组成网格，保持原有的行内小图展示
+    if (items.length <= 1) return block;
+    return `<div class="agent-gallery-grid">${items.join('')}</div>`;
   });
 
   rawHtml = rawHtml.replace(/<agent-image data-src="([^"]+)" data-full-src="([^"]+)" data-alt="([^"]*)"><\/agent-image>/g, 
@@ -559,6 +570,30 @@ const loadSessions = async () => {
     sessions.value = res.data;
   } catch (error) {
     console.error('Failed to load sessions', error);
+  }
+};
+
+// 主动式记忆：打开助手时拉取未读的主动消息，作为助手消息置顶展示，并标记已读
+const loadProactiveMessages = async () => {
+  try {
+    const res: any = await agentApi.getProactiveMessages();
+    const list = res?.data?.messages ?? [];
+    if (!list.length) return;
+    const proactiveItems: MessageItem[] = list.map((m: any) => ({
+      id: m.id,
+      role: 'assistant' as const,
+      content: m.content,
+      isMarkdown: true,
+    }));
+    // 置顶插入到欢迎语之后
+    messages.value.splice(1, 0, ...proactiveItems);
+    scrollToBottom(true);
+    // 标记已读，消除红点
+    for (const m of list) {
+      agentApi.markProactiveRead(m.id).catch(() => {});
+    }
+  } catch (e) {
+    // 静默失败，不影响正常对话
   }
 };
 
@@ -755,6 +790,7 @@ watch(() => props.modelValue, (newVal) => {
   if (newVal) {
     loadModels();
     loadSessions();
+    loadProactiveMessages();
     scrollToBottom(true);
   }
 });
@@ -763,6 +799,7 @@ onMounted(() => {
   if (props.modelValue) {
     loadModels();
     loadSessions();
+    loadProactiveMessages();
     scrollToBottom();
   }
 });

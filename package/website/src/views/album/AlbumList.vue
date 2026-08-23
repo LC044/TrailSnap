@@ -175,6 +175,29 @@
         <!-- Conditional Album Fields -->
         <div v-if="form.type === 'conditional'" class="space-y-4 border-t border-gray-100 dark:border-gray-800 pt-4">
             <h4 class="font-medium text-gray-900 dark:text-white">筛选条件</h4>
+
+            <!-- Folders -->
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">文件夹</label>
+                <el-tree-select
+                    v-model="form.folders"
+                    :props="folderTreeProps"
+                    :load="loadFolderOptions"
+                    :cache-data="selectedFolderCache"
+                    node-key="path"
+                    multiple
+                    show-checkbox
+                    check-strictly
+                    lazy
+                    filterable
+                    clearable
+                    collapse-tags
+                    collapse-tags-tooltip
+                    placeholder="选择文件夹"
+                    class="w-full"
+                />
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">包含所选文件夹及其全部子文件夹中的照片</p>
+            </div>
             
             <!-- Time Range -->
             <div>
@@ -360,6 +383,37 @@ interface LocationForm {
 const locationOptions = ref<{ label: string; value: LocationForm }[]>([])
 const locationLoading = ref(false)
 
+interface FolderOption {
+  name: string
+  path: string
+  isLeaf: boolean
+}
+
+const folderTreeProps = {
+  label: 'name',
+  children: 'children',
+  isLeaf: 'isLeaf'
+}
+
+const toFolderOptions = (children: { name: string; path: string; has_children: boolean }[]): FolderOption[] =>
+  children.map(folder => ({
+    name: folder.name,
+    path: folder.path,
+    isLeaf: !folder.has_children
+  }))
+
+const loadFolderOptions = async (node: any, resolve: (options: FolderOption[]) => void) => {
+  try {
+    const parent = node.level === 0 ? '' : node.data.path
+    const data = await albumService.getFolders(parent)
+    const options = toFolderOptions(data.children || [])
+    resolve(options)
+  } catch (error) {
+    console.error('Failed to load folders', error)
+    resolve([])
+  }
+}
+
 const searchLocation = async (query: string) => {
   if (query) {
     locationLoading.value = true
@@ -403,8 +457,15 @@ const form = reactive({
   timeRange: [] as string[],
   locations: [] as LocationForm[],
   people: [] as string[],
+  folders: [] as string[],
   threshold: 0.25
 })
+
+const selectedFolderCache = computed(() => form.folders.map(path => ({
+  name: path.split('/').filter(Boolean).pop() || path,
+  path,
+  isLeaf: false
+})))
 
 const timeRangeStart = computed({
   get: () => form.timeRange[0] || '',
@@ -443,6 +504,7 @@ const openCreateModal = async (type: string = 'user') => {
   form.locations = []
   locationOptions.value = []
   form.people = []
+  form.folders = []
   form.threshold = 0.25
   
   if (type === 'conditional') {
@@ -465,6 +527,7 @@ const openEditModal = async (album: any) => {
   form.locations = []
   locationOptions.value = []
   form.people = []
+  form.folders = []
   if (form.type === 'conditional' && album.condition) {
 
       await fetchFaces()
@@ -494,6 +557,9 @@ const openEditModal = async (album: any) => {
       }
       if (album.condition.people) {
           form.people = album.condition.people
+      }
+      if (album.condition.folders) {
+          form.folders = album.condition.folders
       }
   }
 
@@ -526,7 +592,8 @@ const submitForm = async () => {
                 city: l.city || undefined,
                 district: l.district || undefined
             })),
-            people: form.people.length > 0 ? form.people : undefined
+            people: form.people.length > 0 ? form.people : undefined,
+            folders: form.folders.length > 0 ? form.folders : undefined
         }
     }
 

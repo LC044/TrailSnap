@@ -1,4 +1,4 @@
-<svg width="180" height="180" viewBox="10 10 180 180" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs>
     <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#3246B4;stop-opacity:1" />
@@ -19,8 +19,8 @@
     <path id="photoCard" d="M 128.91 144.11 L 160.77 122.95 C 162.77 121.62 165.48 122.18 166.78 124.19 L 180.73 145.74 C 182.03 147.75 181.44 150.43 179.43 151.72 L 147.57 172.88 C 145.57 174.21 142.86 173.65 141.56 171.64 L 127.61 150.09 C 126.31 148.08 126.90 145.40 128.91 144.11 Z"/>
   </defs>
 
-  <rect x="10" y="10" width="180" height="180" rx="42" ry="42" fill="url(#bgGradient)" />
-  <rect x="10" y="10" width="180" height="180" rx="42" ry="42" fill="white" fill-opacity="0.05" stroke="white" stroke-width="0.5" stroke-opacity="0.2"/>
+  <rect width="200" height="200" fill="url(#bgGradient)" />
+  <rect width="200" height="200" fill="white" fill-opacity="0.05"/>
 
   <g filter="url(#iconShadow)">
     

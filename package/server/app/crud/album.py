@@ -2,7 +2,7 @@ from typing import List, Optional, Union
 from uuid import UUID
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from datetime import datetime
 
 from app.db.models.album import Album, AlbumPhoto
@@ -13,6 +13,44 @@ from app.db.models.image_vector import ImageVector
 from app.db.models.user import User
 from app.schemas import album as album_schemas
 import numpy as np
+
+
+def _build_folder_condition(folders):
+    """Build an OR filter for relative folder paths stored in album conditions.
+
+    Folder paths come from the hierarchical ``/photos/folders`` endpoint and
+    include the scan-root label (for example ``Photos/Trips``).  Photo paths
+    may be absolute or relative and may use either path separator, so match a
+    complete path segment after normalising separators in SQL.
+    """
+    if not isinstance(folders, list):
+        return None
+
+    normalized_folders = []
+    for folder in folders:
+        if not isinstance(folder, str):
+            continue
+        normalized = folder.strip().replace('\\', '/').strip('/')
+        if normalized and normalized not in normalized_folders:
+            normalized_folders.append(normalized)
+
+    if not normalized_folders:
+        return None
+
+    def _escape_like(value: str) -> str:
+        return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+    normalized_path = func.replace(Photo.file_path, '\\', '/')
+    filters = []
+    for folder in normalized_folders:
+        escaped = _escape_like(folder)
+        # The first form covers relative stored paths, while the second covers
+        # absolute paths.  Both include all descendants of the chosen folder.
+        filters.append(or_(
+            normalized_path.like(escaped + '/%', escape='\\'),
+            normalized_path.like('%/' + escaped + '/%', escape='\\'),
+        ))
+    return or_(*filters)
 
 
 # Album CRUD
@@ -62,6 +100,11 @@ def _build_album_query(db: Session, album: Album):
              people_ids = cond['people']
              # Assuming people_ids are UUID strings
              query = query.join(Photo.faces).filter(Face.face_identity_id.in_(people_ids))
+
+        # Folders (each selected folder includes all of its descendants)
+        folder_filter = _build_folder_condition(cond.get('folders'))
+        if folder_filter is not None:
+             query = query.filter(folder_filter)
 
         # Deduplicate
         query = query.group_by(Photo.id)

@@ -24,6 +24,73 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.face import Face, FaceIdentity
 from app.utils.path import get_user_roots, compute_browse_path
 
+# 聚合摘要每类分布返回的 top-N 条目数
+SUMMARY_TOP_N = 8
+
+
+def _build_search_summary(db: Session, filtered_query, distance) -> dict:
+    """
+    计算覆盖全部命中照片的聚合概览：时间跨度、城市分布 top-N、标签分布 top-N。
+    从筛选 query 抽取 photo_id 子查询做独立聚合，与主查询解耦；任何异常都吞掉不影响主结果。
+    """
+    summary: dict = {}
+    try:
+        # 抽取命中的 photo_id 子查询，去除 distance 等附加列与排序
+        id_subq = filtered_query.with_entities(Photo.id).order_by(None).subquery()
+
+        # 时间跨度
+        try:
+            tmin, tmax = db.query(
+                func.min(Photo.photo_time), func.max(Photo.photo_time)
+            ).filter(Photo.id.in_(db.query(id_subq.c.id))).first()
+            if tmin or tmax:
+                summary["date_range"] = [
+                    tmin.strftime("%Y-%m-%d") if tmin else None,
+                    tmax.strftime("%Y-%m-%d") if tmax else None,
+                ]
+        except Exception as e:
+            logging.warning(f"summary date_range 计算失败: {e}")
+
+        # 城市分布 top-N
+        try:
+            rows = (
+                db.query(PhotoMetadata.city, func.count().label("cnt"))
+                .filter(
+                    PhotoMetadata.photo_id.in_(db.query(id_subq.c.id)),
+                    PhotoMetadata.city.isnot(None),
+                    PhotoMetadata.city != "",
+                )
+                .group_by(PhotoMetadata.city)
+                .order_by(func.count().desc())
+                .limit(SUMMARY_TOP_N)
+                .all()
+            )
+            if rows:
+                summary["top_locations"] = {city: cnt for city, cnt in rows}
+        except Exception as e:
+            logging.warning(f"summary top_locations 计算失败: {e}")
+
+        # 标签分布 top-N
+        try:
+            rows = (
+                db.query(PhotoTag.tag_name, func.count().label("cnt"))
+                .join(PhotoTagRelation, PhotoTag.id == PhotoTagRelation.tag_id)
+                .filter(PhotoTagRelation.photo_id.in_(db.query(id_subq.c.id)))
+                .group_by(PhotoTag.tag_name)
+                .order_by(func.count().desc())
+                .limit(SUMMARY_TOP_N)
+                .all()
+            )
+            if rows:
+                summary["top_tags"] = {name: cnt for name, cnt in rows}
+        except Exception as e:
+            logging.warning(f"summary top_tags 计算失败: {e}")
+    except Exception as e:
+        logging.warning(f"_build_search_summary 整体失败，返回空摘要: {e}")
+
+    return summary
+
+
 def get_agent_tools(user_id: str) -> List[StructuredTool]:
     """
     根据 user_id 动态生成绑定了用户的工具列表
@@ -48,6 +115,15 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
         """
         该接口用于搜索照片，不能用缩小搜索范围，也不能用来查看照片的详细数据。受limit限制，只能返回部分照片，在使用该接口之前，必须先根据用户的描述来初步缩小搜索范围，例如日期范围、地点、类型、标签、人物等，如果用户没有提供足够的信息，你可以要求用户进一步给出详细的描述。
         搜索用户的相册照片。支持多维度筛选，不同筛选条件之间进行与运算，相同筛选列表之间进行或运算。
+
+        【渐进式披露】为节省上下文，当命中照片过多时，本接口不会返回全部明细，而是采用"少量样本 + 全局聚合摘要"的方式：
+          - photos：仅返回排序后的前若干条完整明细（样本）；
+          - truncated：为 true 时表示还有更多照片未在 photos 中列出，你应据此判断是否需要提示用户进一步缩小范围，而不要臆断只有这几张；
+          - summary：对**全部**符合条件的照片（不止样本）做的聚合概览，包含时间跨度、地点分布(top)、标签分布(top)，可用它快速把握整体情况并回答"去了哪些地方/拍了些什么"类问题。
+
+        【九宫格 / 挑图场景】当用户明确需要"凑九宫格""挑几张发朋友圈""给我 N 张照片"等需要拿到具体照片明细的场景时，
+        请把 limit 显式设为所需数量（如 9 或 12）。当 limit <= 12 时，本接口会返回该数量的完整明细且不截断，确保你能直接用于展示。
+
         Args:
             start_date: 开始日期 (YYYY-MM-DD)
             end_date: 结束日期 (YYYY-MM-DD)
@@ -60,11 +136,18 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             persons: 匹配的人物/人脸名称列表
             description: clip模型以文搜图的文本描述提示词
             folders: 匹配的文件夹名称/相对路径关键字列表（如"旅游", "演唱会"），按文件路径模糊匹配
-            limit: 返回的照片数量上限
+            limit: 期望返回的照片数量上限。凑图/挑图时请设为具体数量(如9、12)以获得完整明细。
             sort_by: 排序方式，可选 "photo_time"（按时间）, "quality_score"（按美观度）, "memory_score"（按回忆价值）
         Returns:
-            JSON 字符串，结构为 {"total": 符合条件的照片总数, "returned": 本次返回数量, "photos": [...]}。
-            其中 total 可能大于 returned（受 limit 限制），据此可判断是否还有更多照片、是否需要进一步缩小范围。
+            JSON 字符串，结构为
+            {
+              "total": 符合条件的照片总数,
+              "returned": 本次 photos 中返回的样本数量,
+              "truncated": 是否还有更多照片未列出,
+              "summary": {"date_range": [...], "top_locations": {...}, "top_tags": {...}},
+              "photos": [...样本明细...]
+            }。
+            其中 total 可能远大于 returned；truncated=true 时请结合 summary 概览作答或提示用户缩小范围。
             每张照片包含 photo_id、拍摄时间、地点、所在文件夹、文件名和一句话描述；
             当使用 description 以文搜图时，还会附带 similarity（0~1，越大越相关）字段。
         """
@@ -135,6 +218,17 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             # 统计符合筛选条件的总数（在排序/分页之前），供模型判断是否还有更多结果
             total = query.order_by(None).count()
 
+            # 渐进式披露：limit<=12 视为凑图场景全量返回；否则最多返回 SAMPLE_LIMIT 条样本
+            SAMPLE_LIMIT = 8
+            GALLERY_THRESHOLD = 12
+            if limit <= GALLERY_THRESHOLD:
+                effective_limit = limit
+            else:
+                effective_limit = min(limit, SAMPLE_LIMIT)
+
+            # 全局聚合摘要（覆盖全部命中照片）
+            summary = _build_search_summary(db, query, distance)
+
             if sort_by == "quality_score":
                 query = query.order_by(ImageDescription.quality_score.desc().nulls_last())
             elif sort_by == "memory_score":
@@ -144,10 +238,13 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             else:
                 query = query.order_by(Photo.photo_time.desc().nulls_last())
 
-            results = query.limit(limit).all()
+            results = query.limit(effective_limit).all()
 
             if not results:
-                return json.dumps({"total": total, "returned": 0, "photos": []}, ensure_ascii=False)
+                return json.dumps({
+                    "total": total, "returned": 0, "truncated": False,
+                    "summary": summary, "photos": []
+                }, ensure_ascii=False)
 
             roots = get_user_roots(user_id, db)
             response_data = []
@@ -176,6 +273,8 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
             return json.dumps({
                 "total": total,
                 "returned": len(response_data),
+                "truncated": total > len(response_data),
+                "summary": summary,
                 "photos": response_data
             }, ensure_ascii=False)
 

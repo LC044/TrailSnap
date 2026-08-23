@@ -55,16 +55,17 @@ def test_get_sessions_by_user_orders_by_pinned_then_created():
     db = MagicMock()
     user_id = uuid4()
     expected = [SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]
-    db.query.return_value.filter.return_value.order_by.return_value \
+    # 会话列表会额外过滤掉隐藏的"记忆专用会话"，因此链上有两层 filter：
+    # query().filter(owner).filter(title != __memory__).order_by()...
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value \
         .offset.return_value.limit.return_value.all.return_value = expected
 
     out = agent_crud.get_sessions_by_user(db, str(user_id), skip=10, limit=25)
 
     assert out is expected
-    # order_by is chained twice (pinned desc, created_at desc)\n    order_mock = db.query.return_value.filter.return_value.order_by\n    assert order_mock.call_count == 2
-    db.query.return_value.filter.return_value.order_by.return_value \
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value \
         .offset.assert_called_once_with(10)
-    db.query.return_value.filter.return_value.order_by.return_value \
+    db.query.return_value.filter.return_value.filter.return_value.order_by.return_value \
         .offset.return_value.limit.assert_called_once_with(25)
 
 
@@ -179,3 +180,62 @@ def test_delete_messages_by_session_returns_true_regardless_of_matches():
     assert agent_crud.delete_messages_by_session(db, str(uuid4())) is True
     db.query.return_value.filter.return_value.delete.assert_called_once()
     db.commit.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# 主动式记忆 CRUD
+# ---------------------------------------------------------------------------
+
+from unittest.mock import patch  # noqa: E402
+
+
+def test_create_proactive_message_sets_fields_and_anchor_date():
+    db = MagicMock()
+    user_id = uuid4()
+    session = SimpleNamespace(id=uuid4())
+    with patch.object(agent_crud, "get_or_create_proactive_session", return_value=session):
+        agent_crud.create_proactive_message(db, user_id, "hi\n![x](/api/medias/a/thumbnail)", "2026-08-20")
+
+    added = db.add.call_args[0][0]
+    assert added.role == "assistant"
+    assert added.content_type == agent_crud.PROACTIVE_CONTENT_TYPE
+    assert added.content_ext == {"anchor_date": "2026-08-20", "read": False}
+    db.commit.assert_called_once()
+
+
+def test_get_unread_proactive_filters_read_ones():
+    db = MagicMock()
+    session = SimpleNamespace(id=uuid4())
+    m_read = SimpleNamespace(id=1, content_ext={"read": True})
+    m_unread = SimpleNamespace(id=2, content_ext={"read": False})
+    m_none = SimpleNamespace(id=3, content_ext=None)  # 无 ext 视为未读
+    (db.query.return_value.filter.return_value.order_by.return_value
+        .limit.return_value.all.return_value) = [m_read, m_unread, m_none]
+
+    with patch.object(agent_crud, "get_or_create_proactive_session", return_value=session):
+        out = agent_crud.get_unread_proactive_messages(db, uuid4())
+
+    ids = [m.id for m in out]
+    assert ids == [2, 3]  # 已读的被过滤
+
+
+def test_mark_proactive_read_sets_flag():
+    db = MagicMock()
+    session = SimpleNamespace(id=uuid4())
+    msg = SimpleNamespace(id=5, content_ext={"anchor_date": "2026-08-20", "read": False})
+    db.query.return_value.filter.return_value.first.return_value = msg
+
+    with patch.object(agent_crud, "get_or_create_proactive_session", return_value=session):
+        ok = agent_crud.mark_proactive_read(db, uuid4(), 5)
+
+    assert ok is True
+    assert msg.content_ext["read"] is True
+    db.commit.assert_called_once()
+
+
+def test_mark_proactive_read_returns_false_when_missing():
+    db = MagicMock()
+    session = SimpleNamespace(id=uuid4())
+    db.query.return_value.filter.return_value.first.return_value = None
+    with patch.object(agent_crud, "get_or_create_proactive_session", return_value=session):
+        assert agent_crud.mark_proactive_read(db, uuid4(), 999) is False

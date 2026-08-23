@@ -15,8 +15,8 @@ function pwaPlugin() {
         .map((fileName) => `/${fileName}`)
 
       const source = `
-const CACHE_NAME = 'trailsnap-app-shell-v1';
-const PRECACHE_URLS = ${JSON.stringify(['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/logo.svg', '/favicon.ico', ...precache])};
+const CACHE_NAME = 'trailsnap-app-shell-v2';
+const PRECACHE_URLS = ${JSON.stringify(['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/logo.svg', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', ...precache])};
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))).then(() => self.clients.claim())));
 self.addEventListener('message', (event) => { if (event.data?.type === 'SKIP_WAITING') self.skipWaiting(); });

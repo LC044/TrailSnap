@@ -123,5 +123,10 @@
         "version": "0.10.2",
         "update_info": "- 照片查看器新增重新识别，支持单张照片重新执行人脸、文字、场景、描述和向量分析<br>- 手动照片处理任务支持优先执行并实时展示进度<br>- 修复 Android App 连接 HTTP 自托管服务器时所有图片被拦截的问题<br>- 修复大量照片首次扫描时缩略图失败和任务级联异常<br>- 优化官网下载按钮的异常回退",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.10.2"
+    },
+    {
+        "version": "0.11.0",
+        "update_info": "- AI 助手新增照片记忆与“那年今日”主动回忆<br>- 条件相册支持按文件夹及其子文件夹筛选照片<br>- AI 模型管理新增多档 PP-OCRv6 与 Buffalo M，并优化下载、切换和删除体验<br>- AI 助手照片搜索结果支持聚合摘要与多图网格展示<br>- 更新 Web、PWA、Android 与 iOS 应用图标<br>- 修复桌面 AI 扩展模型准备和配置问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.11.0"
     }
 ]
