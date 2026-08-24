@@ -236,6 +236,8 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
 
     const box = await timeline.boundingBox()
     expect(box).not.toBeNull()
+    expect(box!.y).toBeLessThanOrEqual(1)
+    expect(box!.height).toBeGreaterThanOrEqual(843)
     await timeline.dispatchEvent('touchstart', {
       touches: [{ identifier: 1, clientX: box!.x + box!.width / 2, clientY: box!.y + 30 }],
       changedTouches: [],
