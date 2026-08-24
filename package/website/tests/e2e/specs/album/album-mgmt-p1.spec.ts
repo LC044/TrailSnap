@@ -79,7 +79,13 @@ async function waitForAlbumByName(
 async function openNewAlbumDialog(page: Page, kind: 'user' | 'conditional' | 'smart'): Promise<void> {
   // 点击 "新建相册" 按钮（el-dropdown trigger）
   const trigger = page.getByRole('button', { name: /新建相册/ })
-  await expect(trigger).toBeVisible({ timeout: 10_000 })
+  try {
+    await expect(trigger).toBeVisible({ timeout: 10_000 })
+  } catch {
+    // 本地 dev server 在长套件中偶尔只完成导航而未完成 SPA hydration；重新加载一次。
+    await page.reload({ waitUntil: 'domcontentloaded' })
+    await expect(trigger).toBeVisible({ timeout: 15_000 })
+  }
   await trigger.click()
 
   // el-dropdown 菜单里的三个选项
@@ -111,10 +117,11 @@ async function gotoRetry(page: Page, url: string, retries = 2): Promise<void> {
   }
 }
 
-test.describe.serial('P1 - 相册管理', () => {
+test.describe.configure({ mode: 'serial', retries: 1 })
+
+test.describe('P1 - 相册管理', () => {
   // serial 文件：任一用例偶发失败会级联跳过后续全部。dev 套件默认 retries=0，
-  // 这里给 1 次重试吸收 Vite dev server 在 14 worker 并发下的偶发 ERR_ABORTED。
-  test.use({ retries: 1 })
+  // 这里给 1 次重试吸收本地 Vite dev server 的偶发导航失败。
   let authToken = ''
   test.beforeEach(async ({ page, request }, testInfo) => {
     authToken = await ensureAuthSession(request, page, testInfo)

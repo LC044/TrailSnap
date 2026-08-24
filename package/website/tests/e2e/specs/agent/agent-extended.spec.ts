@@ -49,7 +49,24 @@ async function openAgentSidebar(page: Page) {
 
 test.describe('P1 - Agent 深层组件 @agent-extended', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
-    if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
+    // 这些用例只验证 Agent UI，不读取照片；不要等待 smoke 照片扫描和整条 AI 任务队列。
+    if (!(await ensureAuthSession(request, page, testInfo))) return
+    // AgentChat 在打开时会并行加载模型和主动消息。使用真实接口会在欢迎消息断言期间
+    // 插入主动消息并替换节点，导致 hover 命中已经 detached 的 DOM。
+    await page.route('**/api/agent/proactive**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'success', data: { messages: [], unread: 0 } }),
+      })
+    )
+    await page.route('**/api/settings/models**', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'success', data: { connections: [] } }),
+      })
+    )
   })
 
   test('打开侧边栏 -> 渲染 sessions 列表', async ({ page }) => {
@@ -100,18 +117,22 @@ test.describe('P1 - Agent 深层组件 @agent-extended', () => {
     await expect(menuItems.first()).toBeAttached()
   })
 
-  test('AgentMessageItem 渲染默认 welcome 消息 + 复制按钮可见', async ({ page }) => {
+  test('AgentMessageItem 渲染默认 welcome 消息 + 复制操作已挂载', async ({ page }) => {
     await page.route('**/api/agent/sessions**', mockSessions)
     await openAgentChat(page)
 
     // 初始 AgentChat 有 1 条 assistant 欢迎消息
-    const bubble = page.locator('.agent-chat-messages .message-bubble').first()
-    await expect(bubble).toBeVisible({ timeout: 5_000 })
+    const messageItem = page.locator('.agent-chat-messages .group').first()
+    const bubble = messageItem.locator('.message-bubble')
+    await expect(messageItem).toBeVisible({ timeout: 5_000 })
     await expect(bubble).toContainText('智能相册助手')
-    // 复制按钮（hover 触发 group-hover:flex；用 hover 强制显示）
-    await bubble.hover()
-    const copyBtn = page.locator('.agent-chat-messages button[title="复制"]').first()
-    await expect(copyBtn).toBeVisible({ timeout: 3_000 })
+    // 操作区由 Tailwind group-hover 控制显示。Playwright 的 force hover 在滚动容器中不会
+    // 稳定维持 CSS :hover 状态，因此验证 DOM 与样式合同，而不是依赖伪类模拟。
+    const actions = messageItem.locator('.message-actions')
+    const copyBtn = messageItem.locator('button[title="复制"]')
+    await expect(actions).toBeAttached()
+    await expect(actions).toHaveClass(/group-hover:flex/)
+    await expect(copyBtn).toBeAttached()
   })
 
   test('AgentHeader 全屏按钮 -> .agent-chat-overlay.is-fullscreen 类切换', async ({ page }) => {

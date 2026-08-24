@@ -213,6 +213,20 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
 
   test('AI API 地址连通性检查展示服务名和耗时', async ({ page }) => {
     let testedUrl = ''
+    let settingsLoaded = false
+    await page.route('**/api/settings/', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      settingsLoaded = true
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'success',
+          data: { ai: { ai_api_url: 'http://initial-ai:8001', connections: [] } },
+        }),
+      })
+    })
     await page.route('**/api/settings/verify-ai-service', async (route) => {
       testedUrl = JSON.parse(route.request().postData() || '{}').api_url
       await route.fulfill({
@@ -230,6 +244,8 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     await page.locator('.el-collapse-item__header', { hasText: 'AI 相关设置' }).first().click()
     const apiInput = page.getByLabel('AI API 地址')
     await expect(apiInput).toBeVisible({ timeout: 10_000 })
+    await expect.poll(() => settingsLoaded).toBe(true)
+    await expect(apiInput).toHaveValue('http://initial-ai:8001')
     await apiInput.fill('http://ai:8001')
     await page.getByRole('button', { name: '测试连通性' }).click()
 

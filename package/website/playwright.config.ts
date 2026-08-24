@@ -32,13 +32,14 @@ export default defineConfig({
   fullyParallel: suite !== 'smoke',
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  // CI: smoke=1, others=2. 本地非 CI 默认 4 worker（可由 TS_E2E_WORKERS 覆盖），
-  // 避免 Playwright auto-detect（≈CPU 数，本机常达 8~16）压满后端/AI 时出现 load-induced flake。
+  // CI: smoke=1, others=2. 本地可由 TS_E2E_WORKERS 覆盖；Windows 默认 2，其他平台默认 4。
+  // Windows 长套件会快速累积 Chromium/Vite/API 的短连接，4 worker 容易耗尽动态端口并触发
+  // net::ERR_NO_BUFFER_SPACE；降低并发可以让 TIME_WAIT 连接及时回收。
   workers: process.env.CI
     ? (suite === 'smoke' ? 1 : 2)
     : process.env.TS_E2E_WORKERS
     ? Number(process.env.TS_E2E_WORKERS)
-    : 4,
+    : process.platform === 'win32' ? 2 : 4,
 
   globalSetup: e2eEnv.globalSetup,
   globalTeardown: e2eEnv.globalTeardown,
