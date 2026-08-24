@@ -5,16 +5,14 @@ import type { Page } from '@playwright/test'
  *
  * 背景：LocationList.vue 对 level 切换（区县/城市/省份/景区）和景区过滤
  * （全部/已打卡/未打卡）各渲染了两套按钮——
- *   - 桌面组：`<div class="hidden md:flex">` 内的按钮，桌面视口可见；
- *   - 移动端 dropdown：`<div class="md:hidden">` 内（包在 `<div class="py-1">`
+ *   - 桌面组：带稳定 `data-testid` 的按钮组，桌面视口可见；
+ *   - 移动端 dropdown：独立的响应式按钮组（包在 `<div class="py-1">`
  *     里）的同名按钮，桌面视口下 `display:none`。
  * 移动端的按钮在 DOM 中更靠前，因此 `.location-list button:has-text("区县").first()`
  * 会命中隐藏的移动端按钮，导致 toBeVisible 失败 / click 超时。
  *
- * 用 `[class~="md:flex"]` 限定到桌面组容器，再用 `:has(> button:has-text(...))`
- * （直接子按钮）锁定具体的那个组（level 组 / filter 组），最后取其直接子按钮。
- * 移动端 dropdown 的按钮不是容器直接子级，自然被排除；移动端 trigger 按钮的
- * class 是 `md:hidden`，也不会被 `[class~="md:flex"]` 命中。
+ * 使用语义化的 `data-testid` 定位桌面组，避免响应式断点从 md 调整为 lg 时
+ * E2E 因依赖 Tailwind 实现类而失效。
  */
 
 type LevelLabel = '区县' | '城市' | '省份' | '景区'
@@ -37,9 +35,7 @@ export function locationGridCard(page: Page) {
 
 /** 桌面端 level 切换按钮（区县/城市/省份/景区）。 */
 export function desktopLevelButton(page: Page, label: LevelLabel) {
-  return page.locator(
-    `.location-list [class~="md:flex"]:has(> button:has-text("${label}")) > button:has-text("${label}")`,
-  )
+  return page.getByTestId('location-level-desktop').getByRole('button', { name: label, exact: true })
 }
 
 /**
@@ -48,7 +44,5 @@ export function desktopLevelButton(page: Page, label: LevelLabel) {
  * 年份菜单的「全部时间」撞文本。
  */
 export function desktopFilterButton(page: Page, label: FilterLabel) {
-  return page.locator(
-    `.location-list [class~="md:flex"]:has(> button:has-text("已打卡")) > button:has-text("${label}")`,
-  )
+  return page.getByTestId('location-filter-desktop').getByRole('button', { name: label, exact: true })
 }

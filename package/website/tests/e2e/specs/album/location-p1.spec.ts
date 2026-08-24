@@ -288,7 +288,8 @@ test.describe.serial('P1 - 位置相册', () => {
     await yearsReq
 
     // 年份按钮默认文案：当前未选年份时显示"全部时间"
-    const yearBtn = page.locator('.location-list button:has-text("全部时间"), .location-list button:has-text("年")').first()
+    const yearDesktop = page.getByTestId('location-year-desktop')
+    const yearBtn = yearDesktop.getByRole('button').first()
     await expect(yearBtn).toBeVisible({ timeout: 10_000 })
     await yearBtn.click()
 
@@ -300,10 +301,9 @@ test.describe.serial('P1 - 位置相册', () => {
 
     // 点选某一年份（如果有），年份出现在 menu 中（如果有）
     // 该操作会触发 selectYear → dateRange 设到 {year}-01-01..12-31 → fetchLocations
-    // 用「年份筛选容器的直接子 .absolute」锁定桌面端年份菜单：移动端 level dropdown
-    // 也是 .absolute 但带 md:hidden（桌面隐藏）且不是 md:flex 容器的直接子级。
-    const yearMenuItem = page
-      .locator('.location-list [class~="md:flex"] > .absolute button')
+    // 使用稳定标识锁定桌面年份菜单，不依赖具体的 Tailwind 响应式断点类。
+    const yearMenuItem = yearDesktop
+      .locator(':scope > .absolute button')
       .filter({ hasText: /^\d{4}年$/ })
       .first()
     if (await yearMenuItem.count()) {

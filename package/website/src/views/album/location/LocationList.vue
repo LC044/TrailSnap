@@ -24,7 +24,11 @@
         </button>
 
         <!-- Year Filter -->
-        <div class="relative hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex" ref="yearMenuRef">
+        <div
+          ref="yearMenuRef"
+          data-testid="location-year-desktop"
+          class="relative hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex"
+        >
            <button
              @click="showYearMenu = !showYearMenu"
              class="px-3 py-1.5 rounded-md text-sm font-medium bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white flex items-center gap-1.5"
@@ -77,7 +81,11 @@
         </div>
 
         <!-- Filter Toggle (Only for Scene Level) -->
-        <div v-if="level === 'scene'" class="hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex">
+        <div
+          v-if="level === 'scene'"
+          data-testid="location-filter-desktop"
+          class="hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex"
+        >
           <button
             v-for="opt in filterOptions"
             :key="opt.value"
@@ -205,7 +213,7 @@
           </div>
 
           <!-- Desktop Buttons -->
-          <div class="hidden lg:flex">
+          <div data-testid="location-level-desktop" class="hidden lg:flex">
             <button
               @click="changeLevel('district')"
               :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'district' ? ' shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
