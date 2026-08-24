@@ -185,10 +185,10 @@ class TestDeleteUser:
         photos_q.__iter__ = MagicMock(return_value=iter([photo1, photo2]))
         db.query.return_value.filter.side_effect = [photos_q, MagicMock()]
         with patch.object(user_crud, "get", return_value=user), \
-             patch("app.crud.user.storage") as mock_storage:
+             patch.object(user_crud, "delete_user_layout") as delete_layout:
             result = user_crud.delete(db, user_id)
         assert result is user
-        assert mock_storage.delete_thumbnails.call_count == 2
+        delete_layout.assert_called_once_with(user_id, dict(user.settings or {}))
         assert db.commit.call_count >= 1
 
 

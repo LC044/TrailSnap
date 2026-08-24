@@ -45,6 +45,15 @@ async def lifespan(app: FastAPI):
     global log_listener
     log_listener = setup_logging('api')
 
+    # Upgrade the pre-v0.12 mixed storage layout before workers can access it.
+    from app.service.user_storage import migrate_legacy_user_storage
+    migration_db = SessionLocal()
+    try:
+        result = migrate_legacy_user_storage(migration_db)
+        logging.getLogger(__name__).info("User storage migration complete: %s", result)
+    finally:
+        migration_db.close()
+
     mgr = TaskManager.get_instance()
     # Attach the running loop so cross-thread SSE publishes can be scheduled
     # onto the loop thread via call_soon_threadsafe (asyncio.Queue is not

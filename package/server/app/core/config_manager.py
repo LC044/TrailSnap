@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from contextvars import ContextVar
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from app.core.paths import DATA_DIR
 
 DEFAULT_NARRATIVE_PROMPT = """你是一位为「电子相框」撰写旁白短句的中文文案助手。
 你的目标不是描述画面，而是为画面补上一点“画外之意”。
@@ -180,7 +181,7 @@ class AISettings(BaseModel):
     # OCR settings can be added here later
 
 class StorageSettings(BaseModel):
-    photo_storage_path: str = Field(default="./data/uploads", description="Main photo storage root path")
+    photo_storage_path: str = Field(default=os.path.join(DATA_DIR, "uploads"), description="Main photo storage root path")
     external_directories: List[str] = Field(default=[], description="List of external gallery directories")
 
 class ImageSettings(BaseModel):
@@ -312,9 +313,11 @@ class ConfigManager:
         db.add(user)
         db.commit()
         db.refresh(user)
-        
+
         # Update cache immediately
         new_config = self.merge_user_settings(updated_settings)
+        from app.service.user_storage import write_user_config
+        write_user_config(user_id, new_config.model_dump())
         self._user_cache[user_id] = (new_config, time.time())
         self._user_cache.move_to_end(user_id)
         

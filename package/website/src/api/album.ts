@@ -106,12 +106,13 @@ export const albumService = {
   },
 
   // Upload (Simple)
-  async uploadPhoto(file: File, albumId?: string) {
+  async uploadPhoto(file: File, albumId?: string, folder?: string) {
     const formData = new FormData();
     formData.append('file', file);
     if (albumId) {
         formData.append('album_id', albumId);
     }
+    if (folder) formData.append('folder', folder);
     const data = await request.post<Photo>('/api/medias', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
@@ -142,15 +143,26 @@ export const albumService = {
       await request.post('/api/medias/upload/chunk', formData);
   },
 
-  async finishUpload(uploadId: string, fileName: string, albumId?: string) {
+  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', fileName);
       if (albumId) {
           formData.append('album_id', albumId);
       }
+      if (folder) formData.append('folder', folder);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData);
       return data.data;
+  },
+
+  async getUploadFolders() {
+    const data = await request.get<{ folders: string[] }>('/api/medias/folders');
+    return data.data.folders;
+  },
+
+  async createUploadFolder(path: string) {
+    const data = await request.post<{ path: string }>('/api/medias/folders', { path });
+    return data.data.path;
   },
 
   // Metadata

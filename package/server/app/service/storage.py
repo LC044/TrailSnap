@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.core.config_manager import config_manager, ImageSettings
+from app.service import user_storage
 try:
     import cv2
     import numpy as np
@@ -23,28 +24,32 @@ except ImportError:
 _STORAGE_ROOT_CACHE = {}
 
 def _get_storage_root(user_id: UUID, db: Session = None) -> str:
-    try:
-        root = './data/uploads'  # Default path
-        # Ensure directories exist
+    base = user_storage.get_cached_storage_base(user_id)
+    if base is None and db is not None:
         try:
-            os.makedirs(root, exist_ok=True)
-            os.makedirs(os.path.join(root, 'uploads'), exist_ok=True)
-            os.makedirs(os.path.join(root, 'thumbnails'), exist_ok=True)
+            from app.db.models.user import User
+            user = db.query(User).filter(User.id == user_id).first()
+            base = user_storage.configured_storage_base(user.settings if user else None)
         except Exception as e:
-            logging.error(f"Failed to create directories for {root}: {e}")
-        return root
-    finally:
-        pass
+            logging.warning("Failed to read storage root for user %s: %s", user_id, e)
+    base = user_storage.cache_storage_base(user_id, base or user_storage.DEFAULT_STORAGE_BASE)
+    return user_storage.ensure_user_layout(user_id, base)
 
 
 def update_storage_root_cache(user_id: str, new_root: str):
     """Update the global storage root cache for a user and ensure directories exist."""
     global _STORAGE_ROOT_CACHE
-    _STORAGE_ROOT_CACHE[user_id] = new_root
+    normalized = os.path.abspath(new_root)
+    # Worker payloads historically carry _get_storage_root() while settings
+    # updates carry the configured base. Accept both without nesting users twice.
+    if os.path.basename(normalized) == str(user_id) and os.path.basename(os.path.dirname(normalized)) == 'users':
+        storage_base = os.path.dirname(os.path.dirname(normalized))
+    else:
+        storage_base = normalized
+    _STORAGE_ROOT_CACHE[str(user_id)] = storage_base
+    user_storage.cache_storage_base(user_id, storage_base)
     try:
-        os.makedirs(new_root, exist_ok=True)
-        os.makedirs(os.path.join(new_root, 'uploads'), exist_ok=True)
-        os.makedirs(os.path.join(new_root, 'thumbnails'), exist_ok=True)
+        user_storage.ensure_user_layout(user_id, storage_base)
     except Exception as e:
         logging.error(f"Failed to create directories for {new_root}: {e}")
 
@@ -57,13 +62,25 @@ def _ensure_unique_path(dir_path: str, filename: str) -> str:
         idx += 1
     return candidate
 
-def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID) -> str:
-    ext = os.path.splitext(upload_file.filename)[1]
+def _validate_upload_folder(folder: Optional[str]) -> Optional[str]:
+    if folder is None or not folder.strip():
+        return None
+    normalized = folder.replace('\\', '/').strip('/')
+    if not normalized or normalized == '.':
+        return None
+    if os.path.isabs(folder) or any(part in ('', '.', '..') for part in normalized.split('/')):
+        raise ValueError("Invalid upload folder")
+    return normalized
+
+
+def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
     now = datetime.now()
     year = f"{now.year:04d}"
     month = f"{now.month:02d}"
-    root = _get_storage_root(user_id)
-    base_dir = os.path.join(root, 'uploads', year, month)
+    root = _get_storage_root(user_id, db) if db is not None else _get_storage_root(user_id)
+    relative_folder = _validate_upload_folder(folder)
+    components = relative_folder.split('/') if relative_folder else (year, month)
+    base_dir = os.path.join(root, 'uploads', *components)
     os.makedirs(base_dir, exist_ok=True)
     target_path = _ensure_unique_path(base_dir, upload_file.filename)
     with open(target_path, "wb") as buffer:
