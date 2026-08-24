@@ -6,7 +6,7 @@
       
       <el-dropdown trigger="click" @command="openCreateModal">
         <button 
-          class="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-primary-500/20 active:scale-95"
+          class="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-primary-500/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         >
           <Plus class="w-5 h-5" />
           <span>新建相册</span>
@@ -27,12 +27,15 @@
         <Sparkles class="w-5 h-5 text-yellow-500" />
         智能相册
       </h2>
-      <div class="grid grid-cols-4 sm:grid-cols-4 md:grid-cols-10 lg:grid-cols-16 gap-6">
+      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5 lg:gap-6">
         <div 
           v-for="album in smartAlbums" 
           :key="album.id"
-          class="group cursor-pointer relative"
+          class="group cursor-pointer relative rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          role="button"
+          tabindex="0"
           @click="navigateToSmartAlbum(album)"
+          @keydown.enter="navigateToSmartAlbum(album)"
         >
           <!-- Cover -->
           <div class="aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 relative shadow-sm group-hover:shadow-md transition-all duration-300 mb-3 border border-gray-100 dark:border-gray-800 flex items-center justify-center">
@@ -58,12 +61,15 @@
         自定义相册
       </h2>
       
-      <div v-if="store.allAlbums.length > 0" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-6">
+      <div v-if="store.allAlbums.length > 0" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5 lg:gap-6">
         <div
           v-for="album in store.allAlbums"
           :key="album.id"
-          class="group cursor-pointer animate-in fade-in slide-in-from-bottom-4 duration-500 relative"
+          class="group cursor-pointer animate-in fade-in slide-in-from-bottom-4 duration-500 relative rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          role="button"
+          tabindex="0"
           @click="navigateToAlbum(album.id)"
+          @keydown.enter="navigateToAlbum(album.id)"
         >
           <!-- Cover -->
           <div class="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 relative shadow-sm group-hover:shadow-md transition-all duration-300 mb-3 border border-gray-100 dark:border-gray-800">
@@ -76,10 +82,10 @@
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
             <!-- Type Badge -->
             <div class="absolute top-2 right-2 flex gap-1">
-               <span v-if="album.type === 'smart'" class="bg-purple-500/80 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+               <span v-if="album.type === 'smart'" class="bg-primary-600/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
                  <Sparkles class="w-3 h-3 text-white" /> 智能
                </span>
-               <span v-if="album.type === 'conditional'" class="bg-blue-500/80 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+               <span v-if="album.type === 'conditional'" class="bg-primary-500/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
                  <Filter class="w-3 h-3 text-white" /> 条件
                </span>
             </div>

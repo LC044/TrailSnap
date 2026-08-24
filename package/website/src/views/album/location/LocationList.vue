@@ -2,16 +2,16 @@
   <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-screen' : 'container mx-auto']">
     <!-- Header -->
     <div class="container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
-      <div class="flex flex-col gap-3">
-        <div class="flex items-center gap-3 w-full md:w-auto dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <button @click="goBack" class="p-0 md:p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
+      <div class="flex shrink-0 flex-col gap-3">
+        <div class="flex w-full shrink-0 items-center gap-3 rounded-full border border-gray-200/50 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-900/80 md:w-auto">
+          <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
-          <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">位置</h1>
+          <h1 class="whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
         </div>
       </div>
 
-      <div class="flex items-center gap-1 md:gap-3">
+      <div class="flex min-w-0 items-center gap-1 lg:gap-3">
         <!-- Add Scene Button (Left) -->
         <button
           v-if="level === 'scene'"
@@ -24,7 +24,7 @@
         </button>
 
         <!-- Year Filter -->
-        <div class="hidden md:flex bg-gray-200 dark:bg-gray-800 p-0 md:p-1 rounded-lg relative" ref="yearMenuRef">
+        <div class="relative hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex" ref="yearMenuRef">
            <button
              @click="showYearMenu = !showYearMenu"
              class="px-3 py-1.5 rounded-md text-sm font-medium bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white flex items-center gap-1.5"
@@ -63,7 +63,7 @@
         </div>
 
         <!-- Date Range Filter -->
-        <div v-if="isCustomRange" class="hidden md:flex bg-white dark:bg-gray-800 rounded-lg relative">
+        <div v-if="isCustomRange" class="relative hidden rounded-lg bg-white dark:bg-gray-800 lg:flex">
           <el-date-picker
             v-model="dateRange"
             type="daterange"
@@ -77,7 +77,7 @@
         </div>
 
         <!-- Filter Toggle (Only for Scene Level) -->
-        <div v-if="level === 'scene'" class="bg-gray-200 dark:bg-gray-800 p-1 rounded-lg hidden md:flex">
+        <div v-if="level === 'scene'" class="hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex">
           <button
             v-for="opt in filterOptions"
             :key="opt.value"
@@ -93,7 +93,7 @@
           <!-- Mobile Dropdown Trigger -->
           <button
             @click="showLevelMenu = !showLevelMenu"
-            class="md:hidden px-3 py-1.5 rounded-md text-sm font-medium bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white flex items-center gap-1.5"
+            class="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
           >
             {{ currentLevelLabel }}
             <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showLevelMenu }" />
@@ -102,7 +102,7 @@
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showLevelMenu"
-            class="md:hidden absolute top-full left-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-[60] flex flex-col max-h-[80vh]"
+            class="absolute left-0 top-full z-[60] mt-2 flex max-h-[80vh] w-40 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 lg:hidden"
           >
             <!-- Level Options -->
             <div class="py-1">
@@ -205,7 +205,7 @@
           </div>
 
           <!-- Desktop Buttons -->
-          <div class="hidden md:flex">
+          <div class="hidden lg:flex">
             <button
               @click="changeLevel('district')"
               :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'district' ? ' shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
@@ -241,12 +241,12 @@
             </button>
           </div>
 
-          <div v-show="viewMode === 'map'" class="hidden md:block w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1 my-auto"></div>
+          <div v-show="viewMode === 'map'" class="my-auto mx-1 hidden h-4 w-px bg-gray-300 dark:bg-gray-600 lg:block"></div>
 
           <button
             v-show="viewMode === 'map'"
             @click="level = 'photo-map'"
-            :class="['hidden md:flex px-3 py-1.5 rounded-md text-sm font-medium transition-all items-center gap-1.5 bg-white dark:bg-gray-700', level === 'photo-map' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+            :class="['hidden lg:flex px-3 py-1.5 rounded-md text-sm font-medium transition-all items-center gap-1.5 bg-white dark:bg-gray-700', level === 'photo-map' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             title="地图照片"
           >
             <Images class="w-4 h-4" />
@@ -254,11 +254,11 @@
           </button>
         </div>
         <!-- View Toggle -->
-        <div class="bg-gray-200 dark:bg-gray-800 p-0 md:p-1 rounded-lg flex relative" ref="viewMenuRef">
+        <div class="relative flex rounded-lg bg-gray-200 p-0 dark:bg-gray-800 lg:p-1" ref="viewMenuRef">
           <!-- Mobile Dropdown Trigger -->
           <button
             @click="showViewMenu = !showViewMenu"
-            class="md:hidden px-3 py-1.5 rounded-md text-sm font-medium bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white flex items-center gap-1.5"
+            class="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
           >
             <component :is="currentViewIcon" class="w-4 h-4" />
             <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showViewMenu }" />
@@ -267,7 +267,7 @@
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showViewMenu"
-            class="md:hidden absolute top-full right-0 mt-2 w-36 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-[60]"
+            class="absolute right-0 top-full z-[60] mt-2 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 lg:hidden"
           >
             <button
               @click="viewMode = 'grid'; showViewMenu = false"
@@ -314,7 +314,7 @@
           </div>
 
           <!-- Desktop Buttons -->
-          <div class="hidden md:flex">
+          <div class="hidden lg:flex">
             <button
               @click="viewMode = 'grid'"
               :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'grid' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"

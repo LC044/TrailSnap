@@ -1,14 +1,14 @@
 <template>
   <div class="w-full overflow-x-auto pb-2 no-scrollbar">
-    <div class="flex space-x-3 px-4 min-w-max">
+    <div class="flex min-w-max gap-3 px-4 sm:grid sm:min-w-0 sm:grid-cols-3">
       <!-- Total Media Card -->
       <button
         type="button"
-        class="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 w-[140px] h-[80px] flex flex-col justify-between cursor-pointer hover:scale-95 transition-transform duration-200 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 w-[140px] sm:w-auto h-[84px] flex flex-col justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
         @click="router.push({ name: 'Photos' })"
       >
         <div class="flex items-center space-x-2">
-          <span class="text-xl">📸</span>
+          <Images class="h-5 w-5 text-primary-500" aria-hidden="true" />
           <span class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ data.total_media }}</span>
         </div>
         <div class="text-xs text-gray-500 dark:text-gray-400">照片+视频</div>
@@ -17,11 +17,11 @@
       <!-- Recently Updated Card -->
       <button
         type="button"
-        class="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 w-[140px] h-[80px] flex flex-col justify-between cursor-pointer hover:scale-95 transition-transform duration-200 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 w-[140px] sm:w-auto h-[84px] flex flex-col justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
         @click="openTodayUploads"
       >
         <div class="flex items-center space-x-2">
-          <span class="text-xl">🆕</span>
+          <ImagePlus class="h-5 w-5 text-primary-500" aria-hidden="true" />
           <span class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ data.today_new }}</span>
         </div>
         <div class="text-xs text-gray-500 dark:text-gray-400">今日新增</div>
@@ -30,11 +30,11 @@
       <!-- Storage Card -->
       <button
         type="button"
-        class="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 w-[140px] h-[80px] flex flex-col justify-between cursor-pointer hover:scale-95 transition-transform duration-200 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        class="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 w-[140px] sm:w-auto h-[84px] flex flex-col justify-between cursor-pointer hover:-translate-y-0.5 hover:shadow-sm transition-all duration-200 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
         @click="emit('showStorage')"
       >
         <div class="flex items-center space-x-2">
-          <span class="text-xl">💾</span>
+          <HardDrive class="h-5 w-5 text-primary-500" aria-hidden="true" />
           <span class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ data.storage_used }}</span>
         </div>
         <div class="text-xs text-gray-500 dark:text-gray-400">占用空间</div>
@@ -47,6 +47,7 @@
 import { PropType } from 'vue';
 import { useRouter } from 'vue-router';
 import { DashboardCard } from '@/api/dashboard';
+import { HardDrive, ImagePlus, Images } from 'lucide-vue-next';
 
 defineProps({
   data: {
