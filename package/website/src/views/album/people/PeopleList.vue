@@ -472,15 +472,16 @@ onMounted(fetchIdentities)
 /* 针对平板及以上屏幕优化尺寸 */
 @media (min-width: 640px) {
   .flow-grid {
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+    gap: 1.5rem;
   }
 }
 
 /* 针对大屏幕进一步增加尺寸 */
 @media (min-width: 1280px) {
   .flow-grid {
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 2rem;
   }
 }
 

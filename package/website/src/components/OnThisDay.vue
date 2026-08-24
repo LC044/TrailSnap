@@ -59,7 +59,7 @@
       <el-carousel
         :key="isFullScreen ? 'fullscreen' : 'normal'"
         :interval="5000"
-        :type="isFullScreen ? '' : 'card'"
+        :type="isFullScreen ? '' : carouselType"
         :height="isFullScreen ? '100vh' : carouselHeight"
         indicator-position="none"
         :autoplay="true"
@@ -200,6 +200,7 @@ const returnToMemoryView = ref(false)
 const memoryMenuOpen = ref(false)
 const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 const carouselHeight = ref('480px')
+const carouselType = ref<'' | 'card'>('card')
 
 const selectedImage = computed(() => {
   if (selectedIndex.value === null) return null
@@ -210,7 +211,16 @@ const hasPrev = computed(() => selectedIndex.value !== null && selectedIndex.val
 const hasNext = computed(() => selectedIndex.value !== null && selectedIndex.value < photos.value.length - 1)
 
 const updateCarouselHeight = () => {
-  carouselHeight.value = window.innerWidth < 768 ? '200px' : '480px'
+  if (window.innerWidth < 768) {
+    carouselHeight.value = '200px'
+    carouselType.value = ''
+  } else if (window.innerWidth < 1280) {
+    carouselHeight.value = '360px'
+    carouselType.value = ''
+  } else {
+    carouselHeight.value = '480px'
+    carouselType.value = 'card'
+  }
 }
 
 const fetchOnThisDay = async () => {

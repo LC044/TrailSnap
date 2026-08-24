@@ -18,7 +18,8 @@
       <button
         @click="toggleCollapse"
         :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
-        class="bg-transparent p-1 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block"
+        :aria-label="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
+        class="bg-transparent p-1 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         <Menu v-if="isCollapsed" class="w-5 h-5" />
         <ChevronLeft v-else class="w-5 h-5" />
@@ -153,7 +154,7 @@
           :key="item.href"
           :to="item.href"
           :title="isCollapsed ? item.label : undefined"
-          class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative"
+          class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
           :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isDesktopNavActive(item) }"
         >
           <component :is="item.icon" class="w-5 h-5 shrink-0" />
@@ -390,7 +391,10 @@ const isActiveRoute = (path: string) => {
   return route.path.startsWith(path)
 }
 
-const isCollapsed = ref(false)
+// 平板横向空间有限，默认收起导航，仅保留可辨识的图标栏；用户仍可手动展开。
+const isCollapsed = ref(
+  typeof window !== 'undefined' && window.innerWidth >= 768 && window.innerWidth < 1280
+)
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value

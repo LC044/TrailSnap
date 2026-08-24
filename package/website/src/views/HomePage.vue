@@ -2,17 +2,17 @@
   <div class="container mx-auto">
     <!-- Navbar -->
     <div class="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 h-14 flex items-center justify-between px-4 transition-opacity duration-300">
-      <h1 class="text-lg font-bold text-[#333] dark:text-white">相册概览</h1>
+      <h1 class="text-lg font-bold text-gray-800 dark:text-white">相册概览</h1>
       <div class="flex items-center space-x-4">
-        <button class="text-[#666] dark:text-gray-300 dark:bg-gray-800 hover:text-[#4A90E2] transition-colors" @click="$router.push('/recycle-bin')" title="回收站">
+        <button class="rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$router.push('/recycle-bin')" title="回收站">
           <i class="mgc_delete_2_line text-2xl"></i>
         </button>
-        <button class="text-[#666] dark:text-gray-300 dark:bg-gray-800 hover:text-[#4A90E2] transition-colors relative" @click="showStorageDialog = true" title="存储中心">
+        <button class="relative rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="showStorageDialog = true" title="存储中心">
           <i class="mgc_hard_drive_line text-2xl"></i>
           <!-- Badge can be controlled by storage usage state if we fetch it -->
           <span v-if="showStorageBadge" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>
-        <button class="text-[#666] dark:text-gray-300 dark:bg-gray-800 hover:text-[#4A90E2] transition-colors md:hidden" @click="$router.push('/settings')" title="设置">
+        <button class="rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$router.push('/settings')" title="设置">
           <i class="mgc_settings_4_line text-2xl"></i>
         </button>
       </div>
@@ -20,7 +20,7 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="flex items-center justify-center min-h-[400px] h-full">
-      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4A90E2]"></div>
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
     </div>
 
     <!-- Content -->
