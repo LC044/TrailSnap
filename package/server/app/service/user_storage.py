@@ -161,6 +161,7 @@ def migrate_legacy_user_storage(db) -> dict[str, int]:
 
         write_user_config(user.id, config_manager.merge_user_settings(settings).model_dump())
 
-    if migrated_photos:
-        db.commit()
+    # Transaction ownership belongs to the caller.  In particular, the
+    # Alembic data migration must only advance its revision after both the
+    # filesystem work and these path updates complete successfully.
     return {"photos": migrated_photos, "thumbnails": migrated_thumbnails, "users": len(users)}

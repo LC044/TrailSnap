@@ -72,7 +72,8 @@ def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
     assert (user_root / "thumbnails" / compact[:2] / compact[2:4] / f"{compact}.webp").read_bytes() == b"thumb"
     assert external.read_bytes() == b"external"
     assert (user_root / "config" / "settings.json").is_file()
-    db.commit.assert_called_once()
+    db.flush.assert_not_called()
+    db.commit.assert_not_called()
 
 
 def test_create_and_list_upload_folders_are_user_scoped(tmp_path):
