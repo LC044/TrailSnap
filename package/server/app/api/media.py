@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.crud.photo import save_and_create_photo
 from app.db.models.task import TaskType
-from app.dependencies import get_db
+from app.dependencies import get_db, BaseResponse
 from app.db.models.photo import Photo
 from app.service import storage
 from app.service.storage import _get_storage_root
@@ -52,6 +52,51 @@ def _get_thumbnail_path(user_id: UUID, photo_id: UUID, db: Session, size: str = 
             return webp
         else:
             return os.path.join(base, f"{compact}.jpg")
+
+
+def _upload_root(user_id: UUID, db: Session) -> str:
+    return os.path.join(_get_storage_root(user_id, db), "uploads")
+
+
+def _chunk_dir(user_id: UUID, upload_id: UUID, db: Session) -> str:
+    return os.path.join(_get_storage_root(user_id, db), "chunks", str(upload_id))
+
+
+@router.get('/folders', response_model=BaseResponse[dict])
+def list_upload_folders(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return user-created upload folders as safe relative paths."""
+    root = _upload_root(current_user.id, db)
+    os.makedirs(root, exist_ok=True)
+    folders = []
+    for current, dir_names, _ in os.walk(root):
+        dir_names.sort(key=str.lower)
+        relative = os.path.relpath(current, root)
+        if relative != '.':
+            folders.append(relative.replace('\\', '/'))
+    return BaseResponse.success(data={"folders": folders})
+
+
+@router.post('/folders', response_model=BaseResponse[dict])
+def create_upload_folder(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        folder = storage._validate_upload_folder(payload.get("path"))
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid folder path") from exc
+    if not folder:
+        raise HTTPException(status_code=400, detail="Folder path is required")
+    path = os.path.abspath(os.path.join(_upload_root(current_user.id, db), *folder.split('/')))
+    root = os.path.abspath(_upload_root(current_user.id, db))
+    if os.path.commonpath((root, path)) != root:
+        raise HTTPException(status_code=400, detail="Invalid folder path")
+    os.makedirs(path, exist_ok=True)
+    return BaseResponse.success(data={"path": folder})
 
 @router.get('/{photo_id}/video')
 async def get_live_photo_video(
@@ -235,6 +280,7 @@ def add_tasks(db: Session, user_id: UUID, photo_id: UUID, file_path: str):
 @router.post("", response_model=schemas.Photo)
 async def upload_photo_generic(
         album_id: Optional[UUID] = Form(None),
+        folder: Optional[str] = Form(None),
         file: UploadFile = File(...),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
@@ -248,7 +294,10 @@ async def upload_photo_generic(
     # Generate ID
     photo_id = uuid.uuid4()
     # Save file
-    file_path = await run_in_threadpool(storage.save_upload_file, file, photo_id, current_user.id)
+    try:
+        file_path = await run_in_threadpool(storage.save_upload_file, file, photo_id, current_user.id, folder, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Create and Save
     photo = await run_in_threadpool(save_and_create_photo, db, file_path, file.filename, album_id, photo_id, user_id=current_user.id)
     # Add tasks
@@ -259,9 +308,12 @@ async def upload_photo_generic(
 # Chunked Upload Endpoints
 
 @router.post("/upload/init")
-async def init_upload():
+async def init_upload(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     upload_id = uuid.uuid4()
-    upload_dir = os.path.join("uploads", "chunks", str(upload_id))
+    upload_dir = _chunk_dir(current_user.id, upload_id, db)
     await run_in_threadpool(os.makedirs, upload_dir, exist_ok=True)
     return {"upload_id": upload_id}
 
@@ -270,9 +322,11 @@ async def init_upload():
 async def upload_chunk(
     upload_id: UUID = Form(...),
     chunk_index: int = Form(...),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    chunk_dir = os.path.join("uploads", "chunks", str(upload_id))
+    chunk_dir = _chunk_dir(current_user.id, upload_id, db)
     exists = await run_in_threadpool(os.path.exists, chunk_dir)
     if not exists:
         raise HTTPException(status_code=404, detail="Upload session not found")
@@ -290,6 +344,7 @@ async def finish_upload_generic(
         upload_id: UUID = Form(...),
         file_name: str = Form(...),
         album_id: Optional[UUID] = Form(None),
+        folder: Optional[str] = Form(None),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
@@ -300,7 +355,7 @@ async def finish_upload_generic(
             raise HTTPException(status_code=404, detail="Album not found")
 
     # Merge chunks
-    chunk_dir = os.path.join("uploads", "chunks", str(upload_id))
+    chunk_dir = _chunk_dir(current_user.id, upload_id, db)
     exists = await run_in_threadpool(os.path.exists, chunk_dir)
     if not exists:
         raise HTTPException(status_code=404, detail="Upload session not found")
@@ -321,7 +376,7 @@ async def finish_upload_generic(
             filename = file_name
             file = None
 
-        merged_path = os.path.join("uploads", "chunks", str(upload_id), "merged")
+        merged_path = os.path.join(chunk_dir, "merged")
         with open(merged_path, "wb") as outfile:
             for chunk_idx in chunks:
                 chunk_path = os.path.join(chunk_dir, str(chunk_idx))
@@ -329,7 +384,7 @@ async def finish_upload_generic(
                     outfile.write(infile.read())
         with open(merged_path, "rb") as merged:
             _Tmp.file = merged
-            final_path = storage.save_upload_file(_Tmp, photo_id, current_user.id)
+            final_path = storage.save_upload_file(_Tmp, photo_id, current_user.id, folder, db)
 
         # Clean up chunks
         shutil.rmtree(chunk_dir)

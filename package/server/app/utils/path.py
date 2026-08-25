@@ -30,21 +30,21 @@ def get_user_roots(user_id: UUID, db) -> List[str]:
     """组装某用户的所有「照片根目录」，用于计算相对路径。
 
     包含：
-      - photo_storage_path 及其 uploads 子目录（上传照片实际落在 {root}/uploads/年/月）
+      - 用户隔离上传目录（{photo_storage_path}/users/{user_id}/uploads）
       - 所有 external_directories（扫描导入，保留原始层级）
 
     返回按路径长度降序排列的归一化绝对路径列表（长的优先匹配，避免父根抢占子根）。
     """
     try:
         from app.core.config_manager import config_manager
+        from app.service.storage import _get_storage_root
         config = config_manager.get_user_config(user_id, db)
         storage_cfg = config.storage
-        primary = storage_cfg.photo_storage_path or "./data/uploads/uploads"
-        uploads = os.path.join(primary, "uploads")
+        uploads = os.path.join(_get_storage_root(user_id, db), "uploads")
         external = storage_cfg.external_directories or []
     except Exception:
-        primary = "./data/uploads/uploads"
-        uploads = "./data/uploads/uploads"
+        from app.service.user_storage import DEFAULT_STORAGE_BASE, get_user_root
+        uploads = os.path.join(get_user_root(user_id, DEFAULT_STORAGE_BASE), "uploads")
         external = []
 
     roots = set()

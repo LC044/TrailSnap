@@ -1,5 +1,22 @@
 <template>
   <div class="w-full">
+    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+      <label class="flex-1 text-sm text-gray-700 dark:text-gray-300">
+        <span class="mb-1 block font-medium">上传到文件夹</span>
+        <el-select v-model="selectedFolder" class="w-full" placeholder="按年月自动整理" clearable filterable :disabled="uploading">
+          <el-option label="按年月自动整理" value="" />
+          <el-option v-for="folder in uploadFolders" :key="folder" :label="folder" :value="folder" />
+        </el-select>
+      </label>
+      <button
+        type="button"
+        class="rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:border-primary-500 hover:text-primary-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        :disabled="uploading"
+        @click="createFolder"
+      >
+        新建文件夹
+      </button>
+    </div>
     <div 
       class="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center hover:border-primary-500 dark:hover:border-primary-500 transition-colors cursor-pointer relative"
       @click="triggerFileInput"
@@ -120,7 +137,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { albumService } from '@/api/album'
 
 const props = defineProps<{
@@ -143,6 +161,39 @@ interface UploadFile {
 const fileInput = ref<HTMLInputElement | null>(null)
 const files = ref<UploadFile[]>([])
 const uploading = ref(false)
+const selectedFolder = ref('')
+const uploadFolders = ref<string[]>([])
+
+const loadUploadFolders = async () => {
+  try {
+    uploadFolders.value = await albumService.getUploadFolders()
+  } catch (error) {
+    console.error('加载上传文件夹失败:', error)
+  }
+}
+
+const createFolder = async () => {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '可输入多级路径，例如“家人/小明”',
+      '新建上传文件夹',
+      {
+        confirmButtonText: '创建',
+        cancelButtonText: '取消',
+        inputPattern: /^(?![\\/])(?!.*(?:^|[\\/])\.\.?($|[\\/]))[^:*?"<>|]+$/,
+        inputErrorMessage: '请输入安全的相对文件夹路径',
+      },
+    )
+    const path = await albumService.createUploadFolder(value.trim())
+    await loadUploadFolders()
+    selectedFolder.value = path
+    ElMessage.success('文件夹已创建')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error('创建文件夹失败')
+    }
+  }
+}
 
 // 优化：处理状态追踪
 const isProcessingFiles = ref(false)
@@ -313,7 +364,7 @@ const startUpload = async () => {
       if (file.raw.size > 5 * 1024 * 1024) {
         await uploadChunked(file)
       } else {
-        await albumService.uploadPhoto(file.raw, props.albumId)
+        await albumService.uploadPhoto(file.raw, props.albumId, selectedFolder.value || undefined)
         file.progress = 100
       }
       file.status = 'success'
@@ -354,8 +405,10 @@ const uploadChunked = async (file: UploadFile) => {
     file.progress = Math.round(((i + 1) / totalChunks) * 100)
   }
 
-  await albumService.finishUpload(uploadId, file.raw.name, props.albumId)
+  await albumService.finishUpload(uploadId, file.raw.name, props.albumId, selectedFolder.value || undefined)
 }
+
+onMounted(loadUploadFolders)
 
 onUnmounted(() => {
   files.value.forEach(file => {

@@ -92,6 +92,20 @@ async function injectFakeAuth(page: Page) {
   })
 }
 
+async function gotoWithNetworkRetry(page: Page, url: string, retries = 2) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded" })
+      return
+    } catch (error) {
+      if (attempt >= retries || !/ERR_NO_BUFFER_SPACE|ERR_ABORTED|ERR_CONNECTION_RESET/.test(String(error))) {
+        throw error
+      }
+      await page.waitForTimeout((attempt + 1) * 2_000)
+    }
+  }
+}
+
 async function stubAuthMe(page: Page) {
   await page.route("**/api/auth/me**", async (route: Route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeUser) })
@@ -144,7 +158,7 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
       return route.continue()
     })
 
-    await page.goto("/photos")
+    await gotoWithNetworkRetry(page, "/photos")
     // 等首屏 grid 渲染（grid 是默认布局）
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     // 点视图设置 -> 朋友圈
@@ -165,7 +179,7 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
   })
 
   test("朋友圈视图 -> 同日多张照片在 grid 内渲染对应数量的缩略图", async ({ page }) => {
-    await page.goto("/photos")
+    await gotoWithNetworkRetry(page, "/photos")
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     await page.locator('button[title="视图设置"]').click()
     await page.locator('button:has-text("朋友圈")').first().click()
@@ -185,7 +199,7 @@ test.describe("Moments 朋友圈视图 @views-coverage", () => {
       photos: [],
       timeline: { total_photos: 0, time_range: { start: null, end: null }, timeline: [] },
     })
-    await page.goto("/photos")
+    await gotoWithNetworkRetry(page, "/photos")
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     await page.locator('button[title="视图设置"]').click()
     await page.locator('button:has-text("朋友圈")').first().click()
@@ -441,7 +455,7 @@ test.describe("FolderBrowser 文件夹视图扩展 @views-coverage", () => {
         children: [{ name: "Asia", path: "Travel/Asia", count: 2, has_children: false }],
       },
     })
-    await page.goto("/photos")
+    await gotoWithNetworkRetry(page, "/photos")
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     await page.locator('button[title="视图设置"]').click()
     await page.locator('button:has-text("文件夹")').first().click()
@@ -469,7 +483,7 @@ test.describe("FolderBrowser 文件夹视图扩展 @views-coverage", () => {
       })
     })
 
-    await page.goto("/photos")
+    await gotoWithNetworkRetry(page, "/photos")
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     await page.locator('button[title="视图设置"]').click()
     await page.locator('button:has-text("文件夹")').first().click()
@@ -483,7 +497,7 @@ test.describe("FolderBrowser 文件夹视图扩展 @views-coverage", () => {
   })
 
   test("排序下拉打开 -> 显示「按时间倒序 / 按时间正序 / 按文件名」三个选项", async ({ page }) => {
-    await page.goto("/photos")
+    await gotoWithNetworkRetry(page, "/photos")
     await expect(page.locator(".photo-gallery")).toBeVisible({ timeout: 15_000 })
     await page.locator('button[title="视图设置"]').click()
     await page.locator('button:has-text("文件夹")').first().click()

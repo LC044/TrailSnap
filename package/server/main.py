@@ -35,7 +35,6 @@ from app.api import (
     notification, moment
 )
 from railway.api import router as railway_router
-from app.db.session import engine, SessionLocal
 from app.core.logger import setup_logging
 from app.core.config_manager import VERSION
 from app.service.task_manager import TaskManager

@@ -145,7 +145,12 @@ async def upload_photo(
     # Assuming it is available or will be imported.
     # Wait, I checked imports and it wasn't there. I should add import.
     # But for now, I update the signature.
-    return await upload_photo_generic(album_id, file, db, current_user)
+    return await upload_photo_generic(
+        album_id=album_id,
+        file=file,
+        db=db,
+        current_user=current_user,
+    )
 
 
 @router.get("/{album_id}/photos", response_model=BaseResponse[List[schemas.Photo]])

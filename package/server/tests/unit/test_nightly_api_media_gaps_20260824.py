@@ -138,8 +138,11 @@ async def test_get_thumbnail_rejects_invalid_format(tmp_path):
 
 @pytest.mark.asyncio
 async def test_init_upload_returns_id_and_creates_chunk_dir(tmp_path):
-    with patch.object(media_api.os, "makedirs") as makedirs:
-        result = await media_api.init_upload()
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path / "chunks")), \
+         patch.object(media_api.os, "makedirs") as makedirs:
+        result = await media_api.init_upload(db=db, current_user=user)
     assert "upload_id" in result
     makedirs.assert_called_once()
     args, kwargs = makedirs.call_args
@@ -151,10 +154,13 @@ async def test_upload_chunk_404_when_session_missing():
     class FakeUpload:
         file = BytesIO(b"abc")
 
-    with patch.object(media_api.os.path, "exists", return_value=False):
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    with patch.object(media_api, "_chunk_dir", return_value="uploads/chunks/missing"), \
+         patch.object(media_api.os.path, "exists", return_value=False):
         with pytest.raises(HTTPException) as exc:
             await media_api.upload_chunk(
-                upload_id=uuid4(), chunk_index=2, file=FakeUpload()
+                upload_id=uuid4(), chunk_index=2, file=FakeUpload(), db=db, current_user=user
             )
     assert exc.value.status_code == 404
 
@@ -169,16 +175,19 @@ async def test_upload_chunk_writes_buffer_to_disk(tmp_path):
             return self.file.read()
 
     fake = FakeUpload(b"hello world")
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
 
     fake_open = MagicMock()
     fake_buffer = MagicMock()
     fake_open.return_value.__enter__.return_value = fake_buffer
 
-    with patch.object(media_api.os.path, "exists", return_value=True):
+    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path)), \
+         patch.object(media_api.os.path, "exists", return_value=True):
         with patch("builtins.open", fake_open):
             with patch.object(media_api.shutil, "copyfileobj") as copy:
                 result = await media_api.upload_chunk(
-                    upload_id=uuid4(), chunk_index=3, file=fake
+                    upload_id=uuid4(), chunk_index=3, file=fake, db=db, current_user=user
                 )
 
     assert result == {"status": "success"}

@@ -11,7 +11,7 @@ from app.core.security import get_password_hash, verify_password
 from app.db.models import Photo, Album, PhotoTag
 from app.db.models.user import User
 from app.schemas.user import UserCreate
-from app.service import storage
+from app.service.user_storage import delete_user_layout, write_user_config
 
 
 def get(db: Session, id: Union[int, str, UUID]) -> Optional[User]:
@@ -58,6 +58,7 @@ def create(db: Session, user: UserCreate) -> User:
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+    write_user_config(db_user.id, dict(db_user.settings or {}))
     return db_user
 
 def delete(db: Session, user_id: UUID) -> User:
@@ -65,15 +66,13 @@ def delete(db: Session, user_id: UUID) -> User:
     if not user:
         return False
 
-    # Delete associated data (Albums, Photos) - Only DB records
+    # Uploaded originals, thumbnails and mirrored settings share one isolated
+    # directory, so user cleanup is a single bounded filesystem operation.
+    delete_user_layout(user_id, dict(user.settings or {}))
     photos = db.query(Photo).filter(Photo.owner_id == user_id)
-    for photo in photos:
-        storage.delete_thumbnails(user_id, photo.id)
     photos.delete(synchronize_session=False)
     db.query(Album).filter(Album.owner_id == user_id).delete()
 
-    db.delete(user)
-    db.commit()
     db.delete(user)
     db.commit()
     return user

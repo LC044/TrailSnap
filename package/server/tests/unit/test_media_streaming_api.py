@@ -118,8 +118,11 @@ async def test_get_media_file_heic_resolves_via_thumbnail(tmp_path):
 
 @pytest.mark.asyncio
 async def test_init_upload_creates_directory_and_returns_id():
-    with patch.object(media_api.os, "makedirs") as makedirs:
-        result = await media_api.init_upload()
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    with patch.object(media_api, "_chunk_dir", return_value="uploads/chunks/session"), \
+         patch.object(media_api.os, "makedirs") as makedirs:
+        result = await media_api.init_upload(db=db, current_user=user)
 
     assert "upload_id" in result
     makedirs.assert_called_once()
@@ -129,12 +132,17 @@ async def test_init_upload_creates_directory_and_returns_id():
 
 @pytest.mark.asyncio
 async def test_upload_chunk_404_when_session_missing():
-    with patch.object(media_api.os.path, "exists", return_value=False):
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    with patch.object(media_api, "_chunk_dir", return_value="uploads/chunks/missing"), \
+         patch.object(media_api.os.path, "exists", return_value=False):
         with pytest.raises(HTTPException) as exc_info:
             await media_api.upload_chunk(
                 upload_id=uuid4(),
                 chunk_index=0,
                 file=SimpleNamespace(file=MagicMock()),
+                db=db,
+                current_user=user,
             )
 
     assert exc_info.value.status_code == 404
@@ -145,11 +153,14 @@ async def test_upload_chunk_404_when_session_missing():
 async def test_upload_chunk_runs_save_in_threadpool(tmp_path):
     """upload_chunk persists chunk bytes through run_in_threadpool."""
     fake_file = MagicMock()
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
 
     async def _exec(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
-    with patch.object(media_api.os.path, "exists", return_value=True):
+    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path)), \
+         patch.object(media_api.os.path, "exists", return_value=True):
         with patch.object(media_api, "run_in_threadpool", side_effect=_exec) as runner:
             with patch("builtins.open", mock_open()) as opener:
                 with patch.object(media_api.shutil, "copyfileobj") as copier:
@@ -157,6 +168,8 @@ async def test_upload_chunk_runs_save_in_threadpool(tmp_path):
                         upload_id=uuid4(),
                         chunk_index=7,
                         file=SimpleNamespace(file=fake_file),
+                        db=db,
+                        current_user=user,
                     )
 
     assert result == {"status": "success"}
