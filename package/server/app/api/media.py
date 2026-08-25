@@ -67,7 +67,7 @@ def list_upload_folders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return user-created upload folders as safe relative paths."""
+    """Return internal upload folders and configured external directories."""
     root = _upload_root(current_user.id, db)
     os.makedirs(root, exist_ok=True)
     folders = []
@@ -76,7 +76,20 @@ def list_upload_folders(
         relative = os.path.relpath(current, root)
         if relative != '.':
             folders.append(relative.replace('\\', '/'))
-    return BaseResponse.success(data={"folders": folders})
+
+    external_folders: set[str] = set()
+    for external_root in storage.get_external_upload_roots(current_user.id, db):
+        if not os.path.isdir(external_root):
+            continue
+        for current, dir_names, _ in os.walk(external_root):
+            dir_names.sort(key=str.lower)
+            if storage._path_is_within(external_root, current):
+                external_folders.add(os.path.abspath(current))
+
+    return BaseResponse.success(data={
+        "folders": folders,
+        "external_folders": sorted(external_folders, key=str.lower),
+    })
 
 
 @router.post('/folders', response_model=BaseResponse[dict])
@@ -390,7 +403,10 @@ async def finish_upload_generic(
         shutil.rmtree(chunk_dir)
         return final_path
         
-    final_path = await run_in_threadpool(merge_and_save)
+    try:
+        final_path = await run_in_threadpool(merge_and_save)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Create and Save
     photo = await run_in_threadpool(save_and_create_photo, db, final_path, file_name, album_id, photo_id, user_id=current_user.id)

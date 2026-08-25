@@ -1,3 +1,4 @@
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -40,6 +41,27 @@ def test_save_upload_file_accepts_nested_folder_and_blocks_traversal(tmp_path):
     assert result == str(tmp_path / "uploads" / "家人" / "小明" / "portrait.jpg")
     with pytest.raises(ValueError):
         storage.save_upload_file(upload, uuid4(), uuid4(), "../other-user")
+
+
+def test_save_upload_file_accepts_configured_external_folder_only(tmp_path):
+    user_id = uuid4()
+    external = tmp_path / "mounted-gallery"
+    selected = external / "incoming"
+    selected.mkdir(parents=True)
+    config = SimpleNamespace(storage=SimpleNamespace(external_directories=[str(external)]))
+    db = MagicMock()
+
+    upload = SimpleNamespace(filename="external.jpg", file=BytesIO(b"image"))
+    with patch.object(storage.config_manager, "get_user_config", return_value=config):
+        result = storage.save_upload_file(upload, uuid4(), user_id, str(selected), db)
+
+    assert result == str(selected / "external.jpg")
+    assert (selected / "external.jpg").read_bytes() == b"image"
+
+    outside_upload = SimpleNamespace(filename="blocked.jpg", file=BytesIO(b"image"))
+    with patch.object(storage.config_manager, "get_user_config", return_value=config):
+        with pytest.raises(ValueError, match="configured external galleries"):
+            storage.save_upload_file(outside_upload, uuid4(), user_id, str(tmp_path / "outside"), db)
 
 
 def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
@@ -111,12 +133,34 @@ def test_create_and_list_upload_folders_are_user_scoped(tmp_path):
         listed = media_api.list_upload_folders(db=db, current_user=user)
 
     assert created.data == {"path": "家人/小明"}
-    assert listed.data == {"folders": ["家人", "家人/小明"]}
+    assert listed.data == {"folders": ["家人", "家人/小明"], "external_folders": []}
 
     with patch.object(media_api, "_get_storage_root", return_value=str(root)):
         with pytest.raises(HTTPException) as exc_info:
             media_api.create_upload_folder({"path": "../escape"}, db=db, current_user=user)
     assert exc_info.value.status_code == 400
+
+
+def test_list_upload_folders_includes_configured_external_directories(tmp_path):
+    user = SimpleNamespace(id=uuid4())
+    db = MagicMock()
+    root = tmp_path / "users" / str(user.id)
+    external = tmp_path / "mounted-gallery"
+    nested = external / "incoming" / "family"
+    nested.mkdir(parents=True)
+    config = SimpleNamespace(storage=SimpleNamespace(external_directories=[str(external)]))
+
+    with (
+        patch.object(media_api, "_get_storage_root", return_value=str(root)),
+        patch.object(storage.config_manager, "get_user_config", return_value=config),
+    ):
+        listed = media_api.list_upload_folders(db=db, current_user=user)
+
+    assert listed.data["external_folders"] == [
+        str(external),
+        str(external / "incoming"),
+        str(nested),
+    ]
 
 
 def test_delete_user_layout_removes_only_target_user(tmp_path):
