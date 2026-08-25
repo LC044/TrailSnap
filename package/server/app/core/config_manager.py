@@ -181,7 +181,7 @@ class AISettings(BaseModel):
     # OCR settings can be added here later
 
 class StorageSettings(BaseModel):
-    photo_storage_path: str = Field(default=os.path.join(DATA_DIR, "uploads"), description="Main photo storage root path")
+    photo_storage_path: str = Field(default=DATA_DIR, description="Main photo storage root path")
     external_directories: List[str] = Field(default=[], description="List of external gallery directories")
 
 class ImageSettings(BaseModel):
@@ -396,8 +396,7 @@ class ConfigManager:
         """Return the default config as a dict."""
         return self.merge_user_settings({}).model_dump()
 
-os.makedirs('./data', exist_ok=True)
-os.makedirs('./data/uploads', exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 # Global instance
 config_manager = ConfigManager()
 VERSION = "0.11.0"

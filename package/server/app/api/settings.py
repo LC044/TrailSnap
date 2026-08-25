@@ -292,7 +292,7 @@ def get_directories_tree(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    primary = get_storage_root(current_user.id, db)
+    primary = os.path.join(_get_storage_root(current_user.id, db), "uploads")
     config = config_manager.get_user_config(current_user.id, db)
     external = config.storage.external_directories or []
     
@@ -758,7 +758,7 @@ def import_settings(
     new_config = config_manager.get_user_config(current_user.id, db)
     root = new_config.storage.photo_storage_path
     if root:
-        update_storage_root_cache(root)
+        update_storage_root_cache(current_user.id, root)
         
     return {"status": "success", "config": new_config.model_dump()}
 

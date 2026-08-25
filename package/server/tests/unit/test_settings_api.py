@@ -190,7 +190,7 @@ def test_import_settings_updates_then_refreshes_storage_cache():
         result = settings_api.import_settings(payload=payload, db=db, current_user=user)
 
     update_call.assert_called_once_with(user.id, payload, db)
-    cache_call.assert_called_once_with("H:/photos")
+    cache_call.assert_called_once_with(user.id, "H:/photos")
     assert result["status"] == "success"
     assert result["config"]["storage"]["photo_storage_path"] == "H:/photos"
 

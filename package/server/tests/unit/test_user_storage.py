@@ -45,15 +45,17 @@ def test_save_upload_file_accepts_nested_folder_and_blocks_traversal(tmp_path):
 def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
     user_id = uuid4()
     photo_id = uuid4()
-    settings = {"storage": {"photo_storage_path": str(tmp_path)}}
-    legacy_photo = tmp_path / "uploads" / "2025" / "08" / "old.jpg"
+    data_dir = tmp_path / "data"
+    legacy_base = data_dir / "uploads"
+    settings = {"storage": {"photo_storage_path": "./data/uploads"}}
+    legacy_photo = legacy_base / "uploads" / "2025" / "08" / "old.jpg"
     legacy_photo.parent.mkdir(parents=True)
     legacy_photo.write_bytes(b"photo")
     compact = photo_id.hex
-    legacy_thumb = tmp_path / "thumbnails" / compact[:2] / compact[2:4] / f"{compact}.webp"
+    legacy_thumb = legacy_base / "thumbnails" / compact[:2] / compact[2:4] / f"{compact}.webp"
     legacy_thumb.parent.mkdir(parents=True)
     legacy_thumb.write_bytes(b"thumb")
-    external = tmp_path.parent / f"external-{photo_id}.jpg"
+    external = tmp_path / f"external-{photo_id}.jpg"
     external.write_bytes(b"external")
 
     user = SimpleNamespace(id=user_id, settings=settings)
@@ -63,8 +65,12 @@ def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
     db.query.return_value.all.return_value = [user]
     db.query.return_value.filter.return_value.all.return_value = [uploaded, external_photo]
 
-    result = user_storage.migrate_legacy_user_storage(db)
-    user_root = tmp_path / "users" / str(user_id)
+    with (
+        patch.object(user_storage, "DEFAULT_STORAGE_BASE", str(data_dir)),
+        patch.object(user_storage, "LEGACY_DEFAULT_STORAGE_BASE", str(legacy_base)),
+    ):
+        result = user_storage.migrate_legacy_user_storage(db)
+    user_root = data_dir / "users" / str(user_id)
 
     assert result["photos"] == 1
     assert uploaded.file_path == str(user_root / "uploads" / "2025" / "08" / "old.jpg")
@@ -72,8 +78,27 @@ def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
     assert (user_root / "thumbnails" / compact[:2] / compact[2:4] / f"{compact}.webp").read_bytes() == b"thumb"
     assert external.read_bytes() == b"external"
     assert (user_root / "config" / "settings.json").is_file()
+    assert not (legacy_base / "uploads").exists()
+    assert not (legacy_base / "thumbnails").exists()
+    assert not legacy_base.exists()
+    assert user.settings["storage"]["photo_storage_path"] == str(data_dir)
+    assert result["removed_directories"] > 0
     db.flush.assert_not_called()
     db.commit.assert_not_called()
+
+
+def test_legacy_cleanup_preserves_nonempty_directories(tmp_path):
+    legacy_uploads = tmp_path / "uploads"
+    empty_nested = legacy_uploads / "empty" / "nested"
+    empty_nested.mkdir(parents=True)
+    keep = legacy_uploads / "unknown.bin"
+    keep.write_bytes(b"keep")
+
+    removed = user_storage._remove_empty_tree(str(legacy_uploads))
+
+    assert removed == 2
+    assert legacy_uploads.is_dir()
+    assert keep.read_bytes() == b"keep"
 
 
 def test_create_and_list_upload_folders_are_user_scoped(tmp_path):
