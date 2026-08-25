@@ -46,7 +46,8 @@ def test_batch_transfer_move_succeeds_and_updates_path(tmp_path):
     photo_id = uuid4()
     src_file = tmp_path / "source.jpg"
     src_file.write_bytes(b"raw")
-    target_dir = tmp_path / "dest"
+    user_root = tmp_path / "users" / str(user.id)
+    target_dir = user_root / "uploads" / "dest"
     photo = SimpleNamespace(
         id=photo_id,
         file_path=str(src_file),
@@ -66,6 +67,7 @@ def test_batch_transfer_move_succeeds_and_updates_path(tmp_path):
         action="move",
     )
     with patch.object(photo_api.config_manager, "get_user_config", return_value=cfg) as gc, \
+         patch.object(photo_api.storage, "_get_storage_root", return_value=str(user_root)), \
          patch.object(photo_api.app.crud.photo, "get_photos_by_ids", return_value=[photo]) as gpb:
         result = photo_api.batch_transfer_photos(data=data, db=db, current_user=user)
     gc.assert_called_once_with(user.id, db)
@@ -102,8 +104,9 @@ def test_batch_transfer_collision_appends_uuid_suffix(tmp_path):
     photo_id = uuid4()
     src_file = tmp_path / "dup.jpg"
     src_file.write_bytes(b"raw")
-    target_dir = tmp_path / "dest"
-    target_dir.mkdir()
+    user_root = tmp_path / "users" / str(user.id)
+    target_dir = user_root / "uploads" / "dest"
+    target_dir.mkdir(parents=True)
     existing = target_dir / "dup.jpg"
     existing.write_bytes(b"old")
     photo = SimpleNamespace(
@@ -125,6 +128,7 @@ def test_batch_transfer_collision_appends_uuid_suffix(tmp_path):
         action="move",
     )
     with patch.object(photo_api.config_manager, "get_user_config", return_value=cfg), \
+         patch.object(photo_api.storage, "_get_storage_root", return_value=str(user_root)), \
          patch.object(photo_api.app.crud.photo, "get_photos_by_ids", return_value=[photo]):
         photo_api.batch_transfer_photos(data=data, db=db, current_user=user)
     # original target file remains untouched (suffix applied)
@@ -305,13 +309,14 @@ def test_update_photo_success_returns_record():
 
 def test_get_directories_tree_no_path_returns_roots(tmp_path):
     user = _user()
-    primary = tmp_path / "primary"
-    primary.mkdir()
+    user_root = tmp_path / "primary" / "users" / str(user.id)
+    primary = user_root / "uploads"
+    primary.mkdir(parents=True)
     external = tmp_path / "extra"
     external.mkdir()
     db = MagicMock()
     cfg = SimpleNamespace(storage=SimpleNamespace(external_directories=[str(external)]))
-    with patch.object(settings_api, "get_storage_root", return_value=str(primary)), \
+    with patch.object(settings_api, "_get_storage_root", return_value=str(user_root)), \
          patch.object(settings_api.config_manager, "get_user_config", return_value=cfg):
         result = settings_api.get_directories_tree(path=None, db=db, current_user=user)
     assert "directories" in result
@@ -324,11 +329,12 @@ def test_get_directories_tree_no_path_returns_roots(tmp_path):
 
 def test_get_directories_tree_rejects_path_traversal(tmp_path):
     user = _user()
-    primary = tmp_path / "primary"
-    primary.mkdir()
+    user_root = tmp_path / "primary" / "users" / str(user.id)
+    primary = user_root / "uploads"
+    primary.mkdir(parents=True)
     db = MagicMock()
     cfg = SimpleNamespace(storage=SimpleNamespace(external_directories=[]))
-    with patch.object(settings_api, "get_storage_root", return_value=str(primary)), \
+    with patch.object(settings_api, "_get_storage_root", return_value=str(user_root)), \
          patch.object(settings_api.config_manager, "get_user_config", return_value=cfg):
         with pytest.raises(HTTPException) as exc:
             settings_api.get_directories_tree(path=str(tmp_path / "outside"), db=db, current_user=user)
@@ -338,11 +344,12 @@ def test_get_directories_tree_rejects_path_traversal(tmp_path):
 
 def test_get_directories_tree_404_for_missing_dir(tmp_path):
     user = _user()
-    primary = tmp_path / "primary"
-    primary.mkdir()
+    user_root = tmp_path / "primary" / "users" / str(user.id)
+    primary = user_root / "uploads"
+    primary.mkdir(parents=True)
     db = MagicMock()
     cfg = SimpleNamespace(storage=SimpleNamespace(external_directories=[]))
-    with patch.object(settings_api, "get_storage_root", return_value=str(primary)), \
+    with patch.object(settings_api, "_get_storage_root", return_value=str(user_root)), \
          patch.object(settings_api.config_manager, "get_user_config", return_value=cfg):
         with pytest.raises(HTTPException) as exc:
             settings_api.get_directories_tree(path=str(primary / "ghost"), db=db, current_user=user)
@@ -351,14 +358,16 @@ def test_get_directories_tree_404_for_missing_dir(tmp_path):
 
 def test_get_directories_tree_subdir_returns_inner_dirs(tmp_path):
     user = _user()
-    primary = tmp_path / "primary" / "vacation"
+    user_root = tmp_path / "primary" / "users" / str(user.id)
+    uploads = user_root / "uploads"
+    primary = uploads / "vacation"
     primary.mkdir(parents=True)
     (primary / "beach").mkdir()
     (primary / "mountain").mkdir()
     (primary / "raw.jpg").write_bytes(b"raw")
     db = MagicMock()
     cfg = SimpleNamespace(storage=SimpleNamespace(external_directories=[]))
-    with patch.object(settings_api, "get_storage_root", return_value=str(tmp_path / "primary")), \
+    with patch.object(settings_api, "_get_storage_root", return_value=str(user_root)), \
          patch.object(settings_api.config_manager, "get_user_config", return_value=cfg):
         result = settings_api.get_directories_tree(path=str(primary), db=db, current_user=user)
     names = {d["name"] for d in result["directories"]}
