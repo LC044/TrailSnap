@@ -47,6 +47,6 @@ def test_frozen_sqlite_migrations_match_current_metadata(tmp_path, monkeypatch):
             assert actual_indexes == expected_indexes, table_name
 
         with engine.connect() as connection:
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "sqlite_0002"
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "sqlite_0003"
     finally:
         engine.dispose()

@@ -7,6 +7,7 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.utils.export_formatter import format_export_filename, METADATA_VARS
+from app.utils.path_validation import validate_target_path
 
 @TaskStrategyFactory.register(TaskType.BATCH_RENAME)
 class BatchRenameStrategy(BaseTaskStrategy):
@@ -73,6 +74,12 @@ class BatchRenameStrategy(BaseTaskStrategy):
             base_formatted = format_export_filename(template, p, i + 1, metadata, p.filename)
             new_basename = f"{base_formatted}{ext}"
             new_path = os.path.join(dir_name, new_basename)
+            try:
+                validate_target_path(new_path)
+            except ValueError as exc:
+                logging.error("Skipping invalid rename target %s: %s", new_path, exc)
+                planned.append((p, old_path, None, None))
+                continue
             new_abs = os.path.abspath(new_path)
 
             if new_abs == old_abs:
@@ -86,6 +93,13 @@ class BatchRenameStrategy(BaseTaskStrategy):
                 new_path = os.path.join(dir_name, new_basename)
                 new_abs = os.path.abspath(new_path)
                 counter += 1
+
+            try:
+                validate_target_path(new_path)
+            except ValueError as exc:
+                logging.error("Skipping invalid rename target %s: %s", new_path, exc)
+                planned.append((p, old_path, None, None))
+                continue
 
             assigned.add(new_abs)
             planned.append((p, old_path, new_path, new_basename))

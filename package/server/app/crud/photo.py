@@ -27,6 +27,7 @@ from app.schemas import photo as photo_schemas
 from app.schemas.metadata import PhotoMetadataUpdate
 from app.service import storage
 from app.utils.exif import extract_metadata
+from app.utils.path_validation import validate_target_path
 
 
 def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[UUID] = None) -> List[UUID]:
@@ -872,8 +873,6 @@ def create_photo(db: Session, photo: photo_schemas.PhotoCreate, album_id: Option
 
 
 import os
-import traceback
-
 def update_photo(db: Session, photo_id: UUID, photo_update: photo_schemas.PhotoUpdate, user_id: UUID = None):
     db_photo = get_photo(db, photo_id)
     if db_photo:
@@ -882,7 +881,11 @@ def update_photo(db: Session, photo_id: UUID, photo_update: photo_schemas.PhotoU
 
         file_path = db_photo.file_path
 
-        if photo_update.modify_original_file and os.path.exists(file_path):
+        filename_to_store = photo_update.filename
+        if photo_update.modify_original_file and not os.path.exists(file_path):
+            raise ValueError("修改原文件失败: 原文件不存在")
+
+        if photo_update.modify_original_file:
             try:
                 if photo_update.photo_time is not None:
                     timestamp = photo_update.photo_time.timestamp()
@@ -897,17 +900,20 @@ def update_photo(db: Session, photo_id: UUID, photo_update: photo_schemas.PhotoU
                         new_filename += ext
                     
                     new_file_path = os.path.join(dirname, new_filename)
+                    validate_target_path(new_file_path)
                     if not os.path.exists(new_file_path):
                         os.rename(file_path, new_file_path)
                         db_photo.file_path = new_file_path
                         # 更新 filename 为带后缀的实际文件名
-                        photo_update.filename = new_filename
-            except Exception as e:
-                print(f"Failed to modify original file: {e}")
-                traceback.print_exc()
+                        filename_to_store = new_filename
+                    else:
+                        raise ValueError("目标文件名已存在")
+            except (OSError, ValueError) as e:
+                db.rollback()
+                raise ValueError(f"修改原文件失败: {e}") from e
 
-        if photo_update.filename is not None:
-            db_photo.filename = photo_update.filename
+        if filename_to_store is not None:
+            db_photo.filename = filename_to_store
         if photo_update.photo_time is not None:
             db_photo.photo_time = photo_update.photo_time
         db.commit()

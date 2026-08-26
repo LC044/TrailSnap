@@ -14,6 +14,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from app.core.config_manager import config_manager, ImageSettings
 from app.service import user_storage
+from app.utils.path_validation import validate_target_path
 try:
     import cv2
     import numpy as np
@@ -113,6 +114,7 @@ def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, fold
     base_dir = _resolve_upload_directory(user_id, folder, db)
     os.makedirs(base_dir, exist_ok=True)
     target_path = _ensure_unique_path(base_dir, upload_file.filename)
+    validate_target_path(target_path)
     with open(target_path, "wb") as buffer:
         shutil.copyfileobj(upload_file.file, buffer)
     return target_path

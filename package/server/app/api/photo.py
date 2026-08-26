@@ -627,7 +627,10 @@ def delete_photo_global(photo_id: UUID, db: Session = Depends(get_db), current_u
 
 @router.put("/{photo_id}", response_model=BaseResponse[schemas.Photo])
 def update_photo(photo_id: UUID, photo: schemas.PhotoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_photo = app.crud.photo.update_photo(db, photo_id, photo, user_id=current_user.id)
+    try:
+        db_photo = app.crud.photo.update_photo(db, photo_id, photo, user_id=current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not db_photo:
         raise HTTPException(status_code=404, detail="Photo not found")
     return BaseResponse.success(data=db_photo)
@@ -648,9 +651,12 @@ async def replace_photo_file(
     if db_photo.file_type == FileType.video:
         raise HTTPException(status_code=400, detail="Cannot replace video file via image editor")
 
-    new_file_path = await run_in_threadpool(
-        storage.save_upload_file, file, db_photo.id, current_user.id
-    )
+    try:
+        new_file_path = await run_in_threadpool(
+            storage.save_upload_file, file, db_photo.id, current_user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     updated = await run_in_threadpool(
         app.crud.photo.replace_photo_file, db, db_photo, new_file_path, current_user.id
     )
