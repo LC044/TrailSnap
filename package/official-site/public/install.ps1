@@ -31,7 +31,7 @@ param(
     [int]$ServerPort = 8800,
     [int]$AiPort = 8801,
     [string]$Timezone = "Asia/Shanghai",
-    [ValidateSet("cpu", "gpu")]
+    [ValidateSet("cpu", "gpu", "openvino")]
     [string]$AiMode = "cpu",
     [string]$Tag = "latest",
     [switch]$ChinaMirrors,
@@ -52,7 +52,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.5.4"
+$ScriptVersion = "1.5.5"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -65,6 +65,7 @@ $script:LogFile = ""
 $script:PgPassword = ""
 $script:ImageRegistry = ""
 $script:ImageRegistryResolved = $false
+$script:AiModeExplicit = $PSBoundParameters.ContainsKey("AiMode")
 
 $ChinaMirrorList = @(
     "https://docker.1ms.run",
@@ -492,6 +493,57 @@ function Test-GpuSupport {
     return $true
 }
 
+function Set-EnvAiMode {
+    param([ValidateSet("cpu", "gpu", "openvino")][string]$Mode)
+
+    $envPath = Join-Path $script:InstallDir ".env"
+    if (-not (Test-Path $envPath)) {
+        Stop-Script "未在 $($script:InstallDir) 找到 .env，无法切换 AI 模式。"
+    }
+
+    $content = Get-Content $envPath -Raw -Encoding UTF8
+    $line = "AI_MODE=`"$Mode`""
+    if ($content -match '(?m)^AI_MODE=.*$') {
+        $content = $content -replace '(?m)^AI_MODE=.*$', $line
+    } else {
+        $separator = if ($content.EndsWith("`n")) { "" } else { "`r`n" }
+        $content = "${content}${separator}${line}`r`n"
+    }
+    Set-Content -Path $envPath -Value $content -Encoding UTF8 -NoNewline
+    $script:DetectedAiMode = $Mode
+    Set-Item -Path "env:AI_MODE" -Value $Mode
+    Write-Info "AI 模式已设置为：$Mode"
+    Write-Log "AI 模式切换为: $Mode"
+}
+
+function Select-AiMode {
+    $currentMode = if ($script:DetectedAiMode) { $script:DetectedAiMode } else { "cpu" }
+    Write-Host ""
+    Write-Host "当前 AI 模式：$currentMode" -ForegroundColor Cyan
+    Write-Host "  1) CPU       兼容性最好，适合无独立加速设备"
+    Write-Host "  2) GPU       NVIDIA 显卡，使用 CUDA 加速"
+    Write-Host "  3) OpenVINO  Intel CPU / 核显 / NPU 优化"
+    Write-Host "  0) 返回"
+
+    $choice = Read-Host "请选择 [0-3]"
+    $mode = switch ($choice) {
+        "1" { "cpu" }
+        "2" { "gpu" }
+        "3" { "openvino" }
+        "0" { return $null }
+        default {
+            Write-Warn "无效选择，未修改 AI 模式。"
+            return $null
+        }
+    }
+
+    if ($mode -eq "gpu" -and -not (Test-GpuSupport)) {
+        Write-Warn "GPU 环境检查未通过，AI 模式未修改。"
+        return $null
+    }
+    return $mode
+}
+
 # ── 镜像仓库地区判断 ──────────────────────────────────────────────────────────
 
 # 判断当前是否位于中国大陆：依次看时区、系统区域设置、公网 IP 归属地
@@ -780,7 +832,7 @@ function Collect-Config {
             Write-Warn "将回退到 CPU 模式。"
             $script:DetectedAiMode = "cpu"
         }
-    } else {
+    } elseif (-not $script:AiModeExplicit) {
         try {
             $cpuName = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
             if ($cpuName -match "Intel") {
@@ -1143,6 +1195,35 @@ function Test-HealthCheck {
 
 # ── 拉取与启动 ────────────────────────────────────────────────────────────────
 
+function Test-AiRuntimeAcceleration {
+    $mode = $script:DetectedAiMode
+    if (-not $mode -and $env:AI_MODE) { $mode = $env:AI_MODE.Trim('"') }
+    if ($mode -notin @("gpu", "openvino")) { return $true }
+
+    Write-Step "验证 AI 推理加速后端..."
+    $expectedProvider = if ($mode -eq "gpu") { "CUDAExecutionProvider" } else { "OpenVINOExecutionProvider" }
+    try {
+        $providers = (& docker exec trailsnap-ai python -c "import onnxruntime as ort; print(','.join(ort.get_available_providers()))" 2>&1 | Out-String).Trim()
+        if ($LASTEXITCODE -eq 0 -and $providers -match [regex]::Escape($expectedProvider)) {
+            Write-Info "$mode 加速可用：$expectedProvider"
+            Write-Log "AI 加速验收通过: mode=$mode providers=$providers"
+            return $true
+        }
+    } catch {
+        $providers = $_.Exception.Message
+    }
+
+    Write-Warn "$mode 镜像已启动，但未检测到 $expectedProvider，AI 可能会回退到 CPU。"
+    if ($providers) { Write-Warn "容器返回的 providers：$providers" }
+    Write-Info "诊断命令：docker exec trailsnap-ai python -c `"import onnxruntime as ort; print(ort.get_available_providers())`""
+    if ($mode -eq "gpu") {
+        Write-Info "GPU 透传检查：docker exec trailsnap-ai nvidia-smi"
+    }
+    Write-Info "排查教程：https://trailsnap.cn/docs/guide/install.html#切换-ai-加速模式"
+    Write-Log "AI 加速验收失败: mode=$mode expected=$expectedProvider providers=$providers"
+    return $false
+}
+
 function Invoke-Compose {
     param([string]$Arguments)
     # 使用 Invoke-Expression 避免手动按空格拆分参数导致路径含空格时出错
@@ -1252,6 +1333,10 @@ function Do-Upgrade {
     # 设置日志文件
     $script:LogFile = Join-Path $script:InstallDir "install.log"
 
+    # 命令行显式传入 -AiMode 时优先使用该值；未传入时保留已有配置。
+    # 这样 `install.ps1 -Upgrade -AiMode gpu` 可以直接切换镜像，而普通升级不会改变模式。
+    $requestedAiMode = if ($script:AiModeExplicit) { $AiMode } else { $null }
+
     Get-Content $envFilePath | ForEach-Object {
         if ($_ -match "^([^#][^=]+)=(.*)$") {
             $key = $Matches[1].Trim()
@@ -1263,11 +1348,20 @@ function Do-Upgrade {
                 "AI_PORT"         { $script:AiPort = [int]$value }
                 "TZ"              { $script:Timezone = $value }
                 "IMAGE_TAG"       { $script:Tag = $value }
-                "AI_MODE"         { $script:DetectedAiMode = $value }
+                "AI_MODE"         {
+                    if (-not $requestedAiMode) { $script:DetectedAiMode = $value }
+                }
                 "PHOTO_DIR"       { $script:PhotoDir = $value }
                 "POSTGRES_PASSWORD" { $script:PgPassword = $value }
             }
         }
+    }
+
+    if ($requestedAiMode) {
+        if ($requestedAiMode -eq "gpu" -and -not (Test-GpuSupport)) {
+            Stop-Script "GPU 环境检查未通过，已保留原 AI 模式。"
+        }
+        Set-EnvAiMode -Mode $requestedAiMode
     }
 
     Write-Log "开始升级，保留现有配置"
@@ -1283,6 +1377,7 @@ function Do-Upgrade {
     }
 
     Test-HealthCheck | Out-Null
+    Test-AiRuntimeAcceleration | Out-Null
 
     Write-Success
     Write-Info "升级完成。您的 .env 配置已保留。"
@@ -1493,7 +1588,8 @@ TrailSnap (行影集) — Windows 一键安装脚本
   -ServerPort <端口>     后端 API 端口（默认：8800）
   -AiPort <端口>         AI 服务端口（默认：8801）
   -Timezone <时区>       时区（默认：Asia/Shanghai）
-  -AiMode <cpu|gpu>      AI 模式（默认：cpu）
+  -AiMode <cpu|gpu|openvino>
+                           AI 模式；与 -Upgrade 同用可切换已有安装的 AI 镜像
   -Tag <版本号>          Docker 镜像版本标签（默认：latest）
   -ChinaMirrors          强制使用国内阿里云镜像仓库
   -Yes                   非交互模式：接受所有默认值
@@ -1512,6 +1608,9 @@ TrailSnap (行影集) — Windows 一键安装脚本
 
   # GPU 模式
   .\install.ps1 -PhotoDir "D:\Photos" -AiMode gpu
+
+  # 已有安装切换到 GPU 模式
+  .\install.ps1 -Upgrade -AiMode gpu
 
   # 升级
   .\install.ps1 -Upgrade
@@ -1568,6 +1667,8 @@ $existingCompose = Join-Path $checkDir "docker-compose.yml"
 if (Test-Path $existingCompose) {
     # 在默认目录检测到已有安装时，将其作为操作目标
     $script:InstallDir = $checkDir
+}
+if ((Test-Path $existingCompose) -and -not $Upgrade) {
     # 如果找到了配置文件，先解析它以获取端口等信息
     $envFilePath = Join-Path $script:InstallDir ".env"
     if (Test-Path $envFilePath) {
@@ -1580,6 +1681,7 @@ if (Test-Path $existingCompose) {
                     "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
                     "SERVER_PORT"     { $script:ServerPort = [int]$value }
                     "AI_PORT"         { $script:AiPort = [int]$value }
+                    "AI_MODE"         { $script:DetectedAiMode = $value }
                 }
             }
         }
@@ -1612,9 +1714,10 @@ if (Test-Path $existingCompose) {
         Write-Host "  5) 启动服务"
     }
     Write-Host "  7) 添加新的照片文件夹"
+    Write-Host "  8) 切换 AI 模式（当前：$($script:DetectedAiMode)）"
     Write-Host "  0) 退出"
 
-    $choice = Read-Host "请选择 [0-7]"
+    $choice = Read-Host "请选择 [0-8]"
     switch ($choice) {
         "1" {
             Ensure-Docker
@@ -1728,6 +1831,19 @@ if (Test-Path $existingCompose) {
             Add-PhotoDir -NewDir ""
             exit 0
         }
+        "8" {
+            Ensure-Docker
+            $newMode = Select-AiMode
+            if (-not $newMode) { exit 0 }
+            if ($newMode -eq $script:DetectedAiMode) {
+                Write-Info "当前已经是 $newMode 模式，无需切换。"
+                exit 0
+            }
+            Set-EnvAiMode -Mode $newMode
+            Configure-Mirrors
+            Do-Upgrade
+            exit 0
+        }
         "0" {
             Stop-Script "已退出。"
         }
@@ -1777,6 +1893,7 @@ Start-Services
 
 # 健康检查
 if (Test-HealthCheck) {
+    Test-AiRuntimeAcceleration | Out-Null
     Write-Success
 } else {
     $lanIP = Get-LanIP

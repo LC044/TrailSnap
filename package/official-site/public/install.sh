@@ -8,13 +8,14 @@
 #   非交互式安装:  ./install.sh --photo-dir /path/to/photos --china-mirrors --yes
 #   一键安装:      curl -fsSL https://trailsnap.cn/install.sh | bash
 #   升级:          ./install.sh --upgrade
+#   切换 AI 模式:  ./install.sh --upgrade --ai-mode gpu
 #   卸载:          ./install.sh --uninstall [--purge]
 # =============================================================================
 
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.4"
+SCRIPT_VERSION="1.5.5"
 DEFAULT_FRONTEND_PORT=8082
 DEFAULT_SERVER_PORT=8800
 DEFAULT_AI_PORT=8801
@@ -64,6 +65,7 @@ AI_PORT=""
 TZ=""
 IMAGE_TAG=""
 AI_MODE=""
+AI_MODE_EXPLICIT=false
 PG_PASSWORD=""
 CHINA_MIRRORS_FLAG=false
 YES_FLAG=false
@@ -786,6 +788,28 @@ check_gpu_support() {
   return 0
 }
 
+select_ai_mode() {
+  local current_mode="${DETECTED_AI_MODE:-cpu}"
+  echo ""
+  echo -e "当前 AI 模式：${CYAN}${current_mode}${NC}"
+  echo "  1) CPU       兼容性最好，适合无独立加速设备"
+  echo "  2) GPU       NVIDIA 显卡，使用 CUDA 加速"
+  echo "  3) OpenVINO  Intel CPU / 核显 / NPU 优化"
+  echo "  0) 返回"
+
+  local choice
+  read_line -rp "$(printf '\033[0;36m请选择 [0-3]: \033[0m')" choice || true
+  case "$choice" in
+    1) SELECTED_AI_MODE="cpu" ;;
+    2) SELECTED_AI_MODE="gpu" ;;
+    3) SELECTED_AI_MODE="openvino" ;;
+    0) SELECTED_AI_MODE=""; return 1 ;;
+    *) warn "无效选择，未修改 AI 模式。"; SELECTED_AI_MODE=""; return 1 ;;
+  esac
+
+  return 0
+}
+
 # ── 配置收集 ──────────────────────────────────────────────────────────────────
 
 collect_config() {
@@ -999,7 +1023,7 @@ collect_config() {
       warn "将回退到 CPU 模式。"
       DETECTED_AI_MODE="cpu"
     fi
-  else
+  elif [[ "$AI_MODE_EXPLICIT" != true ]]; then
     local cpu_name=""
     if [[ "$OS" == "macos" ]]; then
       cpu_name="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
@@ -1355,6 +1379,39 @@ start_services() {
   log "Docker 服务已启动"
 }
 
+# ── AI 加速后端验收 ───────────────────────────────────────────────────────────
+
+verify_ai_runtime_acceleration() {
+  local mode="${DETECTED_AI_MODE:-${AI_MODE:-cpu}}"
+  [[ "$mode" != "gpu" && "$mode" != "openvino" ]] && return 0
+
+  step "验证 AI 推理加速后端..."
+  local expected_provider
+  if [[ "$mode" == "gpu" ]]; then
+    expected_provider="CUDAExecutionProvider"
+  else
+    expected_provider="OpenVINOExecutionProvider"
+  fi
+
+  local providers=""
+  if providers="$(docker exec trailsnap-ai python -c "import onnxruntime as ort; print(','.join(ort.get_available_providers()))" 2>&1)" \
+    && echo "$providers" | grep -q "$expected_provider"; then
+    info "${mode} 加速可用：${expected_provider}"
+    log "AI 加速验收通过: mode=${mode} providers=${providers}"
+    return 0
+  fi
+
+  warn "${mode} 镜像已启动，但未检测到 ${expected_provider}，AI 可能会回退到 CPU。"
+  [[ -n "$providers" ]] && warn "容器返回的 providers：${providers}"
+  info "诊断命令：docker exec trailsnap-ai python -c \"import onnxruntime as ort; print(ort.get_available_providers())\""
+  if [[ "$mode" == "gpu" ]]; then
+    info "GPU 透传检查：docker exec trailsnap-ai nvidia-smi"
+  fi
+  info "排查教程：https://trailsnap.cn/docs/guide/install.html#切换-ai-加速模式"
+  log "AI 加速验收失败: mode=${mode} expected=${expected_provider} providers=${providers}"
+  return 1
+}
+
 # ── 成功横幅 ──────────────────────────────────────────────────────────────────
 
 print_service_urls() {
@@ -1420,6 +1477,13 @@ do_upgrade() {
   # 设置日志文件
   LOG_FILE="${INSTALL_DIR}/install.log"
 
+  # 显式传入 --ai-mode 时优先使用该值；未传入时保留已有配置。
+  # 这样 `install.sh --upgrade --ai-mode gpu` 可以直接切换镜像。
+  local requested_ai_mode=""
+  if [[ "$AI_MODE_EXPLICIT" == true ]]; then
+    requested_ai_mode="$AI_MODE"
+  fi
+
   # 读取现有配置，保留密码等关键信息
   while IFS='=' read -r key value; do
     key="$(echo "$key" | xargs)"
@@ -1432,11 +1496,24 @@ do_upgrade() {
       AI_PORT)         AI_PORT="$value" ;;
       TZ)              TZ="$value" ;;
       IMAGE_TAG)       IMAGE_TAG="$value" ;;
-      AI_MODE)         DETECTED_AI_MODE="$value" ;;
+      AI_MODE)
+        if [[ -z "$requested_ai_mode" ]]; then
+          DETECTED_AI_MODE="$value"
+        fi
+        ;;
       PHOTO_DIR)       PHOTO_DIR="$value" ;;
       POSTGRES_PASSWORD) PG_PASSWORD="$value" ;;
     esac
   done < <(grep -v '^#' "${INSTALL_DIR}/.env" 2>/dev/null || true)
+
+  if [[ -n "$requested_ai_mode" ]]; then
+    if [[ "$requested_ai_mode" == "gpu" ]] && ! check_gpu_support; then
+      die "GPU 环境检查未通过，已保留原 AI 模式。"
+    fi
+    DETECTED_AI_MODE="$requested_ai_mode"
+    info "AI 模式已设置为：${requested_ai_mode}"
+    log "AI 模式切换为: ${requested_ai_mode}"
+  fi
 
   log "开始升级，保留现有配置"
 
@@ -1454,6 +1531,7 @@ do_upgrade() {
   $COMPOSE_CMD --env-file .env up -d --remove-orphans
 
   health_check
+  verify_ai_runtime_acceleration || true
 
   print_success
   info "升级完成。您的 .env 配置已保留。"
@@ -1650,7 +1728,7 @@ parse_args() {
       --server-port)     SERVER_PORT="$2"; shift 2 ;;
       --ai-port)         AI_PORT="$2"; shift 2 ;;
       --timezone)        TZ="$2"; shift 2 ;;
-      --ai-mode)         AI_MODE="$2"; shift 2 ;;
+      --ai-mode)         AI_MODE="$2"; AI_MODE_EXPLICIT=true; shift 2 ;;
       --tag)             IMAGE_TAG="$2"; shift 2 ;;
       --china-mirrors)   CHINA_MIRRORS_FLAG=true; shift ;;
       --yes|-y)          YES_FLAG=true; shift ;;
@@ -1671,6 +1749,10 @@ parse_args() {
   TZ="${TZ:-$DEFAULT_TZ}"
   IMAGE_TAG="${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
   AI_MODE="${AI_MODE:-$DEFAULT_AI_MODE}"
+  case "$AI_MODE" in
+    cpu|gpu|openvino) ;;
+    *) die "无效的 AI 模式：${AI_MODE}。可选值：cpu、gpu、openvino。" ;;
+  esac
 }
 
 usage() {
@@ -1687,7 +1769,8 @@ TrailSnap (行影集) — 一键安装脚本
   --server-port 端口     后端 API 端口（默认：8800）
   --ai-port 端口         AI 服务端口（默认：8801）
   --timezone 时区        时区（默认：Asia/Shanghai）
-  --ai-mode cpu|gpu      AI 模式（默认：cpu）
+  --ai-mode cpu|gpu|openvino
+                         AI 模式；与 --upgrade 同用可切换已有安装的 AI 镜像
   --tag 版本号           Docker 镜像版本标签（默认：latest）
   --china-mirrors        强制使用国内阿里云镜像仓库
   --yes, -y              非交互模式：接受所有默认值
@@ -1707,6 +1790,9 @@ TrailSnap (行影集) — 一键安装脚本
 
   # GPU 模式
   ./install.sh --photo-dir /home/user/photos --ai-mode gpu
+
+  # 已有安装切换到 GPU 模式
+  ./install.sh --upgrade --ai-mode gpu
 
   # 升级
   ./install.sh --upgrade
@@ -1749,7 +1835,9 @@ main() {
   fi
 
   # 检查是否已有安装
-  if [[ -f "${INSTALL_DIR}/docker-compose.yml" ]]; then
+  if [[ -f "${INSTALL_DIR}/docker-compose.yml" && "$UPGRADE_FLAG" != true ]]; then
+    DETECTED_AI_MODE="$(grep -E '^AI_MODE=' "${INSTALL_DIR}/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)"
+    DETECTED_AI_MODE="${DETECTED_AI_MODE:-cpu}"
     local is_service_running=false
     cd "$INSTALL_DIR"
     if command -v docker &>/dev/null; then
@@ -1771,10 +1859,11 @@ main() {
       echo "  5) 启动服务"
     fi
     echo "  7) 添加新的照片文件夹"
+    echo "  8) 切换 AI 模式（当前：${DETECTED_AI_MODE}）"
     echo "  0) 退出"
 
     local choice
-    read_line -rp "$(printf '\033[0;36m请选择 [0-7]: \033[0m')" choice || true
+    read_line -rp "$(printf '\033[0;36m请选择 [0-8]: \033[0m')" choice || true
     case "$choice" in
       1)
         detect_os
@@ -1881,6 +1970,22 @@ main() {
         add_photo_dir ""
         exit 0
         ;;
+      8)
+        detect_os
+        ensure_docker
+        SELECTED_AI_MODE=""
+        if ! select_ai_mode; then
+          exit 0
+        fi
+        if [[ "$SELECTED_AI_MODE" == "$DETECTED_AI_MODE" ]]; then
+          info "当前已经是 ${SELECTED_AI_MODE} 模式，无需切换。"
+          exit 0
+        fi
+        AI_MODE="$SELECTED_AI_MODE"
+        AI_MODE_EXPLICIT=true
+        do_upgrade
+        exit 0
+        ;;
       0)
         die "已退出。"
         ;;
@@ -1932,6 +2037,7 @@ main() {
 
   # 健康检查
   if health_check; then
+    verify_ai_runtime_acceleration || true
     print_success
   else
     local lan_ip

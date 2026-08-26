@@ -10,7 +10,7 @@ TrailSnap 同时提供桌面安装包和 Docker 自托管部署。先根据使�
 | 方式 | 适合场景 | 支持平台 | AI 能力 |
 | --- | --- | --- | --- |
 | 桌面版 | 单台个人电脑、希望快速开始 | Windows、macOS、Linux | 安装基础客户端后，按需安装 AI 扩展 |
-| Docker | NAS、家庭服务器、多设备访问 | 支持 Docker Compose 的设备 | AI 服务随 Compose 部署，可选 CPU/GPU |
+| Docker | NAS、家庭服务器、多设备访问 | 支持 Docker Compose 的设备 | AI 服务随 Compose 部署，可选 CPU/GPU/OpenVINO |
 
 ::: tip 不确定怎么选？
 只在当前电脑使用，选择桌面版；需要手机、平板和多台电脑通过局域网访问同一图库，选择 Docker。
@@ -56,7 +56,7 @@ Linux / macOS / WSL2：
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-脚本会收集照片目录、端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:8082`。
+脚本会收集照片目录、端口、时区和 AI 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。AI 模式支持通用 CPU、NVIDIA GPU（CUDA）和适合 Intel CPU/核显/NPU 的 OpenVINO。默认访问地址为 `http://<服务器 IP>:8082`。
 
 常用管理命令（在安装目录执行）：
 
@@ -76,6 +76,48 @@ docker compose --env-file .env down
 ```
 
 PowerShell 脚本使用对应的 `-Upgrade`、`-Uninstall` 参数；运行 `Get-Help .\install.ps1 -Detailed` 可查看完整参数。
+
+### 切换 AI 加速模式
+
+再次运行安装脚本时，已有安装菜单会显示当前模式。选择“切换 AI 模式”后，可以在 CPU、GPU 和 OpenVINO 之间切换；数据库、模型缓存和照片目录不会被删除。
+
+也可以直接通过命令切换并升级 AI 镜像：
+
+::: code-group
+
+```powershell [Windows PowerShell]
+# NVIDIA GPU / CUDA
+.\install.ps1 -Upgrade -AiMode gpu
+
+# 通用 CPU
+.\install.ps1 -Upgrade -AiMode cpu
+
+# Intel OpenVINO
+.\install.ps1 -Upgrade -AiMode openvino
+```
+
+```bash [Linux / macOS / WSL2]
+# NVIDIA GPU / CUDA
+./install.sh --upgrade --ai-mode gpu
+
+# 通用 CPU
+./install.sh --upgrade --ai-mode cpu
+
+# Intel OpenVINO
+./install.sh --upgrade --ai-mode openvino
+```
+
+:::
+
+GPU 模式要求 NVIDIA 驱动和 NVIDIA Container Toolkit 可用，安装器会在切换前检查环境。服务启动后，安装器还会自动进入 AI 容器验收推理后端：GPU 模式必须检测到 `CUDAExecutionProvider`，OpenVINO 模式必须检测到 `OpenVINOExecutionProvider`。验收失败不会删除数据或中止其他服务，脚本会显示诊断命令和本教程地址。
+
+也可以手动验证 ONNX Runtime：
+
+```bash
+docker compose --env-file .env exec ai python -c "import onnxruntime as ort; print(ort.get_device()); print(ort.get_available_providers())"
+```
+
+GPU 模式的输出应包含 `GPU` 和 `CUDAExecutionProvider`；只有 `AzureExecutionProvider` 与 `CPUExecutionProvider` 表示当前仍是 CPU 运行时。OpenVINO 模式应包含 `OpenVINOExecutionProvider`。
 
 ### 手动部署与 NAS 教程
 
