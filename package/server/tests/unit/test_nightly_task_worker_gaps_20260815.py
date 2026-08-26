@@ -187,11 +187,18 @@ async def test_start_creates_process_and_thread_pools_and_recover():
     fake_thread = MagicMock()
 
     # Avoid touching the real DB during _recover_unfinished_tasks.
+    # Patched ``asyncio.create_task`` must close the coroutine it receives, otherwise the
+    # un-awaited ``worker_loop`` / ``result_loop`` / ``consumer_loop`` coroutines linger
+    # in pytest-asyncio's event loop and hang pytest teardown (memory 2026-08-19, 5 rounds).
+    def _drop_and_mock_task(coro):
+        coro.close()
+        return MagicMock()
+
     with patch.object(worker, "_recover_unfinished_tasks"), \
          patch.object(worker, "_load_system_state", return_value=False), \
          patch.object(task_worker.concurrent.futures, "ProcessPoolExecutor", return_value=fake_pool), \
          patch.object(task_worker.concurrent.futures, "ThreadPoolExecutor", return_value=fake_thread), \
-         patch("asyncio.create_task", return_value=MagicMock()):
+         patch("asyncio.create_task", side_effect=_drop_and_mock_task):
         worker.start()
 
     assert worker.running is True

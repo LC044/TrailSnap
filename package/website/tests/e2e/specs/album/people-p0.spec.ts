@@ -437,11 +437,14 @@ test.describe.serial('P0 - 人物相册', () => {
     const backBtn = page.locator('.unified-photo-page button:has(svg.lucide-arrow-left)').first()
     await expect(backBtn).toBeVisible({ timeout: 10_000 })
     await backBtn.click()
+    // dev 模式 4 worker 并发 + Vite HMR 偶尔会让 router.back() 慢于 5s；
+    // 先等列表页主要请求完成再断 URL，避免在 history push 过程中判失败。
+    await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
 
     // 路由回到 /album/people（不带 /:id 后缀）
-    await page.waitForURL(/\/album\/people$/, { timeout: 5_000 })
+    await page.waitForURL(/\/album\/people$/, { timeout: 10_000 })
     // 列表的 h1 "人物" 应再次可见
-    await expect(page.getByRole('heading', { name: '人物', level: 1 })).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('heading', { name: '人物', level: 1 })).toBeVisible({ timeout: 10_000 })
   })
 
   test('2.5.9 编辑对话框取消 - 取消按钮不修改原姓名 @p0', async ({ page, request }, testInfo) => {
