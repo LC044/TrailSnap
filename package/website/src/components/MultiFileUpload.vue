@@ -5,7 +5,12 @@
         <span class="mb-1 block font-medium">上传到文件夹</span>
         <el-select v-model="selectedFolder" class="w-full" placeholder="按年月自动整理" clearable filterable :disabled="uploading">
           <el-option label="按年月自动整理" value="" />
-          <el-option v-for="folder in uploadFolders" :key="folder" :label="folder" :value="folder" />
+          <el-option-group v-if="uploadFolders.length" label="用户上传目录">
+            <el-option v-for="folder in uploadFolders" :key="folder" :label="folder" :value="folder" />
+          </el-option-group>
+          <el-option-group v-if="externalUploadFolders.length" label="外部挂载目录">
+            <el-option v-for="folder in externalUploadFolders" :key="folder" :label="folder" :value="folder" />
+          </el-option-group>
         </el-select>
       </label>
       <button
@@ -163,10 +168,13 @@ const files = ref<UploadFile[]>([])
 const uploading = ref(false)
 const selectedFolder = ref('')
 const uploadFolders = ref<string[]>([])
+const externalUploadFolders = ref<string[]>([])
 
 const loadUploadFolders = async () => {
   try {
-    uploadFolders.value = await albumService.getUploadFolders()
+    const result = await albumService.getUploadFolders()
+    uploadFolders.value = result.folders
+    externalUploadFolders.value = result.externalFolders
   } catch (error) {
     console.error('加载上传文件夹失败:', error)
   }

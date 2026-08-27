@@ -237,9 +237,8 @@ def read_photo_folders(
     def _stored_prefix_candidates(abs_dir):
         """针对某个绝对目录，给出它在 DB file_path 里可能出现的所有前缀形式。
 
-        DB 里的 file_path 形态不统一：外部扫描目录存的是绝对路径，而 uploads 因
-        storage._get_storage_root 硬编码 './data/uploads'，存成相对路径
-        ('./data/uploads/uploads/年/月/...')。func.replace(file_path,'\\','/')
+        DB 里的 file_path 形态不统一：外部扫描目录通常存绝对路径，而历史上传
+        记录可能存相对路径。func.replace(file_path,'\\','/')
         只统一分隔符、无法把相对路径转绝对，因此这里对每个根同时生成「绝对」与
         「相对」两种前缀，用 OR 匹配，保证两种形态都能命中。
         """
@@ -556,7 +555,7 @@ def batch_transfer_photos(
     current_user: User = Depends(get_current_user)
 ):
     config = config_manager.get_user_config(current_user.id, db)
-    primary = config.storage.photo_storage_path or 'uploads'
+    primary = os.path.join(storage._get_storage_root(current_user.id, db), "uploads")
     external = config.storage.external_directories or []
     allowed_roots = [os.path.abspath(primary)] + [os.path.abspath(p) for p in external]
     
@@ -628,7 +627,10 @@ def delete_photo_global(photo_id: UUID, db: Session = Depends(get_db), current_u
 
 @router.put("/{photo_id}", response_model=BaseResponse[schemas.Photo])
 def update_photo(photo_id: UUID, photo: schemas.PhotoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    db_photo = app.crud.photo.update_photo(db, photo_id, photo, user_id=current_user.id)
+    try:
+        db_photo = app.crud.photo.update_photo(db, photo_id, photo, user_id=current_user.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not db_photo:
         raise HTTPException(status_code=404, detail="Photo not found")
     return BaseResponse.success(data=db_photo)
@@ -649,9 +651,12 @@ async def replace_photo_file(
     if db_photo.file_type == FileType.video:
         raise HTTPException(status_code=400, detail="Cannot replace video file via image editor")
 
-    new_file_path = await run_in_threadpool(
-        storage.save_upload_file, file, db_photo.id, current_user.id
-    )
+    try:
+        new_file_path = await run_in_threadpool(
+            storage.save_upload_file, file, db_photo.id, current_user.id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     updated = await run_in_threadpool(
         app.crud.photo.replace_photo_file, db, db_photo, new_file_path, current_user.id
     )

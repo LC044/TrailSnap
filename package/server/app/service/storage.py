@@ -14,6 +14,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from app.core.config_manager import config_manager, ImageSettings
 from app.service import user_storage
+from app.utils.path_validation import validate_target_path
 try:
     import cv2
     import numpy as np
@@ -73,16 +74,47 @@ def _validate_upload_folder(folder: Optional[str]) -> Optional[str]:
     return normalized
 
 
-def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
+def get_external_upload_roots(user_id: UUID, db: Session = None) -> list[str]:
+    """Return normalized external gallery roots configured for this user."""
+    if db is None:
+        return []
+    try:
+        config = config_manager.get_user_config(user_id, db)
+        roots = config.storage.external_directories or []
+    except Exception as exc:
+        logging.warning("Failed to read external upload roots for user %s: %s", user_id, exc)
+        return []
+    return [os.path.abspath(os.path.expanduser(path)) for path in roots if path]
+
+
+def _path_is_within(root: str, candidate: str) -> bool:
+    try:
+        normalized_root = os.path.normcase(os.path.realpath(root))
+        normalized_candidate = os.path.normcase(os.path.realpath(candidate))
+        return os.path.commonpath((normalized_root, normalized_candidate)) == normalized_root
+    except ValueError:
+        return False
+
+
+def _resolve_upload_directory(user_id: UUID, folder: Optional[str], db: Session = None) -> str:
+    if folder and os.path.isabs(folder):
+        candidate = os.path.abspath(os.path.expanduser(folder))
+        if not any(_path_is_within(root, candidate) for root in get_external_upload_roots(user_id, db)):
+            raise ValueError("Upload directory is not in the configured external galleries")
+        return candidate
+
     now = datetime.now()
-    year = f"{now.year:04d}"
-    month = f"{now.month:02d}"
-    root = _get_storage_root(user_id, db) if db is not None else _get_storage_root(user_id)
     relative_folder = _validate_upload_folder(folder)
-    components = relative_folder.split('/') if relative_folder else (year, month)
-    base_dir = os.path.join(root, 'uploads', *components)
+    components = relative_folder.split('/') if relative_folder else (f"{now.year:04d}", f"{now.month:02d}")
+    root = _get_storage_root(user_id, db) if db is not None else _get_storage_root(user_id)
+    return os.path.join(root, 'uploads', *components)
+
+
+def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
+    base_dir = _resolve_upload_directory(user_id, folder, db)
     os.makedirs(base_dir, exist_ok=True)
     target_path = _ensure_unique_path(base_dir, upload_file.filename)
+    validate_target_path(target_path)
     with open(target_path, "wb") as buffer:
         shutil.copyfileobj(upload_file.file, buffer)
     return target_path

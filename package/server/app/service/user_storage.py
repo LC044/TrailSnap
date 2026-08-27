@@ -14,7 +14,8 @@ from app.core.paths import DATA_DIR
 
 
 logger = logging.getLogger(__name__)
-DEFAULT_STORAGE_BASE = os.path.join(DATA_DIR, "uploads")
+DEFAULT_STORAGE_BASE = DATA_DIR
+LEGACY_DEFAULT_STORAGE_BASE = os.path.join(DATA_DIR, "uploads")
 _STORAGE_BASE_CACHE: dict[str, str] = {}
 
 
@@ -22,15 +23,38 @@ def _user_key(user_id: UUID | str) -> str:
     return str(user_id)
 
 
-def configured_storage_base(settings: Optional[dict[str, Any]]) -> str:
+def _configured_path(settings: Optional[dict[str, Any]]) -> Optional[str]:
     value = ((settings or {}).get("storage") or {}).get("photo_storage_path")
     if not isinstance(value, str):
-        value = None
-    elif value.replace("\\", "/").rstrip("/") in ("./data/uploads", "data/uploads"):
-        # The historic default was relative to the server working directory.
-        # Anchor it to DATA_DIR so desktop and container launches migrate alike.
+        return None
+    return value
+
+
+def _is_legacy_default_path(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    normalized = value.replace("\\", "/").rstrip("/")
+    if normalized in ("./data/uploads", "data/uploads"):
+        return True
+    return os.path.normcase(os.path.abspath(os.path.expanduser(value))) == os.path.normcase(
+        os.path.abspath(LEGACY_DEFAULT_STORAGE_BASE)
+    )
+
+
+def configured_storage_base(settings: Optional[dict[str, Any]]) -> str:
+    """Return the parent containing ``users/`` for the current layout."""
+    value = _configured_path(settings)
+    if _is_legacy_default_path(value):
         value = DEFAULT_STORAGE_BASE
     return os.path.abspath(os.path.expanduser(value or DEFAULT_STORAGE_BASE))
+
+
+def legacy_storage_base(settings: Optional[dict[str, Any]]) -> str:
+    """Return the pre-user-isolation root containing uploads/thumbnails."""
+    value = _configured_path(settings)
+    if not value or _is_legacy_default_path(value):
+        value = LEGACY_DEFAULT_STORAGE_BASE
+    return os.path.abspath(os.path.expanduser(value))
 
 
 def cache_storage_base(user_id: UUID | str, storage_base: str) -> str:
@@ -117,6 +141,22 @@ def _move_live_photo_companions(source: str, target: str) -> None:
             _move_file(companion, target_stem + extension)
 
 
+def _remove_empty_tree(root: str) -> int:
+    """Remove empty directories below ``root`` without touching any files."""
+    if not os.path.isdir(root):
+        return 0
+    removed = 0
+    for current, _directories, _files in os.walk(root, topdown=False):
+        try:
+            os.rmdir(current)
+            removed += 1
+        except OSError:
+            # A remaining file or concurrently-created directory makes the
+            # legacy tree non-empty; preserving it is the safe outcome.
+            pass
+    return removed
+
+
 def migrate_legacy_user_storage(db) -> dict[str, int]:
     """Move the legacy mixed layout into isolated user directories.
 
@@ -129,14 +169,17 @@ def migrate_legacy_user_storage(db) -> dict[str, int]:
 
     migrated_photos = 0
     migrated_thumbnails = 0
+    legacy_bases: set[str] = set()
     users = db.query(User).all()
     for user in users:
         settings = dict(user.settings or {})
         base = cache_storage_base(user.id, configured_storage_base(settings))
+        legacy_base = legacy_storage_base(settings)
+        legacy_bases.add(legacy_base)
         user_root = ensure_user_layout(user.id, base)
-        legacy_uploads = os.path.join(base, "uploads")
+        legacy_uploads = os.path.join(legacy_base, "uploads")
         new_uploads = os.path.join(user_root, "uploads")
-        legacy_thumbnails = os.path.join(base, "thumbnails")
+        legacy_thumbnails = os.path.join(legacy_base, "thumbnails")
         new_thumbnails = os.path.join(user_root, "thumbnails")
 
         photos = db.query(Photo).filter(Photo.owner_id == user.id).all()
@@ -159,9 +202,30 @@ def migrate_legacy_user_storage(db) -> dict[str, int]:
                 if _move_file(os.path.join(old_dir, compact + suffix), os.path.join(new_dir, compact + suffix)):
                     migrated_thumbnails += 1
 
+        if _is_legacy_default_path(_configured_path(settings)):
+            storage_settings = dict(settings.get("storage") or {})
+            storage_settings["photo_storage_path"] = DEFAULT_STORAGE_BASE
+            settings["storage"] = storage_settings
+            user.settings = settings
+
         write_user_config(user.id, config_manager.merge_user_settings(settings).model_dump())
+
+    removed_directories = 0
+    for legacy_base in legacy_bases:
+        removed_directories += _remove_empty_tree(os.path.join(legacy_base, "uploads"))
+        removed_directories += _remove_empty_tree(os.path.join(legacy_base, "thumbnails"))
+        try:
+            os.rmdir(legacy_base)
+            removed_directories += 1
+        except OSError:
+            pass
 
     # Transaction ownership belongs to the caller.  In particular, the
     # Alembic data migration must only advance its revision after both the
     # filesystem work and these path updates complete successfully.
-    return {"photos": migrated_photos, "thumbnails": migrated_thumbnails, "users": len(users)}
+    return {
+        "photos": migrated_photos,
+        "thumbnails": migrated_thumbnails,
+        "users": len(users),
+        "removed_directories": removed_directories,
+    }

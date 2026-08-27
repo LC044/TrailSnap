@@ -320,9 +320,10 @@ def test_batch_transfer_rejects_target_outside_allowed_roots(tmp_path):
 def test_batch_transfer_move_relocates_file_and_updates_path(tmp_path):
     db = MagicMock()
     user = _user()
-    primary = tmp_path / "primary"
-    primary.mkdir()
-    target = tmp_path / "primary" / "sub"
+    user_root = tmp_path / "primary" / "users" / str(user.id)
+    primary = user_root / "uploads"
+    primary.mkdir(parents=True)
+    target = primary / "sub"
     target.mkdir()
     old = primary / "old.jpg"
     old.write_bytes(b"x")
@@ -338,6 +339,7 @@ def test_batch_transfer_move_relocates_file_and_updates_path(tmp_path):
     )
 
     with patch.object(photo_api.config_manager, "get_user_config", return_value=cfg), \
+         patch.object(photo_api.storage, "_get_storage_root", return_value=str(user_root)), \
          patch.object(
              photo_api.app.crud.photo, "get_photos_by_ids", return_value=[photo]
          ):
@@ -356,9 +358,10 @@ def test_batch_transfer_move_relocates_file_and_updates_path(tmp_path):
 def test_batch_transfer_copy_creates_new_record_and_task(tmp_path):
     db = MagicMock()
     user = _user()
-    primary = tmp_path / "primary"
-    primary.mkdir()
-    target = tmp_path / "primary" / "sub"
+    user_root = tmp_path / "primary" / "users" / str(user.id)
+    primary = user_root / "uploads"
+    primary.mkdir(parents=True)
+    target = primary / "sub"
     target.mkdir()
     old = primary / "old.jpg"
     old.write_bytes(b"x")
@@ -378,6 +381,7 @@ def test_batch_transfer_copy_creates_new_record_and_task(tmp_path):
     fake_mgr.get_instance.return_value = fake_mgr
 
     with patch.object(photo_api.config_manager, "get_user_config", return_value=cfg), \
+         patch.object(photo_api.storage, "_get_storage_root", return_value=str(user_root)), \
          patch.object(
              photo_api.app.crud.photo, "get_photos_by_ids", return_value=[photo]
          ), patch.object(photo_api, "TaskManager", fake_mgr):

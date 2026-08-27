@@ -18,7 +18,7 @@ class PhotoBase(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     duration: Optional[float] = None
-    filename: Optional[str] = None
+    filename: Optional[str] = Field(default=None, max_length=255)
     photo_time: Optional[datetime] = None
     md5: Optional[str] = Field(default=None, exclude=True)
 
@@ -26,7 +26,7 @@ class PhotoCreate(PhotoBase):
     pass
 
 class PhotoUpdate(BaseModel):
-    filename: Optional[str] = None
+    filename: Optional[str] = Field(default=None, max_length=255)
     photo_time: Optional[datetime] = None
     modify_original_file: Optional[bool] = False
 

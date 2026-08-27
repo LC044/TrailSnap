@@ -4,7 +4,7 @@
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, ForeignKey, DateTime, BigInteger, Integer, Enum, Float, JSON, Boolean
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, BigInteger, Integer, Enum, Float, JSON, Boolean, Index
 from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -21,11 +21,17 @@ class ImageType(str, enum.Enum):
 
 class Photo(Base):
     __tablename__ = "photos"
+    # PostgreSQL compiles this as a hash index so arbitrarily long TEXT paths
+    # do not exceed the B-tree index tuple limit. SQLite ignores the dialect
+    # option and keeps its regular B-tree index.
+    __table_args__ = (
+        Index("ix_photos_file_path", "file_path", postgresql_using="hash"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     filename = Column(String(255), index=True)
     photo_time = Column(DateTime, index=True)
-    file_path = Column(String(255), nullable=False, index=True)
+    file_path = Column(Text, nullable=False)
     file_type = Column(Enum(FileType), nullable=False)
     upload_time = Column(DateTime, default=datetime.now)
     size = Column(BigInteger)

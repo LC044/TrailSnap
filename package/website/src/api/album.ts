@@ -156,8 +156,11 @@ export const albumService = {
   },
 
   async getUploadFolders() {
-    const data = await request.get<{ folders: string[] }>('/api/medias/folders');
-    return data.data.folders;
+    const data = await request.get<{ folders: string[], external_folders: string[] }>('/api/medias/folders');
+    return {
+      folders: data.data.folders,
+      externalFolders: data.data.external_folders || [],
+    };
   },
 
   async createUploadFolder(path: string) {
