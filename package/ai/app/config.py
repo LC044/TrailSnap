@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     # Memory Management
     IDLE_TIMEOUT: int = 600  # Default 1 hour in seconds
     CHECK_INTERVAL: int = 60  # Check every minute
+    AI_ADMISSION_QUEUE: int = int(os.getenv("AI_ADMISSION_QUEUE", "2"))
+    AI_ADMISSION_WAIT_SECONDS: float = float(os.getenv("AI_ADMISSION_WAIT_SECONDS", "10"))
+    AI_OCR_CONCURRENCY: int = int(os.getenv("AI_OCR_CONCURRENCY", "1"))
+    AI_CLASSIFICATION_CONCURRENCY: int = int(os.getenv("AI_CLASSIFICATION_CONCURRENCY", "1"))
+    AI_FACE_CONCURRENCY: int = int(os.getenv("AI_FACE_CONCURRENCY", "1"))
+    AI_EMBEDDING_CONCURRENCY: int = int(os.getenv("AI_EMBEDDING_CONCURRENCY", "1"))
+    AI_TICKETS_CONCURRENCY: int = int(os.getenv("AI_TICKETS_CONCURRENCY", "1"))
 
     class Config:
         env_file = ".env"

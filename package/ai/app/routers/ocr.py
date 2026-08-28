@@ -10,6 +10,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from app.services.ocr_service import ocr_service
+from app.core.admission import ocr_admission
 
 router = APIRouter()
 
@@ -87,6 +88,7 @@ async def ocr_predict(request: OCRRequest):
         raise HTTPException(status_code=400, detail="No images provided")
 
     loop = asyncio.get_running_loop()
+    await ocr_admission.acquire()
     try:
         # 每张图各自提交到线程池并发处理，同时把同步推理移出事件循环。
         # return_exceptions=True：单张图片失败（如损坏、解码失败）不影响整批，
@@ -112,3 +114,5 @@ async def ocr_predict(request: OCRRequest):
     except Exception as e:
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        ocr_admission.release()

@@ -31,6 +31,11 @@ def update_system_config(payload: dict, current_user: User = Depends(get_current
     from app.core.system_config import SystemSettings
     system_config.config = SystemSettings(**current_config)
     system_config.save()
+    # Consumer semaphores and process/thread pools are created in the worker
+    # process. Restart it so a changed concurrency profile takes effect now.
+    if "task" in payload:
+        from app.service.task_manager import TaskManager
+        TaskManager.get_instance().restart_worker()
     return {"status": "success", "config": system_config.config.model_dump()}
 
 # ``compare_versions`` 与 ``fetch_remote_update_info`` 都搬到

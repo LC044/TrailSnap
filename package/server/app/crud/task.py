@@ -182,6 +182,8 @@ def cancel_task(db: Session, task: Task) -> Task:
 def retry_task(db: Session, task: Task) -> Task:
     task.status = TaskStatus.PENDING
     task.error = None
+    task.attempt_count = 0
+    task.next_retry_at = None
     task.updated_at = datetime.now()
     db.commit()
     db.refresh(task)
@@ -195,6 +197,8 @@ def retry_all_failed_tasks(db: Session, types: Optional[List[str]] = None) -> in
     result = query.update({
         Task.status: TaskStatus.PENDING,
         Task.error: None,
+        Task.attempt_count: 0,
+        Task.next_retry_at: None,
         Task.updated_at: datetime.now()
     }, synchronize_session=False)
     

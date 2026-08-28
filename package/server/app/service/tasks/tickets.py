@@ -97,7 +97,11 @@ async def calculate_ticket_mileage_and_time(ticket: TrainTicketCreate) -> Dict[s
 class RecognizeTicketStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'IO'
+        return 'AI'
+
+    @property
+    def resource_key(self) -> str:
+        return 'tickets'
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         try:

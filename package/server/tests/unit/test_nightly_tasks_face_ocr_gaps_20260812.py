@@ -79,10 +79,11 @@ def _batch_query_chain(db, batches):
 # ===========================================================================
 
 
-def test_face_strategy_task_category_is_io():
+def test_face_strategy_task_category_is_ai():
     from app.service.tasks import face as face_tasks
     s = face_tasks.RecognizeFaceStrategy()
-    assert s.task_category == "IO"
+    assert s.task_category == "AI"
+    assert s.resource_key == "face"
 
 
 def test_face_strategy_registered_in_factory():
@@ -198,10 +199,11 @@ def test_face_process_generator_stops_when_no_more_photos():
 # ===========================================================================
 
 
-def test_ocr_strategy_task_category_is_io():
+def test_ocr_strategy_task_category_is_ai():
     from app.service.tasks import ocr as ocr_tasks
     s = ocr_tasks.OcrStrategy()
-    assert s.task_category == "IO"
+    assert s.task_category == "AI"
+    assert s.resource_key == "ocr"
 
 
 def test_ocr_strategy_registered_in_factory():

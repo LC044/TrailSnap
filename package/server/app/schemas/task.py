@@ -20,6 +20,8 @@ class TaskResponse(TaskBase):
     updated_at: Optional[datetime] = None
     total_items: Optional[int] = 0
     processed_items: Optional[int] = 0
+    attempt_count: int = 0
+    next_retry_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

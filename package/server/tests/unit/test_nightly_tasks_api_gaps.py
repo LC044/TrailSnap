@@ -90,6 +90,8 @@ def test_get_task_returns_synthetic_completed_stub_when_missing():
     assert payload.status == TaskStatus.COMPLETED
     assert payload.type == TaskType.PROCESS_BASIC
     assert payload.priority == 0
+    assert payload.attempt_count == 0
+    assert tasks_api.TaskSchema.model_validate(payload).attempt_count == 0
 
 def test_create_task_delegates_to_task_manager_and_forwards_owner():
     user = _user()

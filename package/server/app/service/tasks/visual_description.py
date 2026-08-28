@@ -51,7 +51,11 @@ def encode_image(image_path, max_size=672):
 class VisualDescriptionStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'IO'
+        return 'AI'
+
+    @property
+    def resource_key(self) -> str:
+        return 'visual_llm'
 
     def create_client(self, settings):
         if not settings.analysis_connection_id or not settings.analysis_model_name:
@@ -222,7 +226,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 logger.warning(f"compute relative path failed for photo {photo.id}: {e}")
             # print(target_path, base64_image)
             # Step A: Evaluation
-            eval_response = client.invoke([
+            eval_response = await client.ainvoke([
                     {"role": "system", "content": eval_prompt},
                     {
                         "role": "user",

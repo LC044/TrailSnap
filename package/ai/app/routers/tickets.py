@@ -1,10 +1,13 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
+import asyncio
+import base64
 import logging
 import traceback
 
 from app.services.ticket_service import ticket_service
+from app.core.admission import tickets_admission
 
 router = APIRouter()
 
@@ -35,6 +38,20 @@ class TicketRecognitionResponse(BaseModel):
 class TicketRecognitionRequest(BaseModel):
     images: List[str]
 
+
+def _predict_batch(images: List[str]) -> List[Dict[str, Any]]:
+    batch_results = []
+    for b64 in images:
+        if ',' in b64:
+            b64 = b64.split(',')[1]
+        contents = base64.b64decode(b64)
+        results = ticket_service.detect(contents)
+        batch_results.append({
+            "ticket_count": results["count"],
+            "tickets": results["tickets"],
+        })
+    return batch_results
+
 @router.post("/predict", response_model=TicketRecognitionResponse)
 async def predict_ticket(request: TicketRecognitionRequest):
     """
@@ -43,21 +60,14 @@ async def predict_ticket(request: TicketRecognitionRequest):
     if not request.images:
         raise HTTPException(status_code=400, detail="No images provided")
 
-    import base64
+    await tickets_admission.acquire()
     try:
-        batch_results = []
-        for b64 in request.images:
-            if ',' in b64:
-                b64 = b64.split(',')[1]
-            contents = base64.b64decode(b64)
-            results = ticket_service.detect(contents)
-            batch_results.append({
-                "ticket_count": results["count"],
-                "tickets": results["tickets"]
-            })
+        batch_results = await asyncio.to_thread(_predict_batch, request.images)
         return {"results": batch_results}
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+    finally:
+        tickets_admission.release()

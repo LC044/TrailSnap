@@ -114,6 +114,8 @@ class Task(Base):
     # Progress tracking
     total_items = Column(Integer, default=0)
     processed_items = Column(Integer, default=0)
+    attempt_count = Column(Integer, default=0, nullable=False)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     __table_args__ = (
         Index('ix_tasks_status_priority_created', 'status', 'priority', 'created_at'),

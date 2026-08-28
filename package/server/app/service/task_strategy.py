@@ -19,6 +19,16 @@ class BaseTaskStrategy(ABC):
         return 'IO'
 
     @property
+    def resource_key(self) -> str:
+        """Fine-grained resource used for admission control inside a category."""
+        return self.task_category.lower()
+
+    @property
+    def max_attempts(self) -> int:
+        """Maximum automatic attempts for transient failures."""
+        return 3
+
+    @property
     def timeout(self) -> int:
         """
         Return the timeout in seconds for this task type.

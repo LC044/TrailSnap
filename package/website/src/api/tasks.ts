@@ -9,6 +9,8 @@ export interface Task {
   created_at: string
   updated_at?: string
   error?: string
+  attempt_count?: number
+  next_retry_at?: string
   payload?: any
   total_items?: number
   processed_items?: number

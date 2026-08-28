@@ -71,11 +71,11 @@ def _settings_with_connection(connection_id="conn-1", model_name="m"):
 
 
 def _mock_chat_client(content):
-    """A LangChain-compatible client whose ``invoke`` returns ``content``."""
+    """A LangChain-compatible client whose ``ainvoke`` returns ``content``."""
     eval_response = MagicMock()
     eval_response.content = content
     client = MagicMock()
-    client.invoke.return_value = eval_response
+    client.ainvoke = AsyncMock(return_value=eval_response)
     return client
 
 
@@ -703,7 +703,7 @@ async def test_process_single_photo_includes_metadata_address_when_present():
                                     worker=None, photo=photo, db=db, settings=ai_settings
                                 )
 
-    invoke_args = client.invoke.call_args[0][0]
+    invoke_args = client.ainvoke.call_args[0][0]
     user_message = invoke_args[1]
     text_payload = next(p["text"] for p in user_message["content"] if p.get("type") == "text")
     assert "Shanghai" in text_payload

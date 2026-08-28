@@ -30,12 +30,14 @@ async def test_task_queue_manager_dequeues_highest_priority_first():
 def test_get_chunk_size_honors_level_and_task_type_overrides():
     with patch.object(task_worker.system_config.config.task, "concurrency_level", "high"):
         assert task_worker.get_chunk_size(TaskType.SCAN_FOLDER) == 8
-        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 4
+        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 1
+        assert task_worker.get_chunk_size(TaskType.OCR) == 2
         assert task_worker.get_chunk_size(TaskType.PROCESS_BASIC) == 16
 
     with patch.object(task_worker.system_config.config.task, "concurrency_level", "low"):
         assert task_worker.get_chunk_size(TaskType.SCAN_FOLDER) == 4
-        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 2
+        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 1
+        assert task_worker.get_chunk_size(TaskType.OCR) == 1
 
 
 def test_publish_sends_event_envelope_and_swallows_queue_errors():
@@ -122,7 +124,35 @@ async def test_paused_category_still_executes_interactive_task():
         )
 
     strategy.process_batch.assert_awaited_once_with(worker, [task], db)
-    db.commit.assert_not_called()
+    db.commit.assert_called_once_with()
+
+
+def test_transient_failure_is_scheduled_without_becoming_failed():
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    db = MagicMock()
+    task = MagicMock()
+    task.id = "task-retry"
+    task.type = TaskType.OCR
+    task.status = TaskStatus.PROCESSING
+    task.attempt_count = 0
+    task.created_at = None
+    task.updated_at = None
+    task.next_retry_at = None
+    task.error = None
+    task.priority = 1
+    task.total_items = 0
+    task.processed_items = 0
+    task.owner_id = None
+    task.payload = {}
+
+    assert worker._schedule_retry(db, task, "AI Service error: 429", 3) is True
+    assert task.status == TaskStatus.PENDING
+    assert task.attempt_count == 1
+    assert task.next_retry_at is not None
+    assert "自动重试" in task.error
+    db.commit.assert_called_once_with()
+    worker._publish.assert_called_once()
 
 
 @pytest.mark.asyncio

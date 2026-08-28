@@ -73,9 +73,11 @@ def _ai_config(api_url="http://ai:8001"):
 # --- strategy basics --------------------------------------------------------
 
 
-def test_recognize_ticket_strategy_task_category_is_io():
+def test_recognize_ticket_strategy_task_category_is_ai():
     from app.service.tasks import tickets
-    assert tickets.RecognizeTicketStrategy().task_category == "IO"
+    strategy = tickets.RecognizeTicketStrategy()
+    assert strategy.task_category == "AI"
+    assert strategy.resource_key == "tickets"
 
 
 def test_recognize_ticket_strategy_registered_in_factory():

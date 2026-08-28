@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, HTTPException
 from app.services.image_classification_service import image_classification_service
+from app.core.admission import classification_admission
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 
@@ -68,6 +69,7 @@ async def classify_images(request: ImageClassificationRequest):
     """
     if not request.images:
         raise HTTPException(status_code=400, detail="No images provided")
+    await classification_admission.acquire()
     try:
         # classify_yolo 内部已做批量解码 + 真 batch 推理 + 单图 error 容错；
         # 这里只负责把同步推理移出事件循环，避免阻塞其他请求。
@@ -81,3 +83,5 @@ async def classify_images(request: ImageClassificationRequest):
     except Exception as e:
         logging.error(f"Error in ONNX classification API: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        classification_admission.release()

@@ -30,6 +30,8 @@ class TaskSchema(BaseModel):
     payload: Optional[Dict[str, Any]]
     total_items: Optional[int]
     processed_items: Optional[int]
+    attempt_count: int = 0
+    next_retry_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -287,6 +289,7 @@ def get_task(task_id: UUID, db: Session = Depends(get_db)):
             id=task_id, status=TaskStatus.COMPLETED,
             priority = 0,
             type=TaskType.PROCESS_BASIC,
+            attempt_count=0,
             created_at=datetime.now(),
             updated_at=datetime.now(),
         )

@@ -425,6 +425,12 @@ class TaskManager:
             'created_at': task.created_at.isoformat() if task.created_at else None,
             'updated_at': task.updated_at.isoformat() if task.updated_at else None,
             'payload': task.payload or {},
+            'attempt_count': getattr(task, 'attempt_count', 0) or 0,
+            'next_retry_at': (
+                task.next_retry_at.isoformat()
+                if getattr(task, 'next_retry_at', None)
+                else None
+            ),
         }
         self.publish_event(event, payload)
 

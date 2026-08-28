@@ -426,20 +426,21 @@ def test_task_worker_get_concurrency_settings_three_levels():
             cfg = task_worker.TaskWorker._get_concurrency_settings(self=None)
         assert cfg["process_pool"] == fake_cpu_count
         assert cfg["thread_pool"] == 16
-        assert cfg["ai_consumer"] == 2
+        assert cfg["ai_consumer"] == 8
 
         # LOW
         with patch.object(task_worker.system_config.config.task, "concurrency_level", "low"):
             cfg = task_worker.TaskWorker._get_concurrency_settings(self=None)
         assert cfg["process_pool"] == max(1, fake_cpu_count // 4)
         assert cfg["thread_pool"] == 4
-        assert cfg["ai_consumer"] == 1
+        assert cfg["ai_consumer"] == 2
 
         # MEDIUM (default branch)
         with patch.object(task_worker.system_config.config.task, "concurrency_level", "medium"):
             cfg = task_worker.TaskWorker._get_concurrency_settings(self=None)
         assert cfg["process_pool"] == max(1, fake_cpu_count // 2)
         assert cfg["thread_pool"] == 8
+        assert cfg["ai_consumer"] == 5
 
     # When os.cpu_count returns None we fall back to 4.
     with patch.object(task_worker.os, "cpu_count", return_value=None), \

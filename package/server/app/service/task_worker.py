@@ -6,7 +6,7 @@ import json
 from re import S
 from typing import List, Dict, Set, Any, Tuple
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -42,16 +42,19 @@ class TaskQueueManager:
             'IO': itertools.count(),
             'AI': itertools.count()
         }
+        self._item_counts = {category: 0 for category in self.queues}
 
     async def put_batch(self, category: str, batch: List[Dict], priority: int = 1):
         if category in self.queues:
             # priority is inverted because PriorityQueue retrieves lowest first
             count = next(self._counters[category])
             await self.queues[category].put((-priority, count, batch))
+            self._item_counts[category] += len(batch)
 
     async def get_batch(self, category: str) -> List[Dict]:
         if category in self.queues:
             item = await self.queues[category].get()
+            self._item_counts[category] = max(0, self._item_counts[category] - len(item[2]))
             return item[2]
         return []
 
@@ -59,6 +62,9 @@ class TaskQueueManager:
         if category in self.queues:
             return self.queues[category].qsize()
         return 0
+
+    def item_count(self, category: str) -> int:
+        return self._item_counts.get(category, 0)
 
     def get_lowest_priority(self, category: str) -> int:
         if category in self.queues and self.queues[category]._queue:
@@ -79,6 +85,10 @@ def get_chunk_size(task_type):
     level = system_config.config.task.concurrency_level
     chunk_size = 8 if level == 'high' else 4
     if task_type == TaskType.VISUAL_DESCRIPTION:
+        chunk_size = 1
+    elif task_type == TaskType.OCR or task_type == TaskType.RECOGNIZE_TICKET:
+        chunk_size = 2 if level == 'high' else 1
+    elif task_type == TaskType.RECOGNIZE_FACE:
         chunk_size = 4 if level == 'high' else 2
     elif task_type == TaskType.PROCESS_BASIC or task_type == TaskType.EXTRACT_METADATA:
         chunk_size = 16
@@ -134,6 +144,10 @@ class TaskWorker:
         self.last_active_time: Dict[TaskType, datetime] = {}
         # Multiprocessing queue back to the API process for SSE events
         self.event_queue = None
+        # Rows remain PENDING while prefetched. This in-memory reservation set
+        # prevents the producer from selecting the same row twice.
+        self.reserved_task_ids: Set[UUID] = set()
+        self.resource_semaphores: Dict[str, asyncio.Semaphore] = {}
 
     def set_event_queue(self, queue):
         self.event_queue = queue
@@ -196,7 +210,7 @@ class TaskWorker:
                 "thread_pool": 16,
                 "cpu_consumer": cpu_count,
                 "io_consumer": 8,
-                "ai_consumer": 2
+                "ai_consumer": 8
             }
         elif level == "low":
             return {
@@ -204,7 +218,7 @@ class TaskWorker:
                 "thread_pool": 4,
                 "cpu_consumer": max(1, cpu_count // 4),
                 "io_consumer": 2,
-                "ai_consumer": 1
+                "ai_consumer": 2
             }
         else: # medium
             return {
@@ -212,8 +226,48 @@ class TaskWorker:
                 "thread_pool": 8,
                 "cpu_consumer": max(1, cpu_count // 2),
                 "io_consumer": 4,
-                "ai_consumer": 1
+                "ai_consumer": 5
             }
+
+    def _get_resource_limits(self) -> Dict[str, int]:
+        level = system_config.config.task.concurrency_level
+        limits = {
+            "classification": 1,
+            "ocr": 1,
+            "face": 1,
+            "embedding": 1,
+            "tickets": 1,
+            "visual_llm": 1,
+            "local_llm": 1,
+            "cpu": self._get_concurrency_settings()["cpu_consumer"],
+            "io": self._get_concurrency_settings()["io_consumer"],
+        }
+        if level == "medium":
+            limits.update({"face": 2, "embedding": 2, "visual_llm": 2})
+        elif level == "high":
+            limits.update({
+                "classification": 2,
+                "ocr": 2,
+                "face": 2,
+                "embedding": 2,
+                "tickets": 2,
+                "visual_llm": 4,
+            })
+        return limits
+
+    def _resource_semaphore(self, resource_key: str) -> asyncio.Semaphore:
+        semaphore = self.resource_semaphores.get(resource_key)
+        if semaphore is None:
+            limit = self._get_resource_limits().get(resource_key, 1)
+            semaphore = asyncio.Semaphore(max(1, limit))
+            self.resource_semaphores[resource_key] = semaphore
+        return semaphore
+
+    def _prefetch_limit(self, category: str) -> int:
+        settings = self._get_concurrency_settings()
+        concurrency = settings[f"{category.lower()}_consumer"]
+        # At most two small waves wait in memory. Rows are still PENDING in DB.
+        return max(2, concurrency * 2)
 
     def start(self):
         if self.running:
@@ -224,6 +278,10 @@ class TaskWorker:
         # Load fast_mode state
         self.fast_mode = self._load_system_state('fast_mode', False)
         settings = self._get_concurrency_settings()
+        self.resource_semaphores = {
+            key: asyncio.Semaphore(limit)
+            for key, limit in self._get_resource_limits().items()
+        }
         self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool']) # More threads for IO
 
@@ -348,16 +406,16 @@ class TaskWorker:
         allowed_types = [t for t in allowed_types if t.value not in self.paused_categories]
         return allowed_types
 
-    def _fetch_tasks_to_queues_sync(self, allowed_types: List[str], current_qsizes: Dict[str, int], lowest_priorities: Dict[str, int] = None) -> List[Tuple[str, List[Dict]]]:
+    def _fetch_tasks_to_queues_sync(self, allowed_types: List[str], current_item_counts: Dict[str, int], lowest_priorities: Dict[str, int] = None, reserved_task_ids: Set[UUID] = None) -> List[Tuple[str, List[Dict]]]:
         from app.core.config_manager import config_manager
         db = SessionLocal()
         if lowest_priorities is None:
             lowest_priorities = {'CPU': -9999, 'IO': -9999, 'AI': -9999}
+        reserved_task_ids = reserved_task_ids or set()
         try:
             # 每个 category 的内存队列一次只放入「一种」任务类型的任务。
             # 取最高优先级且尚有 PENDING 任务的类型，把它取完后再取下一优先级，
             # 避免不同类型在同一队列中交替、导致模型/资源反复加载卸载。
-            QUEUE_THRESHOLD = 50
             FETCH_BATCH_SIZE = 48
 
             chunked_batches = []
@@ -376,7 +434,10 @@ class TaskWorker:
                 if not cat_types:
                     continue
 
-                qsize = current_qsizes.get(cat, 0)
+                queued_items = current_item_counts.get(cat, 0)
+                prefetch_limit = self._prefetch_limit(cat)
+                if queued_items >= prefetch_limit:
+                    continue
                 candidate_types = cat_types
 
                 if not candidate_types:
@@ -385,6 +446,7 @@ class TaskWorker:
                 # 选出候选类型中优先级最高、且尚有 PENDING 任务的那一种
                 top = (db.query(Task.type, Task.priority)
                          .filter(Task.status == TaskStatus.PENDING)
+                         .filter(or_(Task.next_retry_at.is_(None), Task.next_retry_at <= datetime.now()))
                          .filter(Task.type.in_(candidate_types))
                          .filter(or_(
                              Task.type.notin_(list(self.paused_categories)),
@@ -397,25 +459,21 @@ class TaskWorker:
                 chosen_type = top[0]
                 top_priority = top[1]
 
-                # A full in-memory queue may still accept a genuinely higher
-                # priority batch. This is what lets an interactive single-photo
-                # action jump ahead of prefetched background work.
-                if qsize >= QUEUE_THRESHOLD:
-                    lowest_prio = lowest_priorities.get(cat, -9999)
-                    if top_priority <= lowest_prio:
-                        continue
-
                 # 只取这一种类型的任务，按创建时间顺序最多取 FETCH_BATCH_SIZE 条
-                tasks = (db.query(Task)
+                query = (db.query(Task)
                            .filter(Task.status == TaskStatus.PENDING)
                            .filter(Task.type == chosen_type)
+                           .filter(or_(Task.next_retry_at.is_(None), Task.next_retry_at <= datetime.now()))
                            .filter(or_(
                                Task.type.notin_(list(self.paused_categories)),
                                Task.priority >= INTERACTIVE_TASK_PRIORITY,
-                           ))
-                           .order_by(Task.priority.desc(), Task.created_at.asc())
-                           .limit(FETCH_BATCH_SIZE)
-                           .all())
+                           )))
+                if reserved_task_ids:
+                    query = query.filter(Task.id.notin_(list(reserved_task_ids)))
+                fetch_limit = min(FETCH_BATCH_SIZE, prefetch_limit - queued_items)
+                tasks = (query.order_by(Task.priority.desc(), Task.created_at.asc())
+                              .limit(fetch_limit)
+                              .all())
                 if not tasks:
                     continue
 
@@ -423,37 +481,20 @@ class TaskWorker:
                 tasks_by_cat: Dict[str, List[Dict]] = {}
                 for task in tasks:
                     actual_cat = cat
-                    if actual_cat == 'AI' and task.owner_id:
+                    strategy = TaskStrategyFactory.get_strategy(task.type)
+                    resource_key = strategy.resource_key
+                    if task.type == TaskType.VISUAL_DESCRIPTION and task.owner_id:
                         user_config = config_manager.get_user_config(task.owner_id, db)
                         if user_config.ai.analysis_connection_id == 'builtin':
-                            actual_cat = 'IO'
-
-                    task.status = TaskStatus.PROCESSING
-                    self.last_active_time[task.type] = datetime.now()
+                            resource_key = 'local_llm'
                     tasks_by_cat.setdefault(actual_cat, []).append(
-                        {'id': task.id, 'type': task.type, 'priority': task.priority}
+                        {
+                            'id': task.id,
+                            'type': task.type,
+                            'priority': task.priority,
+                            'resource_key': resource_key,
+                        }
                     )
-
-                db.commit()
-                # Notify SSE subscribers about the PENDING -> PROCESSING transition.
-                for task in tasks:
-                    try:
-                        db.refresh(task)
-                    except Exception:
-                        pass
-                    self._publish('task.updated', {
-                        'id': str(task.id),
-                        'type': task.type,
-                        'status': task.status,
-                        'priority': task.priority,
-                        'total_items': task.total_items or 0,
-                        'processed_items': task.processed_items or 0,
-                        'error': task.error,
-                        'owner_id': str(task.owner_id) if task.owner_id else None,
-                        'created_at': task.created_at.isoformat() if task.created_at else None,
-                        'updated_at': task.updated_at.isoformat() if task.updated_at else None,
-                        'payload': task.payload or {},
-                    })
 
                 # 拆分成更小的批次放入对应 category 的队列
                 for actual_cat, task_list in tasks_by_cat.items():
@@ -542,12 +583,19 @@ class TaskWorker:
 
         task_type = task_infos[0]['type']
         task_ids = [t['id'] for t in task_infos]
-        db = SessionLocal()
-        db.expire_on_commit = False  # Prevent lazy loading issues after intermediate commits
+        resource_key = task_infos[0].get('resource_key', category.lower())
+        resource_semaphore = self._resource_semaphore(resource_key)
+        await resource_semaphore.acquire()
+        db = None
         try:
+            db = SessionLocal()
+            db.expire_on_commit = False  # Prevent lazy loading issues after intermediate commits
             tasks = crud_task.get_tasks_by_ids(db, task_ids)
             if not tasks:
                 return
+            strategy = TaskStrategyFactory.get_strategy(task_type)
+            if not strategy:
+                raise ValueError(f"Strategy not found for task type: {task_type}")
             if (
                 task_type in self.paused_categories
                 and not all(t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks)
@@ -556,36 +604,112 @@ class TaskWorker:
                     t.status = TaskStatus.PENDING
                 db.commit()
                 return
+            # A task becomes PROCESSING only after both category and resource
+            # admission have succeeded. Prefetched rows remain PENDING.
+            for task in tasks:
+                task.status = TaskStatus.PROCESSING
+                task.error = None
+                task.next_retry_at = None
+                self.last_active_time[task.type] = datetime.now()
+            db.commit()
+            for task in tasks:
+                self._publish_task_row(task)
             try:
-                # Use strategy's category for timeout logic
-                strategy = TaskStrategyFactory.get_strategy(task_type)
-                if not strategy:
-                    raise ValueError(f"Strategy not found for task type: {task_type}")
                 results = await asyncio.wait_for(strategy.process_batch(self, tasks, db), timeout=strategy.timeout)
+                task_map = {task.id: task for task in tasks}
                 for res in results:
+                    task = task_map.get(res.get('task_id'))
+                    if (
+                        task is not None
+                        and res.get('status') == TaskStatus.FAILED
+                        and self._is_retryable_error(res.get('error'))
+                        and self._schedule_retry(db, task, res.get('error'), strategy.max_attempts)
+                    ):
+                        continue
+                    if task is not None and res.get('status') == TaskStatus.FAILED:
+                        task.attempt_count = (task.attempt_count or 0) + 1
+                        db.commit()
                     await self.result_queue.put(res)
             except asyncio.TimeoutError:
                 logging.error(f"Task batch {task_type} timed out after {strategy.timeout} seconds")
-                for task_id in task_ids:
-                    await self.result_queue.put({
-                        'task_id': task_id,
-                        'task_type': task_type,
-                        'status': TaskStatus.FAILED,
-                        'error': f"Task batch timed out after {strategy.timeout} seconds"
-                    })
+                error = f"AI service timeout after {strategy.timeout} seconds"
+                for task in tasks:
+                    if not self._schedule_retry(db, task, error, strategy.max_attempts):
+                        await self.result_queue.put({
+                            'task_id': task.id,
+                            'task_type': task_type,
+                            'status': TaskStatus.FAILED,
+                            'error': error,
+                        })
             except Exception as e:
                 logging.error(f"Task batch {task_type} failed: {e}", exc_info=True)
-                for task_id in task_ids:
+                for task in tasks:
+                    if self._is_retryable_error(e) and self._schedule_retry(
+                        db, task, e, strategy.max_attempts
+                    ):
+                        continue
+                    task.attempt_count = (task.attempt_count or 0) + 1
+                    db.commit()
                     await self.result_queue.put({
-                        'task_id': task_id,
+                        'task_id': task.id,
                         'task_type': task_type,
                         'status': TaskStatus.FAILED,
-                        'error': str(e)
+                        'error': str(e),
                     })
         except Exception as e:
             logging.error(f"Error in task batch wrapper for {task_type}: {e}")
         finally:
-            db.close()
+            if db is not None:
+                db.close()
+            resource_semaphore.release()
+            self.reserved_task_ids.difference_update(task_ids)
+
+    def _publish_task_row(self, task: Task) -> None:
+        self._publish('task.updated', {
+            'id': str(task.id),
+            'type': task.type,
+            'status': task.status,
+            'priority': task.priority,
+            'total_items': task.total_items or 0,
+            'processed_items': task.processed_items or 0,
+            'error': task.error,
+            'owner_id': str(task.owner_id) if task.owner_id else None,
+            'created_at': task.created_at.isoformat() if task.created_at else None,
+            'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+            'payload': task.payload or {},
+            'attempt_count': task.attempt_count or 0,
+            'next_retry_at': task.next_retry_at.isoformat() if task.next_retry_at else None,
+        })
+
+    @staticmethod
+    def _is_retryable_error(error: Any) -> bool:
+        text = str(error or '').lower()
+        markers = (
+            'timeout', 'timed out', '429', '503', '502', 'connection',
+            'temporarily unavailable', 'server disconnected', 'service busy',
+            '服务繁忙', 'try again later',
+        )
+        return any(marker in text for marker in markers)
+
+    def _schedule_retry(self, db: Session, task: Task, error: Any, max_attempts: int) -> bool:
+        attempt = (task.attempt_count or 0) + 1
+        if attempt >= max_attempts:
+            task.attempt_count = attempt
+            db.commit()
+            return False
+        jitter = hash(str(task.id)) % 5
+        delay = min(120, 5 * (3 ** (attempt - 1)) + jitter)
+        task.status = TaskStatus.PENDING
+        task.attempt_count = attempt
+        task.next_retry_at = datetime.now() + timedelta(seconds=delay)
+        task.error = f"设备繁忙，将在 {delay} 秒后自动重试（{attempt}/{max_attempts}）"
+        db.commit()
+        self._publish_task_row(task)
+        logging.warning(
+            "Task %s scheduled for retry in %ss after transient error: %s",
+            task.id, delay, error,
+        )
+        return True
 
     async def worker_loop(self):
         logging.info("TaskWorker producer loop started")
@@ -616,10 +740,10 @@ class TaskWorker:
 
                 allowed_types = self._calculate_allowed_task_types()
 
-                current_qsizes = {
-                    'CPU': self.queue_manager.qsize('CPU'),
-                    'IO': self.queue_manager.qsize('IO'),
-                    'AI': self.queue_manager.qsize('AI')
+                current_item_counts = {
+                    'CPU': self.queue_manager.item_count('CPU'),
+                    'IO': self.queue_manager.item_count('IO'),
+                    'AI': self.queue_manager.item_count('AI')
                 }
                 lowest_priorities = {
                     'CPU': self.queue_manager.get_lowest_priority('CPU'),
@@ -627,13 +751,20 @@ class TaskWorker:
                     'AI': self.queue_manager.get_lowest_priority('AI')
                 }
 
-                chunked_batches = await asyncio.to_thread(self._fetch_tasks_to_queues_sync, allowed_types, current_qsizes, lowest_priorities)
+                chunked_batches = await asyncio.to_thread(
+                    self._fetch_tasks_to_queues_sync,
+                    allowed_types,
+                    current_item_counts,
+                    lowest_priorities,
+                    set(self.reserved_task_ids),
+                )
                 dispatched_count = 0
 
                 for cat, chunk in chunked_batches:
                     if chunk:
                         priority = max(task['priority'] for task in chunk)
                         await self.queue_manager.put_batch(cat, chunk, priority=priority)
+                        self.reserved_task_ids.update(task['id'] for task in chunk)
                         dispatched_count += len(chunk)
 
                 if dispatched_count == 0:
