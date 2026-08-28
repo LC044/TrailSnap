@@ -124,3 +124,30 @@ def test_create_client_raises_when_connection_not_found():
 
     with pytest.raises(ValueError, match="not found"):
         strategy.create_client(settings)
+
+
+def test_parse_visual_result_accepts_json_wrapped_in_prose():
+    """A valid object can be recovered without another model request."""
+    from app.service.tasks import visual_description as vd_mod
+
+    result = vd_mod.parse_visual_result(
+        '结果如下：\n{"description":"照片", "tags":[], "memory_score":60, '
+        '"beauty_score":70, "reason":"清晰", "narrative":"值得留存"}\n完成'
+    )
+
+    assert result["description"] == "照片"
+    assert result["beauty_score"] == 70
+
+
+def test_parse_visual_result_rejects_missing_or_invalid_fields():
+    """Syntactically valid JSON still has to satisfy the storage schema."""
+    from app.service.tasks import visual_description as vd_mod
+
+    with pytest.raises(vd_mod.VisualDescriptionFormatError, match="缺少字段"):
+        vd_mod.parse_visual_result('{"description": "照片"}')
+
+    with pytest.raises(vd_mod.VisualDescriptionFormatError, match="0~100"):
+        vd_mod.parse_visual_result(
+            '{"description":"照片", "tags":[], "memory_score":101, '
+            '"beauty_score":70, "reason":"清晰", "narrative":"值得留存"}'
+        )
