@@ -173,12 +173,19 @@ def test_get_onnx_providers_coreml_options_use_env_overrides(monkeypatch, _clean
     assert opts["EnableOnSubgraphs"] == "0"
 
 
-def test_get_session_options_returns_none_for_non_apple(monkeypatch, _clean_module):
+def test_get_session_options_limits_threads_for_non_apple(monkeypatch, _clean_module):
     mod = _clean_module
-    _install_ort(monkeypatch, ["CPUExecutionProvider"])
+    fake_ort = _install_ort(monkeypatch, ["CPUExecutionProvider"])
+    fake_so = MagicMock()
+    fake_ort.SessionOptions.return_value = fake_so
+    fake_ort.GraphOptimizationLevel.ORT_ENABLE_ALL = "ORT_ENABLE_ALL"
+    fake_ort.ExecutionMode.ORT_SEQUENTIAL = "ORT_SEQUENTIAL"
+    monkeypatch.setenv("ORT_INTRA_OP_THREADS", "3")
     _patch_platform(monkeypatch, mod, system="Linux", machine="x86_64")
 
-    assert mod.get_session_options() is None
+    assert mod.get_session_options() is fake_so
+    assert fake_so.intra_op_num_threads == 3
+    assert fake_so.inter_op_num_threads == 1
 
 
 def test_get_session_options_returns_optimized_for_apple(monkeypatch, _clean_module):

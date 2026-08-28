@@ -424,7 +424,7 @@ def test_task_worker_get_concurrency_settings_three_levels():
         # HIGH
         with patch.object(task_worker.system_config.config.task, "concurrency_level", "high"):
             cfg = task_worker.TaskWorker._get_concurrency_settings(self=None)
-        assert cfg["process_pool"] == fake_cpu_count
+        assert cfg["process_pool"] == fake_cpu_count - 1
         assert cfg["thread_pool"] == 16
         assert cfg["ai_consumer"] == 8
 

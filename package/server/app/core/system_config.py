@@ -29,6 +29,11 @@ class SecuritySettings(BaseModel):
 
 class TaskSettings(BaseModel):
     concurrency_level: str = Field(default_factory=get_default_concurrency_level, description="Task concurrency level: low, medium, high")
+    adaptive_concurrency: bool = Field(default=True, description="Dynamically tune each resource pool with AIMD")
+    aimd_success_threshold: int = Field(default=4, ge=1, le=100, description="Successful batches before concurrency increases by one")
+    aimd_cooldown_seconds: float = Field(default=5.0, ge=0, le=300, description="Minimum seconds between AIMD increases")
+    cpu_high_watermark: float = Field(default=90.0, ge=50, le=100, description="CPU percentage that triggers multiplicative decrease")
+    memory_high_watermark: float = Field(default=90.0, ge=50, le=100, description="Memory percentage that blocks concurrency increases")
 
 class ScanScheduleSettings(BaseModel):
     mode: str = Field(default='off', description="Options: 'off', 'interval', 'weekly'")

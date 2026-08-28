@@ -6,6 +6,12 @@ import signal
 
 from dotenv import load_dotenv
 
+from app.core.runtime_limits import configure_worker_runtime, lower_worker_priority
+
+# Apply native-library limits before importing task modules. Child processes
+# created by ProcessPoolExecutor inherit these environment variables.
+configure_worker_runtime()
+
 from app.core.logger import setup_logging
 from app.core.paths import DATA_DIR, ensure_rg_seed
 from app.service.task_worker import TaskWorker
@@ -24,6 +30,7 @@ def run_worker(event_queue=None):
     """Entry point for the worker process"""
     # Setup logging for this process
     setup_logging('task')
+    lower_worker_priority()
     logging.info(f"Starting Worker Process (PID: {os.getpid()})...")
     # 确保反向编码数据目录就绪并播种（worker 进程独立于 API 进程，需自行初始化）
     ensure_rg_seed()

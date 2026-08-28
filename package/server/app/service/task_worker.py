@@ -24,6 +24,7 @@ from app.crud.task import DEFAULT_SCAN_STATUS
 from app.crud import task as crud_task
 
 from app.service.task_strategy import TaskStrategyFactory
+from app.service.adaptive_limiter import AdaptiveResourceLimiter
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion
 
@@ -147,7 +148,10 @@ class TaskWorker:
         # Rows remain PENDING while prefetched. This in-memory reservation set
         # prevents the producer from selecting the same row twice.
         self.reserved_task_ids: Set[UUID] = set()
-        self.resource_semaphores: Dict[str, asyncio.Semaphore] = {}
+        self.resource_limiters: Dict[str, AdaptiveResourceLimiter] = {}
+        self.adaptive_limits: Dict[str, int] = {}
+        self.pressure_task = None
+        self.system_pressure = {"cpu": 0.0, "memory": 0.0}
 
     def set_event_queue(self, queue):
         self.event_queue = queue
@@ -206,9 +210,10 @@ class TaskWorker:
         cpu_count = os.cpu_count() or 4
         if level == "high":
             return {
-                "process_pool": cpu_count,
+                # Keep at least one logical core available to the API process.
+                "process_pool": max(1, cpu_count - 1),
                 "thread_pool": 16,
-                "cpu_consumer": cpu_count,
+                "cpu_consumer": max(1, cpu_count - 1),
                 "io_consumer": 8,
                 "ai_consumer": 8
             }
@@ -255,13 +260,76 @@ class TaskWorker:
             })
         return limits
 
-    def _resource_semaphore(self, resource_key: str) -> asyncio.Semaphore:
-        semaphore = self.resource_semaphores.get(resource_key)
-        if semaphore is None:
-            limit = self._get_resource_limits().get(resource_key, 1)
-            semaphore = asyncio.Semaphore(max(1, limit))
-            self.resource_semaphores[resource_key] = semaphore
-        return semaphore
+    def _resource_limiter(self, resource_key: str) -> AdaptiveResourceLimiter:
+        limiter = self.resource_limiters.get(resource_key)
+        if limiter is None:
+            ceiling = self._get_resource_limits().get(resource_key, 1)
+            limiter = self._make_resource_limiter(resource_key, ceiling, None)
+            self.resource_limiters[resource_key] = limiter
+        return limiter
+
+    def _make_resource_limiter(
+        self, resource_key: str, ceiling: int, persisted: Any
+    ) -> AdaptiveResourceLimiter:
+        task_config = system_config.config.task
+        default_initial = max(1, (ceiling + 1) // 2)
+        try:
+            initial = int(persisted)
+        except (TypeError, ValueError):
+            initial = default_initial
+        if not task_config.adaptive_concurrency:
+            initial = ceiling
+        return AdaptiveResourceLimiter(
+            resource_key,
+            initial_limit=initial,
+            max_limit=ceiling,
+            success_threshold=task_config.aimd_success_threshold,
+            cooldown_seconds=task_config.aimd_cooldown_seconds,
+            on_change=self._on_resource_limit_change,
+        )
+
+    def _on_resource_limit_change(
+        self, resource_key: str, limit: int, reason: str
+    ) -> None:
+        self.adaptive_limits[resource_key] = limit
+        self._save_system_state("adaptive_resource_limits", self.adaptive_limits)
+        self._publish("task.concurrency", {
+            "resource_key": resource_key,
+            "limit": limit,
+            "reason": reason,
+        })
+        logging.info(
+            "Adaptive concurrency changed: resource=%s limit=%s reason=%s",
+            resource_key, limit, reason,
+        )
+
+    def _is_system_overloaded(self) -> bool:
+        config = system_config.config.task
+        return (
+            self.system_pressure["cpu"] >= config.cpu_high_watermark
+            or self.system_pressure["memory"] >= config.memory_high_watermark
+        )
+
+    async def _pressure_monitor_loop(self) -> None:
+        try:
+            import psutil
+
+            psutil.cpu_percent(interval=None)
+            while self.running:
+                await asyncio.sleep(2)
+                cpu = float(psutil.cpu_percent(interval=None))
+                memory = float(psutil.virtual_memory().percent)
+                # A short EMA avoids reacting to one noisy scheduler sample.
+                self.system_pressure["cpu"] = (
+                    self.system_pressure["cpu"] * 0.6 + cpu * 0.4
+                )
+                self.system_pressure["memory"] = (
+                    self.system_pressure["memory"] * 0.6 + memory * 0.4
+                )
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            logging.warning("System pressure monitor stopped: %s", exc)
 
     def _prefetch_limit(self, category: str) -> int:
         settings = self._get_concurrency_settings()
@@ -278,9 +346,19 @@ class TaskWorker:
         # Load fast_mode state
         self.fast_mode = self._load_system_state('fast_mode', False)
         settings = self._get_concurrency_settings()
-        self.resource_semaphores = {
-            key: asyncio.Semaphore(limit)
+        persisted_limits = self._load_system_state('adaptive_resource_limits', {})
+        if not isinstance(persisted_limits, dict):
+            persisted_limits = {}
+        self.adaptive_limits = {}
+        self.resource_limiters = {
+            key: self._make_resource_limiter(
+                key, limit, persisted_limits.get(key)
+            )
             for key, limit in self._get_resource_limits().items()
+        }
+        self.adaptive_limits = {
+            key: limiter.current_limit
+            for key, limiter in self.resource_limiters.items()
         }
         self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool']) # More threads for IO
@@ -290,6 +368,7 @@ class TaskWorker:
         self.cpu_consumer_task = asyncio.create_task(self.consumer_loop('CPU'))
         self.io_consumer_task = asyncio.create_task(self.consumer_loop('IO'))
         self.ai_consumer_task = asyncio.create_task(self.consumer_loop('AI'))
+        self.pressure_task = asyncio.create_task(self._pressure_monitor_loop())
         logging.info(f"TaskWorker started. Fast Mode: {self.fast_mode}")
 
     def stop(self):
@@ -304,6 +383,8 @@ class TaskWorker:
             self.io_consumer_task.cancel()
         if self.ai_consumer_task:
             self.ai_consumer_task.cancel()
+        if getattr(self, 'pressure_task', None):
+            self.pressure_task.cancel()
         if self.process_pool:
             self.process_pool.shutdown(wait=False)
             self.process_pool = None
@@ -584,9 +665,10 @@ class TaskWorker:
         task_type = task_infos[0]['type']
         task_ids = [t['id'] for t in task_infos]
         resource_key = task_infos[0].get('resource_key', category.lower())
-        resource_semaphore = self._resource_semaphore(resource_key)
-        await resource_semaphore.acquire()
+        resource_limiter = self._resource_limiter(resource_key)
+        await resource_limiter.acquire()
         db = None
+        batch_outcome = None
         try:
             db = SessionLocal()
             db.expire_on_commit = False  # Prevent lazy loading issues after intermediate commits
@@ -616,13 +698,19 @@ class TaskWorker:
                 self._publish_task_row(task)
             try:
                 results = await asyncio.wait_for(strategy.process_batch(self, tasks, db), timeout=strategy.timeout)
+                batch_outcome = "success"
                 task_map = {task.id: task for task in tasks}
                 for res in results:
                     task = task_map.get(res.get('task_id'))
+                    is_failed = res.get('status') == TaskStatus.FAILED
+                    is_retryable = is_failed and self._is_retryable_error(res.get('error'))
+                    if is_retryable:
+                        batch_outcome = "overload"
+                    elif is_failed and batch_outcome != "overload":
+                        batch_outcome = None
                     if (
                         task is not None
-                        and res.get('status') == TaskStatus.FAILED
-                        and self._is_retryable_error(res.get('error'))
+                        and is_retryable
                         and self._schedule_retry(db, task, res.get('error'), strategy.max_attempts)
                     ):
                         continue
@@ -631,6 +719,7 @@ class TaskWorker:
                         db.commit()
                     await self.result_queue.put(res)
             except asyncio.TimeoutError:
+                batch_outcome = "overload"
                 logging.error(f"Task batch {task_type} timed out after {strategy.timeout} seconds")
                 error = f"AI service timeout after {strategy.timeout} seconds"
                 for task in tasks:
@@ -642,6 +731,8 @@ class TaskWorker:
                             'error': error,
                         })
             except Exception as e:
+                if self._is_retryable_error(e):
+                    batch_outcome = "overload"
                 logging.error(f"Task batch {task_type} failed: {e}", exc_info=True)
                 for task in tasks:
                     if self._is_retryable_error(e) and self._schedule_retry(
@@ -661,7 +752,14 @@ class TaskWorker:
         finally:
             if db is not None:
                 db.close()
-            resource_semaphore.release()
+            await resource_limiter.release()
+            if system_config.config.task.adaptive_concurrency:
+                if batch_outcome == "overload":
+                    await resource_limiter.record_overload("transient_failure")
+                elif batch_outcome == "success" and self._is_system_overloaded():
+                    await resource_limiter.record_overload("system_pressure")
+                elif batch_outcome == "success":
+                    await resource_limiter.record_success()
             self.reserved_task_ids.difference_update(task_ids)
 
     def _publish_task_row(self, task: Task) -> None:

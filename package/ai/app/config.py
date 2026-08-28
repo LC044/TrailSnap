@@ -1,6 +1,12 @@
 import os
 from pydantic_settings import BaseSettings
 
+
+def _default_inference_threads() -> int:
+    cpu_count = max(1, os.cpu_count() or 1)
+    reserved = max(1, int(os.getenv("AI_RESERVED_CPU_CORES", "1")))
+    return max(1, min(4, cpu_count - reserved))
+
 class Settings(BaseSettings):
     APP_NAME: str = "TrailSnap AI Service"
     APP_VERSION: str = "1.0.0"
@@ -22,6 +28,15 @@ class Settings(BaseSettings):
     AI_FACE_CONCURRENCY: int = int(os.getenv("AI_FACE_CONCURRENCY", "1"))
     AI_EMBEDDING_CONCURRENCY: int = int(os.getenv("AI_EMBEDDING_CONCURRENCY", "1"))
     AI_TICKETS_CONCURRENCY: int = int(os.getenv("AI_TICKETS_CONCURRENCY", "1"))
+    # One native inference call must not consume every CPU core. The same
+    # budget is applied to OpenMP/BLAS/ONNX Runtime/OpenVINO.
+    AI_RESERVED_CPU_CORES: int = int(os.getenv("AI_RESERVED_CPU_CORES", "1"))
+    AI_INFERENCE_THREADS: int = int(
+        os.getenv("AI_INFERENCE_THREADS", str(_default_inference_threads()))
+    )
+    AI_LOW_PROCESS_PRIORITY: bool = os.getenv(
+        "AI_LOW_PROCESS_PRIORITY", "true"
+    ).lower() in {"1", "true", "yes", "on"}
 
     class Config:
         env_file = ".env"
