@@ -2,14 +2,55 @@ import json
 import os
 import threading
 import logging
-from typing import List, Optional
+import math
+from pathlib import Path
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
+
+def _available_cpu_cores() -> int:
+    detected = os.cpu_count() or 1
+    try:
+        affinity = os.sched_getaffinity(0)
+        detected = min(detected, len(affinity))
+    except (AttributeError, OSError):
+        pass
+    for path in (Path("/sys/fs/cgroup/cpu.max"), Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us")):
+        try:
+            parts = path.read_text(encoding="utf-8").strip().split()
+            quota = parts[0]
+            if quota == "max" or int(quota) <= 0:
+                continue
+            if path.name == "cpu.max":
+                period = int(parts[1])
+            else:
+                period = int(path.with_name("cpu.cfs_period_us").read_text(encoding="utf-8").strip())
+            detected = min(detected, max(1, math.ceil(int(quota) / period)))
+        except (OSError, ValueError, IndexError, ZeroDivisionError):
+            continue
+    return max(1, detected)
+
+
+def _available_memory_gb() -> float:
+    import psutil
+
+    detected = float(psutil.virtual_memory().total)
+    for path in (Path("/sys/fs/cgroup/memory.max"), Path("/sys/fs/cgroup/memory/memory.limit_in_bytes")):
+        try:
+            raw = path.read_text(encoding="utf-8").strip()
+            if raw == "max":
+                continue
+            limit = int(raw)
+            if 0 < limit < (1 << 60):
+                detected = min(detected, float(limit))
+        except (OSError, ValueError):
+            continue
+    return detected / (1024 ** 3)
+
 
 def get_default_concurrency_level() -> str:
     try:
-        import psutil
-        cpu_cores = os.cpu_count() or 1
-        memory_gb = psutil.virtual_memory().total / (1024 ** 3)
+        cpu_cores = _available_cpu_cores()
+        memory_gb = _available_memory_gb()
         # 实际可用内存通常略小于标称值，因此允许一定误差
         if cpu_cores >= 8 and memory_gb >= 15:
             return "high"
@@ -21,6 +62,11 @@ def get_default_concurrency_level() -> str:
         logging.warning(f"Failed to calculate system concurrency level: {e}")
         return "medium"
 
+
+def resolve_concurrency_level(level: str) -> str:
+    """Resolve the user-facing automatic mode to a concrete worker profile."""
+    return get_default_concurrency_level() if level == "auto" else level
+
 class SecuritySettings(BaseModel):
     secret_key: str = Field(default="09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7", description="Secret key for JWT")
     algorithm: str = Field(default="HS256", description="JWT algorithm")
@@ -28,7 +74,10 @@ class SecuritySettings(BaseModel):
     allow_registration: bool = Field(default=False, description="Allow new user self-registration")
 
 class TaskSettings(BaseModel):
-    concurrency_level: str = Field(default_factory=get_default_concurrency_level, description="Task concurrency level: low, medium, high")
+    concurrency_level: Literal["auto", "low", "medium", "high"] = Field(
+        default="auto",
+        description="Task performance mode: auto, low, medium, high",
+    )
     adaptive_concurrency: bool = Field(default=True, description="Dynamically tune each resource pool with AIMD")
     aimd_success_threshold: int = Field(default=4, ge=1, le=100, description="Successful batches before concurrency increases by one")
     aimd_cooldown_seconds: float = Field(default=5.0, ge=0, le=300, description="Minimum seconds between AIMD increases")

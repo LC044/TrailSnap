@@ -19,7 +19,7 @@ from app.db.models.task import (
     INTERACTIVE_TASK_PRIORITY,
 )
 from app.db.models.system import SystemState
-from app.core.system_config import system_config
+from app.core.system_config import _available_cpu_cores, resolve_concurrency_level, system_config
 from app.crud.task import DEFAULT_SCAN_STATUS
 from app.crud import task as crud_task
 
@@ -83,7 +83,7 @@ class TaskQueueManager:
 
 
 def get_chunk_size(task_type):
-    level = system_config.config.task.concurrency_level
+    level = resolve_concurrency_level(system_config.config.task.concurrency_level)
     chunk_size = 8 if level == 'high' else 4
     if task_type == TaskType.VISUAL_DESCRIPTION:
         chunk_size = 1
@@ -152,6 +152,7 @@ class TaskWorker:
         self.adaptive_limits: Dict[str, int] = {}
         self.pressure_task = None
         self.system_pressure = {"cpu": 0.0, "memory": 0.0}
+        self.accepting_tasks = True
 
     def set_event_queue(self, queue):
         self.event_queue = queue
@@ -206,8 +207,8 @@ class TaskWorker:
             db.close()
 
     def _get_concurrency_settings(self):
-        level = system_config.config.task.concurrency_level
-        cpu_count = os.cpu_count() or 4
+        level = resolve_concurrency_level(system_config.config.task.concurrency_level)
+        cpu_count = _available_cpu_cores()
         if level == "high":
             return {
                 # Keep at least one logical core available to the API process.
@@ -235,7 +236,7 @@ class TaskWorker:
             }
 
     def _get_resource_limits(self) -> Dict[str, int]:
-        level = system_config.config.task.concurrency_level
+        level = resolve_concurrency_level(system_config.config.task.concurrency_level)
         limits = {
             "classification": 1,
             "ocr": 1,
@@ -341,6 +342,7 @@ class TaskWorker:
         if self.running:
             return
         self.running = True
+        self.accepting_tasks = True
         self._recover_unfinished_tasks()
 
         # Load fast_mode state
@@ -370,6 +372,19 @@ class TaskWorker:
         self.ai_consumer_task = asyncio.create_task(self.consumer_loop('AI'))
         self.pressure_task = asyncio.create_task(self._pressure_monitor_loop())
         logging.info(f"TaskWorker started. Fast Mode: {self.fast_mode}")
+
+    def request_drain(self) -> None:
+        """Stop fetching new rows while allowing queued/running batches to finish."""
+        if not self.accepting_tasks:
+            return
+        self.accepting_tasks = False
+        self._publish("task.worker", {"status": "draining"})
+        logging.info("TaskWorker is draining before applying new settings")
+
+    def is_drained(self) -> bool:
+        active = any(not future.done() for future in self.active_task_map)
+        queued = any(self.queue_manager.item_count(category) for category in ("CPU", "IO", "AI"))
+        return not active and not queued and not self.reserved_task_ids and self.result_queue.empty()
 
     def stop(self):
         self.running = False
@@ -878,13 +893,15 @@ class TaskWorker:
                     'AI': self.queue_manager.get_lowest_priority('AI')
                 }
 
-                chunked_batches = await asyncio.to_thread(
-                    self._fetch_tasks_to_queues_sync,
-                    allowed_types,
-                    current_item_counts,
-                    lowest_priorities,
-                    set(self.reserved_task_ids),
-                )
+                chunked_batches = []
+                if self.accepting_tasks:
+                    chunked_batches = await asyncio.to_thread(
+                        self._fetch_tasks_to_queues_sync,
+                        allowed_types,
+                        current_item_counts,
+                        lowest_priorities,
+                        set(self.reserved_task_ids),
+                    )
                 dispatched_count = 0
 
                 for cat, chunk in chunked_batches:

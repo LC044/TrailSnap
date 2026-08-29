@@ -16,16 +16,22 @@ from app.core.logger import setup_logging
 from app.core.paths import DATA_DIR, ensure_rg_seed
 from app.service.task_worker import TaskWorker
 
-async def _run(event_queue=None):
+async def _run(event_queue=None, shutdown_event=None):
     worker = TaskWorker.get_instance()
     worker.set_event_queue(event_queue)
     worker.start()
 
     # Keep the loop alive
     while True:
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
+        if shutdown_event is not None and shutdown_event.is_set():
+            worker.request_drain()
+            if worker.is_drained():
+                # Give the result loop one final flush window before shutdown.
+                await asyncio.sleep(1.1)
+                return
 
-def run_worker(event_queue=None):
+def run_worker(event_queue=None, shutdown_event=None):
     load_dotenv(os.path.join(DATA_DIR, '.env'))
     """Entry point for the worker process"""
     # Setup logging for this process
@@ -48,7 +54,8 @@ def run_worker(event_queue=None):
             # Register signal handlers
             pass
 
-        asyncio.run(_run(event_queue))
+        coroutine = _run(event_queue) if shutdown_event is None else _run(event_queue, shutdown_event)
+        asyncio.run(coroutine)
     except (KeyboardInterrupt, SystemExit):
         logging.info("Worker process received stop signal")
     except Exception as e:

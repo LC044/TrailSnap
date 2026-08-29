@@ -176,6 +176,24 @@ def test_restart_worker_stops_then_starts(monkeypatch):
     start.assert_called_once_with()
 
 
+def test_graceful_restart_requests_worker_drain(monkeypatch):
+    mgr = _make_manager()
+    process = MagicMock()
+    process.is_alive.return_value = True
+    stop_event = MagicMock()
+    mgr.worker_process = process
+    mgr._worker_stop_event = stop_event
+    thread = MagicMock()
+    monkeypatch.setattr("app.service.task_manager.threading.Thread", MagicMock(return_value=thread))
+
+    result = mgr.restart_worker(graceful=True)
+
+    assert result == {"status": "draining"}
+    stop_event.set.assert_called_once_with()
+    thread.start.assert_called_once_with()
+    process.terminate.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # _event_queue_reader
 # ---------------------------------------------------------------------------

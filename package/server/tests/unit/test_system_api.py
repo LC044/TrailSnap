@@ -145,7 +145,7 @@ def test_task_config_change_restarts_worker():
             current_user=user,
         )
 
-    task_manager.restart_worker.assert_called_once_with()
+    task_manager.restart_worker.assert_called_once_with(graceful=True)
 
 
 # ----------------------------- /version ----------------------------------

@@ -35,6 +35,7 @@ class UnifiedModelManager:
         self._download_lock = threading.Lock()
         self._status: dict[str, str] = {}
         self._errors: dict[str, str | None] = {}
+        self._pending_selections: dict[str, str] = {}
         self._catalog = self._load_json(self.catalog_path)
         self._models = {item["id"]: item for item in self._catalog.get("models", [])}
         self._validate_catalog()
@@ -126,6 +127,7 @@ class UnifiedModelManager:
             logger.warning("Ignoring invalid AI model config %s: %s", self.config_path, error)
 
         stored = disk.get("selections", {})
+        pending = disk.get("pendingSelections", {})
         legacy = disk.get("models", {})
         selections: dict[str, str] = {}
         for task, task_meta in self._catalog.get("tasks", {}).items():
@@ -136,6 +138,13 @@ class UnifiedModelManager:
             if value not in self._models or task not in self._models[value].get("tasks", []):
                 value = task_meta["default"]
             selections[task] = value
+        self._pending_selections = {
+            task: model_id
+            for task, model_id in pending.items()
+            if task in self._catalog.get("tasks", {})
+            and model_id in self._models
+            and task in self._models[model_id].get("tasks", [])
+        }
         self._save_selections(selections)
         return selections
 
@@ -143,7 +152,11 @@ class UnifiedModelManager:
         selections = selections or self._selections
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self.config_path.with_suffix(f"{self.config_path.suffix}.tmp")
-        payload = {"version": 1, "selections": selections}
+        payload = {
+            "version": 1,
+            "selections": selections,
+            "pendingSelections": self._pending_selections,
+        }
         with temp_path.open("w", encoding="utf-8") as stream:
             json.dump(payload, stream, indent=2, ensure_ascii=False)
         temp_path.replace(self.config_path)
@@ -236,6 +249,8 @@ class UnifiedModelManager:
                 task_items[task] = {
                     "name": meta["name"],
                     "selected": selections[task],
+                    "pending": self._pending_selections.get(task),
+                    "recommended": meta["default"],
                     "available": [
                         model_id for model_id, spec in self._models.items()
                         if task in spec.get("tasks", [])
@@ -283,6 +298,7 @@ class UnifiedModelManager:
                     with self._lock:
                         self._status[model_id] = "ready"
                         self._errors[model_id] = None
+                    self._activate_pending_selections(model_id)
                     return
                 with self._lock:
                     self._status[model_id] = "downloading"
@@ -303,6 +319,7 @@ class UnifiedModelManager:
                 with self._lock:
                     self._status[model_id] = "ready"
                     self._errors[model_id] = None
+                self._activate_pending_selections(model_id)
             except Exception as error:
                 logger.exception("Model download failed: %s", model_id)
                 with self._lock:
@@ -341,13 +358,20 @@ class UnifiedModelManager:
 
     def start_selected_downloads(self) -> None:
         """Download only selected models, sequentially, instead of every candidate."""
-        model_ids = [
+        selected_ids = [
             model_id
             for model_id in dict.fromkeys(self._selections.values())
             if self.get_spec(model_id).get("available", True)
             and self.get_spec(model_id).get("autoDownload", True)
             and not self.is_ready(model_id)
         ]
+        pending_ids = [
+            model_id
+            for model_id in dict.fromkeys(self._pending_selections.values())
+            if self.get_spec(model_id).get("available", True)
+            and not self.is_ready(model_id)
+        ]
+        model_ids = list(dict.fromkeys((*selected_ids, *pending_ids)))
         with self._lock:
             for model_id in model_ids:
                 self._status[model_id] = "downloading"
@@ -375,7 +399,21 @@ class UnifiedModelManager:
                 if key.startswith("yolo_photo_cls_"):
                     wrapper.release_async() if background else wrapper.release()
 
-    def select_model(self, task: str, model_id: str) -> bool:
+    def _activate_selection(self, task: str, model_id: str) -> None:
+        self.release_task(task, background=True)
+        with self._lock:
+            self._selections[task] = model_id
+            self._pending_selections.pop(task, None)
+            self._save_selections()
+        logger.info("Activated AI model task=%s model=%s", task, model_id)
+
+    def _activate_pending_selections(self, model_id: str) -> None:
+        with self._lock:
+            tasks = [task for task, pending in self._pending_selections.items() if pending == model_id]
+        for task in tasks:
+            self._activate_selection(task, model_id)
+
+    def select_model(self, task: str, model_id: str) -> dict[str, Any]:
         spec = self.get_spec(model_id)
         if task not in self._catalog.get("tasks", {}):
             raise ValueError(f"未知 AI 能力：{task}")
@@ -384,16 +422,18 @@ class UnifiedModelManager:
         if not spec.get("available", True):
             raise ValueError("该候选模型的 ModelScope 仓库尚未发布")
         with self._lock:
-            if self._selections.get(task) == model_id:
-                return False
-            # Mark the old runtime for release before exposing the new selection.
-            # Cleanup (including gc/CUDA cache) then runs outside the API request.
-            self.release_task(task, background=True)
-            self._selections[task] = model_id
+            if self._selections.get(task) == model_id and task not in self._pending_selections:
+                return {"changed": False, "status": "active"}
+            self._pending_selections.pop(task, None)
             self._save_selections()
-        if not self.is_ready(model_id):
-            self.trigger_download(model_id)
-        return True
+        if self.is_ready(model_id):
+            self._activate_selection(task, model_id)
+            return {"changed": True, "status": "active"}
+        with self._lock:
+            self._pending_selections[task] = model_id
+            self._save_selections()
+        self.trigger_download(model_id)
+        return {"changed": True, "status": "downloading"}
 
     def _ready_replacement(self, task: str, excluded_id: str) -> str:
         candidates = [
@@ -424,7 +464,10 @@ class UnifiedModelManager:
             }
             if replacements:
                 self._selections.update(replacements)
-                self._save_selections()
+            pending_tasks = [task for task, pending in self._pending_selections.items() if pending == model_id]
+            for task in pending_tasks:
+                self._pending_selections.pop(task, None)
+            self._save_selections()
         for task in selected_tasks:
             self.release_task(task)
         shutil.rmtree(self.get_model_dir(model_id), ignore_errors=True)

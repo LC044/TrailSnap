@@ -40,6 +40,25 @@ def test_get_chunk_size_honors_level_and_task_type_overrides():
         assert task_worker.get_chunk_size(TaskType.OCR) == 1
 
 
+def test_auto_concurrency_uses_detected_device_profile(monkeypatch):
+    worker = task_worker.TaskWorker()
+    monkeypatch.setattr(task_worker.system_config.config.task, "concurrency_level", "auto")
+    monkeypatch.setattr(task_worker, "resolve_concurrency_level", lambda _level: "low")
+
+    assert worker._get_concurrency_settings()["ai_consumer"] == 2
+
+
+def test_worker_drain_stops_new_fetches_without_stopping_consumers():
+    worker = task_worker.TaskWorker()
+    worker.running = True
+
+    worker.request_drain()
+
+    assert worker.accepting_tasks is False
+    assert worker.running is True
+    assert worker.is_drained() is True
+
+
 def test_publish_sends_event_envelope_and_swallows_queue_errors():
     worker = task_worker.TaskWorker()
     queue = MagicMock()

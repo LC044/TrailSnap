@@ -45,20 +45,34 @@
         </template>
         <div class="px-6 pb-6">
           <el-form label-position="top" class="max-w-3xl">
-            <el-form-item label="任务并发度">
-              <el-radio-group v-model="taskForm.concurrency_level">
-                <el-radio value="low">低</el-radio>
-                <el-radio value="medium">中</el-radio>
-                <el-radio value="high">高</el-radio>
-              </el-radio-group>
-              <div class="text-sm text-gray-500 mt-1 w-full">根据您的硬件配置调整后台任务的处理并发度：<br>
-                - 高：适合多核处理器及内存充足的设备（建议 CPU &ge; 8核，内存 &ge; 16GB）<br>
-                - 中：适合普通设备（建议 CPU &ge; 4核，内存 &ge; 8GB）<br>
-                - 低：适合低配设备，减少资源占用（如 NAS 或轻量级虚拟机）
+            <el-form-item label="后台处理性能">
+              <div class="grid w-full gap-2 sm:grid-cols-2">
+                <button
+                  v-for="mode in taskPerformanceModes"
+                  :key="mode.value"
+                  type="button"
+                  class="rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                  :class="taskForm.concurrency_level === mode.value
+                    ? 'border-primary-500 bg-primary-500/5'
+                    : 'border-gray-200 bg-white hover:border-primary-500/50 dark:border-gray-700 dark:bg-gray-900'"
+                  @click="taskForm.concurrency_level = mode.value"
+                >
+                  <div class="flex items-center gap-2">
+                    <span class="font-medium text-gray-800 dark:text-gray-100">{{ mode.label }}</span>
+                    <span v-if="mode.recommended" class="rounded-full bg-primary-500 px-2 py-0.5 text-xs text-white">推荐</span>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ mode.description }}</p>
+                </button>
+              </div>
+              <div class="mt-2 w-full text-sm text-gray-500 dark:text-gray-400">
+                系统会继续根据 CPU、内存和任务响应自动调节；切换时会先完成当前批次，不会直接中断任务。
+              </div>
+              <div v-if="taskApplyMessage" class="mt-2 w-full rounded-lg bg-primary-500/10 px-3 py-2 text-sm text-primary-600 dark:text-primary-500">
+                {{ taskApplyMessage }}
               </div>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="saveTaskSettings">保存任务设置</el-button>
+              <el-button type="primary" :loading="savingTaskSettings" @click="saveTaskSettings">应用设置</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -1106,8 +1120,17 @@ const securityForm = ref({
 })
 
 const taskForm = ref({
-  concurrency_level: 'medium'
+  concurrency_level: 'auto'
 })
+
+const taskPerformanceModes = [
+  { value: 'auto', label: '自动调节', description: '自动识别设备能力，并根据实时负载升降并发。', recommended: true },
+  { value: 'low', label: '节能', description: '降低 CPU 和内存占用，适合 NAS 或后台运行。' },
+  { value: 'medium', label: '均衡', description: '兼顾处理速度与前台使用流畅度。' },
+  { value: 'high', label: '性能优先', description: '充分利用高性能设备，扫描期间资源占用更高。' },
+]
+const savingTaskSettings = ref(false)
+const taskApplyMessage = ref('')
 
 const saveScanScheduleSettings = async () => {
   if (scanScheduleForm.value.mode === 'weekly' && scanScheduleForm.value.weekdays.length === 0) {
@@ -1158,11 +1181,19 @@ const saveSecuritySettings = async () => {
 }
 
 const saveTaskSettings = async () => {
+  savingTaskSettings.value = true
+  taskApplyMessage.value = ''
   try {
-    await settingsApi.updateSystemConfig({ task: taskForm.value })
-    ElMessage.success('任务设置已保存')
+    const result: any = await settingsApi.updateSystemConfig({ task: taskForm.value })
+    const draining = result.apply?.status === 'draining'
+    taskApplyMessage.value = draining
+      ? '设置已保存，正在等待当前批次完成，随后自动应用。'
+      : '设置已生效。'
+    ElMessage.success(taskApplyMessage.value)
   } catch (e) {
     ElMessage.error('保存失败')
+  } finally {
+    savingTaskSettings.value = false
   }
 }
 

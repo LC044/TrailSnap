@@ -55,11 +55,9 @@ async def delete_managed_model(model_id: str):
 @router.post("/config/model", response_model=Dict[str, Any])
 async def set_model(request: ModelSelectionRequest):
     try:
-        if request.task == "llm":
-            await llm_manager.stop()
-        changed = ai_model_manager.select_model(request.task, request.model)
-        logger.info("AI model selection task=%s model=%s changed=%s", request.task, request.model, changed)
-        return {"status": "success", "changed": changed, "task": request.task, "model": request.model}
+        result = ai_model_manager.select_model(request.task, request.model)
+        logger.info("AI model selection task=%s model=%s result=%s", request.task, request.model, result)
+        return {**result, "task": request.task, "model": request.model}
     except (ValueError, KeyError) as error:
         raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:

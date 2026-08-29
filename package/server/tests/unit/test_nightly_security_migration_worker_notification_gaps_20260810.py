@@ -420,7 +420,7 @@ def test_task_worker_get_concurrency_settings_three_levels():
     from app.service import task_worker
 
     fake_cpu_count = 8
-    with patch.object(task_worker.os, "cpu_count", return_value=fake_cpu_count):
+    with patch.object(task_worker, "_available_cpu_cores", return_value=fake_cpu_count):
         # HIGH
         with patch.object(task_worker.system_config.config.task, "concurrency_level", "high"):
             cfg = task_worker.TaskWorker._get_concurrency_settings(self=None)
@@ -442,8 +442,8 @@ def test_task_worker_get_concurrency_settings_three_levels():
         assert cfg["thread_pool"] == 8
         assert cfg["ai_consumer"] == 5
 
-    # When os.cpu_count returns None we fall back to 4.
-    with patch.object(task_worker.os, "cpu_count", return_value=None), \
+    # The detector always returns at least one usable core.
+    with patch.object(task_worker, "_available_cpu_cores", return_value=1), \
          patch.object(task_worker.system_config.config.task, "concurrency_level", "low"):
         cfg = task_worker.TaskWorker._get_concurrency_settings(self=None)
     assert cfg["process_pool"] >= 1

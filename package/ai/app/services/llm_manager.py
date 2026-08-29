@@ -29,6 +29,7 @@ class LLMProcessManager:
         self.last_access_time = time.time()
         self.port = settings.LLM_SERVER_PORT
         self.lock = asyncio.Lock()
+        self.active_model_id = None
 
     def _get_resolved_model_path(self) -> tuple[str, str]:
         # If user explicitly set LLM_MODEL_PATH in env, use it directly
@@ -58,9 +59,17 @@ class LLMProcessManager:
             raise ValueError("LLM model file (.gguf) not found in the downloaded directory.")
             
         async with self.lock:
+            selected_model_id = "external" if settings.LLM_MODEL_PATH else ai_model_manager.get_selected_id("llm")
             # Check if process is already running
             if self.process is not None and self.process.poll() is None:
-                return
+                if self.active_model_id == selected_model_id:
+                    return
+                logger.info(
+                    "Selected LLM changed from %s to %s; restarting subprocess",
+                    self.active_model_id,
+                    selected_model_id,
+                )
+                await self._stop_unlocked()
             
             logger.info(f"Starting llama.cpp server subprocess on port {self.port} with model {resolved_path}...")
             # Docker resolves llama-server from PATH; desktop passes the path
@@ -82,6 +91,7 @@ class LLMProcessManager:
                 stdout=sys.stdout,
                 stderr=sys.stderr
             )
+            self.active_model_id = selected_model_id
             await self._wait_for_ready()
 
     @staticmethod
@@ -111,28 +121,32 @@ class LLMProcessManager:
                 await asyncio.sleep(1)
                 
         logger.error("Timeout waiting for llama.cpp server to start.")
-        await self.stop()
+        await self._stop_unlocked()
         raise RuntimeError("LLM server failed to start or load model within timeout.")
 
     async def stop(self):
         async with self.lock:
-            if self.process and self.process.poll() is None:
-                logger.info("Stopping llama.cpp server to free memory...")
-                self.process.terminate()
-                
-                # Wait up to 5 seconds
-                start_time = time.time()
-                while time.time() - start_time < 5.0:
-                    if self.process.poll() is not None:
-                        break
-                    await asyncio.sleep(0.1)
-                
-                if self.process.poll() is None:
-                    logger.warning("Force killing llama.cpp server...")
-                    self.process.kill()
-                    self.process.wait()
-                self.process = None
-                logger.info("llama.cpp server stopped successfully.")
+            await self._stop_unlocked()
+
+    async def _stop_unlocked(self):
+        if self.process and self.process.poll() is None:
+            logger.info("Stopping llama.cpp server to free memory...")
+            self.process.terminate()
+
+            # Wait up to 5 seconds
+            start_time = time.time()
+            while time.time() - start_time < 5.0:
+                if self.process.poll() is not None:
+                    break
+                await asyncio.sleep(0.1)
+
+            if self.process.poll() is None:
+                logger.warning("Force killing llama.cpp server...")
+                self.process.kill()
+                self.process.wait()
+        self.process = None
+        self.active_model_id = None
+        logger.info("llama.cpp server stopped successfully.")
 
     async def idle_checker(self):
         """Background task to monitor idle time and shut down the server."""

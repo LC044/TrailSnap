@@ -66,12 +66,14 @@ def _make_manager(monkeypatch, settings, ready=True):
     fake.get_selected_spec = lambda _task: {
         "requiredFiles": ["MiniCPM-V-4_6-Q4_K_M.gguf", "mmproj-model-f16.gguf"]
     }
+    fake.get_selected_id = lambda _task: "llm-minicpm-v-4.6"
     fake.get_model_dir = lambda _task, task=False: __import__("pathlib").Path(settings.MODEL_PATH) / "MiniCPM-V-4_6-Q4_K_M"
     monkeypatch.setattr(lm, "ai_model_manager", fake)
     monkeypatch.setattr(lm, "settings", settings)
 
     manager = lm.LLMProcessManager.__new__(lm.LLMProcessManager)
     manager.process = None
+    manager.active_model_id = None
     manager.last_access_time = 0
     manager.lock = asyncio.Lock()
     manager.port = settings.LLM_SERVER_PORT
@@ -139,6 +141,7 @@ def test_ensure_running_no_op_when_subprocess_alive(monkeypatch, tmp_path):
     manager = _make_manager(monkeypatch, settings, ready=True)
     manager.process = MagicMock()
     manager.process.poll.return_value = None  # alive
+    manager.active_model_id = "llm-minicpm-v-4.6"
     manager._get_resolved_model_path = lambda: (str(tmp_path / "x.gguf"), "")
 
     with patch.object(lm.subprocess, "Popen") as popen:
