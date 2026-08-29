@@ -39,6 +39,8 @@ VISUAL_OUTPUT_CONSTRAINT = f"""
 """
 
 VISUAL_JSON_REPAIR_ATTEMPTS = 2
+VISUAL_REQUEST_TIMEOUT_SECONDS = 300
+VISUAL_TASK_TIMEOUT_SECONDS = 360
 
 
 class VisualDescriptionFormatError(ValueError):
@@ -204,6 +206,13 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
     def resource_key(self) -> str:
         return 'visual_llm'
 
+    @property
+    def timeout(self) -> int:
+        # Keep the worker deadline above the HTTP deadline so the client can
+        # close the request cleanly and the task-level retry policy remains the
+        # single owner of transient retries.
+        return VISUAL_TASK_TIMEOUT_SECONDS
+
     def create_client(self, settings):
         if not settings.analysis_connection_id or not settings.analysis_model_name:
             logger.error(
@@ -230,7 +239,8 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             api_key=connection.api_key,
             model= settings.analysis_model_name,
             base_url=connection.api_base if connection.api_base else None,
-            timeout=60,
+            timeout=VISUAL_REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
             max_completion_tokens=4096,
             extra_body={
                 "chat_template_kwargs": {"enable_thinking": False},
