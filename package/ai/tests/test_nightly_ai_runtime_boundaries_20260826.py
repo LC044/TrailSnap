@@ -67,6 +67,27 @@ def test_llm_manager_stop_releases_running_process(monkeypatch):
     assert manager.process is None
 
 
+def test_idle_restart_is_suppressed_while_model_download_is_active(monkeypatch):
+    import main as ai_main
+
+    sleep_calls = 0
+
+    async def controlled_sleep(_seconds):
+        nonlocal sleep_calls
+        sleep_calls += 1
+        if sleep_calls > 1:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(ai_main.asyncio, "sleep", controlled_sleep)
+    monkeypatch.setattr(ai_main.ai_model_manager, "has_active_downloads", lambda: True)
+    kill = MagicMock()
+    monkeypatch.setattr(ai_main.os, "kill", kill)
+
+    asyncio.run(ai_main.check_idle_and_restart())
+
+    kill.assert_not_called()
+
+
 def test_unified_manager_rejects_duplicate_model_ids(tmp_path, monkeypatch):
     from app.services.unified_model_manager import UnifiedModelManager
 

@@ -243,6 +243,24 @@ class UnifiedModelManager:
                 }
             return {"models": items, "tasks": task_items, "catalogVersion": self._catalog.get("version", 1)}
 
+    def get_download_state(self, model_or_task: str, *, task: bool = False) -> dict[str, str | None]:
+        """Return a stable readiness state for API and lifecycle decisions."""
+        model_id = self.get_selected_id(model_or_task) if task else self._resolve_model_id(model_or_task)
+        if self.is_ready(model_id):
+            with self._lock:
+                self._status[model_id] = "ready"
+                self._errors[model_id] = None
+        with self._lock:
+            return {
+                "model_id": model_id,
+                "status": self._status.get(model_id, "pending"),
+                "error": self._errors.get(model_id),
+            }
+
+    def has_active_downloads(self) -> bool:
+        with self._lock:
+            return any(status == "downloading" for status in self._status.values())
+
     def _download_snapshot(self, repo_id: str, target: Path, source: dict[str, Any]) -> None:
         from modelscope.hub.snapshot_download import snapshot_download
 
@@ -323,15 +341,25 @@ class UnifiedModelManager:
 
     def start_selected_downloads(self) -> None:
         """Download only selected models, sequentially, instead of every candidate."""
-        model_ids = list(dict.fromkeys(self._selections.values()))
+        model_ids = [
+            model_id
+            for model_id in dict.fromkeys(self._selections.values())
+            if self.get_spec(model_id).get("available", True)
+            and self.get_spec(model_id).get("autoDownload", True)
+            and not self.is_ready(model_id)
+        ]
+        with self._lock:
+            for model_id in model_ids:
+                self._status[model_id] = "downloading"
+                self._errors[model_id] = None
 
         def worker() -> None:
             for model_id in model_ids:
-                spec = self.get_spec(model_id)
-                if spec.get("available", True) and spec.get("autoDownload", True) and not self.is_ready(model_id):
+                if not self.is_ready(model_id):
                     self._download(model_id)
 
-        threading.Thread(target=worker, daemon=True).start()
+        if model_ids:
+            threading.Thread(target=worker, daemon=True).start()
 
     def release_task(self, task: str, *, background: bool = False) -> None:
         task_meta = self._catalog.get("tasks", {}).get(task)

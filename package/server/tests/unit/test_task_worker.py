@@ -155,6 +155,36 @@ def test_transient_failure_is_scheduled_without_becoming_failed():
     worker._publish.assert_called_once()
 
 
+def test_model_download_wait_does_not_consume_retry_attempts():
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    db = MagicMock()
+    task = MagicMock()
+    task.id = "task-model-download"
+    task.type = TaskType.VISUAL_DESCRIPTION
+    task.status = TaskStatus.PROCESSING
+    task.attempt_count = 2
+    task.created_at = None
+    task.updated_at = None
+    task.next_retry_at = None
+    task.error = None
+    task.priority = 1
+    task.total_items = 0
+    task.processed_items = 0
+    task.owner_id = None
+    task.payload = {}
+
+    error = "503: LLM model is downloading; model_status=downloading"
+    assert worker._schedule_retry(db, task, error, 3) is True
+    assert task.status == TaskStatus.PENDING
+    assert task.attempt_count == 2
+    assert task.next_retry_at is not None
+    assert task.error == "AI 大模型正在下载，下载完成后将自动继续"
+    assert worker._is_model_preparing_error(error) is True
+    db.commit.assert_called_once_with()
+    worker._publish.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_process_batch_survives_unknown_dimensions():
     """get_image_dimensions 对损坏图 / 无 cv2 视频会返回 (None, None, None)，

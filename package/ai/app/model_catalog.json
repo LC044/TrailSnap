@@ -214,7 +214,7 @@
       "tags": ["多模态", "4-bit"],
       "requirements": { "diskMB": 5000, "memoryMB": 6500 },
       "downloadSize": 4294967296,
-      "autoDownload": false,
+      "autoDownload": true,
       "available": true
     },
     {

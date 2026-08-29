@@ -35,7 +35,7 @@ async def check_idle_and_restart():
             await asyncio.sleep(settings.CHECK_INTERVAL)
 
             # If there are active requests, we are not idle
-            if active_requests > 0:
+            if active_requests > 0 or ai_model_manager.has_active_downloads():
                 continue
 
             current_time = time.time()

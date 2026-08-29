@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.routers import llm as ai_llm
-from app.services.llm_manager import llm_manager
+from app.services.llm_manager import LLMModelNotReadyError, llm_manager
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_ai_llm]
@@ -48,6 +48,30 @@ def test_llm_returns_500_when_manager_raises_other(llm_client, monkeypatch):
     res = llm_client.get("/v1/models")
     assert res.status_code == 500
     assert "subprocess crashed" in res.json()["detail"]
+
+
+def test_llm_downloading_returns_retry_after(llm_client, monkeypatch):
+    async def _downloading():
+        raise LLMModelNotReadyError("downloading")
+
+    monkeypatch.setattr(ai_llm.llm_manager, "ensure_running", _downloading)
+
+    res = llm_client.get("/v1/models")
+    assert res.status_code == 503
+    assert res.headers["retry-after"] == "60"
+    assert "model_status=downloading" in res.json()["detail"]
+
+
+def test_llm_download_failure_is_not_reported_as_temporary(llm_client, monkeypatch):
+    async def _failed():
+        raise LLMModelNotReadyError("failed", "disk full")
+
+    monkeypatch.setattr(ai_llm.llm_manager, "ensure_running", _failed)
+
+    res = llm_client.get("/v1/models")
+    assert res.status_code == 500
+    assert "disk full" in res.json()["detail"]
+    assert "retry-after" not in res.headers
 
 
 def test_llm_refreshes_idle_timer_on_successful_proxy(llm_client, monkeypatch):

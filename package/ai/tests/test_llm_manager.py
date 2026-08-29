@@ -34,6 +34,16 @@ class _FakeDownloader:
     def is_ready(self, _name):
         return self._ready
 
+    def get_download_state(self, _name, task=False):
+        return {
+            "model_id": "llm-minicpm-v-4.6",
+            "status": "ready" if self._ready else "downloading",
+            "error": None,
+        }
+
+    def trigger_download(self, _model_id):
+        return None
+
 
 def _make_settings(model_path, llm_model_path="", llm_idle_timeout=300, port=8002):
     return type(
@@ -94,15 +104,30 @@ def test_get_resolved_model_path_finds_gguf_in_model_dir(monkeypatch, tmp_path):
     assert resolved.endswith(os.path.join("MiniCPM-V-4_6-Q4_K_M", "MiniCPM-V-4_6-Q4_K_M.gguf"))
 
 
-def test_ensure_running_raises_when_model_not_ready(monkeypatch, tmp_path):
-    """If the downloader hasn't finished, ``ensure_running`` raises ``ValueError``."""
+def test_ensure_running_reports_downloading_state(monkeypatch, tmp_path):
+    """An unfinished download is distinguishable from a permanent failure."""
     from app.services import llm_manager as lm
 
     settings = _make_settings(str(tmp_path))
     manager = _make_manager(monkeypatch, settings, ready=False)
     manager._get_resolved_model_path = lambda: (str(tmp_path / "x.gguf"), "")
 
-    with pytest.raises(ValueError, match="still downloading"):
+    with pytest.raises(lm.LLMModelNotReadyError, match="model_status=downloading"):
+        asyncio.run(manager.ensure_running())
+
+
+def test_ensure_running_reports_download_failure(monkeypatch, tmp_path):
+    from app.services import llm_manager as lm
+
+    settings = _make_settings(str(tmp_path))
+    manager = _make_manager(monkeypatch, settings, ready=False)
+    lm.ai_model_manager.get_download_state = lambda _name, task=False: {
+        "model_id": "llm-minicpm-v-4.6",
+        "status": "failed",
+        "error": "modelscope offline",
+    }
+
+    with pytest.raises(lm.LLMModelNotReadyError, match="modelscope offline"):
         asyncio.run(manager.ensure_running())
 
 

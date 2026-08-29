@@ -705,7 +705,11 @@ class TaskWorker:
                     is_failed = res.get('status') == TaskStatus.FAILED
                     is_retryable = is_failed and self._is_retryable_error(res.get('error'))
                     if is_retryable:
-                        batch_outcome = "overload"
+                        batch_outcome = (
+                            "waiting_for_model"
+                            if self._is_model_preparing_error(res.get('error'))
+                            else "overload"
+                        )
                     elif is_failed and batch_outcome != "overload":
                         batch_outcome = None
                     if (
@@ -731,7 +735,9 @@ class TaskWorker:
                             'error': error,
                         })
             except Exception as e:
-                if self._is_retryable_error(e):
+                if self._is_model_preparing_error(e):
+                    batch_outcome = "waiting_for_model"
+                elif self._is_retryable_error(e):
                     batch_outcome = "overload"
                 logging.error(f"Task batch {task_type} failed: {e}", exc_info=True)
                 for task in tasks:
@@ -789,7 +795,30 @@ class TaskWorker:
         )
         return any(marker in text for marker in markers)
 
+    @staticmethod
+    def _is_model_preparing_error(error: Any) -> bool:
+        text = str(error or '').lower()
+        return (
+            'model_status=downloading' in text
+            or 'model_status=pending' in text
+        )
+
     def _schedule_retry(self, db: Session, task: Task, error: Any, max_attempts: int) -> bool:
+        if self._is_model_preparing_error(error):
+            delay = 60
+            task.status = TaskStatus.PENDING
+            # Model downloads can take many minutes. Waiting for readiness is
+            # not an inference attempt and must not exhaust max_attempts.
+            task.next_retry_at = datetime.now() + timedelta(seconds=delay)
+            task.error = "AI 大模型正在下载，下载完成后将自动继续"
+            db.commit()
+            self._publish_task_row(task)
+            logging.info(
+                "Task %s waiting %ss for the selected AI model to become ready",
+                task.id, delay,
+            )
+            return True
+
         attempt = (task.attempt_count or 0) + 1
         if attempt >= max_attempts:
             task.attempt_count = attempt

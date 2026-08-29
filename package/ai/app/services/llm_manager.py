@@ -11,6 +11,18 @@ from app.services.unified_model_manager import ai_model_manager
 
 logger = logging.getLogger(__name__)
 
+
+class LLMModelNotReadyError(ValueError):
+    def __init__(self, status: str, error: str | None = None):
+        self.status = status
+        self.download_error = error
+        if status == "failed":
+            message = f"LLM model download failed; model_status=failed; error={error or 'unknown error'}"
+        else:
+            message = f"LLM model is downloading; model_status=downloading; please try again later"
+        super().__init__(message)
+
+
 class LLMProcessManager:
     def __init__(self):
         self.process = None
@@ -35,7 +47,11 @@ class LLMProcessManager:
         
         # Ensure model is downloaded and ready
         if not settings.LLM_MODEL_PATH and not ai_model_manager.is_ready("llm"):
-            raise ValueError("LLM model is still downloading or not ready. Please try again later.")
+            state = ai_model_manager.get_download_state("llm", task=True)
+            if state["status"] == "pending":
+                ai_model_manager.trigger_download(state["model_id"])
+                state = {**state, "status": "downloading"}
+            raise LLMModelNotReadyError(state["status"], state["error"])
             
         resolved_path, mmproj = self._get_resolved_model_path()
         if not resolved_path:

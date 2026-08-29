@@ -40,6 +40,14 @@ def test_builtin_catalog_contains_complete_buffalo_m_package():
     ]
 
 
+def test_builtin_visual_llm_is_downloaded_on_first_start():
+    catalog_path = Path(__file__).resolve().parents[1] / "app" / "model_catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    visual_llm = next(item for item in catalog["models"] if item["id"] == "llm-minicpm-v-4.6")
+
+    assert visual_llm["autoDownload"] is True
+
+
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     catalog = {
@@ -146,3 +154,21 @@ def test_failed_download_keeps_failed_status_and_error(manager):
     listed = manager.list_models()["models"][0]
     assert listed["status"] == "failed"
     assert listed["error"] == "offline"
+
+
+def test_selected_download_is_marked_active_before_background_thread_runs(manager):
+    with patch("app.services.unified_model_manager.threading.Thread") as thread:
+        manager.start_selected_downloads()
+
+    state = manager.get_download_state("face", task=True)
+    assert state == {"model_id": "large", "status": "downloading", "error": None}
+    assert manager.has_active_downloads() is True
+
+    def fake_snapshot(_repo_id, target, _source):
+        (target / "model.onnx").write_bytes(b"onnx")
+
+    with patch.object(manager, "_download_snapshot", side_effect=fake_snapshot):
+        thread.call_args.kwargs["target"]()
+
+    assert manager.get_download_state("face", task=True)["status"] == "ready"
+    assert manager.has_active_downloads() is False
