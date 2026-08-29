@@ -40,6 +40,23 @@ def test_builtin_catalog_contains_complete_buffalo_m_package():
     ]
 
 
+def test_builtin_visual_llm_is_downloaded_on_first_start():
+    catalog_path = Path(__file__).resolve().parents[1] / "app" / "model_catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    visual_llm = next(item for item in catalog["models"] if item["id"] == "llm-minicpm-v-4.6")
+
+    assert visual_llm["autoDownload"] is True
+
+
+def test_available_models_have_plain_language_choice_guidance():
+    catalog_path = Path(__file__).resolve().parents[1] / "app" / "model_catalog.json"
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    available = [model for model in catalog["models"] if model.get("available", True)]
+
+    assert all(model.get("choiceLabel") for model in available)
+    assert all(model.get("choiceHint") for model in available)
+
+
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
     catalog = {
@@ -92,16 +109,37 @@ def test_download_uses_modelscope_snapshot_and_validates_files(manager):
     assert manager.list_models()["models"][0]["status"] == "ready"
 
 
-def test_switch_releases_runtime_and_persists_selection(manager):
+def test_switch_to_missing_model_keeps_current_runtime_until_download_finishes(manager):
     wrapper = MagicMock()
     with patch("app.services.unified_model_manager.runtime_model_manager") as runtime:
         runtime.models = {"face": wrapper}
         with patch.object(manager, "trigger_download") as trigger:
-            assert manager.select_model("face", "small") is True
-    wrapper.release_async.assert_called_once()
+            assert manager.select_model("face", "small") == {"changed": True, "status": "downloading"}
+    wrapper.release_async.assert_not_called()
     trigger.assert_called_once_with("small")
     saved = json.loads(manager.config_path.read_text(encoding="utf-8"))
-    assert saved["selections"]["face"] == "small"
+    assert saved["selections"]["face"] == "large"
+    assert saved["pendingSelections"]["face"] == "small"
+
+
+def test_download_completion_atomically_activates_pending_model(manager):
+    wrapper = MagicMock()
+    with patch.object(manager, "trigger_download"):
+        manager.select_model("face", "small")
+
+    def fake_snapshot(_repo_id, target, _source):
+        (target / "model.onnx").write_bytes(b"onnx")
+
+    with (
+        patch.object(manager, "_download_snapshot", side_effect=fake_snapshot),
+        patch("app.services.unified_model_manager.runtime_model_manager") as runtime,
+    ):
+        runtime.models = {"face": wrapper}
+        manager._download("small")
+
+    assert manager.get_selected_id("face") == "small"
+    assert manager.list_models()["tasks"]["face"]["pending"] is None
+    wrapper.release_async.assert_called_once()
 
 
 def test_delete_selected_model_switches_to_another_ready_model(manager):
@@ -146,3 +184,21 @@ def test_failed_download_keeps_failed_status_and_error(manager):
     listed = manager.list_models()["models"][0]
     assert listed["status"] == "failed"
     assert listed["error"] == "offline"
+
+
+def test_selected_download_is_marked_active_before_background_thread_runs(manager):
+    with patch("app.services.unified_model_manager.threading.Thread") as thread:
+        manager.start_selected_downloads()
+
+    state = manager.get_download_state("face", task=True)
+    assert state == {"model_id": "large", "status": "downloading", "error": None}
+    assert manager.has_active_downloads() is True
+
+    def fake_snapshot(_repo_id, target, _source):
+        (target / "model.onnx").write_bytes(b"onnx")
+
+    with patch.object(manager, "_download_snapshot", side_effect=fake_snapshot):
+        thread.call_args.kwargs["target"]()
+
+    assert manager.get_download_state("face", task=True)["status"] == "ready"
+    assert manager.has_active_downloads() is False

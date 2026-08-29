@@ -44,22 +44,31 @@ def test_delete_model_returns_automatic_switches():
 
 def test_set_model_returns_compact_switch_result():
     request = SimpleNamespace(task="face", model="face-buffalo-l")
-    with patch.object(router_module.ai_model_manager, "select_model", return_value=True) as select:
+    with patch.object(
+        router_module.ai_model_manager,
+        "select_model",
+        return_value={"changed": True, "status": "active"},
+    ) as select:
         import asyncio
         result = asyncio.run(router_module.set_model(request))
     select.assert_called_once_with("face", "face-buffalo-l")
     assert result["changed"] is True
+    assert result["status"] == "active"
     assert result["task"] == "face"
     assert result["model"] == "face-buffalo-l"
 
 
-def test_set_llm_model_stops_process_before_switch():
+def test_set_llm_model_keeps_current_process_until_new_model_is_ready():
     request = SimpleNamespace(task="llm", model="llm-minicpm-v-4.6")
     with patch.object(router_module.llm_manager, "stop", new=AsyncMock()) as stop, \
-         patch.object(router_module.ai_model_manager, "select_model", return_value=False):
+         patch.object(
+             router_module.ai_model_manager,
+             "select_model",
+             return_value={"changed": True, "status": "downloading"},
+         ):
         import asyncio
         asyncio.run(router_module.set_model(request))
-    stop.assert_awaited_once()
+    stop.assert_not_awaited()
 
 
 def test_set_model_maps_validation_error_to_http_400():

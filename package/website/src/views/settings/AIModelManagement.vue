@@ -4,7 +4,7 @@
       <div class="min-w-0 flex-1">
         <h2 class="text-xl font-semibold text-gray-800 dark:text-white md:text-2xl">AI 模型管理</h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          选择适合当前设备的模型。
+          已默认选择推荐方案，通常无需调整。只有设备较慢或更看重效果时才需要更换。
         </p>
       </div>
       <button
@@ -37,21 +37,59 @@
             </span>
           </div>
 
-          <label class="mt-4 block">
-            <span class="sr-only">选择模型</span>
-            <select
-              :value="card.info.selected"
-              :disabled="switchingTask === card.task || card.info.available.length < 2"
-              class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-              @change="selectModel(card.task, $event)"
-            >
-              <option
-                v-for="modelId in card.info.available"
-                :key="modelId"
-                :value="modelId"
-              >{{ modelById(modelId)?.name || modelId }}</option>
-            </select>
-          </label>
+          <div class="mt-4 rounded-lg border border-primary-500/30 bg-primary-500/5 p-3">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-medium text-gray-800 dark:text-gray-100">{{ card.model.name }}</span>
+              <span v-if="card.info.selected === card.info.recommended" class="rounded-full bg-primary-500 px-2 py-0.5 text-xs text-white">推荐</span>
+              <span v-if="card.model.choiceLabel" class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ card.model.choiceLabel }}</span>
+            </div>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ card.model.choiceHint || card.model.description }}</p>
+          </div>
+
+          <div
+            v-if="card.pendingModel"
+            class="mt-3 rounded-lg border p-3 text-sm"
+            :class="card.pendingModel.status === 'failed'
+              ? 'border-red-300 bg-red-50 text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400'
+              : 'border-primary-500/30 bg-primary-500/5 text-primary-600 dark:text-primary-500'"
+          >
+            <template v-if="card.pendingModel.status === 'failed'">
+              {{ card.pendingModel.name }} 准备失败，当前模型仍可继续使用。展开其他选择后可重试。
+              <span v-if="card.pendingModel.error" class="mt-1 block break-words text-xs">{{ card.pendingModel.error }}</span>
+            </template>
+            <template v-else>
+              正在准备 {{ card.pendingModel.name }}，下载完成并校验通过后会自动切换；当前模型继续可用。
+            </template>
+          </div>
+
+          <div v-if="card.info.available.length > 1" class="mt-3">
+            <button
+              class="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+              @click="toggleChoices(card.task)"
+            >{{ expandedTasks.has(card.task) ? '收起其他选择' : '查看其他选择' }}</button>
+            <div v-if="expandedTasks.has(card.task)" class="mt-3 grid gap-2">
+              <button
+                v-for="model in card.options"
+                :key="model.id"
+                :disabled="switchingTask === card.task || model.id === card.info.selected || (model.id === card.info.pending && model.status !== 'failed')"
+                class="rounded-lg border p-3 text-left transition disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+                :class="model.id === card.info.selected
+                  ? 'border-primary-500 bg-primary-500/5'
+                  : 'border-gray-200 bg-white hover:border-primary-500/50 dark:border-gray-700 dark:bg-gray-900'"
+                @click="selectModel(card.task, model.id)"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-medium text-gray-800 dark:text-gray-100">{{ model.name }}</span>
+                  <span v-if="model.id === card.info.recommended" class="rounded-full bg-primary-500 px-2 py-0.5 text-xs text-white">推荐</span>
+                  <span v-if="model.choiceLabel" class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ model.choiceLabel }}</span>
+                  <span v-if="model.id === card.info.selected" class="text-xs text-primary-600 dark:text-primary-500">当前使用</span>
+                  <span v-else-if="model.id === card.info.pending" class="text-xs text-primary-600 dark:text-primary-500">准备中</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ model.choiceHint || model.description }}</p>
+                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ formatBytes(model.downloadSize) }} · 建议内存 {{ formatMemory(model.requirements?.memoryMB) }}</p>
+              </button>
+            </div>
+          </div>
 
           <div class="mt-4 min-w-0 flex-1">
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ card.model.description }}</p>
@@ -94,7 +132,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
 
-type TaskSelection = { name: string; selected: string; available: string[] }
+type TaskSelection = { name: string; selected: string; pending?: string; recommended: string; available: string[] }
 
 const models = ref<any[]>([])
 const tasks = ref<Record<string, TaskSelection>>({})
@@ -102,6 +140,7 @@ const loading = ref(false)
 const errorMessage = ref('')
 const activeModel = ref('')
 const switchingTask = ref('')
+const expandedTasks = ref(new Set<string>())
 let pollTimer: number | undefined
 
 const taskLabels: Record<string, string> = {
@@ -124,11 +163,31 @@ const statusClasses: Record<string, string> = {
   ready: 'bg-primary-500/10 text-primary-600 dark:text-primary-500',
   failed: 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400',
 }
-const formatBytes = (value?: number) => value ? `${(value / 1024 / 1024).toFixed(1)} MB` : '未知'
+const formatBytes = (value?: number) => {
+  if (!value) return '大小未知'
+  const mb = value / 1024 / 1024
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(0)} MB`
+}
+const formatMemory = (value?: number) => value ? (value >= 1024 ? `${(value / 1024).toFixed(1)} GB` : `${value} MB`) : '未知'
 const modelById = (id: string) => models.value.find(model => model.id === id)
 const taskCards = computed(() => Object.entries(tasks.value)
-  .map(([task, info]) => ({ task, info, model: modelById(info.selected) }))
-  .filter((card): card is { task: string; info: TaskSelection; model: any } => Boolean(card.model)))
+  .map(([task, info]) => ({
+    task,
+    info,
+    model: modelById(info.selected),
+    pendingModel: info.pending ? modelById(info.pending) : undefined,
+    options: info.available
+      .map(modelById)
+      .filter(Boolean)
+      .sort((a: any, b: any) => Number(b.id === info.recommended) - Number(a.id === info.recommended)),
+  }))
+  .filter((card): card is typeof card & { model: any } => Boolean(card.model)))
+
+function toggleChoices(task: string) {
+  const next = new Set(expandedTasks.value)
+  next.has(task) ? next.delete(task) : next.add(task)
+  expandedTasks.value = next
+}
 
 function updatePolling() {
   const downloading = models.value.some(model => model.status === 'downloading')
@@ -200,18 +259,16 @@ async function deleteModel(id: string) {
   }
 }
 
-async function selectModel(task: string, event: Event) {
-  const model = (event.target as HTMLSelectElement).value
+async function selectModel(task: string, model: string) {
   if (!model || model === tasks.value[task]?.selected) return
-  const previousModel = tasks.value[task]?.selected
   switchingTask.value = task
-  tasks.value[task].selected = model
   try {
-    await settingsApi.selectAIModel(task, model)
-    ElMessage.success(`${taskLabels[task] || task}模型已切换`)
+    const result: any = await settingsApi.selectAIModel(task, model)
+    ElMessage.success(result.status === 'downloading'
+      ? '已开始下载，准备完成后会自动切换，当前模型不受影响'
+      : `${taskLabels[task] || task}模型已切换`)
     await loadModels(true)
   } catch (error: any) {
-    if (previousModel) tasks.value[task].selected = previousModel
     ElMessage.error(error.message || String(error))
     await loadModels(true)
   } finally {

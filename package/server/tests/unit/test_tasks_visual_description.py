@@ -19,7 +19,7 @@ Coverage:
 """
 
 import base64
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
@@ -124,3 +124,56 @@ def test_create_client_raises_when_connection_not_found():
 
     with pytest.raises(ValueError, match="not found"):
         strategy.create_client(settings)
+
+
+def test_create_client_uses_visual_timeout_without_nested_retries():
+    """Slow local inference gets five minutes; task retries stay worker-owned."""
+    from app.service.tasks import visual_description as vd_mod
+
+    strategy = vd_mod.VisualDescriptionStrategy()
+    connection = MagicMock(
+        id="conn-1",
+        enable=True,
+        api_key="secret",
+        api_base="http://ai:8001/v1",
+    )
+    settings = MagicMock(
+        analysis_connection_id="conn-1",
+        analysis_model_name="vision-model",
+        connections=[connection],
+    )
+
+    with patch.object(vd_mod, "ChatOpenAI") as chat_openai:
+        strategy.create_client(settings)
+
+    kwargs = chat_openai.call_args.kwargs
+    assert kwargs["timeout"] == 300
+    assert kwargs["max_retries"] == 0
+    assert strategy.timeout == 360
+
+
+def test_parse_visual_result_accepts_json_wrapped_in_prose():
+    """A valid object can be recovered without another model request."""
+    from app.service.tasks import visual_description as vd_mod
+
+    result = vd_mod.parse_visual_result(
+        '结果如下：\n{"description":"照片", "tags":[], "memory_score":60, '
+        '"beauty_score":70, "reason":"清晰", "narrative":"值得留存"}\n完成'
+    )
+
+    assert result["description"] == "照片"
+    assert result["beauty_score"] == 70
+
+
+def test_parse_visual_result_rejects_missing_or_invalid_fields():
+    """Syntactically valid JSON still has to satisfy the storage schema."""
+    from app.service.tasks import visual_description as vd_mod
+
+    with pytest.raises(vd_mod.VisualDescriptionFormatError, match="缺少字段"):
+        vd_mod.parse_visual_result('{"description": "照片"}')
+
+    with pytest.raises(vd_mod.VisualDescriptionFormatError, match="0~100"):
+        vd_mod.parse_visual_result(
+            '{"description":"照片", "tags":[], "memory_score":101, '
+            '"beauty_score":70, "reason":"清晰", "narrative":"值得留存"}'
+        )

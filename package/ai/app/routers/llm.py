@@ -2,7 +2,7 @@ import httpx
 import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import StreamingResponse
-from app.services.llm_manager import llm_manager
+from app.services.llm_manager import LLMModelNotReadyError, llm_manager
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,10 @@ async def proxy_llm(request: Request, path: str):
     """
     try:
         await llm_manager.ensure_running()
+    except LLMModelNotReadyError as error:
+        status_code = 500 if error.status == "failed" else 503
+        headers = None if error.status == "failed" else {"Retry-After": "60"}
+        raise HTTPException(status_code=status_code, detail=str(error), headers=headers)
     except ValueError as ve:
         raise HTTPException(status_code=503, detail=str(ve))
     except Exception as e:

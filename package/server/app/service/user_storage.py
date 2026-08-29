@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_STORAGE_BASE = DATA_DIR
 LEGACY_DEFAULT_STORAGE_BASE = os.path.join(DATA_DIR, "uploads")
 _STORAGE_BASE_CACHE: dict[str, str] = {}
+_DELETE_RETRY_DELAYS = (0.1, 0.2, 0.4, 0.5, 0.5, 0.5, 0.5)
 
 
 def _user_key(user_id: UUID | str) -> str:
@@ -94,7 +96,19 @@ def delete_user_layout(user_id: UUID | str, settings: Optional[dict[str, Any]]) 
     base = configured_storage_base(settings)
     root = get_user_root(user_id, base)
     if os.path.isdir(root):
-        shutil.rmtree(root)
+        for attempt, delay in enumerate((*_DELETE_RETRY_DELAYS, None), start=1):
+            try:
+                shutil.rmtree(root)
+                break
+            except PermissionError:
+                if delay is None:
+                    raise
+                logger.warning(
+                    "User storage cleanup is waiting for an open file handle (attempt %s): %s",
+                    attempt,
+                    root,
+                )
+                time.sleep(delay)
     _STORAGE_BASE_CACHE.pop(_user_key(user_id), None)
 
 

@@ -17,7 +17,11 @@ logger = logging.getLogger(__name__)
 class ImageEmbeddingStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'IO'
+        return 'AI'
+
+    @property
+    def resource_key(self) -> str:
+        return 'embedding'
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         try:

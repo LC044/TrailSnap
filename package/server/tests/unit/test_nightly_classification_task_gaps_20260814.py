@@ -56,10 +56,11 @@ def _chain_db_query(db, batches):
     return chain
 
 
-def test_classify_strategy_task_category_is_io():
+def test_classify_strategy_task_category_is_ai():
     from app.service.tasks import classification as classify_tasks
     s = classify_tasks.ClassifyImageStrategy()
-    assert s.task_category == "IO"
+    assert s.task_category == "AI"
+    assert s.resource_key == "classification"
 
 
 def test_classify_strategy_registered_in_factory():

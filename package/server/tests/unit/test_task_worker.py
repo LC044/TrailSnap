@@ -30,12 +30,33 @@ async def test_task_queue_manager_dequeues_highest_priority_first():
 def test_get_chunk_size_honors_level_and_task_type_overrides():
     with patch.object(task_worker.system_config.config.task, "concurrency_level", "high"):
         assert task_worker.get_chunk_size(TaskType.SCAN_FOLDER) == 8
-        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 4
+        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 1
+        assert task_worker.get_chunk_size(TaskType.OCR) == 2
         assert task_worker.get_chunk_size(TaskType.PROCESS_BASIC) == 16
 
     with patch.object(task_worker.system_config.config.task, "concurrency_level", "low"):
         assert task_worker.get_chunk_size(TaskType.SCAN_FOLDER) == 4
-        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 2
+        assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 1
+        assert task_worker.get_chunk_size(TaskType.OCR) == 1
+
+
+def test_auto_concurrency_uses_detected_device_profile(monkeypatch):
+    worker = task_worker.TaskWorker()
+    monkeypatch.setattr(task_worker.system_config.config.task, "concurrency_level", "auto")
+    monkeypatch.setattr(task_worker, "resolve_concurrency_level", lambda _level: "low")
+
+    assert worker._get_concurrency_settings()["ai_consumer"] == 2
+
+
+def test_worker_drain_stops_new_fetches_without_stopping_consumers():
+    worker = task_worker.TaskWorker()
+    worker.running = True
+
+    worker.request_drain()
+
+    assert worker.accepting_tasks is False
+    assert worker.running is True
+    assert worker.is_drained() is True
 
 
 def test_publish_sends_event_envelope_and_swallows_queue_errors():
@@ -122,7 +143,65 @@ async def test_paused_category_still_executes_interactive_task():
         )
 
     strategy.process_batch.assert_awaited_once_with(worker, [task], db)
-    db.commit.assert_not_called()
+    db.commit.assert_called_once_with()
+
+
+def test_transient_failure_is_scheduled_without_becoming_failed():
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    db = MagicMock()
+    task = MagicMock()
+    task.id = "task-retry"
+    task.type = TaskType.OCR
+    task.status = TaskStatus.PROCESSING
+    task.attempt_count = 0
+    task.created_at = None
+    task.updated_at = None
+    task.next_retry_at = None
+    task.error = None
+    task.priority = 1
+    task.total_items = 0
+    task.processed_items = 0
+    task.owner_id = None
+    task.payload = {}
+
+    assert worker._schedule_retry(db, task, "AI Service error: 429", 3) is True
+    assert task.status == TaskStatus.PENDING
+    assert task.attempt_count == 1
+    assert task.next_retry_at is not None
+    assert "自动重试" in task.error
+    db.commit.assert_called_once_with()
+    worker._publish.assert_called_once()
+
+
+def test_model_download_wait_does_not_consume_retry_attempts():
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    db = MagicMock()
+    task = MagicMock()
+    task.id = "task-model-download"
+    task.type = TaskType.VISUAL_DESCRIPTION
+    task.status = TaskStatus.PROCESSING
+    task.attempt_count = 2
+    task.created_at = None
+    task.updated_at = None
+    task.next_retry_at = None
+    task.error = None
+    task.priority = 1
+    task.total_items = 0
+    task.processed_items = 0
+    task.owner_id = None
+    task.payload = {}
+
+    error = "503: LLM model is downloading; model_status=downloading"
+    assert worker._schedule_retry(db, task, error, 3) is True
+    assert task.status == TaskStatus.PENDING
+    assert task.attempt_count == 2
+    assert task.next_retry_at is not None
+    assert task.error == "AI 大模型正在下载，下载完成后将自动继续"
+    assert worker._is_model_preparing_error(error) is True
+    db.commit.assert_called_once_with()
+    worker._publish.assert_called_once()
 
 
 @pytest.mark.asyncio

@@ -6,24 +6,37 @@ import signal
 
 from dotenv import load_dotenv
 
+from app.core.runtime_limits import configure_worker_runtime, lower_worker_priority
+
+# Apply native-library limits before importing task modules. Child processes
+# created by ProcessPoolExecutor inherit these environment variables.
+configure_worker_runtime()
+
 from app.core.logger import setup_logging
 from app.core.paths import DATA_DIR, ensure_rg_seed
 from app.service.task_worker import TaskWorker
 
-async def _run(event_queue=None):
+async def _run(event_queue=None, shutdown_event=None):
     worker = TaskWorker.get_instance()
     worker.set_event_queue(event_queue)
     worker.start()
 
     # Keep the loop alive
     while True:
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
+        if shutdown_event is not None and shutdown_event.is_set():
+            worker.request_drain()
+            if worker.is_drained():
+                # Give the result loop one final flush window before shutdown.
+                await asyncio.sleep(1.1)
+                return
 
-def run_worker(event_queue=None):
+def run_worker(event_queue=None, shutdown_event=None):
     load_dotenv(os.path.join(DATA_DIR, '.env'))
     """Entry point for the worker process"""
     # Setup logging for this process
     setup_logging('task')
+    lower_worker_priority()
     logging.info(f"Starting Worker Process (PID: {os.getpid()})...")
     # 确保反向编码数据目录就绪并播种（worker 进程独立于 API 进程，需自行初始化）
     ensure_rg_seed()
@@ -41,7 +54,8 @@ def run_worker(event_queue=None):
             # Register signal handlers
             pass
 
-        asyncio.run(_run(event_queue))
+        coroutine = _run(event_queue) if shutdown_event is None else _run(event_queue, shutdown_event)
+        asyncio.run(coroutine)
     except (KeyboardInterrupt, SystemExit):
         logging.info("Worker process received stop signal")
     except Exception as e:

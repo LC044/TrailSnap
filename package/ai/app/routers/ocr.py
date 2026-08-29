@@ -10,6 +10,8 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from app.services.ocr_service import ocr_service
+from app.core.admission import ocr_admission
+from app.config import settings
 
 router = APIRouter()
 
@@ -39,11 +41,11 @@ def _select_max_workers() -> int:
         import torch
         if torch.cuda.is_available():
             # GPU：推理在显卡上串行，少量线程足以让解码与推理重叠
-            return min(4, cpu_count)
+            return min(max(1, settings.AI_INFERENCE_THREADS), cpu_count)
     except Exception:
         pass
     # CPU：RapidOCR 单图已占满 intra-op 线程，2~4 足以重叠 IO，过多反而抢核
-    return min(4, cpu_count)
+    return min(max(1, settings.AI_INFERENCE_THREADS), cpu_count)
 
 
 # 模块级线程池，避免每次请求重新创建线程的开销
@@ -87,6 +89,7 @@ async def ocr_predict(request: OCRRequest):
         raise HTTPException(status_code=400, detail="No images provided")
 
     loop = asyncio.get_running_loop()
+    await ocr_admission.acquire()
     try:
         # 每张图各自提交到线程池并发处理，同时把同步推理移出事件循环。
         # return_exceptions=True：单张图片失败（如损坏、解码失败）不影响整批，
@@ -112,3 +115,5 @@ async def ocr_predict(request: OCRRequest):
     except Exception as e:
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        ocr_admission.release()

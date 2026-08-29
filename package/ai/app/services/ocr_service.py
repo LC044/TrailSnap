@@ -6,6 +6,7 @@ import threading
 from contextlib import contextmanager
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
+from app.config import settings
 
 # OpenVINO 的 InferRequest.infer() 是同步且非线程安全的：同一 RapidOCR 实例被多个
 # 线程并发调用会抛 "Infer Request is busy"（router 里 ThreadPoolExecutor 会并发跑
@@ -72,8 +73,8 @@ def load_paddleocr_model():
                 "Rec.engine_type": EngineType.OPENVINO,
                 "EngineConfig.openvino": {
                     "performance_hint": "LATENCY",
-                    "inference_num_threads": -1,
-                    "enable_cpu_pinning": True,
+                    "inference_num_threads": max(1, settings.AI_INFERENCE_THREADS),
+                    "enable_cpu_pinning": False,
                     "num_infer_requests": 1,
                 },
             })

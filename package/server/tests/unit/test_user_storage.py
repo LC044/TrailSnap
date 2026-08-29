@@ -174,3 +174,23 @@ def test_delete_user_layout_removes_only_target_user(tmp_path):
 
     assert not user_storage.os.path.exists(first_root)
     assert user_storage.os.path.isdir(second_root)
+
+
+def test_delete_user_layout_retries_transient_open_file(tmp_path):
+    user_id = uuid4()
+    settings = {"storage": {"photo_storage_path": str(tmp_path)}}
+    root = user_storage.ensure_user_layout(user_id, str(tmp_path))
+
+    with (
+        patch.object(
+            user_storage.shutil,
+            "rmtree",
+            side_effect=[PermissionError("file is open"), None],
+        ) as remove_tree,
+        patch.object(user_storage.time, "sleep") as sleep,
+    ):
+        user_storage.delete_user_layout(user_id, settings)
+
+    assert remove_tree.call_count == 2
+    sleep.assert_called_once_with(user_storage._DELETE_RETRY_DELAYS[0])
+    assert root == remove_tree.call_args_list[0].args[0]

@@ -124,6 +124,30 @@ def test_update_system_config_replaces_non_dict_fields():
     fake_save.assert_called_once_with()
 
 
+def test_task_config_change_restarts_worker():
+    user = _user(is_superuser=True)
+    fake_manager = MagicMock()
+    fake_manager.config.model_dump.return_value = {
+        "task": {"concurrency_level": "medium"},
+    }
+    captured = {}
+    FakeSettings = _make_settings_factory(captured)
+    task_manager = MagicMock()
+
+    with (
+        patch.object(system_api.system_config, "config", fake_manager.config),
+        patch.object(system_api.system_config, "save"),
+        patch("app.core.system_config.SystemSettings", FakeSettings),
+        patch("app.service.task_manager.TaskManager.get_instance", return_value=task_manager),
+    ):
+        system_api.update_system_config(
+            payload={"task": {"concurrency_level": "low"}},
+            current_user=user,
+        )
+
+    task_manager.restart_worker.assert_called_once_with(graceful=True)
+
+
 # ----------------------------- /version ----------------------------------
 
 

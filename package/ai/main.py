@@ -11,6 +11,14 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
+from app.core.runtime_limits import (
+    configure_inference_runtime,
+    lower_ai_process_priority,
+)
+
+# Must run before routers import NumPy, ONNX Runtime, OpenVINO or Paddle.
+configure_inference_runtime()
+
 from app.routers import system, face, ocr, object_detection, tickets, image_classification, ai_config, embedding, llm, emotion
 from app.core.logger import setup_logging
 from app.services.unified_model_manager import ai_model_manager
@@ -27,7 +35,7 @@ async def check_idle_and_restart():
             await asyncio.sleep(settings.CHECK_INTERVAL)
 
             # If there are active requests, we are not idle
-            if active_requests > 0:
+            if active_requests > 0 or ai_model_manager.has_active_downloads():
                 continue
 
             current_time = time.time()
@@ -57,6 +65,7 @@ async def check_idle_and_restart():
 async def lifespan(app: FastAPI):
     global log_listener
     log_listener = setup_logging('ai')
+    lower_ai_process_priority()
 
     # Download only the catalog entries selected for each AI capability.
     ai_model_manager.start_selected_downloads()

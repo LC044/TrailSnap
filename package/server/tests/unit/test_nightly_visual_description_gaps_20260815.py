@@ -71,11 +71,11 @@ def _settings_with_connection(connection_id="conn-1", model_name="m"):
 
 
 def _mock_chat_client(content):
-    """A LangChain-compatible client whose ``invoke`` returns ``content``."""
+    """A LangChain-compatible client whose ``ainvoke`` returns ``content``."""
     eval_response = MagicMock()
     eval_response.content = content
     client = MagicMock()
-    client.invoke.return_value = eval_response
+    client.ainvoke = AsyncMock(return_value=eval_response)
     return client
 
 
@@ -396,8 +396,53 @@ async def test_process_single_photo_strips_json_code_fence_before_parsing():
 
 
 @pytest.mark.asyncio
-async def test_process_single_photo_propagates_json_decode_error():
-    """Malformed JSON from the LLM is re-raised so the worker records a failure."""
+async def test_process_single_photo_repairs_malformed_json_without_resending_image():
+    """A text-only correction request recovers malformed vision output."""
+    from app.service.tasks import visual_description as vd_mod
+
+    photo = _make_photo("p-1")
+    ai_settings = _settings_with_connection()
+    user_cfg = MagicMock()
+    user_cfg.ai = ai_settings
+
+    malformed = MagicMock(content='{"description": "broken",}')
+    repaired = MagicMock(
+        content=(
+            '{"description":"fixed", "memory_score":50, "beauty_score":60, '
+            '"tags":[], "reason":"r", "narrative":"n"}'
+        )
+    )
+    client = MagicMock()
+    client.ainvoke = AsyncMock(side_effect=[malformed, repaired])
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    row = _description_row(description="fixed", memory_score=50, quality_score=60)
+
+    with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
+        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+            with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
+                with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
+                    with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "")):
+                        with patch("app.service.tasks.visual_description.encode_image", return_value="BASE64"):
+                            with patch.object(vd_mod, "ImageDescription", return_value=row):
+                                result = await vd_mod.VisualDescriptionStrategy().process_single_photo(
+                                    worker=None, photo=photo, db=db, settings=ai_settings
+                                )
+
+    assert result["description"] == "fixed"
+    assert client.ainvoke.await_count == 2
+    initial_messages = client.ainvoke.await_args_list[0].args[0]
+    repair_messages = client.ainvoke.await_args_list[1].args[0]
+    assert "机器可读输出约束" in initial_messages[0]["content"]
+    assert any(part.get("type") == "image_url" for part in initial_messages[1]["content"])
+    assert isinstance(repair_messages[1]["content"], str)
+    assert "image_url" not in repair_messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_process_single_photo_raises_after_json_repair_exhausted():
+    """Persistent malformed output fails only after both correction attempts."""
     from app.service.tasks import visual_description as vd_mod
 
     photo = _make_photo("p-1")
@@ -420,6 +465,8 @@ async def test_process_single_photo_propagates_json_decode_error():
                                 await vd_mod.VisualDescriptionStrategy().process_single_photo(
                                     worker=None, photo=photo, db=db, settings=ai_settings
                                 )
+
+    assert client.ainvoke.await_count == 3
 
 
 @pytest.mark.asyncio
@@ -703,7 +750,7 @@ async def test_process_single_photo_includes_metadata_address_when_present():
                                     worker=None, photo=photo, db=db, settings=ai_settings
                                 )
 
-    invoke_args = client.invoke.call_args[0][0]
+    invoke_args = client.ainvoke.call_args[0][0]
     user_message = invoke_args[1]
     text_payload = next(p["text"] for p in user_message["content"] if p.get("type") == "text")
     assert "Shanghai" in text_payload

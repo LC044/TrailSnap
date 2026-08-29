@@ -284,9 +284,9 @@ def test_extract_metadata_strategy_process_photo_not_found():
 # ---------------------------------------------------------------------------
 
 
-def test_image_embedding_strategy_task_category_is_io():
+def test_image_embedding_strategy_task_category_is_ai():
     from app.service.tasks.image_embedding import ImageEmbeddingStrategy
-    assert ImageEmbeddingStrategy.task_category.fget(None) == "IO"
+    assert ImageEmbeddingStrategy.task_category.fget(None) == "AI"
 
 
 def test_image_embedding_strategy_registered_in_factory():

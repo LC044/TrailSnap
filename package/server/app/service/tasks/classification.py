@@ -41,7 +41,11 @@ def get_tag_id(db: Session, tag_name: str, owner_id: Optional[UUID] = None) -> s
 class ClassifyImageStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'IO'
+        return 'AI'
+
+    @property
+    def resource_key(self) -> str:
+        return 'classification'
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         try:

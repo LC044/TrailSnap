@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.services.face_service import face_service
+from app.core.admission import face_admission
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -79,6 +80,7 @@ async def face_recognition(request: FaceRecognitionRequest):
         raise HTTPException(status_code=400, detail="No images provided")
 
     loop = asyncio.get_running_loop()
+    await face_admission.acquire()
     try:
         # 每张图各自提交到线程池并发处理，同时把同步推理移出事件循环。
         # return_exceptions=True：单张图片失败（如损坏、空图）不影响整批，
@@ -104,3 +106,5 @@ async def face_recognition(request: FaceRecognitionRequest):
     except Exception as e:
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+    finally:
+        face_admission.release()

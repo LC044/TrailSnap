@@ -65,10 +65,14 @@
           :key="t.id"
           class="p-2.5 rounded-lg bg-primary-50/50 dark:bg-primary-900/10 border border-primary-100 dark:border-primary-900/30 flex items-center gap-2"
         >
-          <Loader2 class="w-4 h-4 text-primary-500 animate-spin shrink-0" />
+          <Clock3 v-if="t.next_retry_at" class="w-4 h-4 text-amber-500 shrink-0" />
+          <Loader2 v-else class="w-4 h-4 text-primary-500 animate-spin shrink-0" />
           <div class="flex-1 min-w-0">
             <div class="text-sm text-slate-700 dark:text-slate-200 truncate">{{ store.CATEGORY_NAME_MAP[t.type] || t.type }}</div>
-            <div class="text-[10px] text-slate-400 dark:text-slate-500">{{ t.processed_items || 0 }} / {{ t.total_items || 0 }}</div>
+            <div v-if="t.next_retry_at" class="text-[10px] text-amber-600 dark:text-amber-400">
+              设备繁忙，稍后自动重试（{{ t.attempt_count || 1 }} 次）
+            </div>
+            <div v-else class="text-[10px] text-slate-400 dark:text-slate-500">{{ t.processed_items || 0 }} / {{ t.total_items || 0 }}</div>
           </div>
         </div>
       </div>
@@ -153,7 +157,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { Loader2, CheckCircle2, XCircle, Info, AlertTriangle, AlertCircle } from 'lucide-vue-next';
+import { Loader2, Clock3, CheckCircle2, XCircle, Info, AlertTriangle, AlertCircle } from 'lucide-vue-next';
 import { ElMessage } from 'element-plus';
 import { useNotificationStore, TASK_CATEGORIES } from '@/stores/notificationStore';
 import type { AppNotification } from '@/api/notification';

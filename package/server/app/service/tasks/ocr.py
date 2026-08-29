@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 class OcrStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'IO'
+        return 'AI'
+
+    @property
+    def resource_key(self) -> str:
+        return 'ocr'
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         """

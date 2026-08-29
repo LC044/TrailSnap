@@ -168,13 +168,13 @@ def test_set_model_500_on_unexpected_exception():
     logger.exception.assert_called_once()
 
 
-def test_set_model_calls_llm_stop_when_task_is_llm():
-    """Switching the LLM model must stop the current subprocess first."""
+def test_set_model_keeps_old_llm_alive_while_replacement_downloads():
+    """The current subprocess remains available until the replacement is ready."""
     request = SimpleNamespace(task="llm", model="new-llm")
     with patch.object(
         router_module.ai_model_manager,
         "select_model",
-        return_value=True,
+        return_value={"changed": True, "status": "downloading"},
     ), patch.object(
         router_module.llm_manager,
         "stop",
@@ -183,7 +183,8 @@ def test_set_model_calls_llm_stop_when_task_is_llm():
         import asyncio
         result = asyncio.run(router_module.set_model(request))
 
-    stop.assert_awaited_once()
+    stop.assert_not_awaited()
     assert result["changed"] is True
+    assert result["status"] == "downloading"
     assert result["task"] == "llm"
     assert result["model"] == "new-llm"

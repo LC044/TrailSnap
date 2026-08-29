@@ -1,6 +1,5 @@
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
-from typing import List, Dict
 import logging
 import json
 import base64
@@ -18,6 +17,156 @@ from app.utils.path import get_user_roots, compute_browse_path
 from app.service.tasks.ci_limit import ci_task_limit_reached, ci_remaining_budget, CI_TASK_PHOTO_LIMIT
 
 logger = logging.getLogger(__name__)
+
+VISUAL_RESULT_SCHEMA = """{
+  "description": "80~200字的中文照片描述",
+  "tags": ["人物", "旅行"],
+  "memory_score": 0.0,
+  "beauty_score": 0.0,
+  "reason": "不超过40字的中文原因",
+  "narrative": "8~30字的一句中文旁白"
+}"""
+
+VISUAL_OUTPUT_CONSTRAINT = f"""
+
+【机器可读输出约束】
+你的回答会被程序直接解析，必须严格遵守：
+1. 只输出一个 JSON 对象，禁止 Markdown 代码块、解释、前后缀和注释。
+2. 必须包含以下全部字段，字段名不得修改或遗漏：
+{VISUAL_RESULT_SCHEMA}
+3. memory_score 和 beauty_score 必须是 0~100 的数字；tags 必须是字符串数组；其余字段必须是字符串。
+4. JSON 字符串中的换行、引号和反斜杠必须正确转义，禁止尾随逗号。
+"""
+
+VISUAL_JSON_REPAIR_ATTEMPTS = 2
+VISUAL_REQUEST_TIMEOUT_SECONDS = 300
+VISUAL_TASK_TIMEOUT_SECONDS = 360
+
+
+class VisualDescriptionFormatError(ValueError):
+    """Raised when a vision model response cannot satisfy the result schema."""
+
+
+def _response_content_to_text(content: Any) -> str:
+    """Normalize common LangChain response content shapes to plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        return "".join(parts)
+    return str(content or "")
+
+
+def _validate_visual_result(result: Any) -> Dict[str, Any]:
+    if not isinstance(result, dict):
+        raise VisualDescriptionFormatError("顶层内容必须是 JSON 对象")
+
+    required_string_fields = ("description", "reason", "narrative")
+    missing = [
+        field
+        for field in (*required_string_fields, "tags", "memory_score", "beauty_score")
+        if field not in result
+    ]
+    if missing:
+        raise VisualDescriptionFormatError(f"缺少字段: {', '.join(missing)}")
+
+    for field in required_string_fields:
+        if not isinstance(result[field], str):
+            raise VisualDescriptionFormatError(f"字段 {field} 必须是字符串")
+
+    tags = result["tags"]
+    if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+        raise VisualDescriptionFormatError("字段 tags 必须是字符串数组")
+
+    for field in ("memory_score", "beauty_score"):
+        value = result[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise VisualDescriptionFormatError(f"字段 {field} 必须是数字")
+        if not 0 <= value <= 100:
+            raise VisualDescriptionFormatError(f"字段 {field} 必须在 0~100 之间")
+
+    return result
+
+
+def parse_visual_result(content: Any) -> Dict[str, Any]:
+    """Parse JSON even when a model adds a code fence or short prose wrapper."""
+    text = _response_content_to_text(content).strip()
+    if not text:
+        raise VisualDescriptionFormatError("模型返回了空内容")
+
+    candidates = [text]
+    if text.startswith("```") and text.endswith("```"):
+        fenced = text[3:-3].strip()
+        if fenced.lower().startswith("json"):
+            fenced = fenced[4:].lstrip()
+        candidates.insert(0, fenced)
+
+    first_brace = text.find("{")
+    if first_brace >= 0:
+        try:
+            value, _ = json.JSONDecoder().raw_decode(text[first_brace:])
+            return _validate_visual_result(value)
+        except (json.JSONDecodeError, VisualDescriptionFormatError):
+            pass
+
+    last_error = None
+    for candidate in candidates:
+        try:
+            return _validate_visual_result(json.loads(candidate))
+        except (json.JSONDecodeError, VisualDescriptionFormatError) as exc:
+            last_error = exc
+
+    raise VisualDescriptionFormatError(f"JSON 解析或结构校验失败: {last_error}") from last_error
+
+
+async def parse_visual_result_with_repair(client, content: Any, photo_id: Any) -> Dict[str, Any]:
+    """Ask the model to repair only its text response, avoiding repeat image inference."""
+    current_content = _response_content_to_text(content)
+    last_error = None
+
+    for repair_attempt in range(VISUAL_JSON_REPAIR_ATTEMPTS + 1):
+        try:
+            return parse_visual_result(current_content)
+        except VisualDescriptionFormatError as exc:
+            last_error = exc
+            if repair_attempt >= VISUAL_JSON_REPAIR_ATTEMPTS:
+                break
+
+            logger.warning(
+                "Invalid visual model output for photo %s; requesting JSON repair (%s/%s): %s",
+                photo_id,
+                repair_attempt + 1,
+                VISUAL_JSON_REPAIR_ATTEMPTS,
+                exc,
+            )
+            repair_response = await client.ainvoke([
+                {
+                    "role": "system",
+                    "content": (
+                        "你是 JSON 格式修复器。只能修复给定内容的格式和字段，"
+                        "不得重新分析图片、添加解释或改变原有语义。只输出合法 JSON。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"目标结构：\n{VISUAL_RESULT_SCHEMA}\n\n"
+                        f"校验错误：{exc}\n\n"
+                        "请修复以下模型输出：\n<model_output>\n"
+                        f"{current_content[:12000]}\n</model_output>"
+                    ),
+                },
+            ])
+            current_content = _response_content_to_text(repair_response.content)
+
+    raise VisualDescriptionFormatError(
+        f"视觉模型输出经过 {VISUAL_JSON_REPAIR_ATTEMPTS} 次修复后仍不符合 JSON 格式: {last_error}"
+    ) from last_error
 
 
 import io
@@ -51,7 +200,18 @@ def encode_image(image_path, max_size=672):
 class VisualDescriptionStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
-        return 'IO'
+        return 'AI'
+
+    @property
+    def resource_key(self) -> str:
+        return 'visual_llm'
+
+    @property
+    def timeout(self) -> int:
+        # Keep the worker deadline above the HTTP deadline so the client can
+        # close the request cleanly and the task-level retry policy remains the
+        # single owner of transient retries.
+        return VISUAL_TASK_TIMEOUT_SECONDS
 
     def create_client(self, settings):
         if not settings.analysis_connection_id or not settings.analysis_model_name:
@@ -79,7 +239,8 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             api_key=connection.api_key,
             model= settings.analysis_model_name,
             base_url=connection.api_base if connection.api_base else None,
-            timeout=60,
+            timeout=VISUAL_REQUEST_TIMEOUT_SECONDS,
+            max_retries=0,
             max_completion_tokens=4096,
             extra_body={
                 "chat_template_kwargs": {"enable_thinking": False},
@@ -204,7 +365,6 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 return {'status': 'failed', 'error': 'file not found'}
 
             eval_prompt = user_config.ai.visual_evaluation_prompt
-            narrative_prompt = user_config.ai.visual_narrative_prompt
             base64_image = encode_image(target_path)
             image_info = f"照片时间：{photo.photo_time}\n"
             metadata = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
@@ -222,8 +382,8 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 logger.warning(f"compute relative path failed for photo {photo.id}: {e}")
             # print(target_path, base64_image)
             # Step A: Evaluation
-            eval_response = client.invoke([
-                    {"role": "system", "content": eval_prompt},
+            eval_response = await client.ainvoke([
+                    {"role": "system", "content": eval_prompt + VISUAL_OUTPUT_CONSTRAINT},
                     {
                         "role": "user",
                         "content": [
@@ -238,19 +398,9 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                     }
                 ]
             )
-
-            eval_content = eval_response.content.strip().strip('`').strip().strip('json')
-            print(eval_content)
-            # Clean up code blocks if present
-            if eval_content.startswith("```"):
-                eval_content = eval_content.strip("`")
-                if eval_content.startswith("json"):
-                    eval_content = eval_content[4:]
-            try:
-                result_json = json.loads(eval_content.strip())
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse evaluation JSON for photo {photo.id}: {eval_content}")
-                raise e
+            result_json = await parse_visual_result_with_repair(
+                client, eval_response.content, photo.id
+            )
 
             # 3. Save to DB
             # Remove existing if any

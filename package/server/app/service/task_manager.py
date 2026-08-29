@@ -39,6 +39,9 @@ class TaskManager:
         self._watchdog_running = False
         self._stopping = False
         self._worker_lock = threading.Lock()
+        self._worker_stop_event = None
+        self._restart_thread = None
+        self._restart_requested = False
 
     @classmethod
     def get_instance(cls):
@@ -82,6 +85,7 @@ class TaskManager:
         # 用 multiprocessing.Queue 把 worker 的状态变更事件回传给 API 进程，
         # 由 API 进程派发到所有 SSE 订阅者。
         self._event_queue = multiprocessing.Queue(maxsize=4096)
+        self._worker_stop_event = multiprocessing.Event()
         self._reader_thread = threading.Thread(
             target=self._event_queue_reader,
             daemon=True,
@@ -90,7 +94,7 @@ class TaskManager:
         self._reader_thread.start()
         self.worker_process = multiprocessing.Process(
             target=run_worker,
-            args=(self._event_queue,),
+            args=(self._event_queue, self._worker_stop_event),
             daemon=True,
             name="TaskWorker"
         )
@@ -115,6 +119,8 @@ class TaskManager:
                 logging.debug(f'event_queue_reader error: {e}')
                 continue
             if not isinstance(msg, dict):
+                if msg is None:
+                    return
                 continue
             event = msg.get('event') or 'task.updated'
             data = msg.get('data') or {}
@@ -127,6 +133,7 @@ class TaskManager:
         """Stops the background worker process gracefully."""
         with self._worker_lock:
             self._stopping = True
+            self._restart_requested = False
             if self.worker_process and self.worker_process.is_alive():
                 logging.info("Terminating worker process...")
                 self.worker_process.terminate()
@@ -136,11 +143,61 @@ class TaskManager:
                     self.worker_process.kill()
                 logging.info("Worker process stopped")
             self.worker_process = None
+            self._worker_stop_event = None
 
-    def restart_worker(self):
-        """Restarts the background worker process."""
-        self.stop_worker()
-        self.start_worker_if_needed()
+    def restart_worker(self, *, graceful: bool = False) -> dict[str, str]:
+        """Restart the worker, optionally draining accepted work first."""
+        if not graceful:
+            self.stop_worker()
+            self.start_worker_if_needed()
+            return {"status": "applied"}
+
+        with self._worker_lock:
+            process = self.worker_process
+            stop_event = self._worker_stop_event
+            if not process or not process.is_alive() or stop_event is None:
+                apply_now = True
+            elif self._restart_thread and self._restart_thread.is_alive():
+                return {"status": "draining"}
+            else:
+                apply_now = False
+                self._stopping = True
+                self._restart_requested = True
+                stop_event.set()
+                self._restart_thread = threading.Thread(
+                    target=self._finish_graceful_restart,
+                    args=(process,),
+                    daemon=True,
+                    name="TaskWorkerConfigReload",
+                )
+                self._restart_thread.start()
+
+        if apply_now:
+            self.stop_worker()
+            self.start_worker_if_needed()
+            return {"status": "applied"}
+        self.publish_event("task.worker", {"status": "draining"})
+        return {"status": "draining"}
+
+    def _finish_graceful_restart(self, process) -> None:
+        process.join(timeout=180)
+        if process.is_alive():
+            logging.warning("Worker drain timed out; terminating it to apply settings")
+            process.terminate()
+            process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+        with self._worker_lock:
+            if self.worker_process is process:
+                self.worker_process = None
+                self._worker_stop_event = None
+            should_restart = self._restart_requested
+            self._restart_requested = False
+            self._stopping = not should_restart
+            started = self._start_worker_locked() if should_restart else False
+        self.publish_event("task.worker", {"status": "applied"})
+        if started:
+            self._publish_active_tasks_snapshot()
 
     def start_watchdog(self):
         """Starts a daemon thread that restarts the worker if it dies while
@@ -425,6 +482,12 @@ class TaskManager:
             'created_at': task.created_at.isoformat() if task.created_at else None,
             'updated_at': task.updated_at.isoformat() if task.updated_at else None,
             'payload': task.payload or {},
+            'attempt_count': getattr(task, 'attempt_count', 0) or 0,
+            'next_retry_at': (
+                task.next_retry_at.isoformat()
+                if getattr(task, 'next_retry_at', None)
+                else None
+            ),
         }
         self.publish_event(event, payload)
 

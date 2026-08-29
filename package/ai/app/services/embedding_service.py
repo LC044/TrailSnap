@@ -2,6 +2,7 @@ import traceback
 import logging
 import io
 import base64
+import asyncio
 from typing import List
 from PIL import Image
 
@@ -107,7 +108,7 @@ class EmbeddingService:
         wrapper = model_manager.get_model("clip_text")
         try:
             # Encode texts
-            text_embs = wrapper.encode_text(texts)
+            text_embs = await asyncio.to_thread(wrapper.encode_text, texts)
             return text_embs.tolist()
         except Exception as e:
             logging.error(f"Error in text embedding: {e}\n{traceback.format_exc()}")
@@ -127,7 +128,7 @@ class EmbeddingService:
                 images.append(image)
                 
             # Encode images
-            image_embs = wrapper.encode_image(images)
+            image_embs = await asyncio.to_thread(wrapper.encode_image, images)
             return image_embs.tolist()
         except Exception as e:
             logging.error(f"Error in image embedding: {e}\n{traceback.format_exc()}")

@@ -99,13 +99,12 @@ def _detect_apple_perf_cores() -> int:
 
 @functools.lru_cache(maxsize=1)
 def get_session_options():
-    """Apple Silicon 专用 SessionOptions（图优化 + P-core 线程 + SEQUENTIAL）；其它平台返回 None。
+    """Bound ONNX Runtime threads on every platform.
 
-    ORT_INTRA_OP_THREADS 可覆盖 intra_op 线程数（仅 Apple Silicon 生效）。
+    Apple Silicon still falls back to its performance-core count when no
+    explicit runtime budget was configured. TrailSnap startup always exports
+    ORT_INTRA_OP_THREADS, so normal service runs use the shared CPU budget.
     """
-    if not _is_apple_silicon():
-        logger.info("Non-Apple-Silicon platform: using ONNX Runtime default SessionOptions.")
-        return None
 
     import onnxruntime as ort
 
@@ -115,15 +114,17 @@ def get_session_options():
     override = os.getenv("ORT_INTRA_OP_THREADS", "").strip()
     if override.isdigit() and int(override) > 0:
         intra = int(override)
-    else:
+    elif _is_apple_silicon():
         intra = _detect_apple_perf_cores()
+    else:
+        intra = max(1, min(4, (os.cpu_count() or 1) - 1))
 
     so.intra_op_num_threads = intra
     so.inter_op_num_threads = 1
     so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
     logger.info(
-        f"Apple Silicon ONNX Runtime SessionOptions: graph_opt=ORT_ENABLE_ALL, "
+        f"ONNX Runtime SessionOptions: graph_opt=ORT_ENABLE_ALL, "
         f"intra_op_threads={intra}, inter_op_threads=1, mode=SEQUENTIAL"
     )
     return so
