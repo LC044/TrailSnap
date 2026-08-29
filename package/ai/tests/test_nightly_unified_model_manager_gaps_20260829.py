@@ -210,7 +210,19 @@ def test_select_model_returns_false_when_already_selected():
         "models": [],
     }
     manager._selections = {"face": "large"}
+    # Master (post-PR-#151) re-introduced ``_pending_selections`` in
+    # ``select_model``; default to an empty mapping so the test stays
+    # compatible with both the new and the legacy code paths.
+    manager._pending_selections = {}
 
     with patch.object(manager, "get_spec", return_value={"tasks": ["face"], "available": True}):
-        assert manager.select_model("face", "large") is False
+        result = manager.select_model("face", "large")
+    # Legacy UnifiedModelManager returned ``False`` for an unchanged
+    # selection; the newer dict-based contract returns
+    # ``{"changed": False, ...}``. Both signal "no-op".
+    assert result is False or (
+        isinstance(result, dict) and result.get("changed") is False
+    )
+    # The selection dict must remain a no-op regardless of return shape.
+    assert manager._selections == {"face": "large"}
 
