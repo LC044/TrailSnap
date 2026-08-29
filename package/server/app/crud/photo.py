@@ -21,7 +21,7 @@ from app.crud import face as crud_face
 from app.crud.album import get_album, _build_album_query, _update_album_photo_count
 from app.crud.cluster import remove_photo_from_clusters
 from app.crud.search_vector import POSITIVE_SENTIMENT_VECTOR
-from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene
+from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene, PhotoDeclutterRecord
 from app.db.models.photo import FileType, ImageType
 from app.schemas import photo as photo_schemas
 from app.schemas.metadata import PhotoMetadataUpdate
@@ -1041,6 +1041,19 @@ def restore_photos(db: Session, photo_ids: List[UUID], user_id: UUID = None):
     for photo in photos:
         photo.is_deleted = False
         photo.deleted_at = None
+
+    # Restoring a photo discarded by the swipe filter reverses that decision,
+    # so the photo can be considered again. Keep decisions are intentionally
+    # preserved when a photo happened to be deleted through another workflow.
+    restored_ids = [photo.id for photo in photos]
+    if restored_ids:
+        decision_query = db.query(PhotoDeclutterRecord).filter(
+            PhotoDeclutterRecord.photo_id.in_(restored_ids),
+            PhotoDeclutterRecord.decision == "delete",
+        )
+        if user_id is not None:
+            decision_query = decision_query.filter(PhotoDeclutterRecord.owner_id == user_id)
+        decision_query.delete(synchronize_session=False)
         
     db.commit()
     

@@ -16,5 +16,6 @@ from .cluster import ImageCluster, PhotoCluster
 from .agent import AgentSession, AgentMessage
 from .agent_token import AgentToken
 from .photo_color import PhotoColor
+from .photo_declutter_record import PhotoDeclutterRecord
 from .notification import Notification, NotificationType, NotificationLevel
 from .moment_day_caption import MomentDayCaption

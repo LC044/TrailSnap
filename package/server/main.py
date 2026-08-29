@@ -32,7 +32,7 @@ from app.api import (
     user, train_ticket, flight_ticket, album, index, settings, face, ocr,
     location, location_stats, search, classification, system, media, stats, photo, tasks,
     annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav, guess_city, storage,
-    notification, moment
+    notification, moment, swipe_filter
 )
 from railway.api import router as railway_router
 from app.core.logger import setup_logging
@@ -289,6 +289,7 @@ app.include_router(user.router, prefix="/users", tags=["Users"])
 app.include_router(train_ticket.router, prefix="/train-ticket", tags=["train-ticket"])
 app.include_router(flight_ticket.router, prefix="/flight-ticket", tags=["flight-ticket"])
 app.include_router(railway_router, prefix="/railway", tags=["railway"])
+app.include_router(swipe_filter.router, prefix="/photos/swipe-filter", tags=["SwipeFilter"])
 app.include_router(photo.router, prefix="/photos", tags=["Photos"])
 app.include_router(metadata.router, prefix="/metadata", tags=["Metadata"])
 app.include_router(album.router,prefix="/albums", tags=["Albums"])

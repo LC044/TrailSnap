@@ -2,6 +2,21 @@ import request from '@/utils/request'
 import type { AlbumImage,Photo, SimilarPhoto } from '@/types/album'
 import type { Task as TaskResponse } from '@/api/tasks'
 
+export type SwipeFilterDecision = 'keep' | 'delete'
+
+export interface SwipeFilterStats {
+  processed: number
+  remaining: number
+  total: number
+  kept: number
+  deleted: number
+}
+
+export interface SwipeFilterBatch {
+  photos: Photo[]
+  stats: SwipeFilterStats
+}
+
 export const photoApi = {
   // Similar Photo Task API
   async createSimilarTask(threshold: number = 0.9) {
@@ -74,6 +89,26 @@ export const photoApi = {
       params: { limit }
     });
     return data.data;
+  },
+
+  async getSwipeFilterBatch(limit: number = 20): Promise<SwipeFilterBatch> {
+    const data = await request.get('/api/photos/swipe-filter', { params: { limit } })
+    return data.data
+  },
+
+  async saveSwipeFilterDecisions(items: Array<{ photo_id: string; decision: SwipeFilterDecision }>) {
+    const data = await request.put('/api/photos/swipe-filter/decisions', { items })
+    return data.data as { updated: number }
+  },
+
+  async undoSwipeFilterDecision(photoId: string) {
+    const data = await request.delete(`/api/photos/swipe-filter/decisions/${photoId}`)
+    return data.data as { undone: boolean }
+  },
+
+  async resetSwipeFilterDecisions() {
+    const data = await request.delete('/api/photos/swipe-filter/decisions')
+    return data.data as { reset: number }
   },
 
   async batchDownload(photoIds: string[]) {

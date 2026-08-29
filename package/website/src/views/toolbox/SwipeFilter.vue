@@ -5,7 +5,7 @@
       <button
         @click="handleBack"
         class="p-2 rounded-full bg-slate-200/50 dark:bg-slate-800/50 text-slate-700 dark:text-white hover:bg-slate-300/50 dark:hover:bg-slate-700 transition-colors backdrop-blur-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
-        title="返回并清理已丢弃的照片"
+        title="返回工具箱"
       >
         <ArrowLeft class="w-5 h-5" />
       </button>
@@ -13,6 +13,9 @@
         <h1 class="text-sm font-semibold tracking-wider text-slate-800 dark:text-slate-100">照片筛选</h1>
         <span class="text-xs text-slate-500 dark:text-slate-400">
           {{ processedCount }} / {{ totalCount }}
+        </span>
+        <span v-if="syncQueue.size > 0 || syncing" class="text-[10px] text-primary-600 dark:text-primary-500">
+          {{ syncError ? '等待网络同步' : '同步中' }}
         </span>
       </div>
       <button
@@ -32,15 +35,36 @@
         <span class="text-sm">加载中...</span>
       </div>
 
+      <div v-else-if="photos.length === 0 && syncError" class="flex flex-col items-center gap-4 text-slate-500 dark:text-slate-400 text-center">
+        <span class="icon-[tabler--cloud-off] w-16 h-16 opacity-70"></span>
+        <span class="text-lg font-medium text-slate-800 dark:text-slate-100">操作已保存在本地</span>
+        <p class="text-sm max-w-xs">恢复网络并同步完成后，会继续获取未处理照片。</p>
+        <button
+          @click="retrySync"
+          class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        >
+          重试同步
+        </button>
+      </div>
+
       <div v-else-if="photos.length === 0" class="flex flex-col items-center gap-4 text-slate-500 dark:text-slate-400">
         <CheckCircle class="w-16 h-16 text-emerald-500 opacity-80" />
-        <span class="text-lg font-medium text-slate-800 dark:text-slate-100">太棒了，全部处理完毕！</span>
-        <button 
-          @click="fetchPhotos" 
-          class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
-        >
-          再来一批
-        </button>
+        <span class="text-lg font-medium text-slate-800 dark:text-slate-100">本轮照片已全部处理完成</span>
+        <span class="text-sm">保留 {{ keptTotal }} 张 · 丢弃 {{ deletedTotal }} 张</span>
+        <div class="flex items-center gap-3">
+          <button
+            @click="handleBack"
+            class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            返回工具箱
+          </button>
+          <button
+            @click="resetProgress"
+            class="px-6 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-full transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          >
+            重新开始筛选
+          </button>
+        </div>
       </div>
 
       <!-- 卡片堆叠 -->
@@ -49,6 +73,8 @@
         <div
           v-for="(photo, index) in stack"
           :key="photo.id"
+          data-testid="swipe-card"
+          :data-photo-id="photo.id"
           class="absolute inset-0 m-auto w-[85vw] max-w-[360px] h-[68vh] max-h-[600px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden transform-gpu will-change-transform touch-none"
           :class="index === 0
             ? 'cursor-grab active:cursor-grabbing'
@@ -279,8 +305,8 @@
                 <Undo class="w-5 h-5" />
               </div>
               <div class="flex-1 text-slate-700 dark:text-slate-200">
-                <p class="font-medium">撤销与清理</p>
-                <p class="text-xs text-slate-500 dark:text-slate-400">Ctrl+Z 撤销；返回时自动清理已丢弃照片</p>
+                <p class="font-medium">撤销与同步</p>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Ctrl+Z 撤销；操作会自动同步，离线时安全保存</p>
               </div>
             </div>
           </div>
@@ -303,39 +329,55 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter, onBeforeRouteLeave } from 'vue-router'
+import { onBeforeRouteLeave } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { ArrowLeft, Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin, Sparkles, Hand, Play } from 'lucide-vue-next'
 import { photoApi } from '@/api/photo'
-import { albumService } from '@/api/album'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Photo } from '@/types/album'
 import { format } from 'date-fns'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import { toServerUrl } from '@/config/server'
+import { useUserStore } from '@/stores/user'
+import type { SwipeFilterDecision } from '@/api/photo'
 
-const router = useRouter()
 const appBack = useAppBack('/toolbox')
+const userStore = useUserStore()
 
 // 状态
 const loading = ref(false)
 const photos = ref<Photo[]>([])
 const processedCount = ref(0)
 const totalCount = ref(0)
+const remainingCount = ref(0)
+const keptTotal = ref(0)
+const deletedTotal = ref(0)
 
 // 撤销历史与待删除队列
 const MAX_UNDO = 30
-const BATCH_SYNC_SIZE = 10
-const OFFLINE_STORAGE_KEY = 'trailsnap:swipe-filter:offline-deletes'
+const OFFLINE_STORAGE_KEY_PREFIX = 'trailsnap:swipe-filter:operations'
+const LEGACY_OFFLINE_STORAGE_KEY = 'trailsnap:swipe-filter:offline-deletes'
 
 interface ActionRecord {
   photo: Photo
   action: 'keep' | 'delete'
 }
 const actionHistory = ref<ActionRecord[]>([])
-const pendingDeleteIds = ref<Set<string>>(new Set()) // 还在撤销栈内的删除
-const syncQueue = ref<Set<string>>(new Set()) // 已超出撤销栈，等待后台提交的删除
+
+interface SyncOperation {
+  photo_id: string
+  type: 'decision' | 'undo'
+  decision?: SwipeFilterDecision
+  revision: number
+}
+
+const syncQueue = ref<Map<string, SyncOperation>>(new Map())
+const handledPhotoIds = ref<Set<string>>(new Set())
+const syncing = ref(false)
+const syncError = ref(false)
+let operationRevision = 0
+let activeSync: Promise<void> | null = null
 
 // 统计计数 (代替之前的 computed，保证超出撤销栈后数字不掉)
 const sessionDeletedCount = ref(0)
@@ -346,52 +388,111 @@ const currentPhoto = computed(() => photos.value[0] || null)
 const deletedCount = computed(() => sessionDeletedCount.value)
 const keptCount = computed(() => sessionKeptCount.value)
 
-// --- 本地离线缓存与静默提交 ---
+// --- 按用户隔离的离线操作队列与静默同步 ---
+const offlineStorageKey = () => `${OFFLINE_STORAGE_KEY_PREFIX}:${userStore.userInfo?.id || 'unknown'}`
+
 const persistToStorage = () => {
   try {
-    const allIds = [...syncQueue.value, ...pendingDeleteIds.value]
-    if (allIds.length > 0) {
-      localStorage.setItem(OFFLINE_STORAGE_KEY, JSON.stringify(allIds))
+    const operations = Array.from(syncQueue.value.values())
+    if (operations.length > 0) {
+      localStorage.setItem(offlineStorageKey(), JSON.stringify(operations))
     } else {
-      localStorage.removeItem(OFFLINE_STORAGE_KEY)
+      localStorage.removeItem(offlineStorageKey())
     }
   } catch (e) {}
 }
 
 const flushSyncQueue = async () => {
+  if (activeSync) return activeSync
   if (syncQueue.value.size === 0) return
-  const ids = Array.from(syncQueue.value)
+
+  activeSync = (async () => {
+    syncing.value = true
+    syncError.value = false
+    try {
+      while (syncQueue.value.size > 0) {
+        const snapshot = Array.from(syncQueue.value.values())
+        const decisions = snapshot.filter(op => op.type === 'decision')
+        const undos = snapshot.filter(op => op.type === 'undo')
+
+        if (decisions.length > 0) {
+          await photoApi.saveSwipeFilterDecisions(decisions.map(op => ({
+            photo_id: op.photo_id,
+            decision: op.decision!,
+          })))
+        }
+        for (const op of undos) {
+          await photoApi.undoSwipeFilterDecision(op.photo_id)
+        }
+
+        snapshot.forEach(op => {
+          if (syncQueue.value.get(op.photo_id)?.revision === op.revision) {
+            syncQueue.value.delete(op.photo_id)
+          }
+        })
+        persistToStorage()
+      }
+    } catch (error) {
+      syncError.value = true
+      persistToStorage()
+      console.warn('Swipe-filter sync failed, will retry later.', error)
+    } finally {
+      syncing.value = false
+    }
+  })()
+
   try {
-    await albumService.batchUpdatePhotos({
-      photo_ids: ids,
-      action: 'delete'
-    })
-    // 成功后从队列移除
-    ids.forEach(id => syncQueue.value.delete(id))
-    persistToStorage()
-  } catch (error) {
-    // 失败了（如断网）就留在队列里，等待下次触发或退出时再试
-    console.warn('Background sync failed, will retry later.', error)
+    await activeSync
+  } finally {
+    activeSync = null
   }
 }
 
-const recoverOfflineDeletes = async () => {
+const recoverOfflineOperations = async () => {
   try {
-    const saved = localStorage.getItem(OFFLINE_STORAGE_KEY)
+    const saved = localStorage.getItem(offlineStorageKey())
     if (saved) {
-      const ids = JSON.parse(saved) as string[]
-      if (ids.length > 0) {
-        await albumService.batchUpdatePhotos({
-          photo_ids: ids,
-          action: 'delete'
-        })
-        localStorage.removeItem(OFFLINE_STORAGE_KEY)
-        console.log(`Recovered and deleted ${ids.length} offline photos.`)
+      const operations = JSON.parse(saved) as SyncOperation[]
+      for (const op of operations) {
+        operationRevision = Math.max(operationRevision, op.revision || 0)
+        syncQueue.value.set(op.photo_id, op)
+        if (op.type === 'decision') handledPhotoIds.value.add(op.photo_id)
       }
     }
+
+    // Migrate the old delete-only queue once. It belonged to the currently
+    // authenticated user because logout clears all trailsnap:* keys.
+    const legacy = localStorage.getItem(LEGACY_OFFLINE_STORAGE_KEY)
+    if (legacy) {
+      const ids = JSON.parse(legacy) as string[]
+      ids.forEach(photoId => {
+        const op: SyncOperation = {
+          photo_id: photoId,
+          type: 'decision',
+          decision: 'delete',
+          revision: ++operationRevision,
+        }
+        syncQueue.value.set(photoId, op)
+        handledPhotoIds.value.add(photoId)
+      })
+      localStorage.removeItem(LEGACY_OFFLINE_STORAGE_KEY)
+      persistToStorage()
+    }
+    await flushSyncQueue()
   } catch (e) {
-    console.warn('Failed to recover offline deletes', e)
+    console.warn('Failed to recover swipe-filter operations', e)
   }
+}
+
+const enqueueOperation = (photoId: string, type: SyncOperation['type'], decision?: SwipeFilterDecision) => {
+  syncQueue.value.set(photoId, {
+    photo_id: photoId,
+    type,
+    decision,
+    revision: ++operationRevision,
+  })
+  persistToStorage()
+  void flushSyncQueue()
 }
 
 // --- 键化卡片栈 ---
@@ -681,12 +782,25 @@ const fetchPhotos = async () => {
   if (loading.value) return
   loading.value = true
   try {
-    const res = await photoApi.getRandomPhotos(20)
-    if (res && res.length > 0) {
-      photos.value.push(...res)
-      totalCount.value += res.length
+    await flushSyncQueue()
+    if (syncQueue.value.size > 0) return
+
+    const res = await photoApi.getSwipeFilterBatch(20)
+    syncError.value = false
+    const queuedIds = new Set(photos.value.map(photo => photo.id))
+    const uniquePhotos = res.photos.filter(photo => (
+      !queuedIds.has(photo.id) && !handledPhotoIds.value.has(photo.id)
+    ))
+    if (uniquePhotos.length > 0) {
+      photos.value.push(...uniquePhotos)
     }
+    processedCount.value = res.stats.processed
+    remainingCount.value = res.stats.remaining
+    totalCount.value = res.stats.total
+    keptTotal.value = res.stats.kept
+    deletedTotal.value = res.stats.deleted
   } catch (error) {
+    syncError.value = true
     ElMessage.error('获取照片失败')
   } finally {
     loading.value = false
@@ -712,28 +826,23 @@ const handleSwipe = (direction: 'left' | 'right', velocity = 0) => {
   // 记录操作
   const action = direction === 'left' ? 'delete' : 'keep'
   actionHistory.value.push({ photo, action })
+  handledPhotoIds.value.add(photo.id)
+  enqueueOperation(photo.id, 'decision', action)
   
   if (action === 'delete') {
     sessionDeletedCount.value++
-    pendingDeleteIds.value.add(photo.id)
+    deletedTotal.value++
   } else {
     sessionKeptCount.value++
+    keptTotal.value++
   }
+  processedCount.value++
+  remainingCount.value = Math.max(0, remainingCount.value - 1)
 
-  // 防止撤销栈无限膨胀：超出 MAX_UNDO 后，锁定最老的记录并移出撤销栈
+  // 防止撤销栈无限膨胀：超出 MAX_UNDO 后移除最老记录。
+  // 决策已经由幂等接口持久化，无需再维护第二套删除队列。
   if (actionHistory.value.length > MAX_UNDO) {
-    const oldest = actionHistory.value.shift()!
-    if (oldest.action === 'delete') {
-      pendingDeleteIds.value.delete(oldest.photo.id)
-      syncQueue.value.add(oldest.photo.id)
-    }
-  }
-
-  persistToStorage()
-
-  // 触发后台分批静默提交
-  if (syncQueue.value.size >= BATCH_SYNC_SIZE) {
-    flushSyncQueue()
+    actionHistory.value.shift()
   }
 
   // 保证 isAnimating=true 的 transition 先生效，下一帧再应用飞出 transform，避免偶发无动画闪切
@@ -746,7 +855,6 @@ const handleSwipe = (direction: 'left' | 'right', velocity = 0) => {
   // 动画结束后移除当前照片 (与飞出时长同步，避免提前/滞后裁切)
   setTimeout(() => {
     photos.value.shift()
-    processedCount.value++
 
     // 重置状态
     isAnimating.value = false
@@ -770,16 +878,18 @@ const undo = () => {
   
   if (lastAction.action === 'delete') {
     sessionDeletedCount.value--
-    pendingDeleteIds.value.delete(lastAction.photo.id)
+    deletedTotal.value = Math.max(0, deletedTotal.value - 1)
   } else {
     sessionKeptCount.value--
+    keptTotal.value = Math.max(0, keptTotal.value - 1)
   }
-  
-  persistToStorage()
+  handledPhotoIds.value.delete(lastAction.photo.id)
+  enqueueOperation(lastAction.photo.id, 'undo')
+  remainingCount.value++
   
   // 将照片插回队首
   photos.value.unshift(lastAction.photo)
-  processedCount.value--
+  processedCount.value = Math.max(0, processedCount.value - 1)
 }
 
 // 拖拽事件处理
@@ -890,25 +1000,44 @@ const handleWheel = (e: WheelEvent) => {
   }
 }
 
-// 退出前提交批量删除
-const submitDeletions = async () => {
-  const ids = Array.from(new Set([...syncQueue.value, ...pendingDeleteIds.value]))
-  if (ids.length > 0) {
-    try {
-      syncQueue.value.clear()
-      pendingDeleteIds.value.clear()
-      await albumService.batchUpdatePhotos({
-        photo_ids: ids,
-        action: 'delete'
-      })
-      persistToStorage() // 提交成功后清除本地缓存
-      ElMessage.success(`已将 ${ids.length} 张照片移至回收站`)
-    } catch (error) {
-      console.error(error)
-      // 失败后将 id 重新加回离线队列并缓存，下次进页面时自动重试
-      ids.forEach(id => syncQueue.value.add(id))
-      persistToStorage()
-      ElMessage.error('网络异常，删除操作已保存在本地，下次将自动重试')
+const retrySync = async () => {
+  syncError.value = false
+  await flushSyncQueue()
+  if (syncQueue.value.size === 0) await fetchPhotos()
+}
+
+const resetProgress = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '将清除“已处理”记录，让仍在相册中的照片重新参与筛选。回收站照片不会自动恢复。',
+      '重新开始筛选？',
+      {
+        confirmButtonText: '重新开始',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    await flushSyncQueue()
+    if (syncQueue.value.size > 0) {
+      ElMessage.warning('请等待离线操作同步完成后再重置')
+      return
+    }
+    await photoApi.resetSwipeFilterDecisions()
+    photos.value = []
+    actionHistory.value = []
+    handledPhotoIds.value.clear()
+    processedCount.value = 0
+    totalCount.value = 0
+    remainingCount.value = 0
+    keptTotal.value = 0
+    deletedTotal.value = 0
+    sessionDeletedCount.value = 0
+    sessionKeptCount.value = 0
+    await fetchPhotos()
+    ElMessage.success('已重新开始筛选')
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') {
+      ElMessage.error('重置处理记录失败')
     }
   }
 }
@@ -917,23 +1046,25 @@ const handleBack = () => {
   appBack()
 }
 
-onBeforeRouteLeave(async (to, from, next) => {
-  await submitDeletions()
+onBeforeRouteLeave((to, from, next) => {
+  // 操作入队时已写入 localStorage，离线时不阻塞离开页面。
+  persistToStorage()
+  void flushSyncQueue()
   next()
 })
 
 const handleBeforeUnload = () => {
-  if (pendingDeleteIds.value.size > 0) {
-    // 浏览器刷新/关闭标签页时，尽量尝试提交数据防丢失
-    submitDeletions()
-  }
+  persistToStorage()
 }
 
 // 生命周期
-onMounted(() => {
+onMounted(async () => {
   detectWeakNetwork()
-  recoverOfflineDeletes() // 页面加载时恢复并提交离线期间的删除操作
-  fetchPhotos()
+  if (!userStore.userInfo) {
+    try { await userStore.getUserInfo() } catch { /* 401 由请求拦截器处理 */ }
+  }
+  await recoverOfflineOperations()
+  await fetchPhotos()
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('beforeunload', handleBeforeUnload)
   // 首次打开时展示引导
