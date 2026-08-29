@@ -1,11 +1,14 @@
 <template>
-  <div class="p-4 md:p-6 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-    <h2 class="text-xl md:text-2xl font-semibold mb-4 border-b pb-2 dark:text-white">外部图库管理</h2>
+  <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6">
+    <div class="mb-5">
+      <h2 class="text-xl font-semibold text-gray-900 dark:text-white md:text-2xl">外部图库</h2>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">接入已有照片文件夹，TrailSnap 会为照片建立索引，不会移动或修改源文件。</p>
+    </div>
 
     <el-tabs v-model="activeTab" class="demo-tabs">
       <el-tab-pane label="目录管理" name="directories">
         <!-- 管理员可切换目标用户 -->
-        <div v-if="userStore.userInfo?.is_superuser" class="mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700">
+        <div v-if="userStore.userInfo?.is_superuser && !desktopMode" class="mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700">
           <span class="text-sm font-medium mr-2 dark:text-gray-300">管理用户目录:</span>
           <el-select v-model="selectedUserId" placeholder="选择用户" class="w-64">
             <el-option
@@ -17,12 +20,66 @@
           </el-select>
         </div>
 
-        <!-- 候选发现区（仅管理员） -->
-        <div v-if="isSuperuser" class="mb-6">
-          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <h3 class="text-base font-medium dark:text-gray-200">照片目录接入</h3>
+        <!-- 桌面端以系统目录选择器作为主入口 -->
+        <section
+          v-if="isSuperuser && desktopMode"
+          class="mb-6 overflow-hidden rounded-xl border p-5 md:p-6"
+          style="border-color: rgba(var(--theme-rgb), 0.2); background-color: rgba(var(--theme-rgb), 0.05)"
+        >
+          <div class="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex min-w-0 items-start gap-4">
+              <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-white shadow-primary-500/20">
+                <FolderPlus class="h-5 w-5" />
+              </div>
+              <div>
+                <h3 class="font-semibold text-gray-900 dark:text-white">添加本机照片文件夹</h3>
+                <p class="mt-1 text-sm leading-6 text-gray-500 dark:text-gray-400">选择电脑上的照片目录，添加后会立即在后台扫描。以后新增的照片可通过“重新扫描”同步。</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+              @click="chooseFolder"
+            >
+              <FolderOpen class="h-4 w-4" />
+              选择照片文件夹
+            </button>
+          </div>
+
+          <div v-if="manualPath" class="mt-5 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+            <div class="flex flex-col gap-3 md:flex-row md:items-center">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <HardDrive class="h-3.5 w-3.5" /> 已选择
+                </div>
+                <p class="mt-1 truncate text-sm font-medium text-gray-900 dark:text-gray-100" :title="manualPath">{{ manualPath }}</p>
+                <p v-if="manualMsg" class="mt-1 text-xs" :class="manualValid ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'">{{ manualMsg }}</p>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" @click="chooseFolder">重新选择</el-button>
+                <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" type="primary" :loading="submitting || validating" :disabled="!manualValid" @click="addManual">添加并扫描</el-button>
+              </div>
+            </div>
+          </div>
+
+          <details class="mt-4 text-sm">
+            <summary class="cursor-pointer select-none text-gray-500 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400">无法选择？手动输入目录路径</summary>
+            <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+              <el-input ref="manualInputRef" v-model="manualPath" placeholder="例如 D:/Photos/family" @input="resetManualValidation" />
+              <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" :loading="validating" @click="validateManual">校验路径</el-button>
+            </div>
+          </details>
+        </section>
+
+        <!-- 服务端部署以挂载目录自动发现作为主入口 -->
+        <div v-if="isSuperuser && !desktopMode" class="mb-6">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="font-medium text-gray-900 dark:text-gray-200">添加照片目录</h3>
+              <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">自动发现服务端已挂载的照片文件夹，也可以手动指定路径。</p>
+            </div>
             <div class="flex gap-2">
-              <el-button size="small" @click="showDockerGuide = true">查看 Docker 配置</el-button>
+              <el-button size="small" @click="showDockerGuide = true">Docker 挂载说明</el-button>
               <el-button size="small" type="primary" plain :loading="detecting" @click="loadCandidates">重新检测</el-button>
             </div>
           </div>
@@ -39,7 +96,7 @@
               下自动发现照片图库，当前该目录不存在。可直接手动添加本机任意照片文件夹路径；若使用 Docker 部署，也可按挂载示例把照片目录挂到该路径下。
             </p>
             <div class="flex justify-center gap-2 flex-wrap">
-              <el-button type="primary" @click="focusManual">手动添加路径</el-button>
+              <el-button type="primary" @click="focusManual">手动指定路径</el-button>
               <el-button @click="showDockerGuide = true">查看 Docker 配置</el-button>
             </div>
           </div>
@@ -101,28 +158,42 @@
         </div>
 
         <!-- 已接入图库 -->
-        <div class="mb-6">
-          <h3 class="text-base font-medium mb-3 dark:text-gray-200">已接入图库</h3>
-          <el-table :data="registeredDirs" style="width: 100%" border>
-            <el-table-column label="目录路径" min-width="240">
-              <template #default="{ row }">
-                <div class="break-all text-sm">{{ row.path }}</div>
-                <el-tag v-if="!isUnderRoot(row.path)" type="info" size="small" class="mt-1">自定义路径</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column v-if="isSuperuser" label="操作" width="200">
-              <template #default="{ row }">
-                <el-button size="small" @click="scanDir(row.path)">重新扫描</el-button>
-                <el-button type="danger" size="small" @click="removeDir(row.path)">移除</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <p v-if="registeredDirs.length === 0" class="text-sm text-gray-400 dark:text-gray-500 mt-2">尚未接入任何图库。</p>
+        <section class="mb-6">
+          <div class="mb-3 flex items-center justify-between">
+            <h3 class="font-medium text-gray-900 dark:text-gray-200">已添加的文件夹</h3>
+            <span v-if="registeredDirs.length" class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ registeredDirs.length }} 个</span>
+          </div>
+          <div v-if="registeredDirs.length" class="grid gap-3">
+            <article v-for="row in registeredDirs" :key="row.path" class="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700 sm:flex-row sm:items-center">
+              <div class="flex min-w-0 flex-1 items-center gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-primary-500 dark:bg-gray-700">
+                  <FolderOpen class="h-5 w-5" />
+                </div>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <p class="truncate text-sm font-medium text-gray-900 dark:text-gray-100" :title="row.path">{{ directoryName(row.path) }}</p>
+                    <el-tag v-if="!desktopMode && !isUnderRoot(row.path)" type="info" size="small">自定义</el-tag>
+                  </div>
+                  <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400" :title="row.path">{{ row.path }}</p>
+                </div>
+              </div>
+              <div v-if="isSuperuser" class="flex shrink-0 gap-2 pl-[52px] sm:pl-0">
+                <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" size="small" @click="scanDir(row.path)"><RefreshCw class="mr-1 h-3.5 w-3.5" />重新扫描</el-button>
+                <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" type="danger" plain size="small" @click="removeDir(row.path)">移除</el-button>
+              </div>
+            </article>
+          </div>
+          <div v-else class="rounded-xl border border-dashed border-gray-300 px-5 py-9 text-center dark:border-gray-600">
+            <FolderOpen class="mx-auto h-8 w-8 text-gray-300 dark:text-gray-600" />
+            <p class="mt-3 text-sm font-medium text-gray-700 dark:text-gray-300">还没有添加照片文件夹</p>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">添加后，照片会陆续出现在图库中。</p>
+            <el-button v-if="isSuperuser && desktopMode" class="mt-4 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" type="primary" @click="chooseFolder">选择照片文件夹</el-button>
+          </div>
           <p v-if="!isSuperuser" class="text-xs text-gray-400 dark:text-gray-500 mt-2">仅管理员可管理图库，如需添加或移除请联系管理员。</p>
-        </div>
+        </section>
 
-        <!-- 手动添加（高级，仅管理员） -->
-        <el-collapse v-if="isSuperuser" v-model="manualCollapse" class="mb-2">
+        <!-- 服务端部署的自定义路径入口 -->
+        <el-collapse v-if="isSuperuser && !desktopMode" v-model="manualCollapse" class="mb-2">
           <el-collapse-item title="高级：手动输入路径" name="manual">
             <p class="text-sm text-gray-500 mb-2 dark:text-gray-400">
               填写照片文件夹的绝对路径。本机部署如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">D:/Photos/family</code>，Docker 部署如 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/family</code>。
@@ -142,9 +213,10 @@
           </el-collapse-item>
         </el-collapse>
 
-        <p class="text-xs text-gray-400 dark:text-gray-500 mt-2">
-          TrailSnap 不会主动移动或修改源文件，缩略图与索引存放在 TrailSnap 数据目录。
-        </p>
+        <div class="mt-4 flex items-start gap-2 rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-gray-500 dark:bg-gray-900 dark:text-gray-400">
+          <ShieldCheck class="mt-0.5 h-4 w-4 shrink-0 text-green-600 dark:text-green-400" />
+          <span>源文件保持原位，移除文件夹时只会清理 TrailSnap 中的索引和缩略图。</span>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="图片文件过滤" name="filter">
@@ -247,6 +319,7 @@ import { userService, type User } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
+import { FolderPlus, FolderOpen, HardDrive, RefreshCw, ShieldCheck } from 'lucide-vue-next'
 import ExternalGalleryPickerDialog from '@/components/ExternalGalleryPickerDialog.vue'
 import { isTauriApp } from '@/config/server'
 
@@ -265,6 +338,7 @@ const userStore = useUserStore()
 const users = ref<User[]>([])
 const selectedUserId = ref('')
 const isSuperuser = computed(() => !!userStore.userInfo?.is_superuser)
+const desktopMode = isTauriApp()
 
 // 候选发现
 const detecting = ref(false)
@@ -298,6 +372,13 @@ const filterConfig = reactive({
 })
 
 const selectedPaths = computed(() => Array.from(selectedSet))
+
+const directoryName = (path: string) => path.replace(/[\\/]+$/, '').split(/[\\/]/).filter(Boolean).pop() || path
+
+const resetManualValidation = () => {
+  manualValid.value = false
+  manualMsg.value = ''
+}
 
 const isUnderRoot = (path: string) => {
   const root = candidates.value.root
@@ -359,7 +440,7 @@ const loadFilter = async () => {
 const reloadAll = async () => {
   // 候选发现仅管理员需要（普通用户无管理权限，不展示候选区）
   const tasks: Promise<unknown>[] = [loadRegistered(), loadFilter()]
-  if (isSuperuser.value) tasks.unshift(loadCandidates())
+  if (isSuperuser.value && !desktopMode) tasks.unshift(loadCandidates())
   await Promise.all(tasks)
 }
 
@@ -418,7 +499,9 @@ const validateManual = async () => {
     const data = await settingsApi.validateDirectory(manualPath.value.trim(), uid())
     manualValid.value = data.valid
     manualMsg.value = data.valid
-      ? (data.warnings?.includes('outside_root') ? '校验通过（该路径不在 /app/Photos 下，将作为自定义路径接入）' : '校验通过')
+      ? (desktopMode
+          ? '校验通过，可以添加此文件夹'
+          : (data.warnings?.includes('outside_root') ? '校验通过（该路径不在 /app/Photos 下，将作为自定义路径接入）' : '校验通过'))
       : (data.msg || '校验未通过')
   } catch (e: any) {
     manualValid.value = false
@@ -428,11 +511,11 @@ const validateManual = async () => {
   }
 }
 
-const useSelectedFolder = (path: string) => {
+const useSelectedFolder = async (path: string) => {
   manualPath.value = path
   manualValid.value = false
-  manualMsg.value = '已选择文件夹，请校验后添加'
-  focusManual()
+  manualMsg.value = '正在检查文件夹…'
+  await validateManual()
 }
 
 const chooseFolder = async () => {
@@ -443,7 +526,7 @@ const chooseFolder = async () => {
   try {
     const { open } = await import('@tauri-apps/plugin-dialog')
     const selected = await open({ directory: true, multiple: false, title: '选择照片文件夹' })
-    if (typeof selected === 'string') useSelectedFolder(selected)
+    if (typeof selected === 'string') await useSelectedFolder(selected)
   } catch {
     ElMessage.error('无法打开系统文件夹选择器')
   }
