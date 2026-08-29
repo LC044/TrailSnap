@@ -37,7 +37,7 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
 
     const serverSelect = page.getByTestId('server-address')
     await expect(serverSelect).toBeVisible()
-    await expect(serverSelect).toContainText('http://192.168.1.10:8800')
+    await expect(serverSelect).toHaveValue('http://192.168.1.10:8800')
 
     const formItems = page.locator('.el-form-item')
     await expect(formItems.nth(0)).toContainText('服务器地址')
@@ -47,7 +47,7 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
     await serverSelect.click()
     await expect(page.getByRole('option', { name: 'https://photos.example.com' })).toBeVisible()
     await page.getByRole('option', { name: 'https://photos.example.com' }).click()
-    await expect(serverSelect).toContainText('https://photos.example.com')
+    await expect(serverSelect).toHaveValue('https://photos.example.com')
   })
 
   test('登录前保存新地址并加入历史记录', async ({ page }) => {
@@ -58,9 +58,8 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
     }))
     await page.goto('/login', { waitUntil: 'domcontentloaded' })
 
-    const serverInput = page.getByTestId('server-address').locator('input')
+    const serverInput = page.getByTestId('server-address')
     await serverInput.fill('http://10.0.0.8:8800')
-    await serverInput.press('Enter')
     await page.locator('input[placeholder="请输入用户名"]').fill('test-user')
     await page.locator('input[placeholder="请输入密码"]').fill('password123')
     await page.getByRole('button', { name: '登录' }).click()
@@ -94,6 +93,29 @@ test.describe('手机 App 首次启动 @p0', () => {
 
     await expect(page).toHaveURL(url => url.pathname === '/login' && url.searchParams.get('redirect') === '/')
     await expect(page.getByTestId('server-address')).toBeVisible()
-    await expect(page.getByRole('combobox', { name: '服务器地址' })).toHaveValue('')
+    await expect(page.getByTestId('server-address')).toHaveValue('')
+  })
+})
+
+test.describe('手机 App 服务器断连 @p0', () => {
+  test('已登录时连接失败会保留服务器地址并返回登录页', async ({ page }) => {
+    await page.addInitScript(() => {
+      ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
+        name: 'android',
+      }
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:8800')
+      localStorage.setItem('user_token', 'expired-offline-session')
+    })
+    await page.route('http://192.168.1.10:8800/**', route => route.abort('connectionrefused'))
+
+    await page.goto('/photos', { waitUntil: 'domcontentloaded' })
+
+    await expect(page).toHaveURL(url =>
+      url.pathname === '/login' &&
+      url.searchParams.get('reason') === 'server-unreachable' &&
+      url.searchParams.get('redirect') === '/photos',
+    )
+    await expect(page.getByTestId('server-address')).toHaveValue('http://192.168.1.10:8800')
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token'))).toBeNull()
   })
 })

@@ -81,6 +81,7 @@ const isDark = isDarkMode
 
 let cachedMapData: { data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] } } | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+const MOBILE_ROAM_ZOOM_DAMPING = 0.35
 
 // 双击下钻检测：记录上一次单击的区块名与时间，用于区分「单击选中」与「双击进入下一级」
 let lastClickName = ''
@@ -217,6 +218,19 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
       }
     })
 
+    // ECharts applies a fixed 1.1x step for every touch pinch event. Mobile
+    // browsers can emit many such events for a small finger movement, making
+    // the map jump several zoom levels. Counter-adjust each mobile zoom event
+    // to 35% of its original delta while leaving one-finger panning untouched.
+    myMap.on('georoam', (params: any) => {
+      if (!myMap || window.innerWidth >= 768 || typeof params.zoom !== 'number') return
+      const series = (myMap.getOption() as any)?.series?.[0]
+      const currentZoom = Number(series?.zoom) || 1
+      const dampedFactor = 1 + (params.zoom - 1) * MOBILE_ROAM_ZOOM_DAMPING
+      const zoom = currentZoom / params.zoom * dampedFactor
+      myMap.setOption({ series: [{ zoom }] })
+    })
+
   } catch (e) {
     console.error('Map init failed', e)
     myMap?.hideLoading()
@@ -281,6 +295,7 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
         type: 'map',
         map: mapName,
         roam: true,
+        scaleLimit: { min: 0.7, max: 8 },
         selectedMode: 'single',
         zoom: viewState?.zoom || (props.parentRegion ? 0.9 : 1.2),
         center: viewState?.center || undefined,

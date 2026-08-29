@@ -110,6 +110,13 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
 
     await page.getByRole('button', { name: '关闭更多导航' }).click()
     await expect(drawer).toBeHidden()
+
+    await page.getByRole('button', { name: '更多' }).click()
+    await expect(drawer).toBeVisible()
+    const pathname = new URL(page.url()).pathname
+    await page.goBack()
+    await expect(drawer).toBeHidden()
+    await expect(page).toHaveURL(url => url.pathname === pathname)
   })
 
   test('照片墙双指捏合可切换每行照片数量并记住密度', async ({ page, request }, testInfo) => {

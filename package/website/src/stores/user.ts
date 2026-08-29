@@ -100,6 +100,13 @@ export const useUserStore = defineStore('user', () => {
     router.push('/login');
   };
 
+  // Server-unreachable handling must retain the configured server and local UI
+  // state so the login screen can offer the same address for editing/retry.
+  const clearSession = () => {
+    setToken(null);
+    userInfo.value = null;
+  };
+
   const logout = async () => {
     try {
       await authService.logout();
@@ -117,6 +124,7 @@ export const useUserStore = defineStore('user', () => {
     initializeDesktopSession,
     logout,
     resetState,
+    clearSession,
     getUserInfo,
     updateUserInfo
   };

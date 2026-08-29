@@ -33,23 +33,16 @@
               演示模式：已为你自动填充演示账号，点击「登录」即可体验
             </div>
             <el-form-item v-if="showServerAddress" label="服务器地址" prop="serverUrl" class="!mb-4">
-              <el-select
+              <el-autocomplete
                 v-model="loginForm.serverUrl"
-                filterable
-                allow-create
-                default-first-option
-                :reserve-keyword="false"
+                :fetch-suggestions="suggestServerAddresses"
+                :trigger-on-focus="true"
+                clearable
                 placeholder="请输入或选择服务器地址"
                 class="w-full !h-12"
                 data-testid="server-address"
-              >
-                <el-option
-                  v-for="server in serverHistory"
-                  :key="server"
-                  :label="server"
-                  :value="server"
-                />
-              </el-select>
+                @select="({ value }) => loginForm.serverUrl = value"
+              />
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 例如 http://192.168.1.10:8800，登录时会记住该地址
               </p>
@@ -131,6 +124,15 @@ const allowRegistration = ref(false);
 const demoMode = ref(false);
 const showServerAddress = isMobileApp();
 const serverHistory = ref<string[]>([]);
+
+const suggestServerAddresses = (
+  _query: string,
+  callback: (items: Array<{ value: string }>) => void,
+) => {
+  // History is capped at ten entries; always show all of it so focusing a
+  // prefilled address still exposes the other servers for one-tap switching.
+  callback(serverHistory.value.map(value => ({ value })));
+};
 
 // Character interaction state
 const focusTarget = ref<'username' | 'password' | null>(null);

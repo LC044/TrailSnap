@@ -38,7 +38,7 @@ export function useOverlayStack(visible: Ref<boolean>, close: OverlayCloser) {
     unregister?.()
     unregister = undefined
     if (isVisible) unregister = registerOverlay(close, id)
-  }, { immediate: true })
+  }, { immediate: true, flush: 'sync' })
 
   onBeforeUnmount(() => unregister?.())
 }

@@ -8,7 +8,7 @@ import axios, {
 import { ElMessage } from 'element-plus';
 import router from '@/router';
 import { useUserStore } from '@/stores/user';
-import { getServerUrl, hasConfiguredServer, isNativeApp } from '@/config/server';
+import { getServerUrl, hasConfiguredServer, isMobileApp, isNativeApp } from '@/config/server';
 
 // 创建 Axios 实例（类型不变）
 const service: AxiosInstance = axios.create({
@@ -140,7 +140,27 @@ service.interceptors.response.use(
         }
       }
     } else if (error.request) {
-      errorMsg = '请求超时，请检查网络';
+      const currentRoute = router.currentRoute.value;
+      const publicPages = ['/login', '/register', '/forgot-password'];
+      const userStore = useUserStore();
+      const shouldReturnToLogin =
+        isMobileApp() &&
+        Boolean(userStore.token) &&
+        !publicPages.some(path => currentRoute.path.startsWith(path));
+
+      if (shouldReturnToLogin) {
+        errorMsg = '无法连接服务器，已返回登录页，请检查或切换服务器地址';
+        // During the initial app bootstrap, Pinia providers may request data
+        // before Vue Router has resolved the address bar and still report '/'.
+        const browserPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        const redirect = currentRoute.fullPath === '/' && browserPath !== '/'
+          ? browserPath
+          : currentRoute.fullPath;
+        userStore.clearSession();
+        await router.replace({ path: '/login', query: { redirect, reason: 'server-unreachable' } });
+      } else {
+        errorMsg = '请求超时，请检查网络';
+      }
     }
     ElMessage.error(errorMsg);
     return Promise.reject(error);

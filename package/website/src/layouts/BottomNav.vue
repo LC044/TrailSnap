@@ -56,7 +56,7 @@
         <!-- 更多（打开底部 sheet） -->
         <button
           type="button"
-          @click="moreSheetVisible = true"
+          @click="openMoreSheet"
           :class="tabClass(moreActive)"
           aria-label="更多"
           aria-haspopup="dialog"
@@ -87,7 +87,7 @@
           type="button"
           class="absolute right-0 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-700"
           aria-label="关闭更多导航"
-          @click="moreSheetVisible = false"
+          @click="closeMoreSheet"
         >
           <X class="h-5 w-5" />
         </button>
@@ -101,7 +101,7 @@
         <RouterLink
           to="/settings#profile"
           class="flex min-w-0 flex-1 items-center gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-          @click="moreSheetVisible = false"
+          @click.prevent="navigateFromMore('/settings#profile')"
         >
           <img
             v-if="userStore.userInfo?.avatar"
@@ -136,7 +136,7 @@
               v-for="item in section.items"
               :key="item.href"
               :to="item.href"
-              @click="moreSheetVisible = false"
+              @click.prevent="navigateFromMore(item.href)"
               class="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl text-slate-600 transition-colors hover:bg-slate-100 hover:text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-300 dark:hover:bg-slate-700/60 dark:hover:text-primary-400"
               :class="isCurrentPath(item.href) ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400' : ''"
             >
@@ -155,7 +155,7 @@
             v-for="item in navItemsList"
             :key="`${item.entity_type}-${item.entity_id}`"
             :to="item.route_path"
-            @click="moreSheetVisible = false"
+            @click.prevent="navigateFromMore(item.route_path)"
             class="flex items-center gap-2 px-2 py-2 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
             <div class="w-7 h-7 rounded overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
@@ -171,8 +171,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
   Home,
@@ -192,13 +192,83 @@ import { mobileMoreSections, type NavGroup } from '@/config/navigation'
 import { toServerUrl } from '@/config/server'
 
 const route = useRoute()
+const router = useRouter()
 const uiStore = useUiStore()
 const userStore = useUserStore()
 
 const { items: navItemsList } = injectNavItems()
 
 const moreSheetVisible = ref(false)
-useOverlayStack(moreSheetVisible, () => { moreSheetVisible.value = false })
+const MORE_HISTORY_KEY = '__trailsnapMoreSheet'
+const moreHistoryId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+let historyEntryActive = false
+let historyBackPending = false
+let closeResolvers: Array<() => void> = []
+
+const isCurrentMoreHistoryEntry = () =>
+  window.history.state?.[MORE_HISTORY_KEY] === moreHistoryId
+
+const resolvePendingClose = () => {
+  closeResolvers.splice(0).forEach(resolve => resolve())
+}
+
+const openMoreSheet = () => {
+  if (!historyEntryActive) {
+    window.history.pushState(
+      { ...(window.history.state ?? {}), [MORE_HISTORY_KEY]: moreHistoryId },
+      '',
+      window.location.href,
+    )
+    historyEntryActive = true
+  }
+  moreSheetVisible.value = true
+}
+
+const closeMoreSheet = (): Promise<void> => {
+  if (!historyEntryActive) {
+    moreSheetVisible.value = false
+    return Promise.resolve()
+  }
+
+  const closed = new Promise<void>(resolve => closeResolvers.push(resolve))
+  if (isCurrentMoreHistoryEntry() && !historyBackPending) {
+    historyBackPending = true
+    window.history.back()
+  } else if (!isCurrentMoreHistoryEntry()) {
+    historyEntryActive = false
+    moreSheetVisible.value = false
+    resolvePendingClose()
+  }
+  return closed
+}
+
+const handleMoreHistoryPopState = () => {
+  if (!historyEntryActive) return
+  historyEntryActive = false
+  historyBackPending = false
+  moreSheetVisible.value = false
+  resolvePendingClose()
+}
+
+const navigateFromMore = async (target: RouteLocationRaw) => {
+  await closeMoreSheet()
+  await router.push(target)
+}
+
+useOverlayStack(moreSheetVisible, closeMoreSheet)
+
+watch(moreSheetVisible, visible => {
+  // Drawer modal-click and Escape closes arrive through v-model rather than
+  // closeMoreSheet; consume their same-page history entry here as well.
+  if (!visible && historyEntryActive && !historyBackPending) void closeMoreSheet()
+}, { flush: 'sync' })
+
+onMounted(() => window.addEventListener('popstate', handleMoreHistoryPopState))
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', handleMoreHistoryPopState)
+  if (historyEntryActive && isCurrentMoreHistoryEntry()) window.history.back()
+  resolvePendingClose()
+})
 
 const isGroup = (group: NavGroup) => route.meta.navGroup === group
 const isCurrentPath = (href: string) => route.path === href || route.path.startsWith(`${href}/`)
@@ -213,7 +283,7 @@ const handleLogout = async () => {
       cancelButtonText: '取消',
       type: 'warning',
     })
-    moreSheetVisible.value = false
+    await closeMoreSheet()
     await userStore.logout()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') console.error('Logout failed', error)
