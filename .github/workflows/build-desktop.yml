@@ -38,7 +38,7 @@ jobs:
           - name: macOS
             os: macos-latest
             artifact: macos
-            bundles: dmg
+            bundles: app,dmg
           - name: Linux
             os: ubuntu-latest
             artifact: linux
@@ -222,7 +222,9 @@ jobs:
             aarch64-*) arch=aarch64 ;;
             *) echo "::error::Unsupported updater architecture: $host"; exit 1 ;;
           esac
-          mapfile -t updater_files < <(compgen -G "$pattern")
+          # macOS runners still ship Bash 3.2, which has arrays but no mapfile.
+          # Intentional unquoted expansion lets the stored pattern glob here.
+          updater_files=( $pattern )
           ((${#updater_files[@]} == 1)) || { echo "::error::Expected one updater file for $target-$arch"; exit 1; }
           updater_file=${updater_files[0]}
           signature_file="$updater_file.sig"

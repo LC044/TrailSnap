@@ -1,3 +1,4 @@
+#[cfg(windows)]
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 #[cfg(windows)]
