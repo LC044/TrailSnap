@@ -40,6 +40,10 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ServerSettings.vue'),
     meta: { layout: 'blank', title: '服务器设置' },
   },
+  {
+    path: '/connect',
+    redirect: to => ({ path: '/server-settings', query: { url: to.query.url } }),
+  },
 
   // 主布局组：所有子页面都使用 MainLayout
   {
@@ -143,8 +147,8 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore();
   const whiteList = ['/login', '/register', '/forgot-password', '/server-settings', '/404'];
 
-  if (isNativeApp() && !hasConfiguredServer() && !['/login', '/server-settings'].includes(to.path)) {
-    next({ path: '/login', query: { redirect: to.fullPath } });
+  if (isNativeApp() && !hasConfiguredServer() && !['/server-settings'].includes(to.path)) {
+    next({ path: '/server-settings', query: { redirect: to.fullPath } });
     return;
   }
 

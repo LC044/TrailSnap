@@ -50,7 +50,7 @@ brew install llama.cpp
 
 ## 常见接口
 
-- Swagger 文档：`http://<host>:8801/docs`（以 docker 端口映射为准）
+- 源码开发时 Swagger 文档：`http://localhost:8001/docs`。生产 Compose 中 AI 服务仅限内部访问，不映射用户端口。
 
 ## 常见问题
 

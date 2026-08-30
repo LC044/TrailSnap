@@ -35,14 +35,9 @@ If you want to maximize security, you can mount the photo directory as read-only
 
 ## 3. Set Ports and Network
 
-TrailSnap default ports:
+TrailSnap exposes one access port by default: `8082`. The browser, App, and CLI use this address; Server, AI, and database ports stay inside Docker.
 
-- Frontend: 8082
-- Backend: 8800
-- AI: 8801
-- Database: 5532
-
-If it conflicts with other services on the NAS, just modify the `ports` mapping (e.g., change frontend to 18082).
+If it conflicts with another NAS service, modify only `frontend.ports` (for example, use 18082).
 
 ## 4. Startup and Verification
 
@@ -52,10 +47,7 @@ Access in browser after startup:
 
 Open Settings -> External Libraries, fill in the photo path inside the container: `/app/Photos/`, adding an external library will automatically scan and run tasks in the background (task details can be viewed in Settings -> Task Management).
 
-And verify Backend and AI:
-
-- `http://<NAS_IP>:8800/docs`
-- `http://<NAS_IP>:8801/docs`
+API documentation is available at `http://<NAS_IP>:8082/api/docs`.
 
 ## 5. Permission and Scan Troubleshooting
 

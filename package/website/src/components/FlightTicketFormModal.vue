@@ -144,6 +144,7 @@
 import { ref, watch } from 'vue';
 import { X, Sparkles } from 'lucide-vue-next';
 import axios from 'axios';
+import { toServerUrl } from '@/config/server';
 import { ElMessage } from 'element-plus';
 
 // 接收props
@@ -173,8 +174,8 @@ const props = defineProps({
   },
   apiBaseUrl: { 
     type: String,
-    required: true,
-    default: 'http://localhost:8000'
+    required: false,
+    default: () => toServerUrl('/api')
   }
 });
 

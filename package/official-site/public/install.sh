@@ -15,10 +15,8 @@
 set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-SCRIPT_VERSION="1.5.5"
+SCRIPT_VERSION="1.6.0"
 DEFAULT_FRONTEND_PORT=8082
-DEFAULT_SERVER_PORT=8800
-DEFAULT_AI_PORT=8801
 DEFAULT_TZ="Asia/Shanghai"
 DEFAULT_IMAGE_TAG="latest"
 DEFAULT_AI_MODE="cpu"
@@ -60,8 +58,6 @@ COMPOSE_CMD=""
 INSTALL_DIR=""
 PHOTO_DIR=""
 FRONTEND_PORT=""
-SERVER_PORT=""
-AI_PORT=""
 TZ=""
 IMAGE_TAG=""
 AI_MODE=""
@@ -996,20 +992,14 @@ collect_config() {
     PHOTO_DIR+="$dir"
   done
 
-  # 端口（自动分配，无需用户确认）
+  # TrailSnap 只对外提供一个访问端口，内部服务端口不要求用户配置。
   FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
-  SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
-  AI_PORT="${AI_PORT:-$DEFAULT_AI_PORT}"
-
-  for port_var in FRONTEND_PORT SERVER_PORT AI_PORT; do
-    local port="${!port_var}"
-    if ! check_port_available "$port"; then
-      local suggested
-      suggested="$(suggest_port "$port")"
-      info "端口 ${port} 已被占用，已自动分配新端口 ${suggested}。"
-      eval "${port_var}=\"${suggested}\""
-    fi
-  done
+  if ! check_port_available "$FRONTEND_PORT"; then
+    local suggested
+    suggested="$(suggest_port "$FRONTEND_PORT")"
+    info "访问端口 ${FRONTEND_PORT} 已被占用，已自动分配新端口 ${suggested}。"
+    FRONTEND_PORT="$suggested"
+  fi
 
   # TZ、AI 模式、镜像标签：使用默认值，不主动询问（高级选项可通过命令行参数指定）
   TZ="${TZ:-$DEFAULT_TZ}"
@@ -1051,7 +1041,7 @@ show_confirm_summary() {
   echo -e "  ${CYAN}├─────────────────────────────────────────────┤${NC}"
   echo -e "  ${WHITE}│  安装目录:  ${INSTALL_DIR}${NC}"
   echo -e "  ${WHITE}│  照片目录:  ${photo_display}${NC}"
-  echo -e "  ${WHITE}│  前端端口:  ${FRONTEND_PORT}${NC}"
+  echo -e "  ${WHITE}│  访问端口:  ${FRONTEND_PORT}${NC}"
   echo -e "  ${WHITE}│  AI 模式:   ${DETECTED_AI_MODE}${NC}"
   echo -e "  ${WHITE}│  数据库密码: ${PG_PASSWORD}${NC}"
   echo -e "  ${GRAY}│              （请妥善保管，升级时自动保留）  ${NC}"
@@ -1084,6 +1074,10 @@ resolve_pg_password() {
 
 generate_env() {
   step "生成 .env 配置文件..."
+  local discovery_url=""
+  local lan_ip
+  lan_ip="$(get_lan_ip)"
+  [[ -n "$lan_ip" ]] && discovery_url="http://${lan_ip}:${FRONTEND_PORT}"
   cat > "${INSTALL_DIR}/.env" << EOF
 # TrailSnap 配置 — 由 install.sh v${SCRIPT_VERSION} 生成
 # https://github.com/LC044/TrailSnap
@@ -1091,10 +1085,11 @@ generate_env() {
 # 照片目录（逗号分隔，支持多个挂载点）
 PHOTO_DIR="${PHOTO_DIR}"
 
-# 端口
+# TrailSnap 统一访问端口
 FRONTEND_PORT=${FRONTEND_PORT}
-SERVER_PORT=${SERVER_PORT}
-AI_PORT=${AI_PORT}
+
+# 用于 App 在局域网中自动发现此实例
+TRAILSNAP_PUBLIC_URL="${discovery_url}"
 
 # 时区
 TZ="${TZ}"
@@ -1232,8 +1227,6 @@ services:
     container_name: trailsnap-server
     restart: always
     expose: ["8000"]
-    ports:
-      - "\${SERVER_PORT}:8000"
     networks: [app-network]
     volumes:
       - ./data:/app/data
@@ -1243,6 +1236,8 @@ ${photo_volumes}
       - DB_URL=postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@postgres:5432/\${POSTGRES_DB}
       - RAILWAY_DB_URL=postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      - TRAILSNAP_PUBLIC_URL=\${TRAILSNAP_PUBLIC_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -1253,8 +1248,6 @@ ${photo_volumes}
     restart: always
     stop_grace_period: 15s
     expose: ["8001"]
-    ports:
-      - "\${AI_PORT}:8001"
     networks: [app-network]
     volumes:
       - ./data:/app/data
@@ -1322,20 +1315,15 @@ health_check() {
     "docker inspect --format='{{.State.Health.Status}}' trailsnap-postgres 2>/dev/null | grep -q healthy" \
     90 || failed=true
 
-  # AI 首次启动需加载 OCR/人脸/CLIP 等模型（openvino 尤慢），给到 5 分钟
-  # 用 127.0.0.1 而非 localhost：WSL2 走 Windows Docker Desktop 时，IPv6 ::1 多不真正监听
+  # 内部服务不映射宿主机端口，使用 Docker 健康状态验收 AI。
   wait_for_service "AI 服务" \
-    "curl -sf http://127.0.0.1:${AI_PORT}/health-check" \
+    "docker inspect --format='{{.State.Health.Status}}' trailsnap-ai 2>/dev/null | grep -q healthy" \
     300 || failed=true
 
-  # 后端首次启动需跑 alembic 迁移 + 导入 5A 景点 CSV，给到 4 分钟
-  wait_for_service "后端" \
-    "curl -sf http://127.0.0.1:${SERVER_PORT}/health-check -o /dev/null" \
+  # 从唯一入口验收 nginx -> server 整条链路。
+  wait_for_service "TrailSnap" \
+    "curl -sf http://127.0.0.1:${FRONTEND_PORT}/api/health-check -o /dev/null" \
     240 || failed=true
-
-  wait_for_service "前端" \
-    "curl -sf http://127.0.0.1:${FRONTEND_PORT} -o /dev/null" \
-    90 || failed=true
 
   if [[ "$failed" == true ]]; then
     echo ""
@@ -1424,8 +1412,7 @@ print_service_urls() {
     echo -e "  📱 手机访问:  http://${lan_ip}:${FRONTEND_PORT}  (需连接同一 Wi-Fi)"
   fi
   echo ""
-  echo -e "  ${GRAY}后端 API:  http://localhost:${SERVER_PORT}/docs${NC}"
-  echo -e "  ${GRAY}AI 服务:   http://localhost:${AI_PORT}/docs${NC}"
+  echo -e "  ${GRAY}API 文档:   http://localhost:${FRONTEND_PORT}/api/docs${NC}"
   echo ""
 }
 
@@ -1492,8 +1479,6 @@ do_upgrade() {
     value="${value%\"}"
     case "$key" in
       FRONTEND_PORT)   FRONTEND_PORT="$value" ;;
-      SERVER_PORT)     SERVER_PORT="$value" ;;
-      AI_PORT)         AI_PORT="$value" ;;
       TZ)              TZ="$value" ;;
       IMAGE_TAG)       IMAGE_TAG="$value" ;;
       AI_MODE)
@@ -1666,8 +1651,6 @@ add_photo_dir() {
     value="${value#\"}"; value="${value%\"}"
     case "$key" in
       FRONTEND_PORT)   FRONTEND_PORT="$value" ;;
-      SERVER_PORT)     SERVER_PORT="$value" ;;
-      AI_PORT)         AI_PORT="$value" ;;
       TZ)              TZ="$value" ;;
       IMAGE_TAG)       IMAGE_TAG="$value" ;;
       AI_MODE)         DETECTED_AI_MODE="$value" ;;
@@ -1725,8 +1708,11 @@ parse_args() {
       --photo-dir)       PHOTO_DIR="$2"; shift 2 ;;
       --install-dir)     INSTALL_DIR="$2"; shift 2 ;;
       --frontend-port)   FRONTEND_PORT="$2"; shift 2 ;;
-      --server-port)     SERVER_PORT="$2"; shift 2 ;;
-      --ai-port)         AI_PORT="$2"; shift 2 ;;
+      --port)            FRONTEND_PORT="$2"; shift 2 ;;
+      --server-port|--ai-port)
+        warn "$1 已废弃：TrailSnap 现在只使用一个访问端口。"
+        shift 2
+        ;;
       --timezone)        TZ="$2"; shift 2 ;;
       --ai-mode)         AI_MODE="$2"; AI_MODE_EXPLICIT=true; shift 2 ;;
       --tag)             IMAGE_TAG="$2"; shift 2 ;;
@@ -1744,8 +1730,6 @@ parse_args() {
 
   INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
   FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
-  SERVER_PORT="${SERVER_PORT:-$DEFAULT_SERVER_PORT}"
-  AI_PORT="${AI_PORT:-$DEFAULT_AI_PORT}"
   TZ="${TZ:-$DEFAULT_TZ}"
   IMAGE_TAG="${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
   AI_MODE="${AI_MODE:-$DEFAULT_AI_MODE}"
@@ -1765,9 +1749,8 @@ TrailSnap (行影集) — 一键安装脚本
 选项：
   --photo-dir 路径       照片目录（逗号分隔支持多个）
   --install-dir 路径     安装目录（默认：~/trailsnap）
-  --frontend-port 端口   前端端口（默认：8082）
-  --server-port 端口     后端 API 端口（默认：8800）
-  --ai-port 端口         AI 服务端口（默认：8801）
+  --port 端口            TrailSnap 访问端口（默认：8082）
+  --frontend-port 端口   --port 的兼容别名
   --timezone 时区        时区（默认：Asia/Shanghai）
   --ai-mode cpu|gpu|openvino
                          AI 模式；与 --upgrade 同用可切换已有安装的 AI 镜像
@@ -2052,7 +2035,7 @@ main() {
     if [[ -n "$lan_ip" ]]; then
       echo -e "  📱 手机访问:  http://${lan_ip}:${FRONTEND_PORT}  (需连接同一 Wi-Fi)"
     fi
-    echo -e "  ${GRAY}后端 API:  http://localhost:${SERVER_PORT}/docs${NC}"
+    echo -e "  ${GRAY}API 文档:   http://localhost:${FRONTEND_PORT}/api/docs${NC}"
     log "安装完成，但部分服务健康检查未通过"
   fi
 }

@@ -61,7 +61,6 @@ services:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -70,6 +69,8 @@ services:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,7 +80,6 @@ services:
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -114,7 +114,6 @@ networks:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -135,7 +134,6 @@ networks:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -176,7 +174,7 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 
 ### 第四步：验证部署是否成功
 
-打开浏览器，访问`http://localhost:8082`，即可看到TrailSnap的前端界面。
+打开浏览器，访问 `http://localhost:8082`，即可看到 TrailSnap。移动 App 与 CLI 也使用同一个地址。
 
 然后点击更多->设置->外部图库，添加`/app/Photos`。
 

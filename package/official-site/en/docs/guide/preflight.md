@@ -25,15 +25,15 @@ Use this page before running the installer. It helps avoid the common case where
 
 ## Network and ports
 
-- The installer normally exposes separate Web frontend and backend API ports; use the generated `.env` and installer output as the source of truth.
-- A phone browser uses the Web frontend port. Android App setup uses the backend API address and must not use `localhost`.
+- The installer exposes one TrailSnap address; browsers, native apps, and the CLI all use it.
+- The app can scan a connection QR code, discover a service on the same LAN, or accept the address manually. Do not use `localhost` from another device.
 - If LAN access fails, inspect Docker port mapping, the firewall, and Wi-Fi AP / guest-network isolation.
 
 ## Choose your starting path
 
 1. **Trying TrailSnap**: deploy in CPU mode with a small test folder.
 2. **Importing a family library**: back up the photos and database, then run the first scan during an idle period.
-3. **Using mobile or public access**: plan a domain and HTTPS first; never expose database ports publicly.
+3. **Using mobile or public access**: plan a domain and HTTPS first; keep Server, AI, and database ports private.
 4. **Using third-party AI or an Agent**: read [Data, privacy, and backups](/en/docs/guide/data-safety) and grant tokens the minimum scope.
 
 When ready, continue to the [installation guide](/en/docs/guide/install).

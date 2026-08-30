@@ -215,6 +215,7 @@
 import { ref, watch, onUnmounted } from 'vue';
 import { X } from 'lucide-vue-next';
 import axios from 'axios';
+import { toServerUrl } from '@/config/server';
 import { ElMessage } from 'element-plus';
 import { ticketService } from '@/api/ticketService';
 
@@ -246,8 +247,8 @@ const props = defineProps({
   },
   apiBaseUrl: { // 新增：接收API基础地址
     type: String,
-    required: true,
-    default: 'http://localhost:8000'
+    required: false,
+    default: () => toServerUrl('/api')
   }
 });
 

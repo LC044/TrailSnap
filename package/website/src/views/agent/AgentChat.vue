@@ -400,9 +400,9 @@ const getCorrectImageUrl = (src: string) => {
     if (src.startsWith('/api/')) return src;
     return '/api' + (src.startsWith('/') ? src : '/' + src);
   } else {
-    if (src.startsWith('/api/medias')) return baseUrl + src.replace('/api/', '/');
-    if (src.startsWith('/medias')) return baseUrl + src;
-    return baseUrl + (src.startsWith('/') ? src : '/' + src);
+    if (src.startsWith('/api/')) return baseUrl + src;
+    if (src.startsWith('/')) return baseUrl + '/api' + src;
+    return baseUrl + '/api/' + src;
   }
 };
 

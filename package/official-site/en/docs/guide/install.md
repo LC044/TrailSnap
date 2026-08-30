@@ -50,7 +50,7 @@ Linux / macOS / WSL2:
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-The installer collects the photo path, ports, time zone, and AI mode; generates `.env` and `docker-compose.yml`; pulls the images; and runs health checks. Available modes are generic CPU, NVIDIA GPU (CUDA), and OpenVINO for Intel CPUs, integrated graphics, and NPUs. The default UI is `http://<server-ip>:8082`.
+The installer collects the photo path, one TrailSnap access port, time zone, and AI mode; generates `.env` and `docker-compose.yml`; pulls the images; and runs health checks. Available modes are generic CPU, NVIDIA GPU (CUDA), and OpenVINO for Intel CPUs, integrated graphics, and NPUs. Browsers, apps, and the CLI all use `http://<server-ip>:8082` by default.
 
 Common commands from the installation directory:
 

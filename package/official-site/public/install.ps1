@@ -27,9 +27,8 @@ TrailSnap - Windows 一键安装脚本
 param(
     [string]$PhotoDir = "",
     [string]$InstallDir = "",
+    [Alias("Port")]
     [int]$FrontendPort = 8082,
-    [int]$ServerPort = 8800,
-    [int]$AiPort = 8801,
     [string]$Timezone = "Asia/Shanghai",
     [ValidateSet("cpu", "gpu", "openvino")]
     [string]$AiMode = "cpu",
@@ -52,7 +51,7 @@ try {
 } catch {}
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
-$ScriptVersion = "1.5.5"
+$ScriptVersion = "1.6.0"
 $DefaultInstallDir = Join-Path $env:USERPROFILE "trailsnap"
 $DefaultPgDb = "trailsnap"
 $DefaultPgUser = "trailsnap"
@@ -809,20 +808,11 @@ function Collect-Config {
 
     $script:PhotoDir = $validatedDirs -join ","
 
-    # 端口检查（自动分配，无需用户确认）
-    $portPairs = @(
-        @{ Name = "前端";      Var = "FrontendPort";  Default = 8082 },
-        @{ Name = "后端 API";  Var = "ServerPort";    Default = 8800 },
-        @{ Name = "AI 服务";   Var = "AiPort";        Default = 8801 }
-    )
-
-    foreach ($pair in $portPairs) {
-        $currentVal = Get-Variable $pair.Var -ValueOnly -Scope Script
-        if (-not (Test-PortAvailable $currentVal)) {
-            $suggested = Get-SuggestedPort $currentVal
-            Write-Info "端口 $($currentVal) 已被占用，已自动分配新端口 $($suggested)。"
-            Set-Variable $pair.Var $suggested -Scope Script
-        }
+    # TrailSnap 只对外提供一个访问端口，内部服务端口不要求用户配置。
+    if (-not (Test-PortAvailable $FrontendPort)) {
+        $suggested = Get-SuggestedPort $FrontendPort
+        Write-Info "访问端口 $FrontendPort 已被占用，已自动分配新端口 $suggested。"
+        $script:FrontendPort = $suggested
     }
 
     # AI 模式
@@ -855,7 +845,7 @@ function Show-ConfirmSummary {
     Write-Host "  │  安装目录:  $($script:InstallDir)" -ForegroundColor White
     $photoDisplay = $script:PhotoDir -replace ",", ", "
     Write-Host "  │  照片目录:  $photoDisplay" -ForegroundColor White
-    Write-Host "  │  前端端口:  $FrontendPort" -ForegroundColor White
+    Write-Host "  │  访问端口:  $FrontendPort" -ForegroundColor White
     Write-Host "  │  AI 模式:   $script:DetectedAiMode" -ForegroundColor White
     Write-Host "  │  数据库密码: $script:PgPassword" -ForegroundColor White
     Write-Host "  │              （请妥善保管，升级时自动保留）  " -ForegroundColor Gray
@@ -892,6 +882,8 @@ function Resolve-PgPassword {
 
 function Generate-EnvFile {
     Write-Step "生成 .env 配置文件..."
+    $lanIP = Get-LanIP
+    $discoveryUrl = if ($lanIP) { "http://${lanIP}:${FrontendPort}" } else { "" }
 
     $envContent = @"
 # TrailSnap 配置 — 由 install.ps1 v$ScriptVersion 生成
@@ -900,10 +892,11 @@ function Generate-EnvFile {
 # 照片目录（逗号分隔，支持多个挂载点）
 PHOTO_DIR="$PhotoDir"
 
-# 端口
+# TrailSnap 统一访问端口
 FRONTEND_PORT=$FrontendPort
-SERVER_PORT=$ServerPort
-AI_PORT=$AiPort
+
+# 用于 App 在局域网中自动发现此实例
+TRAILSNAP_PUBLIC_URL="$discoveryUrl"
 
 # 时区
 TZ="$Timezone"
@@ -1039,8 +1032,6 @@ services:
     container_name: trailsnap-server
     restart: always
     expose: ["8000"]
-    ports:
-      - "`${SERVER_PORT}:8000"
     networks: [app-network]
     volumes:
       - ./data:/app/data
@@ -1050,6 +1041,8 @@ $photoVolumeStr
       - DB_URL=postgresql://`${POSTGRES_USER}:`${POSTGRES_PASSWORD}@postgres:5432/`${POSTGRES_DB}
       - RAILWAY_DB_URL=postgresql://`${POSTGRES_USER}:`${POSTGRES_PASSWORD}@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      - TRAILSNAP_PUBLIC_URL=`${TRAILSNAP_PUBLIC_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -1060,8 +1053,6 @@ $photoVolumeStr
     restart: always
     stop_grace_period: 15s
     expose: ["8001"]
-    ports:
-      - "`${AI_PORT}:8001"
     networks: [app-network]
     volumes:
       - ./data:/app/data
@@ -1148,33 +1139,21 @@ function Test-HealthCheck {
     } -TimeoutSeconds 90
     if (-not $pgOk) { $failed = $true }
 
-    # AI 首次启动需加载 OCR/人脸/CLIP 等模型（openvino 尤慢），给到 5 分钟
-    # 用 127.0.0.1 而非 localhost：Windows 下 Invoke-WebRequest 会优先解析到 IPv6 ::1，
-    # 而 Docker Desktop 的 [::]:port 多不真正监听，导致连接挂起误报失败
+    # 内部服务不映射宿主机端口，使用 Docker 健康状态验收 AI。
     $aiOk = Wait-ForService "AI 服务" {
-        try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${AiPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-            $resp.StatusCode -eq 200
-        } catch { $false }
+        $status = docker inspect --format='{{.State.Health.Status}}' trailsnap-ai 2>$null
+        $status -match "healthy"
     } -TimeoutSeconds 300
     if (-not $aiOk) { $failed = $true }
 
-    # 后端首次启动需跑 alembic 迁移 + 导入 5A 景点 CSV，给到 4 分钟
-    $srvOk = Wait-ForService "后端" {
+    # 从唯一入口验收 nginx -> server 整条链路。
+    $srvOk = Wait-ForService "TrailSnap" {
         try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${ServerPort}/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${FrontendPort}/api/health-check" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
             $resp.StatusCode -eq 200
         } catch { $false }
     } -TimeoutSeconds 240
     if (-not $srvOk) { $failed = $true }
-
-    $feOk = Wait-ForService "前端" {
-        try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:${FrontendPort}" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
-            $resp.StatusCode -eq 200
-        } catch { $false }
-    } -TimeoutSeconds 90
-    if (-not $feOk) { $failed = $true }
 
     if ($failed) {
         Write-Host ""
@@ -1274,8 +1253,7 @@ function Show-ServiceUrls {
         Write-Host "  📱 手机访问:  http://${lanIP}:${FrontendPort}  (需连接同一 Wi-Fi)" -ForegroundColor White
     }
     Write-Host ""
-    Write-Host "  后端 API:  http://localhost:${ServerPort}/docs" -ForegroundColor Gray
-    Write-Host "  AI 服务:   http://localhost:${AiPort}/docs" -ForegroundColor Gray
+    Write-Host "  API 文档:   http://localhost:${FrontendPort}/api/docs" -ForegroundColor Gray
     Write-Host ""
 }
 
@@ -1344,8 +1322,6 @@ function Do-Upgrade {
             Set-Item -Path "env:$key" -Value $value
             switch ($key) {
                 "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
-                "SERVER_PORT"     { $script:ServerPort = [int]$value }
-                "AI_PORT"         { $script:AiPort = [int]$value }
                 "TZ"              { $script:Timezone = $value }
                 "IMAGE_TAG"       { $script:Tag = $value }
                 "AI_MODE"         {
@@ -1366,6 +1342,9 @@ function Do-Upgrade {
 
     Write-Log "开始升级，保留现有配置"
 
+    # Rewrite the env file so upgrades gain the unified public URL used by App discovery.
+    Copy-Item $envFilePath "${envFilePath}.bak.$(Get-Date -Format 'yyyyMMddHHmmss')" -ErrorAction SilentlyContinue
+    Generate-EnvFile
     Generate-ComposeFile
     Pull-Images
 
@@ -1442,8 +1421,6 @@ function Add-PhotoDir {
             Set-Item -Path "env:$key" -Value $value
             switch ($key) {
                 "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
-                "SERVER_PORT"     { $script:ServerPort = [int]$value }
-                "AI_PORT"         { $script:AiPort = [int]$value }
                 "TZ"              { $script:Timezone = $value }
                 "IMAGE_TAG"       { $script:Tag = $value }
                 "AI_MODE"         { $script:DetectedAiMode = $value }
@@ -1584,9 +1561,7 @@ TrailSnap (行影集) — Windows 一键安装脚本
 选项：
   -PhotoDir <路径>       照片目录（逗号分隔支持多个）
   -InstallDir <路径>     安装目录（默认：~/trailsnap）
-  -FrontendPort <端口>   前端端口（默认：8082）
-  -ServerPort <端口>     后端 API 端口（默认：8800）
-  -AiPort <端口>         AI 服务端口（默认：8801）
+  -Port <端口>           TrailSnap 访问端口（默认：8082）
   -Timezone <时区>       时区（默认：Asia/Shanghai）
   -AiMode <cpu|gpu|openvino>
                            AI 模式；与 -Upgrade 同用可切换已有安装的 AI 镜像
@@ -1679,8 +1654,6 @@ if ((Test-Path $existingCompose) -and -not $Upgrade) {
                 Set-Item -Path "env:$key" -Value $value
                 switch ($key) {
                     "FRONTEND_PORT"   { $script:FrontendPort = [int]$value }
-                    "SERVER_PORT"     { $script:ServerPort = [int]$value }
-                    "AI_PORT"         { $script:AiPort = [int]$value }
                     "AI_MODE"         { $script:DetectedAiMode = $value }
                 }
             }
@@ -1907,6 +1880,6 @@ if (Test-HealthCheck) {
     if ($lanIP) {
         Write-Host "  📱 手机访问:  http://${lanIP}:${FrontendPort}  (需连接同一 Wi-Fi)" -ForegroundColor White
     }
-    Write-Host "  后端 API:  http://localhost:${ServerPort}/docs" -ForegroundColor Gray
+    Write-Host "  API 文档:   http://localhost:${FrontendPort}/api/docs" -ForegroundColor Gray
     Write-Log "安装完成，但部分服务健康检查未通过"
 }

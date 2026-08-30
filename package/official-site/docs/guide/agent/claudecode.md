@@ -19,7 +19,7 @@
 
 ```text
 帮我安装 trailsnap-cli 和 skill：https://trailsnap.cn/install.md
-我的api url 是 http://localhost:8000
+我的 TrailSnap 地址是 http://localhost:8082
 我的token 是 ts_hV5nsCZxxxxx
 ```
 

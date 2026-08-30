@@ -2,7 +2,7 @@ import json
 import time
 import sys
 import requests
-from utils import make_request, load_env
+from utils import make_request, load_env, normalize_trailsnap_url
 from output import output, output_success, output_error, OutputFormatter, get_formatter
 
 def setup_parser(subparsers):
@@ -162,7 +162,7 @@ def execute_wait(args):
         output_error("API URL 和 Token 未配置，请先运行 'config' 命令。")
         sys.exit(1)
         
-    url = f"{base_url.rstrip('/')}/tasks/{args.id}"
+    url = f"{normalize_trailsnap_url(base_url)}/tasks/{args.id}"
     headers = {"Authorization": f"Bearer {token}"}
     
     formatter = get_formatter()

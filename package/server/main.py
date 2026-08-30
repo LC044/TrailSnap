@@ -38,6 +38,7 @@ from railway.api import router as railway_router
 from app.core.logger import setup_logging
 from app.core.config_manager import VERSION
 from app.service.task_manager import TaskManager
+from app.service.discovery import DiscoveryService
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -100,8 +101,12 @@ async def lifespan(app: FastAPI):
     job_scheduler.register_interval_job("update_check", 6 * 3600, update_check_job, next_run_time=datetime.now())
     job_scheduler.start()
 
+    discovery_service = DiscoveryService()
+    discovery_service.start()
+
     yield
 
+    discovery_service.stop()
     job_scheduler.stop()
 
     # Stop Worker Process
@@ -115,7 +120,8 @@ app = FastAPI(
     title="TrailSnap - 足迹相册",
     lifespan=lifespan,
     version=VERSION,
-    swagger_ui_parameters={"persistAuthorization": True}
+    swagger_ui_parameters={"persistAuthorization": True},
+    root_path=os.getenv("TRAILSNAP_ROOT_PATH", ""),
 )
 # Initialize logging listener
 log_listener = None
@@ -331,7 +337,7 @@ def custom_openapi():
             "flows": {
                 "password": {
                     "scopes": {},
-                    "tokenUrl": "/auth/login",
+                    "tokenUrl": f"{app.root_path}/auth/login",
                 }
             }
         }

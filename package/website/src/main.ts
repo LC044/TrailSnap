@@ -21,6 +21,7 @@ import { registerNativeBackButton } from '@/composables/useNativeBackButton'
 import { registerExternalLinkOpener } from '@/composables/useExternalLinks'
 import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
 import { useUserStore } from '@/stores/user'
+import { registerConnectionDeepLinks } from '@/config/serverConnection'
 
 async function bootstrap() {
   await initializeServerConfig()
@@ -38,6 +39,7 @@ async function bootstrap() {
   registerElementPlusOverlayBridge()
 
   await router.isReady()
+  await registerConnectionDeepLinks(router)
   await registerNativeBackButton(router)
   registerPwa()
 }

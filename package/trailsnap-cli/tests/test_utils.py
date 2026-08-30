@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import json
 import sys
 
-from trailsnap.utils import make_request, load_env
+from trailsnap.utils import display_trailsnap_url, make_request, load_env, normalize_trailsnap_url
 
 pytestmark = [pytest.mark.smoke]
 
@@ -16,6 +16,20 @@ def mock_env(monkeypatch):
         "TRAILSNAP_API_URL": "http://localhost:8000/api",
         "TRAILSNAP_API_TOKEN": "fake_token_123"
     })
+
+
+@pytest.mark.parametrize("value", [
+    "http://localhost:8082",
+    "http://localhost:8082/",
+    "http://localhost:8082/api",
+    "localhost:8082",
+])
+def test_normalize_trailsnap_url(value):
+    assert normalize_trailsnap_url(value) == "http://localhost:8082/api"
+
+
+def test_display_trailsnap_url():
+    assert display_trailsnap_url("https://photos.example.com/api") == "https://photos.example.com"
 
 def test_make_request_success(mock_env, monkeypatch):
     # Mock urlopen

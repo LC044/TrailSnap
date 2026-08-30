@@ -3,7 +3,7 @@ import urllib.request
 from urllib.error import URLError, HTTPError
 import sys
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 import os
 
@@ -19,6 +19,27 @@ CONFIG_DIR.mkdir(exist_ok=True)
 # .env 配置文件 永久保存在这里
 ENV_FILE = CONFIG_DIR / ".env"
 
+
+def normalize_trailsnap_url(value: str) -> str:
+    """Convert a user-facing TrailSnap URL into the unified /api base URL."""
+    candidate = value.strip()
+    if not candidate:
+        raise ValueError("TrailSnap 地址不能为空")
+    if "://" not in candidate:
+        candidate = f"http://{candidate}"
+    parsed = urlsplit(candidate)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("TrailSnap 地址必须使用 HTTP 或 HTTPS")
+    path = parsed.path.rstrip("/")
+    if path not in ("", "/api"):
+        raise ValueError("TrailSnap 地址不应包含 /api 以外的路径")
+    return urlunsplit((parsed.scheme, parsed.netloc, "/api", "", ""))
+
+
+def display_trailsnap_url(value: str) -> str:
+    parsed = urlsplit(normalize_trailsnap_url(value))
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
+
 def load_env():
     if not ENV_FILE.exists():
         return {}
@@ -32,8 +53,9 @@ def load_env():
     return env
 
 def save_env(url, token):
+    api_url = normalize_trailsnap_url(url)
     with open(ENV_FILE, "w", encoding="utf-8") as f:
-        f.write(f"TRAILSNAP_API_URL={url}\n")
+        f.write(f"TRAILSNAP_API_URL={api_url}\n")
         f.write(f"TRAILSNAP_API_TOKEN={token}\n")
     print(f"配置已保存到 {ENV_FILE}")
 
@@ -59,7 +81,11 @@ def make_request(endpoint, params=None, method="GET", response_type="json", json
     if not base_url or not token:
         _print_error_and_exit("ConfigError", 401, "API URL 和 Token 未配置，请先运行 'config' 命令。")
         
-    url = f"{base_url.rstrip('/')}{endpoint}"
+    try:
+        api_base_url = normalize_trailsnap_url(base_url)
+    except ValueError as error:
+        _print_error_and_exit("ConfigError", 400, str(error))
+    url = f"{api_base_url}{endpoint}"
     if params:
         # 过滤掉 None 值
         params = {k: v for k, v in params.items() if v is not None}

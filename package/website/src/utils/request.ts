@@ -38,7 +38,6 @@ service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if ((isNativeApp() || hasConfiguredServer()) && getServerUrl()) {
       config.baseURL = getServerUrl();
-      if (config.url) config.url = config.url.replace(/^\/api(?=\/|$)/, '');
     }
     // 2. 处理 headers 可选性：确保 headers 存在（避免 undefined 报错）
     const headers = config.headers as AxiosRequestHeaders; // 类型断言（或用可选链）

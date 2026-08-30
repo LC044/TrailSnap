@@ -1,4 +1,7 @@
-from utils import save_env, load_env, make_request, _print_error_and_exit
+from utils import (
+    save_env, load_env, make_request, _print_error_and_exit,
+    display_trailsnap_url, normalize_trailsnap_url,
+)
 import urllib.request
 import urllib.parse
 from urllib.error import HTTPError, URLError
@@ -9,8 +12,8 @@ def setup_parser(subparsers):
     sub_subparsers = parser.add_subparsers(dest="subcommand", help="可用操作")
     sub_subparsers.required = True
 
-    set_parser = sub_subparsers.add_parser("set", help="配置 API URL 和 Token")
-    set_parser.add_argument("--url", help="API 基础地址 (例如: http://localhost:8000)", required=True)
+    set_parser = sub_subparsers.add_parser("set", help="配置 TrailSnap 地址和 Token")
+    set_parser.add_argument("--url", help="TrailSnap 地址 (例如: http://localhost:8082)", required=True)
     set_parser.add_argument("--token", help="API Token (Bearer 凭证)", required=True)
     set_parser.set_defaults(func=execute_set)
 
@@ -30,7 +33,10 @@ def setup_parser(subparsers):
     test_parser.set_defaults(func=execute_test)
 
 def execute_set(args):
-    save_env(args.url, args.token)
+    try:
+        save_env(args.url, args.token)
+    except ValueError as error:
+        _print_error_and_exit("ConfigError", 400, str(error))
 
 def execute_get(args):
     env = load_env()
@@ -39,7 +45,7 @@ def execute_get(args):
     if not url:
         print("未配置 API URL，请运行 'config set' 或 'config login'")
     else:
-        print(f"API URL: {url}")
+        print(f"TrailSnap 地址: {display_trailsnap_url(url)}")
         if token:
             print(f"API Token: {token[:10]}...{token[-5:]}" if len(token) > 15 else f"API Token: {token}")
         else:
@@ -51,8 +57,11 @@ def execute_login(args):
     if not base_url:
         _print_error_and_exit("ConfigError", 401, "API URL 未配置，请通过 --url 参数提供")
     
-    base_url = base_url.rstrip("/")
-    login_url = f"{base_url}/auth/login"
+    try:
+        api_base_url = normalize_trailsnap_url(base_url)
+    except ValueError as error:
+        _print_error_and_exit("ConfigError", 400, str(error))
+    login_url = f"{api_base_url}/auth/login"
     
     data = urllib.parse.urlencode({
         "username": args.email,
@@ -101,7 +110,7 @@ def execute_test(args):
     if not base_url:
         _print_error_and_exit("ConfigError", 401, "API URL 未配置，请运行 'config set' 或 'config login'")
     
-    print(f"正在测试连接到: {base_url}")
+    print(f"正在测试连接到: {display_trailsnap_url(base_url)}")
     if not token:
         _print_error_and_exit("ConfigError", 401, "API Token 未配置，请运行 'config set' 或 'config login'")
         

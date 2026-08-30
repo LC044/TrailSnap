@@ -16,6 +16,17 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>cn.trailsnap.app.connect</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>trailsnap</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -32,6 +43,12 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>用于连接您在局域网中部署的 TrailSnap 服务器。</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_trailsnap._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>用于扫描 TrailSnap 服务器连接二维码。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

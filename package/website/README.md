@@ -49,9 +49,10 @@ pnpm run build
 
 ## Android / iOS App（Capacitor）
 
-原生容器使用 Capacitor，应用首次启动时会要求输入 TrailSnap 主后端地址。Docker
-默认端口示例为 `http://192.168.1.10:8800`，不要在末尾添加 `/api`。局域网 HTTP
-已在 Android/iOS 工程中启用，公网部署建议使用 HTTPS。
+原生容器使用 Capacitor。网页、App 和 CLI 共用同一个 TrailSnap 地址，例如
+`http://192.168.1.10:8082`，无需填写内部服务地址。App 支持扫描网页设置页中的
+连接二维码、发现局域网内的 TrailSnap，以及打开 `trailsnap://connect?...` 深链。
+局域网 HTTP 已在 Android/iOS 工程中启用，公网部署建议使用 HTTPS。
 
 ```bash
 # 重新生成图标与启动图

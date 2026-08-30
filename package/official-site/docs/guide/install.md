@@ -56,7 +56,7 @@ Linux / macOS / WSL2：
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-脚本会收集照片目录、端口、时区和 AI 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。AI 模式支持通用 CPU、NVIDIA GPU（CUDA）和适合 Intel CPU/核显/NPU 的 OpenVINO。默认访问地址为 `http://<服务器 IP>:8082`。
+脚本会收集照片目录、一个 TrailSnap 访问端口、时区和 AI 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。AI 模式支持通用 CPU、NVIDIA GPU（CUDA）和适合 Intel CPU/核显/NPU 的 OpenVINO。默认地址为 `http://<服务器 IP>:8082`，网页、App 和 CLI 都使用这个地址。
 
 常用管理命令（在安装目录执行）：
 
