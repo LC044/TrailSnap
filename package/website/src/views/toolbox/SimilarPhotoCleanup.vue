@@ -27,16 +27,27 @@
     <!-- Result Content -->
     <div class="flex-1 overflow-y-auto space-y-6 pb-20 scrollbar-hide" ref="containerRef">
         <div v-for="(group, gIndex) in groups" :key="gIndex" class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
-            <div class="flex items-center justify-between mb-3">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
                     分组 {{ gIndex + 1 }} ({{ group.length }} 张)
                 </span>
-                <button 
-                    @click="toggleGroupSelection(gIndex)"
-                    class="text-sm text-primary-500 hover:text-primary-600 font-medium dark:bg-gray-900"
-                >
-                    {{ isGroupAllSelected(gIndex) ? '取消全选' : '全选' }}
-                </button>
+                <div class="flex items-center gap-3">
+                    <button
+                        type="button"
+                        @click="openComparison(gIndex)"
+                        class="rounded-md bg-primary-500 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-gray-800"
+                    >
+                        <i class="mgc_pic_2_line mr-1"></i>
+                        {{ compareGroupIndex === gIndex && comparisonIds.size > 0 ? `开始对比 (${comparisonIds.size}/4)` : '对比照片' }}
+                    </button>
+                    <button
+                        type="button"
+                        @click="toggleGroupSelection(gIndex)"
+                        class="text-sm text-primary-500 hover:text-primary-600 font-medium focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-gray-800"
+                    >
+                        {{ isGroupAllSelected(gIndex) ? '取消全选' : '全选' }}
+                    </button>
+                </div>
             </div>
             
             <!-- Horizontal Scroll Container -->
@@ -70,7 +81,7 @@
                         <!-- Photo Card -->
                         <div 
                             class="relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-colors bg-gray-100 dark:bg-gray-700"
-                            :class="selectedPhotos.has(photo.id) ? 'border-blue-500' : 'border-transparent'"
+                            :class="selectedPhotos.has(photo.id) || comparisonIds.has(photo.id) ? 'border-primary-500' : 'border-transparent'"
                             @click="openLightbox(gIndex, pIndex)"
                         >
                             <img 
@@ -85,7 +96,7 @@
                             <!-- Selection Checkbox -->
                             <div 
                                 class="absolute top-1 left-1 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors z-10"
-                                :class="selectedPhotos.has(photo.id) ? 'bg-blue-500 border-blue-500' : 'bg-black/30 border-white hover:bg-black/50'"
+                                :class="selectedPhotos.has(photo.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/30 border-white hover:bg-black/50'"
                                 @click.stop="togglePhotoSelection(photo.id)"
                             >
                                 <i v-if="selectedPhotos.has(photo.id)" class="mgc_check_line text-white text-sm"></i>
@@ -105,6 +116,18 @@
                             <div class="text-xs text-gray-700 dark:text-gray-300 truncate text-center font-medium">
                                 {{ photo.filename }}
                             </div>
+                            <button
+                                type="button"
+                                class="mt-1.5 w-full rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-gray-800"
+                                :class="compareGroupIndex === gIndex && comparisonIds.has(photo.id)
+                                    ? 'bg-primary-500 text-white hover:bg-primary-600'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'"
+                                :aria-pressed="compareGroupIndex === gIndex && comparisonIds.has(photo.id)"
+                                @click="toggleComparisonPhoto(gIndex, photo.id)"
+                            >
+                                <i :class="compareGroupIndex === gIndex && comparisonIds.has(photo.id) ? 'mgc_check_line' : 'mgc_add_line'"></i>
+                                {{ compareGroupIndex === gIndex && comparisonIds.has(photo.id) ? '已加入对比' : '加入对比' }}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -112,8 +135,9 @@
              <!-- Group Action -->
              <div v-if="getGroupSelectionCount(gIndex) > 0" class="mt-3 flex justify-end border-t border-gray-100 dark:border-gray-700 pt-3">
                 <button 
+                    type="button"
                     @click="deleteGroupSelection(gIndex)"
-                    class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center gap-1"
+                    class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-gray-800"
                 >
                     <i class="mgc_delete_2_line"></i>
                     删除选中 ({{ getGroupSelectionCount(gIndex) }}张)
@@ -123,7 +147,7 @@
         
         <!-- Load More Spinner -->
         <div v-if="isLoadingMore" class="flex justify-center py-4">
-             <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+             <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
         </div>
         <div v-if="!hasMore && groups.length > 0" class="text-center text-gray-400 text-sm py-4">
              没有更多了
@@ -140,6 +164,16 @@
         @prev="lightbox.index--"
         @next="lightbox.index++"
     />
+
+    <SimilarPhotoCompareDialog
+        :visible="comparisonVisible"
+        :photos="comparisonPhotos"
+        :selected-for-deletion="selectedPhotos"
+        @close="comparisonVisible = false"
+        @toggle-delete="togglePhotoSelection"
+        @remove="removeComparisonPhoto"
+        @open-photo="openComparisonLightbox"
+    />
   </CleanupTaskShell>
 </template>
 
@@ -150,11 +184,11 @@ import { photoApi } from '@/api/photo';
 import type { Task as TaskResponse } from '@/api/tasks'
 import type { Photo, AlbumImage } from '@/types/album';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Search } from 'lucide-vue-next'
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
+import SimilarPhotoCompareDialog from '@/components/SimilarPhotoCompareDialog.vue';
 import CleanupTaskShell from '@/components/CleanupTaskShell.vue';
 import request from '@/utils/request';
-import {usePhotoStore, mapPhotoToImage} from '@/stores/photoStore'
+import { mapPhotoToImage } from '@/stores/photoStore'
 import { useInfiniteScroll } from '@vueuse/core';
 
 const goBack = useAppBack('/toolbox')
@@ -163,6 +197,9 @@ const groups = ref<AlbumImage[][]>([]);
 const loading = ref(false);
 const error = ref('');
 const selectedPhotos = ref<Set<string>>(new Set());
+const comparisonIds = ref<Set<string>>(new Set());
+const compareGroupIndex = ref<number | null>(null);
+const comparisonVisible = ref(false);
 const task = ref<TaskResponse | null>(null);
 const pollTimer = ref<number | null>(null);
 
@@ -271,6 +308,10 @@ const startNewScan = async () => {
         const newTask = await photoApi.createSimilarTask(0.9);
         task.value = newTask;
         groups.value = [];
+        selectedPhotos.value.clear();
+        comparisonIds.value.clear();
+        compareGroupIndex.value = null;
+        comparisonVisible.value = false;
         hasMore.value = true;
         currentPage.value = 0;
         startPolling();
@@ -338,6 +379,63 @@ const togglePhotoSelection = (id: string) => {
     }
 };
 
+const comparisonPhotos = computed(() => {
+    return groups.value
+        .flatMap(group => group)
+        .filter(photo => comparisonIds.value.has(photo.id))
+        .slice(0, 4);
+});
+
+const syncComparisonGroupIndex = () => {
+    if (comparisonIds.value.size === 0) {
+        compareGroupIndex.value = null;
+        return;
+    }
+    compareGroupIndex.value = groups.value.findIndex(group =>
+        group.some(photo => comparisonIds.value.has(photo.id))
+    );
+    if (compareGroupIndex.value < 0) compareGroupIndex.value = null;
+};
+
+const toggleComparisonPhoto = (groupIndex: number, id: string) => {
+    if (compareGroupIndex.value !== groupIndex) {
+        compareGroupIndex.value = groupIndex;
+        comparisonIds.value.clear();
+    }
+
+    if (comparisonIds.value.has(id)) {
+        comparisonIds.value.delete(id);
+        return;
+    }
+
+    if (comparisonIds.value.size >= 4) {
+        ElMessage.warning('一次最多对比 4 张照片，请先移出一张');
+        return;
+    }
+    comparisonIds.value.add(id);
+};
+
+const openComparison = (groupIndex: number) => {
+    if (compareGroupIndex.value !== groupIndex || comparisonIds.value.size === 0) {
+        compareGroupIndex.value = groupIndex;
+        comparisonIds.value.clear();
+        groups.value[groupIndex].slice(0, 4).forEach(photo => comparisonIds.value.add(photo.id));
+    }
+    comparisonVisible.value = comparisonPhotos.value.length > 0;
+};
+
+const removeComparisonPhoto = (id: string) => {
+    comparisonIds.value.delete(id);
+    if (comparisonIds.value.size === 0) comparisonVisible.value = false;
+};
+
+const openComparisonLightbox = (photo: AlbumImage) => {
+    const index = comparisonPhotos.value.findIndex(item => item.id === photo.id);
+    lightbox.photos = comparisonPhotos.value;
+    lightbox.index = Math.max(0, index);
+    lightbox.show = true;
+};
+
 const isGroupAllSelected = (groupIndex: number) => {
     const group = groups.value[groupIndex];
     if (group.length <= 1) return false;
@@ -377,6 +475,9 @@ const deletePhotos = async (ids: string[]) => {
         
         // Clear selection
         ids.forEach(id => selectedPhotos.value.delete(id));
+        ids.forEach(id => comparisonIds.value.delete(id));
+        syncComparisonGroupIndex();
+        if (comparisonIds.value.size === 0) comparisonVisible.value = false;
         
         ElMessage.success(`成功删除 ${ids.length} 张照片`);
     } catch (err) {
