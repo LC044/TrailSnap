@@ -30,6 +30,58 @@ test.describe('Smoke - 工具箱子页面 @smoke', () => {
     await expect(page.getByText('相似照片清理').first()).toBeVisible({ timeout: 10_000 });
   });
 
+  test('相似照片最多可同时对比四张并标记删除', async ({ page }) => {
+    const taskId = '11111111-1111-4111-8111-111111111111';
+    const photos = Array.from({ length: 5 }, (_, index) => ({
+      id: `22222222-2222-4222-8222-22222222222${index}`,
+      filename: `burst-${index + 1}.jpg`,
+      photo_time: `2026-08-30T10:00:0${index}`,
+      upload_time: `2026-08-30T10:01:0${index}`,
+      url: `/api/medias/22222222-2222-4222-8222-22222222222${index}/file`,
+      thumbnail_url: `/api/medias/22222222-2222-4222-8222-22222222222${index}/thumbnail`,
+      file_type: 'image',
+      size: 2_000_000 + index,
+      width: 4032,
+      height: 3024,
+    }));
+
+    await page.route('**/api/toolbox/similar/tasks/latest', route => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        msg: 'success',
+        data: {
+          id: taskId,
+          type: 'SIMILAR_PHOTO_CLUSTERING',
+          status: 'completed',
+          created_at: '2026-08-30T10:00:00',
+          updated_at: '2026-08-30T10:00:00',
+          total_items: 5,
+          processed_items: 5,
+          result: null,
+        },
+      }),
+    }));
+    await page.route(`**/api/toolbox/similar/tasks/${taskId}/result*`, route => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, msg: 'success', data: [photos] }),
+    }));
+    await page.route('**/api/medias/**', route => route.fulfill({
+      contentType: 'image/svg+xml',
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#9ca3af"/></svg>',
+    }));
+
+    await page.goto('/toolbox/similar');
+    await expect(page.getByText('分组 1 (5 张)')).toBeVisible();
+    await page.getByRole('button', { name: '对比照片' }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('照片对比')).toBeVisible();
+    await expect(dialog.locator('article')).toHaveCount(4);
+    await dialog.getByRole('button', { name: /标记删除/ }).first().click();
+    await expect(dialog.getByText('已标记 1 张')).toBeVisible();
+  });
+
   test('重复照片清理页面正常加载', async ({ page }) => {
     await page.goto('/toolbox/duplicate');
     await expect(page).toHaveURL(/\/toolbox\/duplicate/);
