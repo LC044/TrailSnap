@@ -139,8 +139,6 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [ app-network ]
-    ports:
-      - "5532:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -154,7 +152,6 @@ services:
     image: siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data        # Data directory mount
@@ -164,6 +161,8 @@ services:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,7 +172,6 @@ services:
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data        # Data directory mount
@@ -205,6 +203,8 @@ networks:
 ```bash
 docker-compose up -d
 ```
+
+Browsers, mobile apps, and the CLI all use the same TrailSnap address, such as `http://192.168.1.10:8082`. Server, AI, and PostgreSQL remain private on the Docker network.
 
 ### Source Code Deployment
 

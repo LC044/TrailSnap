@@ -29,20 +29,20 @@ trailsnap --help
 
 ## 2.1 config set - 配置API URL和Token
 
-「功能」：配置CLI工具与后端API的连接信息，包括API基础地址和Bearer凭证Token，是所有API交互类命令的前置操作。
+「功能」：配置 CLI 使用的 TrailSnap 访问地址和 Bearer Token。网页、App 与 CLI 使用同一个地址，CLI 会自动访问其中的 `/api`。
 
 「格式」：`config set --url API地址 --token API凭证`
 
 「参数说明」：
 
-- `--url`（必填）：API基础地址，格式为http/https开头，例如：http://localhost:8000
+- `--url`（必填）：TrailSnap 访问地址，格式为 http/https 开头，例如：http://localhost:8082
 
 - `--token`（必填）：API访问凭证（Bearer Token），用于身份验证，需从后端获取。
 
 「示例」：
 
 ```bash
-trailsnap config set --url http://localhost:8000 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+trailsnap config set --url http://localhost:8082 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 「输出说明」：配置成功后会输出配置文件保存路径（写入同目录 `.env`），例如：`配置已保存到 .../.env`。

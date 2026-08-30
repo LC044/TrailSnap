@@ -139,8 +139,6 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [ app-network ]
-    ports:
-      - "5532:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -154,7 +152,6 @@ services:
     image: siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data        # 挂载数据目录
@@ -164,6 +161,9 @@ services:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      # 改为当前主机的局域网地址后，App 可自动发现此实例
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
     depends_on:
       postgres:
         condition: service_healthy
@@ -173,7 +173,6 @@ services:
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data        # 挂载数据目录
@@ -189,6 +188,7 @@ services:
   frontend:
     image: siyuan044/trailsnap-frontend:latest
     restart: always
+    # 唯一需要对外开放的端口
     ports: [ "8082:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
@@ -205,6 +205,8 @@ networks:
 ```bash
 docker-compose up -d
 ```
+
+网页、移动 App 与 CLI 都使用同一个 TrailSnap 地址，例如 `http://192.168.1.10:8082`；API 由网关统一放在 `/api` 下。Server、AI 与数据库只在 Docker 内部网络通信，不需要向用户暴露端口。
 
 ### 源码部署
 

@@ -1,4 +1,4 @@
-from utils import make_request, load_env
+from utils import make_request, load_env, normalize_trailsnap_url
 from output import output, output_success, output_error, set_formatter, OutputFormatter
 
 def setup_parser(subparsers):
@@ -142,6 +142,8 @@ def execute_list(args):
 
     env = load_env()
     base_url = env.get("TRAILSNAP_API_URL", "")
+    if base_url:
+        base_url = normalize_trailsnap_url(base_url)
 
     all_data = []
     current_skip = args.skip
@@ -343,4 +345,3 @@ def execute_tags_remove(args):
     set_formatter(args.format)
     data = make_request(f"/photos/{args.photo_id}/tags/{args.tag_id}", method="DELETE")
     output(data)
-

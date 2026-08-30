@@ -9,7 +9,6 @@ Check the `docker-compose.yml` file to confirm the mount path of the photos fold
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data

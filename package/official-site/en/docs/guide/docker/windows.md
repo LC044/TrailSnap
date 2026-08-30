@@ -51,8 +51,6 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [ app-network ]
-    ports:
-      - "5532:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -66,7 +64,6 @@ services:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -75,6 +72,8 @@ services:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +82,6 @@ services:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
     restart: always
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -109,7 +107,6 @@ Example (if your photos are in `D:\TrailSnap\photos`):
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -129,7 +126,6 @@ If you have **multiple photo folders** (e.g., `D:\TrailSnap\photos1`, `D:\TrailS
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -177,7 +173,7 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 ---
 
 # Step 4: Verify Deployment
-Open your browser and go to:`http://localhost:8082`
+Open your browser at `http://localhost:8082`. The mobile app and CLI use the same TrailSnap address.
 
 You will see the TrailSnap web interface.
 

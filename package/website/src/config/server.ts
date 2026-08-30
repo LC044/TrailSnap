@@ -25,7 +25,13 @@ export function normalizeServerUrl(value: string): string {
   }
   url.hash = ''
   url.search = ''
-  url.pathname = url.pathname.replace(/\/(?:api)?\/?$/i, '') || ''
+  // Users configure the public TrailSnap entry point. Accept a trailing /api
+  // from older documentation, but store only the public origin.
+  url.pathname = url.pathname.replace(/\/api\/?$/i, '')
+  if (url.pathname && url.pathname !== '/') {
+    throw new Error('TrailSnap 地址不应包含路径')
+  }
+  url.pathname = ''
   return url.toString().replace(/\/+$/, '')
 }
 
@@ -136,22 +142,21 @@ export async function saveServerUrl(value: string): Promise<string> {
   return normalized
 }
 
-/** Convert web proxy paths (/api/...) into direct backend URLs on native. */
+/** Convert relative API/media paths into URLs on the configured public origin. */
 export function toServerUrl(path: string): string {
   if (/^(?:https?:|blob:|data:)/i.test(path)) return path
   const base = getServerUrl()
   if (!base) return path
-  const backendPath = path.replace(/^\/api(?=\/|$)/, '')
-  return `${base}${backendPath.startsWith('/') ? backendPath : `/${backendPath}`}`
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-export async function testServerConnection(value: string): Promise<string> {
+export async function testServerConnection(value: string, timeoutMs = 8000): Promise<string> {
   const normalized = normalizeServerUrl(value)
   if (!normalized) throw new Error('请输入服务器地址')
   const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 8000)
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(`${normalized}/health-check`, {
+    const response = await fetch(`${normalized}/api/health-check`, {
       method: 'GET',
       signal: controller.signal,
       headers: { Accept: 'application/json' },

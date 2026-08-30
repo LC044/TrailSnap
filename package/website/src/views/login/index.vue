@@ -32,19 +32,23 @@
             <div v-if="demoMode" class="rounded-lg bg-primary-50 dark:bg-primary-900/20 px-4 py-3 text-sm text-primary-600 dark:text-primary-300">
               演示模式：已为你自动填充演示账号，点击「登录」即可体验
             </div>
-            <el-form-item v-if="showServerAddress" label="服务器地址" prop="serverUrl" class="!mb-4">
+            <el-form-item v-if="showServerAddress" label="TrailSnap 地址" prop="serverUrl" class="!mb-4">
               <el-autocomplete
                 v-model="loginForm.serverUrl"
                 :fetch-suggestions="suggestServerAddresses"
                 :trigger-on-focus="true"
                 clearable
-                placeholder="请输入或选择服务器地址"
+                placeholder="与网页访问地址相同"
                 class="w-full !h-12"
                 data-testid="server-address"
                 @select="({ value }) => loginForm.serverUrl = value"
               />
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                例如 http://192.168.1.10:8800，登录时会记住该地址
+                例如 http://192.168.1.10:8082，登录时会记住该地址。
+                <router-link
+                  to="/server-settings?redirect=/login"
+                  class="ml-1 text-primary-600 dark:text-primary-400 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                >扫码或发现附近服务</router-link>
               </p>
             </el-form-item>
 
@@ -147,7 +151,7 @@ const loginForm = reactive({
 
 const rules = reactive<FormRules>({
   serverUrl: showServerAddress
-    ? [{ required: true, message: '请输入或选择服务器地址', trigger: 'change' }]
+    ? [{ required: true, message: '请输入或选择 TrailSnap 地址', trigger: 'change' }]
     : [],
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },

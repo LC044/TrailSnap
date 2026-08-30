@@ -5,5 +5,11 @@ project(':capacitor-android').projectDir = new File('../node_modules/.pnpm/@capa
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/.pnpm/@capacitor+app@8.1.1_@capacitor+core@8.5.0/node_modules/@capacitor/app/android')
 
+include ':capacitor-barcode-scanner'
+project(':capacitor-barcode-scanner').projectDir = new File('../node_modules/.pnpm/@capacitor+barcode-scanner@3.1.1_@capacitor+core@8.5.0/node_modules/@capacitor/barcode-scanner/android')
+
 include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File('../node_modules/.pnpm/@capacitor+preferences@8.0.1_@capacitor+core@8.5.0/node_modules/@capacitor/preferences/android')
+
+include ':devioarts-capacitor-mdns'
+project(':devioarts-capacitor-mdns').projectDir = new File('../node_modules/.pnpm/@devioarts+capacitor-mdns@0.1.0_@capacitor+core@8.5.0/node_modules/@devioarts/capacitor-mdns/android')

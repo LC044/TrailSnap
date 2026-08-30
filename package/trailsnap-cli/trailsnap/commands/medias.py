@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from utils import make_request,load_env
+from utils import make_request, load_env, normalize_trailsnap_url
 from output import output, output_error, set_formatter, OutputFormatter
 
 def setup_parser(subparsers):
@@ -31,6 +31,8 @@ def execute_get(args):
     
     out_path = args.output
     base_url = env.get("TRAILSNAP_API_URL", "")
+    if base_url:
+        base_url = normalize_trailsnap_url(base_url)
 
     if format == "url":
         if not base_url:

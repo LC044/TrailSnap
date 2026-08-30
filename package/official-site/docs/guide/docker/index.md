@@ -21,7 +21,7 @@ Linux / macOS / WSL2：
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-脚本会收集照片目录、端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:8082`。
+脚本会收集照片目录、一个 TrailSnap 访问端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:8082`。网页、App 和 CLI 都使用这个地址。
 
 常用管理命令（在安装目录执行）：
 
@@ -65,7 +65,7 @@ trailsnap/
 下面的 compose 与安装指南保持一致，你只需要修改两处：
 
 - `server.volumes` 里照片目录的宿主机路径
-- 如有端口冲突，修改 `ports` 映射
+- 如有端口冲突，修改 `frontend.ports` 中唯一的访问端口
 
 ```yaml
 version: '3.8'
@@ -95,7 +95,6 @@ services:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -105,6 +104,9 @@ services:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      # 请替换为这台主机的局域网 IP，供 App 自动发现
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
     depends_on:
       postgres:
         condition: service_healthy
@@ -114,7 +116,6 @@ services:
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -147,11 +148,12 @@ networks:
 docker-compose up -d
 ```
 
-启动后常用入口：
+启动后只有一个用户入口：
 
-- 前端：`http://<NAS_IP>:8082`
-- 后端 API：`http://<NAS_IP>:8800/docs`
-- AI 服务：`http://<NAS_IP>:8801/docs`
+- TrailSnap：`http://<NAS_IP>:8082`
+- API 文档：`http://<NAS_IP>:8082/api/docs`
+
+移动 App 可填写同一地址，也可以扫描连接二维码或使用“发现附近服务”。Server、AI 和 PostgreSQL 只在 Compose 内部网络通信。
 
 ## GPU 加速支持 (可选)
 
@@ -199,7 +201,6 @@ sudo systemctl restart docker
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -245,7 +246,7 @@ volumes:
 
 ### 端口冲突
 
-NAS 上常见 80/443/8080 等端口容易被占用。TrailSnap 默认使用 8082/8800/8801，如冲突可自行改映射，例如：
+NAS 上常见 80/443/8080 等端口容易被占用。TrailSnap 默认只开放 8082；如冲突可修改唯一的映射，例如：
 
 ```yaml
 ports: [ "18082:80" ]

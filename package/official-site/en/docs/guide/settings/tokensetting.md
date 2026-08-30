@@ -12,17 +12,14 @@ Example token: `ts_hV5nsCZJDheBvvmcd5L248IiAUnIwwZAn`
 
 ## API URL
 
-TrailSnap API URL is `http://<TrailSnap host IP>:8800/` (depends on your Docker port mapping).
+Third-party clients use the unified TrailSnap address, for example `http://<TrailSnap host IP>:8082`. The CLI automatically uses its `/api` path.
 
 ```yaml
-  server:
-    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
-    restart: always
-    expose: [ "8000" ]
-    ports: [ "8800:8000" ]
+  frontend:
+    ports: [ "8082:80" ]
 ```
 
-Here, `8800` is the port exposed on the host. Adjust it to your actual setup.
+Here, `8082` is the only user-facing port. Server, AI, and database ports stay inside the Docker network.
 
 ## Use the Token
 

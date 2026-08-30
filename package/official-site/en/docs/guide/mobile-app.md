@@ -29,34 +29,37 @@ and any published checksum before continuing.
 
 ## Connect to Your Server
 
-On first launch, enter the **main backend URL** without `/api`:
+On first launch, enter the same TrailSnap address that you use in a browser, without `/api`:
 
 ```text
-http://192.168.1.10:8800
+http://192.168.1.10:8082
 ```
 
 - Replace `192.168.1.10` with the LAN IP address of the computer or NAS running TrailSnap.
-- `8800` is the default backend API port used by the installation scripts.
+- `8082` is the default unified TrailSnap access port.
 - Do not use `localhost` or `127.0.0.1`; on a phone, those addresses refer to the phone itself.
-- Do not enter the web frontend port `8082`.
 - Do not append `/api` to the URL.
 
 Tap **Test and Save**. After a successful connection, the app stores the address and opens the sign-in
 page. Accounts, photos, and albums remain on your TrailSnap server.
+
+You can also scan the connection QR code, tap **Discover Nearby Services**, or open a
+`trailsnap://connect?url=...` deep link. Discovery uses DNS-SD/mDNS; guest Wi-Fi, AP isolation, or a VPN
+may block multicast, in which case QR scanning and manual entry remain available.
 
 ### Connection Checklist
 
 Connect the phone and server to the same LAN, then open this URL in the phone's browser:
 
 ```text
-http://192.168.1.10:8800/health-check
+http://192.168.1.10:8082/api/health-check
 ```
 
 If it does not open, check that:
 
-- the TrailSnap `server` container is running;
-- Docker maps the backend port as `8800:8000`;
-- the server firewall allows inbound TCP traffic on port `8800`;
+- the TrailSnap `frontend` and `server` containers are running;
+- Docker maps the unified access port as `8082:80`;
+- the server firewall allows inbound TCP traffic on port `8082`;
 - Wi-Fi client/AP isolation is disabled;
 - the IP address and port are correct.
 
@@ -102,12 +105,12 @@ TrailSnap as a PWA:
 3. Select **Add to Home Screen**.
 4. Open TrailSnap from the Home Screen.
 
-The PWA uses the web frontend port `8082`; this differs from the backend port `8800` entered in the Android app.
+The PWA, native apps, browser, and CLI all use the same TrailSnap address.
 
 ## Privacy and Security
 
 - The app connects to the server selected by the user; using the app does not automatically give project maintainers access to photos or account data.
 - The server operator remains responsible for protecting the database, photo directories, backups, and credentials.
 - Prefer HTTPS and strong passwords for public internet access.
-- Do not expose database or administrative ports directly to the internet.
+- Expose only the unified TrailSnap entry point; keep Server, AI, and database ports private.
 - Keep the app, server, and web frontend on compatible versions to avoid API incompatibilities.

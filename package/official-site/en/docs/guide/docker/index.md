@@ -29,7 +29,7 @@ trailsnap/
 The compose below is consistent with the installation guide, you only need to modify two places:
 
 - Host path for photo directory in `server.volumes`
-- Modify `ports` mapping if there is a port conflict
+- Modify the single `frontend.ports` mapping if there is a port conflict
 
 ```yaml
 version: '3.8'
@@ -46,8 +46,6 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [ app-network ]
-    ports:
-      - "5532:5432"
     volumes:
       - ./pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -61,7 +59,6 @@ services:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
-    ports: [ "8800:8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -71,6 +68,9 @@ services:
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
+      - TRAILSNAP_ROOT_PATH=/api
+      # Replace this with the host LAN address to enable App discovery
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,7 +79,6 @@ services:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
     restart: always
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -104,11 +103,12 @@ Execute in the directory where `docker-compose.yml` is located:
 docker-compose up -d
 ```
 
-Common entry points after startup:
+TrailSnap has one user-facing address after startup:
 
-- Frontend: `http://<NAS_IP>:8082`
-- Backend API: `http://<NAS_IP>:8800/docs`
-- AI Service: `http://<NAS_IP>:8801/docs`
+- TrailSnap: `http://<NAS_IP>:8082`
+- API docs: `http://<NAS_IP>:8082/api/docs`
+
+The browser, mobile app, PWA, and CLI all use this same address. Server, AI, and PostgreSQL remain private on the Compose network.
 
 ## 4. GPU Acceleration Support (Optional)
 
@@ -153,7 +153,6 @@ Make the following changes to the `ai` service:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest-gpu
     restart: always
     expose: [ "8001" ]
-    ports: [ "8801:8001" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
@@ -181,7 +180,7 @@ If the photo directory is read-only shared or permission isolated, the container
 
 ### 4.3 Port Conflict
 
-Common ports like 80/443/8080 are easily occupied on NAS. TrailSnap uses 8082/8800/8801/5532 by default. If there is a conflict, you can modify the mapping yourself, for example:
+Common ports like 80/443/8080 are easily occupied on NAS. TrailSnap exposes only port 8082 by default. If there is a conflict, modify the single mapping, for example:
 
 ```yaml
 ports: [ "18082:80" ]

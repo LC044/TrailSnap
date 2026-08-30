@@ -71,19 +71,19 @@ trailsnap --help
 
 #### 2.2.1 config set — Configure API URL and Token
 
-Configures the CLI connection to the backend API, including the API base URL and Bearer token. This is a prerequisite for all API commands.
+Configures the CLI with the unified TrailSnap address and Bearer token. This is a prerequisite for all API commands.
 
 Format: `config set --url API_URL --token API_TOKEN`
 
 Parameters:
 
-- `--url` (required): API base URL, starting with http/https, e.g. `http://localhost:8000`
+- `--url` (required): unified TrailSnap address, e.g. `http://localhost:8082`. The CLI automatically uses `/api`.
 - `--token` (required): API access token (Bearer Token) for authentication, obtained from the backend.
 
 Example:
 
 ```bash
-trailsnap config set --url http://localhost:8000 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+trailsnap config set --url http://localhost:8082 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 On success, the config file path is displayed (written to `.env` in the same directory).

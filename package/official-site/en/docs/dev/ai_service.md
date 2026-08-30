@@ -50,7 +50,7 @@ brew install llama.cpp
 
 ## Common endpoints
 
-- Swagger docs: `http://<host>:8801/docs` (depends on your Docker port mapping)
+- Source-development Swagger docs: `http://localhost:8001/docs`. In production Compose, AI stays private and has no user-facing port.
 
 ## Troubleshooting
 

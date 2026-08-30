@@ -10,7 +10,9 @@ android {
 apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
 dependencies {
     implementation project(':capacitor-app')
+    implementation project(':capacitor-barcode-scanner')
     implementation project(':capacitor-preferences')
+    implementation project(':devioarts-capacitor-mdns')
 
 }
 
