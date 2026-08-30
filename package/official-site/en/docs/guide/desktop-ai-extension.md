@@ -45,12 +45,9 @@ The extension contains native executables and cannot be shared across operating 
 
 Face, OCR, classification, and semantic search do not require `llama-server`. It is only needed for the bundled MiniCPM local multimodal model.
 
-- Windows and macOS: use **One-click install** in the llama.cpp section, then run detection again.
+- Windows: use **One-click install**. TrailSnap downloads and verifies the runtime directly from the official llama.cpp GitHub Release; winget is not required.
+- macOS: use **One-click install** (Homebrew is required).
 - Linux: install or compile `llama-server`, add it to `PATH`, and restart TrailSnap.
-
-```powershell
-winget install --id ggml.llamacpp --exact
-```
 
 ```bash
 brew install llama.cpp

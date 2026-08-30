@@ -4,8 +4,8 @@
       <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">用户管理</h2>
       <div class="flex gap-2">
         <el-button type="primary" @click="showCreateDialog = true">添加用户</el-button>
-        <el-button type="danger" @click="handleLogout" class="hidden md:inline-flex">退出登录</el-button>
-        <el-button type="danger" size="small" @click="handleLogout" class="md:hidden">退出</el-button>
+        <el-button v-if="!isTauriApp()" type="danger" @click="handleLogout" class="hidden md:inline-flex">退出登录</el-button>
+        <el-button v-if="!isTauriApp()" type="danger" size="small" @click="handleLogout" class="md:hidden">退出</el-button>
       </div>
     </div>
 
@@ -137,6 +137,7 @@ import { ElMessage } from 'element-plus'
 import { userService, type User } from '@/api/user'
 import { useUserStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
+import { isTauriApp } from '@/config/server'
 
 const userStore = useUserStore()
 const router = useRouter()

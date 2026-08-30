@@ -95,6 +95,23 @@ jobs:
           pnpm --dir package/website install --frozen-lockfile
           pnpm --dir package/desktop install --frozen-lockfile
 
+      - name: Prepare updater signing key
+        shell: bash
+        env:
+          RELEASE_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          key_path="$RUNNER_TEMP/trailsnap-updater.key"
+          if [ -n "$RELEASE_SIGNING_PRIVATE_KEY" ]; then
+            printf '%s' "$RELEASE_SIGNING_PRIVATE_KEY" > "$key_path"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is required for release builds"
+            exit 1
+          else
+            pnpm --dir package/desktop exec tauri signer generate --ci --write-keys "$key_path"
+          fi
+          chmod 600 "$key_path"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+
       - name: Build Vue frontend
         run: pnpm --dir package/website build
 
@@ -191,15 +208,41 @@ jobs:
           LINUXDEPLOY_DEBUG: ${{ runner.os == 'Linux' && '1' || '' }}
         run: pnpm --dir package/desktop exec tauri build --verbose --bundles ${{ matrix.bundles }}
 
+      - name: Describe updater artifact
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) target=windows; pattern='package/desktop/src-tauri/target/release/bundle/nsis/*.exe' ;;
+            macOS) target=darwin; pattern='package/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz' ;;
+            Linux) target=linux; pattern='package/desktop/src-tauri/target/release/bundle/appimage/*.AppImage' ;;
+          esac
+          host=$(rustc -vV | sed -n 's/^host: //p')
+          case "$host" in
+            x86_64-*) arch=x86_64 ;;
+            aarch64-*) arch=aarch64 ;;
+            *) echo "::error::Unsupported updater architecture: $host"; exit 1 ;;
+          esac
+          mapfile -t updater_files < <(compgen -G "$pattern")
+          ((${#updater_files[@]} == 1)) || { echo "::error::Expected one updater file for $target-$arch"; exit 1; }
+          updater_file=${updater_files[0]}
+          signature_file="$updater_file.sig"
+          [ -f "$signature_file" ] || { echo "::error::Missing updater signature: $signature_file"; exit 1; }
+          printf '%s\t%s\t%s\n' "$target-$arch" "${updater_file##*/}" "$(tr -d '\r\n' < "$signature_file")" > "package/desktop/updater-$target-$arch.tsv"
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: TrailSnap-${{ matrix.artifact }}-${{ github.run_number }}
           path: |
             package/desktop/src-tauri/target/release/bundle/nsis/*.exe
+            package/desktop/src-tauri/target/release/bundle/nsis/*.exe.sig
             package/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+            package/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz
+            package/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
             package/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            package/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
             package/desktop/src-tauri/target/release/bundle/deb/*.deb
+            package/desktop/updater-*.tsv
           if-no-files-found: error
           retention-days: 14
 
@@ -221,14 +264,33 @@ jobs:
       - name: Collect desktop installers
         shell: bash
         run: |
-          mkdir -p release-assets
+          mkdir -p release-assets update-metadata
           mapfile -d '' files < <(find artifacts -type f -print0)
           ((${#files[@]} > 0)) || { echo "::error::No desktop installers were downloaded"; exit 1; }
           for file in "${files[@]}"; do
+            if [[ "$file" == *.tsv ]]; then
+              mv "$file" "update-metadata/${file##*/}"
+              continue
+            fi
             destination="release-assets/${file##*/}"
             [ ! -e "$destination" ] || { echo "::error::Duplicate installer name: ${file##*/}"; exit 1; }
             mv "$file" "$destination"
           done
+
+      - name: Generate signed updater manifest
+        shell: bash
+        run: |
+          tag='${{ github.ref_name }}'
+          version=${tag#v}
+          jq -n --arg version "$version" '{version: $version, platforms: {}}' > release-assets/latest.json
+          while IFS=$'\t' read -r platform filename signature; do
+            url="https://github.com/${{ github.repository }}/releases/download/$tag/$filename"
+            jq --arg platform "$platform" --arg url "$url" --arg signature "$signature" \
+              '.platforms[$platform] = {url: $url, signature: $signature}' \
+              release-assets/latest.json > release-assets/latest.tmp
+            mv release-assets/latest.tmp release-assets/latest.json
+          done < <(cat update-metadata/*.tsv)
+          jq -e '.platforms | length > 0' release-assets/latest.json
 
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
@@ -239,9 +301,14 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             release-assets/*.exe
+            release-assets/*.exe.sig
             release-assets/*.dmg
+            release-assets/*.app.tar.gz
+            release-assets/*.app.tar.gz.sig
             release-assets/*.AppImage
+            release-assets/*.AppImage.sig
             release-assets/*.deb
+            release-assets/latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

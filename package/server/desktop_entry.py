@@ -13,6 +13,23 @@ import time
 from pathlib import Path
 
 
+DESKTOP_SCHEMA_REVISION = "sqlite_0005"
+
+
+def _database_is_current(database_path: Path) -> bool:
+    """Check the tiny Alembic version table without importing Alembic."""
+    if not database_path.is_file():
+        return False
+    import sqlite3
+
+    try:
+        with sqlite3.connect(database_path) as connection:
+            row = connection.execute("SELECT version_num FROM alembic_version LIMIT 1").fetchone()
+        return bool(row and row[0] == DESKTOP_SCHEMA_REVISION)
+    except sqlite3.Error:
+        return False
+
+
 def _prepare_desktop_database() -> None:
     """Upgrade the local SQLite database before importing the API app."""
 
@@ -25,22 +42,25 @@ def _prepare_desktop_database() -> None:
         secret_file.chmod(0o600)
     except OSError:
         pass
-    database_url = f"sqlite:///{(data_dir / 'trailsnap.sqlite').as_posix()}"
+    database_path = data_dir / "trailsnap.sqlite"
+    database_url = f"sqlite:///{database_path.as_posix()}"
     os.environ["TS_DB_URL"] = database_url
     os.environ.setdefault(
         "RAILWAY_DB_URL",
         f"sqlite:///{(data_dir / 'railway.sqlite').as_posix()}",
     )
 
-    from alembic import command
-    from alembic.config import Config
+    # Most launches are already at the bundled schema head. Avoid importing
+    # Alembic and scanning migration modules on that hot path.
+    if not _database_is_current(database_path):
+        from alembic import command
+        from alembic.config import Config
+        from app.core.paths import BUNDLE_ROOT
 
-    config = Config()
-    from app.core.paths import BUNDLE_ROOT
-
-    config.set_main_option("script_location", str(Path(BUNDLE_ROOT) / "alembic_sqlite"))
-    config.set_main_option("sqlalchemy.url", database_url)
-    command.upgrade(config, "head")
+        config = Config()
+        config.set_main_option("script_location", str(Path(BUNDLE_ROOT) / "alembic_sqlite"))
+        config.set_main_option("sqlalchemy.url", database_url)
+        command.upgrade(config, "head")
 
     from app.db.bootstrap import ensure_desktop_admin
     from app.db.session import SessionLocal

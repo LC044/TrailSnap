@@ -47,13 +47,9 @@ AI Sidecar 只会在相关功能首次调用时启动，空闲后自动停止。
 
 人脸、OCR、分类和语义检索不需要额外安装 `llama-server`。只有使用内置 MiniCPM 本地多模态模型时才需要 llama.cpp 运行时。
 
-- Windows、macOS：在扩展页面的“llama.cpp 运行时”区域点击“一键安装”，完成后点击“重新检测”。
+- Windows：在扩展页面点击“一键安装”。TrailSnap 会直接从 llama.cpp 官方 GitHub Release 下载并校验运行时，不要求电脑安装 winget。
+- macOS：在扩展页面点击“一键安装”（需要 Homebrew）。
 - Linux：自行安装或编译 `llama-server`，确保它位于系统 `PATH` 中，再重启 TrailSnap。
-
-```powershell
-# Windows
-winget install --id ggml.llamacpp --exact
-```
 
 ```bash
 # macOS

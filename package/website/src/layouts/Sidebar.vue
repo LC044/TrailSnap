@@ -273,7 +273,7 @@
           <el-dropdown-menu>
             <el-dropdown-item command="profile"><UserCircle class="mr-2 h-4 w-4" />个人资料</el-dropdown-item>
             <el-dropdown-item command="settings"><Settings class="mr-2 h-4 w-4" />设置</el-dropdown-item>
-            <el-dropdown-item divided command="logout"><LogOut class="mr-2 h-4 w-4" />退出登录</el-dropdown-item>
+            <el-dropdown-item v-if="!isTauriApp()" divided command="logout"><LogOut class="mr-2 h-4 w-4" />退出登录</el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>
@@ -325,7 +325,7 @@ import type { AppNavItem } from '@/config/navigation'
 import { useUserStore } from '@/stores/user'
 import { ElMessageBox } from 'element-plus'
 import { useUiStore } from '@/stores/uiStore'
-import { toServerUrl } from '@/config/server'
+import { isTauriApp, toServerUrl } from '@/config/server'
 import { agentApi } from '@/api/agent'
 
 const route = useRoute()

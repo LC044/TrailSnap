@@ -23,6 +23,7 @@ import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
 import { useUserStore } from '@/stores/user'
 
 async function bootstrap() {
+  document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
   await initializeServerConfig()
   document.documentElement.classList.toggle('capacitor-native', isNativeApp())
   const app = createApp(App);
