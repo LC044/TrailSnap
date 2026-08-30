@@ -37,8 +37,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await page.goto('/settings');
 
     await clickSettingTab(page, 'external');
-    // ExternalGallery.vue 模板硬编码 <h2>外部图库管理</h2>
-    await expect(page.locator('h2', { hasText: '外部图库管理' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('切换到「性能测试」- 渲染 PerformanceTest 子页 H2', async ({ page }) => {
@@ -133,13 +132,13 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     // 切到外部图库 — 任务管理 H2 应消失，外部图库 H2 出现
     await clickSettingTab(page, 'external');
-    await expect(page.locator('h2', { hasText: '外部图库管理' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('h2', { hasText: '任务管理' })).toHaveCount(0);
 
     // 再切到性能测试 — 前两个 H2 都应消失
     await clickSettingTab(page, 'performance');
     await expect(page.locator('h2', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('h2', { hasText: '外部图库管理' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toHaveCount(0);
     await expect(page.locator('h2', { hasText: '任务管理' })).toHaveCount(0);
   });
   test('外部图库可切换到图片文件过滤并返回目录管理', async ({ page }) => {
@@ -150,8 +149,8 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.getByText('启用过滤', { exact: true })).toBeVisible();
 
     await page.getByRole('tab', { name: '目录管理' }).click();
-    // 新版目录管理 tab：已接入图库列表始终渲染（管理员/普通用户均可见）
-    await expect(page.locator('h3', { hasText: '已接入图库' })).toBeVisible({ timeout: 10_000 });
+    // 新版目录管理 tab：文件夹列表始终渲染（管理员/普通用户均可见）
+    await expect(page.getByRole('heading', { name: '已添加的文件夹', exact: true })).toBeVisible({ timeout: 10_000 });
   });
 
   test('外部图库空路径时手动添加禁用且不发起添加请求', async ({ page }) => {
@@ -169,7 +168,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     // 先等管理员区就绪（isSuperuser 依赖异步 getUserInfo），再展开手动添加折叠；
     // 用子串匹配折叠标题，兼容「手动输入容器内路径 / 手动输入路径」两种文案
-    await expect(page.locator('h3', { hasText: '照片目录接入' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: '添加照片目录', exact: true })).toBeVisible({ timeout: 20_000 });
     await page.getByText('高级：手动输入').click();
     // 空路径时「添加并扫描」禁用；点「校验」提示请输入路径；且不发起 add 请求
     await expect(page.getByRole('button', { name: '添加并扫描' })).toBeVisible();
