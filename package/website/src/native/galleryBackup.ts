@@ -1,4 +1,4 @@
-import { Capacitor, registerPlugin } from '@capacitor/core'
+import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core'
 
 export interface GalleryAsset {
   id: number
@@ -24,6 +24,19 @@ interface GalleryBackupNativePlugin {
   exportAsset(options: { uri: string; fileName: string }): Promise<{ path: string }>
   releaseAsset(options: { path: string }): Promise<void>
   getNetworkStatus(): Promise<{ connected: boolean; wifi: boolean; unmetered: boolean }>
+  countAssets(options: GalleryCursor & { includeVideos: boolean }): Promise<{ count: number; bytes: number }>
+  requestNotificationPermission(): Promise<{ granted: boolean }>
+  updateBackupNotification(options: {
+    state: 'running' | 'paused' | 'completed' | 'error'
+    processed: number
+    total: number
+    percent: number
+    speed: string
+    currentFile: string
+  }): Promise<void>
+  cancelBackupNotification(): Promise<void>
+  consumeNotificationAction(): Promise<{ action: 'pause' | 'resume' | '' }>
+  addListener(eventName: 'notificationAction', listener: (event: { action: 'pause' | 'resume' }) => void): Promise<PluginListenerHandle>
 }
 
 export const galleryBackupNative = registerPlugin<GalleryBackupNativePlugin>('GalleryBackup')

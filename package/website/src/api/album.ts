@@ -106,7 +106,7 @@ export const albumService = {
   },
 
   // Upload (Simple)
-  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string) {
+  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string, onProgress?: (loaded: number, total?: number) => void) {
     const formData = new FormData();
     formData.append('file', file);
     if (albumId) {
@@ -115,7 +115,8 @@ export const albumService = {
     if (folder) formData.append('folder', folder);
     if (backupKey) formData.append('backup_key', backupKey);
     const data = await request.post<Photo>('/api/medias', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: event => onProgress?.(event.loaded, event.total),
     });
     return data.data;
   },
@@ -136,12 +137,14 @@ export const albumService = {
       return data.data.upload_id;
   },
 
-  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob) {
+  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob, onProgress?: (loaded: number, total?: number) => void) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('chunk_index', chunkIndex.toString());
       formData.append('file', chunk);
-      await request.post('/api/medias/upload/chunk', formData);
+      await request.post('/api/medias/upload/chunk', formData, {
+        onUploadProgress: event => onProgress?.(event.loaded, event.total),
+      });
   },
 
   async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string) {
