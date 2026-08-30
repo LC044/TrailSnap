@@ -44,7 +44,6 @@
                 @select="({ value }) => loginForm.serverUrl = value"
               />
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                例如 http://192.168.1.10:8082，登录时会记住该地址。
                 <router-link
                   to="/server-settings?redirect=/login"
                   class="ml-1 text-primary-600 dark:text-primary-400 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"

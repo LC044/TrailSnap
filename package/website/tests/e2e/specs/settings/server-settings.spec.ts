@@ -53,7 +53,7 @@ test.describe('Smoke - ServerSettings 配置自托管服务 @smoke', () => {
     await expect(page.getByRole('button', { name: /测试并保存/ })).toBeDisabled();
   });
 
-  test('连接链接会填入统一 TrailSnap 地址并生成分享二维码', async ({ page }) => {
+  test('连接链接会填入统一地址并提示二维码在电脑设置中获取', async ({ page }) => {
     await page.route('**/api/nav/items', route =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ items: [] }) })
     );
@@ -64,7 +64,9 @@ test.describe('Smoke - ServerSettings 配置自托管服务 @smoke', () => {
     await page.goto(`/connect?url=${encodeURIComponent('http://192.168.1.20:8082')}`);
 
     await expect(page.locator('input[placeholder*="192.168"]')).toHaveValue('http://192.168.1.20:8082');
-    await expect(page.getByAltText('TrailSnap 连接二维码')).toBeVisible();
+    await expect(page.getByText('二维码在哪里？')).toBeVisible();
+    await expect(page.getByText('设置 → 连接手机 App')).toBeVisible();
+    await expect(page.getByAltText(/连接二维码/)).toHaveCount(0);
   });
 
   test('HTTP 200 成功路径 - 保存到 localStorage 并跳转 /login', async ({ page }) => {

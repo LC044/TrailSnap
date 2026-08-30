@@ -43,9 +43,15 @@ http://192.168.1.10:8082
 Tap **Test and Save**. After a successful connection, the app stores the address and opens the sign-in
 page. Accounts, photos, and albums remain on your TrailSnap server.
 
-You can also scan the connection QR code, tap **Discover Nearby Services**, or open a
-`trailsnap://connect?url=...` deep link. Discovery uses DNS-SD/mDNS; guest Wi-Fi, AP isolation, or a VPN
-may block multicast, in which case QR scanning and manual entry remain available.
+For a QR connection, open TrailSnap in a desktop browser, go to **Settings → Connect Mobile App**, and
+scan the QR code shown on the computer with the app. The phone connection page does not generate a QR
+code for itself. If the desktop page uses `localhost` or `127.0.0.1`, replace it with the computer's LAN
+address on the **Connect Mobile App** page.
+
+You can also tap **Discover Nearby Services** or open a `trailsnap://connect?url=...` deep link.
+Discovery uses DNS-SD/mDNS only as a convenience on a shared router Wi-Fi network. Phone hotspots,
+guest Wi-Fi, AP isolation, VPNs, or Docker networking may block multicast; use QR scanning or manual
+entry when discovery is unavailable.
 
 ### Connection Checklist
 

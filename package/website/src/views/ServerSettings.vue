@@ -50,6 +50,15 @@
           </button>
         </div>
 
+        <div class="rounded-xl border border-primary-500 bg-gray-50 p-4 text-sm leading-6 text-gray-700 dark:bg-gray-900 dark:text-gray-200">
+          <p class="font-semibold text-gray-900 dark:text-white">二维码在哪里？</p>
+          <p class="mt-1">
+            在电脑浏览器中打开 TrailSnap，登录后进入
+            <span class="font-medium text-primary-600 dark:text-primary-400">设置 → 连接手机 App</span>，
+            页面会显示供本 App 扫描的二维码。
+          </p>
+        </div>
+
         <div v-if="discoveredServers.length" class="space-y-2">
           <p class="text-xs font-medium text-gray-600 dark:text-gray-300">发现的 TrailSnap</p>
           <button
@@ -65,7 +74,7 @@
         </div>
 
         <div class="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-xs leading-5 text-amber-800 dark:text-amber-200">
-          局域网可使用 HTTP；通过公网访问时建议配置 HTTPS，以保护账号、令牌和照片数据。
+          “发现附近服务”仅作为同一路由器 Wi-Fi 下的辅助方式。手机热点、访客 Wi-Fi、AP 隔离、VPN 或 Docker 网络可能拦截服务发现；发现失败时请使用电脑网页上的二维码或手动输入地址。
         </div>
 
         <p v-if="errorMessage" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ errorMessage }}</p>
@@ -89,35 +98,21 @@
         </button>
       </form>
 
-      <div v-if="shareQrCode" class="mt-7 border-t border-gray-200 dark:border-gray-700 pt-6 text-center">
-        <p class="text-sm font-medium text-gray-700 dark:text-gray-200">在另一台设备上连接</p>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">使用 TrailSnap App 扫描此二维码</p>
-        <img :src="shareQrCode" alt="TrailSnap 连接二维码" class="mx-auto mt-3 w-40 h-40 rounded-xl bg-white p-2" />
-        <button
-          type="button"
-          class="mt-2 text-sm text-primary-600 dark:text-primary-400 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-          @click="copyConnectionLink"
-        >
-          复制连接链接
-        </button>
-      </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { QrCode, Radar, Server } from 'lucide-vue-next'
-import { getServerUrl, hasConfiguredServer, isMobileApp, saveServerUrl, testServerConnection } from '@/config/server'
+import { getServerUrl, hasConfiguredServer, saveServerUrl, testServerConnection } from '@/config/server'
 import {
-  createConnectionDeepLink,
   discoverTrailSnapServers,
   scanConnectionQrCode,
 } from '@/config/serverConnection'
 import { useUserStore } from '@/stores/user'
-import QRCode from 'qrcode'
 
 const router = useRouter()
 const route = useRoute()
@@ -129,31 +124,11 @@ const successMessage = ref('')
 const scanning = ref(false)
 const discovering = ref(false)
 const discoveredServers = ref<string[]>([])
-const shareQrCode = ref('')
 const hasExistingConfig = computed(() => hasConfiguredServer())
-
-const updateShareQrCode = async () => {
-  try {
-    const value = address.value || (isMobileApp() ? '' : window.location.origin)
-    if (!value) {
-      shareQrCode.value = ''
-      return
-    }
-    shareQrCode.value = await QRCode.toDataURL(createConnectionDeepLink(value), {
-      width: 320,
-      margin: 1,
-      errorCorrectionLevel: 'M',
-    })
-  } catch {
-    shareQrCode.value = ''
-  }
-}
 
 onMounted(() => {
   if (typeof route.query.url === 'string') address.value = route.query.url
-  void updateShareQrCode()
 })
-watch(address, () => void updateShareQrCode())
 
 const scanQrCode = async () => {
   scanning.value = true
@@ -182,17 +157,6 @@ const discoverServers = async () => {
     errorMessage.value = error instanceof Error ? error.message : '局域网发现失败'
   } finally {
     discovering.value = false
-  }
-}
-
-const copyConnectionLink = async () => {
-  try {
-    const value = address.value || (isMobileApp() ? '' : window.location.origin)
-    if (!value) throw new Error('missing server URL')
-    await navigator.clipboard.writeText(createConnectionDeepLink(value))
-    successMessage.value = '连接链接已复制'
-  } catch {
-    errorMessage.value = '复制失败，请使用二维码连接'
   }
 }
 
