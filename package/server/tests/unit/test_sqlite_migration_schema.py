@@ -4,6 +4,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 import pytest
 from sqlalchemy import create_engine, inspect, text
 
@@ -47,6 +48,7 @@ def test_frozen_sqlite_migrations_match_current_metadata(tmp_path, monkeypatch):
             assert actual_indexes == expected_indexes, table_name
 
         with engine.connect() as connection:
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "sqlite_0004"
+            database_revision = connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+            assert database_revision == ScriptDirectory.from_config(config).get_current_head()
     finally:
         engine.dispose()
