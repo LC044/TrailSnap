@@ -63,6 +63,24 @@ class TaskManager:
         if started:
             self._publish_active_tasks_snapshot()
 
+    def start_worker_for_pending_tasks(self) -> bool:
+        """Start the expensive worker process only when persisted work exists.
+
+        A fresh desktop launch normally has no queued work. Spawning a second
+        frozen Python process in that case adds several seconds to the time
+        before FastAPI can report ready, while every task creation/retry path
+        already starts the worker lazily.
+        """
+        db = SessionLocal()
+        try:
+            paused_types = set(self._load_system_state('paused_categories', []) or [])
+            should_start = crud_task.count_dispatchable_tasks(db, paused_types) > 0
+        finally:
+            db.close()
+        if should_start:
+            self.start_worker_if_needed()
+        return should_start
+
     def _start_worker_locked(self) -> bool:
         """启动后台工作进程（调用方需持有 _worker_lock）。
 

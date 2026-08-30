@@ -37,6 +37,8 @@
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
     "@types/dompurify": "^3.2.0",
     "@types/markdown-it": "^14.1.2",
     "@vueuse/core": "^14.0.0",

@@ -8,7 +8,7 @@ import axios, {
 import { ElMessage } from 'element-plus';
 import router from '@/router';
 import { useUserStore } from '@/stores/user';
-import { getServerUrl, hasConfiguredServer, isMobileApp, isNativeApp } from '@/config/server';
+import { getServerUrl, hasConfiguredServer, isMobileApp, isNativeApp, isTauriApp } from '@/config/server';
 
 // 创建 Axios 实例（类型不变）
 const service: AxiosInstance = axios.create({
@@ -98,6 +98,19 @@ service.interceptors.response.use(
           const currentPath = router.currentRoute.value.path;
           const publicPages = ['/login', '/register', '/forgot-password'];
           const userStore = useUserStore();
+
+          const originalRequest = error.config as (InternalAxiosRequestConfig & { _desktopSessionRetried?: boolean }) | undefined;
+          if (isTauriApp() && originalRequest && !originalRequest._desktopSessionRetried) {
+            originalRequest._desktopSessionRetried = true;
+            try {
+              await userStore.initializeDesktopSession();
+              originalRequest.headers.Authorization = `Bearer ${userStore.token}`;
+              return service.request(originalRequest);
+            } catch {
+              // Fall through to the normal expired-session handling. The
+              // desktop login page also repairs the local session on mount.
+            }
+          }
 
           if (publicPages.some(p => currentPath.startsWith(p))) {
             // Already on a public page — just clear stale token silently

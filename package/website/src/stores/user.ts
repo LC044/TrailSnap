@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { authService, type LoginParams, type UserInfo } from '@/api/auth';
 import router from '@/router';
+import { isTauriApp } from '@/config/server';
 
 const PERSIST_KEY_PREFIXES = ['trailsnap:', 'ticket-', 'trailsnap-location-'];
 const USER_INFO_KEY = 'user_info';
@@ -113,7 +114,15 @@ export const useUserStore = defineStore('user', () => {
     } catch (error) {
       console.warn('Logout API failed, forcing local logout', error);
     } finally {
-      resetState();
+      if (isTauriApp()) {
+        // Desktop has a single local administrator and deliberately has no
+        // password screen. Treat a legacy logout action as a session refresh.
+        clearSession();
+        await initializeDesktopSession();
+        await router.replace('/');
+      } else {
+        resetState();
+      }
     }
   };
 
