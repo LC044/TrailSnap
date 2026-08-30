@@ -106,13 +106,14 @@ export const albumService = {
   },
 
   // Upload (Simple)
-  async uploadPhoto(file: File, albumId?: string, folder?: string) {
+  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string) {
     const formData = new FormData();
     formData.append('file', file);
     if (albumId) {
         formData.append('album_id', albumId);
     }
     if (folder) formData.append('folder', folder);
+    if (backupKey) formData.append('backup_key', backupKey);
     const data = await request.post<Photo>('/api/medias', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
     });
@@ -143,7 +144,7 @@ export const albumService = {
       await request.post('/api/medias/upload/chunk', formData);
   },
 
-  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string) {
+  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', fileName);
@@ -151,8 +152,14 @@ export const albumService = {
           formData.append('album_id', albumId);
       }
       if (folder) formData.append('folder', folder);
+      if (backupKey) formData.append('backup_key', backupKey);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData);
       return data.data;
+  },
+
+  async checkBackupKeys(keys: string[]) {
+    const data = await request.post<{ existing: string[] }>('/api/medias/backup/check', { keys });
+    return new Set(data.data.existing);
   },
 
   async getUploadFolders() {

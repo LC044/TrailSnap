@@ -10,6 +10,7 @@ from starlette.concurrency import run_in_threadpool
 import anyio
 import base64
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.crud.photo import save_and_create_photo
 from app.db.models.task import TaskType
@@ -27,6 +28,34 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 
 router = APIRouter()
+
+
+def _existing_backup_photo(db: Session, user_id: UUID, backup_key: Optional[str]):
+    if not backup_key:
+        return None
+    return db.query(Photo).filter(
+        Photo.owner_id == user_id,
+        Photo.backup_key == backup_key,
+    ).first()
+
+
+@router.post('/backup/check', response_model=BaseResponse[dict])
+def check_mobile_backup_assets(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    keys = payload.get("keys") if isinstance(payload, dict) else None
+    if not isinstance(keys, list) or len(keys) > 200 or any(not isinstance(key, str) for key in keys):
+        raise HTTPException(status_code=400, detail="keys must be a string array with at most 200 items")
+    normalized = list(dict.fromkeys(key[:255] for key in keys if key))
+    if not normalized:
+        return BaseResponse.success(data={"existing": []})
+    rows = db.query(Photo.backup_key).filter(
+        Photo.owner_id == current_user.id,
+        Photo.backup_key.in_(normalized),
+    ).all()
+    return BaseResponse.success(data={"existing": [row[0] for row in rows]})
 
 
 def _geojson_path(level_cn: str) -> str:
@@ -294,10 +323,18 @@ def add_tasks(db: Session, user_id: UUID, photo_id: UUID, file_path: str):
 async def upload_photo_generic(
         album_id: Optional[UUID] = Form(None),
         folder: Optional[str] = Form(None),
+        backup_key: Optional[str] = Form(None),
         file: UploadFile = File(...),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    if not isinstance(backup_key, str):
+        backup_key = None
+    if backup_key and len(backup_key) > 255:
+        raise HTTPException(status_code=400, detail="backup_key is too long")
+    existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+    if existing:
+        return existing
     if album_id:
         # Verify album exists
         db_album = await run_in_threadpool(crud_album.get_album, db, album_id=album_id, user_id=current_user.id)
@@ -312,7 +349,15 @@ async def upload_photo_generic(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Create and Save
-    photo = await run_in_threadpool(save_and_create_photo, db, file_path, file.filename, album_id, photo_id, user_id=current_user.id)
+    try:
+        photo = await run_in_threadpool(save_and_create_photo, db, file_path, file.filename, album_id, photo_id, user_id=current_user.id, backup_key=backup_key)
+    except IntegrityError:
+        await run_in_threadpool(db.rollback)
+        existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+        if not existing:
+            raise
+        await run_in_threadpool(os.remove, file_path)
+        return existing
     # Add tasks
     await run_in_threadpool(add_tasks, db, current_user.id, photo_id, file_path)
 
@@ -358,9 +403,18 @@ async def finish_upload_generic(
         file_name: str = Form(...),
         album_id: Optional[UUID] = Form(None),
         folder: Optional[str] = Form(None),
+        backup_key: Optional[str] = Form(None),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    if not isinstance(backup_key, str):
+        backup_key = None
+    if backup_key and len(backup_key) > 255:
+        raise HTTPException(status_code=400, detail="backup_key is too long")
+    existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+    if existing:
+        await run_in_threadpool(shutil.rmtree, _chunk_dir(current_user.id, upload_id, db), True)
+        return existing
     if album_id:
         # Verify album exists
         db_album = await run_in_threadpool(crud_album.get_album, db, album_id=album_id, user_id=current_user.id)
@@ -409,7 +463,15 @@ async def finish_upload_generic(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Create and Save
-    photo = await run_in_threadpool(save_and_create_photo, db, final_path, file_name, album_id, photo_id, user_id=current_user.id)
+    try:
+        photo = await run_in_threadpool(save_and_create_photo, db, final_path, file_name, album_id, photo_id, user_id=current_user.id, backup_key=backup_key)
+    except IntegrityError:
+        await run_in_threadpool(db.rollback)
+        existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+        if not existing:
+            raise
+        await run_in_threadpool(os.remove, final_path)
+        return existing
 
     # Add tasks
     await run_in_threadpool(add_tasks, db, current_user.id, photo_id, final_path)

@@ -164,7 +164,7 @@ def get_photo_metadata(db: Session, photo_id: UUID, user_id: UUID = None):
     return query.first()
 
 
-def save_and_create_photo(db: Session, file_path: str, file_name: str, album_id: Optional[UUID], photo_id: UUID, user_id: UUID = None):
+def save_and_create_photo(db: Session, file_path: str, file_name: str, album_id: Optional[UUID], photo_id: UUID, user_id: UUID = None, backup_key: Optional[str] = None):
     # Determine file type
     ext = os.path.splitext(file_name)[1]
     file_type = FileType.image
@@ -190,7 +190,7 @@ def save_and_create_photo(db: Session, file_path: str, file_name: str, album_id:
         photo_time=extracted_meta["photo_time"]
     )
 
-    db_photo = create_photo(db, photo_create, album_id, file_path, photo_id=photo_id, user_id=user_id)
+    db_photo = create_photo(db, photo_create, album_id, file_path, photo_id=photo_id, user_id=user_id, backup_key=backup_key)
 
     # 预写 PhotoMetadata，避免上传后立刻查询 /metadata 返回 404。
     # 后台 EXTRACT_METADATA 任务走 "先查再插" 逻辑，会 update 而非 insert，不会冲突。
@@ -838,7 +838,7 @@ def get_photo(db: Session, photo_id: UUID, include_deleted: bool = False):
     return query.first()
 
 
-def create_photo(db: Session, photo: photo_schemas.PhotoCreate, album_id: Optional[UUID], file_path: str, photo_id: Optional[UUID] = None, user_id: UUID = None):
+def create_photo(db: Session, photo: photo_schemas.PhotoCreate, album_id: Optional[UUID], file_path: str, photo_id: Optional[UUID] = None, user_id: UUID = None, backup_key: Optional[str] = None):
     db_photo = Photo(
         id=photo_id,
         file_path=file_path,
@@ -849,7 +849,8 @@ def create_photo(db: Session, photo: photo_schemas.PhotoCreate, album_id: Option
         duration=photo.duration,
         filename=photo.filename,
         photo_time=photo.photo_time or datetime.now(),
-        owner_id=user_id
+        owner_id=user_id,
+        backup_key=backup_key,
     )
 
     if album_id:

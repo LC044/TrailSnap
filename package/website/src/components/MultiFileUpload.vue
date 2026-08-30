@@ -70,7 +70,7 @@
       
       <div class="max-h-96 overflow-y-auto p-4 space-y-3 scroll-smooth">
         <div 
-          v-for="(file, index) in files" 
+          v-for="file in visibleFiles"
           :key="file.id" 
           class="bg-white dark:bg-gray-800 rounded-lg p-3 flex items-center gap-4 shadow-sm border border-gray-100 dark:border-gray-700"
         >
@@ -87,7 +87,7 @@
           <div class="flex-1 min-w-0">
             <div class="flex justify-between items-center mb-1">
               <p class="text-sm font-medium text-gray-900 dark:text-white truncate" :title="file.raw.name">{{ file.raw.name }}</p>
-              <button @click="removeFile(index)" class="text-gray-400 hover:text-red-500" :disabled="uploading">
+              <button @click="removeFileById(file.id)" class="text-gray-400 hover:text-red-500" :disabled="uploading">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
@@ -121,6 +121,10 @@
         </div>
       </div>
 
+      <p v-if="files.length > visibleFiles.length" class="px-4 pb-3 text-center text-xs text-gray-500 dark:text-gray-400">
+        为保持流畅，仅显示前 {{ visibleFiles.length }} 项；其余 {{ files.length - visibleFiles.length }} 项仍会正常上传。
+      </p>
+
       <div class="sticky bottom-0 bg-white dark:bg-gray-900 p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 rounded-b-lg">
         <button 
           @click="clearFiles" 
@@ -142,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { albumService } from '@/api/album'
 
@@ -169,6 +173,12 @@ const uploading = ref(false)
 const selectedFolder = ref('')
 const uploadFolders = ref<string[]>([])
 const externalUploadFolders = ref<string[]>([])
+// Thousands of rows and blob preview URLs can exhaust a mobile WebView even
+// though the upload queue itself is lightweight. Keep the full queue but only
+// render/preview a bounded window.
+const MAX_RENDERED_FILES = 150
+const MAX_PREVIEWS = 80
+const visibleFiles = computed(() => files.value.slice(0, MAX_RENDERED_FILES))
 
 const loadUploadFolders = async () => {
   try {
@@ -272,13 +282,16 @@ const processFilesBatched = async (newFiles: File[]) => {
     }
 
     // 处理当前批次
-    const newUploadFiles: UploadFile[] = chunk.map(file => {
+    const previewBudget = Math.max(0, MAX_PREVIEWS - files.value.filter(item => item.objectURL).length)
+    const newUploadFiles: UploadFile[] = chunk.map((file, chunkIndex) => {
       let previewURL: string | undefined = undefined
       let objectURL: string | undefined = undefined
       
       try {
-        objectURL = URL.createObjectURL(file)
-        previewURL = objectURL
+        if (chunkIndex < previewBudget) {
+          objectURL = URL.createObjectURL(file)
+          previewURL = objectURL
+        }
       } catch (e) {
         console.error('生成预览失败:', e)
       }
@@ -321,6 +334,11 @@ const removeFile = (index: number) => {
     URL.revokeObjectURL(file.objectURL)
   }
   files.value.splice(index, 1)
+}
+
+const removeFileById = (id: string) => {
+  const index = files.value.findIndex(file => file.id === id)
+  if (index >= 0) removeFile(index)
 }
 
 /**

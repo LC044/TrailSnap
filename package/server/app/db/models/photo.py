@@ -26,6 +26,7 @@ class Photo(Base):
     # option and keeps its regular B-tree index.
     __table_args__ = (
         Index("ix_photos_file_path", "file_path", postgresql_using="hash"),
+        Index("uq_photos_owner_backup_key", "owner_id", "backup_key", unique=True),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -40,6 +41,7 @@ class Photo(Base):
     duration = Column(Float, default=0)
     image_type = Column(Enum(ImageType))  # Screenshot, Camera, Other
     md5 = Column(String(32), nullable=True, index=True)
+    backup_key = Column(String(255), nullable=True)
     # Task Status Tracking: {"thumbnail": true, "metadata": true, "face": false}
     processed_tasks = Column(JSON, default={})
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
