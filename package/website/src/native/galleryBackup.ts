@@ -9,6 +9,14 @@ export interface GalleryAsset {
   modifiedMs: number
   uri: string
   backupKey: string
+  relativePath: string
+  takenMs: number
+}
+
+export interface GallerySourceFolder {
+  path: string
+  name: string
+  count: number
 }
 
 export interface GalleryCursor {
@@ -20,11 +28,12 @@ export interface GalleryCursor {
 
 interface GalleryBackupNativePlugin {
   requestGalleryPermission(): Promise<{ granted: boolean }>
-  listAssets(options: GalleryCursor & { limit: number; includeVideos: boolean }): Promise<GalleryCursor & { assets: GalleryAsset[]; hasMore: boolean }>
+  listAssets(options: GalleryCursor & { limit: number; includeVideos: boolean; sourcePaths: string[] }): Promise<GalleryCursor & { assets: GalleryAsset[]; hasMore: boolean }>
   exportAsset(options: { uri: string; fileName: string }): Promise<{ path: string }>
   releaseAsset(options: { path: string }): Promise<void>
   getNetworkStatus(): Promise<{ connected: boolean; wifi: boolean; unmetered: boolean }>
-  countAssets(options: GalleryCursor & { includeVideos: boolean }): Promise<{ count: number; bytes: number }>
+  countAssets(options: GalleryCursor & { includeVideos: boolean; sourcePaths: string[] }): Promise<{ count: number; bytes: number }>
+  listSourceFolders(options: { includeVideos: boolean }): Promise<{ folders: GallerySourceFolder[] }>
   requestNotificationPermission(): Promise<{ granted: boolean }>
   updateBackupNotification(options: {
     state: 'running' | 'paused' | 'completed' | 'error'

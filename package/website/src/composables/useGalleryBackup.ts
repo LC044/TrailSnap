@@ -11,12 +11,31 @@ export interface GalleryBackupSettings {
   wifiOnly: boolean
   includeVideos: boolean
   folder: string
+  sourcePaths: string[]
+  organizeMode: BackupOrganizeMode
+}
+
+export type BackupOrganizeMode = 'year_month' | 'flat' | 'preserve'
+export type BackupQueueStatus = 'pending' | 'uploading' | 'uploaded' | 'skipped' | 'error'
+export interface BackupQueueItem {
+  backupKey: string
+  name: string
+  size: number
+  relativePath: string
+  status: BackupQueueStatus
 }
 
 type BackupStatus = 'idle' | 'scanning' | 'uploading' | 'pausing' | 'paused' | 'error' | 'unsupported'
 type PauseReason = 'user' | 'network' | null
 
-const DEFAULT_SETTINGS: GalleryBackupSettings = { enabled: false, wifiOnly: true, includeVideos: false, folder: '手机备份' }
+const DEFAULT_SETTINGS: GalleryBackupSettings = {
+  enabled: false,
+  wifiOnly: true,
+  includeVideos: false,
+  folder: '手机备份',
+  sourcePaths: [],
+  organizeMode: 'year_month',
+}
 const EMPTY_CURSOR: GalleryCursor = { imageModified: 0, imageId: 0, videoModified: 0, videoId: 0 }
 const settings = ref<GalleryBackupSettings>({ ...DEFAULT_SETTINGS })
 const running = ref(false)
@@ -35,6 +54,7 @@ const uploadedBytes = ref(0)
 const speedBytesPerSecond = ref(0)
 const lastError = ref('')
 const lastRunAt = ref<number | null>(null)
+const queueItems = ref<BackupQueueItem[]>([])
 const overallProgress = computed(() => {
   if (!totalItems.value) return running.value ? 0 : 100
   const fractionalItem = currentFile.value ? currentFileProgress.value / 100 : 0
@@ -91,16 +111,31 @@ async function initialize() {
 }
 
 async function saveSettings(next: GalleryBackupSettings) {
-  settings.value = { ...next, folder: next.folder.trim() || DEFAULT_SETTINGS.folder }
+  settings.value = {
+    ...next,
+    folder: next.folder.trim() || DEFAULT_SETTINGS.folder,
+    sourcePaths: [...new Set(next.sourcePaths)].sort(),
+  }
   await Preferences.set({ key: storageKey('settings'), value: JSON.stringify(settings.value) })
+  if (!settings.value.enabled && running.value) pauseBackup()
 }
 
-async function getCursor() {
-  return readJson(storageKey('cursor'), { ...EMPTY_CURSOR })
+function cursorScopeKey(config: GalleryBackupSettings = settings.value) {
+  const input = JSON.stringify({ includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
+  let hash = 2166136261
+  for (let index = 0; index < input.length; index++) {
+    hash ^= input.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return storageKey(`cursor_${(hash >>> 0).toString(36)}`)
 }
 
-async function saveCursor(cursor: GalleryCursor) {
-  await Preferences.set({ key: storageKey('cursor'), value: JSON.stringify(cursor) })
+async function getCursor(key = cursorScopeKey()) {
+  return readJson(key, { ...EMPTY_CURSOR })
+}
+
+async function saveCursor(cursor: GalleryCursor, key = cursorScopeKey()) {
+  await Preferences.set({ key, value: JSON.stringify(cursor) })
 }
 
 function formatSpeed(bytesPerSecond: number) {
@@ -180,7 +215,7 @@ function resumeBackup() {
   waiters.forEach(resolve => resolve())
 }
 
-async function uploadAsset(asset: GalleryAsset) {
+async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings) {
   const exported = await galleryBackupNative.exportAsset({ uri: asset.uri, fileName: asset.name })
   let reportedBytes = 0
   if (!speedSamples.length) speedSamples.push({ at: Date.now(), bytes: uploadedBytes.value })
@@ -205,15 +240,38 @@ async function uploadAsset(asset: GalleryAsset) {
         await albumService.uploadChunk(uploadId, index, chunk, loaded => reportAbsolute(start + Math.min(chunk.size, loaded)))
       }
       await waitIfPaused()
-      await albumService.finishUpload(uploadId, file.name, undefined, settings.value.folder, asset.backupKey)
+      await albumService.finishUpload(uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey)
     } else {
       await waitIfPaused()
-      await albumService.uploadPhoto(file, undefined, settings.value.folder, asset.backupKey, loaded => reportAbsolute(Math.min(file.size, loaded)))
+      await albumService.uploadPhoto(file, undefined, destinationFolder(asset, config), asset.backupKey, loaded => reportAbsolute(Math.min(file.size, loaded)))
     }
     reportAbsolute(asset.size)
   } finally {
     await galleryBackupNative.releaseAsset({ path: exported.path }).catch(() => undefined)
   }
+}
+
+function safePathSegments(path: string) {
+  return path.replace(/\\/g, '/').split('/')
+    .map(segment => segment.trim().replace(/[<>:"|?*]/g, '_'))
+    .filter(segment => segment && segment !== '.' && segment !== '..')
+}
+
+function joinFolder(...parts: string[]) {
+  return parts.flatMap(safePathSegments).join('/')
+}
+
+function destinationFolder(asset: GalleryAsset, config: GalleryBackupSettings) {
+  const base = config.folder
+  if (config.organizeMode === 'flat') return joinFolder(base)
+  if (config.organizeMode === 'preserve') return joinFolder(base, asset.relativePath)
+  const date = new Date(asset.takenMs || asset.modifiedMs || Date.now())
+  return joinFolder(base, String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, '0'))
+}
+
+function updateQueueStatus(backupKey: string, next: BackupQueueStatus) {
+  const item = queueItems.value.find(candidate => candidate.backupKey === backupKey)
+  if (item) item.status = next
 }
 
 function resetRunProgress() {
@@ -229,12 +287,15 @@ function resetRunProgress() {
   speedSamples = []
   notificationShown = false
   lastNotificationAt = 0
+  queueItems.value = []
 }
 
 async function runBackup(options: { manual?: boolean } = {}) {
   await initialize()
   if (running.value || !supportsGalleryBackup() || !useUserStore().token) return
   if (!options.manual && !settings.value.enabled) return
+  const runSettings: GalleryBackupSettings = { ...settings.value, sourcePaths: [...settings.value.sourcePaths] }
+  const runCursorKey = cursorScopeKey(runSettings)
   const startPaused = pauseRequested.value && pauseReason.value === 'user'
   running.value = true
   pauseRequested.value = startPaused
@@ -243,7 +304,7 @@ async function runBackup(options: { manual?: boolean } = {}) {
   lastError.value = ''
   try {
     const network = await galleryBackupNative.getNetworkStatus()
-    if (!network.connected || (settings.value.wifiOnly && !network.unmetered)) {
+    if (!network.connected || (runSettings.wifiOnly && !network.unmetered)) {
       pauseReason.value = 'network'
       status.value = 'paused'
       await syncNotification(true, 'paused')
@@ -254,8 +315,9 @@ async function runBackup(options: { manual?: boolean } = {}) {
     void galleryBackupNative.requestNotificationPermission().catch(() => undefined)
 
     status.value = 'scanning'
-    const cursor = await getCursor()
-    const totals = await galleryBackupNative.countAssets({ ...cursor, includeVideos: settings.value.includeVideos })
+    const cursor = await getCursor(runCursorKey)
+    const sourcePaths = runSettings.sourcePaths
+    const totals = await galleryBackupNative.countAssets({ ...cursor, includeVideos: runSettings.includeVideos, sourcePaths })
     totalItems.value = totals.count
     totalBytes.value = totals.bytes
     if (totalItems.value > 0) await syncNotification(true, 'running')
@@ -263,8 +325,15 @@ async function runBackup(options: { manual?: boolean } = {}) {
 
     while (true) {
       await waitIfPaused()
-      const page = await galleryBackupNative.listAssets({ ...cursor, limit: 40, includeVideos: settings.value.includeVideos })
+      const page = await galleryBackupNative.listAssets({ ...cursor, limit: 40, includeVideos: runSettings.includeVideos, sourcePaths })
       if (!page.assets.length) break
+      queueItems.value = page.assets.map(asset => ({
+        backupKey: asset.backupKey,
+        name: asset.name,
+        size: asset.size,
+        relativePath: asset.relativePath,
+        status: 'pending',
+      }))
       const existing = await albumService.checkBackupKeys(page.assets.map(asset => asset.backupKey))
       for (const asset of page.assets) {
         await waitIfPaused()
@@ -273,9 +342,17 @@ async function runBackup(options: { manual?: boolean } = {}) {
         if (existing.has(asset.backupKey)) {
           skipped.value++
           currentFileProgress.value = 100
+          updateQueueStatus(asset.backupKey, 'skipped')
         } else {
           status.value = 'uploading'
-          await uploadAsset(asset)
+          updateQueueStatus(asset.backupKey, 'uploading')
+          try {
+            await uploadAsset(asset, runSettings)
+            updateQueueStatus(asset.backupKey, 'uploaded')
+          } catch (error) {
+            updateQueueStatus(asset.backupKey, 'error')
+            throw error
+          }
           backedUp.value++
         }
         processedItems.value++
@@ -289,7 +366,7 @@ async function runBackup(options: { manual?: boolean } = {}) {
           cursor.videoModified = asset.modifiedMs
           cursor.videoId = asset.id
         }
-        await saveCursor(cursor)
+        await saveCursor(cursor, runCursorKey)
         await syncNotification()
       }
       status.value = 'scanning'
@@ -329,6 +406,7 @@ export function useGalleryBackup() {
     totalItems: readonly(totalItems), processedItems: readonly(processedItems), totalBytes: readonly(totalBytes),
     processedBytes: readonly(processedBytes), uploadedBytes: readonly(uploadedBytes),
     speedBytesPerSecond: readonly(speedBytesPerSecond), overallProgress, lastError: readonly(lastError),
-    lastRunAt: readonly(lastRunAt), initialize, saveSettings, runBackup, pauseBackup, resumeBackup, resetCursor,
+    lastRunAt: readonly(lastRunAt), queueItems: readonly(queueItems), initialize, saveSettings, runBackup,
+    pauseBackup, resumeBackup, resetCursor,
   }
 }

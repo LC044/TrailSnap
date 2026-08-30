@@ -15,6 +15,7 @@ import android.net.NetworkCapabilities;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.MediaStore;
 
 import com.getcapacitor.JSArray;
@@ -35,7 +36,9 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @CapacitorPlugin(
     name = "GalleryBackup",
@@ -122,12 +125,13 @@ public class GalleryBackupPlugin extends Plugin {
         long imageId = call.getLong("imageId", 0L);
         long videoModified = call.getLong("videoModified", 0L);
         long videoId = call.getLong("videoId", 0L);
+        List<String> sourcePaths = readSourcePaths(call);
 
         try {
-            List<Asset> images = query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", imageModified, imageId, limit);
+            List<Asset> images = query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", imageModified, imageId, limit, sourcePaths);
             boolean canReadVideos = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("videos") == PermissionState.GRANTED;
             List<Asset> videos = includeVideos && canReadVideos
-                ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", videoModified, videoId, limit)
+                ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", videoModified, videoId, limit, sourcePaths)
                 : new ArrayList<>();
             List<Asset> merged = new ArrayList<>();
             merged.addAll(images);
@@ -174,11 +178,12 @@ public class GalleryBackupPlugin extends Plugin {
         long imageId = call.getLong("imageId", 0L);
         long videoModified = call.getLong("videoModified", 0L);
         long videoId = call.getLong("videoId", 0L);
+        List<String> sourcePaths = readSourcePaths(call);
         try {
-            long[] imageStats = count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageModified, imageId);
+            long[] imageStats = count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageModified, imageId, sourcePaths);
             boolean canReadVideos = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("videos") == PermissionState.GRANTED;
             long[] videoStats = includeVideos && canReadVideos
-                ? count(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, videoModified, videoId)
+                ? count(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, videoModified, videoId, sourcePaths)
                 : new long[] { 0L, 0L };
             JSObject result = new JSObject();
             result.put("count", imageStats[0] + videoStats[0]);
@@ -189,17 +194,14 @@ public class GalleryBackupPlugin extends Plugin {
         }
     }
 
-    private long[] count(Uri collection, long afterModifiedMs, long afterId) {
-        long modifiedSeconds = afterModifiedMs / 1000L;
-        String selection = "(" + MediaStore.MediaColumns.DATE_MODIFIED + " > ?) OR (" +
-            MediaStore.MediaColumns.DATE_MODIFIED + " = ? AND " + MediaStore.MediaColumns._ID + " > ?)";
-        String[] args = { String.valueOf(modifiedSeconds), String.valueOf(modifiedSeconds), String.valueOf(afterId) };
+    private long[] count(Uri collection, long afterModifiedMs, long afterId, List<String> sourcePaths) {
+        SelectionSpec selection = buildSelection(afterModifiedMs, afterId, sourcePaths);
         long count = 0L, bytes = 0L;
         try (Cursor cursor = getContext().getContentResolver().query(
             collection,
             new String[] { MediaStore.MediaColumns._ID, MediaStore.MediaColumns.SIZE },
-            selection,
-            args,
+            selection.where,
+            selection.args,
             null
         )) {
             if (cursor == null) return new long[] { 0L, 0L };
@@ -210,6 +212,54 @@ public class GalleryBackupPlugin extends Plugin {
             }
         }
         return new long[] { count, bytes };
+    }
+
+    @PluginMethod
+    public void listSourceFolders(PluginCall call) {
+        if (!galleryPermissionGranted()) {
+            call.reject("图库权限未授权", "PERMISSION_DENIED");
+            return;
+        }
+        boolean includeVideos = call.getBoolean("includeVideos", true);
+        try {
+            Map<String, SourceFolder> folders = new LinkedHashMap<>();
+            collectSourceFolders(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, folders);
+            boolean canReadVideos = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("videos") == PermissionState.GRANTED;
+            if (includeVideos && canReadVideos) collectSourceFolders(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, folders);
+            List<SourceFolder> sorted = new ArrayList<>(folders.values());
+            sorted.sort(Comparator.comparing(folder -> folder.name.toLowerCase()));
+            JSArray values = new JSArray();
+            for (SourceFolder folder : sorted) values.put(folder.toJson());
+            JSObject result = new JSObject();
+            result.put("folders", values);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("读取本地相册目录失败", error);
+        }
+    }
+
+    private void collectSourceFolders(Uri collection, Map<String, SourceFolder> folders) {
+        boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        String pathColumn = modern ? MediaStore.MediaColumns.RELATIVE_PATH : MediaStore.MediaColumns.DATA;
+        String[] projection = { pathColumn, MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME };
+        try (Cursor cursor = getContext().getContentResolver().query(collection, projection, null, null, null)) {
+            if (cursor == null) return;
+            int pathIndex = cursor.getColumnIndexOrThrow(pathColumn);
+            int nameIndex = cursor.getColumnIndex(MediaStore.Images.ImageColumns.BUCKET_DISPLAY_NAME);
+            while (cursor.moveToNext()) {
+                String rawPath = cursor.getString(pathIndex);
+                if (rawPath == null || rawPath.isEmpty()) continue;
+                String path = modern ? normalizeRelativePath(rawPath) : new File(rawPath).getParent();
+                if (path == null || path.isEmpty()) continue;
+                String displayName = nameIndex >= 0 ? cursor.getString(nameIndex) : null;
+                SourceFolder folder = folders.get(path);
+                if (folder == null) {
+                    folder = new SourceFolder(path, displayName == null || displayName.isEmpty() ? lastPathSegment(path) : displayName);
+                    folders.put(path, folder);
+                }
+                folder.count++;
+            }
+        }
     }
 
     @PluginMethod
@@ -309,26 +359,26 @@ public class GalleryBackupPlugin extends Plugin {
         call.resolve(result);
     }
 
-    private List<Asset> query(Uri collection, String kind, long afterModifiedMs, long afterId, int limit) {
+    private List<Asset> query(Uri collection, String kind, long afterModifiedMs, long afterId, int limit, List<String> sourcePaths) {
         List<Asset> result = new ArrayList<>();
+        boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        String pathColumn = modern ? MediaStore.MediaColumns.RELATIVE_PATH : MediaStore.MediaColumns.DATA;
+        String takenColumnName = "video".equals(kind)
+            ? MediaStore.Video.VideoColumns.DATE_TAKEN
+            : MediaStore.Images.ImageColumns.DATE_TAKEN;
         String[] projection = {
-            MediaStore.MediaColumns._ID,
-            MediaStore.MediaColumns.DISPLAY_NAME,
-            MediaStore.MediaColumns.MIME_TYPE,
-            MediaStore.MediaColumns.SIZE,
-            MediaStore.MediaColumns.DATE_MODIFIED
+            MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED, takenColumnName,
+            pathColumn
         };
-        long modifiedSeconds = afterModifiedMs / 1000L;
-        String selection = "(" + MediaStore.MediaColumns.DATE_MODIFIED + " > ?) OR (" +
-            MediaStore.MediaColumns.DATE_MODIFIED + " = ? AND " + MediaStore.MediaColumns._ID + " > ?)";
-        String[] args = { String.valueOf(modifiedSeconds), String.valueOf(modifiedSeconds), String.valueOf(afterId) };
+        SelectionSpec selection = buildSelection(afterModifiedMs, afterId, sourcePaths);
         String order = MediaStore.MediaColumns.DATE_MODIFIED + " ASC, " + MediaStore.MediaColumns._ID + " ASC LIMIT " + limit;
         ContentResolver resolver = getContext().getContentResolver();
         Cursor queried;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Bundle queryArgs = new Bundle();
-            queryArgs.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection);
-            queryArgs.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, args);
+            queryArgs.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection.where);
+            queryArgs.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selection.args);
             queryArgs.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {
                 MediaStore.MediaColumns.DATE_MODIFIED,
                 MediaStore.MediaColumns._ID
@@ -337,7 +387,7 @@ public class GalleryBackupPlugin extends Plugin {
             queryArgs.putInt(ContentResolver.QUERY_ARG_LIMIT, limit);
             queried = resolver.query(collection, projection, queryArgs, null);
         } else {
-            queried = resolver.query(collection, projection, selection, args, order);
+            queried = resolver.query(collection, projection, selection.where, selection.args, order);
         }
         try (Cursor cursor = queried) {
             if (cursor == null) return result;
@@ -346,8 +396,14 @@ public class GalleryBackupPlugin extends Plugin {
             int mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE);
             int sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE);
             int modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED);
+            int takenColumn = cursor.getColumnIndex(takenColumnName);
+            int pathIndex = cursor.getColumnIndexOrThrow(pathColumn);
             while (cursor.moveToNext()) {
                 long id = cursor.getLong(idColumn);
+                String rawPath = cursor.getString(pathIndex);
+                String relativePath = modern
+                    ? normalizeRelativePath(rawPath)
+                    : normalizeLegacyAssetPath(rawPath);
                 result.add(new Asset(
                     id,
                     kind,
@@ -355,11 +411,71 @@ public class GalleryBackupPlugin extends Plugin {
                     cursor.getString(mimeColumn),
                     cursor.getLong(sizeColumn),
                     cursor.getLong(modifiedColumn) * 1000L,
+                    takenColumn >= 0 ? cursor.getLong(takenColumn) : 0L,
+                    relativePath,
                     Uri.withAppendedPath(collection, String.valueOf(id))
                 ));
             }
         }
         return result;
+    }
+
+    private List<String> readSourcePaths(PluginCall call) {
+        List<String> result = new ArrayList<>();
+        JSArray values = call.getArray("sourcePaths", new JSArray());
+        for (int index = 0; index < values.length(); index++) {
+            String value = values.optString(index, "");
+            if (!value.isEmpty()) result.add(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ? normalizeRelativePath(value) : value);
+        }
+        return result;
+    }
+
+    private SelectionSpec buildSelection(long afterModifiedMs, long afterId, List<String> sourcePaths) {
+        long modifiedSeconds = afterModifiedMs / 1000L;
+        StringBuilder where = new StringBuilder("((" + MediaStore.MediaColumns.DATE_MODIFIED + " > ?) OR (" +
+            MediaStore.MediaColumns.DATE_MODIFIED + " = ? AND " + MediaStore.MediaColumns._ID + " > ?))");
+        List<String> args = new ArrayList<>();
+        args.add(String.valueOf(modifiedSeconds));
+        args.add(String.valueOf(modifiedSeconds));
+        args.add(String.valueOf(afterId));
+        if (!sourcePaths.isEmpty()) {
+            where.append(" AND (");
+            boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+            for (int index = 0; index < sourcePaths.size(); index++) {
+                if (index > 0) where.append(" OR ");
+                if (modern) {
+                    where.append(MediaStore.MediaColumns.RELATIVE_PATH).append(" = ?");
+                    args.add(normalizeRelativePath(sourcePaths.get(index)));
+                } else {
+                    where.append(MediaStore.MediaColumns.DATA).append(" LIKE ?");
+                    args.add(sourcePaths.get(index) + File.separator + "%");
+                }
+            }
+            where.append(")");
+        }
+        return new SelectionSpec(where.toString(), args.toArray(new String[0]));
+    }
+
+    private String normalizeRelativePath(String value) {
+        if (value == null) return "";
+        String normalized = value.replace('\\', '/').replaceAll("^/+", "");
+        return normalized.isEmpty() || normalized.endsWith("/") ? normalized : normalized + "/";
+    }
+
+    private String normalizeLegacyAssetPath(String filePath) {
+        if (filePath == null) return "";
+        String parent = new File(filePath).getParent();
+        if (parent == null) return "";
+        String storageRoot = Environment.getExternalStorageDirectory().getAbsolutePath();
+        return parent.startsWith(storageRoot + File.separator)
+            ? parent.substring(storageRoot.length() + 1)
+            : lastPathSegment(parent);
+    }
+
+    private String lastPathSegment(String path) {
+        String normalized = path.replace('\\', '/').replaceAll("/+$", "");
+        int slash = normalized.lastIndexOf('/');
+        return slash >= 0 ? normalized.substring(slash + 1) : normalized;
     }
 
     @PluginMethod
@@ -418,17 +534,20 @@ public class GalleryBackupPlugin extends Plugin {
     }
 
     private static class Asset {
-        final long id, size, modifiedMs;
-        final String kind, name, mimeType;
+        final long id, size, modifiedMs, takenMs;
+        final String kind, name, mimeType, relativePath;
         final Uri uri;
 
-        Asset(long id, String kind, String name, String mimeType, long size, long modifiedMs, Uri uri) {
+        Asset(long id, String kind, String name, String mimeType, long size, long modifiedMs,
+              long takenMs, String relativePath, Uri uri) {
             this.id = id;
             this.kind = kind;
             this.name = name == null ? kind + "-" + id : name;
             this.mimeType = mimeType == null ? ("video".equals(kind) ? "video/mp4" : "image/jpeg") : mimeType;
             this.size = size;
             this.modifiedMs = modifiedMs;
+            this.takenMs = takenMs;
+            this.relativePath = relativePath == null ? "" : relativePath;
             this.uri = uri;
         }
 
@@ -440,8 +559,38 @@ public class GalleryBackupPlugin extends Plugin {
             value.put("mimeType", mimeType);
             value.put("size", size);
             value.put("modifiedMs", modifiedMs);
+            value.put("takenMs", takenMs);
+            value.put("relativePath", relativePath);
             value.put("uri", uri.toString());
             value.put("backupKey", "android:" + kind + ":" + id + ":" + modifiedMs + ":" + size);
+            return value;
+        }
+    }
+
+    private static class SelectionSpec {
+        final String where;
+        final String[] args;
+
+        SelectionSpec(String where, String[] args) {
+            this.where = where;
+            this.args = args;
+        }
+    }
+
+    private static class SourceFolder {
+        final String path, name;
+        long count;
+
+        SourceFolder(String path, String name) {
+            this.path = path;
+            this.name = name;
+        }
+
+        JSObject toJson() {
+            JSObject value = new JSObject();
+            value.put("path", path);
+            value.put("name", name);
+            value.put("count", count);
             return value;
         }
     }
