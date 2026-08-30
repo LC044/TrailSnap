@@ -110,7 +110,12 @@ jobs:
             pnpm --dir package/desktop exec tauri signer generate --ci --write-keys "$key_path"
           fi
           chmod 600 "$key_path"
-          echo "TAURI_SIGNING_PRIVATE_KEY_PATH=$key_path" >> "$GITHUB_ENV"
+          {
+            echo 'TAURI_SIGNING_PRIVATE_KEY<<TRAILSNAP_UPDATER_KEY'
+            cat "$key_path"
+            echo
+            echo 'TRAILSNAP_UPDATER_KEY'
+          } >> "$GITHUB_ENV"
 
       - name: Build Vue frontend
         run: pnpm --dir package/website build
