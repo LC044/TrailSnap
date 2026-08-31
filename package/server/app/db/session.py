@@ -55,3 +55,19 @@ else:
     )
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+def dispose_inherited_connections() -> None:
+    """Replace the current process' pool without touching parent connections.
+
+    ``TaskManager`` starts its worker with ``multiprocessing``.  On POSIX this
+    uses ``fork`` by default, so every DBAPI connection already present in the
+    API process' pool is inherited by the child.  Letting both processes use
+    the same PostgreSQL socket corrupts the wire protocol under concurrent
+    load (for example, when a mobile backup starts OCR tasks).
+
+    ``close=False`` is important: the child must forget the inherited file
+    descriptors, but must not actively close connections still owned by the
+    API parent process.
+    """
+    engine.dispose(close=False)
