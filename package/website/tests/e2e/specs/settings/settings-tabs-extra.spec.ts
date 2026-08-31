@@ -44,7 +44,10 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.getByRole('heading', { name: '连接到这台 TrailSnap' })).toBeVisible();
 
     const addressInput = page.getByLabel('手机可访问的 TrailSnap 地址');
-    await expect(addressInput).toHaveValue(/127\.0\.0\.1/);
+    // dev / system 模式由 Vite config 决定 host；playwright config 会以 localhost 或 127.0.0.1 拉起。
+    // 两者都是 loopback, MobileAppConnection 的 isLoopbackAddress 会正确触发「手机无法访问」警告,
+    // 此处只校验 addressInput 已被自动填入当前 origin, 不锁具体 hostname.
+    await expect(addressInput).toHaveValue(/localhost|127\.0\.0\.1/);
     await expect(page.getByText(/手机无法访问/)).toBeVisible();
 
     await addressInput.fill('http://192.168.1.20:8082');
