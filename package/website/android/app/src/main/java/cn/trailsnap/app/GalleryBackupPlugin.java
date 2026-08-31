@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @CapacitorPlugin(
@@ -140,6 +141,7 @@ public class GalleryBackupPlugin extends Plugin {
                 .thenComparing(asset -> asset.kind)
                 .thenComparingLong(asset -> asset.id));
             if (merged.size() > limit) merged = new ArrayList<>(merged.subList(0, limit));
+            for (Asset asset : merged) asset.liveCompanion = findLiveCompanion(asset);
 
             JSArray items = new JSArray();
             long nextImageModified = imageModified, nextImageId = imageId;
@@ -404,6 +406,7 @@ public class GalleryBackupPlugin extends Plugin {
                 String relativePath = modern
                     ? normalizeRelativePath(rawPath)
                     : normalizeLegacyAssetPath(rawPath);
+                String mediaDirectory = modern ? normalizeRelativePath(rawPath) : new File(rawPath).getParent();
                 result.add(new Asset(
                     id,
                     kind,
@@ -413,6 +416,7 @@ public class GalleryBackupPlugin extends Plugin {
                     cursor.getLong(modifiedColumn) * 1000L,
                     takenColumn >= 0 ? cursor.getLong(takenColumn) : 0L,
                     relativePath,
+                    mediaDirectory,
                     Uri.withAppendedPath(collection, String.valueOf(id))
                 ));
             }
@@ -478,6 +482,93 @@ public class GalleryBackupPlugin extends Plugin {
         return slash >= 0 ? normalized.substring(slash + 1) : normalized;
     }
 
+    private Asset findLiveCompanion(Asset asset) {
+        String lowerName = asset.name.toLowerCase(Locale.ROOT);
+        int dot = lowerName.lastIndexOf('.');
+        if (dot <= 0) return null;
+        String stem = lowerName.substring(0, dot);
+        List<String> names = new ArrayList<>();
+        Uri collection;
+        String kind;
+        if ("image".equals(asset.kind)) {
+            if (lowerName.endsWith(".heic") || lowerName.endsWith(".heif")) {
+                names.add(stem + ".mov");
+            } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+                names.add(stem + ".mp4");
+                names.add(stem + ".mov");
+            } else {
+                return null;
+            }
+            collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+            kind = "video";
+        } else {
+            if (lowerName.endsWith(".mp4")) {
+                names.add(stem + ".jpg");
+                names.add(stem + ".jpeg");
+            } else if (lowerName.endsWith(".mov")) {
+                names.add(stem + ".heic");
+                names.add(stem + ".heif");
+                names.add(stem + ".jpg");
+                names.add(stem + ".jpeg");
+            } else {
+                return null;
+            }
+            collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            kind = "image";
+        }
+        return findAssetByNames(collection, kind, names, asset.mediaDirectory);
+    }
+
+    private Asset findAssetByNames(Uri collection, String kind, List<String> names, String mediaDirectory) {
+        if (mediaDirectory == null || mediaDirectory.isEmpty() || names.isEmpty()) return null;
+        boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        String pathColumn = modern ? MediaStore.MediaColumns.RELATIVE_PATH : MediaStore.MediaColumns.DATA;
+        String takenColumnName = "video".equals(kind)
+            ? MediaStore.Video.VideoColumns.DATE_TAKEN
+            : MediaStore.Images.ImageColumns.DATE_TAKEN;
+        String[] projection = {
+            MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED, takenColumnName, pathColumn
+        };
+        StringBuilder selection = new StringBuilder("LOWER(" + MediaStore.MediaColumns.DISPLAY_NAME + ") IN (");
+        List<String> args = new ArrayList<>();
+        for (int index = 0; index < names.size(); index++) {
+            if (index > 0) selection.append(',');
+            selection.append('?');
+            args.add(names.get(index));
+        }
+        if (modern) {
+            selection.append(") AND ").append(MediaStore.MediaColumns.RELATIVE_PATH).append(" = ?");
+            args.add(normalizeRelativePath(mediaDirectory));
+        } else {
+            selection.append(") AND ").append(MediaStore.MediaColumns.DATA).append(" LIKE ?");
+            args.add(mediaDirectory + File.separator + "%");
+        }
+        try (Cursor cursor = getContext().getContentResolver().query(
+            collection, projection, selection.toString(), args.toArray(new String[0]), null
+        )) {
+            if (cursor == null || !cursor.moveToFirst()) return null;
+            long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID));
+            String rawPath = cursor.getString(cursor.getColumnIndexOrThrow(pathColumn));
+            String relativePath = modern ? normalizeRelativePath(rawPath) : normalizeLegacyAssetPath(rawPath);
+            String directory = modern ? normalizeRelativePath(rawPath) : new File(rawPath).getParent();
+            int takenIndex = cursor.getColumnIndex(takenColumnName);
+            return new Asset(
+                id, kind,
+                cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)),
+                cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)),
+                cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)),
+                cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)) * 1000L,
+                takenIndex >= 0 ? cursor.getLong(takenIndex) : 0L,
+                relativePath, directory, Uri.withAppendedPath(collection, String.valueOf(id))
+            );
+        } catch (SecurityException ignored) {
+            // The user may grant image access but deny video access. In that
+            // case the still image remains a normal backup item.
+            return null;
+        }
+    }
+
     @PluginMethod
     public void exportAsset(PluginCall call) {
         String uriValue = call.getString("uri");
@@ -535,11 +626,12 @@ public class GalleryBackupPlugin extends Plugin {
 
     private static class Asset {
         final long id, size, modifiedMs, takenMs;
-        final String kind, name, mimeType, relativePath;
+        final String kind, name, mimeType, relativePath, mediaDirectory;
         final Uri uri;
+        Asset liveCompanion;
 
         Asset(long id, String kind, String name, String mimeType, long size, long modifiedMs,
-              long takenMs, String relativePath, Uri uri) {
+              long takenMs, String relativePath, String mediaDirectory, Uri uri) {
             this.id = id;
             this.kind = kind;
             this.name = name == null ? kind + "-" + id : name;
@@ -548,6 +640,7 @@ public class GalleryBackupPlugin extends Plugin {
             this.modifiedMs = modifiedMs;
             this.takenMs = takenMs;
             this.relativePath = relativePath == null ? "" : relativePath;
+            this.mediaDirectory = mediaDirectory == null ? "" : mediaDirectory;
             this.uri = uri;
         }
 
@@ -563,6 +656,7 @@ public class GalleryBackupPlugin extends Plugin {
             value.put("relativePath", relativePath);
             value.put("uri", uri.toString());
             value.put("backupKey", "android:" + kind + ":" + id + ":" + modifiedMs + ":" + size);
+            if (liveCompanion != null) value.put("liveCompanion", liveCompanion.toJson());
             return value;
         }
     }

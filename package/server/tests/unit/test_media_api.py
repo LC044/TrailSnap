@@ -27,6 +27,24 @@ def test_thumbnail_path_falls_back_to_jpeg(tmp_path):
     assert str(tmp_path) in result
 
 
+@pytest.mark.parametrize(
+    ("image_name", "video_name", "expected_suffix"),
+    [
+        ("IMG_0001.HEIC", "IMG_0001.MOV", "IMG_0001.MOV"),
+        ("IMG_0002.jpg", "IMG_0002.mp4", "IMG_0002.mp4"),
+        ("IMG_0003.jpeg", "IMG_0003.mov", "IMG_0003.mov"),
+    ],
+)
+def test_live_photo_video_path_uses_supported_pair_convention(tmp_path, image_name, video_name, expected_suffix):
+    result = media_api._live_photo_video_path(str(tmp_path / image_name), video_name)
+    assert result.endswith(expected_suffix)
+
+
+def test_live_photo_video_path_rejects_unsupported_companion(tmp_path):
+    with pytest.raises(ValueError):
+        media_api._live_photo_video_path(str(tmp_path / "IMG_0001.jpg"), "IMG_0001.avi")
+
+
 @pytest.mark.asyncio
 async def test_get_thumbnail_returns_base64_payload(tmp_path):
     photo_id = uuid4()

@@ -121,6 +121,20 @@ export const albumService = {
     return data.data;
   },
 
+  async uploadLivePhoto(image: File, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, onProgress?: (loaded: number, total?: number) => void) {
+    const formData = new FormData();
+    formData.append('file', image);
+    formData.append('live_photo_video', video);
+    formData.append('backup_key', imageBackupKey);
+    formData.append('companion_backup_key', videoBackupKey);
+    if (folder) formData.append('folder', folder);
+    const data = await request.post<Photo>('/api/medias', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: event => onProgress?.(event.loaded, event.total),
+    });
+    return data.data;
+  },
+
   // Replace photo file
   async replacePhotoFile(photoId: string, file: File, filename: string) {
     const formData = new FormData();
@@ -157,6 +171,20 @@ export const albumService = {
       if (folder) formData.append('folder', folder);
       if (backupKey) formData.append('backup_key', backupKey);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData);
+      return data.data;
+  },
+
+  async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, onProgress?: (loaded: number, total?: number) => void) {
+      const formData = new FormData();
+      formData.append('upload_id', uploadId);
+      formData.append('file_name', imageName);
+      formData.append('live_photo_video', video);
+      formData.append('backup_key', imageBackupKey);
+      formData.append('companion_backup_key', videoBackupKey);
+      if (folder) formData.append('folder', folder);
+      const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
+        onUploadProgress: event => onProgress?.(event.loaded, event.total),
+      });
       return data.data;
   },
 

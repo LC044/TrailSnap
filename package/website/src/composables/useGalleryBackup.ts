@@ -121,7 +121,9 @@ async function saveSettings(next: GalleryBackupSettings) {
 }
 
 function cursorScopeKey(config: GalleryBackupSettings = settings.value) {
-  const input = JSON.stringify({ includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
+  // v2 forces one reconciliation scan so backups created before live-photo
+  // pairing are upgraded from separate image/video rows into one live photo.
+  const input = JSON.stringify({ version: 2, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
   let hash = 2166136261
   for (let index = 0; index < input.length; index++) {
     hash ^= input.charCodeAt(index)
@@ -251,6 +253,70 @@ async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings) {
   }
 }
 
+function livePhotoPair(asset: GalleryAsset) {
+  const companion = asset.liveCompanion
+  if (!companion || companion.kind === asset.kind) return null
+  return asset.kind === 'image'
+    ? { image: asset, video: companion }
+    : { image: companion, video: asset }
+}
+
+async function exportedFile(asset: GalleryAsset) {
+  const exported = await galleryBackupNative.exportAsset({ uri: asset.uri, fileName: asset.name })
+  const response = await fetch(Capacitor.convertFileSrc(exported.path))
+  if (!response.ok) {
+    await galleryBackupNative.releaseAsset({ path: exported.path }).catch(() => undefined)
+    throw new Error(`读取临时文件失败 (${response.status})`)
+  }
+  const blob = await response.blob()
+  return {
+    exportedPath: exported.path,
+    file: new File([blob], asset.name, { type: asset.mimeType, lastModified: asset.modifiedMs }),
+  }
+}
+
+async function uploadLivePhoto(image: GalleryAsset, video: GalleryAsset, config: GalleryBackupSettings) {
+  const imageFile = await exportedFile(image)
+  let videoFile: Awaited<ReturnType<typeof exportedFile>> | null = null
+  const totalSize = Math.max(0, image.size) + Math.max(0, video.size)
+  let reportedBytes = 0
+  if (!speedSamples.length) speedSamples.push({ at: Date.now(), bytes: uploadedBytes.value })
+  const reportAbsolute = (loaded: number) => {
+    const bounded = Math.min(totalSize, Math.max(reportedBytes, loaded))
+    recordNetworkBytes(bounded - reportedBytes)
+    reportedBytes = bounded
+    currentFileProgress.value = totalSize ? Math.round((bounded / totalSize) * 100) : 100
+  }
+  try {
+    videoFile = await exportedFile(video)
+    const folder = destinationFolder(image, config)
+    if (imageFile.file.size > 5 * 1024 * 1024) {
+      const uploadId = await albumService.initUpload()
+      const chunkSize = 2 * 1024 * 1024
+      for (let start = 0, index = 0; start < imageFile.file.size; start += chunkSize, index++) {
+        await waitIfPaused()
+        const chunk = imageFile.file.slice(start, start + chunkSize)
+        await albumService.uploadChunk(uploadId, index, chunk, loaded => reportAbsolute(start + Math.min(chunk.size, loaded)))
+      }
+      await waitIfPaused()
+      await albumService.finishLivePhotoUpload(
+        uploadId, imageFile.file.name, videoFile.file, folder, image.backupKey, video.backupKey,
+        loaded => reportAbsolute(imageFile.file.size + loaded),
+      )
+    } else {
+      await waitIfPaused()
+      await albumService.uploadLivePhoto(
+        imageFile.file, videoFile.file, folder, image.backupKey, video.backupKey,
+        loaded => reportAbsolute(loaded),
+      )
+    }
+    reportAbsolute(totalSize)
+  } finally {
+    await galleryBackupNative.releaseAsset({ path: imageFile.exportedPath }).catch(() => undefined)
+    if (videoFile) await galleryBackupNative.releaseAsset({ path: videoFile.exportedPath }).catch(() => undefined)
+  }
+}
+
 function safePathSegments(path: string) {
   return path.replace(/\\/g, '/').split('/')
     .map(segment => segment.trim().replace(/[<>:"|?*]/g, '_'))
@@ -322,35 +388,61 @@ async function runBackup(options: { manual?: boolean } = {}) {
     totalBytes.value = totals.bytes
     if (totalItems.value > 0) await syncNotification(true, 'running')
     await waitIfPaused()
+    const completedLivePairs = new Set<string>()
 
     while (true) {
       await waitIfPaused()
       const page = await galleryBackupNative.listAssets({ ...cursor, limit: 40, includeVideos: runSettings.includeVideos, sourcePaths })
       if (!page.assets.length) break
-      queueItems.value = page.assets.map(asset => ({
-        backupKey: asset.backupKey,
-        name: asset.name,
-        size: asset.size,
-        relativePath: asset.relativePath,
-        status: 'pending',
-      }))
+      if (!runSettings.includeVideos) {
+        const companionBytes = new Map<string, number>()
+        for (const asset of page.assets) {
+          const pair = livePhotoPair(asset)
+          if (pair) companionBytes.set(pair.video.backupKey, pair.video.size)
+        }
+        totalBytes.value += [...companionBytes.values()].reduce((sum, size) => sum + Math.max(0, size), 0)
+      }
+      const queued = new Map<string, BackupQueueItem>()
+      for (const asset of page.assets) {
+        const pair = livePhotoPair(asset)
+        const key = pair?.image.backupKey || asset.backupKey
+        if (!queued.has(key)) queued.set(key, {
+          backupKey: key,
+          name: pair ? `${pair.image.name} · 实况照片` : asset.name,
+          size: pair ? pair.image.size + pair.video.size : asset.size,
+          relativePath: pair?.image.relativePath || asset.relativePath,
+          status: 'pending',
+        })
+      }
+      queueItems.value = [...queued.values()]
       const existing = await albumService.checkBackupKeys(page.assets.map(asset => asset.backupKey))
       for (const asset of page.assets) {
         await waitIfPaused()
-        currentFile.value = asset.name
+        const pair = livePhotoPair(asset)
+        const operationKey = pair?.image.backupKey || asset.backupKey
+        currentFile.value = pair ? `${pair.image.name} · 实况照片` : asset.name
         currentFileProgress.value = 0
-        if (existing.has(asset.backupKey)) {
+        if (pair && completedLivePairs.has(operationKey)) {
           skipped.value++
           currentFileProgress.value = 100
-          updateQueueStatus(asset.backupKey, 'skipped')
+          updateQueueStatus(operationKey, 'uploaded')
+        } else if (!pair && existing.has(asset.backupKey)) {
+          skipped.value++
+          currentFileProgress.value = 100
+          updateQueueStatus(operationKey, 'skipped')
         } else {
           status.value = 'uploading'
-          updateQueueStatus(asset.backupKey, 'uploading')
+          updateQueueStatus(operationKey, 'uploading')
           try {
-            await uploadAsset(asset, runSettings)
-            updateQueueStatus(asset.backupKey, 'uploaded')
+            if (pair) {
+              await uploadLivePhoto(pair.image, pair.video, runSettings)
+              completedLivePairs.add(operationKey)
+            } else {
+              await uploadAsset(asset, runSettings)
+            }
+            updateQueueStatus(operationKey, 'uploaded')
           } catch (error) {
-            updateQueueStatus(asset.backupKey, 'error')
+            updateQueueStatus(operationKey, 'error')
             throw error
           }
           backedUp.value++

@@ -11,6 +11,7 @@ export interface GalleryAsset {
   backupKey: string
   relativePath: string
   takenMs: number
+  liveCompanion?: GalleryAsset
 }
 
 export interface GallerySourceFolder {
