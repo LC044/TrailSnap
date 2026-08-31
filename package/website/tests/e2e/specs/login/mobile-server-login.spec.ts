@@ -94,7 +94,7 @@ test.describe('手机 App 首次启动 @p0', () => {
 
     await expect(page).toHaveURL(url => url.pathname === '/server-settings' && url.searchParams.get('redirect') === '/')
     await expect(page.getByRole('button', { name: '扫描二维码' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '发现附近服务' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '自动查找 TrailSnap' })).toBeVisible()
   })
 })
 

@@ -47,7 +47,7 @@
                 <router-link
                   to="/server-settings?redirect=/login"
                   class="ml-1 text-primary-600 dark:text-primary-400 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                >扫码或发现附近服务</router-link>
+                >扫码或自动查找 TrailSnap</router-link>
               </p>
             </el-form-item>
 

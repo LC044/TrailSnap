@@ -1,4 +1,5 @@
 import { App as CapacitorApp, type URLOpenListenerEvent } from '@capacitor/app'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 import {
   CapacitorBarcodeScanner,
   CapacitorBarcodeScannerCameraDirection,
@@ -10,6 +11,25 @@ import type { Router } from 'vue-router'
 import { isMobileApp, normalizeServerUrl, testServerConnection } from './server'
 
 export const TRAILSNAP_SERVICE_TYPE = '_trailsnap._tcp.'
+const DEFAULT_TRAILSNAP_PORT = 8082
+
+interface LanDiscoveryResult {
+  services: Array<{ url: string; name: string; version: string }>
+  scannedNetworks: number
+}
+
+interface LanDiscoveryPlugin {
+  discover(options: { port: number; timeoutMs: number }): Promise<LanDiscoveryResult>
+}
+
+const LanDiscovery = registerPlugin<LanDiscoveryPlugin>('LanDiscovery')
+
+export interface DiscoveredTrailSnap {
+  url: string
+  name: string
+  version: string
+  source: 'mdns' | 'lan'
+}
 
 export function createConnectionDeepLink(serverUrl: string): string {
   return `trailsnap://connect?url=${encodeURIComponent(normalizeServerUrl(serverUrl))}`
@@ -65,22 +85,46 @@ function serviceCandidates(service: MdnsService): string[] {
   return [...new Set(candidates)]
 }
 
-export async function discoverTrailSnapServers(): Promise<string[]> {
+export async function discoverTrailSnapServers(): Promise<DiscoveredTrailSnap[]> {
   if (!isMobileApp()) return []
-  const result = await mDNS.discover({ type: TRAILSNAP_SERVICE_TYPE, timeout: 4000, useNW: true })
-  if (result.error && !result.services.length) {
-    throw new Error(result.errorMessage || '局域网发现失败')
+  try {
+    const result = await mDNS.discover({ type: TRAILSNAP_SERVICE_TYPE, timeout: 1800, useNW: true })
+    const candidates = result.services.flatMap(service => serviceCandidates(service).map(url => ({
+      url,
+      name: service.name || 'TrailSnap',
+      version: service.txt?.version || '',
+      source: 'mdns' as const,
+    })))
+    const verified = await verifyCandidates(candidates)
+    if (verified.length) return verified
+  } catch (error) {
+    console.warn('mDNS discovery unavailable, falling back to LAN probing', error)
   }
 
-  const candidates = [...new Set(result.services.flatMap(serviceCandidates))]
+  if (Capacitor.getPlatform() !== 'android') return []
+  try {
+    const result = await LanDiscovery.discover({ port: DEFAULT_TRAILSNAP_PORT, timeoutMs: 400 })
+    return verifyCandidates(result.services.map(service => ({ ...service, source: 'lan' as const })))
+  } catch (error) {
+    console.warn('LAN probing unavailable', error)
+    return []
+  }
+}
+
+async function verifyCandidates(candidates: DiscoveredTrailSnap[]): Promise<DiscoveredTrailSnap[]> {
   const verified = await Promise.all(candidates.map(async candidate => {
     try {
-      return await testServerConnection(candidate, 2500)
+      const url = await testServerConnection(candidate.url, 2500)
+      return { ...candidate, url }
     } catch {
-      return ''
+      return null
     }
   }))
-  return [...new Set(verified.filter(Boolean))]
+  const unique = new Map<string, DiscoveredTrailSnap>()
+  for (const candidate of verified) {
+    if (candidate) unique.set(candidate.url, candidate)
+  }
+  return [...unique.values()]
 }
 
 function connectionUrlFromEvent(event: URLOpenListenerEvent): string | null {

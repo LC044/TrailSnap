@@ -1238,6 +1238,7 @@ ${photo_volumes}
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
       - TRAILSNAP_PUBLIC_URL=\${TRAILSNAP_PUBLIC_URL:-}
+      - TRAILSNAP_DISCOVERY_ENABLED=false
     depends_on:
       postgres:
         condition: service_healthy
@@ -1270,6 +1271,21 @@ ${photo_volumes}
     networks: [app-network]
     environment:
       - TZ=\${TZ}
+
+  # Linux 可选增强：使用宿主机网络发布局域网 mDNS。
+  # 启用命令：docker compose --env-file .env --profile lan-discovery up -d
+  discovery:
+    image: ${IMAGE_REGISTRY}siyuan044/trailsnap-server:\${IMAGE_TAG}
+    container_name: trailsnap-discovery
+    restart: unless-stopped
+    profiles: [lan-discovery]
+    network_mode: host
+    command: ["python", "discovery_host.py"]
+    environment:
+      - TZ=\${TZ}
+      - TRAILSNAP_PUBLIC_URL=\${TRAILSNAP_PUBLIC_URL:-}
+      - TRAILSNAP_INSTANCE_NAME=\${TRAILSNAP_INSTANCE_NAME:-TrailSnap}
+      - TRAILSNAP_DISCOVERY_ENABLED=true
 
 networks:
   app-network:

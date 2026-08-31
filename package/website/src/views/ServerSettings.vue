@@ -46,7 +46,7 @@
             @click="discoverServers"
           >
             <Radar class="inline-block w-4 h-4 mr-1.5 -mt-0.5" />
-            {{ discovering ? '正在发现…' : '发现附近服务' }}
+            {{ discovering ? '正在自动查找…' : '自动查找 TrailSnap' }}
           </button>
         </div>
 
@@ -63,18 +63,23 @@
           <p class="text-xs font-medium text-gray-600 dark:text-gray-300">发现的 TrailSnap</p>
           <button
             v-for="server in discoveredServers"
-            :key="server"
+            :key="server.url"
             type="button"
             class="w-full flex items-center justify-between rounded-xl bg-gray-50 dark:bg-gray-900 px-3 py-2.5 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-            @click="address = server"
+            @click="address = server.url"
           >
-            <span class="truncate">{{ server }}</span>
+            <span class="min-w-0">
+              <span class="block truncate font-medium text-gray-900 dark:text-white">{{ server.name }}</span>
+              <span class="block truncate text-xs text-gray-500 dark:text-gray-400">
+                {{ server.url }}<template v-if="server.version"> · v{{ server.version }}</template>
+              </span>
+            </span>
             <span class="ml-3 text-primary-600 dark:text-primary-400">选择</span>
           </button>
         </div>
 
         <div class="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-xs leading-5 text-amber-800 dark:text-amber-200">
-          “发现附近服务”仅作为同一路由器 Wi-Fi 下的辅助方式。手机热点、访客 Wi-Fi、AP 隔离、VPN 或 Docker 网络可能拦截服务发现；发现失败时请使用电脑网页上的二维码或手动输入地址。
+          自动查找会先尝试局域网服务发现，再探测 Docker 默认访问地址。手机热点或路由器如果禁止设备互访，仍需使用电脑网页上的二维码或手动输入地址。
         </div>
 
         <p v-if="errorMessage" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ errorMessage }}</p>
@@ -111,6 +116,7 @@ import { getServerUrl, hasConfiguredServer, saveServerUrl, testServerConnection 
 import {
   discoverTrailSnapServers,
   scanConnectionQrCode,
+  type DiscoveredTrailSnap,
 } from '@/config/serverConnection'
 import { useUserStore } from '@/stores/user'
 
@@ -123,7 +129,7 @@ const errorMessage = ref('')
 const successMessage = ref('')
 const scanning = ref(false)
 const discovering = ref(false)
-const discoveredServers = ref<string[]>([])
+const discoveredServers = ref<DiscoveredTrailSnap[]>([])
 const hasExistingConfig = computed(() => hasConfiguredServer())
 
 onMounted(() => {
@@ -149,10 +155,10 @@ const discoverServers = async () => {
   successMessage.value = ''
   try {
     discoveredServers.value = await discoverTrailSnapServers()
-    if (discoveredServers.value.length === 1) address.value = discoveredServers.value[0]
+    if (discoveredServers.value.length === 1) address.value = discoveredServers.value[0].url
     successMessage.value = discoveredServers.value.length
       ? `发现 ${discoveredServers.value.length} 个可用服务`
-      : '暂未发现服务，请确认设备连接同一局域网或使用二维码'
+      : '暂未找到 TrailSnap，请确认设备在同一局域网或使用二维码'
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '局域网发现失败'
   } finally {

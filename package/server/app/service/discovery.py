@@ -62,6 +62,11 @@ class DiscoveryService:
         self._info: ServiceInfo | None = None
 
     def start(self) -> None:
+        enabled = os.getenv("TRAILSNAP_DISCOVERY_ENABLED", "true").strip().lower()
+        if enabled in {"0", "false", "no", "off"}:
+            logger.info("LAN discovery disabled by TRAILSNAP_DISCOVERY_ENABLED")
+            return
+
         public_url = os.getenv("TRAILSNAP_PUBLIC_URL", "").strip()
         if not public_url:
             logger.info("LAN discovery disabled: TRAILSNAP_PUBLIC_URL is not configured")

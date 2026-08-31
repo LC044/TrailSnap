@@ -21,6 +21,14 @@ def test_public_health_endpoints(
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
 
+    discovery = api_request("GET", "/discovery")
+    assert discovery.status_code == 200
+    discovery_payload = discovery.json()
+    assert discovery_payload["code"] == 0
+    assert discovery_payload["data"]["service"] == "trailsnap"
+    assert discovery_payload["data"]["api_path"] == "/api"
+    assert discovery_payload["data"]["version"]
+
     version = api_request("GET", "/system/version")
     assert version.status_code == 200
     assert version.json().get("version")

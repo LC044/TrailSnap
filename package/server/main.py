@@ -37,6 +37,7 @@ from app.api import (
 from railway.api import router as railway_router
 from app.core.logger import setup_logging
 from app.core.config_manager import VERSION
+from app.dependencies import BaseResponse
 from app.service.task_manager import TaskManager
 from app.service.discovery import DiscoveryService
 
@@ -290,6 +291,17 @@ def health_check():
     健康检测接口
     """
     return {"status": "ok", "message": "Service is running"}
+
+
+@app.get("/discovery", response_model=BaseResponse[dict], include_in_schema=False)
+def discovery_info():
+    """Unauthenticated, non-sensitive marker used by LAN discovery clients."""
+    return BaseResponse.success(data={
+        "service": "trailsnap",
+        "instance_name": os.getenv("TRAILSNAP_INSTANCE_NAME", "TrailSnap").strip() or "TrailSnap",
+        "version": VERSION,
+        "api_path": "/api",
+    })
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(agent_token.router, prefix="/tokens", tags=["Tokens"])

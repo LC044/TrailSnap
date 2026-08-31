@@ -42,6 +42,7 @@ test.describe('Smoke - ServerSettings 配置自托管服务 @smoke', () => {
     await gotoServerSettings(page);
 
     await expect(page.locator('input[placeholder*="192.168"]')).toBeVisible();
+    await expect(page.getByRole('button', { name: '自动查找 TrailSnap' })).toBeVisible();
     await expect(page.getByRole('button', { name: /测试并保存|正在测试连接/ })).toBeVisible();
   });
 

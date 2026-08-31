@@ -50,10 +50,11 @@ scan the QR code shown on the computer with the app. The phone connection page d
 code for itself. If the desktop page uses `localhost` or `127.0.0.1`, replace it with the computer's LAN
 address on the **Connect Mobile App** page.
 
-You can also tap **Discover Nearby Services** or open a `trailsnap://connect?url=...` deep link.
-Discovery uses DNS-SD/mDNS only as a convenience on a shared router Wi-Fi network. Phone hotspots,
-guest Wi-Fi, AP isolation, VPNs, or Docker networking may block multicast; use QR scanning or manual
-entry when discovery is unavailable.
+You can also tap **Find TrailSnap Automatically** or open a `trailsnap://connect?url=...` deep link.
+Automatic discovery tries DNS-SD/mDNS first. If it returns no result, the Android App uses TCP to look
+for TrailSnap on the current private subnet at the default `8082` entry point, which works with ordinary
+Docker bridge deployments. Use QR scanning or manual entry for custom ports, iPhone/iPad, or networks
+where hotspots, guest Wi-Fi, or AP isolation prevent devices from talking.
 
 ### Connection Checklist
 
