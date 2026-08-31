@@ -32,7 +32,9 @@ SQLite Alembic 迁移并创建本地管理员。界面启动时会自动换取�
 后端的用户隔离与鉴权行为仍与服务器端一致。运行日志位于同级 `logs` 目录。
 
 GitHub Actions 在 Windows、macOS 和 Linux 原生 runner 上分别打包 PyInstaller Sidecar 与
-Tauri 安装包，产出 NSIS、DMG、AppImage 和 DEB。
+Tauri 安装包，产出 NSIS、DMG、AppImage 和 DEB。正式标签构建还会使用仓库 Secret
+`TAURI_SIGNING_PRIVATE_KEY` 为更新包签名并发布 `latest.json`；客户端启动后自动检查、
+后台下载并验签，下载完成后可一键安装。
 
 ## AI 扩展包
 
@@ -44,6 +46,8 @@ Sidecar，空闲十分钟后自动退出。日志写入桌面数据目录下的 
 
 在线安装依赖对应版本 GitHub Release 中的 `ai-extensions.json` 和平台扩展包。在预发布阶段，
 也可以从 GitHub Actions 下载 `.tar.gz` 扩展包，在设置页选择“离线导入”。
+Windows 下 llama.cpp 运行时由桌面壳直接从官方 GitHub Release 下载并做 SHA-256 校验，
+不依赖 winget。
 
 ## 当前 SQLite 边界
 

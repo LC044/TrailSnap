@@ -153,7 +153,7 @@ docker-compose up -d
 - TrailSnap：`http://<NAS_IP>:8082`
 - API 文档：`http://<NAS_IP>:8082/api/docs`
 
-移动 App 可填写同一地址，也可以扫描连接二维码或使用“发现附近服务”。Server、AI 和 PostgreSQL 只在 Compose 内部网络通信。
+移动 App 可填写同一地址，也可以扫描连接二维码或使用“自动查找 TrailSnap”。Android App 会在 mDNS 无结果时探测默认 `8082` 入口，因此普通 Docker bridge 部署不需要额外开放组播端口。Server、AI 和 PostgreSQL 只在 Compose 内部网络通信。
 
 ## GPU 加速支持 (可选)
 

@@ -55,6 +55,22 @@ def test_get_instance_returns_singleton():
     assert a is b
 
 
+@pytest.mark.parametrize("dispatchable, expected", [(0, False), (2, True)])
+def test_start_worker_for_pending_tasks_is_lazy(dispatchable, expected):
+    from app.service import task_manager as tm_mod
+
+    manager = tm_mod.TaskManager.get_instance()
+    database = MagicMock()
+    with patch.object(tm_mod, "SessionLocal", return_value=database), \
+         patch.object(manager, "_load_system_state", return_value=[]), \
+         patch.object(tm_mod.crud_task, "count_dispatchable_tasks", return_value=dispatchable), \
+         patch.object(manager, "start_worker_if_needed") as start:
+        assert manager.start_worker_for_pending_tasks() is expected
+
+    database.close.assert_called_once()
+    assert start.call_count == int(expected)
+
+
 def test_get_status_reads_fast_mode_from_system_state():
     from app.service.task_manager import TaskManager
 

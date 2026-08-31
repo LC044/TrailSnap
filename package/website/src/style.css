@@ -105,6 +105,24 @@ html {
   overscroll-behavior-y: auto;
 }
 
+/* WebView2 exposes legacy arrow buttons at both ends of every native
+   scrollbar. They look like a second control beside the desktop content and
+   are unnecessary when mouse-wheel, trackpad and thumb scrolling are present. */
+html.tauri-desktop ::-webkit-scrollbar-button,
+html.tauri-desktop ::-webkit-scrollbar-button:single-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html.tauri-desktop,
+html.tauri-desktop body,
+html.tauri-desktop #app {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 a {
   font-weight: 500;
   color: #646cff;

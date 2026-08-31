@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit, Database, CloudUpload, SlidersHorizontal } from 'lucide-vue-next'
+import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit, Database, CloudUpload, SlidersHorizontal, Smartphone } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -52,7 +52,8 @@ import DesktopAIExtensions from './settings/DesktopAIExtensions.vue'
 import AIModelManagement from './settings/AIModelManagement.vue'
 import MobileBackup from './settings/MobileBackup.vue'
 import MobileBackupSettings from './settings/MobileBackupSettings.vue'
-import { isMobileApp, isTauriApp } from '@/config/server'
+import MobileAppConnection from './settings/MobileAppConnection.vue'
+import { isMobileApp, isNativeApp, isTauriApp } from '@/config/server'
 import { useSwipeNavigation } from '@/composables/useSwipeNavigation'
 import { useUserStore } from '@/stores/user'
 
@@ -63,6 +64,7 @@ const userStore = useUserStore()
 const activeTab = ref('profile')
 const baseMenuItems = [
   { key: 'profile', label: '个人资料', icon: UserCircle },
+  { key: 'mobile-app', label: '连接手机 App', icon: Smartphone, webOnly: true },
   { key: 'user', label: '用户管理', icon: User, superuserOnly: true },
   { key: 'tasks', label: '任务管理', icon: List },
   { key: 'basic', label: '基础设置', icon: Settings },
@@ -84,12 +86,14 @@ const menuItems = computed(() => baseMenuItems.filter(item =>
   (!item.superuserOnly || userStore.userInfo?.is_superuser)
   && (!item.desktopOnly || isTauriApp() || requestedTab.value === item.key)
   && (!item.mobileOnly || isMobileApp() || requestedTab.value === item.key)
+  && (!item.webOnly || !isNativeApp())
 ))
 
 // Map each tab key to its component so the content area can render a single
 // keyed <component>, which lets <Transition> animate the tab swap.
 const tabComponents: Record<string, typeof ProfileSettings> = {
   profile: ProfileSettings,
+  'mobile-app': MobileAppConnection,
   user: UserManagement,
   tasks: TaskManagement,
   basic: BasicSettings,

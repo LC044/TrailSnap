@@ -44,11 +44,10 @@
                 @select="({ value }) => loginForm.serverUrl = value"
               />
               <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                例如 http://192.168.1.10:8082，登录时会记住该地址。
                 <router-link
                   to="/server-settings?redirect=/login"
                   class="ml-1 text-primary-600 dark:text-primary-400 hover:underline focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                >扫码或发现附近服务</router-link>
+                >扫码或自动查找 TrailSnap</router-link>
               </p>
             </el-form-item>
 
@@ -113,7 +112,7 @@ import { useUserStore } from '@/stores/user';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock } from '@element-plus/icons-vue';
 import { authService } from '@/api/auth';
-import { getServerHistory, getServerUrl, isMobileApp, saveServerUrl } from '@/config/server';
+import { getServerHistory, getServerUrl, isMobileApp, isTauriApp, saveServerUrl } from '@/config/server';
 import LoginCharacters from './components/LoginCharacters.vue';
 
 const router = useRouter();
@@ -164,6 +163,19 @@ const rules = reactive<FormRules>({
 });
 
 onMounted(async () => {
+  if (isTauriApp()) {
+    loading.value = true;
+    try {
+      await userStore.initializeDesktopSession();
+      await router.replace((route.query.redirect as string) || '/');
+    } catch (error: any) {
+      ElMessage.error(error?.message || '本地会话恢复失败，请重启 TrailSnap');
+    } finally {
+      loading.value = false;
+    }
+    return;
+  }
+
   const savedUsername = localStorage.getItem('remember_username');
   if (savedUsername) {
     loginForm.username = savedUsername;

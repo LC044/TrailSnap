@@ -17,6 +17,8 @@ recommended.
 
 ## Install on Android
 
+If TrailSnap is already deployed, open **Settings → Connect Mobile App** in the desktop browser. The page shows the current APK download link and a download QR code. Scan it with the phone camera to install the App, then use the App to scan the separate server connection QR code on the same page.
+
 1. Open the project's [GitHub Releases](https://github.com/LC044/TrailSnap/releases).
 2. Find the required stable release (tags use the `v*.*.*` format, for example `v0.9.1`).
 3. Download the APK from **Assets**. Early test packages may include `debug` in the file name.
@@ -43,9 +45,16 @@ http://192.168.1.10:8082
 Tap **Test and Save**. After a successful connection, the app stores the address and opens the sign-in
 page. Accounts, photos, and albums remain on your TrailSnap server.
 
-You can also scan the connection QR code, tap **Discover Nearby Services**, or open a
-`trailsnap://connect?url=...` deep link. Discovery uses DNS-SD/mDNS; guest Wi-Fi, AP isolation, or a VPN
-may block multicast, in which case QR scanning and manual entry remain available.
+For a QR connection, open TrailSnap in a desktop browser, go to **Settings → Connect Mobile App**, and
+scan the QR code shown on the computer with the app. The phone connection page does not generate a QR
+code for itself. If the desktop page uses `localhost` or `127.0.0.1`, replace it with the computer's LAN
+address on the **Connect Mobile App** page.
+
+You can also tap **Find TrailSnap Automatically** or open a `trailsnap://connect?url=...` deep link.
+Automatic discovery tries DNS-SD/mDNS first. If it returns no result, the Android App uses TCP to look
+for TrailSnap on the current private subnet at the default `8082` entry point, which works with ordinary
+Docker bridge deployments. Use QR scanning or manual entry for custom ports, iPhone/iPad, or networks
+where hotspots, guest Wi-Fi, or AP isolation prevent devices from talking.
 
 ### Connection Checklist
 

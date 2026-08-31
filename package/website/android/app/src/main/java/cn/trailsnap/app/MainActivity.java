@@ -1,14 +1,15 @@
 package cn.trailsnap.app;
 
-import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.PluginHandle;
 import android.content.Intent;
 import android.os.Bundle;
+import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.PluginHandle;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(GalleryBackupPlugin.class);
+        registerPlugin(LanDiscoveryPlugin.class);
         super.onCreate(savedInstanceState);
         handleGalleryBackupAction(getIntent());
     }

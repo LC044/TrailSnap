@@ -37,6 +37,7 @@ from app.api import (
 from railway.api import router as railway_router
 from app.core.logger import setup_logging
 from app.core.config_manager import VERSION
+from app.dependencies import BaseResponse
 from app.service.task_manager import TaskManager
 from app.service.discovery import DiscoveryService
 
@@ -50,7 +51,9 @@ async def lifespan(app: FastAPI):
     # onto the loop thread via call_soon_threadsafe (asyncio.Queue is not
     # thread-safe).
     mgr.attach_loop(asyncio.get_running_loop())
-    mgr.start_worker_if_needed()
+    # The worker is a second full Python process. Start it only when a task
+    # survived a previous shutdown; normal task creation starts it lazily.
+    mgr.start_worker_for_pending_tasks()
     # Watchdog restarts the worker if it dies with unfinished work left.
     mgr.start_watchdog()
 
@@ -288,6 +291,17 @@ def health_check():
     健康检测接口
     """
     return {"status": "ok", "message": "Service is running"}
+
+
+@app.get("/discovery", response_model=BaseResponse[dict], include_in_schema=False)
+def discovery_info():
+    """Unauthenticated, non-sensitive marker used by LAN discovery clients."""
+    return BaseResponse.success(data={
+        "service": "trailsnap",
+        "instance_name": os.getenv("TRAILSNAP_INSTANCE_NAME", "TrailSnap").strip() or "TrailSnap",
+        "version": VERSION,
+        "api_path": "/api",
+    })
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(agent_token.router, prefix="/tokens", tags=["Tokens"])

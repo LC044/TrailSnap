@@ -33,6 +33,28 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.locator('h2', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
+  test('电脑网页的「连接手机 App」生成可扫描二维码', async ({ page }) => {
+    await page.goto('/settings#mobile-app');
+
+    await expect(page.getByRole('heading', { name: '连接手机 App', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '下载 Android App' })).toBeVisible();
+    await expect(page.getByText(/当前版本：TrailSnap v\d+\.\d+\.\d+/)).toBeVisible();
+    await expect(page.getByRole('link', { name: '下载 Android APK' })).toHaveAttribute('href', /github\.com\/LC044\/TrailSnap\/releases\/download\/v\d+\.\d+\.\d+\/TrailSnap-\d+\.\d+\.\d+-debug\.apk/);
+    await expect(page.getByAltText('TrailSnap Android App 下载二维码')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '连接到这台 TrailSnap' })).toBeVisible();
+
+    const addressInput = page.getByLabel('手机可访问的 TrailSnap 地址');
+    // dev / system 模式由 Vite config 决定 host；playwright config 会以 localhost 或 127.0.0.1 拉起。
+    // 两者都是 loopback, MobileAppConnection 的 isLoopbackAddress 会正确触发「手机无法访问」警告,
+    // 此处只校验 addressInput 已被自动填入当前 origin, 不锁具体 hostname.
+    await expect(addressInput).toHaveValue(/localhost|127\.0\.0\.1/);
+    await expect(page.getByText(/手机无法访问/)).toBeVisible();
+
+    await addressInput.fill('http://192.168.1.20:8082');
+    await expect(page.getByAltText('TrailSnap 手机 App 连接二维码')).toBeVisible();
+    await expect(page.getByRole('button', { name: '复制连接链接' })).toBeVisible();
+  });
+
   test('切换到「外部图库」- 渲染 ExternalGallery 子页 H2', async ({ page }) => {
     await page.goto('/settings');
 

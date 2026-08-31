@@ -4,6 +4,7 @@
     <!-- 动态渲染当前路由对应的布局 -->
     <component :is="currentLayout" />
     <PwaInstallPrompt />
+    <DesktopUpdatePrompt />
   </el-config-provider>
 </template>
 
@@ -24,6 +25,7 @@ import { isMobileApp } from '@/config/server';
 import { App as CapacitorApp } from '@capacitor/app';
 import { useNotificationSSE } from '@/composables/useNotificationSSE';
 import PwaInstallPrompt from '@/components/PwaInstallPrompt.vue';
+import DesktopUpdatePrompt from '@/components/DesktopUpdatePrompt.vue';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {

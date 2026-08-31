@@ -38,6 +38,7 @@ services:
       - TRAILSNAP_ROOT_PATH=/api
       - TRAILSNAP_PUBLIC_URL=${TRAILSNAP_PUBLIC_URL:-}
       - TRAILSNAP_INSTANCE_NAME=${TRAILSNAP_INSTANCE_NAME:-TrailSnap}
+      - TRAILSNAP_DISCOVERY_ENABLED=false
     depends_on:  # 增强依赖配置
       postgres:
         condition: service_healthy
@@ -68,6 +69,20 @@ services:
     networks: [ app-network ]
     environment:
       - TZ=Asia/Shanghai
+
+  # Linux 可选增强：让 mDNS 从宿主机网卡广播，而不是困在 Docker bridge 中。
+  # 启用：docker compose --profile lan-discovery up -d
+  discovery:
+    image: siyuan044/trailsnap-server:master
+    restart: unless-stopped
+    profiles: [ "lan-discovery" ]
+    network_mode: host
+    command: [ "python", "discovery_host.py" ]
+    environment:
+      - TZ=Asia/Shanghai
+      - TRAILSNAP_PUBLIC_URL=${TRAILSNAP_PUBLIC_URL:-}
+      - TRAILSNAP_INSTANCE_NAME=${TRAILSNAP_INSTANCE_NAME:-TrailSnap}
+      - TRAILSNAP_DISCOVERY_ENABLED=true
 
 networks:
   app-network:

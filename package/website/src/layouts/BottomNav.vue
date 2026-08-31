@@ -118,6 +118,7 @@
           </span>
         </RouterLink>
         <button
+          v-if="!isTauriApp()"
           type="button"
           class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-100"
           aria-label="退出登录"
@@ -189,7 +190,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { useUserStore } from '@/stores/user'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { mobileMoreSections, type NavGroup } from '@/config/navigation'
-import { toServerUrl } from '@/config/server'
+import { isTauriApp, toServerUrl } from '@/config/server'
 
 const route = useRoute()
 const router = useRouter()

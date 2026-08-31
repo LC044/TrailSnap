@@ -208,6 +208,8 @@ docker-compose up -d
 
 网页、移动 App 与 CLI 都使用同一个 TrailSnap 地址，例如 `http://192.168.1.10:8082`；API 由网关统一放在 `/api` 下。Server、AI 与数据库只在 Docker 内部网络通信，不需要向用户暴露端口。
 
+Android App 的“自动查找 TrailSnap”会在 mDNS 无结果时探测局域网中的默认统一入口，因此 Docker bridge 部署无需为组播额外开放端口。Linux 用户如需增强 mDNS，可使用 `docker compose --profile lan-discovery up -d` 启用可选的宿主机广播服务；其他平台建议使用“设置 → 连接手机 App”生成的二维码。
+
 ### 源码部署
 
 [源码部署](http://localhost:5173/docs/dev/guide.html)

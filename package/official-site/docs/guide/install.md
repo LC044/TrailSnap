@@ -67,6 +67,14 @@ docker compose --env-file .env restart
 docker compose --env-file .env down
 ```
 
+Android App 的“自动查找 TrailSnap”会直接探测宿主机发布的默认 `8082` 入口，普通 Docker bridge 部署无需额外配置。Linux 服务器还可以选择启用宿主机 mDNS 广播：
+
+```bash
+docker compose --env-file .env --profile lan-discovery up -d
+```
+
+该 profile 仅增强 mDNS，不影响网页和 App 正常连接。Docker Desktop、手机热点、访客 Wi-Fi 或启用了 AP 隔离的网络仍建议使用“设置 → 连接手机 App”中的二维码。
+
 升级和卸载：
 
 ```bash
