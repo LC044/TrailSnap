@@ -13,7 +13,7 @@
           :data-tab="item.key"
           @click="selectTab(item.key)"
           class="flex items-center px-4 md:px-6 py-2 md:py-3 text-sm md:text-base text-gray-600 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer transition-colors whitespace-nowrap md:whitespace-normal mr-2 md:mr-0 rounded-full md:rounded-none"
-          :class="{ 'bg-blue-50 text-primary-500 md:border-r-2 border-primary-500 dark:bg-gray-700 dark:text-primary-400': activeTab === item.key }"
+          :class="{ 'bg-primary-50 text-primary-500 md:border-r-2 border-primary-500 dark:bg-gray-700 dark:text-primary-400': activeTab === item.key }"
         >
           <component :is="item.icon" class="w-5 h-5 mr-2 md:mr-3" />
           {{ item.label }}
@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit, Database, Smartphone } from 'lucide-vue-next'
+import { User, UserCircle, List, Settings, FolderOpen, Info, Key, MessageSquare, Activity, BrainCircuit, Database, CloudUpload, SlidersHorizontal, Smartphone } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -50,8 +50,10 @@ import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
 import DesktopAIExtensions from './settings/DesktopAIExtensions.vue'
 import AIModelManagement from './settings/AIModelManagement.vue'
+import MobileBackup from './settings/MobileBackup.vue'
+import MobileBackupSettings from './settings/MobileBackupSettings.vue'
 import MobileAppConnection from './settings/MobileAppConnection.vue'
-import { isNativeApp, isTauriApp } from '@/config/server'
+import { isMobileApp, isNativeApp, isTauriApp } from '@/config/server'
 import { useSwipeNavigation } from '@/composables/useSwipeNavigation'
 import { useUserStore } from '@/stores/user'
 
@@ -69,6 +71,8 @@ const baseMenuItems = [
   { key: 'ai-extensions', label: 'AI 扩展包', icon: BrainCircuit, desktopOnly: true },
   { key: 'ai-models', label: 'AI 模型管理', icon: Database },
   { key: 'external', label: '外部图库', icon: FolderOpen },
+  { key: 'mobile-backup', label: '手机备份', icon: CloudUpload, mobileOnly: true },
+  { key: 'mobile-backup-settings', label: '备份设置', icon: SlidersHorizontal, mobileOnly: true },
   { key: 'performance', label: '性能测试', icon: Activity },
   { key: 'tokens', label: '令牌管理', icon: Key },
   { key: 'about', label: '关于行影集', icon: Info },
@@ -81,6 +85,7 @@ const requestedTab = computed(() => {
 const menuItems = computed(() => baseMenuItems.filter(item =>
   (!item.superuserOnly || userStore.userInfo?.is_superuser)
   && (!item.desktopOnly || isTauriApp() || requestedTab.value === item.key)
+  && (!item.mobileOnly || isMobileApp() || requestedTab.value === item.key)
   && (!item.webOnly || !isNativeApp())
 ))
 
@@ -95,6 +100,8 @@ const tabComponents: Record<string, typeof ProfileSettings> = {
   'ai-extensions': DesktopAIExtensions,
   'ai-models': AIModelManagement,
   external: ExternalGallery,
+  'mobile-backup': MobileBackup,
+  'mobile-backup-settings': MobileBackupSettings,
   performance: PerformanceTest,
   tokens: Tokens,
   about: AboutPage,

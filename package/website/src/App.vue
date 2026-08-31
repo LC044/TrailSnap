@@ -20,6 +20,9 @@ import { useUserStore } from '@/stores/user';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useAlbumStore } from '@/stores/albumStore';
 import { usePhotoStore } from '@/stores/photoStore';
+import { useGalleryBackup } from '@/composables/useGalleryBackup';
+import { isMobileApp } from '@/config/server';
+import { App as CapacitorApp } from '@capacitor/app';
 import { useNotificationSSE } from '@/composables/useNotificationSSE';
 import PwaInstallPrompt from '@/components/PwaInstallPrompt.vue';
 import DesktopUpdatePrompt from '@/components/DesktopUpdatePrompt.vue';
@@ -59,6 +62,7 @@ const notifyStore = useNotificationStore();
 const albumStore = useAlbumStore();
 const photoStore = usePhotoStore();
 const token = computed(() => userStore.token);
+const galleryBackup = useGalleryBackup();
 const sseEnabled = ref(false);
 const PHOTO_DATA_TASKS = new Set([
   'SCAN_FOLDER',
@@ -86,6 +90,16 @@ watch(
   },
   { immediate: true }
 );
+
+// Native gallery backup is deliberately kicked from app lifecycle events.
+// The persisted cursor makes every run cheap and resumes safely after the OS
+// kills the WebView midway through a large gallery.
+if (isMobileApp()) {
+  void galleryBackup.initialize().then(() => galleryBackup.runBackup());
+  void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+    if (isActive && userStore.token) void galleryBackup.runBackup();
+  });
+}
 
 useNotificationSSE({
   token,

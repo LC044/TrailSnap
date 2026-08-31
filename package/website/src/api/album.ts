@@ -106,15 +106,33 @@ export const albumService = {
   },
 
   // Upload (Simple)
-  async uploadPhoto(file: File, albumId?: string, folder?: string) {
+  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string, onProgress?: (loaded: number, total?: number) => void, replaceExisting = false) {
     const formData = new FormData();
     formData.append('file', file);
     if (albumId) {
         formData.append('album_id', albumId);
     }
     if (folder) formData.append('folder', folder);
+    if (backupKey) formData.append('backup_key', backupKey);
+    if (replaceExisting) formData.append('replace_existing', 'true');
     const data = await request.post<Photo>('/api/medias', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: event => onProgress?.(event.loaded, event.total),
+    });
+    return data.data;
+  },
+
+  async uploadLivePhoto(image: File, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void) {
+    const formData = new FormData();
+    formData.append('file', image);
+    formData.append('live_photo_video', video);
+    formData.append('backup_key', imageBackupKey);
+    formData.append('companion_backup_key', videoBackupKey);
+    if (replaceExisting) formData.append('replace_existing', 'true');
+    if (folder) formData.append('folder', folder);
+    const data = await request.post<Photo>('/api/medias', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: event => onProgress?.(event.loaded, event.total),
     });
     return data.data;
   },
@@ -135,15 +153,17 @@ export const albumService = {
       return data.data.upload_id;
   },
 
-  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob) {
+  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob, onProgress?: (loaded: number, total?: number) => void) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('chunk_index', chunkIndex.toString());
       formData.append('file', chunk);
-      await request.post('/api/medias/upload/chunk', formData);
+      await request.post('/api/medias/upload/chunk', formData, {
+        onUploadProgress: event => onProgress?.(event.loaded, event.total),
+      });
   },
 
-  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string) {
+  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string, replaceExisting = false) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', fileName);
@@ -151,8 +171,30 @@ export const albumService = {
           formData.append('album_id', albumId);
       }
       if (folder) formData.append('folder', folder);
+      if (backupKey) formData.append('backup_key', backupKey);
+      if (replaceExisting) formData.append('replace_existing', 'true');
       const data = await request.post<Photo>('/api/medias/upload/finish', formData);
       return data.data;
+  },
+
+  async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void) {
+      const formData = new FormData();
+      formData.append('upload_id', uploadId);
+      formData.append('file_name', imageName);
+      formData.append('live_photo_video', video);
+      formData.append('backup_key', imageBackupKey);
+      formData.append('companion_backup_key', videoBackupKey);
+      if (replaceExisting) formData.append('replace_existing', 'true');
+      if (folder) formData.append('folder', folder);
+      const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
+        onUploadProgress: event => onProgress?.(event.loaded, event.total),
+      });
+      return data.data;
+  },
+
+  async checkBackupKeys(keys: string[]) {
+    const data = await request.post<{ existing: string[] }>('/api/medias/backup/check', { keys });
+    return new Set(data.data.existing);
   },
 
   async getUploadFolders() {

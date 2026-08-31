@@ -349,13 +349,15 @@ def get_live_photo_vide(image_path: str) -> Optional[str]:
     try:
         base, ext = os.path.splitext(image_path)
         if ext.lower() in ('.heic', '.heif'):
-            video_path = base + '.mov'
-            if os.path.exists(video_path):
-                return video_path
+            for suffix in ('.MOV', '.mov'):
+                video_path = base + suffix
+                if os.path.exists(video_path):
+                    return video_path
         elif ext.lower() in ('.jpg', '.jpeg'):
-            video_path = base + '.mp4'
-            if os.path.exists(video_path):
-                return video_path
+            for suffix in ('.mp4', '.mov', '.MOV'):
+                video_path = base + suffix
+                if os.path.exists(video_path):
+                    return video_path
     except Exception as e:
         logging.error(f"Error getting live photo video for {image_path}: {e}")
     return None

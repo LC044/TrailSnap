@@ -10,11 +10,13 @@ from starlette.concurrency import run_in_threadpool
 import anyio
 import base64
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.crud.photo import save_and_create_photo
+from app.crud import photo as crud_photo
 from app.db.models.task import TaskType
 from app.dependencies import get_db, BaseResponse
-from app.db.models.photo import Photo
+from app.db.models.photo import FileType, Photo
 from app.service import storage
 from app.service.storage import _get_storage_root
 from app.crud import album as crud_album
@@ -27,6 +29,34 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 
 router = APIRouter()
+
+
+def _existing_backup_photo(db: Session, user_id: UUID, backup_key: Optional[str]):
+    if not backup_key:
+        return None
+    return db.query(Photo).filter(
+        Photo.owner_id == user_id,
+        Photo.backup_key == backup_key,
+    ).first()
+
+
+@router.post('/backup/check', response_model=BaseResponse[dict])
+def check_mobile_backup_assets(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    keys = payload.get("keys") if isinstance(payload, dict) else None
+    if not isinstance(keys, list) or len(keys) > 200 or any(not isinstance(key, str) for key in keys):
+        raise HTTPException(status_code=400, detail="keys must be a string array with at most 200 items")
+    normalized = list(dict.fromkeys(key[:255] for key in keys if key))
+    if not normalized:
+        return BaseResponse.success(data={"existing": []})
+    rows = db.query(Photo.backup_key).filter(
+        Photo.owner_id == current_user.id,
+        Photo.backup_key.in_(normalized),
+    ).all()
+    return BaseResponse.success(data={"existing": [row[0] for row in rows]})
 
 
 def _geojson_path(level_cn: str) -> str:
@@ -282,22 +312,157 @@ async def get_media_file(
     # Full content
     return FileResponse(file_path, media_type=media_type, headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=31536000"})
 
-def add_tasks(db: Session, user_id: UUID, photo_id: UUID, file_path: str):
+def add_tasks(db: Session, user_id: UUID, photo_id: UUID, file_path: str, live_photo_video_path: Optional[str] = None):
+    payload = {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
+    if live_photo_video_path:
+        payload.update({'is_live_photo': True, 'live_photo_video_path': live_photo_video_path})
     TaskManager.get_instance().add_tasks(db, [
         {
             'type': TaskType.PROCESS_BASIC,
-            'payload': {'photo_id': str(photo_id), 'file_path': file_path, 'user_id': str(user_id)}
+            'payload': payload
         }
     ], owner_id=user_id)
+
+
+def _live_photo_video_path(image_path: str, video_name: str) -> str:
+    image_ext = os.path.splitext(image_path)[1].lower()
+    video_ext = os.path.splitext(video_name)[1].lower()
+    if image_ext not in ('.jpg', '.jpeg', '.heic', '.heif'):
+        raise ValueError("Unsupported live photo image type")
+    if video_ext not in ('.mp4', '.mov'):
+        raise ValueError("Unsupported live photo video type")
+    expected_ext = '.MOV' if image_ext in ('.heic', '.heif') else video_ext
+    return os.path.splitext(image_path)[0] + expected_ext
+
+
+def _attach_live_photo_video(
+    db: Session,
+    image_photo: Photo,
+    video: UploadFile,
+    companion_backup_key: Optional[str],
+    user_id: UUID,
+) -> str:
+    image_stem = os.path.splitext(image_photo.filename or os.path.basename(image_photo.file_path))[0].casefold()
+    video_stem = os.path.splitext(video.filename or '')[0].casefold()
+    if not video_stem or image_stem != video_stem:
+        raise ValueError("Live photo image and video names must match")
+    target_path = _live_photo_video_path(image_photo.file_path, video.filename or 'live.mov')
+    companion = _existing_backup_photo(db, user_id, companion_backup_key)
+
+    # Always write the submitted companion. It was opened with
+    # MediaStore.setRequireOriginal(), while a previously stored file may be a
+    # redacted/transcoded MediaStore stream even when it already has this path.
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    storage.validate_target_path(target_path)
+    with open(target_path, 'wb') as output:
+        shutil.copyfileobj(video.file, output)
+
+    image_photo.file_type = FileType.live_photo
+    db.commit()
+    db.refresh(image_photo)
+
+    if companion and companion.id != image_photo.id:
+        same_file = os.path.normcase(os.path.abspath(companion.file_path)) == os.path.normcase(os.path.abspath(target_path))
+        crud_photo.delete_photo(db, companion.id, is_delete_file=not same_file, user_id=user_id)
+    return target_path
+
+
+def _finalize_backup_file_replacement(db: Session, photo: Photo, temporary_path: str, user_id: UUID) -> Photo:
+    target_path = photo.file_path
+    storage.validate_target_path(target_path)
+    os.replace(temporary_path, target_path)
+    storage.delete_thumbnails(user_id, photo.id)
+    storage.generate_thumbnail(user_id, target_path, photo.id)
+    width, height, duration = storage.get_image_dimensions(target_path)
+    photo.size = storage.get_file_size(target_path)
+    if width is not None:
+        photo.width = width
+    if height is not None:
+        photo.height = height
+    if duration is not None:
+        photo.duration = duration
+    processed = dict(photo.processed_tasks or {})
+    processed['metadata'] = False
+    photo.processed_tasks = processed
+    db.commit()
+    db.refresh(photo)
+    return photo
+
+
+def _replace_backup_file(db: Session, photo: Photo, upload: UploadFile, user_id: UUID) -> Photo:
+    temporary_path = photo.file_path + f'.{uuid.uuid4().hex}.original-upload'
+    storage.validate_target_path(temporary_path)
+    try:
+        with open(temporary_path, 'wb') as output:
+            shutil.copyfileobj(upload.file, output)
+        return _finalize_backup_file_replacement(db, photo, temporary_path, user_id)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+
+
+def _replace_backup_file_from_chunks(
+    db: Session, photo: Photo, chunk_dir: str, chunks: list[int], user_id: UUID
+) -> Photo:
+    temporary_path = photo.file_path + f'.{uuid.uuid4().hex}.original-upload'
+    storage.validate_target_path(temporary_path)
+    try:
+        with open(temporary_path, 'wb') as output:
+            for chunk_index in chunks:
+                with open(os.path.join(chunk_dir, str(chunk_index)), 'rb') as source:
+                    shutil.copyfileobj(source, output)
+        return _finalize_backup_file_replacement(db, photo, temporary_path, user_id)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+        shutil.rmtree(chunk_dir, ignore_errors=True)
 
 @router.post("", response_model=schemas.Photo)
 async def upload_photo_generic(
         album_id: Optional[UUID] = Form(None),
         folder: Optional[str] = Form(None),
+        backup_key: Optional[str] = Form(None),
+        companion_backup_key: Optional[str] = Form(None),
+        live_photo_video: Optional[UploadFile] = File(None),
+        replace_existing: bool = Form(False),
         file: UploadFile = File(...),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    if not isinstance(live_photo_video, UploadFile):
+        live_photo_video = None
+    if not isinstance(companion_backup_key, str):
+        companion_backup_key = None
+    if not isinstance(replace_existing, bool):
+        replace_existing = False
+    if not isinstance(backup_key, str):
+        backup_key = None
+    if backup_key and len(backup_key) > 255:
+        raise HTTPException(status_code=400, detail="backup_key is too long")
+    if live_photo_video:
+        image_stem, image_ext = os.path.splitext(file.filename or '')
+        video_stem, video_ext = os.path.splitext(live_photo_video.filename or '')
+        valid_pair = (
+            image_stem.casefold() == video_stem.casefold()
+            and image_ext.lower() in ('.jpg', '.jpeg', '.heic', '.heif')
+            and video_ext.lower() in ('.mp4', '.mov')
+        )
+        if not valid_pair:
+            raise HTTPException(status_code=400, detail="Invalid live photo pair")
+    existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+    if existing:
+        if replace_existing:
+            existing = await run_in_threadpool(_replace_backup_file, db, existing, file, current_user.id)
+        if live_photo_video:
+            await run_in_threadpool(
+                _attach_live_photo_video, db, existing, live_photo_video, companion_backup_key, current_user.id
+            )
+        if replace_existing:
+            await run_in_threadpool(
+                add_tasks, db, current_user.id, existing.id, existing.file_path,
+                _live_photo_video_path(existing.file_path, live_photo_video.filename) if live_photo_video else None,
+            )
+        return existing
     if album_id:
         # Verify album exists
         db_album = await run_in_threadpool(crud_album.get_album, db, album_id=album_id, user_id=current_user.id)
@@ -312,9 +477,22 @@ async def upload_photo_generic(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Create and Save
-    photo = await run_in_threadpool(save_and_create_photo, db, file_path, file.filename, album_id, photo_id, user_id=current_user.id)
+    live_photo_video_path = None
+    try:
+        photo = await run_in_threadpool(save_and_create_photo, db, file_path, file.filename, album_id, photo_id, user_id=current_user.id, backup_key=backup_key)
+        if live_photo_video:
+            live_photo_video_path = await run_in_threadpool(
+                _attach_live_photo_video, db, photo, live_photo_video, companion_backup_key, current_user.id
+            )
+    except IntegrityError:
+        await run_in_threadpool(db.rollback)
+        existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+        if not existing:
+            raise
+        await run_in_threadpool(os.remove, file_path)
+        return existing
     # Add tasks
-    await run_in_threadpool(add_tasks, db, current_user.id, photo_id, file_path)
+    await run_in_threadpool(add_tasks, db, current_user.id, photo_id, file_path, live_photo_video_path)
 
     return photo
 
@@ -358,9 +536,59 @@ async def finish_upload_generic(
         file_name: str = Form(...),
         album_id: Optional[UUID] = Form(None),
         folder: Optional[str] = Form(None),
+        backup_key: Optional[str] = Form(None),
+        companion_backup_key: Optional[str] = Form(None),
+        live_photo_video: Optional[UploadFile] = File(None),
+        replace_existing: bool = Form(False),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    if not isinstance(live_photo_video, UploadFile):
+        live_photo_video = None
+    if not isinstance(companion_backup_key, str):
+        companion_backup_key = None
+    if not isinstance(replace_existing, bool):
+        replace_existing = False
+    if not isinstance(backup_key, str):
+        backup_key = None
+    if backup_key and len(backup_key) > 255:
+        raise HTTPException(status_code=400, detail="backup_key is too long")
+    if live_photo_video:
+        image_stem, image_ext = os.path.splitext(file_name or '')
+        video_stem, video_ext = os.path.splitext(live_photo_video.filename or '')
+        if not (
+            image_stem.casefold() == video_stem.casefold()
+            and image_ext.lower() in ('.jpg', '.jpeg', '.heic', '.heif')
+            and video_ext.lower() in ('.mp4', '.mov')
+        ):
+            raise HTTPException(status_code=400, detail="Invalid live photo pair")
+    existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+    if existing:
+        if replace_existing:
+            chunk_dir = _chunk_dir(current_user.id, upload_id, db)
+            exists = await run_in_threadpool(os.path.exists, chunk_dir)
+            if not exists:
+                raise HTTPException(status_code=404, detail="Upload session not found")
+            chunks = await run_in_threadpool(
+                lambda: sorted([int(name) for name in os.listdir(chunk_dir) if name.isdigit()])
+            )
+            if not chunks:
+                raise HTTPException(status_code=400, detail="No chunks found")
+            existing = await run_in_threadpool(
+                _replace_backup_file_from_chunks, db, existing, chunk_dir, chunks, current_user.id
+            )
+        if live_photo_video:
+            await run_in_threadpool(
+                _attach_live_photo_video, db, existing, live_photo_video, companion_backup_key, current_user.id
+            )
+        if replace_existing:
+            await run_in_threadpool(
+                add_tasks, db, current_user.id, existing.id, existing.file_path,
+                _live_photo_video_path(existing.file_path, live_photo_video.filename) if live_photo_video else None,
+            )
+        else:
+            await run_in_threadpool(shutil.rmtree, _chunk_dir(current_user.id, upload_id, db), True)
+        return existing
     if album_id:
         # Verify album exists
         db_album = await run_in_threadpool(crud_album.get_album, db, album_id=album_id, user_id=current_user.id)
@@ -409,10 +637,23 @@ async def finish_upload_generic(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Create and Save
-    photo = await run_in_threadpool(save_and_create_photo, db, final_path, file_name, album_id, photo_id, user_id=current_user.id)
+    live_photo_video_path = None
+    try:
+        photo = await run_in_threadpool(save_and_create_photo, db, final_path, file_name, album_id, photo_id, user_id=current_user.id, backup_key=backup_key)
+        if live_photo_video:
+            live_photo_video_path = await run_in_threadpool(
+                _attach_live_photo_video, db, photo, live_photo_video, companion_backup_key, current_user.id
+            )
+    except IntegrityError:
+        await run_in_threadpool(db.rollback)
+        existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
+        if not existing:
+            raise
+        await run_in_threadpool(os.remove, final_path)
+        return existing
 
     # Add tasks
-    await run_in_threadpool(add_tasks, db, current_user.id, photo_id, final_path)
+    await run_in_threadpool(add_tasks, db, current_user.id, photo_id, final_path, live_photo_video_path)
 
     return photo
 
