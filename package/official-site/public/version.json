@@ -128,5 +128,10 @@
         "version": "0.11.0",
         "update_info": "- AI 助手新增照片记忆与“那年今日”主动回忆<br>- 条件相册支持按文件夹及其子文件夹筛选照片<br>- AI 模型管理新增多档 PP-OCRv6 与 Buffalo M，并优化下载、切换和删除体验<br>- AI 助手照片搜索结果支持聚合摘要与多图网格展示<br>- 更新 Web、PWA、Android 与 iOS 应用图标<br>- 修复桌面 AI 扩展模型准备和配置问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.11.0"
+    },
+    {
+        "version": "0.12.0",
+        "update_info": "- Android App 新增系统相册增量备份，支持进度查看、暂停继续与实况照片<br>- 外部图库新增桌面端管理和指定目录上传<br>- 相似照片新增并排对比，断舍离进度支持保存与离线同步<br>- 优化桌面端启动、登录会话、自动更新与多端连接引导<br>- AI 任务支持自适应并发、失败重试与下载后自动恢复<br>- 优化多用户存储隔离、长路径兼容、响应式布局与可访问性",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.12.0"
     }
 ]

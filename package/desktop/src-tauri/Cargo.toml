@@ -1,6 +1,6 @@
 [package]
 name = "trailsnap-desktop"
-version = "0.11.0"
+version = "0.12.0"
 description = "TrailSnap desktop shell"
 authors = ["SiYuan <sixyuan044@gmail.com>"]
 edition = "2021"

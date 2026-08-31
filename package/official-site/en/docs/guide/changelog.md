@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-31 (0.12.0)
+
+### New
+
+- Added incremental system-gallery backup to the Android App, with destination selection, progress reporting, pause/resume controls, original media preservation, and paired Live Photo support.
+- Added desktop management for external libraries and configurable upload destinations for importing photos into a chosen external folder.
+- Added a side-by-side comparison view to the similar-photo tool for easier review and cleanup.
+- Swipe-to-declutter now saves decisions and progress, and can synchronize offline actions after reconnecting.
+- The desktop installer can now switch AI runtimes to better match the device.
+
+### Improvements
+
+- Unified connection entry points across desktop, mobile, and browser clients, with clearer mobile server setup and improved Docker LAN service discovery.
+- Improved desktop startup, session handling, and automatic updates to reduce repeated configuration and interrupted upgrades.
+- AI task concurrency now adapts to runtime pressure and retries failures; waiting tasks resume after model downloads complete.
+- Simplified AI performance choices and improved responsive layouts, dark mode, and keyboard accessibility throughout the Web interface.
+- Restructured multi-user storage for stronger file isolation and added support for longer photo paths.
+
+### Bug Fixes
+
+- Fixed mobile backup converting original media, losing paired Live Photo files, or mishandling optional upload fields.
+- Fixed malformed vision-model output, tasks remaining paused after model downloads, and visual-analysis request timeouts.
+- Fixed cleanup failures for locked user directories on Windows, plus several mobile navigation and timeline interaction issues.
+
 ## 2026-08-22 (0.11.0)
 
 ### New
