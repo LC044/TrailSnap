@@ -130,7 +130,12 @@ const loadFolders = async () => {
   loadingFolders.value = true
   try {
     const permission = await galleryBackupNative.requestGalleryPermission()
-    if (!permission.granted) throw new Error('请允许行影集访问照片和视频')
+    if (!permission.granted) {
+      if (permission.galleryGranted && !permission.originalGranted) {
+        throw new Error('请允许“照片和视频中的位置”权限，以便读取包含 GPS 的原图')
+      }
+      throw new Error('请允许行影集访问照片和视频')
+    }
     folders.value = (await galleryBackupNative.listSourceFolders({ includeVideos: form.includeVideos })).folders
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : String(error))

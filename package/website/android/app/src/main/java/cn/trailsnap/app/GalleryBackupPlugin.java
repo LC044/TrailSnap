@@ -16,6 +16,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 
 import com.getcapacitor.JSArray;
@@ -32,6 +33,7 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -48,6 +50,7 @@ import java.util.Map;
         @Permission(alias = "images", strings = { Manifest.permission.READ_MEDIA_IMAGES }),
         @Permission(alias = "videos", strings = { Manifest.permission.READ_MEDIA_VIDEO }),
         @Permission(alias = "selectedMedia", strings = { Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED }),
+        @Permission(alias = "mediaLocation", strings = { Manifest.permission.ACCESS_MEDIA_LOCATION }),
         @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
     }
 )
@@ -61,16 +64,18 @@ public class GalleryBackupPlugin extends Plugin {
 
     @PluginMethod
     public void requestGalleryPermission(PluginCall call) {
-        if (galleryPermissionGranted()) {
+        if (galleryPermissionGranted() && originalMediaPermissionGranted()) {
             permissionResult(call);
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                requestPermissionForAliases(new String[] { "images", "videos", "selectedMedia" }, call, "galleryPermissionCallback");
+                requestPermissionForAliases(new String[] { "images", "videos", "selectedMedia", "mediaLocation" }, call, "galleryPermissionCallback");
             } else {
-                requestPermissionForAliases(new String[] { "images", "videos" }, call, "galleryPermissionCallback");
+                requestPermissionForAliases(new String[] { "images", "videos", "mediaLocation" }, call, "galleryPermissionCallback");
             }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            requestPermissionForAliases(new String[] { "legacyStorage", "mediaLocation" }, call, "galleryPermissionCallback");
         } else {
             requestPermissionForAlias("legacyStorage", call, "galleryPermissionCallback");
         }
@@ -83,7 +88,9 @@ public class GalleryBackupPlugin extends Plugin {
 
     private void permissionResult(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("granted", galleryPermissionGranted());
+        result.put("granted", galleryPermissionGranted() && originalMediaPermissionGranted());
+        result.put("galleryGranted", galleryPermissionGranted());
+        result.put("originalGranted", originalMediaPermissionGranted());
         call.resolve(result);
     }
 
@@ -91,6 +98,11 @@ public class GalleryBackupPlugin extends Plugin {
         String alias = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "images" : "legacyStorage";
         return getPermissionState(alias) == PermissionState.GRANTED ||
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && getPermissionState("selectedMedia") == PermissionState.GRANTED);
+    }
+
+    private boolean originalMediaPermissionGranted() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            getPermissionState("mediaLocation") == PermissionState.GRANTED;
     }
 
     @PluginMethod
@@ -584,15 +596,28 @@ public class GalleryBackupPlugin extends Plugin {
             return;
         }
         File output = new File(directory, System.nanoTime() + "-" + safeName);
-        try (InputStream input = getContext().getContentResolver().openInputStream(Uri.parse(uriValue));
-             FileOutputStream stream = new FileOutputStream(output)) {
-            if (input == null) throw new IllegalStateException("无法打开图库文件");
-            byte[] buffer = new byte[256 * 1024];
-            int read;
-            while ((read = input.read(buffer)) != -1) stream.write(buffer, 0, read);
+        Uri sourceUri = Uri.parse(uriValue);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (!originalMediaPermissionGranted()) {
+                call.reject("未授予照片位置权限，无法读取包含 GPS 的原图", "ORIGINAL_MEDIA_PERMISSION_REQUIRED");
+                return;
+            }
+            sourceUri = MediaStore.setRequireOriginal(sourceUri);
+        }
+        try (ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(sourceUri, "r")) {
+            if (descriptor == null) throw new IllegalStateException("无法打开图库原始文件");
+            try (InputStream input = new FileInputStream(descriptor.getFileDescriptor());
+                 FileOutputStream stream = new FileOutputStream(output)) {
+                byte[] buffer = new byte[256 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) stream.write(buffer, 0, read);
+            }
             JSObject result = new JSObject();
             result.put("path", output.getAbsolutePath());
             call.resolve(result);
+        } catch (UnsupportedOperationException | SecurityException error) {
+            output.delete();
+            call.reject("系统无法提供未经裁剪元数据的原始媒体文件", "ORIGINAL_MEDIA_UNAVAILABLE", error);
         } catch (Exception error) {
             output.delete();
             call.reject("导出图库文件失败", error);

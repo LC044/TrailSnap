@@ -121,9 +121,9 @@ async function saveSettings(next: GalleryBackupSettings) {
 }
 
 function cursorScopeKey(config: GalleryBackupSettings = settings.value) {
-  // v2 forces one reconciliation scan so backups created before live-photo
-  // pairing are upgraded from separate image/video rows into one live photo.
-  const input = JSON.stringify({ version: 2, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
+  // v3 forces one reconciliation scan that replaces MediaStore-redacted files
+  // with exact original bytes after ACCESS_MEDIA_LOCATION is granted.
+  const input = JSON.stringify({ version: 3, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
   let hash = 2166136261
   for (let index = 0; index < input.length; index++) {
     hash ^= input.charCodeAt(index)
@@ -217,7 +217,7 @@ function resumeBackup() {
   waiters.forEach(resolve => resolve())
 }
 
-async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings) {
+async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings, replaceExisting: boolean) {
   const exported = await galleryBackupNative.exportAsset({ uri: asset.uri, fileName: asset.name })
   let reportedBytes = 0
   if (!speedSamples.length) speedSamples.push({ at: Date.now(), bytes: uploadedBytes.value })
@@ -242,10 +242,13 @@ async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings) {
         await albumService.uploadChunk(uploadId, index, chunk, loaded => reportAbsolute(start + Math.min(chunk.size, loaded)))
       }
       await waitIfPaused()
-      await albumService.finishUpload(uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey)
+      await albumService.finishUpload(uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey, replaceExisting)
     } else {
       await waitIfPaused()
-      await albumService.uploadPhoto(file, undefined, destinationFolder(asset, config), asset.backupKey, loaded => reportAbsolute(Math.min(file.size, loaded)))
+      await albumService.uploadPhoto(
+        file, undefined, destinationFolder(asset, config), asset.backupKey,
+        loaded => reportAbsolute(Math.min(file.size, loaded)), replaceExisting,
+      )
     }
     reportAbsolute(asset.size)
   } finally {
@@ -275,7 +278,7 @@ async function exportedFile(asset: GalleryAsset) {
   }
 }
 
-async function uploadLivePhoto(image: GalleryAsset, video: GalleryAsset, config: GalleryBackupSettings) {
+async function uploadLivePhoto(image: GalleryAsset, video: GalleryAsset, config: GalleryBackupSettings, replaceExisting: boolean) {
   const imageFile = await exportedFile(image)
   let videoFile: Awaited<ReturnType<typeof exportedFile>> | null = null
   const totalSize = Math.max(0, image.size) + Math.max(0, video.size)
@@ -301,12 +304,14 @@ async function uploadLivePhoto(image: GalleryAsset, video: GalleryAsset, config:
       await waitIfPaused()
       await albumService.finishLivePhotoUpload(
         uploadId, imageFile.file.name, videoFile.file, folder, image.backupKey, video.backupKey,
+        replaceExisting,
         loaded => reportAbsolute(imageFile.file.size + loaded),
       )
     } else {
       await waitIfPaused()
       await albumService.uploadLivePhoto(
         imageFile.file, videoFile.file, folder, image.backupKey, video.backupKey,
+        replaceExisting,
         loaded => reportAbsolute(loaded),
       )
     }
@@ -377,7 +382,12 @@ async function runBackup(options: { manual?: boolean } = {}) {
       return
     }
     const permission = await galleryBackupNative.requestGalleryPermission()
-    if (!permission.granted) throw new Error('请允许行影集访问照片和视频')
+    if (!permission.granted) {
+      if (permission.galleryGranted && !permission.originalGranted) {
+        throw new Error('请允许“照片和视频中的位置”权限，否则无法备份包含 GPS 的原图')
+      }
+      throw new Error('请允许行影集访问照片和视频')
+    }
     void galleryBackupNative.requestNotificationPermission().catch(() => undefined)
 
     status.value = 'scanning'
@@ -415,30 +425,35 @@ async function runBackup(options: { manual?: boolean } = {}) {
         })
       }
       queueItems.value = [...queued.values()]
-      const existing = await albumService.checkBackupKeys(page.assets.map(asset => asset.backupKey))
+      const keysToCheck = new Set(page.assets.map(asset => asset.backupKey))
+      page.assets.forEach(asset => {
+        const pair = livePhotoPair(asset)
+        if (pair) {
+          keysToCheck.add(pair.image.backupKey)
+          keysToCheck.add(pair.video.backupKey)
+        }
+      })
+      const existing = await albumService.checkBackupKeys([...keysToCheck])
       for (const asset of page.assets) {
         await waitIfPaused()
         const pair = livePhotoPair(asset)
         const operationKey = pair?.image.backupKey || asset.backupKey
+        const replaceExisting = existing.has(operationKey)
         currentFile.value = pair ? `${pair.image.name} · 实况照片` : asset.name
         currentFileProgress.value = 0
         if (pair && completedLivePairs.has(operationKey)) {
           skipped.value++
           currentFileProgress.value = 100
           updateQueueStatus(operationKey, 'uploaded')
-        } else if (!pair && existing.has(asset.backupKey)) {
-          skipped.value++
-          currentFileProgress.value = 100
-          updateQueueStatus(operationKey, 'skipped')
         } else {
           status.value = 'uploading'
           updateQueueStatus(operationKey, 'uploading')
           try {
             if (pair) {
-              await uploadLivePhoto(pair.image, pair.video, runSettings)
+              await uploadLivePhoto(pair.image, pair.video, runSettings, replaceExisting)
               completedLivePairs.add(operationKey)
             } else {
-              await uploadAsset(asset, runSettings)
+              await uploadAsset(asset, runSettings, replaceExisting)
             }
             updateQueueStatus(operationKey, 'uploaded')
           } catch (error) {

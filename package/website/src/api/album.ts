@@ -106,7 +106,7 @@ export const albumService = {
   },
 
   // Upload (Simple)
-  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string, onProgress?: (loaded: number, total?: number) => void) {
+  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string, onProgress?: (loaded: number, total?: number) => void, replaceExisting = false) {
     const formData = new FormData();
     formData.append('file', file);
     if (albumId) {
@@ -114,6 +114,7 @@ export const albumService = {
     }
     if (folder) formData.append('folder', folder);
     if (backupKey) formData.append('backup_key', backupKey);
+    if (replaceExisting) formData.append('replace_existing', 'true');
     const data = await request.post<Photo>('/api/medias', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
@@ -121,12 +122,13 @@ export const albumService = {
     return data.data;
   },
 
-  async uploadLivePhoto(image: File, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, onProgress?: (loaded: number, total?: number) => void) {
+  async uploadLivePhoto(image: File, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void) {
     const formData = new FormData();
     formData.append('file', image);
     formData.append('live_photo_video', video);
     formData.append('backup_key', imageBackupKey);
     formData.append('companion_backup_key', videoBackupKey);
+    if (replaceExisting) formData.append('replace_existing', 'true');
     if (folder) formData.append('folder', folder);
     const data = await request.post<Photo>('/api/medias', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -161,7 +163,7 @@ export const albumService = {
       });
   },
 
-  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string) {
+  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string, replaceExisting = false) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', fileName);
@@ -170,17 +172,19 @@ export const albumService = {
       }
       if (folder) formData.append('folder', folder);
       if (backupKey) formData.append('backup_key', backupKey);
+      if (replaceExisting) formData.append('replace_existing', 'true');
       const data = await request.post<Photo>('/api/medias/upload/finish', formData);
       return data.data;
   },
 
-  async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, onProgress?: (loaded: number, total?: number) => void) {
+  async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', imageName);
       formData.append('live_photo_video', video);
       formData.append('backup_key', imageBackupKey);
       formData.append('companion_backup_key', videoBackupKey);
+      if (replaceExisting) formData.append('replace_existing', 'true');
       if (folder) formData.append('folder', folder);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
         onUploadProgress: event => onProgress?.(event.loaded, event.total),

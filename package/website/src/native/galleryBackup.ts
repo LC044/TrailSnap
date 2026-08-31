@@ -28,7 +28,7 @@ export interface GalleryCursor {
 }
 
 interface GalleryBackupNativePlugin {
-  requestGalleryPermission(): Promise<{ granted: boolean }>
+  requestGalleryPermission(): Promise<{ granted: boolean; galleryGranted: boolean; originalGranted: boolean }>
   listAssets(options: GalleryCursor & { limit: number; includeVideos: boolean; sourcePaths: string[] }): Promise<GalleryCursor & { assets: GalleryAsset[]; hasMore: boolean }>
   exportAsset(options: { uri: string; fileName: string }): Promise<{ path: string }>
   releaseAsset(options: { path: string }): Promise<void>
