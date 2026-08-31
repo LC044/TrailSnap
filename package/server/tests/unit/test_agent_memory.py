@@ -182,3 +182,110 @@ def test_build_memory_prompt_contains_photo_id_and_note():
         prompt = mem.build_memory_prompt(db, str(uuid4()))
     assert "pid-1" in prompt
     assert "西湖日落" in prompt
+
+
+# ---------------------------------------------------------------------------
+# 语义记忆检索：用照片向量做跨模态检索
+# ---------------------------------------------------------------------------
+
+def _anchor(pid, note="n"):
+    return {"photo_id": pid, "note": note, "photo_time": None, "location": "x"}
+
+
+def test_get_relevant_anchors_returns_all_when_few():
+    """有效锚点数不超过 top_k 时，检索无意义，直接返回全部（不调用 embedding）。"""
+    db = MagicMock()
+    anchors = [_anchor(str(uuid4())) for _ in range(3)]
+    with patch.object(mem, "get_valid_memory_anchors", return_value=anchors), \
+         patch("app.utils.embedding.get_embedding") as emb:
+        out = mem.get_relevant_memory_anchors(db, str(uuid4()), "杭州", top_k=6)
+    assert out == anchors
+    emb.assert_not_called()
+
+
+def test_get_relevant_anchors_returns_all_when_blank_query():
+    """query 为空白时不检索，返回全部有效锚点。"""
+    db = MagicMock()
+    anchors = [_anchor(str(uuid4())) for _ in range(10)]
+    with patch.object(mem, "get_valid_memory_anchors", return_value=anchors):
+        out = mem.get_relevant_memory_anchors(db, str(uuid4()), "   ", top_k=3)
+    assert out == anchors
+
+
+def test_get_relevant_anchors_orders_by_vector_distance():
+    """锚点数大于 top_k 时，按照片向量 cosine 距离升序取 top_k。"""
+    user_id = str(uuid4())
+    pids = [str(uuid4()) for _ in range(5)]
+    anchors = [_anchor(p, note=f"n{i}") for i, p in enumerate(pids)]
+
+    db = MagicMock()
+    # 模拟向量检索：返回距离最近的两条（pids[2], pids[0]）
+    rows = [(pids[2], 0.1), (pids[0], 0.2)]
+    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+
+    with patch.object(mem, "get_valid_memory_anchors", return_value=anchors), \
+         patch("app.utils.embedding.get_embedding", return_value=[0.0] * 512):
+        out = mem.get_relevant_memory_anchors(db, user_id, "杭州西湖", top_k=2)
+
+    assert [a["photo_id"] for a in out] == [pids[2], pids[0]]
+
+
+def test_get_relevant_anchors_filters_by_max_distance():
+    """距离超过 MEMORY_MAX_DISTANCE 的照片被过滤掉。"""
+    user_id = str(uuid4())
+    pids = [str(uuid4()) for _ in range(5)]
+    anchors = [_anchor(p) for p in pids]
+
+    db = MagicMock()
+    # 一条近的、一条太远的（应被过滤）
+    rows = [(pids[0], 0.2), (pids[1], mem.MEMORY_MAX_DISTANCE + 0.5)]
+    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+
+    with patch.object(mem, "get_valid_memory_anchors", return_value=anchors), \
+         patch("app.utils.embedding.get_embedding", return_value=[0.0] * 512):
+        out = mem.get_relevant_memory_anchors(db, user_id, "查询", top_k=2)
+
+    assert [a["photo_id"] for a in out] == [pids[0]]
+
+
+def test_get_relevant_anchors_fallback_recent_when_all_filtered():
+    """全部被距离阈值过滤时，回退到时间上最近的 top_k 条，保证有记忆可用。"""
+    user_id = str(uuid4())
+    pids = [str(uuid4()) for _ in range(5)]
+    anchors = [_anchor(p) for p in pids]
+
+    db = MagicMock()
+    rows = [(pids[0], mem.MEMORY_MAX_DISTANCE + 1)]  # 唯一命中也太远
+    db.query.return_value.filter.return_value.order_by.return_value.limit.return_value.all.return_value = rows
+
+    with patch.object(mem, "get_valid_memory_anchors", return_value=anchors), \
+         patch("app.utils.embedding.get_embedding", return_value=[0.0] * 512):
+        out = mem.get_relevant_memory_anchors(db, user_id, "查询", top_k=2)
+
+    assert out == anchors[-2:]
+
+
+def test_get_relevant_anchors_fallback_all_on_embedding_error():
+    """embedding 服务异常时，降级返回全部有效锚点，不影响对话。"""
+    user_id = str(uuid4())
+    anchors = [_anchor(str(uuid4())) for _ in range(10)]
+
+    db = MagicMock()
+    with patch.object(mem, "get_valid_memory_anchors", return_value=anchors), \
+         patch("app.utils.embedding.get_embedding", side_effect=RuntimeError("ai down")):
+        out = mem.get_relevant_memory_anchors(db, user_id, "查询", top_k=3)
+
+    assert out == anchors
+
+
+def test_build_memory_prompt_uses_semantic_search_when_user_input():
+    """传入 user_input 时应走语义检索分支。"""
+    db = MagicMock()
+    anchors = [{"photo_id": "pid-1", "note": "西湖日落",
+                "photo_time": "2025-06-01", "location": "杭州"}]
+    with patch.object(mem, "get_relevant_memory_anchors", return_value=anchors) as rel, \
+         patch.object(mem, "get_valid_memory_anchors") as full:
+        prompt = mem.build_memory_prompt(db, str(uuid4()), user_input="杭州")
+    rel.assert_called_once()
+    full.assert_not_called()
+    assert "西湖日落" in prompt

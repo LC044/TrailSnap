@@ -130,3 +130,106 @@ def test_trim_history_messages_falls_back_when_trim_raises():
         trimmed = agent_service.trim_history_messages(messages)
 
     assert trimmed is messages
+
+
+# ---------------------------------------------------------------------------
+# compress_history_if_needed（上下文压缩）
+# ---------------------------------------------------------------------------
+
+def _convo(n):
+    """构造 n 条 human/ai 交替的对话消息。"""
+    out = []
+    for i in range(n):
+        if i % 2 == 0:
+            out.append(HumanMessage(content=f"u{i}"))
+        else:
+            out.append(AIMessage(content=f"a{i}"))
+    return out
+
+
+def test_compress_below_trigger_uses_sliding_window():
+    """对话未超过触发阈值时，退化为滑动窗口，不调用摘要 LLM。"""
+    db = MagicMock()
+    messages = [SystemMessage(content="sys")] + _convo(agent_service.COMPRESSION_TRIGGER)
+
+    with patch.object(agent_service, "trim_history_messages", return_value=messages) as trim, \
+         patch.object(agent_service, "_get_summary_llm") as get_llm:
+        out = agent_service.compress_history_if_needed(messages, "uid", "sid", db)
+
+    trim.assert_called_once()
+    get_llm.assert_not_called()
+    assert out == messages
+
+
+def test_compress_falls_back_when_no_llm():
+    """历史超阈值但拿不到摘要模型时，回退到滑动窗口。"""
+    db = MagicMock()
+    messages = [SystemMessage(content="sys")] + _convo(agent_service.COMPRESSION_TRIGGER + 10)
+
+    with patch.object(agent_service, "_get_summary_llm", return_value=None), \
+         patch.object(agent_service, "trim_history_messages", return_value=["fallback"]) as trim:
+        out = agent_service.compress_history_if_needed(messages, "uid", "sid", db)
+
+    trim.assert_called_once()
+    assert out == ["fallback"]
+
+
+def test_compress_builds_summary_and_keeps_recent():
+    """历史超阈值时：生成摘要 + 保留 system + 最近 KEEP_RECENT_MESSAGES 条，并持久化摘要。"""
+    db = MagicMock()
+    system = SystemMessage(content="sys")
+    convo = _convo(agent_service.COMPRESSION_TRIGGER + 10)
+    messages = [system] + convo
+
+    fake_llm = MagicMock()
+    fake_llm.invoke.return_value = SimpleNamespace(content="摘要要点")
+
+    with patch.object(agent_service, "_get_summary_llm", return_value=fake_llm), \
+         patch.object(agent_service.agent_crud, "get_context_summary", return_value=None), \
+         patch.object(agent_service.agent_crud, "update_context_summary") as upd:
+        out = agent_service.compress_history_if_needed(messages, "uid", "sid", db)
+
+    # 结构：system + 摘要 + 最近 KEEP_RECENT_MESSAGES 条
+    assert out[0] is system
+    assert isinstance(out[1], SystemMessage)
+    assert "摘要要点" in out[1].content
+    recent = out[2:]
+    assert len(recent) == agent_service.KEEP_RECENT_MESSAGES
+    assert recent == convo[-agent_service.KEEP_RECENT_MESSAGES:]
+    # 摘要被持久化
+    upd.assert_called_once()
+
+
+def test_compress_merges_previous_summary():
+    """已有历史摘要时，会把旧摘要一并喂给 LLM 做增量合并。"""
+    db = MagicMock()
+    messages = [SystemMessage(content="sys")] + _convo(agent_service.COMPRESSION_TRIGGER + 10)
+
+    fake_llm = MagicMock()
+    fake_llm.invoke.return_value = SimpleNamespace(content="新摘要")
+
+    with patch.object(agent_service, "_get_summary_llm", return_value=fake_llm), \
+         patch.object(agent_service.agent_crud, "get_context_summary", return_value="旧摘要内容"), \
+         patch.object(agent_service.agent_crud, "update_context_summary"):
+        agent_service.compress_history_if_needed(messages, "uid", "sid", db)
+
+    # 传给 LLM 的 prompt 里应包含旧摘要
+    prompt = fake_llm.invoke.call_args[0][0][0].content
+    assert "旧摘要内容" in prompt
+
+
+def test_compress_falls_back_when_llm_raises():
+    """摘要 LLM 调用抛异常时，回退到滑动窗口，不中断对话。"""
+    db = MagicMock()
+    messages = [SystemMessage(content="sys")] + _convo(agent_service.COMPRESSION_TRIGGER + 10)
+
+    fake_llm = MagicMock()
+    fake_llm.invoke.side_effect = RuntimeError("llm boom")
+
+    with patch.object(agent_service, "_get_summary_llm", return_value=fake_llm), \
+         patch.object(agent_service.agent_crud, "get_context_summary", return_value=None), \
+         patch.object(agent_service, "trim_history_messages", return_value=["fallback"]) as trim:
+        out = agent_service.compress_history_if_needed(messages, "uid", "sid", db)
+
+    trim.assert_called_once()
+    assert out == ["fallback"]
