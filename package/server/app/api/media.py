@@ -429,6 +429,12 @@ async def upload_photo_generic(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    if not isinstance(live_photo_video, UploadFile):
+        live_photo_video = None
+    if not isinstance(companion_backup_key, str):
+        companion_backup_key = None
+    if not isinstance(replace_existing, bool):
+        replace_existing = False
     if not isinstance(backup_key, str):
         backup_key = None
     if backup_key and len(backup_key) > 255:
@@ -537,6 +543,12 @@ async def finish_upload_generic(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    if not isinstance(live_photo_video, UploadFile):
+        live_photo_video = None
+    if not isinstance(companion_backup_key, str):
+        companion_backup_key = None
+    if not isinstance(replace_existing, bool):
+        replace_existing = False
     if not isinstance(backup_key, str):
         backup_key = None
     if backup_key and len(backup_key) > 255:
