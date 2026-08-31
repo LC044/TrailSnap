@@ -17,6 +17,8 @@ recommended.
 
 ## Install on Android
 
+If TrailSnap is already deployed, open **Settings → Connect Mobile App** in the desktop browser. The page shows the current APK download link and a download QR code. Scan it with the phone camera to install the App, then use the App to scan the separate server connection QR code on the same page.
+
 1. Open the project's [GitHub Releases](https://github.com/LC044/TrailSnap/releases).
 2. Find the required stable release (tags use the `v*.*.*` format, for example `v0.9.1`).
 3. Download the APK from **Assets**. Early test packages may include `debug` in the file name.

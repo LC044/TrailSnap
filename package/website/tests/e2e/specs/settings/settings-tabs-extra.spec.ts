@@ -37,6 +37,12 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await page.goto('/settings#mobile-app');
 
     await expect(page.getByRole('heading', { name: '连接手机 App', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '下载 Android App' })).toBeVisible();
+    await expect(page.getByText(/当前版本：TrailSnap v\d+\.\d+\.\d+/)).toBeVisible();
+    await expect(page.getByRole('link', { name: '下载 Android APK' })).toHaveAttribute('href', /github\.com\/LC044\/TrailSnap\/releases\/download\/v\d+\.\d+\.\d+\/TrailSnap-\d+\.\d+\.\d+-debug\.apk/);
+    await expect(page.getByAltText('TrailSnap Android App 下载二维码')).toBeVisible();
+    await expect(page.getByRole('heading', { name: '连接到这台 TrailSnap' })).toBeVisible();
+
     const addressInput = page.getByLabel('手机可访问的 TrailSnap 地址');
     await expect(addressInput).toHaveValue(/127\.0\.0\.1/);
     await expect(page.getByText(/手机无法访问/)).toBeVisible();

@@ -3,12 +3,52 @@
     <header class="space-y-2">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">连接手机 App</h1>
       <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-        在手机 TrailSnap App 中点击“扫描二维码”，即可使用与当前网页相同的服务地址。
+        还没有 App 时可先扫码下载；安装后再用 App 扫描服务器连接二维码。
       </p>
     </header>
 
+    <section class="grid gap-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:grid-cols-[minmax(0,1fr)_14rem] md:p-7">
+      <div class="space-y-4">
+        <div>
+          <p class="text-sm font-medium text-primary-600 dark:text-primary-400">还没有安装 App？</p>
+          <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">下载 Android App</h2>
+        </div>
+        <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
+          当前版本：TrailSnap v{{ appVersion }}。可直接下载安装包，或用手机相机扫描右侧二维码下载。
+        </p>
+        <a
+          :href="androidDownloadUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+        >
+          下载 Android APK
+        </a>
+        <p class="break-all text-xs leading-5 text-gray-500 dark:text-gray-400">
+          {{ androidDownloadUrl }}
+        </p>
+        <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+          安装时 Android 可能要求允许浏览器“安装未知应用”。请确认地址属于 TrailSnap 官方 GitHub 仓库。
+        </p>
+      </div>
+
+      <div class="flex flex-col items-center justify-center rounded-2xl bg-gray-50 p-5 text-center dark:bg-gray-900">
+        <img
+          v-if="downloadQrCode"
+          :src="downloadQrCode"
+          alt="TrailSnap Android App 下载二维码"
+          class="h-44 w-44 rounded-xl bg-white p-2"
+        />
+        <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">扫码下载 App</p>
+      </div>
+    </section>
+
     <section class="grid gap-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:grid-cols-[minmax(0,1fr)_18rem] md:p-7">
       <div class="space-y-5">
+        <div>
+          <p class="text-sm font-medium text-primary-600 dark:text-primary-400">已经安装 App？</p>
+          <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">连接到这台 TrailSnap</h2>
+        </div>
         <label class="block">
           <span class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">手机可访问的 TrailSnap 地址</span>
           <input
@@ -49,9 +89,10 @@
       </div>
 
       <div class="flex flex-col items-center justify-center rounded-2xl bg-gray-50 p-5 text-center dark:bg-gray-900">
-        <template v-if="qrCode && !isLoopbackAddress">
-          <img :src="qrCode" alt="TrailSnap 手机 App 连接二维码" class="h-52 w-52 rounded-xl bg-white p-2" />
-          <p class="mt-3 max-w-full break-all text-xs text-gray-500 dark:text-gray-400">{{ normalizedAddress }}</p>
+        <template v-if="connectionQrCode && !isLoopbackAddress">
+          <img :src="connectionQrCode" alt="TrailSnap 手机 App 连接二维码" class="h-52 w-52 rounded-xl bg-white p-2" />
+          <p class="mt-3 text-xs font-medium text-gray-700 dark:text-gray-200">请用 TrailSnap App 扫码连接</p>
+          <p class="mt-1 max-w-full break-all text-xs text-gray-500 dark:text-gray-400">{{ normalizedAddress }}</p>
           <button
             type="button"
             class="mt-4 w-full rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
@@ -74,10 +115,14 @@ import { ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
 import { normalizeServerUrl } from '@/config/server'
 import { createConnectionDeepLink } from '@/config/serverConnection'
+import packageMetadata from '../../../package.json'
 
 const currentOrigin = window.location.origin
 const address = ref(currentOrigin)
-const qrCode = ref('')
+const connectionQrCode = ref('')
+const downloadQrCode = ref('')
+const appVersion = packageMetadata.version
+const androidDownloadUrl = `https://github.com/LC044/TrailSnap/releases/download/v${appVersion}/TrailSnap-${appVersion}-debug.apk`
 
 const normalizedAddress = computed(() => {
   try {
@@ -103,7 +148,7 @@ let qrGeneration = 0
 watch(normalizedAddress, async value => {
   const generation = ++qrGeneration
   if (!value || isLoopbackAddress.value) {
-    qrCode.value = ''
+    connectionQrCode.value = ''
     return
   }
   try {
@@ -112,11 +157,21 @@ watch(normalizedAddress, async value => {
       margin: 1,
       errorCorrectionLevel: 'M',
     })
-    if (generation === qrGeneration) qrCode.value = dataUrl
+    if (generation === qrGeneration) connectionQrCode.value = dataUrl
   } catch {
-    if (generation === qrGeneration) qrCode.value = ''
+    if (generation === qrGeneration) connectionQrCode.value = ''
   }
 }, { immediate: true })
+
+QRCode.toDataURL(androidDownloadUrl, {
+  width: 320,
+  margin: 1,
+  errorCorrectionLevel: 'M',
+}).then(dataUrl => {
+  downloadQrCode.value = dataUrl
+}).catch(() => {
+  downloadQrCode.value = ''
+})
 
 async function writeClipboard(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
