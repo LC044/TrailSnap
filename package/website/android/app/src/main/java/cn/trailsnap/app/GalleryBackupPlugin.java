@@ -595,14 +595,33 @@ public class GalleryBackupPlugin extends Plugin {
             kind = "image";
         }
         Asset companion = findAssetByNames(collection, kind, names, asset.mediaDirectory);
-        return companion != null && hasCompatibleCaptureTime(asset.takenMs, companion.takenMs) ? companion : null;
+        if (companion == null) return null;
+        // MediaStore.DATE_TAKEN is not comparable across all vendors: imported
+        // iPhone clips, cloud restores and edited files may use different time
+        // zones or fallback timestamps. Same directory + exact stem + a valid
+        // image/video extension pair is the stable identity available here.
+        return "image".equals(asset.kind)
+            ? (isSupportedLivePairName(asset.name, companion.name) ? companion : null)
+            : (isSupportedLivePairName(companion.name, asset.name) ? companion : null);
     }
 
-    static boolean hasCompatibleCaptureTime(long firstTakenMs, long secondTakenMs) {
-        // Some vendors omit DATE_TAKEN for the companion. Preserve compatibility
-        // in that case, but reject clearly unrelated same-name media.
-        return firstTakenMs <= 0L || secondTakenMs <= 0L ||
-            Math.abs(firstTakenMs - secondTakenMs) <= 60_000L;
+    static boolean isSupportedLivePairName(String imageName, String videoName) {
+        if (imageName == null || videoName == null) return false;
+        String lowerImage = imageName.toLowerCase(Locale.ROOT);
+        String lowerVideo = videoName.toLowerCase(Locale.ROOT);
+        int imageDot = lowerImage.lastIndexOf('.');
+        int videoDot = lowerVideo.lastIndexOf('.');
+        if (imageDot <= 0 || videoDot <= 0 ||
+            !lowerImage.substring(0, imageDot).equals(lowerVideo.substring(0, videoDot))) {
+            return false;
+        }
+        String imageExt = lowerImage.substring(imageDot);
+        String videoExt = lowerVideo.substring(videoDot);
+        if (".heic".equals(imageExt) || ".heif".equals(imageExt)) return ".mov".equals(videoExt);
+        if (".jpg".equals(imageExt) || ".jpeg".equals(imageExt)) {
+            return ".mp4".equals(videoExt) || ".mov".equals(videoExt);
+        }
+        return false;
     }
 
     private Asset findAssetByNames(Uri collection, String kind, List<String> names, String mediaDirectory) {

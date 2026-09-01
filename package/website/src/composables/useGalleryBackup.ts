@@ -149,9 +149,9 @@ async function saveSettings(next: GalleryBackupSettings) {
 }
 
 function cursorScopeKey(config: GalleryBackupSettings = settings.value) {
-  // v4 also reconciles companions that MediaStore indexed after their still
-  // image while preserving an older filesystem modification timestamp.
-  const input = JSON.stringify({ version: 4, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
+  // v5 rechecks pairs previously rejected because Android MediaStore reported
+  // incompatible DATE_TAKEN values for the still image and companion video.
+  const input = JSON.stringify({ version: 5, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
   let hash = 2166136261
   for (let index = 0; index < input.length; index++) {
     hash ^= input.charCodeAt(index)

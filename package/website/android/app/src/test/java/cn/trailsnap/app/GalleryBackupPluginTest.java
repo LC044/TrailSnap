@@ -7,17 +7,30 @@ import org.junit.Test;
 
 public class GalleryBackupPluginTest {
     @Test
-    public void captureTimesWithinOneMinuteCanBePaired() {
-        assertTrue(GalleryBackupPlugin.hasCompatibleCaptureTime(1_000_000L, 1_059_999L));
+    public void appleFixtureNamesCanBePaired() {
+        assertTrue(GalleryBackupPlugin.isSupportedLivePairName("IMG_4669.HEIC", "IMG_4669.MOV"));
     }
 
     @Test
-    public void captureTimesMoreThanOneMinuteApartAreRejected() {
-        assertFalse(GalleryBackupPlugin.hasCompatibleCaptureTime(1_000_000L, 1_060_001L));
+    public void androidFixtureNamesCanBePaired() {
+        assertTrue(GalleryBackupPlugin.isSupportedLivePairName(
+            "IMG_20250510_114039.jpg", "IMG_20250510_114039.mp4"
+        ));
     }
 
     @Test
-    public void missingVendorCaptureTimeRemainsCompatible() {
-        assertTrue(GalleryBackupPlugin.hasCompatibleCaptureTime(0L, 1_000_000L));
+    public void pairNamesAreCaseInsensitive() {
+        assertTrue(GalleryBackupPlugin.isSupportedLivePairName("trip.JPEG", "TRIP.mov"));
+    }
+
+    @Test
+    public void differentStemsAreRejected() {
+        assertFalse(GalleryBackupPlugin.isSupportedLivePairName("IMG_0001.jpg", "IMG_0002.mp4"));
+    }
+
+    @Test
+    public void unsupportedExtensionsAreRejected() {
+        assertFalse(GalleryBackupPlugin.isSupportedLivePairName("IMG_0001.png", "IMG_0001.mp4"));
+        assertFalse(GalleryBackupPlugin.isSupportedLivePairName("IMG_0001.heic", "IMG_0001.mp4"));
     }
 }
