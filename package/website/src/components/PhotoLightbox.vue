@@ -187,7 +187,7 @@
         >
           <div
             data-testid="photo-lightbox-track"
-            class="flex h-full shrink-0 will-change-transform"
+            class="absolute inset-y-0 left-0 flex h-full will-change-transform"
             style="width: 300%"
             :style="swipeTrackStyle"
           >
