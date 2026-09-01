@@ -5,6 +5,8 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from app.api import media as media_api
 from app.service import storage, user_storage
@@ -84,8 +86,10 @@ def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
     uploaded = SimpleNamespace(id=photo_id, owner_id=user_id, file_path=str(legacy_photo))
     external_photo = SimpleNamespace(id=uuid4(), owner_id=user_id, file_path=str(external))
     db = MagicMock()
-    db.query.return_value.all.return_value = [user]
-    db.query.return_value.filter.return_value.all.return_value = [uploaded, external_photo]
+    query = db.query.return_value
+    query.options.return_value = query
+    query.all.return_value = [user]
+    query.filter.return_value.all.return_value = [uploaded, external_photo]
 
     with (
         patch.object(user_storage, "DEFAULT_STORAGE_BASE", str(data_dir)),
@@ -107,6 +111,92 @@ def test_legacy_migration_moves_only_owned_uploads_and_thumbnails(tmp_path):
     assert result["removed_directories"] > 0
     db.flush.assert_not_called()
     db.commit.assert_not_called()
+
+
+def test_legacy_migration_does_not_query_columns_added_by_later_revisions(tmp_path):
+    """The 0028 data migration must run against the schema as it existed then."""
+    user_id = uuid4()
+    photo_id = uuid4()
+    database = tmp_path / "pre-0028.sqlite"
+    engine = create_engine(f"sqlite:///{database.as_posix()}")
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE users ("
+                "id CHAR(32) PRIMARY KEY, settings JSON"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE photos ("
+                "id CHAR(32) PRIMARY KEY, file_path VARCHAR(255) NOT NULL, "
+                "owner_id CHAR(32)"
+                ")"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO users (id, settings) VALUES (:id, :settings)"),
+            {"id": user_id.hex, "settings": "{}"},
+        )
+        connection.execute(
+            text(
+                "INSERT INTO photos (id, file_path, owner_id) "
+                "VALUES (:id, :file_path, :owner_id)"
+            ),
+            {
+                "id": photo_id.hex,
+                "file_path": str(tmp_path / "external.jpg"),
+                "owner_id": user_id.hex,
+            },
+        )
+
+    try:
+        with (
+            Session(engine, autoflush=False, expire_on_commit=False) as db,
+            patch.object(user_storage, "DEFAULT_STORAGE_BASE", str(tmp_path / "data")),
+            patch.object(user_storage, "write_user_config"),
+        ):
+            result = user_storage.migrate_legacy_user_storage(db)
+
+        assert result["users"] == 1
+        assert result["photos"] == 0
+    finally:
+        engine.dispose()
+
+
+def test_legacy_migration_recovers_when_failed_attempt_already_moved_file(tmp_path):
+    """A rolled-back DB transaction may leave an already-moved file on disk."""
+    user_id = uuid4()
+    photo_id = uuid4()
+    data_dir = tmp_path / "data"
+    legacy_base = data_dir / "uploads"
+    legacy_photo = legacy_base / "uploads" / "2025" / "old.jpg"
+    migrated_photo = data_dir / "users" / str(user_id) / "uploads" / "2025" / "old.jpg"
+    migrated_photo.parent.mkdir(parents=True)
+    migrated_photo.write_bytes(b"photo")
+
+    user = SimpleNamespace(
+        id=user_id,
+        settings={"storage": {"photo_storage_path": "./data/uploads"}},
+    )
+    photo = SimpleNamespace(id=photo_id, owner_id=user_id, file_path=str(legacy_photo))
+    db = MagicMock()
+    query = db.query.return_value
+    query.options.return_value = query
+    query.all.return_value = [user]
+    query.filter.return_value.all.return_value = [photo]
+
+    with (
+        patch.object(user_storage, "DEFAULT_STORAGE_BASE", str(data_dir)),
+        patch.object(user_storage, "LEGACY_DEFAULT_STORAGE_BASE", str(legacy_base)),
+    ):
+        result = user_storage.migrate_legacy_user_storage(db)
+
+    assert result["photos"] == 1
+    assert photo.file_path == str(migrated_photo)
+    assert migrated_photo.read_bytes() == b"photo"
 
 
 def test_legacy_cleanup_preserves_nonempty_directories(tmp_path):

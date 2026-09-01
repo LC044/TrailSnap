@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import UUID
 
+from sqlalchemy.orm import load_only
+
 from app.core.paths import DATA_DIR
 
 
@@ -184,7 +186,11 @@ def migrate_legacy_user_storage(db) -> dict[str, int]:
     migrated_photos = 0
     migrated_thumbnails = 0
     legacy_bases: set[str] = set()
-    users = db.query(User).all()
+    # This helper is executed by a historical Alembic revision.  Restrict ORM
+    # loads to columns that already existed at that revision so later model
+    # additions do not make an older database query columns it does not have
+    # yet (for example Photo.backup_key, which is added four revisions later).
+    users = db.query(User).options(load_only(User.id, User.settings)).all()
     for user in users:
         settings = dict(user.settings or {})
         base = cache_storage_base(user.id, configured_storage_base(settings))
@@ -196,7 +202,12 @@ def migrate_legacy_user_storage(db) -> dict[str, int]:
         legacy_thumbnails = os.path.join(legacy_base, "thumbnails")
         new_thumbnails = os.path.join(user_root, "thumbnails")
 
-        photos = db.query(Photo).filter(Photo.owner_id == user.id).all()
+        photos = (
+            db.query(Photo)
+            .options(load_only(Photo.id, Photo.owner_id, Photo.file_path))
+            .filter(Photo.owner_id == user.id)
+            .all()
+        )
         for photo in photos:
             source = photo.file_path
             if source and _is_below(source, legacy_uploads) and not _is_below(source, new_uploads):
