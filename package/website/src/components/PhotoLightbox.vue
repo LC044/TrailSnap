@@ -162,14 +162,14 @@
 
         <!-- Navigation -->
         <button
-            v-if="hasPrev"
+            v-if="hasPrev && controlsVisible"
             @click.stop="prev"
             class="absolute left-4 z-[101] hidden md:flex w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
             <ChevronLeft class="w-8 h-8" />
         </button>
         <button
-            v-if="hasNext"
+            v-if="hasNext && controlsVisible"
             @click.stop="next"
             class="absolute right-4 z-[101] hidden md:flex w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
@@ -178,22 +178,41 @@
 
 
         <div
+          ref="mediaViewport"
           data-testid="photo-lightbox-media"
           class="relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
           @click.stop="handleMediaTap"
           @wheel.prevent="handleWheel"
           @touchstart="startTouch"
         >
-            <div
-              v-if="image && (!image.file_type || image.file_type === 'image' || image.file_type === 'live_photo')"
-              class="relative w-full h-full transition-transform duration-200 ease-out origin-center select-none flex items-center justify-center"
-              :style="{ transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)` }"
-              @mousedown="startDrag"
-            >
+          <div
+            data-testid="photo-lightbox-track"
+            class="flex h-full shrink-0 will-change-transform"
+            style="width: 300%"
+            :style="swipeTrackStyle"
+          >
+            <div class="h-full flex items-center justify-center" style="width: 33.333333%">
+              <img
+                v-if="previousImage"
+                :src="adjacentPreviewSrc(previousImage)"
+                class="block w-full h-full object-contain pointer-events-none select-none"
+                draggable="false"
+                alt=""
+              />
+            </div>
+
+            <div class="relative h-full flex items-center justify-center overflow-hidden" style="width: 33.333333%">
+              <div
+                v-if="image && (!image.file_type || image.file_type === 'image' || image.file_type === 'live_photo')"
+                class="relative w-full h-full transition-transform duration-200 ease-out origin-center select-none flex items-center justify-center"
+                :style="{ transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)` }"
+                @mousedown="startDrag"
+              >
                 <!-- Image Wrapper for Correct Overlay Positioning -->
                 <div class="relative flex justify-center items-center h-full">
                     <img
                         ref="imageRef"
+                        data-testid="photo-lightbox-current-image"
                         :src="displayImageSrc"
                         class="block w-full h-full object-contain pointer-events-none"
                         draggable="false"
@@ -245,31 +264,63 @@
                         <source :src="image.live_photo_video_url" type="video/mp4" />
                     </video>
                 </div>
-            </div>
-            <!-- Live Photo Badge (Outside transform to keep position fixed relative to viewport or container?) 
-                 Actually, usually badges are fixed on screen, not zooming with image. 
-                 But here we are inside the zoomable container? No, the zoomable container is the div above.
-                 Wait, if I put the badge inside the zoomable div, it zooms.
-                 If I put it outside, it stays.
-                 Let's put it outside the zoomable div but inside the relative container.
-            -->
-            <div v-if="image && image.file_type === 'live_photo'" 
-                 class="absolute top-16 left-4 md:top-24 md:left-8 z-[101] cursor-pointer"
-                 @click.stop="toggleLivePlayback">
-                <div class="flex items-center gap-1 bg-gray-900/60 backdrop-blur-md rounded-full px-2 py-1 text-white/90 hover:bg-gray-800/80 transition-colors">
-                    <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90" :class="{ 'animate-spin': isPlayingLive }"></span>
-                    <span class="text-xs font-medium">LIVE</span>
-                </div>
+              </div>
+
+              <div
+                v-else-if="image && image.file_type === 'video'"
+                class="relative w-full h-full flex items-center justify-center bg-black"
+              >
+                <div ref="videoPlayer" class="w-full h-full"></div>
+              </div>
             </div>
 
-            <div
-              v-else-if="image && image.file_type === 'video'"
-              class="relative w-full h-full flex items-center justify-center bg-black"
-            >
-              <div ref="videoPlayer" class="w-full h-full"></div>
+            <div class="h-full flex items-center justify-center" style="width: 33.333333%">
+              <img
+                v-if="nextImage"
+                :src="adjacentPreviewSrc(nextImage)"
+                class="block w-full h-full object-contain pointer-events-none select-none"
+                draggable="false"
+                alt=""
+              />
+            </div>
+          </div>
+
+          <div
+            v-if="image && image.file_type === 'live_photo' && controlsVisible"
+            class="absolute top-16 left-4 md:top-24 md:left-8 z-[101] cursor-pointer"
+            @click.stop="toggleLivePlayback"
+          >
+            <div class="flex items-center gap-1 bg-gray-900/60 backdrop-blur-md rounded-full px-2 py-1 text-white/90 hover:bg-gray-800/80 transition-colors">
+              <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90" :class="{ 'animate-spin': isPlayingLive }"></span>
+              <span class="text-xs font-medium">LIVE</span>
+                </div>
             </div>
         </div>
       </div>
+
+      <Transition name="viewer-thumbnails">
+        <div
+          v-if="!isEditing && controlsVisible && thumbnailWindow.length > 0"
+          data-testid="photo-lightbox-thumbnails"
+          class="fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
+          @click.stop
+        >
+          <div ref="thumbnailStrip" class="flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto scrollbar-hide">
+            <button
+              v-for="entry in thumbnailWindow"
+              :key="entry.item.id"
+              type="button"
+              :data-photo-index="entry.index"
+              class="h-12 w-12 sm:h-14 sm:w-14 shrink-0 overflow-hidden rounded-md border-2 bg-black/30 transition-all focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              :class="entry.index === resolvedCurrentIndex ? 'border-primary-500 scale-105 shadow-lg shadow-primary-500/30' : 'border-white/30 opacity-70 hover:opacity-100'"
+              :aria-label="`查看第 ${entry.index + 1} 张照片`"
+              @click.stop="navigateToIndex(entry.index)"
+            >
+              <img :src="entry.item.thumbnail || entry.item.preview || entry.item.url" class="h-full w-full object-cover" alt="" />
+            </button>
+          </div>
+        </div>
+      </Transition>
 
       <!-- Sidebar (Metadata) — hidden in edit mode -->
       <PhotoMetadataSidebar
@@ -465,6 +516,8 @@ import { useOverlayStack } from '@/composables/useOverlayStack'
 interface Props {
     visible: boolean
     image: AlbumImage | null
+    images?: AlbumImage[]
+    currentIndex?: number
     hasPrev?: boolean
     hasNext?: boolean
     allowEdit?: boolean
@@ -478,6 +531,8 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
+    images: () => [],
+    currentIndex: -1,
     allowEdit: false,
     allowDelete: false,
     allowAddToAlbum: false,
@@ -491,6 +546,11 @@ const props = withDefaults(defineProps<Props>(), {
 const showOriginal = ref(false)
 const isEditing = ref(false)
 const controlsVisible = ref(true)
+const mediaViewport = ref<HTMLElement | null>(null)
+const thumbnailStrip = ref<HTMLElement | null>(null)
+const swipeOffset = ref(0)
+const isSwipeAnimating = ref(false)
+let swipeAnimationTimer: ReturnType<typeof setTimeout> | null = null
 const isPlayingLive = ref(false)
 const liveVideoRef = ref<HTMLVideoElement | null>(null)
 const videoStyle = ref<Record<string, string>>({})
@@ -565,6 +625,44 @@ const displayImageSrc = computed(() => {
     return props.image.preview || props.image.url
 })
 
+const resolvedCurrentIndex = computed(() => {
+    if (props.currentIndex >= 0) return props.currentIndex
+    if (!props.image) return -1
+    return props.images.findIndex(item => item.id === props.image?.id)
+})
+
+const previousImage = computed(() => {
+    const index = resolvedCurrentIndex.value
+    return index > 0 ? props.images[index - 1] : null
+})
+
+const nextImage = computed(() => {
+    const index = resolvedCurrentIndex.value
+    return index >= 0 && index < props.images.length - 1 ? props.images[index + 1] : null
+})
+
+const adjacentPreviewSrc = (item: AlbumImage | null) => item?.preview || item?.thumbnail || item?.url || ''
+
+const thumbnailWindow = computed(() => {
+    const index = resolvedCurrentIndex.value
+    if (index < 0 || props.images.length < 2) return []
+    const start = Math.max(0, index - 3)
+    const end = Math.min(props.images.length, index + 4)
+    return props.images.slice(start, end).map((item, offset) => ({ item, index: start + offset }))
+})
+
+const swipeTrackStyle = computed(() => ({
+    transform: `translate3d(calc(-33.333333% + ${swipeOffset.value}px), 0, 0)`,
+    transition: isSwipeAnimating.value ? 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+}))
+
+watch(resolvedCurrentIndex, async (index) => {
+    await nextTick()
+    thumbnailStrip.value
+        ?.querySelector<HTMLElement>(`[data-photo-index="${index}"]`)
+        ?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'nearest', inline: 'center' })
+})
+
 const onVideoLoaded = (e: Event) => {
     const video = e.target as HTMLVideoElement
     // Explicitly try to play (handling potential autoplay rejections)
@@ -593,7 +691,7 @@ const toggleOriginal = () => {
     showOriginal.value = !showOriginal.value
 }
 
-const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'add-to-album', 'transfer'])
+const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'select', 'add-to-album', 'transfer'])
 
 // Keep the lightbox in the browser history so the mobile browser/gesture back
 // action closes it before Vue Router navigates away from the current page.
@@ -798,6 +896,7 @@ onUnmounted(() => {
         shortcutHintTimer = null
     }
     if (suppressTapTimer) clearTimeout(suppressTapTimer)
+    if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
     if (photoProcessingPollTimer) {
         clearInterval(photoProcessingPollTimer)
         photoProcessingPollTimer = null
@@ -817,7 +916,6 @@ watch(() => props.image, async (newImg, oldImg) => {
     highlightedFace.value = null
     videoStyle.value = {}
     isDragging.value = false // Ensure dragging is reset
-    controlsVisible.value = true
     processingMenuVisible.value = false
 
     // 2. Handle Resource Cleanup & Initialization
@@ -1269,6 +1367,7 @@ const stopDrag = () => {
 
 // Touch Support (Pinch & Drag)
 const startTouch = (e: TouchEvent) => {
+    if (isSwipeAnimating.value) return
     // Only handle pinch or drag if needed
     if (e.touches.length === 2) {
         // Pinch start
@@ -1322,8 +1421,55 @@ const onTouchMove = (e: TouchEvent) => {
     } else if (e.touches.length === 1 && scale.value === 1 && touchStartTime.value > 0) {
         touchDeltaX.value = e.touches[0].clientX - touchStartX.value
         touchDeltaY.value = e.touches[0].clientY - touchStartY.value
-        if (Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value)) e.preventDefault()
+        if (Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value)) {
+            e.preventDefault()
+            const atStart = touchDeltaX.value > 0 && !props.hasPrev
+            const atEnd = touchDeltaX.value < 0 && !props.hasNext
+            swipeOffset.value = (atStart || atEnd) ? touchDeltaX.value * 0.22 : touchDeltaX.value
+        }
     }
+}
+
+const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+
+const finishSwipeAnimation = (callback?: () => void) => {
+    if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
+    const duration = prefersReducedMotion() ? 0 : 240
+    if (duration === 0) {
+        callback?.()
+        swipeOffset.value = 0
+        isSwipeAnimating.value = false
+        return
+    }
+    swipeAnimationTimer = setTimeout(() => {
+        callback?.()
+        nextTick(() => {
+            isSwipeAnimating.value = false
+            swipeOffset.value = 0
+            swipeAnimationTimer = null
+        })
+    }, duration)
+}
+
+const animateSwipeBack = () => {
+    if (swipeOffset.value === 0) return
+    isSwipeAnimating.value = true
+    swipeOffset.value = 0
+    finishSwipeAnimation()
+}
+
+const animateNavigation = (direction: 'prev' | 'next', callback: () => void) => {
+    if (isSwipeAnimating.value) return
+    const adjacent = direction === 'prev' ? previousImage.value : nextImage.value
+    const width = mediaViewport.value?.clientWidth || window.innerWidth
+    if (!adjacent || prefersReducedMotion()) {
+        callback()
+        swipeOffset.value = 0
+        return
+    }
+    isSwipeAnimating.value = true
+    swipeOffset.value = direction === 'next' ? -width : width
+    finishSwipeAnimation(callback)
 }
 
 const stopTouch = () => {
@@ -1333,16 +1479,16 @@ const stopTouch = () => {
         && Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value) * 1.25
         && elapsed <= 700
 
-    if (isHorizontalSwipe) {
-        if (touchDeltaX.value < 0 && props.hasNext) next()
-        if (touchDeltaX.value > 0 && props.hasPrev) prev()
+    if (isHorizontalSwipe && ((touchDeltaX.value < 0 && props.hasNext) || (touchDeltaX.value > 0 && props.hasPrev))) {
+        if (touchDeltaX.value < 0) next()
+        if (touchDeltaX.value > 0) prev()
         suppressNextTap.value = true
         if (suppressTapTimer) clearTimeout(suppressTapTimer)
         suppressTapTimer = setTimeout(() => {
             suppressNextTap.value = false
             suppressTapTimer = null
         }, 350)
-    }
+    } else animateSwipeBack()
     isDragging.value = false
     initialDistance.value = 0
     touchStartTime.value = 0
@@ -1374,10 +1520,18 @@ const downloadImage = async () => {
 }
 
 const prev = () => {
-    emit('prev')
+    if (!props.hasPrev) return
+    animateNavigation('prev', () => emit('prev'))
 }
 const next = () => {
-    emit('next')
+    if (!props.hasNext) return
+    animateNavigation('next', () => emit('next'))
+}
+
+const navigateToIndex = (index: number) => {
+    const current = resolvedCurrentIndex.value
+    if (current < 0 || index === current || index < 0 || index >= props.images.length) return
+    animateNavigation(index < current ? 'prev' : 'next', () => emit('select', index))
 }
 
 const handleDelete = () => {
@@ -1448,5 +1602,24 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .viewer-controls-leave-to {
     opacity: 0;
     transform: translateY(-0.75rem);
+}
+
+.viewer-thumbnails-enter-active,
+.viewer-thumbnails-leave-active {
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+.viewer-thumbnails-enter-from,
+.viewer-thumbnails-leave-to {
+    opacity: 0;
+    transform: translateY(1rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .viewer-controls-enter-active,
+    .viewer-controls-leave-active,
+    .viewer-thumbnails-enter-active,
+    .viewer-thumbnails-leave-active {
+        transition-duration: 0ms;
+    }
 }
 </style>

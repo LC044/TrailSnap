@@ -18,7 +18,7 @@
       leave-from-class="transform translate-y-0 opacity-100"
       leave-to-class="transform -translate-y-full opacity-0"
     >
-      <div v-if="isSelectionMode && showActionBar" class="fixed bottom-[20px] left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
+      <div v-if="isSelectionMode && showActionBar" data-testid="photo-selection-bar" class="fixed bottom-[20px] left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
         <div class="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-gray-200 dark:border-gray-700 shadow-lg rounded-full px-3 py-1 md:py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-fit max-w-full overflow-x-auto scrollbar-hide">
           <div class="flex items-center gap-1 md:gap-3 flex-shrink-0">
             <button @click="exitSelectionMode" class="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors dark:text-gray-300 bg-transparent" title="取消选择">
@@ -192,10 +192,12 @@
                         <div
                           class="flex items-center font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm pointer-events-auto"
                           :class="dateHeaderContentClass"
-                          @click="mobileDateHeaderMode === 'day' && toggleDaySelection(day)"
+                          @click="mobileDateHeaderMode === 'day' && isSelectionMode && toggleDaySelection(day)"
                         >
                              <template v-if="mobileDateHeaderMode === 'day'">
-                             <div 
+                             <div
+                                v-if="isSelectionMode"
+                                data-testid="photo-date-checkbox"
                                 class="w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-200"
                                 :class="isDaySelected(day) ? 'bg-primary-500 border-primary-500' : 'border-gray-300 dark:border-gray-600 group-hover:border-primary-400'"
                              >
@@ -332,7 +334,8 @@
                                 }"
                             >
                                 <template v-for="(img, idx) in (expandedDays.has(day.key) ? getPhotos(day.key) : getMomentPhotos(day.key))" :key="img.id">
-                                    <div
+                                     <div
+                                         :data-photo-id="img.id"
                                          class="relative group bg-gray-100 dark:bg-gray-800 overflow-hidden cursor-pointer rounded-sm"
                                          :class="{
                                              'aspect-square': (expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) > 1,
@@ -340,6 +343,7 @@
                                          }"
                                          :style="(expandedDays.has(day.key) ? getPhotos(day.key).length : getMomentPhotos(day.key).length) === 1 ? singlePhotoBoxStyle(img) : {}"
                                          @click="handlePhotoClick(img)"
+                                         @contextmenu.prevent
                                          @vue:mounted="loadImage(img)"
                                          @vue:unmounted="cancelImageLoad(img.id)"
                                      >
@@ -453,6 +457,7 @@
                                     minWidth: '50px',maxWidth: '400px'
                                 } : {}"
                                 @click="handlePhotoClick(img)"
+                                @contextmenu.prevent
                                 @vue:mounted="loadImage(img)"
                                 @vue:unmounted="cancelImageLoad(img.id)"
                             >
@@ -691,6 +696,7 @@ onUnmounted(() => {
     imageLoaders.clear()
     if (resizeObserver) resizeObserver.disconnect()
     stopGridPinch()
+    clearLongPress()
     if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
 })
 // --- End Image Loading Logic ---
@@ -803,6 +809,8 @@ const mobileGridColumns = ref<number | null>(
 )
 const isGridPinching = ref(false)
 const suppressGridClick = ref(false)
+const LONG_PRESS_DELAY = 450
+const LONG_PRESS_MOVE_TOLERANCE = 10
 let pinchStartDistance = 0
 let pinchStartColumns = 3
 let pinchAnchorId = ''
@@ -812,6 +820,75 @@ let pinchAnchorIndex = 0
 let pinchAnchorCenterY = 0
 let pinchFrame = 0
 let suppressGridClickTimer: ReturnType<typeof setTimeout> | null = null
+let longPressTimer: ReturnType<typeof setTimeout> | null = null
+let longPressPhotoId = ''
+let longPressStartX = 0
+let longPressStartY = 0
+let longPressActivated = false
+
+const clearLongPress = () => {
+  if (longPressTimer) clearTimeout(longPressTimer)
+  longPressTimer = null
+  longPressPhotoId = ''
+  longPressActivated = false
+  window.removeEventListener('touchmove', handleLongPressMove)
+  window.removeEventListener('touchend', finishLongPressGesture)
+  window.removeEventListener('touchcancel', finishLongPressGesture)
+}
+
+function finishLongPressGesture() {
+  const shouldSuppressClick = longPressActivated
+  clearLongPress()
+  if (shouldSuppressClick) suppressClickAfterGesture()
+}
+
+const suppressClickAfterGesture = () => {
+  suppressGridClick.value = true
+  if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
+  suppressGridClickTimer = setTimeout(() => {
+    suppressGridClick.value = false
+    suppressGridClickTimer = null
+  }, 350)
+}
+
+function handleLongPressMove(event: TouchEvent) {
+  if (longPressActivated) return
+  if (event.touches.length !== 1) {
+    clearLongPress()
+    return
+  }
+  const touch = event.touches[0]
+  if (
+    Math.abs(touch.clientX - longPressStartX) > LONG_PRESS_MOVE_TOLERANCE
+    || Math.abs(touch.clientY - longPressStartY) > LONG_PRESS_MOVE_TOLERANCE
+  ) clearLongPress()
+}
+
+const startPhotoLongPress = (event: TouchEvent) => {
+  if (containerWidth.value >= 768 || isSelectionMode.value || event.touches.length !== 1) return
+  const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-photo-id]')
+  const photoId = target?.dataset.photoId
+  if (!photoId) return
+
+  const touch = event.touches[0]
+  clearLongPress()
+  longPressPhotoId = photoId
+  longPressActivated = false
+  longPressStartX = touch.clientX
+  longPressStartY = touch.clientY
+  longPressTimer = setTimeout(() => {
+    const photo = props.photos.find(item => item.id === longPressPhotoId)
+    if (!photo) return clearLongPress()
+    longPressTimer = null
+    longPressActivated = true
+    toggleSelection(photo)
+    navigator.vibrate?.(10)
+    window.removeEventListener('touchmove', handleLongPressMove)
+  }, LONG_PRESS_DELAY)
+  window.addEventListener('touchmove', handleLongPressMove, { passive: true })
+  window.addEventListener('touchend', finishLongPressGesture)
+  window.addEventListener('touchcancel', finishLongPressGesture)
+}
 
 const effectiveGridColumns = computed(() => {
   if (containerWidth.value >= 768 || !['grid', 'masonry'].includes(props.layoutMode)) return null
@@ -824,7 +901,9 @@ const effectiveGridGap = computed(() => {
 })
 
 const mobileDateHeaderMode = computed(() =>
-  containerWidth.value < 768
+  isSelectionMode.value
+    ? 'day'
+    : containerWidth.value < 768
     ? getMobileDateHeaderMode(effectiveGridColumns.value ?? colCount.value)
     : 'day',
 )
@@ -838,7 +917,10 @@ const dateHeaderContainerClass = computed(() => {
 })
 const dateHeaderContentClass = computed(() => {
   if (mobileDateHeaderMode.value === 'day') {
-    return 'gap-3 group cursor-pointer text-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800'
+    return [
+      'gap-3 group text-sm px-4 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-gray-800',
+      isSelectionMode.value ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800' : '',
+    ]
   }
   return mobileDateHeaderMode.value === 'month'
     ? 'text-xs px-2 py-1 rounded-md'
@@ -956,15 +1038,15 @@ const stopGridPinch = () => {
   window.removeEventListener('touchend', stopGridPinch)
   window.removeEventListener('touchcancel', stopGridPinch)
 
-  suppressGridClick.value = true
-  if (suppressGridClickTimer) clearTimeout(suppressGridClickTimer)
-  suppressGridClickTimer = setTimeout(() => {
-    suppressGridClick.value = false
-    suppressGridClickTimer = null
-  }, 350)
+  suppressClickAfterGesture()
 }
 
 const handleGridTouchStart = (event: TouchEvent) => {
+  if (event.touches.length === 1) {
+    startPhotoLongPress(event)
+    return
+  }
+  finishLongPressGesture()
   if (event.touches.length !== 2 || containerWidth.value >= 768) return
   if (!['grid', 'masonry'].includes(props.layoutMode) || isSelectionMode.value) return
 
@@ -1485,6 +1567,11 @@ defineExpose({
 
 <style scoped>
 /* No scrollbar style needed as we use window scroll */
+  [data-photo-id] {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
   /* Existing styles */
   .shrink-animation {
     animation: shrink 0.25s forwards ease-in-out;
