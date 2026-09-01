@@ -117,6 +117,7 @@ export const albumService = {
     if (replaceExisting) formData.append('replace_existing', 'true');
     const data = await request.post<Photo>('/api/medias', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
     });
     return data.data;
@@ -132,6 +133,7 @@ export const albumService = {
     if (folder) formData.append('folder', folder);
     const data = await request.post<Photo>('/api/medias', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
       onUploadProgress: event => onProgress?.(event.loaded, event.total),
     });
     return data.data;
@@ -159,6 +161,7 @@ export const albumService = {
       formData.append('chunk_index', chunkIndex.toString());
       formData.append('file', chunk);
       await request.post('/api/medias/upload/chunk', formData, {
+        timeout: 120000,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
       });
   },
@@ -173,7 +176,7 @@ export const albumService = {
       if (folder) formData.append('folder', folder);
       if (backupKey) formData.append('backup_key', backupKey);
       if (replaceExisting) formData.append('replace_existing', 'true');
-      const data = await request.post<Photo>('/api/medias/upload/finish', formData);
+      const data = await request.post<Photo>('/api/medias/upload/finish', formData, { timeout: 120000 });
       return data.data;
   },
 
@@ -187,6 +190,7 @@ export const albumService = {
       if (replaceExisting) formData.append('replace_existing', 'true');
       if (folder) formData.append('folder', folder);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
+        timeout: 120000,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
       });
       return data.data;

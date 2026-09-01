@@ -5,6 +5,12 @@ import { albumService } from '@/api/album'
 import { getServerUrl } from '@/config/server'
 import { useUserStore } from '@/stores/user'
 import { galleryBackupNative, supportsGalleryBackup, type GalleryAsset, type GalleryCursor } from '@/native/galleryBackup'
+import {
+  adaptTransferTuning,
+  initialTransferTuning,
+  takeTransferBatch,
+  type TransferTuning,
+} from '@/utils/backupTransfer'
 
 export interface GalleryBackupSettings {
   enabled: boolean
@@ -27,6 +33,26 @@ export interface BackupQueueItem {
 
 type BackupStatus = 'idle' | 'scanning' | 'uploading' | 'pausing' | 'paused' | 'error' | 'unsupported'
 type PauseReason = 'user' | 'network' | null
+type UploadProgress = (loaded: number, total: number) => void
+type LivePair = { image: GalleryAsset; video: GalleryAsset }
+
+interface BackupOperation {
+  key: string
+  name: string
+  size: number
+  relativePath: string
+  asset: GalleryAsset
+  pair: LivePair | null
+  coveredAssets: GalleryAsset[]
+  replaceExisting: boolean
+}
+
+interface ActiveUpload {
+  name: string
+  size: number
+  loaded: number
+  itemWeight: number
+}
 
 const DEFAULT_SETTINGS: GalleryBackupSettings = {
   enabled: false,
@@ -52,13 +78,13 @@ const totalBytes = ref(0)
 const processedBytes = ref(0)
 const uploadedBytes = ref(0)
 const speedBytesPerSecond = ref(0)
+const activeItemProgress = ref(0)
 const lastError = ref('')
 const lastRunAt = ref<number | null>(null)
 const queueItems = ref<BackupQueueItem[]>([])
 const overallProgress = computed(() => {
   if (!totalItems.value) return running.value ? 0 : 100
-  const fractionalItem = currentFile.value ? currentFileProgress.value / 100 : 0
-  return Math.min(100, Math.round(((processedItems.value + fractionalItem) / totalItems.value) * 100))
+  return Math.min(100, Math.round(((processedItems.value + activeItemProgress.value) / totalItems.value) * 100))
 })
 
 let initializedKey = ''
@@ -67,6 +93,8 @@ let notificationShown = false
 let lastNotificationAt = 0
 let resumeWaiters: Array<() => void> = []
 let speedSamples: Array<{ at: number; bytes: number }> = []
+let transferTuning: TransferTuning | null = null
+const activeUploads = new Map<string, ActiveUpload>()
 
 const namespace = () => `${getServerUrl()}|${useUserStore().userInfo?.id || 'anonymous'}`
 const storageKey = (name: string) => `trailsnap_gallery_backup_${name}_${encodeURIComponent(namespace())}`
@@ -217,7 +245,116 @@ function resumeBackup() {
   waiters.forEach(resolve => resolve())
 }
 
-async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings, replaceExisting: boolean) {
+function refreshActiveProgress() {
+  const uploads = [...activeUploads.values()]
+  if (!uploads.length) {
+    currentFile.value = ''
+    currentFileProgress.value = 0
+    activeItemProgress.value = 0
+    return
+  }
+  currentFile.value = uploads.length === 1 ? uploads[0].name : `并行上传 ${uploads.length} 项`
+  const total = uploads.reduce((sum, upload) => sum + Math.max(0, upload.size), 0)
+  const loaded = uploads.reduce((sum, upload) => sum + Math.min(upload.size, Math.max(0, upload.loaded)), 0)
+  currentFileProgress.value = total ? Math.round((loaded / total) * 100) : 100
+  activeItemProgress.value = uploads.reduce((sum, upload) => {
+    const fraction = upload.size ? Math.min(1, Math.max(0, upload.loaded) / upload.size) : 1
+    return sum + fraction * upload.itemWeight
+  }, 0)
+}
+
+function beginActiveUpload(operation: BackupOperation) {
+  activeUploads.set(operation.key, {
+    name: operation.name,
+    size: operation.size,
+    loaded: 0,
+    itemWeight: operation.coveredAssets.length,
+  })
+  refreshActiveProgress()
+}
+
+function updateActiveUpload(key: string, loaded: number) {
+  const upload = activeUploads.get(key)
+  if (!upload) return
+  upload.loaded = Math.max(upload.loaded, Math.min(upload.size, loaded))
+  refreshActiveProgress()
+}
+
+function endActiveUpload(key: string) {
+  activeUploads.delete(key)
+  refreshActiveProgress()
+}
+
+function currentTransferTuning() {
+  if (!transferTuning) throw new Error('上传并发参数尚未初始化')
+  transferTuning = adaptTransferTuning(transferTuning, speedBytesPerSecond.value)
+  return transferTuning
+}
+
+function waitForRetry(delayMs: number) {
+  return new Promise<void>(resolve => window.setTimeout(resolve, delayMs))
+}
+
+async function retryTransfer<T>(action: () => Promise<T>, config: GalleryBackupSettings): Promise<T> {
+  const attempts = transferTuning?.maxAttempts || 2
+  let lastError: unknown
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await action()
+    } catch (error) {
+      lastError = error
+      if (transferTuning) transferTuning = adaptTransferTuning(transferTuning, speedBytesPerSecond.value, true)
+      if (attempt >= attempts) break
+      const network = await galleryBackupNative.getNetworkStatus().catch(() => ({ connected: true, wifi: false, unmetered: false }))
+      if (!network.connected) throw new Error('网络连接已断开，备份将在下次运行时继续')
+      if (config.wifiOnly && !network.unmetered) throw new Error('当前已离开 Wi-Fi / 不计费网络，备份已停止')
+      await waitForRetry(attempt === 1 ? 1000 : 3000)
+      await waitIfPaused()
+    }
+  }
+  throw lastError
+}
+
+async function uploadChunks(
+  uploadId: string,
+  file: File,
+  tuning: TransferTuning,
+  config: GalleryBackupSettings,
+  reportAbsolute: (loaded: number) => void,
+  offset = 0,
+) {
+  const chunks = Math.ceil(file.size / tuning.chunkSize)
+  const loadedByChunk = new Array<number>(chunks).fill(0)
+  let nextChunk = 0
+  const report = () => reportAbsolute(offset + loadedByChunk.reduce((sum, loaded) => sum + loaded, 0))
+  const worker = async () => {
+    while (true) {
+      const index = nextChunk++
+      if (index >= chunks) return
+      const start = index * tuning.chunkSize
+      const chunk = file.slice(start, Math.min(file.size, start + tuning.chunkSize))
+      await waitIfPaused()
+      await retryTransfer(
+        () => albumService.uploadChunk(uploadId, index, chunk, loaded => {
+          loadedByChunk[index] = Math.max(loadedByChunk[index], Math.min(chunk.size, loaded))
+          report()
+        }),
+        config,
+      )
+      loadedByChunk[index] = chunk.size
+      report()
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(tuning.chunkConcurrency, chunks) }, worker))
+}
+
+async function uploadAsset(
+  asset: GalleryAsset,
+  config: GalleryBackupSettings,
+  replaceExisting: boolean,
+  tuning: TransferTuning,
+  onProgress: UploadProgress,
+) {
   const exported = await galleryBackupNative.exportAsset({ uri: asset.uri, fileName: asset.name })
   let reportedBytes = 0
   if (!speedSamples.length) speedSamples.push({ at: Date.now(), bytes: uploadedBytes.value })
@@ -225,7 +362,7 @@ async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings, r
     const bounded = Math.min(asset.size, Math.max(reportedBytes, loaded))
     const delta = bounded - reportedBytes
     reportedBytes = bounded
-    currentFileProgress.value = asset.size ? Math.round((bounded / asset.size) * 100) : 100
+    onProgress(bounded, asset.size)
     recordNetworkBytes(delta)
   }
   try {
@@ -234,20 +371,21 @@ async function uploadAsset(asset: GalleryAsset, config: GalleryBackupSettings, r
     const blob = await response.blob()
     const file = new File([blob], asset.name, { type: asset.mimeType, lastModified: asset.modifiedMs })
     if (file.size > 5 * 1024 * 1024) {
-      const uploadId = await albumService.initUpload()
-      const chunkSize = 2 * 1024 * 1024
-      for (let start = 0, index = 0; start < file.size; start += chunkSize, index++) {
-        await waitIfPaused()
-        const chunk = file.slice(start, start + chunkSize)
-        await albumService.uploadChunk(uploadId, index, chunk, loaded => reportAbsolute(start + Math.min(chunk.size, loaded)))
-      }
+      const uploadId = await retryTransfer(() => albumService.initUpload(), config)
+      await uploadChunks(uploadId, file, tuning, config, reportAbsolute)
       await waitIfPaused()
-      await albumService.finishUpload(uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey, replaceExisting)
+      await retryTransfer(
+        () => albumService.finishUpload(uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey, replaceExisting),
+        config,
+      )
     } else {
       await waitIfPaused()
-      await albumService.uploadPhoto(
-        file, undefined, destinationFolder(asset, config), asset.backupKey,
-        loaded => reportAbsolute(Math.min(file.size, loaded)), replaceExisting,
+      await retryTransfer(
+        () => albumService.uploadPhoto(
+          file, undefined, destinationFolder(asset, config), asset.backupKey,
+          loaded => reportAbsolute(Math.min(file.size, loaded)), replaceExisting,
+        ),
+        config,
       )
     }
     reportAbsolute(asset.size)
@@ -278,7 +416,14 @@ async function exportedFile(asset: GalleryAsset) {
   }
 }
 
-async function uploadLivePhoto(image: GalleryAsset, video: GalleryAsset, config: GalleryBackupSettings, replaceExisting: boolean) {
+async function uploadLivePhoto(
+  image: GalleryAsset,
+  video: GalleryAsset,
+  config: GalleryBackupSettings,
+  replaceExisting: boolean,
+  tuning: TransferTuning,
+  onProgress: UploadProgress,
+) {
   const imageFile = await exportedFile(image)
   let videoFile: Awaited<ReturnType<typeof exportedFile>> | null = null
   const totalSize = Math.max(0, image.size) + Math.max(0, video.size)
@@ -288,31 +433,32 @@ async function uploadLivePhoto(image: GalleryAsset, video: GalleryAsset, config:
     const bounded = Math.min(totalSize, Math.max(reportedBytes, loaded))
     recordNetworkBytes(bounded - reportedBytes)
     reportedBytes = bounded
-    currentFileProgress.value = totalSize ? Math.round((bounded / totalSize) * 100) : 100
+    onProgress(bounded, totalSize)
   }
   try {
     videoFile = await exportedFile(video)
     const folder = destinationFolder(image, config)
     if (imageFile.file.size > 5 * 1024 * 1024) {
-      const uploadId = await albumService.initUpload()
-      const chunkSize = 2 * 1024 * 1024
-      for (let start = 0, index = 0; start < imageFile.file.size; start += chunkSize, index++) {
-        await waitIfPaused()
-        const chunk = imageFile.file.slice(start, start + chunkSize)
-        await albumService.uploadChunk(uploadId, index, chunk, loaded => reportAbsolute(start + Math.min(chunk.size, loaded)))
-      }
+      const uploadId = await retryTransfer(() => albumService.initUpload(), config)
+      await uploadChunks(uploadId, imageFile.file, tuning, config, reportAbsolute)
       await waitIfPaused()
-      await albumService.finishLivePhotoUpload(
-        uploadId, imageFile.file.name, videoFile.file, folder, image.backupKey, video.backupKey,
-        replaceExisting,
-        loaded => reportAbsolute(imageFile.file.size + loaded),
+      await retryTransfer(
+        () => albumService.finishLivePhotoUpload(
+          uploadId, imageFile.file.name, videoFile.file, folder, image.backupKey, video.backupKey,
+          replaceExisting,
+          loaded => reportAbsolute(imageFile.file.size + loaded),
+        ),
+        config,
       )
     } else {
       await waitIfPaused()
-      await albumService.uploadLivePhoto(
-        imageFile.file, videoFile.file, folder, image.backupKey, video.backupKey,
-        replaceExisting,
-        loaded => reportAbsolute(loaded),
+      await retryTransfer(
+        () => albumService.uploadLivePhoto(
+          imageFile.file, videoFile.file, folder, image.backupKey, video.backupKey,
+          replaceExisting,
+          loaded => reportAbsolute(loaded),
+        ),
+        config,
       )
     }
     reportAbsolute(totalSize)
@@ -354,8 +500,11 @@ function resetRunProgress() {
   processedBytes.value = 0
   uploadedBytes.value = 0
   speedBytesPerSecond.value = 0
+  activeItemProgress.value = 0
   currentFileProgress.value = 0
   speedSamples = []
+  activeUploads.clear()
+  transferTuning = null
   notificationShown = false
   lastNotificationAt = 0
   queueItems.value = []
@@ -381,6 +530,7 @@ async function runBackup(options: { manual?: boolean } = {}) {
       await syncNotification(true, 'paused')
       return
     }
+    transferTuning = initialTransferTuning(getServerUrl(), network)
     const permission = await galleryBackupNative.requestGalleryPermission()
     if (!permission.granted) {
       if (!permission.imageGranted) {
@@ -430,19 +580,35 @@ async function runBackup(options: { manual?: boolean } = {}) {
         }
         totalBytes.value += [...companionBytes.values()].reduce((sum, size) => sum + Math.max(0, size), 0)
       }
-      const queued = new Map<string, BackupQueueItem>()
+      const operations = new Map<string, BackupOperation>()
       for (const asset of page.assets) {
         const pair = livePhotoPair(asset)
         const key = pair?.image.backupKey || asset.backupKey
-        if (!queued.has(key)) queued.set(key, {
-          backupKey: key,
+        const existingOperation = operations.get(key)
+        if (existingOperation) {
+          if (!existingOperation.coveredAssets.some(candidate => candidate.backupKey === asset.backupKey)) {
+            existingOperation.coveredAssets.push(asset)
+          }
+          continue
+        }
+        operations.set(key, {
+          key,
           name: pair ? `${pair.image.name} · 实况照片` : asset.name,
           size: pair ? pair.image.size + pair.video.size : asset.size,
           relativePath: pair?.image.relativePath || asset.relativePath,
-          status: 'pending',
+          asset,
+          pair,
+          coveredAssets: [asset],
+          replaceExisting: false,
         })
       }
-      queueItems.value = [...queued.values()]
+      queueItems.value = [...operations.values()].map(operation => ({
+        backupKey: operation.key,
+        name: operation.name,
+        size: operation.size,
+        relativePath: operation.relativePath,
+        status: 'pending',
+      }))
       const keysToCheck = new Set(page.assets.map(asset => asset.backupKey))
       page.assets.forEach(asset => {
         const pair = livePhotoPair(asset)
@@ -452,43 +618,49 @@ async function runBackup(options: { manual?: boolean } = {}) {
         }
       })
       const existing = await albumService.checkBackupKeys([...keysToCheck])
-      for (const asset of page.assets) {
+      const remaining = [...operations.values()]
+      remaining.forEach(operation => { operation.replaceExisting = existing.has(operation.key) })
+      while (remaining.length) {
         await waitIfPaused()
-        const pair = livePhotoPair(asset)
-        const operationKey = pair?.image.backupKey || asset.backupKey
-        const replaceExisting = existing.has(operationKey)
-        currentFile.value = pair ? `${pair.image.name} · 实况照片` : asset.name
-        currentFileProgress.value = 0
-        if (pair && completedLivePairs.has(operationKey)) {
-          currentFileProgress.value = 100
-          updateQueueStatus(operationKey, 'uploaded')
-        } else {
-          status.value = 'uploading'
-          updateQueueStatus(operationKey, 'uploading')
-          try {
-            if (pair) {
-              await uploadLivePhoto(pair.image, pair.video, runSettings, replaceExisting)
-              completedLivePairs.add(operationKey)
-            } else {
-              await uploadAsset(asset, runSettings, replaceExisting)
+        const tuning = currentTransferTuning()
+        const batch = takeTransferBatch(remaining, tuning)
+        remaining.splice(0, batch.length)
+        status.value = 'uploading'
+        const results = await Promise.allSettled(batch.map(async operation => {
+          const { key, pair, coveredAssets } = operation
+          if (pair && completedLivePairs.has(key)) {
+            updateQueueStatus(key, 'uploaded')
+          } else {
+            updateQueueStatus(key, 'uploading')
+            beginActiveUpload(operation)
+            const report: UploadProgress = loaded => updateActiveUpload(key, loaded)
+            try {
+              if (pair) {
+                await uploadLivePhoto(
+                  pair.image, pair.video, runSettings, operation.replaceExisting, tuning, report,
+                )
+                completedLivePairs.add(key)
+              } else {
+                await uploadAsset(operation.asset, runSettings, operation.replaceExisting, tuning, report)
+              }
+              updateQueueStatus(key, 'uploaded')
+              backedUp.value++
+            } catch (error) {
+              updateQueueStatus(key, 'error')
+              throw error
+            } finally {
+              endActiveUpload(key)
             }
-            updateQueueStatus(operationKey, 'uploaded')
-          } catch (error) {
-            updateQueueStatus(operationKey, 'error')
-            throw error
           }
-          backedUp.value++
+          processedItems.value += coveredAssets.length
+          processedBytes.value += coveredAssets.reduce((sum, asset) => sum + Math.max(0, asset.size), 0)
+          await syncNotification()
+        }))
+        const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+        if (failed) {
+          if (transferTuning) transferTuning = adaptTransferTuning(transferTuning, speedBytesPerSecond.value, true)
+          throw failed.reason
         }
-        processedItems.value++
-        processedBytes.value += Math.max(0, asset.size)
-        currentFile.value = ''
-        currentFileProgress.value = 0
-        if (asset.kind === 'image') {
-          cursor.imageModified = asset.modifiedMs
-          cursor.imageId = asset.id
-        }
-        await saveCursor(cursor, runCursorKey)
-        await syncNotification()
       }
       // Native scanning may consume non-live videos as companion probes without
       // returning them. Persist the page cursors only after every returned asset
