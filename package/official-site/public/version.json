@@ -133,5 +133,10 @@
         "version": "0.12.0",
         "update_info": "- Android App 新增系统相册增量备份，支持进度查看、暂停继续与实况照片<br>- 外部图库新增桌面端管理和指定目录上传<br>- 相似照片新增并排对比，断舍离进度支持保存与离线同步<br>- 优化桌面端启动、登录会话、自动更新与多端连接引导<br>- AI 任务支持自适应并发、失败重试与下载后自动恢复<br>- 优化多用户存储隔离、长路径兼容、响应式布局与可访问性",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.12.0"
+    },
+    {
+        "version": "0.12.1",
+        "update_info": "- 修复 Docker 部署从 0.11.0 升级后 Server 容器持续重启的问题<br>- 已升级失败和尚未升级的实例均可直接更新，无需手动修改数据库",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.12.1"
     }
 ]

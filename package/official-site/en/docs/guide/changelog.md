@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-01 (0.12.1)
+
+### Bug Fixes
+
+- Fixed a Docker Server restart loop when upgrading from 0.11.0 because the database migration queried the not-yet-created `backup_key` column.
+- Instances where the upgrade already failed can update directly to 0.12.1 and safely retry the migration; instances that have not upgraded can also update directly without manual database changes.
+
 ## 2026-08-31 (0.12.0)
 
 ### New
