@@ -185,7 +185,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     await expect(keyInput).toBeVisible({ timeout: 10_000 })
     await keyInput.fill('e2e-valid-map-key')
 
-    await page.getByRole('button', { name: '测试' }).first().click()
+    await page.getByRole('button', { name: '测试', exact: true }).first().click()
     await expect(page.getByText('连接成功，Key 可用')).toBeVisible()
     await page.getByRole('button', { name: '验证并保存' }).click()
 
@@ -206,7 +206,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     await page.goto('/settings#basic')
     await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
     await page.getByLabel('地图 API Key 1').fill('invalid-map-key')
-    await page.getByRole('button', { name: '测试' }).first().click()
+    await page.getByRole('button', { name: '测试', exact: true }).first().click()
 
     await expect(page.getByText('非法key')).toBeVisible()
   })
