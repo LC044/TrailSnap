@@ -159,7 +159,7 @@ async def get_live_photo_video(
     file_path = os.path.splitext(thumb_path)[0] + '.mp4'
 
     ext = os.path.splitext(photo.file_path)[1].lower()
-    if ext in ('.jpg', 'jpeg'):
+    if ext in ('.jpg', '.jpeg'):
         file_path = os.path.splitext(photo.file_path)[0] + '.mp4'
         exists = await run_in_threadpool(os.path.exists, file_path)
         if not exists:
@@ -354,8 +354,15 @@ def _attach_live_photo_video(
     # redacted/transcoded MediaStore stream even when it already has this path.
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     storage.validate_target_path(target_path)
-    with open(target_path, 'wb') as output:
-        shutil.copyfileobj(video.file, output)
+    temporary_path = target_path + f'.{uuid.uuid4().hex}.uploading'
+    storage.validate_target_path(temporary_path)
+    try:
+        with open(temporary_path, 'wb') as output:
+            shutil.copyfileobj(video.file, output)
+        os.replace(temporary_path, target_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
     image_photo.file_type = FileType.live_photo
     db.commit()

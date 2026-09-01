@@ -36,7 +36,7 @@ const DEFAULT_SETTINGS: GalleryBackupSettings = {
   sourcePaths: [],
   organizeMode: 'year_month',
 }
-const EMPTY_CURSOR: GalleryCursor = { imageModified: 0, imageId: 0, videoModified: 0, videoId: 0 }
+const EMPTY_CURSOR: GalleryCursor = { imageModified: 0, imageId: 0, videoModified: 0, videoId: 0, companionVideoId: 0 }
 const settings = ref<GalleryBackupSettings>({ ...DEFAULT_SETTINGS })
 const running = ref(false)
 const status = ref<BackupStatus>('idle')
@@ -121,9 +121,9 @@ async function saveSettings(next: GalleryBackupSettings) {
 }
 
 function cursorScopeKey(config: GalleryBackupSettings = settings.value) {
-  // v3 forces one reconciliation scan that replaces MediaStore-redacted files
-  // with exact original bytes after ACCESS_MEDIA_LOCATION is granted.
-  const input = JSON.stringify({ version: 3, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
+  // v4 also reconciles companions that MediaStore indexed after their still
+  // image while preserving an older filesystem modification timestamp.
+  const input = JSON.stringify({ version: 4, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
   let hash = 2166136261
   for (let index = 0; index < input.length; index++) {
     hash ^= input.charCodeAt(index)
@@ -383,7 +383,13 @@ async function runBackup(options: { manual?: boolean } = {}) {
     }
     const permission = await galleryBackupNative.requestGalleryPermission()
     if (!permission.granted) {
-      if (permission.galleryGranted && !permission.originalGranted) {
+      if (!permission.imageGranted) {
+        throw new Error('请允许行影集访问照片和视频')
+      }
+      if (!permission.videoGranted) {
+        throw new Error('请允许行影集访问视频，否则无法备份实况照片的动态部分')
+      }
+      if (!permission.originalGranted) {
         throw new Error('请允许“照片和视频中的位置”权限，否则无法备份包含 GPS 的原图')
       }
       throw new Error('请允许行影集访问照片和视频')
@@ -403,8 +409,20 @@ async function runBackup(options: { manual?: boolean } = {}) {
     while (true) {
       await waitIfPaused()
       const page = await galleryBackupNative.listAssets({ ...cursor, limit: 40, includeVideos: runSettings.includeVideos, sourcePaths })
-      if (!page.assets.length) break
+      if (!page.assets.length) {
+        cursor.imageModified = page.imageModified
+        cursor.imageId = page.imageId
+        cursor.videoModified = page.videoModified
+        cursor.videoId = page.videoId
+        cursor.companionVideoId = page.companionVideoId
+        await saveCursor(cursor, runCursorKey)
+        if (page.hasMore) continue
+        break
+      }
       if (!runSettings.includeVideos) {
+        // A returned video is a late companion for an image that was already
+        // scanned, so it was not included in countAssets' image-only total.
+        totalItems.value += page.assets.filter(asset => asset.kind === 'video').length
         const companionBytes = new Map<string, number>()
         for (const asset of page.assets) {
           const pair = livePhotoPair(asset)
@@ -442,7 +460,6 @@ async function runBackup(options: { manual?: boolean } = {}) {
         currentFile.value = pair ? `${pair.image.name} · 实况照片` : asset.name
         currentFileProgress.value = 0
         if (pair && completedLivePairs.has(operationKey)) {
-          skipped.value++
           currentFileProgress.value = 100
           updateQueueStatus(operationKey, 'uploaded')
         } else {
@@ -469,13 +486,19 @@ async function runBackup(options: { manual?: boolean } = {}) {
         if (asset.kind === 'image') {
           cursor.imageModified = asset.modifiedMs
           cursor.imageId = asset.id
-        } else {
-          cursor.videoModified = asset.modifiedMs
-          cursor.videoId = asset.id
         }
         await saveCursor(cursor, runCursorKey)
         await syncNotification()
       }
+      // Native scanning may consume non-live videos as companion probes without
+      // returning them. Persist the page cursors only after every returned asset
+      // has completed, so a failed upload is still retried on the next run.
+      cursor.imageModified = page.imageModified
+      cursor.imageId = page.imageId
+      cursor.videoModified = page.videoModified
+      cursor.videoId = page.videoId
+      cursor.companionVideoId = page.companionVideoId
+      await saveCursor(cursor, runCursorKey)
       status.value = 'scanning'
       if (!page.hasMore) break
     }
