@@ -7,6 +7,7 @@ import { useUserStore } from '@/stores/user'
 import { galleryBackupNative, supportsGalleryBackup, type GalleryAsset, type GalleryCursor } from '@/native/galleryBackup'
 import {
   adaptTransferTuning,
+  backupUploadAction,
   initialTransferTuning,
   takeTransferBatch,
   type TransferTuning,
@@ -514,6 +515,9 @@ async function runBackup(options: { manual?: boolean } = {}) {
   await initialize()
   if (running.value || !supportsGalleryBackup() || !useUserStore().token) return
   if (!options.manual && !settings.value.enabled) return
+  // A transfer error requires an explicit retry. App foreground events must
+  // not restart the same failed asset indefinitely in the background.
+  if (!options.manual && status.value === 'error') return
   const runSettings: GalleryBackupSettings = { ...settings.value, sourcePaths: [...settings.value.sourcePaths] }
   const runCursorKey = cursorScopeKey(runSettings)
   const startPaused = pauseRequested.value && pauseReason.value === 'user'
@@ -617,9 +621,22 @@ async function runBackup(options: { manual?: boolean } = {}) {
           keysToCheck.add(pair.video.backupKey)
         }
       })
-      const existing = await albumService.checkBackupKeys([...keysToCheck])
-      const remaining = [...operations.values()]
-      remaining.forEach(operation => { operation.replaceExisting = existing.has(operation.key) })
+      const presence = await albumService.checkBackupKeys([...keysToCheck])
+      const remaining: BackupOperation[] = []
+      for (const operation of operations.values()) {
+        const action = backupUploadAction(operation.key, Boolean(operation.pair), presence)
+        operation.replaceExisting = action === 'replace'
+        if (action === 'skip') {
+          updateQueueStatus(operation.key, 'skipped')
+          skipped.value++
+          processedItems.value += operation.coveredAssets.length
+          processedBytes.value += operation.coveredAssets.reduce((sum, asset) => sum + Math.max(0, asset.size), 0)
+          if (operation.pair) completedLivePairs.add(operation.key)
+        } else {
+          remaining.push(operation)
+        }
+      }
+      await syncNotification()
       while (remaining.length) {
         await waitIfPaused()
         const tuning = currentTransferTuning()
@@ -646,8 +663,24 @@ async function runBackup(options: { manual?: boolean } = {}) {
               updateQueueStatus(key, 'uploaded')
               backedUp.value++
             } catch (error) {
-              updateQueueStatus(key, 'error')
-              throw error
+              // The server may have committed the file before the response was
+              // interrupted. Confirm the durable state before declaring failure.
+              let confirmed = false
+              try {
+                const confirmedPresence = await albumService.checkBackupKeys(
+                  pair ? [pair.image.backupKey, pair.video.backupKey] : [operation.asset.backupKey],
+                )
+                confirmed = backupUploadAction(key, Boolean(pair), confirmedPresence) === 'skip'
+              } catch {
+                // Preserve the original upload error when confirmation is unavailable.
+              }
+              if (!confirmed) {
+                updateQueueStatus(key, 'error')
+                throw error
+              }
+              if (pair) completedLivePairs.add(key)
+              updateQueueStatus(key, 'uploaded')
+              backedUp.value++
             } finally {
               endActiveUpload(key)
             }

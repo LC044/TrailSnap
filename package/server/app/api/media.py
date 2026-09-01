@@ -51,12 +51,26 @@ def check_mobile_backup_assets(
         raise HTTPException(status_code=400, detail="keys must be a string array with at most 200 items")
     normalized = list(dict.fromkeys(key[:255] for key in keys if key))
     if not normalized:
-        return BaseResponse.success(data={"existing": []})
-    rows = db.query(Photo.backup_key).filter(
+        return BaseResponse.success(data={"existing": [], "complete": [], "live_photos": []})
+    rows = db.query(Photo.backup_key, Photo.file_type, Photo.file_path).filter(
         Photo.owner_id == current_user.id,
         Photo.backup_key.in_(normalized),
     ).all()
-    return BaseResponse.success(data={"existing": [row[0] for row in rows]})
+    existing: list[str] = []
+    complete: list[str] = []
+    live_photos: list[str] = []
+    for backup_key, file_type, file_path in rows:
+        existing.append(backup_key)
+        if not file_path or not os.path.isfile(file_path):
+            continue
+        complete.append(backup_key)
+        if file_type == FileType.live_photo and storage.get_live_photo_vide(file_path):
+            live_photos.append(backup_key)
+    return BaseResponse.success(data={
+        "existing": existing,
+        "complete": complete,
+        "live_photos": live_photos,
+    })
 
 
 def _geojson_path(level_cn: str) -> str:

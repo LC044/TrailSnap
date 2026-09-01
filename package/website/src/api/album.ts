@@ -197,8 +197,18 @@ export const albumService = {
   },
 
   async checkBackupKeys(keys: string[]) {
-    const data = await request.post<{ existing: string[] }>('/api/medias/backup/check', { keys });
-    return new Set(data.data.existing);
+    const data = await request.post<{
+      existing: string[]
+      complete?: string[]
+      live_photos?: string[]
+    }>('/api/medias/backup/check', { keys });
+    return {
+      existing: new Set(data.data.existing),
+      // Keep ordinary-photo backups compatible with servers predating the
+      // richer completeness response.
+      complete: new Set(data.data.complete ?? data.data.existing),
+      livePhotos: new Set(data.data.live_photos ?? []),
+    };
   },
 
   async getUploadFolders() {

@@ -14,6 +14,26 @@ export interface TransferTuning {
   maxAttempts: number
 }
 
+export interface BackupPresence {
+  existing: ReadonlySet<string>
+  complete: ReadonlySet<string>
+  livePhotos: ReadonlySet<string>
+}
+
+export type BackupUploadAction = 'skip' | 'upload' | 'replace'
+
+export function backupUploadAction(
+  backupKey: string,
+  isLivePhoto: boolean,
+  presence: BackupPresence,
+): BackupUploadAction {
+  const complete = isLivePhoto
+    ? presence.livePhotos.has(backupKey)
+    : presence.complete.has(backupKey)
+  if (complete) return 'skip'
+  return presence.existing.has(backupKey) ? 'replace' : 'upload'
+}
+
 const MB = 1024 * 1024
 
 export function isLanServerUrl(value: string) {

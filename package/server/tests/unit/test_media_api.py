@@ -48,6 +48,35 @@ def test_live_photo_video_path_rejects_unsupported_companion(tmp_path):
         media_api._live_photo_video_path(str(tmp_path / "IMG_0001.jpg"), "IMG_0001.avi")
 
 
+def test_backup_check_distinguishes_existing_complete_and_live_photo(tmp_path):
+    owner_id = uuid4()
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes(b"image")
+    live_image = tmp_path / "live.jpg"
+    live_image.write_bytes(b"image")
+    live_image.with_suffix(".mp4").write_bytes(b"video")
+    incomplete_live = tmp_path / "incomplete.jpg"
+    incomplete_live.write_bytes(b"image")
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [
+        ("photo", FileType.image, str(photo)),
+        ("live", FileType.live_photo, str(live_image)),
+        ("incomplete-live", FileType.live_photo, str(incomplete_live)),
+        ("missing", FileType.image, str(tmp_path / "missing.jpg")),
+    ]
+
+    result = media_api.check_mobile_backup_assets(
+        {"keys": ["photo", "live", "incomplete-live", "missing"]},
+        db=db,
+        current_user=SimpleNamespace(id=owner_id),
+    )
+
+    assert set(result.data["existing"]) == {"photo", "live", "incomplete-live", "missing"}
+    assert set(result.data["complete"]) == {"photo", "live", "incomplete-live"}
+    assert result.data["live_photos"] == ["live"]
+
+
 def test_attach_live_photo_video_replaces_companion_atomically(tmp_path):
     image = tmp_path / "IMG_0001.jpg"
     image.write_bytes(b"image")
