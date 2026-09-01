@@ -3,7 +3,7 @@
 import json
 import logging
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,7 @@ from app.core import system_config
 from app.core.logger import JSONFormatter, log_operation
 from app.db import init_db
 from app.service import discovery
+from app.utils import path_validation
 from app.utils.path_validation import validate_filename, validate_target_path
 
 
@@ -97,18 +98,43 @@ def test_log_operation_preserves_structured_context(caplog):
 
 
 def test_validate_filename_accepts_normal_name_and_rejects_reserved_name():
-    validate_filename("family-photo.jpg", "C:/photos")
-    with pytest.raises(ValueError, match="保留名称"):
-        validate_filename("CON", "C:/photos")
+    # Cross-platform cases work everywhere.
+    validate_filename("family-photo.jpg", "/photos")
     with pytest.raises(ValueError, match="路径分隔符"):
-        validate_filename("../secret.jpg", "C:/photos")
+        validate_filename("nested/secret.jpg", "/photos")
+    with pytest.raises(ValueError, match="路径分隔符"):
+        validate_filename("nested\\secret.jpg", "/photos")
+    with pytest.raises(ValueError, match="不能为空"):
+        validate_filename("", "/photos")
+    with pytest.raises(ValueError, match="不能为空"):
+        validate_filename("..", "/photos")
+    with pytest.raises(ValueError, match="空字符"):
+        validate_filename("bad\x00name.jpg", "/photos")
+
+    # Windows-specific rules need the os.name patch on non-Windows CI runners.
+    with patch.object(path_validation.os, "name", "nt"):
+        with pytest.raises(ValueError, match="保留名称"):
+            validate_filename("CON", "/photos")
+        with pytest.raises(ValueError, match="Windows 文件名不能以空格或句点结尾"):
+            validate_filename("photo.", "/photos")
+        with pytest.raises(ValueError, match="不允许的字符"):
+            validate_filename("photo:bad.jpg", "/photos")
 
 
-def test_validate_target_path_rejects_reserved_name_and_windows_trailing_dot():
-    with pytest.raises(ValueError, match="保留名称"):
-        validate_target_path("C:/photos/CON")
-    with pytest.raises(ValueError, match="Windows 文件名不能以空格或句点结尾"):
-        validate_filename("photo.", "C:/photos")
+def test_validate_target_path_rejects_reserved_name_and_dot_dot():
+    # Windows-only behaviours must be exercised under a patched os.name so the
+    # tests stay green on Linux CI runners as well as on Windows.
+    with patch.object(path_validation.os, "name", "nt"):
+        with pytest.raises(ValueError, match="保留名称"):
+            validate_target_path("/photos/CON")
+        with pytest.raises(ValueError, match="不允许的字符"):
+            validate_target_path("/photos/photo:bad.jpg")
+
+    # validate_target_path delegates to validate_filename with the basename,
+    # so the cross-platform filename rules still apply on every platform.
+    with pytest.raises(ValueError, match="不能为空"):
+        validate_target_path("/photos/..")
+
 
 def test_scan_schedule_to_cron_supports_modes_and_invalid_time():
     assert system_config.ScanScheduleSettings(mode="off").to_cron_expression() is None
@@ -131,6 +157,3 @@ def test_resolve_concurrency_auto_uses_computed_default(monkeypatch):
 def test_init_models_prints_completion(capsys):
     init_db.init_models()
     assert "数据库初始化完成" in capsys.readouterr().out
-
-
-
