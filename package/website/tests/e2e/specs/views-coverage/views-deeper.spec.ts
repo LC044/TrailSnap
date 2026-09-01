@@ -410,13 +410,31 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
 
-    const input = page.locator('.agent-chat-overlay input.agent-input')
+    // 选择器不带标签限定（.agent-input 现为 textarea），避免与实现细节耦合
+    const input = page.locator('.agent-chat-overlay .agent-input')
     await expect(input).toBeVisible()
     await input.fill('帮我找一下今天拍的照片')
     await expect(input).toHaveValue('帮我找一下今天拍的照片')
 
-    await page.locator('.agent-chat-overlay input.agent-input').press('Enter')
+    await input.press('Enter')
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 3_000 })
+  })
+
+  test('Shift+Enter 换行而不发送 -> 输入框保留换行内容', async ({ page }) => {
+    await page.goto('/')
+    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+    await expect(agentEntry).toBeVisible({ timeout: 10_000 })
+    await agentEntry.click()
+    await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
+
+    const input = page.locator('.agent-chat-overlay .agent-input')
+    await expect(input).toBeVisible()
+    await input.fill('第一行')
+    await input.press('Shift+Enter')
+    await input.pressSequentially('第二行')
+
+    // Shift+Enter 不应触发发送，内容仍留在输入框内且包含换行
+    await expect(input).toHaveValue('第一行\n第二行')
   })
 
   test('生成态 isGenerating=true -> 按钮切到 agent-stop-btn', async ({ page }) => {
@@ -426,8 +444,9 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
 
-    await page.locator('.agent-chat-overlay input.agent-input').fill('查询照片')
-    await page.locator('.agent-chat-overlay input.agent-input').press('Enter')
+    const input = page.locator('.agent-chat-overlay .agent-input')
+    await input.fill('查询照片')
+    await input.press('Enter')
 
     await expect.poll(
       async () =>
