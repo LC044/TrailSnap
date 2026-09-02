@@ -268,6 +268,8 @@
     <PhotoLightbox
       :visible="!!lightboxPhoto"
       :image="lightboxPhoto"
+      :images="lightboxPhotos"
+      :current-index="lightboxIndex"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex >= 0 && lightboxIndex < lightboxPhotos.length - 1"
       :allow-edit="true"
@@ -278,6 +280,7 @@
       @close="closeLightbox"
       @prev="moveLightbox(-1)"
       @next="moveLightbox(1)"
+      @select="index => (lightboxIndex = index)"
       @delete="handleLightboxDelete"
       @update="loadPhotos"
       @add-to-album="image => organizeActions?.openAlbum(image.id)"

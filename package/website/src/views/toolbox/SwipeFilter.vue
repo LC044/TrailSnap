@@ -230,13 +230,17 @@
       </button>
     </footer>
 
+    <!--
+      筛选页是卡片堆叠交互，左右滑动的语义归卡片堆本身，
+      灯箱只作单张放大用，故不传 images / current-index（避免灯箱内再翻页）。
+      注：原先传的 photos / initial-index 并非组件声明的 prop（组件用的是 images / currentIndex），
+      会作为 attrs 落到根元素的 DOM 属性上，已移除。
+    -->
     <PhotoLightbox
       v-if="currentPhoto"
       :visible="isLightboxVisible"
       :image="mapPhotoToImage(currentPhoto)"
       :allow-delete="true"
-      :photos="photos"
-      :initial-index="0"
       @close="isLightboxVisible = false"
       @delete="handleLightboxDelete"
     />

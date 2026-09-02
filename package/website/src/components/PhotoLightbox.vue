@@ -2,9 +2,9 @@
   <Transition name="fade">
     <div v-if="visible" class="fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm" @click="close" tabindex="0">
 
-      <!-- Top Toolbar (Mobile Adapted) — hidden in edit mode -->
+      <!-- Top Toolbar (Desktop) — hidden in edit mode；移动端见下方专用布局 -->
       <Transition name="viewer-controls">
-      <div v-if="!isEditing && controlsVisible" data-testid="photo-lightbox-toolbar" class="fixed top-0 left-0 right-0 z-[102] p-2 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+      <div v-if="!isEditing && controlsVisible" data-testid="photo-lightbox-toolbar" class="fixed top-0 left-0 right-0 z-[102] p-2 hidden md:flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
          <button
             @click.stop="close"
             class="pointer-events-auto w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0"
@@ -197,6 +197,7 @@
                 :src="adjacentPreviewSrc(previousImage)"
                 class="block w-full h-full object-contain pointer-events-none select-none"
                 draggable="false"
+                decoding="async"
                 alt=""
               />
             </div>
@@ -280,6 +281,7 @@
                 :src="adjacentPreviewSrc(nextImage)"
                 class="block w-full h-full object-contain pointer-events-none select-none"
                 draggable="false"
+                decoding="async"
                 alt=""
               />
             </div>
@@ -298,11 +300,51 @@
         </div>
       </div>
 
+      <!-- Top Bar (Mobile)：左上角拍摄时间与地点，右上角合并为单一功能入口 -->
+      <Transition name="viewer-controls">
+        <div
+          v-if="!isEditing && controlsVisible"
+          data-testid="photo-lightbox-mobile-toolbar"
+          class="md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
+        >
+          <div class="flex items-start gap-1 min-w-0">
+            <button
+              @click.stop="close"
+              class="pointer-events-auto shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white/90 active:bg-white/15 bg-transparent p-0"
+              aria-label="返回"
+            >
+              <ChevronLeft class="w-6 h-6" />
+            </button>
+            <div class="min-w-0 pt-0.5 leading-tight text-white drop-shadow-md">
+              <div v-if="captureDateText" class="text-sm font-medium truncate">{{ captureDateText }}</div>
+              <div class="text-[11px] text-white/75 flex items-center gap-1 min-w-0">
+                <span v-if="captureTimeText" class="shrink-0">{{ captureTimeText }}</span>
+                <template v-if="captureLocationText">
+                  <span v-if="captureTimeText" class="opacity-50 shrink-0">·</span>
+                  <MapPin class="w-3 h-3 shrink-0" />
+                  <span class="truncate">{{ captureLocationText }}</span>
+                </template>
+              </div>
+            </div>
+          </div>
+
+          <button
+            data-testid="photo-lightbox-mobile-more"
+            @click.stop="openMobileMenu"
+            class="pointer-events-auto shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white bg-white/15 active:bg-white/25 p-0"
+            aria-label="更多功能"
+          >
+            <MoreHorizontal class="w-5 h-5" />
+          </button>
+        </div>
+      </Transition>
+
       <Transition name="viewer-thumbnails">
         <div
           v-if="!isEditing && controlsVisible && thumbnailWindow.length > 0"
           data-testid="photo-lightbox-thumbnails"
-          class="fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
+          class="fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
+          :style="{ paddingBottom: thumbnailStripPaddingBottom }"
           @click.stop
         >
           <div ref="thumbnailStrip" class="flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto scrollbar-hide">
@@ -318,6 +360,115 @@
             >
               <img :src="entry.item.thumbnail || entry.item.preview || entry.item.url" class="h-full w-full object-cover" alt="" />
             </button>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- Bottom Actions (Mobile)：最常用的几个操作，参考系统相册。位于缩略图条下方 -->
+      <Transition name="viewer-dock">
+        <div
+          v-if="mobileDockVisible"
+          data-testid="photo-lightbox-mobile-actions"
+          class="md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-black/85"
+          @click.stop
+        >
+          <div class="flex items-stretch justify-around">
+            <button class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-white/90 active:bg-white/10 bg-transparent" @click.stop="downloadImage">
+              <Download class="w-6 h-6" />
+              <span class="text-[11px]">下载</span>
+            </button>
+            <button v-if="allowEdit && isStillImage" class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-white/90 active:bg-white/10 bg-transparent" @click.stop="enterEditMode">
+              <Pencil class="w-6 h-6" />
+              <span class="text-[11px]">编辑</span>
+            </button>
+            <button class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg active:bg-white/10 bg-transparent" :class="showSidebar ? 'text-primary-400' : 'text-white/90'" @click.stop="toggleSidebar">
+              <Info class="w-6 h-6" />
+              <span class="text-[11px]">信息</span>
+            </button>
+            <button v-if="allowDelete" class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-red-400 active:bg-white/10 bg-transparent" @click.stop="handleDelete">
+              <Trash2 class="w-6 h-6" />
+              <span class="text-[11px]">删除</span>
+            </button>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- 更多功能面板（Mobile）：承接右上角合并入口 -->
+      <Transition name="sheet">
+        <div v-if="showMobileMenu" class="md:hidden fixed inset-0 z-[104]" data-testid="photo-lightbox-mobile-sheet" @click.stop="closeMobileMenu">
+          <div class="absolute inset-0 bg-black/55 backdrop-blur-[2px]"></div>
+          <div
+            class="sheet-panel absolute bottom-0 left-0 right-0 rounded-t-2xl bg-gray-900/95 border-t border-white/10 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            @click.stop
+          >
+            <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25"></div>
+
+            <div class="grid grid-cols-4 gap-y-4">
+              <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(toggleOriginal)">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20" :class="{ 'text-primary-400': showOriginal }"><Focus class="w-5 h-5" /></span>
+                <span class="text-[11px]">{{ showOriginal ? '预览图' : '查看原图' }}</span>
+              </button>
+
+              <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('ocr'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20" :class="{ 'text-primary-400': showOCR }"><ScanText class="w-5 h-5" /></span>
+                <span class="text-[11px]">{{ showOCR ? '关闭识别' : '文字识别' }}</span>
+              </button>
+
+              <button v-if="allowAddToAlbum" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('addToAlbum'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><ImagePlus class="w-5 h-5" /></span>
+                <span class="text-[11px]">加入相册</span>
+              </button>
+
+              <button v-if="allowAddToPerson" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('addToPerson'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><UserPlus class="w-5 h-5" /></span>
+                <span class="text-[11px]">加入人物</span>
+              </button>
+
+              <button v-if="allowMoveToFolder" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('moveToFolder'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><FolderOutput class="w-5 h-5" /></span>
+                <span class="text-[11px]">移动目录</span>
+              </button>
+
+              <button v-if="allowEdit" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('adjustLocation'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><MapPin class="w-5 h-5" /></span>
+                <span class="text-[11px]">调整位置</span>
+              </button>
+
+              <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('viewDescription'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><FileText class="w-5 h-5" /></span>
+                <span class="text-[11px]">AI 分析</span>
+              </button>
+
+              <button
+                class="flex flex-col items-center gap-1.5 bg-transparent p-0 disabled:opacity-40"
+                :class="showMobileProcessing ? 'text-primary-400' : 'text-white/90'"
+                :disabled="!canProcessCurrentPhoto"
+                @click.stop="showMobileProcessing = !showMobileProcessing"
+              >
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><WandSparkles class="w-5 h-5" /></span>
+                <span class="text-[11px]">重新识别</span>
+              </button>
+            </div>
+
+            <!-- 重新识别的二级列表就地展开，避免再叠一层弹窗 -->
+            <Transition name="fade">
+              <div v-if="showMobileProcessing && canProcessCurrentPhoto" data-testid="photo-lightbox-mobile-processing" class="mt-3 pt-3 border-t border-white/10 space-y-1">
+                <button
+                  v-for="item in photoProcessingOperations"
+                  :key="item.operation"
+                  class="w-full min-h-10 px-2 flex items-center gap-3 rounded-lg text-sm text-white/90 active:bg-white/10 disabled:opacity-50 bg-transparent"
+                  :disabled="isPhotoProcessingActive(item.operation)"
+                  @click.stop="startPhotoProcessing(item.operation)"
+                >
+                  <component :is="item.icon" class="w-4 h-4 shrink-0" />
+                  <span class="flex-1 text-left">{{ item.label }}</span>
+                  <LoaderCircle v-if="isPhotoProcessingActive(item.operation)" class="w-4 h-4 animate-spin text-primary-400" />
+                  <span v-else-if="photoProcessingStatusLabel(item.operation)" class="text-xs" :class="photoProcessingStatusClass(item.operation)">
+                    {{ photoProcessingStatusLabel(item.operation) }}
+                  </span>
+                </button>
+              </div>
+            </Transition>
           </div>
         </div>
       </Transition>
@@ -643,6 +794,30 @@ const nextImage = computed(() => {
 
 const adjacentPreviewSrc = (item: AlbumImage | null) => item?.preview || item?.thumbnail || item?.url || ''
 
+// 轨道只挂 n±1，连续快划时 n±2 还得现拉，仍会闪一下空白。
+// 这里额外把 n±2 预解码进浏览器缓存，命中的是与 adjacentPreviewSrc 同一个 URL。
+const prefetchedSrc = new Set<string>()
+const prefetchImage = (item: AlbumImage | null | undefined) => {
+    if (!item) return
+    const src = adjacentPreviewSrc(item)
+    if (!src || prefetchedSrc.has(src)) return
+    // 长会话里避免无上限增长；照片墙可能有上万张
+    if (prefetchedSrc.size > 200) prefetchedSrc.clear()
+    prefetchedSrc.add(src)
+    const img = new Image()
+    img.decoding = 'async'
+    img.src = src
+}
+
+watch([resolvedCurrentIndex, () => props.visible], () => {
+    if (!props.visible) return
+    const index = resolvedCurrentIndex.value
+    if (index < 0) return
+    for (const offset of [1, -1, 2, -2]) {
+        prefetchImage(props.images[index + offset])
+    }
+}, { immediate: true })
+
 const thumbnailWindow = computed(() => {
     const index = resolvedCurrentIndex.value
     if (index < 0 || props.images.length < 2) return []
@@ -655,6 +830,72 @@ const swipeTrackStyle = computed(() => ({
     transform: `translate3d(calc(-33.333333% + ${swipeOffset.value}px), 0, 0)`,
     transition: isSwipeAnimating.value ? 'transform 240ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
 }))
+
+// ---------------------------------------------------------------------------
+// 移动端布局：左上角时间地点、右上角合并入口、底部常用操作
+// ---------------------------------------------------------------------------
+const showMobileMenu = ref(false)
+const showMobileProcessing = ref(false)
+
+const openMobileMenu = () => {
+    showMobileMenu.value = true
+    showMobileProcessing.value = false
+}
+
+const closeMobileMenu = () => {
+    showMobileMenu.value = false
+    showMobileProcessing.value = false
+}
+
+// 动作执行后收起面板，避免遮挡刚打开的侧栏 / 弹窗
+const runMobileAction = (action: () => void) => {
+    closeMobileMenu()
+    action()
+}
+
+const isStillImage = computed(() => !props.image?.file_type || props.image.file_type === 'image')
+
+const mobileDockVisible = computed(() => !isEditing.value && controlsVisible.value && !!props.image)
+
+// 缩略图条与底部操作栏都贴底，移动端要为操作栏让出高度，否则两者重叠。
+// 操作栏约 4.25rem（图标 + 文字 + 内边距），再加安全区。
+const thumbnailStripPaddingBottom = computed(() =>
+    mobileDockVisible.value
+        ? 'calc(0.75rem + 4.25rem + env(safe-area-inset-bottom))'
+        : 'calc(0.75rem + env(safe-area-inset-bottom))',
+)
+
+const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+
+const captureDate = computed(() => {
+    const ts = props.image?.timestamp
+    if (!ts) return null
+    const date = new Date(ts)
+    return Number.isNaN(date.getTime()) ? null : date
+})
+
+const captureDateText = computed(() => {
+    const d = captureDate.value
+    if (!d) return ''
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAY_LABELS[d.getDay()]}`
+})
+
+const captureTimeText = computed(() => {
+    const d = captureDate.value
+    if (!d) return ''
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+})
+
+const captureLocationText = computed(() => {
+    const meta = metadata.value
+    // 元数据是异步拉取的，切图瞬间可能还是上一张的，用 photo_id 卡一道
+    if (!meta || !props.image || meta.photo_id !== props.image.id) return ''
+    const parts = [meta.city || meta.province, meta.district]
+        .filter((item): item is string => !!item)
+    const unique = parts.filter((item, i) => parts.indexOf(item) === i)
+    if (unique.length) return unique.join(' ')
+    return meta.address || meta.province || ''
+})
 
 watch(resolvedCurrentIndex, async (index) => {
     await nextTick()
@@ -917,6 +1158,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     videoStyle.value = {}
     isDragging.value = false // Ensure dragging is reset
     processingMenuVisible.value = false
+    closeMobileMenu()
 
     // 2. Handle Resource Cleanup & Initialization
     if (oldImg?.file_type === 'video') {
@@ -991,6 +1233,7 @@ watch(() => props.visible, async (newVal) => {
         showOCR.value = false
         showShortcutHint.value = false
         showShortcutHelp.value = false
+        closeMobileMenu()
         stopDrag()
         stopTouch()
         if (shortcutHintTimer) {
@@ -1025,6 +1268,8 @@ const handleMediaTap = () => {
 }
 
 useOverlayStack(computed(() => props.visible), close)
+// 后注册即后入栈，Android 返回键先收动作面板，再关查看器
+useOverlayStack(showMobileMenu, closeMobileMenu)
 
 const toggleSidebar = () => {
     showSidebar.value = !showSidebar.value
@@ -1474,10 +1719,14 @@ const animateNavigation = (direction: 'prev' | 'next', callback: () => void) => 
 
 const stopTouch = () => {
     const elapsed = performance.now() - touchStartTime.value
+    const distance = Math.abs(touchDeltaX.value)
+    const width = mediaViewport.value?.clientWidth || window.innerWidth || 1
+    const velocity = elapsed > 0 ? distance / elapsed : 0
+    // 固定 50px 阈值在大屏上偏短、小屏上偏长，改成按屏宽取比例；
+    // 另外补一条速度通道，让快速轻扫（甩）也能翻页，贴近系统相册手感。
     const isHorizontalSwipe = scale.value === 1
-        && Math.abs(touchDeltaX.value) >= 50
         && Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value) * 1.25
-        && elapsed <= 700
+        && (distance >= Math.min(80, width * 0.18) || (velocity >= 0.5 && distance >= 30))
 
     if (isHorizontalSwipe && ((touchDeltaX.value < 0 && props.hasNext) || (touchDeltaX.value > 0 && props.hasPrev))) {
         if (touchDeltaX.value < 0) next()
@@ -1614,11 +1863,46 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
     transform: translateY(1rem);
 }
 
+/* 底部操作栏：与缩略图条同向下滑收起 */
+.viewer-dock-enter-active,
+.viewer-dock-leave-active {
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+.viewer-dock-enter-from,
+.viewer-dock-leave-to {
+    opacity: 0;
+    transform: translateY(1rem);
+}
+
+/* 更多功能面板：遮罩淡入 + 面板上滑 */
+.sheet-enter-active,
+.sheet-leave-active {
+    transition: opacity 200ms ease;
+}
+.sheet-enter-from,
+.sheet-leave-to {
+    opacity: 0;
+}
+.sheet-enter-active .sheet-panel,
+.sheet-leave-active .sheet-panel {
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.sheet-enter-from .sheet-panel,
+.sheet-leave-to .sheet-panel {
+    transform: translateY(100%);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .viewer-controls-enter-active,
     .viewer-controls-leave-active,
     .viewer-thumbnails-enter-active,
-    .viewer-thumbnails-leave-active {
+    .viewer-thumbnails-leave-active,
+    .viewer-dock-enter-active,
+    .viewer-dock-leave-active,
+    .sheet-enter-active,
+    .sheet-leave-active,
+    .sheet-enter-active .sheet-panel,
+    .sheet-leave-active .sheet-panel {
         transition-duration: 0ms;
     }
 }

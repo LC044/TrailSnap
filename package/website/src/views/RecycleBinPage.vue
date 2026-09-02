@@ -147,6 +147,8 @@
     <PhotoLightbox
       :visible="!!lightboxImage"
       :image="lightboxImage"
+      :images="photos"
+      :current-index="currentIndex"
       :has-prev="hasPrev"
       :has-next="hasNext"
       :allow-delete="true"
@@ -155,6 +157,7 @@
       @delete="handlePhotoDelete"
       @prev="handlePrev"
       @next="handleNext"
+      @select="index => (lightboxImage = photos[index] ?? lightboxImage)"
     />
 
     <!-- Delete Confirmation -->

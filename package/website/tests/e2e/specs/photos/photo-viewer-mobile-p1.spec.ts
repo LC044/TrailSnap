@@ -72,7 +72,8 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     const probe = await requirePhotos(request, testInfo, 2, 20)
     if (!probe.ok) return
     const media = await openFirstPhoto(page)
-    const toolbar = page.getByTestId('photo-lightbox-toolbar')
+    // 移动端顶栏是专用布局（桌面工具栏在 md 以下不渲染）
+    const toolbar = page.getByTestId('photo-lightbox-mobile-toolbar')
     const thumbnails = page.getByTestId('photo-lightbox-thumbnails')
     await expect(toolbar).toBeVisible()
     await expect(thumbnails).toBeVisible()
@@ -106,6 +107,27 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect(thumbnails).toBeVisible()
   })
 
+  test('滑动切换后相邻照片已完成解码，不出现空白', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 3, 20)
+    if (!probe.ok) return
+    const media = await openFirstPhoto(page)
+    const track = page.getByTestId('photo-lightbox-track')
+    const image = page.getByTestId('photo-lightbox-current-image')
+    const firstSrc = await image.getAttribute('src')
+
+    await swipe(media, 320, 70)
+    await expect.poll(() => image.getAttribute('src')).not.toBe(firstSrc)
+
+    // 切到中间位置后上一张/当前/下一张都应在轨道内，且全部已解码
+    await expect.poll(() => track.locator('img').count()).toBe(3)
+    await expect.poll(
+      () => track.locator('img').evaluateAll(images =>
+        images.every(img => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0),
+      ),
+      { timeout: 15_000 },
+    ).toBe(true)
+  })
+
   test('浏览器返回键优先关闭照片查看器并停留在当前页面', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 1, 20)
     if (!probe.ok) return
@@ -119,24 +141,65 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect(page).toHaveURL(photosUrl)
   })
 
-  test('更多菜单可展开当前照片的单项处理任务', async ({ page, request }, testInfo) => {
+  test('左上角显示拍摄日期时间，底部提供常用操作按钮', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 1, 20)
     if (!probe.ok) return
 
     await openFirstPhoto(page)
-    await page.getByTestId('photo-lightbox-toolbar').getByRole('button', { name: '更多' }).click()
 
-    const processingMenu = page.getByTestId('photo-processing-menu')
-    await expect(processingMenu).toBeVisible()
-    await processingMenu.click()
+    // 左上角：日期 + 时间（地点依赖 EXIF GPS，不做强断言）
+    const toolbar = page.getByTestId('photo-lightbox-mobile-toolbar')
+    await expect(toolbar).toContainText(/\d{4}年\d{1,2}月\d{1,2}日/)
+    await expect(toolbar).toContainText(/\d{2}:\d{2}/)
 
-    const operations = page.getByTestId('photo-processing-operations')
+    // 底部常用操作栏，且不与缩略图条重叠
+    const dock = page.getByTestId('photo-lightbox-mobile-actions')
+    await expect(dock).toBeVisible()
+    await expect(dock.getByRole('button', { name: '下载' })).toBeVisible()
+    await expect(dock.getByRole('button', { name: '信息' })).toBeVisible()
+
+    const thumbnailsBox = await page.getByTestId('photo-lightbox-thumbnails').locator('button').first().boundingBox()
+    const dockBox = await dock.boundingBox()
+    expect(thumbnailsBox).not.toBeNull()
+    expect(dockBox).not.toBeNull()
+    expect(thumbnailsBox!.y + thumbnailsBox!.height).toBeLessThanOrEqual(dockBox!.y + 1)
+  })
+
+  test('右上角更多按钮弹出功能面板并可展开单项处理任务', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 20)
+    if (!probe.ok) return
+
+    await openFirstPhoto(page)
+    await page.getByTestId('photo-lightbox-mobile-more').click()
+
+    const sheet = page.getByTestId('photo-lightbox-mobile-sheet')
+    await expect(sheet).toBeVisible()
+    await sheet.getByRole('button', { name: '重新识别' }).click()
+
+    const operations = page.getByTestId('photo-lightbox-mobile-processing')
     await expect(operations).toBeVisible()
     await expect(operations.getByRole('button', { name: 'AI 智能分析' })).toBeVisible()
     await expect(operations.getByRole('button', { name: '人脸识别' })).toBeVisible()
     await expect(operations.getByRole('button', { name: '文字识别 OCR' })).toBeVisible()
     await expect(operations.getByRole('button', { name: '场景分类' })).toBeVisible()
     await expect(operations.getByRole('button', { name: '生成搜索特征' })).toBeVisible()
+  })
+
+  test('返回键先收起功能面板，再关闭查看器', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 20)
+    if (!probe.ok) return
+
+    const media = await openFirstPhoto(page)
+    await page.getByTestId('photo-lightbox-mobile-more').click()
+    const sheet = page.getByTestId('photo-lightbox-mobile-sheet')
+    await expect(sheet).toBeVisible()
+
+    await page.goBack()
+    await expect(sheet).toBeHidden()
+    await expect(media).toBeVisible()
+
+    await page.goBack()
+    await expect(media).toBeHidden()
   })
 
   test('更多导航可显式关闭且长内容限制在视口内滚动', async ({ page }) => {
