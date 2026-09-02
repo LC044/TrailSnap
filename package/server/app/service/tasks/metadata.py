@@ -9,15 +9,22 @@ import json
 from uuid import UUID
 from sqlalchemy.orm import Session
 from app.db.models.task import Task, TaskStatus, TaskType
-from app.db.models.photo import Photo, ImageType
+from app.db.models.photo import Photo, ImageType, FileType
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.utils import exif
 
-def determine_image_type(filename: str, width: int, height: int, exif_data: dict) -> ImageType:
+def determine_image_type(filename: str, width: int, height: int, exif_data: dict,
+                         file_type: 'FileType | None' = None) -> ImageType:
     """
     Determine image type based on filename, dimensions, and EXIF data.
+
+    file_type 为视频时直接返回 OTHER：屏录视频的分辨率会命中下面的手机分辨率白名单
+    被误判成 SCREENSHOT，而视频元数据里的 Make/Model 也不代表"相机拍摄"这一图片语义。
     """
+    if file_type == FileType.video:
+        return ImageType.OTHER
+
     filename_lower = filename.lower()
 
     # 1. Check for Screenshot
@@ -222,6 +229,12 @@ def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict):
             sp['focal_length'] = str(exif_dict.get('FocalLength'))
         if exif_dict.get('FocalLengthIn35mmFilm'):
             sp['focal_length_35mm'] = str(exif_dict.get('FocalLengthIn35mmFilm'))
+        # 视频专属参数。shooting_params 是 JSON 列，无需 migration。
+        for meta_key, sp_key in (('duration', 'duration'), ('fps', 'fps'),
+                                 ('codec', 'codec'), ('rotation', 'rotation')):
+            value = meta.get(meta_key)
+            if value is not None:
+                sp[sp_key] = value
         if sp:
             db_meta.shooting_params = sp
 
@@ -246,7 +259,20 @@ def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict):
 
     if meta.get("photo_time"):
         photo.photo_time = meta["photo_time"]
-    photo.image_type = determine_image_type(photo.filename, photo.width, photo.height, meta.get("exif_info", {}))
+
+    # 视频的宽高交由容器解析补齐（含旋转矩阵校正），仅在原值为空时写入，
+    # 避免覆盖 PROCESS_BASIC 阶段 cv2 已经拿到的正确尺寸。
+    if getattr(photo, 'width', None) is None and meta.get("width"):
+        photo.width = meta["width"]
+    if getattr(photo, 'height', None) is None and meta.get("height"):
+        photo.height = meta["height"]
+    if not getattr(photo, 'duration', None) and meta.get("duration"):
+        photo.duration = meta["duration"]
+
+    photo.image_type = determine_image_type(
+        photo.filename, photo.width, photo.height, meta.get("exif_info", {}),
+        getattr(photo, 'file_type', None)
+    )
 
     # Mark as processed
     tasks_status = dict(photo.processed_tasks or {})
