@@ -329,53 +329,93 @@ def _face_cluster_service_with_sqlite(query_all_value):
     return svc
 
 
-def test_assign_face_to_identity_sqlite_returns_nearest_identity():
+def test_assign_face_to_identity_sqlite_returns_nearest_identity(face_sqlite_session):
+    """The nearest of several assigned faces wins, scored via the cached matrix."""
+    from app.db.models.face import Face, FaceIdentity
+    from app.db.models.photo import FileType, Photo
+    from app.db.models.user import User
     from app.service import face_cluster
 
-    nearest_id = uuid4()
-    nearest_face = SimpleNamespace(
-        id=999,
-        face_identity_id=nearest_id,
-        face_feature=[1.0, 0.0, 0.0],
-        cluster_id=42,
-    )
-    far_face = SimpleNamespace(
-        id=1000,
-        face_identity_id=uuid4(),
-        face_feature=[-1.0, 0.0, 0.0],
-        cluster_id=42,
-    )
+    user = User(username="nearest-user", email="nearest@example.com", hashed_password="unused")
+    face_sqlite_session.add(user)
+    face_sqlite_session.flush()
 
-    svc = _face_cluster_service_with_sqlite([nearest_face, far_face])
+    near_identity = FaceIdentity(identity_name="Near", owner_id=user.id)
+    far_identity = FaceIdentity(identity_name="Far", owner_id=user.id)
+    face_sqlite_session.add_all([near_identity, far_identity])
+    face_sqlite_session.flush()
 
-    # config_manager.get_user_config returns a real config object whose
-    # ``face_cluster_threshold`` is a numpy scalar on some CI images; bypass it
-    # by patching the call site to a plain Python float.
+    def _add_face(name, identity_id, feature):
+        photo = Photo(
+            filename=f"{name}.jpg",
+            file_path=f"/{name}.jpg",
+            file_type=FileType.image,
+            owner_id=user.id,
+        )
+        face_sqlite_session.add(photo)
+        face_sqlite_session.flush()
+        face = Face(photo_id=photo.id, face_identity_id=identity_id, face_feature=feature)
+        face_sqlite_session.add(face)
+        face_sqlite_session.flush()
+        return face
+
+    _add_face("near", near_identity.id, [1.0, 0.0, 0.0] + [0.0] * 509)
+    _add_face("far", far_identity.id, [-1.0, 0.0, 0.0] + [0.0] * 509)
+    target = _add_face("target", None, [1.0, 0.0, 0.0] + [0.0] * 509)
+    face_sqlite_session.commit()
+
     class _StubAI:
         face_cluster_threshold = 0.4
 
     class _StubConfig:
         ai = _StubAI()
 
+    svc = face_cluster.FaceClusterService(db=face_sqlite_session, user_id=None)
     with patch.object(face_cluster.config_manager, "get_user_config", return_value=_StubConfig()), \
          patch.object(face_cluster.crud_face, "update_face", return_value=True) as update:
-        result = svc.assign_face_to_identity(face_id=1, embedding=[1.0, 0.0, 0.0])
+        result = svc.assign_face_to_identity(
+            face_id=target.id,
+            embedding=[1.0, 0.0, 0.0] + [0.0] * 509,
+            owner_id=user.id,
+        )
 
-    assert result == nearest_id
+    assert result == near_identity.id
     update.assert_called_once()
     # update_face signature: update_face(db, face_id, obj_in, owner_id=None)
     args, kwargs = update.call_args
-    assert kwargs.get("owner_id") is None
+    assert kwargs.get("owner_id") == user.id
     obj_in = args[2]
     assert obj_in.recognize_confidence > 0.99
 
 
-def test_assign_face_to_identity_sqlite_returns_none_when_no_candidates():
+def test_assign_face_to_identity_sqlite_returns_none_when_no_candidates(face_sqlite_session):
+    """An empty library has no neighbour to match against."""
+    from app.db.models.face import Face
+    from app.db.models.photo import FileType, Photo
+    from app.db.models.user import User
     from app.service import face_cluster
 
-    svc = _face_cluster_service_with_sqlite([])
+    user = User(username="empty-user", email="empty@example.com", hashed_password="unused")
+    face_sqlite_session.add(user)
+    face_sqlite_session.flush()
+    photo = Photo(
+        filename="only.jpg", file_path="/only.jpg",
+        file_type=FileType.image, owner_id=user.id,
+    )
+    face_sqlite_session.add(photo)
+    face_sqlite_session.flush()
+    # The only face in the library is the one being assigned, and it has no
+    # identity yet, so there is nothing eligible to match.
+    target = Face(photo_id=photo.id, face_feature=[1.0, 0.0, 0.0] + [0.0] * 509)
+    face_sqlite_session.add(target)
+    face_sqlite_session.commit()
 
-    result = svc.assign_face_to_identity(face_id=1, embedding=[1.0, 0.0, 0.0])
+    svc = face_cluster.FaceClusterService(db=face_sqlite_session, user_id=None)
+    result = svc.assign_face_to_identity(
+        face_id=target.id,
+        embedding=[1.0, 0.0, 0.0] + [0.0] * 509,
+        owner_id=user.id,
+    )
     assert result is None
 
 
@@ -384,6 +424,9 @@ def test_assign_face_to_identity_returns_none_on_pending_rollback():
     from sqlalchemy.exc import PendingRollbackError
 
     svc = _face_cluster_service_with_sqlite([])
+    # The SQLite path streams embeddings via db.execute before touching
+    # db.query, so both entry points must surface the broken transaction.
+    svc.db.execute.side_effect = PendingRollbackError("txn rolled back", None, None)
     svc.db.query.side_effect = PendingRollbackError("txn rolled back", None, None)
 
     with pytest.raises(PendingRollbackError):

@@ -53,6 +53,56 @@ def _face(id_, feature, *, identity_id=None, photo_id=None, confidence=None):
     )
 
 
+def _seed_faces(session, *, reference_features, target_feature):
+    """Persist one identity with reference faces plus one unassigned target."""
+    from app.db.models.face import Face, FaceIdentity
+    from app.db.models.photo import FileType, Photo
+    from app.db.models.user import User
+
+    user = User(username="rescan-user", email="rescan@example.com", hashed_password="unused")
+    session.add(user)
+    session.flush()
+
+    identity = FaceIdentity(identity_name="Known", owner_id=user.id)
+    session.add(identity)
+    session.flush()
+
+    reference_ids = []
+    for index, feature in enumerate(reference_features):
+        photo = Photo(
+            filename=f"ref{index}.jpg",
+            file_path=f"/ref{index}.jpg",
+            file_type=FileType.image,
+            owner_id=user.id,
+        )
+        session.add(photo)
+        session.flush()
+        face = Face(photo_id=photo.id, face_identity_id=identity.id, face_feature=feature)
+        session.add(face)
+        session.flush()
+        reference_ids.append(face.id)
+
+    target_photo = Photo(
+        filename="target.jpg",
+        file_path="/target.jpg",
+        file_type=FileType.image,
+        owner_id=user.id,
+    )
+    session.add(target_photo)
+    session.flush()
+    target = Face(photo_id=target_photo.id, face_feature=target_feature)
+    session.add(target)
+    session.commit()
+
+    return {
+        "owner_id": user.id,
+        "identity_id": identity.id,
+        "reference_ids": reference_ids,
+        "target_id": target.id,
+        "target_feature": target_feature,
+    }
+
+
 def _chain_query(all_value):
     q = MagicMock()
     q.filter.return_value = q
@@ -345,54 +395,64 @@ def test_apply_rescan_analysis_no_op_when_no_ids_selected():
 # ---------------------------------------------------------------------------
 
 
-def test_assign_face_to_identity_returns_none_when_distance_above_threshold():
-    target = np.array([1.0, 0.0])
-    # Far away face (orthogonal vector).
-    far_face = _face(99, np.array([0.0, 1.0]), identity_id="ident-1")
+def test_assign_face_to_identity_returns_none_when_distance_above_threshold(face_sqlite_session):
+    """An orthogonal reference face is far beyond the threshold -> no assignment."""
+    from app.service import face_cluster
 
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
-    db.query.return_value = _chain_query([far_face])
+    fixture = _seed_faces(
+        face_sqlite_session,
+        reference_features=[[0.0, 1.0] + [0.0] * 510],
+        target_feature=[1.0, 0.0] + [0.0] * 510,
+    )
 
     identity_cfg = MagicMock()
     identity_cfg.ai.face_cluster_threshold = 0.35
 
-    svc = _service(db)
+    svc = face_cluster.FaceClusterService(db=face_sqlite_session, user_id=None)
     with patch(
         "app.service.face_cluster.config_manager.get_user_config",
         return_value=identity_cfg,
     ), patch("app.service.face_cluster.crud_face.update_face") as update_spy:
-        result = svc.assign_face_to_identity(face_id=1, embedding=target.tolist(), owner_id=None)
+        result = svc.assign_face_to_identity(
+            face_id=fixture["target_id"],
+            embedding=fixture["target_feature"],
+            owner_id=fixture["owner_id"],
+        )
 
     assert result is None
     update_spy.assert_not_called()
 
 
-def test_assign_face_to_identity_sqlite_branch_skips_pgvector_order_by():
-    """SQLite path must not call .order_by on the pgvector extension."""
-    target = np.array([1.0, 0.0])
-    nearest = _face(42, np.array([1.0, 0.0]), identity_id=UUID("12345678-1234-5678-1234-567812345678"))
+def test_assign_face_to_identity_sqlite_branch_skips_pgvector_order_by(face_sqlite_session):
+    """SQLite must resolve the nearest neighbour without pgvector's <=> operator.
 
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
-    db.query.return_value = _chain_query([nearest])
+    Running against a real SQLite engine is the assertion: emitting the
+    pgvector operator here would raise an OperationalError.
+    """
+    from app.service import face_cluster
+
+    fixture = _seed_faces(
+        face_sqlite_session,
+        reference_features=[[1.0, 0.0] + [0.0] * 510],
+        target_feature=[1.0, 0.0] + [0.0] * 510,
+    )
 
     identity_cfg = MagicMock()
     identity_cfg.ai.face_cluster_threshold = 0.5
 
-    svc = _service(db)
+    svc = face_cluster.FaceClusterService(db=face_sqlite_session, user_id=None)
     with patch(
         "app.service.face_cluster.config_manager.get_user_config",
         return_value=identity_cfg,
     ), patch("app.service.face_cluster.crud_face.update_face") as update_spy:
-        result = svc.assign_face_to_identity(face_id=1, embedding=target.tolist(), owner_id=None)
+        result = svc.assign_face_to_identity(
+            face_id=fixture["target_id"],
+            embedding=fixture["target_feature"],
+            owner_id=fixture["owner_id"],
+        )
 
-    assert result == UUID("12345678-1234-5678-1234-567812345678")
+    assert result == fixture["identity_id"]
     update_spy.assert_called_once()
-    # SQLite branch must NOT invoke .order_by(cosine_distance(...))
-    for call in db.query.return_value.order_by.call_args_list:
-        args, _ = call
-        assert "cosine_distance" not in str(args)
 
 
 # ---------------------------------------------------------------------------

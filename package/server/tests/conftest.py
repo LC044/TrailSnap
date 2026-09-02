@@ -48,3 +48,34 @@ import pytest  # noqa: E402
 def ts_test_env() -> str:
     """当前测试环境标识（dev / docker / ci），供测试按环境分支。"""
     return os.environ.get("TS_TEST_ENV", "dev")
+
+
+@pytest.fixture()
+def face_sqlite_session(tmp_path):
+    """真实 SQLite 会话，供人脸向量路径的单测使用。
+
+    人脸聚类的 SQLite 分支会做流式游标读取 + 矩阵运算，MagicMock 无法忠实
+    模拟这类查询；用真实的 SQLite 才能验证行为而不是验证 mock 的形状。
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import app.db.models  # noqa: F401
+    from app.db.base import Base
+    from app.service.face_vector_cache import face_vector_cache
+
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / 'face.sqlite').as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, autoflush=False)()
+    # The embedding cache is process-wide; isolate it between tests.
+    face_vector_cache.invalidate()
+    try:
+        yield session
+    finally:
+        face_vector_cache.invalidate()
+        session.close()
+        engine.dispose()
+
