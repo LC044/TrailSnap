@@ -76,6 +76,9 @@ def _env_int(name: str, default: int) -> int:
 MAX_CACHED_ROWS = _env_int("TS_FACE_CACHE_MAX_ROWS", 150_000)
 # Rows pulled per streaming step, both for cache fill and for the uncached scan.
 STREAM_CHUNK_ROWS = _env_int("TS_FACE_STREAM_CHUNK", 8192)
+# Smallest buffer a shard reserves. Kept low so that many small owners (or a
+# long test session) cannot pin a large multiple of their actual row count.
+_MIN_SHARD_CAPACITY = 128
 
 
 def normalise_matrix(rows: np.ndarray) -> np.ndarray:
@@ -116,6 +119,11 @@ class _Shard:
         return self._size
 
     @property
+    def capacity(self) -> int:
+        """Rows backed by allocated memory (>= ``size``)."""
+        return self._buffer.shape[0]
+
+    @property
     def ids(self) -> np.ndarray:
         return self._ids[: self._size]
 
@@ -126,8 +134,9 @@ class _Shard:
     def _reserve(self, extra: int, dim: int) -> None:
         if self._dim is None:
             self._dim = dim
-            self._buffer = np.empty((max(extra, 1024), dim), dtype=np.float32)
-            self._ids = np.empty(max(extra, 1024), dtype=np.int64)
+            initial = max(extra, _MIN_SHARD_CAPACITY)
+            self._buffer = np.empty((initial, dim), dtype=np.float32)
+            self._ids = np.empty(initial, dtype=np.int64)
             return
         needed = self._size + extra
         capacity = self._buffer.shape[0]
@@ -196,15 +205,22 @@ class FaceVectorCache:
 
     # -- internals ---------------------------------------------------------
 
-    def _total_rows(self) -> int:
-        return sum(shard.size for shard in self._shards.values())
+    def _allocated_rows(self) -> int:
+        """Rows actually backed by memory, not just the ones in use.
+
+        Eviction has to account for capacity rather than ``size``: every shard
+        reserves at least ``_MIN_SHARD_CAPACITY`` rows up front, so a workload
+        with many small owners can pin far more memory than the logical row
+        count suggests.
+        """
+        return sum(shard.capacity for shard in self._shards.values())
 
     def _evict_until_fits(self, incoming: int, keep_key) -> None:
-        while self._shards and self._total_rows() + incoming > self._max_rows:
+        while self._shards and self._allocated_rows() + incoming > self._max_rows:
             victim_key, victim = next(iter(self._shards.items()))
-            if victim_key == keep_key and len(self._shards) == 1:
-                return
             if victim_key == keep_key:
+                if len(self._shards) == 1:
+                    return
                 self._shards.move_to_end(victim_key)
                 continue
             self._shards.pop(victim_key)
@@ -223,6 +239,9 @@ class FaceVectorCache:
             return None
         shard = self._shards.get(key)
         if shard is None:
+            # Reserving before the shard is registered keeps the new shard's own
+            # capacity out of the eviction budget it is being measured against.
+            self._evict_until_fits(_MIN_SHARD_CAPACITY, key)
             shard = _Shard()
             self._shards[key] = shard
         self._shards.move_to_end(key)
@@ -251,20 +270,31 @@ class FaceVectorCache:
         Cached libraries yield exactly one block; oversized ones yield a block
         per streamed chunk so memory stays bounded.
         """
+        # The matmul is computed while the lock is held, but the result is
+        # yielded after releasing it. Yielding inside the critical section would
+        # keep the lock for as long as the consumer takes to iterate -- and
+        # indefinitely if it abandons the generator early -- which would stall
+        # every other worker thread sharing this cache.
         with self._lock:
             shard = self._refresh(db, owner_id)
+            cached = shard is not None
+            block = None
             if shard is not None:
                 matrix = shard.matrix
-                ids = shard.ids
-                if matrix.shape[0] == 0 or matrix.shape[1] != queries.shape[1]:
-                    return
-                yield ids, matrix @ queries.T
-                return
+                if matrix.shape[0] and matrix.shape[1] == queries.shape[1]:
+                    # Copy the ids: the shard's buffer may be reallocated by a
+                    # later append while the consumer still holds this view.
+                    block = (shard.ids.copy(), matrix @ queries.T)
+
+        if cached:
+            if block is not None:
+                yield block[0], block[1]
+            return
 
         # Oversized library: stream and score chunk by chunk.
         for chunk_ids, vectors in _stream_rows(db, owner_id, 0):
-            block = _pack(vectors, queries.shape[1])
-            yield np.asarray(chunk_ids, dtype=np.int64), block @ queries.T
+            packed = _pack(vectors, queries.shape[1])
+            yield np.asarray(chunk_ids, dtype=np.int64), packed @ queries.T
 
     def invalidate(self, owner_id=None) -> None:
         """Drop cached rows. Only needed if embeddings are ever backfilled."""
@@ -281,7 +311,8 @@ class FaceVectorCache:
         with self._lock:
             return {
                 "shards": len(self._shards),
-                "rows": self._total_rows(),
+                "rows": sum(shard.size for shard in self._shards.values()),
+                "allocated_rows": self._allocated_rows(),
                 "max_rows": self._max_rows,
                 "oversized": sorted(self._oversized),
             }
