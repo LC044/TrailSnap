@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(GalleryBackupPlugin.class);
         registerPlugin(LanDiscoveryPlugin.class);
+        registerPlugin(AppUpdaterPlugin.class);
         super.onCreate(savedInstanceState);
         handleGalleryBackupAction(getIntent());
     }

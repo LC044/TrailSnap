@@ -72,3 +72,16 @@ async def check_update():
         "update_info": info.get("update_info", ""),
         "download_url": info.get("download_url"),
     }
+
+
+@router.get("/app-update-check")
+async def check_app_update_endpoint(version: str, platform: str = "android"):
+    """手机 App 自更新检查。
+
+    与 ``/update-check`` 不同：这里的 ``version`` 是 App 自身安装的
+    ``versionName``（由客户端传入），返回值携带 APK 直链和文件大小，
+    App 可以直接下载并唤起系统安装器。
+    """
+    from app.service.app_update import check_app_update
+
+    return await check_app_update(current_version=version, platform=platform)

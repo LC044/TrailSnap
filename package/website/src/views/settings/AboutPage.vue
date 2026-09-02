@@ -46,9 +46,12 @@
     <!-- 版本信息 -->
     <section class="space-y-4">
       <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">版本信息</h2>
-      <div class="flex items-center gap-4 text-slate-600 dark:text-slate-300">
+      <div class="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-300">
         <span class="font-semibold">当前版本：</span>
         <span>v{{ currentVersion }}</span>
+        <span v-if="appVersion" class="text-sm text-slate-500 dark:text-slate-400">
+          App v{{ appVersion }}
+        </span>
         <el-button type="primary" size="small" :loading="checking" @click="checkUpdate">
           检查更新
         </el-button>
@@ -114,11 +117,15 @@ import { ref, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { systemApi } from '@/api/system'
 import { getServerUrl, isNativeApp } from '@/config/server'
+import { useAppUpdate } from '@/composables/useAppUpdate'
 
 const currentVersion = ref('0.0.0') // Default placeholder
 const checking = ref(false)
 const serverUrl = getServerUrl()
 const nativeApp = isNativeApp()
+// Android 壳走 App 自更新（自己下载 APK 并唤起安装），Web / 桌面保持原有跳转逻辑。
+const appUpdate = useAppUpdate()
+const appVersion = appUpdate.currentVersion
 
 onMounted(async () => {
   try {
@@ -133,6 +140,13 @@ onMounted(async () => {
 const checkUpdate = async () => {
   checking.value = true
   try {
+    if (appUpdate.supported) {
+      const found = await appUpdate.checkForUpdate()
+      if (!found && !appUpdate.errorMessage.value) ElMessage.success('当前已是最新版本')
+      else if (!found) ElMessage.error(appUpdate.errorMessage.value)
+      return
+    }
+
     const data = await systemApi.checkUpdate()
     
     // Update current version in case it changed or was not loaded

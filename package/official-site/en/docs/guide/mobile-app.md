@@ -97,8 +97,23 @@ The Android hardware button or back gesture behaves in this order:
 
 ## Update the App
 
-Download the newer APK from GitHub Releases and install it over the existing version. An in-place update
-requires the same application ID and signing key, plus a newer version number.
+The Android app checks for updates on its own: a few seconds after launch it asks the connected TrailSnap
+server for the latest version. When a newer version exists, the app shows an update prompt with the release
+notes and an **Update now** action. Tapping it downloads the official package, shows download progress, and
+opens the system installer so you can confirm the in-place update.
+
+- The first update requires Android's "install unknown apps" permission. The app opens that settings page for
+  you; grant it, return to the app, and tap **Install** again.
+- You can cancel an in-flight download, or choose **Skip this version** to stop automatic reminders for it
+  (manual checks still work).
+- Automatic checks prompt at most once a day. To check immediately, go to **Settings → About → Check for
+  updates**.
+- The package is downloaded into the app cache directory and cleaned up after installation or on the next update.
+- Update checks require the server to reach the public version manifest. On a fully isolated network the app
+  cannot discover new versions, so use the manual path below.
+
+You can also update manually: download the newer APK from GitHub Releases and install it over the existing
+version. An in-place update requires the same application ID and signing key, plus a newer version number.
 
 A normal update keeps the saved server address and sign-in state. If Android reports a signature mismatch,
 do not uninstall immediately; first verify that the APK came from the official Release. Uninstalling clears
