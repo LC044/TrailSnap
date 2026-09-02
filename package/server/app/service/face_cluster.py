@@ -4,6 +4,7 @@ from sqlalchemy import select, func
 from sklearn.cluster import DBSCAN
 from app.db.models.face import Face, FaceIdentity
 from app.db.models.photo import Photo
+from app.service.face_vector_cache import face_vector_cache, normalise_matrix
 from app.crud import face as crud_face
 from app.schemas import face as schemas
 import logging
@@ -22,6 +23,11 @@ class FaceRescanError(RuntimeError):
 
 class FaceRescanConflictError(FaceRescanError):
     """Raised when a reviewed rescan selection is no longer valid."""
+
+
+# Number of top-similarity faces verified against the database per round when
+# resolving a nearest neighbour on SQLite.
+_NEAREST_WINDOW = 64
 
 
 from app.core.config_manager import config_manager
@@ -88,50 +94,45 @@ class FaceClusterService:
         :return: 匹配的Identity ID / None（无匹配）
         """
         target_emb = self.normalize_embedding(embedding)
-        
+
         try:
-            # 1. 利用pgvector <=> 操作符查找最近邻人脸（排除当前人脸，且必须有Identity）
-            # <=> 是 cosine distance
-            query = self.db.query(Face).join(Photo).filter(
-                Face.id != face_id,
-                Face.face_identity_id.isnot(None),
-                Face.is_deleted == False
-            )
-            
-            if owner_id:
-                query = query.filter(Photo.owner_id == owner_id)
-                
             if self.db.bind.dialect.name == "sqlite":
-                # SQLite stores vectors as JSON and has no pgvector <=> operator.
-                # Desktop libraries are expected to be smaller, so evaluate the
-                # filtered candidate set in memory.
-                candidates = query.all()
-                nearest_face = min(
-                    candidates,
-                    key=lambda item: 1.0 - float(np.dot(
-                        target_emb,
-                        self.normalize_embedding(item.face_feature),
-                    )),
-                    default=None,
-                )
+                # SQLite has no pgvector <=> operator. Score the whole library
+                # with one BLAS matmul against the cached embedding matrix
+                # instead of building an ORM entity per candidate.
+                nearest = self._sqlite_nearest_assigned_face(target_emb, face_id, owner_id)
+                if nearest is None:
+                    return None
+                nearest_face_id, best_match_id, dist = nearest
             else:
+                # 1. 利用pgvector <=> 操作符查找最近邻人脸（排除当前人脸，且必须有Identity）
+                # <=> 是 cosine distance
+                query = self.db.query(Face).join(Photo).filter(
+                    Face.id != face_id,
+                    Face.face_identity_id.isnot(None),
+                    Face.is_deleted == False
+                )
+
+                if owner_id:
+                    query = query.filter(Photo.owner_id == owner_id)
+
                 nearest_face = query.order_by(
                     Face.face_feature.cosine_distance(target_emb)
                 ).limit(1).first()
 
-            if not nearest_face:
-                # 无参考人脸，返回None由外部决定是否触发聚类
-                return None
+                if not nearest_face:
+                    # 无参考人脸，返回None由外部决定是否触发聚类
+                    return None
 
-            # 2. 计算距离
-            # 注意：数据库中的向量通常应该是归一化的，但为了保险起见，再次归一化
-            nearest_emb = self.normalize_embedding(nearest_face.face_feature)
-            dist = 1.0 - np.dot(target_emb, nearest_emb)
+                # 2. 计算距离
+                # 注意：数据库中的向量通常应该是归一化的，但为了保险起见，再次归一化
+                nearest_emb = self.normalize_embedding(nearest_face.face_feature)
+                dist = 1.0 - np.dot(target_emb, nearest_emb)
+                best_match_id = nearest_face.face_identity_id
 
             # 3. 判断是否匹配成功
             if dist < config_manager.get_user_config(owner_id, self.db).ai.face_cluster_threshold:
                 # 分配到已有Identity
-                best_match_id = nearest_face.face_identity_id
 
                 # 使用 update_face 更新
                 update_data = schemas.FaceUpdate(
@@ -156,6 +157,78 @@ class FaceClusterService:
         except Exception as e:
             logger.error(f"分配Identity异常：{str(e)}", exc_info=True)
             raise
+
+    def _resolve_assigned_candidates(
+        self,
+        candidate_ids: np.ndarray,
+        owner_id: uuid.UUID | None,
+    ) -> dict:
+        """Map a small id window to its identity, keeping only eligible faces."""
+        if candidate_ids.size == 0:
+            return {}
+        query = self.db.query(Face.id, Face.face_identity_id).filter(
+            Face.id.in_([int(value) for value in candidate_ids]),
+            Face.face_identity_id.isnot(None),
+            Face.is_deleted.is_(False),
+        )
+        if owner_id:
+            query = query.join(Photo).filter(Photo.owner_id == owner_id)
+        return {int(row[0]): row[1] for row in query.all()}
+
+    def _sqlite_nearest_assigned_face(
+        self,
+        target_emb: np.ndarray,
+        face_id: int,
+        owner_id: uuid.UUID | None,
+    ) -> tuple[int, uuid.UUID, float] | None:
+        """Vectorised nearest-neighbour lookup over the cached embedding matrix.
+
+        Only the most similar candidates are checked against the database.
+        Listing every assigned face up front would rebuild an ORM row per
+        library face on every call, which dominated the runtime and defeated
+        the point of the matmul.
+        """
+        queries = np.ascontiguousarray(target_emb, dtype=np.float32).reshape(1, -1)
+        id_blocks = []
+        score_blocks = []
+        for ids, scores in face_vector_cache.similarities(self.db, owner_id, queries):
+            keep = ids != face_id
+            if not keep.any():
+                continue
+            id_blocks.append(ids[keep])
+            score_blocks.append(scores[:, 0][keep])
+
+        if not id_blocks:
+            return None
+        ids = np.concatenate(id_blocks)
+        scores = np.concatenate(score_blocks)
+        total = int(ids.size)
+        if total == 0:
+            return None
+
+        # Widen the verification window geometrically. In practice the true
+        # neighbour is in the first window; the loop only grows when most of
+        # the library is still unassigned.
+        scanned = 0
+        while scanned < total:
+            limit = min(max(_NEAREST_WINDOW, scanned * 8), total)
+            if limit < total:
+                window = np.argpartition(-scores, limit - 1)[:limit]
+            else:
+                window = np.arange(total)
+            window = window[np.argsort(-scores[window])][scanned:limit]
+            if window.size:
+                resolved = self._resolve_assigned_candidates(ids[window], owner_id)
+                if resolved:
+                    # ``window`` is sorted by descending similarity, so the
+                    # first eligible hit is the nearest neighbour.
+                    for offset in window:
+                        identity_id = resolved.get(int(ids[offset]))
+                        if identity_id is not None:
+                            distance = float(np.clip(1.0 - float(scores[offset]), 0.0, 2.0))
+                            return int(ids[offset]), identity_id, distance
+            scanned = limit
+        return None
 
     def preview_identity_rescan(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None) -> dict:
         """Return add/remove candidates without changing any face assignment."""
@@ -510,19 +583,10 @@ class FaceClusterService:
     ) -> set[int]:
         """Use pgvector distance predicates so non-matching library faces never leave PostgreSQL."""
         distance_threshold = self.DISTANCE_THRESHOLD if threshold is None else threshold
+        if not prototypes:
+            return set()
         if self.db.bind.dialect.name == "sqlite":
-            query = self.db.query(Face).join(Photo).filter(
-                Face.is_deleted.is_(False),
-                Face.face_feature.isnot(None),
-                Photo.is_deleted.is_(False),
-            )
-            if owner_id:
-                query = query.filter(Photo.owner_id == owner_id)
-            candidates = query.all()
-            return {
-                face.id for face in candidates
-                if any(self._cosine_distance(face.face_feature, prototype) <= distance_threshold for prototype in prototypes)
-            }
+            return self._sqlite_find_matching_face_ids(prototypes, owner_id, distance_threshold)
         face_ids = set()
         for prototype in prototypes:
             distance = Face.face_feature.cosine_distance(prototype.tolist())
@@ -536,6 +600,45 @@ class FaceClusterService:
                 query = query.filter(Photo.owner_id == owner_id)
             face_ids.update(row[0] for row in query.all())
         return face_ids
+
+    def _live_face_ids(self, owner_id: uuid.UUID | None) -> np.ndarray:
+        """Ids of non-deleted faces on non-deleted photos (scalar-only query)."""
+        query = self.db.query(Face.id).join(Photo).filter(
+            Face.is_deleted.is_(False),
+            Face.face_feature.isnot(None),
+            Photo.is_deleted.is_(False),
+        )
+        if owner_id:
+            query = query.filter(Photo.owner_id == owner_id)
+        return np.fromiter((row[0] for row in query.all()), dtype=np.int64)
+
+    def _sqlite_find_matching_face_ids(
+        self,
+        prototypes: list[np.ndarray],
+        owner_id: uuid.UUID | None,
+        distance_threshold: float,
+    ) -> set[int]:
+        """Score every prototype against the cached matrix in one matmul.
+
+        The pre-8adff5d SQLite fallback compared raw ``face_feature`` values
+        against normalised prototypes, so the cosine distance was scaled by the
+        candidate's norm and matches were silently missed. Both sides are
+        normalised here.
+        """
+        live = self._live_face_ids(owner_id)
+        if live.size == 0:
+            return set()
+
+        queries = np.ascontiguousarray(np.vstack(prototypes), dtype=np.float32)
+        queries = normalise_matrix(queries.copy())
+        min_similarity = 1.0 - distance_threshold
+
+        matched: set[int] = set()
+        for ids, scores in face_vector_cache.similarities(self.db, owner_id, queries):
+            best = scores.max(axis=1)
+            hit = (best >= min_similarity) & np.isin(ids, live, assume_unique=False)
+            matched.update(int(value) for value in ids[hit])
+        return matched
 
     def _repair_default_faces(self, identity_ids: set[uuid.UUID]) -> None:
         for identity in self.db.query(FaceIdentity).filter(FaceIdentity.id.in_(identity_ids)).all():
@@ -573,11 +676,24 @@ class FaceClusterService:
         """
         try:
             # 1. 查询未分配的人脸
-            unassigned_faces = self.db.query(Face).filter(
+            unassigned_query = self.db.query(Face).filter(
                 Face.face_identity_id == None,
                 Face.is_deleted == False,
                 Face.face_feature.isnot(None)
-            ).all()
+            )
+            if owner_id:
+                # Without this filter the DBSCAN input mixed every user's faces
+                # together, which both leaked data across accounts and made the
+                # O(n^2) distance matrix far larger than it needed to be.
+                unassigned_query = unassigned_query.filter(
+                    Face.photo_id.in_(
+                        self.db.query(Photo.id).filter(
+                            Photo.owner_id == owner_id,
+                            Photo.is_deleted.is_(False),
+                        )
+                    )
+                )
+            unassigned_faces = unassigned_query.all()
 
             face_count = len(unassigned_faces)
             if face_count < self.DBSCAN_MIN_SAMPLES:

@@ -66,7 +66,11 @@ def test_analyze_identity_rescan_no_remove_candidates_when_under_threshold():
 
     with patch("app.service.face_cluster.crud_face.get_identity", return_value=identity):
         svc = _service(db)
-        out = svc._analyze_identity_rescan("ident-2", owner_id=None, lock=False)
+        # Candidate discovery is exercised against a real SQLite engine in
+        # test_face_cluster_sqlite_vectorized.py; stub it out here so this test
+        # stays focused on the removal-threshold branch.
+        with patch.object(svc, "_find_matching_face_ids", return_value=set()):
+            out = svc._analyze_identity_rescan("ident-2", owner_id=None, lock=False)
 
     assert out["remove_candidates"] == []
     assert isinstance(out["prototypes"], list)

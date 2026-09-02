@@ -186,6 +186,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
 
                             cluster_service = FaceClusterService(db, owner_id)
                             threshold = config_manager.get_user_config(owner_id, db).ai.face_recognition_threshold
+                            batch_has_unassigned = False
 
                             for idx, task in enumerate(valid_tasks):
                                 photo = valid_photos[idx]
@@ -230,12 +231,14 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                         except Exception as ce:
                                             logger.error(f"Clustering failed for face {face.id}: {ce}")
                                 if has_unassigned:
+                                    # Defer clustering to the end of the batch:
+                                    # process_unassigned_faces rescans every
+                                    # unassigned face in the library, so running
+                                    # it per photo repeated the same O(n^2)
+                                    # DBSCAN once per photo.
+                                    batch_has_unassigned = True
                                     db.commit()
-                                    try:
-                                        cluster_service.process_unassigned_faces(owner_id)
-                                    except Exception as ce:
-                                        logger.error(f"Batch clustering failed: {ce}")
-                                        
+
                                 tasks_status = dict(photo.processed_tasks or {})
                                 tasks_status['face'] = True
                                 photo.processed_tasks = tasks_status
@@ -252,6 +255,12 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     'status': 'completed',
                                     'result': {'status': 'success', 'faces_found': count}
                                 })
+
+                            if batch_has_unassigned:
+                                try:
+                                    cluster_service.process_unassigned_faces(owner_id)
+                                except Exception as ce:
+                                    logger.error(f"Batch clustering failed: {ce}")
                         else:
                             err_msg = f"AI Service error: {resp.status}"
                             for task in valid_tasks:
