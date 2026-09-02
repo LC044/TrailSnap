@@ -54,6 +54,11 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
         # 2. Extract metadata (BASIC ONLY)
         file_name = os.path.basename(file_path)
         meta = exif.extract_metadata(file_path, file_name, image_obj=image_obj, extract_location_details=False)
+        # 视频的宽高/时长已由容器解析（moov/tkhd + mdhd）拿到，直接复用可省掉
+        # get_image_dimensions 里那次额外的 cv2.VideoCapture 打开。
+        meta_width = meta.get("width")
+        meta_height = meta.get("height")
+        meta_duration = meta.get("duration")
         if meta.get("exif_info"):
             # Serialize for storage
             # Convert non-serializable objects to string
@@ -64,7 +69,14 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             meta['exif_info'] = json.dumps(meta["exif_info"], default=default_serializer, ensure_ascii=False)
         # 3. Get dimensions/size
         size = storage.get_file_size(file_path)
-        width, height, duration = storage.get_image_dimensions(file_path, image_obj=image_obj)
+        if meta_width and meta_height and meta_duration:
+            width, height, duration = meta_width, meta_height, meta_duration
+        else:
+            width, height, duration = storage.get_image_dimensions(file_path, image_obj=image_obj)
+            # cv2 读不到时（未装 opencv / 容器异常）用容器解析结果兜底
+            width = width or meta_width
+            height = height or meta_height
+            duration = duration or meta_duration
 
         # 4. Extract color/emotion info (while image_obj is still open)
         color_info = None

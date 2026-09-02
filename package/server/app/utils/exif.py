@@ -25,7 +25,11 @@ import json
 import reverse_geocoder as rg
 
 from app.utils.filename import extract_datetime_from_filename
+from app.utils import video_meta
 from app.core.paths import RG_DATA_DIR as RG_DIR
+
+# 图片扩展名白名单（Pillow + pillow-heif 可解码的范围）
+IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.tiff', '.webp', '.png', '.heic', '.heif')
 
 def _convert_to_degrees(value):
     """
@@ -184,13 +188,34 @@ def reverse_geocode(lat: float, lng: float) -> dict:
     return {}
 
 
+def _attach_location_details(metadata: Dict[str, Any], gps: Optional[Dict[str, float]],
+                             extract_location_details: bool) -> None:
+    """把 GPS 写入 metadata，并按需补上逆地理编码结果。
+
+    图片与视频两条分支共用，保证视频的位置信息也能进入 city/province/scene 链路。
+    """
+    metadata["location"] = gps
+    if not (gps and extract_location_details):
+        return
+    loc = reverse_geocode(gps["latitude"], gps["longitude"])
+    if loc:
+        loc["latitude"] = gps["latitude"]
+        loc["longitude"] = gps["longitude"]
+        metadata["location_details"] = loc
+
+
 def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Image] = None, extract_location_details: bool = True) -> Dict[str, Any]:
     """
     Extracts photo_time, exif_info, and location from the file.
+
+    图片走 EXIF，视频走 ISO BMFF (MP4/MOV) 的 moov/udta/meta 解析，两者写入同一份
+    metadata 结构，因此下游的时间回退、逆地理编码、入库映射全部共用。
+
     Priority:
-    1. EXIF DateTimeOriginal
+    1. EXIF DateTimeOriginal（图片） / CreateDate 或 mvhd creation_time（视频）
     2. Filename (YYYYMMDD_HHMMSS or YYYYMMDD)
-    3. Current Time
+    3. File mtime
+    4. Current Time
     """
     metadata = {
         "photo_time": None,
@@ -200,9 +225,10 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
         "height": None
     }
 
-    # 1. Try EXIF
+    # 1. Try EXIF (image) / container metadata (video)
     try:
-        if file_path.lower().endswith(('.jpg', '.jpeg', '.tiff', '.webp', '.png', '.heic', '.heif')):
+        lower_path = file_path.lower()
+        if lower_path.endswith(IMAGE_EXTENSIONS):
             exif_dict = None
             img = None
             should_close = False
@@ -234,14 +260,26 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
                         pass
 
                 # Extract GPS
-                gps = get_gps_info(exif_dict)
-                metadata["location"] = gps
-                if gps and extract_location_details:
-                    loc = reverse_geocode(gps["latitude"], gps["longitude"])
-                    if loc:
-                        loc["latitude"] = gps["latitude"]
-                        loc["longitude"] = gps["longitude"]
-                        metadata["location_details"] = loc
+                _attach_location_details(metadata, get_gps_info(exif_dict), extract_location_details)
+
+        elif video_meta.is_video_file(file_path):
+            # AVI/MKV/WEBM 不是 ISO BMFF，extract_video_metadata 会返回空结果，
+            # 此时自然落到下面的文件名 / mtime 回退。
+            v_meta = video_meta.extract_video_metadata(file_path)
+
+            if v_meta.get("video_info"):
+                metadata["exif_info"] = v_meta["video_info"]
+            if v_meta.get("video_time"):
+                metadata["photo_time"] = v_meta["video_time"]
+            if v_meta.get("width"):
+                metadata["width"] = v_meta["width"]
+            if v_meta.get("height"):
+                metadata["height"] = v_meta["height"]
+            for key in ("duration", "fps", "codec", "rotation"):
+                if v_meta.get(key) is not None:
+                    metadata[key] = v_meta[key]
+
+            _attach_location_details(metadata, v_meta.get("location"), extract_location_details)
 
     except Exception as e:
         print(traceback.format_exc())
