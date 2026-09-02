@@ -99,7 +99,7 @@ test.describe('手机 App 首次启动 @p0', () => {
 })
 
 test.describe('手机 App 服务器断连 @p0', () => {
-  test('已登录时连接失败会保留服务器地址并返回登录页', async ({ page }) => {
+  test('已登录时瞬时连接失败会保留会话和当前页面', async ({ page }) => {
     await page.addInitScript(() => {
       ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
         name: 'android',
@@ -111,12 +111,10 @@ test.describe('手机 App 服务器断连 @p0', () => {
 
     await page.goto('/photos', { waitUntil: 'domcontentloaded' })
 
-    await expect(page).toHaveURL(url =>
-      url.pathname === '/login' &&
-      url.searchParams.get('reason') === 'server-unreachable' &&
-      url.searchParams.get('redirect') === '/photos',
-    )
-    await expect(page.getByTestId('server-address')).toHaveValue('http://192.168.1.10:8082')
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token'))).toBeNull()
+    await expect(page).toHaveURL(url => url.pathname === '/photos')
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('trailsnap:server-url')))
+      .toBe('http://192.168.1.10:8082')
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token')))
+      .toBe('expired-offline-session')
   })
 })

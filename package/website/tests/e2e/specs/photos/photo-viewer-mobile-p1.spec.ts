@@ -40,16 +40,56 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     })
   }
 
+  test('长按照片进入多选，日期选择框仅在选择模式显示', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 2, 20)
+    if (!probe.ok) return
+    await page.addInitScript(() => localStorage.setItem('trailsnap_mobile_grid_columns', '3'))
+    await page.goto('/photos')
+
+    const card = page.locator('[data-photo-id]').first()
+    await expect(card).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByTestId('photo-date-checkbox')).toHaveCount(0)
+
+    const box = await card.boundingBox()
+    expect(box).not.toBeNull()
+    const point = { clientX: box!.x + box!.width / 2, clientY: box!.y + box!.height / 2 }
+    await card.dispatchEvent('touchstart', {
+      touches: [{ identifier: 1, ...point }],
+      changedTouches: [{ identifier: 1, ...point }],
+    })
+    await page.waitForTimeout(500)
+    await card.dispatchEvent('touchend', {
+      touches: [],
+      changedTouches: [{ identifier: 1, ...point }],
+    })
+
+    await expect(page.getByTestId('photo-selection-bar')).toBeVisible()
+    await expect(page.getByTestId('photo-date-checkbox').first()).toBeVisible()
+    await expect(page.getByTestId('photo-lightbox-media')).toHaveCount(0)
+  })
+
   test('左右滑动切换照片，点击照片切换工具栏显隐', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 2, 20)
     if (!probe.ok) return
     const media = await openFirstPhoto(page)
     const toolbar = page.getByTestId('photo-lightbox-toolbar')
+    const thumbnails = page.getByTestId('photo-lightbox-thumbnails')
     await expect(toolbar).toBeVisible()
+    await expect(thumbnails).toBeVisible()
+    expect(await thumbnails.getByRole('button').count()).toBeGreaterThan(1)
 
-    const image = media.locator('img').first()
+    const image = page.getByTestId('photo-lightbox-current-image')
+    await expect(image).toBeInViewport()
+    const mediaBox = await media.boundingBox()
+    const imageBox = await image.boundingBox()
+    expect(mediaBox).not.toBeNull()
+    expect(imageBox).not.toBeNull()
+    expect(Math.abs((imageBox!.x + imageBox!.width / 2) - (mediaBox!.x + mediaBox!.width / 2))).toBeLessThan(2)
     const firstSrc = await image.getAttribute('src')
+    const track = page.getByTestId('photo-lightbox-track')
+    const initialTransform = await track.evaluate(element => getComputedStyle(element).transform)
     await swipe(media, 320, 70)
+    await expect.poll(() => track.evaluate(element => getComputedStyle(element).transform)).not.toBe(initialTransform)
     await expect.poll(() => image.getAttribute('src')).not.toBe(firstSrc)
 
     await swipe(media, 70, 320)
@@ -60,8 +100,10 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await page.waitForTimeout(400)
     await media.click({ position: { x: 195, y: 420 } })
     await expect(toolbar).toBeHidden()
+    await expect(thumbnails).toBeHidden()
     await media.click({ position: { x: 195, y: 420 } })
     await expect(toolbar).toBeVisible()
+    await expect(thumbnails).toBeVisible()
   })
 
   test('浏览器返回键优先关闭照片查看器并停留在当前页面', async ({ page, request }, testInfo) => {

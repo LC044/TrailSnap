@@ -8,7 +8,7 @@ import axios, {
 import { ElMessage } from 'element-plus';
 import router from '@/router';
 import { useUserStore } from '@/stores/user';
-import { getServerUrl, hasConfiguredServer, isMobileApp, isNativeApp, isTauriApp } from '@/config/server';
+import { getServerUrl, hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
 
 // 创建 Axios 实例（类型不变）
 const service: AxiosInstance = axios.create({
@@ -152,27 +152,12 @@ service.interceptors.response.use(
         }
       }
     } else if (error.request) {
-      const currentRoute = router.currentRoute.value;
-      const publicPages = ['/login', '/register', '/forgot-password'];
-      const userStore = useUserStore();
-      const shouldReturnToLogin =
-        isMobileApp() &&
-        Boolean(userStore.token) &&
-        !publicPages.some(path => currentRoute.path.startsWith(path));
-
-      if (shouldReturnToLogin) {
-        errorMsg = '无法连接服务器，已返回登录页，请检查或切换服务器地址';
-        // During the initial app bootstrap, Pinia providers may request data
-        // before Vue Router has resolved the address bar and still report '/'.
-        const browserPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        const redirect = currentRoute.fullPath === '/' && browserPath !== '/'
-          ? browserPath
-          : currentRoute.fullPath;
-        userStore.clearSession();
-        await router.replace({ path: '/login', query: { redirect, reason: 'server-unreachable' } });
-      } else {
-        errorMsg = '请求超时，请检查网络';
-      }
+      // No HTTP response means the server or network is temporarily
+      // unavailable; it says nothing about whether the token is valid.  In
+      // particular, a backup upload can briefly saturate/restart a service.
+      // Preserve the mobile session and current route so the user can retry
+      // when connectivity returns.  A real HTTP 401 above still logs out.
+      errorMsg = '无法连接服务器，请检查网络后重试（登录状态已保留）';
     }
     ElMessage.error(errorMsg);
     return Promise.reject(error);

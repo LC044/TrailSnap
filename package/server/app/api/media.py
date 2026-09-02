@@ -51,12 +51,26 @@ def check_mobile_backup_assets(
         raise HTTPException(status_code=400, detail="keys must be a string array with at most 200 items")
     normalized = list(dict.fromkeys(key[:255] for key in keys if key))
     if not normalized:
-        return BaseResponse.success(data={"existing": []})
-    rows = db.query(Photo.backup_key).filter(
+        return BaseResponse.success(data={"existing": [], "complete": [], "live_photos": []})
+    rows = db.query(Photo.backup_key, Photo.file_type, Photo.file_path).filter(
         Photo.owner_id == current_user.id,
         Photo.backup_key.in_(normalized),
     ).all()
-    return BaseResponse.success(data={"existing": [row[0] for row in rows]})
+    existing: list[str] = []
+    complete: list[str] = []
+    live_photos: list[str] = []
+    for backup_key, file_type, file_path in rows:
+        existing.append(backup_key)
+        if not file_path or not os.path.isfile(file_path):
+            continue
+        complete.append(backup_key)
+        if file_type == FileType.live_photo and storage.get_live_photo_vide(file_path):
+            live_photos.append(backup_key)
+    return BaseResponse.success(data={
+        "existing": existing,
+        "complete": complete,
+        "live_photos": live_photos,
+    })
 
 
 def _geojson_path(level_cn: str) -> str:
@@ -159,7 +173,7 @@ async def get_live_photo_video(
     file_path = os.path.splitext(thumb_path)[0] + '.mp4'
 
     ext = os.path.splitext(photo.file_path)[1].lower()
-    if ext in ('.jpg', 'jpeg'):
+    if ext in ('.jpg', '.jpeg'):
         file_path = os.path.splitext(photo.file_path)[0] + '.mp4'
         exists = await run_in_threadpool(os.path.exists, file_path)
         if not exists:
@@ -354,8 +368,15 @@ def _attach_live_photo_video(
     # redacted/transcoded MediaStore stream even when it already has this path.
     os.makedirs(os.path.dirname(target_path), exist_ok=True)
     storage.validate_target_path(target_path)
-    with open(target_path, 'wb') as output:
-        shutil.copyfileobj(video.file, output)
+    temporary_path = target_path + f'.{uuid.uuid4().hex}.uploading'
+    storage.validate_target_path(temporary_path)
+    try:
+        with open(temporary_path, 'wb') as output:
+            shutil.copyfileobj(video.file, output)
+        os.replace(temporary_path, target_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
 
     image_photo.file_type = FileType.live_photo
     db.commit()
