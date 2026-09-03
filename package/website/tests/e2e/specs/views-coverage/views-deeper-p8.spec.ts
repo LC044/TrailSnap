@@ -125,7 +125,9 @@ test.describe("Tokens 令牌管理 @views-coverage", () => {
     // 这里额外把窗口调成 mobile 宽度以覆盖 md:hidden 空态分支
     await page.setViewportSize({ width: 390, height: 844 })
     await page.reload()
-    await clickSettingTab(page, "tokens")
+    // 多级设置在窄屏刷新后会根据 #tokens 直接恢复令牌详情页，
+    // 不再渲染旧版顶部 Tab，因此无需重复点击入口。
+    await expect(page).toHaveURL(/\/settings#tokens$/)
 
     await expect(page.getByText("暂无令牌")).toBeVisible({ timeout: 15_000 })
     const createBtn = page.getByRole("button", { name: "创建第一个令牌" })

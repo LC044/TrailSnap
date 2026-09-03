@@ -193,3 +193,35 @@ def test_check_update_returns_error_payload_when_fetch_returns_none():
     assert result["has_update"] is False
     assert result["error"] == "Failed to check for updates"
 
+
+# ----------------------------- /app-update-check --------------------------
+
+
+def test_check_app_update_endpoint_passes_client_version_and_platform():
+    """App 自更新用的是客户端 versionName，而不是服务端 VERSION。"""
+    payload = {"has_update": True, "download_url": "http://dl/apk", "size": 1024}
+    captured = {}
+
+    async def _fake_check(current_version, platform):
+        captured["current_version"] = current_version
+        captured["platform"] = platform
+        return payload
+
+    with patch("app.service.app_update.check_app_update", side_effect=_fake_check):
+        result = asyncio.run(
+            system_api.check_app_update_endpoint(version="0.11.0", platform="android")
+        )
+
+    assert captured == {"current_version": "0.11.0", "platform": "android"}
+    assert result is payload
+
+
+def test_check_app_update_endpoint_defaults_to_android():
+    async def _fake_check(current_version, platform):
+        return {"platform": platform}
+
+    with patch("app.service.app_update.check_app_update", side_effect=_fake_check):
+        result = asyncio.run(system_api.check_app_update_endpoint(version="0.12.1"))
+
+    assert result["platform"] == "android"
+

@@ -16,6 +16,7 @@ from app.db.session import SessionLocal
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.image_description import ImageDescription
+from app.db.models.image_vector import ImageVector
 from app.crud import agent as agent_crud
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,10 @@ MAX_MEMORY_ANCHORS = 30
 # 只有 memory_score 达到该阈值的照片才能成为记忆锚点
 MIN_MEMORY_SCORE = 60.0
 MEMORY_VERSION = 1
+# 语义检索时注入 system prompt 的记忆条数上限
+MEMORY_TOP_K = 6
+# 照片向量与查询向量的 cosine 距离超过该值视为不相关，直接过滤
+MEMORY_MAX_DISTANCE = 0.9
 
 
 def _empty_memory() -> Dict[str, Any]:
@@ -82,9 +87,75 @@ def get_valid_memory_anchors(db: Session, user_id: str) -> List[Dict[str, Any]]:
     return valid_anchors
 
 
-def build_memory_prompt(db: Session, user_id: str) -> str:
-    """生成注入 system prompt 的记忆片段，无有效记忆时返回空字符串。"""
+def get_relevant_memory_anchors(
+    db: Session, user_id: str, user_input: str, top_k: int = MEMORY_TOP_K
+) -> List[Dict[str, Any]]:
+    """
+    语义记忆检索：用当前用户输入的文本向量，在记忆锚点对应的照片向量（CLIP，跨模态）中
+    检索最相关的 top-k 条记忆。
+
+    实现要点（不改动数据库）：
+      - 记忆锚点本身没有独立向量，但每条锚点携带 photo_id；
+      - image_vectors 表中存有每张照片的 CLIP embedding；
+      - CLIP 文本/图像共享同一向量空间，因此可用文本 query 直接与照片向量做 cosine 检索。
+
+    任何异常（如 embedding 服务不可用、无向量数据）都回退到"全部有效锚点"，保证对话不受影响。
+    """
     anchors = get_valid_memory_anchors(db, user_id)
+    if not anchors:
+        return []
+
+    # query 为空或锚点数不多时，检索无意义，直接返回全部
+    if not user_input or not user_input.strip() or len(anchors) <= top_k:
+        return anchors
+
+    try:
+        from app.utils.embedding import get_embedding
+
+        anchor_by_pid = {a.get("photo_id"): a for a in anchors if a.get("photo_id")}
+        photo_ids = list(anchor_by_pid.keys())
+        if not photo_ids:
+            return anchors
+
+        embedding = get_embedding(user_input, user_id, db)
+        distance = ImageVector.embedding.cosine_distance(embedding)
+
+        rows = (
+            db.query(ImageVector.photo_id, distance.label("distance"))
+            .filter(ImageVector.photo_id.in_(photo_ids))
+            .order_by(distance.asc())
+            .limit(top_k)
+            .all()
+        )
+
+        relevant: List[Dict[str, Any]] = []
+        for photo_id, dist in rows:
+            if dist is not None and float(dist) > MEMORY_MAX_DISTANCE:
+                continue
+            anchor = anchor_by_pid.get(str(photo_id))
+            if anchor:
+                relevant.append(anchor)
+
+        # 检索命中为空（全部被距离阈值过滤）时，回退到时间上最近的若干条，避免无记忆可用
+        if not relevant:
+            return anchors[-top_k:]
+        return relevant
+    except Exception as e:
+        logger.warning(f"语义记忆检索失败，回退到全部有效锚点：{e}")
+        return anchors
+
+
+def build_memory_prompt(db: Session, user_id: str, user_input: Optional[str] = None) -> str:
+    """
+    生成注入 system prompt 的记忆片段，无有效记忆时返回空字符串。
+
+    传入 user_input 时启用语义检索，仅注入与当前问题最相关的若干条记忆（节省上下文）；
+    不传时退化为注入全部有效锚点（兼容旧行为）。
+    """
+    if user_input:
+        anchors = get_relevant_memory_anchors(db, user_id, user_input)
+    else:
+        anchors = get_valid_memory_anchors(db, user_id)
     if not anchors:
         return ""
 

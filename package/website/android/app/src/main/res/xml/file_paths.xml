@@ -2,4 +2,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
+    <!-- App 自动更新下载的 APK，需要以 content:// 授权给系统安装器 -->
+    <cache-path name="app_update" path="app-update/" />
 </paths>

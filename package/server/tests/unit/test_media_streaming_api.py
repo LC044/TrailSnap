@@ -61,6 +61,25 @@ async def test_get_live_photo_video_dispatches_full_file_response(tmp_path):
     assert response is not None
 
 
+@pytest.mark.asyncio
+async def test_get_live_photo_video_uses_mp4_companion_for_jpeg(tmp_path):
+    photo_id = uuid4()
+    image = tmp_path / "live.jpeg"
+    video = tmp_path / "live.mp4"
+    image.write_bytes(b"image-bytes")
+    video.write_bytes(b"video-bytes")
+    photo = _photo(file_path=str(image))
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = photo
+
+    with patch.object(media_api, "_get_thumbnail_path", return_value=str(tmp_path / "thumb.webp")):
+        response = await media_api.get_live_photo_video(
+            photo_id, request=MagicMock(), db=db, range=None
+        )
+
+    assert response.path == str(video)
+
+
 # ---------------- get_media_file ----------------
 
 

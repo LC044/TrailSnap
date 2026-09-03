@@ -1,17 +1,17 @@
 <template>
-  <div class="space-y-6">
-    <div>
+  <div class="space-y-5">
+    <div v-if="!embedded">
       <h1 class="text-xl font-bold text-gray-800 dark:text-white md:text-2xl">备份设置</h1>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">设置手机图库的备份范围和服务器目录结构。</p>
     </div>
 
-    <section v-if="!supported" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+    <section v-if="!supported" class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
       <p class="font-medium text-gray-800 dark:text-white">当前平台暂不支持图库备份设置</p>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">请在 Android 原生 APP 中配置本地相册范围。</p>
     </section>
 
     <template v-else>
-      <section class="space-y-5 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <section class="space-y-4 overflow-hidden rounded-2xl bg-white px-4 py-1 shadow-sm dark:bg-gray-800">
         <div v-for="(item, index) in switchOptions" :key="item.key" class="flex items-center justify-between gap-4" :class="index > 0 && 'border-t border-gray-100 pt-5 dark:border-gray-700'">
           <div>
             <p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ item.title }}</p>
@@ -21,13 +21,13 @@
         </div>
       </section>
 
-      <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <section class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
         <h2 class="font-medium text-gray-800 dark:text-white">服务器保存路径</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">填写服务器照片目录下的相对路径，例如“手机备份”。</p>
         <el-input v-model="form.folder" class="mt-4" placeholder="手机备份" maxlength="120" />
       </section>
 
-      <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <section class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
         <h2 class="font-medium text-gray-800 dark:text-white">目的地整理方式</h2>
         <div class="mt-4 grid gap-3 md:grid-cols-3">
           <button
@@ -45,7 +45,7 @@
         </div>
       </section>
 
-      <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+      <section class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="font-medium text-gray-800 dark:text-white">备份源</h2>
@@ -81,7 +81,7 @@
         </div>
       </section>
 
-      <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center justify-between gap-3 pb-2">
         <button type="button" class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" :disabled="running" @click="rescan">重置当前范围的增量记录</button>
         <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm text-white shadow-primary-500/20 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="save">保存设置</button>
       </div>
@@ -94,6 +94,9 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { galleryBackupNative, type GallerySourceFolder } from '@/native/galleryBackup'
 import { useGalleryBackup, type BackupOrganizeMode, type GalleryBackupSettings } from '@/composables/useGalleryBackup'
+
+withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
+const emit = defineEmits<{ saved: [] }>()
 
 const backup = useGalleryBackup()
 const { supported, settings, running } = backup
@@ -159,6 +162,7 @@ const save = async () => {
   await backup.saveSettings({ ...form, sourcePaths: sourceMode.value === 'all' ? [] : [...form.sourcePaths] })
   ElMessage.success('备份设置已保存')
   if (form.enabled) void backup.runBackup()
+  emit('saved')
 }
 const rescan = async () => {
   try {

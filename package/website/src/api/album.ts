@@ -117,6 +117,7 @@ export const albumService = {
     if (replaceExisting) formData.append('replace_existing', 'true');
     const data = await request.post<Photo>('/api/medias', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
     });
     return data.data;
@@ -132,6 +133,7 @@ export const albumService = {
     if (folder) formData.append('folder', folder);
     const data = await request.post<Photo>('/api/medias', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
       onUploadProgress: event => onProgress?.(event.loaded, event.total),
     });
     return data.data;
@@ -159,6 +161,7 @@ export const albumService = {
       formData.append('chunk_index', chunkIndex.toString());
       formData.append('file', chunk);
       await request.post('/api/medias/upload/chunk', formData, {
+        timeout: 120000,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
       });
   },
@@ -173,7 +176,7 @@ export const albumService = {
       if (folder) formData.append('folder', folder);
       if (backupKey) formData.append('backup_key', backupKey);
       if (replaceExisting) formData.append('replace_existing', 'true');
-      const data = await request.post<Photo>('/api/medias/upload/finish', formData);
+      const data = await request.post<Photo>('/api/medias/upload/finish', formData, { timeout: 120000 });
       return data.data;
   },
 
@@ -187,14 +190,25 @@ export const albumService = {
       if (replaceExisting) formData.append('replace_existing', 'true');
       if (folder) formData.append('folder', folder);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
+        timeout: 120000,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
       });
       return data.data;
   },
 
   async checkBackupKeys(keys: string[]) {
-    const data = await request.post<{ existing: string[] }>('/api/medias/backup/check', { keys });
-    return new Set(data.data.existing);
+    const data = await request.post<{
+      existing: string[]
+      complete?: string[]
+      live_photos?: string[]
+    }>('/api/medias/backup/check', { keys });
+    return {
+      existing: new Set(data.data.existing),
+      // Keep ordinary-photo backups compatible with servers predating the
+      // richer completeness response.
+      complete: new Set(data.data.complete ?? data.data.existing),
+      livePhotos: new Set(data.data.live_photos ?? []),
+    };
   },
 
   async getUploadFolders() {

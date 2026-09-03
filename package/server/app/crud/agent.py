@@ -109,6 +109,27 @@ def delete_messages_by_session(db: Session, session_id: Union[str, UUID]) -> boo
     db.commit()
     return True
 
+# ---- 会话上下文摘要（上下文压缩）----
+
+def get_context_summary(db: Session, session_id: Union[str, UUID]) -> Optional[str]:
+    """读取会话已保存的上下文摘要，不存在返回 None。"""
+    session = get_session(db, session_id)
+    return session.context_summary if session else None
+
+def update_context_summary(
+    db: Session, session_id: Union[str, UUID], summary: str
+) -> Optional[AgentSession]:
+    """写入/更新会话的上下文摘要，并刷新 summary_update_time。"""
+    session = get_session(db, session_id)
+    if not session:
+        return None
+    session.context_summary = summary
+    session.summary_update_time = datetime.now()
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
 # ---- 长期记忆（照片即记忆）----
 # 每个用户一个隐藏的记忆专用会话，其下一条 content_type=memory 的消息，
 # 用 content_ext 存放记忆锚点，不新增表/字段。

@@ -14,6 +14,7 @@ configure_worker_runtime()
 
 from app.core.logger import setup_logging
 from app.core.paths import DATA_DIR, ensure_rg_seed
+from app.db.session import dispose_inherited_connections
 from app.service.task_worker import TaskWorker
 
 async def _run(event_queue=None, shutdown_event=None):
@@ -34,6 +35,10 @@ async def _run(event_queue=None, shutdown_event=None):
 def run_worker(event_queue=None, shutdown_event=None):
     load_dotenv(os.path.join(DATA_DIR, '.env'))
     """Entry point for the worker process"""
+    # Linux containers start this process with fork.  Discard the API
+    # process' inherited SQLAlchemy pool before TaskWorker opens a session;
+    # otherwise parent and child can concurrently use one PostgreSQL socket.
+    dispose_inherited_connections()
     # Setup logging for this process
     setup_logging('task')
     lower_worker_priority()

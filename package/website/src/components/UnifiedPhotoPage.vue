@@ -227,6 +227,8 @@
     <PhotoLightbox
       :visible="!!lightboxImage"
       :image="lightboxImage"
+      :images="photos"
+      :current-index="lightboxIndex"
       :has-prev="hasPrev"
       :has-next="hasNext"
       :allow-edit="true"
@@ -241,6 +243,7 @@
       @update="(e) => $emit('photo-update', e)"
       @prev="handlePrev"
       @next="handleNext"
+      @select="handleLightboxSelect"
       @add-to-album="handleAddToAlbumFromLightbox"
       @transfer="handleLightboxTransfer"
     />
@@ -629,6 +632,11 @@ const handleNext = () => {
   if (hasNext.value) {
     lightboxImage.value = props.photos[lightboxIndex.value + 1]
   }
+}
+
+const handleLightboxSelect = (index: number) => {
+  const target = props.photos[index]
+  if (target) lightboxImage.value = target
 }
 
 // Delete Logic

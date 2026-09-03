@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// 版本号唯一来源是 package/website/package.json，避免发版时漏改 gradle
+// 导致 App 自更新永远检测不到新版本。versionCode 由语义化版本推导：
+// major * 10000 + minor * 100 + patch，保证随版本单调递增。
+def webPackageJson = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def appVersionName = webPackageJson.version
+def semver = (appVersionName =~ /^(\d+)\.(\d+)\.(\d+)/)
+if (!semver.find()) {
+    throw new GradleException("package.json version 不是合法的语义化版本: ${appVersionName}")
+}
+def appVersionCode = semver.group(1).toInteger() * 10000 +
+    semver.group(2).toInteger() * 100 +
+    semver.group(3).toInteger()
+
 android {
     namespace = "cn.trailsnap.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +20,8 @@ android {
         applicationId "cn.trailsnap.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "0.12.1"
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

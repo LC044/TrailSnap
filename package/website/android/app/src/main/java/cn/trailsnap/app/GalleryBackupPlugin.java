@@ -38,10 +38,12 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @CapacitorPlugin(
     name = "GalleryBackup",
@@ -90,14 +92,33 @@ public class GalleryBackupPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("granted", galleryPermissionGranted() && originalMediaPermissionGranted());
         result.put("galleryGranted", galleryPermissionGranted());
+        result.put("imageGranted", imagePermissionGranted());
+        result.put("videoGranted", videoPermissionGranted());
         result.put("originalGranted", originalMediaPermissionGranted());
         call.resolve(result);
     }
 
     private boolean galleryPermissionGranted() {
-        String alias = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? "images" : "legacyStorage";
-        return getPermissionState(alias) == PermissionState.GRANTED ||
-            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && getPermissionState("selectedMedia") == PermissionState.GRANTED);
+        return imagePermissionGranted() && videoPermissionGranted();
+    }
+
+    private boolean selectedMediaPermissionGranted() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+            getPermissionState("selectedMedia") == PermissionState.GRANTED;
+    }
+
+    private boolean imagePermissionGranted() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return getPermissionState("legacyStorage") == PermissionState.GRANTED;
+        }
+        return getPermissionState("images") == PermissionState.GRANTED || selectedMediaPermissionGranted();
+    }
+
+    private boolean videoPermissionGranted() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return getPermissionState("legacyStorage") == PermissionState.GRANTED;
+        }
+        return getPermissionState("videos") == PermissionState.GRANTED || selectedMediaPermissionGranted();
     }
 
     private boolean originalMediaPermissionGranted() {
@@ -138,43 +159,62 @@ public class GalleryBackupPlugin extends Plugin {
         long imageId = call.getLong("imageId", 0L);
         long videoModified = call.getLong("videoModified", 0L);
         long videoId = call.getLong("videoId", 0L);
+        long companionVideoId = call.getLong("companionVideoId", 0L);
         List<String> sourcePaths = readSourcePaths(call);
 
         try {
-            List<Asset> images = query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", imageModified, imageId, limit, sourcePaths);
-            boolean canReadVideos = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("videos") == PermissionState.GRANTED;
-            List<Asset> videos = includeVideos && canReadVideos
-                ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", videoModified, videoId, limit, sourcePaths)
+            List<Asset> images = query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image", imageModified, imageId, limit, sourcePaths, false);
+            List<Asset> regularVideos = includeVideos && videoPermissionGranted()
+                ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", videoModified, videoId, limit, sourcePaths, false)
                 : new ArrayList<>();
+            List<Asset> probedVideos = videoPermissionGranted()
+                ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", 0L, companionVideoId, limit, sourcePaths, true)
+                : new ArrayList<>();
+            for (Asset asset : images) asset.liveCompanion = findLiveCompanion(asset);
+            for (Asset asset : regularVideos) asset.liveCompanion = findLiveCompanion(asset);
+            for (Asset asset : probedVideos) asset.liveCompanion = findLiveCompanion(asset);
+
+            Set<Long> currentImageIds = new HashSet<>();
+            for (Asset image : images) currentImageIds.add(image.id);
+            Map<Long, Asset> videoAssets = new LinkedHashMap<>();
+            for (Asset video : regularVideos) videoAssets.put(video.id, video);
+            for (Asset video : probedVideos) {
+                if (video.liveCompanion != null && !currentImageIds.contains(video.liveCompanion.id)) {
+                    videoAssets.putIfAbsent(video.id, video);
+                }
+            }
             List<Asset> merged = new ArrayList<>();
             merged.addAll(images);
-            merged.addAll(videos);
+            merged.addAll(videoAssets.values());
             merged.sort(Comparator.comparingLong((Asset asset) -> asset.modifiedMs)
                 .thenComparing(asset -> asset.kind)
                 .thenComparingLong(asset -> asset.id));
-            if (merged.size() > limit) merged = new ArrayList<>(merged.subList(0, limit));
-            for (Asset asset : merged) asset.liveCompanion = findLiveCompanion(asset);
 
             JSArray items = new JSArray();
             long nextImageModified = imageModified, nextImageId = imageId;
-            long nextVideoModified = videoModified, nextVideoId = videoId;
             for (Asset asset : merged) {
                 items.put(asset.toJson());
                 if ("image".equals(asset.kind)) {
                     nextImageModified = asset.modifiedMs;
                     nextImageId = asset.id;
-                } else {
-                    nextVideoModified = asset.modifiedMs;
-                    nextVideoId = asset.id;
                 }
             }
+            long nextVideoModified = videoModified, nextVideoId = videoId;
+            if (!regularVideos.isEmpty()) {
+                Asset lastRegularVideo = regularVideos.get(regularVideos.size() - 1);
+                nextVideoModified = lastRegularVideo.modifiedMs;
+                nextVideoId = lastRegularVideo.id;
+            }
+            long nextCompanionVideoId = companionVideoId;
+            if (!probedVideos.isEmpty()) nextCompanionVideoId = probedVideos.get(probedVideos.size() - 1).id;
             JSObject result = new JSObject();
             result.put("assets", items);
             result.put("imageModified", nextImageModified);
             result.put("imageId", nextImageId);
             result.put("videoModified", nextVideoModified);
             result.put("videoId", nextVideoId);
-            result.put("hasMore", merged.size() == limit);
+            result.put("companionVideoId", nextCompanionVideoId);
+            result.put("hasMore", images.size() == limit || regularVideos.size() == limit || probedVideos.size() == limit);
             call.resolve(result);
         } catch (Exception error) {
             call.reject("读取图库失败", error);
@@ -195,8 +235,7 @@ public class GalleryBackupPlugin extends Plugin {
         List<String> sourcePaths = readSourcePaths(call);
         try {
             long[] imageStats = count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageModified, imageId, sourcePaths);
-            boolean canReadVideos = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("videos") == PermissionState.GRANTED;
-            long[] videoStats = includeVideos && canReadVideos
+            long[] videoStats = includeVideos && videoPermissionGranted()
                 ? count(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, videoModified, videoId, sourcePaths)
                 : new long[] { 0L, 0L };
             JSObject result = new JSObject();
@@ -238,8 +277,7 @@ public class GalleryBackupPlugin extends Plugin {
         try {
             Map<String, SourceFolder> folders = new LinkedHashMap<>();
             collectSourceFolders(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, folders);
-            boolean canReadVideos = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("videos") == PermissionState.GRANTED;
-            if (includeVideos && canReadVideos) collectSourceFolders(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, folders);
+            if (includeVideos && videoPermissionGranted()) collectSourceFolders(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, folders);
             List<SourceFolder> sorted = new ArrayList<>(folders.values());
             sorted.sort(Comparator.comparing(folder -> folder.name.toLowerCase()));
             JSArray values = new JSArray();
@@ -373,7 +411,7 @@ public class GalleryBackupPlugin extends Plugin {
         call.resolve(result);
     }
 
-    private List<Asset> query(Uri collection, String kind, long afterModifiedMs, long afterId, int limit, List<String> sourcePaths) {
+    private List<Asset> query(Uri collection, String kind, long afterModifiedMs, long afterId, int limit, List<String> sourcePaths, boolean idOnly) {
         List<Asset> result = new ArrayList<>();
         boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
         String pathColumn = modern ? MediaStore.MediaColumns.RELATIVE_PATH : MediaStore.MediaColumns.DATA;
@@ -385,18 +423,21 @@ public class GalleryBackupPlugin extends Plugin {
             MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED, takenColumnName,
             pathColumn
         };
-        SelectionSpec selection = buildSelection(afterModifiedMs, afterId, sourcePaths);
-        String order = MediaStore.MediaColumns.DATE_MODIFIED + " ASC, " + MediaStore.MediaColumns._ID + " ASC LIMIT " + limit;
+        SelectionSpec selection = idOnly
+            ? buildIdSelection(afterId, sourcePaths)
+            : buildSelection(afterModifiedMs, afterId, sourcePaths);
+        String order = idOnly
+            ? MediaStore.MediaColumns._ID + " ASC LIMIT " + limit
+            : MediaStore.MediaColumns.DATE_MODIFIED + " ASC, " + MediaStore.MediaColumns._ID + " ASC LIMIT " + limit;
         ContentResolver resolver = getContext().getContentResolver();
         Cursor queried;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Bundle queryArgs = new Bundle();
             queryArgs.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, selection.where);
             queryArgs.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, selection.args);
-            queryArgs.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] {
-                MediaStore.MediaColumns.DATE_MODIFIED,
-                MediaStore.MediaColumns._ID
-            });
+            queryArgs.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, idOnly
+                ? new String[] { MediaStore.MediaColumns._ID }
+                : new String[] { MediaStore.MediaColumns.DATE_MODIFIED, MediaStore.MediaColumns._ID });
             queryArgs.putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_ASCENDING);
             queryArgs.putInt(ContentResolver.QUERY_ARG_LIMIT, limit);
             queried = resolver.query(collection, projection, queryArgs, null);
@@ -472,6 +513,31 @@ public class GalleryBackupPlugin extends Plugin {
         return new SelectionSpec(where.toString(), args.toArray(new String[0]));
     }
 
+    private SelectionSpec buildIdSelection(long afterId, List<String> sourcePaths) {
+        StringBuilder where = new StringBuilder(MediaStore.MediaColumns._ID + " > ?");
+        List<String> args = new ArrayList<>();
+        args.add(String.valueOf(afterId));
+        appendSourcePathSelection(where, args, sourcePaths);
+        return new SelectionSpec(where.toString(), args.toArray(new String[0]));
+    }
+
+    private void appendSourcePathSelection(StringBuilder where, List<String> args, List<String> sourcePaths) {
+        if (sourcePaths.isEmpty()) return;
+        where.append(" AND (");
+        boolean modern = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        for (int index = 0; index < sourcePaths.size(); index++) {
+            if (index > 0) where.append(" OR ");
+            if (modern) {
+                where.append(MediaStore.MediaColumns.RELATIVE_PATH).append(" = ?");
+                args.add(normalizeRelativePath(sourcePaths.get(index)));
+            } else {
+                where.append(MediaStore.MediaColumns.DATA).append(" LIKE ?");
+                args.add(sourcePaths.get(index) + File.separator + "%");
+            }
+        }
+        where.append(")");
+    }
+
     private String normalizeRelativePath(String value) {
         if (value == null) return "";
         String normalized = value.replace('\\', '/').replaceAll("^/+", "");
@@ -528,7 +594,34 @@ public class GalleryBackupPlugin extends Plugin {
             collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
             kind = "image";
         }
-        return findAssetByNames(collection, kind, names, asset.mediaDirectory);
+        Asset companion = findAssetByNames(collection, kind, names, asset.mediaDirectory);
+        if (companion == null) return null;
+        // MediaStore.DATE_TAKEN is not comparable across all vendors: imported
+        // iPhone clips, cloud restores and edited files may use different time
+        // zones or fallback timestamps. Same directory + exact stem + a valid
+        // image/video extension pair is the stable identity available here.
+        return "image".equals(asset.kind)
+            ? (isSupportedLivePairName(asset.name, companion.name) ? companion : null)
+            : (isSupportedLivePairName(companion.name, asset.name) ? companion : null);
+    }
+
+    static boolean isSupportedLivePairName(String imageName, String videoName) {
+        if (imageName == null || videoName == null) return false;
+        String lowerImage = imageName.toLowerCase(Locale.ROOT);
+        String lowerVideo = videoName.toLowerCase(Locale.ROOT);
+        int imageDot = lowerImage.lastIndexOf('.');
+        int videoDot = lowerVideo.lastIndexOf('.');
+        if (imageDot <= 0 || videoDot <= 0 ||
+            !lowerImage.substring(0, imageDot).equals(lowerVideo.substring(0, videoDot))) {
+            return false;
+        }
+        String imageExt = lowerImage.substring(imageDot);
+        String videoExt = lowerVideo.substring(videoDot);
+        if (".heic".equals(imageExt) || ".heif".equals(imageExt)) return ".mov".equals(videoExt);
+        if (".jpg".equals(imageExt) || ".jpeg".equals(imageExt)) {
+            return ".mp4".equals(videoExt) || ".mov".equals(videoExt);
+        }
+        return false;
     }
 
     private Asset findAssetByNames(Uri collection, String kind, List<String> names, String mediaDirectory) {

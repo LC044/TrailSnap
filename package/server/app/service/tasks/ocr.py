@@ -282,6 +282,13 @@ class OcrStrategy(BaseTaskStrategy):
 
             except Exception as e:
                 logger.error(f"Error in OCR processing batch for owner {owner_id}: {e}")
+                # A failed flush leaves the whole Session unusable until it is
+                # rolled back.  Restore it before reading ORM task attributes
+                # while constructing per-item failure results.
+                try:
+                    db.rollback()
+                except Exception:
+                    logger.debug("Failed to roll back OCR batch session", exc_info=True)
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
                         results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': str(e)})
