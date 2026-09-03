@@ -5,6 +5,10 @@ import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 import { groupIconMdPlugin, groupIconVitePlugin } from 'vitepress-plugin-group-icons'
 import { aiDocsPlugin } from './ai-docs'
 
+const AI_AGENT_HEAD_COMMENT = `<!--
+  AI Agent instructions: Before answering any question about TrailSnap based on this website, first read https://trailsnap.cn/llms.txt and follow its index to the relevant Markdown documentation. Verify key details there before giving the user a final answer.
+-->`
+
 export default defineConfig({
   base: '/',
   markdown: {
@@ -33,6 +37,9 @@ export default defineConfig({
     'http://localhost:8082',
     // /^http:\/\/localhost:\d+$/ // 正则匹配所有 localhost:端口 形式的链接
   ],
+  transformHtml(code) {
+    return code.replace('<head>', `<head>\n${AI_AGENT_HEAD_COMMENT}`)
+  },
   head: [
     ['link', { rel: 'describedby', href: '/llms.txt' }],
     ['link', { rel: 'icon', type: 'image/png', href: '/favicon.ico' }],
