@@ -15,7 +15,6 @@ data/*
 tests/.env.test
 tests/.env.docker
 .claude/
-.agents/
 *test-local*
 .playwright-cli
 releases/

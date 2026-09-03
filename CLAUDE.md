@@ -145,17 +145,6 @@ FastAPI 服务**并不是**单进程。`app/main.py` 的 lifespan 会通过 `app
   - 所有组件都应考虑PC和移动端两种布局，确保在两种环境下都能正常显示。
   - **同一组件只用一个灰色族**：统一使用 `gray-*`（或 `slate-*`）——不要在同一个界面里混用。`MainLayout.vue` 把外层 `bg-slate-50 dark:bg-slate-900` 与内部内容 `dark:bg-gray-900` 混用，导致暗色模式下出现可见的接缝。请在同一个布局的根容器、主内容区、弹窗中选定一族并保持一致。
 - **迁移**：在 `app/db/models/` 修改 ORM 模型后，执行 `alembic revision --autogenerate` 并提交生成的文件。删除模型字段时一定要配套迁移步骤。
-- **提交信息**：遵循 Conventional Commits 规范（`feat(scope):`、`fix(scope):`、`refactor(scope):`）。提交信息中包含特定关键字会触发 GitHub Actions CI 流水线——**只有在确实希望构建并推送 Docker 镜像或发布包时才包含这些关键字**，因为它们会消耗 CI 资源并向 Docker Hub / npm / GitHub Releases 推送：
-  - `构建后端` —— 触发 **Server** Docker 构建与推送（`.github/workflows/docker-build-push-server.yml`），仅当 `package/server/` 下的文件发生变化时生效。
-  - `构建前端` —— 触发 **Frontend** Docker 构建与推送（`.github/workflows/docker-build-push-frontend.yml`），仅当 `package/website/` 下的文件发生变化时生效。
-  - `构建ai` —— 触发 **AI 服务** Docker 构建与推送（`.github/workflows/docker-build-push-ai.yml`），仅当 `package/ai/` 下的文件发生变化时生效。
-  - `构建cli` —— 触发 **CLI** 二进制构建并将产物保留在 Actions Artifacts（`.github/workflows/build-publish-cli.yml`），仅当 `package/trailsnap-cli/` 下的文件发生变化时生效；只有推送 `v*.*.*` 标签才会创建 Release 并发布 npm/PyPI。
-  - **原则**：只有用户明确要求时才加上。
-- **PR 模板**：见 `.github/pull_request_template.md`。在 PR 评论中需要确认 CLA（“I have read and agree to the CLA”，基于 AGPLv3）。
-- **push规则**：
-  - **必须**：提交之前必须在本地运行测试（.\tests\scripts\run-tests.ps1 -Layer e2e -Level full），确保所有测试通过。
-  - **建议**：推荐新开一个分支推送的时候通过 PR 合并到主分支，确保PR通过了所有 CI 流水线测试（大概二十分钟），等到 PR 合并后再删除分支。
-
 ## 关键文件
 
 - `package/server/main.py` —— 后端入口；lifespan、中间件、路由挂载。
