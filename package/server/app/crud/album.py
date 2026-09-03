@@ -159,6 +159,32 @@ def _update_album_photo_count(db: Session, album_id: UUID):
         db.add(album)
         db.commit()
 
+
+def update_album_photo_counts(db: Session, album_ids) -> int:
+    """Recount several albums inside a single transaction.
+
+    ``_update_album_photo_count`` commits on every call. When a bulk delete
+    touches dozens of albums that becomes dozens of fsyncs plus dozens of
+    ``SELECT`` round trips for the album rows, which is a large part of why
+    purging a big selection appears to hang. Here the album rows are fetched
+    once and a single commit closes the whole batch.
+
+    Returns the number of albums whose counter was refreshed.
+    """
+    unique_ids = list(dict.fromkeys(album_ids or []))
+    if not unique_ids:
+        return 0
+
+    albums = db.query(Album).filter(Album.id.in_(unique_ids)).all()
+    if not albums:
+        return 0
+
+    for album in albums:
+        album.num_photos = _build_album_query(db, album).count()
+        db.add(album)
+    db.commit()
+    return len(albums)
+
 def trigger_conditional_albums_update(db: Session, user_id: UUID, photo_ids: List[UUID] = None):
     """
     Trigger update for all conditional/smart albums for a given user.

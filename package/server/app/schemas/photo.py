@@ -39,7 +39,13 @@ class Photo(PhotoBase):
         from_attributes = True
 
 class RecyclePhoto(Photo):
-    deleted_at: datetime
+    # Optional on purpose. The column is nullable, so a single row with
+    # is_deleted=True but no timestamp (legacy data, a manual SQL fix, or a future
+    # soft-delete path that forgets to stamp it) would otherwise fail
+    # response_model validation and take the *entire* recycle-bin listing down
+    # with a 500. The UI already falls back to the full retention window when this
+    # is absent.
+    deleted_at: Optional[datetime] = None
 
 class PhotoGroup(BaseModel):
     date: str
@@ -52,6 +58,20 @@ class BatchPhotoUpdate(BaseModel):
 
 class BatchPhotoDelete(BaseModel):
     photo_ids: List[UUID]
+
+class RecycleBinPurge(BaseModel):
+    """Payload for the recycle-bin purge endpoint.
+
+    ``photo_ids = None`` means "everything currently in my bin". That distinction
+    is what lets the UI offer a real "empty recycle bin" action: the client no
+    longer has to page through the whole bin just to collect ids it would
+    immediately send back.
+    """
+    photo_ids: Optional[List[UUID]] = None
+
+class RecycleBinStats(BaseModel):
+    total: int
+    retention_days: int
 
 class BatchPhotoTransfer(BaseModel):
     photo_ids: List[UUID]

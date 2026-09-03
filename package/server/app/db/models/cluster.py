@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Index
 from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -29,3 +29,14 @@ class PhotoCluster(Base):
     # Relationships
     cluster = relationship("ImageCluster", back_populates="photos")
     photo = relationship("Photo")
+
+    __table_args__ = (
+        # This table has no unique constraint to piggyback on, so a photo_id
+        # lookup was a full table scan. Every photo deletion has to run one to
+        # enforce ON DELETE CASCADE, which is what made purging a large recycle
+        # bin degrade super-linearly.
+        Index("ix_photo_clusters_photo_id", "photo_id"),
+        # Cluster membership is always read cluster-first ("show me this group"),
+        # and the cascade from image_clusters needs it too.
+        Index("ix_photo_clusters_cluster_id", "cluster_id"),
+    )
