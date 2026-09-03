@@ -34,6 +34,7 @@ export default defineConfig({
     // /^http:\/\/localhost:\d+$/ // 正则匹配所有 localhost:端口 形式的链接
   ],
   head: [
+    ['link', { rel: 'describedby', href: '/llms.txt' }],
     ['link', { rel: 'icon', type: 'image/png', href: '/favicon.ico' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'TrailSnap 行影集 — AI 驱动的智能相册' }],
