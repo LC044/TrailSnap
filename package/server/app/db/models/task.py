@@ -20,6 +20,10 @@ class TaskType(str, enum.Enum):
     EXTRACT_METADATA = "EXTRACT_METADATA" # Heavy metadata, geolocation
     CLASSIFY_IMAGE = "CLASSIFY_IMAGE"
     RECOGNIZE_FACE = "RECOGNIZE_FACE"
+    # Clustering is deliberately a separate type from RECOGNIZE_FACE: it is a
+    # CPU-bound whole-library pass, so running it inline held the single 'face'
+    # resource slot and blocked further recognition batches.
+    CLUSTER_FACES = "CLUSTER_FACES"
     RECOGNIZE_TICKET = "RECOGNIZE_TICKET"
     REBUILD_METADATA = "REBUILD_METADATA"
     OCR = "OCR"
@@ -45,6 +49,11 @@ DEFAULT_PRIORITIES = {
     TaskType.EXTRACT_METADATA: 97,
     TaskType.REBUILD_METADATA: 96,
     TaskType.RECOGNIZE_FACE: 9,
+    # Below RECOGNIZE_FACE so a fresh import round finishes recognising before
+    # the clustering row is picked up. Priority alone is not enough (the two
+    # types live in different category queues), hence the explicit defer guard
+    # in ClusterFacesStrategy.
+    TaskType.CLUSTER_FACES: 3,
     TaskType.CLASSIFY_IMAGE: 10,
     TaskType.IMAGE_EMBEDDING: 8,
     TaskType.OCR: 7,
@@ -65,6 +74,7 @@ CATEGORY_DESCRIPTION_MAP = {
     TaskType.EXTRACT_METADATA: '用于提取文件元数据（GPS位置、拍摄参数等）',
     TaskType.REBUILD_METADATA: '用于重建文件元数据',
     TaskType.RECOGNIZE_FACE: '用于识别图片中的人脸',
+    TaskType.CLUSTER_FACES: '用于将识别出的人脸聚合成人物',
     TaskType.RECOGNIZE_TICKET: '用于识别火车票、飞机票等',
     TaskType.CLASSIFY_IMAGE: '用于场景分类',
     TaskType.VISUAL_DESCRIPTION: '用于生成图片的视觉描述',
@@ -84,6 +94,7 @@ CATEGORY_NAME_MAP = {
     TaskType.PROCESS_BASIC: '基本处理',
     TaskType.EXTRACT_METADATA: '元数据提取',
     TaskType.RECOGNIZE_FACE: '人脸识别',
+    TaskType.CLUSTER_FACES: '人脸聚类',
     TaskType.RECOGNIZE_TICKET: '车票识别',
     TaskType.CLASSIFY_IMAGE: '场景识别',
     TaskType.VISUAL_DESCRIPTION: '大模型智能分析',

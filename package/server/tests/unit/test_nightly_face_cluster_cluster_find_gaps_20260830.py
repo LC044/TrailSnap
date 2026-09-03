@@ -79,6 +79,55 @@ def _patch_dbscan(labels):
     return cls
 
 
+def _cluster_db(rows, *, live_ids=None):
+    """Fake Session for the scalar-select / bulk-update clustering flow.
+
+    ``_cluster_unassigned_faces`` no longer hydrates ORM ``Face`` entities nor
+    writes members one by one, so the old
+    ``db.query().filter().all()`` stub no longer matches. Three query shapes
+    are dispatched here:
+
+    * ``query(Face.id, Face.face_feature)`` -- the unassigned scalar select,
+      answered with ``rows`` of ``(face_id, embedding)``.
+    * ``query(Face)`` -- the per-cluster bulk UPDATE.
+    * anything else -- the live-member id select (and the owner subquery),
+      answered with ``live_ids``.
+    """
+    from app.db.models.face import Face
+
+    if live_ids is None:
+        live_ids = [row[0] for row in rows]
+
+    db = MagicMock(name="db")
+    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    update_calls = []
+
+    def _query(*args):
+        q = MagicMock()
+        q.filter.return_value = q
+        q.join.return_value = q
+        q.order_by.return_value = q
+        if len(args) == 2:
+            q.all.return_value = list(rows)
+        elif args and args[0] is Face:
+            def _update(values, **kwargs):
+                update_calls.append(values)
+                return len(live_ids)
+            q.update.side_effect = _update
+        else:
+            q.all.return_value = [(face_id,) for face_id in live_ids]
+        return q
+
+    db.query.side_effect = _query
+    db.update_calls = update_calls
+    return db
+
+
+def _rows(count, *, start=1):
+    """(face_id, embedding) pairs shaped like the scalar select's output."""
+    return [(index + start, _unit_vec(dim=4, seed=index)) for index in range(count)]
+
+
 # ---------------------------------------------------------------------------
 # _find_matching_face_ids: pgvector branch
 # ---------------------------------------------------------------------------
@@ -126,12 +175,11 @@ def test_find_matching_face_ids_pg_branch_empty_prototypes_skips_query():
 def test_cluster_unassigned_faces_creates_identity_for_large_cluster():
     """When DBSCAN returns >= MIN_CLUSTER_SIZE_FOR_IDENTITY members in one
     cluster, a new FaceIdentity is created and faces are reassigned."""
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
-    svc = _service(db)
+    from app.db.models.face import Face
 
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(6)]
-    db.query.return_value.filter.return_value.all.return_value = faces
+    rows = _rows(6)
+    db = _cluster_db(rows)
+    svc = _service(db)
 
     dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
 
@@ -140,55 +188,70 @@ def test_cluster_unassigned_faces_creates_identity_for_large_cluster():
 
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
          patch("app.service.face_cluster.crud_face.create_identity", return_value=new_identity) as create_identity, \
-         patch("app.service.face_cluster.crud_face.update_face") as update_face, \
-         patch("app.service.face_cluster.crud_face.get_face", side_effect=lambda d, fid: next((f for f in faces if f.id == fid), None)), \
          patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
         svc._cluster_unassigned_faces(owner_id=None)
 
     create_identity.assert_called_once()
-    assert update_face.call_count == 6
+    # One bulk UPDATE for the whole cluster, not one statement per member.
+    assert len(db.update_calls) == 1
+    values = db.update_calls[0]
+    assert values[Face.face_identity_id] == new_identity_id
+    assert values[Face.recognize_confidence] == 0.9
+
     update_identity.assert_called_once()
     call = update_identity.call_args
     if call.kwargs:
-        assert call.kwargs["default_face_id"] == faces[0].id
+        assert call.kwargs["default_face_id"] == rows[0][0]
     else:
-        assert call.args[2].default_face_id == faces[0].id
+        assert call.args[2].default_face_id == rows[0][0]
+    db.commit.assert_called()
+
+
+def test_cluster_unassigned_faces_uses_per_user_eps_not_global_config():
+    """eps must come from the user's resolved threshold.
+
+    Reading ``config_manager.config`` here applied the global default to every
+    user, silently ignoring a per-user face_cluster_threshold.
+    """
+    db = _cluster_db(_rows(6))
+    svc = _service(db)
+    svc.DBSCAN_EPS = 0.33
+
+    dbscan_cls = _patch_dbscan(np.array([-1] * 6))
+
+    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
+         patch("app.service.face_cluster.crud_face.create_identity"):
+        svc._cluster_unassigned_faces(owner_id=None)
+
+    assert dbscan_cls.call_args.kwargs["eps"] == 0.33
 
 
 def test_cluster_unassigned_faces_skips_small_cluster_below_min_size():
     """A cluster whose size < MIN_CLUSTER_SIZE_FOR_IDENTITY must NOT create
     an identity."""
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    db = _cluster_db(_rows(6))
     svc = _service(db)
-
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(6)]
-    db.query.return_value.filter.return_value.all.return_value = faces
 
     dbscan_cls = _patch_dbscan(np.array([0, 0, -1, -1, -1, -1]))
 
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
          patch("app.service.face_cluster.crud_face.create_identity") as create_identity, \
-         patch("app.service.face_cluster.crud_face.update_face") as update_face, \
          patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
         svc._cluster_unassigned_faces(owner_id=None)
 
+    dbscan_cls.assert_called_once()
     create_identity.assert_not_called()
-    update_face.assert_not_called()
     update_identity.assert_not_called()
+    assert db.update_calls == []
 
 
 def test_cluster_unassigned_faces_handles_two_clusters():
     """Two DBSCAN clusters of sufficient size should each create their own
     identity (or be merged if centers are close)."""
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
-    svc = _service(db)
-
     # MIN_CLUSTER_SIZE_FOR_IDENTITY defaults to 5; build 6 faces per cluster
     # plus 2 noise (14 total) so both clusters exceed the minimum.
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(14)]
-    db.query.return_value.filter.return_value.all.return_value = faces
+    db = _cluster_db(_rows(14))
+    svc = _service(db)
 
     labels = np.array([0] * 6 + [1] * 6 + [-1, -1])
     dbscan_cls = _patch_dbscan(labels)
@@ -198,26 +261,21 @@ def test_cluster_unassigned_faces_handles_two_clusters():
 
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
          patch("app.service.face_cluster.crud_face.create_identity", side_effect=[new_identity_a, new_identity_b]) as create_identity, \
-         patch("app.service.face_cluster.crud_face.update_face") as update_face, \
-         patch("app.service.face_cluster.crud_face.get_face", side_effect=lambda d, fid: next((f for f in faces if f.id == fid), None)), \
          patch("app.service.face_cluster.crud_face.update_identity"):
         svc._cluster_unassigned_faces(owner_id=None)
 
     # Two clusters of size 6 each, both >= MIN_CLUSTER_SIZE_FOR_IDENTITY=5;
     # random unit vectors will not be close enough to merge.
     assert 1 <= create_identity.call_count <= 2
-    assert update_face.call_count >= 6
+    assert len(db.update_calls) == create_identity.call_count
 
 
 def test_cluster_unassigned_faces_short_circuits_when_below_min_samples():
     """When there are fewer than DBSCAN_MIN_SAMPLES unassigned faces,
     the DBSCAN call should be skipped entirely."""
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    db = _cluster_db(_rows(4))
     svc = _service(db)
-
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(svc.DBSCAN_MIN_SAMPLES - 1)]
-    db.query.return_value.filter.return_value.all.return_value = faces
+    assert svc.DBSCAN_MIN_SAMPLES == 5
 
     dbscan_cls = MagicMock(name="DBSCAN-class")
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls) as dbs, \
@@ -232,12 +290,8 @@ def test_cluster_unassigned_faces_rolls_back_on_pending_rollback_error():
     """PendingRollbackError triggers db.rollback() and re-raises."""
     from sqlalchemy.exc import PendingRollbackError
 
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    db = _cluster_db(_rows(6))
     svc = _service(db)
-
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(6)]
-    db.query.return_value.filter.return_value.all.return_value = faces
     dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
 
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
@@ -252,12 +306,8 @@ def test_cluster_unassigned_faces_rolls_back_on_sqlalchemy_error():
     """SQLAlchemyError triggers db.rollback() and re-raises."""
     from sqlalchemy.exc import SQLAlchemyError
 
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    db = _cluster_db(_rows(6))
     svc = _service(db)
-
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(6)]
-    db.query.return_value.filter.return_value.all.return_value = faces
     dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
 
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
@@ -268,39 +318,45 @@ def test_cluster_unassigned_faces_rolls_back_on_sqlalchemy_error():
     db.rollback.assert_called_once()
 
 
-def test_cluster_unassigned_faces_skips_missing_face_member():
-    """If crud_face.get_face returns None for a member, the iteration should
-    skip it gracefully and still set the default face from the remaining
-    members."""
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
-    svc = _service(db)
+def test_cluster_unassigned_faces_skips_vanished_face_member():
+    """A member deleted between the select and the write is excluded.
 
-    faces = [_face(id_=i + 1, feature=_unit_vec(dim=4, seed=i)) for i in range(6)]
-    db.query.return_value.filter.return_value.all.return_value = faces
+    The live-id re-check replaces the old per-member ``get_face`` lookup, and
+    the default face must come from the surviving members.
+    """
+    rows = _rows(6)
+    # Face 1 disappeared (deleted) after the unassigned select ran.
+    db = _cluster_db(rows, live_ids=[row[0] for row in rows[1:]])
+    svc = _service(db)
     dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
 
-    new_identity_id = uuid4()
-    new_identity = SimpleNamespace(id=new_identity_id)
-
-    def fake_get(d, fid):
-        if fid == 1:
-            return None
-        return next(f for f in faces if f.id == fid)
+    new_identity = SimpleNamespace(id=uuid4())
 
     with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
          patch("app.service.face_cluster.crud_face.create_identity", return_value=new_identity), \
-         patch("app.service.face_cluster.crud_face.update_face") as update_face, \
-         patch("app.service.face_cluster.crud_face.get_face", side_effect=fake_get), \
          patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
         svc._cluster_unassigned_faces(owner_id=None)
 
-    assert update_face.call_count == 5
     call = update_identity.call_args
     if call.kwargs:
-        assert call.kwargs["default_face_id"] == faces[1].id
+        assert call.kwargs["default_face_id"] == rows[1][0]
     else:
-        assert call.args[2].default_face_id == faces[1].id
+        assert call.args[2].default_face_id == rows[1][0]
+
+
+def test_cluster_unassigned_faces_skips_cluster_with_no_live_members():
+    """If every member vanished, no identity write happens for that cluster."""
+    db = _cluster_db(_rows(6), live_ids=[])
+    svc = _service(db)
+    dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
+
+    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
+         patch("app.service.face_cluster.crud_face.create_identity", return_value=SimpleNamespace(id=uuid4())), \
+         patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
+        svc._cluster_unassigned_faces(owner_id=None)
+
+    assert db.update_calls == []
+    update_identity.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

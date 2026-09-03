@@ -422,7 +422,35 @@ def test_face_process_single_photo_success_with_embedding(monkeypatch):
     res = _run(s.process_single_photo(MagicMock(), p, MagicMock()))
     assert res["status"] == "success"
     assert res["faces_found"] == 1
-    cluster.process_unassigned_faces.assert_called_once()
+    # Clustering must NOT run inline: it held the single 'face' resource slot
+    # and blocked every subsequent recognition batch. It is reported via
+    # has_unassigned and handled by a separate CLUSTER_FACES task instead.
+    cluster.process_unassigned_faces.assert_not_called()
+    assert res["has_unassigned"] is True
+    assert res["owner_id"] == str(p.owner_id)
+
+
+def test_face_process_single_photo_passes_owner_id_to_assignment(monkeypatch):
+    """assign_face_to_identity must receive owner_id.
+
+    Without it the pgvector nearest-neighbour query scans every user's faces.
+    """
+    from app.service.tasks.face import RecognizeFaceStrategy
+    p = _photo()
+    monkeypatch.setattr("app.service.tasks.face.storage.get_available_photo_path", lambda *a, **kw: "/tmp/x.jpg")
+    _patch_open_ok(monkeypatch)
+    monkeypatch.setattr("app.service.tasks.face.storage.get_image_dimensions", lambda *a, **kw: (10, 10, None))
+    session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
+        {"det_score": 0.9, "embedding": [0.1, 0.2]},
+    ]}]})])
+    _patch_aiohttp(monkeypatch, session)
+    _patch_user_config(monkeypatch)
+    cluster = _patch_cluster(monkeypatch)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
+    s = RecognizeFaceStrategy()
+    _run(s.process_single_photo(MagicMock(), p, MagicMock()))
+    assert cluster.assign_face_to_identity.call_args.args[2] == p.owner_id
 
 
 def test_face_process_single_photo_face_no_embedding(monkeypatch):
@@ -469,24 +497,41 @@ def test_face_process_single_photo_cluster_exception_swallowed(monkeypatch):
     assert res["faces_found"] == 1
 
 
-def test_face_process_single_photo_unassigned_faces_exception(monkeypatch):
-    """process_unassigned_faces raising is swallowed; photo still success."""
+def test_face_handle_completion_enqueues_one_task_per_owner(monkeypatch):
+    """Only owners with unassigned faces get a clustering task, once each."""
     from app.service.tasks.face import RecognizeFaceStrategy
-    p = _photo()
-    monkeypatch.setattr("app.service.tasks.face.storage.get_available_photo_path", lambda *a, **kw: "/tmp/x.jpg")
-    _patch_open_ok(monkeypatch)
-    monkeypatch.setattr("app.service.tasks.face.storage.get_image_dimensions", lambda *a, **kw: (10, 10, None))
-    session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
-        {"det_score": 0.9, "embedding": [0.1]},
-    ]}]})])
-    _patch_aiohttp(monkeypatch, session)
-    _patch_user_config(monkeypatch)
-    _patch_cluster(monkeypatch, process_unassigned_faces=MagicMock(side_effect=RuntimeError("batch down")))
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
-    monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
+    calls = []
+    monkeypatch.setattr(
+        "app.service.tasks.face.enqueue_cluster_faces",
+        lambda db, owner_id: calls.append(owner_id),
+    )
+    owner_a = str(uuid4())
+    owner_b = str(uuid4())
+    items = [
+        {"status": "completed", "result": {"has_unassigned": True, "owner_id": owner_a}},
+        {"status": "completed", "result": {"has_unassigned": True, "owner_id": owner_a}},
+        {"status": "completed", "result": {"has_unassigned": False, "owner_id": owner_b}},
+        {"status": "failed", "error": "boom"},
+        {"status": "completed", "result": {"status": "skipped", "reason": "already processed"}},
+    ]
     s = RecognizeFaceStrategy()
-    res = _run(s.process_single_photo(MagicMock(), p, MagicMock()))
-    assert res["status"] == "success"
+    _run(s.handle_completion(MagicMock(), items, MagicMock()))
+    assert calls == [owner_a]
+
+
+def test_face_handle_completion_swallows_enqueue_failure(monkeypatch):
+    """A failed enqueue must not fail the recognition tasks that just finished."""
+    from app.service.tasks.face import RecognizeFaceStrategy
+
+    def _boom(db, owner_id):
+        raise RuntimeError("enqueue down")
+
+    monkeypatch.setattr("app.service.tasks.face.enqueue_cluster_faces", _boom)
+    db = MagicMock()
+    items = [{"status": "completed", "result": {"has_unassigned": True, "owner_id": str(uuid4())}}]
+    s = RecognizeFaceStrategy()
+    _run(s.handle_completion(MagicMock(), items, db))
+    db.rollback.assert_called_once()
 
 
 def test_face_process_single_photo_outer_exception_marks_false_and_reraises(monkeypatch):

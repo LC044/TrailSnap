@@ -675,8 +675,12 @@ class FaceClusterService:
         对未分配的人脸做DBSCAN聚类，合并相似簇后创建新Identity
         """
         try:
-            # 1. 查询未分配的人脸
-            unassigned_query = self.db.query(Face).filter(
+            # 1. 查询未分配的人脸。
+            # Only the id and the embedding are needed, so select scalars
+            # instead of whole ORM entities: hydrating a Face object per
+            # unassigned face was a large part of the runtime and of the peak
+            # RSS on six-figure libraries.
+            unassigned_query = self.db.query(Face.id, Face.face_feature).filter(
                 Face.face_identity_id == None,
                 Face.is_deleted == False,
                 Face.face_feature.isnot(None)
@@ -693,7 +697,7 @@ class FaceClusterService:
                         )
                     )
                 )
-            unassigned_faces = unassigned_query.all()
+            unassigned_faces = unassigned_query.order_by(Face.id).all()
 
             face_count = len(unassigned_faces)
             if face_count < self.DBSCAN_MIN_SAMPLES:
@@ -702,16 +706,18 @@ class FaceClusterService:
             # 2. 提取并归一化向量
             embeddings = []
             face_ids = []
-            for face in unassigned_faces:
-                emb = self.normalize_embedding(face.face_feature)
+            for face_id, face_feature in unassigned_faces:
+                emb = self.normalize_embedding(face_feature)
                 embeddings.append(emb)
-                face_ids.append(face.id)
+                face_ids.append(face_id)
 
-            X = np.array(embeddings)
+            X = np.asarray(embeddings, dtype=np.float32)
+
+            logger.info("开始对 %s 个未分配人脸聚类（owner=%s）", face_count, owner_id)
 
             # 3. DBSCAN聚类（宽松参数，避免拆分）
             clustering = DBSCAN(
-                eps=config_manager.config.ai.face_cluster_threshold,
+                eps=self.DBSCAN_EPS,
                 min_samples=self.DBSCAN_MIN_SAMPLES,
                 metric='cosine'
             ).fit(X)
@@ -776,30 +782,37 @@ class FaceClusterService:
                 create_identity_data = schemas.FaceIdentityCreate(identity_name="未命名")
                 new_identity = crud_face.create_identity(self.db, create_identity_data, owner_id)
 
-                # 分配人脸到新Identity
-                first_face_id = None
-                for f_id in cluster:
-                    face = crud_face.get_face(self.db, f_id)
-                    if not face:
-                        continue
+                # 分配人脸到新Identity。
+                # One bulk UPDATE per cluster instead of a get_face +
+                # update_face round trip per member: a 1000-face cluster used
+                # to cost 2000 statements.
+                assigned_ids = [
+                    row[0]
+                    for row in self.db.query(Face.id).filter(
+                        Face.id.in_(cluster),
+                        Face.is_deleted.is_(False),
+                    ).order_by(Face.id).all()
+                ]
+                if not assigned_ids:
+                    continue
 
-                    update_data = schemas.FaceUpdate(
-                        face_identity_id=new_identity.id,
-                        recognize_confidence=0.9
-                    )
-                    crud_face.update_face(self.db, f_id, update_data)
-
-                    if not first_face_id:
-                        first_face_id = face.id
+                self.db.query(Face).filter(Face.id.in_(assigned_ids)).update(
+                    {
+                        Face.face_identity_id: new_identity.id,
+                        Face.recognize_confidence: 0.9,
+                    },
+                    synchronize_session=False,
+                )
 
                 # 设置默认人脸
-                if first_face_id:
-                    update_identity_data = schemas.FaceIdentityUpdate(default_face_id=first_face_id)
-                    crud_face.update_identity(self.db, new_identity.id, update_identity_data)
+                update_identity_data = schemas.FaceIdentityUpdate(default_face_id=assigned_ids[0])
+                crud_face.update_identity(self.db, new_identity.id, update_identity_data)
 
                 logger.info(
-                    f"创建新Identity {new_identity.id}，包含 {cluster_size} 个人脸（合并后）"
+                    f"创建新Identity {new_identity.id}，包含 {len(assigned_ids)} 个人脸（合并后）"
                 )
+
+            self.db.commit()
 
         except PendingRollbackError:
             self.db.rollback()

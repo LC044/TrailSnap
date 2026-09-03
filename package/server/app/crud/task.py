@@ -94,7 +94,7 @@ def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, An
     stats = []
     categories = [
         TaskType.PROCESS_BASIC, TaskType.EXTRACT_METADATA,
-        TaskType.RECOGNIZE_FACE, TaskType.RECOGNIZE_TICKET,
+        TaskType.RECOGNIZE_FACE, TaskType.CLUSTER_FACES, TaskType.RECOGNIZE_TICKET,
         TaskType.CLASSIFY_IMAGE, TaskType.VISUAL_DESCRIPTION,
         TaskType.OCR, TaskType.IMAGE_EMBEDDING, TaskType.GENERATE_THUMBNAIL
     ]
