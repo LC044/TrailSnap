@@ -1,6 +1,6 @@
 {
   "name": "trailsnap-cli",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "description": "TrailSnap Command Line Interface",
   "main": "bin/run.js",
   "bin": {

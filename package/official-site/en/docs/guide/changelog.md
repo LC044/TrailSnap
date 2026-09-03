@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-03 (0.13.0)
+
+### New
+
+- The Android App can now check for updates automatically, download the APK in-app, and launch the installer, with progress reporting, retry support, and the option to skip a version.
+- Added video metadata parsing for common formats such as MP4 and MOV, so capture time, location, and device information can place videos correctly on the timeline and map.
+- The AI assistant now supports semantic memory retrieval, prioritizing photo memories most relevant to the current question in long conversations.
+- Added automatic context compression for the AI assistant, preserving a concise summary plus recent messages to reduce context overflow.
+- The AI assistant input now supports multiline text, with Enter to send, Shift+Enter for a new line, and correct Chinese IME behavior.
+
+### Improvements
+
+- The mobile photo viewer now uses a three-track swipe layout with adjacent-image preloading, making rapid swiping smoother and extending left/right navigation to search results, the recycle bin, folders, and more.
+- The mobile viewer layout now follows familiar system-gallery patterns, with clearer capture information and more focused actions.
+- Redesigned mobile backup and settings navigation and improved multi-select and viewing experiences.
+- Vectorized face clustering to speed up organizing large photo libraries.
+- Added AI-friendly documentation and QR-code entry points to the official site and refreshed demo images.
+
+### Bug Fixes
+
+- Fixed mobile backup issues involving Live Photo pairing, repeated failed uploads, adaptive-gallery backup speed, and worker database connection isolation.
+- Fixed mobile photo viewer track offset and the Android adaptive launcher icon safe-area ratio.
+- Fixed local API-prefix handshake failures on desktop.
+
 ## 2026-09-01 (0.12.1)
 
 ### Bug Fixes

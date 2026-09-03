@@ -138,5 +138,10 @@
         "version": "0.12.1",
         "update_info": "- 修复 Docker 部署从 0.11.0 升级后 Server 容器持续重启的问题<br>- 已升级失败和尚未升级的实例均可直接更新，无需手动修改数据库",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.12.1"
+    },
+    {
+        "version": "0.13.0",
+        "update_info": "- Android App 支持应用内自动检查并安装更新<br>- 新增视频元数据解析，视频可按拍摄时间与位置进入时间线和地图<br>- AI 助手新增语义记忆检索、长对话上下文压缩与多行输入<br>- 优化移动端照片查看器、备份导航与多选体验<br>- 修复移动端备份、桌面端本地 API 握手与人脸聚类性能问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.13.0"
     }
 ]

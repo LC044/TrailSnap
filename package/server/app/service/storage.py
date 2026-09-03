@@ -352,12 +352,16 @@ def get_live_photo_vide(image_path: str) -> Optional[str]:
             for suffix in ('.MOV', '.mov'):
                 video_path = base + suffix
                 if os.path.exists(video_path):
-                    return video_path
+                    # Windows matches path suffixes case-insensitively; normalize
+                    # to the actual sibling path so callers receive a real filename.
+                    return os.path.realpath(video_path) if os.name == "nt" else video_path
         elif ext.lower() in ('.jpg', '.jpeg'):
             for suffix in ('.mp4', '.mov', '.MOV'):
                 video_path = base + suffix
                 if os.path.exists(video_path):
-                    return video_path
+                    # Windows matches path suffixes case-insensitively; normalize
+                    # to the actual sibling path so callers receive a real filename.
+                    return os.path.realpath(video_path) if os.name == "nt" else video_path
     except Exception as e:
         logging.error(f"Error getting live photo video for {image_path}: {e}")
     return None
