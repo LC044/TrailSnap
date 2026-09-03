@@ -94,6 +94,32 @@ test.describe('P1 - 照片流核心功能', () => {
     await fileRequest
   })
 
+  test('2.1.3b 桌面工具栏 - 更多菜单可展开当前照片的单项处理任务', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 50)
+    if (!probe.ok) return
+    await page.goto('/photos')
+
+    const thumb = page.locator('.photo-gallery img').first()
+    await expect(thumb).toBeVisible({ timeout: 15_000 })
+    await thumb.click()
+
+    const toolbar = page.getByTestId('photo-lightbox-toolbar')
+    await expect(toolbar).toBeVisible({ timeout: 10_000 })
+    await toolbar.getByRole('button', { name: '更多' }).click()
+
+    const processingMenu = page.getByTestId('photo-processing-menu')
+    await expect(processingMenu).toBeVisible()
+    await processingMenu.click()
+
+    const operations = page.getByTestId('photo-processing-operations')
+    await expect(operations).toBeVisible()
+    await expect(operations.getByRole('button', { name: 'AI 智能分析' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '人脸识别' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '文字识别 OCR' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '场景分类' })).toBeVisible()
+    await expect(operations.getByRole('button', { name: '生成搜索特征' })).toBeVisible()
+  })
+
   test('2.1.4 EXIF 解析显示 - 元数据侧栏展示快门/光圈/ISO', async ({ page, request }, testInfo) => {
     const probe = await requirePhotoWithExif(request, testInfo)
     if (!probe.ok) return

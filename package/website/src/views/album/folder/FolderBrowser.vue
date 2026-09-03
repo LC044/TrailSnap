@@ -325,6 +325,8 @@
     <PhotoLightbox
       :visible="lightboxIndex >= 0"
       :image="lightboxImage"
+      :images="photos"
+      :current-index="lightboxIndex"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex >= 0 && lightboxIndex < photos.length - 1"
       :allow-edit="true"
@@ -336,6 +338,7 @@
       @close="closeLightbox"
       @prev="lightboxIndex = Math.max(0, lightboxIndex - 1)"
       @next="lightboxIndex = Math.min(photos.length - 1, lightboxIndex + 1)"
+      @select="index => (lightboxIndex = index)"
       @delete="handleDelete"
       @update="loadLevel(currentParent)"
       @add-to-album="image => organizeActions?.openAlbum(image.id)"

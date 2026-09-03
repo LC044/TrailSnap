@@ -66,12 +66,15 @@
     <PhotoLightbox
       :visible="showLightbox"
       :image="photos[lightboxIndex]"
+      :images="photos"
+      :current-index="lightboxIndex"
       :has-prev="lightboxIndex > 0"
       :has-next="lightboxIndex < photos.length - 1"
       :allow-delete="true"
       @close="closeLightbox"
       @prev="prevPhoto"
       @next="nextPhoto"
+      @select="index => (lightboxIndex = index)"
       @delete="handlePhotoDelete"
     />
     
