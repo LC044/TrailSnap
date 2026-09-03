@@ -26,6 +26,7 @@ flattening, sqlite dedup). This file fills in the rest of the surface:
 
 import asyncio
 import json
+import threading
 import time
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -38,12 +39,27 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 
 @pytest.fixture(autouse=True)
-def _reset_singleton():
+def _reset_singleton_and_check_reader_threads():
     from app.service import task_manager as tm_mod
 
+    existing_readers = {
+        thread.ident
+        for thread in threading.enumerate()
+        if thread.name == "TaskEventReader"
+    }
     tm_mod.TaskManager._instance = None
     yield
     tm_mod.TaskManager._instance = None
+
+    leaked_readers = [
+        thread
+        for thread in threading.enumerate()
+        if thread.name == "TaskEventReader" and thread.ident not in existing_readers
+    ]
+    assert not leaked_readers, (
+        "TaskManager tests leaked TaskEventReader threads; "
+        "patch threading.Thread or stop the reader explicitly."
+    )
 
 
 def _make_manager():
@@ -108,11 +124,17 @@ def test_start_worker_locked_cleans_dead_process_before_starting(monkeypatch):
     monkeypatch.setattr(
         "multiprocessing.Queue", lambda maxsize: MagicMock(maxsize=maxsize)
     )
+    reader_thread = MagicMock()
+    monkeypatch.setattr(
+        "app.service.task_manager.threading.Thread",
+        MagicMock(return_value=reader_thread),
+    )
 
     assert mgr._start_worker_locked() is True
     dead.join.assert_called_once()
     assert mgr.worker_process is fresh
     assert fresh.start.called
+    assert reader_thread.start.called
 
 
 def test_start_worker_locked_returns_false_when_already_alive():
