@@ -15,6 +15,17 @@ from pathlib import Path
 
 DESKTOP_SCHEMA_REVISION = "sqlite_0005"
 
+# The desktop UI talks to the sidecar exactly like the production web UI talks
+# to nginx: all API calls start with /api. The bundled server has no reverse
+# proxy to strip that prefix, so expose the FastAPI app under its public path.
+DESKTOP_API_ROOT_PATH = "/api"
+
+
+def _apply_desktop_api_prefix(app) -> None:
+    """Let the local sidecar accept the same /api paths as the public proxy."""
+
+    app.root_path = DESKTOP_API_ROOT_PATH
+
 
 def _database_is_current(database_path: Path) -> bool:
     """Check the tiny Alembic version table without importing Alembic."""
@@ -99,6 +110,7 @@ def main() -> None:
     import uvicorn
     from main import app
 
+    _apply_desktop_api_prefix(app)
     uvicorn.run(
         app,
         host="127.0.0.1",
