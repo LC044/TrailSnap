@@ -159,6 +159,8 @@
   <PhotoLightbox
     :visible="selectedIndex !== null"
     :image="selectedImage"
+    :images="lightboxImages"
+    :current-index="selectedIndex ?? -1"
     :has-prev="hasPrev"
     :has-next="hasNext"
     :allow-edit="true"
@@ -171,6 +173,7 @@
     @update="fetchOnThisDay"
     @prev="showPrevious"
     @next="showNext"
+    @select="index => (selectedIndex = index)"
     @add-to-album="image => organizeActions?.openAlbum(image.id)"
     @transfer="organizeActions?.openMove(selectedImage?.id || '')"
   />
@@ -207,6 +210,8 @@ const selectedImage = computed(() => {
   const photo = photos.value[selectedIndex.value]
   return photo ? mapPhotoToImage(photo) : null
 })
+// 灯箱轨道与缩略图条需要 AlbumImage 列表，与 selectedImage 同源映射以保证 id 对齐
+const lightboxImages = computed(() => photos.value.map(mapPhotoToImage))
 const hasPrev = computed(() => selectedIndex.value !== null && selectedIndex.value > 0)
 const hasNext = computed(() => selectedIndex.value !== null && selectedIndex.value < photos.value.length - 1)
 
