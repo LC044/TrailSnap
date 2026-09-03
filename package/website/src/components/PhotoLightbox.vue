@@ -344,7 +344,7 @@
           v-if="!isEditing && controlsVisible && thumbnailWindow.length > 0"
           data-testid="photo-lightbox-thumbnails"
           class="fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
-          :style="{ paddingBottom: thumbnailStripPaddingBottom }"
+          :class="thumbnailStripPaddingClass"
           @click.stop
         >
           <div ref="thumbnailStrip" class="flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto scrollbar-hide">
@@ -859,10 +859,12 @@ const mobileDockVisible = computed(() => !isEditing.value && controlsVisible.val
 
 // 缩略图条与底部操作栏都贴底，移动端要为操作栏让出高度，否则两者重叠。
 // 操作栏约 4.25rem（图标 + 文字 + 内边距），再加安全区。
-const thumbnailStripPaddingBottom = computed(() =>
+// 必须用类而不是内联 style：操作栏是 md:hidden，让位只能发生在移动端，
+// 内联 style 无法按断点区分，会把桌面端的缩略图条一起顶高。
+const thumbnailStripPaddingClass = computed(() =>
     mobileDockVisible.value
-        ? 'calc(0.75rem + 4.25rem + env(safe-area-inset-bottom))'
-        : 'calc(0.75rem + env(safe-area-inset-bottom))',
+        ? 'pb-[calc(0.75rem+4.25rem+env(safe-area-inset-bottom))] md:pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
+        : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
 )
 
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']

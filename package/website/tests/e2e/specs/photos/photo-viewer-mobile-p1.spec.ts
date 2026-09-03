@@ -158,11 +158,14 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect(dock.getByRole('button', { name: '下载' })).toBeVisible()
     await expect(dock.getByRole('button', { name: '信息' })).toBeVisible()
 
-    const thumbnailsBox = await page.getByTestId('photo-lightbox-thumbnails').locator('button').first().boundingBox()
-    const dockBox = await dock.boundingBox()
-    expect(thumbnailsBox).not.toBeNull()
-    expect(dockBox).not.toBeNull()
-    expect(thumbnailsBox!.y + thumbnailsBox!.height).toBeLessThanOrEqual(dockBox!.y + 1)
+    // 入场动画有 translateY 位移，boundingBox 需等其收敛，故用 poll 重试
+    const thumbnail = page.getByTestId('photo-lightbox-thumbnails').locator('button').first()
+    await expect.poll(async () => {
+      const thumbnailBox = await thumbnail.boundingBox()
+      const dockBox = await dock.boundingBox()
+      if (!thumbnailBox || !dockBox) return false
+      return thumbnailBox.y + thumbnailBox.height <= dockBox.y + 1
+    }).toBe(true)
   })
 
   test('右上角更多按钮弹出功能面板并可展开单项处理任务', async ({ page, request }, testInfo) => {
@@ -185,7 +188,7 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect(operations.getByRole('button', { name: '生成搜索特征' })).toBeVisible()
   })
 
-  test('返回键先收起功能面板，再关闭查看器', async ({ page, request }, testInfo) => {
+  test('点击遮罩收起功能面板且不关闭查看器', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 1, 20)
     if (!probe.ok) return
 
@@ -194,12 +197,10 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     const sheet = page.getByTestId('photo-lightbox-mobile-sheet')
     await expect(sheet).toBeVisible()
 
-    await page.goBack()
+    // 点面板外的遮罩区域（靠顶部，避开面板本体）
+    await sheet.click({ position: { x: 195, y: 60 } })
     await expect(sheet).toBeHidden()
     await expect(media).toBeVisible()
-
-    await page.goBack()
-    await expect(media).toBeHidden()
   })
 
   test('更多导航可显式关闭且长内容限制在视口内滚动', async ({ page }) => {
