@@ -6,7 +6,18 @@
 
 欢迎加入 TrailSnap 官方交流群，与其他用户和开发者一起交流心得。
 
+
+### QQ交流群
+
 <img src="/qq_group.jpg" alt="QQ Group QR Code" width="300" />
+
+### 微信交流群
+
+<img src="/qrcodes/wechat_group_qr.webp" alt="微信交流群 QR Code" width="300" />
+
+### 微信公众号
+
+<img src="/qrcodes/wechat_official_account_qr.webp" alt="微信公众号 QR Code" width="300" />
 
 ## 提交 Issue
 

@@ -414,7 +414,29 @@
             <h4 class="text-lg font-bold mb-6">{{ t.footer.contact.title }}</h4>
             <ul class="space-y-3 text-sm text-white/80">
               <li>{{ t.footer.contact.email }}：<a href="mailto:sixyuan044@gmail.com" class="hover:text-primary transition-colors">sixyuan044@gmail.com</a></li>
-              <li>{{ t.footer.contact.wechat }}：忆墨痕</li>
+              <li class="relative group">
+                {{ t.footer.contact.wechat }}：忆墨痕
+                <!-- WeChat Official Account QR Code Popup -->
+                <div class="absolute bottom-full left-0 mb-2 w-64 bg-white p-2 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 text-neutral-dark">
+                  <img :src="wechatOfficialAccountQrCode" alt="微信公众号二维码" class="w-full h-auto rounded" loading="lazy" />
+                  <div class="text-xs text-center mt-1 text-black">关注微信公众号</div>
+                  <!-- Arrow -->
+                  <div class="absolute top-full left-4 border-8 border-transparent border-t-white"></div>
+                </div>
+              </li>
+              <li class="relative group">
+                {{ t.footer.contact.wechatGroup }}：
+                <span class="cursor-pointer border-b border-dashed border-white/40 hover:text-primary hover:border-primary transition-colors">
+                  {{ t.footer.contact.scan }}
+                </span>
+                <!-- WeChat Group QR Code Popup -->
+                <div class="absolute bottom-full left-0 mb-2 w-64 bg-white p-2 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 text-neutral-dark">
+                  <img :src="wechatGroupQrCode" alt="微信交流群二维码" class="w-full h-auto rounded" loading="lazy" />
+                  <div class="text-xs text-center mt-1 text-black">扫码加入微信群</div>
+                  <!-- Arrow -->
+                  <div class="absolute top-full left-4 border-8 border-transparent border-t-white"></div>
+                </div>
+              </li>
               <li class="relative group">
                 {{ t.footer.contact.qq }}：
                 <span class="cursor-pointer border-b border-dashed border-white/40 hover:text-primary hover:border-primary transition-colors">
@@ -570,7 +592,7 @@ const i18n = {
     footer: {
       about: { title: '关于行影集', text: 'TrailSnap行影集是一款AI赋能的出行记忆珍藏工具，致力于让每一段出行都值得回味，让用户的数据真正属于自己。' },
       links: { title: '快速链接', items: ['TrialSnap CLI', '功能介绍', '产品优势', '关于我们', '帮助中心'] },
-      contact: { title: '联系我们', email: '邮箱', wechat: '微信公众号', qq: 'QQ群', scan: '扫码加入' },
+      contact: { title: '联系我们', email: '邮箱', wechat: '微信公众号', wechatGroup: '微信交流群', qq: 'QQ群', scan: '扫码加入' },
       follow: { title: '关注我们' },
       copyright: '© 2025-2026 TrailSnap行影集 版权所有',
       privacy: '数据、隐私与备份',
@@ -672,7 +694,7 @@ const i18n = {
     footer: {
       about: { title: 'About TrailSnap', text: 'TrailSnap is an AI-powered travel memory tool, dedicated to making every trip memorable and ensuring your data belongs to you.' },
       links: { title: 'Quick Links', items: ['TrailSnap CLI', 'Features', 'Advantages', 'About Us', 'Help Center'] },
-      contact: { title: 'Contact Us', email: 'Email', wechat: 'WeChat', qq: 'QQ Group', scan: 'Scan to Join' },
+      contact: { title: 'Contact Us', email: 'Email', wechat: 'WeChat Official Account', wechatGroup: 'WeChat Group', qq: 'QQ Group', scan: 'Scan to Join' },
       follow: { title: 'Follow Us' },
       copyright: '© 2025-2026 TrailSnap All Rights Reserved',
       privacy: 'Data, Privacy & Backups',
@@ -890,6 +912,9 @@ const navClass = (id: 'home' | 'core-features') => {
   return 'text-primary font-medium border-b-2 border-primary'
 }
 
+const wechatGroupQrCode = '/qrcodes/wechat_group_qr.webp'
+const wechatOfficialAccountQrCode = '/qrcodes/wechat_official_account_qr.webp'
+
 const socialLinks = [
   {
     name: 'Douyin',
@@ -900,7 +925,7 @@ const socialLinks = [
   {
     name: 'WeChat',
     icon: '/icons/wechat.svg',
-    qrCode: '/qrcodes/wechat_qr.jpg',
+    qrCode: '/qrcodes/wechat_official_account_qr.webp',
     alt: '微信公众号'
   },
   {

@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 import {MermaidPlugin} from "@leelaa/vitepress-plugin-extended";
 import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 import { groupIconMdPlugin, groupIconVitePlugin } from 'vitepress-plugin-group-icons'
+import { aiDocsPlugin } from './ai-docs'
 
 export default defineConfig({
   base: '/',
@@ -23,7 +24,8 @@ export default defineConfig({
   },
   vite: { 
     plugins: [
-      groupIconVitePlugin() //代码组图标
+      groupIconVitePlugin(), //代码组图标
+      aiDocsPlugin()
     ],
   },
   ignoreDeadLinks: [
@@ -96,6 +98,7 @@ export default defineConfig({
               link: '/docs/guide/agent/',
               collapsed: false,
               items: [
+                { text: 'AI Agent 文档入口', link: '/docs/guide/ai-access' },
                 { text: 'TrailSnap CLI 工具', link: '/docs/guide/agent/trailsnap-cli' },
                 { text: 'Claude Code', link: '/docs/guide/agent/claudecode' },
                 { text: 'OpenClaw', link: '/docs/guide/agent/openclaw' }
@@ -224,6 +227,7 @@ export default defineConfig({
                   link: '/en/docs/guide/agent/',
                   collapsed: false,
                   items: [
+                    { text: 'AI Agent Docs', link: '/en/docs/guide/ai-access' },
                     { text: 'TrailSnap CLI', link: '/en/docs/guide/agent/trailsnap-cli' },
                     { text: 'Claude Code', link: '/en/docs/guide/agent/claudecode' },
                     { text: 'OpenClaw', link: '/en/docs/guide/agent/openclaw' }

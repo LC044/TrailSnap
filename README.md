@@ -97,7 +97,13 @@
 
 ## 🚀 快速开始
 
-### 一键安装脚本 (推荐)
+其他问题请查看软件官网：[https://trailsnap.cn](https://trailsnap.cn/)
+
+### 桌面端安装包（最简单）
+
+前往 [Releases](https://github.com/LC044/TrailSnap/releases) 页面，下载对应平台的安装包并安装即可。
+
+### Docker部署一键安装脚本
 
 TrailSnap 提供一键安装脚本，自动完成 Docker 安装、镜像加速配置和服务部署。
 
@@ -212,17 +218,23 @@ Android App 的“自动查找 TrailSnap”会在 mDNS 无结果时探测局域�
 
 ### 源码部署
 
-[源码部署](http://localhost:5173/docs/dev/guide.html)
+[源码部署](https://trailsnap.cn/docs/dev/guide.html)
 
 ## 📚 文档
 
-更多详细技术文档请参阅 [TrailSnap 文档](https://trailsnap.cn/docs/dev/guide.html)
+更多详细文档请参阅 [TrailSnap 文档](https://trailsnap.cn/docs/guide/install.html)
 
 ## 🔍 其他
 
 ### QQ交流群
 
 <img src="./doc/image/QQ1.jpg" alt="QQ交流群" width="200px">
+
+### 微信交流群
+
+<a href="https://blog.siyuan.ink/static/img/771c5c2561e873ec92936bdb36bb7524.clipboard-2026-09-03.webp" target="_blank">
+  <img src="https://blog.siyuan.ink/static/img/771c5c2561e873ec92936bdb36bb7524.clipboard-2026-09-03.webp" alt="微信交流群" width="200px">
+</a>
 
 ### 致谢
 
