@@ -36,11 +36,20 @@ USER = SimpleNamespace(id="user-nightly")
 
 @pytest.mark.parametrize(
     "bad",
-    ["", ".", "..", "a/b", "a\\b", "a\x00b", "a<b", "name.", "CON", "x" * 300],
+    ["", ".", "..", "a/b", "a\\b", "a\x00b", "x" * 300],
 )
 def test_validate_filename_rejects_invalid_components(bad):
     with pytest.raises(ValueError):
         path_validation.validate_filename(bad, os.getcwd())
+
+
+@pytest.mark.parametrize("bad", ["a<b", "name.", "CON"])
+def test_validate_filename_rejects_windows_specific_components(bad):
+    # Windows 专属规则：在非 Windows CI 上 patch os.name 走同一分支
+    # （同 test_nightly_runtime_gaps_20260901 的跨平台做法）。
+    with patch.object(path_validation.os, "name", "nt"):
+        with pytest.raises(ValueError):
+            path_validation.validate_filename(bad, os.getcwd())
 
 
 def test_validate_filename_accepts_normal_name():
@@ -133,12 +142,17 @@ def test_extract_datetime_returns_none_for_garbage():
 
 
 def test_compute_relative_path_hit_and_miss():
-    roots = ["C:/photos"]
-    folder, name = path_utils.compute_relative_path("C:/photos/旅游/黄山/a.jpg", roots)
+    root = path_utils._normalize(os.path.join(os.getcwd(), "photos"))
+    folder, name = path_utils.compute_relative_path(
+        os.path.join(root, "旅游", "黄山", "a.jpg"), [root]
+    )
     assert name == "a.jpg"
     assert folder == "旅游/黄山"
 
-    folder2, name2 = path_utils.compute_relative_path("D:/elsewhere/sub/a.jpg", roots)
+    other_root = path_utils._normalize(os.path.join(os.getcwd(), "elsewhere"))
+    folder2, name2 = path_utils.compute_relative_path(
+        os.path.join(other_root, "sub", "a.jpg"), [root]
+    )
     assert name2 == "a.jpg"
     assert folder2 == "sub"
 
@@ -148,49 +162,56 @@ def test_compute_relative_path_empty_input():
 
 
 def test_compute_browse_path_keeps_root_label():
-    folder, name = path_utils.compute_browse_path("C:/photos/旅游/a.jpg", ["C:/photos"])
+    root = path_utils._normalize(os.path.join(os.getcwd(), "photos"))
+    folder, name = path_utils.compute_browse_path(os.path.join(root, "旅游", "a.jpg"), [root])
     assert folder == "photos/旅游"
     assert name == "a.jpg"
 
-    folder2, _ = path_utils.compute_browse_path("C:/photos/a.jpg", ["C:/photos"])
+    folder2, _ = path_utils.compute_browse_path(os.path.join(root, "a.jpg"), [root])
     assert folder2 == "photos"
 
-    folder3, name3 = path_utils.compute_browse_path("D:/misc/a.jpg", ["C:/photos"])
+    other = path_utils._normalize(os.path.join(os.getcwd(), "misc"))
+    folder3, name3 = path_utils.compute_browse_path(os.path.join(other, "a.jpg"), [root])
     assert (folder3, name3) == ("misc", "a.jpg")
 
 
-def test_get_user_roots_merges_uploads_and_external():
-    cfg = SimpleNamespace(storage=SimpleNamespace(external_directories=["E:/ext"]))
+def test_get_user_roots_merges_uploads_and_external(tmp_path):
+    uploads_root = tmp_path / "store" / "u1"
+    ext_root = tmp_path / "ext"
+    cfg = SimpleNamespace(storage=SimpleNamespace(external_directories=[str(ext_root)]))
     with patch("app.core.config_manager.config_manager") as cm, patch(
-        "app.service.storage._get_storage_root", return_value="C:/store/u1"
+        "app.service.storage._get_storage_root", return_value=str(uploads_root)
     ):
         cm.get_user_config.return_value = cfg
         roots = path_utils.get_user_roots(uuid_mod.uuid4(), MagicMock())
-    assert "C:/store/u1/uploads" in roots
-    assert "E:/ext" in roots
+    uploads = path_utils._normalize(str(uploads_root / "uploads"))
+    assert uploads in roots
+    assert path_utils._normalize(str(ext_root)) in roots
     # longest root first so children never get shadowed by parents
-    assert roots.index("C:/store/u1/uploads") < roots.index("E:/ext")
+    assert roots.index(uploads) < roots.index(path_utils._normalize(str(ext_root)))
 
 
-def test_get_user_roots_falls_back_when_config_fails():
+def test_get_user_roots_falls_back_when_config_fails(tmp_path):
+    fallback_root = tmp_path / "fallback"
     with patch("app.core.config_manager.config_manager") as cm, patch(
-        "app.service.user_storage.get_user_root", return_value="C:/fallback"
+        "app.service.user_storage.get_user_root", return_value=str(fallback_root)
     ) as get_root:
         cm.get_user_config.side_effect = RuntimeError("no config")
         roots = path_utils.get_user_roots(uuid_mod.uuid4(), MagicMock())
-    assert roots == ["C:/fallback/uploads"]
+    assert roots == [path_utils._normalize(str(fallback_root / "uploads"))]
     get_root.assert_called_once()
 
 
-def test_build_folder_list_counts_and_skips_bad_rows():
+def test_build_folder_list_counts_and_skips_bad_rows(tmp_path):
+    base = tmp_path / "photos"
     rows = [
-        "C:/photos/旅游/a.jpg",
-        "C:/photos/旅游/b.jpg",
-        ("C:/photos/美食/c.jpg", 1),
+        str(base / "旅游" / "a.jpg"),
+        str(base / "旅游" / "b.jpg"),
+        (str(base / "美食" / "c.jpg"), 1),
         12345,  # unusable row, skipped
         None,
     ]
-    items = path_utils.build_folder_list(rows, ["C:/photos"])
+    items = path_utils.build_folder_list(rows, [path_utils._normalize(str(base))])
     by_name = {i["name"]: i for i in items}
     assert by_name["旅游"]["count"] == 2
     assert by_name["美食"]["count"] == 1
