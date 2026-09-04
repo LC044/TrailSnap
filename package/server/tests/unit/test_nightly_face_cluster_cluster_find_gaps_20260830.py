@@ -87,8 +87,9 @@ def _cluster_db(rows, *, live_ids=None):
     ``db.query().filter().all()`` stub no longer matches. Three query shapes
     are dispatched here:
 
-    * ``query(Face.id, Face.face_feature)`` -- the unassigned scalar select,
-      answered with ``rows`` of ``(face_id, embedding)``.
+    * ``query(Face.id, Face.face_feature)`` -- the unassigned scalar select.
+      It is now consumed by streaming rather than ``.all()``, so both
+      ``count()`` and ``yield_per()`` are answered from ``rows``.
     * ``query(Face)`` -- the per-cluster bulk UPDATE.
     * anything else -- the live-member id select (and the owner subquery),
       answered with ``live_ids``.
@@ -109,6 +110,8 @@ def _cluster_db(rows, *, live_ids=None):
         q.order_by.return_value = q
         if len(args) == 2:
             q.all.return_value = list(rows)
+            q.count.return_value = len(rows)
+            q.yield_per.return_value = list(rows)
         elif args and args[0] is Face:
             def _update(values, **kwargs):
                 update_calls.append(values)
@@ -205,6 +208,107 @@ def test_cluster_unassigned_faces_creates_identity_for_large_cluster():
     else:
         assert call.args[2].default_face_id == rows[0][0]
     db.commit.assert_called()
+
+
+def test_cluster_unassigned_faces_streams_the_pool_instead_of_materialising_it():
+    """The unassigned select must be consumed with yield_per, never .all().
+
+    ``.all()`` buffers the whole result set in the driver and then holds one
+    ndarray per face on top of it -- 14.5 KB per face against 3.0 KB for the
+    streamed loop, i.e. 1.4 GB against 0.3 GB on a 100k-face library. Now that
+    a single pass covers the entire library, that peak is what would put a NAS
+    in front of the OOM killer.
+    """
+    rows = _rows(6)
+    db = _cluster_db(rows)
+    svc = _service(db)
+
+    unassigned = []
+
+    original = db.query.side_effect
+
+    def _spy(*args):
+        q = original(*args)
+        if len(args) == 2:
+            unassigned.append(q)
+        return q
+
+    db.query.side_effect = _spy
+
+    with patch("app.service.face_cluster.DBSCAN", _patch_dbscan(np.zeros(6, dtype=int))), \
+         patch("app.service.face_cluster.crud_face.create_identity",
+               return_value=SimpleNamespace(id=uuid4())), \
+         patch("app.service.face_cluster.crud_face.update_identity"):
+        svc._cluster_unassigned_faces(owner_id=None)
+
+    assert unassigned, "the unassigned scalar select was never issued"
+    query = unassigned[0]
+    query.yield_per.assert_called_once()
+    query.all.assert_not_called()
+
+
+def test_cluster_unassigned_faces_feeds_dbscan_a_float32_matrix():
+    """One contiguous float32 block, not a list of per-face arrays.
+
+    float64 would double the matrix and sklearn's internal working set with it.
+    """
+    rows = _rows(6)
+    db = _cluster_db(rows)
+    svc = _service(db)
+    dbscan_cls = _patch_dbscan(np.zeros(6, dtype=int))
+
+    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
+         patch("app.service.face_cluster.crud_face.create_identity",
+               return_value=SimpleNamespace(id=uuid4())), \
+         patch("app.service.face_cluster.crud_face.update_identity"):
+        svc._cluster_unassigned_faces(owner_id=None)
+
+    matrix = dbscan_cls.return_value.fit.call_args.args[0]
+    assert matrix.dtype == np.float32
+    assert matrix.shape == (len(rows), len(rows[0][1]))
+    # Trimmed to the rows actually streamed, not left at the counted size.
+    assert len(matrix) == len(rows)
+
+
+def test_cluster_unassigned_faces_keeps_rows_that_arrive_after_the_count():
+    """A concurrent insert between count() and the scan must not be dropped.
+
+    Recognition keeps writing faces while the pass runs, so the preallocated
+    matrix has to grow rather than truncate -- a dropped face would never be
+    clustered until something else happened to re-trigger a pass.
+    """
+    rows = _rows(8)
+    db = _cluster_db(rows)
+
+    def _query(*args):
+        q = MagicMock()
+        q.filter.return_value = q
+        q.join.return_value = q
+        q.order_by.return_value = q
+        if len(args) == 2:
+            # count() saw 6 rows; the scan then returns 8.
+            q.count.return_value = 6
+            q.yield_per.return_value = list(rows)
+        else:
+            q.all.return_value = [(row[0],) for row in rows]
+            q.update.return_value = len(rows)
+        return q
+
+    db.query.side_effect = _query
+    svc = _service(db)
+    dbscan_cls = _patch_dbscan(np.zeros(8, dtype=int))
+
+    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
+         patch("app.service.face_cluster.crud_face.create_identity",
+               return_value=SimpleNamespace(id=uuid4())), \
+         patch("app.service.face_cluster.crud_face.update_identity"):
+        svc._cluster_unassigned_faces(owner_id=None)
+
+    matrix = dbscan_cls.return_value.fit.call_args.args[0]
+    assert len(matrix) == 8, "rows added after the count were dropped"
+    # The grown block must carry the original rows over unchanged.
+    np.testing.assert_allclose(matrix[0], rows[0][1], rtol=1e-6)
+    np.testing.assert_allclose(matrix[7], rows[7][1], rtol=1e-6)
 
 
 def test_cluster_unassigned_faces_uses_per_user_eps_not_global_config():

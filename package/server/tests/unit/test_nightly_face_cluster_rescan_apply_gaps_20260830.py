@@ -110,6 +110,9 @@ def _chain_query(all_value):
     q.order_by.return_value = q
     q.with_for_update.return_value = q
     q.all.return_value = all_value
+    # The unassigned select is streamed, not materialised with .all().
+    q.count.return_value = len(all_value)
+    q.yield_per.return_value = all_value
     return q
 
 
