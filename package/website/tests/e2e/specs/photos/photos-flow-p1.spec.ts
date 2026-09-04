@@ -288,10 +288,13 @@ test.describe('P1 - 照片流核心功能', () => {
     const probe = await requirePhotoOfType(request, testInfo, 'live_photo')
     if (!probe.ok) return
     const photoId = probe.photo.id
+    const ownerId = probe.photo.owner_id
+    expect(ownerId, '照片列表应返回 owner_id 以构造免 DB 缩略图路由').toBeTruthy()
+    if (!ownerId) return
 
     // 监听针对该实况图的三类资源请求（缩略图 / 视频 / 原图），用于在执行流中锚点校验。
     const thumbnailRequest = page.waitForRequest(
-      (req) => req.url().includes(`/api/medias/${photoId}/thumbnail`) && req.method() === 'GET',
+      (req) => req.url().includes(`/api/medias/${ownerId}/${photoId}/thumbnail`) && req.method() === 'GET',
       { timeout: 60_000 },
     )
     const videoRequest = page.waitForRequest(
@@ -333,8 +336,7 @@ test.describe('P1 - 照片流核心功能', () => {
       return false
     }, { timeout: 30_000, intervals: [500, 1_000, 2_000] }).toBe(true)
 
-    // 3. 验证「缩略图请求」已发出 —— gallery 用 img.thumbnail 作为缩略图 src，
-    //    PhotoGallery.vue 在 mounted 后立即触发 fetch(image.thumbnail)。
+    // 3. 验证「缩略图请求」已发出，且使用 owner 前缀的免 DB 路由。
     await thumbnailRequest
 
     // 4. 验证卡片右上角渲染实况图标（用于在画廊层区分实况图）
