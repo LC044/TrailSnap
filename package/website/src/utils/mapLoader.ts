@@ -1,4 +1,5 @@
 import { settingsApi } from '@/api/settings'
+import { isMobileApp, isNativeApp, toServerUrl } from '@/config/server'
 
 export class MapLoadError extends Error {
   code: string
@@ -9,6 +10,22 @@ export class MapLoadError extends Error {
 }
 
 let loadingPromise: Promise<string> | null = null
+
+/**
+ * Return the TrailSnap nginx tile proxy when the current runtime can reach it.
+ *
+ * The Capacitor app is served from its own WebView origin, so a relative tile
+ * URL would point at the app shell instead of the server selected by the user.
+ * Tauri is deliberately excluded because its bundled backend has no nginx tile
+ * route and must keep using Tianditu's default layers.
+ */
+export const getTiandituTileTemplate = (layer: 'vec_w' | 'cva_w', key: string): string | null => {
+  const path = `/tianditu-tiles/DataServer?T=${layer}&x={x}&y={y}&l={z}&tk=${encodeURIComponent(key)}`
+
+  if (isMobileApp()) return toServerUrl(path)
+  if (import.meta.env.PROD && !isNativeApp()) return path
+  return null
+}
 
 export const loadMapScript = async (): Promise<string> => {
   if (loadingPromise) return loadingPromise

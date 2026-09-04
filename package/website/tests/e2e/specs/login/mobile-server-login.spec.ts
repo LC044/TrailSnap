@@ -98,6 +98,67 @@ test.describe('手机 App 首次启动 @p0', () => {
   })
 })
 
+test.describe('手机 App 天地图瓦片 @p0', () => {
+  test('瓦片请求使用已选 TrailSnap 服务器的 nginx 代理', async ({ page }) => {
+    await page.addInitScript(() => {
+      ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
+        name: 'android',
+      }
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:8082')
+      localStorage.setItem('user_token', 'mobile-map-session')
+      localStorage.setItem('trailsnap-location-view-mode', 'map')
+      localStorage.setItem('trailsnap-location-level', 'scene')
+
+      const tileTemplates: string[] = []
+      class MockMap {
+        constructor(_element: string, _options?: unknown) {}
+        centerAndZoom() {}
+        enableScrollWheelZoom() {}
+        addEventListener() {}
+        removeEventListener() {}
+        addOverLay() {}
+        clearOverLays() {}
+      }
+      class MockTileLayer {
+        constructor(url: string) {
+          tileTemplates.push(url)
+        }
+      }
+      class MockLngLat {
+        constructor(_lng: number, _lat: number) {}
+      }
+
+      Object.assign(window, {
+        __tiandituTileTemplates: tileTemplates,
+        T: { Map: MockMap, TileLayer: MockTileLayer, LngLat: MockLngLat },
+      })
+    })
+
+    await page.route('http://192.168.1.10:8082/**', route => {
+      const path = new URL(route.request().url()).pathname
+      const data = path === '/api/settings/'
+        ? { map: { provider: 'tianditu', api_keys: ['mobile-map-key'] } }
+        : path === '/api/nav/items'
+          ? { items: [] }
+          : []
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 0, message: 'success', data }),
+      })
+    })
+
+    await page.goto('/album/location', { waitUntil: 'domcontentloaded' })
+    await expect(page.locator('#tianditu-map')).toBeVisible({ timeout: 10_000 })
+    await expect.poll(() => page.evaluate(() => (
+      (window as typeof window & { __tiandituTileTemplates?: string[] }).__tiandituTileTemplates || []
+    ))).toEqual([
+      'http://192.168.1.10:8082/tianditu-tiles/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+      'http://192.168.1.10:8082/tianditu-tiles/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+    ])
+  })
+})
+
 test.describe('手机 App 服务器断连 @p0', () => {
   test('已登录时瞬时连接失败会保留会话和当前页面', async ({ page }) => {
     await page.addInitScript(() => {

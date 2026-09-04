@@ -16,8 +16,7 @@ import Supercluster from 'supercluster'
 import { locationService } from '@/api/location'
 import { useRouter } from 'vue-router'
 import { useLocationStore } from '@/stores/locationStore'
-import { loadMapScript } from '@/utils/mapLoader'
-import { isNativeApp, toServerUrl } from '@/config/server'
+import { getTiandituTileTemplate, loadMapScript } from '@/utils/mapLoader'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import { storeToRefs } from 'pinia'
 import { ElMessageBox, ElMessage } from 'element-plus'
@@ -92,23 +91,23 @@ watch([() => props.startDate, () => props.endDate], async () => {
 const initMap = () => {
   if (map.value) return
   
-  const useTileProxy = import.meta.env.PROD && !isNativeApp()
+  const vecTileUrl = getTiandituTileTemplate('vec_w', currentApiKey.value)
+  const cvaTileUrl = getTiandituTileTemplate('cva_w', currentApiKey.value)
   
-  // Web 生产部署通过 nginx 代理并缓存瓦片。Tauri/Capacitor 没有该代理，
-  // 必须让天地图 SDK 直接加载官方图层。
-  if (useTileProxy) {
+  // Web 生产环境使用同源代理；手机 App 使用用户配置的服务器上的代理。
+  // 本地开发和没有 nginx 路由的 Tauri 继续由 SDK 直连天地图。
+  if (vecTileUrl && cvaTileUrl) {
     // 初始化地图时不添加默认图层
     map.value = new T.Map('tianditu-map', {
       layers: []
     })
     
     // 添加代理图层
-    const tk = currentApiKey.value;
-    const vecLayer = new T.TileLayer(`/tianditu-tiles/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=${tk}`, {
+    const vecLayer = new T.TileLayer(vecTileUrl, {
       minZoom: 1,
       maxZoom: 18
     });
-    const cvaLayer = new T.TileLayer(`/tianditu-tiles/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=${tk}`, {
+    const cvaLayer = new T.TileLayer(cvaTileUrl, {
       minZoom: 1,
       maxZoom: 18
     });
