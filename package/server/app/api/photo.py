@@ -121,6 +121,50 @@ def restore_recycle_bin_photos(
     count = app.crud.photo.restore_photos(db, batch_data.photo_ids, user_id=current_user.id)
     return BaseResponse.success(data={"message": f"Successfully restored {count} photos"})
 
+@router.post("/recycle-bin/restore-all", response_model=BaseResponse[dict], summary="恢复回收站全部照片")
+def restore_all_recycle_bin_photos(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Restore every photo in the caller's bin without the client listing ids.
+
+    Same motivation as the purge endpoint: "select all" must not require paging
+    the entire bin into the browser first. Restores are chunked so the write
+    transaction never grows unbounded.
+    """
+    photo_ids = app.crud.photo.get_recycle_bin_photo_ids(db, user_id=current_user.id)
+    if not photo_ids:
+        return BaseResponse.success(data={"restored": 0, "message": "Recycle bin is already empty"})
+
+    chunk_size = app.crud.photo.DELETE_CHUNK_SIZE
+    count = 0
+    for offset in range(0, len(photo_ids), chunk_size):
+        count += app.crud.photo.restore_photos(
+            db, photo_ids[offset:offset + chunk_size], user_id=current_user.id
+        )
+    return BaseResponse.success(data={
+        "restored": count,
+        "message": f"Successfully restored {count} photos",
+    })
+
+@router.get("/recycle-bin/stats", response_model=BaseResponse[schemas.RecycleBinStats], summary="回收站统计")
+def get_recycle_bin_stats(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Total item count of the caller's recycle bin.
+
+    The list endpoint is paginated, so without this the UI cannot tell how many
+    photos are in the bin and "select all" can only ever mean "select the pages
+    already loaded".
+    """
+    from app.core.system_config import system_config
+
+    return BaseResponse.success(data={
+        "total": app.crud.photo.count_recycle_bin_photos(db, user_id=current_user.id),
+        "retention_days": system_config.config.recycle_bin.retention_days,
+    })
+
 @router.delete("/recycle-bin/permanent", response_model=BaseResponse[dict])
 def permanently_delete_recycle_bin_photos(
     batch_data: schemas.BatchPhotoDelete,
@@ -131,6 +175,79 @@ def permanently_delete_recycle_bin_photos(
         raise HTTPException(status_code=400, detail="No photo IDs provided")
     count = app.crud.photo.batch_delete_photos_db(db, batch_data.photo_ids, is_delete_file=True, user_id=current_user.id)
     return BaseResponse.success(data={"message": f"Successfully permanently deleted {count} photos"})
+
+@router.post("/recycle-bin/purge", response_model=BaseResponse[dict], summary="清空/批量永久删除回收站（大批量转异步）")
+def purge_recycle_bin(
+    payload: schemas.RecycleBinPurge,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Permanently delete recycle-bin photos, switching to a background job when big.
+
+    Two problems with driving this through ``/recycle-bin/permanent``:
+
+    1. The client had to enumerate every id, so "empty the bin" was impossible
+       without scrolling the whole list into memory first. Passing
+       ``photo_ids = null`` here means "everything in my bin" and the server
+       resolves the ids itself.
+    2. A multi-thousand photo purge runs far longer than a request should. Above
+       ``ASYNC_PURGE_THRESHOLD`` the work moves to a background thread and the
+       response carries a ``job_id`` to poll, so the UI can show progress instead
+       of hanging on a request that may well time out.
+
+    Small batches stay synchronous — the round trip is cheaper than polling.
+    """
+    from app.service import recycle_bin_purge
+
+    if payload.photo_ids is None:
+        photo_ids = app.crud.photo.get_recycle_bin_photo_ids(db, user_id=current_user.id)
+    else:
+        photo_ids = list(payload.photo_ids)
+        if not photo_ids:
+            raise HTTPException(status_code=400, detail="No photo IDs provided")
+
+    if not photo_ids:
+        return BaseResponse.success(data={
+            "mode": "sync",
+            "total": 0,
+            "deleted": 0,
+            "message": "Recycle bin is already empty",
+        })
+
+    if len(photo_ids) <= recycle_bin_purge.ASYNC_PURGE_THRESHOLD:
+        count = app.crud.photo.batch_delete_photos_db(
+            db, photo_ids, is_delete_file=True, user_id=current_user.id
+        )
+        return BaseResponse.success(data={
+            "mode": "sync",
+            "total": len(photo_ids),
+            "deleted": count,
+            "message": f"Successfully permanently deleted {count} photos",
+        })
+
+    # Refuse to fan out a second worker over the same rows.
+    existing = recycle_bin_purge.active_job_for_user(current_user.id)
+    if existing is not None:
+        return BaseResponse.success(data={"mode": "async", **existing.to_dict()})
+
+    try:
+        job = recycle_bin_purge.start_purge_job(current_user.id, photo_ids)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+
+    return BaseResponse.success(data={"mode": "async", **job.to_dict()})
+
+@router.get("/recycle-bin/purge/{job_id}", response_model=BaseResponse[dict], summary="查询回收站清理进度")
+def get_recycle_bin_purge_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    from app.service import recycle_bin_purge
+
+    job = recycle_bin_purge.get_job(job_id, current_user.id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Purge job not found")
+    return BaseResponse.success(data=job.to_dict())
 
 @router.get("", response_model=List[schemas.Photo])
 def read_all_photos(

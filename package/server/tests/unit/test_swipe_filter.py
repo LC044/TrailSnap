@@ -124,7 +124,10 @@ def test_recycle_bin_restore_reopens_swipe_deleted_photo(db):
     with patch.object(swipe_filter_crud, "_refresh_albums"):
         swipe_filter_crud.save_decisions(db, owner.id, [_item(photo, "delete")])
 
-    with patch.object(photo_crud, "_update_album_photo_count"), patch(
+    # restore_photos now recounts albums in one batched call (update_album_photo_counts)
+    # instead of committing once per album, so the isolation patch must target that
+    # name — patching the old per-album helper would silently do nothing.
+    with patch.object(photo_crud, "update_album_photo_counts"), patch(
         "app.crud.album.trigger_conditional_albums_update"
     ):
         assert photo_crud.restore_photos(db, [photo.id], user_id=owner.id) == 1

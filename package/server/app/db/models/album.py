@@ -8,7 +8,7 @@
 @File        : server-album.py 
 @Description : 
 """
-from sqlalchemy import Column, String, DateTime, Text, Integer, ForeignKey, JSON, UniqueConstraint, Float
+from sqlalchemy import Column, String, DateTime, Text, Integer, ForeignKey, Index, JSON, UniqueConstraint, Float
 from sqlalchemy.orm import relationship
 import uuid
 from datetime import datetime
@@ -56,6 +56,11 @@ class AlbumPhoto(Base):
 
     __table_args__ = (
         UniqueConstraint('album_id', 'photo_id', name='uq_album_photo'),
+        # The unique constraint's index is keyed (album_id, photo_id), so it cannot
+        # serve a photo_id-only lookup. Without this index, deleting a photo forces
+        # a full scan of album_photos to enforce the ON DELETE CASCADE — which made
+        # emptying a large recycle bin quadratic.
+        Index('ix_album_photos_photo_id', 'photo_id'),
     )
 
 

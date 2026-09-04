@@ -17,11 +17,16 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from app.crud import face as crud_face
-from app.crud.album import get_album, _build_album_query, _update_album_photo_count
-from app.crud.cluster import remove_photo_from_clusters
+from app.crud.album import (
+    get_album,
+    _build_album_query,
+    _update_album_photo_count,
+    update_album_photo_counts,
+)
+from app.crud.cluster import remove_photo_from_clusters, remove_photos_from_clusters
 from app.crud.search_vector import POSITIVE_SENTIMENT_VECTOR
 from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene, PhotoDeclutterRecord
+from app.db.models.album import AlbumPhoto
 from app.db.models.photo import FileType, ImageType
 from app.schemas import photo as photo_schemas
 from app.schemas.metadata import PhotoMetadataUpdate
@@ -1016,14 +1021,14 @@ def batch_soft_delete_photos(db: Session, photo_ids: List[UUID], user_id: UUID =
         
     db.commit()
     
-    # Update album counts
+    # Update album counts. Recounting in one batched transaction avoids the
+    # commit-per-album fsync storm that made large selections crawl.
     affected_album_ids = set()
     for photo in photos:
         for album in photo.albums:
             affected_album_ids.add(album.id)
-            
-    for album_id in affected_album_ids:
-        _update_album_photo_count(db, album_id)
+
+    update_album_photo_counts(db, affected_album_ids)
         
     if user_id:
         from app.crud.album import trigger_conditional_albums_update
@@ -1058,14 +1063,13 @@ def restore_photos(db: Session, photo_ids: List[UUID], user_id: UUID = None):
         
     db.commit()
     
-    # Update album counts
+    # Update album counts in a single batched transaction (see above).
     affected_album_ids = set()
     for photo in photos:
         for album in photo.albums:
             affected_album_ids.add(album.id)
-            
-    for album_id in affected_album_ids:
-        _update_album_photo_count(db, album_id)
+
+    update_album_photo_counts(db, affected_album_ids)
         
     if user_id:
         from app.crud.album import trigger_conditional_albums_update
@@ -1080,44 +1084,222 @@ def get_recycle_bin_photos(db: Session, user_id: UUID, skip: int = 0, limit: int
         return query.offset(skip).all()
     return query.offset(skip).limit(limit).all()
 
-def batch_delete_photos_db(db: Session, photo_ids: List[UUID], is_delete_file = False, user_id: UUID = None):
-    # Get photos with albums to know which albums to update
-    query = db.query(Photo).options(joinedload(Photo.albums), joinedload(Photo.faces)).filter(Photo.id.in_(photo_ids))
-    if user_id is not None:
-        query = query.filter(Photo.owner_id == user_id)
 
-    photos = query.all()
-    affected_album_ids = set()
-    for photo in photos:
-        for album in photo.albums:
-            affected_album_ids.add(album.id)
+def count_recycle_bin_photos(db: Session, user_id: UUID) -> int:
+    """Total number of photos sitting in a user's recycle bin.
 
-        # Handle face deletion dependencies
-        for face in photo.faces:
-            crud_face.handle_face_deletion_dependency(db, face)
+    The list endpoint is paginated, so the client has no way to tell how much is
+    actually in the bin without walking every page. Exposing the count lets the
+    UI offer "select all N" / "empty bin" without pre-loading every row.
+    """
+    return (
+        db.query(func.count(Photo.id))
+        .filter(Photo.owner_id == user_id, Photo.is_deleted == True)
+        .scalar()
+    ) or 0
 
-    count = len(photos)
-    for photo in photos:
-        print(photo.file_path, photo.file_type, photo.file_type == FileType.live_photo)
-        if is_delete_file:
-            storage.delete_file(user_id, photo.file_path, photo.id, photo.file_type == FileType.live_photo)
+
+def get_recycle_bin_photo_ids(db: Session, user_id: UUID, limit: Optional[int] = None) -> List[UUID]:
+    """Fetch only the ids of a user's recycle-bin photos.
+
+    Used by the "empty recycle bin" flow: ids are two orders of magnitude cheaper
+    to load than hydrated ``Photo`` entities, so the purge worker can enumerate
+    the whole bin without inflating memory.
+    """
+    query = (
+        db.query(Photo.id)
+        .filter(Photo.owner_id == user_id, Photo.is_deleted == True)
+        .order_by(Photo.deleted_at.asc())
+    )
+    if limit is not None and limit > 0:
+        query = query.limit(limit)
+    return [row[0] for row in query.all()]
+
+
+# Batch size for the bulk-delete statements. Keeps the `IN (...)` parameter count
+# well below SQLite's default SQLITE_MAX_VARIABLE_NUMBER (999 on older builds)
+# and bounds how long a single write transaction holds the database lock.
+DELETE_CHUNK_SIZE = 200
+
+# Photo files are removed with a small thread pool: os.remove / os.path.exists
+# release the GIL, so fanning out turns a long serial stat+unlink walk into
+# mostly-parallel I/O. Kept low to avoid thrashing spinning disks / NAS mounts.
+_FILE_DELETE_WORKERS = 8
+
+
+def _reassign_face_identity_defaults(db: Session, photo_ids: List[UUID]) -> None:
+    """Re-point ``face_identities.default_face_id`` away from faces about to die.
+
+    The column is ``ON DELETE SET NULL``, so the database would not break — but
+    the identity would silently lose its avatar. The original code called
+    ``handle_face_deletion_dependency`` once per face (a SELECT + flush each),
+    which is the single worst N+1 in the purge path. Here every affected
+    identity is resolved with two queries for the whole batch.
+    """
+    if not photo_ids:
+        return
+
+    doomed_face_ids = [
+        row[0] for row in db.query(Face.id).filter(Face.photo_id.in_(photo_ids)).all()
+    ]
+    if not doomed_face_ids:
+        return
+
+    from app.db.models.face import FaceIdentity
+
+    identities = (
+        db.query(FaceIdentity)
+        .filter(FaceIdentity.default_face_id.in_(doomed_face_ids))
+        .all()
+    )
+    if not identities:
+        return
+
+    doomed = set(doomed_face_ids)
+    for identity in identities:
+        # Pick the newest surviving face of this identity as the new default.
+        replacement = (
+            db.query(Face.id)
+            .filter(
+                Face.face_identity_id == identity.id,
+                Face.id.notin_(doomed_face_ids),
+                Face.is_deleted == False,
+            )
+            .order_by(Face.create_time.desc())
+            .first()
+        )
+        identity.default_face_id = replacement[0] if replacement else None
+        db.add(identity)
+    db.flush()
+
+
+def _remove_photo_files(user_id: Optional[UUID], targets: List[tuple]) -> None:
+    """Delete the on-disk payload for already-removed photo rows.
+
+    ``targets`` holds ``(file_path, photo_id, is_live_photo, delete_original)``
+    tuples. Failures are swallowed by ``storage`` itself: an orphaned file is a
+    much smaller problem than a half-committed purge.
+    """
+    if not targets:
+        return
+
+    def _remove(target):
+        file_path, photo_id, is_live_photo, delete_original = target
+        if delete_original:
+            storage.delete_file(user_id, file_path, photo_id, is_live_photo)
         else:
-            storage.delete_thumbnails(user_id, photo.id)
-            
-        remove_photo_from_clusters(db, photo.id)
-        
-        db.delete(photo)
-    db.commit()
+            storage.delete_thumbnails(user_id, photo_id)
 
-    # Update counts
-    for album_id in affected_album_ids:
-        _update_album_photo_count(db, album_id)
+    if len(targets) == 1:
+        _remove(targets[0])
+        return
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    workers = min(_FILE_DELETE_WORKERS, len(targets))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # list() drains the iterator so exceptions (if any escape storage) surface here.
+        list(pool.map(_remove, targets))
+
+
+def batch_delete_photos_db(
+    db: Session,
+    photo_ids: List[UUID],
+    is_delete_file=False,
+    user_id: UUID = None,
+    progress_cb=None,
+):
+    """Permanently delete photos, in bulk.
+
+    Rewritten to be set-based. The previous implementation walked the batch one
+    photo at a time and, for each photo, ran a face-dependency SELECT per face,
+    two cluster queries, a blocking ``os.remove`` and an ORM ``db.delete()``
+    (which lazy-loads ``metadata_info`` / ``faces`` / ``image_description`` /
+    ``color_info`` to cascade them in Python). Deleting a few thousand photos
+    therefore issued tens of thousands of statements inside one transaction and
+    froze every other request behind it.
+
+    Now, per chunk of ``DELETE_CHUNK_SIZE`` photos:
+
+    * only ``(id, file_path, file_type)`` is loaded — no entity hydration;
+    * affected album ids come from one ``album_photos`` query;
+    * face-identity defaults and cluster counters are fixed set-based;
+    * the rows go away with a single ``DELETE ... WHERE id IN (...)`` and the
+      child tables are reaped by their ``ON DELETE CASCADE`` constraints
+      (``PRAGMA foreign_keys=ON`` is set for SQLite in ``app/db/session.py``);
+    * the transaction is committed per chunk, so the write lock is released
+      often and concurrent readers/writers keep making progress;
+    * file-system removal happens *after* the commit, in parallel.
+
+    ``progress_cb(processed, total)`` is invoked after each chunk so long-running
+    callers (the async purge job) can report progress.
+    """
+    photo_id_list = list(photo_ids or [])
+    total = len(photo_id_list)
+    if not total:
+        return 0
+
+    affected_album_ids = set()
+    deleted_count = 0
+
+    for offset in range(0, total, DELETE_CHUNK_SIZE):
+        chunk = photo_id_list[offset:offset + DELETE_CHUNK_SIZE]
+
+        # Fetch just the columns needed for file cleanup; ownership is enforced
+        # here so the DELETE below can never touch another user's rows.
+        row_query = db.query(Photo.id, Photo.file_path, Photo.file_type).filter(
+            Photo.id.in_(chunk)
+        )
+        if user_id is not None:
+            row_query = row_query.filter(Photo.owner_id == user_id)
+        rows = row_query.all()
+
+        if not rows:
+            if progress_cb:
+                progress_cb(min(offset + len(chunk), total), total)
+            continue
+
+        chunk_ids = [row[0] for row in rows]
+        file_targets = [
+            (row[1], row[0], row[2] == FileType.live_photo, bool(is_delete_file))
+            for row in rows
+        ]
+
+        affected_album_ids.update(
+            row[0]
+            for row in db.query(Album.id)
+            .join(AlbumPhoto, AlbumPhoto.album_id == Album.id)
+            .filter(AlbumPhoto.photo_id.in_(chunk_ids))
+            .distinct()
+            .all()
+        )
+
+        _reassign_face_identity_defaults(db, chunk_ids)
+        remove_photos_from_clusters(db, chunk_ids)
+
+        # Single DELETE; FK cascades take care of faces / metadata / vectors /
+        # descriptions / colors / ocr / tag+album relations / declutter records.
+        db.query(Photo).filter(Photo.id.in_(chunk_ids)).delete(synchronize_session=False)
+        db.commit()
+
+        deleted_count += len(chunk_ids)
+
+        # Only touch the filesystem once the rows are durably gone, so a crash
+        # can never leave a DB row pointing at a deleted file.
+        _remove_photo_files(user_id, file_targets)
+
+        if progress_cb:
+            progress_cb(min(offset + len(chunk), total), total)
+
+    # One recount pass for every album that lost photos, instead of a
+    # commit-per-album inside the delete loop.
+    update_album_photo_counts(db, affected_album_ids)
 
     if user_id:
         from app.crud.album import trigger_conditional_albums_update
         trigger_conditional_albums_update(db, user_id, [])
 
-    return count
+    return deleted_count
 
 
 def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, year: int, limit: int = 10):
