@@ -15,6 +15,22 @@ from app.service import storage, user_storage
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
 
+def test_warm_storage_base_cache_loads_each_user_root(tmp_path):
+    first = uuid4()
+    second = uuid4()
+    users = [
+        SimpleNamespace(id=first, settings={"storage": {"photo_storage_path": str(tmp_path / "a")}}),
+        SimpleNamespace(id=second, settings={"storage": {"photo_storage_path": str(tmp_path / "b")}}),
+    ]
+    db = MagicMock()
+    db.query.return_value.all.return_value = users
+    user_storage._STORAGE_BASE_CACHE.clear()
+
+    assert user_storage.warm_storage_base_cache(db) == 2
+    assert user_storage.get_cached_storage_base(first) == str(tmp_path / "a")
+    assert user_storage.get_cached_storage_base(second) == str(tmp_path / "b")
+
+
 def test_storage_root_is_isolated_per_user(tmp_path):
     first = uuid4()
     second = uuid4()

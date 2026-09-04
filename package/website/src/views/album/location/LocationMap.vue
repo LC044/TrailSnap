@@ -18,6 +18,7 @@ import { useRouter } from 'vue-router'
 import { useLocationStore } from '@/stores/locationStore'
 import { loadMapScript } from '@/utils/mapLoader'
 import { isNativeApp, toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 import { storeToRefs } from 'pinia'
 import { ElMessageBox, ElMessage } from 'element-plus'
 
@@ -301,7 +302,7 @@ const renderScenes = () => {
   }
 
   const createCoverCard = (position: any, scene: any, isBlue: boolean) => {
-      const coverUrl = scene.cover ? toServerUrl(`/api/medias/${scene.cover.id}/thumbnail`) : null;
+      const coverUrl = scene.cover ? thumbnailUrl(scene.cover.id, 'small', scene.cover.owner_id) : null;
       if (!coverUrl) return null;
       
       const label = new T.Label({
@@ -454,7 +455,7 @@ const loadData = async () => {
       properties: { 
         cluster: false, 
         photoId: m.id,
-        thumbnail: toServerUrl(`/api/medias/${m.id}/thumbnail`)
+        thumbnail: thumbnailUrl(m.id, 'small', m.owner_id)
       },
       geometry: {
         type: 'Point' as const,

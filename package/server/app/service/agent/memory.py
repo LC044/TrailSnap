@@ -327,7 +327,8 @@ def _collect_photo_ids(assistant_reply: str, tool_calls: Optional[List[Dict[str,
     import re
     ids = set()
     if assistant_reply:
-        for m in re.finditer(r"/medias/([a-f0-9\-]{36})", assistant_reply, re.IGNORECASE):
+        pattern = r"/medias/(?:[a-f0-9\-]{36}/)?([a-f0-9\-]{36})(?:/thumbnail|/file)?"
+        for m in re.finditer(pattern, assistant_reply, re.IGNORECASE):
             ids.add(m.group(1))
     if tool_calls:
         for tc in tool_calls:

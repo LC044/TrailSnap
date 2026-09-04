@@ -16,6 +16,7 @@ from app.crud import agent as agent_crud
 from app.crud.photo import get_on_this_day_photos
 from app.db.models.user import User
 from app.db.session import SessionLocal
+from app.service.media_urls import thumbnail_url
 
 logger = logging.getLogger("app.service.jobs.proactive_memory")
 
@@ -70,11 +71,11 @@ def _llm_greeting(db, user_id: UUID, years: int, narratives: list[str]) -> str |
         return None
 
 
-def _build_markdown(greeting: str, photo_ids: list[str]) -> str:
+def _build_markdown(greeting: str, user_id: UUID, photo_ids: list[str]) -> str:
     """拼装可直接渲染的 Markdown：一句问候 + 若干张照片。"""
     lines = [greeting, ""]
     for pid in photo_ids:
-        lines.append(f"![回忆](/api/medias/{pid}/thumbnail)")
+        lines.append(f"![回忆]({thumbnail_url(user_id, pid)})")
     return "\n".join(lines)
 
 
@@ -114,7 +115,7 @@ def _generate_for_user(db, user: User, today: datetime, cfg) -> bool:
     if not greeting:
         greeting = _template_greeting(years, location)
 
-    content = _build_markdown(greeting, photo_ids)
+    content = _build_markdown(greeting, user.id, photo_ids)
     agent_crud.create_proactive_message(db, user.id, content, anchor_date)
 
     # 沉淀高分照片为长期记忆

@@ -71,6 +71,22 @@ def get_cached_storage_base(user_id: UUID | str) -> Optional[str]:
     return _STORAGE_BASE_CACHE.get(_user_key(user_id))
 
 
+def warm_storage_base_cache(db) -> int:
+    """Load every user's storage base once during API startup.
+
+    Thumbnail responses must never open a database session: a large gallery can
+    create hundreds of short-lived image requests while the scrollbar is being
+    dragged.  Keeping this small user-to-root mapping in memory lets those
+    requests resolve their deterministic paths using filesystem operations only.
+    """
+    from app.db.models.user import User
+
+    users = db.query(User).all()
+    for user in users:
+        cache_storage_base(user.id, configured_storage_base(user.settings))
+    return len(users)
+
+
 def get_user_root(user_id: UUID | str, storage_base: str) -> str:
     return os.path.join(os.path.abspath(storage_base), "users", _user_key(user_id))
 

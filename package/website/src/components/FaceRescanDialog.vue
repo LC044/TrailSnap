@@ -79,6 +79,7 @@ import { RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
 import { faceApi, type FaceRescanCandidate, type FaceRescanPreview } from '@/api/face'
 import type { FaceIdentity } from '@/types/album'
 import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 import { useWindowSize } from '@vueuse/core'
 
 const props = defineProps<{ visible: boolean; identity: FaceIdentity | null }>()
@@ -210,7 +211,7 @@ const CandidateGrid = defineComponent({
           }, [
             h('div', { class: 'relative aspect-square overflow-hidden bg-gray-100 dark:bg-gray-800' }, [
               h('img', {
-                src: toServerUrl(`/api/medias/${item.photo_id}/thumbnail?size=medium`),
+                src: thumbnailUrl(item.photo_id, 'medium'),
                 class: item.face_rect?.length === 4 ? 'absolute max-w-none' : 'h-full w-full object-cover',
                 style: cropStyle(item.face_rect),
                 loading: 'lazy',

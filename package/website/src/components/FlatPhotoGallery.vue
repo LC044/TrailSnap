@@ -271,54 +271,18 @@ const store = computed(() => props.store || photoStore)
 
 // --- Image Loading Logic ---
 const loadedImages = reactive<Record<string, string>>({})
-const imageLoaders = new Map<string, AbortController>()
 const placeholderSrc = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-const requestCache = new Map<string, Request>();
 
-const loadImage = async (image: AlbumImage) => {
-    if (loadedImages[image.id]) return;
-    if (imageLoaders.has(image.id)) return;
-
-    let request = requestCache.get(image.id);
-    if (!request) {
-        request = new Request(image.thumbnail, {
-            method: 'GET',
-            headers: {
-                'Connection': 'keep-alive'
-            }
-        });
-        requestCache.set(image.id, request);
-    }
-
-    const controller = new AbortController();
-    imageLoaders.set(image.id, controller);
-
-    try {
-      const response = await fetch(request, { signal: controller.signal });
-      if (response.ok) {
-          loadedImages[image.id] = image.thumbnail;
-      }
-    } catch (e: any) {
-        if (e.name !== 'AbortError') {
-            console.error('Image load failed', e);
-        }
-    } finally {
-        imageLoaders.delete(image.id);
-    }
-};
+const loadImage = (image: AlbumImage) => {
+    loadedImages[image.id] = image.thumbnail
+}
 
 const cancelImageLoad = (imageId: string) => {
-    const controller = imageLoaders.get(imageId)
-    if (controller) {
-        controller.abort()
-        imageLoaders.delete(imageId)
-    }
+    delete loadedImages[imageId]
 }
 
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
-    imageLoaders.forEach(c => c.abort())
-    imageLoaders.clear()
     if (resizeObserver) resizeObserver.disconnect()
 })
 

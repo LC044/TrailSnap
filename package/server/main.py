@@ -46,6 +46,14 @@ async def lifespan(app: FastAPI):
     global log_listener
     log_listener = setup_logging('api')
 
+    # Thumbnail URLs contain the owner id, so requests can resolve files from
+    # this startup cache without holding a DB connection while FileResponse is
+    # streamed. This is especially important during rapid virtual-list scrolls.
+    from app.db.session import SessionLocal
+    from app.service.user_storage import warm_storage_base_cache
+    with SessionLocal() as db:
+        warm_storage_base_cache(db)
+
     mgr = TaskManager.get_instance()
     # Attach the running loop so cross-thread SSE publishes can be scheduled
     # onto the loop thread via call_soon_threadsafe (asyncio.Queue is not

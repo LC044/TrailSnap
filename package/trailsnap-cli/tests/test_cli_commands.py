@@ -4,6 +4,7 @@ import argparse
 from unittest.mock import patch
 
 from trailsnap import cli
+from trailsnap.commands import medias
 
 pytestmark = [pytest.mark.smoke]
 
@@ -34,3 +35,11 @@ def test_cli_help(capsys):
     assert "albums" in captured.out
     assert "tasks" in captured.out
     assert "toolbox" in captured.out
+
+
+def test_thumbnail_endpoint_uses_current_owner_id():
+    with patch.object(medias, "make_request", return_value={"id": "owner-1"}) as request:
+        endpoint = medias._thumbnail_endpoint("photo-1", "medium")
+
+    assert endpoint == "/medias/owner-1/photo-1/thumbnail?size=medium"
+    request.assert_called_once_with("/users/me")

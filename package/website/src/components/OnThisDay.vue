@@ -191,6 +191,7 @@ import type { Photo } from '@/types/album'
 import { useHotkeys } from '@/composables/useHotkeys'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
@@ -236,7 +237,7 @@ const fetchOnThisDay = async () => {
   }
 }
 
-const getThumbnailUrl = (photo: Photo) => toServerUrl(`/api/medias/${photo.id}/thumbnail?size=medium`)
+const getThumbnailUrl = (photo: Photo) => thumbnailUrl(photo.id, 'medium', photo.owner_id)
 const getFullImageUrl = (photo: Photo) => toServerUrl(`/api/medias/${photo.id}/file`)
 
 const formatDate = (photo: Photo) => {

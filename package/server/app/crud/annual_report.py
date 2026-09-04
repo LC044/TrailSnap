@@ -18,6 +18,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.trip import TrainTicket
 from app.db.models.image_vector import ImageVector
 from app.crud.search_vector import SEASON_VECTORS, EASTER_EGG_VECTOR
+from app.service.media_urls import thumbnail_url
 
 from app.schemas.annual_report import (
     AnnualReportData, UserInfo, TimeMetrics, MemoryMetrics, 
@@ -316,7 +317,7 @@ def get_report_season(
         if not rep_photo:
             rep_photo = season_query.first()
 
-        rep_photo_url = f"/api/medias/{rep_photo.id}/thumbnail" if rep_photo else f"https://picsum.photos/seed/{name}/400/600"
+        rep_photo_url = thumbnail_url(user_id or rep_photo.owner_id, rep_photo.id) if rep_photo else f"https://picsum.photos/seed/{name}/400/600"
         # rep_photo_url = f"https://picsum.photos/seed/{name}/400/600"
         season_list.append(SeasonData(
             seasonName=name,
@@ -389,7 +390,7 @@ def get_report_easter_egg(
     # Use vector search
     best_photo = find_best_match_photo(db, start_time, end_time, EASTER_EGG_VECTOR, user_id=user_id)
     
-    best_photo_url = f"/api/medias/{best_photo.id}/thumbnail" if best_photo else f"https://picsum.photos/seed/best/400/600"
+    best_photo_url = thumbnail_url(user_id or best_photo.owner_id, best_photo.id) if best_photo else f"https://picsum.photos/seed/best/400/600"
     best_photo_date = best_photo.photo_time.strftime('%Y-%m-%d') if best_photo else "2024-10-01"
     
     return EasterEgg(

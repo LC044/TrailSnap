@@ -17,7 +17,7 @@ from app.crud import photo as crud_photo
 from app.db.models.task import TaskType
 from app.dependencies import get_db, BaseResponse
 from app.db.models.photo import FileType, Photo
-from app.service import storage
+from app.service import storage, user_storage
 from app.service.storage import _get_storage_root
 from app.crud import album as crud_album
 from app.crud import face as crud_face
@@ -78,7 +78,7 @@ def _geojson_path(level_cn: str) -> str:
     return os.path.join(BUNDLE_ROOT, "resources", "geo_data", f"中国_{level_cn}.geojson")
 
 
-def _get_thumbnail_path(user_id: UUID, photo_id: UUID, db: Session, size: str = 'small') -> str:
+def _get_thumbnail_path(user_id: UUID, photo_id: UUID, db: Optional[Session], size: str = 'small') -> str:
     compact = str(photo_id).replace('-', '')
     p1, p2 = compact[:2], compact[2:4]
     root = _get_storage_root(user_id, db)
@@ -234,6 +234,45 @@ async def get_live_photo_video(
     # Full content
     return FileResponse(file_path, media_type=media_type, headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=31536000"})
 
+@router.get('/{owner_id}/{photo_id}/thumbnail')
+async def get_static_thumbnail(
+    owner_id: UUID,
+    photo_id: UUID,
+    size: str = 'small',
+    format: str = 'file',
+):
+    """Serve a deterministic thumbnail without opening a database session."""
+    if size not in ('small', 'medium'):
+        raise HTTPException(status_code=400, detail="Invalid size. Use 'small' or 'medium'")
+
+    storage_base = user_storage.get_cached_storage_base(owner_id)
+    if storage_base is None:
+        raise HTTPException(status_code=404, detail="Thumbnail owner not found")
+
+    user_root = user_storage.get_user_root(owner_id, storage_base)
+    path = _get_thumbnail_path(owner_id, photo_id, None, size)
+    try:
+        if os.path.commonpath((os.path.realpath(path), os.path.realpath(user_root))) != os.path.realpath(user_root):
+            raise HTTPException(status_code=404, detail="Thumbnail not found")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    exists = await run_in_threadpool(os.path.isfile, path)
+    if not exists:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+    if format == 'file':
+        return FileResponse(path, media_type="image/webp" if path.endswith('.webp') else "image/jpeg", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    if format == 'base64':
+        def read_base64() -> str:
+            with open(path, "rb") as stream:
+                return base64.b64encode(stream.read()).decode("utf-8")
+        return {"base64": await run_in_threadpool(read_base64)}
+    raise HTTPException(status_code=400, detail="Invalid format. Use 'file' or 'base64'")
+
+
+# Backward compatibility for old clients, saved avatar URLs and agent messages.
+# New UI and CLI code use the owner-qualified route above.
 @router.get('/{photo_id}/thumbnail')
 async def get_thumbnail(photo_id: UUID, size: str = 'small', format: str = 'file', db: Session = Depends(get_db)):
     photo = await run_in_threadpool(lambda: db.query(Photo).filter(Photo.id == photo_id).first())

@@ -166,6 +166,7 @@ import TrainTicket from '@/components/TrainTicket.vue';
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import type { AlbumImage } from '@/types/album';
 import { toServerUrl } from '@/config/server';
+import { thumbnailUrl } from '@/utils/mediaUrl';
 import { useOverlayStack } from '@/composables/useOverlayStack';
 
 const { isDarkMode, currentTheme } = injectTheme();
@@ -565,8 +566,8 @@ const openPhotoLightbox = (ticket: TicketFrontend) => {
   currentPhoto.value = {
     id: ticket.photo_id,
     url: toServerUrl(`/api/medias/${ticket.photo_id}/file`),
-    thumbnail: toServerUrl(`/api/medias/${ticket.photo_id}/thumbnail`),
-    preview: toServerUrl(`/api/medias/${ticket.photo_id}/thumbnail?size=medium`),
+    thumbnail: thumbnailUrl(ticket.photo_id),
+    preview: thumbnailUrl(ticket.photo_id, 'medium'),
     srcset: '',
     timestamp: new Date(ticket.dateTime).getTime(),
     albumIds: [],

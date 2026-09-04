@@ -110,6 +110,7 @@ import { locationService } from '@/api/location'
 import type { TimelineNode } from '@/types/location'
 import type { Photo } from '@/types/album'
 import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 
 const props = defineProps<{
   startDate?: string
@@ -216,7 +217,7 @@ const formatNodeDate = (dateStr: string) => {
 
 const getThumbnailUrl = (photoId: string) => {
   // console.log(photoId)
-  return toServerUrl(`/api/medias/${photoId}/thumbnail`)
+  return thumbnailUrl(photoId)
 }
 
 const goToLocationDetail = (node: TimelineNode) => {

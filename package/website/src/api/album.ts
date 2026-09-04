@@ -1,5 +1,6 @@
 import request from '@/utils/request';
 import type { ApiAlbum, Album, CreateAlbumDto, Photo, PhotoMetadata, TimelineStats, PhotoGroup, FilterOptions } from '@/types/album';
+import { thumbnailUrl } from '@/utils/mediaUrl';
 
 export const albumService = {
   // Albums
@@ -254,7 +255,7 @@ export const albumService = {
   },
 
   async getThumbnail(photoId: string) {
-    const data = await request.get<{ thumbnail: string }>(`/api/medias/${photoId}/thumbnail`);
+    return thumbnailUrl(photoId);
   },
 
   // Tags
