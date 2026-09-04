@@ -105,19 +105,58 @@ html {
   overscroll-behavior-y: auto;
 }
 
-/* WebView2 exposes legacy arrow buttons at both ends of every native
-   scrollbar. They look like a second control beside the desktop content and
-   are unnecessary when mouse-wheel, trackpad and thumb scrolling are present. */
-html.tauri-desktop ::-webkit-scrollbar-button,
-html.tauri-desktop ::-webkit-scrollbar-button:single-button {
-  display: none;
-  width: 0;
-  height: 0;
+/* 全局滚动条统一为侧边栏使用的轻量样式。 */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  html.dark * {
+    scrollbar-color: #475569 transparent;
+  }
 }
 
-html.tauri-desktop,
-html.tauri-desktop body,
-html.tauri-desktop #app {
+*::-webkit-scrollbar {
+  width: 4px !important;
+  height: 4px !important;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1 !important;
+  border-radius: 4px !important;
+}
+
+html.dark *::-webkit-scrollbar-thumb {
+  background-color: #475569 !important;
+}
+
+/* 隐藏 Chromium / WebView2 原生滚动条两端的箭头按钮。 */
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-button:single-button,
+*::-webkit-scrollbar-button:vertical:decrement,
+*::-webkit-scrollbar-button:vertical:increment,
+*::-webkit-scrollbar-button:horizontal:decrement,
+*::-webkit-scrollbar-button:horizontal:increment {
+  display: none !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+}
+
+html,
+body,
+#app {
   height: 100%;
   min-height: 0;
   overflow: hidden;
@@ -141,9 +180,7 @@ body {
   display: flex;
   place-items: center;
   min-width: 320px;
-  min-height: 100vh;
-  overflow-y: scroll; /* 允许垂直滚动 */
-  overflow-x: hidden; /* 禁用水平滚动 */
+  min-height: 0;
 }
 
 /* 全局或 App 级别基础设置 */
