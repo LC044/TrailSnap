@@ -9,6 +9,7 @@ from app.db.models.task import Task, TaskType
 from app.db.models.photo import Photo, FileType
 from app.db.models.face import Face
 from app.service.face_cluster import FaceClusterService, crud_face
+from app.service.tasks.face_cluster import enqueue_cluster_faces
 from typing import Dict, Any, List
 from app.core.config_manager import config_manager
 from app.service import storage
@@ -225,17 +226,21 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     count += 1
                                     if face.face_feature:
                                         try:
-                                            assigned_id = cluster_service.assign_face_to_identity(face.id, face.face_feature)
+                                            # owner_id must be passed: without
+                                            # it the pgvector nearest-neighbour
+                                            # query scans every user's faces.
+                                            assigned_id = cluster_service.assign_face_to_identity(
+                                                face.id, face.face_feature, owner_id
+                                            )
                                             if not assigned_id:
                                                 has_unassigned = True
                                         except Exception as ce:
                                             logger.error(f"Clustering failed for face {face.id}: {ce}")
                                 if has_unassigned:
-                                    # Defer clustering to the end of the batch:
-                                    # process_unassigned_faces rescans every
-                                    # unassigned face in the library, so running
-                                    # it per photo repeated the same O(n^2)
-                                    # DBSCAN once per photo.
+                                    # Commit the faces so the clustering task
+                                    # can see them. Clustering itself is now a
+                                    # separate CLUSTER_FACES task registered in
+                                    # handle_completion.
                                     batch_has_unassigned = True
                                     db.commit()
 
@@ -253,14 +258,19 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     'task_id': task.id,
                                     'task_type': task.type,
                                     'status': 'completed',
-                                    'result': {'status': 'success', 'faces_found': count}
+                                    'result': {
+                                        'status': 'success',
+                                        'faces_found': count,
+                                        'has_unassigned': has_unassigned,
+                                        'owner_id': str(owner_id) if owner_id else None,
+                                    }
                                 })
 
                             if batch_has_unassigned:
-                                try:
-                                    cluster_service.process_unassigned_faces(owner_id)
-                                except Exception as ce:
-                                    logger.error(f"Batch clustering failed: {ce}")
+                                logger.info(
+                                    "Owner %s has unassigned faces; clustering deferred to a CLUSTER_FACES task",
+                                    owner_id,
+                                )
                         else:
                             err_msg = f"AI Service error: {resp.status}"
                             for task in valid_tasks:
@@ -327,19 +337,21 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                             count += 1
                             if face.face_feature:
                                 try:
-                                    assigned_id = cluster_service.assign_face_to_identity(face.id, face.face_feature)
+                                    assigned_id = cluster_service.assign_face_to_identity(
+                                        face.id, face.face_feature, photo.owner_id
+                                    )
                                     if not assigned_id:
                                         has_unassigned = True
                                 except Exception as ce:
                                     logging.error(f"Clustering failed for face {face.id}: {ce}")
 
                         if has_unassigned:
-                             # Commit faces first to ensure they exist for clustering
+                             # Commit faces first so the clustering task can see
+                             # them. Clustering itself runs as a separate
+                             # CLUSTER_FACES task, not inline: doing it here
+                             # held the single 'face' resource slot and blocked
+                             # all further recognition.
                              db.commit()
-                             try:
-                                 cluster_service.process_unassigned_faces(photo.owner_id)
-                             except Exception as ce:
-                                 logging.error(f"Batch clustering failed: {ce}")
 
                         tasks_status = dict(photo.processed_tasks or {})
                         tasks_status['face'] = True
@@ -351,7 +363,12 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                             from app.crud.album import trigger_conditional_albums_update
                             trigger_conditional_albums_update(db, photo.owner_id, [photo.id])
                             
-                        return {'status': 'success', 'faces_found': count}
+                        return {
+                            'status': 'success',
+                            'faces_found': count,
+                            'has_unassigned': has_unassigned,
+                            'owner_id': str(photo.owner_id) if photo.owner_id else None,
+                        }
                     else:
                         return {'status': 'failed', 'error': f"AI Service error: {resp.status}"}
         except Exception as e:
@@ -362,6 +379,31 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
             db.add(photo)
             db.commit()
             raise e
+
+    async def handle_completion(self, worker, items: List[Dict], db: Session) -> None:
+        """Register one clustering task per owner that produced unassigned faces.
+
+        ``enqueue_cluster_faces`` reuses an outstanding PENDING/PROCESSING row,
+        so a large import round collapses into a single clustering pass instead
+        of one per batch.
+        """
+        owner_ids = set()
+        for item in items:
+            if item.get('status') != 'completed':
+                continue
+            result = item.get('result')
+            if not isinstance(result, dict) or not result.get('has_unassigned'):
+                continue
+            owner_id = result.get('owner_id')
+            if owner_id:
+                owner_ids.add(owner_id)
+
+        for owner_id in owner_ids:
+            try:
+                enqueue_cluster_faces(db, owner_id)
+            except Exception as exc:
+                db.rollback()
+                logger.error(f"Failed to enqueue face clustering for owner {owner_id}: {exc}")
 
     def release_resources(self) -> None:
         pass
