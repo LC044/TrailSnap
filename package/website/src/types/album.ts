@@ -49,6 +49,7 @@ export interface ImageDescription {
 // 从后端返回的照片数据
 export interface Photo {
   id: string;
+  owner_id?: string;
   album_ids?: string[];
   filename?: string;
   photo_time: string;
@@ -91,6 +92,7 @@ export interface TimelineStats {
 // 前端使用的照片数据，包含了更多信息
 export interface AlbumImage {
   id: string
+  ownerId?: string
   url: string
   thumbnail: string
   preview: string

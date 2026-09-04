@@ -163,3 +163,33 @@ async def test_get_thumbnail_rejects_unknown_photo():
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Photo not found"
+
+
+@pytest.mark.asyncio
+async def test_static_thumbnail_returns_file_without_database(tmp_path):
+    owner_id = uuid4()
+    photo_id = uuid4()
+    thumbnail = tmp_path / "thumb.webp"
+    thumbnail.write_bytes(b"thumbnail-bytes")
+
+    with patch.object(
+        media_api.user_storage,
+        "get_cached_storage_base",
+        return_value=str(tmp_path),
+    ), patch.object(
+        media_api.user_storage,
+        "get_user_root",
+        return_value=str(tmp_path),
+    ), patch.object(media_api, "_get_thumbnail_path", return_value=str(thumbnail)):
+        response = await media_api.get_static_thumbnail(owner_id, photo_id)
+
+    assert response.path == str(thumbnail)
+    assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
+@pytest.mark.asyncio
+async def test_static_thumbnail_rejects_unknown_size_before_file_lookup():
+    with pytest.raises(HTTPException) as exc_info:
+        await media_api.get_static_thumbnail(uuid4(), uuid4(), size="large")
+
+    assert exc_info.value.status_code == 400

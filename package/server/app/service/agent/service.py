@@ -269,9 +269,9 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 你可以使用提供的工具来搜索照片和查看照片的详细数据，例如地址、景区、标签、人脸等。
 
 【重要指令】：如果你需要展示照片给用户，请必须使用 Markdown 图片语法，并且 URL 格式必须为：
-`![照片描述](/api/medias/照片ID/thumbnail)`
+`![照片描述](/api/medias/{user_id}/照片ID/thumbnail)`
 例如：
-`![美丽的风景](/api/medias/123e4567-e89b-12d3-a456-426614174000/thumbnail)`
+`![美丽的风景](/api/medias/{user_id}/123e4567-e89b-12d3-a456-426614174000/thumbnail)`
 
 当你为用户准备了九宫格照片时，请在回答中直接用上述 Markdown 格式输出这 9 张照片。
 当用户问“发生了什么事情”或“玩了哪些景点”时，你可以结合照片的描述(description)和一句话旁白(narrative)来丰富你的回答。

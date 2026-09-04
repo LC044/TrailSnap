@@ -89,7 +89,7 @@ def test_get_similar_groups_groups_identical_embeddings():
     assert group[0]["id"] == str(p2)
     assert group[1]["id"] == str(p1)
     # Helper URLs include the photo id
-    assert group[0]["thumbnail_path"] == f"/api/medias/{p2}/thumbnail"
+    assert group[0]["thumbnail_path"] == f"/api/medias/{user_id}/{p2}/thumbnail"
     assert group[0]["src"] == f"/api/medias/{p2}/preview"
 
 

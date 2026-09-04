@@ -2,7 +2,7 @@ import { ref, provide, inject, type Ref, type InjectionKey, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Images, User, MapPin, Tag, Bookmark } from 'lucide-vue-next'
 import { navApi, type NavItemRef, type ResolvedNavItem } from '@/api/nav'
-import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 
 // --- Types ---
 
@@ -35,10 +35,10 @@ export const getNavIcon = (entityType: string) => {
 /** 自定义导航项的封面缩略图 URL（person 用 medium 尺寸，其余默认） */
 export const getThumbnailUrl = (item: ResolvedNavItem) => {
   if (item.entity_type === 'person' && item.cover_photo_id) {
-    return toServerUrl(`/api/medias/${item.cover_photo_id}/thumbnail?size=medium`)
+    return thumbnailUrl(item.cover_photo_id, 'medium')
   }
   if (item.cover_photo_id) {
-    return toServerUrl(`/api/medias/${item.cover_photo_id}/thumbnail`)
+    return thumbnailUrl(item.cover_photo_id)
   }
   return ''
 }

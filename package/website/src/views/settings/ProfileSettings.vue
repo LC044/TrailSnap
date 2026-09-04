@@ -64,6 +64,7 @@ import { userService } from '@/api/user'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 import request from '@/utils/request'
 import { toServerUrl } from '@/config/server'
+import { thumbnailPath } from '@/utils/mediaUrl'
 
 const userStore = useUserStore()
 const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
@@ -122,7 +123,7 @@ const handleUploadAvatar = async (options: any) => {
     })
     
     const photoId = res.data.id
-    form.avatar = `/api/medias/${photoId}/thumbnail?size=medium`
+    form.avatar = thumbnailPath(photoId, 'medium')
     ElMessage.success('头像上传成功')
   } catch (error) {
     ElMessage.error('头像上传失败')
@@ -134,7 +135,7 @@ const handleUploadAvatar = async (options: any) => {
 const handleSelectFromGallery = (ids: string[]) => {
   if (ids.length > 0) {
     const photoId = ids[0]
-    form.avatar = `/api/medias/${photoId}/thumbnail?size=medium`
+    form.avatar = thumbnailPath(photoId, 'medium')
     showGallerySelector.value = false
     ElMessage.success('已选择头像')
   }

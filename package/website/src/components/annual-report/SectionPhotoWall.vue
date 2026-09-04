@@ -54,6 +54,7 @@ const props = defineProps<{
 
 import { useIntersectionObserver } from '@vueuse/core';
 import { toServerUrl } from '@/config/server';
+import { thumbnailUrl } from '@/utils/mediaUrl';
 const isVisible = ref(false);
 const sectionRef = ref<HTMLElement | null>(null);
 
@@ -102,7 +103,7 @@ const PHOTOS_PER_MONTH = 10;
 const positions = ref<{ x: number; y: number; z: number; rX: number; rY: number; rZ: number; scale: number; opacity: number; width?: number; height?: number }[]>([]);
 
 const getPhotoUrl = (photo: Photo) => {
-    return toServerUrl(`/api/medias/${photo.id}/thumbnail`);
+    return thumbnailUrl(photo.id, 'small', photo.owner_id);
     return `https://picsum.photos/seed/${photo.id}/400/600`;
 }
 

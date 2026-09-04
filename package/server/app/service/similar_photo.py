@@ -8,6 +8,7 @@ from sklearn.cluster import AgglomerativeClustering
 from app.db.models.image_vector import ImageVector
 from app.db.models.photo import Photo
 from app.db.models.image_description import ImageDescription
+from app.service.media_urls import thumbnail_url
 
 class SimilarPhotoService:
     def __init__(self, db: Session, user_id: str):
@@ -93,7 +94,7 @@ class SimilarPhotoService:
                     "filename": photo.filename,
                     "photo_time": photo.photo_time,
                     "score": score,
-                    "thumbnail_path": f"/api/medias/{photo.id}/thumbnail", # Helper for frontend
+                    "thumbnail_path": thumbnail_url(self.user_id, photo.id), # Helper for frontend
                     "src": f"/api/medias/{photo.id}/preview" # Helper for frontend
                 })
 

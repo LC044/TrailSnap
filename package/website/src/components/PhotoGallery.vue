@@ -642,58 +642,21 @@ const store = computed(() => props.store || photoStore)
 
 // --- Image Loading Logic ---
 const loadedImages = reactive<Record<string, string>>({})
-const imageLoaders = new Map<string, AbortController>()
 const placeholderSrc = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-// 缓存Request对象，避免重复创建导致连接重建
-const requestCache = new Map<string, Request>();
 
-const loadImage = async (image: AlbumImage) => {
-    if (loadedImages[image.id]) return;
-    if (imageLoaders.has(image.id)) return;
-
-    // 复用Request对象
-    let request = requestCache.get(image.id);
-    if (!request) {
-        request = new Request(image.thumbnail, {
-            method: 'GET',
-            headers: {
-                'Connection': 'keep-alive'  // 显式要求keep-alive
-            }
-        });
-        requestCache.set(image.id, request);
-    }
-
-    const controller = new AbortController();
-    imageLoaders.set(image.id, controller);
-
-    try {
-      // loadedImages[image.id] = image.thumbnail;
-      const response = await fetch(request, { signal: controller.signal });
-      if (response.ok) {
-          loadedImages[image.id] = image.thumbnail;
-      }
-    } catch (e: any) {
-        if (e.name !== 'AbortError') {
-            console.error('Image load failed', e);
-        }
-    } finally {
-        imageLoaders.delete(image.id);
-    }
-};
+// Assign the URL directly to <img>. The previous probe fetch did not consume
+// its body and then caused <img> to request the same thumbnail a second time.
+const loadImage = (image: AlbumImage) => {
+    loadedImages[image.id] = image.thumbnail
+}
 
 const cancelImageLoad = (imageId: string) => {
-    const controller = imageLoaders.get(imageId)
-    if (controller) {
-        controller.abort()
-        imageLoaders.delete(imageId)
-    }
+    delete loadedImages[imageId]
 }
 
 // Ensure cleanup on component unmount
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
-    imageLoaders.forEach(c => c.abort())
-    imageLoaders.clear()
     if (resizeObserver) resizeObserver.disconnect()
     stopGridPinch()
     clearLongPress()

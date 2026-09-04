@@ -32,6 +32,7 @@ class PhotoUpdate(BaseModel):
 
 class Photo(PhotoBase):
     id: UUID
+    owner_id: Optional[UUID] = None
     file_path: str = Field(exclude=True)
     upload_time: datetime = Field(exclude=True)
 

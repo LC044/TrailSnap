@@ -343,6 +343,7 @@ import { format } from 'date-fns'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 import { useUserStore } from '@/stores/user'
 import type { SwipeFilterDecision } from '@/api/photo'
 
@@ -507,7 +508,7 @@ const STACK_DEPTH = 4 // 增加栈深至4，使最底层卡片以透明状态预
 const stack = computed(() => photos.value.slice(0, STACK_DEPTH))
 
 // 统一使用 medium 缩略图（保证清晰度）；弱网体验由键化卡片栈 + 静默预取 + 渐显兜底。
-const thumbUrl = (id: string) => toServerUrl(`/api/medias/${id}/thumbnail?size=medium`)
+const thumbUrl = (id: string) => thumbnailUrl(id, 'medium')
 
 // 缩略图加载状态：记录已加载完成的 photo id，用于渐显与"实况视频待封面就绪"判断。
 // 由可见卡片 <img @load> 与下方静默预取共同写入。

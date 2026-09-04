@@ -130,6 +130,7 @@ import { Backpack, X } from 'lucide-vue-next';
 
 import { Photo } from '@/types/album';
 import { toServerUrl } from '@/config/server';
+import { thumbnailUrl } from '@/utils/mediaUrl';
 
 const props = defineProps<{
   data: LocationMetrics;
@@ -228,13 +229,13 @@ const showPreview = ref(false);
 const currentPreviewPhoto = ref('');
 
 const previewPhoto = (photo: Photo, index: number) => {
-    currentPreviewPhoto.value = toServerUrl(`/api/medias/${photo.id}/thumbnail?size=medium`);
+    currentPreviewPhoto.value = thumbnailUrl(photo.id, 'medium', photo.owner_id);
     showPreview.value = true;
 };
 
 const getPhotoUrl = (photo: Photo) => {
   // return `https://picsum.photos/seed/${photo.id}/400/600`;
-    return toServerUrl(`/api/medias/${photo.id}/thumbnail`);
+    return thumbnailUrl(photo.id, 'small', photo.owner_id);
 }
 
 </script>

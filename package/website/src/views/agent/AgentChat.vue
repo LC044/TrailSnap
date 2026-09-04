@@ -107,6 +107,7 @@ import AgentHeader from './components/AgentHeader.vue';
 import AgentMessageItem from './components/AgentMessageItem.vue';
 import AgentInput from './components/AgentInput.vue';
 import { getServerUrl } from '@/config/server';
+import { photoIdFromMediaUrl, thumbnailToFileUrl } from '@/utils/mediaUrl';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -417,7 +418,7 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
     src = src.replace('//api/', '/api/');
   }
 
-  const fullSrc = src.replace('/thumbnail', '/file');
+  const fullSrc = thumbnailToFileUrl(src);
 
   return `<agent-image data-src="${src}?size=medium" data-full-src="${fullSrc}" data-alt="${alt}"></agent-image>`;
 };
@@ -499,18 +500,15 @@ const setupImageClick = () => {
         e.stopPropagation();
         const target = e.target as HTMLImageElement;
         
-        let originalSrc = target.getAttribute('data-full-src') || target.src.replace('/thumbnail', '');
+        let originalSrc = target.getAttribute('data-full-src') || thumbnailToFileUrl(target.src);
         
         const imgElements = messagesContainer.value?.querySelectorAll('.agent-gallery-image');
         if (imgElements && imgElements.length > 0) {
           allPhotos.value = Array.from(imgElements).map((el, index) => {
-            let photoSrc = el.getAttribute('data-full-src') || (el as HTMLImageElement).src.replace('/thumbnail', '');
+            let photoSrc = el.getAttribute('data-full-src') || thumbnailToFileUrl((el as HTMLImageElement).src);
             
             let realId = `agent-img-${index}`;
-            const idMatch = photoSrc.match(/\/medias\/([a-f0-9\-]{36})/i);
-            if (idMatch && idMatch[1]) {
-              realId = idMatch[1];
-            }
+            realId = photoIdFromMediaUrl(photoSrc) || realId;
             
             if (!photoSrc.startsWith('http') && !photoSrc.startsWith('data:')) {
                photoSrc = window.location.origin + (photoSrc.startsWith('/') ? photoSrc : '/' + photoSrc);
@@ -537,10 +535,7 @@ const setupImageClick = () => {
         } else {
           let fallbackSrc = originalSrc;
           let realId = 'agent-img-0';
-          const idMatch = fallbackSrc.match(/\/medias\/([a-f0-9\-]{36})/i);
-          if (idMatch && idMatch[1]) {
-            realId = idMatch[1];
-          }
+          realId = photoIdFromMediaUrl(fallbackSrc) || realId;
           if (!fallbackSrc.startsWith('http') && !fallbackSrc.startsWith('data:')) {
              fallbackSrc = window.location.origin + (fallbackSrc.startsWith('/') ? fallbackSrc : '/' + fallbackSrc);
           }

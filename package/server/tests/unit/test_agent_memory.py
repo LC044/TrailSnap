@@ -144,6 +144,14 @@ def test_collect_photo_ids_from_reply_and_tool_returns():
     assert ids == {pid1, pid2}
 
 
+def test_collect_photo_ids_from_owner_qualified_thumbnail_url():
+    owner_id = "323e4567-e89b-12d3-a456-426614174222"
+    photo_id = "423e4567-e89b-12d3-a456-426614174333"
+    reply = f"![x](/api/medias/{owner_id}/{photo_id}/thumbnail)"
+
+    assert mem._collect_photo_ids(reply, None) == {photo_id}
+
+
 def test_collect_photo_ids_empty_when_nothing():
     assert mem._collect_photo_ids("纯文字没有照片", None) == set()
 

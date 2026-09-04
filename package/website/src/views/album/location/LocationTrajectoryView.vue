@@ -82,8 +82,8 @@ import { useRouter } from 'vue-router'
 import { locationService } from '@/api/location'
 import type { TimelineNode } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { loadMapScript } from '@/utils/mapLoader'
-import { isNativeApp, toServerUrl } from '@/config/server'
+import { getTiandituTileTemplate, loadMapScript } from '@/utils/mapLoader'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 import { ElMessage } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme'
 
@@ -135,21 +135,21 @@ const formatDate = (dateStr: string) => {
 
 const getThumbnailUrl = (photoId: string) => {
   // return `https://picsum.photos/seed/${photoId}/400/600`
-  return toServerUrl(`/api/medias/${photoId}/thumbnail`)
+  return thumbnailUrl(photoId)
 }
 
 // Map initialization
 const initMap = () => {
   if (map.value) return
   
-  const useTileProxy = import.meta.env.PROD && !isNativeApp()
+  const vecTileUrl = getTiandituTileTemplate('vec_w', currentApiKey.value)
+  const cvaTileUrl = getTiandituTileTemplate('cva_w', currentApiKey.value)
   
-  // 原生壳没有 Web 生产部署中的 /tianditu-tiles nginx 代理。
-  if (useTileProxy) {
+  // Capacitor 通过所选 TrailSnap 服务器的 nginx 代理加载瓦片。
+  if (vecTileUrl && cvaTileUrl) {
     map.value = new T.Map('trajectory-map', { layers: [] })
-    const tk = currentApiKey.value;
-    const vecLayer = new T.TileLayer(`/tianditu-tiles/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=${tk}`, { minZoom: 1, maxZoom: 18 });
-    const cvaLayer = new T.TileLayer(`/tianditu-tiles/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=${tk}`, { minZoom: 1, maxZoom: 18 });
+    const vecLayer = new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 });
+    const cvaLayer = new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 });
     map.value.addOverLay(vecLayer);
     map.value.addOverLay(cvaLayer);
   } else {

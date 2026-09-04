@@ -111,7 +111,7 @@
     <div v-if="gameState !== 'playing'" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 animate-fade-in">
       <img 
         v-if="photoId"
-        :src="toServerUrl(`/api/medias/${photoId}/thumbnail?size=medium`)"
+        :src="thumbnailUrl(photoId, 'medium')"
         class="absolute inset-0 w-full h-full object-cover blur-2xl opacity-50 scale-110"
       />
       <div class="absolute inset-0 bg-white/30 dark:bg-black/40 backdrop-blur-sm"></div>
@@ -168,6 +168,7 @@ import { guessCityApi, type CityCoordinate } from '@/api/guessCity'
 import { photoApi } from '@/api/photo'
 import { format } from 'date-fns'
 import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 
 const photoId = ref<string>('')
 const photoTime = ref<string | null>(null)

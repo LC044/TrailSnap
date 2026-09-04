@@ -28,6 +28,7 @@ from app.schemas.annual_report import (
 from app.crud import annual_report as crud_annual_report
 from app.api.deps import get_current_user
 from app.db.models.user import User
+from app.service.media_urls import thumbnail_url
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -284,7 +285,7 @@ def get_report_location(
             .filter(PhotoMetadata.city == city)\
             .first()
             
-        cover_url = f"/api/medias/{cover_photo.id}/thumbnail" if cover_photo else None
+        cover_url = thumbnail_url(cover_photo.owner_id, cover_photo.id) if cover_photo else None
 
         location_points.append(
             LocationPoint(

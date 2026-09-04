@@ -7,6 +7,7 @@ import { albumService } from '@/api/album'
 import searchService, { type TextSearchRequest } from '@/api/search'
 import type { Photo, TimelineStats, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
 import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 
 // --- 缓存工具 ---
 const CACHE_PREFIX = 'trailsnap:';
@@ -71,9 +72,9 @@ const formatDuration = (duration: number | null) => {
 export const mapPhotoToImage = (photo: Photo): AlbumImage => {
     // 新 API 在 url 和 thumbnail_url 字段中返回相对地址
     const url = toServerUrl(`/api/medias/${photo.id}/file`);
-    const thumbnail = toServerUrl(`/api/medias/${photo.id}/thumbnail`);
+    const thumbnail = thumbnailUrl(photo.id, 'small', photo.owner_id);
     // const thumbnail = `https://picsum.photos/seed/${photo.id}/400/600`
-    const preview = toServerUrl(`/api/medias/${photo.id}/thumbnail?size=medium`);
+    const preview = thumbnailUrl(photo.id, 'medium', photo.owner_id);
 
     // 优先使用 photo_time，其次 upload_time，最后取当前时间
     let timestamp = Date.now();
@@ -96,6 +97,7 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
 
     return {
       id: photo.id,
+      ownerId: photo.owner_id,
       url,
       thumbnail,
       preview,

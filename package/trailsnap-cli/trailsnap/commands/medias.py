@@ -4,6 +4,15 @@ import sys
 from utils import make_request, load_env, normalize_trailsnap_url
 from output import output, output_error, set_formatter, OutputFormatter
 
+
+def _thumbnail_endpoint(photo_id, size):
+    user = make_request("/users/me")
+    owner_id = user.get("id") if isinstance(user, dict) else None
+    if not owner_id:
+        output_error("获取当前用户失败，无法生成缩略图地址")
+        sys.exit(1)
+    return f"/medias/{owner_id}/{photo_id}/thumbnail?size={size}"
+
 def setup_parser(subparsers):
     parser = subparsers.add_parser("medias", help="获取和管理媒体文件")
     sub_subparsers = parser.add_subparsers(dest="subcommand", help="可用操作")
@@ -38,10 +47,10 @@ def execute_get(args):
         if not base_url:
             output_error("错误：TRAILSNAP_API_URL环境变量未设置")
             sys.exit(1)
-        url = base_url + f"/medias/{photo_id}/file" if size == 'large' else base_url + f"/medias/{photo_id}/thumbnail?size={size}"
+        url = base_url + f"/medias/{photo_id}/file" if size == 'large' else base_url + _thumbnail_endpoint(photo_id, size)
         print(url)
     elif format == "base64":
-        data = make_request(f"/medias/{photo_id}/thumbnail?size={size}&format=base64")
+        data = make_request(f"{_thumbnail_endpoint(photo_id, size)}&format=base64")
         if data and "base64" in data:
             print(data["base64"])
         else:
@@ -61,5 +70,5 @@ def execute_get(args):
             sys.exit(1)
     else:
         # For json, pretty, table
-        url = base_url + f"/medias/{photo_id}/file" if size == 'large' else base_url + f"/medias/{photo_id}/thumbnail?size={size}"
+        url = base_url + f"/medias/{photo_id}/file" if size == 'large' else base_url + _thumbnail_endpoint(photo_id, size)
         output({"photo_id": photo_id, "size": size, "url": url})

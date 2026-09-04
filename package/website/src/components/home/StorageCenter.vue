@@ -163,7 +163,7 @@
           >
             <div class="flex items-center gap-3">
               <img
-              :src="toServerUrl(`/api/medias/${file.id}/thumbnail?size=small`)"
+              :src="thumbnailUrl(file.id)"
                 class="w-12 h-12 object-cover rounded-lg cursor-pointer shrink-0 border border-gray-200 dark:border-gray-600"
                 @click="locateFile(file)"
                 alt="thumbnail"
@@ -200,7 +200,7 @@
                 <td class="px-4 py-3 font-medium text-gray-900 dark:text-white max-w-[300px]">
                   <div class="flex items-center gap-3">
                     <img
-              :src="toServerUrl(`/api/medias/${file.id}/thumbnail?size=small`)"
+              :src="thumbnailUrl(file.id)"
                       class="w-10 h-10 object-cover rounded-lg cursor-pointer shrink-0 border border-gray-200 dark:border-gray-600 hover:opacity-80 transition-opacity"
                       @click="locateFile(file)"
                       alt="thumbnail"
@@ -251,6 +251,7 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import type { AlbumImage } from '@/types/album';
 import request from '@/utils/request';
 import { toServerUrl } from '@/config/server';
+import { thumbnailUrl } from '@/utils/mediaUrl';
 
 const router = useRouter();
 const loading = ref(false);
@@ -403,8 +404,8 @@ const currentLightboxImage = computed((): AlbumImage | null => {
   return {
     id: file.id,
     url: toServerUrl(`/api/medias/${file.id}/file`),
-    thumbnail: toServerUrl(`/api/medias/${file.id}/thumbnail?size=medium`),
-    preview: toServerUrl(`/api/medias/${file.id}/thumbnail?size=medium`),
+    thumbnail: thumbnailUrl(file.id, 'medium'),
+    preview: thumbnailUrl(file.id, 'medium'),
     srcset: '',
     timestamp: 0,
     albumIds: [],

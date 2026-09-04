@@ -52,9 +52,11 @@ def test_template_greeting_with_and_without_location():
 
 
 def test_build_markdown_contains_all_photo_urls():
-    md = job._build_markdown("你好", ["a" * 36, "b" * 36])
+    user_id = uuid4()
+    md = job._build_markdown("你好", user_id, ["a" * 36, "b" * 36])
     assert "你好" in md
     assert md.count("/api/medias/") == 2
+    assert md.count(str(user_id)) == 2
     assert "/thumbnail" in md
 
 

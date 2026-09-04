@@ -20,7 +20,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { Search, Plus, User } from '@element-plus/icons-vue'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo, FaceIdentity } from '@/types/album'
-import { toServerUrl } from '@/config/server'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 
 const props = defineProps({
   person: {
@@ -31,7 +31,7 @@ const props = defineProps({
 })
 
 const getPhotoUrl = (photoId: string) => {
-  return toServerUrl(`/api/medias/${photoId}/thumbnail?size=medium`)
+  return thumbnailUrl(photoId, 'medium')
 }
 
 /**

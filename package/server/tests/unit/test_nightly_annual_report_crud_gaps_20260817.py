@@ -266,7 +266,7 @@ def test_get_report_season_returns_picsum_fallback_when_no_rep_photo():
 
     with patch.object(ar, "find_best_match_photo", return_value=None):
         metrics = ar.get_report_season(
-            datetime(2024, 1, 1), datetime(2024, 12, 31), db
+            datetime(2024, 1, 1), datetime(2024, 12, 31), db, user_id="user-1"
         )
 
     assert len(metrics.seasonList) == 4
@@ -288,11 +288,11 @@ def test_get_report_season_uses_rep_photo_thumbnail_url():
     rep_photo = _photo(id_="rep-1")
     with patch.object(ar, "find_best_match_photo", return_value=rep_photo):
         metrics = ar.get_report_season(
-            datetime(2024, 1, 1), datetime(2024, 12, 31), db
+            datetime(2024, 1, 1), datetime(2024, 12, 31), db, user_id="user-1"
         )
 
     spring = next(s for s in metrics.seasonList if s.seasonName == "\u6625")
-    assert spring.representativePhoto == "/api/medias/rep-1/thumbnail"
+    assert spring.representativePhoto == "/api/medias/user-1/rep-1/thumbnail"
     assert spring.photoCount == 7
     assert spring.shootMonth == "3-5\u6708"
 
@@ -355,10 +355,10 @@ def test_get_report_easter_egg_uses_best_photo_when_found():
 
     with patch.object(ar, "find_best_match_photo", return_value=best):
         egg = ar.get_report_easter_egg(
-            datetime(2024, 1, 1), datetime(2024, 12, 31), db
+            datetime(2024, 1, 1), datetime(2024, 12, 31), db, user_id="user-1"
         )
 
-    assert egg.bestPhotoUrl == "/api/medias/egg-1/thumbnail"
+    assert egg.bestPhotoUrl == "/api/medias/user-1/egg-1/thumbnail"
     assert egg.bestPhotoDate == "2024-10-01"
     assert egg.tags.main == "\u751f\u6d3b\u8bb0\u5f55\u5bb6"
 

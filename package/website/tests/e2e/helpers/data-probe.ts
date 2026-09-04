@@ -28,6 +28,7 @@ export interface BaseResponse<T> {
 
 export interface PhotoSummary {
   id: string
+  owner_id?: string
   filename?: string
   file_type?: 'image' | 'video' | 'live_photo'
   make?: string | null
