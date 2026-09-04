@@ -65,6 +65,19 @@ def test_get_agent_tools_returns_expected_names():
         "get_photo_persons_tool",
         "get_photo_tags_tool",
         "search_photos_tool",
+        "list_skills",
+        "load_skill",
+        "search_photos_v2",
+        "get_photo_context",
+        "search_ocr",
+        "get_trip_tickets",
+        "get_travel_timeline",
+        "view_photos",
+        "create_contact_sheet",
+        "select_representative_photos",
+        "create_artifact_draft",
+        "get_artifact_context",
+        "save_artifact_html_page",
     ])
 
 

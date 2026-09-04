@@ -38,6 +38,41 @@ export interface AgentMessage {
   created_at: string;
 }
 
+export interface ToolProgressEvent {
+  type: 'tool_start' | 'tool_end';
+  tool_call_id?: string;
+  tool_name?: string;
+  status?: 'success' | 'error';
+}
+
+export interface AgentArtifactRef {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  url: string;
+  photo_ids?: string[];
+  has_html?: boolean;
+}
+
+export interface AIArtifact extends Omit<AgentArtifactRef, 'type' | 'url'> {
+  user_id: string;
+  artifact_type: string;
+  content_json: Record<string, any>;
+  html_content: string | null;
+  html_config: {
+    style_name?: string;
+    custom_style?: string;
+    server_api_access?: boolean;
+    runtime?: string;
+  };
+  source_photo_ids: string[];
+  source_ticket_ids: string[];
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ProactiveMessage {
   id: number;
   content: string;
@@ -65,7 +100,7 @@ export const agentApi = {
       data
     );
   },
-  async chatStream(data: ChatRequest, onMessage: (content: string) => void, onSessionId?: (id: string) => void, onTitleUpdate?: (title: string) => void, onReasoning?: (content: string) => void, signal?: AbortSignal) {
+  async chatStream(data: ChatRequest, onMessage: (content: string) => void, onSessionId?: (id: string) => void, onTitleUpdate?: (title: string) => void, onReasoning?: (content: string) => void, signal?: AbortSignal, onEvent?: (event: ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef }) => void) {
     const userStore = (await import('@/stores/user')).useUserStore();
     const token = userStore.token;
     
@@ -131,6 +166,9 @@ export const agentApi = {
             if (parsed.title && onTitleUpdate) {
               onTitleUpdate(parsed.title);
             }
+            if ((parsed.type === 'tool_start' || parsed.type === 'tool_end' || parsed.type === 'artifact') && onEvent) {
+              onEvent(parsed);
+            }
           } catch (e) {
             console.error('Failed to parse stream chunk', e);
           }
@@ -172,5 +210,11 @@ export const agentApi = {
   },
   markProactiveRead(messageId: number) {
     return request.post<{ code: number }>(`/api/agent/proactive/${messageId}/read`);
+  },
+  getArtifact(artifactId: string) {
+    return request.get<{ code: number; data: AIArtifact }>(`/api/agent/artifacts/${artifactId}`);
+  },
+  updateArtifact(artifactId: string, data: { title?: string; content_json?: Record<string, any>; html_content?: string | null; html_config?: Record<string, any>; status?: string }) {
+    return request.put<{ code: number; data: AIArtifact }>(`/api/agent/artifacts/${artifactId}`, data);
   }
 };
