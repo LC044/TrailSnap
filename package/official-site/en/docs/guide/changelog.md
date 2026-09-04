@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-04 (0.13.1)
+
+### New
+
+- The recycle bin now supports select-all across pages, emptying the entire bin, and restoring everything without loading every page or sending every photo ID.
+- Large purge operations can run in the background with live progress, avoiding long-running request timeouts.
+
+### Improvements
+
+- Reworked bulk deletion and added database indexes. In testing, clearing 10,000 photos dropped from about 22 seconds to about 0.9 seconds while blocking other operations less.
+- Face clustering now runs as a separate background task instead of blocking recognition; large face libraries are streamed to substantially reduce peak memory use.
+- Automatic face clustering skips redundant work when little has changed recently, while manually requested clustering still runs immediately.
+- Unified scrollbar styling across the app and improved scrolling containers on desktop and mobile layouts.
+- Improved AI-facing documentation hints on the official site so assistants can find and verify TrailSnap documentation more reliably.
+
+### Bug Fixes
+
+- Fixed the recycle-bin list failing when an item has no deletion timestamp.
+- Fixed incorrect cluster counts when multiple photos from the same cluster are permanently deleted together.
+- Fixed face similarity matching potentially scanning across users and ensured each user's configured clustering threshold is respected.
+
 ## 2026-09-03 (0.13.0)
 
 ### New

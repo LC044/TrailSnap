@@ -1303,7 +1303,7 @@ wheels = [
 
 [[package]]
 name = "project"
-version = "0.13.0"
+version = "0.13.1"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },

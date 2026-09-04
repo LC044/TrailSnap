@@ -143,5 +143,10 @@
         "version": "0.13.0",
         "update_info": "- Android App 支持应用内自动检查并安装更新<br>- 新增视频元数据解析，视频可按拍摄时间与位置进入时间线和地图<br>- AI 助手新增语义记忆检索、长对话上下文压缩与多行输入<br>- 优化移动端照片查看器、备份导航与多选体验<br>- 修复移动端备份、桌面端本地 API 握手与人脸聚类性能问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.13.0"
+    },
+    {
+        "version": "0.13.1",
+        "update_info": "- 回收站支持跨页全选、清空、全部恢复和后台进度<br>- 万张照片清理实测由约 22 秒缩短至约 0.9 秒<br>- 人脸聚类改为独立任务并显著降低大型图库的内存占用<br>- 优化全站滚动条与页面滚动体验<br>- 修复回收站异常数据、聚类计数和跨用户人脸匹配问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.13.1"
     }
 ]
