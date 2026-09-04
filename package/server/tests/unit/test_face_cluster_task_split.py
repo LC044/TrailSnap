@@ -164,7 +164,10 @@ def test_cluster_faces_defer_guard_is_scoped_to_the_owner():
 
     db = _db(recognition_pending=False)
     task = _task()
-    with patch("app.service.tasks.face_cluster._cluster_in_thread"):
+    # The throttle queries the same mock session; stub it out so the
+    # assertions below describe the defer guard's query and not its.
+    with patch("app.service.tasks.face_cluster.should_cluster", return_value=(True, "")), \
+         patch("app.service.tasks.face_cluster._cluster_in_thread"):
         _run(_strategy().process(MagicMock(), task, db))
 
     filters = db.query.return_value.filter.call_args.args
