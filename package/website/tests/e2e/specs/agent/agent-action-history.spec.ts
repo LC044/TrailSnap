@@ -90,7 +90,7 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
 
     await page.getByRole('button', { name: '确认执行' }).click()
     await page.locator('.el-message-box').getByRole('button', { name: '确认执行' }).click()
-    await expect(page.getByText('已执行', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Agent 操作计划').getByText('已执行', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '打开相册' })).toBeVisible()
     await expect(page.getByRole('button', { name: '撤销操作' })).toBeVisible()
 
