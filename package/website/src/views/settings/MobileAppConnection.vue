@@ -28,7 +28,7 @@
           {{ androidDownloadUrl }}
         </p>
         <p class="text-xs leading-5 text-gray-500 dark:text-gray-400">
-          安装时 Android 可能要求允许浏览器“安装未知应用”。请确认地址属于 TrailSnap 官方 GitHub 仓库。
+          安装包由上方填写的自部署 TrailSnap Server 提供，手机无需连接外部下载站点。
         </p>
       </div>
 
@@ -122,7 +122,6 @@ const address = ref(currentOrigin)
 const connectionQrCode = ref('')
 const downloadQrCode = ref('')
 const appVersion = packageMetadata.version
-const androidDownloadUrl = `https://github.com/LC044/TrailSnap/releases/download/v${appVersion}/TrailSnap-${appVersion}-debug.apk`
 
 const normalizedAddress = computed(() => {
   try {
@@ -130,6 +129,11 @@ const normalizedAddress = computed(() => {
   } catch {
     return ''
   }
+})
+
+const androidDownloadUrl = computed(() => {
+  const origin = normalizedAddress.value || currentOrigin
+  return `${origin}/api/system/app-update-download/${appVersion}`
 })
 
 const addressError = computed(() => {
@@ -163,15 +167,17 @@ watch(normalizedAddress, async value => {
   }
 }, { immediate: true })
 
-QRCode.toDataURL(androidDownloadUrl, {
-  width: 320,
-  margin: 1,
-  errorCorrectionLevel: 'M',
-}).then(dataUrl => {
-  downloadQrCode.value = dataUrl
-}).catch(() => {
-  downloadQrCode.value = ''
-})
+watch(androidDownloadUrl, value => {
+  QRCode.toDataURL(value, {
+    width: 320,
+    margin: 1,
+    errorCorrectionLevel: 'M',
+  }).then(dataUrl => {
+    downloadQrCode.value = dataUrl
+  }).catch(() => {
+    downloadQrCode.value = ''
+  })
+}, { immediate: true })
 
 async function writeClipboard(value: string): Promise<void> {
   if (navigator.clipboard?.writeText) {

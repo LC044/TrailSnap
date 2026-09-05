@@ -22,10 +22,12 @@ import { registerExternalLinkOpener } from '@/composables/useExternalLinks'
 import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
 import { useUserStore } from '@/stores/user'
 import { registerConnectionDeepLinks } from '@/config/serverConnection'
+import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
 
 async function bootstrap() {
   document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
   await initializeServerConfig()
+  installNativeNetworkPolicy()
   document.documentElement.classList.toggle('capacitor-native', isNativeApp())
   const app = createApp(App);
   // 2. 创建 Pinia 实例

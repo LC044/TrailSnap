@@ -144,8 +144,20 @@ export async function saveServerUrl(value: string): Promise<string> {
 
 /** Convert relative API/media paths into URLs on the configured public origin. */
 export function toServerUrl(path: string): string {
-  if (/^(?:https?:|blob:|data:)/i.test(path)) return path
+  if (/^(?:blob:|data:)/i.test(path)) return path
   const base = getServerUrl()
+  if (/^https?:/i.test(path)) {
+    if (!isMobileApp()) return path
+    try {
+      const target = new URL(path)
+      const appOrigin = new URL(window.location.href).origin
+      if (target.origin === appOrigin || (base && target.origin === new URL(base).origin)) return path
+    } catch {
+      // Invalid absolute URLs are rejected below for the packaged App.
+    }
+    console.warn('[TrailSnap] blocked external native resource URL')
+    return ''
+  }
   if (!base) return path
   return `${base}${path.startsWith('/') ? path : `/${path}`}`
 }

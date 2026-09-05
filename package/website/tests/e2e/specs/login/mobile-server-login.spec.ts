@@ -153,8 +153,8 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
     await expect.poll(() => page.evaluate(() => (
       (window as typeof window & { __tiandituTileTemplates?: string[] }).__tiandituTileTemplates || []
     ))).toEqual([
-      'http://192.168.1.10:8082/tianditu-tiles/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
-      'http://192.168.1.10:8082/tianditu-tiles/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+      'http://192.168.1.10:8082/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+      'http://192.168.1.10:8082/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
     ])
   })
 })

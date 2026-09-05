@@ -62,9 +62,11 @@ export const useAlbumStore = defineStore('album', () => {
     return apiAlbums.value.map(album => {
       const cover: AlbumImage = album.cover ? mapPhotoToImage(album.cover) : {
         id: '',
-        url: 'https://placehold.co/400x300?text=Empty',
-        thumbnail: 'https://placehold.co/400x300?text=Empty',
-        preview: 'https://placehold.co/400x300?text=Empty',
+        // Empty covers are rendered by the component fallback.  A data URL
+        // keeps the native app fully local instead of leaking to placehold.co.
+        url: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+        thumbnail: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
+        preview: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
         srcset: '',
         timestamp: Date.now(),
         albumIds: [],

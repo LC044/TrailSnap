@@ -94,7 +94,7 @@
                 </div>
                 <div>
                   <h3 class="font-medium text-gray-900 dark:text-white">天地图 Web API</h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">配置一个或多个 Key，系统会随机选择使用。保存前会自动验证每个 Key。</p>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">配置一个或多个浏览器端 Key，系统会随机选择使用。若 Key 启用了域名白名单，请加入当前自部署 Server 的域名或 IP。保存前会自动验证每个 Key。</p>
                 </div>
               </div>
               <el-select v-model="mapForm.provider" aria-label="地图提供商" class="w-full sm:w-48" @change="resetMapKeyTests">

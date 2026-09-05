@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { Preferences } from '@capacitor/preferences'
 import type { PluginListenerHandle } from '@capacitor/core'
 import { systemApi, type AppUpdateCheckResult } from '@/api/system'
+import { toServerUrl } from '@/config/server'
 import {
   appUpdaterNative,
   supportsAppUpdate,
@@ -92,7 +93,7 @@ async function attachProgressListener(): Promise<void> {
 function applyResult(result: AppUpdateCheckResult): boolean {
   latestVersion.value = result.latest_version || ''
   updateInfo.value = result.update_info || ''
-  pendingUrl = result.download_url || ''
+  pendingUrl = result.download_url ? toServerUrl(result.download_url) : ''
   pendingSize = result.size || 0
   return result.has_update && !!pendingUrl
 }

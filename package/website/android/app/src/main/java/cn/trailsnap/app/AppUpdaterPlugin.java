@@ -6,6 +6,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
+import android.content.Context;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -45,6 +46,8 @@ public class AppUpdaterPlugin extends Plugin {
     private static final int CONNECT_TIMEOUT_MS = 15000;
     private static final int READ_TIMEOUT_MS = 60000;
     private static final int MAX_REDIRECTS = 5;
+    private static final String PREFERENCES_GROUP = "CapacitorStorage";
+    private static final String SERVER_URL_KEY = "trailsnap_server_url";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final AtomicBoolean downloading = new AtomicBoolean(false);
@@ -95,6 +98,10 @@ public class AppUpdaterPlugin extends Plugin {
         String url = call.getString("url");
         if (url == null || url.isEmpty()) {
             call.reject("缺少安装包下载地址", "INVALID_URL");
+            return;
+        }
+        if (!isConfiguredServerUrl(url)) {
+            call.reject("安装包必须从当前 TrailSnap Server 下载", "EXTERNAL_DOWNLOAD_BLOCKED");
             return;
         }
         String version = sanitize(call.getString("version", "latest"));
@@ -249,6 +256,9 @@ public class AppUpdaterPlugin extends Plugin {
                     throw new IllegalStateException("重定向缺少 Location 头");
                 }
                 current = new URL(new URL(current), location).toString();
+                if (!isConfiguredServerUrl(current)) {
+                    throw new SecurityException("Server 下载地址重定向到了外部服务器");
+                }
                 continue;
             }
             return connection;
@@ -262,6 +272,28 @@ public class AppUpdaterPlugin extends Plugin {
         data.put("total", total);
         data.put("percent", total > 0 ? (int) Math.min(100, downloaded * 100 / total) : 0);
         notifyListeners(EVENT_PROGRESS, data, true);
+    }
+
+    private boolean isConfiguredServerUrl(String candidate) {
+        String configured = getContext()
+            .getSharedPreferences(PREFERENCES_GROUP, Context.MODE_PRIVATE)
+            .getString(SERVER_URL_KEY, "");
+        if (configured == null || configured.isEmpty()) return false;
+        try {
+            URL expected = new URL(configured);
+            URL actual = new URL(candidate);
+            return expected.getProtocol().equalsIgnoreCase(actual.getProtocol())
+                && expected.getHost().equalsIgnoreCase(actual.getHost())
+                && effectivePort(expected) == effectivePort(actual)
+                && actual.getPath().startsWith("/api/system/app-update-download/");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private int effectivePort(URL url) {
+        if (url.getPort() >= 0) return url.getPort();
+        return url.getDefaultPort();
     }
 
     private boolean canRequestInstall() {

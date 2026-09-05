@@ -1,4 +1,4 @@
-import { isTauriApp } from '@/config/server'
+import { getServerUrl, isMobileApp, isTauriApp } from '@/config/server'
 
 let installed = false
 
@@ -16,7 +16,12 @@ function isExternalUrl(href: string): boolean {
   if (/^(mailto:|tel:)/i.test(href)) return true
   if (!/^https?:/i.test(href)) return false
   try {
-    return new URL(href, window.location.href).origin !== window.location.origin
+    const origin = new URL(href, window.location.href).origin
+    if (origin === window.location.origin) return false
+    if (isMobileApp() && getServerUrl()) {
+      return origin !== new URL(getServerUrl(), window.location.href).origin
+    }
+    return true
   } catch {
     return false
   }
@@ -34,8 +39,20 @@ async function openExternal(href: string): Promise<void> {
  * Web 与移动端环境下为空操作。
  */
 export async function registerExternalLinkOpener(): Promise<void> {
-  if (!isTauriApp() || installed) return
+  if ((!isTauriApp() && !isMobileApp()) || installed) return
   installed = true
+
+  if (isMobileApp()) {
+    document.addEventListener('click', (event) => {
+      const link = (event.target as HTMLElement | null)?.closest?.('a')
+      const href = link?.href || link?.getAttribute('href') || ''
+      if (!isExternalUrl(href)) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      console.warn('[TrailSnap] blocked external link in packaged App')
+    }, true)
+    return
+  }
 
   // 预热 opener 模块，避免首次点击因动态 import 产生可感延迟
   void import('@tauri-apps/plugin-opener').catch(() => {})
