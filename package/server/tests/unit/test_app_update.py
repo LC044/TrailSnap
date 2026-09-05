@@ -150,39 +150,38 @@ def test_check_app_update_returns_apk_asset_when_newer():
         "update_info": "新功能",
         "download_url": "http://page/v1.1.0",
     }
-    asset = {"download_url": "http://dl/apk", "size": 4096, "file_name": "TrailSnap-1.1.0.apk"}
     with (
         patch.object(app_update, "fetch_remote_update_info", side_effect=_async_return(info)),
-        patch.object(app_update, "fetch_release_apk", side_effect=_async_return(asset)),
+        patch.object(app_update, "ensure_cached_apk", side_effect=_async_return("/cache/TrailSnap-1.1.0.apk")),
+        patch.object(app_update.os.path, "getsize", return_value=4096),
     ):
         result = _run(app_update.check_app_update("v1.0.0"))
 
     assert result["has_update"] is True
     assert result["current_version"] == "1.0.0"
     assert result["latest_version"] == "1.1.0"
-    assert result["download_url"] == "http://dl/apk"
+    assert result["download_url"] == "/api/system/app-update-download/1.1.0"
     assert result["size"] == 4096
     assert result["file_name"] == "TrailSnap-1.1.0.apk"
     assert result["update_info"] == "新功能"
 
 
-def test_check_app_update_falls_back_to_ci_naming_when_github_unreachable():
-    """GitHub 限流/内网时仍要给出可用直链，size=0 让客户端跳过大小校验。"""
+def test_check_app_update_withholds_external_url_when_server_cache_unavailable():
+    """缓存失败时不能把 GitHub 地址泄漏给 App。"""
     from app.service import app_update
 
     info = {"latest_version": "1.1.0", "has_update": True, "update_info": "", "download_url": None}
     with (
         patch.object(app_update, "fetch_remote_update_info", side_effect=_async_return(info)),
-        patch.object(app_update, "fetch_release_apk", side_effect=_async_return(None)),
+        patch.object(app_update, "ensure_cached_apk", side_effect=_async_return(None)),
     ):
         result = _run(app_update.check_app_update("1.0.0", repo="LC044/TrailSnap"))
 
     assert result["has_update"] is True
-    assert result["download_url"] == (
-        "https://github.com/LC044/TrailSnap/releases/download/v1.1.0/TrailSnap-1.1.0-debug.apk"
-    )
-    assert result["file_name"] == "TrailSnap-1.1.0-debug.apk"
+    assert result["download_url"] is None
+    assert result["file_name"] is None
     assert result["size"] == 0
+    assert "尚未缓存" in result["error"]
 
 
 def test_check_app_update_reports_error_when_manifest_unavailable():

@@ -67,7 +67,7 @@ import { toServerUrl } from '@/config/server'
 import { thumbnailPath } from '@/utils/mediaUrl'
 
 const userStore = useUserStore()
-const defaultAvatar = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+const defaultAvatar = new URL('../../assets/default-avatar.svg', import.meta.url).href
 
 const form = reactive({
   username: '',

@@ -20,10 +20,11 @@ let loadingPromise: Promise<string> | null = null
  * route and must keep using Tianditu's default layers.
  */
 export const getTiandituTileTemplate = (layer: 'vec_w' | 'cva_w', key: string): string | null => {
-  const path = `/tianditu-tiles/DataServer?T=${layer}&x={x}&y={y}&l={z}&tk=${encodeURIComponent(key)}`
+  const nginxPath = `/tianditu-tiles/DataServer?T=${layer}&x={x}&y={y}&l={z}&tk=${encodeURIComponent(key)}`
+  const serverPath = `/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=${layer}&x={x}&y={y}&l={z}&tk=${encodeURIComponent(key)}`
 
-  if (isMobileApp()) return toServerUrl(path)
-  if (import.meta.env.PROD && !isNativeApp()) return path
+  if (isMobileApp()) return toServerUrl(serverPath)
+  if (import.meta.env.PROD && !isNativeApp()) return nginxPath
   return null
 }
 
@@ -80,7 +81,13 @@ const loadTianditu = (key: string) => {
     }
 
     const script = document.createElement('script')
-    script.src = `https://api.tianditu.gov.cn/api?v=4.0&tk=${key}`
+    // Capacitor must never contact Tianditu directly.  The self-hosted server
+    // is the sole network boundary and proxies (and caches) every SDK request.
+    // Keep the browser path direct in development so existing web deployments
+    // are not forced to expose this endpoint.
+    script.src = isMobileApp()
+      ? toServerUrl(`/api/system/map-proxy/api.tianditu.gov.cn/api?v=4.0&tk=${encodeURIComponent(key)}`)
+      : `https://api.tianditu.gov.cn/api?v=4.0&tk=${encodeURIComponent(key)}`
     script.type = 'text/javascript'
     script.onload = () => resolve()
     script.onerror = () => reject(new MapLoadError('Failed to load map script', 'SCRIPT_LOAD_ERROR'))

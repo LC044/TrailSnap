@@ -15,7 +15,7 @@ export interface AppUpdateCheckResult {
   latest_version: string | null
   has_update: boolean
   update_info: string
-  /** APK 直链，App 直接下载 */
+  /** 当前自部署 Server 上的 APK 同源下载路径 */
   download_url: string | null
   file_name: string | null
   /** 服务端已知的安装包大小；为 0 表示未知，客户端跳过大小校验 */

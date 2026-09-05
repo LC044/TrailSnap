@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
+from starlette.requests import Request
 
 from app.api import system as system_api
 from app.core.config_manager import VERSION
@@ -224,4 +225,36 @@ def test_check_app_update_endpoint_defaults_to_android():
         result = asyncio.run(system_api.check_app_update_endpoint(version="0.12.1"))
 
     assert result["platform"] == "android"
+
+
+def test_tianditu_sdk_urls_are_rewritten_to_server_proxy():
+    source = (
+        'T.w={E:T.Protocol.value+"api.tianditu."+T.Domain,'
+        'IPSERVER:T.Protocol.value+"location.tianditu.gov.cn"};'
+        'var fallback="https://t3.tianditu.gov.cn/vec_w/wmts";'
+    )
+    rewritten = system_api._rewrite_tianditu_text(source)
+
+    assert '"/api/system/map-proxy/api.tianditu.gov.cn"' in rewritten
+    assert '"/api/system/map-proxy/location.tianditu.gov.cn"' in rewritten
+    assert "/api/system/map-proxy/t3.tianditu.gov.cn/vec_w/wmts" in rewritten
+    assert "https://t3.tianditu.gov.cn" not in rewritten
+
+
+def test_map_proxy_uses_public_server_origin_for_browser_key():
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "scheme": "http",
+        "server": ("server", 8000),
+        "path": "/system/map-proxy/api.tianditu.gov.cn/api",
+        "query_string": b"",
+        "headers": [
+            (b"host", b"server:8000"),
+            (b"x-forwarded-proto", b"https"),
+            (b"x-forwarded-host", b"photos.example.com"),
+        ],
+    })
+
+    assert system_api._public_request_origin(request) == "https://photos.example.com"
 

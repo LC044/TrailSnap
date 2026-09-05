@@ -24,7 +24,11 @@ export async function testTiandituBrowserKey(
   })
 
   try {
-    const response = await fetch(`https://api.tianditu.gov.cn/geocoder?${params}`, {
+    const { isMobileApp, toServerUrl } = await import('@/config/server')
+    const endpoint = isMobileApp()
+      ? toServerUrl(`/api/system/map-proxy/api.tianditu.gov.cn/geocoder?${params}`)
+      : `https://api.tianditu.gov.cn/geocoder?${params}`
+    const response = await fetch(endpoint, {
       signal: controller.signal,
     })
     let data: any = null

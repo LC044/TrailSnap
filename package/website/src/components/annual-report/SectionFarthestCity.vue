@@ -48,7 +48,7 @@
         <!-- Corkboard Background -->
         <div class="absolute inset-0 bg-[#E8DCC4] dark:bg-[#3E3328] rounded-xl shadow-[inset_0_0_20px_rgba(0,0,0,0.1)] overflow-hidden border-8 border-[#D4B996] dark:border-[#5C4D3C]">
            <!-- Texture overlay -->
-           <div class="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/cork-board.png')] mix-blend-multiply dark:mix-blend-overlay"></div>
+           <div class="cork-texture absolute inset-0 opacity-30 mix-blend-multiply dark:mix-blend-overlay"></div>
            
            <!-- Shadow edge -->
            <div class="absolute inset-0 shadow-[inset_0_0_30px_rgba(0,0,0,0.15)] pointer-events-none z-10 rounded-lg"></div>
@@ -244,6 +244,13 @@ const getPhotoUrl = (photo: Photo) => {
 .font-handwriting {
   font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif; /* Fallback to system handwriting fonts */
   /* Ideally we would import a webfont like 'Caveat' or 'Ma Shan Zheng' */
+}
+
+.cork-texture {
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(120, 90, 55, 0.28) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 65%, rgba(255, 255, 255, 0.28) 0 1px, transparent 1.5px);
+  background-size: 11px 13px, 17px 19px;
 }
 
 /* Animations */

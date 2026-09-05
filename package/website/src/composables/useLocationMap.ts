@@ -1,5 +1,5 @@
 import { ref, onUnmounted, nextTick, watch } from 'vue'
-import { loadMapScript, MapLoadError } from '@/utils/mapLoader'
+import { getTiandituTileTemplate, loadMapScript, MapLoadError } from '@/utils/mapLoader'
 import { injectTheme } from '@/composables/useTheme'
 
 declare const T: any
@@ -54,8 +54,9 @@ export function useLocationMap(callbacks?: {
   })
 
   const initMap = async (opts: LocationMapOptions) => {
+    let apiKey = ''
     try {
-      await loadMapScript()
+      apiKey = await loadMapScript()
     } catch (e: any) {
       mapError.value = e instanceof MapLoadError ? e.code : 'UNKNOWN'
       return
@@ -76,7 +77,15 @@ export function useLocationMap(callbacks?: {
       : new T.LngLat(104.195, 35.861)
     const zoom = opts.initialZoom || (hasCoords ? 14 : 4)
 
-    map = new T.Map(opts.containerId)
+    const vecTileUrl = getTiandituTileTemplate('vec_w', apiKey)
+    const cvaTileUrl = getTiandituTileTemplate('cva_w', apiKey)
+    map = vecTileUrl && cvaTileUrl
+      ? new T.Map(opts.containerId, { layers: [] })
+      : new T.Map(opts.containerId)
+    if (vecTileUrl && cvaTileUrl) {
+      map.addOverLay(new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }))
+      map.addOverLay(new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 }))
+    }
     map.centerAndZoom(center, zoom)
     map.enableScrollWheelZoom()
 
