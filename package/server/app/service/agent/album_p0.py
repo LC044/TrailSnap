@@ -10,7 +10,7 @@ from typing import Iterable
 from uuid import UUID
 
 from PIL import Image, ImageDraw, ImageOps
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import AIArtifact
@@ -417,6 +417,199 @@ def album_health_report(
             "unassigned_photo_count": unassigned_count,
         },
         "notice": "这是只读体检。任何写入或删除都需要独立的预览和用户确认。",
+    }
+
+
+def investigate_memory_clues(
+    db: Session,
+    user_id: str,
+    query_text: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    locations: list[str] | None = None,
+    persons: list[str] | None = None,
+    text_terms: list[str] | None = None,
+    semantic_photo_ids: list[str] | None = None,
+    max_events: int = 8,
+) -> dict:
+    """Fuse vague memory clues into explainable, owner-scoped event candidates."""
+    owner_id = UUID(str(user_id))
+    locations = list(dict.fromkeys(str(item).strip() for item in (locations or []) if str(item).strip()))[:8]
+    persons = list(dict.fromkeys(str(item).strip() for item in (persons or []) if str(item).strip()))[:8]
+    text_terms = list(dict.fromkeys(str(item).strip() for item in (text_terms or []) if str(item).strip()))[:12]
+    semantic_ids = _uuid_list(semantic_photo_ids or [], 50)
+    event_limit = min(max(int(max_events), 1), 12)
+
+    def parse_date(value: str | None, label: str) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError(f"{label}格式必须为 YYYY-MM-DD") from exc
+
+    start = parse_date(start_date, "开始日期")
+    end = parse_date(end_date, "结束日期")
+    if start and end and start > end:
+        raise ValueError("开始日期不能晚于结束日期")
+    if not any((start, end, locations, persons, text_terms, semantic_ids)):
+        raise ValueError("至少需要日期、地点、人物、文字或语义照片中的一种可检索线索")
+
+    base = (
+        db.query(Photo)
+        .options(
+            joinedload(Photo.metadata_info).joinedload(PhotoMetadata.scene),
+            joinedload(Photo.image_description),
+            joinedload(Photo.faces).joinedload(Face.identity),
+        )
+        .outerjoin(PhotoMetadata, PhotoMetadata.photo_id == Photo.id)
+        .outerjoin(ImageDescription, ImageDescription.photo_id == Photo.id)
+        .filter(Photo.owner_id == owner_id, Photo.is_deleted.is_(False))
+    )
+    if start:
+        base = base.filter(Photo.photo_time >= start)
+    if end:
+        base = base.filter(Photo.photo_time < end + timedelta(days=1))
+
+    recall_conditions = []
+    for location in locations:
+        pattern = f"%{location}%"
+        recall_conditions.append(or_(
+            PhotoMetadata.country.ilike(pattern), PhotoMetadata.province.ilike(pattern),
+            PhotoMetadata.city.ilike(pattern), PhotoMetadata.district.ilike(pattern),
+            PhotoMetadata.address.ilike(pattern),
+        ))
+    for person in persons:
+        recall_conditions.append(Photo.faces.any(and_(
+            Face.is_deleted.is_(False),
+            Face.identity.has(and_(
+                FaceIdentity.owner_id == owner_id,
+                FaceIdentity.is_deleted.is_(False),
+                FaceIdentity.is_hidden.is_(False),
+                FaceIdentity.identity_name.ilike(f"%{person}%"),
+            )),
+        )))
+    for term in text_terms:
+        pattern = f"%{term}%"
+        recall_conditions.append(or_(
+            ImageDescription.description.ilike(pattern), ImageDescription.narrative.ilike(pattern),
+            db.query(OCR.id).filter(OCR.photo_id == Photo.id, OCR.text.ilike(pattern)).exists(),
+        ))
+    if semantic_ids:
+        recall_conditions.append(Photo.id.in_(semantic_ids))
+    if recall_conditions:
+        base = base.filter(or_(*recall_conditions))
+
+    total_candidates = base.order_by(None).count()
+    photos = base.order_by(Photo.photo_time.desc().nulls_last()).limit(1000).all()
+    photo_ids = [photo.id for photo in photos]
+    ocr_by_photo: dict[str, list[str]] = defaultdict(list)
+    if photo_ids:
+        for photo_id, text in db.query(OCR.photo_id, OCR.text).filter(OCR.photo_id.in_(photo_ids)).all():
+            if text and len(ocr_by_photo[str(photo_id)]) < 20:
+                ocr_by_photo[str(photo_id)].append(text)
+
+    semantic_set = {str(item) for item in semantic_ids}
+    evidence_rows = []
+    for photo in photos:
+        meta, desc = photo.metadata_info, photo.image_description
+        location_text = " ".join(filter(None, [
+            meta.country if meta else None, meta.province if meta else None, meta.city if meta else None,
+            meta.district if meta else None, meta.address if meta else None,
+            meta.scene.name if meta and meta.scene else None,
+        ]))
+        people = sorted({
+            face.identity.identity_name for face in photo.faces
+            if not face.is_deleted and face.identity and not face.identity.is_deleted
+            and not face.identity.is_hidden and face.identity.identity_name
+        })
+        description_text = " ".join(filter(None, [desc.description if desc else None, desc.narrative if desc else None]))
+        ocr_text = " ".join(ocr_by_photo.get(str(photo.id), []))
+        location_hits = [item for item in locations if item.lower() in location_text.lower()]
+        person_hits = [item for item in persons if any(item.lower() in name.lower() for name in people)]
+        description_hits = [item for item in text_terms if item.lower() in description_text.lower()]
+        ocr_hits = [item for item in text_terms if item.lower() in ocr_text.lower()]
+        matched_types = []
+        score = 0
+        if start or end:
+            matched_types.append("time"); score += 1
+        if location_hits:
+            matched_types.append("location"); score += 3 + min(len(location_hits) - 1, 2)
+        if person_hits:
+            matched_types.append("person"); score += 4 + min(len(person_hits) - 1, 2)
+        if description_hits:
+            matched_types.append("description"); score += 2 + min(len(description_hits) - 1, 2)
+        if ocr_hits:
+            matched_types.append("ocr"); score += 3 + min(len(ocr_hits) - 1, 2)
+        if str(photo.id) in semantic_set:
+            matched_types.append("semantic"); score += 2
+        evidence_rows.append({
+            "photo_id": str(photo.id), "photo_time": _iso(photo.photo_time), "score": score,
+            "matched_types": matched_types,
+            "matched_clues": sorted(set(location_hits + person_hits + description_hits + ocr_hits)),
+            "location": location_text or None, "people": people,
+            "description": (desc.narrative or desc.description)[:240] if desc and (desc.narrative or desc.description) else None,
+            "ocr_samples": ocr_by_photo.get(str(photo.id), [])[:3],
+            "thumbnail_url": f"/api/medias/{photo.id}/thumbnail",
+        })
+
+    dated = sorted((row for row in evidence_rows if row["photo_time"]), key=lambda row: row["photo_time"])
+    groups: list[list[dict]] = []
+    for row in dated:
+        current_time = datetime.fromisoformat(row["photo_time"])
+        current_date = current_time.date()
+        if not groups:
+            groups.append([row])
+            continue
+        previous_time = datetime.fromisoformat(groups[-1][-1]["photo_time"])
+        previous_date = previous_time.date()
+        group_start = datetime.fromisoformat(groups[-1][0]["photo_time"]).date()
+        same_day_long_gap = (
+            current_date == previous_date
+            and current_time - previous_time > timedelta(hours=6)
+        )
+        if (
+            (current_date - previous_date).days <= 2
+            and (current_date - group_start).days <= 6
+            and not same_day_long_gap
+        ):
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+
+    events = []
+    for group in groups:
+        ranked = sorted(group, key=lambda row: (-row["score"], row["photo_time"]))
+        clue_types = sorted(set(item for row in group for item in row["matched_types"] if item != "time"))
+        locations_found = []
+        people_found = []
+        for row in ranked:
+            if row["location"] and row["location"] not in locations_found:
+                locations_found.append(row["location"])
+            for person in row["people"]:
+                if person not in people_found:
+                    people_found.append(person)
+        strongest = sorted((row["score"] for row in group), reverse=True)[:12]
+        events.append({
+            "start_date": group[0]["photo_time"][:10], "end_date": group[-1]["photo_time"][:10],
+            "photo_count": len(group), "evidence_score": sum(strongest) + len(clue_types) * 5,
+            "confidence": "high" if len(clue_types) >= 3 else "medium" if len(clue_types) >= 2 else "low",
+            "matched_types": clue_types, "locations": locations_found[:8], "people": people_found[:8],
+            "evidence_photos": ranked[:12],
+        })
+    events.sort(key=lambda item: (-item["evidence_score"], -item["photo_count"], item["start_date"]))
+    unplaced = sorted((row for row in evidence_rows if not row["photo_time"]), key=lambda row: -row["score"])
+    return {
+        "query": query_text[:500], "total_candidate_photo_count": total_candidates,
+        "candidate_photo_count": len(evidence_rows), "photos_truncated": total_candidates > len(evidence_rows),
+        "candidate_event_count": len(events), "events": events[:event_limit],
+        "events_truncated": len(events) > event_limit,
+        "unplaced_photo_count": len(unplaced), "unplaced_evidence_photos": unplaced[:12],
+        "search_clues": {
+            "start_date": start_date, "end_date": end_date, "locations": locations,
+            "persons": persons, "text_terms": text_terms, "semantic_photo_count": len(semantic_ids),
+        },
+        "notice": "这些是线索匹配得到的候选事件，不是已确认事实；请结合缩略图和完整照片上下文复核。",
     }
 
 

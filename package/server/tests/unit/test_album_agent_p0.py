@@ -9,11 +9,13 @@ from app.db.base import Base
 from app.db.models.agent import AgentSession
 from app.db.models.ai_artifact import AIArtifact
 from app.db.models.album import Album, AlbumPhoto
+from app.db.models.face import Face, FaceIdentity
 from app.db.models.image_description import ImageDescription
+from app.db.models.ocr import OCR
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.user import User
-from app.service.agent.album_p0 import album_health_report, create_artifact, discover_travel_periods, photo_contexts, save_artifact_html
+from app.service.agent.album_p0 import album_health_report, create_artifact, discover_travel_periods, investigate_memory_clues, photo_contexts, save_artifact_html
 from app.service.agent.skills import get_skill_catalog, load_skill
 from app.service.agent.service import ThinkTagStreamFilter
 
@@ -34,7 +36,7 @@ def db():
 
 def test_skill_registry_is_allowlisted_and_loads_expected_workflows():
     names = {item["name"] for item in get_skill_catalog()}
-    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album", "album-doctor"} <= names
+    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album", "album-doctor", "memory-detective"} <= names
     assert "create_artifact_draft" in load_skill("travel-story")["instructions"]
     with pytest.raises(ValueError):
         load_skill("../../secrets")
@@ -180,3 +182,87 @@ def test_album_health_report_is_owner_scoped_and_explainable(db):
 
     with pytest.raises(ValueError, match="无权"):
         album_health_report(db, str(stranger), str(album.id))
+
+
+def test_memory_detective_fuses_clues_into_owner_scoped_events(db):
+    owner, stranger = uuid4(), uuid4()
+    db.add_all([
+        User(id=owner, username="detective-owner", hashed_password="x"),
+        User(id=stranger, username="detective-stranger", hashed_password="x"),
+    ])
+    friend = FaceIdentity(id=uuid4(), owner_id=owner, identity_name="小周", is_deleted=False, is_hidden=False)
+    hidden_friend = FaceIdentity(id=uuid4(), owner_id=owner, identity_name="小周", is_deleted=False, is_hidden=True)
+    p1 = Photo(id=uuid4(), owner_id=owner, filename="beach.jpg", file_path="beach.jpg", file_type=FileType.image,
+               is_deleted=False, photo_time=datetime(2024, 7, 1, 18, 0))
+    p2 = Photo(id=uuid4(), owner_id=owner, filename="sunset.jpg", file_path="sunset.jpg", file_type=FileType.image,
+               is_deleted=False, photo_time=datetime(2024, 7, 2, 19, 0))
+    p3 = Photo(id=uuid4(), owner_id=owner, filename="other.jpg", file_path="other.jpg", file_type=FileType.image,
+               is_deleted=False, photo_time=datetime(2024, 8, 20, 12, 0))
+    foreign = Photo(id=uuid4(), owner_id=stranger, filename="foreign.jpg", file_path="foreign.jpg", file_type=FileType.image,
+                    is_deleted=False, photo_time=datetime(2024, 7, 1, 18, 0))
+    hidden_face_photo = Photo(
+        id=uuid4(), owner_id=owner, filename="hidden-person.jpg", file_path="hidden-person.jpg",
+        file_type=FileType.image, is_deleted=False, photo_time=datetime(2024, 9, 1, 10, 0),
+    )
+    db.add_all([friend, hidden_friend, p1, p2, p3, foreign, hidden_face_photo]); db.flush()
+    db.add_all([
+        PhotoMetadata(photo_id=p1.id, city="青岛", address="海边"),
+        PhotoMetadata(photo_id=p2.id, city="青岛", address="海边"),
+        PhotoMetadata(photo_id=p3.id, city="北京"),
+        PhotoMetadata(photo_id=foreign.id, city="青岛", address="海边"),
+        ImageDescription(photo_id=p1.id, description="朋友在海边吃烧烤", narrative="夏日晚餐"),
+        ImageDescription(photo_id=p2.id, description="海边日落", narrative="晚霞"),
+        ImageDescription(photo_id=p3.id, description="室内烧烤", narrative="午餐"),
+        ImageDescription(photo_id=foreign.id, description="朋友在海边吃烧烤"),
+        Face(photo_id=p1.id, face_identity_id=friend.id, is_deleted=False),
+        Face(photo_id=hidden_face_photo.id, face_identity_id=hidden_friend.id, is_deleted=False),
+        OCR(photo_id=p1.id, text="海鲜烧烤", text_score=0.98),
+    ])
+    db.commit()
+
+    result = investigate_memory_clues(
+        db, str(owner), "前年夏天和朋友在海边吃烧烤", "2024-01-01", "2024-12-31",
+        locations=["青岛"], persons=["小周"], text_terms=["烧烤", "海鲜"],
+        semantic_photo_ids=[str(p2.id), str(foreign.id)],
+    )
+
+    assert result["candidate_photo_count"] == 3
+    assert result["candidate_event_count"] == 2
+    best = result["events"][0]
+    assert best["start_date"] == "2024-07-01"
+    assert best["end_date"] == "2024-07-02"
+    assert best["photo_count"] == 2
+    assert best["confidence"] == "high"
+    assert {"location", "person", "description", "ocr", "semantic"} <= set(best["matched_types"])
+    evidence_ids = {row["photo_id"] for event in result["events"] for row in event["evidence_photos"]}
+    assert str(foreign.id) not in evidence_ids
+
+    with pytest.raises(ValueError, match="至少需要"):
+        investigate_memory_clues(db, str(owner), "只有模糊描述")
+
+
+def test_memory_detective_splits_distant_periods_on_the_same_day(db):
+    owner = uuid4()
+    db.add(User(id=owner, username="time-split-owner", hashed_password="x"))
+    morning = Photo(
+        id=uuid4(), owner_id=owner, filename="morning.jpg", file_path="morning.jpg",
+        file_type=FileType.image, is_deleted=False, photo_time=datetime(2026, 1, 17, 1, 0),
+    )
+    noon = Photo(
+        id=uuid4(), owner_id=owner, filename="noon.jpg", file_path="noon.jpg",
+        file_type=FileType.image, is_deleted=False, photo_time=datetime(2026, 1, 17, 12, 0),
+    )
+    db.add_all([morning, noon]); db.flush()
+    db.add_all([
+        PhotoMetadata(photo_id=morning.id, city="西安"),
+        PhotoMetadata(photo_id=noon.id, city="西安"),
+    ])
+    db.commit()
+
+    result = investigate_memory_clues(
+        db, str(owner), "那天在西安的两段经历", "2026-01-17", "2026-01-17", locations=["西安"],
+    )
+
+    assert result["candidate_photo_count"] == 2
+    assert result["candidate_event_count"] == 2
+    assert [event["photo_count"] for event in result["events"]] == [1, 1]

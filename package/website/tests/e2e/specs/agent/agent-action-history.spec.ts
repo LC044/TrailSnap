@@ -128,4 +128,33 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     expect(payload.message).toContain('只读体检')
     expect(payload.message).toContain('不要删除')
   })
+
+  test('相册页可启动回忆侦探并先询问线索', async ({ page }) => {
+    await page.route('**/api/agent/proactive**', route => respond(route, { messages: [], unread: 0 }))
+    await page.route('**/api/settings/models**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ connections: [] }),
+    }))
+    await page.route('**/api/agent/sessions**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    }))
+    await page.route('**/api/agent/chat', route => route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: 'data: {"content":"你大概记得是什么时间吗？"}\n\ndata: [DONE]\n\n',
+    }))
+
+    await page.goto('/album')
+    const chatRequest = page.waitForRequest(request => request.url().endsWith('/api/agent/chat') && request.method() === 'POST')
+    await page.getByRole('button', { name: '回忆侦探' }).click()
+    const payload = JSON.parse((await chatRequest).postData() || '{}')
+
+    await expect(page.locator('.agent-chat-overlay')).toBeVisible()
+    expect(payload.message).toContain('memory-detective')
+    expect(payload.message).toContain('最有区分度的问题')
+    expect(payload.message).toContain('不要把推断当成事实')
+  })
 })

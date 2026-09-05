@@ -10,6 +10,9 @@
         <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="startAlbumDoctor">
           <Stethoscope class="h-4 w-4" /><span>AI 相册体检</span>
         </button>
+        <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="startMemoryDetective">
+          <SearchCheck class="h-4 w-4" /><span>回忆侦探</span>
+        </button>
         <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/agent/actions')">
           <History class="h-4 w-4" /><span>操作记录</span>
         </button>
@@ -326,7 +329,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
-import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, Stethoscope, WandSparkles } from 'lucide-vue-next'
+import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles } from 'lucide-vue-next'
 import { albumService } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
@@ -345,6 +348,10 @@ const startTravelAlbum = () => {
 
 const startAlbumDoctor = () => {
   uiStore.openAgentWithPrompt('请加载 album-doctor Skill，对我的整个照片库做一次只读体检。按严重程度总结缺少时间、地点、AI 描述、文件指纹、未归档照片、完全重复照片和相册结构异常；只展示少量证据样本与建议，不要删除、修改照片，也不要替我执行任何计划。', true)
+}
+
+const startMemoryDetective = () => {
+  uiStore.openAgentWithPrompt('请加载 memory-detective Skill，作为回忆侦探帮我找回一段记不清的经历。先问我一个最有区分度的问题，引导我提供大概时间、地点、同行人、看到的文字或画面等线索；然后融合这些证据给出少量候选事件和照片，不要把推断当成事实，也不要修改任何照片。', true)
 }
 
 const { width } = useWindowSize()
