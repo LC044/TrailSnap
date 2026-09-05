@@ -1,0 +1,70 @@
+# TrailSnap MCP Server
+
+TrailSnap 内置一个只读的 Model Context Protocol（MCP）服务，使外部 AI Agent 可以安全查询当前用户的照片、相册、人物和回忆线索。MCP 与内置 LangGraph Agent 复用相同的相册领域服务，但拥有独立的协议入口和工具权限检查。
+
+## 连接地址
+
+- 通过 TrailSnap 前端或反向代理访问：`https://你的域名/api/mcp/`
+- 直接访问后端：`http://127.0.0.1:8000/mcp/`
+- 传输协议：Streamable HTTP
+- 鉴权：`Authorization: Bearer ts_xxx`
+
+Agent Token 可在「设置 → 令牌管理」中创建。创建时可以只授权任务实际需要的 MCP 权限。
+
+通用客户端配置示例：
+
+```json
+{
+  "mcpServers": {
+    "trailsnap": {
+      "type": "http",
+      "url": "https://你的域名/api/mcp/",
+      "headers": {
+        "Authorization": "Bearer ts_xxx"
+      }
+    }
+  }
+}
+```
+
+配置文件的具体位置和字段名由 MCP 客户端决定。不要把真实令牌提交到 Git 仓库或粘贴给不受信任的 Agent。
+
+## 工具
+
+| 工具 | Scope | 用途 |
+| --- | --- | --- |
+| `search_photos` | `photos:read` | 按日期、地点、OCR、媒体类型、方向、人物和评分搜索照片 |
+| `list_albums` | `albums:read` | 分页查询可访问的相册、封面和照片数量 |
+| `list_people` | `people:read` | 查询可见人物和人物 ID |
+| `investigate_memory` | `photos:read` | 融合模糊日期、地点、人物、文字和语义照片线索，生成候选回忆事件 |
+| `get_person_timeline` | `people:read` | 生成人物的年份、事件、地点、同行者和代表照片时间线 |
+
+所有工具都会从经过验证的 Agent Token 解析用户身份，数据库查询强制按该用户隔离。照片结果只返回安全元数据和缩略图 URL，不返回原始文件路径。回忆侦探给出的是可解释候选，而不是自动确认的事实。
+
+## 部署配置
+
+本机访问无需额外设置。通过域名、局域网 IP 或反向代理部署时，推荐配置：
+
+```dotenv
+TRAILSNAP_PUBLIC_URL=https://photos.example.com
+```
+
+此时 MCP 的公开资源地址自动成为 `https://photos.example.com/api/mcp/`，并把公开主机加入 DNS rebinding 防护白名单。
+
+如果 MCP 使用独立地址，可以覆盖：
+
+```dotenv
+TRAILSNAP_MCP_URL=https://mcp.example.com/mcp/
+TRAILSNAP_MCP_ALLOWED_HOSTS=mcp.example.com,192.168.1.10:8000
+```
+
+`TRAILSNAP_MCP_ALLOWED_HOSTS` 以逗号分隔。只添加实际由 TrailSnap 服务的主机，不要为方便而关闭 Host 校验。
+
+## 当前边界
+
+- MCP P3 MVP 仅开放只读工具。
+- 不开放删除照片、修改相册、文件写入和 HTML 执行。
+- 内置 LangGraph Agent 不被 MCP 替换；两者分别服务站内交互和外部 Agent 接入。
+- Agent Token 的 scopes 当前用于 MCP 工具授权；历史 REST/CLI 接口仍保持原有兼容行为。
+
+后续写工具应使用新的独立 scopes（例如 `artifacts:write`、`albums:propose`），并在服务端生成预览或计划，得到用户明确确认后才能执行。

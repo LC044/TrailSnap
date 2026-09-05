@@ -40,6 +40,7 @@ from app.core.config_manager import VERSION
 from app.dependencies import BaseResponse
 from app.service.task_manager import TaskManager
 from app.service.discovery import DiscoveryService
+from app.service.mcp_server import mcp, mcp_http_app
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -115,7 +116,10 @@ async def lifespan(app: FastAPI):
     discovery_service = DiscoveryService()
     discovery_service.start()
 
-    yield
+    # Mounted ASGI applications do not receive lifespan events from FastAPI.
+    # Run the MCP session manager inside the host lifespan explicitly.
+    async with mcp.session_manager.run():
+        yield
 
     discovery_service.stop()
     job_scheduler.stop()
@@ -271,7 +275,7 @@ app.add_middleware(
     minimum_size=1000,
     compresslevel=9,
     exclude_paths=exclude_paths,
-    exclude_exact={'/tasks/events', '/notifications/events'},
+    exclude_exact={'/tasks/events', '/notifications/events', '/mcp', '/mcp/'},
 )
 
 # 配置允许跨域的源（生产环境建议指定具体域名，不要用 "*"）
@@ -343,6 +347,10 @@ app.include_router(nav.router, prefix="/nav", tags=["Nav"])
 app.include_router(guess_city.router, prefix="/guess-city", tags=["GuessCity"])
 app.include_router(storage.router, prefix="/storage", tags=["Storage"])
 app.include_router(moment.router, prefix="/moments", tags=["Moments"])
+
+# Streamable HTTP MCP endpoint. It intentionally sits outside OpenAPI because
+# MCP has its own discovery and tool schemas.
+app.mount("/mcp", mcp_http_app, name="mcp")
 
 from fastapi.openapi.utils import get_openapi
 
