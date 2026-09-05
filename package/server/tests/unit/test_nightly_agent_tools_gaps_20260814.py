@@ -78,6 +78,7 @@ def test_get_agent_tools_returns_expected_names():
         "create_artifact_draft",
         "get_artifact_context",
         "save_artifact_html_page",
+        "propose_album_organization",
     ])
 
 

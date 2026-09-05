@@ -73,6 +73,34 @@ export interface AIArtifact extends Omit<AgentArtifactRef, 'type' | 'url'> {
   updated_at: string;
 }
 
+export interface AgentActionPlan {
+  id: string;
+  user_id?: string;
+  session_id?: string | null;
+  plan_type: string;
+  title: string;
+  summary?: string | null;
+  status: 'proposed' | 'executed' | 'undone' | string;
+  operations?: Record<string, any>;
+  preview: {
+    mode?: 'create' | 'update';
+    album_name?: string;
+    current_album_name?: string | null;
+    photo_count?: number;
+    cover_photo_id?: string;
+    tags?: string[];
+    sample_photos?: Array<{ photo_id: string; thumbnail_url: string; photo_time?: string | null }>;
+    notice?: string;
+  };
+  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number } | null;
+  created_at?: string;
+  updated_at?: string;
+  executed_at?: string | null;
+  undone_at?: string | null;
+}
+
+export type AgentStreamEvent = ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef } | { type: 'action_plan'; action_plan: AgentActionPlan };
+
 export interface ProactiveMessage {
   id: number;
   content: string;
@@ -100,7 +128,7 @@ export const agentApi = {
       data
     );
   },
-  async chatStream(data: ChatRequest, onMessage: (content: string) => void, onSessionId?: (id: string) => void, onTitleUpdate?: (title: string) => void, onReasoning?: (content: string) => void, signal?: AbortSignal, onEvent?: (event: ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef }) => void) {
+  async chatStream(data: ChatRequest, onMessage: (content: string) => void, onSessionId?: (id: string) => void, onTitleUpdate?: (title: string) => void, onReasoning?: (content: string) => void, signal?: AbortSignal, onEvent?: (event: AgentStreamEvent) => void) {
     const userStore = (await import('@/stores/user')).useUserStore();
     const token = userStore.token;
     
@@ -166,7 +194,7 @@ export const agentApi = {
             if (parsed.title && onTitleUpdate) {
               onTitleUpdate(parsed.title);
             }
-            if ((parsed.type === 'tool_start' || parsed.type === 'tool_end' || parsed.type === 'artifact') && onEvent) {
+            if ((parsed.type === 'tool_start' || parsed.type === 'tool_end' || parsed.type === 'artifact' || parsed.type === 'action_plan') && onEvent) {
               onEvent(parsed);
             }
           } catch (e) {
@@ -216,5 +244,14 @@ export const agentApi = {
   },
   updateArtifact(artifactId: string, data: { title?: string; content_json?: Record<string, any>; html_content?: string | null; html_config?: Record<string, any>; status?: string }) {
     return request.put<{ code: number; data: AIArtifact }>(`/api/agent/artifacts/${artifactId}`, data);
+  },
+  getActionPlan(planId: string) {
+    return request.get<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}`);
+  },
+  executeActionPlan(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/execute`);
+  },
+  undoActionPlan(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/undo`);
   }
 };

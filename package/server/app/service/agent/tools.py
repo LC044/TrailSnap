@@ -29,6 +29,7 @@ from app.service.agent.album_p0 import (
     travel_timeline, trip_tickets,
 )
 from app.service.agent.skills import get_skill_catalog, load_skill
+from app.service.agent.actions import propose_album_plan
 
 # 聚合摘要每类分布返回的 top-N 条目数
 SUMMARY_TOP_N = 8
@@ -667,6 +668,36 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
             except ValueError as exc:
                 return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
+    @tool
+    def propose_album_organization(
+        name: str,
+        photo_ids: List[str],
+        description: Optional[str] = None,
+        cover_photo_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        album_id: Optional[str] = None,
+        summary: Optional[str] = None,
+    ) -> str:
+        """生成一个需要用户在界面中确认的相册整理计划。
+
+        可以创建普通相册，或向当前用户已有的普通相册添加照片，同时设置名称、简介、封面并添加标签。
+        这个工具只生成预览，不会直接修改相册或照片；不要声称计划已执行，也不要替用户确认。
+        photo_ids 最多 500 个，cover_photo_id 必须包含在 photo_ids 中，tags 最多 10 个。
+        P1 不会删除、移动、重命名照片，也不会修改原始文件。
+        """
+        with SessionLocal() as db:
+            try:
+                row = propose_album_plan(
+                    db, user_id, session_id, name, description, photo_ids,
+                    cover_photo_id, tags, album_id, summary,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"action_plan": {
+                "id": str(row.id), "plan_type": row.plan_type, "title": row.title,
+                "summary": row.summary, "status": row.status, "preview": row.preview,
+            }}, ensure_ascii=False)
+
     return [
         search_photos_tool, 
         # get_travel_history_tool, 
@@ -677,5 +708,5 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         list_skills, load_skill_tool, search_photos_v2, get_photo_context,
         search_ocr, get_trip_tickets, get_travel_timeline, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
-        get_artifact_context, save_artifact_html_page,
+        get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

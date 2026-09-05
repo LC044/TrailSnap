@@ -310,6 +310,7 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 你可以使用提供的工具来搜索照片和查看照片的详细数据，例如地址、景区、标签、人脸等。
 
 复杂任务先调用 `list_skills`，再用 `load_skill` 按需加载对应流程。生成旅行日志时必须基于时间线和照片上下文，先用 `create_artifact_draft` 保存可编辑的结构化草稿，再用 `save_artifact_html_page` 为同一作品生成完整的个性化 HTML 页面；严格遵循用户指定的风格和 API 权限，不要臆造工具未确认的经历。
+当用户要求创建或整理正式相册时，先加载 `album-organizer`，完成查询和选图后调用 `propose_album_organization`。该工具只创建操作预览，必须明确告诉用户需要在计划卡片中确认；你不能替用户确认，也不能声称尚未确认的修改已经执行。
 
 【重要指令】：如果你需要展示照片给用户，请必须使用 Markdown 图片语法，并且 URL 格式必须为：
 `![照片描述](/api/medias/{user_id}/照片ID/thumbnail)`
@@ -453,6 +454,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
     full_reasoning = ""
     tool_calls_list = []
     artifact_refs = []
+    action_plan_refs = []
     think_filter = ThinkTagStreamFilter()
     
     # 标记该会话未被终止
@@ -542,6 +544,19 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
             # 捕获工具调用
             if metadata.get("langgraph_node") == "tools":
                 if hasattr(chunk, "name") and hasattr(chunk, "content") and hasattr(chunk, "tool_call_id"):
+                    matching_tool_call = next(
+                        (
+                            tc
+                            for tc in tool_calls_list
+                            if tc.get("tool_call_id") == chunk.tool_call_id
+                        ),
+                        None,
+                    )
+                    # 部分 OpenAI 兼容模型（例如 MiniMax-M3）返回的
+                    # ToolMessage.name 为空，需通过 tool_call_id 找回工具名。
+                    tool_name = getattr(chunk, "name", None) or (
+                        matching_tool_call.get("tool_name") if matching_tool_call else None
+                    )
                     # Record tool return
                     for tc in tool_calls_list:
                         if tc.get("tool_call_id") == chunk.tool_call_id:
@@ -552,11 +567,11 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                             tc["tool_status"] = "success" if not getattr(chunk, "status", "") == "error" else "error"
                     tool_event = {
                         "type": "tool_end", "session_id": session_id,
-                        "tool_call_id": chunk.tool_call_id, "tool_name": getattr(chunk, "name", None),
+                        "tool_call_id": chunk.tool_call_id, "tool_name": tool_name,
                         "status": "error" if getattr(chunk, "status", "") == "error" else "success",
                     }
                     yield f"data: {json.dumps(tool_event, ensure_ascii=False)}\n\n"
-                    if getattr(chunk, "name", None) in {"create_artifact_draft", "save_artifact_html_page"}:
+                    if tool_name in {"create_artifact_draft", "save_artifact_html_page"}:
                         try:
                             parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
                             artifact = parsed.get("artifact") if isinstance(parsed, dict) else None
@@ -565,6 +580,15 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                                 yield f"data: {json.dumps({'type': 'artifact', 'session_id': session_id, 'artifact': artifact}, ensure_ascii=False)}\n\n"
                         except (ValueError, TypeError):
                             logger.warning("无法解析作品工具返回值", exc_info=True)
+                    if tool_name == "propose_album_organization":
+                        try:
+                            parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
+                            action_plan = parsed.get("action_plan") if isinstance(parsed, dict) else None
+                            if action_plan:
+                                action_plan_refs.append(action_plan)
+                                yield f"data: {json.dumps({'type': 'action_plan', 'session_id': session_id, 'action_plan': action_plan}, ensure_ascii=False)}\n\n"
+                        except (ValueError, TypeError):
+                            logger.warning("无法解析 Agent 操作计划返回值", exc_info=True)
 
             if hasattr(chunk, "tool_calls") and chunk.tool_calls:
                 for tc in chunk.tool_calls:
@@ -610,7 +634,10 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                 content=full_response,
                 reasoning=full_reasoning if full_reasoning else None,
                 tool_calls=tool_calls_list if tool_calls_list else None,
-                content_ext={"artifacts": artifact_refs} if artifact_refs else None,
+                content_ext={
+                    **({"artifacts": artifact_refs} if artifact_refs else {}),
+                    **({"action_plans": action_plan_refs} if action_plan_refs else {}),
+                } or None,
             ))
             is_saved = True
 

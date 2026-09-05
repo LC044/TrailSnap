@@ -43,6 +43,7 @@
             <span class="min-w-0 flex-1"><span class="block text-xs text-slate-500 dark:text-slate-400">旅行日志草稿</span><span class="block truncate font-medium">{{ artifact.title }}</span></span>
             <ChevronRight class="h-4 w-4 text-slate-400 dark:text-slate-500" />
           </button>
+          <AgentActionPlanCard v-for="plan in msg.actionPlans" :key="plan.id" :plan="plan" />
         </div>
         
         <!-- Message Actions Space Placeholder -->
@@ -99,7 +100,8 @@ import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, Chevr
 import { useUserStore } from '@/stores/user';
 import { toServerUrl } from '@/config/server';
 import { useRouter } from 'vue-router';
-import type { ToolProgressEvent, AgentArtifactRef } from '@/api/agent';
+import type { ToolProgressEvent, AgentArtifactRef, AgentActionPlan } from '@/api/agent';
+import AgentActionPlanCard from './AgentActionPlanCard.vue';
 
 const userStore = useUserStore();
 const router = useRouter();
@@ -109,6 +111,7 @@ const toolLabel = (name?: string) => ({
   get_photo_context: '读取照片信息', search_ocr: '搜索图片文字', get_trip_tickets: '读取票据',
   get_travel_timeline: '整理旅行时间线', view_photos: '查看候选照片', create_contact_sheet: '生成联系表',
   select_representative_photos: '挑选代表照片', create_artifact_draft: '创建旅行日志',
+  propose_album_organization: '生成相册整理计划',
 }[name || ''] || name || '执行工具');
 
 interface MessageItem {
@@ -120,6 +123,7 @@ interface MessageItem {
   isReasoningExpanded?: boolean;
   toolEvents?: ToolProgressEvent[];
   artifacts?: AgentArtifactRef[];
+  actionPlans?: AgentActionPlan[];
 }
 
 const props = defineProps<{

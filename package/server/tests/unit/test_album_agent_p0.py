@@ -30,7 +30,7 @@ def db():
 
 def test_skill_registry_is_allowlisted_and_loads_expected_workflows():
     names = {item["name"] for item in get_skill_catalog()}
-    assert {"trailsnap-search", "travel-story", "nine-grid-selection"} <= names
+    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer"} <= names
     assert "create_artifact_draft" in load_skill("travel-story")["instructions"]
     with pytest.raises(ValueError):
         load_skill("../../secrets")

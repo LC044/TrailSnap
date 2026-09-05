@@ -96,7 +96,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Loader2, Bot } from 'lucide-vue-next';
-import { agentApi, type AgentSession, type AgentMessage, type ToolProgressEvent, type AgentArtifactRef } from '@/api/agent';
+import { agentApi, type AgentSession, type AgentMessage, type ToolProgressEvent, type AgentArtifactRef, type AgentActionPlan } from '@/api/agent';
 import { settingsApi } from '@/api/settings';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
@@ -181,6 +181,7 @@ export interface MessageItem {
   isReasoningExpanded?: boolean;
   toolEvents?: ToolProgressEvent[];
   artifacts?: AgentArtifactRef[];
+  actionPlans?: AgentActionPlan[];
 }
 
 const activeDropdownIndex = ref<number | null>(null);
@@ -653,7 +654,8 @@ const loadMessages = async (sessionId: string, showLoading: boolean = true) => {
         reasoning: m.reasoning || undefined,
         isReasoningExpanded: false,
         toolEvents: (m.tool_calls || []).map((tool: any) => ({ type: 'tool_end', tool_call_id: tool.tool_call_id, tool_name: tool.tool_name, status: tool.tool_status === 'error' ? 'error' : 'success' })),
-        artifacts: m.content_ext?.artifacts || []
+        artifacts: m.content_ext?.artifacts || [],
+        actionPlans: m.content_ext?.action_plans || []
       }));
     }
     await scrollToBottom(true);
@@ -775,12 +777,14 @@ const sendMessage = async () => {
         if (aiMessageIndex === -1) {
           isLoading.value = false;
           aiMessageIndex = messages.value.length;
-          messages.value.push({ role: 'assistant', content: '', isMarkdown: true, reasoning: '', toolEvents: [], artifacts: [] });
+          messages.value.push({ role: 'assistant', content: '', isMarkdown: true, reasoning: '', toolEvents: [], artifacts: [], actionPlans: [] });
         }
         const message = messages.value[aiMessageIndex];
         if (event.type === 'artifact') {
           message.artifacts = [...(message.artifacts || []), event.artifact];
           window.dispatchEvent(new CustomEvent('trailsnap:artifact-updated', { detail: event.artifact }));
+        } else if (event.type === 'action_plan') {
+          message.actionPlans = [...(message.actionPlans || []), event.action_plan];
         } else if (event.type === 'tool_start') {
           message.toolEvents = [...(message.toolEvents || []), event];
         } else {
