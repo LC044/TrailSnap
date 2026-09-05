@@ -19,3 +19,5 @@ from .photo_color import PhotoColor
 from .photo_declutter_record import PhotoDeclutterRecord
 from .notification import Notification, NotificationType, NotificationLevel
 from .moment_day_caption import MomentDayCaption
+from .ai_artifact import AIArtifact
+from .agent_action import AgentActionPlan

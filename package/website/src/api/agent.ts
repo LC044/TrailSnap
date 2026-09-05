@@ -38,6 +38,76 @@ export interface AgentMessage {
   created_at: string;
 }
 
+export interface ToolProgressEvent {
+  type: 'tool_start' | 'tool_end';
+  tool_call_id?: string;
+  tool_name?: string;
+  status?: 'success' | 'error';
+}
+
+export interface AgentArtifactRef {
+  id: string;
+  type: string;
+  title: string;
+  status: string;
+  url: string;
+  photo_ids?: string[];
+  has_html?: boolean;
+}
+
+export interface AIArtifact extends Omit<AgentArtifactRef, 'type' | 'url'> {
+  user_id: string;
+  artifact_type: string;
+  content_json: Record<string, any>;
+  html_content: string | null;
+  html_config: {
+    style_name?: string;
+    custom_style?: string;
+    server_api_access?: boolean;
+    runtime?: string;
+  };
+  source_photo_ids: string[];
+  source_ticket_ids: string[];
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentActionPlan {
+  id: string;
+  user_id?: string;
+  session_id?: string | null;
+  plan_type: string;
+  title: string;
+  summary?: string | null;
+  status: 'proposed' | 'executed' | 'undone' | 'expired' | 'failed' | string;
+  attempt_count?: number;
+  error_message?: string | null;
+  operations?: Record<string, any>;
+  preview: {
+    mode?: 'create' | 'update';
+    album_name?: string;
+    current_album_name?: string | null;
+    photo_count?: number;
+    cover_photo_id?: string;
+    tags?: string[];
+    sample_photos?: Array<{ photo_id: string; thumbnail_url: string; photo_time?: string | null }>;
+    notice?: string;
+    artifact_id?: string | null;
+    artifact_title?: string | null;
+    artifact_url?: string | null;
+  };
+  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null } | null;
+  created_at?: string;
+  updated_at?: string;
+  expires_at?: string | null;
+  executed_at?: string | null;
+  failed_at?: string | null;
+  undone_at?: string | null;
+}
+
+export type AgentStreamEvent = ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef } | { type: 'action_plan'; action_plan: AgentActionPlan };
+
 export interface ProactiveMessage {
   id: number;
   content: string;
@@ -65,7 +135,7 @@ export const agentApi = {
       data
     );
   },
-  async chatStream(data: ChatRequest, onMessage: (content: string) => void, onSessionId?: (id: string) => void, onTitleUpdate?: (title: string) => void, onReasoning?: (content: string) => void, signal?: AbortSignal) {
+  async chatStream(data: ChatRequest, onMessage: (content: string) => void, onSessionId?: (id: string) => void, onTitleUpdate?: (title: string) => void, onReasoning?: (content: string) => void, signal?: AbortSignal, onEvent?: (event: AgentStreamEvent) => void) {
     const userStore = (await import('@/stores/user')).useUserStore();
     const token = userStore.token;
     
@@ -131,6 +201,9 @@ export const agentApi = {
             if (parsed.title && onTitleUpdate) {
               onTitleUpdate(parsed.title);
             }
+            if ((parsed.type === 'tool_start' || parsed.type === 'tool_end' || parsed.type === 'artifact' || parsed.type === 'action_plan') && onEvent) {
+              onEvent(parsed);
+            }
           } catch (e) {
             console.error('Failed to parse stream chunk', e);
           }
@@ -172,5 +245,23 @@ export const agentApi = {
   },
   markProactiveRead(messageId: number) {
     return request.post<{ code: number }>(`/api/agent/proactive/${messageId}/read`);
+  },
+  getArtifact(artifactId: string) {
+    return request.get<{ code: number; data: AIArtifact }>(`/api/agent/artifacts/${artifactId}`);
+  },
+  updateArtifact(artifactId: string, data: { title?: string; content_json?: Record<string, any>; html_content?: string | null; html_config?: Record<string, any>; status?: string }) {
+    return request.put<{ code: number; data: AIArtifact }>(`/api/agent/artifacts/${artifactId}`, data);
+  },
+  getActionPlan(planId: string) {
+    return request.get<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}`);
+  },
+  listActionPlans(params?: { session_id?: string; status?: string; limit?: number }) {
+    return request.get<{ code: number; data: AgentActionPlan[] }>('/api/agent/actions', { params });
+  },
+  executeActionPlan(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/execute`);
+  },
+  undoActionPlan(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/undo`);
   }
 };

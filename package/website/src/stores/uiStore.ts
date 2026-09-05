@@ -13,6 +13,8 @@ import { ref } from 'vue'
 export const useUiStore = defineStore('ui', () => {
   const selectionActive = ref(false)
   const agentOpen = ref(false)
+  const pendingAgentPrompt = ref('')
+  const pendingAgentAutoSend = ref(false)
 
   const setSelectionActive = (v: boolean) => {
     selectionActive.value = v
@@ -23,7 +25,18 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const openAgent = () => setAgentOpen(true)
+  const openAgentWithPrompt = (prompt: string, autoSend = false) => {
+    pendingAgentPrompt.value = prompt
+    pendingAgentAutoSend.value = autoSend
+    setAgentOpen(true)
+  }
+  const consumeAgentPrompt = () => {
+    const request = { prompt: pendingAgentPrompt.value, autoSend: pendingAgentAutoSend.value }
+    pendingAgentPrompt.value = ''
+    pendingAgentAutoSend.value = false
+    return request
+  }
   const closeAgent = () => setAgentOpen(false)
 
-  return { selectionActive, agentOpen, setSelectionActive, setAgentOpen, openAgent, closeAgent }
+  return { selectionActive, agentOpen, pendingAgentPrompt, pendingAgentAutoSend, setSelectionActive, setAgentOpen, openAgent, openAgentWithPrompt, consumeAgentPrompt, closeAgent }
 })

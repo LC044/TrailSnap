@@ -28,8 +28,22 @@
               {{ msg.reasoning }}
             </div>
           </div>
-          <div v-if="msg.isMarkdown" class="markdown-body" v-html="renderMarkdown(msg.content)"></div>
+          <div v-if="msg.role === 'assistant' && msg.toolEvents?.length" class="mb-2 space-y-1" aria-label="Agent 工具进度">
+            <div v-for="event in msg.toolEvents" :key="event.tool_call_id || event.tool_name" class="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <LoaderCircle v-if="event.type === 'tool_start'" class="h-3.5 w-3.5 animate-spin text-primary-500" />
+              <CircleCheck v-else-if="event.status !== 'error'" class="h-3.5 w-3.5 text-primary-500" />
+              <CircleAlert v-else class="h-3.5 w-3.5 text-red-500" />
+              <span>{{ toolLabel(event.tool_name) }}{{ event.type === 'tool_start' ? '…' : event.status === 'error' ? '失败' : '完成' }}</span>
+            </div>
+          </div>
+          <div v-if="msg.isMarkdown" class="markdown-body" v-html="renderMarkdown(msg.content, msg.artifacts?.flatMap(item => item.photo_ids || []) || [])"></div>
           <div v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+          <button v-for="artifact in msg.artifacts" :key="artifact.id" type="button" class="mt-3 flex w-full items-center gap-3 rounded-xl border border-primary-500/30 bg-slate-50 p-3 text-left text-slate-800 transition hover:border-primary-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700" @click="router.push(artifact.url)">
+            <NotebookText class="h-5 w-5 shrink-0 text-primary-500" />
+            <span class="min-w-0 flex-1"><span class="block text-xs text-slate-500 dark:text-slate-400">旅行日志草稿</span><span class="block truncate font-medium">{{ artifact.title }}</span></span>
+            <ChevronRight class="h-4 w-4 text-slate-400 dark:text-slate-500" />
+          </button>
+          <AgentActionPlanCard v-for="plan in msg.actionPlans" :key="plan.id" :plan="plan" />
         </div>
         
         <!-- Message Actions Space Placeholder -->
@@ -82,11 +96,23 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, ChevronDown } from 'lucide-vue-next';
+import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, ChevronDown, LoaderCircle, CircleCheck, CircleAlert, NotebookText, ChevronRight } from 'lucide-vue-next';
 import { useUserStore } from '@/stores/user';
 import { toServerUrl } from '@/config/server';
+import { useRouter } from 'vue-router';
+import type { ToolProgressEvent, AgentArtifactRef, AgentActionPlan } from '@/api/agent';
+import AgentActionPlanCard from './AgentActionPlanCard.vue';
 
 const userStore = useUserStore();
+const router = useRouter();
+
+const toolLabel = (name?: string) => ({
+  list_skills: '查找工作流', load_skill: '加载工作流', search_photos_v2: '搜索照片',
+  get_photo_context: '读取照片信息', search_ocr: '搜索图片文字', get_trip_tickets: '读取票据',
+  get_travel_timeline: '整理旅行时间线', view_photos: '查看候选照片', create_contact_sheet: '生成联系表',
+  select_representative_photos: '挑选代表照片', create_artifact_draft: '创建旅行日志',
+  propose_album_organization: '生成相册整理计划',
+}[name || ''] || name || '执行工具');
 
 interface MessageItem {
   id?: number;
@@ -95,6 +121,9 @@ interface MessageItem {
   isMarkdown?: boolean;
   reasoning?: string;
   isReasoningExpanded?: boolean;
+  toolEvents?: ToolProgressEvent[];
+  artifacts?: AgentArtifactRef[];
+  actionPlans?: AgentActionPlan[];
 }
 
 const props = defineProps<{
@@ -105,7 +134,7 @@ const props = defineProps<{
   isLastAssistant: boolean;
   isLastUser: boolean;
   isDropdownActive: boolean;
-  renderMarkdown: (content: string) => string;
+  renderMarkdown: (content: string, fallbackPhotoIds?: string[]) => string;
 }>();
 
 const emit = defineEmits<{

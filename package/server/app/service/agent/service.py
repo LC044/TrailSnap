@@ -212,6 +212,47 @@ class FixedChatOpenAI(ChatOpenAI):
                     )
         return msg
 
+
+class ThinkTagStreamFilter:
+    """Split MiniMax-style ``<think>`` content into the reasoning channel."""
+
+    OPEN = "<think>"
+    CLOSE = "</think>"
+
+    def __init__(self):
+        self.buffer = ""
+        self.inside = False
+
+    @staticmethod
+    def _prefix_tail(value: str, marker: str) -> int:
+        for size in range(min(len(value), len(marker) - 1), 0, -1):
+            if marker.startswith(value[-size:]):
+                return size
+        return 0
+
+    def feed(self, text: str) -> tuple[str, str]:
+        self.buffer += text
+        visible, reasoning = [], []
+        while self.buffer:
+            marker = self.CLOSE if self.inside else self.OPEN
+            index = self.buffer.find(marker)
+            if index >= 0:
+                (reasoning if self.inside else visible).append(self.buffer[:index])
+                self.buffer = self.buffer[index + len(marker):]
+                self.inside = not self.inside
+                continue
+            keep = self._prefix_tail(self.buffer, marker)
+            ready = self.buffer[:-keep] if keep else self.buffer
+            (reasoning if self.inside else visible).append(ready)
+            self.buffer = self.buffer[-keep:] if keep else ""
+            break
+        return "".join(visible), "".join(reasoning)
+
+    def flush(self) -> tuple[str, str]:
+        result = ("", self.buffer) if self.inside else (self.buffer, "")
+        self.buffer = ""
+        return result
+
 def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id: str = None, model_name: str = None, user_input: str = None):
     """
     完全适配 langgraph==1.1.3 的 Agent 初始化
@@ -256,7 +297,7 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
     )
 
     # 加载工具列表
-    tools = get_agent_tools(user_id)
+    tools = get_agent_tools(user_id, session_id=session_id)
 
     # 获取当前时间
     import datetime
@@ -268,12 +309,20 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 你的目标是帮助用户回忆他们的旅行、检索相册中的照片，并为他们提供有趣的内容（例如发朋友圈的文案）。在检索照片之前，你必须先根据用户的描述来初步缩小搜索范围，例如日期范围、地点、类型、标签、人物等，如果用户没有提供足够的信息，你可以要求用户进一步给出详细的描述。
 你可以使用提供的工具来搜索照片和查看照片的详细数据，例如地址、景区、标签、人脸等。
 
-【重要指令】：如果你需要展示照片给用户，请必须使用 Markdown 图片语法，并且 URL 格式必须为：
+复杂任务先调用 `list_skills`，再用 `load_skill` 按需加载对应流程。生成旅行日志时必须基于时间线和照片上下文，先用 `create_artifact_draft` 保存可编辑的结构化草稿，再用 `save_artifact_html_page` 为同一作品生成完整的个性化 HTML 页面；严格遵循用户指定的风格和 API 权限，不要臆造工具未确认的经历。
+当用户要求创建或整理正式相册时，先加载 `album-organizer`，完成查询和选图后调用 `propose_album_organization`。该工具只创建操作预览，必须明确告诉用户需要在计划卡片中确认；你不能替用户确认，也不能声称尚未确认的修改已经执行。
+当用户想用一句话生成旅行相册和旅行日志时，加载 `travel-album`：必要时先用 `discover_trips` 找候选，再完成时间线、代表选图、结构化旅行日志、个性化 HTML 和相册计划。最后把 artifact_id 传给 `propose_album_organization`，让用户一次看到作品和待确认相册；不要把候选旅行直接当成已确认事实。
+当用户想检查相册质量、查找未整理照片、缺失元数据、重复照片或异常相册时，加载 `album-doctor` 并调用 `inspect_album_health`。体检是只读的；删除重复文件、修正时间地点等动作没有正式确认工具时，只能给出建议，不能声称已经修复。
+当用户描述一段模糊记忆、想找回某次经历或“记得大概但找不到照片”时，加载 `memory-detective`。先拆解可验证线索并用语义搜索取得候选 ID，再调用 `investigate_memory` 做并集召回和事件聚合；候选事件必须让用户通过照片证据确认，不能把推断写成事实。
+当用户想查看某个人的共同经历、成长变化或人物时间线时，加载 `person-timeline` 并调用 `get_person_timeline`。先展示跨年份分布和少量代表事件，再按用户选择的年份或事件看图；人脸归属只证明人物出现在照片中，不能据此臆测关系或经历。
+
+【重要指令】：如果工具返回了 `thumbnail_url`，必须原样使用该地址，不要自行加入用户 ID 或重新拼接。展示照片时使用 Markdown 图片语法；只有工具未返回地址但给出了已确认属于当前用户的 photo_id 时，才使用：
 `![照片描述](/api/medias/{user_id}/照片ID/thumbnail)`
 例如：
 `![美丽的风景](/api/medias/{user_id}/123e4567-e89b-12d3-a456-426614174000/thumbnail)`
 
 当你为用户准备了九宫格照片时，请在回答中直接用上述 Markdown 格式输出这 9 张照片。
+绝对不要编造 `img.trail.snap` 等外部或占位图片 URL。若不确定 URL，就只展示作品卡片；优先使用工具返回的真实缩略图地址。
 当用户问“发生了什么事情”或“玩了哪些景点”时，你可以结合照片的描述(description)和一句话旁白(narrative)来丰富你的回答。
 请使用友好、自然、有温度的中文与用户交流。
 """
@@ -408,6 +457,9 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
     full_response = ""
     full_reasoning = ""
     tool_calls_list = []
+    artifact_refs = []
+    action_plan_refs = []
+    think_filter = ThinkTagStreamFilter()
     
     # 标记该会话未被终止
     _aborted_sessions[session_id] = False
@@ -447,15 +499,19 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                 logger.info(f"Stream manually aborted by API for session {session_id}")
                 break
 
-            print(chunk, metadata)
             if chunk.type and (metadata.get("langgraph_node") == "agent" or metadata.get("langgraph_node") == "model"):
                 contents = chunk.content
                 additional_kwargs = chunk.additional_kwargs
                 if isinstance(contents, str):
                     if contents:
-                        full_response += contents
-                        if contents:
-                            data = json.dumps({"content": contents, "session_id": session_id})
+                        visible, embedded_reasoning = think_filter.feed(contents)
+                        full_response += visible
+                        full_reasoning += embedded_reasoning
+                        if visible:
+                            data = json.dumps({"content": visible, "session_id": session_id})
+                            yield f"data: {data}\n\n"
+                        if embedded_reasoning:
+                            data = json.dumps({"reasoning": embedded_reasoning, "session_id": session_id})
                             yield f"data: {data}\n\n"
                     elif additional_kwargs:
                         summaries = additional_kwargs.get('summary')
@@ -470,10 +526,15 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                         content_type = content.get('type')
                         if content_type == 'text':
                             text = content.get('text','')
-                            full_response += text
+                            visible, embedded_reasoning = think_filter.feed(text)
+                            full_response += visible
+                            full_reasoning += embedded_reasoning
                             # yield SSE data
-                            if text:
-                                data = json.dumps({"content": text, "session_id": session_id})
+                            if visible:
+                                data = json.dumps({"content": visible, "session_id": session_id})
+                                yield f"data: {data}\n\n"
+                            if embedded_reasoning:
+                                data = json.dumps({"reasoning": embedded_reasoning, "session_id": session_id})
                                 yield f"data: {data}\n\n"
                         elif content_type == 'reasoning':
                             summaries = content.get('summary')
@@ -487,23 +548,75 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
             # 捕获工具调用
             if metadata.get("langgraph_node") == "tools":
                 if hasattr(chunk, "name") and hasattr(chunk, "content") and hasattr(chunk, "tool_call_id"):
+                    matching_tool_call = next(
+                        (
+                            tc
+                            for tc in tool_calls_list
+                            if tc.get("tool_call_id") == chunk.tool_call_id
+                        ),
+                        None,
+                    )
+                    # 部分 OpenAI 兼容模型（例如 MiniMax-M3）返回的
+                    # ToolMessage.name 为空，需通过 tool_call_id 找回工具名。
+                    tool_name = getattr(chunk, "name", None) or (
+                        matching_tool_call.get("tool_name") if matching_tool_call else None
+                    )
                     # Record tool return
                     for tc in tool_calls_list:
                         if tc.get("tool_call_id") == chunk.tool_call_id:
-                            tc["tool_return"] = chunk.content
+                            if isinstance(chunk.content, list):
+                                tc["tool_return"] = [block for block in chunk.content if isinstance(block, dict) and block.get("type") == "text"]
+                            else:
+                                tc["tool_return"] = chunk.content
                             tc["tool_status"] = "success" if not getattr(chunk, "status", "") == "error" else "error"
+                    tool_event = {
+                        "type": "tool_end", "session_id": session_id,
+                        "tool_call_id": chunk.tool_call_id, "tool_name": tool_name,
+                        "status": "error" if getattr(chunk, "status", "") == "error" else "success",
+                    }
+                    yield f"data: {json.dumps(tool_event, ensure_ascii=False)}\n\n"
+                    if tool_name in {"create_artifact_draft", "save_artifact_html_page"}:
+                        try:
+                            parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
+                            artifact = parsed.get("artifact") if isinstance(parsed, dict) else None
+                            if artifact:
+                                artifact_refs.append(artifact)
+                                yield f"data: {json.dumps({'type': 'artifact', 'session_id': session_id, 'artifact': artifact}, ensure_ascii=False)}\n\n"
+                        except (ValueError, TypeError):
+                            logger.warning("无法解析作品工具返回值", exc_info=True)
+                    if tool_name == "propose_album_organization":
+                        try:
+                            parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
+                            action_plan = parsed.get("action_plan") if isinstance(parsed, dict) else None
+                            if action_plan:
+                                action_plan_refs.append(action_plan)
+                                yield f"data: {json.dumps({'type': 'action_plan', 'session_id': session_id, 'action_plan': action_plan}, ensure_ascii=False)}\n\n"
+                        except (ValueError, TypeError):
+                            logger.warning("无法解析 Agent 操作计划返回值", exc_info=True)
 
             if hasattr(chunk, "tool_calls") and chunk.tool_calls:
                 for tc in chunk.tool_calls:
+                    if not tc.get("id") or not tc.get("name"):
+                        continue
                     # check if already in list
                     if not any(t.get("tool_call_id") == tc.get("id") for t in tool_calls_list):
-                        tool_calls_list.append({
+                        tool_record = {
                             "tool_name": tc.get("name"),
                             "tool_args": tc.get("args"),
                             "tool_call_id": tc.get("id"),
                             "tool_return": None,
                             "tool_status": "pending"
-                        })
+                        }
+                        tool_calls_list.append(tool_record)
+                        yield f"data: {json.dumps({'type': 'tool_start', 'session_id': session_id, 'tool_call_id': tc.get('id'), 'tool_name': tc.get('name'), 'tool_args': tc.get('args')}, ensure_ascii=False)}\n\n"
+
+        trailing_visible, trailing_reasoning = think_filter.flush()
+        if trailing_visible:
+            full_response += trailing_visible
+            yield f"data: {json.dumps({'content': trailing_visible, 'session_id': session_id})}\n\n"
+        if trailing_reasoning:
+            full_reasoning += trailing_reasoning
+            yield f"data: {json.dumps({'reasoning': trailing_reasoning, 'session_id': session_id})}\n\n"
 
         if future_title_task:
             try:
@@ -524,7 +637,11 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                 role="assistant",
                 content=full_response,
                 reasoning=full_reasoning if full_reasoning else None,
-                tool_calls=tool_calls_list if tool_calls_list else None
+                tool_calls=tool_calls_list if tool_calls_list else None,
+                content_ext={
+                    **({"artifacts": artifact_refs} if artifact_refs else {}),
+                    **({"action_plans": action_plan_refs} if action_plan_refs else {}),
+                } or None,
             ))
             is_saved = True
 

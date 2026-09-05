@@ -1,6 +1,6 @@
 import json
-from typing import List, Optional
-from datetime import datetime
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
 
 import logging
 from sqlalchemy import or_, and_, cast, String
@@ -18,14 +18,28 @@ from app.db.session import SessionLocal
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.image_description import ImageDescription
+from app.db.models.ocr import OCR
 from app.db.models.trip import TrainTicket, FlightTicket
 from app.db.models.scene import Scene
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.face import Face, FaceIdentity
 from app.utils.path import get_user_roots, compute_browse_path
+from app.service.agent.album_p0 import (
+    album_health_report, artifact_context, build_person_timeline, contact_sheet_content, create_artifact, discover_travel_periods, investigate_memory_clues, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
+    travel_timeline, trip_tickets,
+)
+from app.service.agent.skills import get_skill_catalog, load_skill
+from app.service.agent.actions import propose_album_plan
 
 # 聚合摘要每类分布返回的 top-N 条目数
 SUMMARY_TOP_N = 8
+
+
+def _base_agent_photo_search_query(db: Session, user_id: str):
+    """Build the PostgreSQL-safe projection used by search_photos_v2."""
+    return db.query(Photo.id, Photo.photo_time).outerjoin(PhotoMetadata).outerjoin(ImageDescription).filter(
+        Photo.owner_id == user_id, Photo.is_deleted.is_(False)
+    )
 
 
 def _build_search_summary(db: Session, filtered_query, distance) -> dict:
@@ -91,7 +105,7 @@ def _build_search_summary(db: Session, filtered_query, distance) -> dict:
     return summary
 
 
-def get_agent_tools(user_id: str) -> List[StructuredTool]:
+def get_agent_tools(user_id: str, session_id: str | None = None) -> List[StructuredTool]:
     """
     根据 user_id 动态生成绑定了用户的工具列表
     """
@@ -157,7 +171,7 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
                 PhotoMetadata, Photo.id == PhotoMetadata.photo_id
             ).outerjoin(
                 ImageDescription, Photo.id == ImageDescription.photo_id
-            ).filter(Photo.owner_id == user_id)
+            ).filter(Photo.owner_id == user_id, Photo.is_deleted.is_(False))
 
             if start_date:
                 try:
@@ -329,7 +343,7 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
         with SessionLocal() as db:
             query = db.query(Photo, ImageDescription).outerjoin(
                 ImageDescription, Photo.id == ImageDescription.photo_id
-            ).options(joinedload(Photo.tags)).filter(Photo.owner_id == user_id)
+            ).options(joinedload(Photo.tags)).filter(Photo.owner_id == user_id, Photo.is_deleted.is_(False))
 
             if photo_ids:
                 query = query.filter(Photo.id.in_(photo_ids))
@@ -381,7 +395,7 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
         with SessionLocal() as db:
             query = db.query(Photo).options(
                 joinedload(Photo.faces).joinedload(Face.identity)
-            ).filter(Photo.owner_id == user_id)
+            ).filter(Photo.owner_id == user_id, Photo.is_deleted.is_(False))
 
             if photo_ids:
                 query = query.filter(Photo.id.in_(photo_ids))
@@ -489,7 +503,8 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
                 Photo, Photo.id == ImageDescription.photo_id
             ).filter(
                 ImageDescription.photo_id.in_(photo_ids),
-                Photo.owner_id == user_id
+                Photo.owner_id == user_id,
+                Photo.is_deleted.is_(False),
             ).all()
             
             if not results:
@@ -505,11 +520,286 @@ def get_agent_tools(user_id: str) -> List[StructuredTool]:
                 })
             return json.dumps(response_data, ensure_ascii=False)
 
+    @tool
+    def list_skills() -> str:
+        """列出当前相册 Agent 可以按需加载的工作流 Skill。"""
+        return json.dumps({"skills": get_skill_catalog()}, ensure_ascii=False)
+
+    @tool("load_skill")
+    def load_skill_tool(name: str) -> str:
+        """按名称加载一个相册工作流 Skill 的完整指引；执行复杂任务前先加载对应 Skill。"""
+        try:
+            return json.dumps(load_skill(name), ensure_ascii=False)
+        except ValueError as exc:
+            return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    @tool
+    def search_photos_v2(
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        location: Optional[str] = None,
+        ocr_text: Optional[str] = None,
+        media_type: Optional[str] = None,
+        orientation: Optional[str] = None,
+        has_people: Optional[bool] = None,
+        min_quality_score: Optional[float] = None,
+        min_memory_score: Optional[float] = None,
+        cursor: Optional[str] = None,
+        limit: int = 30,
+    ) -> str:
+        """高级搜索照片，支持 OCR、媒体类型、方向、人物、质量/回忆分和游标分页；返回安全的上下文，不含原始文件路径。"""
+        with SessionLocal() as db:
+            # PostgreSQL requires every ORDER BY expression to be present in a
+            # SELECT DISTINCT list. Keep photo_time in the projection while
+            # still returning only the ID to callers.
+            query = _base_agent_photo_search_query(db, user_id)
+            if start_date: query = query.filter(Photo.photo_time >= datetime.strptime(start_date, "%Y-%m-%d"))
+            if end_date: query = query.filter(Photo.photo_time < datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
+            if location:
+                query = query.filter(or_(PhotoMetadata.city.ilike(f"%{location}%"), PhotoMetadata.province.ilike(f"%{location}%"), PhotoMetadata.address.ilike(f"%{location}%")))
+            if ocr_text:
+                query = query.join(OCR, OCR.photo_id == Photo.id).filter(OCR.text.ilike(f"%{ocr_text}%"))
+            if media_type: query = query.filter(cast(Photo.file_type, String) == media_type)
+            if orientation == "landscape": query = query.filter(Photo.width > Photo.height)
+            elif orientation == "portrait": query = query.filter(Photo.height > Photo.width)
+            elif orientation == "square": query = query.filter(Photo.height == Photo.width)
+            if has_people is True: query = query.filter(Photo.faces.any())
+            elif has_people is False: query = query.filter(~Photo.faces.any())
+            if min_quality_score is not None: query = query.filter(ImageDescription.quality_score >= min_quality_score)
+            if min_memory_score is not None: query = query.filter(ImageDescription.memory_score >= min_memory_score)
+            total = query.order_by(None).distinct().count()
+            offset = int(cursor or 0) if (cursor or "0").isdigit() else 0
+            page_size = min(max(limit, 1), 30)
+            ids = [str(row[0]) for row in query.distinct().order_by(Photo.photo_time.desc().nulls_last()).offset(offset).limit(page_size).all()]
+            return json.dumps({"total": total, "next_cursor": str(offset + len(ids)) if offset + len(ids) < total else None, "photos": photo_contexts(db, user_id, ids)}, ensure_ascii=False)
+
+    @tool
+    def get_photo_context(photo_ids: List[str]) -> str:
+        """一次获取最多 30 张照片的时间、地点、EXIF、描述、评分、标签、人物、OCR、色彩和安全缩略图 URL。"""
+        with SessionLocal() as db:
+            return json.dumps({"photos": photo_contexts(db, user_id, photo_ids)}, ensure_ascii=False)
+
+    @tool
+    def search_ocr(query: str, limit: int = 30) -> str:
+        """在当前用户照片的 OCR 文字中搜索车次、店名、景点、菜单或其他可见文字。"""
+        with SessionLocal() as db:
+            return json.dumps({"results": search_ocr_rows(db, user_id, query, limit)}, ensure_ascii=False)
+
+    @tool
+    def get_trip_tickets(start_date: Optional[str] = None, end_date: Optional[str] = None) -> str:
+        """获取指定日期范围内当前用户的火车票和机票结构化记录。"""
+        with SessionLocal() as db:
+            return json.dumps({"tickets": trip_tickets(db, user_id, start_date, end_date)}, ensure_ascii=False)
+
+    @tool
+    def get_travel_timeline(start_date: Optional[str] = None, end_date: Optional[str] = None) -> str:
+        """按日期与地点聚合旅行照片，并联合票据返回可用于写旅行日志的时间线。"""
+        with SessionLocal() as db:
+            return json.dumps(travel_timeline(db, user_id, start_date, end_date), ensure_ascii=False)
+
+    @tool
+    def discover_trips(
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        min_photos: int = 12,
+        max_results: int = 8,
+    ) -> str:
+        """自动发现旅行候选。
+
+        根据连续拍摄日期和地点聚合候选行程，并返回候选照片与票据 ID。
+        结果只是建议，生成正式相册前仍需由用户在计划卡片中确认。
+        """
+        with SessionLocal() as db:
+            try:
+                result = discover_travel_periods(
+                    db, user_id, start_date, end_date, min_photos, max_results
+                )
+            except ValueError:
+                return json.dumps({"error": "日期格式必须为 YYYY-MM-DD"}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def inspect_album_health(album_id: Optional[str] = None, sample_limit: int = 8) -> str:
+        """只读检查整个照片库或指定相册的健康度。
+
+        统计缺少拍摄时间、地点、视觉描述、文件指纹、未归档照片、完全重复照片，
+        以及空相册、照片计数不一致和缺少封面等问题。不会修改或删除任何数据。
+        """
+        with SessionLocal() as db:
+            try:
+                result = album_health_report(db, user_id, album_id, sample_limit)
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def investigate_memory(
+        query: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        locations: Optional[List[str]] = None,
+        persons: Optional[List[str]] = None,
+        text_terms: Optional[List[str]] = None,
+        semantic_photo_ids: Optional[List[str]] = None,
+        max_events: int = 8,
+    ) -> str:
+        """将模糊记忆线索融合为按日期聚合、带证据和置信度的候选事件。
+
+        日期用于限定检索范围；地点、人物、OCR/描述关键词和语义搜索得到的照片 ID
+        采用并集召回，避免模糊记忆因条件过严被漏掉。本工具只读，不会修改照片。
+        """
+        with SessionLocal() as db:
+            try:
+                result = investigate_memory_clues(
+                    db, user_id, query, start_date, end_date, locations, persons,
+                    text_terms, semantic_photo_ids, max_events,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def get_person_timeline(
+        identity_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        max_events: int = 20,
+    ) -> str:
+        """生成指定人物的只读时光机时间线。
+
+        返回跨年份照片分布、连续事件、常见地点、同行人物和代表照片。
+        identity_id 必须属于当前用户且人物不能处于隐藏状态。
+        """
+        with SessionLocal() as db:
+            try:
+                result = build_person_timeline(
+                    db, user_id, identity_id, start_date, end_date, max_events,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
+
+    @tool
+    def view_photos(photo_ids: List[str], size: str = "small") -> str:
+        """查看最多 16 张候选照片；返回可直接展示或供多模态模型逐张检查的缩略图清单。"""
+        with SessionLocal() as db:
+            photos = photo_contexts(db, user_id, photo_ids[:16])
+            return json.dumps({"mode": "multimodal_gallery", "size": size if size in ("small", "medium") else "small", "photos": [{"photo_id": p["photo_id"], "thumbnail_url": p["thumbnail_url"], "description": p["description"], "quality_score": p["quality_score"]} for p in photos]}, ensure_ascii=False)
+
+    @tool
+    def create_contact_sheet(photo_ids: List[str]) -> List[dict]:
+        """生成最多 16 张照片的编号联系表，并把真实图片作为多模态工具结果返回给模型观察。"""
+        with SessionLocal() as db:
+            return contact_sheet_content(db, user_id, photo_ids)
+
+    @tool
+    def select_representative_photos(photo_ids: List[str], count: int = 9) -> str:
+        """从候选中选择最多 16 张代表照片，兼顾质量、回忆价值和时间/地点/人物多样性，返回可解释理由。"""
+        with SessionLocal() as db:
+            selected = select_representatives(db, user_id, photo_ids, count)
+            return json.dumps({"selected": selected, "requested": count, "returned": len(selected)}, ensure_ascii=False)
+
+    @tool
+    def create_artifact_draft(
+        artifact_type: str,
+        title: str,
+        content: Dict[str, Any],
+        photo_ids: List[str],
+        ticket_ids: Optional[List[str]] = None,
+    ) -> str:
+        """保存可编辑 AI 作品草稿。旅行日志使用 artifact_type=travel_story，content 包含 summary 和 sections。只创建草稿，不会修改照片。"""
+        if artifact_type not in {"travel_story", "memory_story", "person_story", "nine_grid", "album_note"}:
+            return json.dumps({"error": "unsupported artifact_type"}, ensure_ascii=False)
+        with SessionLocal() as db:
+            try:
+                row = create_artifact(db, user_id, session_id, artifact_type, title, content, photo_ids[:100], ticket_ids or [])
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"artifact": {"id": str(row.id), "type": row.artifact_type, "title": row.title, "status": row.status, "url": f"/agent/artifacts/{row.id}", "photo_ids": row.source_photo_ids}}, ensure_ascii=False)
+
+    @tool
+    def save_artifact_html_page(
+        artifact_id: str,
+        html_content: str,
+        style_name: str = "custom",
+        custom_style: Optional[str] = None,
+        server_api_access: bool = False,
+    ) -> str:
+        """为已有 AI 作品保存完整、个性化 HTML 页面。
+
+        html_content 必须是完整 HTML 文档，可包含内联 CSS/JS，不能使用外部占位图片。
+        照片使用 /api/medias/{user_id}/{photo_id}/thumbnail?size=medium 形式的真实地址。
+        若 server_api_access=true，页面可通过 await TrailSnap.request('/api/...') 只读访问当前用户授权的数据。
+        常用 GET 路径包括 /api/stats/timeline?years=2026、/api/stats/dashboard、/api/albums 和 /api/photos；
+        不要猜测未由工具说明的接口，TrailSnap.request 目前只接收一个含查询参数的路径字符串。
+        标题、正文、章节和真实照片必须直接预渲染在 HTML DOM 中，不得仅存放在 JavaScript 数据或 template 中；JavaScript 只用于渐进增强。
+        不得在 HTML 中嵌入 token、密码或第三方追踪脚本。
+        """
+        with SessionLocal() as db:
+            try:
+                row = save_artifact_html(
+                    db, user_id, artifact_id, html_content, style_name,
+                    custom_style, server_api_access,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"artifact": {
+                "id": str(row.id), "type": row.artifact_type, "title": row.title,
+                "status": row.status, "url": f"/agent/artifacts/{row.id}?view=html",
+                "photo_ids": row.source_photo_ids, "has_html": True,
+            }}, ensure_ascii=False)
+
+    @tool
+    def get_artifact_context(artifact_id: str) -> str:
+        """读取当前用户已有 AI 作品的结构化内容、照片 ID 和 HTML 配置，用于生成或重新设计个性化页面。"""
+        with SessionLocal() as db:
+            try:
+                return json.dumps(artifact_context(db, user_id, artifact_id), ensure_ascii=False)
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+
+    @tool
+    def propose_album_organization(
+        name: str,
+        photo_ids: List[str],
+        description: Optional[str] = None,
+        cover_photo_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        album_id: Optional[str] = None,
+        artifact_id: Optional[str] = None,
+        summary: Optional[str] = None,
+    ) -> str:
+        """生成一个需要用户在界面中确认的相册整理计划。
+
+        可以创建普通相册，或向当前用户已有的普通相册添加照片，同时设置名称、简介、封面并添加标签。
+        P2 旅行工作流应传入已经创建的旅行日志 artifact_id，使相册计划与旅行作品关联。
+        这个工具只生成预览，不会直接修改相册或照片；不要声称计划已执行，也不要替用户确认。
+        photo_ids 最多 500 个，cover_photo_id 必须包含在 photo_ids 中，tags 最多 10 个。
+        P1 不会删除、移动、重命名照片，也不会修改原始文件。
+        """
+        with SessionLocal() as db:
+            try:
+                row = propose_album_plan(
+                    db, user_id, session_id, name, description, photo_ids,
+                    cover_photo_id, tags, album_id=album_id,
+                    artifact_id=artifact_id, summary=summary,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"action_plan": {
+                "id": str(row.id), "plan_type": row.plan_type, "title": row.title,
+                "summary": row.summary, "status": row.status, "preview": row.preview,
+            }}, ensure_ascii=False)
+
     return [
         search_photos_tool, 
         # get_travel_history_tool, 
         get_photo_details_tool,
         get_photo_locations_tool,
         get_photo_tags_tool,
-        get_photo_persons_tool
+        get_photo_persons_tool,
+        list_skills, load_skill_tool, search_photos_v2, get_photo_context,
+        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, investigate_memory, get_person_timeline, view_photos,
+        create_contact_sheet, select_representative_photos, create_artifact_draft,
+        get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

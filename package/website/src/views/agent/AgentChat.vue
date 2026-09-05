@@ -96,7 +96,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Loader2, Bot } from 'lucide-vue-next';
-import { agentApi, type AgentSession, type AgentMessage } from '@/api/agent';
+import { agentApi, type AgentSession, type AgentMessage, type ToolProgressEvent, type AgentArtifactRef, type AgentActionPlan } from '@/api/agent';
 import { settingsApi } from '@/api/settings';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
@@ -106,8 +106,8 @@ import AgentSidebar from './components/AgentSidebar.vue';
 import AgentHeader from './components/AgentHeader.vue';
 import AgentMessageItem from './components/AgentMessageItem.vue';
 import AgentInput from './components/AgentInput.vue';
-import { getServerUrl } from '@/config/server';
-import { photoIdFromMediaUrl, thumbnailToFileUrl } from '@/utils/mediaUrl';
+import { photoIdFromMediaUrl, thumbnailToFileUrl, thumbnailUrl } from '@/utils/mediaUrl';
+import { useUiStore } from '@/stores/uiStore';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -116,6 +116,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
 }>();
+const uiStore = useUiStore();
 
 // Lightbox 状态
 const isLightboxOpen = ref(false);
@@ -177,6 +178,9 @@ export interface MessageItem {
   isMarkdown?: boolean;
   reasoning?: string;
   isReasoningExpanded?: boolean;
+  toolEvents?: ToolProgressEvent[];
+  artifacts?: AgentArtifactRef[];
+  actionPlans?: AgentActionPlan[];
 }
 
 const activeDropdownIndex = ref<number | null>(null);
@@ -201,6 +205,20 @@ const messages = ref<MessageItem[]>([ { ...defaultWelcomeMessage } ]);
 const inputMessage = ref('');
 const isLoading = ref(false);
 const isGenerating = ref(false);
+
+watch(
+  () => [props.modelValue, uiStore.pendingAgentPrompt, isGenerating.value] as const,
+  ([open, pending, generating]) => {
+    if (!open || !pending || generating) return;
+    const request = uiStore.consumeAgentPrompt();
+    inputMessage.value = request.prompt;
+    nextTick(() => {
+      if (request.autoSend) sendMessage();
+      else ElMessage.info('风格需求已填入，发送后 Agent 会生成个性化页面');
+    });
+  },
+  { immediate: true }
+);
 const messagesContainer = ref<HTMLElement | null>(null);
 const abortController = ref<AbortController | null>(null);
 const runningSessionId = ref<string | null>(null);
@@ -386,37 +404,15 @@ const md = new MarkdownIt({
   linkify: true,
 });
 
-// 自定义图片渲染以支持九宫格样式和前端代理路径
-const getCorrectImageUrl = (src: string) => {
-  if (!src) return '';
-  if (src.startsWith('http') || src.startsWith('data:')) return src;
-
-  let baseUrl = getServerUrl();
-  if (baseUrl.endsWith('/')) {
-    baseUrl = baseUrl.slice(0, -1);
-  }
-
-  if (!baseUrl) {
-    if (src.startsWith('/medias')) return '/api' + src;
-    if (src.startsWith('/api/')) return src;
-    return '/api' + (src.startsWith('/') ? src : '/' + src);
-  } else {
-    if (src.startsWith('/api/')) return baseUrl + src;
-    if (src.startsWith('/')) return baseUrl + '/api' + src;
-    return baseUrl + '/api/' + src;
-  }
-};
-
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const token = tokens[idx];
   const originalSrc = token.attrGet('src') || '';
   const alt = token.content || '';
-  
-  let src = getCorrectImageUrl(originalSrc);
-
-  if (src.startsWith('http') && src.includes('//api/')) {
-    src = src.replace('//api/', '/api/');
-  }
+  const photoId = photoIdFromMediaUrl(originalSrc);
+  // Agent 图片只允许指向可验证的 TrailSnap photo_id。即使模型把媒体路径
+  // 套在外部域名上，也重新规范化为当前 Server 地址，绝不请求该外部域名。
+  if (!photoId) return '';
+  const src = thumbnailUrl(photoId);
 
   const fullSrc = thumbnailToFileUrl(src);
 
@@ -454,8 +450,16 @@ const handleClose = () => {
   emit('update:modelValue', false);
 };
 
-const renderMarkdown = (content: string) => {
-  let rawHtml = md.render(content);
+const renderMarkdown = (content: string, fallbackPhotoIds: string[] = []) => {
+  let fallbackIndex = 0;
+  // 模型偶尔会把照片路径套在外部或占位域名上。提取可验证的 photo_id 后
+  // 重写为本地路径；无法验证时用作品来源照片兜底，否则直接移除。
+  const safeContent = content.replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi, (_match, alt, url) => {
+    const embeddedPhotoId = photoIdFromMediaUrl(url);
+    const photoId = embeddedPhotoId || fallbackPhotoIds[fallbackIndex++];
+    return photoId ? `![${alt}](/api/medias/${photoId}/thumbnail)` : '';
+  });
+  let rawHtml = md.render(safeContent);
 
   // 合并「连续的、仅包含图片的 <p> 段落」为九宫格网格。
   // markdown 会把图片间有空行的多张图解析成多个相邻 <p>，这里把这些相邻的纯图片段落
@@ -626,7 +630,10 @@ const loadMessages = async (sessionId: string, showLoading: boolean = true) => {
         content: m.content,
         isMarkdown: m.role === 'assistant',
         reasoning: m.reasoning || undefined,
-        isReasoningExpanded: false
+        isReasoningExpanded: false,
+        toolEvents: (m.tool_calls || []).map((tool: any) => ({ type: 'tool_end', tool_call_id: tool.tool_call_id, tool_name: tool.tool_name, status: tool.tool_status === 'error' ? 'error' : 'success' })),
+        artifacts: m.content_ext?.artifacts || [],
+        actionPlans: m.content_ext?.action_plans || []
       }));
     }
     await scrollToBottom(true);
@@ -743,7 +750,30 @@ const sendMessage = async () => {
         }
         scrollToBottom();
       },
-      abortController.value.signal
+      abortController.value.signal,
+      (event) => {
+        if (aiMessageIndex === -1) {
+          isLoading.value = false;
+          aiMessageIndex = messages.value.length;
+          messages.value.push({ role: 'assistant', content: '', isMarkdown: true, reasoning: '', toolEvents: [], artifacts: [], actionPlans: [] });
+        }
+        const message = messages.value[aiMessageIndex];
+        if (event.type === 'artifact') {
+          message.artifacts = [...(message.artifacts || []), event.artifact];
+          window.dispatchEvent(new CustomEvent('trailsnap:artifact-updated', { detail: event.artifact }));
+        } else if (event.type === 'action_plan') {
+          message.actionPlans = [...(message.actionPlans || []), event.action_plan];
+        } else if (event.type === 'tool_start') {
+          message.toolEvents = [...(message.toolEvents || []), event];
+        } else {
+          const current = [...(message.toolEvents || [])];
+          const index = current.findIndex(item => item.tool_call_id === event.tool_call_id);
+          if (index >= 0) current[index] = event;
+          else current.push(event);
+          message.toolEvents = current;
+        }
+        scrollToBottom();
+      }
     );
 
     if (currentSession.value) {
