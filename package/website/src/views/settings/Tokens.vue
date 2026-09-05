@@ -22,6 +22,15 @@
         <div v-show="guideExpanded" class="px-5 pb-5 pt-0">
           <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">令牌用于授权外部 AI 工具通过 API 访问你的相册数据，无需登录账号。</p>
 
+          <div class="mb-4 rounded-lg border border-primary-200/60 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+            <p class="mb-1 text-sm font-semibold text-gray-700 dark:text-gray-300">MCP Server（推荐）</p>
+            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">在支持远程 MCP 的客户端中添加 Streamable HTTP 服务，并把令牌放入 Authorization 请求头。</p>
+            <div class="overflow-x-auto rounded-lg bg-gray-900 px-3 py-2 font-mono text-xs leading-relaxed text-green-400 dark:bg-gray-950">
+              URL: &lt;TrailSnap 地址&gt;/api/mcp/<br>
+              Authorization: Bearer <span class="text-amber-400">&lt;token&gt;</span>
+            </div>
+          </div>
+
           <div class="space-y-3">
             <!-- Step 1 -->
             <div class="flex gap-3">
@@ -106,6 +115,13 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="MCP 权限" min-width="230">
+          <template #default="{ row }">
+            <div class="flex flex-wrap gap-1">
+              <el-tag v-for="scope in row.scopes" :key="scope" size="small" effect="plain">{{ scopeLabel(scope) }}</el-tag>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="过期时间" width="180">
           <template #default="{ row }">
             <span class="text-sm text-gray-600 dark:text-gray-300">{{ formatDate(row.expires_at) }}</span>
@@ -161,6 +177,10 @@
           <span>过期：{{ formatDate(token.expires_at) }}</span>
         </div>
 
+        <div class="flex flex-wrap gap-1">
+          <el-tag v-for="scope in token.scopes" :key="scope" size="small" effect="plain">{{ scopeLabel(scope) }}</el-tag>
+        </div>
+
         <div class="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
           <el-popconfirm title="确定要删除这个令牌吗？删除后该令牌将失效！" @confirm="handleDelete(token.id)">
             <template #reference>
@@ -189,6 +209,14 @@
             style="width: 100%"
           />
         </el-form-item>
+        <el-form-item label="MCP 权限" prop="scopes">
+          <el-checkbox-group v-model="formData.scopes" class="flex flex-col">
+            <el-checkbox v-for="option in scopeOptions" :key="option.value" :value="option.value">
+              <span class="font-medium">{{ option.label }}</span>
+              <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">{{ option.description }}</span>
+            </el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
         <el-form-item label="验证密码" prop="password">
           <el-input v-model="formData.password" type="password" show-password placeholder="请输入当前用户密码" />
         </el-form-item>
@@ -207,7 +235,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { getTokens, createToken, deleteToken, type AgentToken } from '@/api/token'
+import { getTokens, createToken, deleteToken, type AgentToken, type AgentTokenScope } from '@/api/token'
 import { Copy, Plus, Trash2, Info, ChevronDown, Key } from 'lucide-vue-next'
 
 const tokens = ref<AgentToken[]>([])
@@ -221,8 +249,17 @@ const formRef = ref<FormInstance>()
 const formData = reactive({
   name: '',
   expires_at: '',
-  password: ''
+  password: '',
+  scopes: ['photos:read', 'albums:read', 'people:read'] as AgentTokenScope[]
 })
+
+const scopeOptions: { value: AgentTokenScope; label: string; description: string }[] = [
+  { value: 'photos:read', label: '读取照片', description: '搜索照片与回忆线索' },
+  { value: 'albums:read', label: '读取相册', description: '查询相册列表' },
+  { value: 'people:read', label: '读取人物', description: '查询人物与时间线' }
+]
+
+const scopeLabel = (scope: AgentTokenScope) => scopeOptions.find(option => option.value === scope)?.label || scope
 
 const shortcuts = [
   {
@@ -269,6 +306,9 @@ const rules = reactive<FormRules>({
   ],
   password: [
     { required: true, message: '请输入密码验证身份', trigger: 'blur' }
+  ],
+  scopes: [
+    { type: 'array', required: true, min: 1, message: '至少选择一个权限', trigger: 'change' }
   ]
 })
 
@@ -299,6 +339,7 @@ const handleCreate = async () => {
         ElMessage.success('令牌创建成功')
         showCreateDialog.value = false
         formRef.value?.resetFields()
+        formData.scopes = ['photos:read', 'albums:read', 'people:read']
         fetchTokens()
       } catch (error: any) {
         ElMessage.error(error.message || '创建令牌失败，可能是密码错误')

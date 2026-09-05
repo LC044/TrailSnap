@@ -15,13 +15,20 @@ def generate_token_string(length: int = 32) -> str:
     alphabet = string.ascii_letters + string.digits
     return "ts_" + ''.join(secrets.choice(alphabet) for _ in range(length))
 
-def create_agent_token(db: Session, user_id: UUID, name: str, expires_at: datetime) -> AgentToken:
+def create_agent_token(
+    db: Session,
+    user_id: UUID,
+    name: str,
+    expires_at: datetime,
+    scopes: Optional[List[str]] = None,
+) -> AgentToken:
     token_str = generate_token_string()
     db_obj = AgentToken(
         user_id=user_id,
         name=name,
         token=token_str,
         expires_at=expires_at,
+        scopes=scopes or ["photos:read", "albums:read", "people:read"],
         is_deleted=False
     )
     db.add(db_obj)

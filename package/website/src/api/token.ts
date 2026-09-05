@@ -7,13 +7,17 @@ export interface AgentToken {
   token: string
   created_at: string
   expires_at: string
+  scopes: AgentTokenScope[]
   is_deleted: boolean
 }
+
+export type AgentTokenScope = 'photos:read' | 'albums:read' | 'people:read'
 
 export interface CreateTokenData {
   name: string
   expires_at: string
   password: string
+  scopes: AgentTokenScope[]
 }
 
 export function getTokens() {

@@ -77,6 +77,7 @@ def test_create_token_persists_when_password_matches():
         name="my-token",
         password="correct",
         expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
+        scopes=["photos:read", "albums:read"],
     )
     fake_row = _token_row(name="my-token")
 
@@ -90,9 +91,22 @@ def test_create_token_persists_when_password_matches():
 
     authenticate.assert_called_once_with(db, email=user.email, password="correct")
     create_call.assert_called_once_with(
-        db=db, user_id=user.id, name="my-token", expires_at=payload.expires_at
+        db=db, user_id=user.id, name="my-token", expires_at=payload.expires_at,
+        scopes=["photos:read", "albums:read"],
     )
     assert result is fake_row
+
+
+@pytest.mark.parametrize("scopes", [[], ["photos:read", "photos:delete"]])
+def test_create_token_rejects_empty_or_unknown_scopes(scopes):
+    user = _user()
+    payload = SimpleNamespace(
+        name="limited", password="correct", expires_at=None, scopes=scopes,
+    )
+    with patch.object(tokens_api.crud_user, "authenticate", return_value=user):
+        with pytest.raises(HTTPException) as exc_info:
+            tokens_api.create_token(token_in=payload, db=object(), current_user=user)
+    assert exc_info.value.status_code == 400
 
 
 def test_delete_token_returns_404_when_crud_reports_missing():

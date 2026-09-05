@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import JSON, Column, String, Boolean, DateTime, ForeignKey
 from app.db.types import UUID
 import uuid
 from datetime import datetime
@@ -12,4 +12,9 @@ class AgentToken(Base):
     token = Column(String, unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=False)
+    scopes = Column(
+        JSON,
+        nullable=False,
+        default=lambda: ["photos:read", "albums:read", "people:read"],
+    )
     is_deleted = Column(Boolean, default=False, nullable=False)
