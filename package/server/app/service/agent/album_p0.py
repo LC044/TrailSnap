@@ -84,6 +84,30 @@ def _string_list(value) -> list[str]:
     return []
 
 
+def _normalize_artifact_content(content: dict | None) -> dict:
+    """Normalize common model aliases into the editable artifact contract."""
+    source = dict(content or {})
+    normalized_sections = []
+    for index, raw in enumerate(source.get("sections") or []):
+        if not isinstance(raw, dict):
+            continue
+        section = dict(raw)
+        photo_ids = section.get("photo_ids")
+        if not isinstance(photo_ids, list):
+            photo_ids = [section["photo_id"]] if section.get("photo_id") else []
+        section["heading"] = str(
+            section.get("heading") or section.get("title") or section.get("location") or f"第 {index + 1} 段"
+        )
+        section["body"] = str(
+            section.get("body") or section.get("narrative") or section.get("story") or section.get("description") or ""
+        )
+        section["photo_ids"] = [str(value) for value in photo_ids if value]
+        normalized_sections.append(section)
+    source["sections"] = normalized_sections
+    source["summary"] = str(source.get("summary") or "")
+    return source
+
+
 def photo_contexts(db: Session, user_id: str, photo_ids: list[str]) -> list[dict]:
     ids = _uuid_list(photo_ids, 30)
     rows = (
@@ -175,6 +199,100 @@ def travel_timeline(db: Session, user_id: str, start_date: str | None, end_date:
     return {"total_photos": total_photos, "truncated": total_photos > 2000, "segments": list(groups.values()), "tickets": trip_tickets(db, user_id, start_date, end_date)}
 
 
+def discover_travel_periods(
+    db: Session,
+    user_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    min_photos: int = 12,
+    max_results: int = 8,
+) -> dict:
+    """Discover deterministic, explainable travel candidates from dated locations.
+
+    Consecutive shooting days separated by at most two empty days form one
+    candidate. This intentionally proposes candidates instead of declaring a
+    trip as fact; the Agent and user can narrow the result before writing.
+    """
+    query = (
+        db.query(Photo, PhotoMetadata)
+        .join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)
+        .filter(
+            Photo.owner_id == user_id,
+            Photo.is_deleted.is_(False),
+            Photo.photo_time.isnot(None),
+            or_(
+                PhotoMetadata.city.isnot(None),
+                PhotoMetadata.province.isnot(None),
+                PhotoMetadata.country.isnot(None),
+            ),
+        )
+    )
+    if start_date:
+        query = query.filter(Photo.photo_time >= datetime.strptime(start_date, "%Y-%m-%d"))
+    if end_date:
+        query = query.filter(Photo.photo_time < datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
+
+    rows = list(reversed(query.order_by(Photo.photo_time.desc()).limit(10_000).all()))
+    days: dict = {}
+    for photo, meta in rows:
+        day = photo.photo_time.date()
+        location = meta.city or meta.province or meta.country
+        if not location:
+            continue
+        bucket = days.setdefault(day, {"date": day, "photo_ids": [], "locations": Counter()})
+        if len(bucket["photo_ids"]) < 200:
+            bucket["photo_ids"].append(str(photo.id))
+        bucket["locations"][location] += 1
+
+    segments = []
+    for item in sorted(days.values(), key=lambda value: value["date"]):
+        if not segments or (item["date"] - segments[-1][-1]["date"]).days > 3:
+            segments.append([item])
+        else:
+            segments[-1].append(item)
+
+    threshold = min(max(int(min_photos), 3), 1000)
+    candidates = []
+    all_tickets = trip_tickets(db, user_id, start_date, end_date)
+    for segment in segments:
+        photo_ids = []
+        locations = Counter()
+        for day in segment:
+            photo_ids.extend(day["photo_ids"])
+            locations.update(day["locations"])
+        if len(photo_ids) < threshold:
+            continue
+        start = segment[0]["date"]
+        end = segment[-1]["date"]
+        segment_tickets = [
+            ticket for ticket in all_tickets
+            if ticket.get("date_time") and start.isoformat() <= ticket["date_time"][:10] <= end.isoformat()
+        ]
+        top_locations = [name for name, _ in locations.most_common(5)]
+        candidates.append({
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "day_count": (end - start).days + 1,
+            "shooting_day_count": len(segment),
+            "photo_count": len(photo_ids),
+            "locations": top_locations,
+            "title_suggestion": " · ".join(top_locations[:2]) + "旅行",
+            "photo_ids": photo_ids[:200],
+            "ticket_ids": [str(ticket["ticket_id"]) for ticket in segment_tickets],
+            "reason": "连续拍摄日期、地点聚合" + ("，并匹配到行程票据" if segment_tickets else ""),
+        })
+
+    candidates.sort(key=lambda item: (item["start_date"], item["photo_count"]), reverse=True)
+    result_limit = min(max(int(max_results), 1), 12)
+    return {
+        "candidates": candidates[:result_limit],
+        "candidate_count": len(candidates),
+        "scanned_photo_count": len(rows),
+        "truncated": len(rows) >= 10_000,
+        "notice": "结果是基于连续日期和地点生成的候选，请在创建相册前由用户确认范围。",
+    }
+
+
 def select_representatives(db: Session, user_id: str, photo_ids: list[str], count: int) -> list[dict]:
     from app.service.moment.day_highlight_service import dedup_photo_ids
 
@@ -263,7 +381,7 @@ def create_artifact(db: Session, user_id: str, session_id: str | None, artifact_
     }
     if set(requested_ticket_ids) - owned_ticket_ids:
         raise ValueError("包含不存在或无权访问的票据")
-    row = AIArtifact(user_id=UUID(str(user_id)), artifact_type=artifact_type, title=title[:255], content_json=content, source_photo_ids=normalized_photo_ids, source_ticket_ids=requested_ticket_ids, status="draft", created_by_session_id=UUID(session_id) if session_id else None)
+    row = AIArtifact(user_id=UUID(str(user_id)), artifact_type=artifact_type, title=title[:255], content_json=_normalize_artifact_content(content), source_photo_ids=normalized_photo_ids, source_ticket_ids=requested_ticket_ids, status="draft", created_by_session_id=UUID(session_id) if session_id else None)
     db.add(row); db.commit(); db.refresh(row)
     return row
 

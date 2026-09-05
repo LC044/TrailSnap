@@ -1,6 +1,6 @@
 """Confirmed and reversible write operations for the album Agent."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Iterable
 from uuid import UUID
 
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.agent import AgentSession
 from app.db.models.agent_action import AgentActionPlan
+from app.db.models.ai_artifact import AIArtifact
 from app.db.models.album import Album, AlbumPhoto
 from app.db.models.photo import Photo
 from app.db.models.tag import PhotoTag, PhotoTagRelation
@@ -16,6 +17,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 
 MAX_PLAN_PHOTOS = 500
 MAX_PLAN_TAGS = 10
+PLAN_TTL_DAYS = 7
 
 
 def _uuid(value) -> UUID:
@@ -23,6 +25,10 @@ def _uuid(value) -> UUID:
         return UUID(str(value))
     except (TypeError, ValueError, AttributeError) as exc:
         raise ValueError("无效的 ID") from exc
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _owned_photos(db: Session, user_id, photo_ids: Iterable) -> list[Photo]:
@@ -65,12 +71,44 @@ def get_owned_plan(db: Session, user_id, plan_id, for_update: bool = False) -> A
 
 
 def list_owned_plans(db: Session, user_id, session_id=None, status=None, limit: int = 50):
+    expire_stale_plans(db, user_id)
     query = db.query(AgentActionPlan).filter(AgentActionPlan.user_id == _uuid(user_id))
     if session_id:
         query = query.filter(AgentActionPlan.session_id == _uuid(session_id))
     if status:
         query = query.filter(AgentActionPlan.status == status)
     return query.order_by(AgentActionPlan.created_at.desc()).limit(min(max(limit, 1), 100)).all()
+
+
+def expire_stale_plans(db: Session, user_id) -> int:
+    """Persist expiry so history and execution observe the same terminal state."""
+    now = datetime.now(timezone.utc)
+    rows = db.query(AgentActionPlan).filter(
+        AgentActionPlan.user_id == _uuid(user_id),
+        AgentActionPlan.status == "proposed",
+        AgentActionPlan.expires_at.isnot(None),
+        AgentActionPlan.expires_at <= now,
+    ).all()
+    for row in rows:
+        row.status = "expired"
+        row.error_message = "操作计划已过期，请重新生成"
+    if rows:
+        db.commit()
+    return len(rows)
+
+
+def mark_plan_failed(db: Session, user_id, plan_id, message: str) -> AgentActionPlan | None:
+    """Record a failed confirmation after the caller has rolled back mutations."""
+    plan = get_owned_plan(db, user_id, plan_id, for_update=True)
+    if not plan or plan.status != "proposed":
+        return plan
+    plan.status = "failed"
+    plan.failed_at = datetime.now(timezone.utc)
+    plan.attempt_count = int(plan.attempt_count or 0) + 1
+    plan.error_message = str(message)[:2000]
+    db.commit()
+    db.refresh(plan)
+    return plan
 
 
 def propose_album_plan(
@@ -83,6 +121,7 @@ def propose_album_plan(
     cover_photo_id=None,
     tags: list[str] | None = None,
     album_id=None,
+    artifact_id=None,
     summary: str | None = None,
 ) -> AgentActionPlan:
     owner_id = _uuid(user_id)
@@ -108,6 +147,14 @@ def propose_album_plan(
         if not session:
             raise ValueError("会话不存在或无权访问")
 
+    artifact = None
+    if artifact_id:
+        artifact = db.query(AIArtifact).filter(
+            AIArtifact.id == _uuid(artifact_id), AIArtifact.user_id == owner_id
+        ).first()
+        if not artifact:
+            raise ValueError("旅行日志不存在或无权访问")
+
     clean_tags = _normalize_tags(tags)
     sample = [{
         "photo_id": str(photo.id),
@@ -121,6 +168,7 @@ def propose_album_plan(
         "photo_ids": [str(value) for value in selected_ids],
         "cover_photo_id": str(cover_id),
         "tags": clean_tags,
+        "artifact_id": str(artifact.id) if artifact else None,
     }
     preview = {
         "mode": "update" if target_album else "create",
@@ -129,6 +177,9 @@ def propose_album_plan(
         "photo_count": len(selected_ids),
         "cover_photo_id": str(cover_id),
         "tags": clean_tags,
+        "artifact_id": str(artifact.id) if artifact else None,
+        "artifact_title": artifact.title if artifact else None,
+        "artifact_url": f"/agent/artifacts/{artifact.id}" if artifact else None,
         "sample_photos": sample,
         "notice": "只创建或更新相册关系和标签，不删除、移动或重命名原始照片。",
     }
@@ -141,6 +192,7 @@ def propose_album_plan(
         operations=operations,
         preview=preview,
         status="proposed",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=PLAN_TTL_DAYS),
     )
     db.add(row)
     db.commit()
@@ -154,6 +206,12 @@ def execute_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
         raise ValueError("操作计划不存在")
     if plan.status != "proposed":
         raise ValueError("只有待确认的计划可以执行")
+    now = datetime.now(timezone.utc)
+    if plan.expires_at and _as_utc(plan.expires_at) <= now:
+        plan.status = "expired"
+        plan.error_message = "操作计划已过期，请重新生成"
+        db.commit()
+        raise ValueError(plan.error_message)
     if plan.plan_type != "album_organize":
         raise ValueError("不支持的操作计划类型")
 
@@ -242,8 +300,12 @@ def execute_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
         "album_id": str(album.id), "album_url": f"/album/{album.id}",
         "album_name": album.name, "added_photo_count": len(added_photo_ids),
         "tag_relation_count": len(tag_changes),
+        "artifact_id": op.get("artifact_id"),
+        "artifact_url": f"/agent/artifacts/{op['artifact_id']}" if op.get("artifact_id") else None,
     }
     plan.status = "executed"
+    plan.attempt_count = int(plan.attempt_count or 0) + 1
+    plan.error_message = None
     plan.executed_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(plan)

@@ -20,6 +20,7 @@
         <img v-for="photo in samplePhotos" :key="photo.photo_id" :src="toServerUrl(photo.thumbnail_url)" class="h-14 w-14 shrink-0 rounded-lg object-cover" loading="lazy" alt="待整理照片" />
       </div>
       <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">{{ current.preview.notice }}</p>
+      <p v-if="current.error_message" class="mt-2 rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ current.error_message }}</p>
 
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <button v-if="current.status === 'proposed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="execute">
@@ -27,7 +28,10 @@
         </button>
         <button v-if="current.status === 'executed'" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAlbum"><ExternalLink class="h-3.5 w-3.5" />打开相册</button>
         <button v-if="current.status === 'executed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="undo"><Undo2 class="h-3.5 w-3.5" />撤销操作</button>
+        <button v-if="artifactUrl" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-500/40 px-3 py-2 text-xs text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="router.push(artifactUrl)"><BookOpen class="h-3.5 w-3.5" />查看旅行日志</button>
         <span v-if="current.status === 'undone'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><Undo2 class="h-3.5 w-3.5" />修改已撤销</span>
+        <span v-if="current.status === 'expired'" class="text-xs text-amber-700 dark:text-amber-300">计划已过期，请在 Agent 中重新生成</span>
+        <span v-if="current.status === 'failed'" class="text-xs text-red-700 dark:text-red-300">执行失败，请在 Agent 中重新生成计划</span>
       </div>
     </div>
   </section>
@@ -35,7 +39,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Undo2 } from 'lucide-vue-next';
+import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Undo2 } from 'lucide-vue-next';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { agentApi, type AgentActionPlan } from '@/api/agent';
@@ -47,8 +51,9 @@ const busy = ref(false);
 const router = useRouter();
 const samplePhotos = computed(() => current.value.preview?.sample_photos || []);
 const tagsLabel = computed(() => current.value.preview?.tags?.length ? current.value.preview.tags.join('、') : '不添加');
-const statusLabel = computed(() => ({ proposed: '等待确认', executed: '已执行', undone: '已撤销' }[current.value.status] || current.value.status));
-const statusClass = computed(() => current.value.status === 'executed' ? 'bg-primary-500/10 text-primary-600' : current.value.status === 'undone' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300');
+const artifactUrl = computed(() => current.value.result?.artifact_url || current.value.preview?.artifact_url || '');
+const statusLabel = computed(() => ({ proposed: '等待确认', executed: '已执行', undone: '已撤销', expired: '已过期', failed: '执行失败' }[current.value.status] || current.value.status));
+const statusClass = computed(() => current.value.status === 'executed' ? 'bg-primary-500/10 text-primary-600' : current.value.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : current.value.status === 'undone' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300');
 
 const execute = async () => {
   try {

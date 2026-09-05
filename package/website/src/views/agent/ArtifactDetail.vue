@@ -56,8 +56,14 @@ const draftTitle = ref(''); const draftContent = ref<Record<string, any>>({}); c
 const selectedStyle = ref('editorial'); const customStyle = ref(''); const serverApiAccess = ref(false);
 const styles = [{ value: 'editorial', label: '旅行杂志' }, { value: 'cinematic', label: '电影叙事' }, { value: 'scrapbook', label: '手账拼贴' }, { value: 'map-story', label: '地图足迹' }, { value: 'minimal', label: '极简画册' }, { value: 'custom', label: '完全自定义' }];
 const viewOptions = computed(() => [{ value: 'structured' as const, label: '结构化内容' }, { value: 'html' as const, label: '个性页面' }, ...(artifact.value?.html_content ? [{ value: 'source' as const, label: 'HTML 源码' }] : [])]);
-const sections = computed(() => editing.value ? (draftContent.value.sections || []) : (Array.isArray(artifact.value?.content_json?.sections) ? artifact.value!.content_json.sections : []));
-const startEditing = () => { if (!artifact.value) return; draftTitle.value = artifact.value.title; draftContent.value = JSON.parse(JSON.stringify(artifact.value.content_json)); editing.value = true; activeView.value = 'structured'; };
+const normalizeSections = (value: unknown) => Array.isArray(value) ? value.filter(item => item && typeof item === 'object').map((item: any, index) => ({
+  ...item,
+  heading: item.heading || item.title || item.location || `第 ${index + 1} 段`,
+  body: item.body || item.narrative || item.story || item.description || '',
+  photo_ids: Array.isArray(item.photo_ids) ? item.photo_ids : (item.photo_id ? [item.photo_id] : []),
+})) : [];
+const sections = computed(() => normalizeSections(editing.value ? draftContent.value.sections : artifact.value?.content_json?.sections));
+const startEditing = () => { if (!artifact.value) return; draftTitle.value = artifact.value.title; draftContent.value = JSON.parse(JSON.stringify(artifact.value.content_json)); draftContent.value.sections = normalizeSections(draftContent.value.sections); editing.value = true; activeView.value = 'structured'; };
 const saveStructured = async () => { if (!artifact.value || !draftTitle.value.trim()) return; try { const response: any = await agentApi.updateArtifact(artifact.value.id, { title: draftTitle.value.trim(), content_json: draftContent.value }); artifact.value = response.data; editing.value = false; ElMessage.success('草稿已保存'); } catch { ElMessage.error('保存失败'); } };
 const saveHtmlSource = async () => { if (!artifact.value || !htmlSource.value.trim()) return; try { const response: any = await agentApi.updateArtifact(artifact.value.id, { html_content: htmlSource.value }); artifact.value = response.data; activeView.value = 'html'; ElMessage.success('HTML 已保存'); } catch { ElMessage.error('HTML 保存失败'); } };
 const openDesignerAgent = () => { if (!artifact.value) return; const style = customStyle.value.trim() || styles.find(item => item.value === selectedStyle.value)?.label || selectedStyle.value; uiStore.openAgentWithPrompt(`请为已有旅行日志作品 ${artifact.value.id} 生成或重新设计个性化 HTML 页面。先加载 travel-story skill，再读取作品上下文。风格：${style}。Server API 只读权限：${serverApiAccess.value ? '开启' : '关闭'}。请保留现有结构化 JSON，生成完整、响应式、与其他用户不同的 HTML/CSS/JS，并调用 save_artifact_html_page 保存到同一作品。`, true); showDesigner.value = false; };

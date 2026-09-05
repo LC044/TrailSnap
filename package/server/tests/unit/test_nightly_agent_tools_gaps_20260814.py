@@ -15,6 +15,9 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.orm import Session
 
 
 pytestmark = [pytest.mark.smoke]
@@ -72,6 +75,7 @@ def test_get_agent_tools_returns_expected_names():
         "search_ocr",
         "get_trip_tickets",
         "get_travel_timeline",
+        "discover_trips",
         "view_photos",
         "create_contact_sheet",
         "select_representative_photos",
@@ -80,6 +84,23 @@ def test_get_agent_tools_returns_expected_names():
         "save_artifact_html_page",
         "propose_album_organization",
     ])
+
+
+def test_search_photos_v2_distinct_order_compiles_for_postgresql():
+    """The timestamp projection is required by PostgreSQL DISTINCT ordering."""
+    from app.db.models.photo import Photo
+    from app.service.agent.tools import _base_agent_photo_search_query
+
+    with Session(create_engine("sqlite:///:memory:")) as db:
+        statement = (
+            _base_agent_photo_search_query(db, str(uuid4()))
+            .distinct()
+            .order_by(Photo.photo_time.desc().nulls_last())
+            .limit(30)
+            .statement
+        )
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+    assert "photos.photo_time" in sql.split("FROM", 1)[0]
 
 
 def test_get_photo_details_tool_empty():

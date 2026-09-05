@@ -25,7 +25,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.face import Face, FaceIdentity
 from app.utils.path import get_user_roots, compute_browse_path
 from app.service.agent.album_p0 import (
-    artifact_context, contact_sheet_content, create_artifact, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
+    artifact_context, contact_sheet_content, create_artifact, discover_travel_periods, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
     travel_timeline, trip_tickets,
 )
 from app.service.agent.skills import get_skill_catalog, load_skill
@@ -33,6 +33,13 @@ from app.service.agent.actions import propose_album_plan
 
 # 聚合摘要每类分布返回的 top-N 条目数
 SUMMARY_TOP_N = 8
+
+
+def _base_agent_photo_search_query(db: Session, user_id: str):
+    """Build the PostgreSQL-safe projection used by search_photos_v2."""
+    return db.query(Photo.id, Photo.photo_time).outerjoin(PhotoMetadata).outerjoin(ImageDescription).filter(
+        Photo.owner_id == user_id, Photo.is_deleted.is_(False)
+    )
 
 
 def _build_search_summary(db: Session, filtered_query, distance) -> dict:
@@ -542,9 +549,10 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
     ) -> str:
         """高级搜索照片，支持 OCR、媒体类型、方向、人物、质量/回忆分和游标分页；返回安全的上下文，不含原始文件路径。"""
         with SessionLocal() as db:
-            query = db.query(Photo.id).outerjoin(PhotoMetadata).outerjoin(ImageDescription).filter(
-                Photo.owner_id == user_id, Photo.is_deleted.is_(False)
-            )
+            # PostgreSQL requires every ORDER BY expression to be present in a
+            # SELECT DISTINCT list. Keep photo_time in the projection while
+            # still returning only the ID to callers.
+            query = _base_agent_photo_search_query(db, user_id)
             if start_date: query = query.filter(Photo.photo_time >= datetime.strptime(start_date, "%Y-%m-%d"))
             if end_date: query = query.filter(Photo.photo_time < datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
             if location:
@@ -588,6 +596,27 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         """按日期与地点聚合旅行照片，并联合票据返回可用于写旅行日志的时间线。"""
         with SessionLocal() as db:
             return json.dumps(travel_timeline(db, user_id, start_date, end_date), ensure_ascii=False)
+
+    @tool
+    def discover_trips(
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        min_photos: int = 12,
+        max_results: int = 8,
+    ) -> str:
+        """自动发现旅行候选。
+
+        根据连续拍摄日期和地点聚合候选行程，并返回候选照片与票据 ID。
+        结果只是建议，生成正式相册前仍需由用户在计划卡片中确认。
+        """
+        with SessionLocal() as db:
+            try:
+                result = discover_travel_periods(
+                    db, user_id, start_date, end_date, min_photos, max_results
+                )
+            except ValueError:
+                return json.dumps({"error": "日期格式必须为 YYYY-MM-DD"}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
 
     @tool
     def view_photos(photo_ids: List[str], size: str = "small") -> str:
@@ -676,11 +705,13 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         cover_photo_id: Optional[str] = None,
         tags: Optional[List[str]] = None,
         album_id: Optional[str] = None,
+        artifact_id: Optional[str] = None,
         summary: Optional[str] = None,
     ) -> str:
         """生成一个需要用户在界面中确认的相册整理计划。
 
         可以创建普通相册，或向当前用户已有的普通相册添加照片，同时设置名称、简介、封面并添加标签。
+        P2 旅行工作流应传入已经创建的旅行日志 artifact_id，使相册计划与旅行作品关联。
         这个工具只生成预览，不会直接修改相册或照片；不要声称计划已执行，也不要替用户确认。
         photo_ids 最多 500 个，cover_photo_id 必须包含在 photo_ids 中，tags 最多 10 个。
         P1 不会删除、移动、重命名照片，也不会修改原始文件。
@@ -689,7 +720,8 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
             try:
                 row = propose_album_plan(
                     db, user_id, session_id, name, description, photo_ids,
-                    cover_photo_id, tags, album_id, summary,
+                    cover_photo_id, tags, album_id=album_id,
+                    artifact_id=artifact_id, summary=summary,
                 )
             except ValueError as exc:
                 return json.dumps({"error": str(exc)}, ensure_ascii=False)
@@ -706,7 +738,7 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         get_photo_tags_tool,
         get_photo_persons_tool,
         list_skills, load_skill_tool, search_photos_v2, get_photo_context,
-        search_ocr, get_trip_tickets, get_travel_timeline, view_photos,
+        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
         get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

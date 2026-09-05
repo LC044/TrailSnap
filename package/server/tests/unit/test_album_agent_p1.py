@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -6,11 +7,12 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.db.models.agent import AgentSession
+from app.db.models.ai_artifact import AIArtifact
 from app.db.models.album import Album, AlbumPhoto
 from app.db.models.photo import FileType, Photo
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.user import User
-from app.service.agent.actions import execute_plan, get_owned_plan, propose_album_plan, undo_plan
+from app.service.agent.actions import execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan, undo_plan
 
 
 pytestmark = [pytest.mark.smoke]
@@ -117,3 +119,50 @@ def test_plan_cannot_execute_or_undo_twice(prepared_db):
     undo_plan(db, owner, plan.id)
     with pytest.raises(ValueError, match="已执行"):
         undo_plan(db, owner, plan.id)
+
+
+def test_plan_expires_and_failed_attempt_is_auditable(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    expired = propose_album_plan(db, owner, session.id, "过期计划", None, [photos[0].id])
+    expired.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+    db.commit()
+    with pytest.raises(ValueError, match="已过期"):
+        execute_plan(db, owner, expired.id)
+    db.refresh(expired)
+    assert expired.status == "expired"
+    assert expired.error_message
+
+    failed = propose_album_plan(db, owner, session.id, "失败计划", None, [photos[0].id])
+    marked = mark_plan_failed(db, owner, failed.id, "照片在执行前已被移除")
+    assert marked.status == "failed"
+    assert marked.attempt_count == 1
+    assert marked.failed_at is not None
+    assert "执行前" in marked.error_message
+
+
+def test_travel_artifact_is_owner_scoped_and_linked_to_album_plan(prepared_db):
+    db, owner, stranger, session, photos, _ = prepared_db
+    artifact = AIArtifact(
+        user_id=owner, artifact_type="travel_story", title="西安旅行日志",
+        content_json={"sections": []}, source_photo_ids=[str(photos[0].id)], source_ticket_ids=[],
+    )
+    foreign_artifact = AIArtifact(
+        user_id=stranger, artifact_type="travel_story", title="别人的日志",
+        content_json={}, source_photo_ids=[], source_ticket_ids=[],
+    )
+    db.add_all([artifact, foreign_artifact]); db.commit()
+
+    plan = propose_album_plan(
+        db, owner, session.id, "西安旅行", None, [photos[0].id],
+        artifact_id=artifact.id,
+    )
+    assert plan.preview["artifact_title"] == "西安旅行日志"
+    assert plan.preview["artifact_url"].endswith(str(artifact.id))
+    executed = execute_plan(db, owner, plan.id)
+    assert executed.result["artifact_id"] == str(artifact.id)
+
+    with pytest.raises(ValueError, match="无权访问"):
+        propose_album_plan(
+            db, owner, session.id, "越权旅行", None, [photos[0].id],
+            artifact_id=foreign_artifact.id,
+        )

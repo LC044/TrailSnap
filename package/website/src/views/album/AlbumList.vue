@@ -1,10 +1,16 @@
 <template>
   <div class="container mx-auto px-4 py-6">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-8">
+    <div class="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="text-2xl font-bold text-gray-800 dark:text-white">我的相册</h1>
-      
-      <el-dropdown trigger="click" @command="openCreateModal">
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="flex items-center gap-2 rounded-lg border border-primary-500 px-3 py-2 text-sm text-primary-600 transition-colors hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="startTravelAlbum">
+          <WandSparkles class="h-4 w-4" /><span>AI 整理旅行</span>
+        </button>
+        <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/agent/actions')">
+          <History class="h-4 w-4" /><span>操作记录</span>
+        </button>
+        <el-dropdown trigger="click" @command="openCreateModal">
         <button 
           class="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-primary-500/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         >
@@ -18,7 +24,8 @@
             <el-dropdown-item command="smart">智能相册</el-dropdown-item>
           </el-dropdown-menu>
         </template>
-      </el-dropdown>
+        </el-dropdown>
+      </div>
     </div>
 
     <!-- Smart Albums Section -->
@@ -316,16 +323,22 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
-import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter } from 'lucide-vue-next'
+import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, WandSparkles } from 'lucide-vue-next'
 import { albumService } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { format } from 'date-fns'
 import { useWindowSize } from '@vueuse/core'
+import { useUiStore } from '@/stores/uiStore'
 
 const router = useRouter()
 const store = useAlbumStore()
+const uiStore = useUiStore()
+
+const startTravelAlbum = () => {
+  uiStore.openAgentWithPrompt('请加载 travel-album Skill，帮我自动发现最近值得整理的一段旅行。先展示少量旅行候选让我确认日期和地点；确认后挑选代表照片，生成旅行日志、个性化 HTML 和需要我确认的正式相册计划。不要替我执行相册计划。', true)
+}
 
 const { width } = useWindowSize()
 const dialogWidth = computed(() => width.value < 640 ? '90%' : '500px')

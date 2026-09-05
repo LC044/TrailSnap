@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, JSON, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -26,7 +26,11 @@ class AgentActionPlan(Base):
     preview = Column(JSON, nullable=False, default=dict)
     undo_data = Column(JSON, nullable=True)
     result = Column(JSON, nullable=True)
+    attempt_count = Column(Integer, nullable=False, default=0)
+    error_message = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
     executed_at = Column(DateTime(timezone=True), nullable=True)
+    failed_at = Column(DateTime(timezone=True), nullable=True)
     undone_at = Column(DateTime(timezone=True), nullable=True)

@@ -5,7 +5,14 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.dependencies import BaseResponse, get_db
 from app.schemas.agent_action import AgentActionPlanRead
-from app.service.agent.actions import execute_plan, get_owned_plan, list_owned_plans, undo_plan
+from app.service.agent.actions import (
+    execute_plan,
+    expire_stale_plans,
+    get_owned_plan,
+    list_owned_plans,
+    mark_plan_failed,
+    undo_plan,
+)
 
 
 router = APIRouter()
@@ -28,6 +35,7 @@ def list_action_plans(
 
 @router.get("/{plan_id}", summary="获取 Agent 操作计划详情")
 def get_action_plan(plan_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    expire_stale_plans(db, current_user.id)
     row = get_owned_plan(db, current_user.id, plan_id)
     if not row:
         raise HTTPException(status_code=404, detail="Action plan not found")
@@ -40,7 +48,12 @@ def confirm_action_plan(plan_id: str, current_user: User = Depends(get_current_u
         row = execute_plan(db, current_user.id, plan_id)
     except ValueError as exc:
         db.rollback()
+        mark_plan_failed(db, current_user.id, plan_id, str(exc))
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        mark_plan_failed(db, current_user.id, plan_id, "执行过程中发生内部错误")
+        raise HTTPException(status_code=500, detail="Action plan execution failed") from exc
     return BaseResponse.success(data=_serialize(row))
 
 

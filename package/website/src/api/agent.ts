@@ -80,7 +80,9 @@ export interface AgentActionPlan {
   plan_type: string;
   title: string;
   summary?: string | null;
-  status: 'proposed' | 'executed' | 'undone' | string;
+  status: 'proposed' | 'executed' | 'undone' | 'expired' | 'failed' | string;
+  attempt_count?: number;
+  error_message?: string | null;
   operations?: Record<string, any>;
   preview: {
     mode?: 'create' | 'update';
@@ -91,11 +93,16 @@ export interface AgentActionPlan {
     tags?: string[];
     sample_photos?: Array<{ photo_id: string; thumbnail_url: string; photo_time?: string | null }>;
     notice?: string;
+    artifact_id?: string | null;
+    artifact_title?: string | null;
+    artifact_url?: string | null;
   };
-  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number } | null;
+  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null } | null;
   created_at?: string;
   updated_at?: string;
+  expires_at?: string | null;
   executed_at?: string | null;
+  failed_at?: string | null;
   undone_at?: string | null;
 }
 
@@ -247,6 +254,9 @@ export const agentApi = {
   },
   getActionPlan(planId: string) {
     return request.get<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}`);
+  },
+  listActionPlans(params?: { session_id?: string; status?: string; limit?: number }) {
+    return request.get<{ code: number; data: AgentActionPlan[] }>('/api/agent/actions', { params });
   },
   executeActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/execute`);

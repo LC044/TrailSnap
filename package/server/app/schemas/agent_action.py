@@ -12,6 +12,7 @@ class AlbumActionProposal(BaseModel):
     cover_photo_id: Optional[UUID] = None
     tags: List[str] = Field(default_factory=list, max_length=10)
     album_id: Optional[UUID] = None
+    artifact_id: Optional[UUID] = None
     summary: Optional[str] = Field(default=None, max_length=2000)
 
 
@@ -26,9 +27,13 @@ class AgentActionPlanRead(BaseModel):
     operations: Dict[str, Any]
     preview: Dict[str, Any]
     result: Optional[Dict[str, Any]]
+    attempt_count: int
+    error_message: Optional[str]
     created_at: datetime
     updated_at: datetime
+    expires_at: Optional[datetime]
     executed_at: Optional[datetime]
+    failed_at: Optional[datetime]
     undone_at: Optional[datetime]
 
     class Config:

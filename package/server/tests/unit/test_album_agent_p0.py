@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -8,8 +9,9 @@ from app.db.base import Base
 from app.db.models.agent import AgentSession
 from app.db.models.ai_artifact import AIArtifact
 from app.db.models.photo import FileType, Photo
+from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.user import User
-from app.service.agent.album_p0 import create_artifact, photo_contexts, save_artifact_html
+from app.service.agent.album_p0 import create_artifact, discover_travel_periods, photo_contexts, save_artifact_html
 from app.service.agent.skills import get_skill_catalog, load_skill
 from app.service.agent.service import ThinkTagStreamFilter
 
@@ -30,7 +32,7 @@ def db():
 
 def test_skill_registry_is_allowlisted_and_loads_expected_workflows():
     names = {item["name"] for item in get_skill_catalog()}
-    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer"} <= names
+    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album"} <= names
     assert "create_artifact_draft" in load_skill("travel-story")["instructions"]
     with pytest.raises(ValueError):
         load_skill("../../secrets")
@@ -81,3 +83,50 @@ def test_photo_context_and_artifact_are_owner_scoped(db):
             f"<main><h1>{'A' * 90}</h1></main><script>const photo = '{owned_photo.id}'</script>",
             "custom", None, False,
         )
+
+
+def test_artifact_content_normalizes_model_field_aliases(db):
+    owner = uuid4()
+    db.add(User(id=owner, username="normalizer", hashed_password="x"))
+    session = AgentSession(id=uuid4(), user_id=owner, title="trip")
+    photo = Photo(
+        id=uuid4(), owner_id=owner, filename="memory.jpg", file_path="memory.jpg",
+        file_type=FileType.image, is_deleted=False,
+    )
+    db.add_all([session, photo]); db.commit()
+
+    artifact = create_artifact(
+        db, str(owner), str(session.id), "travel_story", "旅行", {
+            "summary": "摘要",
+            "sections": [{"title": "城墙", "narrative": "冬日的光。", "photo_id": str(photo.id)}],
+        }, [str(photo.id)], [],
+    )
+    assert artifact.content_json["sections"] == [{
+        "title": "城墙", "narrative": "冬日的光。", "photo_id": str(photo.id),
+        "heading": "城墙", "body": "冬日的光。", "photo_ids": [str(photo.id)],
+    }]
+
+
+def test_discover_travel_periods_groups_consecutive_location_days(db):
+    owner = uuid4()
+    db.add(User(id=owner, username="traveler", hashed_password="x"))
+    photos = []
+    for index, (offset, city) in enumerate(((0, "西安"), (0, "西安"), (1, "咸阳"), (5, "上海"))):
+        photo = Photo(
+            id=uuid4(), owner_id=owner, filename=f"trip-{index}.jpg", file_path=f"trip-{index}.jpg",
+            file_type=FileType.image, is_deleted=False,
+            photo_time=datetime(2026, 10, 1) + timedelta(days=offset),
+        )
+        photos.append(photo)
+        db.add(photo)
+        db.flush()
+        db.add(PhotoMetadata(photo_id=photo.id, city=city, country="中国"))
+    db.commit()
+
+    result = discover_travel_periods(db, str(owner), "2026-10-01", "2026-10-07", min_photos=3)
+    assert result["candidate_count"] == 1
+    candidate = result["candidates"][0]
+    assert candidate["start_date"] == "2026-10-01"
+    assert candidate["end_date"] == "2026-10-02"
+    assert candidate["photo_count"] == 3
+    assert candidate["locations"] == ["西安", "咸阳"]
