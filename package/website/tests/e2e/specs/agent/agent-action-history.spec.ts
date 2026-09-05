@@ -99,4 +99,33 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     await expect(page.getByText('修改已撤销')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看旅行日志' })).toBeVisible()
   })
+
+  test('相册页可一键启动只读相册体检', async ({ page }) => {
+    await page.route('**/api/agent/proactive**', route => respond(route, { messages: [], unread: 0 }))
+    await page.route('**/api/settings/models**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ connections: [] }),
+    }))
+    await page.route('**/api/agent/sessions**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    }))
+    await page.route('**/api/agent/chat', route => route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: 'data: {"content":"体检已启动"}\n\ndata: [DONE]\n\n',
+    }))
+
+    await page.goto('/album')
+    const chatRequest = page.waitForRequest(request => request.url().endsWith('/api/agent/chat') && request.method() === 'POST')
+    await page.getByRole('button', { name: 'AI 相册体检' }).click()
+    const payload = JSON.parse((await chatRequest).postData() || '{}')
+
+    await expect(page.locator('.agent-chat-overlay')).toBeVisible()
+    expect(payload.message).toContain('album-doctor')
+    expect(payload.message).toContain('只读体检')
+    expect(payload.message).toContain('不要删除')
+  })
 })

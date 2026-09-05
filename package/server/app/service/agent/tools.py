@@ -25,7 +25,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.face import Face, FaceIdentity
 from app.utils.path import get_user_roots, compute_browse_path
 from app.service.agent.album_p0 import (
-    artifact_context, contact_sheet_content, create_artifact, discover_travel_periods, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
+    album_health_report, artifact_context, contact_sheet_content, create_artifact, discover_travel_periods, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
     travel_timeline, trip_tickets,
 )
 from app.service.agent.skills import get_skill_catalog, load_skill
@@ -619,6 +619,20 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
             return json.dumps(result, ensure_ascii=False)
 
     @tool
+    def inspect_album_health(album_id: Optional[str] = None, sample_limit: int = 8) -> str:
+        """只读检查整个照片库或指定相册的健康度。
+
+        统计缺少拍摄时间、地点、视觉描述、文件指纹、未归档照片、完全重复照片，
+        以及空相册、照片计数不一致和缺少封面等问题。不会修改或删除任何数据。
+        """
+        with SessionLocal() as db:
+            try:
+                result = album_health_report(db, user_id, album_id, sample_limit)
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
+
+    @tool
     def view_photos(photo_ids: List[str], size: str = "small") -> str:
         """查看最多 16 张候选照片；返回可直接展示或供多模态模型逐张检查的缩略图清单。"""
         with SessionLocal() as db:
@@ -738,7 +752,7 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         get_photo_tags_tool,
         get_photo_persons_tool,
         list_skills, load_skill_tool, search_photos_v2, get_photo_context,
-        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, view_photos,
+        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
         get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

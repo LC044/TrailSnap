@@ -10,10 +10,11 @@ from typing import Iterable
 from uuid import UUID
 
 from PIL import Image, ImageDraw, ImageOps
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import AIArtifact
+from app.db.models.album import Album, AlbumPhoto
 from app.db.models.face import Face, FaceIdentity
 from app.db.models.image_description import ImageDescription
 from app.db.models.ocr import OCR
@@ -290,6 +291,132 @@ def discover_travel_periods(
         "scanned_photo_count": len(rows),
         "truncated": len(rows) >= 10_000,
         "notice": "结果是基于连续日期和地点生成的候选，请在创建相册前由用户确认范围。",
+    }
+
+
+def album_health_report(
+    db: Session,
+    user_id: str,
+    album_id: str | None = None,
+    sample_limit: int = 8,
+) -> dict:
+    """Return an owner-scoped, read-only diagnosis of library hygiene."""
+    owner_id = UUID(str(user_id))
+    limit = min(max(int(sample_limit), 1), 20)
+    album = None
+    if album_id:
+        try:
+            parsed_album_id = UUID(str(album_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValueError("无效的相册 ID") from exc
+        album = db.query(Album).filter(Album.id == parsed_album_id, Album.owner_id == owner_id).first()
+        if not album:
+            raise ValueError("相册不存在或无权访问")
+
+    def scoped_photos():
+        query = db.query(Photo).filter(Photo.owner_id == owner_id, Photo.is_deleted.is_(False))
+        if album:
+            query = query.join(AlbumPhoto, AlbumPhoto.photo_id == Photo.id).filter(AlbumPhoto.album_id == album.id)
+        return query
+
+    def issue(key: str, label: str, query, recommendation: str, severity: str = "medium") -> dict:
+        count = query.order_by(None).count()
+        samples = [str(row[0]) for row in query.with_entities(Photo.id).order_by(Photo.photo_time.desc().nulls_last()).limit(limit).all()]
+        return {
+            "key": key, "label": label, "severity": severity, "count": count,
+            "sample_photo_ids": samples, "recommendation": recommendation,
+        }
+
+    base = scoped_photos()
+    issues = [
+        issue("missing_time", "缺少拍摄时间", base.filter(Photo.photo_time.is_(None)), "可使用文件名推断时间工具，确认后再写入。", "high"),
+        issue(
+            "missing_location", "缺少地点", base.outerjoin(PhotoMetadata, PhotoMetadata.photo_id == Photo.id).filter(
+                PhotoMetadata.city.is_(None), PhotoMetadata.province.is_(None),
+                PhotoMetadata.country.is_(None), PhotoMetadata.latitude.is_(None), PhotoMetadata.longitude.is_(None),
+            ), "结合相邻照片、票据和 OCR 推断候选地点，不应自动写入。",
+        ),
+        issue(
+            "missing_description", "缺少 AI 视觉描述", base.outerjoin(ImageDescription, ImageDescription.photo_id == Photo.id).filter(
+                or_(ImageDescription.id.is_(None), ImageDescription.description.is_(None))
+            ), "运行视觉描述任务，提升自然语言检索和故事生成质量。", "low",
+        ),
+        issue(
+            "missing_hash", "缺少文件指纹", base.filter(or_(Photo.md5.is_(None), Photo.md5 == "")),
+            "先运行重复照片扫描补齐 MD5，再判断重复项。", "low",
+        ),
+    ]
+
+    unassigned_count = None
+    if not album:
+        unassigned = base.filter(~db.query(AlbumPhoto.id).filter(AlbumPhoto.photo_id == Photo.id).exists())
+        unassigned_issue = issue(
+            "unassigned", "未加入任何相册", unassigned,
+            "可按时间和地点分组，由 Agent 生成待确认的相册整理计划。",
+        )
+        issues.append(unassigned_issue)
+        unassigned_count = unassigned_issue["count"]
+
+    scoped_ids = base.with_entities(Photo.id).order_by(None).subquery()
+    duplicate_rows = (
+        db.query(Photo.md5, func.count(Photo.id).label("count"))
+        .filter(Photo.id.in_(db.query(scoped_ids.c.id)), Photo.md5.isnot(None), Photo.md5 != "")
+        .group_by(Photo.md5).having(func.count(Photo.id) > 1).order_by(func.count(Photo.id).desc()).all()
+    )
+    duplicate_groups = len(duplicate_rows)
+    duplicate_extra = sum(int(row.count) - 1 for row in duplicate_rows)
+    duplicate_samples = []
+    if duplicate_rows:
+        hashes = [row.md5 for row in duplicate_rows[:limit]]
+        duplicate_samples = [str(row[0]) for row in base.with_entities(Photo.id).filter(Photo.md5.in_(hashes)).limit(limit).all()]
+    issues.append({
+        "key": "exact_duplicates", "label": "完全重复照片", "severity": "high",
+        "count": duplicate_extra, "group_count": duplicate_groups,
+        "sample_photo_ids": duplicate_samples,
+        "recommendation": "请在工具箱手动复核后清理，Agent 不会自动删除原文件。",
+    })
+
+    album_rows: list[dict] = []
+    if not album:
+        rows = (
+            db.query(Album.id, Album.name, Album.num_photos, Album.cover_id, func.count(AlbumPhoto.id).label("actual_count"))
+            .outerjoin(AlbumPhoto, AlbumPhoto.album_id == Album.id)
+            .filter(Album.owner_id == owner_id, Album.type == "user")
+            .group_by(Album.id, Album.name, Album.num_photos, Album.cover_id).all()
+        )
+        album_rows = [{
+            "id": row.id, "name": row.name, "num_photos": row.num_photos,
+            "cover_id": row.cover_id, "actual_count": row.actual_count,
+        } for row in rows]
+    elif album.type == "user":
+        actual = db.query(func.count(AlbumPhoto.id)).filter(AlbumPhoto.album_id == album.id).scalar() or 0
+        album_rows = [{
+            "id": album.id, "name": album.name, "num_photos": album.num_photos,
+            "cover_id": album.cover_id, "actual_count": actual,
+        }]
+    empty_albums = [{"album_id": str(row["id"]), "name": row["name"]} for row in album_rows if int(row["actual_count"]) == 0]
+    count_mismatches = [{
+        "album_id": str(row["id"]), "name": row["name"],
+        "stored_count": int(row["num_photos"] or 0), "actual_count": int(row["actual_count"]),
+    } for row in album_rows if int(row["num_photos"] or 0) != int(row["actual_count"])]
+    missing_covers = [{"album_id": str(row["id"]), "name": row["name"]} for row in album_rows if int(row["actual_count"]) > 0 and not row["cover_id"]]
+
+    active_issues = [item for item in issues if item["count"] > 0]
+    high_count = sum(1 for item in active_issues if item["severity"] == "high")
+    album_issue_types = sum(bool(items) for items in (empty_albums, count_mismatches, missing_covers))
+    return {
+        "scope": {"type": "album" if album else "library", "album_id": str(album.id) if album else None, "album_name": album.name if album else None},
+        "photo_count": base.order_by(None).count(),
+        "health_score": max(0, 100 - high_count * 18 - max(0, len(active_issues) - high_count) * 7 - album_issue_types * 7),
+        "issues": issues,
+        "album_issues": {
+            "empty_albums": empty_albums, "count_mismatches": count_mismatches, "missing_covers": missing_covers,
+        },
+        "summary": {
+            "active_issue_types": len(active_issues) + album_issue_types, "high_priority_issue_types": high_count,
+            "unassigned_photo_count": unassigned_count,
+        },
+        "notice": "这是只读体检。任何写入或删除都需要独立的预览和用户确认。",
     }
 
 

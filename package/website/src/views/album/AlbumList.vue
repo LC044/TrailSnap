@@ -7,6 +7,9 @@
         <button type="button" class="flex items-center gap-2 rounded-lg border border-primary-500 px-3 py-2 text-sm text-primary-600 transition-colors hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="startTravelAlbum">
           <WandSparkles class="h-4 w-4" /><span>AI 整理旅行</span>
         </button>
+        <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="startAlbumDoctor">
+          <Stethoscope class="h-4 w-4" /><span>AI 相册体检</span>
+        </button>
         <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/agent/actions')">
           <History class="h-4 w-4" /><span>操作记录</span>
         </button>
@@ -323,7 +326,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
-import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, WandSparkles } from 'lucide-vue-next'
+import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, Stethoscope, WandSparkles } from 'lucide-vue-next'
 import { albumService } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
@@ -338,6 +341,10 @@ const uiStore = useUiStore()
 
 const startTravelAlbum = () => {
   uiStore.openAgentWithPrompt('请加载 travel-album Skill，帮我自动发现最近值得整理的一段旅行。先展示少量旅行候选让我确认日期和地点；确认后挑选代表照片，生成旅行日志、个性化 HTML 和需要我确认的正式相册计划。不要替我执行相册计划。', true)
+}
+
+const startAlbumDoctor = () => {
+  uiStore.openAgentWithPrompt('请加载 album-doctor Skill，对我的整个照片库做一次只读体检。按严重程度总结缺少时间、地点、AI 描述、文件指纹、未归档照片、完全重复照片和相册结构异常；只展示少量证据样本与建议，不要删除、修改照片，也不要替我执行任何计划。', true)
 }
 
 const { width } = useWindowSize()

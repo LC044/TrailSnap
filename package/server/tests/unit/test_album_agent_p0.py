@@ -8,10 +8,12 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base
 from app.db.models.agent import AgentSession
 from app.db.models.ai_artifact import AIArtifact
+from app.db.models.album import Album, AlbumPhoto
+from app.db.models.image_description import ImageDescription
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.user import User
-from app.service.agent.album_p0 import create_artifact, discover_travel_periods, photo_contexts, save_artifact_html
+from app.service.agent.album_p0 import album_health_report, create_artifact, discover_travel_periods, photo_contexts, save_artifact_html
 from app.service.agent.skills import get_skill_catalog, load_skill
 from app.service.agent.service import ThinkTagStreamFilter
 
@@ -32,7 +34,7 @@ def db():
 
 def test_skill_registry_is_allowlisted_and_loads_expected_workflows():
     names = {item["name"] for item in get_skill_catalog()}
-    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album"} <= names
+    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album", "album-doctor"} <= names
     assert "create_artifact_draft" in load_skill("travel-story")["instructions"]
     with pytest.raises(ValueError):
         load_skill("../../secrets")
@@ -130,3 +132,51 @@ def test_discover_travel_periods_groups_consecutive_location_days(db):
     assert candidate["end_date"] == "2026-10-02"
     assert candidate["photo_count"] == 3
     assert candidate["locations"] == ["西安", "咸阳"]
+
+
+def test_album_health_report_is_owner_scoped_and_explainable(db):
+    owner, stranger = uuid4(), uuid4()
+    db.add_all([
+        User(id=owner, username="doctor-owner", hashed_password="x"),
+        User(id=stranger, username="doctor-stranger", hashed_password="x"),
+    ])
+    album = Album(id=uuid4(), owner_id=owner, name="待体检", type="user", num_photos=9)
+    p1 = Photo(
+        id=uuid4(), owner_id=owner, filename="one.jpg", file_path="one.jpg", file_type=FileType.image,
+        is_deleted=False, photo_time=datetime(2026, 1, 1), md5="same",
+    )
+    p2 = Photo(
+        id=uuid4(), owner_id=owner, filename="two.jpg", file_path="two.jpg", file_type=FileType.image,
+        is_deleted=False, photo_time=None, md5="same",
+    )
+    p3 = Photo(
+        id=uuid4(), owner_id=owner, filename="three.jpg", file_path="three.jpg", file_type=FileType.image,
+        is_deleted=False, photo_time=datetime(2026, 1, 2), md5=None,
+    )
+    foreign = Photo(
+        id=uuid4(), owner_id=stranger, filename="foreign.jpg", file_path="foreign.jpg", file_type=FileType.image,
+        is_deleted=False, photo_time=None, md5="same",
+    )
+    db.add_all([album, p1, p2, p3, foreign]); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=album.id, photo_id=p1.id), AlbumPhoto(album_id=album.id, photo_id=p2.id),
+        PhotoMetadata(photo_id=p1.id, city="西安", country="中国"),
+        ImageDescription(photo_id=p1.id, description="城市街景"),
+    ])
+    db.commit()
+
+    report = album_health_report(db, str(owner), sample_limit=3)
+    by_key = {item["key"]: item for item in report["issues"]}
+    assert report["photo_count"] == 3
+    assert by_key["missing_time"]["count"] == 1
+    assert by_key["missing_location"]["count"] == 2
+    assert by_key["missing_description"]["count"] == 2
+    assert by_key["missing_hash"]["count"] == 1
+    assert by_key["unassigned"]["count"] == 1
+    assert by_key["exact_duplicates"]["count"] == 1
+    assert by_key["exact_duplicates"]["group_count"] == 1
+    assert report["album_issues"]["count_mismatches"][0]["actual_count"] == 2
+    assert report["album_issues"]["missing_covers"] == [{"album_id": str(album.id), "name": "待体检"}]
+
+    with pytest.raises(ValueError, match="无权"):
+        album_health_report(db, str(stranger), str(album.id))
