@@ -613,6 +613,182 @@ def investigate_memory_clues(
     }
 
 
+def build_person_timeline(
+    db: Session,
+    user_id: str,
+    identity_id: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    max_events: int = 20,
+) -> dict:
+    """Build an explainable, read-only timeline for one visible owned identity."""
+    owner_id = UUID(str(user_id))
+    try:
+        person_id = UUID(str(identity_id))
+    except ValueError as exc:
+        raise ValueError("人物 ID 格式无效") from exc
+
+    identity = db.query(FaceIdentity).filter(
+        FaceIdentity.id == person_id,
+        FaceIdentity.owner_id == owner_id,
+        FaceIdentity.is_deleted.is_(False),
+        FaceIdentity.is_hidden.is_(False),
+    ).first()
+    if not identity:
+        raise ValueError("人物不存在、已隐藏或无权访问")
+
+    def parse_date(value: str | None, label: str) -> datetime | None:
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise ValueError(f"{label}格式必须为 YYYY-MM-DD") from exc
+
+    start = parse_date(start_date, "开始日期")
+    end = parse_date(end_date, "结束日期")
+    if start and end and start > end:
+        raise ValueError("开始日期不能晚于结束日期")
+
+    filters = [
+        Photo.owner_id == owner_id,
+        Photo.is_deleted.is_(False),
+        Face.face_identity_id == person_id,
+        Face.is_deleted.is_(False),
+    ]
+    if start:
+        filters.append(Photo.photo_time >= start)
+    if end:
+        filters.append(Photo.photo_time < end + timedelta(days=1))
+
+    id_query = db.query(Photo.id, Photo.photo_time).join(Face, Face.photo_id == Photo.id).filter(*filters).distinct()
+    total_count = db.query(func.count(func.distinct(Photo.id))).join(Face, Face.photo_id == Photo.id).filter(*filters).scalar() or 0
+    dated_count = (
+        db.query(func.count(func.distinct(Photo.id)))
+        .join(Face, Face.photo_id == Photo.id)
+        .filter(*filters, Photo.photo_time.isnot(None))
+        .scalar() or 0
+    )
+    bounds = (
+        db.query(func.min(Photo.photo_time), func.max(Photo.photo_time))
+        .join(Face, Face.photo_id == Photo.id)
+        .filter(*filters, Photo.photo_time.isnot(None))
+        .first()
+    )
+    selected_ids = [row[0] for row in id_query.order_by(Photo.photo_time.asc().nulls_last()).limit(2000).all()]
+    photos = []
+    if selected_ids:
+        photos = (
+            db.query(Photo)
+            .options(
+                joinedload(Photo.metadata_info).joinedload(PhotoMetadata.scene),
+                joinedload(Photo.image_description),
+                joinedload(Photo.faces).joinedload(Face.identity),
+            )
+            .filter(Photo.id.in_(selected_ids))
+            .all()
+        )
+        photos.sort(key=lambda photo: (photo.photo_time is None, photo.photo_time or datetime.max))
+
+    rows = []
+    co_travelers: Counter[str] = Counter()
+    for photo in photos:
+        meta, desc = photo.metadata_info, photo.image_description
+        location = " ".join(dict.fromkeys(filter(None, [
+            meta.country if meta else None, meta.province if meta else None,
+            meta.city if meta else None, meta.district if meta else None,
+            meta.address if meta else None,
+        ])))
+        for face in photo.faces:
+            other = face.identity
+            if (
+                not face.is_deleted and other and other.id != person_id
+                and other.owner_id == owner_id and not other.is_deleted and not other.is_hidden
+                and other.identity_name and other.identity_name != "未命名"
+            ):
+                co_travelers[other.identity_name] += 1
+        memory_score = float(desc.memory_score or 0) if desc else 0
+        quality_score = float(desc.quality_score or 0) if desc else 0
+        rows.append({
+            "photo_id": str(photo.id), "photo_time": _iso(photo.photo_time),
+            "location": location or None,
+            "description": (desc.narrative or desc.description)[:240] if desc and (desc.narrative or desc.description) else None,
+            "memory_score": memory_score, "quality_score": quality_score,
+            "representative_score": round(memory_score * 0.6 + quality_score * 0.4, 2),
+            "thumbnail_url": f"/api/medias/{photo.id}/thumbnail",
+        })
+
+    dated = [row for row in rows if row["photo_time"]]
+    groups: list[list[dict]] = []
+    for row in dated:
+        current_time = datetime.fromisoformat(row["photo_time"])
+        if not groups:
+            groups.append([row])
+            continue
+        previous_time = datetime.fromisoformat(groups[-1][-1]["photo_time"])
+        group_start = datetime.fromisoformat(groups[-1][0]["photo_time"])
+        same_day_long_gap = (
+            current_time.date() == previous_time.date()
+            and current_time - previous_time > timedelta(hours=6)
+        )
+        if (
+            (current_time.date() - previous_time.date()).days <= 2
+            and (current_time.date() - group_start.date()).days <= 6
+            and not same_day_long_gap
+        ):
+            groups[-1].append(row)
+        else:
+            groups.append([row])
+
+    events = []
+    year_counts: Counter[int] = Counter()
+    year_locations: dict[int, Counter[str]] = defaultdict(Counter)
+    year_photos: dict[int, list[dict]] = defaultdict(list)
+    for group in groups:
+        ranked = sorted(group, key=lambda row: (-row["representative_score"], row["photo_time"]))
+        locations = list(dict.fromkeys(row["location"] for row in ranked if row["location"]))
+        events.append({
+            "start_time": group[0]["photo_time"], "end_time": group[-1]["photo_time"],
+            "photo_count": len(group), "locations": locations[:8],
+            "representative_photos": ranked[:6],
+        })
+        for row in group:
+            year = datetime.fromisoformat(row["photo_time"]).year
+            year_counts[year] += 1
+            if row["location"]:
+                year_locations[year][row["location"]] += 1
+            year_photos[year].append(row)
+
+    years = []
+    for year in sorted(year_counts, reverse=True):
+        representatives = sorted(
+            year_photos[year], key=lambda row: (-row["representative_score"], row["photo_time"])
+        )[:3]
+        years.append({
+            "year": year, "photo_count": year_counts[year],
+            "top_locations": [item[0] for item in year_locations[year].most_common(5)],
+            "representative_photos": representatives,
+        })
+
+    events.sort(key=lambda event: event["start_time"], reverse=True)
+    event_limit = min(max(int(max_events), 1), 30)
+    return {
+        "person": {
+            "identity_id": str(identity.id), "name": identity.identity_name,
+            "description": identity.description, "tags": identity.tags or [],
+        },
+        "total_photo_count": total_count, "dated_photo_count": dated_count,
+        "loaded_photo_count": len(rows), "photos_truncated": total_count > len(rows),
+        "date_range": [_iso(bounds[0]) if bounds else None, _iso(bounds[1]) if bounds else None],
+        "year_count": len(years), "years": years,
+        "event_count": len(events), "events": events[:event_limit],
+        "events_truncated": len(events) > event_limit,
+        "co_travelers": [{"name": name, "shared_photo_count": count} for name, count in co_travelers.most_common(10)],
+        "undated_photo_count": len([row for row in rows if not row["photo_time"]]),
+        "notice": "这是基于人脸归属、拍摄时间和照片元数据生成的只读时间线；照片内容和关系叙事需要结合画面复核。",
+    }
+
+
 def select_representatives(db: Session, user_id: str, photo_ids: list[str], count: int) -> list[dict]:
     from app.service.moment.day_highlight_service import dedup_photo_ids
 

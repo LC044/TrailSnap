@@ -157,4 +157,51 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     expect(payload.message).toContain('最有区分度的问题')
     expect(payload.message).toContain('不要把推断当成事实')
   })
+
+  test('人物详情页可启动人物时光机', async ({ page }) => {
+    const identityId = '55555555-5555-4555-8555-555555555555'
+    const photoId = '66666666-6666-4666-8666-666666666666'
+    await page.route('**/api/agent/proactive**', route => respond(route, { messages: [], unread: 0 }))
+    await page.route('**/api/settings/models**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ connections: [] }),
+    }))
+    await page.route('**/api/agent/sessions**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    }))
+    await page.route('**/api/agent/chat', route => route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: `data: {"content":"我先整理跨年份时间线。\\n\\n![代表照片](https://untrusted.example/api/medias/${photoId}/thumbnail)"}\n\ndata: [DONE]\n\n`,
+    }))
+    await page.route('**/api/faces/identities**', route => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith(`/${identityId}/photos`)) return respond(route, [])
+      return respond(route, [{
+        id: identityId,
+        identity_name: '小周',
+        face_count: 3,
+        is_hidden: false,
+        is_deleted: false,
+      }])
+    })
+
+    await page.goto(`/album/people/${identityId}`)
+    const chatRequest = page.waitForRequest(request => request.url().endsWith('/api/agent/chat') && request.method() === 'POST')
+    await page.getByRole('button', { name: '人物时光机' }).click()
+    const payload = JSON.parse((await chatRequest).postData() || '{}')
+
+    await expect(page.locator('.agent-chat-overlay')).toBeVisible()
+    expect(payload.message).toContain('person-timeline')
+    expect(payload.message).toContain(`identity_id=${identityId}`)
+    expect(payload.message).toContain('不要臆测人物关系')
+    await expect(page.locator('.agent-chat-overlay img.agent-gallery-image')).toHaveAttribute(
+      'src',
+      new RegExp(`/api/medias/(?:[^/]+/)?${photoId}/thumbnail`),
+    )
+    await expect(page.locator('.agent-chat-overlay')).not.toContainText('untrusted.example')
+  })
 })

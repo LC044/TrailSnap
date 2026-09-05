@@ -78,6 +78,7 @@ def test_get_agent_tools_returns_expected_names():
         "discover_trips",
         "inspect_album_health",
         "investigate_memory",
+        "get_person_timeline",
         "view_photos",
         "create_contact_sheet",
         "select_representative_photos",

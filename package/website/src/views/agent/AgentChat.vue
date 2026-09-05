@@ -106,8 +106,7 @@ import AgentSidebar from './components/AgentSidebar.vue';
 import AgentHeader from './components/AgentHeader.vue';
 import AgentMessageItem from './components/AgentMessageItem.vue';
 import AgentInput from './components/AgentInput.vue';
-import { getServerUrl } from '@/config/server';
-import { photoIdFromMediaUrl, thumbnailToFileUrl } from '@/utils/mediaUrl';
+import { photoIdFromMediaUrl, thumbnailToFileUrl, thumbnailUrl } from '@/utils/mediaUrl';
 import { useUiStore } from '@/stores/uiStore';
 
 const props = defineProps<{
@@ -405,37 +404,15 @@ const md = new MarkdownIt({
   linkify: true,
 });
 
-// 自定义图片渲染以支持九宫格样式和前端代理路径
-const getCorrectImageUrl = (src: string) => {
-  if (!src) return '';
-  if (src.startsWith('http') || src.startsWith('data:')) return src;
-
-  let baseUrl = getServerUrl();
-  if (baseUrl.endsWith('/')) {
-    baseUrl = baseUrl.slice(0, -1);
-  }
-
-  if (!baseUrl) {
-    if (src.startsWith('/medias')) return '/api' + src;
-    if (src.startsWith('/api/')) return src;
-    return '/api' + (src.startsWith('/') ? src : '/' + src);
-  } else {
-    if (src.startsWith('/api/')) return baseUrl + src;
-    if (src.startsWith('/')) return baseUrl + '/api' + src;
-    return baseUrl + '/api/' + src;
-  }
-};
-
 md.renderer.rules.image = (tokens, idx, options, env, self) => {
   const token = tokens[idx];
   const originalSrc = token.attrGet('src') || '';
   const alt = token.content || '';
-  
-  let src = getCorrectImageUrl(originalSrc);
-
-  if (src.startsWith('http') && src.includes('//api/')) {
-    src = src.replace('//api/', '/api/');
-  }
+  const photoId = photoIdFromMediaUrl(originalSrc);
+  // Agent 图片只允许指向可验证的 TrailSnap photo_id。即使模型把媒体路径
+  // 套在外部域名上，也重新规范化为当前 Server 地址，绝不请求该外部域名。
+  if (!photoId) return '';
+  const src = thumbnailUrl(photoId);
 
   const fullSrc = thumbnailToFileUrl(src);
 
@@ -475,10 +452,11 @@ const handleClose = () => {
 
 const renderMarkdown = (content: string, fallbackPhotoIds: string[] = []) => {
   let fallbackIndex = 0;
-  // MiniMax 等模型偶尔会生成显式声明为占位的 img.trail.snap URL。禁止发起这些
-  // 外部请求；有作品照片时按顺序替换成受控的本地缩略图，否则直接移除。
-  const safeContent = content.replace(/!\[([^\]]*)\]\(https?:\/\/img\.trail\.snap\/[^)]+\)/gi, (_match, alt) => {
-    const photoId = fallbackPhotoIds[fallbackIndex++];
+  // 模型偶尔会把照片路径套在外部或占位域名上。提取可验证的 photo_id 后
+  // 重写为本地路径；无法验证时用作品来源照片兜底，否则直接移除。
+  const safeContent = content.replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/gi, (_match, alt, url) => {
+    const embeddedPhotoId = photoIdFromMediaUrl(url);
+    const photoId = embeddedPhotoId || fallbackPhotoIds[fallbackIndex++];
     return photoId ? `![${alt}](/api/medias/${photoId}/thumbnail)` : '';
   });
   let rawHtml = md.render(safeContent);

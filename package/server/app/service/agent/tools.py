@@ -25,7 +25,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.face import Face, FaceIdentity
 from app.utils.path import get_user_roots, compute_browse_path
 from app.service.agent.album_p0 import (
-    album_health_report, artifact_context, contact_sheet_content, create_artifact, discover_travel_periods, investigate_memory_clues, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
+    album_health_report, artifact_context, build_person_timeline, contact_sheet_content, create_artifact, discover_travel_periods, investigate_memory_clues, photo_contexts, save_artifact_html, search_ocr_rows, select_representatives,
     travel_timeline, trip_tickets,
 )
 from app.service.agent.skills import get_skill_catalog, load_skill
@@ -659,6 +659,27 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
             return json.dumps(result, ensure_ascii=False)
 
     @tool
+    def get_person_timeline(
+        identity_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        max_events: int = 20,
+    ) -> str:
+        """生成指定人物的只读时光机时间线。
+
+        返回跨年份照片分布、连续事件、常见地点、同行人物和代表照片。
+        identity_id 必须属于当前用户且人物不能处于隐藏状态。
+        """
+        with SessionLocal() as db:
+            try:
+                result = build_person_timeline(
+                    db, user_id, identity_id, start_date, end_date, max_events,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False)
+
+    @tool
     def view_photos(photo_ids: List[str], size: str = "small") -> str:
         """查看最多 16 张候选照片；返回可直接展示或供多模态模型逐张检查的缩略图清单。"""
         with SessionLocal() as db:
@@ -687,7 +708,7 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         ticket_ids: Optional[List[str]] = None,
     ) -> str:
         """保存可编辑 AI 作品草稿。旅行日志使用 artifact_type=travel_story，content 包含 summary 和 sections。只创建草稿，不会修改照片。"""
-        if artifact_type not in {"travel_story", "memory_story", "nine_grid", "album_note"}:
+        if artifact_type not in {"travel_story", "memory_story", "person_story", "nine_grid", "album_note"}:
             return json.dumps({"error": "unsupported artifact_type"}, ensure_ascii=False)
         with SessionLocal() as db:
             try:
@@ -778,7 +799,7 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         get_photo_tags_tool,
         get_photo_persons_tool,
         list_skills, load_skill_tool, search_photos_v2, get_photo_context,
-        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, investigate_memory, view_photos,
+        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, investigate_memory, get_person_timeline, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
         get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

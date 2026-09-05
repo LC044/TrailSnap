@@ -16,7 +16,18 @@
     @set-cover="handleSetCover"
   >
     <template #header-actions>
-      <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          class="flex items-center gap-2 rounded-full border border-gray-200/50 bg-white/80 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur-md transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900"
+          :disabled="!identity"
+          title="生成此人物的时光机"
+          @click="startPersonTimeline"
+        >
+          <HistoryIcon class="h-4 w-4" />
+          <span class="hidden sm:inline">人物时光机</span>
+        </button>
+        <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
         <button
           type="button"
           class="rounded-full border border-gray-200/50 bg-white/80 p-2 text-gray-700 shadow-sm backdrop-blur-md transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900"
@@ -42,7 +53,8 @@
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
-      </el-dropdown>
+        </el-dropdown>
+      </div>
     </template>
 
     <template #batch-actions="{ selectedIds, clearSelection }">
@@ -81,12 +93,14 @@ import type { FaceIdentity } from '@/types/album'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
 import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
-import { ImageIcon, MoreVertical as MoreVerticalIcon, Pencil as PencilIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
+import { History as HistoryIcon, ImageIcon, MoreVertical as MoreVerticalIcon, Pencil as PencilIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { usePhotoStore } from '@/stores/photoStore'
+import { useUiStore } from '@/stores/uiStore'
 import type { AlbumImage } from '@/types/album'
 
 const photoStore = usePhotoStore()
+const uiStore = useUiStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -212,6 +226,14 @@ const handlePersonCommand = (command: string) => {
   } else if (command === 'rescan') {
     rescanDialogVisible.value = true
   }
+}
+
+const startPersonTimeline = () => {
+  if (!identity.value) return
+  uiStore.openAgentWithPrompt(
+    `请加载 person-timeline Skill，为人物“${identity.value.identity_name}”生成只读时光机概览，identity_id=${identity.value.id}。先调用 get_person_timeline 展示跨年份分布和最多 5 个代表事件，再让我选择想深入查看的年份或经历；不要臆测人物关系，也不要修改人物或照片。`,
+    true,
+  )
 }
 
 onMounted(() => {

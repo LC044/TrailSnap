@@ -15,7 +15,7 @@ from app.db.models.ocr import OCR
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.user import User
-from app.service.agent.album_p0 import album_health_report, create_artifact, discover_travel_periods, investigate_memory_clues, photo_contexts, save_artifact_html
+from app.service.agent.album_p0 import album_health_report, build_person_timeline, create_artifact, discover_travel_periods, investigate_memory_clues, photo_contexts, save_artifact_html
 from app.service.agent.skills import get_skill_catalog, load_skill
 from app.service.agent.service import ThinkTagStreamFilter
 
@@ -36,7 +36,7 @@ def db():
 
 def test_skill_registry_is_allowlisted_and_loads_expected_workflows():
     names = {item["name"] for item in get_skill_catalog()}
-    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album", "album-doctor", "memory-detective"} <= names
+    assert {"trailsnap-search", "travel-story", "nine-grid-selection", "album-organizer", "travel-album", "album-doctor", "memory-detective", "person-timeline"} <= names
     assert "create_artifact_draft" in load_skill("travel-story")["instructions"]
     with pytest.raises(ValueError):
         load_skill("../../secrets")
@@ -266,3 +266,54 @@ def test_memory_detective_splits_distant_periods_on_the_same_day(db):
     assert result["candidate_photo_count"] == 2
     assert result["candidate_event_count"] == 2
     assert [event["photo_count"] for event in result["events"]] == [1, 1]
+
+
+def test_person_timeline_groups_years_events_and_visible_companions(db):
+    owner, stranger = uuid4(), uuid4()
+    db.add_all([
+        User(id=owner, username="timeline-owner", hashed_password="x"),
+        User(id=stranger, username="timeline-stranger", hashed_password="x"),
+    ])
+    person = FaceIdentity(id=uuid4(), owner_id=owner, identity_name="小周", is_deleted=False, is_hidden=False)
+    companion = FaceIdentity(id=uuid4(), owner_id=owner, identity_name="小林", is_deleted=False, is_hidden=False)
+    hidden = FaceIdentity(id=uuid4(), owner_id=owner, identity_name="隐藏人物", is_deleted=False, is_hidden=True)
+    unnamed = FaceIdentity(id=uuid4(), owner_id=owner, identity_name="未命名", is_deleted=False, is_hidden=False)
+    photos = [
+        Photo(id=uuid4(), owner_id=owner, filename="2020-a.jpg", file_path="2020-a.jpg", file_type=FileType.image,
+              is_deleted=False, photo_time=datetime(2020, 5, 1, 10, 0)),
+        Photo(id=uuid4(), owner_id=owner, filename="2020-b.jpg", file_path="2020-b.jpg", file_type=FileType.image,
+              is_deleted=False, photo_time=datetime(2020, 5, 2, 11, 0)),
+        Photo(id=uuid4(), owner_id=owner, filename="2024.jpg", file_path="2024.jpg", file_type=FileType.image,
+              is_deleted=False, photo_time=datetime(2024, 10, 1, 9, 0)),
+    ]
+    db.add_all([person, companion, hidden, unnamed, *photos]); db.flush()
+    db.add_all([
+        Face(photo_id=photos[0].id, face_identity_id=person.id, is_deleted=False),
+        Face(photo_id=photos[0].id, face_identity_id=companion.id, is_deleted=False),
+        Face(photo_id=photos[0].id, face_identity_id=hidden.id, is_deleted=False),
+        Face(photo_id=photos[0].id, face_identity_id=unnamed.id, is_deleted=False),
+        Face(photo_id=photos[1].id, face_identity_id=person.id, is_deleted=False),
+        Face(photo_id=photos[2].id, face_identity_id=person.id, is_deleted=False),
+        PhotoMetadata(photo_id=photos[0].id, city="杭州", address="西湖"),
+        PhotoMetadata(photo_id=photos[1].id, city="杭州", address="西湖"),
+        PhotoMetadata(photo_id=photos[2].id, city="西安", address="城墙"),
+        ImageDescription(photo_id=photos[0].id, narrative="湖边散步", memory_score=80, quality_score=70),
+        ImageDescription(photo_id=photos[1].id, narrative="春日合影", memory_score=70, quality_score=80),
+        ImageDescription(photo_id=photos[2].id, narrative="秋日街景", memory_score=90, quality_score=90),
+    ])
+    db.commit()
+
+    result = build_person_timeline(db, str(owner), str(person.id))
+
+    assert result["person"]["name"] == "小周"
+    assert result["total_photo_count"] == 3
+    assert result["year_count"] == 2
+    assert [(year["year"], year["photo_count"]) for year in result["years"]] == [(2024, 1), (2020, 2)]
+    assert result["event_count"] == 2
+    assert result["co_travelers"] == [{"name": "小林", "shared_photo_count": 1}]
+    assert result["events"][0]["representative_photos"][0]["thumbnail_url"].endswith("/thumbnail")
+
+    with pytest.raises(ValueError, match="已隐藏"):
+        build_person_timeline(db, str(owner), str(hidden.id))
+    with pytest.raises(ValueError, match="无权"):
+        build_person_timeline(db, str(stranger), str(person.id))
