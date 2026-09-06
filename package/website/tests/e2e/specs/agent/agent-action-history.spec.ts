@@ -158,6 +158,52 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     await expect(page.getByText('修改已撤销')).toBeVisible()
   })
 
+  test('相册医生后台补齐计划展示进度与复检且不提供撤销', async ({ page }) => {
+    const metadataPlan: any = {
+      ...structuredClone(plan),
+      id: '88888888-8888-4888-8888-888888888888',
+      plan_type: 'album_metadata_repair',
+      title: '补齐相册 AI 数据',
+      status: 'executed',
+      preview: {
+        mode: 'metadata_repair',
+        repair_count: 2,
+        candidate_count: 2,
+        photo_count: 5,
+        reversible: false,
+        selected_repair_ids: ['metadata_description', 'metadata_hash'],
+        repairs: [
+          { id: 'metadata_description', kind: 'visual_description', label: '生成缺失的 AI 视觉描述', count: 3, queued_count: 3 },
+          { id: 'metadata_hash', kind: 'file_hash', label: '计算缺失的文件指纹', count: 2, queued_count: 2 },
+        ],
+        notice: '确认后创建后台任务，不修改原始文件。',
+      },
+      result: { queued_item_count: 5, reversible: false },
+    }
+    await page.route('**/api/agent/actions**', async (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith(`/${metadataPlan.id}/progress`)) return respond(route, {
+        plan_id: metadataPlan.id,
+        status: 'completed', total_items: 5, completed_items: 5,
+        remaining_items: 0, failed_tasks: 0, progress_percent: 100,
+        groups: [
+          { kind: 'visual_description', label: '生成缺失的 AI 视觉描述', status: 'completed', total_items: 3, completed_items: 3, remaining_items: 0, active_tasks: 0, failed_tasks: 0 },
+          { kind: 'file_hash', label: '计算缺失的文件指纹', status: 'completed', total_items: 2, completed_items: 2, remaining_items: 0, active_tasks: 0, failed_tasks: 0 },
+        ],
+        recheck: { missing_description: 0, missing_hash: 0 },
+      })
+      if (route.request().method() === 'GET' && path === '/api/agent/actions') return respond(route, [metadataPlan])
+      if (route.request().method() === 'GET' && path.endsWith(`/${metadataPlan.id}`)) return respond(route, metadataPlan)
+      await route.fallback()
+    })
+
+    await page.goto('/agent/actions')
+    await expect(page.getByText('后台补齐')).toBeVisible()
+    await expect(page.getByText('复检完成').first()).toBeVisible()
+    await expect(page.getByText('5 / 5')).toBeVisible()
+    await expect(page.getByRole('button', { name: '撤销操作' })).toHaveCount(0)
+  })
+
   test('相册页可一键启动只读相册体检', async ({ page }) => {
     await page.route('**/api/agent/proactive**', route => respond(route, { messages: [], unread: 0 }))
     await page.route('**/api/settings/models**', route => route.fulfill({

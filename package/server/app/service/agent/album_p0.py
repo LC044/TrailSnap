@@ -417,9 +417,24 @@ def album_health_report(
 
     # Keep diagnosis read-only while exposing stable repair IDs that can be passed
     # to the separately confirmed album-repair plan.
-    from app.service.agent.actions import find_album_repair_candidates
+    from app.service.agent.actions import find_album_metadata_repair_candidates, find_album_repair_candidates
     repair_candidates = find_album_repair_candidates(db, owner_id, album.id if album else None)
+    metadata_repair_candidates = find_album_metadata_repair_candidates(db, owner_id, album.id if album else None)
     repair_by_id = {item["id"]: item for item in repair_candidates}
+    metadata_by_kind = {item["kind"]: item for item in metadata_repair_candidates}
+    metadata_issue_map = {
+        "missing_description": ("visual_description", "metadata_description"),
+        "missing_hash": ("file_hash", "metadata_hash"),
+    }
+    for item in issues:
+        mapping = metadata_issue_map.get(item["key"])
+        candidate = metadata_by_kind.get(mapping[0]) if mapping else None
+        if candidate:
+            item.update({
+                "repair_id": mapping[1], "repairable": True,
+                "eligible_repair_count": candidate["queued_count"],
+                "repair_truncated": candidate["truncated"],
+            })
     for item in count_mismatches:
         repair = repair_by_id.get(f"album_count:{item['album_id']}")
         if repair:
@@ -451,9 +466,11 @@ def album_health_report(
         },
         "summary": {
             "active_issue_types": len(active_issues) + album_issue_types, "high_priority_issue_types": high_count,
-            "unassigned_photo_count": unassigned_count, "safe_repair_count": len(repair_candidates),
+            "unassigned_photo_count": unassigned_count,
+            "safe_repair_count": len(repair_candidates),
+            "metadata_repair_type_count": len(metadata_repair_candidates),
         },
-        "notice": "这是只读体检。计数和封面问题可生成独立修复计划，必须由用户确认；Agent 不会删除原始照片。",
+        "notice": "这是只读体检。计数、封面、AI 描述和文件指纹问题可生成独立修复计划，必须由用户确认；Agent 不会删除原始照片。",
     }
 
 

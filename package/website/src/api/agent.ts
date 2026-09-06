@@ -85,7 +85,7 @@ export interface AgentActionPlan {
   error_message?: string | null;
   operations?: Record<string, any>;
   preview: {
-    mode?: 'create' | 'update' | 'repair';
+    mode?: 'create' | 'update' | 'repair' | 'metadata_repair';
     album_name?: string;
     current_album_name?: string | null;
     photo_count?: number;
@@ -100,25 +100,52 @@ export interface AgentActionPlan {
     candidate_count?: number;
     affected_album_count?: number;
     selected_repair_ids?: string[];
+    reversible?: boolean;
     repairs?: Array<{
       id: string;
-      kind: 'album_count' | 'album_cover';
-      album_id: string;
-      album_name: string;
-      before: number | string | null;
-      after: number | string;
+      kind: 'album_count' | 'album_cover' | 'visual_description' | 'file_hash';
+      album_id?: string;
+      album_name?: string;
+      before?: number | string | null;
+      after?: number | string;
       label: string;
       reason?: string;
       thumbnail_url?: string;
+      count?: number;
+      queued_count?: number;
+      truncated?: boolean;
+      photo_ids?: string[];
+      sample_photos?: Array<{ photo_id: string; thumbnail_url: string }>;
     }>;
   };
-  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null; applied_repair_count?: number; affected_album_count?: number; affected_album_ids?: string[] } | null;
+  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null; applied_repair_count?: number; affected_album_count?: number; affected_album_ids?: string[]; task_ids?: string[]; queued_item_count?: number; reversible?: boolean } | null;
   created_at?: string;
   updated_at?: string;
   expires_at?: string | null;
   executed_at?: string | null;
   failed_at?: string | null;
   undone_at?: string | null;
+}
+
+export interface AgentRepairProgress {
+  plan_id: string;
+  status: 'processing' | 'completed' | 'needs_attention';
+  total_items: number;
+  completed_items: number;
+  remaining_items: number;
+  failed_tasks: number;
+  progress_percent: number;
+  groups: Array<{
+    kind: string;
+    label: string;
+    status: string;
+    total_items: number;
+    completed_items: number;
+    remaining_items: number;
+    active_tasks: number;
+    failed_tasks: number;
+  }>;
+  recheck: { missing_description: number; missing_hash: number };
 }
 
 export type AgentStreamEvent = ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef } | { type: 'action_plan'; action_plan: AgentActionPlan };
@@ -280,6 +307,9 @@ export const agentApi = {
     return request.patch<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}`, {
       selected_repair_ids: selectedRepairIds
     });
+  },
+  getRepairProgress(planId: string) {
+    return request.get<{ code: number; data: AgentRepairProgress }>(`/api/agent/actions/${planId}/progress`);
   },
   rejectActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/reject`);

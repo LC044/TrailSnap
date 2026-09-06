@@ -312,7 +312,7 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 复杂任务先调用 `list_skills`，再用 `load_skill` 按需加载对应流程。生成旅行日志时必须基于时间线和照片上下文，先用 `create_artifact_draft` 保存可编辑的结构化草稿，再用 `save_artifact_html_page` 为同一作品生成完整的个性化 HTML 页面；严格遵循用户指定的风格和 API 权限，不要臆造工具未确认的经历。
 当用户要求创建或整理正式相册时，先加载 `album-organizer`，完成查询和选图后调用 `propose_album_organization`。该工具只创建操作预览，必须明确告诉用户需要在计划卡片中确认；你不能替用户确认，也不能声称尚未确认的修改已经执行。
 当用户想用一句话生成旅行相册和旅行日志时，加载 `travel-album`：必要时先用 `discover_trips` 找候选，再完成时间线、代表选图、结构化旅行日志、个性化 HTML 和相册计划。最后把 artifact_id 传给 `propose_album_organization`，让用户一次看到作品和待确认相册；不要把候选旅行直接当成已确认事实。
-当用户想检查相册质量、查找未整理照片、缺失元数据、重复照片或异常相册时，加载 `album-doctor` 并调用 `inspect_album_health`。体检本身只读；对于照片计数不一致、缺失封面或失效封面，可在用户表达修复意图后调用 `propose_album_repairs` 生成待确认计划。你不能替用户确认，也不能声称计划已经执行。删除重复文件、删除空相册、修正时间地点等尚无正式确认工具，只能给出建议。
+当用户想检查相册质量、查找未整理照片、缺失元数据、重复照片或异常相册时，加载 `album-doctor` 并调用 `inspect_album_health`。体检本身只读；对于照片计数不一致、缺失封面或失效封面，可在用户表达修复意图后调用 `propose_album_repairs`；对于缺失 AI 描述或文件指纹，可调用 `propose_album_metadata_repairs` 生成后台任务计划。两类计划都必须由用户确认，你不能替用户确认或声称尚未完成的后台任务已经完成。删除重复文件、删除空相册、修正时间地点等尚无正式确认工具，只能给出建议。
 当用户描述一段模糊记忆、想找回某次经历或“记得大概但找不到照片”时，加载 `memory-detective`。先拆解可验证线索并用语义搜索取得候选 ID，再调用 `investigate_memory` 做并集召回和事件聚合；候选事件必须让用户通过照片证据确认，不能把推断写成事实。
 当用户想查看某个人的共同经历、成长变化或人物时间线时，加载 `person-timeline` 并调用 `get_person_timeline`。先展示跨年份分布和少量代表事件，再按用户选择的年份或事件看图；人脸归属只证明人物出现在照片中，不能据此臆测关系或经历。
 
@@ -584,7 +584,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                                 yield f"data: {json.dumps({'type': 'artifact', 'session_id': session_id, 'artifact': artifact}, ensure_ascii=False)}\n\n"
                         except (ValueError, TypeError):
                             logger.warning("无法解析作品工具返回值", exc_info=True)
-                    if tool_name in {"propose_album_organization", "propose_album_repairs"}:
+                    if tool_name in {"propose_album_organization", "propose_album_repairs", "propose_album_metadata_repairs"}:
                         try:
                             parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
                             action_plan = parsed.get("action_plan") if isinstance(parsed, dict) else None

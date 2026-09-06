@@ -175,7 +175,10 @@ def test_album_health_report_is_owner_scoped_and_explainable(db):
     assert by_key["missing_time"]["count"] == 1
     assert by_key["missing_location"]["count"] == 2
     assert by_key["missing_description"]["count"] == 2
+    assert by_key["missing_description"]["repair_id"] == "metadata_description"
+    assert by_key["missing_description"]["eligible_repair_count"] == 2
     assert by_key["missing_hash"]["count"] == 1
+    assert by_key["missing_hash"]["repair_id"] == "metadata_hash"
     assert by_key["unassigned"]["count"] == 1
     assert by_key["exact_duplicates"]["count"] == 1
     assert by_key["exact_duplicates"]["group_count"] == 1
@@ -189,6 +192,7 @@ def test_album_health_report_is_owner_scoped_and_explainable(db):
     assert invalid_cover["repair_id"] == f"album_cover:{invalid_cover_album.id}"
     assert invalid_cover["recommended_cover_id"] == str(p1.id)
     assert report["summary"]["safe_repair_count"] == 3
+    assert report["summary"]["metadata_repair_type_count"] == 2
 
     with pytest.raises(ValueError, match="无权"):
         album_health_report(db, str(stranger), str(album.id))
