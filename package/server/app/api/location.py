@@ -25,10 +25,10 @@ def search_locations(
     """
     return crud.search_locations(db, current_user.id, q)
 
-@router.get("/years", response_model=List[int], summary="获取所有年份")
+@router.get("/years", response_model=List[int], summary="获取有位置照片的年份")
 def get_years(db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
     """
-    获取所有照片的拍摄年份。
+    获取包含有效地理位置信息的照片拍摄年份。
     """
     return crud.get_location_years(db, current_user.id)
 

@@ -1,30 +1,30 @@
 <template>
-  <div class="w-full h-full relative">
+  <div class="immersive-map w-full h-full relative">
     <div ref="mapContainer" class="w-full h-full"></div>
     
     <!-- 面包屑导航 -->
-    <div v-if="parentRegion" class="absolute top-6 left-6 z-10 flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md px-3 py-2 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 animate-fade-in">
-      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 hover:text-primary-500 dark:text-gray-400 transition-colors" title="返回上一级">
+    <div v-if="parentRegion" class="map-glass absolute top-20 left-6 z-10 flex items-center gap-2 backdrop-blur-md px-3 py-2 rounded-xl animate-fade-in">
+      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="p-1 rounded text-[#7891aa] hover:text-primary-500 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="返回上一级">
         <ArrowLeft class="w-4 h-4" />
       </button>
-      <div class="w-px h-4 bg-gray-300 dark:bg-gray-600"></div>
-      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="text-sm font-medium text-gray-500 hover:text-primary-500 dark:text-gray-400 dark:hover:text-primary-400 transition-colors flex items-center gap-1">
+      <div class="w-px h-4 bg-[#29425a]"></div>
+      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="text-sm font-medium text-[#7891aa] hover:text-primary-500 transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none">
         <MapPin class="w-4 h-4" />
         全国
       </button>
       <ChevronRight class="w-4 h-4 text-gray-400" />
-      <span class="text-sm font-bold text-gray-800 dark:text-white pr-2">{{ parentRegion }}</span>
+      <span class="text-sm font-bold text-white pr-2">{{ parentRegion }}</span>
     </div>
     
     <!-- Map Controls Overlay -->
-    <div class="absolute bottom-6 right-6 flex flex-col gap-2 z-10">
-       <button @click="handleZoom('in')" class="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="放大">
+    <div class="absolute bottom-32 right-6 flex flex-col gap-2 z-10">
+       <button @click="handleZoom('in')" class="map-control focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="放大">
          <ZoomIn class="w-5 h-5" />
        </button>
-       <button @click="handleZoom('out')" class="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="缩小">
+       <button @click="handleZoom('out')" class="map-control focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="缩小">
          <ZoomOut class="w-5 h-5" />
        </button>
-       <button @click="resetMap" class="p-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors" title="重置视角">
+       <button @click="resetMap" class="map-control focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="重置视角">
          <RotateCcw class="w-5 h-5" />
        </button>
     </div>
@@ -81,6 +81,7 @@ const isDark = isDarkMode
 
 let cachedMapData: { data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] } } | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
+let distributionRequestId = 0
 const MOBILE_ROAM_ZOOM_DAMPING = 0.35
 
 // 双击下钻检测：记录上一次单击的区块名与时间，用于区分「单击选中」与「双击进入下一级」
@@ -137,7 +138,7 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
   myMap.showLoading({
     text: '',
     color: currentTheme.value.primary,
-    maskColor: isDark.value ? 'rgba(30, 41, 59, 0.8)' : 'rgba(255, 255, 255, 0.8)',
+    maskColor: 'rgba(7, 17, 31, 0.84)',
     spinnerRadius: 14,
     lineWidth: 3
   })
@@ -240,13 +241,13 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
 const renderMap = (data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] }) => {
   if (!myMap) return
 
-  const isDarkMode = isDark.value
+  const isDarkMode = true
   const isMobile = window.innerWidth < 768
 
   const nameMap = buildNameMap(geoJson)
 
   const rgbStr = currentTheme.value.rgb
-  const bgRgb = isDarkMode ? [30, 41, 59] : [244, 244, 245]
+  const bgRgb = [11, 28, 48]
   
   const mixColor = (ratio: number) => {
     const [r1, g1, b1] = rgbStr.split(',').map(Number)
@@ -257,9 +258,7 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
     return `rgb(${r}, ${g}, ${b})`
   }
 
-  const inRangeColors = isDarkMode
-    ? [mixColor(0.3), mixColor(0.6), mixColor(1)]
-    : [mixColor(0.2), mixColor(0.6), mixColor(1)]
+  const inRangeColors = [mixColor(0.24), mixColor(0.55), mixColor(0.92)]
 
   const option = {
     backgroundColor: 'transparent',
@@ -311,9 +310,11 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
         },
         labelLayout: { hideOverlap: true },
         itemStyle: {
-          areaColor: isDarkMode ? '#1e293b' : '#e2e8f0',
-          borderColor: isDarkMode ? '#334155' : '#ffffff',
-          borderWidth: isDarkMode ? 0.5 : 1
+          areaColor: '#0d2238',
+          borderColor: `rgba(${rgbStr}, 0.34)`,
+          borderWidth: 0.9,
+          shadowColor: `rgba(${rgbStr}, 0.16)`,
+          shadowBlur: 8
         },
         emphasis: {
           itemStyle: {
@@ -364,6 +365,63 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
   myMap.setOption(option)
 }
 
+// 时间筛选只更新地图数据，不销毁 ECharts 实例或重新加载 GeoJSON。
+// 这样地图会一直留在画面中，并保留用户当前的缩放和拖拽位置。
+const refreshDistribution = async () => {
+  if (!myMap || !cachedMapData) {
+    await initMap()
+    return
+  }
+
+  const requestId = ++distributionRequestId
+  const { geoJson, mapName } = cachedMapData
+
+  try {
+    let distribution = await locationService.getDistribution(
+      props.level as 'city' | 'province' | 'district' | 'scene' | undefined,
+      props.startDate,
+      props.endDate
+    )
+    // 自动巡游或快速点击年份时，只应用最后一次请求，避免旧响应覆盖新年份。
+    if (requestId !== distributionRequestId || !myMap) return
+
+    if (props.parentRegion && geoJson.features) {
+      const validNames = new Set(Object.keys(buildNameMap(geoJson)))
+      distribution = distribution.filter(item =>
+        validNames.has(item.name) || [...validNames].some(name => name.includes(item.name))
+      )
+    }
+
+    const nameMap = buildNameMap(geoJson)
+    const data = distribution.map(item => ({
+      name: nameMap[item.name] || item.name,
+      value: item.count,
+    }))
+    const topRegions = [...data]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5)
+      .map(item => ({ name: item.name, count: item.value }))
+    emit('update-top-regions', topRegions)
+
+    const values = data.map(item => item.value).sort((a, b) => a - b)
+    const p90 = values[Math.floor(values.length * 0.9)] || 10
+    const maxVal = Math.max(...values, 10)
+    const visualMax = maxVal > p90 * 2 ? p90 * 1.5 : maxVal
+    cachedMapData = { ...cachedMapData, data, max: visualMax, geoJson, mapName }
+
+    myMap.setOption({
+      visualMap: { max: visualMax },
+      series: [{
+        data,
+        animationDurationUpdate: 480,
+        animationEasingUpdate: 'cubicOut',
+      }],
+    })
+  } catch (error) {
+    console.error('Map distribution refresh failed', error)
+  }
+}
+
 watch(() => props.viewMode, (newMode) => {
   if (newMode === 'map') {
     nextTick(() => { initMap() })
@@ -378,7 +436,7 @@ watch([() => props.level, () => props.parentRegion], ([newLevel, newParentRegion
 
 watch([() => props.startDate, () => props.endDate], () => {
   if (props.viewMode === 'map' && props.level !== 'photo-map' && props.level !== 'scene') {
-    nextTick(() => { initMap() })
+    nextTick(() => { void refreshDistribution() })
   }
 })
 
@@ -424,6 +482,27 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.immersive-map { z-index: 3; }
+.map-glass {
+  border: 1px solid rgba(var(--theme-rgb), 0.22);
+  background: rgba(7, 17, 31, 0.82);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.04);
+}
+.map-control {
+  padding: 8px;
+  border: 1px solid rgba(var(--theme-rgb), 0.2);
+  border-radius: 10px;
+  color: #a9bed1;
+  background: rgba(7, 17, 31, 0.84);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px);
+  transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+.map-control:hover {
+  color: var(--theme-primary);
+  border-color: rgba(var(--theme-rgb), 0.48);
+  background: rgba(var(--theme-rgb), 0.1);
+}
 .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
