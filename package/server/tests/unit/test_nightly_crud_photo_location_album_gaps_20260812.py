@@ -197,13 +197,24 @@ def test_get_location_years_skips_none_and_returns_list():
     from app.crud import location as crud_loc
     db = MagicMock()
     chain = db.query.return_value
-    chain.filter.return_value.distinct.return_value.order_by.return_value.all.return_value = [
+    chain.join.return_value.filter.return_value.distinct.return_value.order_by.return_value.all.return_value = [
         (2025,),
         (2024,),
         (None,),
     ]
     years = crud_loc.get_location_years(db, uuid4())
     assert years == [2025, 2024]
+    chain.join.assert_called_once()
+    criteria = " ".join(
+        str(condition)
+        for condition in chain.join.return_value.filter.call_args.args
+    )
+    assert "photo_metadata.latitude IS NOT NULL" in criteria
+    assert "photo_metadata.longitude IS NOT NULL" in criteria
+    assert "photo_metadata.province IS NOT NULL" in criteria
+    assert "photo_metadata.city IS NOT NULL" in criteria
+    assert "photo_metadata.district IS NOT NULL" in criteria
+    assert "photo_metadata.scene_id IS NOT NULL" in criteria
 
 
 def test_get_locations_invalid_level_returns_empty_list():

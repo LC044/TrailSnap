@@ -345,10 +345,9 @@ class TestGetTimelineNodes:
         assert node.photoCount == 5
         # Weighted-average lat: (31.0*2 + 31.5*3) / 5
         assert abs(node.lat - 31.3) < 1e-6
-        # The source overwrites startDate on each merge (it tracks the
-        # latest visit, not the earliest). endDate stays at first-append.
-        assert node.startDate == "2026-01-02"
-        assert node.endDate == "2026-01-01"
+        # Merged ranges are normalized regardless of database row order.
+        assert node.startDate == "2026-01-01"
+        assert node.endDate == "2026-01-02"
 
         # coverId is NOT updated on merge -- stays at first-append.
 

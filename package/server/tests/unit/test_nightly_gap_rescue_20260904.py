@@ -246,6 +246,19 @@ def test_location_get_timeline_photos_forwards_params():
     assert result is nodes
 
 
+def test_location_get_trajectory_wraps_result():
+    db = MagicMock()
+    payload = SimpleNamespace(points=[], totalPhotos=0, sampled=False)
+    with patch.object(location_api.crud, "get_trajectory_points", return_value=payload) as trajectory:
+        result = location_api.get_trajectory(
+            start_date="2026-01-01", end_date="2026-01-02", max_points=120,
+            db=db, current_user=USER,
+        )
+    trajectory.assert_called_once_with(db, USER.id, "2026-01-01", "2026-01-02", 120)
+    assert result.code == 0
+    assert result.data is payload
+
+
 def test_location_get_map_markers_forwards_dates():
     db = MagicMock()
     with patch.object(location_api.crud, "get_map_markers", return_value=[]) as mm:
