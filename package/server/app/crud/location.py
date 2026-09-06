@@ -1,14 +1,28 @@
 from sqlalchemy.orm import Session, joinedload, contains_eager
 from uuid import UUID
-from sqlalchemy import func, desc, extract, case
+from sqlalchemy import and_, func, desc, extract, case, or_
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.db.sql import as_date_string, date_only
 
 def get_location_years(db: Session, owner_id: UUID):
+    has_location = or_(
+        and_(PhotoMetadata.latitude.isnot(None), PhotoMetadata.longitude.isnot(None)),
+        and_(PhotoMetadata.country.isnot(None), PhotoMetadata.country != ''),
+        and_(PhotoMetadata.province.isnot(None), PhotoMetadata.province != ''),
+        and_(PhotoMetadata.city.isnot(None), PhotoMetadata.city != ''),
+        and_(PhotoMetadata.district.isnot(None), PhotoMetadata.district != ''),
+        PhotoMetadata.scene_id.isnot(None),
+    )
     years = db.query(extract('year', Photo.photo_time))\
-        .filter(Photo.photo_time.isnot(None), Photo.is_deleted == False, Photo.owner_id == owner_id)\
+        .join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)\
+        .filter(
+            Photo.photo_time.isnot(None),
+            Photo.is_deleted == False,
+            Photo.owner_id == owner_id,
+            has_location,
+        )\
         .distinct()\
         .order_by(desc(extract('year', Photo.photo_time)))\
         .all()

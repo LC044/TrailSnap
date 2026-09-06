@@ -1,7 +1,7 @@
 <template>
-  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-full min-h-0' : 'container mx-auto']">
+  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-full min-h-0' : 'container mx-auto', isImmersiveMap ? 'location-immersive' : '']">
     <!-- Header -->
-    <div class="container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
+    <div class="location-toolbar container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="flex shrink-0 flex-col gap-3">
         <div class="flex w-full shrink-0 items-center gap-3 rounded-full border border-gray-200/50 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-900/80 md:w-auto">
           <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
@@ -379,7 +379,10 @@
       :start-date="dateRange?.[0]"
       :end-date="dateRange?.[1]"
       :parent-region="parentRegion"
+      :selected-year="selectedYear"
+      :available-years="availableYears"
       @click-location="goToLocation"
+      @select-year="selectYear"
       @change-level="(level: string, viewState?: { zoom: number; center: number[]; parentRegion?: string }) => changeLevel(level as any, viewState)"
     />
 
@@ -446,7 +449,7 @@ import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes } from 'lucide-vue-next'
+import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LocationMap from './LocationMap.vue'
@@ -479,6 +482,7 @@ const availableYears = ref<number[]>([])
 const dateRange = ref<[string, string] | null>(null)
 const isCustomRange = ref(false)
 const parentRegion = ref<string | undefined>(undefined)
+const isImmersiveMap = computed(() => viewMode.value === 'map' || viewMode.value === 'trajectory')
 
 const dateRangeStart = computed({
   get: () => dateRange.value?.[0] || '',
@@ -809,7 +813,49 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Optional transitions */
+.location-immersive {
+  padding: 0;
+  overflow: hidden;
+  background: #07111f;
+  isolation: isolate;
+}
+
+.location-immersive .location-toolbar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  width: 100%;
+  max-width: none;
+  padding: 18px 412px 12px 24px;
+  pointer-events: none;
+}
+
+.location-immersive .location-toolbar > * {
+  pointer-events: auto;
+}
+
+.location-immersive .location-toolbar > div:first-child > div,
+.location-immersive .location-toolbar > div:last-child > div {
+  border-color: rgba(var(--theme-rgb), 0.24) !important;
+  background: rgba(7, 17, 31, 0.78) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.location-immersive .location-toolbar button {
+  background-color: rgba(12, 28, 49, 0.88) !important;
+  border-color: rgba(var(--theme-rgb), 0.18) !important;
+}
+
+.location-immersive .location-toolbar h1,
+.location-immersive .location-toolbar button:not(.text-primary-500) {
+  color: #e5f3ff;
+}
+
+@media (max-width: 1023px) {
+  .location-immersive .location-toolbar {
+    padding: 12px 12px 0;
+  }
+}
 </style>
 
 <style>
