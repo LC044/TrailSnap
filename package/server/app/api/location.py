@@ -84,6 +84,18 @@ def get_timeline_photos(
     """
     return crud.get_timeline_nodes(db, current_user.id, level, skip, limit, start_date, end_date)
 
+@router.get("/trajectory", response_model=BaseResponse[schemas.TrajectoryResponse], summary="获取旅行 GPS 轨迹")
+def get_trajectory(
+    start_date: str = Query(..., description="旅程开始日期"),
+    end_date: str = Query(..., description="旅程结束日期"),
+    max_points: int = Query(360, ge=50, le=1000, description="最多返回的轨迹点数量"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """按真实拍摄时间返回经空间去重、限量采样的 GPS 轨迹点。"""
+    data = crud.get_trajectory_points(db, current_user.id, start_date, end_date, max_points)
+    return BaseResponse.success(data=data)
+
 @router.get("/markers", response_model=List[schemas.MapMarker], summary="获取地图标记点")
 def get_map_markers(
     start_date: str = Query(None, description="开始日期"),

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional, List, Union
 from uuid import UUID
 
@@ -47,7 +48,25 @@ class TimelineNode(BaseModel):
     lng: Optional[float] = None
     photoCount: int = 0
     coverId: Optional[UUID] = None
+    startTime: Optional[datetime] = None
+    endTime: Optional[datetime] = None
     
 class TimelineResponse(BaseModel):
     nodes: List[TimelineNode]
     total: int
+
+class TrajectoryPoint(BaseModel):
+    photoId: UUID
+    capturedAt: datetime
+    endAt: Optional[datetime] = None
+    lat: float
+    lng: float
+    photoCount: int = 1
+    coverId: Optional[UUID] = None
+    locationName: str
+    level: str = "city"
+
+class TrajectoryResponse(BaseModel):
+    points: List[TrajectoryPoint]
+    totalPhotos: int
+    sampled: bool = False

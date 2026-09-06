@@ -20,7 +20,7 @@ Why this file exists:
     that returns the full coalesce/case expression.
 """
 
-from datetime import date as _date
+from datetime import date as _date, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
@@ -271,3 +271,26 @@ def test_get_timeline_nodes_respects_skip_and_limit():
 
     assert out.total == 4
     assert [n.locationName for n in out.nodes] == ["Beijing", "Shanghai"]
+
+
+def test_get_trajectory_points_keeps_capture_order_and_collapses_nearby_photos():
+    first_id, second_id, third_id = uuid4(), uuid4(), uuid4()
+    rows = [
+        SimpleNamespace(id=first_id, photo_time=datetime(2026, 5, 1, 8), latitude=30.0000,
+                        longitude=120.0000, province="浙江", city="杭州", district="西湖区", scene_name=None),
+        SimpleNamespace(id=second_id, photo_time=datetime(2026, 5, 1, 8, 5), latitude=30.0001,
+                        longitude=120.0001, province="浙江", city="杭州", district="西湖区", scene_name=None),
+        SimpleNamespace(id=third_id, photo_time=datetime(2026, 5, 1, 10), latitude=30.0200,
+                        longitude=120.0200, province="浙江", city="杭州", district="西湖区", scene_name="西湖"),
+    ]
+    db = MagicMock()
+    db.query.return_value = _chained(all_rows=rows)
+
+    out = crud_loc.get_trajectory_points(db, uuid4(), "2026-05-01", "2026-05-01", 360)
+
+    assert out.totalPhotos == 3
+    assert len(out.points) == 2
+    assert out.points[0].photoCount == 2
+    assert out.points[0].capturedAt == datetime(2026, 5, 1, 8)
+    assert out.points[1].locationName == "西湖"
+    assert out.points[1].level == "scene"

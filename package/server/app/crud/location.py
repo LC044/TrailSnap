@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session, joinedload, contains_eager
 from uuid import UUID
 from sqlalchemy import and_, func, desc, extract, case, or_
+from math import asin, ceil, cos, radians, sin, sqrt
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
@@ -250,7 +251,9 @@ def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: i
         func.count(Photo.id).label('photo_count'),
         func.avg(PhotoMetadata.latitude).label('lat'),
         func.avg(PhotoMetadata.longitude).label('lng'),
-        func.max(cast(Photo.id, String)).label('cover_id')
+        func.max(cast(Photo.id, String)).label('cover_id'),
+        func.min(Photo.photo_time).label('start_time'),
+        func.max(Photo.photo_time).label('end_time')
     ).join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id) \
      .outerjoin(Scene, PhotoMetadata.scene_id == Scene.id) \
      .filter(Photo.owner_id == owner_id, Photo.is_deleted == False) \
@@ -277,6 +280,8 @@ def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: i
         lng = float(row.lng)
         count = row.photo_count
         cover_id = row.cover_id
+        start_time = getattr(row, 'start_time', None)
+        end_time = getattr(row, 'end_time', None)
 
         if not nodes:
             nodes.append(TimelineNode(
@@ -287,14 +292,21 @@ def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: i
                 lat=lat,
                 lng=lng,
                 photoCount=count,
-                coverId=cover_id
+                coverId=cover_id,
+                startTime=start_time,
+                endTime=end_time
             ))
             continue
 
         last_node = nodes[-1]
 
         if last_node.locationName == loc_name:
-            last_node.startDate = date_str
+            last_node.startDate = min(last_node.startDate, date_str)
+            last_node.endDate = max(last_node.endDate, date_str)
+            if start_time and (last_node.startTime is None or start_time < last_node.startTime):
+                last_node.startTime = start_time
+            if end_time and (last_node.endTime is None or end_time > last_node.endTime):
+                last_node.endTime = end_time
             # 更新平均经纬度
             total_lat = (last_node.lat * last_node.photoCount) + (lat * count)
             total_lng = (last_node.lng * last_node.photoCount) + (lng * count)
@@ -310,13 +322,113 @@ def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: i
                 lat=lat,
                 lng=lng,
                 photoCount=count,
-                coverId=cover_id
+                coverId=cover_id,
+                startTime=start_time,
+                endTime=end_time
             ))
 
     total_nodes = len(nodes)
     paginated_nodes = nodes[skip:skip + limit]
 
     return TimelineResponse(nodes=paginated_nodes, total=total_nodes)
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Return the great-circle distance between two GPS points."""
+    d_lat = radians(lat2 - lat1)
+    d_lng = radians(lng2 - lng1)
+    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lng / 2) ** 2
+    return 6371.0088 * 2 * asin(min(1.0, sqrt(a)))
+
+
+def get_trajectory_points(
+    db: Session,
+    owner_id: UUID,
+    start_date: str,
+    end_date: str,
+    max_points: int = 360,
+):
+    """Return chronologically ordered GPS points with stationary bursts collapsed.
+
+    Photos within 60 metres of the previous retained point are represented by one
+    weighted point. A second contiguous bucket pass limits payload size while
+    preserving route order, first/last time and total photo counts.
+    """
+    from app.schemas.location import TrajectoryPoint, TrajectoryResponse
+
+    rows = db.query(
+        Photo.id,
+        Photo.photo_time,
+        PhotoMetadata.latitude,
+        PhotoMetadata.longitude,
+        PhotoMetadata.province,
+        PhotoMetadata.city,
+        PhotoMetadata.district,
+        Scene.name.label('scene_name'),
+    ).join(
+        PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+    ).outerjoin(
+        Scene, PhotoMetadata.scene_id == Scene.id
+    ).filter(
+        Photo.owner_id == owner_id,
+        Photo.is_deleted == False,
+        Photo.photo_time.isnot(None),
+        PhotoMetadata.latitude.isnot(None),
+        PhotoMetadata.longitude.isnot(None),
+        Photo.photo_time >= start_date,
+        Photo.photo_time <= f"{end_date} 23:59:59",
+    ).order_by(Photo.photo_time.asc()).all()
+
+    collapsed = []
+    for row in rows:
+        lat = float(row.latitude)
+        lng = float(row.longitude)
+        scene_name = getattr(row, 'scene_name', None)
+        district = getattr(row, 'district', None)
+        city = getattr(row, 'city', None)
+        province = getattr(row, 'province', None)
+        location_name = scene_name or district or city or province or 'GPS 位置'
+        level = 'scene' if scene_name else 'district' if district else 'city' if city else 'province'
+
+        if collapsed and _haversine_km(collapsed[-1]['lat'], collapsed[-1]['lng'], lat, lng) <= 0.06:
+            point = collapsed[-1]
+            count = point['photoCount'] + 1
+            point['lat'] = (point['lat'] * point['photoCount'] + lat) / count
+            point['lng'] = (point['lng'] * point['photoCount'] + lng) / count
+            point['photoCount'] = count
+            point['endAt'] = row.photo_time
+            continue
+
+        collapsed.append({
+            'photoId': row.id,
+            'capturedAt': row.photo_time,
+            'endAt': row.photo_time,
+            'lat': lat,
+            'lng': lng,
+            'photoCount': 1,
+            'coverId': row.id,
+            'locationName': location_name,
+            'level': level,
+        })
+
+    sampled = len(collapsed) > max_points
+    if sampled:
+        bucket_size = ceil(len(collapsed) / max_points)
+        compacted = []
+        for offset in range(0, len(collapsed), bucket_size):
+            bucket = collapsed[offset:offset + bucket_size]
+            representative = dict(bucket[len(bucket) // 2])
+            representative['capturedAt'] = bucket[0]['capturedAt']
+            representative['endAt'] = bucket[-1]['endAt']
+            representative['photoCount'] = sum(point['photoCount'] for point in bucket)
+            compacted.append(representative)
+        collapsed = compacted
+
+    return TrajectoryResponse(
+        points=[TrajectoryPoint(**point) for point in collapsed],
+        totalPhotos=len(rows),
+        sampled=sampled,
+    )
 
 def get_location_distribution(db: Session, owner_id: UUID, level: str = 'city', start_date: str = None, end_date: str = None):
     is_scene = False
