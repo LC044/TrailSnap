@@ -54,9 +54,29 @@ export interface TimelineNode {
   lng?: number;
   photoCount: number;
   coverId?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 export interface TimelineResponse {
   nodes: TimelineNode[];
   total: number;
+}
+
+export interface TrajectoryPoint {
+  photoId: string;
+  capturedAt: string;
+  endAt?: string;
+  lat: number;
+  lng: number;
+  photoCount: number;
+  coverId?: string;
+  locationName: string;
+  level: string;
+}
+
+export interface TrajectoryResponse {
+  points: TrajectoryPoint[];
+  totalPhotos: number;
+  sampled: boolean;
 }
