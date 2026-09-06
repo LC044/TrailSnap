@@ -42,7 +42,7 @@ const status = ref('');
 const filters = [
   { label: '全部', value: '' }, { label: '待确认', value: 'proposed' },
   { label: '已执行', value: 'executed' }, { label: '已撤销', value: 'undone' },
-  { label: '执行失败', value: 'failed' }, { label: '已过期', value: 'expired' },
+  { label: '已拒绝', value: 'rejected' }, { label: '执行失败', value: 'failed' }, { label: '已过期', value: 'expired' },
 ];
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '—';
 const loadPlans = async () => {

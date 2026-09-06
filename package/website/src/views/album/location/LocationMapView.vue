@@ -1,8 +1,10 @@
 <template>
-  <div class="flex flex-col md:flex-row w-full h-full relative">
+  <div class="location-map-cockpit flex flex-col md:flex-row w-full h-full relative">
     <!-- 左侧地图区域（移动端撑满，抽屉浮于其上） -->
     <!-- min-h-0 让 flex-1 在移动端 flex-col 下正确分配高度（见 LocationPuzzleView 同名注释） -->
-    <div class="flex-1 min-h-0 relative overflow-hidden shadow-sm md:h-full">
+    <div class="map-stage flex-1 min-h-0 relative overflow-hidden md:h-full">
+      <div class="map-grid" aria-hidden="true" />
+      <div class="map-radar" aria-hidden="true"><span /><span /><span /></div>
       <MapContainer
         ref="mapContainerRef"
         :level="level"
@@ -15,11 +17,43 @@
         @select-region="handleSelectRegion"
         @update-top-regions="(regions) => topRegions = regions"
       />
+
+      <div v-if="timelineYears.length" class="journey-timeline hidden md:flex" aria-label="足迹年份时间轴">
+        <button
+          class="timeline-play focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          :title="isPlaying ? '暂停足迹巡游' : '播放足迹巡游'"
+          @click="togglePlayback"
+        >
+          <Pause v-if="isPlaying" class="h-4 w-4" />
+          <Play v-else class="h-4 w-4 fill-current" />
+        </button>
+        <div class="min-w-0 flex-1">
+          <div class="timeline-rail">
+            <button
+              v-for="item in timelineYears"
+              :key="item.year"
+              class="timeline-node focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
+              :class="{ active: selectedYear === item.year }"
+              :style="{ '--node-weight': String(item.weight) }"
+              :title="`${item.year} 年足迹`"
+              @click="emit('select-year', selectedYear === item.year ? null : item.year)"
+            >
+              <span class="timeline-dot" />
+              <span class="timeline-label">{{ item.year }}</span>
+            </button>
+          </div>
+          <div class="timeline-summary">
+            <span><CalendarDays class="h-3.5 w-3.5" /> {{ selectedYear ? `${selectedYear} 年足迹` : '全部旅行记忆' }}</span>
+            <span>{{ selectedYear ? '正在回看该年地图' : `${timelineYears.length} 个足迹年份` }}</span>
+            <button v-if="selectedYear" @click="emit('select-year', null)">查看全部</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 右侧信息面板：移动端为 fixed 底部抽屉（peek/expand），桌面端为侧栏 -->
     <div
-      class="fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+env(safe-area-inset-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
+      class="location-insight-panel fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+env(safe-area-inset-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 backdrop-blur-xl border-t md:border-t-0 md:border-l rounded-t-2xl md:rounded-none shadow-2xl transition-[height] duration-300 ease-out"
       :class="{ '!transition-none': isDragging }"
       :style="isMobile ? { height: sheetHeight + 'px' } : {}"
     >
@@ -38,7 +72,7 @@
       </div>
 
       <el-scrollbar class="flex-1">
-        <div class="p-4 md:p-6 space-y-8">
+        <div class="p-4 md:p-5 space-y-6">
           
           <RegionDetailsPanel
             v-if="selectedRegion"
@@ -76,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { locationService } from '@/api/location'
 import { albumService } from '@/api/album'
 import type { LocationStatistics, TimelineNode } from '@/types/location'
@@ -87,6 +121,7 @@ import request from '@/utils/request'
 import MapContainer from './components/MapContainer.vue'
 import GlobalOverviewPanel from './components/GlobalOverviewPanel.vue'
 import RegionDetailsPanel from './components/RegionDetailsPanel.vue'
+import { CalendarDays, Pause, Play } from 'lucide-vue-next'
 
 const ADMIN_SUFFIX_REGEX = /(省|市|自治区|特别行政区|回族自治区|壮族自治区|维吾尔自治区|县|区)$/
 
@@ -113,11 +148,14 @@ const props = defineProps<{
   startDate?: string
   endDate?: string
   parentRegion?: string
+  selectedYear?: number | null
+  availableYears?: number[]
 }>()
 
 const emit = defineEmits<{
   (e: 'click-location', name: string, level?: string): void
   (e: 'change-level', level: string, viewState: { zoom: number, center: number[], parentRegion?: string }): void
+  (e: 'select-year', year: number | null): void
 }>()
 
 const mapContainerRef = ref<InstanceType<typeof MapContainer> | null>(null)
@@ -133,6 +171,47 @@ const globalStats = ref<LocationStatistics | null>(null)
 const topRegions = ref<{name: string, count: number}[]>([])
 const recentTrips = ref<TimelineNode[]>([])
 const rawTimelineData = ref<any[]>([])
+const isPlaying = ref(false)
+let playbackTimer: ReturnType<typeof setInterval> | null = null
+
+const timelineYears = computed(() => {
+  const locationYears = new Set(props.availableYears || [])
+  const totals = new Map<number, number>()
+  rawTimelineData.value.forEach((item) => {
+    const year = Number(item.year)
+    if (!Number.isFinite(year) || !locationYears.has(year)) return
+    totals.set(year, (totals.get(year) || 0) + Number(item.count || 0))
+  })
+  locationYears.forEach(year => {
+    if (!totals.has(year)) totals.set(year, 0)
+  })
+  const max = Math.max(...totals.values(), 1)
+  return [...totals.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([year, count]) => ({ year, count, weight: 0.45 + (count / max) * 0.55 }))
+})
+
+const stopPlayback = () => {
+  isPlaying.value = false
+  if (playbackTimer) clearInterval(playbackTimer)
+  playbackTimer = null
+}
+
+const togglePlayback = () => {
+  if (isPlaying.value) {
+    stopPlayback()
+    return
+  }
+  if (!timelineYears.value.length) return
+  isPlaying.value = true
+  let index = Math.max(timelineYears.value.findIndex(item => item.year === props.selectedYear), -1)
+  const advance = () => {
+    index = (index + 1) % timelineYears.value.length
+    emit('select-year', timelineYears.value[index].year)
+  }
+  advance()
+  playbackTimer = setInterval(advance, 1800)
+}
 
 const regionPhotoCache = new Map<string, { photos: AlbumImage[], count: number, timeSpan: string, firstVisit: string, tags: { name: string, count: number }[] }>()
 const regionSubDataCache = new Map<string, { subLevel: string, exploredCount: number, totalCount: number, topSubRegions: { name: string, count: number }[], recentVisits: TimelineNode[] }>()
@@ -321,7 +400,7 @@ const clearSelection = () => {
 
 /* ----------------------- 移动端底部抽屉：peek / expand ----------------------- */
 // 桌面端为侧栏（md:static md:h-full），sheetHeight 仅移动端生效（内联高度门控 isMobile）。
-const PEEK_H = 128                                   // 收起态：露手柄 + 标题 + 首张统计卡
+const PEEK_H = 208                                   // 收起态：露手柄 + 标题 + 探索进度卡
 const expandedH = () => Math.min(                    // 展开态：~70vh，但至少留 header + 120px 地图可点
   Math.round(window.innerHeight * 0.7),
   window.innerHeight - 240
@@ -386,9 +465,172 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopPlayback()
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('pointermove', onHandlePointerMove)
   window.removeEventListener('pointerup', onHandlePointerUp)
 })
 
 </script>
+
+<style scoped>
+.location-map-cockpit {
+  color: #dcecff;
+  background: #07111f;
+}
+
+.map-stage {
+  background:
+    radial-gradient(circle at 48% 44%, rgba(var(--theme-rgb), 0.12), transparent 36%),
+    linear-gradient(145deg, #08182b 0%, #07111f 58%, #050c17 100%);
+}
+
+.map-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.3;
+  background-image:
+    linear-gradient(rgba(var(--theme-rgb), 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--theme-rgb), 0.08) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(circle at center, #000 0%, transparent 76%);
+}
+
+.map-radar {
+  position: absolute;
+  left: 42%;
+  top: 46%;
+  width: 130px;
+  height: 130px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.map-radar span {
+  position: absolute;
+  inset: 50%;
+  border: 1px solid rgba(var(--theme-rgb), 0.65);
+  border-radius: 999px;
+  animation: radar-wave 3.6s ease-out infinite;
+  box-shadow: 0 0 18px rgba(var(--theme-rgb), 0.18);
+}
+
+.map-radar span:nth-child(2) { animation-delay: 1.2s; }
+.map-radar span:nth-child(3) { animation-delay: 2.4s; }
+
+.location-insight-panel {
+  border-color: rgba(var(--theme-rgb), 0.2);
+  background: linear-gradient(180deg, rgba(10, 25, 43, 0.96), rgba(5, 14, 26, 0.98));
+  box-shadow: -18px 0 46px rgba(0, 0, 0, 0.3), inset 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.location-insight-panel :deep(.text-gray-900),
+.location-insight-panel :deep(.text-gray-800),
+.location-insight-panel :deep(.text-gray-700) { color: #dcecff !important; }
+.location-insight-panel :deep(.text-gray-600),
+.location-insight-panel :deep(.text-gray-500),
+.location-insight-panel :deep(.text-gray-400) { color: #7891aa !important; }
+.location-insight-panel :deep(.bg-white),
+.location-insight-panel :deep(.bg-gray-50),
+.location-insight-panel :deep(.bg-gray-100) { background-color: rgba(13, 31, 51, 0.7) !important; }
+.location-insight-panel :deep(.border-gray-100),
+.location-insight-panel :deep(.border-gray-200),
+.location-insight-panel :deep(.border-gray-300) { border-color: rgba(var(--theme-rgb), 0.16) !important; }
+
+.journey-timeline {
+  position: absolute;
+  z-index: 8;
+  left: 24px;
+  right: 24px;
+  bottom: 20px;
+  align-items: center;
+  gap: 18px;
+  min-height: 96px;
+  padding: 15px 18px;
+  border: 1px solid rgba(var(--theme-rgb), 0.2);
+  border-radius: 16px;
+  background: rgba(7, 17, 31, 0.84);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.32), inset 0 1px rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px);
+}
+
+.timeline-play {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(var(--theme-rgb), 0.5);
+  border-radius: 999px;
+  color: var(--theme-primary);
+  background: rgba(var(--theme-rgb), 0.12);
+  box-shadow: 0 0 24px rgba(var(--theme-rgb), 0.18);
+}
+
+.timeline-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+
+.timeline-rail::before {
+  content: '';
+  position: absolute;
+  left: 1%;
+  right: 1%;
+  top: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--theme-rgb), 0.65), transparent);
+}
+
+.timeline-node {
+  position: relative;
+  display: flex;
+  min-width: 30px;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: #7690aa;
+  background: transparent;
+}
+
+.timeline-dot {
+  z-index: 1;
+  width: calc(7px + 5px * var(--node-weight));
+  height: calc(7px + 5px * var(--node-weight));
+  border: 2px solid #0b172a;
+  border-radius: 999px;
+  background: #5b7894;
+}
+
+.timeline-node:hover,
+.timeline-node.active { color: #e5f5ff; }
+.timeline-node:hover .timeline-dot,
+.timeline-node.active .timeline-dot {
+  background: var(--theme-primary);
+  box-shadow: 0 0 0 4px rgba(var(--theme-rgb), 0.14), 0 0 16px rgba(var(--theme-rgb), 0.75);
+}
+
+.timeline-label { font-size: 10px; }
+.timeline-summary {
+  display: flex;
+  gap: 14px;
+  color: #7690aa;
+  font-size: 11px;
+}
+.timeline-summary span:first-child { display: flex; align-items: center; gap: 5px; color: #b9cee2; }
+.timeline-summary button { color: var(--theme-primary); }
+
+@keyframes radar-wave {
+  0% { inset: 50%; opacity: 0.9; }
+  100% { inset: 0; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-radar span { animation: none; opacity: 0.2; inset: 15%; }
+}
+</style>

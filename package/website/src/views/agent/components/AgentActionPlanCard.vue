@@ -1,7 +1,7 @@
 <template>
   <section class="mt-3 w-full overflow-hidden rounded-xl border border-primary-500/30 bg-slate-50 dark:bg-slate-900" aria-label="Agent 操作计划">
     <header class="flex items-start gap-3 p-3">
-      <div class="rounded-lg bg-primary-500/10 p-2 text-primary-600"><FolderPlus class="h-5 w-5" /></div>
+      <div class="rounded-lg bg-primary-500/10 p-2 text-primary-600"><Wrench v-if="isRepairPlan" class="h-5 w-5" /><FolderPlus v-else class="h-5 w-5" /></div>
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center gap-2"><h3 class="font-medium text-slate-900 dark:text-white">{{ current.title }}</h3><span class="rounded-full px-2 py-0.5 text-xs" :class="statusClass">{{ statusLabel }}</span></div>
         <p v-if="current.summary" class="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">{{ current.summary }}</p>
@@ -9,11 +9,40 @@
     </header>
 
     <div class="border-t border-slate-200 px-3 py-3 dark:border-slate-700">
-      <div class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+      <div v-if="isRepairPlan" class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
+        <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">操作</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ isMetadataRepair ? '后台补齐' : '结构修复' }}</strong></div>
+        <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">已选择</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ selectedRepairIds.length }} / {{ repairs.length }} 项</strong></div>
+        <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">原文件</span><strong class="mt-0.5 block text-primary-600">不会修改</strong></div>
+      </div>
+      <div v-else class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">操作</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ current.preview.mode === 'update' ? '更新相册' : '创建相册' }}</strong></div>
         <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">照片</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ current.preview.photo_count || 0 }} 张</strong></div>
         <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">标签</span><strong class="mt-0.5 block truncate text-slate-800 dark:text-slate-100">{{ tagsLabel }}</strong></div>
         <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">原文件</span><strong class="mt-0.5 block text-primary-600">不会修改</strong></div>
+      </div>
+
+      <fieldset v-if="isRepairPlan && repairs.length" class="mt-3 space-y-2" :disabled="current.status !== 'proposed' || busy">
+        <legend class="mb-2 text-xs font-medium text-slate-700 dark:text-slate-200">选择要修复的问题</legend>
+        <label v-for="repair in repairs" :key="repair.id" class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white p-2.5 hover:border-primary-500/50 dark:border-slate-700 dark:bg-slate-800">
+          <input v-model="selectedRepairIds" type="checkbox" :value="repair.id" class="h-4 w-4 shrink-0 accent-[var(--theme-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" />
+          <img v-if="repair.thumbnail_url" :src="toServerUrl(repair.thumbnail_url)" class="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" alt="推荐封面" />
+          <span class="min-w-0 flex-1">
+            <strong class="block text-xs text-slate-800 dark:text-slate-100">{{ repair.label }}</strong>
+            <span class="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">{{ repairDetail(repair) }}</span>
+            <span v-if="repair.truncated" class="mt-0.5 block text-[11px] text-amber-700 dark:text-amber-300">本次最多处理 {{ repair.queued_count }} 项，剩余部分可复检后继续</span>
+          </span>
+        </label>
+      </fieldset>
+
+      <div v-if="isMetadataRepair && progress" class="mt-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
+        <div class="flex items-center justify-between gap-3 text-xs">
+          <strong class="text-slate-800 dark:text-slate-100">{{ progressLabel }}</strong>
+          <span class="text-slate-500 dark:text-slate-400">{{ progress.completed_items }} / {{ progress.total_items }}</span>
+        </div>
+        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div class="h-full rounded-full bg-primary-500 transition-all" :style="{ width: `${progress.progress_percent}%` }"></div></div>
+        <div class="mt-2 space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+          <div v-for="group in progress.groups" :key="group.kind" class="flex justify-between gap-3"><span>{{ group.label }}</span><span>{{ group.completed_items }}/{{ group.total_items }} · {{ groupStatus(group.status) }}</span></div>
+        </div>
       </div>
 
       <div v-if="samplePhotos.length" class="mt-3 flex gap-1.5 overflow-x-auto pb-1">
@@ -23,13 +52,16 @@
       <p v-if="current.error_message" class="mt-2 rounded-lg bg-red-50 px-2.5 py-2 text-xs text-red-700 dark:bg-red-950/30 dark:text-red-300">{{ current.error_message }}</p>
 
       <div class="mt-3 flex flex-wrap items-center gap-2">
-        <button v-if="current.status === 'proposed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="execute">
+        <button v-if="current.status === 'proposed'" type="button" :disabled="busy || (isRepairPlan && !selectedRepairIds.length)" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="execute">
           <LoaderCircle v-if="busy" class="h-3.5 w-3.5 animate-spin" /><CircleCheck v-else class="h-3.5 w-3.5" />确认执行
         </button>
-        <button v-if="current.status === 'executed'" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAlbum"><ExternalLink class="h-3.5 w-3.5" />打开相册</button>
-        <button v-if="current.status === 'executed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="undo"><Undo2 class="h-3.5 w-3.5" />撤销操作</button>
+        <button v-if="current.status === 'proposed' && isRepairPlan && selectionDirty" type="button" :disabled="busy || !selectedRepairIds.length" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-500/40 px-3 py-2 text-xs text-primary-600 hover:bg-primary-500/10 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="saveSelection"><Save class="h-3.5 w-3.5" />保存选择</button>
+        <button v-if="current.status === 'proposed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800" @click="reject"><XCircle class="h-3.5 w-3.5" />拒绝方案</button>
+        <button v-if="current.status === 'executed' && !isRepairPlan" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAlbum"><ExternalLink class="h-3.5 w-3.5" />打开相册</button>
+        <button v-if="current.status === 'executed' && current.preview.reversible !== false" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="undo"><Undo2 class="h-3.5 w-3.5" />撤销操作</button>
         <button v-if="artifactUrl" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-500/40 px-3 py-2 text-xs text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="router.push(artifactUrl)"><BookOpen class="h-3.5 w-3.5" />查看旅行日志</button>
         <span v-if="current.status === 'undone'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><Undo2 class="h-3.5 w-3.5" />修改已撤销</span>
+        <span v-if="current.status === 'rejected'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><XCircle class="h-3.5 w-3.5" />方案已拒绝，未执行任何修改</span>
         <span v-if="current.status === 'expired'" class="text-xs text-amber-700 dark:text-amber-300">计划已过期，请在 Agent 中重新生成</span>
         <span v-if="current.status === 'failed'" class="text-xs text-red-700 dark:text-red-300">执行失败，请在 Agent 中重新生成计划</span>
       </div>
@@ -38,41 +70,120 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Undo2 } from 'lucide-vue-next';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Save, Undo2, Wrench, XCircle } from 'lucide-vue-next';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
-import { agentApi, type AgentActionPlan } from '@/api/agent';
+import { agentApi, type AgentActionPlan, type AgentRepairProgress } from '@/api/agent';
 import { toServerUrl } from '@/config/server';
 
 const props = defineProps<{ plan: AgentActionPlan }>();
 const current = ref<AgentActionPlan>({ ...props.plan });
 const busy = ref(false);
+const selectedRepairIds = ref<string[]>([...(props.plan.preview?.selected_repair_ids || [])]);
+const progress = ref<AgentRepairProgress | null>(null);
+let progressTimer: ReturnType<typeof setTimeout> | null = null;
 const router = useRouter();
+const isRepair = computed(() => current.value.plan_type === 'album_repair');
+const isMetadataRepair = computed(() => current.value.plan_type === 'album_metadata_repair');
+const isRepairPlan = computed(() => isRepair.value || isMetadataRepair.value);
+const repairs = computed(() => current.value.preview?.repairs || []);
 const samplePhotos = computed(() => current.value.preview?.sample_photos || []);
 const tagsLabel = computed(() => current.value.preview?.tags?.length ? current.value.preview.tags.join('、') : '不添加');
 const artifactUrl = computed(() => current.value.result?.artifact_url || current.value.preview?.artifact_url || '');
-const statusLabel = computed(() => ({ proposed: '等待确认', executed: '已执行', undone: '已撤销', expired: '已过期', failed: '执行失败' }[current.value.status] || current.value.status));
-const statusClass = computed(() => current.value.status === 'executed' ? 'bg-primary-500/10 text-primary-600' : current.value.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : current.value.status === 'undone' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300');
+const statusLabel = computed(() => {
+  if (isMetadataRepair.value && current.value.status === 'executed') {
+    return progress.value?.status === 'completed' ? '复检完成' : progress.value?.status === 'needs_attention' ? '需要处理' : '后台处理中';
+  }
+  return ({ proposed: '等待确认', executed: '已执行', undone: '已撤销', rejected: '已拒绝', expired: '已过期', failed: '执行失败' }[current.value.status] || current.value.status);
+});
+const statusClass = computed(() => {
+  if (isMetadataRepair.value && progress.value?.status === 'needs_attention') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+  return current.value.status === 'executed' ? 'bg-primary-500/10 text-primary-600' : current.value.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : ['undone', 'rejected'].includes(current.value.status) ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+});
+const progressLabel = computed(() => progress.value?.status === 'completed' ? '复检完成' : progress.value?.status === 'needs_attention' ? '部分项目需要处理' : '后台修复中');
+const selectionDirty = computed(() => {
+  const saved = [...(current.value.preview?.selected_repair_ids || [])].sort();
+  return [...selectedRepairIds.value].sort().join('|') !== saved.join('|');
+});
+
+const setCurrent = (plan: AgentActionPlan) => {
+  current.value = plan;
+  selectedRepairIds.value = [...(plan.preview?.selected_repair_ids || [])];
+};
+
+const repairDetail = (repair: NonNullable<AgentActionPlan['preview']['repairs']>[number]) => {
+  if (repair.kind === 'album_count') return `记录值 ${repair.before}，实际值 ${repair.after}`;
+  if (repair.kind === 'visual_description') return `本次处理 ${repair.queued_count || 0} 张，体检发现 ${repair.count || 0} 张`;
+  if (repair.kind === 'file_hash') return `本次计算 ${repair.queued_count || 0} 张，体检发现 ${repair.count || 0} 张`;
+  return `${repair.reason || '封面异常'}，将使用推荐照片`;
+};
+
+const groupStatus = (status: string) => ({ completed: '已完成', processing: '处理中', needs_attention: '需要处理' }[status] || status);
+
+const loadProgress = async () => {
+  if (!isMetadataRepair.value || current.value.status !== 'executed') return;
+  try {
+    const response: any = await agentApi.getRepairProgress(current.value.id);
+    progress.value = response.data;
+    if (progress.value?.status === 'processing') progressTimer = setTimeout(loadProgress, 2500);
+  } catch {
+    progressTimer = setTimeout(loadProgress, 5000);
+  }
+};
+
+const persistSelection = async () => {
+  const response: any = await agentApi.updateRepairSelection(current.value.id, selectedRepairIds.value);
+  setCurrent(response.data);
+};
+
+const saveSelection = async () => {
+  try {
+    busy.value = true;
+    await persistSelection();
+    ElMessage.success('修复范围已保存');
+  } catch {
+    ElMessage.error('保存修复范围失败');
+  } finally { busy.value = false; }
+};
 
 const execute = async () => {
   try {
-    await ElMessageBox.confirm(`将按计划整理 ${current.value.preview.photo_count || 0} 张照片。不会删除、移动或重命名原文件。`, '确认执行相册整理', { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' });
+    const message = isRepairPlan.value
+      ? isMetadataRepair.value
+        ? `将为选中的 ${selectedRepairIds.value.length} 类问题创建后台任务。写入的 AI 描述和文件指纹不可撤销，但可重新生成。`
+        : `将修复选中的 ${selectedRepairIds.value.length} 项相册结构问题。不会修改原始照片，执行后可撤销。`
+      : `将按计划整理 ${current.value.preview.photo_count || 0} 张照片。不会删除、移动或重命名原文件。`;
+    await ElMessageBox.confirm(message, isRepairPlan.value ? '确认修复相册' : '确认执行相册整理', { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' });
     busy.value = true;
+    if (isRepairPlan.value && selectionDirty.value) await persistSelection();
     const response: any = await agentApi.executeActionPlan(current.value.id);
-    current.value = response.data;
-    ElMessage.success('相册整理完成，可随时撤销');
+    setCurrent(response.data);
+    ElMessage.success(isMetadataRepair.value ? '后台修复任务已创建' : isRepair.value ? '相册结构修复完成，可随时撤销' : '相册整理完成，可随时撤销');
+    if (isMetadataRepair.value) void loadProgress();
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('执行计划失败');
   } finally { busy.value = false; }
 };
 
+const reject = async () => {
+  try {
+    await ElMessageBox.confirm('拒绝后不会执行任何相册修改，且该方案不能再次确认。', '拒绝相册方案', { confirmButtonText: '确认拒绝', cancelButtonText: '返回查看' });
+    busy.value = true;
+    const response: any = await agentApi.rejectActionPlan(current.value.id);
+    setCurrent(response.data);
+    ElMessage.success('已拒绝方案，未修改相册');
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('拒绝方案失败');
+  } finally { busy.value = false; }
+};
+
 const undo = async () => {
   try {
-    await ElMessageBox.confirm('撤销本次相册关系、封面、简介和标签修改？原始照片不会受影响。', '撤销操作', { confirmButtonText: '确认撤销', cancelButtonText: '取消' });
+    await ElMessageBox.confirm(isRepair.value ? '撤销本次计数和封面修复？原始照片不会受影响。' : '撤销本次相册关系、封面、简介和标签修改？原始照片不会受影响。', '撤销操作', { confirmButtonText: '确认撤销', cancelButtonText: '取消' });
     busy.value = true;
     const response: any = await agentApi.undoActionPlan(current.value.id);
-    current.value = response.data;
+    setCurrent(response.data);
     ElMessage.success('操作已撤销');
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('撤销失败');
@@ -87,9 +198,12 @@ const openAlbum = () => {
 onMounted(async () => {
   try {
     const response: any = await agentApi.getActionPlan(current.value.id);
-    current.value = response.data;
+    setCurrent(response.data);
+    if (isMetadataRepair.value && current.value.status === 'executed') void loadProgress();
   } catch {
     // The message can still show its immutable preview if refreshing status fails.
   }
 });
+
+onBeforeUnmount(() => { if (progressTimer) clearTimeout(progressTimer); });
 </script>

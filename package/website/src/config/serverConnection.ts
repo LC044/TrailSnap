@@ -11,7 +11,7 @@ import type { Router } from 'vue-router'
 import { isMobileApp, normalizeServerUrl, testServerConnection } from './server'
 
 export const TRAILSNAP_SERVICE_TYPE = '_trailsnap._tcp.'
-const DEFAULT_TRAILSNAP_PORT = 8082
+const DEFAULT_TRAILSNAP_PORT = 3180
 
 interface LanDiscoveryResult {
   services: Array<{ url: string; name: string; version: string }>

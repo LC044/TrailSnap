@@ -37,14 +37,14 @@ trailsnap --help
 
 「参数说明」：
 
-- `--url`（必填）：TrailSnap 访问地址，格式为 http/https 开头，例如：http://localhost:8082
+- `--url`（必填）：TrailSnap 访问地址，格式为 http/https 开头，例如：http://localhost:3180
 
 - `--token`（必填）：API访问凭证（Bearer Token），用于身份验证，需从后端获取。
 
 「示例」：
 
 ```bash
-trailsnap config set --url http://localhost:8082 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+trailsnap config set --url http://localhost:3180 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 「输出说明」：配置成功后会输出配置文件保存路径（写入同目录 `.env`），例如：`配置已保存到 .../.env`。

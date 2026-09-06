@@ -6,6 +6,8 @@ outline: [2, 3]
 
 TrailSnap CLI can be used as an Agent tool (Skill) in different AI coding assistants or Agent platforms, such as Claude Code and OpenClaw / Roo Code. By letting the Agent call the CLI, AI can query and analyze your album data and answer questions based on your personal library.
 
+MCP-compatible clients can connect directly to TrailSnap's built-in Streamable HTTP server without wrapping the CLI. See [Configure TrailSnap MCP](./mcp.md).
+
 1. Claude Code  
    [How to use](./claudecode.md)
 
@@ -20,7 +22,7 @@ Copy the prompt below to your Agent (OpenClaw, Claude Code, Cursor, TRAE, etc.).
 
 ```text
 Help me install trailsnap-cli and the skill: https://trailsnap.cn/install.md
-My TrailSnap address is http://localhost:8082
+My TrailSnap address is http://localhost:3180
 My token is ts_hV5nsCZxxxxx
 ```
 

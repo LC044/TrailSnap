@@ -74,7 +74,7 @@ services:
     depends_on:
       - server
     ports:
-      - "${TS_DOCKER_WEB_PORT:-8082}:80"
+      - "${TS_DOCKER_WEB_PORT:-3180}:80"
 
 volumes:
   trailsnap-test-pg:

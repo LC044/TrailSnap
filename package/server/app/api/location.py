@@ -25,10 +25,10 @@ def search_locations(
     """
     return crud.search_locations(db, current_user.id, q)
 
-@router.get("/years", response_model=List[int], summary="获取所有年份")
+@router.get("/years", response_model=List[int], summary="获取有位置照片的年份")
 def get_years(db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
     """
-    获取所有照片的拍摄年份。
+    获取包含有效地理位置信息的照片拍摄年份。
     """
     return crud.get_location_years(db, current_user.id)
 
@@ -83,6 +83,18 @@ def get_timeline_photos(
     获取足迹时间轴节点（按天和行程聚合），按拍摄时间倒序排列。
     """
     return crud.get_timeline_nodes(db, current_user.id, level, skip, limit, start_date, end_date)
+
+@router.get("/trajectory", response_model=BaseResponse[schemas.TrajectoryResponse], summary="获取旅行 GPS 轨迹")
+def get_trajectory(
+    start_date: str = Query(..., description="旅程开始日期"),
+    end_date: str = Query(..., description="旅程结束日期"),
+    max_points: int = Query(360, ge=50, le=1000, description="最多返回的轨迹点数量"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """按真实拍摄时间返回经空间去重、限量采样的 GPS 轨迹点。"""
+    data = crud.get_trajectory_points(db, current_user.id, start_date, end_date, max_points)
+    return BaseResponse.success(data=data)
 
 @router.get("/markers", response_model=List[schemas.MapMarker], summary="获取地图标记点")
 def get_map_markers(

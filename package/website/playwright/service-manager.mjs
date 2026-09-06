@@ -36,7 +36,7 @@ export async function startServices() {
       // 统一入口已按 .env.test 启动服务时，保留其中的自定义端口和 URL。
     } else if (serverRunning8800) {
       process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8800'
-      process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:8082'
+      process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:3180'
     } else {
       process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8000'
       process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:5176'
@@ -50,7 +50,7 @@ export async function startServices() {
     // Docker compose start
     execSync('node playwright/e2e-up.mjs up', { stdio: 'inherit' })
     process.env.TS_API_BASE_URL ??= 'http://127.0.0.1:8800'
-    process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:8082'
+    process.env.TS_WEB_BASE_URL ??= 'http://127.0.0.1:3180'
     return { startedByUs: true, method: 'docker' }
   } else {
     // Dev environment start

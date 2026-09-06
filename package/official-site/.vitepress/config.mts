@@ -34,7 +34,7 @@ export default defineConfig({
   },
   ignoreDeadLinks: [
     '/^http:\/\/localhost:\d+$/',
-    'http://localhost:8082',
+    'http://localhost:3180',
     // /^http:\/\/localhost:\d+$/ // 正则匹配所有 localhost:端口 形式的链接
   ],
   transformHtml(code) {
@@ -107,6 +107,7 @@ export default defineConfig({
               collapsed: false,
               items: [
                 { text: 'AI Agent 文档入口', link: '/docs/guide/ai-access' },
+                { text: 'MCP 接入', link: '/docs/guide/agent/mcp' },
                 { text: 'TrailSnap CLI 工具', link: '/docs/guide/agent/trailsnap-cli' },
                 { text: 'Claude Code', link: '/docs/guide/agent/claudecode' },
                 { text: 'OpenClaw', link: '/docs/guide/agent/openclaw' }
@@ -236,6 +237,7 @@ export default defineConfig({
                   collapsed: false,
                   items: [
                     { text: 'AI Agent Docs', link: '/en/docs/guide/ai-access' },
+                    { text: 'MCP Integration', link: '/en/docs/guide/agent/mcp' },
                     { text: 'TrailSnap CLI', link: '/en/docs/guide/agent/trailsnap-cli' },
                     { text: 'Claude Code', link: '/en/docs/guide/agent/claudecode' },
                     { text: 'OpenClaw', link: '/en/docs/guide/agent/openclaw' }

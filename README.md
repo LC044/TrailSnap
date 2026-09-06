@@ -169,7 +169,7 @@ services:
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
       # 改为当前主机的局域网地址后，App 可自动发现此实例
-      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
     depends_on:
       postgres:
         condition: service_healthy
@@ -195,7 +195,7 @@ services:
     image: siyuan044/trailsnap-frontend:latest
     restart: always
     # 唯一需要对外开放的端口
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
     environment:
@@ -212,7 +212,7 @@ networks:
 docker-compose up -d
 ```
 
-网页、移动 App 与 CLI 都使用同一个 TrailSnap 地址，例如 `http://192.168.1.10:8082`；API 由网关统一放在 `/api` 下。Server、AI 与数据库只在 Docker 内部网络通信，不需要向用户暴露端口。
+网页、移动 App 与 CLI 都使用同一个 TrailSnap 地址，例如 `http://192.168.1.10:3180`；API 由网关统一放在 `/api` 下。Server、AI 与数据库只在 Docker 内部网络通信，不需要向用户暴露端口。
 
 Android App 的“自动查找 TrailSnap”会在 mDNS 无结果时探测局域网中的默认统一入口，因此 Docker bridge 部署无需为组播额外开放端口。Linux 用户如需增强 mDNS，可使用 `docker compose --profile lan-discovery up -d` 启用可选的宿主机广播服务；其他平台建议使用“设置 → 连接手机 App”生成的二维码。
 

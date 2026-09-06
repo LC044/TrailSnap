@@ -9,10 +9,16 @@ from app.db.base import Base
 from app.db.models.agent import AgentSession
 from app.db.models.ai_artifact import AIArtifact
 from app.db.models.album import Album, AlbumPhoto
+from app.db.models.image_description import ImageDescription
 from app.db.models.photo import FileType, Photo
 from app.db.models.tag import PhotoTag, PhotoTagRelation
+from app.db.models.task import Task
 from app.db.models.user import User
-from app.service.agent.actions import execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan, undo_plan
+from app.service.agent.actions import (
+    execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan,
+    get_metadata_repair_progress, propose_album_metadata_repair_plan,
+    propose_album_repair_plan, reject_plan, undo_plan, update_repair_plan_selection,
+)
 
 
 pytestmark = [pytest.mark.smoke]
@@ -121,6 +127,18 @@ def test_plan_cannot_execute_or_undo_twice(prepared_db):
         undo_plan(db, owner, plan.id)
 
 
+def test_rejected_plan_is_auditable_and_cannot_execute(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    plan = propose_album_plan(db, owner, session.id, "不采用的方案", None, [photos[0].id])
+    rejected = reject_plan(db, owner, plan.id)
+    assert rejected.status == "rejected"
+    assert db.query(Album).count() == 0
+    with pytest.raises(ValueError, match="待确认"):
+        execute_plan(db, owner, plan.id)
+    with pytest.raises(ValueError, match="待确认"):
+        reject_plan(db, owner, plan.id)
+
+
 def test_plan_expires_and_failed_attempt_is_auditable(prepared_db):
     db, owner, _, session, photos, _ = prepared_db
     expired = propose_album_plan(db, owner, session.id, "过期计划", None, [photos[0].id])
@@ -166,3 +184,149 @@ def test_travel_artifact_is_owner_scoped_and_linked_to_album_plan(prepared_db):
             db, owner, session.id, "越权旅行", None, [photos[0].id],
             artifact_id=foreign_artifact.id,
         )
+
+
+def test_album_repair_plan_supports_partial_selection_execute_and_undo(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="需要修复", type="user", owner_id=owner, cover_id=None, num_photos=9)
+    db.add(album); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=album.id, photo_id=photos[0].id),
+        AlbumPhoto(album_id=album.id, photo_id=photos[1].id),
+    ])
+    db.commit()
+
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+    assert plan.status == "proposed"
+    assert plan.plan_type == "album_repair"
+    assert plan.preview["candidate_count"] == 2
+    assert plan.preview["repair_count"] == 2
+    assert album.num_photos == 9 and album.cover_id is None
+
+    count_repair_id = f"album_count:{album.id}"
+    updated = update_repair_plan_selection(db, owner, plan.id, [count_repair_id])
+    assert updated.preview["repair_count"] == 1
+    execute_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert album.num_photos == 2
+    assert album.cover_id is None
+
+    undone = undo_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert undone.status == "undone"
+    assert album.num_photos == 9
+    assert album.cover_id is None
+
+
+def test_album_repair_plan_fixes_missing_cover_and_rejects_stale_state(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="封面异常", type="user", owner_id=owner, cover_id=None, num_photos=1)
+    db.add(album); db.flush()
+    db.add(AlbumPhoto(album_id=album.id, photo_id=photos[0].id)); db.commit()
+
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+    cover_id = next(item["after"] for item in plan.preview["repairs"] if item["kind"] == "album_cover")
+    album.cover_id = photos[1].id
+    db.commit()
+    with pytest.raises(ValueError, match="封面已变化"):
+        execute_plan(db, owner, plan.id)
+    db.rollback()
+    assert str(album.cover_id) != cover_id
+
+
+def test_album_repair_plan_executes_and_undoes_count_and_cover_together(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="完整闭环", type="user", owner_id=owner, cover_id=None, num_photos=6)
+    db.add(album); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=album.id, photo_id=photos[0].id),
+        AlbumPhoto(album_id=album.id, photo_id=photos[1].id),
+    ])
+    db.commit()
+
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+    expected_cover = next(item["after"] for item in plan.preview["repairs"] if item["kind"] == "album_cover")
+    executed = execute_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert executed.result["applied_repair_count"] == 2
+    assert album.num_photos == 2
+    assert str(album.cover_id) == expected_cover
+
+    undo_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert album.num_photos == 6
+    assert album.cover_id is None
+
+
+def test_album_repair_selection_is_owner_scoped_and_validated(prepared_db):
+    db, owner, stranger, session, photos, _ = prepared_db
+    album = Album(name="安全修复", type="user", owner_id=owner, num_photos=7)
+    db.add(album); db.flush()
+    db.add(AlbumPhoto(album_id=album.id, photo_id=photos[0].id)); db.commit()
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+
+    with pytest.raises(ValueError, match="不存在"):
+        update_repair_plan_selection(db, stranger, plan.id, [f"album_count:{album.id}"])
+    with pytest.raises(ValueError, match="至少选择"):
+        update_repair_plan_selection(db, owner, plan.id, [])
+    with pytest.raises(ValueError, match="无效"):
+        update_repair_plan_selection(db, owner, plan.id, ["album_count:not-real"])
+
+
+def test_metadata_repair_plan_queues_scoped_tasks_and_rechecks_results(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="待补齐数据", type="user", owner_id=owner, num_photos=2)
+    db.add(album); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=album.id, photo_id=photos[0].id),
+        AlbumPhoto(album_id=album.id, photo_id=photos[1].id),
+    ])
+    db.commit()
+
+    plan = propose_album_metadata_repair_plan(db, owner, session.id, album_id=album.id)
+    assert plan.plan_type == "album_metadata_repair"
+    assert {item["kind"] for item in plan.preview["repairs"]} == {"visual_description", "file_hash"}
+    assert plan.preview["photo_count"] == 4
+    assert db.query(Task).count() == 0
+
+    # A description completed while the plan was awaiting confirmation must
+    # be skipped instead of overwritten by a forced task.
+    db.add(ImageDescription(photo_id=photos[0].id, description="确认前已完成")); db.commit()
+    update_repair_plan_selection(db, owner, plan.id, ["metadata_description"])
+    executed = execute_plan(db, owner, plan.id)
+    tasks = db.query(Task).all()
+    assert executed.result["queued_item_count"] == 1
+    assert len(tasks) == 1
+    assert all((task.payload or {}).get("action_plan_id") == str(plan.id) for task in tasks)
+    assert all((task.payload or {}).get("force") is True for task in tasks)
+    assert all((task.payload or {}).get("only_if_missing") is True for task in tasks)
+
+    pending = get_metadata_repair_progress(db, owner, plan.id)
+    assert pending["status"] == "processing"
+    assert pending["remaining_items"] == 1
+
+    db.add(ImageDescription(photo_id=photos[1].id, description="第二张照片"))
+    for task in tasks:
+        db.delete(task)
+    db.commit()
+    completed = get_metadata_repair_progress(db, owner, plan.id)
+    assert completed["status"] == "completed"
+    assert completed["progress_percent"] == 100
+    assert completed["recheck"]["missing_description"] == 0
+    with pytest.raises(ValueError, match="不可撤销"):
+        undo_plan(db, owner, plan.id)
+
+
+def test_metadata_hash_repair_only_targets_selected_album(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="局部指纹", type="user", owner_id=owner, num_photos=1)
+    db.add(album); db.flush()
+    db.add(AlbumPhoto(album_id=album.id, photo_id=photos[0].id)); db.commit()
+
+    plan = propose_album_metadata_repair_plan(
+        db, owner, session.id, album_id=album.id, repair_ids=["metadata_hash"]
+    )
+    execute_plan(db, owner, plan.id)
+    task = db.query(Task).one()
+    assert task.payload["photo_ids"] == [str(photos[0].id)]
+    assert str(photos[1].id) not in task.payload["photo_ids"]

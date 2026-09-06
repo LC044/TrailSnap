@@ -13,7 +13,7 @@
 
       <p class="mt-6 text-sm leading-6 text-gray-600 dark:text-gray-300">
         输入 TrailSnap 访问地址，不需要添加 <code>/api</code>。它与浏览器中打开的地址完全相同，
-        例如 <code>http://192.168.1.10:8082</code>。
+        例如 <code>http://192.168.1.10:3180</code>。
       </p>
 
       <form class="mt-5 space-y-4" @submit.prevent="connectAndSave">
@@ -24,7 +24,7 @@
             type="text"
             inputmode="url"
             autocomplete="url"
-            placeholder="http://192.168.1.10:8082"
+            placeholder="http://192.168.1.10:3180"
             class="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-3 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           />
         </label>

@@ -1,5 +1,5 @@
 import request from '@/utils/request';
-import type { Location, Scene, SceneCreate, SceneUpdate, LocationStatistics, TimelineResponse } from '@/types/location';
+import type { Location, Scene, SceneCreate, SceneUpdate, LocationStatistics, TimelineResponse, TrajectoryResponse } from '@/types/location';
 import type { Photo } from '@/types/album';
 
 export interface OverviewStats {
@@ -95,6 +95,13 @@ export const locationService = {
       params: { skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, level }
     });
     return data.data;
+  },
+
+  async getTrajectory(startDate: string, endDate: string, maxPoints: number = 360) {
+    const response = await request.get<TrajectoryResponse>('/api/locations/trajectory', {
+      params: { start_date: startDate, end_date: endDate, max_points: maxPoints }
+    });
+    return response.data;
   },
 
   async getMapMarkers(startDate?: string, endDate?: string) {

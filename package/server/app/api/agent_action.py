@@ -4,15 +4,19 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.dependencies import BaseResponse, get_db
-from app.schemas.agent_action import AgentActionPlanRead
+from app.schemas.agent_action import AgentActionPlanRead, AgentRepairSelectionUpdate
 from app.service.agent.actions import (
     execute_plan,
     expire_stale_plans,
     get_owned_plan,
+    get_metadata_repair_progress,
     list_owned_plans,
     mark_plan_failed,
+    reject_plan,
     undo_plan,
+    update_repair_plan_selection,
 )
+from app.service.task_manager import TaskManager
 
 
 router = APIRouter()
@@ -54,6 +58,46 @@ def confirm_action_plan(plan_id: str, current_user: User = Depends(get_current_u
         db.rollback()
         mark_plan_failed(db, current_user.id, plan_id, "执行过程中发生内部错误")
         raise HTTPException(status_code=500, detail="Action plan execution failed") from exc
+    if row.plan_type == "album_metadata_repair":
+        TaskManager.get_instance().start_worker_if_needed()
+    return BaseResponse.success(data=_serialize(row))
+
+
+@router.get("/{plan_id}/progress", summary="获取 Agent 后台修复进度")
+def get_action_plan_progress(
+    plan_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        progress = get_metadata_repair_progress(db, current_user.id, plan_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return BaseResponse.success(data=progress)
+
+
+@router.patch("/{plan_id}", summary="调整 Agent 修复计划范围")
+def update_action_plan(
+    plan_id: str,
+    payload: AgentRepairSelectionUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        row = update_repair_plan_selection(db, current_user.id, plan_id, payload.selected_repair_ids)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return BaseResponse.success(data=_serialize(row))
+
+
+@router.post("/{plan_id}/reject", summary="拒绝 Agent 操作计划")
+def reject_action_plan(plan_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        row = reject_plan(db, current_user.id, plan_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return BaseResponse.success(data=_serialize(row))
 
 

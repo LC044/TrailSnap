@@ -34,11 +34,11 @@ and any published checksum before continuing.
 On first launch, enter the same TrailSnap address that you use in a browser, without `/api`:
 
 ```text
-http://192.168.1.10:8082
+http://192.168.1.10:3180
 ```
 
 - Replace `192.168.1.10` with the LAN IP address of the computer or NAS running TrailSnap.
-- `8082` is the default unified TrailSnap access port.
+- `3180` is the default unified TrailSnap access port.
 - Do not use `localhost` or `127.0.0.1`; on a phone, those addresses refer to the phone itself.
 - Do not append `/api` to the URL.
 
@@ -52,7 +52,7 @@ address on the **Connect Mobile App** page.
 
 You can also tap **Find TrailSnap Automatically** or open a `trailsnap://connect?url=...` deep link.
 Automatic discovery tries DNS-SD/mDNS first. If it returns no result, the Android App uses TCP to look
-for TrailSnap on the current private subnet at the default `8082` entry point, which works with ordinary
+for TrailSnap on the current private subnet at the default `3180` entry point, which works with ordinary
 Docker bridge deployments. Use QR scanning or manual entry for custom ports, iPhone/iPad, or networks
 where hotspots, guest Wi-Fi, or AP isolation prevent devices from talking.
 
@@ -61,14 +61,14 @@ where hotspots, guest Wi-Fi, or AP isolation prevent devices from talking.
 Connect the phone and server to the same LAN, then open this URL in the phone's browser:
 
 ```text
-http://192.168.1.10:8082/api/health-check
+http://192.168.1.10:3180/api/health-check
 ```
 
 If it does not open, check that:
 
 - the TrailSnap `frontend` and `server` containers are running;
-- Docker maps the unified access port as `8082:80`;
-- the server firewall allows inbound TCP traffic on port `8082`;
+- Docker maps the unified access port as `3180:80`;
+- the server firewall allows inbound TCP traffic on port `3180`;
 - Wi-Fi client/AP isolation is disabled;
 - the IP address and port are correct.
 
@@ -124,7 +124,7 @@ the server address and token stored on the phone, but it does not delete server-
 The native iOS project is available, but a public IPA still requires Apple developer signing. For now, use
 TrailSnap as a PWA:
 
-1. Open the TrailSnap web URL in Safari, for example `http://192.168.1.10:8082`.
+1. Open the TrailSnap web URL in Safari, for example `http://192.168.1.10:3180`.
 2. Tap Safari's **Share** button.
 3. Select **Add to Home Screen**.
 4. Open TrailSnap from the Home Screen.
