@@ -12,7 +12,10 @@ from app.db.models.album import Album, AlbumPhoto
 from app.db.models.photo import FileType, Photo
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.user import User
-from app.service.agent.actions import execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan, reject_plan, undo_plan
+from app.service.agent.actions import (
+    execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan,
+    propose_album_repair_plan, reject_plan, undo_plan, update_repair_plan_selection,
+)
 
 
 pytestmark = [pytest.mark.smoke]
@@ -178,3 +181,90 @@ def test_travel_artifact_is_owner_scoped_and_linked_to_album_plan(prepared_db):
             db, owner, session.id, "越权旅行", None, [photos[0].id],
             artifact_id=foreign_artifact.id,
         )
+
+
+def test_album_repair_plan_supports_partial_selection_execute_and_undo(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="需要修复", type="user", owner_id=owner, cover_id=None, num_photos=9)
+    db.add(album); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=album.id, photo_id=photos[0].id),
+        AlbumPhoto(album_id=album.id, photo_id=photos[1].id),
+    ])
+    db.commit()
+
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+    assert plan.status == "proposed"
+    assert plan.plan_type == "album_repair"
+    assert plan.preview["candidate_count"] == 2
+    assert plan.preview["repair_count"] == 2
+    assert album.num_photos == 9 and album.cover_id is None
+
+    count_repair_id = f"album_count:{album.id}"
+    updated = update_repair_plan_selection(db, owner, plan.id, [count_repair_id])
+    assert updated.preview["repair_count"] == 1
+    execute_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert album.num_photos == 2
+    assert album.cover_id is None
+
+    undone = undo_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert undone.status == "undone"
+    assert album.num_photos == 9
+    assert album.cover_id is None
+
+
+def test_album_repair_plan_fixes_missing_cover_and_rejects_stale_state(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="封面异常", type="user", owner_id=owner, cover_id=None, num_photos=1)
+    db.add(album); db.flush()
+    db.add(AlbumPhoto(album_id=album.id, photo_id=photos[0].id)); db.commit()
+
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+    cover_id = next(item["after"] for item in plan.preview["repairs"] if item["kind"] == "album_cover")
+    album.cover_id = photos[1].id
+    db.commit()
+    with pytest.raises(ValueError, match="封面已变化"):
+        execute_plan(db, owner, plan.id)
+    db.rollback()
+    assert str(album.cover_id) != cover_id
+
+
+def test_album_repair_plan_executes_and_undoes_count_and_cover_together(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    album = Album(name="完整闭环", type="user", owner_id=owner, cover_id=None, num_photos=6)
+    db.add(album); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=album.id, photo_id=photos[0].id),
+        AlbumPhoto(album_id=album.id, photo_id=photos[1].id),
+    ])
+    db.commit()
+
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+    expected_cover = next(item["after"] for item in plan.preview["repairs"] if item["kind"] == "album_cover")
+    executed = execute_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert executed.result["applied_repair_count"] == 2
+    assert album.num_photos == 2
+    assert str(album.cover_id) == expected_cover
+
+    undo_plan(db, owner, plan.id)
+    db.refresh(album)
+    assert album.num_photos == 6
+    assert album.cover_id is None
+
+
+def test_album_repair_selection_is_owner_scoped_and_validated(prepared_db):
+    db, owner, stranger, session, photos, _ = prepared_db
+    album = Album(name="安全修复", type="user", owner_id=owner, num_photos=7)
+    db.add(album); db.flush()
+    db.add(AlbumPhoto(album_id=album.id, photo_id=photos[0].id)); db.commit()
+    plan = propose_album_repair_plan(db, owner, session.id, album_id=album.id)
+
+    with pytest.raises(ValueError, match="不存在"):
+        update_repair_plan_selection(db, stranger, plan.id, [f"album_count:{album.id}"])
+    with pytest.raises(ValueError, match="至少选择"):
+        update_repair_plan_selection(db, owner, plan.id, [])
+    with pytest.raises(ValueError, match="无效"):
+        update_repair_plan_selection(db, owner, plan.id, ["album_count:not-real"])

@@ -379,8 +379,13 @@ def album_health_report(
     album_rows: list[dict] = []
     if not album:
         rows = (
-            db.query(Album.id, Album.name, Album.num_photos, Album.cover_id, func.count(AlbumPhoto.id).label("actual_count"))
+            db.query(Album.id, Album.name, Album.num_photos, Album.cover_id, func.count(Photo.id).label("actual_count"))
             .outerjoin(AlbumPhoto, AlbumPhoto.album_id == Album.id)
+            .outerjoin(Photo, and_(
+                Photo.id == AlbumPhoto.photo_id,
+                Photo.owner_id == owner_id,
+                Photo.is_deleted.is_(False),
+            ))
             .filter(Album.owner_id == owner_id, Album.type == "user")
             .group_by(Album.id, Album.name, Album.num_photos, Album.cover_id).all()
         )
@@ -389,7 +394,16 @@ def album_health_report(
             "cover_id": row.cover_id, "actual_count": row.actual_count,
         } for row in rows]
     elif album.type == "user":
-        actual = db.query(func.count(AlbumPhoto.id)).filter(AlbumPhoto.album_id == album.id).scalar() or 0
+        actual = (
+            db.query(func.count(AlbumPhoto.id))
+            .join(Photo, Photo.id == AlbumPhoto.photo_id)
+            .filter(
+                AlbumPhoto.album_id == album.id,
+                Photo.owner_id == owner_id,
+                Photo.is_deleted.is_(False),
+            )
+            .scalar() or 0
+        )
         album_rows = [{
             "id": album.id, "name": album.name, "num_photos": album.num_photos,
             "cover_id": album.cover_id, "actual_count": actual,
@@ -401,22 +415,45 @@ def album_health_report(
     } for row in album_rows if int(row["num_photos"] or 0) != int(row["actual_count"])]
     missing_covers = [{"album_id": str(row["id"]), "name": row["name"]} for row in album_rows if int(row["actual_count"]) > 0 and not row["cover_id"]]
 
+    # Keep diagnosis read-only while exposing stable repair IDs that can be passed
+    # to the separately confirmed album-repair plan.
+    from app.service.agent.actions import find_album_repair_candidates
+    repair_candidates = find_album_repair_candidates(db, owner_id, album.id if album else None)
+    repair_by_id = {item["id"]: item for item in repair_candidates}
+    for item in count_mismatches:
+        repair = repair_by_id.get(f"album_count:{item['album_id']}")
+        if repair:
+            item.update({"repair_id": repair["id"], "repairable": True})
+    missing_covers = []
+    invalid_covers = []
+    for repair in repair_candidates:
+        if repair["kind"] != "album_cover":
+            continue
+        target = invalid_covers if repair.get("before") else missing_covers
+        target.append({
+            "album_id": repair["album_id"], "name": repair["album_name"],
+            "repair_id": repair["id"], "repairable": True,
+            "recommended_cover_id": repair["after"],
+            "thumbnail_url": repair.get("thumbnail_url"),
+        })
+
     active_issues = [item for item in issues if item["count"] > 0]
     high_count = sum(1 for item in active_issues if item["severity"] == "high")
-    album_issue_types = sum(bool(items) for items in (empty_albums, count_mismatches, missing_covers))
+    album_issue_types = sum(bool(items) for items in (empty_albums, count_mismatches, missing_covers, invalid_covers))
     return {
         "scope": {"type": "album" if album else "library", "album_id": str(album.id) if album else None, "album_name": album.name if album else None},
         "photo_count": base.order_by(None).count(),
         "health_score": max(0, 100 - high_count * 18 - max(0, len(active_issues) - high_count) * 7 - album_issue_types * 7),
         "issues": issues,
         "album_issues": {
-            "empty_albums": empty_albums, "count_mismatches": count_mismatches, "missing_covers": missing_covers,
+            "empty_albums": empty_albums, "count_mismatches": count_mismatches,
+            "missing_covers": missing_covers, "invalid_covers": invalid_covers,
         },
         "summary": {
             "active_issue_types": len(active_issues) + album_issue_types, "high_priority_issue_types": high_count,
-            "unassigned_photo_count": unassigned_count,
+            "unassigned_photo_count": unassigned_count, "safe_repair_count": len(repair_candidates),
         },
-        "notice": "这是只读体检。任何写入或删除都需要独立的预览和用户确认。",
+        "notice": "这是只读体检。计数和封面问题可生成独立修复计划，必须由用户确认；Agent 不会删除原始照片。",
     }
 
 

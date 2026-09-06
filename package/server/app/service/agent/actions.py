@@ -11,6 +11,7 @@ from app.db.models.agent import AgentSession
 from app.db.models.agent_action import AgentActionPlan
 from app.db.models.ai_artifact import AIArtifact
 from app.db.models.album import Album, AlbumPhoto
+from app.db.models.image_description import ImageDescription
 from app.db.models.photo import Photo
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 
@@ -18,6 +19,7 @@ from app.db.models.tag import PhotoTag, PhotoTagRelation
 MAX_PLAN_PHOTOS = 500
 MAX_PLAN_TAGS = 10
 PLAN_TTL_DAYS = 7
+MAX_REPAIR_ITEMS = 100
 
 
 def _uuid(value) -> UUID:
@@ -200,6 +202,257 @@ def propose_album_plan(
     return row
 
 
+def find_album_repair_candidates(db: Session, user_id, album_id=None) -> list[dict]:
+    """Find deterministic, reversible album-structure repairs without mutating data."""
+    owner_id = _uuid(user_id)
+    album_query = db.query(Album).filter(Album.owner_id == owner_id, Album.type == "user")
+    if album_id:
+        album_query = album_query.filter(Album.id == _uuid(album_id))
+    albums = album_query.order_by(Album.create_time.desc()).all()
+    if album_id and not albums:
+        raise ValueError("相册不存在或无权访问")
+
+    album_ids = [album.id for album in albums]
+    count_by_album = dict(
+        db.query(AlbumPhoto.album_id, func.count(AlbumPhoto.id))
+        .join(Photo, Photo.id == AlbumPhoto.photo_id)
+        .filter(
+            AlbumPhoto.album_id.in_(album_ids),
+            Photo.owner_id == owner_id,
+            Photo.is_deleted.is_(False),
+        )
+        .group_by(AlbumPhoto.album_id)
+        .all()
+    ) if album_ids else {}
+    albums_with_valid_cover = {
+        row[0] for row in (
+            db.query(Album.id)
+            .join(AlbumPhoto, AlbumPhoto.album_id == Album.id)
+            .join(Photo, Photo.id == AlbumPhoto.photo_id)
+            .filter(
+                Album.id.in_(album_ids),
+                AlbumPhoto.photo_id == Album.cover_id,
+                Photo.owner_id == owner_id,
+                Photo.is_deleted.is_(False),
+            )
+            .all()
+        )
+    } if album_ids else set()
+
+    candidates: list[dict] = []
+    for album in albums:
+        actual_count = int(count_by_album.get(album.id, 0))
+        stored_count = int(album.num_photos or 0)
+        if stored_count != actual_count:
+            candidates.append({
+                "id": f"album_count:{album.id}",
+                "kind": "album_count",
+                "album_id": str(album.id),
+                "album_name": album.name,
+                "before": stored_count,
+                "after": actual_count,
+                "label": f"修正“{album.name}”的照片计数：{stored_count} → {actual_count}",
+            })
+
+        cover_invalid = bool(album.cover_id and album.id not in albums_with_valid_cover)
+        if actual_count and (not album.cover_id or cover_invalid):
+            recommended = (
+                db.query(Photo)
+                .join(AlbumPhoto, AlbumPhoto.photo_id == Photo.id)
+                .outerjoin(ImageDescription, ImageDescription.photo_id == Photo.id)
+                .filter(
+                    AlbumPhoto.album_id == album.id,
+                    Photo.owner_id == owner_id,
+                    Photo.is_deleted.is_(False),
+                )
+                .order_by(
+                    func.coalesce(ImageDescription.quality_score, 0).desc(),
+                    func.coalesce(ImageDescription.memory_score, 0).desc(),
+                    Photo.photo_time.desc(),
+                    Photo.id,
+                )
+                .first()
+            )
+            if not recommended:
+                continue
+            candidates.append({
+                "id": f"album_cover:{album.id}",
+                "kind": "album_cover",
+                "album_id": str(album.id),
+                "album_name": album.name,
+                "before": str(album.cover_id) if album.cover_id else None,
+                "after": str(recommended.id),
+                "thumbnail_url": f"/api/medias/{recommended.id}/thumbnail?size=small",
+                "reason": "当前封面不属于相册" if cover_invalid else "当前没有封面",
+                "label": f"为“{album.name}”设置推荐封面",
+            })
+        if len(candidates) >= MAX_REPAIR_ITEMS:
+            break
+    return candidates[:MAX_REPAIR_ITEMS]
+
+
+def _repair_preview(candidates: list[dict], selected_ids: list[str]) -> dict:
+    selected_set = set(selected_ids)
+    selected = [item for item in candidates if item["id"] in selected_set]
+    return {
+        "mode": "repair",
+        "repair_count": len(selected),
+        "candidate_count": len(candidates),
+        "affected_album_count": len({item["album_id"] for item in selected}),
+        "repairs": candidates,
+        "selected_repair_ids": [item["id"] for item in selected],
+        "notice": "只修正相册计数和封面引用，不删除、移动、重命名或改写原始照片。执行后可撤销。",
+    }
+
+
+def propose_album_repair_plan(
+    db: Session,
+    user_id,
+    session_id=None,
+    album_id=None,
+    repair_ids: list[str] | None = None,
+    summary: str | None = None,
+) -> AgentActionPlan:
+    owner_id = _uuid(user_id)
+    if session_id:
+        session = db.query(AgentSession).filter(
+            AgentSession.id == _uuid(session_id), AgentSession.user_id == owner_id
+        ).first()
+        if not session:
+            raise ValueError("会话不存在或无权访问")
+
+    candidates = find_album_repair_candidates(db, owner_id, album_id)
+    if not candidates:
+        raise ValueError("当前范围没有可由 Agent 安全修复的相册结构问题")
+    candidate_ids = [item["id"] for item in candidates]
+    selected_ids = candidate_ids if repair_ids is None else list(dict.fromkeys(str(value) for value in repair_ids))
+    if not selected_ids or not set(selected_ids).issubset(set(candidate_ids)):
+        raise ValueError("修复项不存在或已不在当前体检范围")
+
+    preview = _repair_preview(candidates, selected_ids)
+    title = "修复相册结构" if not album_id else f"修复相册：{candidates[0]['album_name']}"
+    row = AgentActionPlan(
+        user_id=owner_id,
+        session_id=_uuid(session_id) if session_id else None,
+        plan_type="album_repair",
+        title=title,
+        summary=summary or f"准备修复 {preview['affected_album_count']} 个相册中的 {preview['repair_count']} 项结构问题。",
+        operations={"repairs": candidates, "selected_repair_ids": preview["selected_repair_ids"]},
+        preview=preview,
+        status="proposed",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=PLAN_TTL_DAYS),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def update_repair_plan_selection(db: Session, user_id, plan_id, selected_repair_ids: list[str]) -> AgentActionPlan:
+    plan = get_owned_plan(db, user_id, plan_id, for_update=True)
+    if not plan:
+        raise ValueError("操作计划不存在")
+    if plan.status != "proposed":
+        raise ValueError("只有待确认的修复计划可以调整")
+    if plan.expires_at and _as_utc(plan.expires_at) <= datetime.now(timezone.utc):
+        plan.status = "expired"
+        plan.error_message = "操作计划已过期，请重新生成"
+        db.commit()
+        raise ValueError(plan.error_message)
+    if plan.plan_type != "album_repair":
+        raise ValueError("该计划不支持调整修复范围")
+    candidates = (plan.operations or {}).get("repairs") or []
+    candidate_ids = {item.get("id") for item in candidates}
+    selected = list(dict.fromkeys(str(value) for value in selected_repair_ids))
+    if not selected:
+        raise ValueError("请至少选择一个修复项")
+    if not set(selected).issubset(candidate_ids):
+        raise ValueError("包含无效的修复项")
+    plan.operations = {**(plan.operations or {}), "selected_repair_ids": selected}
+    plan.preview = _repair_preview(candidates, selected)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
+def _execute_album_repair(db: Session, owner_id: UUID, plan: AgentActionPlan) -> AgentActionPlan:
+    operations = plan.operations or {}
+    selected_ids = set(operations.get("selected_repair_ids") or [])
+    repairs = [item for item in operations.get("repairs") or [] if item.get("id") in selected_ids]
+    if not repairs:
+        raise ValueError("修复计划没有选中的修复项")
+
+    validated = []
+    for repair in repairs:
+        album = db.query(Album).filter(
+            Album.id == _uuid(repair.get("album_id")), Album.owner_id == owner_id, Album.type == "user"
+        ).first()
+        if not album:
+            raise ValueError("待修复相册不存在或不可修改")
+        kind = repair.get("kind")
+        if kind == "album_count":
+            actual = (
+                db.query(func.count(AlbumPhoto.id))
+                .join(Photo, Photo.id == AlbumPhoto.photo_id)
+                .filter(
+                    AlbumPhoto.album_id == album.id,
+                    Photo.owner_id == owner_id,
+                    Photo.is_deleted.is_(False),
+                )
+                .scalar() or 0
+            )
+            if int(album.num_photos or 0) != int(repair.get("before")) or int(actual) != int(repair.get("after")):
+                raise ValueError(f"“{album.name}”的照片计数已变化，请重新体检")
+            validated.append((repair, album, int(repair["after"])))
+        elif kind == "album_cover":
+            current_cover = str(album.cover_id) if album.cover_id else None
+            if current_cover != repair.get("before"):
+                raise ValueError(f"“{album.name}”的封面已变化，请重新体检")
+            target_id = _uuid(repair.get("after"))
+            belongs = (
+                db.query(AlbumPhoto.id)
+                .join(Photo, Photo.id == AlbumPhoto.photo_id)
+                .filter(
+                    AlbumPhoto.album_id == album.id,
+                    AlbumPhoto.photo_id == target_id,
+                    Photo.owner_id == owner_id,
+                    Photo.is_deleted.is_(False),
+                )
+                .first()
+            )
+            if not belongs:
+                raise ValueError(f"“{album.name}”的推荐封面已不在相册中，请重新体检")
+            validated.append((repair, album, target_id))
+        else:
+            raise ValueError("修复计划包含不支持的操作")
+
+    undo_repairs = []
+    for repair, album, value in validated:
+        if repair["kind"] == "album_count":
+            album.num_photos = value
+        else:
+            album.cover_id = value
+        undo_repairs.append({
+            "id": repair["id"], "kind": repair["kind"], "album_id": str(album.id),
+            "before": repair.get("before"), "applied_after": repair.get("after"),
+        })
+
+    affected_ids = list(dict.fromkeys(item["album_id"] for item in undo_repairs))
+    plan.undo_data = {"repairs": undo_repairs}
+    plan.result = {
+        "applied_repair_count": len(undo_repairs),
+        "affected_album_count": len(affected_ids),
+        "affected_album_ids": affected_ids,
+    }
+    plan.status = "executed"
+    plan.attempt_count = int(plan.attempt_count or 0) + 1
+    plan.error_message = None
+    plan.executed_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
 def execute_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
     plan = get_owned_plan(db, user_id, plan_id, for_update=True)
     if not plan:
@@ -212,10 +465,12 @@ def execute_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
         plan.error_message = "操作计划已过期，请重新生成"
         db.commit()
         raise ValueError(plan.error_message)
+    owner_id = _uuid(user_id)
+    if plan.plan_type == "album_repair":
+        return _execute_album_repair(db, owner_id, plan)
     if plan.plan_type != "album_organize":
         raise ValueError("不支持的操作计划类型")
 
-    owner_id = _uuid(user_id)
     op = plan.operations or {}
     photos = _owned_photos(db, owner_id, op.get("photo_ids") or [])
     photo_ids = [photo.id for photo in photos]
@@ -333,6 +588,37 @@ def undo_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
     if plan.status != "executed":
         raise ValueError("只有已执行的计划可以撤销")
     undo = plan.undo_data or {}
+    if plan.plan_type == "album_repair":
+        owner_id = _uuid(user_id)
+        validated = []
+        for repair in undo.get("repairs") or []:
+            album = db.query(Album).filter(
+                Album.id == _uuid(repair.get("album_id")), Album.owner_id == owner_id, Album.type == "user"
+            ).first()
+            if not album:
+                raise ValueError("已修复的相册不存在，无法安全撤销")
+            if repair.get("kind") == "album_count":
+                if int(album.num_photos or 0) != int(repair.get("applied_after")):
+                    raise ValueError(f"“{album.name}”的照片计数之后又被修改，无法安全撤销")
+            elif repair.get("kind") == "album_cover":
+                current = str(album.cover_id) if album.cover_id else None
+                if current != repair.get("applied_after"):
+                    raise ValueError(f"“{album.name}”的封面之后又被修改，无法安全撤销")
+            else:
+                raise ValueError("撤销数据包含不支持的操作")
+            validated.append((repair, album))
+        for repair, album in validated:
+            if repair["kind"] == "album_count":
+                album.num_photos = int(repair["before"])
+            else:
+                album.cover_id = _uuid(repair["before"]) if repair.get("before") else None
+        plan.status = "undone"
+        plan.undone_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(plan)
+        return plan
+    if plan.plan_type != "album_organize":
+        raise ValueError("不支持的操作计划类型")
     album_id = _uuid(undo.get("album_id"))
 
     for change in undo.get("tag_changes") or []:

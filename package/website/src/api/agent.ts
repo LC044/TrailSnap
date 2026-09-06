@@ -85,7 +85,7 @@ export interface AgentActionPlan {
   error_message?: string | null;
   operations?: Record<string, any>;
   preview: {
-    mode?: 'create' | 'update';
+    mode?: 'create' | 'update' | 'repair';
     album_name?: string;
     current_album_name?: string | null;
     photo_count?: number;
@@ -96,8 +96,23 @@ export interface AgentActionPlan {
     artifact_id?: string | null;
     artifact_title?: string | null;
     artifact_url?: string | null;
+    repair_count?: number;
+    candidate_count?: number;
+    affected_album_count?: number;
+    selected_repair_ids?: string[];
+    repairs?: Array<{
+      id: string;
+      kind: 'album_count' | 'album_cover';
+      album_id: string;
+      album_name: string;
+      before: number | string | null;
+      after: number | string;
+      label: string;
+      reason?: string;
+      thumbnail_url?: string;
+    }>;
   };
-  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null } | null;
+  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null; applied_repair_count?: number; affected_album_count?: number; affected_album_ids?: string[] } | null;
   created_at?: string;
   updated_at?: string;
   expires_at?: string | null;
@@ -260,6 +275,11 @@ export const agentApi = {
   },
   executeActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/execute`);
+  },
+  updateRepairSelection(planId: string, selectedRepairIds: string[]) {
+    return request.patch<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}`, {
+      selected_repair_ids: selectedRepairIds
+    });
   },
   rejectActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/reject`);

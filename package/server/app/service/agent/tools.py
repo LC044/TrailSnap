@@ -29,7 +29,7 @@ from app.service.agent.album_p0 import (
     travel_timeline, trip_tickets,
 )
 from app.service.agent.skills import get_skill_catalog, load_skill
-from app.service.agent.actions import propose_album_plan
+from app.service.agent.actions import propose_album_plan, propose_album_repair_plan
 
 # 聚合摘要每类分布返回的 top-N 条目数
 SUMMARY_TOP_N = 8
@@ -633,6 +633,30 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
             return json.dumps(result, ensure_ascii=False)
 
     @tool
+    def propose_album_repairs(
+        album_id: Optional[str] = None,
+        repair_ids: Optional[List[str]] = None,
+        summary: Optional[str] = None,
+    ) -> str:
+        """为相册计数不一致、缺失封面或失效封面生成待确认的安全修复计划。
+
+        repair_ids 可传入 inspect_album_health 返回的 repair_id，以只修复用户选择的问题。
+        本工具只生成预览，不会直接写入；用户必须在计划卡片中确认。计划不会删除或改写原始照片。
+        """
+        with SessionLocal() as db:
+            try:
+                row = propose_album_repair_plan(
+                    db, user_id, session_id=session_id, album_id=album_id,
+                    repair_ids=repair_ids, summary=summary,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"action_plan": {
+                "id": str(row.id), "plan_type": row.plan_type, "title": row.title,
+                "summary": row.summary, "status": row.status, "preview": row.preview,
+            }}, ensure_ascii=False)
+
+    @tool
     def investigate_memory(
         query: str,
         start_date: Optional[str] = None,
@@ -799,7 +823,7 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         get_photo_tags_tool,
         get_photo_persons_tool,
         list_skills, load_skill_tool, search_photos_v2, get_photo_context,
-        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, investigate_memory, get_person_timeline, view_photos,
+        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, propose_album_repairs, investigate_memory, get_person_timeline, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
         get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

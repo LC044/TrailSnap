@@ -347,7 +347,7 @@ const startTravelAlbum = () => {
 }
 
 const startAlbumDoctor = () => {
-  uiStore.openAgentWithPrompt('请加载 album-doctor Skill，对我的整个照片库做一次只读体检。按严重程度总结缺少时间、地点、AI 描述、文件指纹、未归档照片、完全重复照片和相册结构异常；只展示少量证据样本与建议，不要删除、修改照片，也不要替我执行任何计划。', true)
+  uiStore.openAgentWithPrompt('请加载 album-doctor Skill，对我的整个照片库做一次只读体检。按严重程度总结缺少时间、地点、AI 描述、文件指纹、未归档照片、完全重复照片和相册结构异常；只展示少量证据样本与建议。对于计数不一致、缺失封面或失效封面，请说明可以生成可选择、可撤销的修复计划，但先等待我确认修复意图。不要删除、修改原始照片，也不要替我确认或执行任何计划。', true)
 }
 
 const startMemoryDetective = () => {

@@ -77,6 +77,7 @@ def test_get_agent_tools_returns_expected_names():
         "get_travel_timeline",
         "discover_trips",
         "inspect_album_health",
+        "propose_album_repairs",
         "investigate_memory",
         "get_person_timeline",
         "view_photos",
