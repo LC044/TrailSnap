@@ -56,7 +56,7 @@ Linux / macOS / WSL2：
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-脚本会收集照片目录、一个 TrailSnap 访问端口、时区和 AI 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。AI 模式支持通用 CPU、NVIDIA GPU（CUDA）和适合 Intel CPU/核显/NPU 的 OpenVINO。默认地址为 `http://<服务器 IP>:8082`，网页、App 和 CLI 都使用这个地址。
+脚本会收集照片目录、一个 TrailSnap 访问端口、时区和 AI 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。AI 模式支持通用 CPU、NVIDIA GPU（CUDA）和适合 Intel CPU/核显/NPU 的 OpenVINO。默认地址为 `http://<服务器 IP>:3180`，网页、App 和 CLI 都使用这个地址。
 
 常用管理命令（在安装目录执行）：
 
@@ -67,7 +67,7 @@ docker compose --env-file .env restart
 docker compose --env-file .env down
 ```
 
-Android App 的“自动查找 TrailSnap”会直接探测宿主机发布的默认 `8082` 入口，普通 Docker bridge 部署无需额外配置。Linux 服务器还可以选择启用宿主机 mDNS 广播：
+Android App 的“自动查找 TrailSnap”会直接探测宿主机发布的默认 `3180` 入口，普通 Docker bridge 部署无需额外配置。Linux 服务器还可以选择启用宿主机 mDNS 广播：
 
 ```bash
 docker compose --env-file .env --profile lan-discovery up -d

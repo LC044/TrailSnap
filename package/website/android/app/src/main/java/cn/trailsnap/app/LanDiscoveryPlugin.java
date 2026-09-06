@@ -37,7 +37,7 @@ import java.util.concurrent.Future;
 
 @CapacitorPlugin(name = "LanDiscovery")
 public class LanDiscoveryPlugin extends Plugin {
-    private static final int DEFAULT_PORT = 8082;
+    private static final int DEFAULT_PORT = 3180;
     private static final int DEFAULT_TIMEOUT_MS = 400;
     private static final int MIN_PREFIX_LENGTH = 24;
     private static final int MAX_NETWORKS = 3;

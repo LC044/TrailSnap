@@ -12,14 +12,14 @@ token示例：`ts_hV5nsCZJDheBvvmcd5L248IiAUnIwwZAn`
 
 ## API URL
 
-第三方客户端填写统一的 TrailSnap 地址，例如 `http://<TrailSnap 主机IP>:8082`。CLI 会自动通过该地址下的 `/api` 访问接口。
+第三方客户端填写统一的 TrailSnap 地址，例如 `http://<TrailSnap 主机IP>:3180`。CLI 会自动通过该地址下的 `/api` 访问接口。
 
 ```yaml
   frontend:
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
 ```
 
-这里的 `8082` 是唯一的用户访问端口；不需要额外开放后端、AI 或数据库端口。
+这里的 `3180` 是唯一的用户访问端口；不需要额外开放后端、AI 或数据库端口。
 
 ## 使用token
 

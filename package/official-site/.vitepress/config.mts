@@ -34,7 +34,7 @@ export default defineConfig({
   },
   ignoreDeadLinks: [
     '/^http:\/\/localhost:\d+$/',
-    'http://localhost:8082',
+    'http://localhost:3180',
     // /^http:\/\/localhost:\d+$/ // 正则匹配所有 localhost:端口 形式的链接
   ],
   transformHtml(code) {

@@ -22,7 +22,7 @@ TrailSnap CLI 可以作为 Agent 工具（Skill）被无缝集成到各种 AI �
 
 ```text
 帮我安装 trailsnap-cli 和 skill：https://trailsnap.cn/install.md
-我的 TrailSnap 地址是 http://localhost:8082
+我的 TrailSnap 地址是 http://localhost:3180
 我的token 是 ts_hV5nsCZxxxxx
 ```
 

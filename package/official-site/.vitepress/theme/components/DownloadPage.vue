@@ -129,8 +129,8 @@ const platforms = computed(() => isEnglish.value ? [
 ])
 
 const dockerCommand = computed(() => isEnglish.value
-  ? 'curl -fsSL https://trailsnap.cn/install.sh | bash\n\n# Then open http://<server-ip>:8082'
-  : 'curl -fsSL https://trailsnap.cn/install.sh | bash\n\n# 完成后访问 http://<服务器IP>:8082')
+  ? 'curl -fsSL https://trailsnap.cn/install.sh | bash\n\n# Then open http://<server-ip>:3180'
+  : 'curl -fsSL https://trailsnap.cn/install.sh | bash\n\n# 完成后访问 http://<服务器IP>:3180')
 
 function docLink(path: string) {
   return isEnglish.value ? `/en${path}` : path

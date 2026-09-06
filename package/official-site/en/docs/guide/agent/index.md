@@ -22,7 +22,7 @@ Copy the prompt below to your Agent (OpenClaw, Claude Code, Cursor, TRAE, etc.).
 
 ```text
 Help me install trailsnap-cli and the skill: https://trailsnap.cn/install.md
-My TrailSnap address is http://localhost:8082
+My TrailSnap address is http://localhost:3180
 My token is ts_hV5nsCZxxxxx
 ```
 

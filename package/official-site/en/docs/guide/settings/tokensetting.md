@@ -12,14 +12,14 @@ Example token: `ts_hV5nsCZJDheBvvmcd5L248IiAUnIwwZAn`
 
 ## API URL
 
-Third-party clients use the unified TrailSnap address, for example `http://<TrailSnap host IP>:8082`. The CLI automatically uses its `/api` path.
+Third-party clients use the unified TrailSnap address, for example `http://<TrailSnap host IP>:3180`. The CLI automatically uses its `/api` path.
 
 ```yaml
   frontend:
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
 ```
 
-Here, `8082` is the only user-facing port. Server, AI, and database ports stay inside the Docker network.
+Here, `3180` is the only user-facing port. Server, AI, and database ports stay inside the Docker network.
 
 ## Use the Token
 

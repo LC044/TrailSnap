@@ -17,7 +17,7 @@ TrailSnap MCP uses **Streamable HTTP**:
 | Deployment | MCP endpoint |
 | --- | --- |
 | Docker, NAS, desktop, or reverse-proxy public entry | `https://your-domain.example/api/mcp/` |
-| LAN public entry | `http://host-ip:8082/api/mcp/` |
+| LAN public entry | `http://host-ip:3180/api/mcp/` |
 | Direct backend access during development | `http://127.0.0.1:8000/mcp/` |
 
 The unified public entry only requires the TrailSnap frontend port. Do not expose the backend, AI service, or database ports separately. Keep the trailing `/` in the endpoint.

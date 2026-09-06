@@ -73,7 +73,7 @@ services:
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
-      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,7 +89,7 @@ services:
   frontend:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
     restart: always
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
 
@@ -173,7 +173,7 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 ---
 
 # Step 4: Verify Deployment
-Open your browser at `http://localhost:8082`. The mobile app and CLI use the same TrailSnap address.
+Open your browser at `http://localhost:3180`. The mobile app and CLI use the same TrailSnap address.
 
 You will see the TrailSnap web interface.
 

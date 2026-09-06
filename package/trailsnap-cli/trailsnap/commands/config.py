@@ -13,7 +13,7 @@ def setup_parser(subparsers):
     sub_subparsers.required = True
 
     set_parser = sub_subparsers.add_parser("set", help="配置 TrailSnap 地址和 Token")
-    set_parser.add_argument("--url", help="TrailSnap 地址 (例如: http://localhost:8082)", required=True)
+    set_parser.add_argument("--url", help="TrailSnap 地址 (例如: http://localhost:3180)", required=True)
     set_parser.add_argument("--token", help="API Token (Bearer 凭证)", required=True)
     set_parser.set_defaults(func=execute_set)
 

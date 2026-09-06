@@ -28,7 +28,7 @@ param(
     [string]$PhotoDir = "",
     [string]$InstallDir = "",
     [Alias("Port")]
-    [int]$FrontendPort = 8082,
+    [int]$FrontendPort = 3180,
     [string]$Timezone = "Asia/Shanghai",
     [ValidateSet("cpu", "gpu", "openvino")]
     [string]$AiMode = "cpu",
@@ -1561,7 +1561,7 @@ TrailSnap (行影集) — Windows 一键安装脚本
 选项：
   -PhotoDir <路径>       照片目录（逗号分隔支持多个）
   -InstallDir <路径>     安装目录（默认：~/trailsnap）
-  -Port <端口>           TrailSnap 访问端口（默认：8082）
+  -Port <端口>           TrailSnap 访问端口（默认：3180）
   -Timezone <时区>       时区（默认：Asia/Shanghai）
   -AiMode <cpu|gpu|openvino>
                            AI 模式；与 -Upgrade 同用可切换已有安装的 AI 镜像
