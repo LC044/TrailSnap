@@ -10,6 +10,10 @@ on:
       - 'package/server/**'
       - 'package/trailsnap-cli/**'
       - 'package/website/**'
+      - 'integrations/pi/**'
+      - 'skills/trailsnap-agent/**'
+      - 'package.json'
+      - 'package-lock.json'
       - 'tests/**'
       - '.github/workflows/tests.yml'
   push:
@@ -88,6 +92,28 @@ jobs:
           name: cli-unit-junit
           path: package/trailsnap-cli/junit.xml
           retention-days: 7
+
+  # ==========================================================================
+  # Pi Agent package - extension typecheck + registration contract
+  # ==========================================================================
+  pi-agent:
+    name: Pi Agent (TypeScript)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: npm
+
+      - name: Install + test
+        run: |
+          npm ci --ignore-scripts
+          npm run check:pi
+          npm run test:pi
 
   # ==========================================================================
   # Server 单元测试 - 无外部依赖，秒级

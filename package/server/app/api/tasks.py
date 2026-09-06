@@ -161,7 +161,7 @@ def _serialize_task(task) -> dict:
 
 def _resolve_user_from_token(token: str, db: Session) -> User:
     """Backwards-compatible wrapper around `app.api.deps.resolve_user_from_token`."""
-    return resolve_user_from_token(token, db)
+    return resolve_user_from_token(token, db, method="GET", path="/tasks/events")
 
 
 @router.get("/events", summary="任务状态 SSE 事件流")

@@ -1,7 +1,7 @@
 import traceback
 from typing import Generator, Optional
 from datetime import datetime
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError, ExpiredSignatureError
 from pydantic import ValidationError
@@ -18,6 +18,7 @@ reusable_oauth2 = OAuth2PasswordBearer(
 
 
 def get_current_user(
+        request: Request,
         db: Session = Depends(get_db),
         token: str = Depends(reusable_oauth2)
 ) -> User:
@@ -29,6 +30,8 @@ def get_current_user(
             raise HTTPException(status_code=401, detail="Invalid token")
         if agent_token.expires_at < datetime.utcnow():
             raise HTTPException(status_code=401, detail="Token has expired")
+        from app.service.agent_token_access import enforce_agent_token_rest_access
+        enforce_agent_token_rest_access(request.method, request.url.path, agent_token.scopes or [])
         user = crud_user.get(db, id=agent_token.user_id)
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
@@ -57,11 +60,12 @@ def get_current_user(
     return user
 
 
-def resolve_user_from_token(token: str, db: Session) -> User:
+def resolve_user_from_token(token: str, db: Session, *, method: str, path: str) -> User:
     """Resolve the user from a query-param token. EventSource cannot send
     an Authorization header, so SSE / polling-fallback endpoints accept
     the JWT (or `ts_` prefixed agent token) as a `?token=` query param
-    instead. Mirrors the logic in `get_current_user`."""
+    instead. Agent tokens still pass through the same method/path scope policy
+    as Authorization-header requests; JWT behaviour remains unchanged."""
     if not token:
         raise HTTPException(status_code=401, detail='Missing token')
     if token.startswith('ts_'):
@@ -71,6 +75,8 @@ def resolve_user_from_token(token: str, db: Session) -> User:
             raise HTTPException(status_code=401, detail='Invalid token')
         if agent_token.expires_at < datetime.utcnow():
             raise HTTPException(status_code=401, detail='Token has expired')
+        from app.service.agent_token_access import enforce_agent_token_rest_access
+        enforce_agent_token_rest_access(method, path, agent_token.scopes or [])
         user = crud_user.get(db, id=agent_token.user_id)
         if not user:
             raise HTTPException(status_code=401, detail='User not found')

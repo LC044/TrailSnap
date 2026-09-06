@@ -41,7 +41,7 @@ trailsnap config set --url http://localhost:8082 --token eyJhbGciOiJIUzI1NiIsInR
 
 ## 3.1 photos - 照片管理主命令
 
-「功能」：包含照片列表查询、单张照片详情获取、照片删除三个核心子命令，所有子命令需先完成API配置。
+「功能」：包含照片列表查询、单张照片详情获取等子命令，所有子命令需先完成 API 配置。Agent Token 仅允许只读访问。
 
 ### 3.1.1 photos list - 查询照片列表
 
@@ -102,9 +102,9 @@ trailsnap photos list --limit 20 --city 西安市,上海市
 trailsnap photos info --photo-id 10001
 ```
 
-### 3.1.3 photos delete - 删除单张照片
+### 3.1.3 photos delete - 删除单张照片（Agent Token 不可用）
 
-「功能」：删除指定ID的照片，删除后不可恢复（需谨慎操作）。
+「功能」：删除指定 ID 的照片，删除后不可恢复。该命令不接受 `ts_` Agent Token；仅供具有正常用户会话权限的人工操作使用，AI Agent 不应调用。
 
 「格式」：`photos delete --photo-id 照片ID`
 
