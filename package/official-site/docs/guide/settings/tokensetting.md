@@ -23,4 +23,7 @@ token示例：`ts_hV5nsCZJDheBvvmcd5L248IiAUnIwwZAn`
 
 ## 使用token
 
-参考[TrailSnap CLI 工具](/docs/guide/agent/trailsnap-cli)
+Agent Token 支持按用途选择最小权限。只读查询可选择照片、相册和人物读取权限；需要外部 Agent 整理照片时，可以额外授予“提出相册方案”权限。该权限只能创建待确认计划，不能直接修改相册。
+
+- MCP 客户端：参考 [配置 TrailSnap MCP](/docs/guide/agent/mcp)
+- 命令行工具：参考 [TrailSnap CLI 工具](/docs/guide/agent/trailsnap-cli)

@@ -6,6 +6,8 @@ outline: [2, 3]
 
 TrailSnap CLI 可以作为 Agent 工具（Skill）被无缝集成到各种 AI 编码助手或 Agent 平台中，例如 Claude Code、OpenClaw / Roo Code 等。通过让 Agent 调用 CLI，AI 能够直接获取、分析和查询您的相册数据，实现基于个人图库的智能问答。
 
+支持 MCP 的客户端可以直接连接 TrailSnap 内置的 Streamable HTTP 服务，无需包装 CLI。请参考 [配置 TrailSnap MCP](./mcp.md)。
+
 1. Claude Code
     [使用说明](./claudecode.md)
 

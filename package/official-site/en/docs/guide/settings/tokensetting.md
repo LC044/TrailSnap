@@ -23,4 +23,7 @@ Here, `8082` is the only user-facing port. Server, AI, and database ports stay i
 
 ## Use the Token
 
-See [TrailSnap CLI](/en/docs/guide/agent/trailsnap-cli).
+Agent Tokens support least-privilege scopes. Select photo, album, and people read scopes for queries. Grant **Propose albums** only when an external agent needs to organize selected photos; this scope creates a pending plan and cannot modify an album directly.
+
+- MCP clients: see [Configure TrailSnap MCP](/en/docs/guide/agent/mcp).
+- Command-line access: see [TrailSnap CLI](/en/docs/guide/agent/trailsnap-cli).
