@@ -31,6 +31,10 @@ from app.core.system_config import system_config
 pytestmark = [pytest.mark.smoke]
 
 
+def _request(path: str = "/photos", method: str = "GET"):
+    return SimpleNamespace(method=method, url=SimpleNamespace(path=path))
+
+
 def _make_jwt(user_id, *, expired: bool = False) -> str:
     secret = system_config.config.security.secret_key
     algo = system_config.config.security.algorithm
@@ -50,7 +54,7 @@ def test_get_current_user_returns_user_for_valid_jwt():
 
     with patch.object(deps, "get_db", return_value=db):
         with patch.object(deps.crud_user, "get", return_value=user) as get_user:
-            result = deps.get_current_user(db=db, token=token)
+            result = deps.get_current_user(request=_request(), db=db, token=token)
 
     assert result is user
     get_user.assert_called_once_with(db, id=str(user_id))
@@ -63,7 +67,7 @@ def test_get_current_user_raises_401_for_expired_jwt():
 
     with patch.object(deps, "get_db", return_value=db):
         with pytest.raises(HTTPException) as exc:
-            deps.get_current_user(db=db, token=token)
+            deps.get_current_user(request=_request(), db=db, token=token)
     assert exc.value.status_code == 401
     assert "expired" in exc.value.detail.lower()
 
@@ -72,7 +76,7 @@ def test_get_current_user_raises_403_for_garbled_jwt():
     db = object()
     with patch.object(deps, "get_db", return_value=db):
         with pytest.raises(HTTPException) as exc:
-            deps.get_current_user(db=db, token="not.a.real.token")
+            deps.get_current_user(request=_request(), db=db, token="not.a.real.token")
     assert exc.value.status_code == 403
 
 
@@ -84,7 +88,7 @@ def test_get_current_user_raises_401_when_user_missing():
     with patch.object(deps, "get_db", return_value=db):
         with patch.object(deps.crud_user, "get", return_value=None):
             with pytest.raises(HTTPException) as exc:
-                deps.get_current_user(db=db, token=token)
+                deps.get_current_user(request=_request(), db=db, token=token)
     assert exc.value.status_code == 401
 
 
@@ -95,6 +99,7 @@ def test_get_current_user_accepts_agent_token():
     agent_row = SimpleNamespace(
         user_id=user_id,
         expires_at=datetime.utcnow() + timedelta(days=1),
+        scopes=["photos:read"],
     )
     user = _user_row(user_id)
 
@@ -103,7 +108,7 @@ def test_get_current_user_accepts_agent_token():
             "app.crud.agent_token.get_token_by_string", return_value=agent_row
         ) as get_token:
             with patch.object(deps.crud_user, "get", return_value=user) as get_user:
-                result = deps.get_current_user(db=db, token=agent_token_value)
+                result = deps.get_current_user(request=_request(), db=db, token=agent_token_value)
 
     assert result is user
     get_token.assert_called_once_with(db, agent_token_value)
@@ -115,7 +120,7 @@ def test_get_current_user_rejects_unknown_agent_token():
     with patch.object(deps, "get_db", return_value=db):
         with patch("app.crud.agent_token.get_token_by_string", return_value=None):
             with pytest.raises(HTTPException) as exc:
-                deps.get_current_user(db=db, token="ts_unknown")
+                deps.get_current_user(request=_request(), db=db, token="ts_unknown")
     assert exc.value.status_code == 401
     assert "invalid" in exc.value.detail.lower()
 
@@ -131,14 +136,14 @@ def test_get_current_user_rejects_expired_agent_token():
     with patch.object(deps, "get_db", return_value=db):
         with patch("app.crud.agent_token.get_token_by_string", return_value=agent_row):
             with pytest.raises(HTTPException) as exc:
-                deps.get_current_user(db=db, token="ts_expired")
+                deps.get_current_user(request=_request(), db=db, token="ts_expired")
     assert exc.value.status_code == 401
     assert "expired" in exc.value.detail.lower()
 
 
 def test_resolve_user_from_token_rejects_empty():
     with pytest.raises(HTTPException) as exc:
-        deps.resolve_user_from_token(token="", db=object())
+        deps.resolve_user_from_token(token="", db=object(), method="GET", path="/notifications/events")
     assert exc.value.status_code == 401
 
 
@@ -149,21 +154,30 @@ def test_resolve_user_from_token_returns_user_for_valid_jwt():
     user = _user_row(user_id)
 
     with patch.object(deps.crud_user, "get", return_value=user):
-        result = deps.resolve_user_from_token(token=token, db=db)
+        result = deps.resolve_user_from_token(
+            token=token, db=db, method="GET", path="/notifications/events"
+        )
     assert result is user
 
 
-def test_resolve_user_from_token_uses_query_token_branch():
-    """`resolve_user_from_token` must also dispatch agent tokens correctly."""
+def test_resolve_user_from_token_enforces_query_endpoint_scope():
+    """Agent tokens cannot bypass the REST allowlist through SSE query auth."""
     db = object()
     user_id = uuid4()
     agent_row = SimpleNamespace(
         user_id=user_id,
         expires_at=datetime.utcnow() + timedelta(days=1),
+        scopes=["photos:read"],
     )
     user = _user_row(user_id)
 
     with patch("app.crud.agent_token.get_token_by_string", return_value=agent_row):
         with patch.object(deps.crud_user, "get", return_value=user):
-            result = deps.resolve_user_from_token(token="ts_queryparam", db=db)
-    assert result is user
+            with pytest.raises(HTTPException) as exc:
+                deps.resolve_user_from_token(
+                    token="ts_queryparam",
+                    db=db,
+                    method="GET",
+                    path="/notifications/events",
+                )
+    assert exc.value.status_code == 403

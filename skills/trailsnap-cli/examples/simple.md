@@ -7,7 +7,7 @@
 1. 查询足迹时间轴，筛选出去年国庆节的地点。
 
 ```bash
-trailsnap locations timeline  --start-date "2025-10-01" --end-date "2025-14-01"
+trailsnap locations timeline --start-date "2025-10-01" --end-date "2025-10-07"
 ```
 
 输出：

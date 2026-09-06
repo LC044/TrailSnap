@@ -4,6 +4,8 @@
 
 核心说明：所有命令需在终端执行，格式统一为 `trailsnap <command> <subcommand> [options]`。涉及 API 交互的命令（如 photos、locations 等）需先通过 `config set` 配置 API 地址和 Token，否则会直接报错并退出。
 
+> 使用 `ts_` Agent Token 时，服务端仅允许 Token scopes 覆盖的只读接口。删除、toolbox、上传和任务变更等写命令会返回 403；人工管理请使用正常用户登录获得的 JWT。
+
 ## 输出格式参数
 
 所有支持数据输出的命令均支持 `--format` 参数，可选值：

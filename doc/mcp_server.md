@@ -29,6 +29,28 @@ Agent Token 可在「设置 → 令牌管理」中创建。创建时可以只授
 
 配置文件的具体位置和字段名由 MCP 客户端决定。不要把真实令牌提交到 Git 仓库或粘贴给不受信任的 Agent。
 
+## Pi Agent
+
+Pi 本身不内置 MCP 客户端。TrailSnap 仓库提供一个 Pi Package，其中的 TypeScript Extension 会把远程 MCP 工具注册为 Pi 原生工具，并一同加载 `trailsnap-agent` Skill。
+
+先安装 CLI、保存 TrailSnap 地址与 `ts_` Agent Token，然后安装 Package：
+
+```shell
+npm install -g trailsnap-cli
+trailsnap config set --url "https://你的域名" --token "ts_xxx"
+pi install git:github.com/LC044/TrailSnap
+```
+
+进入 Pi 后运行 `/trailsnap-status` 验证连接。Bridge 优先读取环境变量 `TRAILSNAP_MCP_URL` 和 `TRAILSNAP_API_TOKEN`，否则复用 CLI 位于用户配置目录中的 `.env`，不会把 Token 写进 Pi 项目配置。
+
+Pi Package 注册的工具名带 `trailsnap_` 前缀，以避免与其他扩展冲突：
+
+- `trailsnap_search_photos`
+- `trailsnap_list_albums`
+- `trailsnap_list_people`
+- `trailsnap_investigate_memory`
+- `trailsnap_get_person_timeline`
+
 ## 工具
 
 | 工具 | Scope | 用途 |
@@ -65,6 +87,6 @@ TRAILSNAP_MCP_ALLOWED_HOSTS=mcp.example.com,192.168.1.10:8000
 - MCP P3 MVP 仅开放只读工具。
 - 不开放删除照片、修改相册、文件写入和 HTML 执行。
 - 内置 LangGraph Agent 不被 MCP 替换；两者分别服务站内交互和外部 Agent 接入。
-- Agent Token 的 scopes 当前用于 MCP 工具授权；历史 REST/CLI 接口仍保持原有兼容行为。
+- Agent Token 的 scopes 同时约束 MCP 与 REST/CLI：仅允许匹配领域的 GET/HEAD/OPTIONS 请求，写请求和未映射接口返回 403。普通用户 JWT 行为不变。
 
 后续写工具应使用新的独立 scopes（例如 `artifacts:write`、`albums:propose`），并在服务端生成预览或计划，得到用户明确确认后才能执行。

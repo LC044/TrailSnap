@@ -75,7 +75,7 @@ async def notification_events(
     """
     if not token:
         raise HTTPException(status_code=401, detail="SSE requires token query parameter")
-    user = resolve_user_from_token(token, db)
+    user = resolve_user_from_token(token, db, method="GET", path="/notifications/events")
 
     manager = NotificationManager.get_instance()
     queue = manager.subscribe(user.id)

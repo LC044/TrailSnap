@@ -37,12 +37,12 @@ pip install trailsnap-cli
 npx skills add lc044/trailsnap  -y -g
 ```
 
-## 第 2 步 配置api url和 token
+## 第 2 步 配置 API URL 和 Agent Token
 
-Agent 需要询问用户 TrailSnap 的 API URL 和 Token（如何获取请参考[TrailSnap API 文档](https://trailsnap.cn/docs/guide/settings/tokensetting.html)），收到用户输入后，执行以下命令配置：
+Agent 需要询问用户 TrailSnap 的访问地址和 `ts_` 开头的只读 Agent Token（如何获取请参考[TrailSnap API 文档](https://trailsnap.cn/docs/guide/settings/tokensetting.html)），收到用户输入后执行。不要把 Token 输出到日志或提交到仓库：
 
 ```shell
-trailsnap config set --url <url> --token <token>
+trailsnap config set --url <url> --token <ts_token>
 ```
 
 ## 第 3 步 验证

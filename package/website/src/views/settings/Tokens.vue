@@ -9,7 +9,7 @@
 
     <!-- Usage Guide -->
     <div class="mb-6 bg-primary-50 dark:bg-gray-800/60 border border-primary-200 dark:border-gray-700 rounded-xl overflow-hidden">
-      <div class="px-5 py-4 flex items-center justify-between cursor-pointer select-none" @click="guideExpanded = !guideExpanded">
+      <div class="px-5 py-4 flex items-center justify-between cursor-pointer select-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset focus-visible:outline-none" role="button" tabindex="0" @click="guideExpanded = !guideExpanded" @keydown.enter.space.prevent="guideExpanded = !guideExpanded">
         <div class="flex items-center gap-2">
           <div class="w-8 h-8 rounded-lg bg-primary-500/10 flex items-center justify-center">
             <Info class="w-4 h-4 text-primary-500" />
@@ -24,7 +24,7 @@
 
           <div class="mb-4 rounded-lg border border-primary-200/60 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
             <p class="mb-1 text-sm font-semibold text-gray-700 dark:text-gray-300">MCP Server（推荐）</p>
-            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">在支持远程 MCP 的客户端中添加 Streamable HTTP 服务，并把令牌放入 Authorization 请求头。</p>
+            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">在支持远程 MCP 的客户端中添加 Streamable HTTP 服务。Pi 不内置 MCP，可安装 TrailSnap Pi Package 自动桥接。</p>
             <div class="overflow-x-auto rounded-lg bg-gray-900 px-3 py-2 font-mono text-xs leading-relaxed text-green-400 dark:bg-gray-950">
               URL: &lt;TrailSnap 地址&gt;/api/mcp/<br>
               Authorization: Bearer <span class="text-amber-400">&lt;token&gt;</span>
@@ -132,8 +132,11 @@
             <span class="text-sm text-gray-500 dark:text-gray-400">{{ formatDate(row.created_at) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right" align="center">
+        <el-table-column label="操作" width="150" fixed="right" align="center">
           <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openConnection(row)">
+              <Plug class="w-4 h-4 mr-1" />接入
+            </el-button>
             <el-popconfirm title="确定要删除这个令牌吗？删除后该令牌将失效！" @confirm="handleDelete(row.id)">
               <template #reference>
                 <el-button type="danger" link size="small">
@@ -181,7 +184,10 @@
           <el-tag v-for="scope in token.scopes" :key="scope" size="small" effect="plain">{{ scopeLabel(scope) }}</el-tag>
         </div>
 
-        <div class="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+        <div class="pt-2 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-2">
+          <el-button type="primary" size="small" text @click="openConnection(token)">
+            <Plug class="w-3.5 h-3.5 mr-1" />接入 Agent
+          </el-button>
           <el-popconfirm title="确定要删除这个令牌吗？删除后该令牌将失效！" @confirm="handleDelete(token.id)">
             <template #reference>
               <el-button type="danger" size="small" text>
@@ -228,19 +234,52 @@
         </div>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showConnectionDialog" title="接入 AI Agent" width="680px" style="max-width: 94%" :close-on-click-modal="false">
+      <div v-if="selectedToken" class="space-y-5">
+        <div>
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-gray-800 dark:text-white">Pi Agent（推荐）</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">先保存 TrailSnap 配置，再安装包含 MCP Bridge 与 Skill 的 Pi Package。</p>
+            </div>
+            <el-button type="primary" plain size="small" @click="copyText(piSetupCommands, 'Pi 接入命令')"><Copy class="mr-1 h-4 w-4" />复制</el-button>
+          </div>
+          <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-green-400 dark:bg-gray-950">{{ piSetupCommands }}</pre>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">安装后在 Pi 中运行 <code>/trailsnap-status</code> 检查连接。</p>
+        </div>
+
+        <div>
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold text-gray-800 dark:text-white">通用 Streamable HTTP MCP</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">适用于支持远程 HTTP MCP 配置的客户端。</p>
+            </div>
+            <el-button type="primary" plain size="small" @click="copyText(genericMcpConfig, 'MCP 配置')"><Copy class="mr-1 h-4 w-4" />复制</el-button>
+          </div>
+          <pre class="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-green-400 dark:bg-gray-950">{{ genericMcpConfig }}</pre>
+        </div>
+
+        <p class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
+          配置中包含完整令牌。只复制到可信客户端，不要提交到 Git 或分享给其他人。
+        </p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { getTokens, createToken, deleteToken, type AgentToken, type AgentTokenScope } from '@/api/token'
-import { Copy, Plus, Trash2, Info, ChevronDown, Key } from 'lucide-vue-next'
+import { Copy, Plus, Trash2, Info, ChevronDown, Key, Plug } from 'lucide-vue-next'
 
 const tokens = ref<AgentToken[]>([])
 const loading = ref(false)
 const guideExpanded = ref(true)
+const showConnectionDialog = ref(false)
+const selectedToken = ref<AgentToken | null>(null)
 
 const showCreateDialog = ref(false)
 const creating = ref(false)
@@ -260,6 +299,27 @@ const scopeOptions: { value: AgentTokenScope; label: string; description: string
 ]
 
 const scopeLabel = (scope: AgentTokenScope) => scopeOptions.find(option => option.value === scope)?.label || scope
+
+const publicTrailSnapUrl = computed(() => window.location.origin.replace(/\/$/, ''))
+const piSetupCommands = computed(() => selectedToken.value ? [
+  'npm install -g trailsnap-cli',
+  `trailsnap config set --url "${publicTrailSnapUrl.value}" --token "${selectedToken.value.token}"`,
+  'pi install git:github.com/LC044/TrailSnap',
+].join('\n') : '')
+const genericMcpConfig = computed(() => selectedToken.value ? JSON.stringify({
+  mcpServers: {
+    trailsnap: {
+      type: 'http',
+      url: `${publicTrailSnapUrl.value}/api/mcp/`,
+      headers: { Authorization: `Bearer ${selectedToken.value.token}` }
+    }
+  }
+}, null, 2) : '')
+
+const openConnection = (token: AgentToken) => {
+  selectedToken.value = token
+  showConnectionDialog.value = true
+}
 
 const shortcuts = [
   {
@@ -370,13 +430,13 @@ const maskToken = (token: string) => {
   return token.substring(0, 4) + '...'.padEnd(10, '*') + '...' + token.substring(token.length - 4)
 }
 
-const copyToken = async (token: string) => {
+const copyText = async (value: string, label = '内容') => {
   try {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(token)
+      await navigator.clipboard.writeText(value)
     } else {
       const textArea = document.createElement('textarea')
-      textArea.value = token
+      textArea.value = value
       textArea.style.position = 'fixed'
       textArea.style.left = '-999999px'
       textArea.style.top = '-999999px'
@@ -391,12 +451,14 @@ const copyToken = async (token: string) => {
         throw new Error('Fallback copy command failed')
       }
     }
-    ElMessage.success('令牌已复制到剪贴板')
+    ElMessage.success(`${label}已复制到剪贴板`)
   } catch (err) {
     console.error('Copy failed:', err)
     ElMessage.error('复制失败，请手动选择复制')
   }
 }
+
+const copyToken = (token: string) => copyText(token, '令牌')
 
 const isExpired = (dateStr: string) => {
   return new Date(dateStr).getTime() < Date.now()
