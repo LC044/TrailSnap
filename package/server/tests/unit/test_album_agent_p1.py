@@ -12,7 +12,7 @@ from app.db.models.album import Album, AlbumPhoto
 from app.db.models.photo import FileType, Photo
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.user import User
-from app.service.agent.actions import execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan, undo_plan
+from app.service.agent.actions import execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan, reject_plan, undo_plan
 
 
 pytestmark = [pytest.mark.smoke]
@@ -119,6 +119,18 @@ def test_plan_cannot_execute_or_undo_twice(prepared_db):
     undo_plan(db, owner, plan.id)
     with pytest.raises(ValueError, match="已执行"):
         undo_plan(db, owner, plan.id)
+
+
+def test_rejected_plan_is_auditable_and_cannot_execute(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    plan = propose_album_plan(db, owner, session.id, "不采用的方案", None, [photos[0].id])
+    rejected = reject_plan(db, owner, plan.id)
+    assert rejected.status == "rejected"
+    assert db.query(Album).count() == 0
+    with pytest.raises(ValueError, match="待确认"):
+        execute_plan(db, owner, plan.id)
+    with pytest.raises(ValueError, match="待确认"):
+        reject_plan(db, owner, plan.id)
 
 
 def test_plan_expires_and_failed_attempt_is_auditable(prepared_db):

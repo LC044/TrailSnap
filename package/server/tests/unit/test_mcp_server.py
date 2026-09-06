@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
 from app.db.models.agent_token import AgentToken
+from app.db.models.agent_action import AgentActionPlan
 from app.db.models.album import Album
 from app.db.models.face import Face, FaceIdentity
 from app.db.models.photo import FileType, Photo
@@ -75,9 +76,10 @@ async def test_mcp_protocol_lists_tools_and_owner_scopes_results(mcp_db):
             tools = await client.list_tools()
             assert {tool.name for tool in tools.tools} == {
                 "search_photos", "list_albums", "list_people",
-                "investigate_memory", "get_person_timeline",
+                "investigate_memory", "get_person_timeline", "propose_album_organization",
             }
-            assert all(tool.annotations and tool.annotations.read_only_hint for tool in tools.tools)
+            query_tools = [tool for tool in tools.tools if tool.name != "propose_album_organization"]
+            assert all(tool.annotations and tool.annotations.read_only_hint for tool in query_tools)
             assert all(tool.annotations and tool.annotations.destructive_hint is False for tool in tools.tools)
 
             search = await client.call_tool("search_photos", {"location": "杭州"})
@@ -110,12 +112,61 @@ async def test_mcp_tool_rejects_missing_scope(mcp_db):
 
 
 @pytest.mark.asyncio
+async def test_mcp_album_proposal_requires_scope_and_does_not_execute(mcp_db):
+    owner, photo_id = uuid4(), uuid4()
+    with mcp_db() as db:
+        db.add_all([
+            User(id=owner, username="owner", hashed_password="x"),
+            Photo(
+                id=photo_id, owner_id=owner, filename="trip.jpg", file_path="trip.jpg",
+                file_type=FileType.image, photo_time=datetime(2025, 5, 2, 10), is_deleted=False,
+            ),
+        ])
+        db.commit()
+
+    denied_context = _auth(owner, ["albums:read"])
+    try:
+        async with Client(mcp_server.mcp) as client:
+            denied = await client.call_tool("propose_album_organization", {
+                "name": "西湖回忆", "photo_ids": [str(photo_id)],
+            })
+            assert denied.is_error is True
+            assert "albums:propose" in denied.content[0].text
+    finally:
+        auth_context_var.reset(denied_context)
+
+    proposal_context = _auth(owner, ["albums:propose"])
+    try:
+        async with Client(mcp_server.mcp) as client:
+            result = await client.call_tool("propose_album_organization", {
+                "name": "西湖回忆", "photo_ids": [str(photo_id)], "tags": ["旅行"],
+            })
+            assert result.is_error is False
+            assert result.structured_content["status"] == "proposed"
+            assert result.structured_content["approval_url"].startswith("/agent/actions/")
+    finally:
+        auth_context_var.reset(proposal_context)
+
+    with mcp_db() as db:
+        assert db.query(Album).count() == 0
+        plan = db.query(AgentActionPlan).one()
+        assert plan.user_id == owner
+        assert plan.operations["photo_ids"] == [str(photo_id)]
+
+
+def test_approval_url_uses_public_app_origin(monkeypatch):
+    plan_id = uuid4()
+    monkeypatch.setenv("TRAILSNAP_PUBLIC_URL", "https://photos.example.com/")
+    assert mcp_server._approval_url(plan_id) == f"https://photos.example.com/agent/actions/{plan_id}"
+
+
+@pytest.mark.asyncio
 async def test_agent_token_verifier_rejects_expired_and_preserves_scopes(mcp_db):
     owner = uuid4()
     with mcp_db() as db:
         db.add(User(id=owner, username="owner", hashed_password="x"))
         db.add_all([
-            AgentToken(id=uuid4(), user_id=owner, name="mcp", token="ts_valid", expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1), scopes=["photos:read"], is_deleted=False),
+            AgentToken(id=uuid4(), user_id=owner, name="mcp", token="ts_valid", expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=1), scopes=["photos:read", "albums:propose"], is_deleted=False),
             AgentToken(id=uuid4(), user_id=owner, name="expired", token="ts_expired", expires_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1), scopes=list(mcp_server.READ_SCOPES), is_deleted=False),
         ])
         db.commit()
@@ -124,6 +175,6 @@ async def test_agent_token_verifier_rejects_expired_and_preserves_scopes(mcp_db)
     access = await verifier.verify_token("ts_valid")
     assert access is not None
     assert access.subject == str(owner)
-    assert access.scopes == ["photos:read"]
+    assert access.scopes == ["photos:read", "albums:propose"]
     assert await verifier.verify_token("ts_expired") is None
     assert await verifier.verify_token("jwt_not_allowed") is None

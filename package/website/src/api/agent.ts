@@ -80,7 +80,7 @@ export interface AgentActionPlan {
   plan_type: string;
   title: string;
   summary?: string | null;
-  status: 'proposed' | 'executed' | 'undone' | 'expired' | 'failed' | string;
+  status: 'proposed' | 'executed' | 'undone' | 'rejected' | 'expired' | 'failed' | string;
   attempt_count?: number;
   error_message?: string | null;
   operations?: Record<string, any>;
@@ -260,6 +260,9 @@ export const agentApi = {
   },
   executeActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/execute`);
+  },
+  rejectActionPlan(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/reject`);
   },
   undoActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/undo`);

@@ -79,6 +79,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/game', name: 'GuessCity', component: () => import('@/views/game/GuessCity.vue'), meta: { title: '猜城市', navGroup: 'tools' } },
       { path: '/agent/artifacts/:id', name: 'AgentArtifact', component: () => import('@/views/agent/ArtifactDetail.vue'), meta: { title: 'AI 旅行日志', navGroup: 'albums' } },
       { path: '/agent/actions', name: 'AgentActions', component: () => import('@/views/agent/ActionHistory.vue'), meta: { title: 'AI 操作记录', navGroup: 'albums' } },
+      { path: '/agent/actions/:id', name: 'AgentActionDetail', component: () => import('@/views/agent/ActionPlanDetail.vue'), meta: { title: '确认 AI 相册方案', navGroup: 'albums' } },
     ],
   },
 

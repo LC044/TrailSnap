@@ -312,6 +312,20 @@ def execute_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
     return plan
 
 
+def reject_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
+    """Record an explicit user rejection without applying any operation."""
+    plan = get_owned_plan(db, user_id, plan_id, for_update=True)
+    if not plan:
+        raise ValueError("操作计划不存在")
+    if plan.status != "proposed":
+        raise ValueError("只有待确认的计划可以拒绝")
+    plan.status = "rejected"
+    plan.error_message = None
+    db.commit()
+    db.refresh(plan)
+    return plan
+
+
 def undo_plan(db: Session, user_id, plan_id) -> AgentActionPlan:
     plan = get_owned_plan(db, user_id, plan_id, for_update=True)
     if not plan:

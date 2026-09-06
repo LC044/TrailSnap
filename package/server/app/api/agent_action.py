@@ -11,6 +11,7 @@ from app.service.agent.actions import (
     get_owned_plan,
     list_owned_plans,
     mark_plan_failed,
+    reject_plan,
     undo_plan,
 )
 
@@ -54,6 +55,16 @@ def confirm_action_plan(plan_id: str, current_user: User = Depends(get_current_u
         db.rollback()
         mark_plan_failed(db, current_user.id, plan_id, "执行过程中发生内部错误")
         raise HTTPException(status_code=500, detail="Action plan execution failed") from exc
+    return BaseResponse.success(data=_serialize(row))
+
+
+@router.post("/{plan_id}/reject", summary="拒绝 Agent 操作计划")
+def reject_action_plan(plan_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    try:
+        row = reject_plan(db, current_user.id, plan_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return BaseResponse.success(data=_serialize(row))
 
 

@@ -26,10 +26,12 @@
         <button v-if="current.status === 'proposed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="execute">
           <LoaderCircle v-if="busy" class="h-3.5 w-3.5 animate-spin" /><CircleCheck v-else class="h-3.5 w-3.5" />确认执行
         </button>
+        <button v-if="current.status === 'proposed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800" @click="reject"><XCircle class="h-3.5 w-3.5" />拒绝方案</button>
         <button v-if="current.status === 'executed'" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAlbum"><ExternalLink class="h-3.5 w-3.5" />打开相册</button>
         <button v-if="current.status === 'executed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="undo"><Undo2 class="h-3.5 w-3.5" />撤销操作</button>
         <button v-if="artifactUrl" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-500/40 px-3 py-2 text-xs text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="router.push(artifactUrl)"><BookOpen class="h-3.5 w-3.5" />查看旅行日志</button>
         <span v-if="current.status === 'undone'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><Undo2 class="h-3.5 w-3.5" />修改已撤销</span>
+        <span v-if="current.status === 'rejected'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><XCircle class="h-3.5 w-3.5" />方案已拒绝，未执行任何修改</span>
         <span v-if="current.status === 'expired'" class="text-xs text-amber-700 dark:text-amber-300">计划已过期，请在 Agent 中重新生成</span>
         <span v-if="current.status === 'failed'" class="text-xs text-red-700 dark:text-red-300">执行失败，请在 Agent 中重新生成计划</span>
       </div>
@@ -39,7 +41,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Undo2 } from 'lucide-vue-next';
+import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Undo2, XCircle } from 'lucide-vue-next';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { agentApi, type AgentActionPlan } from '@/api/agent';
@@ -52,8 +54,8 @@ const router = useRouter();
 const samplePhotos = computed(() => current.value.preview?.sample_photos || []);
 const tagsLabel = computed(() => current.value.preview?.tags?.length ? current.value.preview.tags.join('、') : '不添加');
 const artifactUrl = computed(() => current.value.result?.artifact_url || current.value.preview?.artifact_url || '');
-const statusLabel = computed(() => ({ proposed: '等待确认', executed: '已执行', undone: '已撤销', expired: '已过期', failed: '执行失败' }[current.value.status] || current.value.status));
-const statusClass = computed(() => current.value.status === 'executed' ? 'bg-primary-500/10 text-primary-600' : current.value.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : current.value.status === 'undone' ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300');
+const statusLabel = computed(() => ({ proposed: '等待确认', executed: '已执行', undone: '已撤销', rejected: '已拒绝', expired: '已过期', failed: '执行失败' }[current.value.status] || current.value.status));
+const statusClass = computed(() => current.value.status === 'executed' ? 'bg-primary-500/10 text-primary-600' : current.value.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : ['undone', 'rejected'].includes(current.value.status) ? 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300');
 
 const execute = async () => {
   try {
@@ -64,6 +66,18 @@ const execute = async () => {
     ElMessage.success('相册整理完成，可随时撤销');
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('执行计划失败');
+  } finally { busy.value = false; }
+};
+
+const reject = async () => {
+  try {
+    await ElMessageBox.confirm('拒绝后不会执行任何相册修改，且该方案不能再次确认。', '拒绝相册方案', { confirmButtonText: '确认拒绝', cancelButtonText: '返回查看' });
+    busy.value = true;
+    const response: any = await agentApi.rejectActionPlan(current.value.id);
+    current.value = response.data;
+    ElMessage.success('已拒绝方案，未修改相册');
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('拒绝方案失败');
   } finally { busy.value = false; }
 };
 
