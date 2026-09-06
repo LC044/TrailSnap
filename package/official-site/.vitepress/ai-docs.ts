@@ -312,6 +312,8 @@ const robots = [
   'Disallow: /en/docs/dev/prompt/',
   '',
   `Sitemap: ${siteUrl}/sitemap.xml`,
+  `# AI agents: read ${siteUrl}/llms.txt for a site-wide directory of AI-friendly documentation`,
+  `# Full documentation text: ${siteUrl}/llms-full.txt`,
   '',
 ].join('\n')
 
