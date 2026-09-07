@@ -16,6 +16,10 @@ class AlbumActionProposal(BaseModel):
     summary: Optional[str] = Field(default=None, max_length=2000)
 
 
+class AgentRepairSelectionUpdate(BaseModel):
+    selected_repair_ids: List[str] = Field(min_length=1, max_length=100)
+
+
 class AgentActionPlanRead(BaseModel):
     id: UUID
     user_id: UUID

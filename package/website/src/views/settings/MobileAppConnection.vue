@@ -57,7 +57,7 @@
             inputmode="url"
             autocomplete="url"
             class="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-gray-900 placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
-            placeholder="http://192.168.1.10:8082"
+            placeholder="http://192.168.1.10:3180"
           />
         </label>
 

@@ -143,6 +143,20 @@ const toolDefinitions: Array<{
       max_events: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
     }),
   },
+  {
+    localName: "trailsnap_propose_album_organization",
+    remoteName: "propose_album_organization",
+    label: "Propose TrailSnap Album Organization",
+    description: "创建等待用户在 TrailSnap 页面确认的相册整理方案。不会直接执行，需要 albums:propose 权限。",
+    parameters: Type.Object({
+      name: Type.String({ minLength: 1, maxLength: 100 }),
+      photo_ids: Type.Array(Type.String(), { minItems: 1, maxItems: 500 }),
+      description: Type.Optional(Type.String({ maxLength: 4000 })),
+      cover_photo_id: Type.Optional(Type.String()),
+      tags: Type.Optional(Type.Array(Type.String(), { maxItems: 10 })),
+      summary: Type.Optional(Type.String({ maxLength: 2000 })),
+    }),
+  },
 ];
 
 export default function trailsnapMcpExtension(pi: ExtensionAPI) {
@@ -159,7 +173,7 @@ export default function trailsnapMcpExtension(pi: ExtensionAPI) {
   async function getClient(): Promise<Client> {
     if (client) return client;
     const config = loadTrailSnapConfig();
-    const nextClient = new Client({ name: "trailsnap-pi-agent", version: "0.1.0" });
+    const nextClient = new Client({ name: "trailsnap-pi-agent", version: "0.2.0" });
     const transport = new StreamableHTTPClientTransport(config.mcpUrl, {
       requestInit: { headers: { Authorization: `Bearer ${config.token}` } },
     });

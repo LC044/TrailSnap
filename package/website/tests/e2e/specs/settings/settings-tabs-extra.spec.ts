@@ -53,7 +53,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(addressInput).toHaveValue(/localhost|127\.0\.0\.1/);
     await expect(page.getByText(/手机无法访问/)).toBeVisible();
 
-    await addressInput.fill('http://192.168.1.20:8082');
+    await addressInput.fill('http://192.168.1.20:3180');
     await expect(page.getByAltText('TrailSnap 手机 App 连接二维码')).toBeVisible();
     await expect(page.getByRole('button', { name: '复制连接链接' })).toBeVisible();
   });

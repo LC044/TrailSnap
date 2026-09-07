@@ -22,7 +22,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 test.use({ storageState: { cookies: [], origins: [] } });
 
-const DEFAULT_API = 'http://127.0.0.1:8082';
+const DEFAULT_API = 'http://127.0.0.1:3180';
 
 async function gotoServerSettings(page: Page) {
   // 拦截认证相关副作用请求，避免 401 拦截器把页面踢到 /login
@@ -62,9 +62,9 @@ test.describe('Smoke - ServerSettings 配置自托管服务 @smoke', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) })
     );
 
-    await page.goto(`/connect?url=${encodeURIComponent('http://192.168.1.20:8082')}`);
+    await page.goto(`/connect?url=${encodeURIComponent('http://192.168.1.20:3180')}`);
 
-    await expect(page.locator('input[placeholder*="192.168"]')).toHaveValue('http://192.168.1.20:8082');
+    await expect(page.locator('input[placeholder*="192.168"]')).toHaveValue('http://192.168.1.20:3180');
     await expect(page.getByText('二维码在哪里？')).toBeVisible();
     await expect(page.getByText('设置 → 连接手机 App')).toBeVisible();
     await expect(page.getByAltText(/连接二维码/)).toHaveCount(0);

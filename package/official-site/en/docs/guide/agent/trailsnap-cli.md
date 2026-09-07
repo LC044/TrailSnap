@@ -77,13 +77,13 @@ Format: `config set --url API_URL --token API_TOKEN`
 
 Parameters:
 
-- `--url` (required): unified TrailSnap address, e.g. `http://localhost:8082`. The CLI automatically uses `/api`.
+- `--url` (required): unified TrailSnap address, e.g. `http://localhost:3180`. The CLI automatically uses `/api`.
 - `--token` (required): API access token (Bearer Token) for authentication, obtained from the backend.
 
 Example:
 
 ```bash
-trailsnap config set --url http://localhost:8082 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+trailsnap config set --url http://localhost:3180 --token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 On success, the config file path is displayed (written to `.env` in the same directory).

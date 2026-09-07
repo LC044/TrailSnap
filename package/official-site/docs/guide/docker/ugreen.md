@@ -49,21 +49,21 @@ volumes:
 
 ## 3. 设置端口与网络
 
-TrailSnap 默认只开放一个访问端口：`8082`。网页、App 和 CLI 都使用该地址；后端、AI 与数据库端口仅在 Docker 内部使用。
+TrailSnap 默认只开放一个访问端口：`3180`。网页、App 和 CLI 都使用该地址；后端、AI 与数据库端口仅在 Docker 内部使用。
 
-如与 NAS 上其他服务冲突，只需修改 `frontend.ports` 映射（例如改为 18082）。
+如与 NAS 上其他服务冲突，只需修改 `frontend.ports` 映射（例如改为 13180）。
 
 ## 4. 启动与验证
 
 启动后在浏览器访问：
 
-- `http://<NAS_IP>:8082`
+- `http://<NAS_IP>:3180`
 
 ![Alt text](/images/ugos-start.png)
 
 打开设置->外部图库，填入容器内的照片路径：`/app/Photos`，添加外部图库之后会自动扫描并在后台运行任务（可以在设置->任务管理查看任务详情）。
 
-API 文档位于 `http://<NAS_IP>:8082/api/docs`。
+API 文档位于 `http://<NAS_IP>:3180/api/docs`。
 
 ## 5. 权限与扫描问题排查
 

@@ -115,7 +115,7 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="MCP 权限" min-width="230">
+        <el-table-column label="Agent 权限" min-width="230">
           <template #default="{ row }">
             <div class="flex flex-wrap gap-1">
               <el-tag v-for="scope in row.scopes" :key="scope" size="small" effect="plain">{{ scopeLabel(scope) }}</el-tag>
@@ -215,7 +215,7 @@
             style="width: 100%"
           />
         </el-form-item>
-        <el-form-item label="MCP 权限" prop="scopes">
+        <el-form-item label="Agent 权限" prop="scopes">
           <el-checkbox-group v-model="formData.scopes" class="flex flex-col">
             <el-checkbox v-for="option in scopeOptions" :key="option.value" :value="option.value">
               <span class="font-medium">{{ option.label }}</span>
@@ -295,7 +295,8 @@ const formData = reactive({
 const scopeOptions: { value: AgentTokenScope; label: string; description: string }[] = [
   { value: 'photos:read', label: '读取照片', description: '搜索照片与回忆线索' },
   { value: 'albums:read', label: '读取相册', description: '查询相册列表' },
-  { value: 'people:read', label: '读取人物', description: '查询人物与时间线' }
+  { value: 'people:read', label: '读取人物', description: '查询人物与时间线' },
+  { value: 'albums:propose', label: '提出相册方案', description: '只创建待确认计划，不能直接执行' }
 ]
 
 const scopeLabel = (scope: AgentTokenScope) => scopeOptions.find(option => option.value === scope)?.label || scope

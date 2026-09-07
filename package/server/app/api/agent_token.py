@@ -2,7 +2,7 @@ from typing import Any, List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from app.schemas.agent_token import AGENT_TOKEN_READ_SCOPES, AgentTokenResponse, AgentTokenCreateAPI
+from app.schemas.agent_token import AGENT_TOKEN_SUPPORTED_SCOPES, AgentTokenResponse, AgentTokenCreateAPI
 from app.crud import agent_token as crud_agent_token
 from app.crud import user as crud_user
 from app.dependencies import get_db
@@ -35,7 +35,7 @@ def create_token(
     if not user_auth:
         raise HTTPException(status_code=400, detail="密码错误")
 
-    invalid_scopes = sorted(set(token_in.scopes) - set(AGENT_TOKEN_READ_SCOPES))
+    invalid_scopes = sorted(set(token_in.scopes) - set(AGENT_TOKEN_SUPPORTED_SCOPES))
     if invalid_scopes:
         raise HTTPException(status_code=400, detail=f"不支持的令牌权限: {', '.join(invalid_scopes)}")
     if not token_in.scopes:

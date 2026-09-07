@@ -64,7 +64,7 @@ services:
   frontend:
     image: siyuan044/trailsnap-frontend:master
     restart: always
-    ports: [ "${TRAILSNAP_PORT:-8082}:80" ]
+    ports: [ "${TRAILSNAP_PORT:-3180}:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
     environment:

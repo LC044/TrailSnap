@@ -159,9 +159,11 @@ def test_album_health_report_is_owner_scoped_and_explainable(db):
         id=uuid4(), owner_id=stranger, filename="foreign.jpg", file_path="foreign.jpg", file_type=FileType.image,
         is_deleted=False, photo_time=None, md5="same",
     )
-    db.add_all([album, p1, p2, p3, foreign]); db.flush()
+    invalid_cover_album = Album(id=uuid4(), owner_id=owner, name="封面失效", type="user", num_photos=1, cover_id=p3.id)
+    db.add_all([album, invalid_cover_album, p1, p2, p3, foreign]); db.flush()
     db.add_all([
         AlbumPhoto(album_id=album.id, photo_id=p1.id), AlbumPhoto(album_id=album.id, photo_id=p2.id),
+        AlbumPhoto(album_id=invalid_cover_album.id, photo_id=p1.id),
         PhotoMetadata(photo_id=p1.id, city="西安", country="中国"),
         ImageDescription(photo_id=p1.id, description="城市街景"),
     ])
@@ -173,12 +175,24 @@ def test_album_health_report_is_owner_scoped_and_explainable(db):
     assert by_key["missing_time"]["count"] == 1
     assert by_key["missing_location"]["count"] == 2
     assert by_key["missing_description"]["count"] == 2
+    assert by_key["missing_description"]["repair_id"] == "metadata_description"
+    assert by_key["missing_description"]["eligible_repair_count"] == 2
     assert by_key["missing_hash"]["count"] == 1
+    assert by_key["missing_hash"]["repair_id"] == "metadata_hash"
     assert by_key["unassigned"]["count"] == 1
     assert by_key["exact_duplicates"]["count"] == 1
     assert by_key["exact_duplicates"]["group_count"] == 1
     assert report["album_issues"]["count_mismatches"][0]["actual_count"] == 2
-    assert report["album_issues"]["missing_covers"] == [{"album_id": str(album.id), "name": "待体检"}]
+    missing_cover = report["album_issues"]["missing_covers"][0]
+    assert missing_cover["album_id"] == str(album.id)
+    assert missing_cover["repair_id"] == f"album_cover:{album.id}"
+    assert missing_cover["recommended_cover_id"] in {str(p1.id), str(p2.id)}
+    invalid_cover = report["album_issues"]["invalid_covers"][0]
+    assert invalid_cover["album_id"] == str(invalid_cover_album.id)
+    assert invalid_cover["repair_id"] == f"album_cover:{invalid_cover_album.id}"
+    assert invalid_cover["recommended_cover_id"] == str(p1.id)
+    assert report["summary"]["safe_repair_count"] == 3
+    assert report["summary"]["metadata_repair_type_count"] == 2
 
     with pytest.raises(ValueError, match="无权"):
         album_health_report(db, str(stranger), str(album.id))

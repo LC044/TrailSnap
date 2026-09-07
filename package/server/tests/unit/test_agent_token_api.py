@@ -77,7 +77,7 @@ def test_create_token_persists_when_password_matches():
         name="my-token",
         password="correct",
         expires_at=datetime(2030, 1, 1, tzinfo=timezone.utc),
-        scopes=["photos:read", "albums:read"],
+        scopes=["photos:read", "albums:propose"],
     )
     fake_row = _token_row(name="my-token")
 
@@ -92,7 +92,7 @@ def test_create_token_persists_when_password_matches():
     authenticate.assert_called_once_with(db, email=user.email, password="correct")
     create_call.assert_called_once_with(
         db=db, user_id=user.id, name="my-token", expires_at=payload.expires_at,
-        scopes=["photos:read", "albums:read"],
+        scopes=["photos:read", "albums:propose"],
     )
     assert result is fake_row
 

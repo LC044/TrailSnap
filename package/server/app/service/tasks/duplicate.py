@@ -4,6 +4,7 @@ from typing import List, Dict
 import logging
 import os
 import asyncio
+from uuid import UUID
 from sqlalchemy.orm import Session
 from app.db.models.task import Task, TaskStatus, TaskType
 from app.db.models.photo import Photo
@@ -28,10 +29,21 @@ class FindDuplicatePhotosStrategy(BaseTaskStrategy):
             logging.info(f"Starting duplicate photo scan for user {user_id}")
 
             # 1. Fetch all photos for the user where MD5 is empty or null
-            photos = db.query(Photo).filter(
+            photos_query = db.query(Photo).filter(
                 Photo.owner_id == user_id,
+                Photo.is_deleted.is_(False),
                 (Photo.md5 == None) | (Photo.md5 == "")
-            ).all()
+            )
+            requested_ids = (task.payload or {}).get("photo_ids") or []
+            if requested_ids:
+                parsed_ids = []
+                for value in requested_ids[:500]:
+                    try:
+                        parsed_ids.append(UUID(str(value)))
+                    except (ValueError, TypeError, AttributeError):
+                        continue
+                photos_query = photos_query.filter(Photo.id.in_(parsed_ids)) if parsed_ids else photos_query.filter(False)
+            photos = photos_query.all()
 
             total_photos = len(photos)
             task.total_items = total_photos

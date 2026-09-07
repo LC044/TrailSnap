@@ -9,7 +9,7 @@ test("derives the Streamable HTTP MCP endpoint from public app URLs", () => {
   assert.equal(deriveMcpUrl("https://photos.example.com/api/mcp").href, "https://photos.example.com/api/mcp/");
 });
 
-test("registers the read-only TrailSnap tool surface and status command", () => {
+test("registers the scoped TrailSnap tool surface and status command", () => {
   const tools: string[] = [];
   const commands: string[] = [];
   const events: string[] = [];
@@ -33,6 +33,7 @@ test("registers the read-only TrailSnap tool surface and status command", () => 
     "trailsnap_list_people",
     "trailsnap_investigate_memory",
     "trailsnap_get_person_timeline",
+    "trailsnap_propose_album_organization",
   ]);
   assert.deepEqual(commands, ["trailsnap-status"]);
   assert.deepEqual(events, ["session_shutdown"]);

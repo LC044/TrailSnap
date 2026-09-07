@@ -283,11 +283,20 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
                 if not photo:
                     return {'status': 'skipped', 'reason': 'photo not found'}
                 
-                # Check if already processed (unless force)
-                if not force:
+                # Album-doctor repairs must heal stale processed markers while
+                # still avoiding an overwrite if another task won the race.
+                if task.payload.get('only_if_missing'):
+                    existing_description = db.query(ImageDescription.id).filter(
+                        ImageDescription.photo_id == photo.id,
+                        ImageDescription.description.isnot(None),
+                        ImageDescription.description != '',
+                    ).first()
+                    if existing_description:
+                        return {'status': 'skipped', 'reason': 'already processed'}
+                elif not force:
                     tasks_status = photo.processed_tasks or {}
                     if tasks_status.get('visual_description'):
-                         return {'status': 'skipped', 'reason': 'already processed'}
+                        return {'status': 'skipped', 'reason': 'already processed'}
 
                 # CI 限速：最多处理 5 张照片，已达上限直接跳过
                 if ci_task_limit_reached(db, ImageDescription):

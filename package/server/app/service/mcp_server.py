@@ -1,4 +1,4 @@
-"""TrailSnap's read-only Model Context Protocol surface.
+"""TrailSnap's least-privilege Model Context Protocol surface.
 
 The MCP transport deliberately reuses Agent Tokens instead of accepting user
 JWTs. Each tool resolves the owner from the verified token and checks its own
@@ -31,13 +31,21 @@ from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.session import SessionLocal
 from app.service.agent.album_p0 import build_person_timeline, investigate_memory_clues, photo_contexts
+from app.service.agent.actions import propose_album_plan
 
 
+SUPPORTED_SCOPES = frozenset({"photos:read", "albums:read", "people:read", "albums:propose"})
 READ_SCOPES = frozenset({"photos:read", "albums:read", "people:read"})
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
     read_only_hint=True,
     destructive_hint=False,
     idempotent_hint=True,
+    open_world_hint=False,
+)
+PROPOSAL_ANNOTATIONS = ToolAnnotations(
+    read_only_hint=False,
+    destructive_hint=False,
+    idempotent_hint=False,
     open_world_hint=False,
 )
 
@@ -52,7 +60,7 @@ class AgentTokenVerifier(TokenVerifier):
             agent_token = get_token_by_string(db, token)
             if not agent_token or agent_token.expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
                 return None
-            scopes = [scope for scope in (agent_token.scopes or []) if scope in READ_SCOPES]
+            scopes = [scope for scope in (agent_token.scopes or []) if scope in SUPPORTED_SCOPES]
             return AccessToken(
                 token=token,
                 client_id=str(agent_token.id),
@@ -92,6 +100,18 @@ def _transport_security() -> TransportSecuritySettings | None:
     )
 
 
+def _approval_url(plan_id: UUID) -> str:
+    public = os.getenv("TRAILSNAP_PUBLIC_URL", "").strip().rstrip("/")
+    if public:
+        return f"{public}/agent/actions/{plan_id}"
+    explicit_mcp = os.getenv("TRAILSNAP_MCP_URL", "").strip()
+    if explicit_mcp:
+        parsed = urlparse(explicit_mcp)
+        if parsed.scheme and parsed.netloc:
+            return f"{parsed.scheme}://{parsed.netloc}/agent/actions/{plan_id}"
+    return f"/agent/actions/{plan_id}"
+
+
 def _principal(required_scope: str) -> UUID:
     access_token = get_access_token()
     if not access_token or not access_token.subject:
@@ -117,9 +137,9 @@ issuer_url, resource_url = _endpoint_urls()
 mcp = MCPServer(
     "TrailSnap",
     title="TrailSnap 相册",
-    description="安全查询当前用户的照片、相册、人物与回忆线索。",
-    instructions="所有结果均属于 Agent Token 的所有者。候选回忆是可解释线索，不应被当作已确认事实。",
-    version="0.1.0",
+    description="安全查询照片与回忆，并创建必须由用户在 TrailSnap 中确认的相册提案。",
+    instructions="所有结果均属于 Agent Token 的所有者。候选回忆是可解释线索；相册提案不会直接执行，必须把 approval_url 交给用户确认。",
+    version="0.2.0",
     token_verifier=AgentTokenVerifier(),
     auth=AuthSettings(
         issuer_url=issuer_url,
@@ -301,6 +321,42 @@ def get_person_timeline(
             return build_person_timeline(db, str(user_id), identity_id, start_date, end_date, max_events)
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
+
+
+@mcp.tool(structured_output=True, annotations=PROPOSAL_ANNOTATIONS)
+def propose_album_organization(
+    name: str,
+    photo_ids: list[str],
+    description: Optional[str] = None,
+    cover_photo_id: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    summary: Optional[str] = None,
+) -> dict[str, Any]:
+    """创建相册整理提案并返回站内审批链接；不会直接修改相册或照片。"""
+    user_id = _principal("albums:propose")
+    with SessionLocal() as db:
+        try:
+            plan = propose_album_plan(
+                db=db,
+                user_id=user_id,
+                session_id=None,
+                name=name,
+                description=description,
+                photo_ids=photo_ids,
+                cover_photo_id=cover_photo_id,
+                tags=tags,
+                summary=summary,
+            )
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+        return {
+            "plan_id": str(plan.id),
+            "status": plan.status,
+            "expires_at": plan.expires_at.isoformat() if plan.expires_at else None,
+            "approval_url": _approval_url(plan.id),
+            "preview": plan.preview,
+            "notice": "计划尚未执行。请让用户打开 approval_url，在 TrailSnap 中查看并明确确认。",
+        }
 
 
 mcp_http_app = mcp.streamable_http_app(

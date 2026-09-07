@@ -8,9 +8,9 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
       ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
         name: 'android',
       }
-      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:8082')
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:3180')
       localStorage.setItem('trailsnap_server_history', JSON.stringify([
-        'http://192.168.1.10:8082',
+        'http://192.168.1.10:3180',
         'https://photos.example.com',
       ]))
     })
@@ -37,7 +37,7 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
 
     const serverSelect = page.getByTestId('server-address')
     await expect(serverSelect).toBeVisible()
-    await expect(serverSelect).toHaveValue('http://192.168.1.10:8082')
+    await expect(serverSelect).toHaveValue('http://192.168.1.10:3180')
 
     const formItems = page.locator('.el-form-item')
     await expect(formItems.nth(0)).toContainText('TrailSnap 地址')
@@ -60,17 +60,17 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
     await page.goto('/login', { waitUntil: 'domcontentloaded' })
 
     const serverInput = page.getByTestId('server-address')
-    await serverInput.fill('http://10.0.0.8:8082')
+    await serverInput.fill('http://10.0.0.8:3180')
     await page.locator('input[placeholder="请输入用户名"]').fill('test-user')
     await page.locator('input[placeholder="请输入密码"]').fill('password123')
     await page.getByRole('button', { name: '登录' }).click()
 
     await expect.poll(() => page.evaluate(() => localStorage.getItem('trailsnap:server-url')))
-      .toBe('http://10.0.0.8:8082')
+      .toBe('http://10.0.0.8:3180')
     const history = await page.evaluate(() => JSON.parse(localStorage.getItem('trailsnap_server_history') || '[]'))
     expect(history).toEqual([
-      'http://10.0.0.8:8082',
-      'http://192.168.1.10:8082',
+      'http://10.0.0.8:3180',
+      'http://192.168.1.10:3180',
       'https://photos.example.com',
     ])
   })
@@ -104,7 +104,7 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
       ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
         name: 'android',
       }
-      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:8082')
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:3180')
       localStorage.setItem('user_token', 'mobile-map-session')
       localStorage.setItem('trailsnap-location-view-mode', 'map')
       localStorage.setItem('trailsnap-location-level', 'scene')
@@ -134,7 +134,7 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
       })
     })
 
-    await page.route('http://192.168.1.10:8082/**', route => {
+    await page.route('http://192.168.1.10:3180/**', route => {
       const path = new URL(route.request().url()).pathname
       const data = path === '/api/settings/'
         ? { map: { provider: 'tianditu', api_keys: ['mobile-map-key'] } }
@@ -153,8 +153,8 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
     await expect.poll(() => page.evaluate(() => (
       (window as typeof window & { __tiandituTileTemplates?: string[] }).__tiandituTileTemplates || []
     ))).toEqual([
-      'http://192.168.1.10:8082/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
-      'http://192.168.1.10:8082/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+      'http://192.168.1.10:3180/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+      'http://192.168.1.10:3180/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
     ])
   })
 })
@@ -165,16 +165,16 @@ test.describe('手机 App 服务器断连 @p0', () => {
       ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
         name: 'android',
       }
-      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:8082')
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:3180')
       localStorage.setItem('user_token', 'expired-offline-session')
     })
-    await page.route('http://192.168.1.10:8082/**', route => route.abort('connectionrefused'))
+    await page.route('http://192.168.1.10:3180/**', route => route.abort('connectionrefused'))
 
     await page.goto('/photos', { waitUntil: 'domcontentloaded' })
 
     await expect(page).toHaveURL(url => url.pathname === '/photos')
     await expect.poll(() => page.evaluate(() => localStorage.getItem('trailsnap:server-url')))
-      .toBe('http://192.168.1.10:8082')
+      .toBe('http://192.168.1.10:3180')
     await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token')))
       .toBe('expired-offline-session')
   })

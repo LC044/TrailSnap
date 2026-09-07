@@ -16,7 +16,7 @@ set -euo pipefail
 
 # ── 常量 ──────────────────────────────────────────────────────────────────────
 SCRIPT_VERSION="1.6.0"
-DEFAULT_FRONTEND_PORT=8082
+DEFAULT_FRONTEND_PORT=3180
 DEFAULT_TZ="Asia/Shanghai"
 DEFAULT_IMAGE_TAG="latest"
 DEFAULT_AI_MODE="cpu"
@@ -1765,7 +1765,7 @@ TrailSnap (行影集) — 一键安装脚本
 选项：
   --photo-dir 路径       照片目录（逗号分隔支持多个）
   --install-dir 路径     安装目录（默认：~/trailsnap）
-  --port 端口            TrailSnap 访问端口（默认：8082）
+  --port 端口            TrailSnap 访问端口（默认：3180）
   --frontend-port 端口   --port 的兼容别名
   --timezone 时区        时区（默认：Asia/Shanghai）
   --ai-mode cpu|gpu|openvino

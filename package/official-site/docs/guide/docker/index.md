@@ -21,7 +21,7 @@ Linux / macOS / WSL2：
 curl -fsSL https://trailsnap.cn/install.sh | bash
 ```
 
-脚本会收集照片目录、一个 TrailSnap 访问端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:8082`。网页、App 和 CLI 都使用这个地址。
+脚本会收集照片目录、一个 TrailSnap 访问端口、时区和 CPU/GPU 模式，生成 `.env` 与 `docker-compose.yml`，拉取镜像并完成健康检查。默认访问地址为 `http://<服务器 IP>:3180`。网页、App 和 CLI 都使用这个地址。
 
 常用管理命令（在安装目录执行）：
 
@@ -106,7 +106,7 @@ services:
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
       # 请替换为这台主机的局域网 IP，供 App 自动发现
-      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,7 +131,7 @@ services:
   frontend:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
     restart: always
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
 
@@ -150,10 +150,10 @@ docker-compose up -d
 
 启动后只有一个用户入口：
 
-- TrailSnap：`http://<NAS_IP>:8082`
-- API 文档：`http://<NAS_IP>:8082/api/docs`
+- TrailSnap：`http://<NAS_IP>:3180`
+- API 文档：`http://<NAS_IP>:3180/api/docs`
 
-移动 App 可填写同一地址，也可以扫描连接二维码或使用“自动查找 TrailSnap”。Android App 会在 mDNS 无结果时探测默认 `8082` 入口，因此普通 Docker bridge 部署不需要额外开放组播端口。Server、AI 和 PostgreSQL 只在 Compose 内部网络通信。
+移动 App 可填写同一地址，也可以扫描连接二维码或使用“自动查找 TrailSnap”。Android App 会在 mDNS 无结果时探测默认 `3180` 入口，因此普通 Docker bridge 部署不需要额外开放组播端口。Server、AI 和 PostgreSQL 只在 Compose 内部网络通信。
 
 ## GPU 加速支持 (可选)
 
@@ -246,10 +246,10 @@ volumes:
 
 ### 端口冲突
 
-NAS 上常见 80/443/8080 等端口容易被占用。TrailSnap 默认只开放 8082；如冲突可修改唯一的映射，例如：
+NAS 上常见 80/443/8080 等端口容易被占用。TrailSnap 默认只开放 3180；如冲突可修改唯一的映射，例如：
 
 ```yaml
-ports: [ "18082:80" ]
+ports: [ "13180:80" ]
 ```
 
 ## NAS 具体教程

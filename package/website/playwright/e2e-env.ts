@@ -17,7 +17,7 @@
  *                       sys  默认 http://localhost:8800 (e2e-up 暴露端口)
  *   TS_WEB_BASE_URL     前端地址
  *                       dev  默认 http://localhost:5176
- *                       sys  默认 http://localhost:8082 (frontend nginx)
+ *                       sys  默认 http://localhost:3180 (frontend nginx)
  *   TS_PHOTO_DIR        测试照片目录（默认 /testdata/photos）
  *   TS_TEST_USERNAME    P0/P1 套件登录账号（默认 e2e-admin，bootstrap.ts 注册）
  *   TS_TEST_PASSWORD    P0/P1 套件登录密码（默认 Passw0rd!123）
@@ -48,13 +48,13 @@ const BACKEND_BY_SUITE: Record<E2ESuite, string> = {
 /** 套件到默认 baseURL 前端的映射 */
 const WEB_BY_SUITE: Record<E2ESuite, string> = {
   dev: 'http://localhost:5176',
-  p0: 'http://localhost:8082',
-  p1: 'http://localhost:8082',
-  smoke: 'http://localhost:8082',
-  scan: 'http://localhost:8082',
-  all: 'http://localhost:8082',
-  light: 'http://localhost:8082',
-  full: 'http://localhost:8082',
+  p0: 'http://localhost:3180',
+  p1: 'http://localhost:3180',
+  smoke: 'http://localhost:3180',
+  scan: 'http://localhost:3180',
+  all: 'http://localhost:3180',
+  light: 'http://localhost:3180',
+  full: 'http://localhost:3180',
 }
 
 /**

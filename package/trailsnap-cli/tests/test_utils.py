@@ -19,13 +19,13 @@ def mock_env(monkeypatch):
 
 
 @pytest.mark.parametrize("value", [
-    "http://localhost:8082",
-    "http://localhost:8082/",
-    "http://localhost:8082/api",
-    "localhost:8082",
+    "http://localhost:3180",
+    "http://localhost:3180/",
+    "http://localhost:3180/api",
+    "localhost:3180",
 ])
 def test_normalize_trailsnap_url(value):
-    assert normalize_trailsnap_url(value) == "http://localhost:8082/api"
+    assert normalize_trailsnap_url(value) == "http://localhost:3180/api"
 
 
 def test_display_trailsnap_url():

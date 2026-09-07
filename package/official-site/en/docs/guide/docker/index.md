@@ -70,7 +70,7 @@ services:
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
       # Replace this with the host LAN address to enable App discovery
-      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
   frontend:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
     restart: always
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
 
@@ -105,8 +105,8 @@ docker-compose up -d
 
 TrailSnap has one user-facing address after startup:
 
-- TrailSnap: `http://<NAS_IP>:8082`
-- API docs: `http://<NAS_IP>:8082/api/docs`
+- TrailSnap: `http://<NAS_IP>:3180`
+- API docs: `http://<NAS_IP>:3180/api/docs`
 
 The browser, mobile app, PWA, and CLI all use this same address. Server, AI, and PostgreSQL remain private on the Compose network.
 
@@ -180,10 +180,10 @@ If the photo directory is read-only shared or permission isolated, the container
 
 ### 4.3 Port Conflict
 
-Common ports like 80/443/8080 are easily occupied on NAS. TrailSnap exposes only port 8082 by default. If there is a conflict, modify the single mapping, for example:
+Common ports like 80/443/8080 are easily occupied on NAS. TrailSnap exposes only port 3180 by default. If there is a conflict, modify the single mapping, for example:
 
 ```yaml
-ports: [ "18082:80" ]
+ports: [ "13180:80" ]
 ```
 
 ## 6. NAS Specific Tutorials

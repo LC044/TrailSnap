@@ -162,7 +162,7 @@ services:
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
-      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:8082
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
     depends_on:
       postgres:
         condition: service_healthy
@@ -187,7 +187,7 @@ services:
   frontend:
     image: siyuan044/trailsnap-frontend:latest
     restart: always
-    ports: [ "8082:80" ]
+    ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
     environment:
@@ -204,7 +204,7 @@ networks:
 docker-compose up -d
 ```
 
-Browsers, mobile apps, and the CLI all use the same TrailSnap address, such as `http://192.168.1.10:8082`. Server, AI, and PostgreSQL remain private on the Docker network.
+Browsers, mobile apps, and the CLI all use the same TrailSnap address, such as `http://192.168.1.10:3180`. Server, AI, and PostgreSQL remain private on the Docker network.
 
 ### Source Code Deployment
 

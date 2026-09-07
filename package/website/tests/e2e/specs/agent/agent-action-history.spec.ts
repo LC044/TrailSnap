@@ -1,7 +1,5 @@
 import { expect, test, type Route } from '@playwright/test'
 
-import { ensureAuthSession } from '../../helpers/auth'
-
 const plan = {
   id: '11111111-1111-4111-8111-111111111111',
   user_id: '22222222-2222-4222-8222-222222222222',
@@ -44,8 +42,10 @@ function respond(route: Route, data: unknown) {
 }
 
 test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
-  test.beforeEach(async ({ page, request }, testInfo) => {
-    if (!(await ensureAuthSession(request, page, testInfo))) return
+  test.beforeEach(async ({ page }) => {
+    // These UI-contract tests mock every relevant Agent endpoint and only need
+    // a token-shaped value to pass the client-side route guard.
+    await page.context().addInitScript(() => localStorage.setItem('user_token', 'e2e-mocked-agent-token'))
   })
 
   test('列表加载 -> 确认执行 -> 撤销，保留旅行日志入口', async ({ page }) => {
@@ -98,6 +98,110 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     await page.locator('.el-message-box').getByRole('button', { name: '确认撤销' }).click()
     await expect(page.getByText('修改已撤销')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看旅行日志' })).toBeVisible()
+  })
+
+  test('相册医生修复计划可调整范围、确认执行并撤销', async ({ page }) => {
+    const repairPlan: any = {
+      ...structuredClone(plan),
+      id: '77777777-7777-4777-8777-777777777777',
+      plan_type: 'album_repair',
+      title: '修复相册：西安秋日',
+      summary: '准备修复 1 个相册中的 2 项结构问题。',
+      preview: {
+        mode: 'repair',
+        repair_count: 2,
+        candidate_count: 2,
+        affected_album_count: 1,
+        selected_repair_ids: ['album_count:album-1', 'album_cover:album-1'],
+        repairs: [
+          { id: 'album_count:album-1', kind: 'album_count', album_id: 'album-1', album_name: '西安秋日', before: 9, after: 3, label: '修正“西安秋日”的照片计数：9 → 3' },
+          { id: 'album_cover:album-1', kind: 'album_cover', album_id: 'album-1', album_name: '西安秋日', before: null, after: 'photo-1', reason: '当前没有封面', label: '为“西安秋日”设置推荐封面' },
+        ],
+        notice: '只修正相册计数和封面引用，不修改原始照片。',
+      },
+    }
+    let current = structuredClone(repairPlan)
+    let patchedIds: string[] = []
+    await page.route('**/api/agent/actions**', async (route) => {
+      const request = route.request()
+      const path = new URL(request.url()).pathname
+      if (request.method() === 'GET' && path === '/api/agent/actions') return respond(route, [current])
+      if (request.method() === 'GET' && path.endsWith(`/${repairPlan.id}`)) return respond(route, current)
+      if (request.method() === 'PATCH' && path.endsWith(`/${repairPlan.id}`)) {
+        patchedIds = JSON.parse(request.postData() || '{}').selected_repair_ids
+        current = { ...current, preview: { ...current.preview, selected_repair_ids: patchedIds, repair_count: patchedIds.length } }
+        return respond(route, current)
+      }
+      if (request.method() === 'POST' && path.endsWith(`/${repairPlan.id}/execute`)) {
+        current = { ...current, status: 'executed', result: { applied_repair_count: patchedIds.length, affected_album_count: 1 } }
+        return respond(route, current)
+      }
+      if (request.method() === 'POST' && path.endsWith(`/${repairPlan.id}/undo`)) {
+        current = { ...current, status: 'undone' }
+        return respond(route, current)
+      }
+      await route.fallback()
+    })
+
+    await page.goto('/agent/actions')
+    await expect(page.getByText('2 / 2 项')).toBeVisible()
+    await page.getByLabel('为“西安秋日”设置推荐封面').uncheck()
+    await expect(page.getByRole('button', { name: '保存选择' })).toBeVisible()
+    await page.getByRole('button', { name: '确认执行' }).click()
+    await page.locator('.el-message-box').getByRole('button', { name: '确认执行' }).click()
+    expect(patchedIds).toEqual(['album_count:album-1'])
+    await expect(page.getByLabel('Agent 操作计划').getByText('已执行', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '打开相册' })).toHaveCount(0)
+
+    await page.getByRole('button', { name: '撤销操作' }).click()
+    await page.locator('.el-message-box').getByRole('button', { name: '确认撤销' }).click()
+    await expect(page.getByText('修改已撤销')).toBeVisible()
+  })
+
+  test('相册医生后台补齐计划展示进度与复检且不提供撤销', async ({ page }) => {
+    const metadataPlan: any = {
+      ...structuredClone(plan),
+      id: '88888888-8888-4888-8888-888888888888',
+      plan_type: 'album_metadata_repair',
+      title: '补齐相册 AI 数据',
+      status: 'executed',
+      preview: {
+        mode: 'metadata_repair',
+        repair_count: 2,
+        candidate_count: 2,
+        photo_count: 5,
+        reversible: false,
+        selected_repair_ids: ['metadata_description', 'metadata_hash'],
+        repairs: [
+          { id: 'metadata_description', kind: 'visual_description', label: '生成缺失的 AI 视觉描述', count: 3, queued_count: 3 },
+          { id: 'metadata_hash', kind: 'file_hash', label: '计算缺失的文件指纹', count: 2, queued_count: 2 },
+        ],
+        notice: '确认后创建后台任务，不修改原始文件。',
+      },
+      result: { queued_item_count: 5, reversible: false },
+    }
+    await page.route('**/api/agent/actions**', async (route) => {
+      const path = new URL(route.request().url()).pathname
+      if (path.endsWith(`/${metadataPlan.id}/progress`)) return respond(route, {
+        plan_id: metadataPlan.id,
+        status: 'completed', total_items: 5, completed_items: 5,
+        remaining_items: 0, failed_tasks: 0, progress_percent: 100,
+        groups: [
+          { kind: 'visual_description', label: '生成缺失的 AI 视觉描述', status: 'completed', total_items: 3, completed_items: 3, remaining_items: 0, active_tasks: 0, failed_tasks: 0 },
+          { kind: 'file_hash', label: '计算缺失的文件指纹', status: 'completed', total_items: 2, completed_items: 2, remaining_items: 0, active_tasks: 0, failed_tasks: 0 },
+        ],
+        recheck: { missing_description: 0, missing_hash: 0 },
+      })
+      if (route.request().method() === 'GET' && path === '/api/agent/actions') return respond(route, [metadataPlan])
+      if (route.request().method() === 'GET' && path.endsWith(`/${metadataPlan.id}`)) return respond(route, metadataPlan)
+      await route.fallback()
+    })
+
+    await page.goto('/agent/actions')
+    await expect(page.getByText('后台补齐')).toBeVisible()
+    await expect(page.getByText('复检完成').first()).toBeVisible()
+    await expect(page.getByText('5 / 5')).toBeVisible()
+    await expect(page.getByRole('button', { name: '撤销操作' })).toHaveCount(0)
   })
 
   test('相册页可一键启动只读相册体检', async ({ page }) => {

@@ -6,7 +6,7 @@
  *   node playwright/e2e-up.mjs up        # 同上
  *   node playwright/e2e-up.mjs down      # 停止并移除容器（保留 volume）
  *
- * 拉起 tests/docker/docker-compose.yml：postgres + server(:8800) + ai(:8801) + frontend(:8082)。
+ * 拉起 tests/docker/docker-compose.yml：postgres + server(:8800) + ai(:8801) + frontend(:3180)。
  * p0 / smoke / all 套件依赖这套已启动的环境（playwright.config.ts 的 webServer 为 undefined）。
  * 由 run-tests.ps1 -Mode docker 预起栈后，run-e2e.mjs full 的 startServices 复用本脚本作为 fallback。
  */
@@ -64,6 +64,6 @@ console.log('Starting E2E environment...')
 compose('up', '-d')
 
 await waitHttpReady('http://localhost:8800/')
-await waitHttpReady('http://localhost:8082/')
+await waitHttpReady('http://localhost:3180/')
 
 console.log('E2E environment is ready.')

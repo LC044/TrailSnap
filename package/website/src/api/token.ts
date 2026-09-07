@@ -11,7 +11,7 @@ export interface AgentToken {
   is_deleted: boolean
 }
 
-export type AgentTokenScope = 'photos:read' | 'albums:read' | 'people:read'
+export type AgentTokenScope = 'photos:read' | 'albums:read' | 'people:read' | 'albums:propose'
 
 export interface CreateTokenData {
   name: string
