@@ -65,7 +65,7 @@ test.describe('P1 - ActionHistory / AgentActionPlanCard @views-coverage', () => 
     })
 
     await page.goto('/agent/actions')
-    await expect(page.getByRole('heading', { name: '操作记录' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Agent 任务中心' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '整理武汉旅行照片' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '整理西安旅行照片' })).toBeVisible()
     await expect(page.getByText('等待确认').first()).toBeVisible()
