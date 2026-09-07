@@ -148,5 +148,10 @@
         "version": "0.13.1",
         "update_info": "- 回收站支持跨页全选、清空、全部恢复和后台进度<br>- 万张照片清理实测由约 22 秒缩短至约 0.9 秒<br>- 人脸聚类改为独立任务并显著降低大型图库的内存占用<br>- 优化全站滚动条与页面滚动体验<br>- 修复回收站异常数据、聚类计数和跨用户人脸匹配问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.13.1"
+    },
+    {
+        "version": "0.14.0",
+        "update_info": "- 相册 Agent 正式上线，支持自然语言检索、旅行发现、人物时光机和回忆侦探<br>- 新增 Agent 任务中心与相册医生修复闭环，方案可预览、确认、重试、取消和撤销<br>- AI 旅行日志支持个性化 HTML、导出、分享、长图和打印 PDF<br>- 新增 MCP、Pi Agent 与受限令牌接入，外部 AI 可安全查询相册<br>- 位置相册新增沉浸式足迹地图和分层 GPS 轨迹",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.14.0"
     }
 ]
