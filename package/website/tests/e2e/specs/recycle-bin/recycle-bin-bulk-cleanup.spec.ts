@@ -201,7 +201,8 @@ test.describe('P1 - 回收站清理优化 @recycle-bin', () => {
     const moreBtn = page.getByRole('button', { name: /加载更多/ });
     await expect(moreBtn).toBeVisible({ timeout: 10_000 });
 
-    await moreBtn.click();
+    // Virtualized list re-renders can detach this button between pointer actionability checks.
+    await moreBtn.dispatchEvent('click');
     // 第二页返回 5 条(<200) => hasMore=false => 按钮消失
     await expect(moreBtn).toBeHidden({ timeout: 10_000 });
     await expect(page.getByText(/已加载 205/)).toBeVisible();
