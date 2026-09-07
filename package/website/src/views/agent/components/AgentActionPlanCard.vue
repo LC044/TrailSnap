@@ -10,7 +10,7 @@
 
     <div class="border-t border-slate-200 px-3 py-3 dark:border-slate-700">
       <div v-if="isRepairPlan" class="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-        <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">操作</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ isMetadataRepair ? '后台补齐' : '结构修复' }}</strong></div>
+        <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">操作</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ repairOperationLabel }}</strong></div>
         <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">已选择</span><strong class="mt-0.5 block text-slate-800 dark:text-slate-100">{{ selectedRepairIds.length }} / {{ repairs.length }} 项</strong></div>
         <div class="rounded-lg bg-white p-2 dark:bg-slate-800"><span class="block text-slate-500 dark:text-slate-400">原文件</span><strong class="mt-0.5 block text-primary-600">不会修改</strong></div>
       </div>
@@ -26,6 +26,7 @@
         <label v-for="repair in repairs" :key="repair.id" class="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white p-2.5 hover:border-primary-500/50 dark:border-slate-700 dark:bg-slate-800">
           <input v-model="selectedRepairIds" type="checkbox" :value="repair.id" class="h-4 w-4 shrink-0 accent-[var(--theme-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" />
           <img v-if="repair.thumbnail_url" :src="toServerUrl(repair.thumbnail_url)" class="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" alt="推荐封面" />
+          <img v-if="repair.keeper_thumbnail_url" :src="toServerUrl(repair.keeper_thumbnail_url)" class="h-11 w-11 shrink-0 rounded-lg border-2 border-primary-500 object-cover" loading="lazy" alt="将保留的重复照片" />
           <span class="min-w-0 flex-1">
             <strong class="block text-xs text-slate-800 dark:text-slate-100">{{ repair.label }}</strong>
             <span class="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">{{ repairDetail(repair) }}</span>
@@ -43,6 +44,7 @@
         <div class="mt-2 space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
           <div v-for="group in progress.groups" :key="group.kind" class="flex justify-between gap-3"><span>{{ group.label }}</span><span>{{ group.completed_items }}/{{ group.total_items }} · {{ groupStatus(group.status) }}</span></div>
         </div>
+        <p v-if="progress.cancelled_tasks" class="mt-2 text-[11px] text-amber-700 dark:text-amber-300">已取消 {{ progress.cancelled_tasks }} 个尚未开始的任务；已运行的任务会正常结束。</p>
       </div>
 
       <div v-if="samplePhotos.length" class="mt-3 flex gap-1.5 overflow-x-auto pb-1">
@@ -59,6 +61,9 @@
         <button v-if="current.status === 'proposed'" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800" @click="reject"><XCircle class="h-3.5 w-3.5" />拒绝方案</button>
         <button v-if="current.status === 'executed' && !isRepairPlan" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAlbum"><ExternalLink class="h-3.5 w-3.5" />打开相册</button>
         <button v-if="current.status === 'executed' && current.preview.reversible !== false" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-white disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="undo"><Undo2 class="h-3.5 w-3.5" />撤销操作</button>
+        <button v-if="isMetadataRepair && progress?.can_retry" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="retryTasks"><RotateCcw class="h-3.5 w-3.5" />重试未完成项</button>
+        <button v-if="isMetadataRepair && progress?.can_cancel" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-amber-400 px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 disabled:opacity-60 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="cancelTasks"><Square class="h-3.5 w-3.5" />取消未开始任务</button>
+        <button v-if="isMetadataRepair && progress?.status === 'completed' && progress?.has_more" type="button" :disabled="busy" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-500/40 px-3 py-2 text-xs text-primary-600 hover:bg-primary-500/10 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="continueNextBatch"><StepForward class="h-3.5 w-3.5" />生成下一批计划</button>
         <button v-if="artifactUrl" type="button" class="inline-flex items-center gap-1.5 rounded-lg border border-primary-500/40 px-3 py-2 text-xs text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="router.push(artifactUrl)"><BookOpen class="h-3.5 w-3.5" />查看旅行日志</button>
         <span v-if="current.status === 'undone'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><Undo2 class="h-3.5 w-3.5" />修改已撤销</span>
         <span v-if="current.status === 'rejected'" class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"><XCircle class="h-3.5 w-3.5" />方案已拒绝，未执行任何修改</span>
@@ -71,7 +76,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, Save, Undo2, Wrench, XCircle } from 'lucide-vue-next';
+import { BookOpen, CircleCheck, ExternalLink, FolderPlus, LoaderCircle, RotateCcw, Save, Square, StepForward, Undo2, Wrench, XCircle } from 'lucide-vue-next';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
 import { agentApi, type AgentActionPlan, type AgentRepairProgress } from '@/api/agent';
@@ -86,7 +91,10 @@ let progressTimer: ReturnType<typeof setTimeout> | null = null;
 const router = useRouter();
 const isRepair = computed(() => current.value.plan_type === 'album_repair');
 const isMetadataRepair = computed(() => current.value.plan_type === 'album_metadata_repair');
-const isRepairPlan = computed(() => isRepair.value || isMetadataRepair.value);
+const isContextRepair = computed(() => current.value.plan_type === 'photo_context_repair');
+const isCleanup = computed(() => current.value.plan_type === 'album_cleanup');
+const isRepairPlan = computed(() => isRepair.value || isMetadataRepair.value || isContextRepair.value || isCleanup.value);
+const repairOperationLabel = computed(() => isMetadataRepair.value ? '后台补齐' : isContextRepair.value ? '时间地点修复' : isCleanup.value ? '安全清理' : '结构修复');
 const repairs = computed(() => current.value.preview?.repairs || []);
 const samplePhotos = computed(() => current.value.preview?.sample_photos || []);
 const tagsLabel = computed(() => current.value.preview?.tags?.length ? current.value.preview.tags.join('、') : '不添加');
@@ -116,6 +124,15 @@ const repairDetail = (repair: NonNullable<AgentActionPlan['preview']['repairs']>
   if (repair.kind === 'album_count') return `记录值 ${repair.before}，实际值 ${repair.after}`;
   if (repair.kind === 'visual_description') return `本次处理 ${repair.queued_count || 0} 张，体检发现 ${repair.count || 0} 张`;
   if (repair.kind === 'file_hash') return `本次计算 ${repair.queued_count || 0} 张，体检发现 ${repair.count || 0} 张`;
+  if (repair.kind === 'photo_time') return `${repair.evidence || '文件名时间'}；建议值 ${String(repair.after || '')}`;
+  if (repair.kind === 'photo_location') {
+    const location = typeof repair.after === 'object' && repair.after
+      ? repair.after.address || [repair.after.country, repair.after.province, repair.after.city, repair.after.district].filter(Boolean).join(' ')
+      : '';
+    return `${repair.evidence || '相邻照片地点一致'}；建议地点 ${location || '精确 GPS 坐标'}`;
+  }
+  if (repair.kind === 'duplicate_photo') return `${repair.reason || '文件指纹完全一致'}；左侧移入回收站，描边照片保留`;
+  if (repair.kind === 'empty_album') return repair.reason || '相册中没有照片，只移除相册记录';
   return `${repair.reason || '封面异常'}，将使用推荐照片`;
 };
 
@@ -152,14 +169,25 @@ const execute = async () => {
     const message = isRepairPlan.value
       ? isMetadataRepair.value
         ? `将为选中的 ${selectedRepairIds.value.length} 类问题创建后台任务。写入的 AI 描述和文件指纹不可撤销，但可重新生成。`
+        : isCleanup.value
+          ? `将执行选中的 ${selectedRepairIds.value.length} 项安全清理。重复照片只进入回收站，空相册只移除记录，不删除磁盘原文件，执行后可撤销。`
+        : isContextRepair.value
+          ? `将按逐张证据修复选中的 ${selectedRepairIds.value.length} 项拍摄时间或地点。只更新数据库，不改写原文件，执行后可撤销。`
         : `将修复选中的 ${selectedRepairIds.value.length} 项相册结构问题。不会修改原始照片，执行后可撤销。`
       : `将按计划整理 ${current.value.preview.photo_count || 0} 张照片。不会删除、移动或重命名原文件。`;
-    await ElMessageBox.confirm(message, isRepairPlan.value ? '确认修复相册' : '确认执行相册整理', { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' });
+    if (isCleanup.value) {
+      await ElMessageBox.prompt(`${message}\n请输入“清理”以确认。`, '高风险操作确认', {
+        type: 'error', confirmButtonText: '确认安全清理', cancelButtonText: '取消',
+        inputPattern: /^清理$/, inputErrorMessage: '请输入“清理”', inputPlaceholder: '清理'
+      });
+    } else {
+      await ElMessageBox.confirm(message, isRepairPlan.value ? '确认修复相册' : '确认执行相册整理', { type: 'warning', confirmButtonText: '确认执行', cancelButtonText: '取消' });
+    }
     busy.value = true;
     if (isRepairPlan.value && selectionDirty.value) await persistSelection();
     const response: any = await agentApi.executeActionPlan(current.value.id);
     setCurrent(response.data);
-    ElMessage.success(isMetadataRepair.value ? '后台修复任务已创建' : isRepair.value ? '相册结构修复完成，可随时撤销' : '相册整理完成，可随时撤销');
+    ElMessage.success(isMetadataRepair.value ? '后台修复任务已创建' : isCleanup.value ? '安全清理完成，重复照片已进入回收站，可撤销' : isContextRepair.value ? '时间与地点修复完成，可随时撤销' : isRepair.value ? '相册结构修复完成，可随时撤销' : '相册整理完成，可随时撤销');
     if (isMetadataRepair.value) void loadProgress();
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('执行计划失败');
@@ -180,13 +208,56 @@ const reject = async () => {
 
 const undo = async () => {
   try {
-    await ElMessageBox.confirm(isRepair.value ? '撤销本次计数和封面修复？原始照片不会受影响。' : '撤销本次相册关系、封面、简介和标签修改？原始照片不会受影响。', '撤销操作', { confirmButtonText: '确认撤销', cancelButtonText: '取消' });
+    const message = isContextRepair.value
+      ? '撤销本次拍摄时间和地点修复？只会恢复数据库中的原值。'
+      : isCleanup.value
+        ? '撤销本次安全清理？重复照片将离开回收站，空相册会按原信息恢复。'
+      : isRepair.value
+        ? '撤销本次计数和封面修复？原始照片不会受影响。'
+        : '撤销本次相册关系、封面、简介和标签修改？原始照片不会受影响。';
+    await ElMessageBox.confirm(message, '撤销操作', { confirmButtonText: '确认撤销', cancelButtonText: '取消' });
     busy.value = true;
     const response: any = await agentApi.undoActionPlan(current.value.id);
     setCurrent(response.data);
     ElMessage.success('操作已撤销');
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error('撤销失败');
+  } finally { busy.value = false; }
+};
+
+const retryTasks = async () => {
+  try {
+    busy.value = true;
+    const response: any = await agentApi.retryRepairTasks(current.value.id);
+    setCurrent(response.data);
+    ElMessage.success('未完成项已重新加入后台队列');
+    await loadProgress();
+  } catch {
+    ElMessage.error('没有可重试的任务，建议先复检');
+  } finally { busy.value = false; }
+};
+
+const cancelTasks = async () => {
+  try {
+    await ElMessageBox.confirm('只取消该计划中尚未开始的任务，正在运行的任务会正常结束。', '取消后台任务', { type: 'warning', confirmButtonText: '取消未开始任务', cancelButtonText: '返回' });
+    busy.value = true;
+    const response: any = await agentApi.cancelRepairTasks(current.value.id);
+    ElMessage.success(`已取消 ${response.data.cancelled_count || 0} 个尚未开始的任务`);
+    await loadProgress();
+  } catch (error: any) {
+    if (error !== 'cancel' && error !== 'close') ElMessage.error('取消后台任务失败');
+  } finally { busy.value = false; }
+};
+
+const continueNextBatch = async () => {
+  try {
+    busy.value = true;
+    const response: any = await agentApi.continueRepairPlan(current.value.id);
+    progress.value = null;
+    setCurrent(response.data);
+    ElMessage.success('下一批计划已生成，请检查范围后确认');
+  } catch {
+    ElMessage.info('复检后已没有需要继续处理的数据');
   } finally { busy.value = false; }
 };
 

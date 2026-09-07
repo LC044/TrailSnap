@@ -696,6 +696,10 @@ class TaskWorker:
             db = SessionLocal()
             db.expire_on_commit = False  # Prevent lazy loading issues after intermediate commits
             tasks = crud_task.get_tasks_by_ids(db, task_ids)
+            # Rows may have been cancelled after they were prefetched into an
+            # in-memory queue. Recheck the persisted state immediately before
+            # execution so cancelling a pending Agent task is effective.
+            tasks = [task for task in tasks if task.status in {TaskStatus.PENDING, TaskStatus.PENDING.value}]
             if not tasks:
                 return
             strategy = TaskStrategyFactory.get_strategy(task_type)

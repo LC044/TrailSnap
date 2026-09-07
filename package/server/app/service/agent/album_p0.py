@@ -417,9 +417,16 @@ def album_health_report(
 
     # Keep diagnosis read-only while exposing stable repair IDs that can be passed
     # to the separately confirmed album-repair plan.
-    from app.service.agent.actions import find_album_metadata_repair_candidates, find_album_repair_candidates
+    from app.service.agent.actions import (
+        find_album_cleanup_candidates,
+        find_album_metadata_repair_candidates,
+        find_album_repair_candidates,
+        find_photo_context_repair_candidates,
+    )
     repair_candidates = find_album_repair_candidates(db, owner_id, album.id if album else None)
     metadata_repair_candidates = find_album_metadata_repair_candidates(db, owner_id, album.id if album else None)
+    context_repair_candidates = find_photo_context_repair_candidates(db, owner_id, album.id if album else None)
+    cleanup_candidates = find_album_cleanup_candidates(db, owner_id, album.id if album else None)
     repair_by_id = {item["id"]: item for item in repair_candidates}
     metadata_by_kind = {item["kind"]: item for item in metadata_repair_candidates}
     metadata_issue_map = {
@@ -435,6 +442,31 @@ def album_health_report(
                 "eligible_repair_count": candidate["queued_count"],
                 "repair_truncated": candidate["truncated"],
             })
+        context_kind = {"missing_time": "photo_time", "missing_location": "photo_location"}.get(item["key"])
+        context_matches = [candidate for candidate in context_repair_candidates if candidate["kind"] == context_kind]
+        if context_matches:
+            item.update({
+                "repairable": True,
+                "eligible_repair_count": len(context_matches),
+                "repair_ids": [candidate["id"] for candidate in context_matches],
+                "repair_notice": "仅包含满足保守证据规则的逐张建议，仍需用户确认。",
+            })
+        if item["key"] == "exact_duplicates":
+            duplicate_cleanup = [candidate for candidate in cleanup_candidates if candidate["kind"] == "duplicate_photo"]
+            if duplicate_cleanup:
+                item.update({
+                    "repairable": True,
+                    "eligible_repair_count": len(duplicate_cleanup),
+                    "cleanup_repair_ids": [candidate["id"] for candidate in duplicate_cleanup],
+                    "repair_notice": "只移入回收站，不删除磁盘原文件；需高风险确认。",
+                })
+    empty_cleanup_by_album = {
+        item["album_id"]: item for item in cleanup_candidates if item["kind"] == "empty_album"
+    }
+    for item in empty_albums:
+        cleanup = empty_cleanup_by_album.get(item["album_id"])
+        if cleanup:
+            item.update({"repairable": True, "cleanup_repair_id": cleanup["id"]})
     for item in count_mismatches:
         repair = repair_by_id.get(f"album_count:{item['album_id']}")
         if repair:
@@ -469,8 +501,10 @@ def album_health_report(
             "unassigned_photo_count": unassigned_count,
             "safe_repair_count": len(repair_candidates),
             "metadata_repair_type_count": len(metadata_repair_candidates),
+            "context_repair_count": len(context_repair_candidates),
+            "cleanup_candidate_count": len(cleanup_candidates),
         },
-        "notice": "这是只读体检。计数、封面、AI 描述和文件指纹问题可生成独立修复计划，必须由用户确认；Agent 不会删除原始照片。",
+        "notice": "这是只读体检。结构、时间、地点和 AI 数据问题可生成独立修复计划；完全重复照片与空相册可生成安全清理计划。所有写操作必须由用户确认，磁盘原文件不会被删除。",
     }
 
 

@@ -122,6 +122,7 @@ async def test_paused_category_still_executes_interactive_task():
     task = MagicMock()
     task.id = "interactive-ocr"
     task.type = TaskType.OCR.value
+    task.status = TaskStatus.PENDING
     task.priority = task_worker.INTERACTIVE_TASK_PRIORITY
     db = MagicMock()
     strategy = MagicMock()

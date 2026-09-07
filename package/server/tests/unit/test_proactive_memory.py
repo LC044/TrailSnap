@@ -60,6 +60,16 @@ def test_build_markdown_contains_all_photo_urls():
     assert "/thumbnail" in md
 
 
+def test_build_recommendations_are_grounded_and_executable():
+    photo_ids = [str(uuid4()), str(uuid4())]
+    recommendations = job._build_recommendations(3, "杭州西湖", photo_ids)
+    assert [item["id"] for item in recommendations] == [
+        "memory_story", "organize_album", "memory_detective"
+    ]
+    assert all(item["prompt"] and item["label"] and item["description"] for item in recommendations)
+    assert all(photo_ids[0] in item["prompt"] for item in recommendations)
+
+
 def test_cron_expression_off_interval_weekly():
     assert ProactiveMemoryScheduleSettings(mode="off").to_cron_expression() is None
     assert ProactiveMemoryScheduleSettings(mode="interval", interval=30).to_cron_expression() == "*/30 * * * *"
@@ -100,6 +110,7 @@ def test_generate_for_user_creates_message_and_seeds_memory():
 
     assert out is True
     m_create.assert_called_once()
+    assert len(m_create.call_args.kwargs["recommendations"]) == 3
     # content 里应包含照片 URL；anchor_date 传入
     _, kwargs_or_args = m_create.call_args
     # 记忆联动：最多沉淀前 3 张

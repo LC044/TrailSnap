@@ -54,6 +54,7 @@
               @command="handleMessageCommand"
               @dropdown-visible="handleDropdownVisibleChange"
               @toggle-reasoning="msg.isReasoningExpanded = !msg.isReasoningExpanded"
+              @run-recommendation="runRecommendation"
             />
 
             <div v-if="isLoading" class="message-wrapper justify-start">
@@ -181,6 +182,7 @@ export interface MessageItem {
   toolEvents?: ToolProgressEvent[];
   artifacts?: AgentArtifactRef[];
   actionPlans?: AgentActionPlan[];
+  recommendations?: Array<{ id: string; label: string; description: string; prompt: string }>;
 }
 
 const activeDropdownIndex = ref<number | null>(null);
@@ -583,6 +585,7 @@ const loadProactiveMessages = async () => {
       role: 'assistant' as const,
       content: m.content,
       isMarkdown: true,
+      recommendations: m.recommendations || [],
     }));
     // 置顶插入到欢迎语之后
     messages.value.splice(1, 0, ...proactiveItems);
@@ -674,6 +677,15 @@ const handleSessionCommand = (command: string, session: AgentSession) => {
   } else if (command === 'delete') {
     deleteSession(session.id);
   }
+};
+
+const runRecommendation = async (prompt: string) => {
+  if (isGenerating.value) {
+    ElMessage.info('当前任务完成后再试');
+    return;
+  }
+  inputMessage.value = prompt;
+  await sendMessage();
 };
 
 const sendMessage = async () => {

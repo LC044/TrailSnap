@@ -11,13 +11,16 @@ from app.db.models.ai_artifact import AIArtifact
 from app.db.models.album import Album, AlbumPhoto
 from app.db.models.image_description import ImageDescription
 from app.db.models.photo import FileType, Photo
+from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.tag import PhotoTag, PhotoTagRelation
-from app.db.models.task import Task
+from app.db.models.task import Task, TaskStatus
 from app.db.models.user import User
 from app.service.agent.actions import (
+    cancel_metadata_repair_tasks, continue_metadata_repair_plan,
     execute_plan, get_owned_plan, mark_plan_failed, propose_album_plan,
-    get_metadata_repair_progress, propose_album_metadata_repair_plan,
-    propose_album_repair_plan, reject_plan, undo_plan, update_repair_plan_selection,
+    get_metadata_repair_progress, propose_album_cleanup_plan, propose_album_metadata_repair_plan,
+    propose_album_repair_plan, propose_photo_context_repair_plan,
+    reject_plan, retry_metadata_repair_tasks, undo_plan, update_repair_plan_selection,
 )
 
 
@@ -330,3 +333,160 @@ def test_metadata_hash_repair_only_targets_selected_album(prepared_db):
     task = db.query(Task).one()
     assert task.payload["photo_ids"] == [str(photos[0].id)]
     assert str(photos[1].id) not in task.payload["photo_ids"]
+
+
+def test_metadata_repair_failed_tasks_can_retry_and_pending_tasks_can_cancel(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    plan = propose_album_metadata_repair_plan(
+        db, owner, session.id, repair_ids=["metadata_description"]
+    )
+    execute_plan(db, owner, plan.id)
+    tasks = db.query(Task).order_by(Task.created_at).all()
+    tasks[0].status = TaskStatus.FAILED
+    tasks[0].error = "model error"
+    db.commit()
+
+    retried = retry_metadata_repair_tasks(db, owner, plan.id)
+    db.refresh(tasks[0])
+    assert retried.result["retry_count"] == 1
+    assert tasks[0].status == TaskStatus.PENDING
+    assert get_metadata_repair_progress(db, owner, plan.id)["can_cancel"] is True
+
+    cancelled = cancel_metadata_repair_tasks(db, owner, plan.id)
+    assert cancelled["cancelled_count"] == 3
+    assert get_metadata_repair_progress(db, owner, plan.id)["cancelled_tasks"] == 3
+    assert get_metadata_repair_progress(db, owner, plan.id)["can_retry"] is True
+
+
+def test_metadata_repair_continue_creates_fresh_confirmable_batch(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    plan = propose_album_metadata_repair_plan(
+        db, owner, session.id, repair_ids=["metadata_hash"]
+    )
+    execute_plan(db, owner, plan.id)
+    for photo in photos:
+        photo.md5 = None
+    db.commit()
+
+    next_plan = continue_metadata_repair_plan(db, owner, plan.id)
+    assert next_plan.id != plan.id
+    assert next_plan.status == "proposed"
+    assert next_plan.operations["selected_repair_ids"] == ["metadata_hash"]
+    assert "上一批" in next_plan.summary
+
+
+def test_photo_time_repair_from_filename_executes_and_undoes(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    photos[0].filename = "IMG_20260901_123456.jpg"
+    photos[0].photo_time = None
+    db.commit()
+
+    repair_id = f"photo_time:{photos[0].id}"
+    plan = propose_photo_context_repair_plan(
+        db, owner, session.id, repair_ids=[repair_id]
+    )
+    assert plan.plan_type == "photo_context_repair"
+    assert plan.preview["reversible"] is True
+    assert plan.preview["repairs"][0]["confidence"] == "high"
+    assert photos[0].photo_time is None
+
+    execute_plan(db, owner, plan.id)
+    db.refresh(photos[0])
+    assert photos[0].photo_time == datetime(2026, 9, 1, 12, 34, 56)
+
+    undo_plan(db, owner, plan.id)
+    db.refresh(photos[0])
+    assert photos[0].photo_time is None
+
+
+def test_photo_location_repair_requires_matching_bridge_and_is_reversible(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    base = datetime(2026, 8, 20, 10, 0, 0)
+    for index, photo in enumerate(photos):
+        photo.photo_time = base + timedelta(minutes=index * 10)
+    db.add_all([
+        PhotoMetadata(
+            photo_id=photos[0].id, latitude=34.2593, longitude=108.9470,
+            country="中国", province="陕西省", city="西安市", address="西安城墙",
+        ),
+        PhotoMetadata(
+            photo_id=photos[2].id, latitude=34.2593, longitude=108.9470,
+            country="中国", province="陕西省", city="西安市", address="西安城墙",
+        ),
+    ])
+    db.commit()
+
+    repair_id = f"photo_location:{photos[1].id}"
+    plan = propose_photo_context_repair_plan(
+        db, owner, session.id, repair_ids=[repair_id]
+    )
+    repair = plan.preview["repairs"][0]
+    assert repair["kind"] == "photo_location"
+    assert "前后照片" in repair["evidence"]
+
+    execute_plan(db, owner, plan.id)
+    metadata = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photos[1].id).one()
+    assert metadata.city == "西安市"
+    assert float(metadata.latitude) == pytest.approx(34.2593)
+
+    undo_plan(db, owner, plan.id)
+    db.refresh(metadata)
+    assert metadata.city is None
+    assert metadata.latitude is None
+
+
+def test_photo_context_repair_rejects_stale_value(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    photos[0].filename = "IMG_20260902_080000.jpg"
+    db.commit()
+    plan = propose_photo_context_repair_plan(db, owner, session.id)
+    photos[0].photo_time = datetime(2026, 9, 2, 9, 0, 0)
+    db.commit()
+    with pytest.raises(ValueError, match="拍摄时间已变化"):
+        execute_plan(db, owner, plan.id)
+
+
+def test_album_cleanup_soft_deletes_duplicates_removes_empty_album_and_undoes(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    photos[0].md5 = photos[1].md5 = "a" * 32
+    kept_album = Album(name="已有相册", type="user", owner_id=owner, num_photos=2)
+    empty_album = Album(name="空相册", type="user", owner_id=owner, num_photos=0)
+    db.add_all([kept_album, empty_album]); db.flush()
+    db.add_all([
+        AlbumPhoto(album_id=kept_album.id, photo_id=photos[0].id),
+        AlbumPhoto(album_id=kept_album.id, photo_id=photos[1].id),
+    ])
+    db.commit()
+
+    plan = propose_album_cleanup_plan(db, owner, session.id)
+    assert plan.preview["destructive"] is True
+    assert plan.preview["reversible"] is True
+    assert {item["kind"] for item in plan.preview["repairs"]} == {"duplicate_photo", "empty_album"}
+
+    executed = execute_plan(db, owner, plan.id)
+    db.refresh(kept_album)
+    assert executed.result["original_files_deleted"] is False
+    assert sum(bool(photo.is_deleted) for photo in photos[:2]) == 1
+    assert kept_album.num_photos == 1
+    assert db.query(Album).filter(Album.id == empty_album.id).first() is None
+
+    undone = undo_plan(db, owner, plan.id)
+    db.refresh(kept_album)
+    assert undone.status == "undone"
+    assert all(not photo.is_deleted for photo in photos[:2])
+    assert kept_album.num_photos == 2
+    assert db.query(Album).filter(Album.id == empty_album.id).one().name == "空相册"
+
+
+def test_album_cleanup_refuses_stale_duplicate_group(prepared_db):
+    db, owner, _, session, photos, _ = prepared_db
+    photos[0].md5 = photos[1].md5 = "b" * 32
+    db.commit()
+    plan = propose_album_cleanup_plan(db, owner, session.id)
+    selected = next(item for item in plan.preview["repairs"] if item["kind"] == "duplicate_photo")
+    update_repair_plan_selection(db, owner, plan.id, [selected["id"]])
+    target = db.query(Photo).filter(Photo.id == selected["photo_id"]).one()
+    target.md5 = "c" * 32
+    db.commit()
+    with pytest.raises(ValueError, match="分组已经变化"):
+        execute_plan(db, owner, plan.id)

@@ -17,7 +17,7 @@ class AlbumActionProposal(BaseModel):
 
 
 class AgentRepairSelectionUpdate(BaseModel):
-    selected_repair_ids: List[str] = Field(min_length=1, max_length=100)
+    selected_repair_ids: List[str] = Field(min_length=1, max_length=500)
 
 
 class AgentActionPlanRead(BaseModel):

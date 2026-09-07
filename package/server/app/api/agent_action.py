@@ -6,6 +6,8 @@ from app.db.models.user import User
 from app.dependencies import BaseResponse, get_db
 from app.schemas.agent_action import AgentActionPlanRead, AgentRepairSelectionUpdate
 from app.service.agent.actions import (
+    cancel_metadata_repair_tasks,
+    continue_metadata_repair_plan,
     execute_plan,
     expire_stale_plans,
     get_owned_plan,
@@ -13,6 +15,7 @@ from app.service.agent.actions import (
     list_owned_plans,
     mark_plan_failed,
     reject_plan,
+    retry_metadata_repair_tasks,
     undo_plan,
     update_repair_plan_selection,
 )
@@ -74,6 +77,43 @@ def get_action_plan_progress(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return BaseResponse.success(data=progress)
+
+
+@router.post("/{plan_id}/retry", summary="重试 Agent 后台修复失败项")
+def retry_action_plan_tasks(
+    plan_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    try:
+        row = retry_metadata_repair_tasks(db, current_user.id, plan_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    TaskManager.get_instance().start_worker_if_needed()
+    return BaseResponse.success(data=_serialize(row))
+
+
+@router.post("/{plan_id}/cancel", summary="取消 Agent 尚未开始的后台修复任务")
+def cancel_action_plan_tasks(
+    plan_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    try:
+        result = cancel_metadata_repair_tasks(db, current_user.id, plan_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return BaseResponse.success(data=result)
+
+
+@router.post("/{plan_id}/continue", summary="生成 Agent 后台修复下一批计划")
+def continue_action_plan(
+    plan_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    try:
+        row = continue_metadata_repair_plan(db, current_user.id, plan_id)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return BaseResponse.success(data=_serialize(row))
 
 
 @router.patch("/{plan_id}", summary="调整 Agent 修复计划范围")

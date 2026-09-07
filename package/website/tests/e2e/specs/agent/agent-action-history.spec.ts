@@ -84,7 +84,7 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     })
 
     await page.goto('/agent/actions')
-    await expect(page.getByRole('heading', { name: '操作记录' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Agent 任务中心' })).toBeVisible()
     await expect(page.getByText('整理相册：西安秋日')).toBeVisible()
     await expect(page.getByRole('button', { name: '查看旅行日志' })).toBeVisible()
 

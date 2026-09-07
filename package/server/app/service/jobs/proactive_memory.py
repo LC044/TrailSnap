@@ -79,6 +79,29 @@ def _build_markdown(greeting: str, user_id: UUID, photo_ids: list[str]) -> str:
     return "\n".join(lines)
 
 
+def _build_recommendations(years: int, location: str, photo_ids: list[str]) -> list[dict]:
+    """Build grounded actions; clicking one still starts a normal Agent turn."""
+    ids = ", ".join(photo_ids)
+    where = location or "这段回忆"
+    return [
+        {
+            "id": "memory_story", "label": "制作回忆故事",
+            "description": "挑选代表照片并生成可编辑的个性化 HTML 回忆页",
+            "prompt": f"请基于这些照片 ID 制作一篇 {years} 年前今日的回忆故事：{ids}。先读取照片上下文并挑选代表照片，再创建作品草稿和个性化 HTML 页面；不要虚构照片里没有的信息。",
+        },
+        {
+            "id": "organize_album", "label": "整理成相册",
+            "description": "生成相册名称、封面和标签方案，确认后再写入",
+            "prompt": f"请把这些照片整理成一个“{where}”主题的普通相册：{ids}。先分析内容、推荐封面和标签，再生成待确认的相册整理计划，不要替我执行。",
+        },
+        {
+            "id": "memory_detective", "label": "追查同段旅程",
+            "description": "以日期、地点和人物线索寻找同一事件的更多照片",
+            "prompt": f"请加载 memory-detective Skill，以这些照片为种子继续寻找同一段旅程或事件的照片：{ids}。结合时间、地点、人物和画面线索给出带证据的候选，不要修改相册。",
+        },
+    ]
+
+
 def _generate_for_user(db, user: User, today: datetime, cfg) -> bool:
     """给单个用户生成今天的主动消息。返回是否生成了内容。"""
     anchor_date = today.strftime("%Y-%m-%d")
@@ -116,7 +139,10 @@ def _generate_for_user(db, user: User, today: datetime, cfg) -> bool:
         greeting = _template_greeting(years, location)
 
     content = _build_markdown(greeting, user.id, photo_ids)
-    agent_crud.create_proactive_message(db, user.id, content, anchor_date)
+    recommendations = _build_recommendations(years, location, photo_ids)
+    agent_crud.create_proactive_message(
+        db, user.id, content, anchor_date, recommendations=recommendations
+    )
 
     # 沉淀高分照片为长期记忆
     try:
