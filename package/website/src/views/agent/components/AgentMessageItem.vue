@@ -44,6 +44,12 @@
             <ChevronRight class="h-4 w-4 text-slate-400 dark:text-slate-500" />
           </button>
           <AgentActionPlanCard v-for="plan in msg.actionPlans" :key="plan.id" :plan="plan" />
+          <div v-if="msg.recommendations?.length" class="mt-3 grid gap-2 sm:grid-cols-3" aria-label="回忆推荐操作">
+            <button v-for="item in msg.recommendations" :key="item.id" type="button" class="rounded-xl border border-primary-500/30 bg-slate-50 p-3 text-left transition hover:border-primary-500 hover:bg-primary-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-slate-900 dark:hover:bg-slate-700" @click="emit('run-recommendation', item.prompt)">
+              <span class="flex items-center gap-1.5 text-xs font-medium text-primary-600"><Sparkles class="h-3.5 w-3.5" />{{ item.label }}</span>
+              <span class="mt-1 block text-[11px] leading-4 text-slate-500 dark:text-slate-400">{{ item.description }}</span>
+            </button>
+          </div>
         </div>
         
         <!-- Message Actions Space Placeholder -->
@@ -96,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, ChevronDown, LoaderCircle, CircleCheck, CircleAlert, NotebookText, ChevronRight } from 'lucide-vue-next';
+import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, ChevronDown, LoaderCircle, CircleCheck, CircleAlert, NotebookText, ChevronRight, Sparkles } from 'lucide-vue-next';
 import { useUserStore } from '@/stores/user';
 import { toServerUrl } from '@/config/server';
 import { useRouter } from 'vue-router';
@@ -112,6 +118,8 @@ const toolLabel = (name?: string) => ({
   get_travel_timeline: '整理旅行时间线', view_photos: '查看候选照片', create_contact_sheet: '生成联系表',
   select_representative_photos: '挑选代表照片', create_artifact_draft: '创建旅行日志',
   propose_album_organization: '生成相册整理计划',
+  propose_album_repairs: '生成结构修复计划', propose_album_metadata_repairs: '生成后台补齐计划',
+  propose_photo_context_repairs: '生成时间地点修复计划', propose_album_cleanup: '生成安全清理计划',
 }[name || ''] || name || '执行工具');
 
 interface MessageItem {
@@ -124,6 +132,7 @@ interface MessageItem {
   toolEvents?: ToolProgressEvent[];
   artifacts?: AgentArtifactRef[];
   actionPlans?: AgentActionPlan[];
+  recommendations?: Array<{ id: string; label: string; description: string; prompt: string }>;
 }
 
 const props = defineProps<{
@@ -145,6 +154,7 @@ const emit = defineEmits<{
   (e: 'command', command: string, msg: MessageItem, index: number): void;
   (e: 'dropdown-visible', visible: boolean, index: number): void;
   (e: 'toggle-reasoning'): void;
+  (e: 'run-recommendation', prompt: string): void;
 }>();
 </script>
 

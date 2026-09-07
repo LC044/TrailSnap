@@ -29,7 +29,13 @@ from app.service.agent.album_p0 import (
     travel_timeline, trip_tickets,
 )
 from app.service.agent.skills import get_skill_catalog, load_skill
-from app.service.agent.actions import propose_album_metadata_repair_plan, propose_album_plan, propose_album_repair_plan
+from app.service.agent.actions import (
+    propose_album_cleanup_plan,
+    propose_album_metadata_repair_plan,
+    propose_album_plan,
+    propose_album_repair_plan,
+    propose_photo_context_repair_plan,
+)
 
 # 聚合摘要每类分布返回的 top-N 条目数
 SUMMARY_TOP_N = 8
@@ -682,6 +688,56 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
             }}, ensure_ascii=False)
 
     @tool
+    def propose_photo_context_repairs(
+        album_id: Optional[str] = None,
+        repair_ids: Optional[List[str]] = None,
+        summary: Optional[str] = None,
+    ) -> str:
+        """为缺失拍摄时间或地点的照片生成逐张、待确认、可撤销的修复计划。
+
+        repair_ids 使用 inspect_album_health 返回的 repair_ids。时间只从可明确解析的文件名恢复；
+        地点只在同一拍摄片段前后照片的精确 GPS 或地址一致时建议。工具只生成预览，
+        用户必须检查每张照片的证据并在计划卡片中确认，不会改写原文件 EXIF。
+        """
+        with SessionLocal() as db:
+            try:
+                row = propose_photo_context_repair_plan(
+                    db, user_id, session_id=session_id, album_id=album_id,
+                    repair_ids=repair_ids, summary=summary,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"action_plan": {
+                "id": str(row.id), "plan_type": row.plan_type, "title": row.title,
+                "summary": row.summary, "status": row.status, "preview": row.preview,
+            }}, ensure_ascii=False)
+
+    @tool
+    def propose_album_cleanup(
+        album_id: Optional[str] = None,
+        repair_ids: Optional[List[str]] = None,
+        summary: Optional[str] = None,
+    ) -> str:
+        """为完全重复照片和空普通相册生成待确认、可撤销的安全清理计划。
+
+        repair_ids 使用 inspect_album_health 返回的 cleanup_repair_ids。重复照片只会进入
+        TrailSnap 回收站，空相册只移除相册记录；不会删除磁盘文件。必须让用户逐项复核并
+        在高风险确认框中输入“清理”，不得替用户确认。
+        """
+        with SessionLocal() as db:
+            try:
+                row = propose_album_cleanup_plan(
+                    db, user_id, session_id=session_id, album_id=album_id,
+                    repair_ids=repair_ids, summary=summary,
+                )
+            except ValueError as exc:
+                return json.dumps({"error": str(exc)}, ensure_ascii=False)
+            return json.dumps({"action_plan": {
+                "id": str(row.id), "plan_type": row.plan_type, "title": row.title,
+                "summary": row.summary, "status": row.status, "preview": row.preview,
+            }}, ensure_ascii=False)
+
+    @tool
     def investigate_memory(
         query: str,
         start_date: Optional[str] = None,
@@ -848,7 +904,7 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         get_photo_tags_tool,
         get_photo_persons_tool,
         list_skills, load_skill_tool, search_photos_v2, get_photo_context,
-        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, propose_album_repairs, propose_album_metadata_repairs, investigate_memory, get_person_timeline, view_photos,
+        search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, propose_album_repairs, propose_album_metadata_repairs, propose_photo_context_repairs, propose_album_cleanup, investigate_memory, get_person_timeline, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
         get_artifact_context, save_artifact_html_page, propose_album_organization,
     ]

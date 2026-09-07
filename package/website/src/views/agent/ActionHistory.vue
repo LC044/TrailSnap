@@ -3,8 +3,8 @@
     <header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p class="text-sm font-medium text-primary-600">AI 安全与审计</p>
-        <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">操作记录</h1>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">查看 Agent 提议、执行和撤销过的相册修改。</p>
+        <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">Agent 任务中心</h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">查看待确认操作、后台进度、失败重试、安全清理与撤销记录。</p>
       </div>
       <button type="button" class="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800" @click="loadPlans">
         <RefreshCw class="mr-1 inline h-4 w-4" />刷新

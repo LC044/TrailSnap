@@ -245,6 +245,7 @@ def get_proactive_messages(
             "id": m.id,
             "content": m.content,
             "anchor_date": (m.content_ext or {}).get("anchor_date"),
+            "recommendations": (m.content_ext or {}).get("recommendations") or [],
             "created_at": m.created_at,
         }
         for m in msgs

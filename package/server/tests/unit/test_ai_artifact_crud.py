@@ -10,6 +10,7 @@ from app.db.base import Base
 from app.db.models.ai_artifact import AIArtifact
 from app.db.models.user import User
 from app.schemas.ai_artifact import AIArtifactUpdate
+from app.api import ai_artifact as artifact_api
 
 pytestmark = [pytest.mark.smoke]
 
@@ -97,3 +98,26 @@ def test_update_only_changes_supplied_fields_and_bumps_version(db):
     assert published.title == "新标题"
     assert published.status == "published"
     assert published.version == 3
+
+
+def test_portable_html_embeds_owned_thumbnail_and_blocks_network(db, tmp_path, monkeypatch):
+    owner = _user(db, "artifact-export-owner")
+    photo_id = uuid4()
+    artifact = _artifact(owner.id, "离线故事", datetime(2026, 9, 5, 8, 0, 0))
+    artifact.source_photo_ids = [str(photo_id)]
+    artifact.html_content = f'<html><head></head><body><img src="/api/medias/{owner.id}/{photo_id}/thumbnail?size=medium"></body></html>'
+    image_path = tmp_path / "thumb.jpg"
+    image_path.write_bytes(b"jpeg-bytes")
+    monkeypatch.setattr(artifact_api, "_get_thumbnail_path", lambda *_args: str(image_path))
+
+    exported = artifact_api._portable_html(artifact, db)
+    assert "data:image/jpeg;base64," in exported
+    assert str(photo_id) not in exported
+    assert "connect-src 'none'" in exported
+    assert "no-referrer" in exported
+
+
+def test_share_digest_is_stable_without_storing_plain_secret():
+    digest = artifact_api._share_digest("secret-token")
+    assert digest == artifact_api._share_digest("secret-token")
+    assert digest != "secret-token"

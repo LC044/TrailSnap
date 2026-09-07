@@ -199,7 +199,7 @@ def test_create_proactive_message_sets_fields_and_anchor_date():
     added = db.add.call_args[0][0]
     assert added.role == "assistant"
     assert added.content_type == agent_crud.PROACTIVE_CONTENT_TYPE
-    assert added.content_ext == {"anchor_date": "2026-08-20", "read": False}
+    assert added.content_ext == {"anchor_date": "2026-08-20", "read": False, "recommendations": []}
     db.commit.assert_called_once()
 
 

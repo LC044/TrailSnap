@@ -245,7 +245,8 @@ def has_proactive_for_date(db: Session, user_id: Union[str, UUID], anchor_date: 
     )
 
 def create_proactive_message(
-    db: Session, user_id: Union[str, UUID], content: str, anchor_date: str
+    db: Session, user_id: Union[str, UUID], content: str, anchor_date: str,
+    recommendations: list[dict] | None = None,
 ) -> AgentMessage:
     """写入一条主动消息（content 为可直接渲染的 Markdown）。"""
     session = get_or_create_proactive_session(db, user_id)
@@ -254,7 +255,10 @@ def create_proactive_message(
         role="assistant",
         content=content,
         content_type=PROACTIVE_CONTENT_TYPE,
-        content_ext={"anchor_date": anchor_date, "read": False},
+        content_ext={
+            "anchor_date": anchor_date, "read": False,
+            "recommendations": recommendations or [],
+        },
     )
     db.add(msg)
     db.commit()

@@ -85,7 +85,7 @@ export interface AgentActionPlan {
   error_message?: string | null;
   operations?: Record<string, any>;
   preview: {
-    mode?: 'create' | 'update' | 'repair' | 'metadata_repair';
+    mode?: 'create' | 'update' | 'repair' | 'metadata_repair' | 'context_repair' | 'cleanup';
     album_name?: string;
     current_album_name?: string | null;
     photo_count?: number;
@@ -103,22 +103,28 @@ export interface AgentActionPlan {
     reversible?: boolean;
     repairs?: Array<{
       id: string;
-      kind: 'album_count' | 'album_cover' | 'visual_description' | 'file_hash';
+      kind: 'album_count' | 'album_cover' | 'visual_description' | 'file_hash' | 'photo_time' | 'photo_location' | 'duplicate_photo' | 'empty_album';
+      photo_id?: string;
       album_id?: string;
       album_name?: string;
-      before?: number | string | null;
-      after?: number | string;
+      before?: number | string | Record<string, any> | null;
+      after?: number | string | Record<string, any>;
       label: string;
       reason?: string;
       thumbnail_url?: string;
+      keeper_thumbnail_url?: string;
+      keeper_photo_id?: string;
+      md5?: string;
       count?: number;
       queued_count?: number;
       truncated?: boolean;
       photo_ids?: string[];
       sample_photos?: Array<{ photo_id: string; thumbnail_url: string }>;
+      confidence?: 'high' | 'medium' | 'low' | string;
+      evidence?: string;
     }>;
   };
-  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null; applied_repair_count?: number; affected_album_count?: number; affected_album_ids?: string[]; task_ids?: string[]; queued_item_count?: number; reversible?: boolean } | null;
+  result?: { album_id?: string; album_url?: string; album_name?: string; added_photo_count?: number; tag_relation_count?: number; artifact_id?: string | null; artifact_url?: string | null; applied_repair_count?: number; affected_album_count?: number; affected_album_ids?: string[]; affected_photo_count?: number; task_ids?: string[]; queued_item_count?: number; soft_deleted_photo_count?: number; removed_empty_album_count?: number; original_files_deleted?: boolean; reversible?: boolean } | null;
   created_at?: string;
   updated_at?: string;
   expires_at?: string | null;
@@ -134,7 +140,11 @@ export interface AgentRepairProgress {
   completed_items: number;
   remaining_items: number;
   failed_tasks: number;
+  cancelled_tasks: number;
   progress_percent: number;
+  can_retry: boolean;
+  can_cancel: boolean;
+  has_more: boolean;
   groups: Array<{
     kind: string;
     label: string;
@@ -144,6 +154,7 @@ export interface AgentRepairProgress {
     remaining_items: number;
     active_tasks: number;
     failed_tasks: number;
+    cancelled_tasks: number;
   }>;
   recheck: { missing_description: number; missing_hash: number };
 }
@@ -155,6 +166,12 @@ export interface ProactiveMessage {
   content: string;
   anchor_date: string | null;
   created_at: string;
+  recommendations: Array<{
+    id: string;
+    label: string;
+    description: string;
+    prompt: string;
+  }>;
 }
 
 export interface ProactiveResult {
@@ -310,6 +327,24 @@ export const agentApi = {
   },
   getRepairProgress(planId: string) {
     return request.get<{ code: number; data: AgentRepairProgress }>(`/api/agent/actions/${planId}/progress`);
+  },
+  downloadArtifactHtml(artifactId: string) {
+    return request.get(`/api/agent/artifacts/${artifactId}/export/html`, { responseType: 'blob' });
+  },
+  shareArtifact(artifactId: string) {
+    return request.post<{ code: number; data: { share_path: string } }>(`/api/agent/artifacts/${artifactId}/share`);
+  },
+  revokeArtifactShare(artifactId: string) {
+    return request.delete<{ code: number; data: { revoked: boolean } }>(`/api/agent/artifacts/${artifactId}/share`);
+  },
+  retryRepairTasks(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/retry`);
+  },
+  cancelRepairTasks(planId: string) {
+    return request.post<{ code: number; data: { plan_id: string; cancelled_count: number } }>(`/api/agent/actions/${planId}/cancel`);
+  },
+  continueRepairPlan(planId: string) {
+    return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/continue`);
   },
   rejectActionPlan(planId: string) {
     return request.post<{ code: number; data: AgentActionPlan }>(`/api/agent/actions/${planId}/reject`);
