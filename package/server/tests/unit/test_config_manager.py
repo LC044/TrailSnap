@@ -308,6 +308,48 @@ def test_merge_user_settings_strips_legacy_ai_settings():
     assert cfg.ai.analysis_model_name == "M"
 
 
+def test_merge_user_settings_upgrades_model_names_to_capability_configs():
+    cfg = config_manager.merge_user_settings({
+        "ai": {
+            "connections": [{
+                "id": "remote",
+                "provider": "OpenAI",
+                "api_base": "https://example.test/v1",
+                "api_key": "secret",
+                "model_names": ["model-a"],
+                "enable": True,
+            }]
+        }
+    })
+    remote = next(c for c in cfg.ai.connections if c.id == "remote")
+    assert remote.models[0].model_name == "model-a"
+    assert remote.models[0].context_window == 128000
+    assert remote.models[0].reasoning_levels == ["none", "low", "medium", "high"]
+
+
+def test_merge_user_settings_keeps_structured_models_and_legacy_names_in_sync():
+    cfg = config_manager.merge_user_settings({
+        "ai": {
+            "connections": [{
+                "id": "remote",
+                "models": [{
+                    "model_name": "reasoner",
+                    "display_name": "Reasoner",
+                    "context_window": 512000,
+                    "reasoning_levels": ["low", "high", "max"],
+                }],
+            }],
+            "analysis_reasoning_effort": "high",
+            "chat_reasoning_effort": "max",
+        }
+    })
+    remote = next(c for c in cfg.ai.connections if c.id == "remote")
+    assert remote.model_names == ["reasoner"]
+    assert remote.models[0].context_window == 512000
+    assert cfg.ai.analysis_reasoning_effort == "high"
+    assert cfg.ai.chat_reasoning_effort == "max"
+
+
 def test_get_default_config_returns_serializable_dict():
     """``get_default_config`` is used by the settings export endpoint; the
     dict form must round-trip through ``AppSettings`` cleanly."""

@@ -243,9 +243,9 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             max_retries=0,
             max_completion_tokens=4096,
             extra_body={
-                "chat_template_kwargs": {"enable_thinking": False},
+                "chat_template_kwargs": {"enable_thinking": getattr(settings, "analysis_reasoning_effort", "none") != "none"},
             },
-            reasoning_effort="none",
+            reasoning_effort=getattr(settings, "analysis_reasoning_effort", "none"),
         )
         return client
 

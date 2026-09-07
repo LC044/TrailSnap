@@ -81,36 +81,27 @@ def get_available_models(
         if not conn.enable:
             continue
         
+        # The chat UI must expose only models explicitly saved by the user.
+        # Provider discovery belongs to the connection editor and is never
+        # performed while opening a conversation.
         models = conn.model_names
-        # If no models specified and we have an api_base, try to fetch them dynamically
-        if not models and conn.api_base:
-            try:
-                base_url = conn.api_base.rstrip('/')
-                headers = {}
-                if conn.api_key:
-                    headers['Authorization'] = f"Bearer {conn.api_key}"
-                
-                resp = requests.get(f"{base_url}/models", headers=headers, timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if 'data' in data:
-                        models = [m.get('id') for m in data['data'] if m.get('id')]
-            except Exception as e:
-                logging.error(f"Failed to fetch models from {conn.api_base}: {e}")
-                
+        model_configs = [model.model_dump() for model in getattr(conn, 'models', [])]
         connections.append({
             "id": conn.id,
             "provider": getattr(conn, "provider", "OpenAI"),
             "api_base": conn.api_base,
-            "models": models
+            "models": models,
+            "model_configs": model_configs
         })
         
     return {
         "connections": connections,
         "analysis_connection_id": ai_config.analysis_connection_id,
         "analysis_model_name": ai_config.analysis_model_name,
+        "analysis_reasoning_effort": getattr(ai_config, "analysis_reasoning_effort", "none"),
         "chat_connection_id": getattr(ai_config, "chat_connection_id", ""),
-        "chat_model_name": getattr(ai_config, "chat_model_name", "")
+        "chat_model_name": getattr(ai_config, "chat_model_name", ""),
+        "chat_reasoning_effort": getattr(ai_config, "chat_reasoning_effort", "none")
     }
 
 class VerifyConnectionRequest(BaseModel):
@@ -577,6 +568,11 @@ def update_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    for connection in payload.get("ai", {}).get("connections", []):
+        models = connection.get("models") or []
+        model_names = connection.get("model_names") or []
+        if not models and not model_names:
+            raise HTTPException(status_code=400, detail="每个大模型连接必须至少添加一个模型")
     # Use config_manager to update settings and cache
     new_config = config_manager.update_user_config(current_user.id, payload, db)
 

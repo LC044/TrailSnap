@@ -4,7 +4,7 @@
       <div class="min-w-0 flex-1">
         <h2 class="text-xl font-semibold text-gray-800 dark:text-white md:text-2xl">AI 模型管理</h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          已默认选择推荐方案，通常无需调整。只有设备较慢或更看重效果时才需要更换。
+          管理大模型 API 连接、对话与分析模型，以及本地 AI 扩展模型。
         </p>
       </div>
       <button
@@ -13,6 +13,8 @@
         @click="loadModels"
       >{{ loading ? '刷新中…' : '刷新状态' }}</button>
     </div>
+
+    <LLMSettings />
 
     <div v-if="errorMessage" class="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
       <p class="font-medium text-amber-800 dark:text-amber-300">暂时无法连接 AI 模型服务</p>
@@ -131,6 +133,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
+import LLMSettings from './LLMSettings.vue'
 
 type TaskSelection = { name: string; selected: string; pending?: string; recommended: string; available: string[] }
 

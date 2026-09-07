@@ -42,20 +42,50 @@ def get_session_history(db: Session, session_id: str) -> List[BaseMessage]:
 # 滑动窗口大小：传给模型的历史最多保留最近 N 条消息（不按 token 预算，仅按条数）
 MAX_HISTORY_MESSAGES = 20
 
-def trim_history_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
+
+def _estimate_message_tokens(messages: List[BaseMessage]) -> int:
+    """Conservative tokenizer-independent estimate for OpenAI-compatible APIs."""
+    total = 0
+    for message in messages:
+        content = message.content if isinstance(message.content, str) else json.dumps(message.content, ensure_ascii=False)
+        total += max(1, len(content) // 3) + 8
+    return total
+
+
+def _model_context_window(ai_settings, connection_id: str = None, model_name: str = None) -> int:
+    c_id = connection_id or getattr(ai_settings, "chat_connection_id", None) or ai_settings.analysis_connection_id
+    m_name = model_name or getattr(ai_settings, "chat_model_name", None) or ai_settings.analysis_model_name
+    connection = next((c for c in ai_settings.connections if c.id == c_id), None)
+    if connection:
+        model = next((m for m in getattr(connection, "models", []) if m.model_name == m_name), None)
+        if model:
+            return model.context_window
+    return 128000
+
+def trim_history_messages(messages: List[BaseMessage], context_window: int | None = None) -> List[BaseMessage]:
     """
-    基于消息条数的滑动窗口裁剪：保留 system 提示，并只保留最近的 MAX_HISTORY_MESSAGES 条对话。
-    使用 token_counter=len 表示"按消息条数计数"，因此这是纯滑动窗口，不涉及 token 预算估算。
+    按模型上下文窗口裁剪历史并预留输出空间；旧配置没有窗口信息时，
+    回退为基于消息条数的滑动窗口。
     裁剪只影响传给模型的上下文，不影响数据库中的完整历史记录。
     """
     if not messages:
         return messages
     try:
+        if context_window:
+            # Reserve room for system/tool payloads and the completion. The
+            # configured model window therefore has a real effect on how much
+            # conversation history is submitted.
+            input_budget = max(1024, int(context_window * 0.75))
+            token_counter = _estimate_message_tokens
+            max_tokens = input_budget
+        else:
+            token_counter = len
+            max_tokens = MAX_HISTORY_MESSAGES
         trimmed = trim_messages(
             messages,
-            max_tokens=MAX_HISTORY_MESSAGES,
+            max_tokens=max_tokens,
             strategy="last",
-            token_counter=len,  # 按消息条数计数 => 滑动窗口
+            token_counter=token_counter,
             include_system=True,
             allow_partial=False,
             start_on="human",
@@ -125,7 +155,8 @@ def _get_summary_llm(user_id: str, db: Session):
 
 
 def compress_history_if_needed(
-    messages: List[BaseMessage], user_id: str, session_id: str, db: Session
+    messages: List[BaseMessage], user_id: str, session_id: str, db: Session,
+    context_window: int | None = None,
 ) -> List[BaseMessage]:
     """
     上下文压缩：当历史对话过长时，把较早的对话压成摘要，只保留最近若干条原文。
@@ -141,14 +172,18 @@ def compress_history_if_needed(
     system_msgs = [m for m in messages if isinstance(m, SystemMessage)]
     convo = [m for m in messages if not isinstance(m, SystemMessage)]
 
-    # 未达触发阈值，走原有滑动窗口
-    if len(convo) <= COMPRESSION_TRIGGER:
+    # Prefer the configured token window. The message-count threshold remains
+    # as a compatibility fallback for connections without model metadata.
+    if context_window:
+        if _estimate_message_tokens(messages) <= max(1024, int(context_window * 0.75)):
+            return messages
+    elif len(convo) <= COMPRESSION_TRIGGER:
         return trim_history_messages(messages)
 
     try:
         llm = _get_summary_llm(user_id, db)
         if llm is None:
-            return trim_history_messages(messages)
+            return trim_history_messages(messages, context_window)
 
         recent = convo[-KEEP_RECENT_MESSAGES:]
         to_compress = convo[:-KEEP_RECENT_MESSAGES]
@@ -161,7 +196,7 @@ def compress_history_if_needed(
 
         conversation_text = _messages_to_text(to_compress)
         if not conversation_text.strip():
-            return trim_history_messages(messages)
+            return trim_history_messages(messages, context_window)
 
         resp = llm.invoke([HumanMessage(content=_SUMMARY_PROMPT.format(
             prev_summary_section=prev_summary_section,
@@ -169,7 +204,7 @@ def compress_history_if_needed(
         ))])
         summary_text = (resp.content or "").strip()
         if not summary_text:
-            return trim_history_messages(messages)
+            return trim_history_messages(messages, context_window)
 
         # 持久化摘要，供后续轮次复用
         try:
@@ -181,7 +216,7 @@ def compress_history_if_needed(
         return system_msgs + [summary_msg] + recent
     except Exception as e:
         logger.warning(f"上下文压缩失败，回退到滑动窗口：{e}")
-        return trim_history_messages(messages)
+        return trim_history_messages(messages, context_window)
 
 class FixedChatOpenAI(ChatOpenAI):
     def _convert_chunk_to_generation_chunk(self, chunk: dict,
@@ -253,7 +288,7 @@ class ThinkTagStreamFilter:
         self.buffer = ""
         return result
 
-def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id: str = None, model_name: str = None, user_input: str = None):
+def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None, user_input: str = None):
     """
     完全适配 langgraph==1.1.3 的 Agent 初始化
     """
@@ -261,8 +296,9 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 
     ai_settings = user_config.ai
 
-    c_id = connection_id or ai_settings.analysis_connection_id
-    m_name = model_name or ai_settings.analysis_model_name
+    c_id = connection_id or getattr(ai_settings, "chat_connection_id", None) or ai_settings.analysis_connection_id
+    m_name = model_name or getattr(ai_settings, "chat_model_name", None) or ai_settings.analysis_model_name
+    effort = reasoning_effort or getattr(ai_settings, "chat_reasoning_effort", None) or "none"
 
     if not c_id or not m_name:
         raise ValueError("未配置智能分析模型，请在「系统设置 -> AI相关配置」中配置连接和模型。")
@@ -278,8 +314,15 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
     if not connection.api_key:
         raise ValueError(f"选中的 AI 连接未配置 API Key: {c_id}，请在「系统设置 -> AI相关配置」中检查配置")
 
-    # 初始化 LLM
-    llm = FixedChatOpenAI(
+    model_config = next((m for m in getattr(connection, "models", []) if m.model_name == m_name), None)
+    if getattr(connection, "models", []) and model_config is None:
+        raise ValueError(f"模型 {m_name} 不在连接 {c_id} 的可用模型列表中")
+    if model_config and model_config.reasoning_levels and effort not in model_config.reasoning_levels:
+        raise ValueError(f"模型 {m_name} 不支持思考等级 {effort}")
+
+    # 初始化 LLM。“不思考”通过省略 reasoning_effort 表达，兼容不认识
+    # 该 OpenAI 扩展参数的普通 Chat Completions 服务。
+    llm_options = dict(
         model=m_name,
         api_key=connection.api_key,
         base_url=connection.api_base if connection.api_base else None,
@@ -287,14 +330,10 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
         temperature=0.7,
         streaming=True,
         max_completion_tokens=8192,
-        # reasoning_effort='high',
-
-        # use_responses_api=False,
-        # reasoning={
-        #     "effort": "low",
-        #     "summary": "detailed",
-        # }
     )
+    if effort != "none":
+        llm_options["reasoning_effort"] = effort
+    llm = FixedChatOpenAI(**llm_options)
 
     # 加载工具列表
     tools = get_agent_tools(user_id, session_id=session_id)
@@ -341,11 +380,11 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 
     return agent, system_prompt
 
-def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None) -> str:
+def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None) -> str:
     """
     与 Agent 对话，维护上下文历史
     """
-    agent, system_prompt = get_agent_executor(user_id, session_id, db, connection_id, model_name, user_input=user_input)
+    agent, system_prompt = get_agent_executor(user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input=user_input)
     messages = get_session_history(db, session_id)
     
     # 将 system_prompt 作为第一条消息传入，如果它不在历史中
@@ -362,7 +401,9 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
     ))
 
     # 上下文压缩：历史过长时压成摘要 + 近期原文，否则退化为滑动窗口
-    messages = compress_history_if_needed(messages, user_id, session_id, db)
+    ai_settings = config_manager.get_user_config(user_id, db).ai
+    context_window = _model_context_window(ai_settings, connection_id, model_name)
+    messages = compress_history_if_needed(messages, user_id, session_id, db, context_window)
     
     try:
         response = agent.invoke({"messages": messages})
@@ -449,7 +490,7 @@ def generate_session_title_task(user_id: str, session_id: str, user_input: str):
         logger.error(f"Failed to generate title: {e}")
         return None
 
-async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None):
+async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None):
     """
     与 Agent 对话，并使用 SSE 流式返回大模型的回复
     """
@@ -466,7 +507,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
     
     try:
         # 在独立的线程中执行可能会阻塞的同步代码，以避免阻塞主事件循环
-        agent, system_prompt = await asyncio.to_thread(get_agent_executor, user_id, session_id, db, connection_id, model_name, user_input)
+        agent, system_prompt = await asyncio.to_thread(get_agent_executor, user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input)
         messages = await asyncio.to_thread(get_session_history, db, session_id)
 
         if not messages or not isinstance(messages[0], SystemMessage):
@@ -491,7 +532,9 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
 
         # 上下文压缩：历史过长时压成摘要 + 近期原文（在首轮判断之后执行，避免影响标题生成逻辑）
         # 压缩内部可能调用 LLM 生成摘要，放到线程池执行，避免阻塞事件循环
-        messages = await asyncio.to_thread(compress_history_if_needed, messages, user_id, session_id, db)
+        ai_settings = config_manager.get_user_config(user_id, db).ai
+        context_window = _model_context_window(ai_settings, connection_id, model_name)
+        messages = await asyncio.to_thread(compress_history_if_needed, messages, user_id, session_id, db, context_window)
 
         # 使用 langgraph astream 模式
         async for chunk, metadata in agent.astream({"messages": messages}, stream_mode="messages"):

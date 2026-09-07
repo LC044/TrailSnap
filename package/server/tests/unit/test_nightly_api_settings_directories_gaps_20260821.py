@@ -96,7 +96,7 @@ def test_get_available_models_filters_disabled_connections():
     assert result["analysis_model_name"] == "gpt-4"
 
 
-def test_get_available_models_fetches_models_dynamically_when_empty():
+def test_get_available_models_does_not_discover_models_during_chat_loading():
     db = MagicMock()
     user = _user()
     enabled = SimpleNamespace(
@@ -116,28 +116,15 @@ def test_get_available_models_fetches_models_dynamically_when_empty():
     )
     cfg = SimpleNamespace(ai=ai)
 
-    fake_response = MagicMock()
-    fake_response.status_code = 200
-    fake_response.json.return_value = {
-        "data": [
-            {"id": "upstream-model"},
-            {"id": ""},
-            {"id": "another-model"},
-        ]
-    }
-
     with patch.object(settings_api.config_manager, "get_user_config", return_value=cfg), \
-         patch.object(settings_api.requests, "get", return_value=fake_response) as get_call:
+         patch.object(settings_api.requests, "get") as get_call:
         result = settings_api.get_available_models(db=db, current_user=user)
 
-    get_call.assert_called_once()
-    args, kwargs = get_call.call_args
-    assert args[0] == "https://api.example.com/v1/models"
-    assert kwargs["headers"]["Authorization"] == "Bearer key-123"
-    assert result["connections"][0]["models"] == ["upstream-model", "another-model"]
+    get_call.assert_not_called()
+    assert result["connections"][0]["models"] == []
 
 
-def test_get_available_models_swallows_upstream_errors():
+def test_get_available_models_does_not_contact_broken_upstream():
     db = MagicMock()
     user = _user()
     enabled = SimpleNamespace(

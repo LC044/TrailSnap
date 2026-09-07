@@ -135,7 +135,7 @@ const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
     { key: 'basic', label: '系统设置', description: '安全、地图、扫描与任务选项', icon: SettingsIcon },
     { key: 'tasks', label: '任务管理', description: '查看和控制后台处理任务', icon: List },
     { key: 'ai-extensions', label: 'AI 扩展包', description: '安装桌面 AI 运行能力', icon: BrainCircuit, desktopOnly: true },
-    { key: 'ai-models', label: 'AI 模型管理', description: '下载和切换本地模型', icon: Database },
+    { key: 'ai-models', label: 'AI 模型管理', description: '管理大模型连接与本地模型', icon: Database },
     { key: 'performance', label: '性能测试', description: '检测存储与服务性能', icon: Activity },
   ] },
   { label: '支持', items: [

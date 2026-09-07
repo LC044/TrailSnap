@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     stream: bool = False
     connection_id: str | None = None
     model_name: str | None = None
+    reasoning_effort: str | None = None
 
 class ChatResponse(BaseModel):
     response: str
@@ -57,7 +58,8 @@ def chat_endpoint(
                     user_input=request.message,
                     db=db,
                     connection_id=request.connection_id,
-                    model_name=request.model_name
+                    model_name=request.model_name,
+                    reasoning_effort=request.reasoning_effort
                 ),
                 media_type="text/event-stream"
             )
@@ -68,7 +70,8 @@ def chat_endpoint(
                 user_input=request.message,
                 db=db,
                 connection_id=request.connection_id,
-                model_name=request.model_name
+                model_name=request.model_name,
+                reasoning_effort=request.reasoning_effort
             )
             return ChatResponse(response=reply, session_id=session_id)
     except ValueError as ve:

@@ -153,20 +153,33 @@ DEFAULT_MOMENT_DAY_CAPTION_PROMPT = """你是一位帮用户写朋友圈文案�
 3. 输出末尾不要有空行、不要有 emoji（除非素材里明显有需要呼应 emoji 的元素，
    且最多 1 个；一般情况下不出现 emoji）。"""
 
+class LLMModelConfig(BaseModel):
+    model_name: str = Field(description="Model name sent to the upstream API")
+    display_name: str = Field(default="", description="Optional model name shown in the UI")
+    context_window: int = Field(default=128000, ge=1024, description="Model context window in tokens")
+    reasoning_levels: List[str] = Field(
+        default_factory=lambda: ["none", "low", "medium", "high"],
+        description="Reasoning efforts supported by this model",
+    )
+
+
 class LLMConnection(BaseModel):
     id: str = Field(default="", description="Connection ID")
     provider: str = Field(default="OpenAI", description="API Provider (e.g. OpenAI, Ollama, Google)")
     api_base: str = Field(default="", description="LLM API base URL")
     api_key: str = Field(default="", description="LLM API key")
     model_names: List[str] = Field(default_factory=list, description="Available model names")
+    models: List[LLMModelConfig] = Field(default_factory=list, description="Model capabilities and display metadata")
     enable: bool = Field(default=True, description="Whether this connection is enabled")
 
 class AISettings(BaseModel):
     connections: List[LLMConnection] = Field(default_factory=list, description="LLM Connections")
     analysis_connection_id: str = Field(default="builtin", description="Default connection ID for analysis")
     analysis_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for analysis")
+    analysis_reasoning_effort: str = Field(default="none", description="Default reasoning effort for analysis")
     chat_connection_id: str = Field(default="builtin", description="Default connection ID for agent chat")
     chat_model_name: str = Field(default="MiniCPM-V-4_6-Q4_K_M", description="Default model name for agent chat")
+    chat_reasoning_effort: str = Field(default="none", description="Default reasoning effort for agent chat")
     ai_api_url: str = Field(default=os.getenv("TS_AI_API_URL") or os.getenv("AI_API_URL", "http://localhost:8001"), description="AI Service API URL")
     face_recognition_threshold: float = Field(default=0.7, description="Face recognition confidence threshold")
     face_cluster_threshold: float = Field(default=0.4, description="Face cluster distance threshold")
@@ -374,6 +387,25 @@ class ConfigManager:
         
         builtin_exists = False
         for conn in connections:
+            # Upgrade legacy string-only model lists without invalidating an
+            # existing user configuration. Keep model_names for older clients.
+            configured_models = conn.get('models') or []
+            configured_names = conn.get('model_names') or []
+            if not configured_models and configured_names:
+                conn['models'] = [
+                    {
+                        'model_name': name,
+                        'display_name': name,
+                        'context_window': 128000,
+                        'reasoning_levels': ['none', 'low', 'medium', 'high'],
+                    }
+                    for name in configured_names
+                ]
+            elif configured_models:
+                conn['model_names'] = [
+                    item.get('model_name') for item in configured_models
+                    if item.get('model_name')
+                ]
             if conn.get('id') == 'builtin':
                 builtin_exists = True
                 conn['api_base'] = builtin_api_base
@@ -386,6 +418,12 @@ class ConfigManager:
                 'api_base': builtin_api_base,
                 'api_key': 'empty',
                 'model_names': ['MiniCPM-V-4_6-Q4_K_M'],
+                'models': [{
+                    'model_name': 'MiniCPM-V-4_6-Q4_K_M',
+                    'display_name': 'MiniCPM-V-4_6-Q4_K_M',
+                    'context_window': 32768,
+                    'reasoning_levels': ['none'],
+                }],
                 'enable': True
             })
         ai_settings['connections'] = connections
