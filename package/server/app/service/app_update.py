@@ -11,6 +11,7 @@
 精确的直链与体积。安装包先下载到自部署 Server 的持久化缓存，App
 永远只拿到 Server 同源下载路径，不接触 GitHub 或对象存储。
 """
+import asyncio
 import logging
 import os
 import re
@@ -41,6 +42,10 @@ APK_FALLBACK_URL = (
 
 _VERSION_PATTERN = re.compile(r"^\d+(\.\d+)*$")
 APP_UPDATE_CACHE_DIR = os.path.join(DATA_DIR, "app_updates")
+
+# 弱网下载重试：总尝试 3 次，指数退避（2s / 4s / 8s）。
+APK_DOWNLOAD_ATTEMPTS = 3
+APK_RETRY_BASE_DELAY = 2.0
 
 
 def normalize_version(value: Optional[str]) -> str:
@@ -105,8 +110,43 @@ def cached_apk_path(version: str) -> Optional[str]:
     return path if os.path.isfile(path) and os.path.getsize(path) > 0 else None
 
 
+def prune_app_update_cache(keep_version: str) -> List[str]:
+    """删除缓存目录中除 ``keep_version`` 外的所有 APK 与残留 .part 文件。
+
+    只保留最新版安装包；``keep_version`` 为空（如清单损坏）时不动任何文件，
+    避免误删后没有可分发的包。
+    """
+    version = normalize_version(keep_version)
+    if not version:
+        return []
+    keep_name = f"TrailSnap-{version}.apk"
+    removed: List[str] = []
+    try:
+        names = os.listdir(APP_UPDATE_CACHE_DIR)
+    except OSError:
+        return []
+    for name in names:
+        if name == keep_name:
+            continue
+        if not (name.endswith(".apk") or name.endswith(".part")):
+            continue
+        path = os.path.join(APP_UPDATE_CACHE_DIR, name)
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+                removed.append(name)
+        except OSError as error:
+            logger.warning("Failed to prune cached APK %s: %s", name, error)
+    if removed:
+        logger.info("Pruned outdated APK cache: %s", ", ".join(removed))
+    return removed
+
+
 async def cache_release_apk(version: str, asset: Dict[str, Any]) -> Optional[str]:
-    """Download an APK atomically on the Server and return its local path."""
+    """Download an APK atomically on the Server and return its local path.
+
+    弱网下单次请求可能中断，按 ``APK_DOWNLOAD_ATTEMPTS`` 次数重试并指数退避。
+    """
     version = normalize_version(version)
     url = str(asset.get("download_url") or "")
     if not version or not url.startswith("https://"):
@@ -118,48 +158,65 @@ async def cache_release_apk(version: str, asset: Dict[str, Any]) -> Optional[str
 
     os.makedirs(APP_UPDATE_CACHE_DIR, exist_ok=True)
     target = os.path.join(APP_UPDATE_CACHE_DIR, f"TrailSnap-{version}.apk")
-    temporary = f"{target}.{uuid.uuid4().hex}.part"
     timeout = aiohttp.ClientTimeout(total=None, connect=15, sock_read=90)
-    try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url, headers={"Accept": "application/octet-stream"}) as response:
-                if response.status != 200:
-                    logger.warning("APK predownload HTTP %s for v%s", response.status, version)
-                    return None
-                downloaded = 0
-                with open(temporary, "wb") as output:
-                    async for chunk in response.content.iter_chunked(256 * 1024):
-                        output.write(chunk)
-                        downloaded += len(chunk)
-        if downloaded <= 0 or (expected_size and downloaded != expected_size):
-            logger.warning("APK predownload size mismatch for v%s", version)
-            return None
-        os.replace(temporary, target)
-        logger.info("Cached Android App v%s (%s bytes)", version, downloaded)
-        return target
-    except Exception as error:
-        logger.warning("APK predownload failed for v%s: %s", version, error)
-        return None
-    finally:
+    for attempt in range(1, APK_DOWNLOAD_ATTEMPTS + 1):
+        temporary = f"{target}.{uuid.uuid4().hex}.part"
         try:
-            if os.path.exists(temporary):
-                os.remove(temporary)
-        except OSError:
-            pass
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers={"Accept": "application/octet-stream"}) as response:
+                    if response.status != 200:
+                        logger.warning(
+                            "APK predownload HTTP %s for v%s (attempt %d/%d)",
+                            response.status, version, attempt, APK_DOWNLOAD_ATTEMPTS,
+                        )
+                    else:
+                        downloaded = 0
+                        with open(temporary, "wb") as output:
+                            async for chunk in response.content.iter_chunked(256 * 1024):
+                                output.write(chunk)
+                                downloaded += len(chunk)
+                        if downloaded > 0 and (not expected_size or downloaded == expected_size):
+                            os.replace(temporary, target)
+                            logger.info("Cached Android App v%s (%s bytes)", version, downloaded)
+                            return target
+                        logger.warning(
+                            "APK predownload size mismatch for v%s (attempt %d/%d)",
+                            version, attempt, APK_DOWNLOAD_ATTEMPTS,
+                        )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.warning(
+                "APK predownload failed for v%s (attempt %d/%d): %s",
+                version, attempt, APK_DOWNLOAD_ATTEMPTS, error,
+            )
+        finally:
+            try:
+                if os.path.exists(temporary):
+                    os.remove(temporary)
+            except OSError:
+                pass
+        if attempt < APK_DOWNLOAD_ATTEMPTS:
+            await asyncio.sleep(APK_RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+    return None
 
 
 async def ensure_cached_apk(version: str, repo: str = GITHUB_REPO) -> Optional[str]:
     existing = cached_apk_path(version)
-    if existing:
-        return existing
-    asset = await fetch_release_apk(version, repo=repo)
-    if asset is None:
-        asset = {
-            "download_url": APK_FALLBACK_URL.format(repo=repo, version=version),
-            "size": 0,
-            "file_name": APK_ASSET_TEMPLATE.format(version=version),
-        }
-    return await cache_release_apk(version, asset)
+    path = existing
+    if not path:
+        asset = await fetch_release_apk(version, repo=repo)
+        if asset is None:
+            asset = {
+                "download_url": APK_FALLBACK_URL.format(repo=repo, version=version),
+                "size": 0,
+                "file_name": APK_ASSET_TEMPLATE.format(version=version),
+            }
+        path = await cache_release_apk(version, asset)
+    if path:
+        # 缓存里只保留最新版，旧版本安装包及时释放磁盘。
+        prune_app_update_cache(version)
+    return path
 
 
 async def prefetch_latest_app_update(

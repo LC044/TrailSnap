@@ -1,16 +1,19 @@
 """Unit tests for app/service/app_update.py（手机 App 安装包更新检查）。
 
-覆盖三条主线：
+覆盖主线：
 - ``normalize_version``：兼容 ``v0.12.1`` 并拒绝非法版本串。
 - ``fetch_release_apk``：从 GitHub Release 资产里挑 APK（正式包优先于 debug 包），
   以及 HTTP 失败 / 无 APK 资产时返回 None。
 - ``check_app_update``：无更新、有更新且拿到资产、有更新但 GitHub 不可达
   （回退 CI 命名约定且 size=0）、非法版本、不支持的平台。
+- ``prune_app_update_cache``：只保留最新版，清理旧 APK 与 .part 残留。
+- ``cache_release_apk``：弱网重试（传输中断 / HTTP 错误 / 大小不符），重试耗尽后失败。
 """
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
@@ -124,6 +127,213 @@ def test_fetch_release_apk_returns_none_on_http_error():
 def test_fetch_release_apk_rejects_invalid_version():
     from app.service.app_update import fetch_release_apk
     assert _run(fetch_release_apk("not-a-version")) is None
+
+
+# ---------------------------- prune_app_update_cache ---------------------------
+
+
+def test_prune_app_update_cache_keeps_only_latest(tmp_path):
+    from app.service import app_update
+
+    cache_dir = tmp_path / "app_updates"
+    cache_dir.mkdir()
+    (cache_dir / "TrailSnap-1.0.0.apk").write_bytes(b"old")
+    (cache_dir / "TrailSnap-1.0.1.apk").write_bytes(b"old")
+    (cache_dir / "TrailSnap-1.1.0.apk.abc.part").write_bytes(b"partial")
+    (cache_dir / "TrailSnap-1.2.0.apk").write_bytes(b"current")
+    (cache_dir / "unrelated.txt").write_text("keep me")
+    with patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(cache_dir)):
+        removed = app_update.prune_app_update_cache("1.2.0")
+
+    assert sorted(removed) == ["TrailSnap-1.0.0.apk", "TrailSnap-1.0.1.apk", "TrailSnap-1.1.0.apk.abc.part"]
+    remaining = sorted(p.name for p in cache_dir.iterdir())
+    assert remaining == ["TrailSnap-1.2.0.apk", "unrelated.txt"]
+
+
+def test_prune_app_update_cache_keeps_current_version(tmp_path):
+    from app.service import app_update
+
+    cache_dir = tmp_path / "app_updates"
+    cache_dir.mkdir()
+    (cache_dir / "TrailSnap-1.2.0.apk").write_bytes(b"current")
+    (cache_dir / "TrailSnap-1.0.0.apk").write_bytes(b"old")
+    with patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(cache_dir)):
+        removed = app_update.prune_app_update_cache("v1.2.0")
+
+    assert removed == ["TrailSnap-1.0.0.apk"]
+    assert [p.name for p in cache_dir.iterdir()] == ["TrailSnap-1.2.0.apk"]
+
+
+def test_prune_app_update_cache_noop_on_invalid_version(tmp_path):
+    from app.service import app_update
+
+    cache_dir = tmp_path / "app_updates"
+    cache_dir.mkdir()
+    (cache_dir / "TrailSnap-1.0.0.apk").write_bytes(b"old")
+    with patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(cache_dir)):
+        assert app_update.prune_app_update_cache("not-a-version") == []
+
+    assert [p.name for p in cache_dir.iterdir()] == ["TrailSnap-1.0.0.apk"]
+
+
+def test_prune_app_update_cache_noop_on_missing_dir(tmp_path):
+    from app.service import app_update
+
+    with patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(tmp_path / "missing")):
+        assert app_update.prune_app_update_cache("1.2.0") == []
+
+
+# ---------------------------- cache_release_apk retry ---------------------------
+
+
+class _FlakyContent:
+    """迭代器：第一次抛异常模拟传输中断，第二次返回完整数据。"""
+
+    def __init__(self, chunks, fail_first):
+        self.chunks = list(chunks)
+        self.fail_first = fail_first
+
+    async def iter_chunked(self, _size):
+        if self.fail_first:
+            self.fail_first = False
+            raise aiohttp.ClientError("connection reset")
+        for chunk in self.chunks:
+            yield chunk
+
+
+class _FlakyResponse:
+    def __init__(self, status, content):
+        self.status = status
+        self.content = content
+
+
+class _RespCtx:
+    def __init__(self, response):
+        self.response = response
+
+    async def __aenter__(self):
+        return self.response
+
+    async def __aexit__(self, *_a):
+        return None
+
+
+class _Session:
+    def __init__(self, queue, *_a, **_k):
+        self.queue = queue
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_a):
+        return None
+
+    def get(self, *_a, **_k):
+        return _RespCtx(self.queue.pop(0))
+
+
+def _flaky_session_factory(responses):
+    queue = list(responses)
+    return lambda *a, **k: _Session(queue)
+
+
+def test_cache_release_apk_retries_and_succeeds(tmp_path):
+    from app.service import app_update
+
+    asset = {"download_url": "https://dl/apk", "size": 5, "file_name": "TrailSnap-1.2.0.apk"}
+    responses = [
+        _FlakyResponse(200, _FlakyContent([b"ab", b"cd", b"e"], fail_first=True)),
+        _FlakyResponse(200, _FlakyContent([b"ab", b"cd", b"e"], fail_first=False)),
+    ]
+    with (
+        patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(tmp_path)),
+        patch.object(app_update.aiohttp, "ClientSession", _flaky_session_factory(responses)),
+        patch.object(app_update.asyncio, "sleep", new_callable=AsyncMock) as sleep_mock,
+    ):
+        path = _run(app_update.cache_release_apk("1.2.0", asset))
+
+    assert path == str(tmp_path / "TrailSnap-1.2.0.apk")
+    assert (tmp_path / "TrailSnap-1.2.0.apk").read_bytes() == b"abcde"
+    assert not [p for p in tmp_path.iterdir() if p.name.endswith(".part")]
+    sleep_mock.assert_awaited_once()
+
+
+def test_cache_release_apk_retries_on_http_error(tmp_path):
+    from app.service import app_update
+
+    asset = {"download_url": "https://dl/apk", "size": 0, "file_name": "TrailSnap-1.2.0.apk"}
+    responses = [
+        _FlakyResponse(503, None),
+        _FlakyResponse(503, None),
+        _FlakyResponse(200, _FlakyContent([b"ok"], fail_first=False)),
+    ]
+    with (
+        patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(tmp_path)),
+        patch.object(app_update.aiohttp, "ClientSession", _flaky_session_factory(responses)),
+        patch.object(app_update.asyncio, "sleep", new_callable=AsyncMock),
+    ):
+        path = _run(app_update.cache_release_apk("1.2.0", asset))
+
+    assert path == str(tmp_path / "TrailSnap-1.2.0.apk")
+    assert (tmp_path / "TrailSnap-1.2.0.apk").read_bytes() == b"ok"
+
+
+def test_cache_release_apk_exhausts_retries(tmp_path):
+    from app.service import app_update
+
+    asset = {"download_url": "https://dl/apk", "size": 0, "file_name": "TrailSnap-1.2.0.apk"}
+    responses = [_FlakyResponse(503, None)] * app_update.APK_DOWNLOAD_ATTEMPTS
+    with (
+        patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(tmp_path)),
+        patch.object(app_update.aiohttp, "ClientSession", _flaky_session_factory(responses)),
+        patch.object(app_update.asyncio, "sleep", new_callable=AsyncMock) as sleep_mock,
+    ):
+        path = _run(app_update.cache_release_apk("1.2.0", asset))
+
+    assert path is None
+    assert list(tmp_path.iterdir()) == []
+    assert sleep_mock.await_count == app_update.APK_DOWNLOAD_ATTEMPTS - 1
+
+
+def test_cache_release_apk_size_mismatch_retries(tmp_path):
+    from app.service import app_update
+
+    asset = {"download_url": "https://dl/apk", "size": 10, "file_name": "TrailSnap-1.2.0.apk"}
+    responses = [
+        _FlakyResponse(200, _FlakyContent([b"short"], fail_first=False)),
+        _FlakyResponse(200, _FlakyContent([b"0123456789"], fail_first=False)),
+    ]
+    with (
+        patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(tmp_path)),
+        patch.object(app_update.aiohttp, "ClientSession", _flaky_session_factory(responses)),
+        patch.object(app_update.asyncio, "sleep", new_callable=AsyncMock),
+    ):
+        path = _run(app_update.cache_release_apk("1.2.0", asset))
+
+    assert path == str(tmp_path / "TrailSnap-1.2.0.apk")
+    assert (tmp_path / "TrailSnap-1.2.0.apk").read_bytes() == b"0123456789"
+
+
+def test_ensure_cached_apk_prunes_older_versions(tmp_path):
+    from app.service import app_update
+
+    cache_dir = tmp_path / "app_updates"
+    cache_dir.mkdir()
+    (cache_dir / "TrailSnap-1.0.0.apk").write_bytes(b"old")
+    (cache_dir / "TrailSnap-1.2.0.apk").write_bytes(b"current")
+
+    def _cached(version):
+        path = cache_dir / f"TrailSnap-{version}.apk"
+        return str(path) if path.is_file() else None
+
+    with (
+        patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(cache_dir)),
+        patch.object(app_update, "cached_apk_path", side_effect=_cached),
+    ):
+        path = _run(app_update.ensure_cached_apk("1.2.0"))
+
+    assert path == str(cache_dir / "TrailSnap-1.2.0.apk")
+    assert [p.name for p in cache_dir.iterdir()] == ["TrailSnap-1.2.0.apk"]
 
 
 # ---------------------------- check_app_update ---------------------------
