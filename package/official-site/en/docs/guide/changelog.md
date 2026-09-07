@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-07 (0.14.0)
+
+### New
+
+- The Album Agent is now available: search photos with natural language, discover travel clues, create person timelines and memory-detective stories, and organize albums from real photo evidence.
+- Added an Agent task center for proposed, running, failed, and completed plans, with confirmation, retry, cancel, continue, and undo controls.
+- Added the Album Doctor repair loop for album counts, covers, descriptions, file hashes, photo times, and locations. Every repair can be previewed, confirmed, and undone.
+- Added safe cleanup proposals: exact duplicate photos move to the recycle bin, empty-album deletion requires typed confirmation, and all operations remain auditable and reversible.
+- AI travel journals can now generate personalized HTML pages for preview, export, sharing, long-image capture, and browser-based PDF printing.
+- Added a read-only MCP service, a Pi Agent extension, and scoped access tokens so external AI tools can query TrailSnap safely.
+- The location album now includes an immersive footprint map and layered GPS travel trajectories.
+
+### Improvements
+
+- Android networking now routes through your self-hosted TrailSnap Server, with server-proxied map tiles for a more consistent experience.
+- Thumbnail reads no longer require a database session, and startup storage-cache prewarming improves browsing on large libraries.
+- Proactive memories now offer recommendation cards that open directly in an Agent conversation.
+- The default service port is now 3180, with installation scripts and Docker documentation updated.
+
+### Bug Fixes
+
+- Fixed Android map-tile direct-connection failures and refined icon centering and monochrome details.
+- Fixed a race where a cancelled task prefetched into the worker queue could still execute; cancellation now takes effect immediately.
+- Fixed several Agent streaming, artifact, and background-task edge cases to improve long-running task stability.
+
 ## 2026-09-04 (0.13.1)
 
 ### New
