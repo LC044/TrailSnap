@@ -9,8 +9,6 @@ pytestmark = pytest.mark.smoke
 
 
 def test_sqlite_engine_enables_wal_and_large_pool(monkeypatch, tmp_path):
-    from app.db import session as session_module
-
     original_ts = os.environ.get("TS_DB_URL")
     original_db = os.environ.get("DB_URL")
     database = tmp_path / "trailsnap.sqlite"
@@ -18,6 +16,7 @@ def test_sqlite_engine_enables_wal_and_large_pool(monkeypatch, tmp_path):
     monkeypatch.delenv("DB_URL", raising=False)
 
     try:
+        session_module = importlib.import_module("app.db.session")
         reloaded = importlib.reload(session_module)
         assert reloaded.IS_SQLITE is True
         assert reloaded.engine.url.database == database.as_posix()
@@ -29,12 +28,13 @@ def test_sqlite_engine_enables_wal_and_large_pool(monkeypatch, tmp_path):
             assert connection.exec_driver_sql("PRAGMA journal_mode").scalar() == "wal"
             assert connection.exec_driver_sql("PRAGMA busy_timeout").scalar() == 30000
     finally:
-        if original_ts is None:
+        if not original_ts:
             os.environ.pop("TS_DB_URL", None)
         else:
             os.environ["TS_DB_URL"] = original_ts
-        if original_db is None:
+        if not original_db:
             os.environ.pop("DB_URL", None)
         else:
             os.environ["DB_URL"] = original_db
-        importlib.reload(session_module)
+        if original_ts or original_db:
+            importlib.reload(session_module)
