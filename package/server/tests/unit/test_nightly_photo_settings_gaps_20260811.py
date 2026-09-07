@@ -25,15 +25,14 @@ def test_on_this_day_forwards_date_and_owner():
         result = photo_api.get_on_this_day_photos(month=8, day=11, year=2025, db=db, current_user=user)
     get_photos.assert_called_once_with(db, user_id=user.id, month=8, day=11, year=2025, limit=10); assert result == expected
 
-def test_available_models_fetches_remote_models():
+def test_available_models_only_returns_explicitly_saved_models():
     db = MagicMock(); user = SimpleNamespace(id="owner-4")
     conn = SimpleNamespace(id="remote", enable=True, model_names=[], api_base="https://ai.example/", api_key="secret", provider="OpenAI")
     config = SimpleNamespace(ai=SimpleNamespace(connections=[conn], analysis_connection_id="remote", analysis_model_name="vision", chat_connection_id="", chat_model_name=""))
-    response = SimpleNamespace(status_code=200, json=lambda: {"data": [{"id": "model-a"}, {"name": "ignored"}]})
-    with patch.object(settings_api.config_manager, "get_user_config", return_value=config), patch.object(settings_api.requests, "get", return_value=response) as get:
+    with patch.object(settings_api.config_manager, "get_user_config", return_value=config), patch.object(settings_api.requests, "get") as get:
         result = settings_api.get_available_models(db=db, current_user=user)
-    get.assert_called_once_with("https://ai.example/models", headers={"Authorization": "Bearer secret"}, timeout=5)
-    assert result["connections"][0]["models"] == ["model-a"]
+    get.assert_not_called()
+    assert result["connections"][0]["models"] == []
 
 def test_verify_ai_service_rejects_invalid_url():
     result = settings_api.verify_ai_service(settings_api.VerifyAIServiceRequest(api_url="localhost:8001"), current_user=SimpleNamespace(id="owner-5"))
