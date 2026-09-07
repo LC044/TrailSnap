@@ -241,7 +241,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     })
 
     await page.goto('/settings#basic')
-    await page.locator('.el-collapse-item__header', { hasText: 'AI 相关设置' }).first().click()
+    await page.locator('.el-collapse-item__header', { hasText: 'AI 服务与人脸设置' }).first().click()
     const apiInput = page.getByLabel('AI API 地址')
     await expect(apiInput).toBeVisible({ timeout: 10_000 })
     await expect.poll(() => settingsLoaded).toBe(true)
