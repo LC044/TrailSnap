@@ -100,6 +100,6 @@ test.describe('AI desktop view contracts @views-coverage', () => {
     const dialog = page.getByRole('dialog', { name: '编辑大模型连接' })
     await expect(dialog).toBeVisible()
     await expect(dialog.getByPlaceholder('https://api.openai.com/v1')).toHaveValue('https://llm.example.com/v1')
-    await expect(dialog.getByPlaceholder('输入模型名或从候选列表选择')).toHaveValue('test-model')
+    await expect(dialog.getByText('test-model', { exact: true })).toBeVisible()
   })
 })

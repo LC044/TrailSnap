@@ -130,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, toRaw } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
 
@@ -181,6 +181,14 @@ const normalizeConnection = (connection: any): Connection => ({
   model_names: connection.model_names || [],
   models: connection.models?.length ? connection.models : (connection.model_names || []).map((name: string) => modelTemplate(name)),
 })
+const cloneConnection = (connection: Connection): Connection => ({
+  ...connection,
+  model_names: [...connection.model_names],
+  models: connection.models.map(model => ({
+    ...model,
+    reasoning_levels: [...model.reasoning_levels],
+  })),
+})
 const selectedModel = (value: string) => {
   const [connectionId, modelName] = value.split('|', 2)
   return aiForm.value.connections.find(conn => conn.id === connectionId)?.models.find(model => model.model_name === modelName)
@@ -217,7 +225,7 @@ function addConnection() {
 }
 function editConnection(index: number) {
   editingIndex.value = index
-  draft.value = structuredClone(toRaw(aiForm.value.connections[index]))
+  draft.value = cloneConnection(aiForm.value.connections[index])
   candidateModels.value = []
   selectedCandidates.value = []
   dialogVisible.value = true
