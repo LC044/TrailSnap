@@ -40,6 +40,7 @@ a { color: inherit; }
 .batch-card { border: 1px solid #e5e7eb; border-radius: 16px; padding: 18px; }
 .batch-items { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .batch-items li { border-radius: 10px; background: #f8fafc; padding: 10px; }
+.form-hint { color: #6b7280; font-size: 12px; line-height: 1.5; margin-top: 6px; }
 @media (max-width: 720px) {
   .topbar-inner { align-items: flex-start; flex-wrap: wrap; }
   .nav { order: 3; flex-basis: 100%; }

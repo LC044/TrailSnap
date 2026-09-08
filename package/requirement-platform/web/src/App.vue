@@ -116,7 +116,7 @@
       <el-form label-position="top" @submit.prevent="submitAuth">
         <el-form-item v-if="authMode === 'register'" label="用户名"><el-input v-model="authForm.username" autocomplete="username" /></el-form-item>
         <el-form-item label="邮箱"><el-input v-model="authForm.email" autocomplete="email" /></el-form-item>
-        <el-form-item label="密码"><el-input v-model="authForm.password" type="password" show-password autocomplete="current-password" /></el-form-item>
+        <el-form-item label="密码"><el-input v-model="authForm.password" type="password" show-password autocomplete="current-password" /><div v-if="authMode === 'register'" class="form-hint">至少 8 位字符</div></el-form-item>
         <el-button type="primary" :loading="busy" native-type="submit">{{ authMode === 'login' ? '登录' : '注册' }}</el-button>
       </el-form>
     </el-dialog>
@@ -157,7 +157,18 @@ const deliveryLabels: Record<string,string> = { not_started:'未开始',developi
 const statusLabel = (value: string) => statusLabels[value] || value
 const deliveryLabel = (value: string) => deliveryLabels[value] || value
 const roleLabel = (value: string) => ({viewer:'查看者',admin:'管理员',owner:'所有者'}[value] || value)
-const errorMessage = (error: unknown) => axios.isAxiosError(error) ? String(error.response?.data?.msg || error.response?.data?.detail || error.message) : String(error)
+const errorMessage = (error: unknown) => {
+  if (!axios.isAxiosError(error)) return String(error)
+  const payload = error.response?.data as { msg?: string; detail?: string; data?: { errors?: Array<{ loc?: string[]; type?: string; msg?: string }> } } | undefined
+  const fieldError = payload?.data?.errors?.[0]
+  if (fieldError) {
+    const field = fieldError.loc?.[fieldError.loc.length - 1]
+    const labels: Record<string, string> = { username: '用户名', email: '邮箱', password: '密码' }
+    if (field === 'password' && fieldError.type === 'string_too_short') return '密码至少需要 8 位字符'
+    return `${labels[field || ''] || field || '输入内容'}：${fieldError.msg || '格式不正确'}`
+  }
+  return String(payload?.msg || payload?.detail || error.message)
+}
 
 const RequirementCards = defineComponent({
   props: { items: { type: Array as () => Requirement[], required: true }, manager: Boolean },
@@ -209,7 +220,13 @@ async function loadBatches() { batches.value=await api.batches(); if(isManager.v
 async function loadUsers() { if(user.value?.role==='owner') users.value=await api.users() }
 async function switchTab(value: Tab) { tab.value=value; try { if(value==='public')await loadRequirements();if(value==='mine')await loadMine();if(value==='admin')await loadAdmin();if(value==='versions')await loadBatches();if(value==='users')await loadUsers() } catch(e){ElMessage.error(errorMessage(e))} }
 async function restoreSession() { if(!localStorage.getItem('rp_token'))return; try{user.value=await api.me()}catch{localStorage.removeItem('rp_token')} }
-async function submitAuth(){busy.value=true;try{const result=authMode.value==='login'?await api.login({identifier:authForm.email,password:authForm.password}):await api.register(authForm);localStorage.setItem('rp_token',result.token);user.value=result.user;authDialog.value=false;ElMessage.success('登录成功');await switchTab('public')}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}}
+async function submitAuth(){
+  if (authMode.value === 'register') {
+    if (!/^[A-Za-z0-9_.-]{3,50}$/.test(authForm.username)) { ElMessage.error('用户名需为 3–50 位字母、数字、点、下划线或连字符'); return }
+    if (authForm.password.length < 8) { ElMessage.error('密码至少需要 8 位字符'); return }
+  }
+  busy.value=true;try{const result=authMode.value==='login'?await api.login({identifier:authForm.email,password:authForm.password}):await api.register(authForm);localStorage.setItem('rp_token',result.token);user.value=result.user;authDialog.value=false;ElMessage.success('登录成功');await switchTab('public')}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}
+}
 function logout(){localStorage.removeItem('rp_token');user.value=null;tab.value='public';void loadRequirements()}
 async function submitRequirement(){busy.value=true;try{await api.createRequirement(requirementForm);Object.assign(requirementForm,{type:'feature',title:'',description:'',current_behavior:'',expected_behavior:'',steps_to_reproduce:'',severity:'medium',product_version:'',visibility:'public',environment:{}});ElMessage.success('需求已提交');await switchTab('mine')}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}}
 async function follow(item:Requirement){if(!user.value){authDialog.value=true;return}try{await api.followRequirement(item.id);ElMessage.success('关注状态已更新');await switchTab(tab.value)}catch(e){ElMessage.error(errorMessage(e))}}
