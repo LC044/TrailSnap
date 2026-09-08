@@ -1,5 +1,6 @@
 services:
   api:
+    image: trailsnap-requirement-platform-server:local
     build: ./server
     restart: unless-stopped
     env_file:
@@ -18,9 +19,9 @@ services:
       retries: 3
 
   worker:
-    build: ./server
+    image: trailsnap-requirement-platform-server:local
     restart: unless-stopped
-    command: ["uv", "run", "python", "-m", "requirement_platform.worker"]
+    command: [".venv/bin/python", "-m", "requirement_platform.worker"]
     env_file:
       - path: .env
         required: false
@@ -35,6 +36,7 @@ services:
         condition: service_healthy
 
   web:
+    image: trailsnap-requirement-platform-web:local
     build: ./web
     restart: unless-stopped
     ports:
