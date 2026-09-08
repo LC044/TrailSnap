@@ -273,22 +273,22 @@ test.describe("NotFound 404 路由 @views-coverage", () => {
 })
 
 test.describe("FeedbackPage 问题反馈 + AboutPage 检查更新 @views-coverage", () => {
-  test("FeedbackPage 渲染 3 个 GitHub Issues 链接，href 指向 LC044/TrailSnap", async ({ page }) => {
+  test("FeedbackPage 渲染 3 个需求平台链接，并携带视图与类型参数", async ({ page }) => {
     await page.goto("/settings")
     await clickSettingTab(page, "feedback")
     await expect(page.locator("h2", { hasText: "问题反馈" })).toBeVisible({ timeout: 10_000 })
 
-    const bugLink = page.locator('a[href*="bug_report.yml"]').first()
-    const featureLink = page.locator('a[href*="feature_request.yml"]').first()
-    const issuesLink = page.locator('a[href*="/issues"]').first()
+    const bugLink = page.locator('a[href*="?view=submit&type=bug"]').first()
+    const featureLink = page.locator('a[href*="?view=submit&type=feature"]').first()
+    const requirementsLink = page.locator('a[href*="?view=public"]').first()
 
     await expect(bugLink).toBeVisible()
     await expect(featureLink).toBeVisible()
-    await expect(issuesLink).toBeVisible()
+    await expect(requirementsLink).toBeVisible()
 
-    for (const a of [bugLink, featureLink, issuesLink]) {
+    for (const a of [bugLink, featureLink, requirementsLink]) {
       const href = await a.getAttribute("href")
-      expect(href).toMatch(/^https:\/\/github\.com\/LC044\/TrailSnap\//)
+      expect(href).toMatch(/^https:\/\/feedback\.trailsnap\.cn\//)
       const target = await a.getAttribute("target")
       expect(target).toBe("_blank")
     }

@@ -14,7 +14,7 @@ import { ensureAuthSession } from '../../helpers/auth'
  *                                                  加载不抛 dialog resolve 错误）
  *
  * 用例：
- *   1. 「问题反馈」Tab 渲染 - title + GitHub Issues 卡片 + QQ 群
+ *   1. 「问题反馈」Tab 渲染 - title + 需求平台卡片 + QQ 群
  *   2. 「问题反馈」Tab 链接全部以新窗口打开 (target=_blank)
  *   3. BasicSettings 区块加载不报错（dialog 静态可解析）
  *
@@ -26,17 +26,17 @@ test.describe('P1 - 设置中心问题反馈 + 截图清理覆盖 @views-coverag
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('设置中心打开「问题反馈」Tab - 渲染标题 + GitHub Issues + 交流社群', async ({ page }) => {
+  test('设置中心打开「问题反馈」Tab - 渲染标题 + 需求平台 + 交流社群', async ({ page }) => {
     await page.goto('/settings?tab=feedback')
     await expect(page).toHaveURL(/settings/)
 
     // FeedbackPage.vue 模板硬编码 <h2>问题反馈</h2>。
     await expect(page.locator('h2', { hasText: '问题反馈' })).toBeVisible({ timeout: 10_000 })
 
-    // 三张 GitHub Issues 卡片：「报告 Bug」「功能建议」「查看已有 Issues」。
+    // 三张需求平台卡片：「报告 Bug」「功能建议」「查看需求与版本进度」。
     await expect(page.getByText('报告 Bug', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('功能建议', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('查看已有 Issues', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('查看需求与版本进度', { exact: true }).first()).toBeVisible()
 
     // 交流社群 + QQ 群号码。
     await expect(page.locator('h3', { hasText: '交流社群' })).toBeVisible()
@@ -47,8 +47,8 @@ test.describe('P1 - 设置中心问题反馈 + 截图清理覆盖 @views-coverag
     await page.goto('/settings?tab=feedback')
     await expect(page.locator('h2', { hasText: '问题反馈' })).toBeVisible({ timeout: 10_000 })
 
-    // 三个 issue 跳转链接都是 GitHub 链接，且 target=_blank。
-    const links = page.locator('a[href^="https://github.com/LC044/TrailSnap"]')
+    // 三个入口都跳转到独立需求平台，且 target=_blank。
+    const links = page.locator('a[href^="https://feedback.trailsnap.cn"]')
     await expect(links).toHaveCount(3)
     const targets = await links.evaluateAll((anchors) =>
       anchors.map((a) => (a as HTMLAnchorElement).target),
