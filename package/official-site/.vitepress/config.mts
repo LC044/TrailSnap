@@ -159,6 +159,7 @@ export default defineConfig({
               items: [
                 { text: '文章列表', link: '/docs/blog/' },
                 { text: '功能全景速览', link: '/docs/blog/feature-scan' },
+                { text: 'vibecoding 可靠性实录', link: '/docs/blog/vibecoding-reliability' },
               ]
             }
           ]
@@ -280,6 +281,7 @@ export default defineConfig({
               items: [
                 { text: 'Articles', link: '/en/docs/blog/' },
                 { text: 'Feature Scan', link: '/en/docs/blog/feature-scan' },
+                { text: 'Vibecoding Reliability (中文)', link: '/docs/blog/vibecoding-reliability' },
               ]
             }
           ]
