@@ -645,6 +645,8 @@ async def upload_photo_generic(
 ):
     if not _is_upload_file(live_photo_video):
         live_photo_video = None
+    if not isinstance(folder, str):
+        folder = None
     if not isinstance(companion_backup_key, str):
         companion_backup_key = None
     if not isinstance(replace_existing, bool):
@@ -781,6 +783,8 @@ async def finish_upload_generic(
 ):
     if not _is_upload_file(live_photo_video):
         live_photo_video = None
+    if not isinstance(folder, str):
+        folder = None
     if not isinstance(companion_backup_key, str):
         companion_backup_key = None
     if not isinstance(replace_existing, bool):
