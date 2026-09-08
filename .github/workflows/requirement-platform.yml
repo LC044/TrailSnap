@@ -63,7 +63,6 @@ jobs:
 
   image:
     needs: [server-test, web-build]
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -76,6 +75,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -91,6 +91,6 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: package/requirement-platform/${{ matrix.component }}
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
