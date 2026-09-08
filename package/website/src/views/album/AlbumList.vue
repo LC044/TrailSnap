@@ -1,9 +1,12 @@
 <template>
-  <div class="container mx-auto px-4 py-6">
+  <div class="mx-auto w-full max-w-[1600px] px-3 pb-6 pt-4 sm:px-5 sm:py-6 lg:px-8">
     <!-- Header -->
-    <div class="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <h1 class="text-2xl font-bold text-gray-800 dark:text-white">我的相册</h1>
-      <div class="flex flex-wrap gap-2">
+    <div class="mb-5 flex items-center justify-between gap-3 sm:mb-8">
+      <div class="min-w-0">
+        <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">我的相册</h1>
+        <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400 md:hidden">整理照片，重温每段回忆</p>
+      </div>
+      <div class="hidden flex-wrap justify-end gap-2 md:flex">
         <button type="button" class="flex items-center gap-2 rounded-lg border border-primary-500 px-3 py-2 text-sm text-primary-600 transition-colors hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="startTravelAlbum">
           <WandSparkles class="h-4 w-4" /><span>AI 整理旅行</span>
         </button>
@@ -16,12 +19,15 @@
         <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/agent/actions')">
           <History class="h-4 w-4" /><span>操作记录</span>
         </button>
-        <el-dropdown trigger="click" @command="openCreateModal">
+      </div>
+      <el-dropdown trigger="click" @command="openCreateModal">
         <button 
-          class="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-lg shadow-primary-500/20 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          type="button"
+          class="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-500 px-3 py-2.5 text-sm font-medium text-white shadow-lg shadow-primary-500/20 transition-colors hover:bg-primary-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:px-4"
         >
-          <Plus class="w-5 h-5" />
-          <span>新建相册</span>
+          <Plus class="h-4 w-4 sm:h-5 sm:w-5" />
+          <span class="hidden sm:inline">新建相册</span>
+          <span class="sm:hidden">新建</span>
         </button>
         <template #dropdown>
           <el-dropdown-menu>
@@ -30,71 +36,98 @@
             <el-dropdown-item command="smart">智能相册</el-dropdown-item>
           </el-dropdown-menu>
         </template>
-        </el-dropdown>
+      </el-dropdown>
+    </div>
+
+    <!-- Mobile quick actions -->
+    <div class="-mx-3 mb-7 snap-x snap-mandatory overflow-x-auto px-3 pb-1 md:hidden" aria-label="相册快捷工具">
+      <div class="flex w-max min-w-full gap-2.5">
+        <button type="button" class="mobile-tool-card" @click="startTravelAlbum">
+          <span class="mobile-tool-icon bg-primary-500/10 text-primary-600 dark:text-primary-400"><WandSparkles class="h-5 w-5" /></span>
+          <span><span class="mobile-tool-title">AI 整理旅行</span><span class="mobile-tool-subtitle">发现旅行故事</span></span>
+        </button>
+        <button type="button" class="mobile-tool-card" @click="startAlbumDoctor">
+          <span class="mobile-tool-icon bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"><Stethoscope class="h-5 w-5" /></span>
+          <span><span class="mobile-tool-title">相册体检</span><span class="mobile-tool-subtitle">检查照片状态</span></span>
+        </button>
+        <button type="button" class="mobile-tool-card" @click="startMemoryDetective">
+          <span class="mobile-tool-icon bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"><SearchCheck class="h-5 w-5" /></span>
+          <span><span class="mobile-tool-title">回忆侦探</span><span class="mobile-tool-subtitle">找回模糊记忆</span></span>
+        </button>
+        <button type="button" class="mobile-tool-card" @click="router.push('/agent/actions')">
+          <span class="mobile-tool-icon bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"><History class="h-5 w-5" /></span>
+          <span><span class="mobile-tool-title">操作记录</span><span class="mobile-tool-subtitle">查看整理历史</span></span>
+        </button>
       </div>
     </div>
 
     <!-- Smart Albums Section -->
-    <div class="mb-10">
-      <h2 class="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 flex items-center gap-2">
+    <section class="mb-8 sm:mb-10">
+      <h2 class="mb-3 flex items-center gap-2 text-base font-semibold text-gray-800 dark:text-gray-100 sm:mb-4 sm:text-lg">
         <Sparkles class="w-5 h-5 text-yellow-500" />
         智能相册
       </h2>
-      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5 lg:gap-6">
+      <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-6 lg:gap-6">
         <div 
           v-for="album in smartAlbums" 
           :key="album.id"
-          class="group cursor-pointer relative rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          class="group relative flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all duration-300 hover:border-gray-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 sm:block sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:dark:bg-transparent"
           role="button"
           tabindex="0"
+          :aria-label="`打开${album.title}`"
           @click="navigateToSmartAlbum(album)"
           @keydown.enter="navigateToSmartAlbum(album)"
+          @keydown.space.prevent="navigateToSmartAlbum(album)"
         >
           <!-- Cover -->
-          <div class="aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 relative shadow-sm group-hover:shadow-md transition-all duration-300 mb-3 border border-gray-100 dark:border-gray-800 flex items-center justify-center">
+          <div class="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-gradient-to-br from-gray-100 to-gray-200 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 dark:from-gray-800 dark:to-gray-900 sm:mb-3 sm:aspect-square sm:h-auto sm:w-full">
              <!-- Icon/Cover Content -->
-             <component :is="album.icon" class="w-12 h-12 text-gray-400 group-hover:text-primary-500 transition-colors duration-300" stroke-width="1.5" />
+             <component :is="album.icon" class="h-6 w-6 text-gray-400 transition-colors duration-300 group-hover:text-primary-500 sm:h-12 sm:w-12" stroke-width="1.5" />
              
              <!-- Overlay -->
              <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
           </div>
           <!-- Info -->
-          <div class="mt-2">
-             <h3 class="font-bold text-gray-900 dark:text-white truncate">{{ album.title }}</h3>
-             <p class="text-xs text-gray-500 dark:text-gray-400">{{ album.description }}</p>
+          <div class="min-w-0 flex-1 sm:mt-2">
+             <h3 class="truncate font-semibold text-gray-900 dark:text-white sm:font-bold">{{ album.title }}</h3>
+             <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ album.description }}</p>
           </div>
+          <ChevronRight class="h-5 w-5 shrink-0 text-gray-300 dark:text-gray-600 sm:hidden" />
         </div>
       </div>
-    </div>
+    </section>
 
     <!-- Custom Albums Section -->
-    <div>
-      <h2 class="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-4 flex items-center gap-2">
+    <section>
+      <h2 class="mb-3 flex items-center gap-2 text-base font-semibold text-gray-800 dark:text-gray-100 sm:mb-4 sm:text-lg">
         <FolderHeart class="w-5 h-5 text-primary-500" />
         自定义相册
       </h2>
       
-      <div v-if="store.allAlbums.length > 0" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5 lg:gap-6">
+      <div v-if="store.allAlbums.length > 0" class="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-4 sm:gap-5 lg:grid-cols-6 lg:gap-6 xl:grid-cols-8">
         <div
           v-for="album in store.allAlbums"
           :key="album.id"
-          class="group cursor-pointer animate-in fade-in slide-in-from-bottom-4 duration-500 relative rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          class="group relative cursor-pointer animate-in rounded-2xl fade-in slide-in-from-bottom-4 duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
           role="button"
           tabindex="0"
+          :aria-label="`打开相册 ${album.title}`"
           @click="navigateToAlbum(album.id)"
           @keydown.enter="navigateToAlbum(album.id)"
+          @keydown.space.prevent="navigateToAlbum(album.id)"
         >
           <!-- Cover -->
-          <div class="aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 relative shadow-sm group-hover:shadow-md transition-all duration-300 mb-3 border border-gray-100 dark:border-gray-800">
+          <div class="relative mb-2.5 aspect-square overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 dark:bg-gray-800 sm:mb-3 sm:rounded-xl">
             <img
               :src="album.cover.thumbnail"
-              class="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500"
+              :alt="`${album.title}的封面`"
+              class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
             />
             <!-- Overlay -->
             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors"></div>
             <!-- Type Badge -->
-            <div class="absolute top-2 right-2 flex gap-1">
+            <div class="absolute left-2 top-2 flex gap-1">
                <span v-if="album.type === 'smart'" class="bg-primary-600/90 backdrop-blur-sm text-white text-xs px-2 py-0.5 rounded-full flex items-center gap-1">
                  <Sparkles class="w-3 h-3 text-white" /> 智能
                </span>
@@ -104,26 +137,30 @@
             </div>
 
             <!-- Actions (Only for User Albums) -->
-            <div class="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10" v-if="album.type !== 'system'">
+            <div v-if="album.type !== 'system'" class="absolute right-2 top-2 z-10 flex gap-1.5 opacity-100 transition-opacity duration-200 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
               <button
+                type="button"
                 @click.stop="openEditModal(album)"
-                class="p-1.5 bg-white/90 dark:bg-gray-800/90 rounded-full text-gray-600 dark:text-gray-300 hover:text-primary-500 shadow-sm backdrop-blur-sm"
+                class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm backdrop-blur-sm hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-800/90 dark:text-gray-300"
                 title="编辑"
+                :aria-label="`编辑相册 ${album.title}`"
               >
                 <Edit2 class="w-4 h-4" />
               </button>
               <button
+                type="button"
                 @click.stop="confirmDelete(album)"
-                class="p-1.5 bg-white/90 dark:bg-gray-800/90 rounded-full text-gray-600 dark:text-gray-300 hover:text-red-500 shadow-sm backdrop-blur-sm"
+                class="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-gray-600 shadow-sm backdrop-blur-sm hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-800/90 dark:text-gray-300"
                 title="删除"
+                :aria-label="`删除相册 ${album.title}`"
               >
                 <Trash2 class="w-4 h-4" />
               </button>
             </div>
           </div>
           <!-- Info -->
-          <div class="mt-2">
-            <h3 class="font-bold text-gray-900 dark:text-white truncate">{{ album.title }}</h3>
+          <div class="px-0.5">
+            <h3 class="truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base sm:font-bold">{{ album.title }}</h3>
             <div class="flex justify-between items-center mt-1">
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ album.count }} 个项目</p>
               <!-- <p class="text-xs text-gray-400">{{ formatDate(album.createdAt) }}</p> -->
@@ -133,14 +170,14 @@
       </div>
       
       <!-- Empty State for Custom Albums -->
-      <div v-else class="flex flex-col items-center justify-center py-20 text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-xl border-dashed border-2 border-gray-200 dark:border-gray-800">
+      <div v-else class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-12 text-center text-gray-400 dark:border-gray-800 dark:bg-gray-800/50 sm:py-20">
         <div class="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
           <FolderOpen class="w-8 h-8 text-gray-300 dark:text-gray-600" />
         </div>
         <p>暂无自定义相册</p>
-        <button @click="openCreateModal('user')" class="mt-4 text-primary-500 hover:underline">创建一个？</button>
+        <button type="button" @click="openCreateModal('user')" class="mt-4 rounded-lg px-3 py-2 text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">创建第一个相册</button>
       </div>
-    </div>
+    </section>
 
     <!-- Create/Edit Modal -->
     <el-dialog
@@ -329,7 +366,7 @@ import { ref, reactive, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
-import { Plus, Sparkles, Edit2, Trash2, Clock, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles } from 'lucide-vue-next'
+import { Plus, Sparkles, Edit2, Trash2, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles, ChevronRight } from 'lucide-vue-next'
 import { albumService } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
@@ -355,7 +392,7 @@ const startMemoryDetective = () => {
 }
 
 const { width } = useWindowSize()
-const dialogWidth = computed(() => width.value < 640 ? '90%' : '500px')
+const dialogWidth = computed(() => width.value < 640 ? 'calc(100% - 24px)' : '500px')
 const isMobile = computed(() => width.value < 640)
 
 const formatDate = (timestamp: number) => {
@@ -677,3 +714,30 @@ onMounted(async () => {
 })
 
 </script>
+
+<style scoped>
+.mobile-tool-card {
+  @apply flex min-w-[174px] snap-start items-center gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-3 text-left shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-800;
+}
+
+.mobile-tool-card:hover {
+  border-color: rgba(var(--theme-rgb), 0.35);
+}
+
+.mobile-tool-card:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 2px;
+}
+
+.mobile-tool-icon {
+  @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl;
+}
+
+.mobile-tool-title {
+  @apply block whitespace-nowrap text-sm font-semibold text-gray-800 dark:text-gray-100;
+}
+
+.mobile-tool-subtitle {
+  @apply mt-0.5 block whitespace-nowrap text-[11px] text-gray-500 dark:text-gray-400;
+}
+</style>
