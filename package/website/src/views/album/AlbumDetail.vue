@@ -164,11 +164,12 @@ const handleConfirmDelete = async (ids: string[], callback: (success: boolean) =
     try {
         if (isUserAlbum.value) {
             await albumStore.removePhotosFromAlbum(albumId, ids)
+            photoStore.removeLocalPhotos(ids)
         } else {
             await photoStore.deletePhotos(ids)
         }
-        photoStore.loadAlbumPhotos(albumId, true)
         callback(true)
+        void albumStore.fetchAlbums()
     } catch (e) {
         console.error(e)
         ElMessage.error('操作失败')
@@ -196,7 +197,7 @@ const handleBatchRemoveFromAlbum = async (ids: string[]) => {
             timeout
         ])
 
-        photoStore.loadAlbumPhotos(albumId, true)
+        photoStore.removeLocalPhotos(ids)
         ElMessage.success('已移出相册')
 
         // Clear pending IDs after successful removal and reload

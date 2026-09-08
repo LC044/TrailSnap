@@ -410,6 +410,36 @@ const restoreVisibleMonth = (anchor: { month?: string; top: number } | null) => 
   container.scrollBy({ top: delta, behavior: 'auto' })
 }
 
+const captureVisiblePhoto = (excludedIds: string[]) => {
+  const excluded = new Set(excludedIds)
+  const container = getScrollContainer()
+  const containerRect = container === window
+    ? { top: 0, bottom: window.innerHeight }
+    : (container as HTMLElement).getBoundingClientRect()
+  const gallery = (galleryRef.value?.$el as HTMLElement | undefined) ?? document
+  const element = Array.from(gallery.querySelectorAll<HTMLElement>('[data-photo-id]')).find((item) => {
+    const id = item.dataset.photoId
+    if (!id || excluded.has(id)) return false
+    const rect = item.getBoundingClientRect()
+    return rect.bottom > containerRect.top && rect.top < containerRect.bottom
+  })
+  return element
+    ? { id: element.dataset.photoId!, top: element.getBoundingClientRect().top }
+    : null
+}
+
+const restoreVisiblePhoto = (anchor: { id: string; top: number } | null) => {
+  if (!anchor) return
+  const gallery = (galleryRef.value?.$el as HTMLElement | undefined) ?? document
+  const element = gallery.querySelector<HTMLElement>(`[data-photo-id="${CSS.escape(anchor.id)}"]`)
+  if (!element) return
+  const container = getScrollContainer()
+  container.scrollBy({
+    top: element.getBoundingClientRect().top - anchor.top,
+    behavior: 'auto',
+  })
+}
+
 const handleRefreshData = () => {
   if (refreshingData.value || isPhotoInteractionActive.value) return
   refreshingData.value = true
@@ -681,6 +711,7 @@ const confirmMessage = computed(() => {
 })
 
 const confirmDelete = () => {
+    const scrollAnchor = captureVisiblePhoto(idsToDelete.value)
     emit('confirm-delete', idsToDelete.value, (success: boolean) => {
         if (success) {
             // Show particle if needed (usually for permanent delete)
@@ -689,6 +720,9 @@ const confirmDelete = () => {
             }
             galleryRef.value?.exitSelectionMode()
             if (lightboxDeleteId.value) closeLightbox()
+            nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+                restoreVisiblePhoto(scrollAnchor)
+            })))
         }
         lightboxDeleteId.value = null
     })
