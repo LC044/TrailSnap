@@ -467,15 +467,44 @@ export const photoStoreSetup = () => {
       }
   }
 
-  const removeLocalPhoto = (photoId: string) => {
-      images.value = images.value.filter(img => img.id !== photoId);
-      // Clean map
+  const removeLocalPhotos = (photoIds: string[]) => {
+      const ids = new Set(photoIds);
+      const removedPhotos = images.value.filter(img => ids.has(img.id));
+      if (removedPhotos.length === 0) return;
+
+      images.value = images.value.filter(img => !ids.has(img.id));
       for (const [key, val] of photoOffsetMap.entries()) {
-          if (val.id === photoId) {
-              photoOffsetMap.delete(key);
-          }
+          if (ids.has(val.id)) photoOffsetMap.delete(key);
+      }
+
+      // Keep the virtual timeline in sync without clearing the whole gallery.
+      // A forced reload briefly collapses the virtual list and sends the user
+      // back to the top after every delete.
+      if (timelineStats.value) {
+          const removedByDay = new Map<string, number>();
+          removedPhotos.forEach((photo) => {
+              const date = new Date(photo.timestamp);
+              const key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+              removedByDay.set(key, (removedByDay.get(key) || 0) + 1);
+          });
+
+          timelineStats.value = {
+              ...timelineStats.value,
+              total_photos: Math.max(0, timelineStats.value.total_photos - removedPhotos.length),
+              timeline: timelineStats.value.timeline
+                  .map(item => ({
+                      ...item,
+                      count: Math.max(
+                          0,
+                          item.count - (removedByDay.get(`${item.year}-${item.month}-${item.day}`) || 0)
+                      )
+                  }))
+                  .filter(item => item.count > 0)
+          };
       }
   }
+
+  const removeLocalPhoto = (photoId: string) => removeLocalPhotos([photoId])
 
   const deletePhoto = async (photoId: string) => {
       await deletePhotos([photoId])
@@ -486,14 +515,7 @@ export const photoStoreSetup = () => {
           photo_ids: photoIds,
           action: 'delete'
       });
-      // Remove locally
-      images.value = images.value.filter(img => !photoIds.includes(img.id));
-      // Also update map
-      for (const [key, val] of photoOffsetMap.entries()) {
-          if (photoIds.includes(val.id)) {
-              photoOffsetMap.delete(key);
-          }
-      }
+      removeLocalPhotos(photoIds);
   }
   const resetAll = () => {
       timelineStats.value = { total_photos: 0, time_range: {start: null, end: null}, timeline: [] };
@@ -540,6 +562,7 @@ export const photoStoreSetup = () => {
     markDataStale,
     loadPhotosByMonth,
     removeLocalPhoto,
+    removeLocalPhotos,
     deletePhoto,
     deletePhotos,
     cancelAllPendingLoads,

@@ -153,8 +153,12 @@ const handleConfirmDelete = async (ids: string[], callback: (success: boolean) =
   try {
     await photoStore.deletePhotos(ids)
     callback(true)
-    // Refresh photos after delete
-    photoStore.loadPhotos(true)
+    // deletePhotos updates the loaded list and timeline incrementally, so the
+    // virtual gallery keeps its height and current scroll position.
+    void Promise.all([
+      photoStore.fetchAvailableFilters(),
+      store.fetchAlbums(),
+    ])
   } catch (e) {
     console.error(e)
     ElMessage.error('删除失败')
