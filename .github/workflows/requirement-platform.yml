@@ -1,0 +1,96 @@
+name: Requirement Platform
+
+on:
+  pull_request:
+    paths:
+      - "package/requirement-platform/**"
+      - ".github/workflows/requirement-platform.yml"
+  push:
+    branches: [master, main]
+    paths:
+      - "package/requirement-platform/**"
+      - ".github/workflows/requirement-platform.yml"
+    tags:
+      - "requirement-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: requirement-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: package/requirement-platform/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: package/requirement-platform/server/uv.lock
+      - run: uv sync --frozen
+      - name: Validate migration from an empty database
+        env:
+          RP_DATABASE_URL: sqlite:///./ci-requirements.db
+          RP_JWT_SECRET: ci-only-secret-not-used-in-production
+        run: uv run alembic upgrade head
+      - name: Run API and workflow tests
+        env:
+          RP_JWT_SECRET: ci-only-secret-not-used-in-production
+          RP_GITHUB_TOKEN: ""
+        run: uv run pytest
+
+  web-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: package/requirement-platform/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package/requirement-platform/web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+
+  image:
+    needs: [server-test, web-build]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - component: server
+            image: requirement-platform-server
+          - component: web
+            image: requirement-platform-web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/lc044/${{ matrix.image }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+      - uses: docker/build-push-action@v6
+        with:
+          context: package/requirement-platform/${{ matrix.component }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
