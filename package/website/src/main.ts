@@ -16,7 +16,7 @@ import './style.css'
 import App from './App.vue'
 import router from '@/router';
 import { registerPwa } from '@/composables/usePwa'
-import { initializeServerConfig, isNativeApp, isTauriApp } from '@/config/server'
+import { getServerUrl, initializeServerConfig, isNativeApp, isTauriApp } from '@/config/server'
 import { registerNativeBackButton } from '@/composables/useNativeBackButton'
 import { registerExternalLinkOpener } from '@/composables/useExternalLinks'
 import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
@@ -27,7 +27,7 @@ import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
 async function bootstrap() {
   document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
   await initializeServerConfig()
-  installNativeNetworkPolicy()
+  installNativeNetworkPolicy(getServerUrl)
   document.documentElement.classList.toggle('capacitor-native', isNativeApp())
   const app = createApp(App);
   // 2. 创建 Pinia 实例

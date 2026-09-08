@@ -1,6 +1,31 @@
-import { getServerUrl, isMobileApp } from './server'
+import { Capacitor } from '@capacitor/core'
 
 let installed = false
+let getConfiguredServerUrl: () => string = () => ''
+const temporaryServerOrigins = new Map<string, number>()
+
+function requestOrigin(value: string | URL): string {
+  const url = new URL(value.toString(), window.location.href)
+  if (url.protocol === 'ws:') url.protocol = 'http:'
+  if (url.protocol === 'wss:') url.protocol = 'https:'
+  return url.origin
+}
+
+/** Temporarily allow one candidate Server while its health endpoint is verified. */
+export async function withTemporaryServerAccess<T>(
+  serverUrl: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const origin = requestOrigin(serverUrl)
+  temporaryServerOrigins.set(origin, (temporaryServerOrigins.get(origin) || 0) + 1)
+  try {
+    return await operation()
+  } finally {
+    const remaining = (temporaryServerOrigins.get(origin) || 1) - 1
+    if (remaining > 0) temporaryServerOrigins.set(origin, remaining)
+    else temporaryServerOrigins.delete(origin)
+  }
+}
 
 function isAllowed(value: string | URL): boolean {
   const raw = value.toString()
@@ -13,10 +38,9 @@ function isAllowed(value: string | URL): boolean {
   }
   if (!['http:', 'https:', 'ws:', 'wss:'].includes(target.protocol)) return false
   if (target.hostname === 'localhost' || target.hostname === '127.0.0.1' || target.hostname === '[::1]') return true
+  if (temporaryServerOrigins.has(requestOrigin(target))) return true
 
-  const configured = getServerUrl()
-  // The connection screen must be able to test the address the user enters.
-  // Once saved, the exact-origin rule below becomes mandatory.
+  const configured = getConfiguredServerUrl()
   if (!configured) return true
   const server = new URL(configured, window.location.href)
   const targetProtocol = target.protocol.replace(/^ws/, 'http')
@@ -29,9 +53,10 @@ function reject(kind: string, value: string | URL): never {
 }
 
 /** Browser-layer guard, primarily for iOS and WebSocket/sendBeacon coverage. */
-export function installNativeNetworkPolicy(): void {
-  if (!isMobileApp() || installed) return
+export function installNativeNetworkPolicy(serverUrlProvider: () => string): void {
+  if (!Capacitor.isNativePlatform() || installed) return
   installed = true
+  getConfiguredServerUrl = serverUrlProvider
 
   const originalFetch = window.fetch.bind(window)
   window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {

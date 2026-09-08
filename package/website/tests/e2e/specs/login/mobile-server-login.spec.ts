@@ -74,6 +74,22 @@ test.describe('手机 App 登录服务器选择 @p0', () => {
       'https://photos.example.com',
     ])
   })
+
+  test('已配置旧 Server 时可测试并保存扫码得到的新 Server', async ({ page }) => {
+    const newServer = 'http://192.168.1.20:3180'
+    await page.route(`${newServer}/api/health-check`, route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'success', data: {} }),
+    }))
+
+    await page.goto(`/server-settings?url=${encodeURIComponent(newServer)}`, { waitUntil: 'domcontentloaded' })
+    await page.getByRole('button', { name: '测试并保存' }).click()
+
+    await expect(page.locator('p.text-green-600')).toContainText('连接成功')
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('trailsnap:server-url')))
+      .toBe(newServer)
+  })
 })
 
 test.describe('手机 App 首次启动 @p0', () => {

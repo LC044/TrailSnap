@@ -174,7 +174,7 @@ const connectAndSave = async () => {
     const previous = getServerUrl()
     const normalized = await testServerConnection(address.value)
     await saveServerUrl(normalized)
-    if (previous && previous !== normalized) userStore.resetState()
+    if (previous && previous !== normalized) userStore.clearSession()
     successMessage.value = '连接成功，已保存服务器地址'
     window.setTimeout(() => {
       const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/login'
