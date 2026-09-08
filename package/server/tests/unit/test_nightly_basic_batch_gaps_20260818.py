@@ -481,6 +481,30 @@ def test_handle_completion_pre_created_inserts_photo_metadata(monkeypatch):
     assert worker.scan_status["added"] == 0
 
 
+def test_handle_completion_marks_pre_created_motion_photo_as_live(monkeypatch):
+    from app.db.models.photo import FileType
+
+    strategy = _strategy()
+    db = MagicMock()
+    db_photo = SimpleNamespace(
+        file_type=FileType.image, md5=None, size=1, width=None, height=None, duration=None,
+    )
+    db.get.return_value = db_photo
+    db.query.return_value.filter.return_value.first.return_value = None
+    worker = MagicMock()
+    worker.scan_status = {"added": 0, "processed_files": 0}
+    photo_id = uuid4()
+    data = _photo_create_data(photo_id, str(uuid4()), is_pre_created=True)
+    data["photo"].file_type = FileType.live_photo
+    data["photo"].md5 = "f" * 32
+    item = {"status": "completed", "task_id": uuid4(), "result": {"photo_create_data": data}}
+
+    _run(strategy.handle_completion(worker, [item], db))
+
+    assert db_photo.file_type == FileType.live_photo
+    assert db_photo.md5 == "f" * 32
+
+
 def test_handle_completion_skips_metadata_when_no_metadata_schema():
     strategy = _strategy()
     db = MagicMock()

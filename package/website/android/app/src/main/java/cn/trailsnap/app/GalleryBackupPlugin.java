@@ -36,6 +36,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -167,7 +168,15 @@ public class GalleryBackupPlugin extends Plugin {
             List<Asset> regularVideos = includeVideos && videoPermissionGranted()
                 ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", videoModified, videoId, limit, sourcePaths, false)
                 : new ArrayList<>();
-            List<Asset> probedVideos = videoPermissionGranted()
+            // A fresh image scan already discovers each image's companion by
+            // name. Starting the late-companion probe at video id 0 would walk
+            // the entire historical video library again and return old live
+            // photos as if they were new backup work.
+            boolean initializeCompanionCursor = shouldInitializeCompanionCursor(companionVideoId, imageModified, imageId);
+            long companionBaselineId = initializeCompanionCursor && videoPermissionGranted()
+                ? latestAssetId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, sourcePaths)
+                : companionVideoId;
+            List<Asset> probedVideos = videoPermissionGranted() && !initializeCompanionCursor
                 ? query(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "video", 0L, companionVideoId, limit, sourcePaths, true)
                 : new ArrayList<>();
             for (Asset asset : images) asset.liveCompanion = findLiveCompanion(asset);
@@ -205,7 +214,7 @@ public class GalleryBackupPlugin extends Plugin {
                 nextVideoModified = lastRegularVideo.modifiedMs;
                 nextVideoId = lastRegularVideo.id;
             }
-            long nextCompanionVideoId = companionVideoId;
+            long nextCompanionVideoId = companionBaselineId;
             if (!probedVideos.isEmpty()) nextCompanionVideoId = probedVideos.get(probedVideos.size() - 1).id;
             JSObject result = new JSObject();
             result.put("assets", items);
@@ -265,6 +274,37 @@ public class GalleryBackupPlugin extends Plugin {
             }
         }
         return new long[] { count, bytes };
+    }
+
+    private long latestAssetId(Uri collection, List<String> sourcePaths) {
+        StringBuilder where = new StringBuilder("1 = 1");
+        List<String> args = new ArrayList<>();
+        appendSourcePathSelection(where, args, sourcePaths);
+        ContentResolver resolver = getContext().getContentResolver();
+        Cursor queried;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Bundle queryArgs = new Bundle();
+            queryArgs.putString(ContentResolver.QUERY_ARG_SQL_SELECTION, where.toString());
+            queryArgs.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, args.toArray(new String[0]));
+            queryArgs.putStringArray(ContentResolver.QUERY_ARG_SORT_COLUMNS, new String[] { MediaStore.MediaColumns._ID });
+            queryArgs.putInt(ContentResolver.QUERY_ARG_SORT_DIRECTION, ContentResolver.QUERY_SORT_DIRECTION_DESCENDING);
+            queryArgs.putInt(ContentResolver.QUERY_ARG_LIMIT, 1);
+            queried = resolver.query(collection, new String[] { MediaStore.MediaColumns._ID }, queryArgs, null);
+        } else {
+            queried = resolver.query(collection, new String[] { MediaStore.MediaColumns._ID }, where.toString(),
+                args.toArray(new String[0]), MediaStore.MediaColumns._ID + " DESC LIMIT 1");
+        }
+        try (Cursor cursor = queried) {
+            return cursor != null && cursor.moveToFirst() ? cursor.getLong(0) : 0L;
+        }
+    }
+
+    static boolean shouldInitializeCompanionCursor(long companionVideoId, long imageModified, long imageId) {
+        return companionVideoId == 0L && imageModified == 0L && imageId == 0L;
+    }
+
+    static long chooseTakenMs(long dateTakenMs, long dateAddedSeconds) {
+        return dateTakenMs > 0L ? dateTakenMs : Math.max(0L, dateAddedSeconds) * 1000L;
     }
 
     @PluginMethod
@@ -421,7 +461,7 @@ public class GalleryBackupPlugin extends Plugin {
         String[] projection = {
             MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED, takenColumnName,
-            pathColumn
+            MediaStore.MediaColumns.DATE_ADDED, pathColumn
         };
         SelectionSpec selection = idOnly
             ? buildIdSelection(afterId, sourcePaths)
@@ -452,6 +492,7 @@ public class GalleryBackupPlugin extends Plugin {
             int sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE);
             int modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED);
             int takenColumn = cursor.getColumnIndex(takenColumnName);
+            int addedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED);
             int pathIndex = cursor.getColumnIndexOrThrow(pathColumn);
             while (cursor.moveToNext()) {
                 long id = cursor.getLong(idColumn);
@@ -467,7 +508,7 @@ public class GalleryBackupPlugin extends Plugin {
                     cursor.getString(mimeColumn),
                     cursor.getLong(sizeColumn),
                     cursor.getLong(modifiedColumn) * 1000L,
-                    takenColumn >= 0 ? cursor.getLong(takenColumn) : 0L,
+                    chooseTakenMs(takenColumn >= 0 ? cursor.getLong(takenColumn) : 0L, cursor.getLong(addedColumn)),
                     relativePath,
                     mediaDirectory,
                     Uri.withAppendedPath(collection, String.valueOf(id))
@@ -633,7 +674,8 @@ public class GalleryBackupPlugin extends Plugin {
             : MediaStore.Images.ImageColumns.DATE_TAKEN;
         String[] projection = {
             MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
-            MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED, takenColumnName, pathColumn
+            MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED, takenColumnName,
+            MediaStore.MediaColumns.DATE_ADDED, pathColumn
         };
         StringBuilder selection = new StringBuilder("LOWER(" + MediaStore.MediaColumns.DISPLAY_NAME + ") IN (");
         List<String> args = new ArrayList<>();
@@ -658,13 +700,14 @@ public class GalleryBackupPlugin extends Plugin {
             String relativePath = modern ? normalizeRelativePath(rawPath) : normalizeLegacyAssetPath(rawPath);
             String directory = modern ? normalizeRelativePath(rawPath) : new File(rawPath).getParent();
             int takenIndex = cursor.getColumnIndex(takenColumnName);
+            int addedIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED);
             return new Asset(
                 id, kind,
                 cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)),
                 cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)),
                 cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)),
                 cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED)) * 1000L,
-                takenIndex >= 0 ? cursor.getLong(takenIndex) : 0L,
+                chooseTakenMs(takenIndex >= 0 ? cursor.getLong(takenIndex) : 0L, cursor.getLong(addedIndex)),
                 relativePath, directory, Uri.withAppendedPath(collection, String.valueOf(id))
             );
         } catch (SecurityException ignored) {
@@ -714,6 +757,37 @@ public class GalleryBackupPlugin extends Plugin {
         } catch (Exception error) {
             output.delete();
             call.reject("导出图库文件失败", error);
+        }
+    }
+
+    @PluginMethod
+    public void calculateAssetMd5(PluginCall call) {
+        String uriValue = call.getString("uri");
+        if (uriValue == null) {
+            call.reject("缺少图库资产 URI");
+            return;
+        }
+        Uri sourceUri = Uri.parse(uriValue);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (!originalMediaPermissionGranted()) {
+                call.reject("未授予照片位置权限，无法读取原始媒体文件", "ORIGINAL_MEDIA_PERMISSION_REQUIRED");
+                return;
+            }
+            sourceUri = MediaStore.setRequireOriginal(sourceUri);
+        }
+        try (InputStream input = getContext().getContentResolver().openInputStream(sourceUri)) {
+            if (input == null) throw new IllegalStateException("无法打开图库原始文件");
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            byte[] buffer = new byte[256 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+            StringBuilder hex = new StringBuilder(32);
+            for (byte value : digest.digest()) hex.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+            JSObject result = new JSObject();
+            result.put("md5", hex.toString());
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("计算图库文件 MD5 失败", error);
         }
     }
 

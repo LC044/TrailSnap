@@ -16,7 +16,7 @@ register_heif_opener()
 from sqlalchemy.orm import Session
 
 from app.db.models.task import Task, TaskStatus, TaskType
-from app.db.models.photo import FileType
+from app.db.models.photo import FileType, Photo
 from app.db.models.index_log import IndexLog
 import app.crud.photo
 from app.schemas.metadata import PhotoMetadataCreate
@@ -359,7 +359,27 @@ class BasicTaskStrategy(BaseTaskStrategy):
         # 分支 B：Photo 已存在，走 "先查再插/更新" 幂等补齐 PhotoMetadata。
         for data in pre_created_items:
             photo_id = str(data['photo_id'])
+            photo_schema = data.get('photo')
             meta_schema = data.get('metadata')
+            # 手机上传会先创建 Photo，再异步执行 PROCESS_BASIC。Motion Photo
+            # 的内嵌视频是在这个阶段才被识别和提取，因此必须把检测结果
+            # 回写到预创建记录，否则前端永远只会把它当普通图片。
+            try:
+                db_photo = db.get(Photo, data['photo_id'])
+                if db_photo is not None and photo_schema is not None:
+                    if photo_schema.file_type == FileType.live_photo:
+                        db_photo.file_type = FileType.live_photo
+                    if photo_schema.md5 and not db_photo.md5:
+                        db_photo.md5 = photo_schema.md5
+                    for field in ('size', 'width', 'height', 'duration'):
+                        value = getattr(photo_schema, field, None)
+                        if value is not None:
+                            setattr(db_photo, field, value)
+                    db.add(db_photo)
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    f"Failed to refresh pre-created photo {photo_id}: {e}"
+                )
             if not meta_schema:
                 continue
             try:

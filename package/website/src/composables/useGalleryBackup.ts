@@ -46,6 +46,7 @@ interface BackupOperation {
   pair: LivePair | null
   coveredAssets: GalleryAsset[]
   replaceExisting: boolean
+  md5?: string
 }
 
 interface ActiveUpload {
@@ -150,8 +151,8 @@ async function saveSettings(next: GalleryBackupSettings) {
 }
 
 function cursorScopeKey(config: GalleryBackupSettings = settings.value) {
-  // v5 rechecks pairs previously rejected because Android MediaStore reported
-  // incompatible DATE_TAKEN values for the still image and companion video.
+  // Keep the v5 scope stable so upgrading does not force a full-library rescan.
+  // Fresh v5 cursors receive the corrected native companion-video baseline.
   const input = JSON.stringify({ version: 5, includeVideos: config.includeVideos, sourcePaths: [...config.sourcePaths].sort() })
   let hash = 2166136261
   for (let index = 0; index < input.length; index++) {
@@ -376,7 +377,10 @@ async function uploadAsset(
       await uploadChunks(uploadId, file, tuning, config, reportAbsolute)
       await waitIfPaused()
       await retryTransfer(
-        () => albumService.finishUpload(uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey, replaceExisting),
+        () => albumService.finishUpload(
+          uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey,
+          replaceExisting, sourcePhotoTime(asset), asset.contentMd5,
+        ),
         config,
       )
     } else {
@@ -385,6 +389,7 @@ async function uploadAsset(
         () => albumService.uploadPhoto(
           file, undefined, destinationFolder(asset, config), asset.backupKey,
           loaded => reportAbsolute(Math.min(file.size, loaded)), replaceExisting,
+          sourcePhotoTime(asset), asset.contentMd5,
         ),
         config,
       )
@@ -443,24 +448,32 @@ async function uploadLivePhoto(
       const uploadId = await retryTransfer(() => albumService.initUpload(), config)
       await uploadChunks(uploadId, imageFile.file, tuning, config, reportAbsolute)
       await waitIfPaused()
-      await retryTransfer(
+      const saved = await retryTransfer(
         () => albumService.finishLivePhotoUpload(
           uploadId, imageFile.file.name, videoFile.file, folder, image.backupKey, video.backupKey,
           replaceExisting,
           loaded => reportAbsolute(imageFile.file.size + loaded),
+          sourcePhotoTime(image), image.contentMd5,
         ),
         config,
       )
+      if (saved.file_type !== 'live_photo') {
+        throw new Error('服务端未保存实况照片的视频部分，请确认 App 与服务端已升级到同一版本')
+      }
     } else {
       await waitIfPaused()
-      await retryTransfer(
+      const saved = await retryTransfer(
         () => albumService.uploadLivePhoto(
           imageFile.file, videoFile.file, folder, image.backupKey, video.backupKey,
           replaceExisting,
           loaded => reportAbsolute(loaded),
+          sourcePhotoTime(image), image.contentMd5,
         ),
         config,
       )
+      if (saved.file_type !== 'live_photo') {
+        throw new Error('服务端未保存实况照片的视频部分，请确认 App 与服务端已升级到同一版本')
+      }
     }
     reportAbsolute(totalSize)
   } finally {
@@ -485,6 +498,14 @@ function destinationFolder(asset: GalleryAsset, config: GalleryBackupSettings) {
   if (config.organizeMode === 'preserve') return joinFolder(base, asset.relativePath)
   const date = new Date(asset.takenMs || asset.modifiedMs || Date.now())
   return joinFolder(base, String(date.getFullYear()), String(date.getMonth() + 1).padStart(2, '0'))
+}
+
+function sourcePhotoTime(asset: GalleryAsset) {
+  if (!asset.takenMs) return undefined
+  const date = new Date(asset.takenMs)
+  if (Number.isNaN(date.getTime())) return undefined
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 function updateQueueStatus(backupKey: string, next: BackupQueueStatus) {
@@ -559,6 +580,8 @@ async function runBackup(options: { manual?: boolean } = {}) {
     if (totalItems.value > 0) await syncNotification(true, 'running')
     await waitIfPaused()
     const completedLivePairs = new Set<string>()
+    const seenAssetKeys = new Set<string>()
+    const seenContentHashes = new Set<string>()
 
     while (true) {
       await waitIfPaused()
@@ -573,19 +596,34 @@ async function runBackup(options: { manual?: boolean } = {}) {
         if (page.hasMore) continue
         break
       }
+      const freshAssets = page.assets.filter(asset => {
+        if (seenAssetKeys.has(asset.backupKey)) return false
+        seenAssetKeys.add(asset.backupKey)
+        return true
+      })
+      if (!freshAssets.length) {
+        cursor.imageModified = page.imageModified
+        cursor.imageId = page.imageId
+        cursor.videoModified = page.videoModified
+        cursor.videoId = page.videoId
+        cursor.companionVideoId = page.companionVideoId
+        await saveCursor(cursor, runCursorKey)
+        if (page.hasMore) continue
+        break
+      }
       if (!runSettings.includeVideos) {
         // A returned video is a late companion for an image that was already
         // scanned, so it was not included in countAssets' image-only total.
-        totalItems.value += page.assets.filter(asset => asset.kind === 'video').length
+        totalItems.value += freshAssets.filter(asset => asset.kind === 'video').length
         const companionBytes = new Map<string, number>()
-        for (const asset of page.assets) {
+        for (const asset of freshAssets) {
           const pair = livePhotoPair(asset)
           if (pair) companionBytes.set(pair.video.backupKey, pair.video.size)
         }
         totalBytes.value += [...companionBytes.values()].reduce((sum, size) => sum + Math.max(0, size), 0)
       }
       const operations = new Map<string, BackupOperation>()
-      for (const asset of page.assets) {
+      for (const asset of freshAssets) {
         const pair = livePhotoPair(asset)
         const key = pair?.image.backupKey || asset.backupKey
         const existingOperation = operations.get(key)
@@ -613,15 +651,24 @@ async function runBackup(options: { manual?: boolean } = {}) {
         relativePath: operation.relativePath,
         status: 'pending',
       }))
-      const keysToCheck = new Set(page.assets.map(asset => asset.backupKey))
-      page.assets.forEach(asset => {
+      const keysToCheck = new Set(freshAssets.map(asset => asset.backupKey))
+      freshAssets.forEach(asset => {
         const pair = livePhotoPair(asset)
         if (pair) {
           keysToCheck.add(pair.image.backupKey)
           keysToCheck.add(pair.video.backupKey)
         }
       })
-      const presence = await albumService.checkBackupKeys([...keysToCheck])
+      const sourceTimes = Object.fromEntries(freshAssets.flatMap(asset => {
+        const values: Array<[string, string]> = []
+        const ownTime = sourcePhotoTime(asset)
+        if (ownTime) values.push([asset.backupKey, ownTime])
+        const pair = livePhotoPair(asset)
+        const imageTime = pair ? sourcePhotoTime(pair.image) : undefined
+        if (pair && imageTime) values.push([pair.image.backupKey, imageTime])
+        return values
+      }))
+      const presence = await albumService.checkBackupKeys([...keysToCheck], [], sourceTimes)
       const remaining: BackupOperation[] = []
       for (const operation of operations.values()) {
         const action = backupUploadAction(operation.key, Boolean(operation.pair), presence)
@@ -634,6 +681,34 @@ async function runBackup(options: { manual?: boolean } = {}) {
           if (operation.pair) completedLivePairs.add(operation.key)
         } else {
           remaining.push(operation)
+        }
+      }
+      // Stable MediaStore ids are the fast path. For assets not known by id,
+      // hash the original bytes locally and ask the server before transferring
+      // them. This also catches the same file appearing in multiple phone
+      // folders or under a changed MediaStore id.
+      const hashes: string[] = []
+      for (const operation of remaining) {
+        const primary = operation.pair?.image || operation.asset
+        const digest = await galleryBackupNative.calculateAssetMd5({ uri: primary.uri })
+        primary.contentMd5 = digest.md5.toLowerCase()
+        operation.md5 = primary.contentMd5
+        hashes.push(operation.md5)
+      }
+      const hashPresence = hashes.length ? await albumService.checkBackupKeys([], hashes) : null
+      for (let index = remaining.length - 1; index >= 0; index--) {
+        const operation = remaining[index]
+        const isDuplicate = !operation.pair && Boolean(operation.md5) && (
+          hashPresence?.hashes.has(operation.md5!) || seenContentHashes.has(operation.md5!)
+        )
+        if (isDuplicate) {
+          remaining.splice(index, 1)
+          updateQueueStatus(operation.key, 'skipped')
+          skipped.value++
+          processedItems.value += operation.coveredAssets.length
+          processedBytes.value += operation.coveredAssets.reduce((sum, asset) => sum + Math.max(0, asset.size), 0)
+        } else if (operation.md5) {
+          seenContentHashes.add(operation.md5)
         }
       }
       await syncNotification()

@@ -107,7 +107,7 @@ export const albumService = {
   },
 
   // Upload (Simple)
-  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string, onProgress?: (loaded: number, total?: number) => void, replaceExisting = false) {
+  async uploadPhoto(file: File, albumId?: string, folder?: string, backupKey?: string, onProgress?: (loaded: number, total?: number) => void, replaceExisting = false, sourcePhotoTime?: string, contentMd5?: string) {
     const formData = new FormData();
     formData.append('file', file);
     if (albumId) {
@@ -115,6 +115,8 @@ export const albumService = {
     }
     if (folder) formData.append('folder', folder);
     if (backupKey) formData.append('backup_key', backupKey);
+    if (sourcePhotoTime) formData.append('source_photo_time', sourcePhotoTime);
+    if (contentMd5) formData.append('content_md5', contentMd5);
     if (replaceExisting) formData.append('replace_existing', 'true');
     const data = await request.post<Photo>('/api/medias', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -124,12 +126,14 @@ export const albumService = {
     return data.data;
   },
 
-  async uploadLivePhoto(image: File, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void) {
+  async uploadLivePhoto(image: File, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void, sourcePhotoTime?: string, contentMd5?: string) {
     const formData = new FormData();
     formData.append('file', image);
     formData.append('live_photo_video', video);
     formData.append('backup_key', imageBackupKey);
     formData.append('companion_backup_key', videoBackupKey);
+    if (sourcePhotoTime) formData.append('source_photo_time', sourcePhotoTime);
+    if (contentMd5) formData.append('content_md5', contentMd5);
     if (replaceExisting) formData.append('replace_existing', 'true');
     if (folder) formData.append('folder', folder);
     const data = await request.post<Photo>('/api/medias', formData, {
@@ -167,7 +171,7 @@ export const albumService = {
       });
   },
 
-  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string, replaceExisting = false) {
+  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string, replaceExisting = false, sourcePhotoTime?: string, contentMd5?: string) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', fileName);
@@ -176,18 +180,22 @@ export const albumService = {
       }
       if (folder) formData.append('folder', folder);
       if (backupKey) formData.append('backup_key', backupKey);
+      if (sourcePhotoTime) formData.append('source_photo_time', sourcePhotoTime);
+      if (contentMd5) formData.append('content_md5', contentMd5);
       if (replaceExisting) formData.append('replace_existing', 'true');
       const data = await request.post<Photo>('/api/medias/upload/finish', formData, { timeout: 120000 });
       return data.data;
   },
 
-  async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void) {
+  async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void, sourcePhotoTime?: string, contentMd5?: string) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', imageName);
       formData.append('live_photo_video', video);
       formData.append('backup_key', imageBackupKey);
       formData.append('companion_backup_key', videoBackupKey);
+      if (sourcePhotoTime) formData.append('source_photo_time', sourcePhotoTime);
+      if (contentMd5) formData.append('content_md5', contentMd5);
       if (replaceExisting) formData.append('replace_existing', 'true');
       if (folder) formData.append('folder', folder);
       const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
@@ -197,18 +205,20 @@ export const albumService = {
       return data.data;
   },
 
-  async checkBackupKeys(keys: string[]) {
+  async checkBackupKeys(keys: string[], hashes: string[] = [], sourceTimes: Record<string, string> = {}) {
     const data = await request.post<{
       existing: string[]
       complete?: string[]
       live_photos?: string[]
-    }>('/api/medias/backup/check', { keys });
+      hashes?: string[]
+    }>('/api/medias/backup/check', { keys, hashes, source_times: sourceTimes });
     return {
       existing: new Set(data.data.existing),
       // Keep ordinary-photo backups compatible with servers predating the
       // richer completeness response.
       complete: new Set(data.data.complete ?? data.data.existing),
       livePhotos: new Set(data.data.live_photos ?? []),
+      hashes: new Set(data.data.hashes ?? []),
     };
   },
 

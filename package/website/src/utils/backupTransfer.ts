@@ -18,6 +18,7 @@ export interface BackupPresence {
   existing: ReadonlySet<string>
   complete: ReadonlySet<string>
   livePhotos: ReadonlySet<string>
+  hashes?: ReadonlySet<string>
 }
 
 export type BackupUploadAction = 'skip' | 'upload' | 'replace'

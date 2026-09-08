@@ -2,6 +2,9 @@ import json
 import os
 import shutil
 import uuid
+import re
+import logging
+from datetime import datetime
 from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status, Form, UploadFile, File, Query
@@ -40,6 +43,68 @@ def _existing_backup_photo(db: Session, user_id: UUID, backup_key: Optional[str]
     ).first()
 
 
+def _normalized_md5(value: Optional[str]) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{32}", normalized):
+        raise HTTPException(status_code=400, detail="content_md5 must be a 32-character hexadecimal MD5")
+    return normalized
+
+
+def _existing_content_photo(db: Session, user_id: UUID, content_md5: Optional[str]):
+    if not content_md5:
+        return None
+    candidates = db.query(Photo).filter(
+        Photo.owner_id == user_id,
+        Photo.md5 == content_md5,
+        Photo.is_deleted == False,
+    ).all()
+    return next((photo for photo in candidates if photo.file_path and os.path.isfile(photo.file_path)), None)
+
+
+def _existing_content_hashes(db: Session, user_id: UUID, hashes: list[str]) -> list[str]:
+    if not hashes:
+        return []
+    rows = db.query(Photo.md5, Photo.file_path).filter(
+        Photo.owner_id == user_id,
+        Photo.is_deleted == False,
+        Photo.md5.in_(hashes),
+    ).all()
+    return list(dict.fromkeys(md5 for md5, file_path in rows if file_path and os.path.isfile(file_path)))
+
+
+def _apply_mobile_source_metadata(
+    db: Session, photo: Photo, source_photo_time: Optional[datetime], content_md5: Optional[str]
+) -> Photo:
+    changed = False
+    normalized_time = source_photo_time.replace(tzinfo=None) if source_photo_time is not None else None
+    current_time = getattr(photo, "photo_time", None)
+    upload_time = getattr(photo, "upload_time", None)
+    used_upload_fallback = current_time is None or (
+        upload_time is not None and abs((current_time - upload_time).total_seconds()) <= 5
+    )
+    if normalized_time is not None and used_upload_fallback and current_time != normalized_time:
+        # Photo.photo_time is stored as a timezone-naive local wall-clock value.
+        photo.photo_time = normalized_time
+        changed = True
+    if content_md5 and not photo.md5:
+        photo.md5 = content_md5
+        changed = True
+    if changed:
+        db.commit()
+        db.refresh(photo)
+    return photo
+
+
+def _preserve_source_file_time(file_path: str, source_photo_time: Optional[datetime]) -> None:
+    if source_photo_time is None:
+        return
+    normalized = source_photo_time.replace(tzinfo=None)
+    timestamp = normalized.timestamp()
+    os.utime(file_path, (timestamp, timestamp))
+
+
 @router.post('/backup/check', response_model=BaseResponse[dict])
 def check_mobile_backup_assets(
     payload: dict,
@@ -47,29 +112,71 @@ def check_mobile_backup_assets(
     current_user: User = Depends(get_current_user),
 ):
     keys = payload.get("keys") if isinstance(payload, dict) else None
+    hashes = payload.get("hashes", []) if isinstance(payload, dict) else None
+    source_times = payload.get("source_times", {}) if isinstance(payload, dict) else None
     if not isinstance(keys, list) or len(keys) > 200 or any(not isinstance(key, str) for key in keys):
         raise HTTPException(status_code=400, detail="keys must be a string array with at most 200 items")
+    if not isinstance(hashes, list) or len(hashes) > 200 or any(not isinstance(value, str) for value in hashes):
+        raise HTTPException(status_code=400, detail="hashes must be a string array with at most 200 items")
+    if not isinstance(source_times, dict) or len(source_times) > 200:
+        raise HTTPException(status_code=400, detail="source_times must be an object with at most 200 items")
+    parsed_source_times: dict[str, datetime] = {}
+    try:
+        for key, value in source_times.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise ValueError
+            parsed_source_times[key[:255]] = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="source_times contains an invalid datetime") from exc
+    normalized_hashes = list(dict.fromkeys(_normalized_md5(value) for value in hashes if value))
     normalized = list(dict.fromkeys(key[:255] for key in keys if key))
     if not normalized:
-        return BaseResponse.success(data={"existing": [], "complete": [], "live_photos": []})
-    rows = db.query(Photo.backup_key, Photo.file_type, Photo.file_path).filter(
+        existing_hashes = []
+        if normalized_hashes:
+            existing_hashes = _existing_content_hashes(db, current_user.id, normalized_hashes)
+        return BaseResponse.success(data={"existing": [], "complete": [], "live_photos": [], "hashes": existing_hashes})
+    photos = db.query(Photo).filter(
         Photo.owner_id == current_user.id,
         Photo.backup_key.in_(normalized),
     ).all()
     existing: list[str] = []
     complete: list[str] = []
     live_photos: list[str] = []
-    for backup_key, file_type, file_path in rows:
-        existing.append(backup_key)
-        if not file_path or not os.path.isfile(file_path):
+    repaired_live_type = False
+    for photo in photos:
+        existing.append(photo.backup_key)
+        if not photo.file_path or not os.path.isfile(photo.file_path):
             continue
-        complete.append(backup_key)
-        if file_type == FileType.live_photo and storage.get_live_photo_vide(file_path):
-            live_photos.append(backup_key)
+        complete.append(photo.backup_key)
+        live_video = storage.get_live_photo_vide(photo.file_path)
+        if not live_video:
+            thumb_path = _get_thumbnail_path(photo.owner_id, photo.id, db, 'medium')
+            embedded_video = os.path.splitext(thumb_path)[0] + '.mp4'
+            if os.path.isfile(embedded_video):
+                live_video = embedded_video
+        if live_video:
+            live_photos.append(photo.backup_key)
+            if photo.file_type != FileType.live_photo:
+                photo.file_type = FileType.live_photo
+                db.add(photo)
+                repaired_live_type = True
+    if repaired_live_type:
+        db.commit()
+    if parsed_source_times:
+        metadata_photos = db.query(Photo).filter(
+            Photo.owner_id == current_user.id,
+            Photo.backup_key.in_(list(parsed_source_times)),
+        ).all()
+        for photo in metadata_photos:
+            _apply_mobile_source_metadata(db, photo, parsed_source_times.get(photo.backup_key), None)
+    existing_hashes = []
+    if normalized_hashes:
+        existing_hashes = _existing_content_hashes(db, current_user.id, normalized_hashes)
     return BaseResponse.success(data={
         "existing": existing,
         "complete": complete,
         "live_photos": live_photos,
+        "hashes": existing_hashes,
     })
 
 
@@ -420,6 +527,10 @@ def _attach_live_photo_video(
     image_photo.file_type = FileType.live_photo
     db.commit()
     db.refresh(image_photo)
+    logging.getLogger(__name__).info(
+        "Saved mobile live-photo companion: photo_id=%s image=%s video=%s bytes=%s",
+        image_photo.id, image_photo.file_path, target_path, os.path.getsize(target_path),
+    )
 
     if companion and companion.id != image_photo.id:
         same_file = os.path.normcase(os.path.abspath(companion.file_path)) == os.path.normcase(os.path.abspath(target_path))
@@ -482,6 +593,8 @@ async def upload_photo_generic(
         album_id: Optional[UUID] = Form(None),
         folder: Optional[str] = Form(None),
         backup_key: Optional[str] = Form(None),
+        source_photo_time: Optional[datetime] = Form(None),
+        content_md5: Optional[str] = Form(None),
         companion_backup_key: Optional[str] = Form(None),
         live_photo_video: Optional[UploadFile] = File(None),
         replace_existing: bool = Form(False),
@@ -497,8 +610,11 @@ async def upload_photo_generic(
         replace_existing = False
     if not isinstance(backup_key, str):
         backup_key = None
+    if not isinstance(source_photo_time, datetime):
+        source_photo_time = None
     if backup_key and len(backup_key) > 255:
         raise HTTPException(status_code=400, detail="backup_key is too long")
+    content_md5 = _normalized_md5(content_md5)
     if live_photo_video:
         image_stem, image_ext = os.path.splitext(file.filename or '')
         video_stem, video_ext = os.path.splitext(live_photo_video.filename or '')
@@ -513,6 +629,7 @@ async def upload_photo_generic(
     if existing:
         if replace_existing:
             existing = await run_in_threadpool(_replace_backup_file, db, existing, file, current_user.id)
+            await run_in_threadpool(_preserve_source_file_time, existing.file_path, source_photo_time)
         if live_photo_video:
             await run_in_threadpool(
                 _attach_live_photo_video, db, existing, live_photo_video, companion_backup_key, current_user.id
@@ -522,7 +639,18 @@ async def upload_photo_generic(
                 add_tasks, db, current_user.id, existing.id, existing.file_path,
                 _live_photo_video_path(existing.file_path, live_photo_video.filename) if live_photo_video else None,
             )
-        return existing
+        return await run_in_threadpool(
+            _apply_mobile_source_metadata, db, existing, source_photo_time, content_md5
+        )
+    duplicate = await run_in_threadpool(_existing_content_photo, db, current_user.id, content_md5)
+    if duplicate:
+        if live_photo_video:
+            await run_in_threadpool(
+                _attach_live_photo_video, db, duplicate, live_photo_video, companion_backup_key, current_user.id
+            )
+        return await run_in_threadpool(
+            _apply_mobile_source_metadata, db, duplicate, source_photo_time, content_md5
+        )
     if album_id:
         # Verify album exists
         db_album = await run_in_threadpool(crud_album.get_album, db, album_id=album_id, user_id=current_user.id)
@@ -534,12 +662,17 @@ async def upload_photo_generic(
     # Save file
     try:
         file_path = await run_in_threadpool(storage.save_upload_file, file, photo_id, current_user.id, folder, db)
+        await run_in_threadpool(_preserve_source_file_time, file_path, source_photo_time)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # Create and Save
     live_photo_video_path = None
     try:
-        photo = await run_in_threadpool(save_and_create_photo, db, file_path, file.filename, album_id, photo_id, user_id=current_user.id, backup_key=backup_key)
+        photo = await run_in_threadpool(
+            save_and_create_photo, db, file_path, file.filename, album_id, photo_id,
+            user_id=current_user.id, backup_key=backup_key,
+            source_photo_time=source_photo_time, source_md5=content_md5,
+        )
         if live_photo_video:
             live_photo_video_path = await run_in_threadpool(
                 _attach_live_photo_video, db, photo, live_photo_video, companion_backup_key, current_user.id
@@ -597,6 +730,8 @@ async def finish_upload_generic(
         album_id: Optional[UUID] = Form(None),
         folder: Optional[str] = Form(None),
         backup_key: Optional[str] = Form(None),
+        source_photo_time: Optional[datetime] = Form(None),
+        content_md5: Optional[str] = Form(None),
         companion_backup_key: Optional[str] = Form(None),
         live_photo_video: Optional[UploadFile] = File(None),
         replace_existing: bool = Form(False),
@@ -611,8 +746,11 @@ async def finish_upload_generic(
         replace_existing = False
     if not isinstance(backup_key, str):
         backup_key = None
+    if not isinstance(source_photo_time, datetime):
+        source_photo_time = None
     if backup_key and len(backup_key) > 255:
         raise HTTPException(status_code=400, detail="backup_key is too long")
+    content_md5 = _normalized_md5(content_md5)
     if live_photo_video:
         image_stem, image_ext = os.path.splitext(file_name or '')
         video_stem, video_ext = os.path.splitext(live_photo_video.filename or '')
@@ -637,6 +775,7 @@ async def finish_upload_generic(
             existing = await run_in_threadpool(
                 _replace_backup_file_from_chunks, db, existing, chunk_dir, chunks, current_user.id
             )
+            await run_in_threadpool(_preserve_source_file_time, existing.file_path, source_photo_time)
         if live_photo_video:
             await run_in_threadpool(
                 _attach_live_photo_video, db, existing, live_photo_video, companion_backup_key, current_user.id
@@ -648,7 +787,19 @@ async def finish_upload_generic(
             )
         else:
             await run_in_threadpool(shutil.rmtree, _chunk_dir(current_user.id, upload_id, db), True)
-        return existing
+        return await run_in_threadpool(
+            _apply_mobile_source_metadata, db, existing, source_photo_time, content_md5
+        )
+    duplicate = await run_in_threadpool(_existing_content_photo, db, current_user.id, content_md5)
+    if duplicate:
+        await run_in_threadpool(shutil.rmtree, _chunk_dir(current_user.id, upload_id, db), True)
+        if live_photo_video:
+            await run_in_threadpool(
+                _attach_live_photo_video, db, duplicate, live_photo_video, companion_backup_key, current_user.id
+            )
+        return await run_in_threadpool(
+            _apply_mobile_source_metadata, db, duplicate, source_photo_time, content_md5
+        )
     if album_id:
         # Verify album exists
         db_album = await run_in_threadpool(crud_album.get_album, db, album_id=album_id, user_id=current_user.id)
@@ -693,13 +844,18 @@ async def finish_upload_generic(
         
     try:
         final_path = await run_in_threadpool(merge_and_save)
+        await run_in_threadpool(_preserve_source_file_time, final_path, source_photo_time)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Create and Save
     live_photo_video_path = None
     try:
-        photo = await run_in_threadpool(save_and_create_photo, db, final_path, file_name, album_id, photo_id, user_id=current_user.id, backup_key=backup_key)
+        photo = await run_in_threadpool(
+            save_and_create_photo, db, final_path, file_name, album_id, photo_id,
+            user_id=current_user.id, backup_key=backup_key,
+            source_photo_time=source_photo_time, source_md5=content_md5,
+        )
         if live_photo_video:
             live_photo_video_path = await run_in_threadpool(
                 _attach_live_photo_video, db, photo, live_photo_video, companion_backup_key, current_user.id

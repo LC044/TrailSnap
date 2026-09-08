@@ -11,6 +11,7 @@ export interface GalleryAsset {
   backupKey: string
   relativePath: string
   takenMs: number
+  contentMd5?: string
   liveCompanion?: GalleryAsset
 }
 
@@ -38,6 +39,7 @@ interface GalleryBackupNativePlugin {
   }>
   listAssets(options: GalleryCursor & { limit: number; includeVideos: boolean; sourcePaths: string[] }): Promise<GalleryCursor & { assets: GalleryAsset[]; hasMore: boolean }>
   exportAsset(options: { uri: string; fileName: string }): Promise<{ path: string }>
+  calculateAssetMd5(options: { uri: string }): Promise<{ md5: string }>
   releaseAsset(options: { path: string }): Promise<void>
   getNetworkStatus(): Promise<{ connected: boolean; wifi: boolean; unmetered: boolean }>
   countAssets(options: GalleryCursor & { includeVideos: boolean; sourcePaths: string[] }): Promise<{ count: number; bytes: number }>
