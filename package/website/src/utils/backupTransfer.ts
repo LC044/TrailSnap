@@ -7,6 +7,7 @@ export interface BackupNetworkStatus {
 export interface TransferTuning {
   isLan: boolean
   metered: boolean
+  hashConcurrency: number
   mediaConcurrency: number
   chunkConcurrency: number
   chunkSize: number
@@ -36,6 +37,8 @@ export function backupUploadAction(
 }
 
 const MB = 1024 * 1024
+const DEFAULT_CHUNK_THRESHOLD = 5 * MB
+const LAN_CHUNK_THRESHOLD = 16 * MB
 
 export function isLanServerUrl(value: string) {
   try {
@@ -55,12 +58,12 @@ export function initialTransferTuning(serverUrl: string, network: BackupNetworkS
   const metered = !network.unmetered
   if (isLan) {
     return {
-      isLan, metered, mediaConcurrency: 3, chunkConcurrency: 2,
-      chunkSize: 8 * MB, maxInFlightBytes: 96 * MB, maxAttempts: 2,
+      isLan, metered, hashConcurrency: 4, mediaConcurrency: 4, chunkConcurrency: 2,
+      chunkSize: 8 * MB, maxInFlightBytes: 160 * MB, maxAttempts: 2,
     }
   }
   return {
-    isLan, metered, mediaConcurrency: 1, chunkConcurrency: 1,
+    isLan, metered, hashConcurrency: metered ? 1 : 2, mediaConcurrency: 1, chunkConcurrency: 1,
     chunkSize: metered ? MB : 2 * MB,
     maxInFlightBytes: metered ? 16 * MB : 32 * MB,
     maxAttempts: 3,
@@ -75,6 +78,7 @@ export function adaptTransferTuning(
   if (recentFailure) {
     return {
       ...current,
+      hashConcurrency: 1,
       mediaConcurrency: 1,
       chunkConcurrency: 1,
       chunkSize: Math.min(current.chunkSize, current.metered ? MB : 2 * MB),
@@ -83,13 +87,28 @@ export function adaptTransferTuning(
   }
   if (speedBytesPerSecond <= 0) return current
   if (current.isLan) {
-    if (speedBytesPerSecond >= 20 * MB) {
-      return { ...current, mediaConcurrency: 4, chunkConcurrency: 2, chunkSize: 8 * MB, maxInFlightBytes: 128 * MB }
+    if (speedBytesPerSecond >= 30 * MB) {
+      return {
+        ...current, hashConcurrency: 6, mediaConcurrency: 8, chunkConcurrency: 3,
+        chunkSize: 16 * MB, maxInFlightBytes: 256 * MB,
+      }
     }
-    if (speedBytesPerSecond < 2 * MB) {
-      return { ...current, mediaConcurrency: 2, chunkConcurrency: 1, chunkSize: 4 * MB, maxInFlightBytes: 64 * MB }
+    if (speedBytesPerSecond >= 12 * MB) {
+      return {
+        ...current, hashConcurrency: 4, mediaConcurrency: 6, chunkConcurrency: 2,
+        chunkSize: 8 * MB, maxInFlightBytes: 192 * MB,
+      }
     }
-    return { ...current, mediaConcurrency: 3, chunkConcurrency: 2, chunkSize: 8 * MB, maxInFlightBytes: 96 * MB }
+    if (speedBytesPerSecond < 3 * MB) {
+      return {
+        ...current, hashConcurrency: 2, mediaConcurrency: 3, chunkConcurrency: 1,
+        chunkSize: 4 * MB, maxInFlightBytes: 64 * MB,
+      }
+    }
+    return {
+      ...current, hashConcurrency: 4, mediaConcurrency: 4, chunkConcurrency: 2,
+      chunkSize: 8 * MB, maxInFlightBytes: 160 * MB,
+    }
   }
   if (!current.metered && speedBytesPerSecond >= 5 * MB) {
     return { ...current, mediaConcurrency: 2, chunkConcurrency: 2, chunkSize: 4 * MB, maxInFlightBytes: 64 * MB }
@@ -101,6 +120,33 @@ export function adaptTransferTuning(
     chunkSize: current.metered ? MB : 2 * MB,
     maxInFlightBytes: current.metered ? 16 * MB : 32 * MB,
   }
+}
+
+export function shouldUseChunkedUpload(size: number, tuning: TransferTuning) {
+  const threshold = tuning.isLan
+    ? Math.max(LAN_CHUNK_THRESHOLD, tuning.chunkSize)
+    : DEFAULT_CHUNK_THRESHOLD
+  return size > threshold
+}
+
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (!items.length) return []
+  const results = new Array<R>(items.length)
+  let nextIndex = 0
+  const worker = async () => {
+    while (true) {
+      const index = nextIndex++
+      if (index >= items.length) return
+      results[index] = await mapper(items[index], index)
+    }
+  }
+  const workers = Math.min(items.length, Math.max(1, Math.floor(concurrency)))
+  await Promise.all(Array.from({ length: workers }, worker))
+  return results
 }
 
 export function takeTransferBatch<T extends { size: number }>(items: T[], tuning: TransferTuning) {

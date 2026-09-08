@@ -110,11 +110,16 @@ def _resolve_upload_directory(user_id: UUID, folder: Optional[str], db: Session 
     return os.path.join(root, 'uploads', *components)
 
 
-def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
+def prepare_upload_path(filename: str, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
     base_dir = _resolve_upload_directory(user_id, folder, db)
     os.makedirs(base_dir, exist_ok=True)
-    target_path = _ensure_unique_path(base_dir, upload_file.filename)
+    target_path = _ensure_unique_path(base_dir, filename)
     validate_target_path(target_path)
+    return target_path
+
+
+def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
+    target_path = prepare_upload_path(upload_file.filename, user_id, folder, db)
     with open(target_path, "wb") as buffer:
         shutil.copyfileobj(upload_file.file, buffer)
     return target_path
