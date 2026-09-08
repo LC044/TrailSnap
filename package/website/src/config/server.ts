@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
+import { withTemporaryServerAccess } from './nativeNetworkPolicy'
 
 const SERVER_URL_KEY = 'trailsnap_server_url'
 const LEGACY_STORAGE_KEY = 'trailsnap:server-url'
@@ -168,11 +169,13 @@ export async function testServerConnection(value: string, timeoutMs = 8000): Pro
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
-    const response = await fetch(`${normalized}/api/health-check`, {
-      method: 'GET',
-      signal: controller.signal,
-      headers: { Accept: 'application/json' },
-    })
+    const response = await withTemporaryServerAccess(normalized, () =>
+      fetch(`${normalized}/api/health-check`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      }),
+    )
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return normalized
   } catch (error) {
