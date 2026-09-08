@@ -169,7 +169,11 @@ def get_photo_metadata(db: Session, photo_id: UUID, user_id: UUID = None):
     return query.first()
 
 
-def save_and_create_photo(db: Session, file_path: str, file_name: str, album_id: Optional[UUID], photo_id: UUID, user_id: UUID = None, backup_key: Optional[str] = None):
+def save_and_create_photo(
+    db: Session, file_path: str, file_name: str, album_id: Optional[UUID], photo_id: UUID,
+    user_id: UUID = None, backup_key: Optional[str] = None,
+    source_photo_time: Optional[datetime] = None, source_md5: Optional[str] = None,
+):
     # Determine file type
     ext = os.path.splitext(file_name)[1]
     file_type = FileType.image
@@ -192,7 +196,8 @@ def save_and_create_photo(db: Session, file_path: str, file_name: str, album_id:
         height=height,
         duration=duration,
         filename=file_name,
-        photo_time=extracted_meta["photo_time"]
+        photo_time=extracted_meta["photo_time"] or source_photo_time,
+        md5=source_md5,
     )
 
     db_photo = create_photo(db, photo_create, album_id, file_path, photo_id=photo_id, user_id=user_id, backup_key=backup_key)
@@ -856,6 +861,7 @@ def create_photo(db: Session, photo: photo_schemas.PhotoCreate, album_id: Option
         photo_time=photo.photo_time or datetime.now(),
         owner_id=user_id,
         backup_key=backup_key,
+        md5=photo.md5,
     )
 
     if album_id:

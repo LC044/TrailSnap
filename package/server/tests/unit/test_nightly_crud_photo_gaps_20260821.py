@@ -179,6 +179,26 @@ def test_save_and_create_photo_defaults_to_image_for_jpg():
     assert db_photo.file_type == FileType.image
 
 
+def test_save_and_create_photo_uses_phone_time_and_md5_when_file_has_no_timestamp():
+    from app.crud import photo as crud_photo
+
+    db = MagicMock()
+    phone_time = datetime(2024, 6, 7, 8, 9, 10)
+    digest = "d" * 32
+    with _ALBUM_PATCHES, \
+         patch.object(crud_photo.storage, "generate_thumbnail"), \
+         patch.object(crud_photo.storage, "get_file_size", return_value=512), \
+         patch.object(crud_photo.storage, "get_image_dimensions", return_value=(640, 480, 0.0)), \
+         patch.object(crud_photo, "extract_metadata", return_value={"photo_time": None}):
+        db_photo = crud_photo.save_and_create_photo(
+            db, "/data/no-exif.jpg", "no-exif.jpg", None, uuid4(),
+            source_photo_time=phone_time, source_md5=digest,
+        )
+
+    assert db_photo.photo_time == phone_time
+    assert db_photo.md5 == digest
+
+
 # ---------------------------------------------------------------------------
 # replace_photo_file
 # ---------------------------------------------------------------------------

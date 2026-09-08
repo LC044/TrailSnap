@@ -60,21 +60,78 @@ def test_backup_check_distinguishes_existing_complete_and_live_photo(tmp_path):
 
     db = MagicMock()
     db.query.return_value.filter.return_value.all.return_value = [
-        ("photo", FileType.image, str(photo)),
-        ("live", FileType.live_photo, str(live_image)),
-        ("incomplete-live", FileType.live_photo, str(incomplete_live)),
-        ("missing", FileType.image, str(tmp_path / "missing.jpg")),
+        SimpleNamespace(id=uuid4(), owner_id=owner_id, backup_key="photo", file_type=FileType.image, file_path=str(photo)),
+        SimpleNamespace(id=uuid4(), owner_id=owner_id, backup_key="live", file_type=FileType.live_photo, file_path=str(live_image)),
+        SimpleNamespace(id=uuid4(), owner_id=owner_id, backup_key="incomplete-live", file_type=FileType.live_photo, file_path=str(incomplete_live)),
+        SimpleNamespace(id=uuid4(), owner_id=owner_id, backup_key="missing", file_type=FileType.image, file_path=str(tmp_path / "missing.jpg")),
     ]
 
-    result = media_api.check_mobile_backup_assets(
-        {"keys": ["photo", "live", "incomplete-live", "missing"]},
-        db=db,
-        current_user=SimpleNamespace(id=owner_id),
-    )
+    with patch.object(media_api, "_get_thumbnail_path", side_effect=lambda _owner, photo_id, _db, _size: str(tmp_path / f"{photo_id}.webp")):
+        result = media_api.check_mobile_backup_assets(
+            {"keys": ["photo", "live", "incomplete-live", "missing"]},
+            db=db,
+            current_user=SimpleNamespace(id=owner_id),
+        )
 
     assert set(result.data["existing"]) == {"photo", "live", "incomplete-live", "missing"}
     assert set(result.data["complete"]) == {"photo", "live", "incomplete-live"}
     assert result.data["live_photos"] == ["live"]
+
+
+def test_backup_check_repairs_image_type_when_mp4_sidecar_exists(tmp_path):
+    owner_id = uuid4()
+    image = tmp_path / "IMG_0001.jpg"
+    image.write_bytes(b"image")
+    image.with_suffix(".mp4").write_bytes(b"video")
+    photo = SimpleNamespace(
+        id=uuid4(), owner_id=owner_id, backup_key="image-key",
+        file_type=FileType.image, file_path=str(image),
+    )
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = [photo]
+
+    result = media_api.check_mobile_backup_assets(
+        {"keys": ["image-key"]}, db=db, current_user=SimpleNamespace(id=owner_id),
+    )
+
+    assert result.data["live_photos"] == ["image-key"]
+    assert photo.file_type == FileType.live_photo
+    db.commit.assert_called_once()
+
+
+def test_mobile_source_metadata_repairs_upload_time_fallback_without_overwriting_exif():
+    db = MagicMock()
+    upload_time = media_api.datetime(2026, 9, 8, 8, 0, 0)
+    phone_time = media_api.datetime(2024, 2, 3, 10, 20, 30)
+    fallback_photo = SimpleNamespace(photo_time=upload_time, upload_time=upload_time, md5=None)
+
+    media_api._apply_mobile_source_metadata(db, fallback_photo, phone_time, "a" * 32)
+
+    assert fallback_photo.photo_time == phone_time
+    assert fallback_photo.md5 == "a" * 32
+
+    exif_time = media_api.datetime(2023, 1, 2, 3, 4, 5)
+    exif_photo = SimpleNamespace(photo_time=exif_time, upload_time=upload_time, md5="b" * 32)
+    media_api._apply_mobile_source_metadata(db, exif_photo, phone_time, "c" * 32)
+    assert exif_photo.photo_time == exif_time
+    assert exif_photo.md5 == "b" * 32
+
+
+def test_mobile_md5_validation_normalizes_hex_and_rejects_invalid_values():
+    assert media_api._normalized_md5("A" * 32) == "a" * 32
+    with pytest.raises(HTTPException) as exc_info:
+        media_api._normalized_md5("not-an-md5")
+    assert exc_info.value.status_code == 400
+
+
+def test_mobile_source_time_is_preserved_as_file_mtime(tmp_path):
+    target = tmp_path / "no-exif.jpg"
+    target.write_bytes(b"image")
+    source_time = media_api.datetime(2024, 6, 7, 8, 9, 10)
+
+    media_api._preserve_source_file_time(str(target), source_time)
+
+    assert abs(target.stat().st_mtime - source_time.timestamp()) < 1
 
 
 def test_attach_live_photo_video_replaces_companion_atomically(tmp_path):
