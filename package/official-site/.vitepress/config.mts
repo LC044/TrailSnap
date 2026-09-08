@@ -65,7 +65,6 @@ export default defineConfig({
           { text: '首页', link: '/' },
           { text: '下载', link: '/download' },
           { text: 'CLI', link: '/cli' },
-          { text: '识别演示', link: '/docs/guide/demo' },
           { text: '用户指南', link: '/docs/guide/install' },
           { text: '开发者文档', link: '/docs/dev/guide' },
           { text: '博客', link: '/docs/blog/' },
@@ -192,7 +191,6 @@ export default defineConfig({
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'CLI', link: '/en/cli' },
-          { text: 'Demo', link: '/en/docs/guide/demo' },
           { text: 'Download', link: '/en/download' },
           { text: 'Guide', link: '/en/docs/guide/install' },
           { text: 'Developers', link: '/en/docs/dev/guide' },
