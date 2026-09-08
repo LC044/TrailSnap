@@ -252,14 +252,20 @@
                         v-if="isPlayingLive"
                         ref="liveVideoRef"
                         :key="image.id"
-                        class="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
+                        class="live-photo-video absolute inset-0 w-full h-full object-contain z-10 pointer-events-none transition-opacity duration-200"
+                        :class="isLiveVideoVisible ? 'opacity-100' : 'opacity-0'"
                         :style="videoStyle"
                         autoplay
+                        preload="auto"
                         playsinline
                         x5-playsinline
                         webkit-playsinline
+                        controlslist="nodownload noplaybackrate nofullscreen"
+                        disablepictureinpicture
                         :loop="false"
+                        @playing="onLivePlaying"
                         @ended="onLiveEnded"
+                        @error="onLiveError"
                         @loadedmetadata="onVideoLoaded"
                     >
                         <source :src="image.live_photo_video_url" type="video/mp4" />
@@ -703,6 +709,7 @@ const swipeOffset = ref(0)
 const isSwipeAnimating = ref(false)
 let swipeAnimationTimer: ReturnType<typeof setTimeout> | null = null
 const isPlayingLive = ref(false)
+const isLiveVideoVisible = ref(false)
 const liveVideoRef = ref<HTMLVideoElement | null>(null)
 const videoStyle = ref<Record<string, string>>({})
 
@@ -917,6 +924,7 @@ const onVideoLoaded = (e: Event) => {
 }
 
 const toggleLivePlayback = () => {
+    isLiveVideoVisible.value = false
     if (isPlayingLive.value) {
         // Stop
         isPlayingLive.value = false
@@ -926,7 +934,19 @@ const toggleLivePlayback = () => {
     }
 }
 
+const onLivePlaying = () => {
+    requestAnimationFrame(() => {
+        if (isPlayingLive.value) isLiveVideoVisible.value = true
+    })
+}
+
 const onLiveEnded = () => {
+    isLiveVideoVisible.value = false
+    isPlayingLive.value = false
+}
+
+const onLiveError = () => {
+    isLiveVideoVisible.value = false
     isPlayingLive.value = false
 }
 
@@ -1158,6 +1178,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     highlightedOCR.value = null
     highlightedFace.value = null
     videoStyle.value = {}
+    isLiveVideoVisible.value = false
     isDragging.value = false // Ensure dragging is reset
     processingMenuVisible.value = false
     closeMobileMenu()
@@ -1196,6 +1217,7 @@ watch(() => props.image, async (newImg, oldImg) => {
 })
 
 watch(() => props.visible, async (newVal) => {
+    isLiveVideoVisible.value = false
     if (newVal && props.image) {
         pushLightboxHistoryEntry()
         document.body.style.overflow = 'hidden'
@@ -1845,6 +1867,15 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 </script>
 
 <style scoped>
+.live-photo-video::-webkit-media-controls,
+.live-photo-video::-webkit-media-controls-enclosure,
+.live-photo-video::-webkit-media-controls-panel,
+.live-photo-video::-webkit-media-controls-play-button,
+.live-photo-video::-webkit-media-controls-start-playback-button {
+    display: none !important;
+    -webkit-appearance: none;
+}
+
 .viewer-controls-enter-active,
 .viewer-controls-leave-active {
     transition: opacity 180ms ease, transform 180ms ease;

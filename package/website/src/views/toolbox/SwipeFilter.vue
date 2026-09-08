@@ -136,13 +136,19 @@
               <video
                 v-if="photo.file_type === 'live_photo' && index === 0 && livePlayRequested && currentThumbLoaded"
                 :key="photo.id"
-                class="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                class="live-photo-video absolute inset-0 w-full h-full object-contain pointer-events-none transition-opacity duration-200"
+                :class="liveVideoVisible ? 'opacity-100' : 'opacity-0'"
                 autoplay
                 muted
+                preload="auto"
                 playsinline
                 webkit-playsinline
                 x5-playsinline
+                controlslist="nodownload noplaybackrate nofullscreen"
+                disablepictureinpicture
+                @playing="onLivePlaying"
                 @ended="onLiveEnded"
+                @error="onLiveError"
               >
                 <source :src="toServerUrl(`/api/medias/${photo.id}/video`)" type="video/mp4" />
               </video>
@@ -600,17 +606,35 @@ const formatDuration = (photo: Photo) => {
 
 // 实况图播放：仅顶层、且封面加载完毕后播放一次；播完停在封面图，点击 LIVE 徽标可重播。
 const livePlayRequested = ref(false)
+// 视频元素挂载后仍可能短暂显示 Android WebView 的原生播放占位图。
+// 保持视频透明，直到浏览器确认已开始播放；期间继续展示已经加载好的照片封面。
+const liveVideoVisible = ref(false)
 const toggleLivePlayback = () => {
   if (!currentPhoto.value || currentPhoto.value.file_type !== 'live_photo') return
   if (!currentThumbLoaded.value) return
+  liveVideoVisible.value = false
   livePlayRequested.value = !livePlayRequested.value
+}
+const onLivePlaying = () => {
+  // 等到下一次绘制再显现，确保第一帧已经进入视频合成层。
+  requestAnimationFrame(() => {
+    if (livePlayRequested.value) liveVideoVisible.value = true
+  })
 }
 // 视频自然播完：卸载视频回到封面图，等待用户点击重播。
 const onLiveEnded = () => {
+  liveVideoVisible.value = false
+  livePlayRequested.value = false
+}
+const onLiveError = () => {
+  liveVideoVisible.value = false
   livePlayRequested.value = false
 }
 watch(weakNetwork, (weak) => {
-  if (weak && livePlayRequested.value) livePlayRequested.value = false
+  if (weak && livePlayRequested.value) {
+    liveVideoVisible.value = false
+    livePlayRequested.value = false
+  }
 })
 
 // 拖拽状态
@@ -626,6 +650,7 @@ const isLightboxVisible = ref(false)
 
 // 卡片切换：重置实况图播放意图，并对未就绪的当前封面启动弱网慢加载探测。
 watch(currentPhoto, (photo) => {
+  liveVideoVisible.value = false
   livePlayRequested.value = !weakNetwork.value && photo?.file_type === 'live_photo'
   if (photo && !loadedThumbIds.value.has(photo.id)) {
     armSlowLoadProbe(photo.id)
@@ -1093,6 +1118,15 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.live-photo-video::-webkit-media-controls,
+.live-photo-video::-webkit-media-controls-enclosure,
+.live-photo-video::-webkit-media-controls-panel,
+.live-photo-video::-webkit-media-controls-play-button,
+.live-photo-video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
+
 .guide-fade-enter-active,
 .guide-fade-leave-active {
   transition: opacity 0.25s ease;
