@@ -96,7 +96,10 @@
         </div>
 
         <div v-else class="submit-layout">
-          <el-form class="panel submit-form" label-position="top" @submit.prevent="submitRequirement">
+          <el-form class="panel submit-form" label-position="top" @submit.prevent="submitRequirement" @paste="handlePaste">
+            <el-alert type="info" :closable="false" show-icon title="提交要求">
+              标题 4–160 字，需求描述 10–8,000 字；当前/期望行为最多 3,000 字，复现步骤最多 4,000 字，日志最多 20,000 字。每天最多提交 5 条、同时处理中最多 20 条。每条需求最多 5 个附件，单个不超过 5MB，仅支持 PNG、JPG、WebP、TXT、LOG、JSON、PDF。日志和附件仅本人及管理员可见。
+            </el-alert>
             <div class="section">
               <h2 class="section-head"><el-icon><DocumentAdd /></el-icon>基本信息</h2>
               <el-form-item label="类型" required>
@@ -128,7 +131,7 @@
             <div v-if="requirementForm.type === 'bug'" class="section">
               <h2 class="section-head"><el-icon><Warning /></el-icon>问题细节</h2>
               <el-form-item label="复现步骤">
-                <el-input v-model="requirementForm.steps_to_reproduce" type="textarea" :rows="4" placeholder="例如：1. 打开照片页 2. 点击筛选..." />
+                <el-input v-model="requirementForm.steps_to_reproduce" type="textarea" :rows="4" maxlength="4000" show-word-limit placeholder="例如：1. 打开照片页 2. 点击筛选..." />
               </el-form-item>
             </div>
 
@@ -136,12 +139,29 @@
               <h2 class="section-head"><el-icon><Switch /></el-icon>行为描述</h2>
               <div class="form-grid">
                 <el-form-item label="当前行为">
-                  <el-input v-model="requirementForm.current_behavior" type="textarea" :rows="3" placeholder="请描述目前的实际情况，例如：现在系统是如何工作的？" />
+                  <el-input v-model="requirementForm.current_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit placeholder="请描述目前的实际情况，例如：现在系统是如何工作的？" />
                 </el-form-item>
                 <el-form-item label="期望行为">
-                  <el-input v-model="requirementForm.expected_behavior" type="textarea" :rows="3" placeholder="请描述你期望的结果，例如：希望系统如何改进？" />
+                  <el-input v-model="requirementForm.expected_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit placeholder="请描述你期望的结果，例如：希望系统如何改进？" />
                 </el-form-item>
               </div>
+            </div>
+
+            <div class="section">
+              <h2 class="section-head"><el-icon><Document /></el-icon>日志与附件</h2>
+              <el-form-item label="日志文字">
+                <el-input v-model="requirementForm.log_text" type="textarea" :rows="5" maxlength="20000" show-word-limit placeholder="可粘贴脱敏后的错误日志，请勿提交密码、令牌等敏感信息" />
+              </el-form-item>
+              <el-form-item label="截图或附件">
+                <input ref="fileInput" class="native-file" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.txt,.log,.json,.pdf" @change="selectFiles" />
+                <div class="field-hint">可选择文件，也可以在本页直接 Ctrl/Cmd+V 粘贴剪贴板截图。</div>
+                <div v-if="pendingFiles.length" class="file-list">
+                  <div v-for="(file, index) in pendingFiles" :key="`${file.name}-${file.size}-${index}`" class="file-row">
+                    <span>{{ file.name }}（{{ formatBytes(file.size) }}）</span>
+                    <el-button link type="danger" @click="pendingFiles.splice(index, 1)">移除</el-button>
+                  </div>
+                </div>
+              </el-form-item>
             </div>
 
             <div class="section">
@@ -298,6 +318,7 @@
               <el-option v-for="status in reviewStatuses" :key="status" :label="statusLabel(status)" :value="status" />
             </el-select>
             <el-button :icon="Refresh" @click="loadAdmin">刷新</el-button>
+            <el-button type="primary" :loading="syncingGithub" @click="syncGithubIssues">从 GitHub 同步</el-button>
           </div>
         </div>
         <RequirementTable :items="adminRequirements" manager :user="user" @open="openDetail" @action="onRowAction" />
@@ -394,6 +415,14 @@
           <p>{{ String(detailTarget.triage.summary || detailTarget.triage.recommendation || '分析已完成') }}</p>
         </div>
         <div v-if="detailTarget.review_reason" class="meta" style="margin-top:12px"><strong>审核说明：</strong>{{ detailTarget.review_reason }}</div>
+        <div v-if="detailTarget.log_text" class="triage-box" style="margin-top:12px"><strong>日志（仅本人和管理员可见）</strong><pre class="log-text">{{ detailTarget.log_text }}</pre></div>
+        <div v-if="detailTarget.attachments?.length" style="margin-top:12px">
+          <strong>附件（仅本人和管理员可见）</strong>
+          <div v-for="attachment in detailTarget.attachments" :key="attachment.id" class="file-row">
+            <span>{{ attachment.name }}（{{ formatBytes(attachment.size_bytes) }}）</span>
+            <el-button link type="primary" @click="downloadAttachment(detailTarget, attachment)">下载</el-button>
+          </div>
+        </div>
         <div class="meta" style="margin-top:14px">
           <span>提交人：{{ detailTarget.created_by_name || '用户' }}</span>
           <span>提交于 {{ new Date(detailTarget.created_at).toLocaleString() }}</span>
@@ -500,7 +529,7 @@ const errorMessage = (error: unknown) => {
 }
 
 const emptyRequirementForm = () => ({
-  type: 'feature', title: '', description: '', current_behavior: '', expected_behavior: '', steps_to_reproduce: '',
+  type: 'feature', title: '', description: '', log_text: '', current_behavior: '', expected_behavior: '', steps_to_reproduce: '',
   severity: 'medium', product_version: '', visibility: 'public', environment: {} as Record<string, unknown>,
 })
 
@@ -510,7 +539,7 @@ const user = ref<ApiUser | null>(null)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
 const agentTokens = ref<AgentToken[]>([])
-const busy = ref(false), authDialog = ref(false), reviewDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false)
+const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false)
 const githubOauthEnabled = ref(false), createdToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
@@ -519,6 +548,8 @@ const reviewTarget = ref<Requirement | null>(null)
 const filters = reactive({ q: '', type: '', status: '' })
 const authForm = reactive({ username: '', email: '', password: '' })
 const requirementForm = reactive(emptyRequirementForm())
+const pendingFiles = ref<File[]>([])
+const fileInput = ref<HTMLInputElement | null>(null)
 const reviewForm = reactive({ action: 'candidate', reason: '', priority: 'normal', risk_level: 'medium', duplicate_of_id: '' })
 const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
@@ -637,13 +668,54 @@ function onUserCommand(command: string | number | object) {
 function onNotification() { ElMessage.info('暂无新通知') }
 
 async function submitRequirement() {
+  const titleLength = requirementForm.title.trim().length
+  const descriptionLength = requirementForm.description.trim().length
+  if (titleLength < 4 || titleLength > 160) { ElMessage.error('标题需要 4–160 个字符'); return }
+  if (descriptionLength < 10 || descriptionLength > 8000) { ElMessage.error('需求描述需要 10–8,000 个字符'); return }
   busy.value = true
   try {
-    await api.createRequirement(requirementForm)
+    const created = await api.createRequirement(requirementForm)
+    let uploadError: unknown = null
+    for (const file of pendingFiles.value) {
+      try { await api.uploadAttachment(created.id, file) } catch (e) { uploadError = e; break }
+    }
     Object.assign(requirementForm, emptyRequirementForm())
-    ElMessage.success('需求已提交')
+    pendingFiles.value = []
+    if (fileInput.value) fileInput.value.value = ''
+    if (uploadError) ElMessage.warning(`需求已提交，但有附件上传失败：${errorMessage(uploadError)}`)
+    else ElMessage.success('需求已提交')
     await switchTab('mine')
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
+
+const allowedFilePattern = /\.(png|jpe?g|webp|txt|log|json|pdf)$/i
+function addFiles(files: File[]) {
+  for (const file of files) {
+    if (pendingFiles.value.length >= 5) { ElMessage.warning('每条需求最多添加 5 个附件'); break }
+    if (file.size > 5 * 1024 * 1024) { ElMessage.warning(`${file.name} 超过 5MB，未添加`); continue }
+    if (!allowedFilePattern.test(file.name)) { ElMessage.warning(`${file.name} 的格式不受支持`); continue }
+    pendingFiles.value.push(file)
+  }
+}
+function selectFiles(event: Event) {
+  const input = event.target as HTMLInputElement
+  addFiles(Array.from(input.files || []))
+  input.value = ''
+}
+function handlePaste(event: ClipboardEvent) {
+  const images = Array.from(event.clipboardData?.items || []).filter(item => item.kind === 'file' && item.type.startsWith('image/'))
+  if (!images.length) return
+  const files = images.map((item, index) => {
+    const blob = item.getAsFile()!
+    const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png'
+    return new File([blob], `clipboard-${Date.now()}-${index + 1}.${extension}`, { type: blob.type })
+  })
+  addFiles(files)
+  ElMessage.success(`已从剪贴板添加 ${files.length} 张截图`)
+}
+function formatBytes(size: number) { return size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB` }
+async function downloadAttachment(requirement: Requirement, attachment: NonNullable<Requirement['attachments']>[number]) {
+  try { await api.downloadAttachment(requirement.id, attachment.id, attachment.name) } catch (e) { ElMessage.error(errorMessage(e)) }
 }
 function saveDraft() {
   const { environment: _env, ...rest } = requirementForm
@@ -671,6 +743,14 @@ async function promptReason(title: string) {
   return result.value
 }
 async function refreshManaged() { await Promise.all([loadAdmin(), loadRequirements()]) }
+async function syncGithubIssues() {
+  syncingGithub.value = true
+  try {
+    const result = await api.syncGithubIssues()
+    ElMessage.success(`同步完成：新增 ${result.created} 条，更新 ${result.updated} 条，跳过 ${result.skipped} 条`)
+    await refreshManaged()
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { syncingGithub.value = false }
+}
 async function createGithubIssue(item: Requirement) { try { await ElMessageBox.confirm('确认在配置的 TrailSnap 仓库中新建 Issue？', '新建 GitHub Issue'); await api.createGithubIssue(item.id); ElMessage.success('GitHub Issue 已创建并关联'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
 async function linkGithubIssue(item: Requirement) { try { const result = await ElMessageBox.prompt('请输入 GitHub Issue 编号', '关联已有 Issue', { inputPattern: /^\d+$/, inputErrorMessage: '请输入正整数' }); await api.linkGithubIssue(item.id, Number(result.value)); ElMessage.success('Issue 已关联'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
 async function closeGithubIssue(item: Requirement) { try { const reason = await promptReason('关闭 GitHub Issue 与需求'); await api.closeGithubIssue(item.id, reason); ElMessage.success('Issue 与需求均已关闭'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }

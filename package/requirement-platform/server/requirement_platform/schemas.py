@@ -61,6 +61,7 @@ class RequirementCreate(BaseModel):
     type: Literal["bug", "improvement", "feature"]
     title: str = Field(min_length=4, max_length=160)
     description: str = Field(min_length=10, max_length=8000)
+    log_text: str | None = Field(default=None, max_length=20000)
     current_behavior: str | None = Field(default=None, max_length=3000)
     expected_behavior: str | None = Field(default=None, max_length=3000)
     steps_to_reproduce: str | None = Field(default=None, max_length=4000)
@@ -73,6 +74,7 @@ class RequirementCreate(BaseModel):
 class RequirementUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=4, max_length=160)
     description: str | None = Field(default=None, min_length=10, max_length=8000)
+    log_text: str | None = Field(default=None, max_length=20000)
     current_behavior: str | None = Field(default=None, max_length=3000)
     expected_behavior: str | None = Field(default=None, max_length=3000)
     steps_to_reproduce: str | None = Field(default=None, max_length=4000)
@@ -116,6 +118,7 @@ class RequirementRead(BaseModel):
     type: str
     title: str
     description: str
+    log_text: str | None
     current_behavior: str | None
     expected_behavior: str | None
     steps_to_reproduce: str | None
@@ -131,6 +134,7 @@ class RequirementRead(BaseModel):
     github_issue_number: int | None
     github_issue_url: str | None
     github_state: str | None
+    source: str
     created_by: str
     created_at: datetime
     updated_at: datetime

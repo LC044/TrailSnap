@@ -8,6 +8,7 @@ TEST_DIR = tempfile.TemporaryDirectory()
 os.environ["RP_DATABASE_URL"] = f"sqlite:///{Path(TEST_DIR.name) / 'requirements.db'}"
 os.environ["RP_JWT_SECRET"] = "test-secret-that-is-long-enough-for-tests"
 os.environ["RP_GITHUB_TOKEN"] = ""
+os.environ["RP_UPLOAD_DIR"] = str(Path(TEST_DIR.name) / "uploads")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -15,7 +16,7 @@ from requirement_platform.db import SessionLocal, engine  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
 from requirement_platform.models import BackgroundJob, TriageReport  # noqa: E402
-from requirement_platform.services import analyze_requirement  # noqa: E402
+from requirement_platform.services import GitHubClient, analyze_requirement  # noqa: E402
 
 
 def cleanup_database_handles():
@@ -237,3 +238,71 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         tools = mcp_client.post("/", headers=headers, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
         assert tools.status_code == 200, tools.text
         assert "list_requirements" in {item["name"] for item in tools.json()["result"]["tools"]}
+
+
+def test_attachment_limits_and_private_access():
+    with TestClient(app) as client:
+        owner = client.post(
+            "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
+        ).json()["data"]
+        viewer = client.post(
+            "/api/auth/login", json={"identifier": "viewer@example.com", "password": "password123"}
+        ).json()["data"]
+        created = client.post(
+            "/api/requirements", headers=auth(viewer["token"]),
+            json={"type": "bug", "title": "上传诊断日志附件", "description": "需要提供截图和日志帮助定位问题。", "log_text": "sanitized log"},
+        ).json()["data"]
+        uploaded = client.post(
+            f"/api/requirements/{created['id']}/attachments", headers=auth(viewer["token"]),
+            files={"file": ("error.log", b"stack trace", "text/plain")},
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        attachment_id = uploaded.json()["data"]["id"]
+        assert client.get(
+            f"/api/requirements/{created['id']}/attachments/{attachment_id}", headers=auth(viewer["token"])
+        ).content == b"stack trace"
+        assert client.get(
+            f"/api/requirements/{created['id']}/attachments/{attachment_id}", headers=auth(owner["token"])
+        ).status_code == 200
+        assert client.get(f"/api/requirements/{created['id']}/attachments/{attachment_id}").status_code == 401
+        too_large = client.post(
+            f"/api/requirements/{created['id']}/attachments", headers=auth(viewer["token"]),
+            files={"file": ("large.log", b"x" * (5 * 1024 * 1024 + 1), "text/plain")},
+        )
+        assert too_large.status_code == 413
+
+
+def test_manager_imports_github_issues(monkeypatch):
+    with TestClient(app) as client:
+        owner = client.post(
+            "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
+        ).json()["data"]
+        monkeypatch.setattr("requirement_platform.main.GitHubClient.list_issues", lambda _self: [{
+            "number": 99992, "title": "从 GitHub 导入功能建议", "body": "这是从 GitHub Issue 导入的完整需求说明。",
+            "html_url": "https://github.com/LC044/TrailSnap/issues/99992", "state": "open",
+            "labels": [{"name": "enhancement"}, {"name": "status: candidate"}],
+        }])
+        synced = client.post("/api/admin/github/issues/sync", headers=auth(owner["token"]))
+        assert synced.status_code == 200, synced.text
+        assert synced.json()["data"]["created"] == 1
+        rows = client.get("/api/requirements?status=candidate", headers=auth(owner["token"])).json()["data"]
+        imported = next(row for row in rows if row["github_issue_number"] == 99992)
+        assert imported["source"] == "github"
+        assert imported["type"] == "feature"
+
+
+def test_github_status_sync_preserves_unmanaged_labels(monkeypatch):
+    requests = []
+
+    def fake_request(_self, method, path, **kwargs):
+        requests.append((method, path, kwargs))
+        if method == "GET" and path.endswith("/issues/42"):
+            return {"number": 42, "state": "open", "labels": [{"name": "bug"}, {"name": "status: submitted"}]}
+        if method == "GET" and path.endswith("/labels"):
+            return [{"name": "status: testing"}]
+        return {"number": 42, "state": "open"}
+
+    monkeypatch.setattr(GitHubClient, "_request", fake_request)
+    GitHubClient().sync_status_label(42, "testing")
+    patch_request = next(item for item in requests if item[0] == "PATCH")
+    assert patch_request[2]["json"]["labels"] == ["bug", "status: testing"]
