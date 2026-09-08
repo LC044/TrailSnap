@@ -1,0 +1,52 @@
+services:
+  api:
+    build: ./server
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in package/requirement-platform/.env}
+      RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in package/requirement-platform/.env}
+    volumes:
+      - requirement-data:/app/data
+    networks: [requirement-private]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    build: ./server
+    restart: unless-stopped
+    command: ["uv", "run", "python", "-m", "requirement_platform.worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in package/requirement-platform/.env}
+      RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in package/requirement-platform/.env}
+    volumes:
+      - requirement-data:/app/data
+    networks: [requirement-private]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8011:8080"
+    networks: [requirement-private]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  requirement-data:
+
+networks:
+  requirement-private:
+    driver: bridge
