@@ -107,6 +107,17 @@ def test_update_settings_returns_new_config():
     assert result["config"]["storage"]["photo_storage_path"] == "F:/photos"
 
 
+def test_update_settings_rejects_connection_without_models():
+    with pytest.raises(HTTPException) as exc:
+        settings_api.update_settings(
+            payload={"ai": {"connections": [{"id": "empty", "models": [], "model_names": []}]}},
+            db=MagicMock(),
+            current_user=_user(),
+        )
+    assert exc.value.status_code == 400
+    assert "至少添加一个模型" in exc.value.detail
+
+
 def test_export_settings_matches_get_settings():
     db = MagicMock()
     user = _user()

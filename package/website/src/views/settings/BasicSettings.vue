@@ -282,7 +282,7 @@
     <el-collapse v-model="activeNames" class="mb-8 bg-white rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
       <el-collapse-item name="ai">
         <template #title>
-           <h2 class="text-lg font-semibold dark:text-white px-6">AI 相关设置</h2>
+           <h2 class="text-lg font-semibold dark:text-white px-6">AI 服务与人脸设置</h2>
         </template>
         <div class="px-6 pb-6">
           <el-form label-position="top" class="max-w-3xl">
@@ -312,7 +312,7 @@
 
         <el-collapse v-model="aiActiveNames" class="my-4 border-none">
           <!-- LLM Connections -->
-          <el-collapse-item name="connections">
+          <el-collapse-item v-if="false" name="connections">
             <template #title>
               <div class="flex items-center w-full">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300 mr-2">大模型连接配置 (LLM Connections)</span>
@@ -350,7 +350,7 @@
           </el-collapse-item>
 
           <!-- Analysis LLM Config -->
-          <el-collapse-item name="analysis">
+          <el-collapse-item v-if="false" name="analysis">
             <template #title>
               <div class="flex items-center w-full">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300 mr-2">大模型智能分析配置</span>
@@ -380,6 +380,7 @@
                   filterable
                   allow-create
                   @focus="fetchModelsFromApi(aiForm.analysis_connection_id)"
+                  @change="onAnalysisModelChange"
                   :loading="fetchingModels[aiForm.analysis_connection_id]"
                 >
                   <el-option
@@ -392,6 +393,11 @@
               </div>
               <div v-if="!aiForm.analysis_model_name && aiForm.analysis_connection_id" class="text-red-500 text-xs mt-1">必须指定模型名称</div>
             </el-form-item>
+            <el-form-item label="分析思考等级">
+              <el-select v-model="aiForm.analysis_reasoning_effort" class="w-full sm:w-64" placeholder="选择思考等级">
+                <el-option v-for="level in getReasoningLevels(aiForm.analysis_connection_id, aiForm.analysis_model_name)" :key="level" :label="reasoningLabel(level)" :value="level" />
+              </el-select>
+            </el-form-item>
             
             <el-form-item label="图片分析提示词">
                 <el-input v-model="aiForm.visual_evaluation_prompt" type="textarea" :rows="4" placeholder="用于生成评分和描述的提示词" />
@@ -399,7 +405,7 @@
           </el-collapse-item>
 
           <!-- Chat LLM Config -->
-          <el-collapse-item name="chat">
+          <el-collapse-item v-if="false" name="chat">
             <template #title>
               <div class="flex items-center w-full">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300 mr-2">AI 对话默认配置</span>
@@ -429,6 +435,7 @@
                   filterable
                   allow-create
                   @focus="fetchModelsFromApi(aiForm.chat_connection_id)"
+                  @change="onChatModelChange"
                   :loading="fetchingModels[aiForm.chat_connection_id]"
                 >
                   <el-option
@@ -440,6 +447,11 @@
                 </el-select>
               </div>
               <div v-if="!aiForm.chat_model_name && aiForm.chat_connection_id" class="text-red-500 text-xs mt-1">建议指定模型名称</div>
+            </el-form-item>
+            <el-form-item label="默认思考等级">
+              <el-select v-model="aiForm.chat_reasoning_effort" class="w-full sm:w-64" placeholder="选择思考等级">
+                <el-option v-for="level in getReasoningLevels(aiForm.chat_connection_id, aiForm.chat_model_name)" :key="level" :label="reasoningLabel(level)" :value="level" />
+              </el-select>
             </el-form-item>
 
             <el-form-item label="朋友圈文案提示词">
@@ -788,7 +800,7 @@
     </el-collapse>
 
     <!-- Edit Connection Dialog -->
-    <el-dialog v-model="editDialogVisible" title="编辑大模型连接" width="500px">
+    <el-dialog v-if="false" v-model="editDialogVisible" title="编辑大模型连接" width="min(92vw, 680px)">
       <el-form label-position="top" v-if="editingConnection">
         <el-form-item label="API 提供商">
           <el-select v-model="editingConnection.provider" placeholder="选择提供商" class="w-full" :disabled="editingConnection.id === 'builtin'">
@@ -806,17 +818,32 @@
         <el-form-item label="API Key">
           <el-input v-model="editingConnection.api_key" type="password" show-password placeholder="sk-..." :disabled="editingConnection.id === 'builtin'" />
         </el-form-item>
-        <el-form-item label="可用模型 (可选)">
-          <el-select
-            v-model="editingConnection.model_names"
-            multiple
-            filterable
-            allow-create
-            default-first-option
-            placeholder="输入模型名称后按回车，不填则可以使用该连接的所有模型"
-            class="w-full"
-          >
-          </el-select>
+        <el-form-item label="模型列表">
+          <div class="w-full space-y-3">
+            <div class="flex flex-wrap gap-2">
+              <el-button type="primary" plain :loading="fetchingConnectionModels" @click="fetchEditingConnectionModels">
+                <Download class="w-4 h-4 mr-1" />获取模型列表
+              </el-button>
+              <el-button plain @click="addEditingModel"><Plus class="w-4 h-4 mr-1" />添加模型</el-button>
+            </div>
+            <div v-if="editingConnection.models.length === 0" class="rounded border border-dashed border-gray-300 dark:border-gray-600 p-4 text-center text-xs text-gray-500 dark:text-gray-400">
+              可从服务商获取，也可以手动添加模型。
+            </div>
+            <div v-for="(model, modelIndex) in editingConnection.models" :key="modelIndex" class="rounded border border-gray-200 dark:border-gray-600 p-3 space-y-3">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <el-input v-model="model.display_name" placeholder="菜单显示名（可选）" />
+                <el-input v-model="model.model_name" placeholder="实际请求模型" />
+              </div>
+              <div class="flex flex-col sm:flex-row gap-3 sm:items-center">
+                <el-input-number v-model="model.context_window" :min="1024" :step="1024" controls-position="right" class="w-full sm:w-48" />
+                <span class="text-xs text-gray-500 dark:text-gray-400">上下文窗口（tokens）</span>
+                <el-button type="danger" text class="sm:ml-auto" @click="editingConnection.models.splice(modelIndex, 1)">删除</el-button>
+              </div>
+              <el-checkbox-group v-model="model.reasoning_levels" class="flex flex-wrap gap-x-3">
+                <el-checkbox v-for="level in reasoningOptions" :key="level" :label="level" :value="level">{{ reasoningLabel(level) }}</el-checkbox>
+              </el-checkbox-group>
+            </div>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -909,12 +936,25 @@ const aiForm = ref({
     api_base: string;
     api_key: string;
     model_names: string[];
+    models: ModelConfig[];
     enable: boolean;
   }>,
   analysis_connection_id: '',
   analysis_model_name: '',
+  analysis_reasoning_effort: 'none',
   chat_connection_id: '',
-  chat_model_name: ''
+  chat_model_name: '',
+  chat_reasoning_effort: 'none'
+})
+
+type ModelConfig = { model_name: string; display_name: string; context_window: number; reasoning_levels: string[] }
+const reasoningOptions = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const reasoningLabel = (level: string) => ({ none: '关闭', minimal: '最低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' }[level] || level)
+const defaultModelConfig = (name = ''): ModelConfig => ({
+  model_name: name,
+  display_name: name,
+  context_window: 128000,
+  reasoning_levels: ['none', 'low', 'medium', 'high']
 })
 
 type ConnectionTestState = { status: 'idle' | 'testing' | 'valid' | 'invalid'; message: string }
@@ -955,6 +995,7 @@ const addConnection = () => {
     api_base: '',
     api_key: '',
     model_names: [],
+    models: [],
     enable: true
   }
   aiForm.value.connections.push(newConn)
@@ -984,10 +1025,14 @@ const editDialogVisible = ref(false)
 const editingConnectionIndex = ref(-1)
 const editingConnection = ref<any>(null)
 const verifying = ref(false)
+const fetchingConnectionModels = ref(false)
 
 const editConnection = (index: number) => {
   editingConnectionIndex.value = index
   editingConnection.value = JSON.parse(JSON.stringify(aiForm.value.connections[index]))
+  editingConnection.value.models = editingConnection.value.models?.length
+    ? editingConnection.value.models
+    : (editingConnection.value.model_names || []).map((name: string) => defaultModelConfig(name))
   editDialogVisible.value = true
 }
 
@@ -1000,6 +1045,8 @@ const deleteEditingConnection = () => {
 
 const saveEditingConnection = () => {
   if (editingConnectionIndex.value >= 0) {
+    editingConnection.value.models = editingConnection.value.models.filter((model: ModelConfig) => model.model_name.trim())
+    editingConnection.value.model_names = editingConnection.value.models.map((model: ModelConfig) => model.model_name.trim())
     aiForm.value.connections[editingConnectionIndex.value] = editingConnection.value
     editDialogVisible.value = false
     // Clear the cached models so it re-fetches if they changed settings
@@ -1015,6 +1062,27 @@ const saveEditingConnection = () => {
   saveAISettings();
 }
 
+const addEditingModel = () => editingConnection.value.models.push(defaultModelConfig())
+
+const fetchEditingConnectionModels = async () => {
+  if (!editingConnection.value.api_base) {
+    ElMessage.warning('请先填写 Base URL')
+    return
+  }
+  fetchingConnectionModels.value = true
+  try {
+    const res = await settingsApi.verifyConnection(editingConnection.value.api_base, editingConnection.value.api_key || '')
+    if (!res?.success) throw new Error(res?.message || '获取失败')
+    const existing = new Map<string, ModelConfig>(editingConnection.value.models.map((model: ModelConfig) => [model.model_name, model]))
+    editingConnection.value.models = res.models.map((name: string) => existing.get(name) || defaultModelConfig(name))
+    ElMessage.success(`已获取 ${res.models.length} 个模型`)
+  } catch (e: any) {
+    ElMessage.error(`获取模型失败: ${e.message || '网络错误'}`)
+  } finally {
+    fetchingConnectionModels.value = false
+  }
+}
+
 const verifyEditingConnection = async () => {
   if (!editingConnection.value.api_base) {
     ElMessage.warning('请先填写 Base URL')
@@ -1024,6 +1092,8 @@ const verifyEditingConnection = async () => {
   try {
     const res = await settingsApi.verifyConnection(editingConnection.value.api_base, editingConnection.value.api_key || '')
     if (res && res.success) {
+      const existing = new Map<string, ModelConfig>(editingConnection.value.models.map((model: ModelConfig) => [model.model_name, model]))
+      editingConnection.value.models = res.models.map((name: string) => existing.get(name) || defaultModelConfig(name))
       ElMessage.success(`连接成功！发现 ${res.models.length} 个可用模型`)
     } else {
       ElMessage.error(`验证失败: ${res?.message || '未知错误'}`)
@@ -1086,6 +1156,29 @@ const getAvailableModels = (connId: string) => {
     return conn.model_names
   }
   return fetchedModels.value[connId] || []
+}
+
+const ensureSupportedReasoning = (connId: string, modelName: string, current: string) => {
+  const levels = getReasoningLevels(connId, modelName)
+  return levels.includes(current) ? current : levels[0]
+}
+
+const onAnalysisModelChange = () => {
+  aiForm.value.analysis_reasoning_effort = ensureSupportedReasoning(
+    aiForm.value.analysis_connection_id, aiForm.value.analysis_model_name, aiForm.value.analysis_reasoning_effort
+  )
+}
+
+const onChatModelChange = () => {
+  aiForm.value.chat_reasoning_effort = ensureSupportedReasoning(
+    aiForm.value.chat_connection_id, aiForm.value.chat_model_name, aiForm.value.chat_reasoning_effort
+  )
+}
+
+const getReasoningLevels = (connId: string, modelName: string) => {
+  const conn = aiForm.value.connections.find(c => c.id === connId)
+  const model = conn?.models?.find(m => m.model_name === modelName)
+  return model?.reasoning_levels?.length ? model.reasoning_levels : ['none', 'low', 'medium', 'high']
 }
 
 const imageForm = ref({
@@ -1446,6 +1539,8 @@ const loadData = async () => {
             analysis_model_name: settings.ai.analysis_model_name || '',
             chat_connection_id: settings.ai.chat_connection_id || '',
             chat_model_name: settings.ai.chat_model_name || '',
+            analysis_reasoning_effort: settings.ai.analysis_reasoning_effort || 'none',
+            chat_reasoning_effort: settings.ai.chat_reasoning_effort || 'none',
             visual_evaluation_prompt: settings.ai.visual_evaluation_prompt || '',
             visual_narrative_prompt: settings.ai.visual_narrative_prompt || '',
             moment_day_caption_prompt: settings.ai.moment_day_caption_prompt || ''

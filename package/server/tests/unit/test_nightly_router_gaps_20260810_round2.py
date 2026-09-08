@@ -142,13 +142,14 @@ def test_available_models_returns_enabled_static_connections_only():
             "provider": "OpenAI",
             "api_base": "http://models.test/v1",
             "models": ["model-a"],
+            "model_configs": [],
         }
     ]
     assert result["chat_connection_id"] == ""
     request.assert_not_called()
 
 
-def test_available_models_fetches_dynamic_ids_with_auth_header():
+def test_available_models_does_not_fetch_unconfigured_models():
     connection = SimpleNamespace(
         id="dynamic",
         enable=True,
@@ -156,28 +157,21 @@ def test_available_models_fetches_dynamic_ids_with_auth_header():
         api_key="secret",
         model_names=[],
     )
-    response = MagicMock(status_code=200)
-    response.json.return_value = {"data": [{"id": "model-a"}, {}, {"id": "model-b"}]}
-
     with patch.object(
         settings_api.config_manager,
         "get_user_config",
         return_value=_settings_config([connection]),
-    ), patch.object(settings_api.requests, "get", return_value=response) as request:
+    ), patch.object(settings_api.requests, "get") as request:
         result = settings_api.get_available_models(
             db=MagicMock(), current_user=_user()
         )
 
-    request.assert_called_once_with(
-        "http://models.test/v1/models",
-        headers={"Authorization": "Bearer secret"},
-        timeout=5,
-    )
-    assert result["connections"][0]["models"] == ["model-a", "model-b"]
+    request.assert_not_called()
+    assert result["connections"][0]["models"] == []
     assert result["connections"][0]["provider"] == "OpenAI"
 
 
-def test_available_models_tolerates_provider_failure():
+def test_available_models_never_contacts_provider():
     connection = SimpleNamespace(
         id="offline",
         enable=True,

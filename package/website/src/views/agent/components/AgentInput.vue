@@ -12,6 +12,33 @@
           class="agent-input"
           :disabled="isSelectionMode"
         ></textarea>
+        <el-popover placement="top-start" :width="300" trigger="click">
+          <template #reference>
+            <button type="button" class="agent-model-trigger" :disabled="isModelsLoading || !availableModels.length">
+              <Bot class="h-3.5 w-3.5" />
+              <span class="max-w-32 truncate">{{ currentModel?.model || (isModelsLoading ? '加载模型…' : '未配置模型') }}</span>
+              <span class="text-slate-400">·</span>
+              <span>{{ reasoningLabel(reasoning) }}</span>
+              <ChevronDown class="h-3.5 w-3.5" />
+            </button>
+          </template>
+          <div class="space-y-4">
+            <div>
+              <p class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">模型</p>
+              <el-select :model-value="selectedModel" class="w-full" filterable @update:model-value="selectModel">
+                <el-option v-for="model in availableModels" :key="`${model.conn_id}|${model.model}`" :label="model.label" :value="`${model.conn_id}|${model.model}`" />
+              </el-select>
+            </div>
+            <div>
+              <p class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">思考等级</p>
+              <div class="grid grid-cols-2 gap-2">
+                <button v-for="level in reasoningLevels" :key="level" type="button" class="rounded-lg border px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" :class="level === reasoning ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:text-primary-500' : 'border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'" @click="emit('update:reasoning', level)">
+                  {{ reasoningLabel(level) }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </el-popover>
         <button
           v-if="isGenerating"
           type="button"
@@ -36,19 +63,35 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
-import { Send, Square } from 'lucide-vue-next';
+import { Send, Square, Bot, ChevronDown } from 'lucide-vue-next';
 
 const props = defineProps<{
   modelValue: string;
   isGenerating: boolean;
   isSelectionMode: boolean;
+  selectedModel: string;
+  reasoning: string;
+  availableModels: Array<{ conn_id: string; model: string; label: string; context_window: number; reasoning_levels: string[] }>;
+  isModelsLoading: boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string): void;
   (e: 'send'): void;
   (e: 'abort'): void;
+  (e: 'update:selectedModel', value: string): void;
+  (e: 'update:reasoning', value: string): void;
 }>();
+
+const currentModel = computed(() => props.availableModels.find(model => `${model.conn_id}|${model.model}` === props.selectedModel));
+const reasoningLevels = computed(() => currentModel.value?.reasoning_levels?.length ? currentModel.value.reasoning_levels : ['none']);
+const reasoningLabel = (level: string) => ({ none: '不思考', minimal: '最低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' }[level] || level);
+const selectModel = (value: string) => {
+  emit('update:selectedModel', value);
+  const model = props.availableModels.find(item => `${item.conn_id}|${item.model}` === value);
+  const levels = model?.reasoning_levels?.length ? model.reasoning_levels : ['none'];
+  if (!levels.includes(props.reasoning)) emit('update:reasoning', levels[0]);
+};
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
@@ -115,10 +158,23 @@ onMounted(resize);
 }
 
 .agent-input {
-  @apply w-full pl-4 pr-12 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply w-full pl-4 pr-12 pt-3 pb-12 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed;
   /* 自适应高度由 JS 控制，这里禁用手动拖拽并隐藏初始滚动条 */
   @apply resize-none overflow-y-auto leading-6;
   max-height: 120px;
+}
+
+.agent-input:focus {
+  border-color: var(--theme-primary);
+  box-shadow: 0 0 0 2px rgba(var(--theme-rgb), 0.35);
+}
+
+.agent-model-trigger {
+  @apply absolute bottom-2 left-2 flex max-w-[calc(100%_-_4rem)] items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-700 focus-visible:outline-none;
+}
+
+.agent-model-trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--theme-primary);
 }
 
 /* 输入框可变高，按钮改为贴底对齐（原先垂直居中会在多行时飘到中间） */

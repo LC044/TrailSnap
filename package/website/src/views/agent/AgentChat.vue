@@ -23,9 +23,6 @@
           :is-fullscreen="isFullscreen"
           :is-selection-mode="isSelectionMode"
           :selected-count="selectedMessages.length"
-          :available-models="availableModels"
-          v-model="selectedModelValue"
-          :is-models-loading="isModelsLoading"
           @toggle-sidebar="isSidebarOpen = !isSidebarOpen"
           @toggle-fullscreen="isFullscreen = !isFullscreen"
           @close="handleClose"
@@ -72,6 +69,10 @@
         <!-- Input Area -->
         <AgentInput
           v-model="inputMessage"
+          v-model:selected-model="selectedModelValue"
+          v-model:reasoning="selectedReasoningValue"
+          :available-models="availableModels"
+          :is-models-loading="isModelsLoading"
           :is-generating="isGenerating"
           :is-selection-mode="isSelectionMode"
           @send="sendMessage"
@@ -130,23 +131,28 @@ const isFullscreen = ref(false);
 const isSidebarOpen = ref(false);
 
 // Models & Connections state
-const availableModels = ref<Array<{ conn_id: string, model: string, label: string }>>([]);
+type AvailableModel = { conn_id: string; model: string; label: string; context_window: number; reasoning_levels: string[] };
+const availableModels = ref<AvailableModel[]>([]);
 const selectedModelValue = ref('');
+const selectedReasoningValue = ref('none');
 const isModelsLoading = ref(false);
 
 const loadModels = async () => {
   isModelsLoading.value = true;
   try {
     const res = await settingsApi.getModels();
-    const list: Array<{ conn_id: string, model: string, label: string }> = [];
+    const list: AvailableModel[] = [];
     if (res && res.connections) {
       res.connections.forEach((conn: any) => {
         if (conn.models && conn.models.length > 0) {
           conn.models.forEach((m: string) => {
+            const config = conn.model_configs?.find((item: any) => item.model_name === m);
             list.push({
               conn_id: conn.id,
               model: m,
-              label: `${m} (${conn.api_base || conn.id})`
+              label: `${config?.display_name || m} (${conn.api_base || conn.id})`,
+              context_window: config?.context_window || 128000,
+              reasoning_levels: config?.reasoning_levels?.length ? config.reasoning_levels : ['none', 'low', 'medium', 'high']
             });
           });
         }
@@ -160,6 +166,7 @@ const loadModels = async () => {
     } else if (list.length > 0) {
       selectedModelValue.value = `${list[0].conn_id}|${list[0].model}`;
     }
+    selectedReasoningValue.value = res.chat_reasoning_effort || 'none';
   } catch (e) {
     console.error('Failed to load models', e);
   } finally {
@@ -712,7 +719,8 @@ const sendMessage = async () => {
         message: userText,
         session_id: currentSession.value?.id || undefined,
         connection_id: conn_id || undefined,
-        model_name: model || undefined
+        model_name: model || undefined,
+        reasoning_effort: selectedReasoningValue.value || undefined
       },
       (content) => {
         if (aiMessageIndex === -1) {

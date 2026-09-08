@@ -7,6 +7,7 @@ export interface ChatRequest {
   stream?: boolean;
   connection_id?: string;
   model_name?: string;
+  reasoning_effort?: string;
 }
 
 export interface ChatResponse {
