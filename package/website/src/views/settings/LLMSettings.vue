@@ -130,7 +130,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, toRaw } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
 
@@ -217,7 +217,7 @@ function addConnection() {
 }
 function editConnection(index: number) {
   editingIndex.value = index
-  draft.value = structuredClone(aiForm.value.connections[index])
+  draft.value = structuredClone(toRaw(aiForm.value.connections[index]))
   candidateModels.value = []
   selectedCandidates.value = []
   dialogVisible.value = true
