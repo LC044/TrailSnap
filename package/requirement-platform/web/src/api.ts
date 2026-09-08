@@ -4,12 +4,13 @@ export type GitHubIdentity = { github_user_id: number; login: string; avatar_url
 export type User = { id: string; username: string; email: string; role: 'viewer' | 'admin' | 'owner'; is_active: boolean; github?: GitHubIdentity }
 export type AgentToken = { id: string; name: string; token_prefix: string; scopes: string[]; expires_at?: string; last_used_at?: string; revoked_at?: string; created_at: string }
 export type Requirement = {
-  id: string; type: string; title: string; description: string; current_behavior?: string; expected_behavior?: string
+  id: string; type: string; title: string; description: string; log_text?: string; current_behavior?: string; expected_behavior?: string
   steps_to_reproduce?: string; severity: string; product_version?: string; environment: Record<string, unknown>
   visibility: string; status: string; priority: string; risk_level: string; review_reason?: string
   duplicate_of_id?: string; github_issue_number?: number; github_issue_url?: string; github_state?: string
   created_by: string; created_by_name?: string; created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
-  deleted_at?: string; deleted_by?: string; delete_reason?: string
+  deleted_at?: string; deleted_by?: string; delete_reason?: string; source: 'platform' | 'github'
+  attachments?: Array<{ id: string; name: string; content_type: string; size_bytes: number; kind: string; download_url: string }>
 }
 export type BatchItem = { id: string; requirement_id: string; priority_order: number; delivery_status: string; requirement_snapshot: Record<string, unknown> }
 export type Batch = {
@@ -39,6 +40,16 @@ export const api = {
   githubUnlink: () => call<{ unlinked: boolean }>('delete', '/auth/github/link'),
   requirements: (params = '') => call<Requirement[]>('get', `/requirements${params}`),
   createRequirement: (data: unknown) => call<Requirement>('post', '/requirements', data),
+  uploadAttachment: (id: string, file: File) => {
+    const data = new FormData(); data.append('file', file)
+    return call<{ id: string; name: string }>('post', `/requirements/${id}/attachments`, data)
+  },
+  downloadAttachment: async (requirementId: string, attachmentId: string, name: string) => {
+    const response = await client.get(`/requirements/${requirementId}/attachments/${attachmentId}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(response.data)
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click()
+    URL.revokeObjectURL(url)
+  },
   updateRequirement: (id: string, data: unknown) => call<Requirement>('patch', `/requirements/${id}`, data),
   withdrawRequirement: (id: string) => call<Requirement>('post', `/requirements/${id}/withdraw`),
   followRequirement: (id: string) => call<{ following: boolean }>('post', `/requirements/${id}/follow`),
@@ -51,6 +62,7 @@ export const api = {
   linkGithubIssue: (id: string, issue_number: number) => call<Requirement>('post', `/requirements/${id}/github/link`, { issue_number }),
   unlinkGithubIssue: (id: string) => call<Requirement>('delete', `/requirements/${id}/github/link`),
   closeGithubIssue: (id: string, reason: string) => call<Requirement>('post', `/requirements/${id}/github/close`, { reason }),
+  syncGithubIssues: () => call<{ created: number; updated: number; skipped: number; total: number }>('post', '/admin/github/issues/sync'),
   batches: () => call<Batch[]>('get', '/versions'),
   createBatch: (data: unknown) => call<Batch>('post', '/versions', data),
   addBatchItem: (batchId: string, requirementId: string) => call<Batch>('post', `/versions/${batchId}/items`, { requirement_id: requirementId }),

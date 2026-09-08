@@ -146,10 +146,35 @@ def analyze_requirement(db: Session, requirement_id: str) -> TriageReport:
     )
     requirement.status = "pending_review"
     db.add(row)
+    if requirement.github_issue_number:
+        enqueue(
+            db, "github_issue", requirement.id,
+            f"github_issue:{requirement.id}:pending_review:v{requirement.version}",
+        )
     audit(db, None, "triage.completed", "requirement", requirement.id, provider=provider)
     db.commit()
     db.refresh(row)
     return row
+
+
+STATUS_LABEL_PREFIX = "status:"
+STATUS_LABELS = {
+    "submitted": ("status: submitted", "d4c5f9", "已提交，等待分析"),
+    "triaging": ("status: triaging", "bfdadc", "正在分析"),
+    "pending_review": ("status: pending-review", "fbca04", "等待人工审核"),
+    "needs_information": ("status: needs-information", "fef2c0", "需要补充信息"),
+    "candidate": ("status: candidate", "0e8a16", "版本开发候选"),
+    "scheduled": ("status: scheduled", "1d76db", "已进入版本范围"),
+    "developing": ("status: developing", "5319e7", "正在开发"),
+    "testing": ("status: testing", "7057ff", "正在测试"),
+    "release_ready": ("status: release-ready", "006b75", "等待发布"),
+    "released": ("status: released", "0e8a16", "已发布"),
+    "deferred": ("status: deferred", "c5def5", "暂缓处理"),
+    "rejected": ("status: rejected", "d73a4a", "未采纳"),
+    "duplicate": ("status: duplicate", "cfd3d7", "重复需求"),
+    "withdrawn": ("status: withdrawn", "cfd3d7", "提交者已撤回"),
+    "closed": ("status: closed", "6a737d", "已关闭"),
+}
 
 
 class GitHubClient:
@@ -175,7 +200,7 @@ class GitHubClient:
         response.raise_for_status()
         return response.json()["token"]
 
-    def _request(self, method: str, path: str, **kwargs) -> dict[str, Any]:
+    def _request(self, method: str, path: str, **kwargs) -> Any:
         response = httpx.request(
             method,
             f"{self.base_url}{path}",
@@ -192,6 +217,7 @@ class GitHubClient:
 
     def create_issue(self, requirement: Requirement) -> dict[str, Any]:
         label = "bug" if requirement.type == "bug" else "enhancement"
+        status_label = self.ensure_status_label(requirement.status)
         body = (
             f"由 TrailSnap 需求管理平台同步。\n\n"
             f"## 需求描述\n{requirement.description}\n\n"
@@ -201,7 +227,8 @@ class GitHubClient:
             f"Requirement-ID: `{requirement.id}`"
         )
         return self._request(
-            "POST", f"/repos/{settings.github_repo}/issues", json={"title": requirement.title, "body": body, "labels": [label]}
+            "POST", f"/repos/{settings.github_repo}/issues",
+            json={"title": requirement.title, "body": body, "labels": [label, status_label]},
         )
 
     def get_issue(self, issue_number: int) -> dict[str, Any]:
@@ -210,6 +237,43 @@ class GitHubClient:
     def update_issue_state(self, issue_number: int, state: str) -> dict[str, Any]:
         return self._request(
             "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}", json={"state": state}
+        )
+
+    def list_issues(self, max_pages: int = 5) -> list[dict[str, Any]]:
+        issues: list[dict[str, Any]] = []
+        for page in range(1, max_pages + 1):
+            rows = self._request(
+                "GET", f"/repos/{settings.github_repo}/issues",
+                params={"state": "all", "per_page": 100, "page": page, "sort": "updated", "direction": "desc"},
+            )
+            issues.extend(row for row in rows if "pull_request" not in row)
+            if len(rows) < 100:
+                break
+        return issues
+
+    def ensure_status_label(self, status: str) -> str:
+        name, color, description = STATUS_LABELS.get(status, (f"status: {status}", "ededed", "TrailSnap 需求状态"))
+        labels = self._request("GET", f"/repos/{settings.github_repo}/labels", params={"per_page": 100})
+        if not any(label.get("name", "").lower() == name.lower() for label in labels):
+            try:
+                self._request(
+                    "POST", f"/repos/{settings.github_repo}/labels",
+                    json={"name": name, "color": color, "description": description},
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 422:
+                    raise
+        return name
+
+    def sync_status_label(self, issue_number: int, status: str) -> dict[str, Any]:
+        issue = self.get_issue(issue_number)
+        retained = [
+            label["name"] for label in issue.get("labels", [])
+            if not label.get("name", "").lower().startswith(STATUS_LABEL_PREFIX)
+        ]
+        retained.append(self.ensure_status_label(status))
+        return self._request(
+            "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}", json={"labels": retained}
         )
 
     def create_milestone(self, batch: ReleaseBatch) -> dict[str, Any]:
@@ -227,11 +291,19 @@ class GitHubClient:
 
 def sync_requirement_issue(db: Session, requirement_id: str) -> None:
     requirement = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
-    if not requirement or requirement.status not in {"candidate", "scheduled", "developing", "testing", "release_ready", "released"}:
-        raise ValueError("Requirement is not eligible for GitHub sync")
+    if not requirement:
+        raise ValueError("Requirement not found")
+    client = GitHubClient()
     if requirement.github_issue_number:
+        data = client.sync_status_label(requirement.github_issue_number, requirement.status)
+        requirement.github_state = data.get("state", requirement.github_state)
+        audit(db, None, "github.issue.labels_synced", "requirement", requirement.id,
+              issue_number=requirement.github_issue_number, status=requirement.status)
+        db.commit()
         return
-    data = GitHubClient().create_issue(requirement)
+    if requirement.status not in {"candidate", "scheduled", "developing", "testing", "release_ready", "released"}:
+        raise ValueError("Requirement is not eligible for GitHub issue creation")
+    data = client.create_issue(requirement)
     requirement.github_issue_number = data["number"]
     requirement.github_issue_url = data["html_url"]
     requirement.github_state = data["state"]

@@ -39,6 +39,7 @@ class Requirement(Base):
     type: Mapped[str] = mapped_column(String(24), index=True)
     title: Mapped[str] = mapped_column(String(160), index=True)
     description: Mapped[str] = mapped_column(Text)
+    log_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_behavior: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_behavior: Mapped[str | None] = mapped_column(Text, nullable=True)
     steps_to_reproduce: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -56,6 +57,7 @@ class Requirement(Base):
     github_issue_number: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
     github_issue_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     github_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    source: Mapped[str] = mapped_column(String(16), default="platform", index=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -63,6 +65,20 @@ class Requirement(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     deleted_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     delete_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RequirementAttachment(Base):
+    __tablename__ = "requirement_attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    requirement_id: Mapped[str] = mapped_column(String(36), ForeignKey("requirements.id", ondelete="CASCADE"), index=True)
+    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    original_name: Mapped[str] = mapped_column(String(255))
+    stored_name: Mapped[str] = mapped_column(String(255), unique=True)
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class GitHubIdentity(Base):
