@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-08 (0.14.1)
+
+### New
+
+- LLM settings now let you configure a display name, context window, and reasoning level for each model. Photo analysis and chat can use different models.
+- The Server now prunes old app installer caches and incomplete download files, and in-app updates retry automatically after weak-network interruptions.
+
+### Improvements
+
+- Mobile backup now computes checksums in parallel and adapts media and chunk concurrency to LAN conditions, reducing small-file requests and substantially improving throughput.
+- The mobile album list has a refreshed layout with clearer, better-organized information.
+- Refined navigation visuals and photo browsing; deleting a photo now keeps your current browsing position.
+
+### Bug Fixes
+
+- Fixed mobile backup issues involving repeated incremental scans, JPG+MP4 Live Photo pairing and upload, disk verification, type correction, and preservation of capture timestamps from the phone.
+- Fixed LLM connection editing and saving. Candidate models are fetched in the connection editor, while chats now show only saved models.
+- Fixed mobile QR-code server switching being blocked by the network policy.
+- Improved Live Photo loading to reduce waiting and flicker.
+
 ## 2026-09-07 (0.14.0)
 
 ### New

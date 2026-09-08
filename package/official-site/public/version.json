@@ -153,5 +153,10 @@
         "version": "0.14.0",
         "update_info": "- 相册 Agent 正式上线，支持自然语言检索、旅行发现、人物时光机和回忆侦探<br>- 新增 Agent 任务中心与相册医生修复闭环，方案可预览、确认、重试、取消和撤销<br>- AI 旅行日志支持个性化 HTML、导出、分享、长图和打印 PDF<br>- 新增 MCP、Pi Agent 与受限令牌接入，外部 AI 可安全查询相册<br>- 位置相册新增沉浸式足迹地图和分层 GPS 轨迹",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.14.0"
+    },
+    {
+        "version": "0.14.1",
+        "update_info": "- 手机备份更快更稳：并行校验、自适应并发，完善实况照片上传与增量去重<br>- 大模型配置支持模型别名、上下文窗口与推理强度，分析和聊天可分别选择<br>- App 更新缓存自动清理旧安装包，弱网下载自动重试<br>- 优化移动端相册列表、实况图加载与照片删除后的浏览位置<br>- 修复扫码切换服务器被拦截的问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.14.1"
     }
 ]
