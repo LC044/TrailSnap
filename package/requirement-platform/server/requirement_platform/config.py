@@ -27,6 +27,13 @@ class Settings:
     github_installation_id: str = os.getenv("RP_GITHUB_INSTALLATION_ID", "")
     github_private_key: str = os.getenv("RP_GITHUB_PRIVATE_KEY", "").replace("\\n", "\n")
     github_webhook_secret: str = os.getenv("RP_GITHUB_WEBHOOK_SECRET", "")
+    github_oauth_client_id: str = os.getenv("RP_GITHUB_OAUTH_CLIENT_ID", "")
+    github_oauth_client_secret: str = os.getenv("RP_GITHUB_OAUTH_CLIENT_SECRET", "")
+    github_oauth_redirect_uri: str = os.getenv(
+        "RP_GITHUB_OAUTH_REDIRECT_URI", "http://127.0.0.1:8011/api/auth/github/callback"
+    )
+    web_url: str = os.getenv("RP_WEB_URL", "http://127.0.0.1:8011").rstrip("/")
+    mcp_public_url: str = os.getenv("RP_MCP_PUBLIC_URL", "http://127.0.0.1:8011/mcp/")
     worker_poll_seconds: float = float(os.getenv("RP_WORKER_POLL_SECONDS", "3"))
     max_job_attempts: int = int(os.getenv("RP_MAX_JOB_ATTEMPTS", "5"))
 

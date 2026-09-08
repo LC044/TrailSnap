@@ -8,7 +8,8 @@
 - 需求：公开或私密提交、搜索、筛选、关注、编辑留痕、撤回、提交频率与未关闭数量限制。
 - 分析与审核：持久化后台任务、规则兜底分析、可选 OpenAI 兼容模型分析、人工审核结论和审计日志。
 - 版本批次：创建批次、选择候选需求、锁定范围快照、人工维护版本与单项交付状态。
-- GitHub：审核进入候选池后异步同步 Issue，锁定版本后异步同步 Milestone；支持 PAT 或 GitHub App。
+- GitHub：支持 OAuth 登录/账号绑定（不保存用户 OAuth Token）；管理员可新建、关联、解除关联和关闭 Issue；后台写操作支持 PAT 或 GitHub App。
+- Agent：提供带独立作用域令牌的 Streamable HTTP MCP 服务，可供 Codex 等 Agent 查询、创建、审核、关闭和软删除需求。
 - 独立交付：自己的 Docker Compose 和 GitHub Actions，不触发 TrailSnap 主应用镜像发布。
 
 ## 目录
@@ -17,7 +18,7 @@
 requirement-platform/
 ├── server/              FastAPI、SQLAlchemy、Alembic、SQLite、后台 worker
 ├── web/                 Vue 3、TypeScript、Vite、Element Plus
-├── docker-compose.yml   API、worker 和 web 独立编排
+├── docker-compose.yml   API、worker、MCP 和 web 独立编排
 └── .env.example         生产环境变量模板
 ```
 
@@ -39,6 +40,12 @@ cd package/requirement-platform/server
 uv run python -m requirement_platform.worker
 ```
 
+再启动 MCP 服务：
+
+```powershell
+uv run uvicorn requirement_platform.mcp_server:mcp_http_app --port 8012
+```
+
 前端：
 
 ```powershell
@@ -48,6 +55,15 @@ npm run dev
 ```
 
 浏览器访问 `http://localhost:5177`。前端开发服务器会把 `/api` 代理到 `http://127.0.0.1:8010`。
+
+如需本地演示数据（8 个用户、12 条不同状态的需求、1 个版本批次），在启动服务前执行：
+
+```powershell
+cd package/requirement-platform/server
+uv run python -m requirement_platform.seed_demo
+```
+
+该脚本会清空并重写本地 SQLite 中的用户 / 需求 / 版本数据，仅用于开发演示，请勿在生产环境运行。演示账号：`owner@trailsnap.cn`（所有者）、`admin@trailsnap.cn`（管理员），密码均为 `password123`。
 
 ## 服务器部署
 
@@ -70,6 +86,25 @@ RP_GITHUB_TOKEN=github_pat_xxx
 ```
 
 GitHub App 模式设置 `RP_GITHUB_APP_ID`、`RP_GITHUB_INSTALLATION_ID` 和 `RP_GITHUB_PRIVATE_KEY`。Webhook 地址为 `/api/hooks/github`，签名密钥使用 `RP_GITHUB_WEBHOOK_SECRET`。未配置凭据时，需求与版本管理仍可正常使用；同步任务会保留失败信息供管理员排查。
+
+GitHub 登录需要另外创建 GitHub OAuth App，并将 Authorization callback URL 配置为
+`https://feedback.trailsnap.cn/api/auth/github/callback`，然后设置 `RP_GITHUB_OAUTH_CLIENT_ID`、
+`RP_GITHUB_OAUTH_CLIENT_SECRET`、`RP_GITHUB_OAUTH_REDIRECT_URI` 和 `RP_WEB_URL`。OAuth 仅申请
+`read:user user:email`，平台取回身份后立即丢弃 GitHub Access Token。
+
+## Codex / MCP 接入
+
+管理员在“集成设置”中创建 Agent 令牌并选择最小必要作用域。服务地址默认为
+`https://feedback.trailsnap.cn/mcp/`，使用 Streamable HTTP 与 Bearer Token。Codex 配置示例：
+
+```toml
+[mcp_servers.trailsnap_requirements]
+url = "https://feedback.trailsnap.cn/mcp/"
+bearer_token_env_var = "TRAILSNAP_REQUIREMENTS_TOKEN"
+```
+
+令牌明文只返回一次，数据库仅保存 SHA-256 摘要；可设置有效期并随时撤销。`requirements:review`
+允许关闭和软删除需求，`github:write` 允许变更 GitHub Issue，应只授予受信任的 Agent。
 
 面向公网时，内置 nginx 会限制单 IP 的登录、注册和 API 访问频率，并限制请求体大小；应用层还会限制每个账号每天的提交数和未关闭需求数。API 与 SQLite 均不暴露宿主机端口，公网只应开放 HTTPS 反向代理入口。
 

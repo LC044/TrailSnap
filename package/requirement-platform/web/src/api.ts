@@ -1,12 +1,15 @@
 import axios from 'axios'
 
-export type User = { id: string; username: string; email: string; role: 'viewer' | 'admin' | 'owner'; is_active: boolean }
+export type GitHubIdentity = { github_user_id: number; login: string; avatar_url?: string; profile_url?: string; email?: string; linked_at: string; last_login_at?: string }
+export type User = { id: string; username: string; email: string; role: 'viewer' | 'admin' | 'owner'; is_active: boolean; github?: GitHubIdentity }
+export type AgentToken = { id: string; name: string; token_prefix: string; scopes: string[]; expires_at?: string; last_used_at?: string; revoked_at?: string; created_at: string }
 export type Requirement = {
   id: string; type: string; title: string; description: string; current_behavior?: string; expected_behavior?: string
   steps_to_reproduce?: string; severity: string; product_version?: string; environment: Record<string, unknown>
   visibility: string; status: string; priority: string; risk_level: string; review_reason?: string
   duplicate_of_id?: string; github_issue_number?: number; github_issue_url?: string; github_state?: string
-  created_by: string; created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
+  created_by: string; created_by_name?: string; created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
+  deleted_at?: string; deleted_by?: string; delete_reason?: string
 }
 export type BatchItem = { id: string; requirement_id: string; priority_order: number; delivery_status: string; requirement_snapshot: Record<string, unknown> }
 export type Batch = {
@@ -30,6 +33,10 @@ export const api = {
   register: (data: { username: string; email: string; password: string }) => call<{ token: string; user: User }>('post', '/auth/register', data),
   login: (data: { identifier: string; password: string }) => call<{ token: string; user: User }>('post', '/auth/login', data),
   me: () => call<User>('get', '/auth/me'),
+  authStatus: () => call<{ has_owner: boolean; allow_registration: boolean; github_oauth_enabled: boolean }>('get', '/auth/status'),
+  githubStart: (mode: 'login' | 'link') => call<{ authorize_url: string }>('get', `/auth/github/start?mode=${mode}`),
+  githubRedeem: (grant: string) => call<{ token: string; user: User }>('post', '/auth/github/redeem', { grant }),
+  githubUnlink: () => call<{ unlinked: boolean }>('delete', '/auth/github/link'),
   requirements: (params = '') => call<Requirement[]>('get', `/requirements${params}`),
   createRequirement: (data: unknown) => call<Requirement>('post', '/requirements', data),
   updateRequirement: (id: string, data: unknown) => call<Requirement>('patch', `/requirements/${id}`, data),
@@ -37,6 +44,13 @@ export const api = {
   followRequirement: (id: string) => call<{ following: boolean }>('post', `/requirements/${id}/follow`),
   triage: (id: string) => call<{ job_id: string }>('post', `/requirements/${id}/triage`),
   review: (id: string, data: unknown) => call<Requirement>('post', `/requirements/${id}/review`, data),
+  closeRequirement: (id: string, reason: string) => call<Requirement>('post', `/requirements/${id}/close`, { reason }),
+  deleteRequirement: (id: string, reason: string) => call<{ deleted: boolean }>('delete', `/requirements/${id}`, { reason }),
+  restoreRequirement: (id: string) => call<Requirement>('post', `/requirements/${id}/restore`),
+  createGithubIssue: (id: string) => call<Requirement>('post', `/requirements/${id}/github/create`),
+  linkGithubIssue: (id: string, issue_number: number) => call<Requirement>('post', `/requirements/${id}/github/link`, { issue_number }),
+  unlinkGithubIssue: (id: string) => call<Requirement>('delete', `/requirements/${id}/github/link`),
+  closeGithubIssue: (id: string, reason: string) => call<Requirement>('post', `/requirements/${id}/github/close`, { reason }),
   batches: () => call<Batch[]>('get', '/versions'),
   createBatch: (data: unknown) => call<Batch>('post', '/versions', data),
   addBatchItem: (batchId: string, requirementId: string) => call<Batch>('post', `/versions/${batchId}/items`, { requirement_id: requirementId }),
@@ -46,4 +60,7 @@ export const api = {
   updateDeliveryStatus: (batchId: string, itemId: string, status: string) => call('patch', `/versions/${batchId}/items/${itemId}/status`, { status }),
   users: () => call<User[]>('get', '/admin/users'),
   updateRole: (id: string, role: 'viewer' | 'admin') => call<User>('patch', `/admin/users/${id}/role`, { role }),
+  agentTokens: () => call<AgentToken[]>('get', '/admin/agent-tokens'),
+  createAgentToken: (data: { name: string; scopes: string[]; expires_in_days?: number | null }) => call<AgentToken & { token: string }>('post', '/admin/agent-tokens', data),
+  revokeAgentToken: (id: string) => call<{ revoked: boolean }>('delete', `/admin/agent-tokens/${id}`),
 }

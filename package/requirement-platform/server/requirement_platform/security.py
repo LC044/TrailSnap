@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException
@@ -9,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .db import get_db
-from .models import User
+from .models import AgentToken, User
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -34,6 +36,20 @@ def authenticate(db: Session, identifier: str, password: str) -> User | None:
 def create_token(user: User) -> str:
     expires = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
     return jwt.encode({"sub": user.id, "role": user.role, "exp": expires}, settings.jwt_secret, algorithm="HS256")
+
+
+def create_agent_token_value() -> tuple[str, str, str]:
+    value = f"trp_{secrets.token_urlsafe(36)}"
+    return value, value[:12], hashlib.sha256(value.encode()).hexdigest()
+
+
+def resolve_agent_token(db: Session, value: str) -> AgentToken | None:
+    token_hash = hashlib.sha256(value.encode()).hexdigest()
+    row = db.query(AgentToken).filter(AgentToken.token_hash == token_hash, AgentToken.revoked_at.is_(None)).first()
+    now = datetime.now(timezone.utc)
+    if not row or (row.expires_at and row.expires_at.replace(tzinfo=timezone.utc) <= now):
+        return None
+    return row
 
 
 def current_user(

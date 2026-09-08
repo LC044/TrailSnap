@@ -55,7 +55,7 @@ def enqueue(db: Session, job_type: str, object_id: str, key: str, payload: dict 
 
 
 def _duplicates(db: Session, requirement: Requirement) -> list[dict[str, Any]]:
-    query = db.query(Requirement).filter(Requirement.id != requirement.id).order_by(Requirement.created_at.desc()).limit(200)
+    query = db.query(Requirement).filter(Requirement.id != requirement.id, Requirement.deleted_at.is_(None)).order_by(Requirement.created_at.desc()).limit(200)
     source_text = f"{requirement.title} {requirement.description}".lower()
     matches = []
     for row in query.all():
@@ -89,7 +89,7 @@ def _fallback_report(requirement: Requirement, duplicates: list[dict[str, Any]])
 
 
 def analyze_requirement(db: Session, requirement_id: str) -> TriageReport:
-    requirement = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    requirement = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not requirement:
         raise ValueError("Requirement not found")
     duplicates = _duplicates(db, requirement)
@@ -204,6 +204,14 @@ class GitHubClient:
             "POST", f"/repos/{settings.github_repo}/issues", json={"title": requirement.title, "body": body, "labels": [label]}
         )
 
+    def get_issue(self, issue_number: int) -> dict[str, Any]:
+        return self._request("GET", f"/repos/{settings.github_repo}/issues/{issue_number}")
+
+    def update_issue_state(self, issue_number: int, state: str) -> dict[str, Any]:
+        return self._request(
+            "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}", json={"state": state}
+        )
+
     def create_milestone(self, batch: ReleaseBatch) -> dict[str, Any]:
         return self._request(
             "POST",
@@ -218,7 +226,7 @@ class GitHubClient:
 
 
 def sync_requirement_issue(db: Session, requirement_id: str) -> None:
-    requirement = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    requirement = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not requirement or requirement.status not in {"candidate", "scheduled", "developing", "testing", "release_ready", "released"}:
         raise ValueError("Requirement is not eligible for GitHub sync")
     if requirement.github_issue_number:
