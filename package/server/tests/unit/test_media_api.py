@@ -144,6 +144,43 @@ def test_mobile_source_time_is_preserved_as_file_mtime(tmp_path):
     assert abs(target.stat().st_mtime - source_time.timestamp()) < 1
 
 
+def test_finalize_chunk_upload_moves_single_chunk_without_copying(tmp_path):
+    chunk_dir = tmp_path / "chunks"
+    chunk_dir.mkdir()
+    (chunk_dir / "0").write_bytes(b"single-chunk")
+    target = tmp_path / "uploads" / "photo.jpg"
+    target.parent.mkdir()
+
+    with patch.object(media_api.storage, "prepare_upload_path", return_value=str(target)), \
+         patch.object(media_api.storage, "validate_target_path"):
+        result = media_api._finalize_chunk_upload(
+            str(chunk_dir), [0], "photo.jpg", uuid4(), None, MagicMock(),
+        )
+
+    assert result == str(target)
+    assert target.read_bytes() == b"single-chunk"
+    assert not chunk_dir.exists()
+
+
+def test_finalize_chunk_upload_streams_multiple_chunks_to_destination(tmp_path):
+    chunk_dir = tmp_path / "chunks"
+    chunk_dir.mkdir()
+    (chunk_dir / "0").write_bytes(b"first-")
+    (chunk_dir / "1").write_bytes(b"second")
+    target = tmp_path / "uploads" / "photo.jpg"
+    target.parent.mkdir()
+
+    with patch.object(media_api.storage, "prepare_upload_path", return_value=str(target)), \
+         patch.object(media_api.storage, "validate_target_path"):
+        result = media_api._finalize_chunk_upload(
+            str(chunk_dir), [0, 1], "photo.jpg", uuid4(), None, MagicMock(),
+        )
+
+    assert result == str(target)
+    assert target.read_bytes() == b"first-second"
+    assert not chunk_dir.exists()
+
+
 def test_attach_live_photo_video_replaces_companion_atomically(tmp_path):
     image = tmp_path / "IMG_0001.jpg"
     image.write_bytes(b"image")

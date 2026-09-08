@@ -9,6 +9,8 @@ import {
   adaptTransferTuning,
   backupUploadAction,
   initialTransferTuning,
+  mapWithConcurrency,
+  shouldUseChunkedUpload,
   takeTransferBatch,
   type TransferTuning,
 } from '@/utils/backupTransfer'
@@ -372,7 +374,7 @@ async function uploadAsset(
     if (!response.ok) throw new Error(`读取临时文件失败 (${response.status})`)
     const blob = await response.blob()
     const file = new File([blob], asset.name, { type: asset.mimeType, lastModified: asset.modifiedMs })
-    if (file.size > 5 * 1024 * 1024) {
+    if (shouldUseChunkedUpload(file.size, tuning)) {
       const uploadId = await retryTransfer(() => albumService.initUpload(), config)
       await uploadChunks(uploadId, file, tuning, config, reportAbsolute)
       await waitIfPaused()
@@ -444,7 +446,7 @@ async function uploadLivePhoto(
   try {
     videoFile = await exportedFile(video)
     const folder = destinationFolder(image, config)
-    if (imageFile.file.size > 5 * 1024 * 1024) {
+    if (shouldUseChunkedUpload(imageFile.file.size, tuning)) {
       const uploadId = await retryTransfer(() => albumService.initUpload(), config)
       await uploadChunks(uploadId, imageFile.file, tuning, config, reportAbsolute)
       await waitIfPaused()
@@ -687,14 +689,18 @@ async function runBackup(options: { manual?: boolean } = {}) {
       // hash the original bytes locally and ask the server before transferring
       // them. This also catches the same file appearing in multiple phone
       // folders or under a changed MediaStore id.
-      const hashes: string[] = []
-      for (const operation of remaining) {
-        const primary = operation.pair?.image || operation.asset
-        const digest = await galleryBackupNative.calculateAssetMd5({ uri: primary.uri })
-        primary.contentMd5 = digest.md5.toLowerCase()
-        operation.md5 = primary.contentMd5
-        hashes.push(operation.md5)
-      }
+      const hashes = await mapWithConcurrency(
+        remaining,
+        transferTuning?.hashConcurrency || 1,
+        async operation => {
+          const primary = operation.pair?.image || operation.asset
+          const digest = await galleryBackupNative.calculateAssetMd5({ uri: primary.uri })
+          const md5 = digest.md5.toLowerCase()
+          primary.contentMd5 = md5
+          operation.md5 = md5
+          return md5
+        },
+      )
       const hashPresence = hashes.length ? await albumService.checkBackupKeys([], hashes) : null
       for (let index = remaining.length - 1; index >= 0; index--) {
         const operation = remaining[index]

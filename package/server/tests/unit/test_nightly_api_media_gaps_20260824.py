@@ -239,11 +239,6 @@ async def test_finish_upload_happy_path_merges_and_saves(tmp_path):
         id=photo_id, owner_id=user.id, file_path=str(tmp_path / "saved.jpg")
     )
 
-    fake_open = MagicMock()
-    fake_buffer = MagicMock()
-    fake_buffer.read.return_value = b""
-    fake_open.return_value.__enter__.return_value = fake_buffer
-
     with patch.object(media_api, "add_tasks") as add_tasks:
         with patch.object(
             media_api.crud_album,
@@ -251,10 +246,10 @@ async def test_finish_upload_happy_path_merges_and_saves(tmp_path):
             return_value=None,
         ):
             with patch.object(
-                media_api.storage,
-                "save_upload_file",
+                media_api,
+                "_finalize_chunk_upload",
                 return_value=str(tmp_path / "saved.jpg"),
-            ):
+            ) as finalize_upload:
                 with patch.object(
                     media_api,
                     "save_and_create_photo",
@@ -266,21 +261,18 @@ async def test_finish_upload_happy_path_merges_and_saves(tmp_path):
                             "listdir",
                             return_value=["0", "1"],
                         ):
-                            with patch("builtins.open", fake_open):
-                                with patch.object(
-                                    media_api.shutil, "rmtree"
-                                ) as rmtree:
-                                    result = await media_api.finish_upload_generic(
-                                        upload_id=uuid4(),
-                                        file_name="merged.jpg",
-                                        album_id=None,
-                                        db=db,
-                                        current_user=user,
-                                    )
+                            result = await media_api.finish_upload_generic(
+                                upload_id=uuid4(),
+                                file_name="merged.jpg",
+                                album_id=None,
+                                db=db,
+                                current_user=user,
+                            )
 
     assert result is fake_photo
     add_tasks.assert_called_once()
-    rmtree.assert_called_once()
+    finalize_upload.assert_called_once()
+    assert finalize_upload.call_args.args[-2] is None
 
 
 # ---------------------------------------------------------------------------

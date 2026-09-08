@@ -1,4 +1,5 @@
 import json
+import errno
 import os
 import shutil
 import uuid
@@ -594,6 +595,40 @@ def _replace_backup_file_from_chunks(
             os.remove(temporary_path)
         shutil.rmtree(chunk_dir, ignore_errors=True)
 
+
+def _finalize_chunk_upload(
+    chunk_dir: str,
+    chunks: list[int],
+    file_name: str,
+    user_id: UUID,
+    folder: Optional[str],
+    db: Session,
+) -> str:
+    """Commit uploaded chunks with one destination write and an atomic rename."""
+    final_path = storage.prepare_upload_path(file_name, user_id, folder, db)
+    temporary_path = final_path + f'.{uuid.uuid4().hex}.uploading'
+    storage.validate_target_path(temporary_path)
+    try:
+        if len(chunks) == 1:
+            source_path = os.path.join(chunk_dir, str(chunks[0]))
+            try:
+                os.replace(source_path, temporary_path)
+            except OSError as exc:
+                if exc.errno != errno.EXDEV and getattr(exc, 'winerror', None) != 17:
+                    raise
+                shutil.copyfile(source_path, temporary_path)
+        else:
+            with open(temporary_path, 'wb') as output:
+                for chunk_index in chunks:
+                    with open(os.path.join(chunk_dir, str(chunk_index)), 'rb') as source:
+                        shutil.copyfileobj(source, output, length=1024 * 1024)
+        os.replace(temporary_path, final_path)
+        return final_path
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
+        shutil.rmtree(chunk_dir, ignore_errors=True)
+
 @router.post("", response_model=schemas.Photo)
 async def upload_photo_generic(
         album_id: Optional[UUID] = Form(None),
@@ -610,6 +645,8 @@ async def upload_photo_generic(
 ):
     if not _is_upload_file(live_photo_video):
         live_photo_video = None
+    if not isinstance(folder, str):
+        folder = None
     if not isinstance(companion_backup_key, str):
         companion_backup_key = None
     if not isinstance(replace_existing, bool):
@@ -746,6 +783,8 @@ async def finish_upload_generic(
 ):
     if not _is_upload_file(live_photo_video):
         live_photo_video = None
+    if not isinstance(folder, str):
+        folder = None
     if not isinstance(companion_backup_key, str):
         companion_backup_key = None
     if not isinstance(replace_existing, bool):
@@ -826,30 +865,10 @@ async def finish_upload_generic(
         raise HTTPException(status_code=400, detail="No chunks found")
 
     photo_id = uuid.uuid4()
-    ext = os.path.splitext(file_name)[1]
-    # Save to storage_root/year/month with conflict resolution
-    
-    def merge_and_save():
-        class _Tmp:
-            filename = file_name
-            file = None
-
-        merged_path = os.path.join(chunk_dir, "merged")
-        with open(merged_path, "wb") as outfile:
-            for chunk_idx in chunks:
-                chunk_path = os.path.join(chunk_dir, str(chunk_idx))
-                with open(chunk_path, "rb") as infile:
-                    outfile.write(infile.read())
-        with open(merged_path, "rb") as merged:
-            _Tmp.file = merged
-            final_path = storage.save_upload_file(_Tmp, photo_id, current_user.id, folder, db)
-
-        # Clean up chunks
-        shutil.rmtree(chunk_dir)
-        return final_path
-        
     try:
-        final_path = await run_in_threadpool(merge_and_save)
+        final_path = await run_in_threadpool(
+            _finalize_chunk_upload, chunk_dir, chunks, file_name, current_user.id, folder, db
+        )
         await run_in_threadpool(_preserve_source_file_time, final_path, source_photo_time)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
