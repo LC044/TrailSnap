@@ -10,6 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, status, Form, UploadFile, File, Query
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import UploadFile as StarletteUploadFile
 import anyio
 import base64
 from sqlalchemy.orm import Session
@@ -32,6 +33,11 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 
 router = APIRouter()
+
+
+def _is_upload_file(value: object) -> bool:
+    """Accept the concrete upload type produced by Starlette's multipart parser."""
+    return isinstance(value, StarletteUploadFile)
 
 
 def _existing_backup_photo(db: Session, user_id: UUID, backup_key: Optional[str]):
@@ -602,7 +608,7 @@ async def upload_photo_generic(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    if not isinstance(live_photo_video, UploadFile):
+    if not _is_upload_file(live_photo_video):
         live_photo_video = None
     if not isinstance(companion_backup_key, str):
         companion_backup_key = None
@@ -738,7 +744,7 @@ async def finish_upload_generic(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    if not isinstance(live_photo_video, UploadFile):
+    if not _is_upload_file(live_photo_video):
         live_photo_video = None
     if not isinstance(companion_backup_key, str):
         companion_backup_key = None
