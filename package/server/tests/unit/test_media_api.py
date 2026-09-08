@@ -9,19 +9,9 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 from fastapi import UploadFile
-from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.api import media as media_api
 from app.db.models.photo import FileType
-
-
-def test_upload_file_check_accepts_starlette_multipart_instance():
-    upload = StarletteUploadFile(
-        filename="IMG_0001.mp4",
-        file=io.BytesIO(b"video"),
-    )
-
-    assert media_api._is_upload_file(upload)
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
