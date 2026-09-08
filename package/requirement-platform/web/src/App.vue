@@ -359,6 +359,35 @@
             <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
           </el-table>
         </article>
+        <article class="panel mcp-guide" style="margin-top:16px">
+          <div class="section-title-row">
+            <div><h2>MCP 配置教程</h2><p class="meta">适用于 Codex 桌面端、CLI 和 IDE 扩展，三者共享同一份配置。</p></div>
+            <a class="github-link" href="https://developers.openai.com/codex/mcp" target="_blank" rel="noopener">查看官方 MCP 文档</a>
+          </div>
+          <ol class="guide-steps">
+            <li>
+              <strong>创建最小权限令牌</strong>
+              <p>点击上方“创建令牌”。只查询需求时选择 <code>requirements:read</code>；需要提交或审核时再增加对应写入作用域。令牌只显示一次，请立即保存。</p>
+            </li>
+            <li>
+              <strong>把令牌放入环境变量</strong>
+              <p>在运行 Codex 的系统环境中设置 <code>TRAILSNAP_MCP_TOKEN</code>，值为刚创建的完整令牌。请勿把令牌直接写入仓库或分享给他人。</p>
+            </li>
+            <li>
+              <strong>添加 Codex 配置</strong>
+              <p>编辑用户级 <code>~/.codex/config.toml</code>；也可以在可信项目中使用 <code>.codex/config.toml</code>。</p>
+              <pre class="code-block mcp-code"><code>{{ mcpConfigExample }}</code></pre>
+              <el-button size="small" @click="copyText(mcpConfigExample)">复制配置</el-button>
+            </li>
+            <li>
+              <strong>重启并验证</strong>
+              <p>重启 Codex 桌面端或 IDE 扩展，然后运行 <code>codex mcp list</code>，或在 Codex 中输入 <code>/mcp</code>，确认 <code>trailsnap_requirements</code> 已连接。</p>
+            </li>
+          </ol>
+          <el-alert type="warning" :closable="false" show-icon title="连接失败时请检查">
+            MCP 地址必须能从 Codex 所在设备访问；线上部署应使用 HTTPS。出现 401 请确认环境变量已生效且令牌未撤销，出现 403 请检查令牌作用域。
+          </el-alert>
+        </article>
       </section>
 
       <!-- ============ 角色管理 ============ -->
@@ -555,6 +584,7 @@ const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: '
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
 const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
 const mcpUrl = `${window.location.origin}/mcp/`
+const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
 const candidateSelection = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
@@ -896,10 +926,18 @@ onMounted(async () => {
 .account-row > div { flex:1; }
 .github-avatar { width:44px; height:44px; border-radius:50%; }
 .code-block { display:block; padding:12px; border-radius:8px; background:#f3f4f6; color:#111827; overflow-wrap:anywhere; }
+.mcp-guide h2 { margin: 0 0 6px; font-size: 18px; }
+.guide-steps { margin: 20px 0; padding-left: 24px; display: grid; gap: 18px; }
+.guide-steps li { padding-left: 4px; }
+.guide-steps p { margin: 6px 0 10px; color: var(--rp-text-2); line-height: 1.65; font-size: 13.5px; }
+.guide-steps code { font-size: 12.5px; }
+.mcp-code { margin: 10px 0; overflow-x: auto; overflow-wrap: normal; white-space: pre; }
 @media (prefers-color-scheme: dark) { .code-block { background:#1f2937; color:#f3f4f6; } }
 @media (max-width: 720px) {
   .form-grid { grid-template-columns: 1fr; }
   .integration-grid { grid-template-columns:1fr; }
   .account-row,.section-title-row { align-items:flex-start; flex-wrap:wrap; }
+  .mcp-guide .section-title-row { display: grid; }
+  .guide-steps { padding-left: 20px; }
 }
 </style>
