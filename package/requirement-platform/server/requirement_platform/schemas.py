@@ -25,8 +25,36 @@ class UserRead(BaseModel):
     created_at: datetime
 
 
+class GitHubIdentityRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    github_user_id: int
+    login: str
+    avatar_url: str | None
+    profile_url: str | None
+    email: str | None
+    linked_at: datetime
+    last_login_at: datetime | None
+
+
 class RoleUpdate(BaseModel):
     role: Literal["viewer", "admin"]
+
+
+class GitHubIssueLinkInput(BaseModel):
+    issue_number: int = Field(ge=1)
+
+
+class ReasonInput(BaseModel):
+    reason: str = Field(min_length=2, max_length=1000)
+
+
+class AgentTokenCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    scopes: list[Literal[
+        "requirements:read", "requirements:write", "requirements:review",
+        "versions:read", "versions:write", "github:write"
+    ]] = Field(min_length=1)
+    expires_in_days: int | None = Field(default=90, ge=1, le=365)
 
 
 class RequirementCreate(BaseModel):
@@ -107,6 +135,9 @@ class RequirementRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     version: int
+    deleted_at: datetime | None
+    deleted_by: str | None
+    delete_reason: str | None
 
 
 class BatchRead(BaseModel):

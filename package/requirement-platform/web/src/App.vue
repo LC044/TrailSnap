@@ -2,83 +2,264 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="topbar-inner">
-        <div class="brand">行影集 · 需求平台</div>
+        <div class="brand">
+          <img :src="logoUrl" alt="行影集" />
+          <span>行影集</span>
+          <span class="brand-sub">软件需求管理平台</span>
+        </div>
         <nav class="nav" aria-label="主导航">
           <button v-for="item in visibleTabs" :key="item.key" :class="{ active: tab === item.key }" @click="switchTab(item.key)">
             {{ item.label }}
           </button>
         </nav>
-        <el-button v-if="user" text @click="logout">{{ user.username }} · 退出</el-button>
-        <el-button v-else type="primary" plain @click="authDialog = true">登录</el-button>
+        <div class="topbar-side">
+          <button class="icon-btn" type="button" aria-label="通知" @click="onNotification">
+            <el-icon :size="18"><Bell /></el-icon>
+            <span v-if="false" class="dot"></span>
+          </button>
+          <el-dropdown v-if="user" trigger="click" @command="onUserCommand">
+            <button class="user-chip" type="button">
+              <span class="avatar" :style="{ width: '30px', height: '30px', fontSize: '13px', ...avatarColor(user.username) }">
+                {{ user.username.slice(0, 1) }}
+              </span>
+              <span style="font-size: 14px">{{ user.username }}</span>
+              <el-icon :size="12"><ArrowDown /></el-icon>
+            </button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="mine">我的需求</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button v-else type="primary" @click="authDialog = true">登录 / 注册</el-button>
+        </div>
       </div>
     </header>
 
     <main class="main">
+      <!-- ============ 公开需求 ============ -->
       <section v-if="tab === 'public'">
-        <div class="hero">
-          <div><h1>一起把行影集变得更好</h1><p>查看公开需求、候选功能和版本进展。</p></div>
-          <el-button type="primary" size="large" @click="switchTab('submit')">提交需求</el-button>
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><Document /></el-icon></div>
+            <div>
+              <h1>公开需求</h1>
+              <p class="sub">一起把行影集变得更好</p>
+              <p class="desc">浏览和参与社区提出的需求，共同推动产品进步。</p>
+            </div>
+          </div>
+          <div class="page-head-actions">
+            <div class="stat-cards">
+              <div class="stat-card"><div class="num">{{ stats.total }}</div><div class="label">公开需求</div></div>
+              <div class="stat-card"><div class="num">{{ stats.planned }}</div><div class="label">已规划</div></div>
+              <div class="stat-card"><div class="num">{{ stats.developing }}</div><div class="label">开发中</div></div>
+              <div class="stat-card"><div class="num">{{ stats.done }}</div><div class="label">已完成</div></div>
+            </div>
+            <el-button type="primary" size="large" :icon="Plus" @click="switchTab('submit')">提交需求</el-button>
+          </div>
         </div>
-        <div class="panel filters">
-          <el-input v-model="filters.q" clearable placeholder="搜索标题或描述" @keyup.enter="loadRequirements" />
-          <el-select v-model="filters.type" clearable placeholder="全部类型" @change="loadRequirements">
-            <el-option label="Bug" value="bug" /><el-option label="改进" value="improvement" /><el-option label="新功能" value="feature" />
+
+        <div class="filters">
+          <el-input v-model="filters.q" clearable placeholder="搜索需求标题、关键词或描述..." :prefix-icon="Search" class="search" @keyup.enter="loadRequirements" @clear="loadRequirements" />
+          <el-select v-model="filters.type" clearable placeholder="全部类型" class="select" @change="loadRequirements">
+            <el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" />
           </el-select>
-          <el-select v-model="filters.status" clearable placeholder="全部状态" @change="loadRequirements">
+          <el-select v-model="filters.status" clearable placeholder="全部状态" class="select" @change="loadRequirements">
             <el-option v-for="status in statusOptions" :key="status" :label="statusLabel(status)" :value="status" />
           </el-select>
+          <el-select v-model="sortBy" placeholder="最新更新" class="sort" @change="sortRequirements">
+            <el-option label="最新更新" value="updated" /><el-option label="最早提交" value="oldest" /><el-option label="关注最多" value="followers" />
+          </el-select>
         </div>
-        <RequirementCards :items="requirements" :manager="isManager" @follow="follow" @review="openReview" />
+
+        <RequirementTable :items="sortedRequirements" :manager="isManager" :user="user" @open="openDetail" @action="onRowAction" />
       </section>
 
+      <!-- ============ 提交需求 ============ -->
       <section v-else-if="tab === 'submit'">
-        <div class="hero"><div><h1>提交需求</h1><p>报告问题、提出改进或分享新想法。</p></div></div>
-        <div v-if="!user" class="panel empty">请先登录或注册，再提交需求。<div class="actions" style="justify-content:center"><el-button type="primary" @click="authDialog = true">登录 / 注册</el-button></div></div>
-        <el-form v-else class="panel form-grid" label-position="top" @submit.prevent="submitRequirement">
-          <el-form-item label="类型"><el-select v-model="requirementForm.type"><el-option label="Bug" value="bug" /><el-option label="改进" value="improvement" /><el-option label="新功能" value="feature" /></el-select></el-form-item>
-          <el-form-item label="影响程度"><el-select v-model="requirementForm.severity"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item>
-          <el-form-item class="span-2" label="标题"><el-input v-model="requirementForm.title" maxlength="160" show-word-limit /></el-form-item>
-          <el-form-item class="span-2" label="需求或问题描述"><el-input v-model="requirementForm.description" type="textarea" :rows="5" maxlength="8000" show-word-limit /></el-form-item>
-          <el-form-item label="当前行为"><el-input v-model="requirementForm.current_behavior" type="textarea" :rows="3" /></el-form-item>
-          <el-form-item label="期望行为"><el-input v-model="requirementForm.expected_behavior" type="textarea" :rows="3" /></el-form-item>
-          <el-form-item v-if="requirementForm.type === 'bug'" class="span-2" label="复现步骤"><el-input v-model="requirementForm.steps_to_reproduce" type="textarea" :rows="4" /></el-form-item>
-          <el-form-item label="TrailSnap 版本"><el-input v-model="requirementForm.product_version" placeholder="例如 0.14.1" /></el-form-item>
-          <el-form-item label="公开范围"><el-radio-group v-model="requirementForm.visibility"><el-radio value="public">公开</el-radio><el-radio value="private">仅本人和管理员</el-radio></el-radio-group></el-form-item>
-          <div class="span-2 actions"><el-button type="primary" :loading="busy" native-type="submit">确认提交</el-button></div>
-        </el-form>
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><EditPen /></el-icon></div>
+            <div>
+              <h1>提交需求</h1>
+              <p class="sub">分享你的想法，让行影集变得更好</p>
+              <p class="desc">报告问题、提出改进建议或分享新想法，我们会认真对待每一条反馈。</p>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!user" class="panel empty">
+          <el-icon><User /></el-icon>
+          <div>请先登录或注册，再提交需求</div>
+          <div class="actions" style="justify-content: center"><el-button type="primary" @click="authDialog = true">登录 / 注册</el-button></div>
+        </div>
+
+        <div v-else class="submit-layout">
+          <el-form class="panel submit-form" label-position="top" @submit.prevent="submitRequirement">
+            <div class="section">
+              <h2 class="section-head"><el-icon><DocumentAdd /></el-icon>基本信息</h2>
+              <el-form-item label="类型" required>
+                <el-select v-model="requirementForm.type">
+                  <el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" />
+                </el-select>
+                <div class="field-hint">选择最符合的类型，便于快速分类处理</div>
+              </el-form-item>
+              <el-form-item label="影响程度" required>
+                <el-select v-model="requirementForm.severity">
+                  <el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" />
+                </el-select>
+                <div class="field-hint">评估该需求对用户和业务的影响范围</div>
+              </el-form-item>
+              <el-form-item label="标题" required>
+                <el-input v-model="requirementForm.title" maxlength="160" show-word-limit placeholder="请输入简洁清晰的标题" />
+                <div class="field-hint">用简短的语句概括需求的核心内容</div>
+              </el-form-item>
+            </div>
+
+            <div class="section">
+              <h2 class="section-head"><el-icon><Tickets /></el-icon>需求描述</h2>
+              <el-form-item label="需求或问题描述" required>
+                <el-input v-model="requirementForm.description" type="textarea" :rows="5" maxlength="8000" show-word-limit placeholder="请详细描述你的需求、遇到的问题或改进建议..." />
+                <div class="field-hint">提供越详细的信息，越有助于我们理解和处理</div>
+              </el-form-item>
+            </div>
+
+            <div v-if="requirementForm.type === 'bug'" class="section">
+              <h2 class="section-head"><el-icon><Warning /></el-icon>问题细节</h2>
+              <el-form-item label="复现步骤">
+                <el-input v-model="requirementForm.steps_to_reproduce" type="textarea" :rows="4" placeholder="例如：1. 打开照片页 2. 点击筛选..." />
+              </el-form-item>
+            </div>
+
+            <div class="section">
+              <h2 class="section-head"><el-icon><Switch /></el-icon>行为描述</h2>
+              <div class="form-grid">
+                <el-form-item label="当前行为">
+                  <el-input v-model="requirementForm.current_behavior" type="textarea" :rows="3" placeholder="请描述目前的实际情况，例如：现在系统是如何工作的？" />
+                </el-form-item>
+                <el-form-item label="期望行为">
+                  <el-input v-model="requirementForm.expected_behavior" type="textarea" :rows="3" placeholder="请描述你期望的结果，例如：希望系统如何改进？" />
+                </el-form-item>
+              </div>
+            </div>
+
+            <div class="section">
+              <h2 class="section-head"><el-icon><InfoFilled /></el-icon>其他信息</h2>
+              <div class="form-grid">
+                <el-form-item label="TrailSnap 版本">
+                  <el-input v-model="requirementForm.product_version" placeholder="例如 0.14.1" />
+                  <div class="field-hint">如果与特定版本相关，请填写版本号</div>
+                </el-form-item>
+                <el-form-item label="公开范围">
+                  <el-radio-group v-model="requirementForm.visibility">
+                    <el-radio value="public">公开</el-radio>
+                    <el-radio value="private">仅本人和管理员</el-radio>
+                  </el-radio-group>
+                  <div class="field-hint">公开后，其他用户可以查看和参与讨论</div>
+                </el-form-item>
+              </div>
+            </div>
+
+            <div class="actions">
+              <el-button type="primary" size="large" :icon="Promotion" :loading="busy" native-type="submit">提交需求</el-button>
+              <el-button size="large" @click="saveDraft">保存草稿</el-button>
+            </div>
+          </el-form>
+
+          <aside>
+            <div class="side-card">
+              <h3><el-icon><Opportunity /></el-icon>提交小助手</h3>
+              <ul class="tip-list">
+                <li><el-icon><CircleCheckFilled /></el-icon>用简洁的标题概括核心问题</li>
+                <li><el-icon><CircleCheckFilled /></el-icon>详细描述使用场景和背景信息</li>
+                <li><el-icon><CircleCheckFilled /></el-icon>如果有截图或示例，请一并提供</li>
+                <li><el-icon><CircleCheckFilled /></el-icon>选择合适的需求类型和影响程度</li>
+                <li><el-icon><CircleCheckFilled /></el-icon>提交后可以在「我的需求」中查看进度</li>
+              </ul>
+            </div>
+            <div class="side-card">
+              <h3><el-icon><Guide /></el-icon>需求处理流程</h3>
+              <ol class="step-list">
+                <li class="active"><div><div class="step-title">提交需求</div><p class="step-desc">填写并提交需求信息</p></div></li>
+                <li><div><div class="step-title">需求评审</div><p class="step-desc">产品和技术团队进行评估</p></div></li>
+                <li><div><div class="step-title">规划排期</div><p class="step-desc">纳入版本计划</p></div></li>
+                <li><div><div class="step-title">开发实现</div><p class="step-desc">进入开发并跟踪进度</p></div></li>
+                <li><div><div class="step-title">完成上线</div><p class="step-desc">需求实现并发布</p></div></li>
+              </ol>
+            </div>
+            <div class="side-card help-card">
+              <h3><el-icon><Service /></el-icon>需要帮助？</h3>
+              <p>如果你在使用过程中遇到问题，可以联系产品团队或查看帮助文档。</p>
+              <a href="https://trailsnap.cn" target="_blank" rel="noopener">
+                <el-button plain class="w-full">查看帮助文档</el-button>
+              </a>
+            </div>
+          </aside>
+        </div>
       </section>
 
+      <!-- ============ 我的需求 ============ -->
       <section v-else-if="tab === 'mine'">
-        <div class="hero"><div><h1>我的需求</h1><p>查看自己提交的需求和处理进度。</p></div></div>
-        <div v-if="!user" class="panel empty">登录后查看自己的需求。</div>
-        <RequirementCards v-else :items="myRequirements" :manager="isManager" @follow="follow" @review="openReview" />
-      </section>
-
-      <section v-else-if="tab === 'admin' && isManager">
-        <div class="hero"><div><h1>需求审核</h1><p>AI 提供建议，最终结论由所有者或管理员确认。</p></div></div>
-        <div class="panel filters">
-          <el-select v-model="adminStatus" clearable placeholder="全部状态" @change="loadAdmin"><el-option v-for="status in reviewStatuses" :key="status" :label="statusLabel(status)" :value="status" /></el-select>
-          <el-button type="primary" @click="loadAdmin">刷新</el-button>
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><Collection /></el-icon></div>
+            <div>
+              <h1>我的需求</h1>
+              <p class="sub">查看自己提交的需求和处理进度</p>
+              <p class="desc">跟踪每一条需求从提交到上线的全过程。</p>
+            </div>
+          </div>
         </div>
-        <RequirementCards :items="adminRequirements" manager @follow="follow" @review="openReview" />
+        <div v-if="!user" class="panel empty">
+          <el-icon><User /></el-icon>
+          <div>登录后查看自己的需求</div>
+          <div class="actions" style="justify-content: center"><el-button type="primary" @click="authDialog = true">登录 / 注册</el-button></div>
+        </div>
+        <template v-else>
+          <RequirementTable :items="myRequirements" :manager="isManager" :user="user" @open="openDetail" @action="onRowAction" />
+        </template>
       </section>
 
+      <!-- ============ 版本计划 ============ -->
       <section v-else-if="tab === 'versions'">
-        <div class="hero">
-          <div><h1>版本批次</h1><p>人工选择进入版本开发候选的需求。</p></div>
-          <el-button v-if="isManager" type="primary" @click="batchDialog = true">创建版本批次</el-button>
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><Flag /></el-icon></div>
+            <div>
+              <h1>版本计划</h1>
+              <p class="sub">人工选择进入版本开发候选的需求</p>
+              <p class="desc">跟踪每个版本的范围、进度和发布状态。</p>
+            </div>
+          </div>
+          <div class="page-head-actions">
+            <el-button v-if="isManager" type="primary" :icon="Plus" @click="batchDialog = true">创建版本批次</el-button>
+          </div>
         </div>
-        <div v-if="!batches.length" class="panel empty">暂无版本批次</div>
+        <div v-if="!batches.length" class="panel empty">
+          <el-icon><Flag /></el-icon>
+          <div>暂无版本批次</div>
+        </div>
         <div v-else class="batch-grid">
           <article v-for="batch in batches" :key="batch.id" class="panel batch-card">
-            <div class="card-head"><div><h2 class="card-title">{{ batch.name }}</h2><div class="meta"><span>{{ batch.version_name }}</span><span>{{ batch.batch_type }}</span></div></div><span :class="['tag', batch.status]">{{ statusLabel(batch.status) }}</span></div>
+            <div class="card-head">
+              <div>
+                <h2 class="card-title">{{ batch.name }}</h2>
+                <div class="meta"><span>{{ batch.version_name }}</span><span>{{ batchTypeLabel(batch.batch_type) }}</span><span v-if="batch.target_date">目标 {{ batch.target_date }}</span></div>
+              </div>
+              <span class="tag" :class="`s-${batch.status}`">{{ statusLabel(batch.status) }}</span>
+            </div>
             <p class="description">{{ batch.goal }}</p>
-            <a v-if="batch.github_milestone_url" :href="batch.github_milestone_url" target="_blank" rel="noopener">GitHub Milestone #{{ batch.github_milestone_number }}</a>
+            <a v-if="batch.github_milestone_url" class="github-link" :href="batch.github_milestone_url" target="_blank" rel="noopener">
+              GitHub Milestone #{{ batch.github_milestone_number }}
+            </a>
             <ul class="batch-items">
               <li v-for="item in batch.items" :key="item.id">
-                <strong>{{ item.requirement_snapshot.title }}</strong>
-                <div class="meta"><span>{{ deliveryLabel(item.delivery_status) }}</span></div>
-                <div v-if="isManager" class="actions">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+                  <strong style="font-size:14px">{{ item.requirement_snapshot.title }}</strong>
+                  <span class="tag no-dot" :class="`d-${item.delivery_status}`">{{ deliveryLabel(item.delivery_status) }}</span>
+                </div>
+                <div v-if="isManager" class="actions" style="margin-top:8px">
                   <el-select v-if="!['planning','candidate_selection','published','completed','cancelled'].includes(batch.status)" :model-value="item.delivery_status" size="small" style="width:150px" @change="updateDelivery(batch.id, item.id, String($event))">
                     <el-option v-for="status in deliveryStatuses" :key="status" :label="deliveryLabel(status)" :value="status" />
                   </el-select>
@@ -101,30 +282,159 @@
         </div>
       </section>
 
+      <!-- ============ 需求审核 ============ -->
+      <section v-else-if="tab === 'admin' && isManager">
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><Checked /></el-icon></div>
+            <div>
+              <h1>需求审核</h1>
+              <p class="sub">AI 提供建议，最终结论由所有者或管理员确认</p>
+              <p class="desc">处理待审核需求，维护候选池质量。</p>
+            </div>
+          </div>
+          <div class="page-head-actions">
+            <el-select v-model="adminStatus" clearable placeholder="全部状态" style="width:150px" @change="loadAdmin">
+              <el-option v-for="status in reviewStatuses" :key="status" :label="statusLabel(status)" :value="status" />
+            </el-select>
+            <el-button :icon="Refresh" @click="loadAdmin">刷新</el-button>
+          </div>
+        </div>
+        <RequirementTable :items="adminRequirements" manager :user="user" @open="openDetail" @action="onRowAction" />
+      </section>
+
+      <!-- ============ GitHub 与 Agent 集成 ============ -->
+      <section v-else-if="tab === 'integrations' && isManager">
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><Connection /></el-icon></div>
+            <div><h1>GitHub 与 Agent 集成</h1><p class="sub">管理账号绑定和 MCP 访问令牌</p><p class="desc">令牌按作用域授权，可随时撤销；完整令牌只显示一次。</p></div>
+          </div>
+        </div>
+        <div class="integration-grid">
+          <article class="panel integration-card">
+            <h2>GitHub 账号</h2>
+            <div v-if="user?.github" class="account-row">
+              <img v-if="user.github.avatar_url" :src="user.github.avatar_url" alt="" class="github-avatar" />
+              <div><strong>@{{ user.github.login }}</strong><p class="meta">已绑定，可用于 GitHub 登录</p></div>
+              <el-button plain @click="unlinkGithub">解除绑定</el-button>
+            </div>
+            <div v-else><p class="meta">绑定后可使用 GitHub 登录；平台不会保存 GitHub OAuth 访问令牌。</p><el-button type="primary" :disabled="!githubOauthEnabled" @click="startGithub('link')">绑定 GitHub</el-button></div>
+            <p v-if="!githubOauthEnabled" class="form-hint">服务端尚未配置 GitHub OAuth App。</p>
+          </article>
+          <article class="panel integration-card">
+            <h2>MCP 接入地址</h2>
+            <code class="code-block">{{ mcpUrl }}</code>
+            <p class="meta">Codex 使用 Streamable HTTP 和 Bearer Token 连接此地址。</p>
+          </article>
+        </div>
+        <article class="panel integration-card" style="margin-top:16px">
+          <div class="section-title-row"><div><h2>Agent 令牌</h2><p class="meta">仅管理自己创建的令牌。</p></div><el-button type="primary" :icon="Key" @click="tokenDialog = true">创建令牌</el-button></div>
+          <el-table :data="agentTokens" style="width:100%">
+            <el-table-column prop="name" label="名称" /><el-table-column prop="token_prefix" label="前缀" width="140" />
+            <el-table-column label="作用域"><template #default="scope"><span class="meta">{{ scope.row.scopes.join('、') }}</span></template></el-table-column>
+            <el-table-column label="最后使用" width="170"><template #default="scope">{{ scope.row.last_used_at ? new Date(scope.row.last_used_at).toLocaleString() : '从未' }}</template></el-table-column>
+            <el-table-column label="状态" width="100"><template #default="scope"><span class="tag no-dot plain">{{ scope.row.revoked_at ? '已撤销' : '有效' }}</span></template></el-table-column>
+            <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
+          </el-table>
+        </article>
+      </section>
+
+      <!-- ============ 角色管理 ============ -->
       <section v-else-if="tab === 'users' && user?.role === 'owner'">
-        <div class="hero"><div><h1>角色管理</h1><p>所有者可以任命或移除管理员。</p></div></div>
-        <el-table :data="users" class="panel">
-          <el-table-column prop="username" label="用户名" /><el-table-column prop="email" label="邮箱" />
-          <el-table-column prop="role" label="角色"><template #default="scope"><span class="tag">{{ roleLabel(scope.row.role) }}</span></template></el-table-column>
-          <el-table-column label="操作"><template #default="scope"><el-button v-if="scope.row.role !== 'owner'" size="small" @click="toggleRole(scope.row)">{{ scope.row.role === 'admin' ? '降为查看者' : '设为管理员' }}</el-button></template></el-table-column>
+        <div class="page-head">
+          <div class="page-head-left">
+            <div class="page-head-icon"><el-icon :size="26"><UserFilled /></el-icon></div>
+            <div>
+              <h1>角色管理</h1>
+              <p class="sub">所有者可以任命或移除管理员</p>
+            </div>
+          </div>
+        </div>
+        <el-table :data="users" class="panel users-panel">
+          <el-table-column prop="username" label="用户名" />
+          <el-table-column prop="email" label="邮箱" />
+          <el-table-column prop="role" label="角色">
+            <template #default="scope"><span class="tag no-dot plain">{{ roleLabel(scope.row.role) }}</span></template>
+          </el-table-column>
+          <el-table-column label="GitHub"><template #default="scope">{{ scope.row.github ? `@${scope.row.github.login}` : '未绑定' }}</template></el-table-column>
+          <el-table-column label="操作">
+            <template #default="scope">
+              <el-button v-if="scope.row.role !== 'owner'" size="small" @click="toggleRole(scope.row)">{{ scope.row.role === 'admin' ? '降为查看者' : '设为管理员' }}</el-button>
+            </template>
+          </el-table-column>
         </el-table>
       </section>
     </main>
 
-    <el-dialog v-model="authDialog" title="登录需求平台" width="min(92vw, 460px)">
+    <!-- ============ 页脚 ============ -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-brand"><img :src="logoUrl" alt="" />行影集 <span style="font-weight:400">| 让好想法，变成更好的产品</span></div>
+        <div class="footer-links">
+          <span>软件需求管理平台</span><span class="sep">•</span><a href="https://trailsnap.cn" target="_blank" rel="noopener">开放</a><span class="sep">•</span><a href="https://trailsnap.cn" target="_blank" rel="noopener">更高效</a><span class="sep">•</span><span>一起创造更好的行影集</span>
+        </div>
+      </div>
+    </footer>
+
+    <!-- ============ 需求详情 ============ -->
+    <el-dialog v-model="detailDialog" :title="detailTarget?.title" width="min(92vw, 640px)">
+      <template v-if="detailTarget">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <span class="tag no-dot" :class="`t-${detailTarget.type}`">{{ typeLabel(detailTarget.type) }}</span>
+          <span class="tag" :class="`s-${detailTarget.status}`">{{ statusLabel(detailTarget.status) }}</span>
+          <span class="tag no-dot" :class="`p-${detailTarget.priority}`">优先级：{{ priorityLabel(detailTarget.priority) }}</span>
+          <span class="tag no-dot" :class="`sev-${detailTarget.severity}`">影响：{{ severityLabel(detailTarget.severity) }}</span>
+        </div>
+        <p class="description" style="margin:0 0 14px">{{ detailTarget.description }}</p>
+        <div v-if="detailTarget.current_behavior" class="meta" style="margin-bottom:6px"><strong>当前行为：</strong>{{ detailTarget.current_behavior }}</div>
+        <div v-if="detailTarget.expected_behavior" class="meta" style="margin-bottom:14px"><strong>期望行为：</strong>{{ detailTarget.expected_behavior }}</div>
+        <div v-if="detailTarget.triage" class="triage-box">
+          <div class="triage-head"><el-icon><MagicStick /></el-icon>AI 分析建议</div>
+          <p>{{ String(detailTarget.triage.summary || detailTarget.triage.recommendation || '分析已完成') }}</p>
+        </div>
+        <div v-if="detailTarget.review_reason" class="meta" style="margin-top:12px"><strong>审核说明：</strong>{{ detailTarget.review_reason }}</div>
+        <div class="meta" style="margin-top:14px">
+          <span>提交人：{{ detailTarget.created_by_name || '用户' }}</span>
+          <span>提交于 {{ new Date(detailTarget.created_at).toLocaleString() }}</span>
+          <span>{{ detailTarget.follower_count || 0 }} 人关注</span>
+          <a v-if="detailTarget.github_issue_url" :href="detailTarget.github_issue_url" target="_blank" rel="noopener">GitHub #{{ detailTarget.github_issue_number }}</a>
+        </div>
+      </template>
+      <template #footer>
+        <el-button v-if="detailTarget && canFollow" @click="follow(detailTarget); detailDialog = false">关注（{{ detailTarget.follower_count || 0 }}）</el-button>
+        <el-button v-if="detailTarget && isManager" type="primary" @click="detailDialog = false; openReview(detailTarget)">审核</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 登录 ============ -->
+    <el-dialog v-model="authDialog" title="登录需求平台" width="min(92vw, 440px)">
       <el-tabs v-model="authMode"><el-tab-pane label="登录" name="login" /><el-tab-pane label="注册" name="register" /></el-tabs>
       <el-form label-position="top" @submit.prevent="submitAuth">
         <el-form-item v-if="authMode === 'register'" label="用户名"><el-input v-model="authForm.username" autocomplete="username" /></el-form-item>
         <el-form-item label="邮箱"><el-input v-model="authForm.email" autocomplete="email" /></el-form-item>
         <el-form-item label="密码"><el-input v-model="authForm.password" type="password" show-password autocomplete="current-password" /><div v-if="authMode === 'register'" class="form-hint">至少 8 位字符</div></el-form-item>
-        <el-button type="primary" :loading="busy" native-type="submit">{{ authMode === 'login' ? '登录' : '注册' }}</el-button>
+        <el-button type="primary" class="w-full" :loading="busy" native-type="submit">{{ authMode === 'login' ? '登录' : '注册' }}</el-button>
+        <el-divider v-if="githubOauthEnabled">或</el-divider>
+        <el-button v-if="githubOauthEnabled" class="w-full" @click="startGithub('login')">使用 GitHub 登录</el-button>
       </el-form>
     </el-dialog>
 
+    <el-dialog v-model="tokenDialog" title="创建 Agent MCP 令牌" width="min(92vw, 600px)">
+      <el-form label-position="top">
+        <el-form-item label="令牌名称"><el-input v-model="tokenForm.name" placeholder="例如 Codex 需求助手" /></el-form-item>
+        <el-form-item label="有效期（天）"><el-input-number v-model="tokenForm.expires_in_days" :min="1" :max="365" /></el-form-item>
+        <el-form-item label="授权作用域"><el-checkbox-group v-model="tokenForm.scopes"><el-checkbox v-for="scope in scopeOptions" :key="scope" :value="scope">{{ scope }}</el-checkbox></el-checkbox-group></el-form-item>
+      </el-form>
+      <el-alert v-if="createdToken" type="success" :closable="false" title="请立即复制，关闭后无法再次查看"><code class="code-block">{{ createdToken }}</code><el-button style="margin-top:10px" @click="copyText(createdToken)">复制令牌</el-button></el-alert>
+      <template #footer><el-button @click="tokenDialog = false; createdToken = ''">关闭</el-button><el-button v-if="!createdToken" type="primary" :loading="busy" @click="createToken">创建</el-button></template>
+    </el-dialog>
+
+    <!-- ============ 人工审核 ============ -->
     <el-dialog v-model="reviewDialog" title="人工审核" width="min(92vw, 560px)">
       <p v-if="reviewTarget"><strong>{{ reviewTarget.title }}</strong></p>
       <el-form label-position="top">
-        <el-form-item label="审核结论"><el-select v-model="reviewForm.action"><el-option label="进入候选池" value="candidate" /><el-option label="需要补充" value="needs_information" /><el-option label="暂缓" value="deferred" /><el-option label="拒绝" value="rejected" /><el-option label="重复需求" value="duplicate" /><el-option label="关闭" value="close" /></el-select></el-form-item>
+        <el-form-item label="审核结论"><el-select v-model="reviewForm.action"><el-option v-for="(label, value) in reviewActionLabels" :key="value" :label="label" :value="value" /></el-select></el-form-item>
         <el-form-item label="原因"><el-input v-model="reviewForm.reason" type="textarea" :rows="4" /></el-form-item>
         <el-form-item label="优先级"><el-select v-model="reviewForm.priority"><el-option label="低" value="low" /><el-option label="普通" value="normal" /><el-option label="高" value="high" /><el-option label="紧急" value="urgent" /></el-select></el-form-item>
         <el-form-item label="风险"><el-select v-model="reviewForm.risk_level"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item>
@@ -133,6 +443,7 @@
       <template #footer><el-button @click="reviewDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="submitReview">确认</el-button></template>
     </el-dialog>
 
+    <!-- ============ 创建版本批次 ============ -->
     <el-dialog v-model="batchDialog" title="创建版本批次" width="min(92vw, 560px)">
       <el-form label-position="top">
         <el-form-item label="版本名称"><el-input v-model="batchForm.name" /></el-form-item>
@@ -147,16 +458,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
-import { ElButton, ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, reactive, ref } from 'vue'
+import {
+  ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, Document, DocumentAdd, EditPen, Flag, Guide,
+  InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
+} from '@element-plus/icons-vue'
+import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
-import { api, type Batch, type Requirement, type User } from './api'
+import logoUrl from './assets/logo.svg'
+import { api, type AgentToken, type Batch, type Requirement, type User as ApiUser } from './api'
+import {
+  avatarColor, batchTypeLabel, deliveryLabel, priorityLabel, reviewActionLabels, roleLabel, severityLabel,
+  statusLabel, typeLabel,
+} from './labels'
+import RequirementTable from './RequirementTable.vue'
 
-const statusLabels: Record<string, string> = { submitted:'待分析',triaging:'分析中',pending_review:'待审核',needs_information:'待补充',candidate:'开发候选',rejected:'已拒绝',deferred:'已暂缓',duplicate:'已合并',scheduled:'已排期',developing:'开发中',testing:'测试中',release_ready:'待发布',released:'已发布',withdrawn:'已撤回',closed:'已关闭',planning:'规划中',candidate_selection:'候选确认中',scope_locked:'范围已锁定',published:'已发布',completed:'已完成',blocked:'已阻塞',paused:'已暂停',cancelled:'已取消' }
-const deliveryLabels: Record<string,string> = { not_started:'未开始',developing:'开发中',pr_open:'PR 已创建',testing:'测试中',completed:'已完成',blocked:'已阻塞',removed:'已移出' }
-const statusLabel = (value: string) => statusLabels[value] || value
-const deliveryLabel = (value: string) => deliveryLabels[value] || value
-const roleLabel = (value: string) => ({viewer:'查看者',admin:'管理员',owner:'所有者'}[value] || value)
+const statusOptions = ['pending_review', 'candidate', 'scheduled', 'developing', 'testing', 'release_ready', 'released', 'deferred', 'rejected']
+const reviewStatuses = ['submitted', 'triaging', 'pending_review', 'needs_information', 'candidate', 'deferred', 'rejected', 'duplicate']
+const deliveryStatuses = ['not_started', 'developing', 'pr_open', 'testing', 'completed', 'blocked', 'removed']
+const batchTransitions: Record<string, string[]> = {
+  scope_locked: ['developing', 'blocked', 'paused', 'cancelled'], developing: ['testing', 'blocked', 'paused', 'cancelled'],
+  testing: ['developing', 'release_ready', 'blocked', 'paused', 'cancelled'], release_ready: ['testing', 'published', 'blocked', 'paused', 'cancelled'],
+  published: ['completed'], blocked: ['developing', 'testing', 'release_ready', 'paused', 'cancelled'],
+  paused: ['developing', 'testing', 'release_ready', 'blocked', 'cancelled'], completed: [], cancelled: [],
+}
+const allowedBatchStatuses = (status: string) => (batchTransitions[status] || []).filter(
+  next => user.value?.role === 'owner' || !['completed', 'cancelled'].includes(next),
+)
+
 const errorMessage = (error: unknown) => {
   if (!axios.isAxiosError(error)) return String(error)
   const payload = error.response?.data as { msg?: string; detail?: string; data?: { errors?: Array<{ loc?: string[]; type?: string; msg?: string }> } } | undefined
@@ -170,87 +499,327 @@ const errorMessage = (error: unknown) => {
   return String(payload?.msg || payload?.detail || error.message)
 }
 
-const RequirementCards = defineComponent({
-  props: { items: { type: Array as () => Requirement[], required: true }, manager: Boolean },
-  emits: ['follow','review'],
-  setup(props, { emit }) {
-    return () => props.items.length ? h('div', { class:'cards' }, props.items.map(item => h('article', { key:item.id, class:'requirement-card' }, [
-      h('div', { class:'card-head' }, [h('div', [h('h2', { class:'card-title' }, item.title), h('div', { class:'meta' }, [item.type, `影响：${item.severity}`, new Date(item.created_at).toLocaleString()])]), h('span', { class:['tag',item.status] }, statusLabel(item.status))]),
-      h('p', { class:'description' }, item.description),
-      item.triage ? h('div', { class:'panel', style:'margin:12px 0 0;padding:12px;background:#f8fafc' }, [h('strong','AI 分析'), h('p',{class:'description'},String(item.triage.summary || item.triage.recommendation || '分析已完成'))]) : null,
-      item.review_reason ? h('p', { class:'meta' }, `审核说明：${item.review_reason}`) : null,
-      h('div', { class:'actions' }, [h(ElButton,{size:'small',onClick:()=>emit('follow',item)},()=>`关注 ${item.follower_count || 0}`), item.github_issue_url ? h(ElButton,{size:'small',tag:'a',href:item.github_issue_url,target:'_blank'},()=>`GitHub #${item.github_issue_number}`) : null, props.manager ? h(ElButton,{size:'small',type:'primary',plain:true,onClick:()=>emit('review',item)},()=> '审核') : null])
-    ]))) : h('div',{class:'panel empty'},'暂无需求')
-  }
+const emptyRequirementForm = () => ({
+  type: 'feature', title: '', description: '', current_behavior: '', expected_behavior: '', steps_to_reproduce: '',
+  severity: 'medium', product_version: '', visibility: 'public', environment: {} as Record<string, unknown>,
 })
 
-type Tab = 'public'|'submit'|'mine'|'admin'|'versions'|'users'
+type Tab = 'public' | 'submit' | 'mine' | 'admin' | 'versions' | 'integrations' | 'users'
 const tab = ref<Tab>('public')
-const user = ref<User|null>(null)
+const user = ref<ApiUser | null>(null)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
-const batches = ref<Batch[]>([]), users = ref<User[]>([]), candidates = ref<Requirement[]>([])
-const busy = ref(false), authDialog = ref(false), reviewDialog = ref(false), batchDialog = ref(false)
-const authMode = ref<'login'|'register'>('login'), adminStatus = ref('pending_review')
-const reviewTarget = ref<Requirement|null>(null)
-const filters = reactive({ q:'', type:'', status:'' })
-const authForm = reactive({ username:'', email:'', password:'' })
-const requirementForm = reactive({ type:'feature', title:'', description:'', current_behavior:'', expected_behavior:'', steps_to_reproduce:'', severity:'medium', product_version:'', visibility:'public', environment:{} })
-const reviewForm = reactive({ action:'candidate', reason:'', priority:'normal', risk_level:'medium', duplicate_of_id:'' })
-const batchForm = reactive({ name:'', version_name:'', goal:'', batch_type:'feature', target_date:'', max_risk_level:'high' })
-const candidateSelection = reactive<Record<string,string>>({})
-const statusOptions = ['pending_review','candidate','scheduled','developing','testing','release_ready','released','deferred','rejected']
-const reviewStatuses = ['submitted','triaging','pending_review','needs_information','candidate','deferred','rejected','duplicate']
-const deliveryStatuses = ['not_started','developing','pr_open','testing','completed','blocked','removed']
-const batchTransitions: Record<string,string[]> = {
-  scope_locked:['developing','blocked','paused','cancelled'], developing:['testing','blocked','paused','cancelled'],
-  testing:['developing','release_ready','blocked','paused','cancelled'], release_ready:['testing','published','blocked','paused','cancelled'],
-  published:['completed'], blocked:['developing','testing','release_ready','paused','cancelled'],
-  paused:['developing','testing','release_ready','blocked','cancelled'], completed:[], cancelled:[]
-}
-const allowedBatchStatuses = (status:string) => (batchTransitions[status] || []).filter(
-  next => user.value?.role === 'owner' || !['completed','cancelled'].includes(next)
-)
-const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
-const visibleTabs = computed(() => [{key:'public',label:'公开需求'},{key:'submit',label:'提交需求'},{key:'mine',label:'我的需求'},{key:'versions',label:'版本计划'},...(isManager.value?[{key:'admin',label:'需求审核'}]:[]),...(user.value?.role==='owner'?[{key:'users',label:'角色管理'}]:[]) ] as {key:Tab;label:string}[])
+const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
+const agentTokens = ref<AgentToken[]>([])
+const busy = ref(false), authDialog = ref(false), reviewDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false)
+const githubOauthEnabled = ref(false), createdToken = ref('')
+const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
+const sortBy = ref('updated')
+const detailDialog = ref(false), detailTarget = ref<Requirement | null>(null)
+const reviewTarget = ref<Requirement | null>(null)
+const filters = reactive({ q: '', type: '', status: '' })
+const authForm = reactive({ username: '', email: '', password: '' })
+const requirementForm = reactive(emptyRequirementForm())
+const reviewForm = reactive({ action: 'candidate', reason: '', priority: 'normal', risk_level: 'medium', duplicate_of_id: '' })
+const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
+const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
+const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
+const mcpUrl = `${window.location.origin}/mcp/`
+const candidateSelection = reactive<Record<string, string>>({})
 
-async function loadRequirements() { const p=new URLSearchParams(); if(filters.q)p.set('q',filters.q);if(filters.type)p.set('type',filters.type);if(filters.status)p.set('status',filters.status); requirements.value=await api.requirements(`?${p}`) }
-async function loadMine() { if(user.value) myRequirements.value=await api.requirements('?mine=true') }
-async function loadAdmin() { if(isManager.value) adminRequirements.value=await api.requirements(adminStatus.value?`?status=${adminStatus.value}`:'') }
-async function loadBatches() { batches.value=await api.batches(); if(isManager.value)candidates.value=await api.requirements('?status=candidate&limit=100') }
-async function loadUsers() { if(user.value?.role==='owner') users.value=await api.users() }
-async function switchTab(value: Tab) { tab.value=value; try { if(value==='public')await loadRequirements();if(value==='mine')await loadMine();if(value==='admin')await loadAdmin();if(value==='versions')await loadBatches();if(value==='users')await loadUsers() } catch(e){ElMessage.error(errorMessage(e))} }
-async function restoreSession() { if(!localStorage.getItem('rp_token'))return; try{user.value=await api.me()}catch{localStorage.removeItem('rp_token')} }
-async function submitAuth(){
+const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
+const visibleTabs = computed(() => [
+  { key: 'public' as Tab, label: '公开需求' },
+  { key: 'submit' as Tab, label: '提交需求' },
+  { key: 'mine' as Tab, label: '我的需求' },
+  { key: 'versions' as Tab, label: '版本计划' },
+  ...(isManager.value ? [{ key: 'admin' as Tab, label: '需求审核' }] : []),
+  ...(isManager.value ? [{ key: 'integrations' as Tab, label: '集成设置' }] : []),
+  ...(user.value?.role === 'owner' ? [{ key: 'users' as Tab, label: '角色管理' }] : []),
+])
+
+const plannedStatuses = ['scheduled', 'developing', 'testing', 'release_ready']
+const doneStatuses = ['released', 'published', 'completed']
+const stats = computed(() => ({
+  total: requirements.value.length,
+  planned: requirements.value.filter(item => plannedStatuses.includes(item.status)).length,
+  developing: requirements.value.filter(item => item.status === 'developing').length,
+  done: requirements.value.filter(item => doneStatuses.includes(item.status)).length,
+}))
+const sortedRequirements = computed(() => {
+  const list = [...requirements.value]
+  if (sortBy.value === 'updated') list.sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+  else if (sortBy.value === 'oldest') list.sort((a, b) => a.created_at.localeCompare(b.created_at))
+  else list.sort((a, b) => (b.follower_count || 0) - (a.follower_count || 0))
+  return list
+})
+const canFollow = computed(() => !!detailTarget.value)
+
+async function loadRequirements() {
+  const p = new URLSearchParams()
+  if (filters.q) p.set('q', filters.q)
+  if (filters.type) p.set('type', filters.type)
+  if (filters.status) p.set('status', filters.status)
+  requirements.value = await api.requirements(`?${p}`)
+}
+async function loadMine() { if (user.value) myRequirements.value = await api.requirements('?mine=true') }
+async function loadAdmin() { if (isManager.value) adminRequirements.value = await api.requirements(adminStatus.value ? `?status=${adminStatus.value}` : '') }
+async function loadBatches() { batches.value = await api.batches(); if (isManager.value) candidates.value = await api.requirements('?status=candidate&limit=100') }
+async function loadUsers() { if (user.value?.role === 'owner') users.value = await api.users() }
+async function loadIntegrations() { if (isManager.value) agentTokens.value = await api.agentTokens() }
+async function switchTab(value: Tab) {
+  tab.value = value
+  try {
+    if (value === 'public') await loadRequirements()
+    if (value === 'mine') await loadMine()
+    if (value === 'admin') await loadAdmin()
+    if (value === 'versions') await loadBatches()
+    if (value === 'users') await loadUsers()
+    if (value === 'integrations') await loadIntegrations()
+  } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+function sortRequirements() { /* 由 computed 自动排序 */ }
+
+async function restoreSession() {
+  if (!localStorage.getItem('rp_token')) return
+  try { user.value = await api.me() } catch { localStorage.removeItem('rp_token') }
+}
+
+async function submitAuth() {
   if (authMode.value === 'register') {
     if (!/^[A-Za-z0-9_.-]{3,50}$/.test(authForm.username)) { ElMessage.error('用户名需为 3–50 位字母、数字、点、下划线或连字符'); return }
     if (authForm.password.length < 8) { ElMessage.error('密码至少需要 8 位字符'); return }
   }
-  busy.value=true;try{const result=authMode.value==='login'?await api.login({identifier:authForm.email,password:authForm.password}):await api.register(authForm);localStorage.setItem('rp_token',result.token);user.value=result.user;authDialog.value=false;ElMessage.success('登录成功');await switchTab('public')}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}
+  busy.value = true
+  try {
+    const result = authMode.value === 'login'
+      ? await api.login({ identifier: authForm.email, password: authForm.password })
+      : await api.register(authForm)
+    localStorage.setItem('rp_token', result.token)
+    user.value = result.user
+    authDialog.value = false
+    ElMessage.success('登录成功')
+    await switchTab('public')
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
-function logout(){localStorage.removeItem('rp_token');user.value=null;tab.value='public';void loadRequirements()}
-async function submitRequirement(){busy.value=true;try{await api.createRequirement(requirementForm);Object.assign(requirementForm,{type:'feature',title:'',description:'',current_behavior:'',expected_behavior:'',steps_to_reproduce:'',severity:'medium',product_version:'',visibility:'public',environment:{}});ElMessage.success('需求已提交');await switchTab('mine')}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}}
-async function follow(item:Requirement){if(!user.value){authDialog.value=true;return}try{await api.followRequirement(item.id);ElMessage.success('关注状态已更新');await switchTab(tab.value)}catch(e){ElMessage.error(errorMessage(e))}}
-function openReview(item:Requirement){reviewTarget.value=item;Object.assign(reviewForm,{action:'candidate',reason:'',priority:item.priority||'normal',risk_level:item.risk_level||'medium',duplicate_of_id:''});reviewDialog.value=true}
-async function submitReview(){if(!reviewTarget.value)return;busy.value=true;try{await api.review(reviewTarget.value.id,reviewForm);reviewDialog.value=false;ElMessage.success('审核结果已保存');await loadAdmin();await loadRequirements()}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}}
-async function createBatch(){busy.value=true;try{await api.createBatch({...batchForm,target_date:batchForm.target_date||null});batchDialog.value=false;Object.assign(batchForm,{name:'',version_name:'',goal:'',batch_type:'feature',target_date:'',max_risk_level:'high'});ElMessage.success('版本批次已创建');await loadBatches()}catch(e){ElMessage.error(errorMessage(e))}finally{busy.value=false}}
-async function addCandidate(batchId:string){const id=candidateSelection[batchId];if(!id)return;try{await api.addBatchItem(batchId,id);candidateSelection[batchId]='';await loadBatches()}catch(e){ElMessage.error(errorMessage(e))}}
-async function removeBatchItem(batchId:string,itemId:string){try{await ElMessageBox.confirm('确认将该需求移出版本？','确认');await api.removeBatchItem(batchId,itemId);await loadBatches()}catch(e){if(e!=='cancel')ElMessage.error(errorMessage(e))}}
-async function lockBatch(batchId:string){try{await ElMessageBox.confirm('锁定后需求范围将生成快照，确认继续？','锁定版本范围');await api.lockBatch(batchId);ElMessage.success('版本范围已锁定');await loadBatches()}catch(e){if(e!=='cancel')ElMessage.error(errorMessage(e))}}
-async function updateBatchState(batchId:string,status:string){try{const reason=await ElMessageBox.prompt('请输入状态变更原因','更新版本状态',{inputPattern:/.{2,}/,inputErrorMessage:'至少输入两个字符'});await api.updateBatchStatus(batchId,status,reason.value);await loadBatches()}catch(e){if(e!=='cancel')ElMessage.error(errorMessage(e))}}
-async function updateDelivery(batchId:string,itemId:string,status:string){try{await api.updateDeliveryStatus(batchId,itemId,status);await loadBatches()}catch(e){ElMessage.error(errorMessage(e))}}
-async function toggleRole(row:User){try{await api.updateRole(row.id,row.role==='admin'?'viewer':'admin');await loadUsers()}catch(e){ElMessage.error(errorMessage(e))}}
 
-onMounted(async()=>{
+async function startGithub(mode: 'login' | 'link') {
+  try {
+    const result = await api.githubStart(mode)
+    window.location.assign(result.authorize_url)
+  } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+async function unlinkGithub() {
+  try {
+    await ElMessageBox.confirm('解除后仍可使用邮箱密码登录，确认继续？', '解除 GitHub 绑定')
+    await api.githubUnlink()
+    user.value = await api.me()
+    ElMessage.success('GitHub 账号已解除绑定')
+  } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+async function createToken() {
+  if (tokenForm.name.trim().length < 2 || !tokenForm.scopes.length) { ElMessage.error('请填写名称并至少选择一个作用域'); return }
+  busy.value = true
+  try {
+    const result = await api.createAgentToken({ ...tokenForm })
+    createdToken.value = result.token
+    await loadIntegrations()
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
+async function revokeToken(id: string) {
+  try { await ElMessageBox.confirm('撤销后 Agent 将立即失去访问权限，确认继续？', '撤销令牌'); await api.revokeAgentToken(id); await loadIntegrations(); ElMessage.success('令牌已撤销') } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+async function copyText(value: string) { await navigator.clipboard.writeText(value); ElMessage.success('已复制') }
+
+function onUserCommand(command: string | number | object) {
+  if (command === 'logout') logout()
+  if (command === 'mine') switchTab('mine')
+}
+function onNotification() { ElMessage.info('暂无新通知') }
+
+async function submitRequirement() {
+  busy.value = true
+  try {
+    await api.createRequirement(requirementForm)
+    Object.assign(requirementForm, emptyRequirementForm())
+    ElMessage.success('需求已提交')
+    await switchTab('mine')
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
+function saveDraft() {
+  const { environment: _env, ...rest } = requirementForm
+  localStorage.setItem('rp_draft', JSON.stringify(rest))
+  ElMessage.success('草稿已保存，下次进入提交页可继续填写')
+}
+
+function openDetail(item: Requirement) { detailTarget.value = item; detailDialog.value = true }
+
+function onRowAction(payload: { item: Requirement; command: string }) {
+  const { item, command } = payload
+  if (command === 'follow') follow(item)
+  else if (command === 'review') openReview(item)
+  else if (command === 'withdraw') withdraw(item)
+  else if (command === 'github-create') createGithubIssue(item)
+  else if (command === 'github-link') linkGithubIssue(item)
+  else if (command === 'github-close') closeGithubIssue(item)
+  else if (command === 'github-unlink') unlinkGithubIssue(item)
+  else if (command === 'close') closeManagedRequirement(item)
+  else if (command === 'delete') deleteManagedRequirement(item)
+}
+
+async function promptReason(title: string) {
+  const result = await ElMessageBox.prompt('请输入操作原因（将写入审计记录）', title, { inputPattern: /.{2,}/, inputErrorMessage: '至少输入两个字符' })
+  return result.value
+}
+async function refreshManaged() { await Promise.all([loadAdmin(), loadRequirements()]) }
+async function createGithubIssue(item: Requirement) { try { await ElMessageBox.confirm('确认在配置的 TrailSnap 仓库中新建 Issue？', '新建 GitHub Issue'); await api.createGithubIssue(item.id); ElMessage.success('GitHub Issue 已创建并关联'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
+async function linkGithubIssue(item: Requirement) { try { const result = await ElMessageBox.prompt('请输入 GitHub Issue 编号', '关联已有 Issue', { inputPattern: /^\d+$/, inputErrorMessage: '请输入正整数' }); await api.linkGithubIssue(item.id, Number(result.value)); ElMessage.success('Issue 已关联'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
+async function closeGithubIssue(item: Requirement) { try { const reason = await promptReason('关闭 GitHub Issue 与需求'); await api.closeGithubIssue(item.id, reason); ElMessage.success('Issue 与需求均已关闭'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
+async function unlinkGithubIssue(item: Requirement) { try { await ElMessageBox.confirm('只解除平台关联，不会修改 GitHub Issue，确认继续？', '取消 Issue 关联'); await api.unlinkGithubIssue(item.id); ElMessage.success('已解除关联'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
+async function closeManagedRequirement(item: Requirement) { try { const reason = await promptReason('关闭需求'); await api.closeRequirement(item.id, reason); ElMessage.success('需求已关闭'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
+async function deleteManagedRequirement(item: Requirement) { try { const reason = await promptReason('删除需求（可恢复）'); await ElMessageBox.confirm(`确认删除“${item.title}”？数据会保留以供审计和恢复。`, '二次确认', { type: 'warning' }); await api.deleteRequirement(item.id, reason); ElMessage.success('需求已删除'); await refreshManaged() } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) } }
+
+async function follow(item: Requirement) {
+  if (!user.value) { authDialog.value = true; return }
+  try {
+    await api.followRequirement(item.id)
+    ElMessage.success('关注状态已更新')
+    await switchTab(tab.value)
+  } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+
+async function withdraw(item: Requirement) {
+  try {
+    await ElMessageBox.confirm('撤回后该需求将不再展示在公开列表，确认撤回？', '撤回需求')
+    await api.withdrawRequirement(item.id)
+    ElMessage.success('需求已撤回')
+    await switchTab(tab.value)
+  } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+
+function openReview(item: Requirement) {
+  reviewTarget.value = item
+  Object.assign(reviewForm, { action: 'candidate', reason: '', priority: item.priority || 'normal', risk_level: item.risk_level || 'medium', duplicate_of_id: '' })
+  reviewDialog.value = true
+}
+
+async function submitReview() {
+  if (!reviewTarget.value) return
+  busy.value = true
+  try {
+    await api.review(reviewTarget.value.id, reviewForm)
+    reviewDialog.value = false
+    ElMessage.success('审核结果已保存')
+    await loadAdmin()
+    await loadRequirements()
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
+
+async function createBatch() {
+  busy.value = true
+  try {
+    await api.createBatch({ ...batchForm, target_date: batchForm.target_date || null })
+    batchDialog.value = false
+    Object.assign(batchForm, { name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
+    ElMessage.success('版本批次已创建')
+    await loadBatches()
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
+
+async function addCandidate(batchId: string) {
+  const id = candidateSelection[batchId]
+  if (!id) return
+  try { await api.addBatchItem(batchId, id); candidateSelection[batchId] = ''; await loadBatches() } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+
+async function removeBatchItem(batchId: string, itemId: string) {
+  try {
+    await ElMessageBox.confirm('确认将该需求移出版本？', '确认')
+    await api.removeBatchItem(batchId, itemId)
+    await loadBatches()
+  } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+
+async function lockBatch(batchId: string) {
+  try {
+    await ElMessageBox.confirm('锁定后需求范围将生成快照，确认继续？', '锁定版本范围')
+    await api.lockBatch(batchId)
+    ElMessage.success('版本范围已锁定')
+    await loadBatches()
+  } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+
+async function updateBatchState(batchId: string, status: string) {
+  try {
+    const reason = await ElMessageBox.prompt('请输入状态变更原因', '更新版本状态', { inputPattern: /.{2,}/, inputErrorMessage: '至少输入两个字符' })
+    await api.updateBatchStatus(batchId, status, reason.value)
+    await loadBatches()
+  } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+
+async function updateDelivery(batchId: string, itemId: string, status: string) {
+  try { await api.updateDeliveryStatus(batchId, itemId, status); await loadBatches() } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+
+async function toggleRole(row: ApiUser) {
+  try { await api.updateRole(row.id, row.role === 'admin' ? 'viewer' : 'admin'); await loadUsers() } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+
+function logout() {
+  localStorage.removeItem('rp_token')
+  user.value = null
+  tab.value = 'public'
+  void loadRequirements()
+}
+
+onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
+  try { githubOauthEnabled.value = (await api.authStatus()).github_oauth_enabled } catch { githubOauthEnabled.value = false }
+  const githubGrant = params.get('github_grant')
+  if (githubGrant) {
+    try {
+      const result = await api.githubRedeem(githubGrant)
+      localStorage.setItem('rp_token', result.token)
+      user.value = result.user
+      ElMessage.success('GitHub 登录或绑定成功')
+    } catch (e) { ElMessage.error(errorMessage(e)) }
+    params.delete('github_grant')
+    history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`)
+  }
   const requestedTab = params.get('view') as Tab | null
-  if (requestedTab && ['public','submit','mine','admin','versions','users'].includes(requestedTab)) tab.value=requestedTab
+  if (requestedTab && ['public', 'submit', 'mine', 'admin', 'versions', 'integrations', 'users'].includes(requestedTab)) tab.value = requestedTab
   const requestedType = params.get('type')
-  if (requestedType && ['bug','improvement','feature'].includes(requestedType)) requirementForm.type=requestedType
-  await restoreSession()
-  if ((tab.value==='admin' && !isManager.value) || (tab.value==='users' && user.value?.role!=='owner')) tab.value='public'
-  await Promise.all([loadRequirements(),loadBatches()])
-  if (tab.value==='mine') await loadMine()
-  if (tab.value==='admin') await loadAdmin()
-  if (tab.value==='users') await loadUsers()
+  if (requestedType && ['bug', 'improvement', 'feature'].includes(requestedType)) requirementForm.type = requestedType
+  if (tab.value === 'submit') {
+    try {
+      const draft = localStorage.getItem('rp_draft')
+      if (draft) Object.assign(requirementForm, JSON.parse(draft))
+    } catch { localStorage.removeItem('rp_draft') }
+  }
+  if (!user.value) await restoreSession()
+  if ((['admin', 'integrations'].includes(tab.value) && !isManager.value) || (tab.value === 'users' && user.value?.role !== 'owner')) tab.value = 'public'
+  await Promise.all([loadRequirements(), loadBatches()])
+  if (tab.value === 'mine') await loadMine()
+  if (tab.value === 'admin') await loadAdmin()
+  if (tab.value === 'users') await loadUsers()
+  if (tab.value === 'integrations') await loadIntegrations()
 })
 </script>
+
+<style scoped>
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+.w-full { width: 100%; }
+.github-link { color: var(--rp-primary); font-size: 13.5px; text-decoration: none; }
+.github-link:hover { text-decoration: underline; }
+.integration-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.integration-card h2 { margin:0 0 12px; font-size:18px; }
+.account-row,.section-title-row { display:flex; align-items:center; gap:12px; justify-content:space-between; }
+.account-row > div { flex:1; }
+.github-avatar { width:44px; height:44px; border-radius:50%; }
+.code-block { display:block; padding:12px; border-radius:8px; background:#f3f4f6; color:#111827; overflow-wrap:anywhere; }
+@media (prefers-color-scheme: dark) { .code-block { background:#1f2937; color:#f3f4f6; } }
+@media (max-width: 720px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .integration-grid { grid-template-columns:1fr; }
+  .account-row,.section-title-row { align-items:flex-start; flex-wrap:wrap; }
+}
+</style>

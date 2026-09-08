@@ -1,11 +1,16 @@
+import hashlib
 import json
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from jose import JWTError, jwt
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -14,6 +19,9 @@ from .config import settings
 from .db import get_db, init_db
 from .models import (
     BackgroundJob,
+    AgentToken,
+    GitHubIdentity,
+    OAuthLoginGrant,
     ReleaseBatch,
     ReleaseBatchItem,
     Requirement,
@@ -26,13 +34,17 @@ from .models import (
     utcnow,
 )
 from .schemas import (
+    AgentTokenCreate,
     BatchCreate,
     BatchItemInput,
     BatchRead,
     BatchStatusInput,
     DeliveryStatusInput,
+    GitHubIdentityRead,
+    GitHubIssueLinkInput,
     LoginInput,
     RegisterInput,
+    ReasonInput,
     RequirementCreate,
     RequirementRead,
     RequirementUpdate,
@@ -40,16 +52,27 @@ from .schemas import (
     RoleUpdate,
     UserRead,
 )
-from .security import authenticate, create_token, current_user, hash_password, manager, optional_user, owner
-from .services import audit, enqueue, requirement_snapshot, verify_webhook
+from .security import (
+    authenticate, create_agent_token_value, create_token, current_user, hash_password, manager, optional_user, owner,
+)
+from .services import GitHubClient, audit, enqueue, requirement_snapshot, verify_webhook
 
 
 def ok(data=None, msg: str = "success"):
     return {"code": 0, "msg": msg, "data": data}
 
 
+def user_data(row: User, db: Session) -> dict:
+    data = UserRead.model_validate(row).model_dump(mode="json")
+    identity = db.query(GitHubIdentity).filter(GitHubIdentity.user_id == row.id).first()
+    data["github"] = GitHubIdentityRead.model_validate(identity).model_dump(mode="json") if identity else None
+    return data
+
+
 def requirement_data(row: Requirement, db: Session, *, include_private: bool = False) -> dict:
     data = RequirementRead.model_validate(row).model_dump(mode="json")
+    creator = db.query(User.username).filter(User.id == row.created_by).scalar()
+    data["created_by_name"] = creator or "匿名"
     data["follower_count"] = db.query(func.count(RequirementFollower.id)).filter(
         RequirementFollower.requirement_id == row.id
     ).scalar() or 0
@@ -128,7 +151,9 @@ def health(db: Session = Depends(get_db)):
 
 @app.get("/api/auth/status")
 def auth_status(db: Session = Depends(get_db)):
-    return ok({"has_owner": db.query(User).filter(User.role == "owner").first() is not None, "allow_registration": settings.allow_registration})
+    return ok({"has_owner": db.query(User).filter(User.role == "owner").first() is not None,
+               "allow_registration": settings.allow_registration,
+               "github_oauth_enabled": bool(settings.github_oauth_client_id and settings.github_oauth_client_secret)})
 
 
 @app.post("/api/auth/register")
@@ -151,7 +176,7 @@ def register(payload: RegisterInput, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=409, detail="Username or email already exists") from exc
     db.refresh(user)
-    return ok({"token": create_token(user), "user": UserRead.model_validate(user).model_dump(mode="json")})
+    return ok({"token": create_token(user), "user": user_data(user, db)})
 
 
 @app.post("/api/auth/login")
@@ -161,17 +186,159 @@ def login(payload: LoginInput, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid username/email or password")
     audit(db, user.id, "user.login", "user", user.id)
     db.commit()
-    return ok({"token": create_token(user), "user": UserRead.model_validate(user).model_dump(mode="json")})
+    return ok({"token": create_token(user), "user": user_data(user, db)})
 
 
 @app.get("/api/auth/me")
-def me(user: User = Depends(current_user)):
-    return ok(UserRead.model_validate(user).model_dump(mode="json"))
+def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    return ok(user_data(user, db))
+
+
+@app.get("/api/auth/github/start")
+def github_oauth_start(
+    mode: str = Query("login", pattern="^(login|link)$"),
+    user: User | None = Depends(optional_user),
+):
+    if not (settings.github_oauth_client_id and settings.github_oauth_client_secret):
+        raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
+    if mode == "link" and not user:
+        raise HTTPException(status_code=401, detail="Authentication required before linking GitHub")
+    state = jwt.encode(
+        {"purpose": "github_oauth", "mode": mode, "user_id": user.id if user else None,
+         "nonce": secrets.token_urlsafe(16), "exp": datetime.now(timezone.utc) + timedelta(minutes=10)},
+        settings.jwt_secret, algorithm="HS256",
+    )
+    url = "https://github.com/login/oauth/authorize?" + urlencode({
+        "client_id": settings.github_oauth_client_id,
+        "redirect_uri": settings.github_oauth_redirect_uri,
+        "scope": "read:user user:email",
+        "state": state,
+    })
+    response = JSONResponse(ok({"authorize_url": url}))
+    response.set_cookie("rp_github_oauth", state, max_age=600, httponly=True, secure=settings.web_url.startswith("https://"),
+                        samesite="lax", path="/api/auth/github")
+    return response
+
+
+@app.get("/api/auth/github/callback")
+def github_oauth_callback(code: str, state: str, request: Request, db: Session = Depends(get_db)):
+    if request.cookies.get("rp_github_oauth") != state:
+        raise HTTPException(status_code=400, detail="GitHub OAuth state mismatch")
+    try:
+        state_data = jwt.decode(state, settings.jwt_secret, algorithms=["HS256"])
+        if state_data.get("purpose") != "github_oauth":
+            raise JWTError("invalid purpose")
+    except JWTError as exc:
+        raise HTTPException(status_code=400, detail="GitHub OAuth state is invalid or expired") from exc
+    try:
+        token_response = httpx.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={"client_id": settings.github_oauth_client_id, "client_secret": settings.github_oauth_client_secret,
+                  "code": code, "redirect_uri": settings.github_oauth_redirect_uri}, timeout=20,
+        )
+        token_response.raise_for_status()
+        access_token = token_response.json().get("access_token")
+        if not access_token:
+            raise ValueError("GitHub did not return an access token")
+        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"}
+        profile_response = httpx.get("https://api.github.com/user", headers=headers, timeout=20)
+        profile_response.raise_for_status()
+        profile = profile_response.json()
+        email = profile.get("email")
+        if not email:
+            emails_response = httpx.get("https://api.github.com/user/emails", headers=headers, timeout=20)
+            emails_response.raise_for_status()
+            emails = emails_response.json()
+            verified = [item for item in emails if item.get("verified")]
+            primary = next((item for item in verified if item.get("primary")), verified[0] if verified else None)
+            email = primary.get("email") if primary else None
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        raise HTTPException(status_code=502, detail="GitHub authentication failed") from exc
+
+    github_user_id = int(profile["id"])
+    identity = db.query(GitHubIdentity).filter(GitHubIdentity.github_user_id == github_user_id).first()
+    mode, linked_user_id = state_data.get("mode"), state_data.get("user_id")
+    if mode == "link":
+        user = db.query(User).filter(User.id == linked_user_id, User.is_active.is_(True)).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Linking user no longer exists")
+        if identity and identity.user_id != user.id:
+            raise HTTPException(status_code=409, detail="This GitHub account is already linked")
+        existing = db.query(GitHubIdentity).filter(GitHubIdentity.user_id == user.id).first()
+        if existing and existing.github_user_id != github_user_id:
+            raise HTTPException(status_code=409, detail="User already has a linked GitHub account")
+        identity = existing or GitHubIdentity(user_id=user.id, github_user_id=github_user_id, login=profile["login"])
+    elif identity:
+        user = db.query(User).filter(User.id == identity.user_id, User.is_active.is_(True)).first()
+        if not user:
+            raise HTTPException(status_code=403, detail="Linked user is disabled")
+    else:
+        if not settings.allow_registration:
+            raise HTTPException(status_code=403, detail="Registration is disabled; link GitHub from an existing account")
+        if not email:
+            raise HTTPException(status_code=409, detail="A verified GitHub email is required")
+        email = email.lower()
+        user = db.query(User).filter(User.email == email).first()
+        has_owner = db.query(User.id).filter(User.role == "owner").first() is not None
+        if not user:
+            if not has_owner and settings.owner_email and email != settings.owner_email:
+                raise HTTPException(status_code=403, detail="The configured owner must sign in first")
+            base = str(profile["login"])[:45]
+            username, suffix = base, 1
+            while db.query(User.id).filter(User.username == username).first():
+                suffix += 1
+                username = f"{base[:45-len(str(suffix))]}-{suffix}"
+            user = User(username=username, email=email, password_hash=hash_password(secrets.token_urlsafe(32)),
+                        role="owner" if not has_owner else "viewer")
+            db.add(user)
+            db.flush()
+        identity = GitHubIdentity(user_id=user.id, github_user_id=github_user_id, login=profile["login"])
+
+    identity.login, identity.avatar_url, identity.profile_url = profile["login"], profile.get("avatar_url"), profile.get("html_url")
+    identity.email, identity.last_login_at = email.lower() if email else None, datetime.now(timezone.utc)
+    db.add(identity)
+    grant_value = secrets.token_urlsafe(32)
+    db.add(OAuthLoginGrant(code_hash=hashlib.sha256(grant_value.encode()).hexdigest(), user_id=user.id,
+                           expires_at=datetime.now(timezone.utc) + timedelta(minutes=2)))
+    audit(db, user.id, "github.account_linked" if mode == "link" else "user.github_login", "user", user.id,
+          github_login=identity.login)
+    db.commit()
+    response = RedirectResponse(f"{settings.web_url}/?github_grant={grant_value}", status_code=302)
+    response.delete_cookie("rp_github_oauth", path="/api/auth/github")
+    return response
+
+
+@app.post("/api/auth/github/redeem")
+def redeem_github_login(payload: dict, db: Session = Depends(get_db)):
+    grant = str(payload.get("grant", ""))
+    row = db.query(OAuthLoginGrant).filter(OAuthLoginGrant.code_hash == hashlib.sha256(grant.encode()).hexdigest(),
+                                           OAuthLoginGrant.used_at.is_(None)).first()
+    now = datetime.now(timezone.utc)
+    if not row or row.expires_at.replace(tzinfo=timezone.utc) <= now:
+        raise HTTPException(status_code=401, detail="GitHub login grant is invalid or expired")
+    user = db.query(User).filter(User.id == row.user_id, User.is_active.is_(True)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    row.used_at = now
+    db.commit()
+    return ok({"token": create_token(user), "user": user_data(user, db)})
+
+
+@app.delete("/api/auth/github/link")
+def unlink_github(actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    identity = db.query(GitHubIdentity).filter(GitHubIdentity.user_id == actor.id).first()
+    if not identity:
+        raise HTTPException(status_code=404, detail="GitHub account is not linked")
+    db.delete(identity)
+    audit(db, actor.id, "github.account_unlinked", "user", actor.id)
+    db.commit()
+    return ok({"unlinked": True})
 
 
 @app.get("/api/admin/users")
 def list_users(_owner: User = Depends(owner), db: Session = Depends(get_db)):
-    return ok([UserRead.model_validate(row).model_dump(mode="json") for row in db.query(User).order_by(User.created_at).all()])
+    return ok([user_data(row, db) for row in db.query(User).order_by(User.created_at).all()])
 
 
 @app.patch("/api/admin/users/{user_id}/role")
@@ -185,7 +352,49 @@ def update_user_role(user_id: str, payload: RoleUpdate, actor: User = Depends(ow
     row.role = payload.role
     audit(db, actor.id, "user.role_changed", "user", row.id, before=before, after=row.role)
     db.commit()
-    return ok(UserRead.model_validate(row).model_dump(mode="json"))
+    return ok(user_data(row, db))
+
+
+@app.get("/api/admin/agent-tokens")
+def list_agent_tokens(actor: User = Depends(manager), db: Session = Depends(get_db)):
+    query = db.query(AgentToken)
+    if actor.role != "owner":
+        query = query.filter(AgentToken.created_by == actor.id)
+    rows = query.order_by(AgentToken.created_at.desc()).all()
+    return ok([{"id": row.id, "name": row.name, "token_prefix": row.token_prefix, "scopes": row.scopes,
+                "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+                "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+                "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
+                "created_at": row.created_at.isoformat()} for row in rows])
+
+
+@app.post("/api/admin/agent-tokens")
+def create_agent_token(payload: AgentTokenCreate, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    value, prefix, token_hash = create_agent_token_value()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=payload.expires_in_days) if payload.expires_in_days else None
+    row = AgentToken(name=payload.name, token_prefix=prefix, token_hash=token_hash,
+                     scopes=sorted(set(payload.scopes)), created_by=actor.id, expires_at=expires_at)
+    db.add(row)
+    db.flush()
+    audit(db, actor.id, "agent_token.created", "agent_token", row.id, name=row.name, scopes=row.scopes)
+    db.commit()
+    return ok({"id": row.id, "name": row.name, "token": value, "token_prefix": prefix,
+               "scopes": row.scopes, "expires_at": expires_at.isoformat() if expires_at else None},
+              "令牌仅显示一次，请立即保存")
+
+
+@app.delete("/api/admin/agent-tokens/{token_id}")
+def revoke_agent_token(token_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    query = db.query(AgentToken).filter(AgentToken.id == token_id)
+    if actor.role != "owner":
+        query = query.filter(AgentToken.created_by == actor.id)
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Agent token not found")
+    row.revoked_at = datetime.now(timezone.utc)
+    audit(db, actor.id, "agent_token.revoked", "agent_token", row.id)
+    db.commit()
+    return ok({"revoked": True})
 
 
 @app.post("/api/requirements")
@@ -196,7 +405,7 @@ def create_requirement(payload: RequirementCreate, user: User = Depends(current_
         raise HTTPException(status_code=429, detail="Daily submission limit reached")
     terminal = {"rejected", "duplicate", "withdrawn", "closed", "released"}
     open_count = db.query(func.count(Requirement.id)).filter(
-        Requirement.created_by == user.id, Requirement.status.notin_(terminal)
+        Requirement.created_by == user.id, Requirement.status.notin_(terminal), Requirement.deleted_at.is_(None)
     ).scalar() or 0
     if open_count >= settings.max_open_requirements:
         raise HTTPException(status_code=429, detail="Too many open requirements")
@@ -219,11 +428,17 @@ def list_requirements(
     mine: bool = False,
     limit: int = Query(50, ge=1, le=100),
     skip: int = Query(0, ge=0),
+    include_deleted: bool = False,
     user: User | None = Depends(optional_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(Requirement)
     is_manager = bool(user and user.role in {"admin", "owner"})
+    if include_deleted:
+        if not is_manager:
+            raise HTTPException(status_code=403, detail="Manager role required")
+    else:
+        query = query.filter(Requirement.deleted_at.is_(None))
     if mine:
         if not user:
             raise HTTPException(status_code=401, detail="Authentication required")
@@ -246,7 +461,7 @@ def list_requirements(
 
 @app.get("/api/requirements/{requirement_id}")
 def get_requirement(requirement_id: str, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
-    row = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
     allowed = row.visibility == "public" or bool(user and (user.id == row.created_by or user.role in {"admin", "owner"}))
@@ -260,7 +475,7 @@ def get_requirement(requirement_id: str, user: User | None = Depends(optional_us
 def update_requirement(
     requirement_id: str, payload: RequirementUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)
 ):
-    row = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
     if row.created_by != user.id and user.role not in {"admin", "owner"}:
@@ -281,7 +496,8 @@ def update_requirement(
 
 @app.post("/api/requirements/{requirement_id}/withdraw")
 def withdraw_requirement(requirement_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.created_by == user.id).first()
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.created_by == user.id,
+                                       Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
     if row.status in {"scheduled", "developing", "testing", "release_ready", "released"}:
@@ -294,7 +510,7 @@ def withdraw_requirement(requirement_id: str, user: User = Depends(current_user)
 
 @app.post("/api/requirements/{requirement_id}/follow")
 def follow_requirement(requirement_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    requirement = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    requirement = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not requirement or (
         requirement.visibility == "private"
         and requirement.created_by != user.id
@@ -316,7 +532,7 @@ def follow_requirement(requirement_id: str, user: User = Depends(current_user), 
 
 @app.post("/api/requirements/{requirement_id}/triage")
 def queue_triage(requirement_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
-    row = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
     key = f"triage:{row.id}:v{row.version}:manual:{int(datetime.now().timestamp()) // 60}"
@@ -329,7 +545,7 @@ def queue_triage(requirement_id: str, actor: User = Depends(manager), db: Sessio
 
 @app.post("/api/requirements/{requirement_id}/review")
 def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = Depends(manager), db: Session = Depends(get_db)):
-    row = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
     status_by_action = {
@@ -337,7 +553,7 @@ def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = 
         "deferred": "deferred", "duplicate": "duplicate", "close": "closed",
     }
     if payload.action == "duplicate":
-        target = db.query(Requirement).filter(Requirement.id == payload.duplicate_of_id).first()
+        target = db.query(Requirement).filter(Requirement.id == payload.duplicate_of_id, Requirement.deleted_at.is_(None)).first()
         if not target or target.id == row.id:
             raise HTTPException(status_code=409, detail="Valid duplicate target is required")
         row.duplicate_of_id = target.id
@@ -359,6 +575,110 @@ def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = 
     if payload.action == "candidate" and row.visibility == "public":
         enqueue(db, "github_issue", row.id, f"github_issue:{row.id}")
     audit(db, actor.id, f"requirement.{payload.action}", "requirement", row.id, reason=payload.reason)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.post("/api/requirements/{requirement_id}/close")
+def close_requirement(requirement_id: str, payload: ReasonInput, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    row.status, row.review_reason = "closed", payload.reason
+    db.add(ReviewDecision(requirement_id=row.id, reviewer_id=actor.id, action="close", reason=payload.reason))
+    audit(db, actor.id, "requirement.closed", "requirement", row.id, reason=payload.reason)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.delete("/api/requirements/{requirement_id}")
+def delete_requirement(requirement_id: str, payload: ReasonInput, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    active_batch = db.query(ReleaseBatchItem).join(ReleaseBatch, ReleaseBatch.id == ReleaseBatchItem.batch_id).filter(
+        ReleaseBatchItem.requirement_id == row.id,
+        ReleaseBatch.status.notin_({"completed", "cancelled"}),
+        ReleaseBatchItem.delivery_status != "removed",
+    ).first()
+    if active_batch:
+        raise HTTPException(status_code=409, detail="Remove requirement from its active version before deleting")
+    row.deleted_at, row.deleted_by, row.delete_reason = datetime.now(timezone.utc), actor.id, payload.reason
+    audit(db, actor.id, "requirement.deleted", "requirement", row.id, reason=payload.reason)
+    db.commit()
+    return ok({"deleted": True, "id": row.id})
+
+
+@app.post("/api/requirements/{requirement_id}/restore")
+def restore_requirement(requirement_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_not(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Deleted requirement not found")
+    row.deleted_at, row.deleted_by, row.delete_reason = None, None, None
+    audit(db, actor.id, "requirement.restored", "requirement", row.id)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.post("/api/requirements/{requirement_id}/github/create")
+def create_requirement_github_issue(requirement_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    if row.github_issue_number:
+        raise HTTPException(status_code=409, detail="Requirement already has a GitHub issue")
+    try:
+        data = GitHubClient().create_issue(row)
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub issue creation failed: {exc}") from exc
+    row.github_issue_number, row.github_issue_url, row.github_state = data["number"], data["html_url"], data["state"]
+    audit(db, actor.id, "github.issue.created", "requirement", row.id, issue_number=data["number"])
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.post("/api/requirements/{requirement_id}/github/link")
+def link_requirement_github_issue(requirement_id: str, payload: GitHubIssueLinkInput, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    other = db.query(Requirement).filter(Requirement.github_issue_number == payload.issue_number, Requirement.id != row.id).first()
+    if other:
+        raise HTTPException(status_code=409, detail="GitHub issue is already linked to another requirement")
+    try:
+        data = GitHubClient().get_issue(payload.issue_number)
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub issue lookup failed: {exc}") from exc
+    row.github_issue_number, row.github_issue_url, row.github_state = data["number"], data["html_url"], data["state"]
+    audit(db, actor.id, "github.issue.linked", "requirement", row.id, issue_number=data["number"])
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.delete("/api/requirements/{requirement_id}/github/link")
+def unlink_requirement_github_issue(requirement_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row or not row.github_issue_number:
+        raise HTTPException(status_code=404, detail="Linked GitHub issue not found")
+    issue_number = row.github_issue_number
+    row.github_issue_number, row.github_issue_url, row.github_state = None, None, None
+    audit(db, actor.id, "github.issue.unlinked", "requirement", row.id, issue_number=issue_number)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.post("/api/requirements/{requirement_id}/github/close")
+def close_requirement_github_issue(requirement_id: str, payload: ReasonInput, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row or not row.github_issue_number:
+        raise HTTPException(status_code=404, detail="Linked GitHub issue not found")
+    try:
+        data = GitHubClient().update_issue_state(row.github_issue_number, "closed")
+    except (RuntimeError, httpx.HTTPError) as exc:
+        raise HTTPException(status_code=502, detail=f"GitHub issue close failed: {exc}") from exc
+    row.github_state, row.status, row.review_reason = data["state"], "closed", payload.reason
+    audit(db, actor.id, "github.issue.closed", "requirement", row.id,
+          issue_number=row.github_issue_number, reason=payload.reason)
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 
@@ -397,7 +717,7 @@ def get_batch(batch_id: str, user: User | None = Depends(optional_user), db: Ses
 @app.post("/api/versions/{batch_id}/items")
 def add_batch_item(batch_id: str, payload: BatchItemInput, actor: User = Depends(manager), db: Session = Depends(get_db)):
     batch = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
-    requirement = db.query(Requirement).filter(Requirement.id == payload.requirement_id).first()
+    requirement = db.query(Requirement).filter(Requirement.id == payload.requirement_id, Requirement.deleted_at.is_(None)).first()
     if not batch or not requirement:
         raise HTTPException(status_code=404, detail="Batch or requirement not found")
     if batch.status not in {"planning", "candidate_selection"}:

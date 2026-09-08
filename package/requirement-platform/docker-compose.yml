@@ -35,6 +35,23 @@ services:
       api:
         condition: service_healthy
 
+  mcp:
+    image: trailsnap-requirement-platform-server:local
+    restart: unless-stopped
+    command: [".venv/bin/uvicorn", "requirement_platform.mcp_server:mcp_http_app", "--host", "0.0.0.0", "--port", "8012"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in package/requirement-platform/.env}
+      RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in package/requirement-platform/.env}
+    volumes:
+      - requirement-data:/app/data
+    networks: [requirement-private]
+    depends_on:
+      api:
+        condition: service_healthy
+
   web:
     image: trailsnap-requirement-platform-web:local
     build: ./web

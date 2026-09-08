@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from requirement_platform.db import SessionLocal, engine  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
+from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
 from requirement_platform.models import BackgroundJob, TriageReport  # noqa: E402
 from requirement_platform.services import analyze_requirement  # noqa: E402
 
@@ -188,3 +189,51 @@ def test_owner_can_manage_admin_role():
         )
         assert promoted.status_code == 200
         assert promoted.json()["data"]["role"] == "admin"
+
+
+def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
+    with TestClient(app) as client:
+        owner = client.post(
+            "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
+        ).json()["data"]
+        created = client.post(
+            "/api/requirements", headers=auth(owner["token"]),
+            json={"type": "feature", "title": "支持 Agent 管理需求", "description": "允许受控 Agent 读取并管理需求。"},
+        ).json()["data"]
+
+        monkeypatch.setattr(
+            "requirement_platform.main.GitHubClient.get_issue",
+            lambda _self, number: {"number": number, "html_url": f"https://github.com/LC044/TrailSnap/issues/{number}", "state": "open"},
+        )
+        linked = client.post(
+            f"/api/requirements/{created['id']}/github/link", headers=auth(owner["token"]), json={"issue_number": 99991}
+        )
+        assert linked.status_code == 200, linked.text
+        assert linked.json()["data"]["github_issue_number"] == 99991
+
+        deleted = client.request(
+            "DELETE", f"/api/requirements/{created['id']}", headers=auth(owner["token"]), json={"reason": "测试软删除"}
+        )
+        assert deleted.status_code == 200
+        assert client.get(f"/api/requirements/{created['id']}").status_code == 404
+        deleted_rows = client.get("/api/requirements?include_deleted=true", headers=auth(owner["token"])).json()["data"]
+        assert created["id"] in {row["id"] for row in deleted_rows}
+        assert client.post(f"/api/requirements/{created['id']}/restore", headers=auth(owner["token"])).status_code == 200
+
+        token_response = client.post(
+            "/api/admin/agent-tokens", headers=auth(owner["token"]),
+            json={"name": "pytest MCP", "scopes": ["requirements:read"], "expires_in_days": 1},
+        )
+        assert token_response.status_code == 200, token_response.text
+        mcp_token = token_response.json()["data"]["token"]
+
+    with TestClient(mcp_http_app) as mcp_client:
+        headers = {"Authorization": f"Bearer {mcp_token}", "Accept": "application/json, text/event-stream", "Host": "127.0.0.1:8000"}
+        initialized = mcp_client.post("/", headers=headers, json={
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest", "version": "1"}},
+        })
+        assert initialized.status_code == 200, initialized.text
+        tools = mcp_client.post("/", headers=headers, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
+        assert tools.status_code == 200, tools.text
+        assert "list_requirements" in {item["name"] for item in tools.json()["result"]["tools"]}
