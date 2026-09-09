@@ -19,8 +19,10 @@
 
 <img src="/qrcodes/wechat_official_account_qr.webp" alt="微信公众号 QR Code" width="300" />
 
-## 提交 Issue
+## 提交需求与反馈
 
-如果你发现了 Bug 或希望提交新功能请求，请访问 GitHub Issues 页面：
+如果你发现了 Bug、希望提出新功能或跟进需求的审核和版本计划，请访问行影集需求平台：
 
-[提交 Issue](https://github.com/LC044/TrailSnap/issues)
+[进入需求平台](https://feedback.trailsnap.cn/)
+
+提交前请先搜索已有需求，避免重复；报告问题时请尽量附上复现步骤、产品版本和运行环境。
