@@ -9,6 +9,8 @@ os.environ["RP_DATABASE_URL"] = f"sqlite:///{Path(TEST_DIR.name) / 'requirements
 os.environ["RP_JWT_SECRET"] = "test-secret-that-is-long-enough-for-tests"
 os.environ["RP_GITHUB_TOKEN"] = ""
 os.environ["RP_UPLOAD_DIR"] = str(Path(TEST_DIR.name) / "uploads")
+os.environ["RP_WEB_URL"] = "https://feedback.trailsnap.cn"
+os.environ["RP_MCP_PUBLIC_URL"] = "https://feedback.trailsnap.cn/mcp/"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -229,7 +231,12 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         mcp_token = token_response.json()["data"]["token"]
 
     with TestClient(mcp_http_app) as mcp_client:
-        headers = {"Authorization": f"Bearer {mcp_token}", "Accept": "application/json, text/event-stream", "Host": "127.0.0.1:8000"}
+        headers = {
+            "Authorization": f"Bearer {mcp_token}",
+            "Accept": "application/json, text/event-stream",
+            "Host": "feedback.trailsnap.cn",
+            "Origin": "https://feedback.trailsnap.cn",
+        }
         initialized = mcp_client.post("/", headers=headers, json={
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
             "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "pytest", "version": "1"}},
@@ -238,6 +245,12 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         tools = mcp_client.post("/", headers=headers, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
         assert tools.status_code == 200, tools.text
         assert "list_requirements" in {item["name"] for item in tools.json()["result"]["tools"]}
+        rejected = mcp_client.post(
+            "/",
+            headers={**headers, "Host": "attacker.example"},
+            json={"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
+        )
+        assert rejected.status_code == 421
 
 
 def test_attachment_limits_and_private_access():

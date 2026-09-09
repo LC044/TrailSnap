@@ -38,8 +38,27 @@
     </header>
 
     <main class="main">
+      <!-- ============ 需求详情页 ============ -->
+      <section v-if="detailRouteNumber">
+        <div v-if="detailLoading" class="panel empty">正在加载 REQ-{{ detailRouteNumber }}…</div>
+        <RequirementDetail
+          v-else-if="detailTarget"
+          :requirement="detailTarget"
+          :history="detailHistory"
+          :manager="isManager"
+          :can-follow="canFollow"
+          @back="closeDetail"
+          @copy-link="copyRequirementLink(detailTarget)"
+          @follow="followDetail"
+          @edit="openEdit(detailTarget)"
+          @review="openReview(detailTarget)"
+          @download="downloadAttachment(detailTarget, $event)"
+        />
+        <div v-else class="panel empty">需求不存在或你没有查看权限。</div>
+      </section>
+
       <!-- ============ 公开需求 ============ -->
-      <section v-if="tab === 'public'">
+      <section v-else-if="tab === 'public'">
         <div class="page-head">
           <div class="page-head-left">
             <div class="page-head-icon"><el-icon :size="26"><Document /></el-icon></div>
@@ -462,55 +481,6 @@
       </div>
     </footer>
 
-    <!-- ============ 需求详情 ============ -->
-    <el-dialog v-model="detailDialog" :title="detailTarget ? `REQ-${detailTarget.public_number} · ${detailTarget.title}` : '需求详情'" width="min(92vw, 680px)" @closed="closeDetail">
-      <template v-if="detailTarget">
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-          <span class="tag no-dot" :class="`t-${detailTarget.type}`">{{ typeLabel(detailTarget.type) }}</span>
-          <span class="tag" :class="`s-${detailTarget.status}`">{{ statusLabel(detailTarget.status) }}</span>
-          <span class="tag no-dot" :class="`p-${detailTarget.priority}`">优先级：{{ priorityLabel(detailTarget.priority) }}</span>
-          <span class="tag no-dot" :class="`sev-${detailTarget.severity}`">影响：{{ severityLabel(detailTarget.severity) }}</span>
-        </div>
-        <p class="description" style="margin:0 0 14px">{{ detailTarget.description }}</p>
-        <div v-if="detailTarget.current_behavior" class="meta" style="margin-bottom:6px"><strong>当前行为：</strong>{{ detailTarget.current_behavior }}</div>
-        <div v-if="detailTarget.expected_behavior" class="meta" style="margin-bottom:14px"><strong>期望行为：</strong>{{ detailTarget.expected_behavior }}</div>
-        <div v-if="detailTarget.triage" class="triage-box">
-          <div class="triage-head"><el-icon><MagicStick /></el-icon>AI 分析建议</div>
-          <p>{{ String(detailTarget.triage.summary || detailTarget.triage.recommendation || '分析已完成') }}</p>
-        </div>
-        <div v-if="detailTarget.review_reason" class="meta" style="margin-top:12px"><strong>审核说明：</strong>{{ detailTarget.review_reason }}</div>
-        <div v-if="detailTarget.log_text" class="triage-box" style="margin-top:12px"><strong>日志（仅本人和管理员可见）</strong><pre class="log-text">{{ detailTarget.log_text }}</pre></div>
-        <div v-if="detailTarget.attachments?.length" style="margin-top:12px">
-          <strong>附件（仅本人和管理员可见）</strong>
-          <div v-for="attachment in detailTarget.attachments" :key="attachment.id" class="file-row">
-            <span>{{ attachment.name }}（{{ formatBytes(attachment.size_bytes) }}）</span>
-            <el-button link type="primary" @click="downloadAttachment(detailTarget, attachment)">下载</el-button>
-          </div>
-        </div>
-        <div class="meta" style="margin-top:14px">
-          <span>提交人：{{ detailTarget.created_by_name || '用户' }}</span>
-          <span>提交于 {{ new Date(detailTarget.created_at).toLocaleString() }}</span>
-          <span>{{ detailTarget.follower_count || 0 }} 人关注</span>
-          <a v-if="detailTarget.github_issue_url" :href="detailTarget.github_issue_url" target="_blank" rel="noopener">GitHub #{{ detailTarget.github_issue_number }}</a>
-        </div>
-        <div v-if="isManager && detailTarget.submitter_contact" class="contact-box"><strong>提交人联系方式（仅管理员可见）：</strong>{{ detailTarget.submitter_contact }}</div>
-        <div class="timeline">
-          <h3>需求动态</h3>
-          <div v-if="!detailHistory.length" class="field-hint">暂无状态记录</div>
-          <div v-for="event in detailHistory" :key="event.id" class="timeline-item">
-            <span class="timeline-dot"></span>
-            <div><strong>{{ historyLabel(event) }}</strong><p>{{ event.actor_name }} · {{ new Date(event.created_at).toLocaleString() }}<span v-if="event.reason"> · {{ event.reason }}</span></p></div>
-          </div>
-        </div>
-      </template>
-      <template #footer>
-        <el-button v-if="detailTarget" @click="copyRequirementLink(detailTarget)">复制链接</el-button>
-        <el-button v-if="detailTarget && canFollow" @click="follow(detailTarget); detailDialog = false">关注（{{ detailTarget.follower_count || 0 }}）</el-button>
-        <el-button v-if="detailTarget && isManager" @click="detailDialog = false; openEdit(detailTarget)">编辑</el-button>
-        <el-button v-if="detailTarget && isManager" type="primary" @click="detailDialog = false; openReview(detailTarget)">审核</el-button>
-      </template>
-    </el-dialog>
-
     <el-dialog v-model="editDialog" title="编辑需求" width="min(92vw, 640px)">
       <el-form label-position="top">
         <div class="form-grid"><el-form-item label="类型" required><el-select v-model="editForm.type"><el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" /></el-select></el-form-item><el-form-item label="影响程度" required><el-select v-model="editForm.severity"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item></div>
@@ -619,20 +589,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
-  InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
+  InfoFilled, Key, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import logoUrl from './assets/logo.svg'
 import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
 import {
-  avatarColor, batchTypeLabel, deliveryLabel, priorityLabel, reviewActionLabels, roleLabel, severityLabel,
+  avatarColor, batchTypeLabel, deliveryLabel, reviewActionLabels, roleLabel,
   statusLabel, typeLabel,
 } from './labels'
 import RequirementTable from './RequirementTable.vue'
+import RequirementDetail from './RequirementDetail.vue'
 
 const statusOptions = ['pending_review', 'candidate', 'scheduled', 'developing', 'testing', 'release_ready', 'released', 'deferred', 'rejected']
 const reviewStatuses = ['submitted', 'triaging', 'pending_review', 'needs_information', 'candidate', 'deferred', 'rejected', 'duplicate']
@@ -676,7 +647,8 @@ const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), re
 const githubOauthEnabled = ref(false), createdToken = ref(''), createdTokenId = ref(''), connectionToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
-const detailDialog = ref(false), detailTarget = ref<Requirement | null>(null)
+const detailRouteNumber = ref<number | null>(routeRequirementNumber())
+const detailLoading = ref(false), detailTarget = ref<Requirement | null>(null)
 const reviewTarget = ref<Requirement | null>(null)
 const editTarget = ref<Requirement | null>(null)
 const editForm = reactive({ type: 'feature', severity: 'medium', title: '', description: '', steps_to_reproduce: '', current_behavior: '', expected_behavior: '', log_text: '', product_version: '', visibility: 'public' })
@@ -746,6 +718,12 @@ async function loadBatches() { batches.value = await api.batches(); if (isManage
 async function loadUsers() { if (user.value?.role === 'owner') users.value = await api.users() }
 async function loadIntegrations() { if (isManager.value) agentTokens.value = await api.agentTokens() }
 async function switchTab(value: Tab) {
+  if (detailRouteNumber.value) {
+    detailRouteNumber.value = null
+    detailTarget.value = null
+    detailHistory.value = []
+    history.pushState({}, '', '/')
+  }
   tab.value = value
   try {
     if (value === 'public') await loadRequirements()
@@ -886,23 +864,54 @@ function saveDraft() {
   ElMessage.success('草稿已保存，下次进入提交页可继续填写')
 }
 
-async function openDetail(item: Requirement) {
-  try {
-    detailTarget.value = item.public_number ? await api.requirementByNumber(item.public_number) : item
-    detailHistory.value = await api.requirementHistory(item.id)
-    detailDialog.value = true
-    if (item.public_number) history.replaceState({}, '', `/requirements/REQ-${item.public_number}`)
-  } catch (e) { ElMessage.error(errorMessage(e)) }
+function routeRequirementNumber() {
+  const match = window.location.pathname.match(/^\/requirements\/REQ-(\d+)\/?$/i)
+  return match ? Number(match[1]) : null
 }
-function closeDetail() { history.replaceState({}, '', '/'); detailHistory.value = [] }
+async function loadDetail(number: number) {
+  detailLoading.value = true
+  try {
+    const requirement = await api.requirementByNumber(number)
+    detailTarget.value = requirement
+    detailHistory.value = await api.requirementHistory(requirement.id)
+  } catch (e) {
+    detailTarget.value = null
+    detailHistory.value = []
+    ElMessage.error(errorMessage(e))
+  } finally { detailLoading.value = false }
+}
+async function openDetail(item: Requirement) {
+  if (!item.public_number) return
+  detailRouteNumber.value = item.public_number
+  history.pushState({}, '', `/requirements/REQ-${item.public_number}`)
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+  await loadDetail(item.public_number)
+}
+function closeDetail() {
+  detailRouteNumber.value = null
+  detailTarget.value = null
+  detailHistory.value = []
+  history.pushState({}, '', '/')
+}
 function requirementLink(item: Requirement) { return `${window.location.origin}/requirements/REQ-${item.public_number}` }
 async function copyRequirementLink(item: Requirement) { await copyText(requirementLink(item)) }
-function historyLabel(event: RequirementHistory) {
-  if (event.before && event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
-  if (event.action === 'requirement.created') return '需求已提交'
-  if (event.action === 'requirement.updated') return '需求内容已更新'
-  if (event.after) return `状态更新为“${statusLabel(event.after)}”`
-  return '需求有新动态'
+async function followDetail() {
+  if (!detailTarget.value) return
+  if (!user.value) { authDialog.value = true; return }
+  try {
+    await api.followRequirement(detailTarget.value.id)
+    ElMessage.success('关注状态已更新')
+    if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
+  } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+function handlePopState() {
+  const number = routeRequirementNumber()
+  detailRouteNumber.value = number
+  if (number) void loadDetail(number)
+  else {
+    detailTarget.value = null
+    detailHistory.value = []
+  }
 }
 
 function openEdit(item: Requirement) {
@@ -924,6 +933,7 @@ async function submitEdit() {
     editDialog.value = false
     ElMessage.success(updated.github_issue_number ? '需求已保存，GitHub Issue 将自动同步' : '需求已保存')
     await refreshManaged()
+    if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
 
@@ -994,6 +1004,7 @@ async function submitReview() {
     ElMessage.success('审核结果已保存')
     await loadAdmin()
     await loadRequirements()
+    if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
 
@@ -1061,6 +1072,7 @@ function logout() {
 }
 
 onMounted(async () => {
+  window.addEventListener('popstate', handlePopState)
   const params = new URLSearchParams(window.location.search)
   try { githubOauthEnabled.value = (await api.authStatus()).github_oauth_enabled } catch { githubOauthEnabled.value = false }
   const githubError = params.get('github_error')
@@ -1101,11 +1113,9 @@ onMounted(async () => {
   if (tab.value === 'dashboard') await loadDashboard()
   if (tab.value === 'users') await loadUsers()
   if (tab.value === 'integrations') await loadIntegrations()
-  const directNumber = window.location.pathname.match(/^\/requirements\/REQ-(\d+)\/?$/i)
-  if (directNumber) {
-    try { await openDetail(await api.requirementByNumber(Number(directNumber[1]))) } catch (e) { ElMessage.error(errorMessage(e)) }
-  }
+  if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
 })
+onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState))
 </script>
 
 <style scoped>
