@@ -61,7 +61,7 @@
         </div>
 
         <div class="filters">
-          <el-input v-model="filters.q" clearable placeholder="搜索需求标题、关键词或描述..." :prefix-icon="Search" class="search" @keyup.enter="loadRequirements" @clear="loadRequirements" />
+          <el-input v-model="filters.q" clearable placeholder="搜索 REQ 编号、标题、关键词或描述..." :prefix-icon="Search" class="search" @keyup.enter="loadRequirements" @clear="loadRequirements" />
           <el-select v-model="filters.type" clearable placeholder="全部类型" class="select" @change="loadRequirements">
             <el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" />
           </el-select>
@@ -74,6 +74,23 @@
         </div>
 
         <RequirementTable :items="sortedRequirements" :manager="isManager" :user="user" @open="openDetail" @action="onRowAction" />
+      </section>
+
+      <!-- ============ 管理总览 ============ -->
+      <section v-else-if="tab === 'dashboard' && isManager">
+        <div class="page-head"><div class="page-head-left"><div class="page-head-icon"><el-icon :size="26"><DataAnalysis /></el-icon></div><div><h1>需求总览</h1><p class="desc">掌握需求规模、审核积压和版本推进情况。</p></div></div></div>
+        <div v-if="dashboard" class="dashboard-cards">
+          <article class="panel dashboard-card"><strong>{{ dashboard.total }}</strong><span>全部需求</span></article>
+          <article class="panel dashboard-card"><strong>{{ dashboard.new_last_7_days }}</strong><span>近 7 天新增</span></article>
+          <article class="panel dashboard-card"><strong>{{ dashboard.pending_review }}</strong><span>待处理</span></article>
+          <article class="panel dashboard-card"><strong>{{ dashboard.in_progress }}</strong><span>开发发布中</span></article>
+          <article class="panel dashboard-card"><strong>{{ dashboard.github_linked }}</strong><span>已关联 GitHub</span></article>
+          <article class="panel dashboard-card"><strong>{{ dashboard.anonymous }}</strong><span>匿名提交</span></article>
+        </div>
+        <div v-if="dashboard" class="dashboard-grid">
+          <article class="panel"><h2>状态分布</h2><div v-for="(count, status) in dashboard.by_status" :key="status" class="distribution-row"><span>{{ statusLabel(status) }}</span><strong>{{ count }}</strong></div></article>
+          <article class="panel"><h2>类型分布</h2><div v-for="(count, kind) in dashboard.by_type" :key="kind" class="distribution-row"><span>{{ typeLabel(kind) }}</span><strong>{{ count }}</strong></div></article>
+        </div>
       </section>
 
       <!-- ============ 提交需求 ============ -->
@@ -89,14 +106,11 @@
           </div>
         </div>
 
-        <div v-if="!user" class="panel empty">
-          <el-icon><User /></el-icon>
-          <div>请先登录或注册，再提交需求</div>
-          <div class="actions" style="justify-content: center"><el-button type="primary" @click="authDialog = true">登录 / 注册</el-button></div>
-        </div>
-
-        <div v-else class="submit-layout">
+        <div class="submit-layout">
           <el-form class="panel submit-form" label-position="top" @submit.prevent="submitRequirement" @paste="handlePaste">
+            <el-alert v-if="!user" type="info" :closable="false" show-icon title="你正在匿名提交">
+              无需登录即可提交。昵称和联系方式均为可选，联系方式仅管理员可见；匿名需求将公开展示。
+            </el-alert>
             <div class="section">
               <h2 class="section-head"><el-icon><DocumentAdd /></el-icon>基本信息</h2>
               <el-form-item label="类型" required>
@@ -115,6 +129,15 @@
                 <el-input v-model="requirementForm.title" maxlength="160" show-word-limit placeholder="请输入简洁清晰的标题" />
                 <div class="field-hint">必填，4–160 字。用简短的语句概括需求的核心内容。</div>
               </el-form-item>
+              <div v-if="!user" class="form-grid">
+                <el-form-item label="提交人昵称（可选）">
+                  <el-input v-model="requirementForm.submitter_name" maxlength="50" show-word-limit placeholder="如何称呼你" />
+                </el-form-item>
+                <el-form-item label="联系方式（可选）">
+                  <el-input v-model="requirementForm.submitter_contact" maxlength="255" show-word-limit placeholder="邮箱或其他联系方式" />
+                  <div class="field-hint">仅管理员可见，不会出现在公开页面。</div>
+                </el-form-item>
+              </div>
             </div>
 
             <div class="section">
@@ -172,17 +195,21 @@
                   <el-input v-model="requirementForm.product_version" maxlength="50" show-word-limit placeholder="例如 0.14.1" />
                   <div class="field-hint">最多 50 个字符。如果与特定版本相关，请填写版本号。</div>
                 </el-form-item>
-                <el-form-item label="公开范围">
+                <el-form-item v-if="user" label="公开范围">
                   <el-radio-group v-model="requirementForm.visibility">
                     <el-radio value="public">公开</el-radio>
                     <el-radio value="private">仅本人和管理员</el-radio>
                   </el-radio-group>
                   <div class="field-hint">公开需求可被所有用户查看；私有需求仅本人和管理员可见。</div>
                 </el-form-item>
+                <el-form-item v-else label="公开范围">
+                  <el-input model-value="公开" disabled />
+                  <div class="field-hint">匿名提交的需求固定公开展示。</div>
+                </el-form-item>
               </div>
             </div>
 
-            <div class="submit-quota">每个账号每天最多提交 5 条需求，同时处理中最多 20 条。</div>
+            <div class="submit-quota">所有非管理员用户合计每小时最多提交 20 条需求。</div>
             <div class="actions">
               <el-button type="primary" size="large" :icon="Promotion" :loading="busy" native-type="submit">提交需求</el-button>
               <el-button size="large" @click="saveDraft">保存草稿</el-button>
@@ -358,7 +385,7 @@
             <el-table-column label="作用域"><template #default="scope"><span class="meta">{{ scope.row.scopes.join('、') }}</span></template></el-table-column>
             <el-table-column label="最后使用" width="170"><template #default="scope">{{ scope.row.last_used_at ? new Date(scope.row.last_used_at).toLocaleString() : '从未' }}</template></el-table-column>
             <el-table-column label="状态" width="100"><template #default="scope"><span class="tag no-dot plain">{{ scope.row.revoked_at ? '已撤销' : '有效' }}</span></template></el-table-column>
-            <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
+            <el-table-column label="操作" width="150"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="primary" :icon="Connection" @click="openMcpConnection(scope.row)">接入</el-button><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
           </el-table>
         </article>
         <article class="panel mcp-guide" style="margin-top:16px">
@@ -376,6 +403,10 @@
               <p>编辑用户级 <code>~/.codex/config.toml</code>。Codex 会在连接 MCP 时直接注入请求头，沙盒内的 Agent 无需读取宿主机环境变量。</p>
               <pre class="code-block mcp-code"><code>{{ mcpConfigExample }}</code></pre>
               <el-button size="small" @click="copyText(mcpConfigExample)">复制配置</el-button>
+            </li>
+            <li>
+              <strong>通过 Codex 设置界面接入</strong>
+              <p>URL 填 <code>{{ mcpUrl }}</code>；“Bearer 令牌环境变量”留空；在“标头”中填写 <code>Authorization</code> 和 <code>Bearer 完整令牌</code>；“来自环境变量的标头”留空。不要把 <code>bearer_token_env_var</code> 当作标头名。</p>
             </li>
             <li>
               <strong>重启并验证</strong>
@@ -432,7 +463,7 @@
     </footer>
 
     <!-- ============ 需求详情 ============ -->
-    <el-dialog v-model="detailDialog" :title="detailTarget?.title" width="min(92vw, 640px)">
+    <el-dialog v-model="detailDialog" :title="detailTarget ? `REQ-${detailTarget.public_number} · ${detailTarget.title}` : '需求详情'" width="min(92vw, 680px)" @closed="closeDetail">
       <template v-if="detailTarget">
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
           <span class="tag no-dot" :class="`t-${detailTarget.type}`">{{ typeLabel(detailTarget.type) }}</span>
@@ -462,11 +493,36 @@
           <span>{{ detailTarget.follower_count || 0 }} 人关注</span>
           <a v-if="detailTarget.github_issue_url" :href="detailTarget.github_issue_url" target="_blank" rel="noopener">GitHub #{{ detailTarget.github_issue_number }}</a>
         </div>
+        <div v-if="isManager && detailTarget.submitter_contact" class="contact-box"><strong>提交人联系方式（仅管理员可见）：</strong>{{ detailTarget.submitter_contact }}</div>
+        <div class="timeline">
+          <h3>需求动态</h3>
+          <div v-if="!detailHistory.length" class="field-hint">暂无状态记录</div>
+          <div v-for="event in detailHistory" :key="event.id" class="timeline-item">
+            <span class="timeline-dot"></span>
+            <div><strong>{{ historyLabel(event) }}</strong><p>{{ event.actor_name }} · {{ new Date(event.created_at).toLocaleString() }}<span v-if="event.reason"> · {{ event.reason }}</span></p></div>
+          </div>
+        </div>
       </template>
       <template #footer>
+        <el-button v-if="detailTarget" @click="copyRequirementLink(detailTarget)">复制链接</el-button>
         <el-button v-if="detailTarget && canFollow" @click="follow(detailTarget); detailDialog = false">关注（{{ detailTarget.follower_count || 0 }}）</el-button>
+        <el-button v-if="detailTarget && isManager" @click="detailDialog = false; openEdit(detailTarget)">编辑</el-button>
         <el-button v-if="detailTarget && isManager" type="primary" @click="detailDialog = false; openReview(detailTarget)">审核</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="editDialog" title="编辑需求" width="min(92vw, 640px)">
+      <el-form label-position="top">
+        <div class="form-grid"><el-form-item label="类型" required><el-select v-model="editForm.type"><el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" /></el-select></el-form-item><el-form-item label="影响程度" required><el-select v-model="editForm.severity"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item></div>
+        <el-form-item label="标题" required><el-input v-model="editForm.title" maxlength="160" show-word-limit /><div class="field-hint">4–160 字。</div></el-form-item>
+        <el-form-item label="需求描述" required><el-input v-model="editForm.description" type="textarea" :rows="5" maxlength="8000" show-word-limit /><div class="field-hint">10–8,000 字。</div></el-form-item>
+        <el-form-item label="复现步骤"><el-input v-model="editForm.steps_to_reproduce" type="textarea" :rows="3" maxlength="4000" show-word-limit /></el-form-item>
+        <div class="form-grid"><el-form-item label="当前行为"><el-input v-model="editForm.current_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item><el-form-item label="期望行为"><el-input v-model="editForm.expected_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item></div>
+        <el-form-item label="日志文字（仅提交人和管理员可见）"><el-input v-model="editForm.log_text" type="textarea" :rows="3" maxlength="20000" show-word-limit /></el-form-item>
+        <div class="form-grid"><el-form-item label="产品版本"><el-input v-model="editForm.product_version" maxlength="50" /></el-form-item><el-form-item label="公开范围"><el-select v-model="editForm.visibility"><el-option label="公开" value="public" /><el-option label="仅提交人和管理员" value="private" /></el-select></el-form-item></div>
+        <el-alert v-if="editTarget?.github_issue_number" type="info" :closable="false">保存后将异步同步 GitHub Issue 的标题、正文、类型和状态标签。</el-alert>
+      </el-form>
+      <template #footer><el-button @click="editDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="submitEdit">保存</el-button></template>
     </el-dialog>
 
     <!-- ============ 登录 ============ -->
@@ -488,8 +544,32 @@
         <el-form-item label="有效期（天）"><el-input-number v-model="tokenForm.expires_in_days" :min="1" :max="365" /></el-form-item>
         <el-form-item label="授权作用域"><el-checkbox-group v-model="tokenForm.scopes"><el-checkbox v-for="scope in scopeOptions" :key="scope" :value="scope">{{ scope }}</el-checkbox></el-checkbox-group></el-form-item>
       </el-form>
-      <el-alert v-if="createdToken" type="success" :closable="false" title="请立即复制，关闭后无法再次查看"><code class="code-block">{{ createdToken }}</code><el-button style="margin-top:10px" @click="copyText(createdToken)">复制令牌</el-button></el-alert>
+      <el-alert v-if="createdToken" type="success" :closable="false" title="请立即复制，关闭后无法再次查看"><code class="code-block">{{ createdToken }}</code><div class="token-created-actions"><el-button @click="copyText(createdToken)">复制令牌</el-button><el-button type="primary" :icon="Connection" @click="openCreatedTokenConnection">接入</el-button></div></el-alert>
       <template #footer><el-button @click="tokenDialog = false; createdToken = ''">关闭</el-button><el-button v-if="!createdToken" type="primary" :loading="busy" @click="createToken">创建</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="mcpConnectionDialog" title="接入 MCP 客户端" width="min(94vw, 680px)" :close-on-click-modal="false">
+      <el-form label-position="top">
+        <el-form-item label="完整令牌" required>
+          <el-input v-model="connectionToken" type="password" show-password placeholder="粘贴以 trp_ 开头的完整令牌" autocomplete="off" />
+          <div class="field-hint">平台只保存令牌哈希。历史令牌需要重新粘贴；令牌仅保留在当前弹窗内。</div>
+        </el-form-item>
+      </el-form>
+      <div class="connection-section">
+        <div class="section-title-row"><div><h3>通用 Streamable HTTP MCP</h3><p class="meta">适用于支持 JSON MCP 配置的客户端。</p></div><el-button :disabled="!connectionToken.trim()" @click="copyText(genericMcpConfig)">复制 JSON</el-button></div>
+        <pre class="code-block mcp-code"><code>{{ genericMcpConfig }}</code></pre>
+      </div>
+      <div class="connection-section">
+        <h3>Codex 设置界面</h3>
+        <dl class="config-fields">
+          <div><dt>URL</dt><dd>{{ mcpUrl }}</dd></div>
+          <div><dt>Bearer 令牌环境变量</dt><dd>留空</dd></div>
+          <div><dt>标头</dt><dd><code>Authorization</code> → <code>Bearer 完整令牌</code></dd></div>
+          <div><dt>来自环境变量的标头</dt><dd>留空</dd></div>
+        </dl>
+      </div>
+      <el-alert type="warning" :closable="false" title="配置包含完整令牌">只复制到可信客户端，不要提交到 Git 或发送给其他人；令牌泄露后请立即撤销。</el-alert>
+      <template #footer><el-button @click="closeMcpConnection">关闭</el-button></template>
     </el-dialog>
 
     <!-- ============ 人工审核 ============ -->
@@ -541,13 +621,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
-  ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, Document, DocumentAdd, EditPen, Flag, Guide,
+  ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
   InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import logoUrl from './assets/logo.svg'
-import { api, type AgentToken, type Batch, type Requirement, type User as ApiUser } from './api'
+import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
 import {
   avatarColor, batchTypeLabel, deliveryLabel, priorityLabel, reviewActionLabels, roleLabel, severityLabel,
   statusLabel, typeLabel,
@@ -582,21 +662,24 @@ const errorMessage = (error: unknown) => {
 
 const emptyRequirementForm = () => ({
   type: 'feature', title: '', description: '', log_text: '', current_behavior: '', expected_behavior: '', steps_to_reproduce: '',
-  severity: 'medium', product_version: '', visibility: 'public', environment: {} as Record<string, unknown>,
+  severity: 'medium', product_version: '', visibility: 'public', submitter_name: '', submitter_contact: '', environment: {} as Record<string, unknown>,
 })
 
-type Tab = 'public' | 'submit' | 'mine' | 'admin' | 'versions' | 'integrations' | 'users'
+type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'integrations' | 'users'
 const tab = ref<Tab>('public')
 const user = ref<ApiUser | null>(null)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
 const agentTokens = ref<AgentToken[]>([])
-const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false)
-const githubOauthEnabled = ref(false), createdToken = ref('')
+const dashboard = ref<Dashboard | null>(null), detailHistory = ref<RequirementHistory[]>([])
+const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
+const githubOauthEnabled = ref(false), createdToken = ref(''), createdTokenId = ref(''), connectionToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
 const detailDialog = ref(false), detailTarget = ref<Requirement | null>(null)
 const reviewTarget = ref<Requirement | null>(null)
+const editTarget = ref<Requirement | null>(null)
+const editForm = reactive({ type: 'feature', severity: 'medium', title: '', description: '', steps_to_reproduce: '', current_behavior: '', expected_behavior: '', log_text: '', product_version: '', visibility: 'public' })
 const filters = reactive({ q: '', type: '', status: '' })
 const authForm = reactive({ username: '', email: '', password: '' })
 const requirementForm = reactive(emptyRequirementForm())
@@ -607,8 +690,17 @@ const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: '
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
 const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
 const mcpUrl = `${window.location.origin}/mcp/`
-const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer rp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
+const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer trp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
 const mcpEnvConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
+const genericMcpConfig = computed(() => JSON.stringify({
+  mcpServers: {
+    'trailsnap-feedback': {
+      type: 'http',
+      url: mcpUrl,
+      headers: { Authorization: connectionToken.value.trim() ? `Bearer ${connectionToken.value.trim()}` : 'Bearer <完整令牌>' },
+    },
+  },
+}, null, 2))
 const candidateSelection = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
@@ -617,6 +709,7 @@ const visibleTabs = computed(() => [
   { key: 'submit' as Tab, label: '提交需求' },
   { key: 'mine' as Tab, label: '我的需求' },
   { key: 'versions' as Tab, label: '版本计划' },
+  ...(isManager.value ? [{ key: 'dashboard' as Tab, label: '总览看板' }] : []),
   ...(isManager.value ? [{ key: 'admin' as Tab, label: '需求审核' }] : []),
   ...(isManager.value ? [{ key: 'integrations' as Tab, label: '集成设置' }] : []),
   ...(user.value?.role === 'owner' ? [{ key: 'users' as Tab, label: '角色管理' }] : []),
@@ -637,7 +730,7 @@ const sortedRequirements = computed(() => {
   else list.sort((a, b) => (b.follower_count || 0) - (a.follower_count || 0))
   return list
 })
-const canFollow = computed(() => !!detailTarget.value)
+const canFollow = computed(() => !!user.value && !!detailTarget.value)
 
 async function loadRequirements() {
   const p = new URLSearchParams()
@@ -648,6 +741,7 @@ async function loadRequirements() {
 }
 async function loadMine() { if (user.value) myRequirements.value = await api.requirements('?mine=true') }
 async function loadAdmin() { if (isManager.value) adminRequirements.value = await api.requirements(adminStatus.value ? `?status=${adminStatus.value}` : '') }
+async function loadDashboard() { if (isManager.value) dashboard.value = await api.dashboard() }
 async function loadBatches() { batches.value = await api.batches(); if (isManager.value) candidates.value = await api.requirements('?status=candidate&limit=100') }
 async function loadUsers() { if (user.value?.role === 'owner') users.value = await api.users() }
 async function loadIntegrations() { if (isManager.value) agentTokens.value = await api.agentTokens() }
@@ -657,6 +751,7 @@ async function switchTab(value: Tab) {
     if (value === 'public') await loadRequirements()
     if (value === 'mine') await loadMine()
     if (value === 'admin') await loadAdmin()
+    if (value === 'dashboard') await loadDashboard()
     if (value === 'versions') await loadBatches()
     if (value === 'users') await loadUsers()
     if (value === 'integrations') await loadIntegrations()
@@ -707,11 +802,24 @@ async function createToken() {
   try {
     const result = await api.createAgentToken({ ...tokenForm })
     createdToken.value = result.token
+    createdTokenId.value = result.id
     await loadIntegrations()
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
 async function revokeToken(id: string) {
   try { await ElMessageBox.confirm('撤销后 Agent 将立即失去访问权限，确认继续？', '撤销令牌'); await api.revokeAgentToken(id); await loadIntegrations(); ElMessage.success('令牌已撤销') } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+function openMcpConnection(token: AgentToken) {
+  connectionToken.value = token.id === createdTokenId.value ? createdToken.value : ''
+  mcpConnectionDialog.value = true
+}
+function openCreatedTokenConnection() {
+  connectionToken.value = createdToken.value
+  mcpConnectionDialog.value = true
+}
+function closeMcpConnection() {
+  mcpConnectionDialog.value = false
+  connectionToken.value = ''
 }
 async function copyText(value: string) { await navigator.clipboard.writeText(value); ElMessage.success('已复制') }
 
@@ -731,14 +839,15 @@ async function submitRequirement() {
     const created = await api.createRequirement(requirementForm)
     let uploadError: unknown = null
     for (const file of pendingFiles.value) {
-      try { await api.uploadAttachment(created.id, file) } catch (e) { uploadError = e; break }
+      try { await api.uploadAttachment(created.id, file, created.upload_token) } catch (e) { uploadError = e; break }
     }
     Object.assign(requirementForm, emptyRequirementForm())
     pendingFiles.value = []
     if (fileInput.value) fileInput.value.value = ''
     if (uploadError) ElMessage.warning(`需求已提交，但有附件上传失败：${errorMessage(uploadError)}`)
     else ElMessage.success('需求已提交')
-    await switchTab('mine')
+    if (user.value) await switchTab('mine')
+    else { await switchTab('public'); await openDetail(created) }
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
 
@@ -777,12 +886,52 @@ function saveDraft() {
   ElMessage.success('草稿已保存，下次进入提交页可继续填写')
 }
 
-function openDetail(item: Requirement) { detailTarget.value = item; detailDialog.value = true }
+async function openDetail(item: Requirement) {
+  try {
+    detailTarget.value = item.public_number ? await api.requirementByNumber(item.public_number) : item
+    detailHistory.value = await api.requirementHistory(item.id)
+    detailDialog.value = true
+    if (item.public_number) history.replaceState({}, '', `/requirements/REQ-${item.public_number}`)
+  } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+function closeDetail() { history.replaceState({}, '', '/'); detailHistory.value = [] }
+function requirementLink(item: Requirement) { return `${window.location.origin}/requirements/REQ-${item.public_number}` }
+async function copyRequirementLink(item: Requirement) { await copyText(requirementLink(item)) }
+function historyLabel(event: RequirementHistory) {
+  if (event.before && event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
+  if (event.action === 'requirement.created') return '需求已提交'
+  if (event.action === 'requirement.updated') return '需求内容已更新'
+  if (event.after) return `状态更新为“${statusLabel(event.after)}”`
+  return '需求有新动态'
+}
+
+function openEdit(item: Requirement) {
+  editTarget.value = item
+  Object.assign(editForm, {
+    type: item.type, severity: item.severity, title: item.title, description: item.description,
+    steps_to_reproduce: item.steps_to_reproduce || '', log_text: item.log_text || '',
+    current_behavior: item.current_behavior || '', expected_behavior: item.expected_behavior || '',
+    product_version: item.product_version || '', visibility: item.visibility,
+  })
+  editDialog.value = true
+}
+async function submitEdit() {
+  if (!editTarget.value) return
+  if (editForm.title.trim().length < 4 || editForm.description.trim().length < 10) { ElMessage.error('请按要求填写标题和需求描述'); return }
+  busy.value = true
+  try {
+    const updated = await api.updateRequirement(editTarget.value.id, { ...editForm, title: editForm.title.trim(), description: editForm.description.trim() })
+    editDialog.value = false
+    ElMessage.success(updated.github_issue_number ? '需求已保存，GitHub Issue 将自动同步' : '需求已保存')
+    await refreshManaged()
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
 
 function onRowAction(payload: { item: Requirement; command: string }) {
   const { item, command } = payload
   if (command === 'follow') follow(item)
   else if (command === 'review') openReview(item)
+  else if (command === 'edit') openEdit(item)
   else if (command === 'withdraw') withdraw(item)
   else if (command === 'github-create') createGithubIssue(item)
   else if (command === 'github-link') linkGithubIssue(item)
@@ -935,7 +1084,7 @@ onMounted(async () => {
     history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`)
   }
   const requestedTab = params.get('view') as Tab | null
-  if (requestedTab && ['public', 'submit', 'mine', 'admin', 'versions', 'integrations', 'users'].includes(requestedTab)) tab.value = requestedTab
+  if (requestedTab && ['public', 'dashboard', 'submit', 'mine', 'admin', 'versions', 'integrations', 'users'].includes(requestedTab)) tab.value = requestedTab
   const requestedType = params.get('type')
   if (requestedType && ['bug', 'improvement', 'feature'].includes(requestedType)) requirementForm.type = requestedType
   if (tab.value === 'submit') {
@@ -945,12 +1094,17 @@ onMounted(async () => {
     } catch { localStorage.removeItem('rp_draft') }
   }
   if (!user.value) await restoreSession()
-  if ((['admin', 'integrations'].includes(tab.value) && !isManager.value) || (tab.value === 'users' && user.value?.role !== 'owner')) tab.value = 'public'
+  if ((['admin', 'dashboard', 'integrations'].includes(tab.value) && !isManager.value) || (tab.value === 'users' && user.value?.role !== 'owner')) tab.value = 'public'
   await Promise.all([loadRequirements(), loadBatches()])
   if (tab.value === 'mine') await loadMine()
   if (tab.value === 'admin') await loadAdmin()
+  if (tab.value === 'dashboard') await loadDashboard()
   if (tab.value === 'users') await loadUsers()
   if (tab.value === 'integrations') await loadIntegrations()
+  const directNumber = window.location.pathname.match(/^\/requirements\/REQ-(\d+)\/?$/i)
+  if (directNumber) {
+    try { await openDetail(await api.requirementByNumber(Number(directNumber[1]))) } catch (e) { ElMessage.error(errorMessage(e)) }
+  }
 })
 </script>
 
@@ -968,6 +1122,15 @@ onMounted(async () => {
 .mcp-guide h2 { margin: 0 0 6px; font-size: 18px; }
 .guide-steps { margin: 20px 0; padding-left: 24px; display: grid; gap: 18px; }
 .guide-steps li { padding-left: 4px; }
+.token-created-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.connection-section { margin-bottom: 18px; }
+.connection-section h3 { margin: 0 0 6px; font-size: 15px; }
+.config-fields { margin: 10px 0 0; border: 1px solid var(--rp-border); border-radius: 10px; overflow: hidden; }
+.config-fields > div { display: grid; grid-template-columns: 190px minmax(0, 1fr); border-bottom: 1px solid var(--rp-border); }
+.config-fields > div:last-child { border-bottom: 0; }
+.config-fields dt, .config-fields dd { margin: 0; padding: 10px 12px; font-size: 13px; }
+.config-fields dt { color: var(--rp-text-2); background: #f8fafc; font-weight: 600; }
+.config-fields dd { color: var(--rp-text); overflow-wrap: anywhere; }
 .guide-steps p { margin: 6px 0 10px; color: var(--rp-text-2); line-height: 1.65; font-size: 13.5px; }
 .guide-steps code { font-size: 12.5px; }
 .mcp-code { margin: 10px 0; overflow-x: auto; overflow-wrap: normal; white-space: pre; }
@@ -978,5 +1141,8 @@ onMounted(async () => {
   .account-row,.section-title-row { align-items:flex-start; flex-wrap:wrap; }
   .mcp-guide .section-title-row { display: grid; }
   .guide-steps { padding-left: 20px; }
+  .config-fields > div { grid-template-columns: 1fr; }
+  .config-fields dt { padding-bottom: 4px; }
+  .config-fields dd { padding-top: 4px; }
 }
 </style>

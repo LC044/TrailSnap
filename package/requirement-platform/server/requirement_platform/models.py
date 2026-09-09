@@ -36,6 +36,7 @@ class Requirement(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    public_number: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True, index=True)
     type: Mapped[str] = mapped_column(String(24), index=True)
     title: Mapped[str] = mapped_column(String(160), index=True)
     description: Mapped[str] = mapped_column(Text)
@@ -58,7 +59,10 @@ class Requirement(Base):
     github_issue_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     github_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
     source: Mapped[str] = mapped_column(String(16), default="platform", index=True)
-    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    submitter_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    submitter_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    anonymous_upload_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -72,7 +76,7 @@ class RequirementAttachment(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     requirement_id: Mapped[str] = mapped_column(String(36), ForeignKey("requirements.id", ondelete="CASCADE"), index=True)
-    uploaded_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    uploaded_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     original_name: Mapped[str] = mapped_column(String(255))
     stored_name: Mapped[str] = mapped_column(String(255), unique=True)
     content_type: Mapped[str] = mapped_column(String(100))

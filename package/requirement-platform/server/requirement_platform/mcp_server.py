@@ -7,6 +7,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
+from sqlalchemy import func
 
 from .config import settings
 from .db import SessionLocal
@@ -74,7 +75,8 @@ def _identity(required_scope: str) -> tuple[AgentToken, User]:
 
 def _requirement_dict(row: Requirement) -> dict[str, Any]:
     return {
-        "id": row.id, "type": row.type, "title": row.title, "description": row.description,
+        "id": row.id, "public_number": row.public_number, "reference": f"REQ-{row.public_number}",
+        "type": row.type, "title": row.title, "description": row.description,
         "current_behavior": row.current_behavior, "expected_behavior": row.expected_behavior,
         "steps_to_reproduce": row.steps_to_reproduce, "severity": row.severity,
         "product_version": row.product_version, "visibility": row.visibility, "status": row.status,
@@ -104,10 +106,13 @@ def list_requirements(status: str | None = None, query: str | None = None, inclu
 
 @mcp.tool()
 def get_requirement(requirement_id: str) -> dict[str, Any]:
-    """读取一个需求的完整管理信息。"""
+    """读取一个需求的完整管理信息；支持 UUID 或 REQ-123 公共编号。"""
     _identity("requirements:read")
     with SessionLocal() as db:
-        row = db.query(Requirement).filter(Requirement.id == requirement_id).first()
+        number_text = requirement_id.upper().removeprefix("REQ-").lstrip("0") or "0"
+        row = db.query(Requirement).filter(
+            Requirement.public_number == int(number_text)
+        ).first() if number_text.isdigit() else db.query(Requirement).filter(Requirement.id == requirement_id).first()
         if not row:
             raise ValueError("需求不存在")
         return _requirement_dict(row)
@@ -122,7 +127,8 @@ def create_requirement(type: str, title: str, description: str, severity: str = 
     if visibility not in {"public", "private"} or len(title.strip()) < 4 or len(description.strip()) < 10:
         raise ValueError("需求内容或公开范围无效")
     with SessionLocal() as db:
-        row = Requirement(type=type, title=title.strip(), description=description.strip(), severity=severity,
+        public_number = (db.query(func.max(Requirement.public_number)).scalar() or 0) + 1
+        row = Requirement(public_number=public_number, type=type, title=title.strip(), description=description.strip(), severity=severity,
                           visibility=visibility, expected_behavior=expected_behavior, created_by=actor.id)
         db.add(row)
         db.flush()

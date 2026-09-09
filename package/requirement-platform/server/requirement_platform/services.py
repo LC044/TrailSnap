@@ -144,6 +144,7 @@ def analyze_requirement(db: Session, requirement_id: str) -> TriageReport:
         report=report,
         confidence=max(0.0, min(confidence, 1.0)),
     )
+    before = requirement.status
     requirement.status = "pending_review"
     db.add(row)
     if requirement.github_issue_number:
@@ -151,7 +152,8 @@ def analyze_requirement(db: Session, requirement_id: str) -> TriageReport:
             db, "github_issue", requirement.id,
             f"github_issue:{requirement.id}:pending_review:v{requirement.version}",
         )
-    audit(db, None, "triage.completed", "requirement", requirement.id, provider=provider)
+    audit(db, None, "triage.completed", "requirement", requirement.id,
+          provider=provider, before=before, after=requirement.status)
     db.commit()
     db.refresh(row)
     return row
@@ -224,7 +226,7 @@ class GitHubClient:
             f"## 当前行为\n{requirement.current_behavior or '未提供'}\n\n"
             f"## 期望行为\n{requirement.expected_behavior or '未提供'}\n\n"
             f"## 验收与审核\n{requirement.review_reason or '已通过人工审核'}\n\n"
-            f"Requirement-ID: `{requirement.id}`"
+            f"Requirement: `REQ-{requirement.public_number or requirement.id}`"
         )
         return self._request(
             "POST", f"/repos/{settings.github_repo}/issues",
@@ -276,6 +278,30 @@ class GitHubClient:
             "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}", json={"labels": retained}
         )
 
+    def sync_issue(self, requirement: Requirement) -> dict[str, Any]:
+        issue = self.get_issue(requirement.github_issue_number)
+        retained = [
+            label["name"] for label in issue.get("labels", [])
+            if not label.get("name", "").lower().startswith(STATUS_LABEL_PREFIX)
+            and label.get("name", "").lower() not in {"bug", "enhancement"}
+        ]
+        retained.extend([
+            "bug" if requirement.type == "bug" else "enhancement",
+            self.ensure_status_label(requirement.status),
+        ])
+        body = (
+            f"由 TrailSnap 需求管理平台同步。\n\n"
+            f"## 需求描述\n{requirement.description}\n\n"
+            f"## 当前行为\n{requirement.current_behavior or '未提供'}\n\n"
+            f"## 期望行为\n{requirement.expected_behavior or '未提供'}\n\n"
+            f"## 验收与审核\n{requirement.review_reason or '暂无'}\n\n"
+            f"Requirement: `REQ-{requirement.public_number or requirement.id}`"
+        )
+        return self._request(
+            "PATCH", f"/repos/{settings.github_repo}/issues/{requirement.github_issue_number}",
+            json={"title": requirement.title, "body": body, "labels": retained},
+        )
+
     def create_milestone(self, batch: ReleaseBatch) -> dict[str, Any]:
         return self._request(
             "POST",
@@ -295,7 +321,7 @@ def sync_requirement_issue(db: Session, requirement_id: str) -> None:
         raise ValueError("Requirement not found")
     client = GitHubClient()
     if requirement.github_issue_number:
-        data = client.sync_status_label(requirement.github_issue_number, requirement.status)
+        data = client.sync_issue(requirement)
         requirement.github_state = data.get("state", requirement.github_state)
         audit(db, None, "github.issue.labels_synced", "requirement", requirement.id,
               issue_number=requirement.github_issue_number, status=requirement.status)
