@@ -68,7 +68,7 @@ export default defineConfig({
           { text: '用户指南', link: '/docs/guide/install' },
           { text: '开发者文档', link: '/docs/dev/guide' },
           { text: '博客', link: '/docs/blog/' },
-          { text: '问题反馈', link: '/docs/guide/feedback' }
+          { text: '需求平台', link: 'https://feedback.trailsnap.cn/' }
         ],
         sidebar: {
           '/docs/guide/': [
@@ -196,7 +196,7 @@ export default defineConfig({
           { text: 'Guide', link: '/en/docs/guide/install' },
           { text: 'Developers', link: '/en/docs/dev/guide' },
           { text: 'Blog', link: '/en/docs/blog/' },
-          { text: 'Feedback', link: '/en/docs/guide/feedback' }
+          { text: 'Requirements', link: 'https://feedback.trailsnap.cn/' }
         ],
         sidebar: {
           '/en/docs/guide/': [

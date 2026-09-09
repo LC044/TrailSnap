@@ -82,6 +82,22 @@
           <a v-if="requirement.github_issue_url" class="github-link" :href="requirement.github_issue_url" target="_blank" rel="noopener noreferrer">
             查看 GitHub Issue #{{ requirement.github_issue_number }}
           </a>
+          <div v-if="requirement.github_pull_requests?.length" class="related-prs">
+            <h2>关联 Pull Request</h2>
+            <a
+              v-for="pullRequest in requirement.github_pull_requests"
+              :key="pullRequest.number"
+              class="pr-link"
+              :href="pullRequest.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <span class="pr-title">#{{ pullRequest.number }} {{ pullRequest.title }}</span>
+              <span class="pr-state" :class="`is-${pullRequest.state}`">
+                {{ pullRequest.state === 'merged' ? '已合并' : pullRequest.state === 'open' ? (pullRequest.draft ? '草稿' : '进行中') : '已关闭' }}
+              </span>
+            </a>
+          </div>
           <div class="detail-actions">
             <el-button v-if="canFollow" @click="emit('follow')">关注（{{ requirement.follower_count || 0 }}）</el-button>
             <el-button v-if="manager" @click="emit('edit')">编辑</el-button>
@@ -112,7 +128,7 @@ import { ArrowLeft, Link, MagicStick } from '@element-plus/icons-vue'
 import { ElButton, ElIcon } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 import type { Requirement, RequirementHistory } from './api'
-import { avatarColor, priorityLabel, severityLabel, statusLabel, typeLabel } from './labels'
+import { avatarColor, formatDateTime, priorityLabel, severityLabel, statusLabel, typeLabel } from './labels'
 
 type Attachment = NonNullable<Requirement['attachments']>[number]
 
@@ -144,7 +160,6 @@ const triageText = computed(() => String(
   props.requirement.triage?.summary || props.requirement.triage?.recommendation || '分析已完成',
 ))
 const renderMarkdown = (value?: string) => markdown.render(value || '')
-const formatDateTime = (value: string) => new Date(value).toLocaleString()
 const formatBytes = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`
 const historyLabel = (event: RequirementHistory) => {
   if (event.before && event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
@@ -185,6 +200,15 @@ const historyLabel = (event: RequirementHistory) => {
 .detail-status dd { margin: 0; color: var(--rp-text-2); text-align: right; }
 .github-link { display: inline-flex; margin-top: 12px; color: var(--rp-primary); font-size: 13px; text-decoration: none; }
 .github-link:hover { text-decoration: underline; }
+.related-prs { margin-top: 16px; }
+.related-prs h2 { margin: 0 0 8px; color: var(--rp-text); font-size: 13px; }
+.pr-link { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 8px 0; border-top: 1px solid var(--rp-border); color: var(--rp-text-2); font-size: 13px; text-decoration: none; }
+.pr-link:hover .pr-title { color: var(--rp-primary); text-decoration: underline; }
+.pr-link:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 2px; border-radius: 4px; }
+.pr-title { min-width: 0; overflow-wrap: anywhere; }
+.pr-state { flex: none; padding: 1px 6px; border-radius: 999px; background: #e2e8f0; color: #475569; font-size: 11px; }
+.pr-state.is-open { background: #dcfce7; color: #166534; }
+.pr-state.is-merged { background: #f3e8ff; color: #7e22ce; }
 .detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
 .detail-actions .el-button { margin-left: 0; }
 .detail-actions .el-button:first-child:last-child, .detail-actions .el-button:nth-last-child(3):first-child { grid-column: 1 / -1; }

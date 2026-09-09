@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 export type GitHubIdentity = { github_user_id: number; login: string; avatar_url?: string; profile_url?: string; email?: string; linked_at: string; last_login_at?: string }
+export type GitHubPullRequest = { number: number; title: string; url: string; state: 'open' | 'closed' | 'merged'; draft: boolean; merged_at?: string; updated_at?: string }
 export type User = { id: string; username: string; email: string; role: 'viewer' | 'admin' | 'owner'; is_active: boolean; github?: GitHubIdentity }
 export type AgentToken = { id: string; name: string; token_prefix: string; scopes: string[]; expires_at?: string; last_used_at?: string; revoked_at?: string; created_at: string }
 export type Requirement = {
@@ -8,6 +9,7 @@ export type Requirement = {
   steps_to_reproduce?: string; severity: string; product_version?: string; environment: Record<string, unknown>
   visibility: string; status: string; priority: string; risk_level: string; review_reason?: string
   duplicate_of_id?: string; github_issue_number?: number; github_issue_url?: string; github_state?: string
+  github_pull_requests: GitHubPullRequest[]
   created_by?: string; created_by_name?: string; submitter_name?: string; submitter_contact?: string; upload_token?: string
   created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
   deleted_at?: string; deleted_by?: string; delete_reason?: string; source: 'platform' | 'github'

@@ -69,7 +69,8 @@ uv run python -m requirement_platform.seed_demo
 
 1. 将 `.env.example` 复制为 `.env`，修改 `RP_JWT_SECRET` 和 `RP_OWNER_EMAIL`。
 2. 如果需要 GitHub 同步，优先配置 GitHub App；小规模部署也可设置 `RP_GITHUB_TOKEN`。
-3. 执行 `docker compose up -d --build`。
+3. 执行 `docker compose -f docker-compose.prod.yml up -d`（生产推荐：直接拉取 CI 发布的 GHCR 镜像，无需在服务器上构建；通过 `.env` 中的 `RP_IMAGE_TAG` 固定版本，如 `requirement-v0.1.0`，升级用 `docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d`）。
+   若需要在服务器上从源码构建（本地调试或不便访问 GHCR 时），改用 `docker compose up -d --build`。
 4. 在宿主机反向代理中把 `feedback.trailsnap.cn` 转发到 `127.0.0.1:8011`，并启用 HTTPS。
 5. 使用 `RP_OWNER_EMAIL` 对应邮箱注册首个账号，该账号会成为唯一所有者；随后再开放域名供其他用户注册。
 6. 在主 TrailSnap 前端构建时设置 `VITE_REQUIREMENT_PLATFORM_URL=https://feedback.trailsnap.cn`。
@@ -85,7 +86,7 @@ RP_GITHUB_REPO=LC044/TrailSnap
 RP_GITHUB_TOKEN=github_pat_xxx
 ```
 
-GitHub App 模式设置 `RP_GITHUB_APP_ID`、`RP_GITHUB_INSTALLATION_ID` 和 `RP_GITHUB_PRIVATE_KEY`。Webhook 地址为 `/api/hooks/github`，签名密钥使用 `RP_GITHUB_WEBHOOK_SECRET`。未配置凭据时，需求与版本管理仍可正常使用；同步任务会保留失败信息供管理员排查。
+GitHub App 模式设置 `RP_GITHUB_APP_ID`、`RP_GITHUB_INSTALLATION_ID` 和 `RP_GITHUB_PRIVATE_KEY`。Webhook 地址为 `/api/hooks/github`，签名密钥使用 `RP_GITHUB_WEBHOOK_SECRET`，并订阅 Issues 与 Pull requests 事件。PR 描述使用 `Closes #<Issue 编号>`（也支持 Fixes/Resolves）后，需求详情会展示该 PR，PR 合并时自动关闭对应需求。未配置凭据时，需求与版本管理仍可正常使用；同步任务会保留失败信息供管理员排查。
 
 GitHub 登录需要另外创建 GitHub OAuth App，并将 Authorization callback URL 配置为
 `https://feedback.trailsnap.cn/api/auth/github/callback`，然后设置 `RP_GITHUB_OAUTH_CLIENT_ID`、

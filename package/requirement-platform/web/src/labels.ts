@@ -102,10 +102,25 @@ export function avatarColor(name: string) {
 }
 
 export function formatDate(value: string) {
-  const date = new Date(value)
+  const date = parseServerDate(value)
   if (Number.isNaN(date.getTime())) return value
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date).replace(/\//g, '-')
+}
+
+export function parseServerDate(value: string) {
+  // SQLite drops timezone information from timezone-aware DateTime columns.
+  // Server timestamps are UTC, so restore the missing marker before parsing.
+  const hasTimezone = /(?:z|[+-]\d{2}:\d{2})$/i.test(value)
+  return new Date(hasTimezone ? value : `${value}Z`)
+}
+
+export function formatDateTime(value: string) {
+  const date = parseServerDate(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).format(date)
 }

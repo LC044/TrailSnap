@@ -139,7 +139,7 @@ const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
     { key: 'performance', label: '性能测试', description: '检测存储与服务性能', icon: Activity },
   ] },
   { label: '支持', items: [
-    { key: 'feedback', label: '问题反馈', description: '报告问题或提出建议', icon: MessageSquare },
+    { key: 'feedback', label: '需求平台', description: '提交需求、反馈问题并跟进进度', icon: MessageSquare },
     { key: 'about', label: '关于行影集', description: '版本、更新与开源信息', icon: Info },
   ] },
 ]

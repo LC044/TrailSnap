@@ -402,7 +402,7 @@
           <el-table :data="agentTokens" style="width:100%">
             <el-table-column prop="name" label="名称" /><el-table-column prop="token_prefix" label="前缀" width="140" />
             <el-table-column label="作用域"><template #default="scope"><span class="meta">{{ scope.row.scopes.join('、') }}</span></template></el-table-column>
-            <el-table-column label="最后使用" width="170"><template #default="scope">{{ scope.row.last_used_at ? new Date(scope.row.last_used_at).toLocaleString() : '从未' }}</template></el-table-column>
+            <el-table-column label="最后使用" width="170"><template #default="scope">{{ scope.row.last_used_at ? formatDateTime(scope.row.last_used_at) : '从未' }}</template></el-table-column>
             <el-table-column label="状态" width="100"><template #default="scope"><span class="tag no-dot plain">{{ scope.row.revoked_at ? '已撤销' : '有效' }}</span></template></el-table-column>
             <el-table-column label="操作" width="150"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="primary" :icon="Connection" @click="openMcpConnection(scope.row)">接入</el-button><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
           </el-table>
@@ -599,7 +599,7 @@ import axios from 'axios'
 import logoUrl from './assets/logo.svg'
 import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
 import {
-  avatarColor, batchTypeLabel, deliveryLabel, reviewActionLabels, roleLabel,
+  avatarColor, batchTypeLabel, deliveryLabel, formatDateTime, reviewActionLabels, roleLabel,
   statusLabel, typeLabel,
 } from './labels'
 import RequirementTable from './RequirementTable.vue'

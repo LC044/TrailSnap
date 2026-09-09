@@ -19,8 +19,10 @@ Welcome to join the TrailSnap official exchange group to communicate with other 
 
 <img src="/qrcodes/wechat_official_account_qr.webp" alt="WeChat Official Account QR Code" width="300" />
 
-## Submit Issue
+## Submit a Requirement or Feedback
 
-If you find a Bug or wish to submit a new feature request, please visit the GitHub Issues page:
+If you find a bug, want to request a feature, or want to follow review and release progress, use the TrailSnap requirements platform:
 
-[Submit Issue](https://github.com/LC044/TrailSnap/issues)
+[Open the requirements platform](https://feedback.trailsnap.cn/)
+
+Please search for an existing requirement first. For bug reports, include reproduction steps, product version, and environment details whenever possible.

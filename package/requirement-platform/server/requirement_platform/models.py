@@ -58,6 +58,7 @@ class Requirement(Base):
     github_issue_number: Mapped[int | None] = mapped_column(Integer, nullable=True, unique=True)
     github_issue_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     github_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    github_pull_requests: Mapped[list] = mapped_column(JSON, default=list)
     source: Mapped[str] = mapped_column(String(16), default="platform", index=True)
     created_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     submitter_name: Mapped[str | None] = mapped_column(String(50), nullable=True)

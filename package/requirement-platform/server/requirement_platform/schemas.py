@@ -141,6 +141,7 @@ class RequirementRead(BaseModel):
     github_issue_number: int | None
     github_issue_url: str | None
     github_state: str | None
+    github_pull_requests: list[dict[str, Any]]
     source: str
     created_by: str | None
     submitter_name: str | None

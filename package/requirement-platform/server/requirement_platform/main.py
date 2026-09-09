@@ -61,7 +61,8 @@ from .security import (
     authenticate, create_agent_token_value, create_token, current_user, hash_password, manager, optional_user, owner,
 )
 from .services import (
-    GitHubClient, audit, enqueue, requirement_snapshot, requirement_status_from_github, verify_webhook,
+    GitHubClient, audit, closing_issue_numbers, enqueue, pull_request_summary,
+    requirement_snapshot, requirement_status_from_github, verify_webhook,
 )
 
 
@@ -1204,6 +1205,46 @@ async def github_webhook(
                 changed = False
             if changed:
                 enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:webhook:{delivery_id}")
+    elif x_github_event == "pull_request":
+        pull_request = payload.get("pull_request") or {}
+        pull_request_number = pull_request.get("number") or payload.get("number")
+        linked_issue_numbers = closing_issue_numbers(pull_request)
+        if pull_request_number:
+            summary = pull_request_summary({**pull_request, "number": pull_request_number})
+            linked_rows = db.query(Requirement).filter(
+                Requirement.github_issue_number.is_not(None), Requirement.deleted_at.is_(None)
+            ).all()
+            for row in linked_rows:
+                related = [
+                    item for item in (row.github_pull_requests or [])
+                    if item.get("number") != pull_request_number
+                ]
+                is_linked = row.github_issue_number in linked_issue_numbers
+                if is_linked:
+                    related.append(summary)
+                    related.sort(key=lambda item: item.get("number") or 0, reverse=True)
+                if related != (row.github_pull_requests or []):
+                    was_linked = any(
+                        item.get("number") == pull_request_number for item in (row.github_pull_requests or [])
+                    )
+                    row.github_pull_requests = related
+                    audit(
+                        db, None,
+                        "github.pull_request.updated" if is_linked else "github.pull_request.unlinked",
+                        "requirement", row.id, source="github_webhook",
+                        pull_request_number=pull_request_number, pull_request_url=summary.get("url"),
+                        newly_linked=is_linked and not was_linked,
+                    )
+                if is_linked and summary["state"] == "merged" and row.status not in {"closed", "released"}:
+                    before = row.status
+                    row.status = "closed"
+                    row.review_reason = f"关联 PR #{pull_request_number} 已合并，自动关闭需求"
+                    audit(
+                        db, None, "requirement.closed", "requirement", row.id,
+                        before=before, after="closed", reason=row.review_reason,
+                        source="github_pull_request_webhook", pull_request_number=pull_request_number,
+                    )
+                    enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:pr-merged:{delivery_id}")
     event.processed = True
     db.commit()
     return ok({"accepted": True})

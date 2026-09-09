@@ -20,7 +20,9 @@ from requirement_platform.main import app  # noqa: E402
 from requirement_platform import mcp_server  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
 from requirement_platform.models import BackgroundJob, GitHubIdentity, Requirement, TriageReport  # noqa: E402
-from requirement_platform.services import GitHubClient, analyze_requirement, requirement_status_from_github  # noqa: E402
+from requirement_platform.services import (  # noqa: E402
+    GitHubClient, analyze_requirement, closing_issue_numbers, requirement_status_from_github,
+)
 
 
 def cleanup_database_handles():
@@ -271,10 +273,13 @@ def test_mcp_requirement_version_attachment_and_records_flow(monkeypatch):
             "steps_to_reproduce": "1. 调用", "product_version": "v0.1", "environment": {"os": "test"},
         })
     requirement_id = created["id"]
+    requirement_reference = created["reference"]
+    updated = mcp_server.update_requirement(requirement_reference, title="MCP 公共编号写入测试")
+    assert updated["title"] == "MCP 公共编号写入测试"
     mcp_server.upload_requirement_attachment(requirement_id, "trace.log", base64.b64encode(b"trace").decode())
     attachment_id = mcp_server.list_requirement_attachments(requirement_id)[0]["id"]
     assert mcp_server.download_requirement_attachment(requirement_id, attachment_id)["content_base64"] == base64.b64encode(b"trace").decode()
-    mcp_server.review_requirement(requirement_id, "candidate", "可纳入测试版本")
+    mcp_server.review_requirement(requirement_reference, "candidate", "可纳入测试版本")
     batch = mcp_server.create_version("MCP 测试版本", "mcp-test-1", "验证版本写入")
     version = mcp_server.add_version_requirement(batch["id"], requirement_id)
     item_id = version["items"][0]["id"]
@@ -396,6 +401,13 @@ def test_github_status_mapping_distinguishes_sync_echo_from_user_transition():
     ) == "pending_review"
 
 
+def test_github_closing_keyword_parser_ignores_plain_issue_mentions():
+    pull_request = {
+        "body": "关联需求 REQ-12，详情见 #10。\n\nCloses #42\nFixes LC044/TrailSnap#43\nresolves #44"
+    }
+    assert closing_issue_numbers(pull_request) == {42, 43, 44}
+
+
 def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypatch):
     with TestClient(app) as client:
         owner = client.post(
@@ -437,6 +449,38 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         })
         assert reopened.status_code == 200, reopened.text
         assert client.get(f"/api/requirements/{created['id']}").json()["data"]["status"] == "pending_review"
+
+        pull_request_headers = {
+            "X-Hub-Signature-256": "sha256=test", "X-GitHub-Event": "pull_request",
+            "X-GitHub-Delivery": "delivery-pr-merged",
+        }
+        merged = client.post("/api/hooks/github", headers=pull_request_headers, json={
+            "action": "closed", "number": 321,
+            "pull_request": {
+                "number": 321, "title": "feat: 完成 Webhook 状态同步", "body": "Closes #99993",
+                "html_url": "https://github.com/LC044/TrailSnap/pull/321", "state": "closed",
+                "draft": False, "merged": True, "merged_at": "2026-09-10T01:00:00Z",
+                "updated_at": "2026-09-10T01:00:00Z",
+            },
+            "sender": {"id": 123456789, "login": "octocat"},
+        })
+        assert merged.status_code == 200, merged.text
+        detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
+        assert detail["status"] == "closed"
+        assert detail["github_pull_requests"] == [{
+            "number": 321, "title": "feat: 完成 Webhook 状态同步",
+            "url": "https://github.com/LC044/TrailSnap/pull/321", "state": "merged",
+            "draft": False, "merged_at": "2026-09-10T01:00:00Z", "updated_at": "2026-09-10T01:00:00Z",
+        }]
+
+        jobs = SessionLocal()
+        try:
+            assert jobs.query(BackgroundJob).filter(
+                BackgroundJob.object_id == created["id"],
+                BackgroundJob.idempotency_key == f"github_issue:{created['id']}:pr-merged:delivery-pr-merged",
+            ).count() == 1
+        finally:
+            jobs.close()
 
 
 def test_anonymous_number_history_dashboard_and_manager_edit():

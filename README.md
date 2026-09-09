@@ -23,6 +23,10 @@
     <a href="https://trailsnap.cn/" target="_blank">
       <img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/siyuan044/trailsnap-frontend?color=3eb370">
     </a>
+    <!-- 下载量 -->
+    <a href="https://github.com/LC044/TrailSnap/releases" target="_blank">
+      <img alt="Downloads" src="https://img.shields.io/github/downloads/LC044/TrailSnap/total.svg">
+    </a>
 
 [English](doc/README_en.md) | **中文**
 
