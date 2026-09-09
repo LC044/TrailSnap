@@ -18,6 +18,7 @@ class Settings:
     )
     daily_submission_limit: int = int(os.getenv("RP_DAILY_SUBMISSION_LIMIT", "5"))
     max_open_requirements: int = int(os.getenv("RP_MAX_OPEN_REQUIREMENTS", "20"))
+    non_admin_hourly_submission_limit: int = int(os.getenv("RP_NON_ADMIN_HOURLY_SUBMISSION_LIMIT", "20"))
     upload_dir: str = os.getenv("RP_UPLOAD_DIR", "./data/uploads")
     max_attachment_bytes: int = int(os.getenv("RP_MAX_ATTACHMENT_BYTES", str(5 * 1024 * 1024)))
     max_attachments_per_requirement: int = int(os.getenv("RP_MAX_ATTACHMENTS_PER_REQUIREMENT", "5"))

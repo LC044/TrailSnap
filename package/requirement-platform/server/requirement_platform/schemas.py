@@ -69,15 +69,21 @@ class RequirementCreate(BaseModel):
     product_version: str | None = Field(default=None, max_length=50)
     environment: dict[str, Any] = Field(default_factory=dict)
     visibility: Literal["public", "private"] = "public"
+    submitter_name: str | None = Field(default=None, max_length=50)
+    submitter_contact: str | None = Field(default=None, max_length=255)
 
 
 class RequirementUpdate(BaseModel):
+    type: Literal["bug", "improvement", "feature"] | None = None
     title: str | None = Field(default=None, min_length=4, max_length=160)
     description: str | None = Field(default=None, min_length=10, max_length=8000)
     log_text: str | None = Field(default=None, max_length=20000)
     current_behavior: str | None = Field(default=None, max_length=3000)
     expected_behavior: str | None = Field(default=None, max_length=3000)
     steps_to_reproduce: str | None = Field(default=None, max_length=4000)
+    severity: Literal["low", "medium", "high", "critical"] | None = None
+    product_version: str | None = Field(default=None, max_length=50)
+    visibility: Literal["public", "private"] | None = None
     environment: dict[str, Any] | None = None
 
 
@@ -115,6 +121,7 @@ class BatchStatusInput(BaseModel):
 class RequirementRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
+    public_number: int | None
     type: str
     title: str
     description: str
@@ -135,7 +142,9 @@ class RequirementRead(BaseModel):
     github_issue_url: str | None
     github_state: str | None
     source: str
-    created_by: str
+    created_by: str | None
+    submitter_name: str | None
+    submitter_contact: str | None
     created_at: datetime
     updated_at: datetime
     version: int

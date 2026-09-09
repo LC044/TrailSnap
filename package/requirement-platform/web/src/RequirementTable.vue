@@ -20,7 +20,7 @@
                 <el-icon :size="18"><component :is="typeIcon(item.type)" /></el-icon>
               </span>
               <div style="min-width: 0">
-                <p class="req-title req-title-link" @click="emit('open', item)">{{ item.title }}</p>
+                <p class="req-title req-title-link" @click="emit('open', item)"><span class="req-number">REQ-{{ item.public_number }}</span> {{ item.title }}</p>
                 <p class="req-desc">{{ item.description }}</p>
               </div>
             </div>
@@ -43,6 +43,7 @@
                   <el-dropdown-item command="follow">关注（{{ item.follower_count || 0 }}）</el-dropdown-item>
                   <el-dropdown-item v-if="canWithdraw(item)" command="withdraw">撤回</el-dropdown-item>
                   <el-dropdown-item v-if="manager" command="review">审核</el-dropdown-item>
+                  <el-dropdown-item v-if="manager" command="edit">编辑需求</el-dropdown-item>
                   <el-dropdown-item v-if="manager && !item.github_issue_number" command="github-create">新建 GitHub Issue</el-dropdown-item>
                   <el-dropdown-item v-if="manager && !item.github_issue_number" command="github-link">关联已有 GitHub Issue</el-dropdown-item>
                   <el-dropdown-item v-if="manager && item.github_issue_number && item.github_state !== 'closed'" command="github-close">关闭 GitHub Issue 与需求</el-dropdown-item>
@@ -102,4 +103,5 @@ const canWithdraw = (item: Requirement) =>
 .t-feature { background: #eff6ff; color: #2563eb; }
 .t-improvement { background: #f5f3ff; color: #7c3aed; }
 .t-bug { background: #fff7ed; color: #ea580c; }
+.req-number { color: var(--rp-primary); font-size: 12px; font-weight: 700; white-space: nowrap; }
 </style>

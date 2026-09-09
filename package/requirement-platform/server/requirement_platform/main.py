@@ -1,4 +1,5 @@
 import hashlib
+import hashlib
 import json
 import secrets
 from contextlib import asynccontextmanager
@@ -21,6 +22,7 @@ from .db import get_db, init_db
 from .models import (
     BackgroundJob,
     AgentToken,
+    AuditEvent,
     GitHubIdentity,
     OAuthLoginGrant,
     ReleaseBatch,
@@ -71,12 +73,14 @@ def user_data(row: User, db: Session) -> dict:
     return data
 
 
-def requirement_data(row: Requirement, db: Session, *, include_private: bool = False) -> dict:
+def requirement_data(row: Requirement, db: Session, *, include_private: bool = False, include_contact: bool = False) -> dict:
     data = RequirementRead.model_validate(row).model_dump(mode="json")
     if not include_private:
         data["log_text"] = None
-    creator = db.query(User.username).filter(User.id == row.created_by).scalar()
-    data["created_by_name"] = creator or "匿名"
+    creator = db.query(User.username).filter(User.id == row.created_by).scalar() if row.created_by else None
+    data["created_by_name"] = creator or row.submitter_name or "匿名用户"
+    if not include_contact:
+        data["submitter_contact"] = None
     data["follower_count"] = db.query(func.count(RequirementFollower.id)).filter(
         RequirementFollower.requirement_id == row.id
     ).scalar() or 0
@@ -104,6 +108,10 @@ def requirement_data(row: Requirement, db: Session, *, include_private: bool = F
 def enqueue_github_sync(db: Session, row: Requirement) -> None:
     if row.github_issue_number or (row.visibility == "public" and row.status == "candidate"):
         enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:{row.status}:{secrets.token_hex(6)}")
+
+
+def next_requirement_number(db: Session) -> int:
+    return (db.query(func.max(Requirement.public_number)).scalar() or 0) + 1
 
 
 def can_access_private_data(row: Requirement, user: User | None) -> bool:
@@ -423,26 +431,43 @@ def revoke_agent_token(token_id: str, actor: User = Depends(manager), db: Sessio
 
 
 @app.post("/api/requirements")
-def create_requirement(payload: RequirementCreate, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    since = datetime.now(timezone.utc) - timedelta(days=1)
-    daily = db.query(func.count(Requirement.id)).filter(Requirement.created_by == user.id, Requirement.created_at >= since).scalar() or 0
-    if daily >= settings.daily_submission_limit:
-        raise HTTPException(status_code=429, detail="Daily submission limit reached")
-    terminal = {"rejected", "duplicate", "withdrawn", "closed", "released"}
-    open_count = db.query(func.count(Requirement.id)).filter(
-        Requirement.created_by == user.id, Requirement.status.notin_(terminal), Requirement.deleted_at.is_(None)
-    ).scalar() or 0
-    if open_count >= settings.max_open_requirements:
-        raise HTTPException(status_code=429, detail="Too many open requirements")
-    row = Requirement(created_by=user.id, **payload.model_dump())
+def create_requirement(payload: RequirementCreate, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    is_manager = bool(user and user.role in {"admin", "owner"})
+    if not is_manager:
+        since = datetime.now(timezone.utc) - timedelta(hours=1)
+        manager_ids = db.query(User.id).filter(User.role.in_({"admin", "owner"}))
+        recent = db.query(func.count(Requirement.id)).filter(
+            Requirement.created_at >= since,
+            or_(Requirement.created_by.is_(None), Requirement.created_by.notin_(manager_ids)),
+        ).scalar() or 0
+        if recent >= settings.non_admin_hourly_submission_limit:
+            raise HTTPException(status_code=429, detail="所有非管理员用户每小时最多提交 20 条需求，请稍后再试")
+    values = payload.model_dump()
+    if user:
+        values["submitter_name"] = None
+        values["submitter_contact"] = None
+    else:
+        values["visibility"] = "public"
+        values["submitter_name"] = (values.get("submitter_name") or "").strip() or None
+        values["submitter_contact"] = (values.get("submitter_contact") or "").strip() or None
+    upload_token = secrets.token_urlsafe(32) if not user else None
+    row = Requirement(
+        public_number=next_requirement_number(db), created_by=user.id if user else None,
+        anonymous_upload_token_hash=hashlib.sha256(upload_token.encode()).hexdigest() if upload_token else None,
+        **values,
+    )
     db.add(row)
     db.flush()
-    db.add(RequirementFollower(requirement_id=row.id, user_id=user.id))
-    audit(db, user.id, "requirement.created", "requirement", row.id, type=row.type)
+    if user:
+        db.add(RequirementFollower(requirement_id=row.id, user_id=user.id))
+    audit(db, user.id if user else None, "requirement.created", "requirement", row.id, type=row.type, status=row.status)
     enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
     db.commit()
     db.refresh(row)
-    return ok(requirement_data(row, db, include_private=True), "submitted")
+    data = requirement_data(row, db, include_private=bool(user), include_contact=is_manager)
+    if upload_token:
+        data["upload_token"] = upload_token
+    return ok(data, "submitted")
 
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".txt", ".log", ".json", ".pdf"}
@@ -451,12 +476,19 @@ IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 @app.post("/api/requirements/{requirement_id}/attachments")
 async def upload_requirement_attachment(
-    requirement_id: str, file: UploadFile = File(...), user: User = Depends(current_user), db: Session = Depends(get_db)
+    requirement_id: str, file: UploadFile = File(...), user: User | None = Depends(optional_user),
+    x_requirement_upload_token: str | None = Header(default=None), db: Session = Depends(get_db)
 ):
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
-    if not can_access_private_data(row, user):
+    anonymous_token_ok = bool(
+        not user and x_requirement_upload_token and row.anonymous_upload_token_hash
+        and secrets.compare_digest(
+            hashlib.sha256(x_requirement_upload_token.encode()).hexdigest(), row.anonymous_upload_token_hash
+        )
+    )
+    if not can_access_private_data(row, user) and not anonymous_token_ok:
         raise HTTPException(status_code=403, detail="Not allowed")
     count = db.query(func.count(RequirementAttachment.id)).filter(
         RequirementAttachment.requirement_id == row.id
@@ -485,13 +517,13 @@ async def upload_requirement_attachment(
         target.unlink(missing_ok=True)
         raise
     attachment = RequirementAttachment(
-        requirement_id=row.id, uploaded_by=user.id, original_name=original_name, stored_name=stored_name,
+        requirement_id=row.id, uploaded_by=user.id if user else None, original_name=original_name, stored_name=stored_name,
         content_type=(file.content_type or "application/octet-stream")[:100], size_bytes=size,
         kind="image" if suffix in IMAGE_ATTACHMENT_EXTENSIONS else "file",
     )
     db.add(attachment)
     db.flush()
-    audit(db, user.id, "requirement.attachment_uploaded", "requirement", row.id,
+    audit(db, user.id if user else None, "requirement.attachment_uploaded", "requirement", row.id,
           attachment_id=attachment.id, name=original_name, size_bytes=size)
     db.commit()
     return ok({"id": attachment.id, "name": original_name, "content_type": attachment.content_type,
@@ -550,10 +582,61 @@ def list_requirements(
     if type:
         query = query.filter(Requirement.type == type)
     if q:
-        pattern = f"%{q.strip()}%"
-        query = query.filter(or_(Requirement.title.ilike(pattern), Requirement.description.ilike(pattern)))
+        search = q.strip()
+        pattern = f"%{search}%"
+        number_text = search.upper().removeprefix("REQ-").lstrip("0") or "0"
+        conditions = [Requirement.title.ilike(pattern), Requirement.description.ilike(pattern)]
+        if number_text.isdigit():
+            conditions.append(Requirement.public_number == int(number_text))
+        query = query.filter(or_(*conditions))
     rows = query.order_by(Requirement.created_at.desc()).offset(skip).limit(limit).all()
-    return ok([requirement_data(row, db, include_private=is_manager or bool(user and row.created_by == user.id)) for row in rows])
+    return ok([requirement_data(
+        row, db,
+        include_private=is_manager or bool(user and row.created_by == user.id),
+        include_contact=is_manager,
+    ) for row in rows])
+
+
+@app.get("/api/requirements/number/{public_number}")
+def get_requirement_by_number(public_number: int, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(
+        Requirement.public_number == public_number, Requirement.deleted_at.is_(None)
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    allowed = row.visibility == "public" or bool(user and (user.id == row.created_by or user.role in {"admin", "owner"}))
+    if not allowed:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    is_manager = bool(user and user.role in {"admin", "owner"})
+    return ok(requirement_data(row, db, include_private=is_manager or bool(user and user.id == row.created_by), include_contact=is_manager))
+
+
+@app.get("/api/requirements/{requirement_id}/history")
+def requirement_history(requirement_id: str, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row or (row.visibility != "public" and not user) or (
+        row.visibility != "public" and user and user.id != row.created_by and user.role not in {"admin", "owner"}
+    ):
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    allowed_actions = {
+        "requirement.created", "requirement.updated", "requirement.status_changed", "requirement.withdrawn",
+        "requirement.candidate", "requirement.needs_information", "requirement.rejected", "requirement.deferred",
+        "requirement.duplicate", "requirement.closed", "triage.queued", "triage.completed",
+    }
+    events = db.query(AuditEvent).filter(
+        AuditEvent.object_type == "requirement", AuditEvent.object_id == row.id,
+        AuditEvent.action.in_(allowed_actions),
+    ).order_by(AuditEvent.created_at).all()
+    result = []
+    for event in events:
+        actor_name = db.query(User.username).filter(User.id == event.actor_id).scalar() if event.actor_id else None
+        details = event.details or {}
+        result.append({
+            "id": event.id, "action": event.action, "actor_name": actor_name or "系统",
+            "before": details.get("before"), "after": details.get("after") or details.get("status"),
+            "reason": details.get("reason"), "created_at": event.created_at.isoformat(),
+        })
+    return ok(result)
 
 
 @app.get("/api/requirements/{requirement_id}")
@@ -565,7 +648,7 @@ def get_requirement(requirement_id: str, user: User | None = Depends(optional_us
     if not allowed:
         raise HTTPException(status_code=404, detail="Requirement not found")
     include_private = bool(user and (user.id == row.created_by or user.role in {"admin", "owner"}))
-    return ok(requirement_data(row, db, include_private=include_private))
+    return ok(requirement_data(row, db, include_private=include_private, include_contact=bool(user and user.role in {"admin", "owner"})))
 
 
 @app.patch("/api/requirements/{requirement_id}")
@@ -584,12 +667,14 @@ def update_requirement(
         setattr(row, key, value)
     row.version += 1
     if row.status == "needs_information":
+        before = row.status
         row.status = "submitted"
+        audit(db, user.id, "requirement.status_changed", "requirement", row.id, before=before, after=row.status)
     enqueue_github_sync(db, row)
     enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
     audit(db, user.id, "requirement.updated", "requirement", row.id, version=row.version)
     db.commit()
-    return ok(requirement_data(row, db, include_private=True))
+    return ok(requirement_data(row, db, include_private=True, include_contact=user.role in {"admin", "owner"}))
 
 
 @app.post("/api/requirements/{requirement_id}/withdraw")
@@ -600,9 +685,10 @@ def withdraw_requirement(requirement_id: str, user: User = Depends(current_user)
         raise HTTPException(status_code=404, detail="Requirement not found")
     if row.status in {"scheduled", "developing", "testing", "release_ready", "released"}:
         raise HTTPException(status_code=409, detail="Scheduled requirement cannot be withdrawn")
+    before = row.status
     row.status = "withdrawn"
     enqueue_github_sync(db, row)
-    audit(db, user.id, "requirement.withdrawn", "requirement", row.id)
+    audit(db, user.id, "requirement.withdrawn", "requirement", row.id, before=before, after=row.status)
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 
@@ -636,9 +722,10 @@ def queue_triage(requirement_id: str, actor: User = Depends(manager), db: Sessio
         raise HTTPException(status_code=404, detail="Requirement not found")
     key = f"triage:{row.id}:v{row.version}:manual:{int(datetime.now().timestamp()) // 60}"
     job = enqueue(db, "triage", row.id, key)
+    before = row.status
     row.status = "triaging"
     enqueue_github_sync(db, row)
-    audit(db, actor.id, "triage.queued", "requirement", row.id, job_id=job.id)
+    audit(db, actor.id, "triage.queued", "requirement", row.id, job_id=job.id, before=before, after=row.status)
     db.commit()
     return ok({"job_id": job.id})
 
@@ -664,6 +751,7 @@ def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = 
             ).first()
             if not exists:
                 db.add(RequirementFollower(requirement_id=target.id, user_id=follower.user_id))
+    before = row.status
     row.status = status_by_action[payload.action]
     row.review_reason = payload.reason
     row.priority = payload.priority
@@ -673,7 +761,8 @@ def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = 
         metadata_json={"priority": payload.priority, "risk_level": payload.risk_level, "duplicate_of_id": payload.duplicate_of_id},
     ))
     enqueue_github_sync(db, row)
-    audit(db, actor.id, f"requirement.{payload.action}", "requirement", row.id, reason=payload.reason)
+    audit(db, actor.id, f"requirement.{payload.action}", "requirement", row.id,
+          before=before, after=row.status, reason=payload.reason)
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 
@@ -683,10 +772,12 @@ def close_requirement(requirement_id: str, payload: ReasonInput, actor: User = D
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    before = row.status
     row.status, row.review_reason = "closed", payload.reason
     enqueue_github_sync(db, row)
     db.add(ReviewDecision(requirement_id=row.id, reviewer_id=actor.id, action="close", reason=payload.reason))
-    audit(db, actor.id, "requirement.closed", "requirement", row.id, reason=payload.reason)
+    audit(db, actor.id, "requirement.closed", "requirement", row.id,
+          before=before, after=row.status, reason=payload.reason)
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 
@@ -768,6 +859,7 @@ def import_github_issues(actor: User = Depends(manager), db: Session = Depends(g
             updated += 1
             continue
         row = Requirement(
+            public_number=next_requirement_number(db),
             type=kind, title=(issue.get("title") or f"GitHub Issue #{number}")[:160],
             description=((issue.get("body") or "GitHub Issue 未提供正文").strip() or "GitHub Issue 未提供正文")[:8000],
             severity="medium", visibility="public", status=issue_status, source="github", created_by=actor.id,
@@ -924,8 +1016,11 @@ def lock_batch(batch_id: str, actor: User = Depends(manager), db: Session = Depe
         requirement = db.query(Requirement).filter(Requirement.id == item.requirement_id).first()
         if requirement:
             item.requirement_snapshot = requirement_snapshot(requirement)
+            before = requirement.status
             requirement.status = "scheduled"
             enqueue_github_sync(db, requirement)
+            audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id,
+                  before=before, after=requirement.status, reason=f"加入版本 {batch.version_name}")
     enqueue(db, "github_milestone", batch.id, f"github_milestone:{batch.id}")
     audit(db, actor.id, "release_batch.locked", "release_batch", batch.id, count=len(items))
     db.commit()
@@ -975,8 +1070,11 @@ def update_batch_status(batch_id: str, payload: BatchStatusInput, actor: User = 
         for item in items:
             requirement = db.query(Requirement).filter(Requirement.id == item.requirement_id).first()
             if requirement and (requirement_status != "released" or item.delivery_status == "completed"):
+                before_status = requirement.status
                 requirement.status = requirement_status
                 enqueue_github_sync(db, requirement)
+                audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id,
+                      before=before_status, after=requirement.status, reason=payload.reason)
     audit(db, actor.id, "release_batch.status_changed", "release_batch", batch.id, before=before, after=payload.status, reason=payload.reason)
     db.commit()
     return ok(batch_data(batch, db, include_private=True))
@@ -998,8 +1096,11 @@ def update_delivery_status(
     requirement = db.query(Requirement).filter(Requirement.id == item.requirement_id).first()
     mapping = {"developing": "developing", "pr_open": "developing", "testing": "testing", "completed": "release_ready"}
     if requirement and payload.status in mapping:
+        before_status = requirement.status
         requirement.status = mapping[payload.status]
         enqueue_github_sync(db, requirement)
+        audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id,
+              before=before_status, after=requirement.status, reason=f"版本交付状态：{payload.status}")
     audit(db, actor.id, "release_batch.delivery_status", "release_batch", batch_id, item_id=item.id, status=payload.status)
     db.commit()
     return ok({"id": item.id, "delivery_status": item.delivery_status})
@@ -1012,6 +1113,28 @@ def list_jobs(_actor: User = Depends(manager), db: Session = Depends(get_db)):
         "id": row.id, "job_type": row.job_type, "object_id": row.object_id, "status": row.status,
         "attempts": row.attempts, "last_error": row.last_error, "created_at": row.created_at.isoformat(),
     } for row in rows])
+
+
+@app.get("/api/admin/dashboard")
+def dashboard(_actor: User = Depends(manager), db: Session = Depends(get_db)):
+    base = db.query(Requirement).filter(Requirement.deleted_at.is_(None))
+    status_rows = db.query(Requirement.status, func.count(Requirement.id)).filter(
+        Requirement.deleted_at.is_(None)
+    ).group_by(Requirement.status).all()
+    type_rows = db.query(Requirement.type, func.count(Requirement.id)).filter(
+        Requirement.deleted_at.is_(None)
+    ).group_by(Requirement.type).all()
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    return ok({
+        "total": base.count(),
+        "new_last_7_days": base.filter(Requirement.created_at >= since).count(),
+        "pending_review": base.filter(Requirement.status.in_({"submitted", "triaging", "pending_review"})).count(),
+        "in_progress": base.filter(Requirement.status.in_({"scheduled", "developing", "testing", "release_ready"})).count(),
+        "github_linked": base.filter(Requirement.github_issue_number.is_not(None)).count(),
+        "anonymous": base.filter(Requirement.created_by.is_(None)).count(),
+        "by_status": {status: count for status, count in status_rows},
+        "by_type": {kind: count for kind, count in type_rows},
+    })
 
 
 @app.post("/api/hooks/github")

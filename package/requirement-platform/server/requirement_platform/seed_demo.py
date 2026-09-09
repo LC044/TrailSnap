@@ -70,7 +70,7 @@ def main() -> None:
         requirements = []
         for i, (type_, title, desc, severity, status, priority, name, followers) in enumerate(demo):
             row = Requirement(
-                type=type_, title=title, description=desc, severity=severity, status=status, priority=priority,
+                public_number=i + 1, type=type_, title=title, description=desc, severity=severity, status=status, priority=priority,
                 risk_level="medium", visibility="public", created_by=users[name].id,
                 created_at=base - timedelta(days=len(demo) - i, hours=i % 5),
                 updated_at=base - timedelta(days=len(demo) - i - 1, hours=(len(demo) - i) % 7),

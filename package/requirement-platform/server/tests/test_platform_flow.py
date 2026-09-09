@@ -306,3 +306,74 @@ def test_github_status_sync_preserves_unmanaged_labels(monkeypatch):
     GitHubClient().sync_status_label(42, "testing")
     patch_request = next(item for item in requests if item[0] == "PATCH")
     assert patch_request[2]["json"]["labels"] == ["bug", "status: testing"]
+
+
+def test_github_full_issue_sync_updates_content_and_preserves_custom_labels(monkeypatch):
+    requests = []
+
+    def fake_request(_self, method, path, **kwargs):
+        requests.append((method, path, kwargs))
+        if method == "GET" and path.endswith("/issues/42"):
+            return {"number": 42, "state": "open", "labels": [
+                {"name": "documentation"}, {"name": "bug"}, {"name": "status: submitted"},
+            ]}
+        if method == "GET" and path.endswith("/labels"):
+            return [{"name": "status: testing"}]
+        return {"number": 42, "state": "open"}
+
+    monkeypatch.setattr(GitHubClient, "_request", fake_request)
+    requirement = type("RequirementStub", (), {
+        "github_issue_number": 42, "title": "新的标题", "description": "新的描述",
+        "current_behavior": None, "expected_behavior": "新的期望", "review_reason": None,
+        "type": "feature", "status": "testing", "public_number": 123,
+    })()
+    GitHubClient().sync_issue(requirement)
+    payload = next(item for item in requests if item[0] == "PATCH")[2]["json"]
+    assert payload["title"] == "新的标题"
+    assert "新的描述" in payload["body"]
+    assert payload["labels"] == ["documentation", "enhancement", "status: testing"]
+
+
+def test_anonymous_number_history_dashboard_and_manager_edit():
+    with TestClient(app) as client:
+        response = client.post("/api/requirements", json={
+            "type": "feature", "title": "匿名用户希望增加地图导出",
+            "description": "希望可以把相册中的旅行轨迹导出为通用地图文件。",
+            "submitter_name": "旅行者", "submitter_contact": "traveler@example.com",
+        })
+        assert response.status_code == 200, response.text
+        created = response.json()["data"]
+        assert created["public_number"] > 0
+        assert created["created_by"] is None
+        assert created["submitter_contact"] is None
+        assert created["upload_token"]
+
+        upload = client.post(
+            f"/api/requirements/{created['id']}/attachments",
+            headers={"X-Requirement-Upload-Token": created["upload_token"]},
+            files={"file": ("details.txt", b"anonymous details", "text/plain")},
+        )
+        assert upload.status_code == 200, upload.text
+
+        public_detail = client.get(f"/api/requirements/number/{created['public_number']}")
+        assert public_detail.status_code == 200
+        assert public_detail.json()["data"]["created_by_name"] == "旅行者"
+        assert public_detail.json()["data"]["submitter_contact"] is None
+
+        history = client.get(f"/api/requirements/{created['id']}/history")
+        assert history.status_code == 200
+        assert history.json()["data"][0]["action"] == "requirement.created"
+
+        owner = client.post(
+            "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
+        ).json()["data"]
+        edited = client.patch(
+            f"/api/requirements/{created['id']}", headers=auth(owner["token"]),
+            json={"title": "管理员完善后的地图导出需求", "severity": "high"},
+        )
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["data"]["submitter_contact"] == "traveler@example.com"
+
+        dashboard = client.get("/api/admin/dashboard", headers=auth(owner["token"]))
+        assert dashboard.status_code == 200
+        assert dashboard.json()["data"]["anonymous"] >= 1

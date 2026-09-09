@@ -4,11 +4,12 @@ export type GitHubIdentity = { github_user_id: number; login: string; avatar_url
 export type User = { id: string; username: string; email: string; role: 'viewer' | 'admin' | 'owner'; is_active: boolean; github?: GitHubIdentity }
 export type AgentToken = { id: string; name: string; token_prefix: string; scopes: string[]; expires_at?: string; last_used_at?: string; revoked_at?: string; created_at: string }
 export type Requirement = {
-  id: string; type: string; title: string; description: string; log_text?: string; current_behavior?: string; expected_behavior?: string
+  id: string; public_number?: number; type: string; title: string; description: string; log_text?: string; current_behavior?: string; expected_behavior?: string
   steps_to_reproduce?: string; severity: string; product_version?: string; environment: Record<string, unknown>
   visibility: string; status: string; priority: string; risk_level: string; review_reason?: string
   duplicate_of_id?: string; github_issue_number?: number; github_issue_url?: string; github_state?: string
-  created_by: string; created_by_name?: string; created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
+  created_by?: string; created_by_name?: string; submitter_name?: string; submitter_contact?: string; upload_token?: string
+  created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
   deleted_at?: string; deleted_by?: string; delete_reason?: string; source: 'platform' | 'github'
   attachments?: Array<{ id: string; name: string; content_type: string; size_bytes: number; kind: string; download_url: string }>
 }
@@ -17,6 +18,8 @@ export type Batch = {
   id: string; name: string; version_name: string; batch_type: string; goal: string; status: string; target_date?: string
   max_risk_level: string; github_milestone_number?: number; github_milestone_url?: string; items: BatchItem[]
 }
+export type RequirementHistory = { id: string; action: string; actor_name: string; before?: string; after?: string; reason?: string; created_at: string }
+export type Dashboard = { total: number; new_last_7_days: number; pending_review: number; in_progress: number; github_linked: number; anonymous: number; by_status: Record<string, number>; by_type: Record<string, number> }
 
 const client = axios.create({ baseURL: import.meta.env.VITE_REQUIREMENT_API_URL || '/api', timeout: 20000 })
 client.interceptors.request.use(config => {
@@ -40,10 +43,14 @@ export const api = {
   githubUnlink: () => call<{ unlinked: boolean }>('delete', '/auth/github/link'),
   requirements: (params = '') => call<Requirement[]>('get', `/requirements${params}`),
   createRequirement: (data: unknown) => call<Requirement>('post', '/requirements', data),
-  uploadAttachment: (id: string, file: File) => {
+  uploadAttachment: (id: string, file: File, uploadToken?: string) => {
     const data = new FormData(); data.append('file', file)
-    return call<{ id: string; name: string }>('post', `/requirements/${id}/attachments`, data)
+    return client.post(`/requirements/${id}/attachments`, data, {
+      headers: uploadToken ? { 'X-Requirement-Upload-Token': uploadToken } : undefined,
+    }).then(response => response.data.data as { id: string; name: string })
   },
+  requirementByNumber: (number: number) => call<Requirement>('get', `/requirements/number/${number}`),
+  requirementHistory: (id: string) => call<RequirementHistory[]>('get', `/requirements/${id}/history`),
   downloadAttachment: async (requirementId: string, attachmentId: string, name: string) => {
     const response = await client.get(`/requirements/${requirementId}/attachments/${attachmentId}`, { responseType: 'blob' })
     const url = URL.createObjectURL(response.data)
@@ -63,6 +70,7 @@ export const api = {
   unlinkGithubIssue: (id: string) => call<Requirement>('delete', `/requirements/${id}/github/link`),
   closeGithubIssue: (id: string, reason: string) => call<Requirement>('post', `/requirements/${id}/github/close`, { reason }),
   syncGithubIssues: () => call<{ created: number; updated: number; skipped: number; total: number }>('post', '/admin/github/issues/sync'),
+  dashboard: () => call<Dashboard>('get', '/admin/dashboard'),
   batches: () => call<Batch[]>('get', '/versions'),
   createBatch: (data: unknown) => call<Batch>('post', '/versions', data),
   addBatchItem: (batchId: string, requirementId: string) => call<Batch>('post', `/versions/${batchId}/items`, { requirement_id: requirementId }),
