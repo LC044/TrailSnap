@@ -273,10 +273,13 @@ def test_mcp_requirement_version_attachment_and_records_flow(monkeypatch):
             "steps_to_reproduce": "1. 调用", "product_version": "v0.1", "environment": {"os": "test"},
         })
     requirement_id = created["id"]
+    requirement_reference = created["reference"]
+    updated = mcp_server.update_requirement(requirement_reference, title="MCP 公共编号写入测试")
+    assert updated["title"] == "MCP 公共编号写入测试"
     mcp_server.upload_requirement_attachment(requirement_id, "trace.log", base64.b64encode(b"trace").decode())
     attachment_id = mcp_server.list_requirement_attachments(requirement_id)[0]["id"]
     assert mcp_server.download_requirement_attachment(requirement_id, attachment_id)["content_base64"] == base64.b64encode(b"trace").decode()
-    mcp_server.review_requirement(requirement_id, "candidate", "可纳入测试版本")
+    mcp_server.review_requirement(requirement_reference, "candidate", "可纳入测试版本")
     batch = mcp_server.create_version("MCP 测试版本", "mcp-test-1", "验证版本写入")
     version = mcp_server.add_version_requirement(batch["id"], requirement_id)
     item_id = version["items"][0]["id"]

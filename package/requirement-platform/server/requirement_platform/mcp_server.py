@@ -114,7 +114,12 @@ def _batch_dict(row: ReleaseBatch, db) -> dict[str, Any]:
 
 
 def _requirement_or_error(db, requirement_id: str, *, include_deleted: bool = False) -> Requirement:
-    query = db.query(Requirement).filter(Requirement.id == requirement_id)
+    number_text = requirement_id.upper().removeprefix("REQ-").lstrip("0") or "0"
+    query = db.query(Requirement)
+    if number_text.isdigit():
+        query = query.filter(Requirement.public_number == int(number_text))
+    else:
+        query = query.filter(Requirement.id == requirement_id)
     if not include_deleted:
         query = query.filter(Requirement.deleted_at.is_(None))
     row = query.first()
@@ -162,12 +167,7 @@ def get_requirement(requirement_id: str) -> dict[str, Any]:
     """读取一个需求的完整管理信息；支持 UUID 或 REQ-123 公共编号。"""
     _identity("requirements:read")
     with SessionLocal() as db:
-        number_text = requirement_id.upper().removeprefix("REQ-").lstrip("0") or "0"
-        row = db.query(Requirement).filter(
-            Requirement.public_number == int(number_text)
-        ).first() if number_text.isdigit() else db.query(Requirement).filter(Requirement.id == requirement_id).first()
-        if not row:
-            raise ValueError("需求不存在")
+        row = _requirement_or_error(db, requirement_id, include_deleted=True)
         return _requirement_dict(row)
 
 
