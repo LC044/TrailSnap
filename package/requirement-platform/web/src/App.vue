@@ -385,7 +385,7 @@
             <el-table-column label="作用域"><template #default="scope"><span class="meta">{{ scope.row.scopes.join('、') }}</span></template></el-table-column>
             <el-table-column label="最后使用" width="170"><template #default="scope">{{ scope.row.last_used_at ? new Date(scope.row.last_used_at).toLocaleString() : '从未' }}</template></el-table-column>
             <el-table-column label="状态" width="100"><template #default="scope"><span class="tag no-dot plain">{{ scope.row.revoked_at ? '已撤销' : '有效' }}</span></template></el-table-column>
-            <el-table-column label="操作" width="100"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
+            <el-table-column label="操作" width="150"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="primary" :icon="Connection" @click="openMcpConnection(scope.row)">接入</el-button><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
           </el-table>
         </article>
         <article class="panel mcp-guide" style="margin-top:16px">
@@ -403,6 +403,10 @@
               <p>编辑用户级 <code>~/.codex/config.toml</code>。Codex 会在连接 MCP 时直接注入请求头，沙盒内的 Agent 无需读取宿主机环境变量。</p>
               <pre class="code-block mcp-code"><code>{{ mcpConfigExample }}</code></pre>
               <el-button size="small" @click="copyText(mcpConfigExample)">复制配置</el-button>
+            </li>
+            <li>
+              <strong>通过 Codex 设置界面接入</strong>
+              <p>URL 填 <code>{{ mcpUrl }}</code>；“Bearer 令牌环境变量”留空；在“标头”中填写 <code>Authorization</code> 和 <code>Bearer 完整令牌</code>；“来自环境变量的标头”留空。不要把 <code>bearer_token_env_var</code> 当作标头名。</p>
             </li>
             <li>
               <strong>重启并验证</strong>
@@ -540,8 +544,32 @@
         <el-form-item label="有效期（天）"><el-input-number v-model="tokenForm.expires_in_days" :min="1" :max="365" /></el-form-item>
         <el-form-item label="授权作用域"><el-checkbox-group v-model="tokenForm.scopes"><el-checkbox v-for="scope in scopeOptions" :key="scope" :value="scope">{{ scope }}</el-checkbox></el-checkbox-group></el-form-item>
       </el-form>
-      <el-alert v-if="createdToken" type="success" :closable="false" title="请立即复制，关闭后无法再次查看"><code class="code-block">{{ createdToken }}</code><el-button style="margin-top:10px" @click="copyText(createdToken)">复制令牌</el-button></el-alert>
+      <el-alert v-if="createdToken" type="success" :closable="false" title="请立即复制，关闭后无法再次查看"><code class="code-block">{{ createdToken }}</code><div class="token-created-actions"><el-button @click="copyText(createdToken)">复制令牌</el-button><el-button type="primary" :icon="Connection" @click="openCreatedTokenConnection">接入</el-button></div></el-alert>
       <template #footer><el-button @click="tokenDialog = false; createdToken = ''">关闭</el-button><el-button v-if="!createdToken" type="primary" :loading="busy" @click="createToken">创建</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="mcpConnectionDialog" title="接入 MCP 客户端" width="min(94vw, 680px)" :close-on-click-modal="false">
+      <el-form label-position="top">
+        <el-form-item label="完整令牌" required>
+          <el-input v-model="connectionToken" type="password" show-password placeholder="粘贴以 trp_ 开头的完整令牌" autocomplete="off" />
+          <div class="field-hint">平台只保存令牌哈希。历史令牌需要重新粘贴；令牌仅保留在当前弹窗内。</div>
+        </el-form-item>
+      </el-form>
+      <div class="connection-section">
+        <div class="section-title-row"><div><h3>通用 Streamable HTTP MCP</h3><p class="meta">适用于支持 JSON MCP 配置的客户端。</p></div><el-button :disabled="!connectionToken.trim()" @click="copyText(genericMcpConfig)">复制 JSON</el-button></div>
+        <pre class="code-block mcp-code"><code>{{ genericMcpConfig }}</code></pre>
+      </div>
+      <div class="connection-section">
+        <h3>Codex 设置界面</h3>
+        <dl class="config-fields">
+          <div><dt>URL</dt><dd>{{ mcpUrl }}</dd></div>
+          <div><dt>Bearer 令牌环境变量</dt><dd>留空</dd></div>
+          <div><dt>标头</dt><dd><code>Authorization</code> → <code>Bearer 完整令牌</code></dd></div>
+          <div><dt>来自环境变量的标头</dt><dd>留空</dd></div>
+        </dl>
+      </div>
+      <el-alert type="warning" :closable="false" title="配置包含完整令牌">只复制到可信客户端，不要提交到 Git 或发送给其他人；令牌泄露后请立即撤销。</el-alert>
+      <template #footer><el-button @click="closeMcpConnection">关闭</el-button></template>
     </el-dialog>
 
     <!-- ============ 人工审核 ============ -->
@@ -644,8 +672,8 @@ const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
 const agentTokens = ref<AgentToken[]>([])
 const dashboard = ref<Dashboard | null>(null), detailHistory = ref<RequirementHistory[]>([])
-const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false)
-const githubOauthEnabled = ref(false), createdToken = ref('')
+const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
+const githubOauthEnabled = ref(false), createdToken = ref(''), createdTokenId = ref(''), connectionToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
 const detailDialog = ref(false), detailTarget = ref<Requirement | null>(null)
@@ -662,8 +690,17 @@ const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: '
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
 const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
 const mcpUrl = `${window.location.origin}/mcp/`
-const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer rp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
+const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer trp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
 const mcpEnvConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
+const genericMcpConfig = computed(() => JSON.stringify({
+  mcpServers: {
+    'trailsnap-feedback': {
+      type: 'http',
+      url: mcpUrl,
+      headers: { Authorization: connectionToken.value.trim() ? `Bearer ${connectionToken.value.trim()}` : 'Bearer <完整令牌>' },
+    },
+  },
+}, null, 2))
 const candidateSelection = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
@@ -765,11 +802,24 @@ async function createToken() {
   try {
     const result = await api.createAgentToken({ ...tokenForm })
     createdToken.value = result.token
+    createdTokenId.value = result.id
     await loadIntegrations()
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
 async function revokeToken(id: string) {
   try { await ElMessageBox.confirm('撤销后 Agent 将立即失去访问权限，确认继续？', '撤销令牌'); await api.revokeAgentToken(id); await loadIntegrations(); ElMessage.success('令牌已撤销') } catch (e) { if (e !== 'cancel') ElMessage.error(errorMessage(e)) }
+}
+function openMcpConnection(token: AgentToken) {
+  connectionToken.value = token.id === createdTokenId.value ? createdToken.value : ''
+  mcpConnectionDialog.value = true
+}
+function openCreatedTokenConnection() {
+  connectionToken.value = createdToken.value
+  mcpConnectionDialog.value = true
+}
+function closeMcpConnection() {
+  mcpConnectionDialog.value = false
+  connectionToken.value = ''
 }
 async function copyText(value: string) { await navigator.clipboard.writeText(value); ElMessage.success('已复制') }
 
@@ -1063,6 +1113,15 @@ onMounted(async () => {
 .mcp-guide h2 { margin: 0 0 6px; font-size: 18px; }
 .guide-steps { margin: 20px 0; padding-left: 24px; display: grid; gap: 18px; }
 .guide-steps li { padding-left: 4px; }
+.token-created-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.connection-section { margin-bottom: 18px; }
+.connection-section h3 { margin: 0 0 6px; font-size: 15px; }
+.config-fields { margin: 10px 0 0; border: 1px solid var(--rp-border); border-radius: 10px; overflow: hidden; }
+.config-fields > div { display: grid; grid-template-columns: 190px minmax(0, 1fr); border-bottom: 1px solid var(--rp-border); }
+.config-fields > div:last-child { border-bottom: 0; }
+.config-fields dt, .config-fields dd { margin: 0; padding: 10px 12px; font-size: 13px; }
+.config-fields dt { color: var(--rp-text-2); background: #f8fafc; font-weight: 600; }
+.config-fields dd { color: var(--rp-text); overflow-wrap: anywhere; }
 .guide-steps p { margin: 6px 0 10px; color: var(--rp-text-2); line-height: 1.65; font-size: 13.5px; }
 .guide-steps code { font-size: 12.5px; }
 .mcp-code { margin: 10px 0; overflow-x: auto; overflow-wrap: normal; white-space: pre; }
@@ -1073,5 +1132,8 @@ onMounted(async () => {
   .account-row,.section-title-row { align-items:flex-start; flex-wrap:wrap; }
   .mcp-guide .section-title-row { display: grid; }
   .guide-steps { padding-left: 20px; }
+  .config-fields > div { grid-template-columns: 1fr; }
+  .config-fields dt { padding-bottom: 4px; }
+  .config-fields dd { padding-top: 4px; }
 }
 </style>
