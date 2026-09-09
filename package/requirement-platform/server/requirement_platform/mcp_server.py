@@ -21,7 +21,9 @@ from .models import (
     RequirementFollower, RequirementRevision, ReviewDecision, TriageReport, User, utcnow,
 )
 from .security import resolve_agent_token
-from .services import GitHubClient, STATUS_LABELS, audit, enqueue, requirement_snapshot, sync_batch_milestone
+from .services import (
+    GitHubClient, audit, enqueue, requirement_snapshot, requirement_status_from_github, sync_batch_milestone,
+)
 
 
 class DatabaseTokenVerifier:
@@ -123,6 +125,19 @@ def _requirement_or_error(db, requirement_id: str, *, include_deleted: bool = Fa
 def _enqueue_requirement_github_sync(db, row: Requirement) -> None:
     if row.github_issue_number or (row.visibility == "public" and row.status == "candidate"):
         enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:{row.status}:{secrets.token_hex(6)}")
+
+
+def _apply_github_status(db, row: Requirement, issue: dict[str, Any], actor: User) -> bool:
+    before = row.status
+    after = requirement_status_from_github(issue, current_status=before)
+    row.github_state = issue.get("state", row.github_state)
+    if after == before:
+        return False
+    row.status = after
+    audit(db, actor.id, "requirement.status_changed", "requirement", row.id,
+          before=before, after=after, reason="GitHub 状态同步：manual_sync",
+          source="github_manual_sync", actor_name=actor.username)
+    return True
 
 
 @mcp.tool()
@@ -236,12 +251,14 @@ def review_requirement(requirement_id: str, action: str, reason: str, priority: 
                 if not db.query(RequirementFollower).filter(RequirementFollower.requirement_id == target.id,
                                                            RequirementFollower.user_id == follower.user_id).first():
                     db.add(RequirementFollower(requirement_id=target.id, user_id=follower.user_id))
+        before = row.status
         row.status, row.review_reason, row.priority, row.risk_level = statuses[action], reason.strip(), priority, risk_level
         _enqueue_requirement_github_sync(db, row)
         db.add(ReviewDecision(requirement_id=row.id, reviewer_id=actor.id, action=action, reason=reason,
                               metadata_json={"source": "mcp", "priority": priority, "risk_level": risk_level,
                                              "duplicate_of_id": duplicate_of_id}))
-        audit(db, actor.id, f"requirement.{action}", "requirement", row.id, source="mcp", reason=reason)
+        audit(db, actor.id, f"requirement.{action}", "requirement", row.id, source="mcp", reason=reason,
+              before=before, after=row.status)
         db.commit()
         return _requirement_dict(row)
 
@@ -293,6 +310,7 @@ def create_github_issue(requirement_id: str) -> dict[str, Any]:
             return _requirement_dict(row)
         data = GitHubClient().create_issue(row)
         row.github_issue_number, row.github_issue_url, row.github_state = data["number"], data["html_url"], data["state"]
+        _enqueue_requirement_github_sync(db, row)
         audit(db, actor.id, "github.issue.created", "requirement", row.id, source="mcp", issue_number=data["number"])
         db.commit()
         return _requirement_dict(row)
@@ -311,6 +329,8 @@ def link_github_issue(requirement_id: str, issue_number: int) -> dict[str, Any]:
             raise ValueError("该 Issue 已关联其他需求")
         data = GitHubClient().get_issue(issue_number)
         row.github_issue_number, row.github_issue_url, row.github_state = data["number"], data["html_url"], data["state"]
+        _apply_github_status(db, row, data, actor)
+        _enqueue_requirement_github_sync(db, row)
         audit(db, actor.id, "github.issue.linked", "requirement", row.id, source="mcp", issue_number=issue_number)
         db.commit()
         return _requirement_dict(row)
@@ -318,16 +338,17 @@ def link_github_issue(requirement_id: str, issue_number: int) -> dict[str, Any]:
 
 @mcp.tool()
 def close_github_issue(requirement_id: str, reason: str) -> dict[str, Any]:
-    """关闭已关联的 GitHub Issue，并同步关闭平台需求。"""
+    """关闭平台需求，并由后台任务同步关闭已关联的 GitHub Issue。"""
     _, actor = _identity("github:write")
     with SessionLocal() as db:
         row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
         if not row or not row.github_issue_number:
             raise ValueError("需求不存在或尚未关联 Issue")
-        data = GitHubClient().update_issue_state(row.github_issue_number, "closed")
-        row.github_state, row.status, row.review_reason = data["state"], "closed", reason.strip()
-        audit(db, actor.id, "github.issue.closed", "requirement", row.id, source="mcp",
-              issue_number=row.github_issue_number, reason=reason)
+        before = row.status
+        row.status, row.review_reason = "closed", reason.strip()
+        _enqueue_requirement_github_sync(db, row)
+        audit(db, actor.id, "requirement.closed", "requirement", row.id, source="mcp",
+              before=before, after="closed", issue_number=row.github_issue_number, reason=reason)
         db.commit()
         return _requirement_dict(row)
 
@@ -489,8 +510,11 @@ def update_version_delivery_status(batch_id: str, item_id: str, status: str) -> 
         mapping = {"developing": "developing", "pr_open": "developing", "testing": "testing", "completed": "release_ready"}
         if status in mapping:
             requirement = _requirement_or_error(db, item.requirement_id)
+            before = requirement.status
             requirement.status = mapping[status]
             _enqueue_requirement_github_sync(db, requirement)
+            audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id, source="mcp",
+                  before=before, after=requirement.status, reason=f"版本交付状态：{status}")
         audit(db, actor.id, "release_batch.delivery_status", "release_batch", batch.id, source="mcp", item_id=item.id, status=status)
         db.commit()
         return {"id": item.id, "delivery_status": item.delivery_status}
@@ -658,10 +682,9 @@ def list_github_issues() -> list[dict[str, Any]]:
 
 @mcp.tool()
 def sync_github_issues() -> dict[str, int]:
-    """从 GitHub 导入新 Issue，并更新此前由 GitHub 导入的需求。"""
+    """从 GitHub 导入/更新 Issue，并按统一映射记录平台状态变化。"""
     _, actor = _identity("github:write")
     issues = GitHubClient().list_issues()
-    statuses = {name.lower(): status for status, (name, _color, _description) in STATUS_LABELS.items()}
     created = updated = skipped = 0
     with SessionLocal() as db:
         for issue in issues:
@@ -670,26 +693,27 @@ def sync_github_issues() -> dict[str, int]:
                 skipped += 1
                 continue
             labels = [x.get("name", "") if isinstance(x, dict) else str(x) for x in issue.get("labels", [])]
-            status = next((statuses[name.lower()] for name in labels if name.lower() in statuses), None) or ("closed" if issue.get("state") == "closed" else "submitted")
             kind = "bug" if any(name.lower() == "bug" for name in labels) else ("feature" if any(name.lower() in {"enhancement", "feature"} for name in labels) else "improvement")
             row = db.query(Requirement).filter(Requirement.github_issue_number == number).first()
             if row:
-                row.github_issue_url, row.github_state = issue.get("html_url"), issue.get("state")
+                row.github_issue_url = issue.get("html_url")
                 if row.source == "github":
                     row.title = (issue.get("title") or f"GitHub Issue #{number}")[:160]
                     row.description = ((issue.get("body") or "GitHub Issue 未提供正文").strip() or "GitHub Issue 未提供正文")[:8000]
-                    row.type, row.status = kind, status
+                    row.type = kind
+                _apply_github_status(db, row, issue, actor)
                 updated += 1
                 continue
             row = Requirement(public_number=(db.query(func.max(Requirement.public_number)).scalar() or 0) + 1, type=kind,
                               title=(issue.get("title") or f"GitHub Issue #{number}")[:160],
                               description=((issue.get("body") or "GitHub Issue 未提供正文").strip() or "GitHub Issue 未提供正文")[:8000],
-                              severity="medium", visibility="public", status=status, source="github", created_by=actor.id,
+                              severity="medium", visibility="public", status="submitted", source="github", created_by=actor.id,
                               github_issue_number=number, github_issue_url=issue.get("html_url"), github_state=issue.get("state"))
             db.add(row)
             db.flush()
             db.add(RequirementFollower(requirement_id=row.id, user_id=actor.id))
-            if status == "submitted":
+            _apply_github_status(db, row, issue, actor)
+            if row.status == "submitted":
                 enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
             created += 1
         audit(db, actor.id, "github.issues.synchronized", "github_repository", settings.github_repo, source="mcp", created=created, updated=updated, skipped=skipped, total=len(issues))

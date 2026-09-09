@@ -60,7 +60,9 @@ from .schemas import (
 from .security import (
     authenticate, create_agent_token_value, create_token, current_user, hash_password, manager, optional_user, owner,
 )
-from .services import GitHubClient, STATUS_LABELS, audit, enqueue, requirement_snapshot, verify_webhook
+from .services import (
+    GitHubClient, audit, enqueue, requirement_snapshot, requirement_status_from_github, verify_webhook,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -112,6 +114,26 @@ def requirement_data(row: Requirement, db: Session, *, include_private: bool = F
 def enqueue_github_sync(db: Session, row: Requirement) -> None:
     if row.github_issue_number or (row.visibility == "public" and row.status == "candidate"):
         enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:{row.status}:{secrets.token_hex(6)}")
+
+
+def apply_github_status(
+    db: Session, row: Requirement, issue: dict, *, action: str | None = None,
+    changed_label: str | None = None, actor_id: str | None = None, actor_name: str = "GitHub",
+    source: str = "github",
+) -> bool:
+    """Apply one GitHub-originated transition and retain an attributable audit record."""
+    before = row.status
+    after = requirement_status_from_github(issue, current_status=before, action=action, changed_label=changed_label)
+    row.github_state = issue.get("state", row.github_state)
+    if after == before:
+        return False
+    row.status = after
+    audit(
+        db, actor_id, "requirement.status_changed", "requirement", row.id,
+        before=before, after=after, reason=f"GitHub 状态同步：{action or 'manual_sync'}",
+        source=source, actor_name=actor_name, github_action=action,
+    )
+    return True
 
 
 def next_requirement_number(db: Session) -> int:
@@ -636,12 +658,12 @@ def requirement_history(requirement_id: str, user: User | None = Depends(optiona
     ).order_by(AuditEvent.created_at).all()
     result = []
     for event in events:
-        actor_name = db.query(User.username).filter(User.id == event.actor_id).scalar() if event.actor_id else None
         details = event.details or {}
+        actor_name = db.query(User.username).filter(User.id == event.actor_id).scalar() if event.actor_id else None
         result.append({
-            "id": event.id, "action": event.action, "actor_name": actor_name or "系统",
+            "id": event.id, "action": event.action, "actor_name": details.get("actor_name") or actor_name or "系统",
             "before": details.get("before"), "after": details.get("after") or details.get("status"),
-            "reason": details.get("reason"), "created_at": event.created_at.isoformat(),
+            "reason": details.get("reason"), "source": details.get("source"), "created_at": event.created_at.isoformat(),
         })
     return ok(result)
 
@@ -830,6 +852,7 @@ def create_requirement_github_issue(requirement_id: str, actor: User = Depends(m
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"GitHub issue creation failed: {exc}") from exc
     row.github_issue_number, row.github_issue_url, row.github_state = data["number"], data["html_url"], data["state"]
+    enqueue_github_sync(db, row)
     audit(db, actor.id, "github.issue.created", "requirement", row.id, issue_number=data["number"])
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
@@ -841,7 +864,6 @@ def import_github_issues(actor: User = Depends(manager), db: Session = Depends(g
         issues = GitHubClient().list_issues()
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"GitHub Issue 同步失败：{exc}") from exc
-    status_by_label = {label_name.lower(): status for status, (label_name, _color, _desc) in STATUS_LABELS.items()}
     created = updated = skipped = 0
     for issue in issues:
         number = issue.get("number")
@@ -849,33 +871,35 @@ def import_github_issues(actor: User = Depends(manager), db: Session = Depends(g
             skipped += 1
             continue
         label_names = [label.get("name", "") if isinstance(label, dict) else str(label) for label in issue.get("labels", [])]
-        managed_status = next((status_by_label[name.lower()] for name in label_names if name.lower() in status_by_label), None)
-        issue_status = managed_status or ("closed" if issue.get("state") == "closed" else "submitted")
         kind = "bug" if any(name.lower() == "bug" for name in label_names) else (
             "feature" if any(name.lower() in {"enhancement", "feature"} for name in label_names) else "improvement"
         )
         row = db.query(Requirement).filter(Requirement.github_issue_number == number).first()
         if row:
             row.github_issue_url = issue.get("html_url")
-            row.github_state = issue.get("state")
             if row.source == "github":
                 row.title = (issue.get("title") or f"GitHub Issue #{number}")[:160]
                 row.description = ((issue.get("body") or "GitHub Issue 未提供正文").strip() or "GitHub Issue 未提供正文")[:8000]
                 row.type = kind
-                row.status = issue_status
+            apply_github_status(
+                db, row, issue, actor_id=actor.id, actor_name=actor.username, source="github_manual_sync",
+            )
             updated += 1
             continue
         row = Requirement(
             public_number=next_requirement_number(db),
             type=kind, title=(issue.get("title") or f"GitHub Issue #{number}")[:160],
             description=((issue.get("body") or "GitHub Issue 未提供正文").strip() or "GitHub Issue 未提供正文")[:8000],
-            severity="medium", visibility="public", status=issue_status, source="github", created_by=actor.id,
+            severity="medium", visibility="public", status="submitted", source="github", created_by=actor.id,
             github_issue_number=number, github_issue_url=issue.get("html_url"), github_state=issue.get("state"),
         )
         db.add(row)
         db.flush()
         db.add(RequirementFollower(requirement_id=row.id, user_id=actor.id))
-        if issue_status == "submitted":
+        apply_github_status(
+            db, row, issue, actor_id=actor.id, actor_name=actor.username, source="github_manual_sync",
+        )
+        if row.status == "submitted":
             enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
         audit(db, actor.id, "github.issue.imported", "requirement", row.id, issue_number=number)
         created += 1
@@ -898,6 +922,7 @@ def link_requirement_github_issue(requirement_id: str, payload: GitHubIssueLinkI
     except (RuntimeError, httpx.HTTPError) as exc:
         raise HTTPException(status_code=502, detail=f"GitHub issue lookup failed: {exc}") from exc
     row.github_issue_number, row.github_issue_url, row.github_state = data["number"], data["html_url"], data["state"]
+    apply_github_status(db, row, data, actor_id=actor.id, actor_name=actor.username, source="github_link")
     enqueue_github_sync(db, row)
     audit(db, actor.id, "github.issue.linked", "requirement", row.id, issue_number=data["number"])
     db.commit()
@@ -921,14 +946,11 @@ def close_requirement_github_issue(requirement_id: str, payload: ReasonInput, ac
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row or not row.github_issue_number:
         raise HTTPException(status_code=404, detail="Linked GitHub issue not found")
-    try:
-        data = GitHubClient().update_issue_state(row.github_issue_number, "closed")
-    except (RuntimeError, httpx.HTTPError) as exc:
-        raise HTTPException(status_code=502, detail=f"GitHub issue close failed: {exc}") from exc
-    row.github_state, row.status, row.review_reason = data["state"], "closed", payload.reason
+    before = row.status
+    row.status, row.review_reason = "closed", payload.reason
     enqueue_github_sync(db, row)
-    audit(db, actor.id, "github.issue.closed", "requirement", row.id,
-          issue_number=row.github_issue_number, reason=payload.reason)
+    audit(db, actor.id, "requirement.closed", "requirement", row.id, before=before, after="closed",
+          issue_number=row.github_issue_number, reason=payload.reason, source="platform")
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 
@@ -1167,7 +1189,21 @@ async def github_webhook(
         issue = payload.get("issue") or {}
         row = db.query(Requirement).filter(Requirement.github_issue_number == issue.get("number")).first()
         if row:
-            row.github_state = issue.get("state")
+            sender = payload.get("sender") or {}
+            identity = db.query(GitHubIdentity).filter(GitHubIdentity.github_user_id == sender.get("id")).first()
+            action = payload.get("action")
+            changed_label = (payload.get("label") or {}).get("name")
+            if action in {"closed", "reopened", "labeled", "unlabeled"}:
+                changed = apply_github_status(
+                    db, row, issue, action=action, changed_label=changed_label,
+                    actor_id=identity.user_id if identity else None,
+                    actor_name=f"GitHub @{sender.get('login', 'unknown')}", source="github_webhook",
+                )
+            else:
+                row.github_state = issue.get("state", row.github_state)
+                changed = False
+            if changed:
+                enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:webhook:{delivery_id}")
     event.processed = True
     db.commit()
     return ok({"accepted": True})

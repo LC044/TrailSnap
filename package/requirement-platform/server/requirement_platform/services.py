@@ -178,6 +178,44 @@ STATUS_LABELS = {
     "closed": ("status: closed", "6a737d", "已关闭"),
 }
 
+# Both systems may initiate a transition, but they share one mapping: platform
+# statuses are projected to GitHub labels/state, while explicit GitHub state or
+# managed-label changes are translated back to a platform status.
+GITHUB_CLOSED_REQUIREMENT_STATUSES = {"released", "rejected", "duplicate", "withdrawn", "closed"}
+
+
+def github_state_for_requirement(status: str) -> str:
+    return "closed" if status in GITHUB_CLOSED_REQUIREMENT_STATUSES else "open"
+
+
+def requirement_status_from_github(issue: dict[str, Any], current_status: str = "submitted",
+                                   action: str | None = None, changed_label: str | None = None) -> str:
+    """Translate an explicit GitHub change without guessing from unrelated edits."""
+    status_by_label = {label.lower(): status for status, (label, _color, _description) in STATUS_LABELS.items()}
+    labels = {
+        (item.get("name", "") if isinstance(item, dict) else str(item)).lower()
+        for item in issue.get("labels", [])
+    }
+    matched = {status_by_label[label] for label in labels if label in status_by_label}
+    # A webhook emitted by our outbound synchronization already contains the
+    # platform's label and matching native state. Treat it as an echo.
+    if matched == {current_status} and issue.get("state") == github_state_for_requirement(current_status):
+        return current_status
+    if action == "closed":
+        return "closed"
+    if action == "reopened":
+        return "pending_review"
+    if action == "labeled" and changed_label and changed_label.lower() in status_by_label:
+        return status_by_label[changed_label.lower()]
+    if len(matched) == 1:
+        label_status = matched.pop()
+        if issue.get("state") != github_state_for_requirement(label_status):
+            return "closed" if issue.get("state") == "closed" else "pending_review"
+        return label_status
+    if issue.get("state") == "closed":
+        return "closed"
+    return current_status
+
 
 class GitHubClient:
     def __init__(self):
@@ -275,7 +313,8 @@ class GitHubClient:
         ]
         retained.append(self.ensure_status_label(status))
         return self._request(
-            "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}", json={"labels": retained}
+            "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}",
+            json={"labels": retained, "state": github_state_for_requirement(status)},
         )
 
     def sync_issue(self, requirement: Requirement) -> dict[str, Any]:
@@ -299,7 +338,12 @@ class GitHubClient:
         )
         return self._request(
             "PATCH", f"/repos/{settings.github_repo}/issues/{requirement.github_issue_number}",
-            json={"title": requirement.title, "body": body, "labels": retained},
+            json={
+                "title": requirement.title,
+                "body": body,
+                "labels": retained,
+                "state": github_state_for_requirement(requirement.status),
+            },
         )
 
     def create_milestone(self, batch: ReleaseBatch) -> dict[str, Any]:
@@ -333,6 +377,10 @@ def sync_requirement_issue(db: Session, requirement_id: str) -> None:
     requirement.github_issue_number = data["number"]
     requirement.github_issue_url = data["html_url"]
     requirement.github_state = data["state"]
+    desired_state = github_state_for_requirement(requirement.status)
+    if requirement.github_state != desired_state:
+        data = client.update_issue_state(requirement.github_issue_number, desired_state)
+        requirement.github_state = data["state"]
     audit(db, None, "github.issue.created", "requirement", requirement.id, issue_number=data["number"])
     db.commit()
 
