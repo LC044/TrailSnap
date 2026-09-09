@@ -2,11 +2,13 @@
 
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func
 
 from .config import settings
@@ -283,4 +285,30 @@ def list_versions() -> list[dict[str, Any]]:
                 for row in db.query(ReleaseBatch).order_by(ReleaseBatch.created_at.desc()).all()]
 
 
-mcp_http_app = mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True)
+def _transport_security_settings() -> TransportSecuritySettings:
+    """Trust the configured public endpoints while retaining DNS rebinding protection."""
+    allowed_hosts = {"127.0.0.1:*", "localhost:*", "[::1]:*"}
+    allowed_origins = {"http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"}
+
+    for endpoint in (settings.mcp_public_url, settings.web_url):
+        parsed = urlsplit(endpoint)
+        if not parsed.scheme or not parsed.hostname:
+            continue
+        host = f"[{parsed.hostname}]" if ":" in parsed.hostname else parsed.hostname
+        allowed_hosts.update({host, f"{host}:*"})
+        allowed_origins.add(f"{parsed.scheme}://{parsed.netloc}")
+
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=sorted(allowed_hosts),
+        allowed_origins=sorted(allowed_origins),
+    )
+
+
+mcp_http_app = mcp.streamable_http_app(
+    streamable_http_path="/",
+    stateless_http=True,
+    json_response=True,
+    host="0.0.0.0",
+    transport_security=_transport_security_settings(),
+)
