@@ -1,6 +1,7 @@
 import hashlib
 import hashlib
 import json
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -60,6 +61,9 @@ from .security import (
     authenticate, create_agent_token_value, create_token, current_user, hash_password, manager, optional_user, owner,
 )
 from .services import GitHubClient, STATUS_LABELS, audit, enqueue, requirement_snapshot, verify_webhook
+
+
+logger = logging.getLogger(__name__)
 
 
 def ok(data=None, msg: str = "success"):
@@ -287,7 +291,10 @@ def github_oauth_callback(code: str, state: str, request: Request, db: Session =
             primary = next((item for item in verified if item.get("primary")), verified[0] if verified else None)
             email = primary.get("email") if primary else None
     except (httpx.HTTPError, ValueError, KeyError) as exc:
-        raise HTTPException(status_code=502, detail="GitHub authentication failed") from exc
+        logger.exception("GitHub OAuth token or profile request failed: %s", type(exc).__name__)
+        response = RedirectResponse(f"{settings.web_url}/?github_error=oauth_upstream", status_code=302)
+        response.delete_cookie("rp_github_oauth", path="/api/auth/github")
+        return response
 
     github_user_id = int(profile["id"])
     identity = db.query(GitHubIdentity).filter(GitHubIdentity.github_user_id == github_user_id).first()

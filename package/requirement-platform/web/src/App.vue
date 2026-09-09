@@ -1063,6 +1063,15 @@ function logout() {
 onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
   try { githubOauthEnabled.value = (await api.authStatus()).github_oauth_enabled } catch { githubOauthEnabled.value = false }
+  const githubError = params.get('github_error')
+  if (githubError) {
+    const message = githubError === 'oauth_upstream'
+      ? 'GitHub 登录暂时失败，请重新发起登录；若持续出现，请管理员检查服务端 OAuth 日志和 Client Secret。'
+      : 'GitHub 登录失败，请重试。'
+    ElMessage.error({ message, duration: 8000 })
+    params.delete('github_error')
+    history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`)
+  }
   const githubGrant = params.get('github_grant')
   if (githubGrant) {
     try {
