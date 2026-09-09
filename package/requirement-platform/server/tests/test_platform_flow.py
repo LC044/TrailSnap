@@ -19,8 +19,8 @@ from requirement_platform.db import SessionLocal, engine  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
 from requirement_platform import mcp_server  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
-from requirement_platform.models import BackgroundJob, TriageReport  # noqa: E402
-from requirement_platform.services import GitHubClient, analyze_requirement  # noqa: E402
+from requirement_platform.models import BackgroundJob, GitHubIdentity, Requirement, TriageReport  # noqa: E402
+from requirement_platform.services import GitHubClient, analyze_requirement, requirement_status_from_github  # noqa: E402
 
 
 def cleanup_database_handles():
@@ -351,6 +351,7 @@ def test_github_status_sync_preserves_unmanaged_labels(monkeypatch):
     GitHubClient().sync_status_label(42, "testing")
     patch_request = next(item for item in requests if item[0] == "PATCH")
     assert patch_request[2]["json"]["labels"] == ["bug", "status: testing"]
+    assert patch_request[2]["json"]["state"] == "open"
 
 
 def test_github_full_issue_sync_updates_content_and_preserves_custom_labels(monkeypatch):
@@ -377,6 +378,65 @@ def test_github_full_issue_sync_updates_content_and_preserves_custom_labels(monk
     assert payload["title"] == "新的标题"
     assert "新的描述" in payload["body"]
     assert payload["labels"] == ["documentation", "enhancement", "status: testing"]
+    assert payload["state"] == "open"
+
+
+def test_github_status_mapping_distinguishes_sync_echo_from_user_transition():
+    assert requirement_status_from_github(
+        {"state": "closed", "labels": [{"name": "status: released"}]}, "released", action="closed"
+    ) == "released"
+    assert requirement_status_from_github(
+        {"state": "open", "labels": [{"name": "status: candidate"}]}, "candidate", action="reopened"
+    ) == "candidate"
+    assert requirement_status_from_github(
+        {"state": "closed", "labels": [{"name": "status: candidate"}]}, "candidate", action="closed"
+    ) == "closed"
+    assert requirement_status_from_github(
+        {"state": "open", "labels": [{"name": "status: closed"}]}, "closed", action="reopened"
+    ) == "pending_review"
+
+
+def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypatch):
+    with TestClient(app) as client:
+        owner = client.post(
+            "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
+        ).json()["data"]
+        created = client.post(
+            "/api/requirements", headers=auth(owner["token"]),
+            json={"type": "feature", "title": "Webhook 状态同步测试", "description": "验证 GitHub 状态变化进入平台时间线。"},
+        ).json()["data"]
+        db = SessionLocal()
+        try:
+            row = db.query(Requirement).filter(Requirement.id == created["id"]).one()
+            row.github_issue_number = 99993
+            row.github_issue_url = "https://github.com/LC044/TrailSnap/issues/99993"
+            row.github_state = "open"
+            db.add(GitHubIdentity(user_id=owner["user"]["id"], github_user_id=123456789, login="octocat"))
+            db.commit()
+        finally:
+            db.close()
+
+        monkeypatch.setattr("requirement_platform.main.verify_webhook", lambda _body, _signature: True)
+        headers = {"X-Hub-Signature-256": "sha256=test", "X-GitHub-Event": "issues"}
+        closed = client.post("/api/hooks/github", headers={**headers, "X-GitHub-Delivery": "delivery-close"}, json={
+            "action": "closed", "issue": {"number": 99993, "state": "closed", "labels": [{"name": "status: candidate"}]},
+            "sender": {"id": 123456789, "login": "octocat"},
+        })
+        assert closed.status_code == 200, closed.text
+        detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
+        assert detail["status"] == "closed"
+        history = client.get(f"/api/requirements/{created['id']}/history").json()["data"]
+        event = history[-1]
+        assert (event["before"], event["after"], event["actor_name"], event["source"]) == (
+            "submitted", "closed", "GitHub @octocat", "github_webhook",
+        )
+
+        reopened = client.post("/api/hooks/github", headers={**headers, "X-GitHub-Delivery": "delivery-reopen"}, json={
+            "action": "reopened", "issue": {"number": 99993, "state": "open", "labels": [{"name": "status: closed"}]},
+            "sender": {"id": 123456789, "login": "octocat"},
+        })
+        assert reopened.status_code == 200, reopened.text
+        assert client.get(f"/api/requirements/{created['id']}").json()["data"]["status"] == "pending_review"
 
 
 def test_anonymous_number_history_dashboard_and_manager_edit():
