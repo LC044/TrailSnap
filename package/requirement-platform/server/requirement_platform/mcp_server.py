@@ -91,7 +91,8 @@ def _requirement_dict(row: Requirement) -> dict[str, Any]:
         "priority": row.priority, "risk_level": row.risk_level, "review_reason": row.review_reason,
         "duplicate_of_id": row.duplicate_of_id,
         "github_issue_number": row.github_issue_number, "github_issue_url": row.github_issue_url,
-        "github_state": row.github_state, "source": row.source, "created_by": row.created_by,
+        "github_state": row.github_state, "github_pull_requests": row.github_pull_requests or [],
+        "source": row.source, "created_by": row.created_by,
         "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat(),
         "deleted_at": row.deleted_at.isoformat() if row.deleted_at else None,
     }

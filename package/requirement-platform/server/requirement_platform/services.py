@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
@@ -182,6 +183,29 @@ STATUS_LABELS = {
 # statuses are projected to GitHub labels/state, while explicit GitHub state or
 # managed-label changes are translated back to a platform status.
 GITHUB_CLOSED_REQUIREMENT_STATUSES = {"released", "rejected", "duplicate", "withdrawn", "closed"}
+
+# Match GitHub's issue-closing keywords, rather than treating every casual
+# "#123" mention as permission to close the linked requirement.
+CLOSING_ISSUE_PATTERN = re.compile(
+    r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+/[\w.-]+)?#(\d+)\b"
+)
+
+
+def closing_issue_numbers(pull_request: dict[str, Any]) -> set[int]:
+    return {int(number) for number in CLOSING_ISSUE_PATTERN.findall(pull_request.get("body") or "")}
+
+
+def pull_request_summary(pull_request: dict[str, Any]) -> dict[str, Any]:
+    merged = bool(pull_request.get("merged") or pull_request.get("merged_at"))
+    return {
+        "number": pull_request.get("number"),
+        "title": pull_request.get("title") or f"Pull Request #{pull_request.get('number')}",
+        "url": pull_request.get("html_url"),
+        "state": "merged" if merged else pull_request.get("state", "open"),
+        "draft": bool(pull_request.get("draft")),
+        "merged_at": pull_request.get("merged_at"),
+        "updated_at": pull_request.get("updated_at"),
+    }
 
 
 def github_state_for_requirement(status: str) -> str:

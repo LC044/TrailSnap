@@ -29,12 +29,12 @@ description: TrailSnap 仓库提交、推送、需求平台与 PR 工作流规�
 - 开始需要提交或创建 PR 的工作前，先用 MCP 查询是否已有对应需求。存在则复用；不存在则用 `create_requirement` 创建内容完整的需求，记录其 `REQ-*` 编号，并将需求状态设置为`developing`。
 - 需求描述应说明问题、目标、范围和验收标准。范围变化时更新平台需求，不直接更新其关联的 GitHub Issue。
 - GitHub Issue 编号或链接只能作为平台返回的只读关联信息使用，不能作为状态管理入口。
-- PR 合并后，通过需求平台将对应需求关闭，并在理由中写明 PR 编号、合并结果和 CI 状态。平台会自动把关闭状态同步到 GitHub。
+- PR 合并后，确认 GitHub Webhook 已自动关闭对应需求；若自动同步失败，再通过需求平台关闭，并在理由中写明 PR 编号、合并结果和 CI 状态。
 
 ## 分支与 PR
 
 - 建议新建分支推送，并通过 PR 合并到主分支。
-- 创建 PR 前必须存在对应的平台需求。PR 标题与描述应与需求呼应，并在 PR 描述中写明平台需求编号和链接（例如 `关联需求：[REQ-123](https://feedback.trailsnap.cn/REQ-123)`）。不要使用 `Closes #123`、`Fixes #123` 等由 GitHub 直接驱动 Issue 状态的关键字。
+- 创建 PR 前必须存在对应的平台需求及其关联 GitHub Issue。PR 标题与描述应与需求呼应，并在 PR 描述中同时写明平台需求编号、链接（例如 `关联需求：[REQ-123](https://feedback.trailsnap.cn/REQ-123)`）和 GitHub 关闭关键字（例如 `Closes #456`）。关闭关键字用于在需求详情页展示关联 PR，并在合并后自动关闭 Issue 与需求单。
 - PR 使用 `.github/pull_request_template.md`，并在评论中确认 CLA：`I have read and agree to the CLA`（基于 AGPLv3）。
 
 ## PR CI 监控
