@@ -97,9 +97,6 @@
 
         <div v-else class="submit-layout">
           <el-form class="panel submit-form" label-position="top" @submit.prevent="submitRequirement" @paste="handlePaste">
-            <el-alert type="info" :closable="false" show-icon title="提交要求">
-              标题 4–160 字，需求描述 10–8,000 字；当前/期望行为最多 3,000 字，复现步骤最多 4,000 字，日志最多 20,000 字。每天最多提交 5 条、同时处理中最多 20 条。每条需求最多 5 个附件，单个不超过 5MB，仅支持 PNG、JPG、WebP、TXT、LOG、JSON、PDF。日志和附件仅本人及管理员可见。
-            </el-alert>
             <div class="section">
               <h2 class="section-head"><el-icon><DocumentAdd /></el-icon>基本信息</h2>
               <el-form-item label="类型" required>
@@ -116,7 +113,7 @@
               </el-form-item>
               <el-form-item label="标题" required>
                 <el-input v-model="requirementForm.title" maxlength="160" show-word-limit placeholder="请输入简洁清晰的标题" />
-                <div class="field-hint">用简短的语句概括需求的核心内容</div>
+                <div class="field-hint">必填，4–160 字。用简短的语句概括需求的核心内容。</div>
               </el-form-item>
             </div>
 
@@ -124,7 +121,7 @@
               <h2 class="section-head"><el-icon><Tickets /></el-icon>需求描述</h2>
               <el-form-item label="需求或问题描述" required>
                 <el-input v-model="requirementForm.description" type="textarea" :rows="5" maxlength="8000" show-word-limit placeholder="请详细描述你的需求、遇到的问题或改进建议..." />
-                <div class="field-hint">提供越详细的信息，越有助于我们理解和处理</div>
+                <div class="field-hint">必填，10–8,000 字。提供越详细的信息，越有助于我们理解和处理。</div>
               </el-form-item>
             </div>
 
@@ -132,6 +129,7 @@
               <h2 class="section-head"><el-icon><Warning /></el-icon>问题细节</h2>
               <el-form-item label="复现步骤">
                 <el-input v-model="requirementForm.steps_to_reproduce" type="textarea" :rows="4" maxlength="4000" show-word-limit placeholder="例如：1. 打开照片页 2. 点击筛选..." />
+                <div class="field-hint">最多 4,000 字。请按发生顺序描述操作，便于复现问题。</div>
               </el-form-item>
             </div>
 
@@ -140,9 +138,11 @@
               <div class="form-grid">
                 <el-form-item label="当前行为">
                   <el-input v-model="requirementForm.current_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit placeholder="请描述目前的实际情况，例如：现在系统是如何工作的？" />
+                  <div class="field-hint">最多 3,000 字。</div>
                 </el-form-item>
                 <el-form-item label="期望行为">
                   <el-input v-model="requirementForm.expected_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit placeholder="请描述你期望的结果，例如：希望系统如何改进？" />
+                  <div class="field-hint">最多 3,000 字。</div>
                 </el-form-item>
               </div>
             </div>
@@ -151,10 +151,11 @@
               <h2 class="section-head"><el-icon><Document /></el-icon>日志与附件</h2>
               <el-form-item label="日志文字">
                 <el-input v-model="requirementForm.log_text" type="textarea" :rows="5" maxlength="20000" show-word-limit placeholder="可粘贴脱敏后的错误日志，请勿提交密码、令牌等敏感信息" />
+                <div class="field-hint">最多 20,000 字，仅本人和管理员可见。提交前请移除密码、令牌等敏感信息。</div>
               </el-form-item>
               <el-form-item label="截图或附件">
                 <input ref="fileInput" class="native-file" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.txt,.log,.json,.pdf" @change="selectFiles" />
-                <div class="field-hint">可选择文件，也可以在本页直接 Ctrl/Cmd+V 粘贴剪贴板截图。</div>
+                <div class="field-hint">最多 5 个，单个不超过 5MB；支持 PNG、JPG、WebP、TXT、LOG、JSON、PDF。也可直接 Ctrl/Cmd+V 粘贴截图，仅本人和管理员可见。</div>
                 <div v-if="pendingFiles.length" class="file-list">
                   <div v-for="(file, index) in pendingFiles" :key="`${file.name}-${file.size}-${index}`" class="file-row">
                     <span>{{ file.name }}（{{ formatBytes(file.size) }}）</span>
@@ -168,19 +169,20 @@
               <h2 class="section-head"><el-icon><InfoFilled /></el-icon>其他信息</h2>
               <div class="form-grid">
                 <el-form-item label="TrailSnap 版本">
-                  <el-input v-model="requirementForm.product_version" placeholder="例如 0.14.1" />
-                  <div class="field-hint">如果与特定版本相关，请填写版本号</div>
+                  <el-input v-model="requirementForm.product_version" maxlength="50" show-word-limit placeholder="例如 0.14.1" />
+                  <div class="field-hint">最多 50 个字符。如果与特定版本相关，请填写版本号。</div>
                 </el-form-item>
                 <el-form-item label="公开范围">
                   <el-radio-group v-model="requirementForm.visibility">
                     <el-radio value="public">公开</el-radio>
                     <el-radio value="private">仅本人和管理员</el-radio>
                   </el-radio-group>
-                  <div class="field-hint">公开后，其他用户可以查看和参与讨论</div>
+                  <div class="field-hint">公开需求可被所有用户查看；私有需求仅本人和管理员可见。</div>
                 </el-form-item>
               </div>
             </div>
 
+            <div class="submit-quota">每个账号每天最多提交 5 条需求，同时处理中最多 20 条。</div>
             <div class="actions">
               <el-button type="primary" size="large" :icon="Promotion" :loading="busy" native-type="submit">提交需求</el-button>
               <el-button size="large" @click="saveDraft">保存草稿</el-button>
@@ -370,12 +372,8 @@
               <p>点击上方“创建令牌”。只查询需求时选择 <code>requirements:read</code>；需要提交或审核时再增加对应写入作用域。令牌只显示一次，请立即保存。</p>
             </li>
             <li>
-              <strong>把令牌放入环境变量</strong>
-              <p>在运行 Codex 的系统环境中设置 <code>TRAILSNAP_MCP_TOKEN</code>，值为刚创建的完整令牌。请勿把令牌直接写入仓库或分享给他人。</p>
-            </li>
-            <li>
-              <strong>添加 Codex 配置</strong>
-              <p>编辑用户级 <code>~/.codex/config.toml</code>；也可以在可信项目中使用 <code>.codex/config.toml</code>。</p>
+              <strong>添加请求头配置（推荐）</strong>
+              <p>编辑用户级 <code>~/.codex/config.toml</code>。Codex 会在连接 MCP 时直接注入请求头，沙盒内的 Agent 无需读取宿主机环境变量。</p>
               <pre class="code-block mcp-code"><code>{{ mcpConfigExample }}</code></pre>
               <el-button size="small" @click="copyText(mcpConfigExample)">复制配置</el-button>
             </li>
@@ -383,9 +381,15 @@
               <strong>重启并验证</strong>
               <p>重启 Codex 桌面端或 IDE 扩展，然后运行 <code>codex mcp list</code>，或在 Codex 中输入 <code>/mcp</code>，确认 <code>trailsnap_requirements</code> 已连接。</p>
             </li>
+            <li>
+              <strong>可选：改用环境变量</strong>
+              <p>如果运行环境能够稳定继承宿主机变量，可用下面的配置避免把令牌明文保存在配置文件中。</p>
+              <pre class="code-block mcp-code"><code>{{ mcpEnvConfigExample }}</code></pre>
+              <el-button size="small" @click="copyText(mcpEnvConfigExample)">复制环境变量配置</el-button>
+            </li>
           </ol>
-          <el-alert type="warning" :closable="false" show-icon title="连接失败时请检查">
-            MCP 地址必须能从 Codex 所在设备访问；线上部署应使用 HTTPS。出现 401 请确认环境变量已生效且令牌未撤销，出现 403 请检查令牌作用域。
+          <el-alert type="warning" :closable="false" show-icon title="令牌与连接安全">
+            请求头方案会把令牌保存在用户配置中，请勿提交该文件，并为令牌设置最小权限和有效期；泄露后应立即撤销。MCP 地址必须使用 HTTPS。出现 401 请检查令牌，出现 403 请检查作用域。
           </el-alert>
         </article>
       </section>
@@ -504,11 +508,30 @@
     <!-- ============ 创建版本批次 ============ -->
     <el-dialog v-model="batchDialog" title="创建版本批次" width="min(92vw, 560px)">
       <el-form label-position="top">
-        <el-form-item label="版本名称"><el-input v-model="batchForm.name" /></el-form-item>
-        <el-form-item label="版本号"><el-input v-model="batchForm.version_name" placeholder="例如 v0.15.0" /></el-form-item>
-        <el-form-item label="版本目标"><el-input v-model="batchForm.goal" type="textarea" :rows="4" /></el-form-item>
-        <el-form-item label="类型"><el-select v-model="batchForm.batch_type"><el-option label="修复" value="fix" /><el-option label="功能" value="feature" /><el-option label="重大" value="major" /><el-option label="紧急修复" value="hotfix" /></el-select></el-form-item>
-        <el-form-item label="计划日期"><el-input v-model="batchForm.target_date" type="date" /></el-form-item>
+        <el-form-item label="版本名称" required>
+          <el-input v-model="batchForm.name" maxlength="120" show-word-limit placeholder="例如：移动端体验优化" />
+          <div class="field-hint">必填，2–120 字，用于说明本批次的主题。</div>
+        </el-form-item>
+        <el-form-item label="版本号" required>
+          <el-input v-model="batchForm.version_name" maxlength="50" show-word-limit placeholder="例如 v0.15.0" />
+          <div class="field-hint">必填，1–50 个字符；仅支持英文字母、数字、点、下划线和连字符。</div>
+        </el-form-item>
+        <el-form-item label="版本目标" required>
+          <el-input v-model="batchForm.goal" type="textarea" :rows="4" maxlength="4000" show-word-limit placeholder="说明这个版本要解决的问题和预期结果" />
+          <div class="field-hint">必填，4–4,000 字。</div>
+        </el-form-item>
+        <el-form-item label="类型" required>
+          <el-select v-model="batchForm.batch_type"><el-option label="修复" value="fix" /><el-option label="功能" value="feature" /><el-option label="重大" value="major" /><el-option label="紧急修复" value="hotfix" /></el-select>
+          <div class="field-hint">选择最符合本次发布范围的版本类型。</div>
+        </el-form-item>
+        <el-form-item label="计划日期">
+          <el-input v-model="batchForm.target_date" type="date" />
+          <div class="field-hint">可选，格式为 YYYY-MM-DD。</div>
+        </el-form-item>
+        <el-form-item label="允许的最高风险" required>
+          <el-select v-model="batchForm.max_risk_level"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select>
+          <div class="field-hint">风险高于该级别的需求不能加入此版本。</div>
+        </el-form-item>
       </el-form>
       <template #footer><el-button @click="batchDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="createBatch">创建</el-button></template>
     </el-dialog>
@@ -584,7 +607,8 @@ const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: '
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
 const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
 const mcpUrl = `${window.location.origin}/mcp/`
-const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
+const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer rp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
+const mcpEnvConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
 const candidateSelection = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
@@ -825,9 +849,15 @@ async function submitReview() {
 }
 
 async function createBatch() {
+  const name = batchForm.name.trim()
+  const versionName = batchForm.version_name.trim()
+  const goal = batchForm.goal.trim()
+  if (name.length < 2 || name.length > 120) { ElMessage.error('版本名称需要 2–120 个字符'); return }
+  if (!/^[A-Za-z0-9._-]{1,50}$/.test(versionName)) { ElMessage.error('版本号只能包含 1–50 个英文字母、数字、点、下划线或连字符'); return }
+  if (goal.length < 4 || goal.length > 4000) { ElMessage.error('版本目标需要 4–4,000 个字符'); return }
   busy.value = true
   try {
-    await api.createBatch({ ...batchForm, target_date: batchForm.target_date || null })
+    await api.createBatch({ ...batchForm, name, version_name: versionName, goal, target_date: batchForm.target_date || null })
     batchDialog.value = false
     Object.assign(batchForm, { name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
     ElMessage.success('版本批次已创建')

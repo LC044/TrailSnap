@@ -142,6 +142,7 @@ a { color: inherit; }
 .section-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; margin: 0 0 14px; color: var(--rp-text); }
 .section-head .el-icon { color: var(--rp-primary); }
 .field-hint { color: var(--rp-text-3); font-size: 12.5px; line-height: 1.5; margin-top: 5px; }
+.submit-quota { color: var(--rp-text-2); font-size: 13px; line-height: 1.5; margin-top: 10px; }
 .native-file { width: 100%; padding: 10px; border: 1px dashed var(--rp-border); border-radius: 10px; background: #f8fafc; color: var(--rp-text-2); }
 .file-list { width: 100%; margin-top: 8px; display: grid; gap: 6px; }
 .file-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 8px; background: #f8fafc; color: var(--rp-text-2); font-size: 13px; }
