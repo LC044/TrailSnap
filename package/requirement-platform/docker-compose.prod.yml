@@ -1,0 +1,80 @@
+# 生产环境部署:直接使用 CI 推送到 GHCR 的镜像,不在服务器上构建。
+# 首次部署:
+#   cd requirement-platform && cp .env.example .env && vim .env && docker compose -f docker-compose.prod.yml up -d
+# 升级(镜像内 CMD 自带 alembic upgrade head,升级自动迁移):
+#   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+#
+# 镜像 tag 说明:
+#   latest           —— master 分支最新构建(尝鲜用,不建议生产固定使用)
+#   requirement-v*   —— 打 requirement-vX.Y.Z 标签后的版本镜像(生产推荐,在 .env 里设 RP_IMAGE_TAG=requirement-vX.Y.Z)
+#   sha-<digest>     —— 每次构建的不可变标签(回滚用)
+
+services:
+  api:
+    image: ghcr.io/lc044/requirement-platform-server:${RP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in .env}
+      RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in .env}
+    volumes:
+      - requirement-data:/app/data
+    networks: [requirement-private]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    image: ghcr.io/lc044/requirement-platform-server:${RP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: [".venv/bin/python", "-m", "requirement_platform.worker"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in .env}
+      RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in .env}
+    volumes:
+      - requirement-data:/app/data
+    networks: [requirement-private]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  mcp:
+    image: ghcr.io/lc044/requirement-platform-server:${RP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    command: [".venv/bin/uvicorn", "requirement_platform.mcp_server:mcp_http_app", "--host", "0.0.0.0", "--port", "8012"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in .env}
+      RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in .env}
+    volumes:
+      - requirement-data:/app/data
+    networks: [requirement-private]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/lc044/requirement-platform-web:${RP_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8011:8080"
+    networks: [requirement-private]
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  requirement-data:
+
+networks:
+  requirement-private:
+    driver: bridge

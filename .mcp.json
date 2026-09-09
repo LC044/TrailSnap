@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@playwright/mcp@latest"]
+    },
+    "trailsnap-feedback": {
+      "type": "http",
+      "url": "https://feedback.trailsnap.cn/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${TRAILSNAP_MCP_TOKEN}"
+      }
+    }
+  }
+}
