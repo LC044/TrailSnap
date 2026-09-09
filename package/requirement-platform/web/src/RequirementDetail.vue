@@ -128,7 +128,7 @@ import { ArrowLeft, Link, MagicStick } from '@element-plus/icons-vue'
 import { ElButton, ElIcon } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 import type { Requirement, RequirementHistory } from './api'
-import { avatarColor, priorityLabel, severityLabel, statusLabel, typeLabel } from './labels'
+import { avatarColor, formatDateTime, priorityLabel, severityLabel, statusLabel, typeLabel } from './labels'
 
 type Attachment = NonNullable<Requirement['attachments']>[number]
 
@@ -160,7 +160,6 @@ const triageText = computed(() => String(
   props.requirement.triage?.summary || props.requirement.triage?.recommendation || '分析已完成',
 ))
 const renderMarkdown = (value?: string) => markdown.render(value || '')
-const formatDateTime = (value: string) => new Date(value).toLocaleString()
 const formatBytes = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`
 const historyLabel = (event: RequirementHistory) => {
   if (event.before && event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
