@@ -1,3 +1,4 @@
+import base64
 import os
 import tempfile
 import atexit
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from requirement_platform.db import SessionLocal, engine  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
+from requirement_platform import mcp_server  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
 from requirement_platform.models import BackgroundJob, TriageReport  # noqa: E402
 from requirement_platform.services import GitHubClient, analyze_requirement  # noqa: E402
@@ -244,13 +246,43 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         assert initialized.status_code == 200, initialized.text
         tools = mcp_client.post("/", headers=headers, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
         assert tools.status_code == 200, tools.text
-        assert "list_requirements" in {item["name"] for item in tools.json()["result"]["tools"]}
+        tool_names = {item["name"] for item in tools.json()["result"]["tools"]}
+        assert {"list_requirements", "create_version", "upload_requirement_attachment", "get_requirement_records",
+                "sync_github_issues", "sync_github_milestone"} <= tool_names
         rejected = mcp_client.post(
             "/",
             headers={**headers, "Host": "attacker.example"},
             json={"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
         )
         assert rejected.status_code == 421
+
+
+def test_mcp_requirement_version_attachment_and_records_flow(monkeypatch):
+    """The MCP surface covers the same local requirement/version lifecycle as the REST API."""
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        actor_id = owner["user"]["id"]
+    actor = type("Actor", (), {"id": actor_id, "role": "owner"})()
+    monkeypatch.setattr(mcp_server, "_identity", lambda _scope: (None, actor))
+
+    created = mcp_server.create_requirement(**{
+            "type": "bug", "title": "MCP 完整字段测试", "description": "验证 MCP 可写入完整需求字段和后续版本流程。",
+            "log_text": "trace", "current_behavior": "当前失败", "expected_behavior": "预期成功",
+            "steps_to_reproduce": "1. 调用", "product_version": "v0.1", "environment": {"os": "test"},
+        })
+    requirement_id = created["id"]
+    mcp_server.upload_requirement_attachment(requirement_id, "trace.log", base64.b64encode(b"trace").decode())
+    attachment_id = mcp_server.list_requirement_attachments(requirement_id)[0]["id"]
+    assert mcp_server.download_requirement_attachment(requirement_id, attachment_id)["content_base64"] == base64.b64encode(b"trace").decode()
+    mcp_server.review_requirement(requirement_id, "candidate", "可纳入测试版本")
+    batch = mcp_server.create_version("MCP 测试版本", "mcp-test-1", "验证版本写入")
+    version = mcp_server.add_version_requirement(batch["id"], requirement_id)
+    item_id = version["items"][0]["id"]
+    mcp_server.lock_version(batch["id"])
+    mcp_server.update_version_delivery_status(batch["id"], item_id, "developing")
+    mcp_server.update_version_status(batch["id"], "developing", "开始开发")
+    assert mcp_server.get_version(batch["id"])["items"][0]["delivery_status"] == "developing"
+    assert "history" in mcp_server.get_requirement_records(requirement_id)
 
 
 def test_attachment_limits_and_private_access():

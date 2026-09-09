@@ -106,6 +106,15 @@ bearer_token_env_var = "TRAILSNAP_REQUIREMENTS_TOKEN"
 令牌明文只返回一次，数据库仅保存 SHA-256 摘要；可设置有效期并随时撤销。`requirements:review`
 允许关闭和软删除需求，`github:write` 允许变更 GitHub Issue，应只授予受信任的 Agent。
 
+MCP 作用域与能力：
+
+- `requirements:read`：查询需求、附件、历史/编辑/审核记录、分诊报告和后台任务。
+- `requirements:write`：创建和完整编辑需求、通过 Base64 上传附件、关注/取消关注及撤回需求。
+- `requirements:review`：审核、标记重复、关闭、软删除和恢复需求。
+- `versions:read`：查询版本批次、范围快照、单项交付状态和 GitHub Milestone。
+- `versions:write`：创建版本、增删范围条目、锁定范围、流转版本状态及更新交付状态。
+- `github:write`：创建、关联、解除关联和关闭 Issue，导入/同步 Issue，以及同步版本 Milestone。
+
 面向公网时，内置 nginx 会限制单 IP 的登录、注册和 API 访问频率，并限制请求体大小；应用层还会限制每个账号每天的提交数和未关闭需求数。API 与 SQLite 均不暴露宿主机端口，公网只应开放 HTTPS 反向代理入口。
 
 ## 验证
