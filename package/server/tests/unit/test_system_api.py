@@ -258,3 +258,97 @@ def test_map_proxy_uses_public_server_origin_for_browser_key():
 
     assert system_api._public_request_origin(request) == "https://photos.example.com"
 
+
+# ------------------------ /map-proxy UA + caching -------------------------
+# 天地图对「浏览器端」Key 按 User-Agent 校验：非浏览器 UA 一律 403 301012
+# （"Key权限类型为:浏览器端，请使用浏览器访问"）。代理必须转发 WebView 的
+# 真实 UA，缺失时兜底为移动浏览器 UA，绝不能再发合成标识。
+
+
+def _proxy_request(headers=None):
+    return Request({
+        "type": "http",
+        "method": "GET",
+        "scheme": "http",
+        "server": ("localhost", 8000),
+        "path": "/api/system/map-proxy/t0.tianditu.gov.cn/DataServer",
+        "query_string": b"T=vec_w&x=1&y=2&l=3&tk=test",
+        "headers": headers or [(b"host", b"localhost:8000")],
+    })
+
+
+def _fake_upstream(status=200, content_type="image/png", body=b"tile-bytes"):
+    response = SimpleNamespace(
+        status=status,
+        headers={"Content-Type": content_type},
+        charset=None,
+        read=AsyncMock(return_value=body),
+    )
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=response)
+    context.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.__aenter__ = AsyncMock(return_value=session)
+    session.__aexit__ = AsyncMock(return_value=False)
+    session.get = MagicMock(return_value=context)
+    return session
+
+
+class AsyncMock(MagicMock):
+    async def __call__(self, *args, **kwargs):
+        return super().__call__(*args, **kwargs)
+
+
+def test_map_proxy_forwards_client_user_agent_to_tianditu():
+    """WebView 的真实 UA 必须透传；天地图按 UA 拒绝非浏览器客户端。"""
+    request = _proxy_request([
+        (b"host", b"localhost:8000"),
+        (b"user-agent", b"Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"),
+    ])
+    session = _fake_upstream()
+
+    with patch.object(system_api.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        asyncio.run(system_api.proxy_tianditu_resource("t0.tianditu.gov.cn", "DataServer", request))
+
+    sent_headers = session.get.call_args.kwargs["headers"]
+    assert sent_headers["User-Agent"] == "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36"
+
+
+def test_map_proxy_falls_back_to_browser_user_agent_when_missing():
+    """无 UA（如部分内网探活）时用浏览器 UA 兜底，而不是合成标识。"""
+    session = _fake_upstream()
+
+    with patch.object(system_api.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        asyncio.run(
+            system_api.proxy_tianditu_resource("t0.tianditu.gov.cn", "DataServer", _proxy_request())
+        )
+
+    sent_headers = session.get.call_args.kwargs["headers"]
+    assert sent_headers["User-Agent"].startswith("Mozilla/5.0")
+    assert "TrailSnap-Map-Proxy" not in sent_headers["User-Agent"]
+
+
+def test_map_proxy_does_not_cache_error_responses():
+    """上游 403/5xx 若被缓存，会在 WebView 里毒缓存一天，必须 no-store。"""
+    session = _fake_upstream(status=403, content_type="application/json", body=b'{"code":301012}')
+
+    with patch.object(system_api.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        response = asyncio.run(
+            system_api.proxy_tianditu_resource("t0.tianditu.gov.cn", "DataServer", _proxy_request())
+        )
+
+    assert response.status_code == 403
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_map_proxy_caches_successful_responses():
+    session = _fake_upstream(status=200)
+
+    with patch.object(system_api.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        response = asyncio.run(
+            system_api.proxy_tianditu_resource("t0.tianditu.gov.cn", "DataServer", _proxy_request())
+        )
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, max-age=86400"
+

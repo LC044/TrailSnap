@@ -63,7 +63,12 @@ async def proxy_tianditu_resource(host: str, path: str, request: Request):
     timeout = aiohttp.ClientTimeout(total=30, connect=8)
     headers = {
         "Accept": request.headers.get("accept", "*/*"),
-        "User-Agent": "TrailSnap-Map-Proxy/1.0",
+        # Tianditu rejects browser-type keys unless the caller looks like a
+        # browser: a synthetic "TrailSnap-Map-Proxy/1.0" UA gets 403 301012
+        # ("权限类型错误") on tiles and geocoding.  Forward the WebView's real
+        # UA and fall back to a modern mobile browser string when absent.
+        "User-Agent": request.headers.get("user-agent")
+        or "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36",
     }
     # Tianditu browser keys can be restricted by an allowed web origin.  From
     # Tianditu's perspective the self-hosted gateway is now the caller, so use
@@ -81,13 +86,18 @@ async def proxy_tianditu_resource(host: str, path: str, request: Request):
                     charset = response.charset or "utf-8"
                     body = _rewrite_tianditu_text(body.decode(charset, errors="replace")).encode("utf-8")
                     content_type = content_type.split(";", 1)[0] + "; charset=utf-8"
+                # Only success responses are cacheable: an upstream 403/502
+                # would otherwise poison the WebView cache for a full day.
+                cache_control = (
+                    "public, max-age=86400" if response.status == 200 else "no-store"
+                )
                 return Response(
                     content=body,
                     status_code=response.status,
                     media_type=None,
                     headers={
                         "Content-Type": content_type,
-                        "Cache-Control": "public, max-age=86400",
+                        "Cache-Control": cache_control,
                         "X-Content-Type-Options": "nosniff",
                     },
                 )
