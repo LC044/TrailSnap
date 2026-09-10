@@ -93,8 +93,8 @@
                   <KeyRound class="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 class="font-medium text-gray-900 dark:text-white">天地图 Web API</h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">配置一个或多个浏览器端 Key，系统会随机选择使用。若 Key 启用了域名白名单，请加入当前自部署 Server 的域名或 IP。保存前会自动验证每个 Key。</p>
+                  <h3 class="font-medium text-gray-900 dark:text-white">天地图服务端 API</h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">配置一个或多个服务端 Key，网页、桌面端和手机 App 均通过 TrailSnap Server 使用，真实 Key 不会进入地图资源 URL。保存前会自动验证每个 Key。</p>
                 </div>
               </div>
               <el-select v-model="mapForm.provider" aria-label="地图提供商" class="w-full sm:w-48" @change="resetMapKeyTests">
@@ -865,7 +865,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, onUnmounted } from 'vue'
 import { settingsApi } from '@/api/settings'
-import { testTiandituBrowserKey } from '@/utils/mapKeyTester'
+import { testTiandituServerKey } from '@/utils/mapKeyTester'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { injectTheme } from '@/composables/useTheme.js'
 import { Sun, Moon, Palette, Check, CheckCircle2, AlertCircle, Info, Download, Loader2, Trash2, RefreshCw, KeyRound, Plus, XCircle } from 'lucide-vue-next'
@@ -1605,7 +1605,7 @@ const testMapKey = async (index: number): Promise<boolean> => {
       mapKeyTests.value[index] = { status: 'invalid', message: '暂不支持测试该地图提供商' }
       return false
     }
-    const result = await testTiandituBrowserKey(apiKey)
+    const result = await testTiandituServerKey(apiKey)
     if (result?.valid) {
       mapKeyTests.value[index] = { status: 'valid', message: '连接成功，Key 可用' }
       return true

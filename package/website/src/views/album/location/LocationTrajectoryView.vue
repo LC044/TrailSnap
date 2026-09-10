@@ -178,7 +178,7 @@ const router = useRouter()
 const { currentTheme } = injectTheme()
 const timelineNodes = ref<TimelineNode[]>([])
 const map = ref<any>(null)
-const currentApiKey = ref('')
+const mapAccessToken = ref('')
 const isMobile = computed(() => window.innerWidth <= 768)
 const showMobileList = ref(!isMobile.value)
 const selectedJourneyKey = ref('')
@@ -438,10 +438,10 @@ const waitForOverlayApi = async () => {
 const initMap = () => {
   if (map.value) return
   
-  const vecTileUrl = getTiandituTileTemplate('vec_w', currentApiKey.value)
-  const cvaTileUrl = getTiandituTileTemplate('cva_w', currentApiKey.value)
+  const vecTileUrl = getTiandituTileTemplate('vec_w', mapAccessToken.value)
+  const cvaTileUrl = getTiandituTileTemplate('cva_w', mapAccessToken.value)
   
-  // Capacitor 通过所选 TrailSnap 服务器的 nginx 代理加载瓦片。
+  // 所有客户端都通过 TrailSnap Server 的服务端 Key 代理加载瓦片。
   if (vecTileUrl && cvaTileUrl) {
     map.value = new T.Map('trajectory-map', { layers: [] })
     const vecLayer = new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 });
@@ -614,7 +614,7 @@ watch(() => currentTheme.value.primary, () => {
 
 onMounted(async () => {
   try {
-    currentApiKey.value = await loadMapScript()
+    mapAccessToken.value = await loadMapScript()
     // 天地图主脚本就绪后，Label 等覆盖物组件仍可能异步注册。
     await waitForOverlayApi()
     if (props.viewMode === 'trajectory' && props.level !== 'photo-map') {

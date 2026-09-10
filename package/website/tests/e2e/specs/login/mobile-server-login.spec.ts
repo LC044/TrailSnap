@@ -115,7 +115,7 @@ test.describe('手机 App 首次启动 @p0', () => {
 })
 
 test.describe('手机 App 天地图瓦片 @p0', () => {
-  test('瓦片请求使用已选 TrailSnap 服务器的 nginx 代理', async ({ page }) => {
+  test('瓦片请求使用已选 TrailSnap 服务器的服务端 Key 代理', async ({ page }) => {
     await page.addInitScript(() => {
       ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
         name: 'android',
@@ -152,8 +152,8 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
 
     await page.route('http://192.168.1.10:3180/**', route => {
       const path = new URL(route.request().url()).pathname
-      const data = path === '/api/settings/'
-        ? { map: { provider: 'tianditu', api_keys: ['mobile-map-key'] } }
+      const data = path === '/api/settings/map/runtime'
+        ? { provider: 'tianditu', access_token: 'scoped-map-token' }
         : path === '/api/nav/items'
           ? { items: [] }
           : []
@@ -169,8 +169,8 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
     await expect.poll(() => page.evaluate(() => (
       (window as typeof window & { __tiandituTileTemplates?: string[] }).__tiandituTileTemplates || []
     ))).toEqual([
-      'http://192.168.1.10:3180/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
-      'http://192.168.1.10:3180/api/system/map-proxy/t0.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}&tk=mobile-map-key',
+      'http://192.168.1.10:3180/api/system/map-proxy/scoped-map-token/t0.tianditu.gov.cn/DataServer?T=vec_w&x={x}&y={y}&l={z}',
+      'http://192.168.1.10:3180/api/system/map-proxy/scoped-map-token/t0.tianditu.gov.cn/DataServer?T=cva_w&x={x}&y={y}&l={z}',
     ])
   })
 })

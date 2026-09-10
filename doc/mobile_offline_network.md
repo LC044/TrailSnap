@@ -7,7 +7,7 @@ TrailSnap 手机 App 的运行原则是：安装包包含前端代码、字体�
 - Android WebView 在原生层按协议、主机和端口校验每个 HTTP(S) 请求。首次连接设置完成后，仅 Capacitor 本地资源与所选 Server 同源请求可通过。
 - iOS/Android 共用的浏览器层策略同时限制 `fetch`、XHR、EventSource、WebSocket 和 `sendBeacon`；手机 App 内的外部链接不会跳转或唤起外部站点。
 - 天地图 SDK、瓦片、搜索和地理编码均通过 `/api/system/map-proxy/...` 转发。代理只允许天地图官方固定域名，不能作为通用代理使用。
-- 天地图浏览器端 Key 仍可使用。Server 会以自身公开 Origin 生成 `Referer`/`Origin`；启用域名白名单时必须将自部署 Server 的域名或 IP 加入白名单。
+- 天地图使用服务端 Key。真实 Key 只保存在用户的 Server 配置中；App 先获取短期、限地图用途的访问令牌，SDK、瓦片、搜索和地理编码请求由 Server 注入真实 Key 后转发，不依赖 WebView 的 Origin 或域名白名单。
 - Server 的定时更新任务每 6 小时检查版本并将最新 Android APK 原子下载到 `TS_DATA_DIR/app_updates/`。App 检查更新时只会收到 `/api/system/app-update-download/{version}`，Android 原生下载器还会拒绝非当前 Server 地址以及跨源重定向。
 - 默认头像、空相册封面和软木纹理已经本地化，不再从公共占位图或纹理站点加载。
 

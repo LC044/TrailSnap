@@ -241,22 +241,22 @@ def test_tianditu_sdk_urls_are_rewritten_to_server_proxy():
     assert "https://t3.tianditu.gov.cn" not in rewritten
 
 
-def test_map_proxy_uses_public_server_origin_for_browser_key():
-    request = Request({
-        "type": "http",
-        "method": "GET",
-        "scheme": "http",
-        "server": ("server", 8000),
-        "path": "/system/map-proxy/api.tianditu.gov.cn/api",
-        "query_string": b"",
-        "headers": [
-            (b"host", b"server:8000"),
-            (b"x-forwarded-proto", b"https"),
-            (b"x-forwarded-host", b"photos.example.com"),
-        ],
-    })
+def test_tianditu_sdk_server_key_is_redacted_and_token_is_preserved():
+    source = (
+        'window.TMAP_AUTHKEY="server-secret";'
+        'T.w={E:T.Protocol.value+"api.tianditu."+T.Domain};'
+        'var fallback="https://t3.tianditu.gov.cn/vec_w/wmts";'
+    )
+    rewritten = system_api._rewrite_tianditu_text(
+        source,
+        proxy_prefix="/api/system/map-proxy/map-token",
+        map_key="server-secret",
+    )
 
-    assert system_api._public_request_origin(request) == "https://photos.example.com"
+    assert "server-secret" not in rewritten
+    assert 'window.TMAP_AUTHKEY="server"' in rewritten
+    assert '"/api/system/map-proxy/map-token/api.tianditu.gov.cn"' in rewritten
+    assert "/api/system/map-proxy/map-token/t3.tianditu.gov.cn/vec_w/wmts" in rewritten
 
 
 # ------------------------ /map-proxy UA + caching -------------------------
@@ -351,4 +351,38 @@ def test_map_proxy_caches_successful_responses():
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "public, max-age=86400"
+
+
+def test_server_map_proxy_injects_configured_key_and_hides_it_from_sdk():
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "scheme": "http",
+        "server": ("localhost", 8000),
+        "path": "/api/system/map-proxy/map-token/api.tianditu.gov.cn/api",
+        "query_string": b"v=4.0&tk=client-value",
+        "headers": [(b"host", b"localhost:8000"), (b"user-agent", b"Mozilla/5.0")],
+    })
+    session = _fake_upstream(
+        content_type="application/javascript",
+        body=b'window.TMAP_AUTHKEY="server-secret";',
+    )
+    config = SimpleNamespace(map=SimpleNamespace(api_keys=["server-secret"]))
+
+    with patch.object(system_api, "_map_user_id", return_value="u-1"), \
+         patch.object(system_api.config_manager, "get_user_config", return_value=config), \
+         patch.object(system_api.random, "choice", return_value="server-secret"), \
+         patch.object(system_api.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        response = asyncio.run(system_api._proxy_tianditu_resource(
+            "api.tianditu.gov.cn", "api", request, map_token="map-token", db=MagicMock()
+        ))
+
+    sent = session.get.call_args.kwargs
+    assert ("tk", "server-secret") in sent["params"]
+    assert ("tk", "client-value") not in sent["params"]
+    assert sent["headers"]["User-Agent"] == "TrailSnap-Map-Proxy/1.0"
+    assert "Origin" not in sent["headers"]
+    assert "Referer" not in sent["headers"]
+    assert b"server-secret" not in response.body
+    assert response.headers["cache-control"] == "private, max-age=3600"
 
