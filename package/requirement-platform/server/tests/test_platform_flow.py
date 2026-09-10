@@ -84,21 +84,6 @@ def test_complete_manual_requirement_and_batch_flow():
         assert reviewed.status_code == 200, reviewed.text
         assert reviewed.json()["data"]["status"] == "candidate"
 
-        developing = client.patch(
-            f"/api/requirements/{requirement['id']}/status",
-            headers=auth(owner["token"]),
-            json={"status": "developing", "reason": "开始独立开发"},
-        )
-        assert developing.status_code == 200, developing.text
-        assert developing.json()["data"]["status"] == "developing"
-
-        reset_candidate = client.patch(
-            f"/api/requirements/{requirement['id']}/status",
-            headers=auth(owner["token"]),
-            json={"status": "candidate", "reason": "继续验证版本排期流程"},
-        )
-        assert reset_candidate.status_code == 200, reset_candidate.text
-
         batch = client.post(
             "/api/versions",
             headers=auth(owner["token"]),
@@ -186,6 +171,19 @@ def test_viewer_cannot_review_and_private_requirement_is_hidden():
             json={"action": "candidate", "reason": "保留私密信息", "priority": "normal", "risk_level": "medium"},
         )
         assert reviewed.status_code == 200
+        developing = client.patch(
+            f"/api/requirements/{created['id']}/status",
+            headers=auth(owner["token"]),
+            json={"status": "developing", "reason": "开始独立开发"},
+        )
+        assert developing.status_code == 200, developing.text
+        assert developing.json()["data"]["status"] == "developing"
+        reset_candidate = client.patch(
+            f"/api/requirements/{created['id']}/status",
+            headers=auth(owner["token"]),
+            json={"status": "candidate", "reason": "继续验证版本排期流程"},
+        )
+        assert reset_candidate.status_code == 200, reset_candidate.text
         batch = client.post(
             "/api/versions",
             headers=auth(owner["token"]),
