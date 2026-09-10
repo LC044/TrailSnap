@@ -148,6 +148,8 @@ a { color: inherit; }
 .dashboard-card strong { color: var(--rp-primary); font-size: 28px; }
 .dashboard-card span { color: var(--rp-text-2); font-size: 13px; }
 .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.metric-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.metric-cards .dashboard-card { grid-column: span 3; }
 .dashboard-grid h2 { margin: 0 0 14px; font-size: 17px; }
 .distribution-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--rp-border); }
 .contact-box { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 13px; }
@@ -183,6 +185,8 @@ a { color: inherit; }
 /* ---------- 版本批次 ---------- */
 .batch-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .batch-card { display: flex; flex-direction: column; }
+.batch-edit-btn { position: absolute; right: 14px; bottom: 14px; }
+.batch-card { position: relative; }
 .batch-items { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .batch-items li { border-radius: 10px; background: #f8fafc; padding: 10px 12px; }
 .form-hint { color: var(--rp-text-3); font-size: 12.5px; line-height: 1.5; margin-top: 6px; }
@@ -252,7 +256,7 @@ a { color: inherit; }
   .submit-form .actions { display: grid; grid-template-columns: minmax(0, 1fr); }
   .submit-form .actions > .el-button { width: 100%; max-width: 100%; min-width: 0; }
   .page-head-actions > .el-button { max-width: 100%; min-width: 0; }
-  .dashboard-cards, .dashboard-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .dashboard-cards, .dashboard-grid, .metric-cards { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .native-file { min-height: 44px; }
   .file-row { align-items: flex-start; flex-wrap: wrap; word-break: break-all; }
   .batch-grid { grid-template-columns: minmax(0, 1fr); }

@@ -322,6 +322,53 @@ def test_attachment_limits_and_private_access():
         assert too_large.status_code == 413
 
 
+def test_batch_update_closed_filter_and_dashboard_charts():
+    with TestClient(app) as client:
+        owner = client.post(
+            "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
+        ).json()["data"]
+        viewer = client.post(
+            "/api/auth/login", json={"identifier": "viewer@example.com", "password": "password123"}
+        ).json()["data"]
+
+        batch = client.post(
+            "/api/versions", headers=auth(owner["token"]),
+            json={"name": "编辑前批次", "version_name": "v9.9.8", "batch_type": "feature", "goal": "验证版本编辑"},
+        ).json()["data"]
+        updated = client.patch(
+            f"/api/versions/{batch['id']}", headers=auth(owner["token"]),
+            json={"name": "编辑后批次", "target_date": "2026-10-01", "max_risk_level": "medium"},
+        )
+        assert updated.status_code == 200, updated.text
+        assert updated.json()["data"]["name"] == "编辑后批次"
+        assert updated.json()["data"]["target_date"] == "2026-10-01"
+        assert updated.json()["data"]["max_risk_level"] == "medium"
+        conflict = client.patch(
+            f"/api/versions/{batch['id']}", headers=auth(owner["token"]), json={"version_name": "v0.15.0"}
+        )
+        assert conflict.status_code == 409
+        unauthenticated = client.patch(f"/api/versions/{batch['id']}", json={"name": "未登录"})
+        assert unauthenticated.status_code == 401
+
+        closed = client.post(
+            "/api/requirements", headers=auth(viewer["token"]),
+            json={"type": "bug", "title": "列表关闭筛选验证需求", "description": "关闭后不应出现在默认列表中。"},
+        ).json()["data"]
+        client.post(f"/api/requirements/{closed['id']}/close", headers=auth(owner["token"]), json={"reason": "已处理完毕"})
+        default_rows = client.get("/api/requirements", headers=auth(viewer["token"])).json()["data"]
+        assert closed["id"] not in {row["id"] for row in default_rows}
+        closed_rows = client.get(
+            "/api/requirements?status=closed", headers=auth(viewer["token"])
+        ).json()["data"]
+        assert closed["id"] in {row["id"] for row in closed_rows}
+
+        dashboard = client.get("/api/admin/dashboard", headers=auth(owner["token"])).json()["data"]
+        assert len(dashboard["daily_new_30d"]) == 30
+        assert dashboard["contributor_count"] >= 1
+        assert isinstance(dashboard["top_contributors"], list)
+        assert dashboard["follower_count"] >= 1
+
+
 def test_manager_imports_github_issues(monkeypatch):
     with TestClient(app) as client:
         owner = client.post(

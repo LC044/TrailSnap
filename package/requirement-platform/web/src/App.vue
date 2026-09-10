@@ -86,6 +86,7 @@
           </el-select>
           <el-select v-model="filters.status" clearable placeholder="全部状态" class="select" @change="loadRequirements">
             <el-option v-for="status in statusOptions" :key="status" :label="statusLabel(status)" :value="status" />
+            <el-option label="已关闭" value="closed" />
           </el-select>
           <el-select v-model="sortBy" placeholder="最新更新" class="sort" @change="sortRequirements">
             <el-option label="最新更新" value="updated" /><el-option label="最早提交" value="oldest" /><el-option label="关注最多" value="followers" />
@@ -106,10 +107,11 @@
           <article class="panel dashboard-card"><strong>{{ dashboard.github_linked }}</strong><span>已关联 GitHub</span></article>
           <article class="panel dashboard-card"><strong>{{ dashboard.anonymous }}</strong><span>匿名提交</span></article>
         </div>
-        <div v-if="dashboard" class="dashboard-grid">
-          <article class="panel"><h2>状态分布</h2><div v-for="(count, status) in dashboard.by_status" :key="status" class="distribution-row"><span>{{ statusLabel(status) }}</span><strong>{{ count }}</strong></div></article>
-          <article class="panel"><h2>类型分布</h2><div v-for="(count, kind) in dashboard.by_type" :key="kind" class="distribution-row"><span>{{ typeLabel(kind) }}</span><strong>{{ count }}</strong></div></article>
+        <div v-if="dashboard" class="metric-cards">
+          <article class="panel dashboard-card"><strong>{{ dashboard.contributor_count }}</strong><span>参与人数</span></article>
+          <article class="panel dashboard-card"><strong>{{ dashboard.follower_count }}</strong><span>关注总数</span></article>
         </div>
+        <DashboardCharts v-if="dashboard" :data="dashboard" />
       </section>
 
       <!-- ============ 提交需求 ============ -->
@@ -301,7 +303,7 @@
             </div>
           </div>
           <div class="page-head-actions">
-            <el-button v-if="isManager" type="primary" :icon="Plus" @click="batchDialog = true">创建版本批次</el-button>
+            <el-button v-if="isManager" type="primary" :icon="Plus" @click="openCreateBatch">创建版本批次</el-button>
           </div>
         </div>
         <div v-if="!batches.length" class="panel empty">
@@ -317,6 +319,7 @@
               </div>
               <span class="tag" :class="`s-${batch.status}`">{{ statusLabel(batch.status) }}</span>
             </div>
+            <el-button v-if="isManager" class="batch-edit-btn" size="small" text :icon="EditPen" @click="openEditBatch(batch)">编辑</el-button>
             <p class="description">{{ batch.goal }}</p>
             <a v-if="batch.github_milestone_url" class="github-link" :href="batch.github_milestone_url" target="_blank" rel="noopener">
               GitHub Milestone #{{ batch.github_milestone_number }}
@@ -555,8 +558,8 @@
       <template #footer><el-button @click="reviewDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="submitReview">确认</el-button></template>
     </el-dialog>
 
-    <!-- ============ 创建版本批次 ============ -->
-    <el-dialog v-model="batchDialog" title="创建版本批次" width="min(92vw, 560px)">
+    <!-- ============ 创建/编辑版本批次 ============ -->
+    <el-dialog v-model="batchDialog" :title="batchEditTarget ? '编辑版本批次' : '创建版本批次'" width="min(92vw, 560px)">
       <el-form label-position="top">
         <el-form-item label="版本名称" required>
           <el-input v-model="batchForm.name" maxlength="120" show-word-limit placeholder="例如：移动端体验优化" />
@@ -583,7 +586,7 @@
           <div class="field-hint">风险高于该级别的需求不能加入此版本。</div>
         </el-form-item>
       </el-form>
-      <template #footer><el-button @click="batchDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="createBatch">创建</el-button></template>
+      <template #footer><el-button @click="batchDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="submitBatch">{{ batchEditTarget ? '保存' : '创建' }}</el-button></template>
     </el-dialog>
   </div>
 </template>
@@ -600,10 +603,11 @@ import logoUrl from './assets/logo.svg'
 import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
 import {
   avatarColor, batchTypeLabel, deliveryLabel, formatDateTime, reviewActionLabels, roleLabel,
-  statusLabel, typeLabel,
+  statusLabel,
 } from './labels'
 import RequirementTable from './RequirementTable.vue'
 import RequirementDetail from './RequirementDetail.vue'
+import DashboardCharts from './DashboardCharts.vue'
 
 const statusOptions = ['pending_review', 'candidate', 'scheduled', 'developing', 'testing', 'release_ready', 'released', 'deferred', 'rejected']
 const reviewStatuses = ['submitted', 'triaging', 'pending_review', 'needs_information', 'candidate', 'deferred', 'rejected', 'duplicate']
@@ -659,6 +663,7 @@ const pendingFiles = ref<File[]>([])
 const fileInput = ref<HTMLInputElement | null>(null)
 const reviewForm = reactive({ action: 'candidate', reason: '', priority: 'normal', risk_level: 'medium', duplicate_of_id: '' })
 const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
+const batchEditTarget = ref<Batch | null>(null)
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
 const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
 const mcpUrl = `${window.location.origin}/mcp/`
@@ -709,6 +714,7 @@ async function loadRequirements() {
   if (filters.q) p.set('q', filters.q)
   if (filters.type) p.set('type', filters.type)
   if (filters.status) p.set('status', filters.status)
+  else p.set('include_closed', 'false')
   requirements.value = await api.requirements(`?${p}`)
 }
 async function loadMine() { if (user.value) myRequirements.value = await api.requirements('?mine=true') }
@@ -1008,19 +1014,43 @@ async function submitReview() {
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
 
-async function createBatch() {
+const emptyBatchForm = () => ({ name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
+
+function openCreateBatch() {
+  batchEditTarget.value = null
+  Object.assign(batchForm, emptyBatchForm())
+  batchDialog.value = true
+}
+
+function openEditBatch(batch: Batch) {
+  batchEditTarget.value = batch
+  Object.assign(batchForm, {
+    name: batch.name, version_name: batch.version_name, goal: batch.goal,
+    batch_type: batch.batch_type, target_date: batch.target_date || '', max_risk_level: batch.max_risk_level,
+  })
+  batchDialog.value = true
+}
+
+async function submitBatch() {
   const name = batchForm.name.trim()
   const versionName = batchForm.version_name.trim()
   const goal = batchForm.goal.trim()
   if (name.length < 2 || name.length > 120) { ElMessage.error('版本名称需要 2–120 个字符'); return }
   if (!/^[A-Za-z0-9._-]{1,50}$/.test(versionName)) { ElMessage.error('版本号只能包含 1–50 个英文字母、数字、点、下划线或连字符'); return }
   if (goal.length < 4 || goal.length > 4000) { ElMessage.error('版本目标需要 4–4,000 个字符'); return }
+  const payload = { name, version_name: versionName, goal, batch_type: batchForm.batch_type, target_date: batchForm.target_date || null, max_risk_level: batchForm.max_risk_level }
   busy.value = true
   try {
-    await api.createBatch({ ...batchForm, name, version_name: versionName, goal, target_date: batchForm.target_date || null })
-    batchDialog.value = false
-    Object.assign(batchForm, { name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
-    ElMessage.success('版本批次已创建')
+    if (batchEditTarget.value) {
+      await api.updateBatch(batchEditTarget.value.id, payload)
+      batchDialog.value = false
+      ElMessage.success('版本批次已更新')
+    } else {
+      await api.createBatch(payload)
+      batchDialog.value = false
+      Object.assign(batchForm, emptyBatchForm())
+      ElMessage.success('版本批次已创建')
+    }
     await loadBatches()
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }

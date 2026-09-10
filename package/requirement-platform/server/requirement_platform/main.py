@@ -44,6 +44,7 @@ from .schemas import (
     BatchItemInput,
     BatchRead,
     BatchStatusInput,
+    BatchUpdate,
     DeliveryStatusInput,
     GitHubIdentityRead,
     GitHubIssueLinkInput,
@@ -588,6 +589,7 @@ def list_requirements(
     limit: int = Query(50, ge=1, le=100),
     skip: int = Query(0, ge=0),
     include_deleted: bool = False,
+    include_closed: bool = False,
     user: User | None = Depends(optional_user),
     db: Session = Depends(get_db),
 ):
@@ -598,6 +600,8 @@ def list_requirements(
             raise HTTPException(status_code=403, detail="Manager role required")
     else:
         query = query.filter(Requirement.deleted_at.is_(None))
+    if not include_closed and not status and not mine:
+        query = query.filter(Requirement.status != "closed")
     if mine:
         if not user:
             raise HTTPException(status_code=401, detail="Authentication required")
@@ -979,6 +983,28 @@ def create_batch(payload: BatchCreate, actor: User = Depends(manager), db: Sessi
     return ok(batch_data(row, db, include_private=True))
 
 
+@app.patch("/api/versions/{batch_id}")
+def update_batch(batch_id: str, payload: BatchUpdate, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    batch = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
+    if not batch:
+        raise HTTPException(status_code=404, detail="Version batch not found")
+    values = payload.model_dump(exclude_unset=True)
+    if "version_name" in values and values["version_name"] != batch.version_name:
+        other = db.query(ReleaseBatch).filter(ReleaseBatch.version_name == values["version_name"], ReleaseBatch.id != batch.id).first()
+        if other:
+            raise HTTPException(status_code=409, detail="Version name already exists")
+    for key, value in values.items():
+        setattr(batch, key, value)
+    audit(db, actor.id, "release_batch.updated", "release_batch", batch.id,
+          fields=sorted(values.keys()), before_version_name=batch.version_name, version_name=batch.version_name)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Version name already exists") from exc
+    return ok(batch_data(batch, db, include_private=True))
+
+
 @app.get("/api/versions/{batch_id}")
 def get_batch(batch_id: str, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
     row = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
@@ -1154,16 +1180,43 @@ def dashboard(_actor: User = Depends(manager), db: Session = Depends(get_db)):
     type_rows = db.query(Requirement.type, func.count(Requirement.id)).filter(
         Requirement.deleted_at.is_(None)
     ).group_by(Requirement.type).all()
-    since = datetime.now(timezone.utc) - timedelta(days=7)
+    now = datetime.now(timezone.utc)
+    since_7 = now - timedelta(days=7)
+    since_30 = now - timedelta(days=30)
+    trend_rows = db.query(
+        func.substr(Requirement.created_at, 1, 10).label("day"), func.count(Requirement.id)
+    ).filter(
+        Requirement.deleted_at.is_(None), Requirement.created_at >= since_30
+    ).group_by("day").all()
+    trend_by_day = {day: count for day, count in trend_rows}
+    daily_new = []
+    for offset in range(29, -1, -1):
+        day = (now - timedelta(days=offset)).date().isoformat()
+        daily_new.append({"date": day, "count": trend_by_day.get(day, 0)})
+    contributors_rows = db.query(Requirement.created_by, func.count(Requirement.id)).filter(
+        Requirement.deleted_at.is_(None), Requirement.created_by.is_not(None)
+    ).group_by(Requirement.created_by).all()
+    contributors = [{
+        "user_id": user_id,
+        "name": db.query(User.username).filter(User.id == user_id).scalar() or "未知用户",
+        "count": count,
+    } for user_id, count in contributors_rows]
+    contributors.sort(key=lambda item: (-item["count"], item["name"]))
+    anonymous_count = base.filter(Requirement.created_by.is_(None)).count()
+    followers = db.query(func.count(RequirementFollower.id)).scalar() or 0
     return ok({
         "total": base.count(),
-        "new_last_7_days": base.filter(Requirement.created_at >= since).count(),
+        "new_last_7_days": base.filter(Requirement.created_at >= since_7).count(),
         "pending_review": base.filter(Requirement.status.in_({"submitted", "triaging", "pending_review"})).count(),
         "in_progress": base.filter(Requirement.status.in_({"scheduled", "developing", "testing", "release_ready"})).count(),
         "github_linked": base.filter(Requirement.github_issue_number.is_not(None)).count(),
-        "anonymous": base.filter(Requirement.created_by.is_(None)).count(),
+        "anonymous": anonymous_count,
         "by_status": {status: count for status, count in status_rows},
         "by_type": {kind: count for kind, count in type_rows},
+        "contributor_count": len(contributors) + (1 if anonymous_count else 0),
+        "follower_count": followers,
+        "daily_new_30d": daily_new,
+        "top_contributors": contributors[:5],
     })
 
 

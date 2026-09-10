@@ -108,6 +108,15 @@ class BatchCreate(BaseModel):
     max_risk_level: Literal["low", "medium", "high", "critical"] = "high"
 
 
+class BatchUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    version_name: str | None = Field(default=None, min_length=1, max_length=50, pattern=r"^[A-Za-z0-9._-]+$")
+    batch_type: Literal["fix", "feature", "major", "hotfix"] | None = None
+    goal: str | None = Field(default=None, min_length=4, max_length=4000)
+    target_date: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    max_risk_level: Literal["low", "medium", "high", "critical"] | None = None
+
+
 class BatchItemInput(BaseModel):
     requirement_id: str
     priority_order: int = Field(default=0, ge=0, le=10000)
