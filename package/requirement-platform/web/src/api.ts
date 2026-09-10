@@ -20,8 +20,19 @@ export type Batch = {
   id: string; name: string; version_name: string; batch_type: string; goal: string; status: string; target_date?: string
   max_risk_level: string; github_milestone_number?: number; github_milestone_url?: string; items: BatchItem[]
 }
+export type BatchInput = {
+  name: string; version_name: string; goal: string; batch_type: string
+  target_date: string | null; max_risk_level: string
+}
 export type RequirementHistory = { id: string; action: string; actor_name: string; before?: string; after?: string; reason?: string; created_at: string }
-export type Dashboard = { total: number; new_last_7_days: number; pending_review: number; in_progress: number; github_linked: number; anonymous: number; by_status: Record<string, number>; by_type: Record<string, number> }
+export type Dashboard = {
+  total: number; new_last_7_days: number; pending_review: number; in_progress: number
+  github_linked: number; anonymous: number
+  by_status: Record<string, number>; by_type: Record<string, number>
+  contributor_count: number; follower_count: number
+  daily_new_30d: Array<{ date: string; count: number }>
+  top_contributors: Array<{ user_id: string; name: string; count: number }>
+}
 
 const client = axios.create({ baseURL: import.meta.env.VITE_REQUIREMENT_API_URL || '/api', timeout: 20000 })
 client.interceptors.request.use(config => {
@@ -74,7 +85,8 @@ export const api = {
   syncGithubIssues: () => call<{ created: number; updated: number; skipped: number; total: number }>('post', '/admin/github/issues/sync'),
   dashboard: () => call<Dashboard>('get', '/admin/dashboard'),
   batches: () => call<Batch[]>('get', '/versions'),
-  createBatch: (data: unknown) => call<Batch>('post', '/versions', data),
+  createBatch: (data: BatchInput) => call<Batch>('post', '/versions', data),
+  updateBatch: (batchId: string, data: Partial<BatchInput>) => call<Batch>('patch', `/versions/${batchId}`, data),
   addBatchItem: (batchId: string, requirementId: string) => call<Batch>('post', `/versions/${batchId}/items`, { requirement_id: requirementId }),
   removeBatchItem: (batchId: string, itemId: string) => call<{ removed: boolean }>('delete', `/versions/${batchId}/items/${itemId}`),
   lockBatch: (batchId: string) => call<Batch>('post', `/versions/${batchId}/lock`),
