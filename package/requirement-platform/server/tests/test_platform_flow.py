@@ -4,6 +4,8 @@ import tempfile
 import atexit
 from pathlib import Path
 
+import pytest
+
 
 TEST_DIR = tempfile.TemporaryDirectory()
 os.environ["RP_DATABASE_URL"] = f"sqlite:///{Path(TEST_DIR.name) / 'requirements.db'}"
@@ -82,6 +84,21 @@ def test_complete_manual_requirement_and_batch_flow():
         assert reviewed.status_code == 200, reviewed.text
         assert reviewed.json()["data"]["status"] == "candidate"
 
+        developing = client.patch(
+            f"/api/requirements/{requirement['id']}/status",
+            headers=auth(owner["token"]),
+            json={"status": "developing", "reason": "开始独立开发"},
+        )
+        assert developing.status_code == 200, developing.text
+        assert developing.json()["data"]["status"] == "developing"
+
+        reset_candidate = client.patch(
+            f"/api/requirements/{requirement['id']}/status",
+            headers=auth(owner["token"]),
+            json={"status": "candidate", "reason": "继续验证版本排期流程"},
+        )
+        assert reset_candidate.status_code == 200, reset_candidate.text
+
         batch = client.post(
             "/api/versions",
             headers=auth(owner["token"]),
@@ -153,6 +170,12 @@ def test_viewer_cannot_review_and_private_requirement_is_hidden():
             json={"action": "candidate", "reason": "越权审核"},
         )
         assert denied.status_code == 403
+        denied_status = client.patch(
+            f"/api/requirements/{created['id']}/status",
+            headers=auth(viewer["token"]),
+            json={"status": "developing", "reason": "越权修改状态"},
+        )
+        assert denied_status.status_code == 403
 
         owner = client.post(
             "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
@@ -249,7 +272,7 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         tools = mcp_client.post("/", headers=headers, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
         assert tools.status_code == 200, tools.text
         tool_names = {item["name"] for item in tools.json()["result"]["tools"]}
-        assert {"list_requirements", "create_version", "upload_requirement_attachment", "get_requirement_records",
+        assert {"list_requirements", "update_requirement_status", "create_version", "upload_requirement_attachment", "get_requirement_records",
                 "sync_github_issues", "sync_github_milestone"} <= tool_names
         rejected = mcp_client.post(
             "/",
@@ -280,6 +303,12 @@ def test_mcp_requirement_version_attachment_and_records_flow(monkeypatch):
     attachment_id = mcp_server.list_requirement_attachments(requirement_id)[0]["id"]
     assert mcp_server.download_requirement_attachment(requirement_id, attachment_id)["content_base64"] == base64.b64encode(b"trace").decode()
     mcp_server.review_requirement(requirement_reference, "candidate", "可纳入测试版本")
+    changed = mcp_server.update_requirement_status(requirement_reference, "developing", "开始独立开发")
+    assert changed["status"] == "developing"
+    assert changed["review_reason"] == "开始独立开发"
+    with pytest.raises(ValueError, match="无效的需求状态"):
+        mcp_server.update_requirement_status(requirement_reference, "unknown", "测试未知状态")
+    mcp_server.update_requirement_status(requirement_reference, "candidate", "继续验证版本排期流程")
     batch = mcp_server.create_version("MCP 测试版本", "mcp-test-1", "验证版本写入")
     version = mcp_server.add_version_requirement(batch["id"], requirement_id)
     item_id = version["items"][0]["id"]
