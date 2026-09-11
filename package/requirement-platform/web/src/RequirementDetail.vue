@@ -101,6 +101,7 @@
           <div class="detail-actions">
             <el-button v-if="canFollow" @click="emit('follow')">关注（{{ requirement.follower_count || 0 }}）</el-button>
             <el-button v-if="manager" @click="emit('edit')">编辑</el-button>
+            <el-button v-if="manager" @click="emit('status')">修改状态</el-button>
             <el-button v-if="manager" type="primary" @click="emit('review')">审核</el-button>
           </div>
         </article>
@@ -143,6 +144,7 @@ const emit = defineEmits<{
   copyLink: []
   follow: []
   edit: []
+  status: []
   review: []
   download: [attachment: Attachment]
 }>()

@@ -71,6 +71,7 @@ export const api = {
     URL.revokeObjectURL(url)
   },
   updateRequirement: (id: string, data: unknown) => call<Requirement>('patch', `/requirements/${id}`, data),
+  updateRequirementStatus: (id: string, status: string, reason: string) => call<Requirement>('patch', `/requirements/${id}/status`, { status, reason }),
   withdrawRequirement: (id: string) => call<Requirement>('post', `/requirements/${id}/withdraw`),
   followRequirement: (id: string) => call<{ following: boolean }>('post', `/requirements/${id}/follow`),
   triage: (id: string) => call<{ job_id: string }>('post', `/requirements/${id}/triage`),
