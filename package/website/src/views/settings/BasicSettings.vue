@@ -104,6 +104,14 @@
               </el-select>
             </div>
 
+            <div class="mt-4 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertCircle class="mt-0.5 h-5 w-5 shrink-0" />
+              <div class="text-sm leading-6">
+                <p class="font-medium">旧版本升级用户需要更换 Key</p>
+                <p class="mt-1">旧版本使用的是浏览器端 Key，升级后不会自动转换。请前往天地图控制台创建“服务端”Key，在此替换原 Key；如启用 IP 白名单，请填写 TrailSnap Server 的公网出口 IP。</p>
+              </div>
+            </div>
+
             <div class="mt-5 space-y-3">
               <div
                 v-for="(_, index) in mapForm.api_keys"
