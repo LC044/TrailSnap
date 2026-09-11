@@ -236,8 +236,8 @@ Android App 的“自动查找 TrailSnap”会在 mDNS 无结果时探测局域�
 
 ### 微信交流群
 
-<a href="https://blog.siyuan.ink/static/img/771c5c2561e873ec92936bdb36bb7524.clipboard-2026-09-03.webp" target="_blank">
-  <img src="https://blog.siyuan.ink/static/img/771c5c2561e873ec92936bdb36bb7524.clipboard-2026-09-03.webp" alt="微信交流群" width="200px">
+<a href="https://blog.siyuan.ink/static/img/62e0893d58c9d3a13e0c9add3bff7f79.clipboard-2026-09-11.webp" target="_blank">
+  <img src="https://blog.siyuan.ink/static/img/62e0893d58c9d3a13e0c9add3bff7f79.clipboard-2026-09-11.webp" alt="微信交流群" width="200px">
 </a>
 
 ### 致谢
