@@ -95,8 +95,17 @@ service.interceptors.response.use(
       }
       switch (error.response.status) {
         case 401: {
-          const currentPath = router.currentRoute.value.path;
-          const publicPages = ['/login', '/register', '/forgot-password'];
+          // window.location rather than router.currentRoute: a background
+          // request (nav items, auth status) can 401 while the initial
+          // navigation is still resolving, when currentRoute is still "/" —
+          // using it here misclassifies a public page as protected and bounces
+          // the user to /login mid-onboarding.
+          const currentPath = window.location.pathname;
+          // Same allow-list as the router guard: /server-settings is where the
+          // user goes to switch servers before logging in. A stale token there
+          // must be cleared silently — redirecting to /login would bounce them
+          // back ("登录已过期" while trying to reach the login flow).
+          const publicPages = ['/login', '/register', '/forgot-password', '/server-settings'];
           const userStore = useUserStore();
 
           const originalRequest = error.config as (InternalAxiosRequestConfig & { _desktopSessionRetried?: boolean }) | undefined;

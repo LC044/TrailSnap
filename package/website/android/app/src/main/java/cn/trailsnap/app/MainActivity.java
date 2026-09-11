@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GalleryBackupPlugin.class);
         registerPlugin(LanDiscoveryPlugin.class);
         registerPlugin(AppUpdaterPlugin.class);
+        registerPlugin(NativeNetworkPolicyPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.setWebViewClient(new OfflineOnlyWebViewClient(bridge, this));
         handleGalleryBackupAction(getIntent());

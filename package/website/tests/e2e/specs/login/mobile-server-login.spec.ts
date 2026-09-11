@@ -194,4 +194,50 @@ test.describe('手机 App 服务器断连 @p0', () => {
     await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token')))
       .toBe('expired-offline-session')
   })
+
+  test('连接页收到 401 时静默清除过期登录态，不踢回登录页', async ({ page }) => {
+    await page.addInitScript(() => {
+      ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
+        name: 'android',
+      }
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:3180')
+      localStorage.setItem('user_token', 'expired-token-before-server-switch')
+    })
+    // 后台请求（nav items 等）带过期 token 吃到 401，但连接页必须可用——
+    // 用户正是为了登录才来切换服务器，踢回 /login 会形成死循环。
+    await page.route('http://192.168.1.10:3180/**', route => route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Not authenticated' }),
+    }))
+
+    await page.goto('/server-settings', { waitUntil: 'domcontentloaded' })
+
+    await expect(page).toHaveURL(url => url.pathname === '/server-settings')
+    await expect(page.getByRole('button', { name: '测试并保存' })).toBeVisible()
+    // 过期 token 已被静默清除，而不是触发"登录已过期"跳转。
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token'))).toBeNull()
+  })
+
+  test('受保护页面收到 401 仍会退出并跳转登录页', async ({ page }) => {
+    await page.addInitScript(() => {
+      ;(window as typeof window & { CapacitorCustomPlatform?: { name: string } }).CapacitorCustomPlatform = {
+        name: 'android',
+      }
+      localStorage.setItem('trailsnap:server-url', 'http://192.168.1.10:3180')
+      localStorage.setItem('user_token', 'expired-token-on-protected-page')
+      localStorage.setItem('user_info', JSON.stringify({ id: 1, username: 'e2e-admin' }))
+    })
+    await page.route('http://192.168.1.10:3180/**', route => route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: JSON.stringify({ detail: 'Not authenticated' }),
+    }))
+
+    await page.goto('/photos', { waitUntil: 'domcontentloaded' })
+
+    // 正常的过期处理：清 token 并回到登录页。
+    await expect(page).toHaveURL(url => url.pathname === '/login', { timeout: 10_000 })
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('user_token'))).toBeNull()
+  })
 })
