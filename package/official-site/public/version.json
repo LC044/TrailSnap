@@ -158,5 +158,10 @@
         "version": "0.14.1",
         "update_info": "- 手机备份更快更稳：并行校验、自适应并发，完善实况照片上传与增量去重<br>- 大模型配置支持模型别名、上下文窗口与推理强度，分析和聊天可分别选择<br>- App 更新缓存自动清理旧安装包，弱网下载自动重试<br>- 优化移动端相册列表、实况图加载与照片删除后的浏览位置<br>- 修复扫码切换服务器被拦截的问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.14.1"
+    },
+    {
+        "version": "0.14.2",
+        "update_info": "- 天地图改用服务端 Key，真实 Key 不再进入地图资源 URL，网页、桌面端和手机 App 统一走 Server 代理<br>- 修复手机 App 地图大面积空白的问题<br>- 行影集需求平台上线，应用内反馈入口同步切换<br>- ⚠️ 升级后需要将旧的浏览器端天地图 Key 更换为服务端 Key，详见设置页指引",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.14.2"
     }
 ]

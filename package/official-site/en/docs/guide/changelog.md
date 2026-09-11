@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-11 (0.14.2)
+
+### New
+
+- The TrailSnap Requirements Platform is now live: submit feature requests and issues, track review outcomes and delivery plans, and explore trend and distribution charts on the dashboard. The in-app feedback page now points to the platform.
+- Added a developer blog to the official site, starting with an article on AI-assisted development reliability practices.
+
+### Improvements
+
+- Tianditu maps now use server-side keys: web, desktop, and mobile all load maps through your TrailSnap Server, so the real key never appears in map resource URLs. Keys are validated by the Server before saving.
+- The map settings page now explains how to migrate from old browser-type keys, with documentation updated accordingly.
+
+### Bug Fixes
+
+- Fixed maps going blank on the mobile app: the map proxy forwards the device's real User-Agent so Tianditu no longer returns 403, and failed responses are no longer cached by the WebView for 24 hours.
+- Fixed base map loading failures in the location trajectory view and the add-scene dialog in some environments.
+
+### Upgrade Notes
+
+- Users with browser-type Tianditu keys from earlier versions need to create a server-side key in the Tianditu console and replace it in Settings; if you use an IP allowlist, enter your TrailSnap Server's public egress IP.
+
 ## 2026-09-08 (0.14.1)
 
 ### New
