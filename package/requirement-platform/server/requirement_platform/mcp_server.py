@@ -22,7 +22,8 @@ from .models import (
 )
 from .security import resolve_agent_token
 from .services import (
-    GitHubClient, audit, enqueue, requirement_snapshot, requirement_status_from_github, sync_batch_milestone,
+    GitHubClient, STATUS_LABELS, audit, enqueue, requirement_snapshot, requirement_status_from_github,
+    sync_batch_milestone,
 )
 
 
@@ -49,7 +50,7 @@ class DatabaseTokenVerifier:
 mcp = MCPServer(
     name="trailsnap-requirements",
     title="TrailSnap 需求管理",
-    version="0.3.0",
+    version="0.4.0",
     instructions=(
         "用于查询和管理 TrailSnap 需求与版本。任何写入、审核、删除和 GitHub 操作都必须遵循令牌作用域；"
         "删除为可恢复的软删除。执行 review_requirement 前先读取需求详情，理由必须具体。"
@@ -260,6 +261,28 @@ def review_requirement(requirement_id: str, action: str, reason: str, priority: 
                                              "duplicate_of_id": duplicate_of_id}))
         audit(db, actor.id, f"requirement.{action}", "requirement", row.id, source="mcp", reason=reason,
               before=before, after=row.status)
+        db.commit()
+        return _requirement_dict(row)
+
+
+@mcp.tool()
+def update_requirement_status(requirement_id: str, status: str, reason: str) -> dict[str, Any]:
+    """将需求设置为任一平台已定义状态；必须提供具体原因。"""
+    _, actor = _identity("requirements:review")
+    if status not in STATUS_LABELS:
+        raise ValueError(f"无效的需求状态：{status}")
+    if len(reason.strip()) < 2:
+        raise ValueError("状态变更理由至少需要 2 个字符")
+    with SessionLocal() as db:
+        row = _requirement_or_error(db, requirement_id)
+        before = row.status
+        row.status = status
+        row.review_reason = reason.strip()
+        _enqueue_requirement_github_sync(db, row)
+        audit(
+            db, actor.id, "requirement.status_changed", "requirement", row.id,
+            source="mcp", before=before, after=row.status, reason=reason.strip(),
+        )
         db.commit()
         return _requirement_dict(row)
 

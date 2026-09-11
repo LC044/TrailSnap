@@ -158,15 +158,11 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
   test('地图设置测试 Key 成功后再保存配置', async ({ page }) => {
     let savedMap: unknown = null
 
-    await page.route('https://api.tianditu.gov.cn/geocoder**', async (route) => {
+    await page.route('**/api/settings/map/test-key', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          status: '0',
-          msg: 'ok',
-          result: { formatted_address: '北京市东城区东华门街道' },
-        }),
+        body: JSON.stringify({ valid: true }),
       })
     })
     await page.route('**/api/settings/', async (route) => {
@@ -195,11 +191,11 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
   })
 
   test('地图设置拒绝无法完成逆地理编码的 Key', async ({ page }) => {
-    await page.route('https://api.tianditu.gov.cn/geocoder**', async (route) => {
+    await page.route('**/api/settings/map/test-key', async (route) => {
       await route.fulfill({
-        status: 403,
+        status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ code: 301001, msg: '非法key' }),
+        body: JSON.stringify({ valid: false, reason: '非法key' }),
       })
     })
 

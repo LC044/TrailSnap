@@ -1,10 +1,15 @@
 import re
+import random
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, Response
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
 from app.core.system_config import system_config
+from app.core.config_manager import config_manager
 from app.api.deps import get_current_user
+from app.dependencies import get_db
 from app.db.models.user import User
 from app.service.update_checker import fetch_remote_update_info
 import logging
@@ -18,7 +23,11 @@ _TIANDITU_HOST = re.compile(
 )
 
 
-def _rewrite_tianditu_text(value: str) -> str:
+def _rewrite_tianditu_text(
+    value: str,
+    proxy_prefix: str = "/api/system/map-proxy",
+    map_key: str | None = None,
+) -> str:
     """Route URLs constructed inside the Tianditu SDK back through TrailSnap.
 
     The SDK builds most endpoints by concatenating protocol, host and path, so
@@ -26,31 +35,48 @@ def _rewrite_tianditu_text(value: str) -> str:
     expressions cover the API/service bundles; map tiles are explicitly
     replaced by the client with TrailSnap's tile proxy.
     """
-    proxy_api = '"/api/system/map-proxy/api.tianditu.gov.cn"'
+    proxy_api = f'"{proxy_prefix}/api.tianditu.gov.cn"'
     value = value.replace('T.Protocol.value+"api.tianditu."+T.Domain', proxy_api)
     value = value.replace(
         'T.Protocol.value+"location.tianditu.gov.cn"',
-        '"/api/system/map-proxy/location.tianditu.gov.cn"',
+        f'"{proxy_prefix}/location.tianditu.gov.cn"',
     )
-    return re.sub(
+    value = re.sub(
         r"https?:\/\/((?:api|location|t[0-7])\.tianditu\.(?:gov\.cn|com))",
-        r"/api/system/map-proxy/\1",
+        rf"{proxy_prefix}/\1",
         value,
         flags=re.IGNORECASE,
     )
+    if map_key:
+        value = value.replace(
+            f'window.TMAP_AUTHKEY="{map_key}"',
+            'window.TMAP_AUTHKEY="server"',
+        )
+    return value
 
 
-def _public_request_origin(request: Request) -> str:
-    """Build the browser-key origin represented by the self-hosted gateway."""
-    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
-    scheme = forwarded_proto if forwarded_proto in {"http", "https"} else request.url.scheme
-    forwarded_host = request.headers.get("x-forwarded-host", "").split(",", 1)[0].strip()
-    host = forwarded_host or request.headers.get("host", "")
-    return f"{scheme}://{host}" if host else ""
+def _map_user_id(map_token: str) -> str:
+    try:
+        payload = jwt.decode(
+            map_token,
+            system_config.config.security.secret_key,
+            algorithms=[system_config.config.security.algorithm],
+        )
+    except JWTError as error:
+        raise HTTPException(status_code=403, detail="Invalid map access token") from error
+    if payload.get("scope") != "map_proxy" or not payload.get("sub"):
+        raise HTTPException(status_code=403, detail="Invalid map access token")
+    return str(payload["sub"])
 
 
-@router.get("/map-proxy/{host}/{path:path}", include_in_schema=False)
-async def proxy_tianditu_resource(host: str, path: str, request: Request):
+async def _proxy_tianditu_resource(
+    host: str,
+    path: str,
+    request: Request,
+    *,
+    map_token: str | None = None,
+    db: Session | None = None,
+):
     """Strict reverse proxy used by the mobile app for Tianditu resources.
 
     ``host`` is allow-listed to avoid turning a self-hosted TrailSnap instance
@@ -60,37 +86,57 @@ async def proxy_tianditu_resource(host: str, path: str, request: Request):
     if not _TIANDITU_HOST.fullmatch(host):
         raise HTTPException(status_code=404, detail="Unsupported map host")
     upstream = f"https://{host}/{path}"
+    map_key = None
+    proxy_prefix = "/api/system/map-proxy"
+    params = list(request.query_params.multi_items())
+    if map_token:
+        if db is None:
+            raise HTTPException(status_code=500, detail="Map configuration is unavailable")
+        user_id = _map_user_id(map_token)
+        config = config_manager.get_user_config(user_id, db)
+        keys = [key.strip() for key in config.map.api_keys if key.strip()]
+        if not keys:
+            raise HTTPException(status_code=400, detail="Map API Key is missing")
+        map_key = random.choice(keys)
+        params = [(name, value) for name, value in params if name.lower() != "tk"]
+        params.append(("tk", map_key))
+        proxy_prefix = f"/api/system/map-proxy/{map_token}"
     timeout = aiohttp.ClientTimeout(total=30, connect=8)
-    headers = {
-        "Accept": request.headers.get("accept", "*/*"),
-        # Tianditu rejects browser-type keys unless the caller looks like a
-        # browser: a synthetic "TrailSnap-Map-Proxy/1.0" UA gets 403 301012
-        # ("权限类型错误") on tiles and geocoding.  Forward the WebView's real
-        # UA and fall back to a modern mobile browser string when absent.
-        "User-Agent": request.headers.get("user-agent")
-        or "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Mobile Safari/537.36",
-    }
-    # Tianditu browser keys can be restricted by an allowed web origin.  From
-    # Tianditu's perspective the self-hosted gateway is now the caller, so use
-    # its public origin rather than Capacitor's synthetic http://localhost.
-    public_origin = _public_request_origin(request)
-    if public_origin:
-        headers["Referer"] = f"{public_origin}/"
-        headers["Origin"] = public_origin
+    headers = {"Accept": request.headers.get("accept", "*/*")}
+    if map_token:
+        # This route uses a Tianditu server-side key, so it must look like a
+        # server call and must not inherit browser Origin/Referer headers.
+        headers["User-Agent"] = "TrailSnap-Map-Proxy/1.0"
+    else:
+        # Backward compatibility for old clients that still carry a browser key.
+        headers["User-Agent"] = request.headers.get("user-agent") or (
+            "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126 Mobile Safari/537.36"
+        )
+    # Server-side keys must not inherit the browser/WebView origin. Browser
+    # keys may be domain-bound, while server keys are validated as server calls.
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(upstream, params=request.query_params, headers=headers) as response:
+            async with session.get(upstream, params=params, headers=headers) as response:
                 body = await response.read()
                 content_type = response.headers.get("Content-Type", "application/octet-stream")
                 if "javascript" in content_type or "text/" in content_type:
                     charset = response.charset or "utf-8"
-                    body = _rewrite_tianditu_text(body.decode(charset, errors="replace")).encode("utf-8")
+                    body = _rewrite_tianditu_text(
+                        body.decode(charset, errors="replace"),
+                        proxy_prefix=proxy_prefix,
+                        map_key=map_key,
+                    ).encode("utf-8")
                     content_type = content_type.split(";", 1)[0] + "; charset=utf-8"
                 # Only success responses are cacheable: an upstream 403/502
                 # would otherwise poison the WebView cache for a full day.
-                cache_control = (
-                    "public, max-age=86400" if response.status == 200 else "no-store"
-                )
+                cache_control = "no-store"
+                if response.status == 200:
+                    cache_control = (
+                        "private, max-age=3600"
+                        if map_token
+                        else "public, max-age=86400"
+                    )
                 return Response(
                     content=body,
                     status_code=response.status,
@@ -104,6 +150,25 @@ async def proxy_tianditu_resource(host: str, path: str, request: Request):
     except aiohttp.ClientError as error:
         logger.warning("Tianditu proxy failed for %s: %s", upstream, error)
         raise HTTPException(status_code=502, detail="Map service is unavailable") from error
+
+
+@router.get("/map-proxy/{map_token}/{host}/{path:path}", include_in_schema=False)
+async def proxy_server_tianditu_resource(
+    map_token: str,
+    host: str,
+    path: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return await _proxy_tianditu_resource(
+        host, path, request, map_token=map_token, db=db
+    )
+
+
+@router.get("/map-proxy/{host}/{path:path}", include_in_schema=False)
+async def proxy_tianditu_resource(host: str, path: str, request: Request):
+    """Legacy proxy retained for older App versions that still send ``tk``."""
+    return await _proxy_tianditu_resource(host, path, request)
 
 @router.get("/config")
 def get_system_config(current_user: User = Depends(get_current_user)):

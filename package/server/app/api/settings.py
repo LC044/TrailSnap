@@ -10,11 +10,13 @@ import re
 import logging
 import requests
 import time
+from datetime import timedelta
 from urllib.parse import quote, urlparse
 from app.dependencies import get_db, BaseResponse
 from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.core.config_manager import config_manager
+from app.core import security
 from app.db.models.photo import Photo
 from app.db.models.task import TaskType
 from app.service.storage import delete_thumbnails, update_storage_root_cache, _get_storage_root
@@ -38,6 +40,64 @@ except ImportError:
     from reverse_geocoder import download_country_data
 
 router = APIRouter()
+
+
+class MapKeyTestRequest(BaseModel):
+    api_key: str
+
+
+@router.get('/map/runtime', response_model=BaseResponse)
+def get_map_runtime(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Issue a scoped token for loading map resources without exposing the map key."""
+    config = config_manager.get_user_config(current_user.id, db)
+    keys = [key.strip() for key in config.map.api_keys if key.strip()]
+    if config.map.provider != "tianditu":
+        raise HTTPException(status_code=400, detail="暂不支持该地图提供商")
+    if not keys:
+        raise HTTPException(status_code=400, detail="Map API Key is missing")
+    token = security.create_access_token(
+        {"sub": str(current_user.id), "scope": "map_proxy"},
+        expires_delta=timedelta(hours=12),
+    )
+    return BaseResponse.success(data={"provider": config.map.provider, "access_token": token})
+
+
+@router.post('/map/test-key', response_model=BaseResponse)
+def test_map_key(
+    req: MapKeyTestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Test a draft Tianditu key from the Server so browser origin rules do not apply."""
+    key = req.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="请先输入 API Key")
+    try:
+        response = requests.get(
+            "https://api.tianditu.gov.cn/geocoder",
+            params={
+                "postStr": json.dumps({"lon": 116.397, "lat": 39.908, "ver": 1}, separators=(",", ":")),
+                "type": "geocode",
+                "tk": key,
+            },
+            headers={"User-Agent": "TrailSnap-Map-Proxy/1.0"},
+            timeout=10,
+        )
+        data = response.json()
+        address = data.get("result", {}).get("formatted_address")
+        if response.ok and str(data.get("status")) == "0" and isinstance(address, str) and address.strip():
+            return BaseResponse.success(data={"valid": True})
+        reason = data.get("msg") or data.get("message") or data.get("resolve")
+        return BaseResponse.success(data={
+            "valid": False,
+            "reason": reason or f"天地图返回 HTTP {response.status_code}",
+        })
+    except requests.RequestException:
+        return BaseResponse.success(data={"valid": False, "reason": "服务端无法访问天地图，请检查网络"})
+    except ValueError:
+        return BaseResponse.success(data={"valid": False, "reason": "天地图返回了无效响应"})
 
 def get_storage_root(user_id: str, db: Session = Depends(get_db)) -> str:
     try:

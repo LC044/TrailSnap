@@ -54,9 +54,9 @@ export function useLocationMap(callbacks?: {
   })
 
   const initMap = async (opts: LocationMapOptions) => {
-    let apiKey = ''
+    let mapAccessToken = ''
     try {
-      apiKey = await loadMapScript()
+      mapAccessToken = await loadMapScript()
     } catch (e: any) {
       mapError.value = e instanceof MapLoadError ? e.code : 'UNKNOWN'
       return
@@ -77,8 +77,8 @@ export function useLocationMap(callbacks?: {
       : new T.LngLat(104.195, 35.861)
     const zoom = opts.initialZoom || (hasCoords ? 14 : 4)
 
-    const vecTileUrl = getTiandituTileTemplate('vec_w', apiKey)
-    const cvaTileUrl = getTiandituTileTemplate('cva_w', apiKey)
+    const vecTileUrl = getTiandituTileTemplate('vec_w', mapAccessToken)
+    const cvaTileUrl = getTiandituTileTemplate('cva_w', mapAccessToken)
     map = vecTileUrl && cvaTileUrl
       ? new T.Map(opts.containerId, { layers: [] })
       : new T.Map(opts.containerId)

@@ -54,6 +54,14 @@ export const settingsApi = {
     const { data } = await request.get('/api/settings/')
     return data
   },
+  async getMapRuntime() {
+    const { data } = await request.get('/api/settings/map/runtime')
+    return data
+  },
+  async testMapKey(apiKey: string) {
+    const { data } = await request.post('/api/settings/map/test-key', { api_key: apiKey })
+    return data
+  },
   async getSystemConfig() {
     const { data } = await request.get('/api/system/config')
     return data

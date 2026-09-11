@@ -24,10 +24,6 @@ def _request(headers=None):
     })
 
 
-def test_public_origin_falls_back_to_request_scheme_and_host():
-    assert system_api._public_request_origin(_request()) == "http://localhost:8000"
-
-
 def test_map_proxy_rejects_hosts_outside_tianditu_allowlist():
     with pytest.raises(HTTPException) as exc:
         asyncio.run(system_api.proxy_tianditu_resource("evil.example.com", "icon.png", _request()))
