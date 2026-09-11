@@ -25,7 +25,7 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 declare const T: any
 
 const map = ref<any>(null)
-const currentApiKey = ref('')
+const mapAccessToken = ref('')
 const loading = ref(false)
 const index = new Supercluster({
   radius: 60,
@@ -47,7 +47,7 @@ const props = defineProps<{
 
 onMounted(async () => {
   try {
-    currentApiKey.value = await loadMapScript()
+    mapAccessToken.value = await loadMapScript()
     initMap()
     await loadContent()
   } catch (e: any) {
@@ -91,11 +91,10 @@ watch([() => props.startDate, () => props.endDate], async () => {
 const initMap = () => {
   if (map.value) return
   
-  const vecTileUrl = getTiandituTileTemplate('vec_w', currentApiKey.value)
-  const cvaTileUrl = getTiandituTileTemplate('cva_w', currentApiKey.value)
+  const vecTileUrl = getTiandituTileTemplate('vec_w', mapAccessToken.value)
+  const cvaTileUrl = getTiandituTileTemplate('cva_w', mapAccessToken.value)
   
-  // Web 生产环境使用同源代理；手机 App 使用用户配置的服务器上的代理。
-  // 本地开发和没有 nginx 路由的 Tauri 继续由 SDK 直连天地图。
+  // 所有客户端都使用 TrailSnap Server 注入服务端 Key 的同源代理。
   if (vecTileUrl && cvaTileUrl) {
     // 初始化地图时不添加默认图层
     map.value = new T.Map('tianditu-map', {

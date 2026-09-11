@@ -44,11 +44,11 @@ async function stubTickets(page: Page) {
 
 /** 让 LocationMap 缺少地图 key 时立即触发 MAP_KEY_MISSING 的 ElMessageBox。 */
 async function stubLocationMapNoKey(page: Page) {
-  await page.route('**/api/settings', (route: Route) =>
+  await page.route('**/api/settings/map/runtime', (route: Route) =>
     route.fulfill({
-      status: 200,
+      status: 400,
       contentType: 'application/json',
-      body: JSON.stringify(ok({ map: { provider: 'tianditu', api_keys: [], api_key: '' } })),
+      body: JSON.stringify({ detail: 'Map API Key is missing' }),
     }),
   )
   await page.route('**/api/locations/scenes/list**', (route: Route) =>

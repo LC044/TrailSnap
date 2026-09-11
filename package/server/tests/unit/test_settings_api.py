@@ -375,6 +375,39 @@ def test_verify_ai_service_reports_wrong_service_and_network_errors():
     assert "连接超时" in timeout.data["message"]
 
 
+def test_get_map_runtime_returns_scoped_token_without_key():
+    user = _user()
+    config = SimpleNamespace(
+        map=SimpleNamespace(provider="tianditu", api_keys=["server-secret"])
+    )
+    with patch.object(settings_api.config_manager, "get_user_config", return_value=config), \
+         patch.object(settings_api.security, "create_access_token", return_value="map-token") as create:
+        result = settings_api.get_map_runtime(db=MagicMock(), current_user=user)
+
+    assert result.code == 0
+    assert result.data == {"provider": "tianditu", "access_token": "map-token"}
+    assert "server-secret" not in str(result.data)
+    assert create.call_args.args[0] == {"sub": str(user.id), "scope": "map_proxy"}
+
+
+def test_map_key_validation_runs_from_server():
+    response = MagicMock(ok=True, status_code=200)
+    response.json.return_value = {
+        "status": "0",
+        "result": {"formatted_address": "北京市东城区"},
+    }
+    with patch.object(settings_api.requests, "get", return_value=response) as request:
+        result = settings_api.test_map_key(
+            settings_api.MapKeyTestRequest(api_key=" server-secret "),
+            current_user=_user(),
+        )
+
+    assert result.code == 0
+    assert result.data == {"valid": True}
+    assert request.call_args.kwargs["params"]["tk"] == "server-secret"
+    assert request.call_args.kwargs["headers"]["User-Agent"] == "TrailSnap-Map-Proxy/1.0"
+
+
 
 
 

@@ -171,7 +171,7 @@ const resetForm = () => {
 }
 
 const initMap = async () => {
-  const apiKey = await loadMapScript()
+  const mapAccessToken = await loadMapScript()
   nextTick(() => {
     // Always create new map instance to ensure proper rendering in dialog
     // Clean up old map if needed (though local variable usually suffices)
@@ -182,8 +182,8 @@ const initMap = async () => {
 
     // 手机 App / Web 生产环境走服务器代理瓦片；默认图层会在 App 上直连
     // 天地图，被原生网络边界拦截导致底图空白。
-    const vecTileUrl = getTiandituTileTemplate('vec_w', apiKey)
-    const cvaTileUrl = getTiandituTileTemplate('cva_w', apiKey)
+    const vecTileUrl = getTiandituTileTemplate('vec_w', mapAccessToken)
+    const cvaTileUrl = getTiandituTileTemplate('cva_w', mapAccessToken)
     map = vecTileUrl && cvaTileUrl
       ? new T.Map('add-scene-map', { layers: [] })
       : new T.Map('add-scene-map')
