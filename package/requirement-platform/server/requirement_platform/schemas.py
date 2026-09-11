@@ -95,6 +95,15 @@ class ReviewInput(BaseModel):
     duplicate_of_id: str | None = None
 
 
+class RequirementStatusInput(BaseModel):
+    status: Literal[
+        "submitted", "triaging", "pending_review", "needs_information", "candidate", "scheduled",
+        "developing", "testing", "release_ready", "released", "deferred", "rejected", "duplicate",
+        "withdrawn", "closed",
+    ]
+    reason: str = Field(min_length=2, max_length=2000)
+
+
 class DeliveryStatusInput(BaseModel):
     status: Literal["not_started", "developing", "pr_open", "testing", "completed", "blocked", "removed"]
 

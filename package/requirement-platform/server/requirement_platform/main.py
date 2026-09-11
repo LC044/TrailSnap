@@ -53,6 +53,7 @@ from .schemas import (
     ReasonInput,
     RequirementCreate,
     RequirementRead,
+    RequirementStatusInput,
     RequirementUpdate,
     ReviewInput,
     RoleUpdate,
@@ -797,6 +798,28 @@ def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = 
     enqueue_github_sync(db, row)
     audit(db, actor.id, f"requirement.{payload.action}", "requirement", row.id,
           before=before, after=row.status, reason=payload.reason)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True))
+
+
+@app.patch("/api/requirements/{requirement_id}/status")
+def update_requirement_status(
+    requirement_id: str,
+    payload: RequirementStatusInput,
+    actor: User = Depends(manager),
+    db: Session = Depends(get_db),
+):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    before = row.status
+    row.status = payload.status
+    row.review_reason = payload.reason
+    enqueue_github_sync(db, row)
+    audit(
+        db, actor.id, "requirement.status_changed", "requirement", row.id,
+        before=before, after=row.status, reason=payload.reason,
+    )
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 

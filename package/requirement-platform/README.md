@@ -111,7 +111,7 @@ MCP 作用域与能力：
 
 - `requirements:read`：查询需求、附件、历史/编辑/审核记录、分诊报告和后台任务。
 - `requirements:write`：创建和完整编辑需求、通过 Base64 上传附件、关注/取消关注及撤回需求。
-- `requirements:review`：审核、标记重复、关闭、软删除和恢复需求。
+- `requirements:review`：审核、修改为任一平台已定义状态、标记重复、关闭、软删除和恢复需求。
 - `versions:read`：查询版本批次、范围快照、单项交付状态和 GitHub Milestone。
 - `versions:write`：创建版本、增删范围条目、锁定范围、流转版本状态及更新交付状态。
 - `github:write`：创建、关联、解除关联和关闭 Issue，导入/同步 Issue，以及同步版本 Milestone。
