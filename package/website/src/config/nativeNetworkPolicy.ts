@@ -1,8 +1,15 @@
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 
 let installed = false
 let getConfiguredServerUrl: () => string = () => ''
 const temporaryServerOrigins = new Map<string, number>()
+
+interface NativeNetworkPolicyPlugin {
+  allowTemporaryOrigin(options: { origin: string; ttlMs: number }): Promise<void>
+  revokeTemporaryOrigin(options: { origin: string }): Promise<void>
+}
+
+const NativeNetworkPolicy = registerPlugin<NativeNetworkPolicyPlugin>('NativeNetworkPolicy')
 
 function requestOrigin(value: string | URL): string {
   const url = new URL(value.toString(), window.location.href)
@@ -11,19 +18,44 @@ function requestOrigin(value: string | URL): string {
   return url.origin
 }
 
+/**
+ * Mirror a candidate origin into the native WebView boundary
+ * (OfflineOnlyWebViewClient). Android intercepts requests below the JS layer;
+ * without this sync the same-origin rule there rejects the health check with
+ * a CORS-less 403, which surfaces as "Failed to fetch". Older Apps and
+ * browser/e2e runtimes have no native plugin — the call rejects there and is
+ * fine to ignore.
+ */
+async function syncTemporaryOriginToNative(origin: string, allowed: boolean): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  try {
+    if (allowed) await NativeNetworkPolicy.allowTemporaryOrigin({ origin, ttlMs: 30_000 })
+    else await NativeNetworkPolicy.revokeTemporaryOrigin({ origin })
+  } catch {
+    // Plugin missing (web runtime or pre-plugin build) — JS guard still applies.
+  }
+}
+
 /** Temporarily allow one candidate Server while its health endpoint is verified. */
 export async function withTemporaryServerAccess<T>(
   serverUrl: string,
   operation: () => Promise<T>,
 ): Promise<T> {
   const origin = requestOrigin(serverUrl)
+  const first = !temporaryServerOrigins.has(origin)
   temporaryServerOrigins.set(origin, (temporaryServerOrigins.get(origin) || 0) + 1)
+  // The native boundary must be open before the first request goes out; the
+  // revoke below must only run after the last concurrent operation finished.
+  if (first) await syncTemporaryOriginToNative(origin, true)
   try {
     return await operation()
   } finally {
     const remaining = (temporaryServerOrigins.get(origin) || 1) - 1
     if (remaining > 0) temporaryServerOrigins.set(origin, remaining)
-    else temporaryServerOrigins.delete(origin)
+    else {
+      temporaryServerOrigins.delete(origin)
+      if (first) void syncTemporaryOriginToNative(origin, false)
+    }
   }
 }
 

@@ -16,6 +16,10 @@ TrailSnap 手机 App 的运行原则是：安装包包含前端代码、字体�
 
 尚未保存 Server 地址时，连接页需要探测 mDNS/LAN 服务或测试用户手动输入的公网自部署地址，因此网络白名单尚未收紧。地址保存后策略立即变为精确同源；清除 App 数据会重新进入首次连接状态。
 
+## 切换 Server 的临时放行
+
+连接页对候选地址是"先测试、后保存"：测试请求发出时已保存的还是旧地址，原生层与浏览器层都会把新源当作外部请求。为此 `withTemporaryServerAccess()`（浏览器层）和 `NativeNetworkPolicy` 插件（Android 原生层，`OfflineOnlyWebViewClient`）在同一时刻临时放行候选 origin：测试请求发出前注册，带 30 秒过期兜底，测试结束（成功或失败）即撤销。两层必须同时放行，缺一层时表现为 `Failed to fetch`（Android 原生层返回无 CORS 头的 403）。旧版 App（< v0.14.1）浏览器层也没有放行，报"已阻止外部网络请求"。
+
 ## 上架构建注意事项
 
 当前 Android 自托管分发包包含 `REQUEST_INSTALL_PACKAGES`，用于用户确认后的 APK 自更新。Google Play 等商店通常会严格审核这项权限；正式商店渠道应建立单独 flavor，移除该权限和 App 内安装入口，交由应用商店更新。该渠道差异不改变 App 业务流量只访问自部署 Server 的原则。
