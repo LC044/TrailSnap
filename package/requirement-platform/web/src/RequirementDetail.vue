@@ -101,6 +101,7 @@
           <div class="detail-actions">
             <el-button v-if="canFollow" @click="emit('follow')">关注（{{ requirement.follower_count || 0 }}）</el-button>
             <el-button v-if="manager" @click="emit('edit')">编辑</el-button>
+            <el-button v-if="manager" @click="emit('status')">修改状态</el-button>
             <el-button v-if="manager" type="primary" @click="emit('review')">审核</el-button>
           </div>
         </article>
@@ -143,6 +144,7 @@ const emit = defineEmits<{
   copyLink: []
   follow: []
   edit: []
+  status: []
   review: []
   download: [attachment: Attachment]
 }>()
@@ -162,9 +164,10 @@ const triageText = computed(() => String(
 const renderMarkdown = (value?: string) => markdown.render(value || '')
 const formatBytes = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`
 const historyLabel = (event: RequirementHistory) => {
-  if (event.before && event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
+  if (event.before && event.after && event.before !== event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
   if (event.action === 'requirement.created') return '需求已提交'
   if (event.action === 'requirement.updated') return '需求内容已更新'
+  if (event.action === 'triage.completed') return 'AI 分析完成，进入待审核'
   if (event.after) return `状态更新为“${statusLabel(event.after)}”`
   return '需求有新动态'
 }

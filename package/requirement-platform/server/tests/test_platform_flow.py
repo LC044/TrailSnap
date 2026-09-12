@@ -21,7 +21,7 @@ from requirement_platform.db import SessionLocal, engine  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
 from requirement_platform import mcp_server  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
-from requirement_platform.models import BackgroundJob, GitHubIdentity, Requirement, TriageReport  # noqa: E402
+from requirement_platform.models import BackgroundJob, GitHubIdentity, Requirement, RequirementFollower, TriageReport  # noqa: E402
 from requirement_platform.services import (  # noqa: E402
     GitHubClient, analyze_requirement, closing_issue_numbers, requirement_status_from_github,
 )
@@ -295,6 +295,12 @@ def test_mcp_requirement_version_attachment_and_records_flow(monkeypatch):
         })
     requirement_id = created["id"]
     requirement_reference = created["reference"]
+    # 同步执行一次分析，让 get_requirement_triage 有数据可查（create 只是把 triage 任务入队）
+    triage_db = SessionLocal()
+    try:
+        analyze_requirement(triage_db, requirement_id)
+    finally:
+        triage_db.close()
     updated = mcp_server.update_requirement(requirement_reference, title="MCP 公共编号写入测试")
     assert updated["title"] == "MCP 公共编号写入测试"
     mcp_server.upload_requirement_attachment(requirement_id, "trace.log", base64.b64encode(b"trace").decode())
@@ -314,7 +320,19 @@ def test_mcp_requirement_version_attachment_and_records_flow(monkeypatch):
     mcp_server.update_version_delivery_status(batch["id"], item_id, "developing")
     mcp_server.update_version_status(batch["id"], "developing", "开始开发")
     assert mcp_server.get_version(batch["id"])["items"][0]["delivery_status"] == "developing"
-    assert "history" in mcp_server.get_requirement_records(requirement_id)
+    records = mcp_server.get_requirement_records(requirement_id)
+    assert "history" in records and records["history"]
+    # REQ-123 公共编号与 UUID 等价：按编号查询应返回同一份审计历史
+    records_by_reference = mcp_server.get_requirement_records(requirement_reference)
+    assert [event["id"] for event in records_by_reference["history"]] == [event["id"] for event in records["history"]]
+    assert [item["id"] for item in mcp_server.list_requirement_attachments(requirement_reference)] == [item["id"] for item in mcp_server.list_requirement_attachments(requirement_id)]
+    assert [report["id"] for report in mcp_server.get_requirement_triage(requirement_reference)] == [
+        report["id"] for report in mcp_server.get_requirement_triage(requirement_id)]
+    assert mcp_server.list_background_jobs(requirement_reference)
+    mcp_server.set_requirement_following(requirement_reference, True)
+    with SessionLocal() as follow_db:
+        assert follow_db.query(RequirementFollower).filter(
+            RequirementFollower.requirement_id == requirement_id).count() >= 1
 
 
 def test_attachment_limits_and_private_access():
@@ -600,3 +618,32 @@ def test_anonymous_number_history_dashboard_and_manager_edit():
         dashboard = client.get("/api/admin/dashboard", headers=auth(owner["token"]))
         assert dashboard.status_code == 200
         assert dashboard.json()["data"]["anonymous"] >= 1
+
+
+def test_triage_rerun_does_not_record_noop_status_change():
+    """重新分析已处于待审核的需求时，时间线不应出现"由待审核变为待审核"。"""
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        created = client.post(
+            "/api/requirements", headers=auth(owner["token"]),
+            json={"type": "bug", "title": "重新分析时间线测试", "description": "更新内容触发重新分析后，状态无变化时不应记录无意义的状态流转。"},
+        ).json()["data"]
+        requirement_id = created["id"]
+
+        db = SessionLocal()
+        try:
+            first = analyze_requirement(db, requirement_id)
+            assert first.report["summary"]
+            rerun = analyze_requirement(db, requirement_id)
+            assert rerun.report["summary"]
+        finally:
+            db.close()
+
+        history = client.get(f"/api/requirements/{requirement_id}/history").json()["data"]
+        triage_events = [event for event in history if event["action"] == "triage.completed"]
+        assert len(triage_events) == 2
+        first_event, second_event = triage_events
+        assert (first_event["before"], first_event["after"]) == ("submitted", "pending_review")
+        # 第二次分析状态未变化：不携带 before/after，前端不会渲染成"由待审核变为待审核"
+        assert second_event["before"] is None
+        assert second_event["after"] is None

@@ -51,6 +51,7 @@
           @copy-link="copyRequirementLink(detailTarget)"
           @follow="followDetail"
           @edit="openEdit(detailTarget)"
+          @status="openStatusChange(detailTarget)"
           @review="openReview(detailTarget)"
           @download="downloadAttachment(detailTarget, $event)"
         />
@@ -558,6 +559,29 @@
       <template #footer><el-button @click="reviewDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="submitReview">确认</el-button></template>
     </el-dialog>
 
+    <!-- ============ 修改状态 ============ -->
+    <el-dialog v-model="statusDialog" title="修改需求状态" width="min(92vw, 480px)">
+      <p v-if="statusTarget" class="status-dialog-title">
+        <strong>{{ statusTarget.title }}</strong>
+        <span class="tag" :class="`s-${statusTarget.status}`">{{ statusLabel(statusTarget.status) }}</span>
+      </p>
+      <el-form label-position="top" @submit.prevent="submitStatusChange">
+        <el-form-item label="目标状态" required>
+          <el-select v-model="statusForm.status" filterable placeholder="选择目标状态">
+            <el-option v-for="status in statusChangeOptions" :key="status" :label="statusLabel(status)" :value="status" />
+          </el-select>
+          <div class="field-hint">流转将在状态时间线中记录操作人与原因。</div>
+        </el-form-item>
+        <el-form-item label="变更原因" required>
+          <el-input v-model="statusForm.reason" type="textarea" :rows="4" maxlength="2000" show-word-limit placeholder="请说明状态变更的原因" />
+        </el-form-item>
+        <el-alert v-if="statusTarget?.github_issue_number" type="info" :closable="false" show-icon title="已关联 GitHub Issue">
+          状态保存后会异步同步 GitHub Issue 的状态标签与开闭状态。
+        </el-alert>
+      </el-form>
+      <template #footer><el-button @click="statusDialog = false">取消</el-button><el-button type="primary" :loading="busy" native-type="submit" @click="submitStatusChange">保存</el-button></template>
+    </el-dialog>
+
     <!-- ============ 创建/编辑版本批次 ============ -->
     <el-dialog v-model="batchDialog" :title="batchEditTarget ? '编辑版本批次' : '创建版本批次'" width="min(92vw, 560px)">
       <el-form label-position="top">
@@ -602,7 +626,7 @@ import axios from 'axios'
 import logoUrl from './assets/logo.svg'
 import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
 import {
-  avatarColor, batchTypeLabel, deliveryLabel, formatDateTime, reviewActionLabels, roleLabel,
+  avatarColor, batchTypeLabel, deliveryLabel, formatDateTime, requirementStatuses, reviewActionLabels, roleLabel,
   statusLabel,
 } from './labels'
 import RequirementTable from './RequirementTable.vue'
@@ -647,13 +671,14 @@ const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
 const agentTokens = ref<AgentToken[]>([])
 const dashboard = ref<Dashboard | null>(null), detailHistory = ref<RequirementHistory[]>([])
-const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
+const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), statusDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
 const githubOauthEnabled = ref(false), createdToken = ref(''), createdTokenId = ref(''), connectionToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
 const detailRouteNumber = ref<number | null>(routeRequirementNumber())
 const detailLoading = ref(false), detailTarget = ref<Requirement | null>(null)
 const reviewTarget = ref<Requirement | null>(null)
+const statusTarget = ref<Requirement | null>(null)
 const editTarget = ref<Requirement | null>(null)
 const editForm = reactive({ type: 'feature', severity: 'medium', title: '', description: '', steps_to_reproduce: '', current_behavior: '', expected_behavior: '', log_text: '', product_version: '', visibility: 'public' })
 const filters = reactive({ q: '', type: '', status: '' })
@@ -662,6 +687,7 @@ const requirementForm = reactive(emptyRequirementForm())
 const pendingFiles = ref<File[]>([])
 const fileInput = ref<HTMLInputElement | null>(null)
 const reviewForm = reactive({ action: 'candidate', reason: '', priority: 'normal', risk_level: 'medium', duplicate_of_id: '' })
+const statusForm = reactive({ status: '', reason: '' })
 const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
 const batchEditTarget = ref<Batch | null>(null)
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
@@ -948,6 +974,7 @@ function onRowAction(payload: { item: Requirement; command: string }) {
   if (command === 'follow') follow(item)
   else if (command === 'review') openReview(item)
   else if (command === 'edit') openEdit(item)
+  else if (command === 'status') openStatusChange(item)
   else if (command === 'withdraw') withdraw(item)
   else if (command === 'github-create') createGithubIssue(item)
   else if (command === 'github-link') linkGithubIssue(item)
@@ -1010,6 +1037,55 @@ async function submitReview() {
     ElMessage.success('审核结果已保存')
     await loadAdmin()
     await loadRequirements()
+    if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
+  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+}
+
+// 常用流转：按当前状态给出推荐的下一步，供弹窗默认展示；其余状态仍可通过筛选选择。
+const suggestedStatusTransitions: Record<string, string[]> = {
+  submitted: ['pending_review', 'needs_information', 'rejected', 'closed'],
+  triaging: ['pending_review', 'needs_information', 'rejected', 'closed'],
+  pending_review: ['candidate', 'needs_information', 'deferred', 'rejected', 'closed'],
+  needs_information: ['submitted', 'pending_review', 'rejected', 'closed'],
+  candidate: ['scheduled', 'developing', 'deferred', 'rejected', 'closed'],
+  scheduled: ['developing', 'testing', 'candidate', 'closed'],
+  developing: ['testing', 'release_ready', 'closed'],
+  testing: ['developing', 'release_ready', 'closed'],
+  release_ready: ['released', 'testing', 'closed'],
+  released: ['closed'],
+  deferred: ['pending_review', 'candidate', 'closed'],
+  rejected: ['pending_review', 'closed'],
+  duplicate: ['pending_review', 'closed'],
+  withdrawn: ['pending_review', 'closed'],
+  closed: ['pending_review'],
+}
+const statusChangeOptions = computed(() => {
+  if (!statusTarget.value) return requirementStatuses
+  const current = statusTarget.value.status
+  const suggested = (suggestedStatusTransitions[current] || []).filter(status => status !== current)
+  const rest = requirementStatuses.filter(status => status !== current && !suggested.includes(status))
+  return [...suggested, ...rest]
+})
+
+function openStatusChange(item: Requirement) {
+  statusTarget.value = item
+  Object.assign(statusForm, {
+    status: (suggestedStatusTransitions[item.status] || requirementStatuses.filter(s => s !== item.status))[0] || '',
+    reason: '',
+  })
+  statusDialog.value = true
+}
+
+async function submitStatusChange() {
+  if (!statusTarget.value) return
+  if (!statusForm.status) { ElMessage.error('请选择目标状态'); return }
+  if (statusForm.reason.trim().length < 2) { ElMessage.error('请填写至少 2 个字符的变更原因'); return }
+  busy.value = true
+  try {
+    const updated = await api.updateRequirementStatus(statusTarget.value.id, statusForm.status, statusForm.reason.trim())
+    statusDialog.value = false
+    ElMessage.success(updated.github_issue_number ? '状态已更新，GitHub Issue 将自动同步' : '状态已更新')
+    await refreshManaged()
     if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
   } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
 }
@@ -1151,6 +1227,8 @@ onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState))
 <style scoped>
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .w-full { width: 100%; }
+.status-dialog-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+.status-dialog-title strong { overflow-wrap: anywhere; }
 .github-link { color: var(--rp-primary); font-size: 13.5px; text-decoration: none; }
 .github-link:hover { text-decoration: underline; }
 .integration-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }

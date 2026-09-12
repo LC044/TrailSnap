@@ -36,6 +36,8 @@ export const statusLabels: Record<string, string> = {
   closed: '已关闭',
 }
 
+export const requirementStatuses = Object.keys(statusLabels)
+
 export const batchStatusLabels: Record<string, string> = {
   planning: '规划中',
   candidate_selection: '候选确认中',

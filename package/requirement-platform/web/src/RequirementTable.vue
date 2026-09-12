@@ -44,6 +44,7 @@
                   <el-dropdown-item v-if="canWithdraw(item)" command="withdraw">撤回</el-dropdown-item>
                   <el-dropdown-item v-if="manager" command="review">审核</el-dropdown-item>
                   <el-dropdown-item v-if="manager" command="edit">编辑需求</el-dropdown-item>
+                  <el-dropdown-item v-if="manager" command="status">修改状态</el-dropdown-item>
                   <el-dropdown-item v-if="manager && !item.github_issue_number" command="github-create">新建 GitHub Issue</el-dropdown-item>
                   <el-dropdown-item v-if="manager && !item.github_issue_number" command="github-link">关联已有 GitHub Issue</el-dropdown-item>
                   <el-dropdown-item v-if="manager && item.github_issue_number && item.github_state !== 'closed'" command="github-close">关闭 GitHub Issue 与需求</el-dropdown-item>
