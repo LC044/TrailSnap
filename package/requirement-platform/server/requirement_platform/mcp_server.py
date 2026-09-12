@@ -115,6 +115,7 @@ def _batch_dict(row: ReleaseBatch, db) -> dict[str, Any]:
 
 
 def _requirement_or_error(db, requirement_id: str, *, include_deleted: bool = False) -> Requirement:
+    """按 UUID 或 REQ-123 公共编号查找需求，找不到时抛出统一错误。"""
     number_text = requirement_id.upper().removeprefix("REQ-").lstrip("0") or "0"
     query = db.query(Requirement)
     if number_text.isdigit():
@@ -292,9 +293,7 @@ def delete_requirement(requirement_id: str, reason: str) -> dict[str, Any]:
     """软删除需求；数据和审计记录仍保留，可由管理员恢复。"""
     _, actor = _identity("requirements:review")
     with SessionLocal() as db:
-        row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
-        if not row:
-            raise ValueError("需求不存在或已删除")
+        row = _requirement_or_error(db, requirement_id)
         active_batch = db.query(ReleaseBatchItem).join(ReleaseBatch, ReleaseBatch.id == ReleaseBatchItem.batch_id).filter(
             ReleaseBatchItem.requirement_id == row.id,
             ReleaseBatch.status.notin_({"completed", "cancelled"}),
@@ -313,9 +312,9 @@ def restore_requirement(requirement_id: str) -> dict[str, Any]:
     """恢复一个被软删除的需求。"""
     _, actor = _identity("requirements:review")
     with SessionLocal() as db:
-        row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_not(None)).first()
-        if not row:
-            raise ValueError("已删除需求不存在")
+        row = _requirement_or_error(db, requirement_id, include_deleted=True)
+        if not row.deleted_at:
+            raise ValueError("需求未被删除")
         row.deleted_at, row.deleted_by, row.delete_reason = None, None, None
         audit(db, actor.id, "requirement.restored", "requirement", row.id, source="mcp")
         db.commit()
@@ -327,9 +326,7 @@ def create_github_issue(requirement_id: str) -> dict[str, Any]:
     """为需求创建并关联 GitHub Issue。"""
     _, actor = _identity("github:write")
     with SessionLocal() as db:
-        row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
-        if not row:
-            raise ValueError("需求不存在")
+        row = _requirement_or_error(db, requirement_id)
         if row.github_issue_number:
             return _requirement_dict(row)
         data = GitHubClient().create_issue(row)
@@ -345,9 +342,7 @@ def link_github_issue(requirement_id: str, issue_number: int) -> dict[str, Any]:
     """把已有 GitHub Issue 关联到需求。"""
     _, actor = _identity("github:write")
     with SessionLocal() as db:
-        row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
-        if not row:
-            raise ValueError("需求不存在")
+        row = _requirement_or_error(db, requirement_id)
         other = db.query(Requirement).filter(Requirement.github_issue_number == issue_number, Requirement.id != row.id).first()
         if other:
             raise ValueError("该 Issue 已关联其他需求")
@@ -365,8 +360,8 @@ def close_github_issue(requirement_id: str, reason: str) -> dict[str, Any]:
     """关闭平台需求，并由后台任务同步关闭已关联的 GitHub Issue。"""
     _, actor = _identity("github:write")
     with SessionLocal() as db:
-        row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
-        if not row or not row.github_issue_number:
+        row = _requirement_or_error(db, requirement_id)
+        if not row.github_issue_number:
             raise ValueError("需求不存在或尚未关联 Issue")
         before = row.status
         row.status, row.review_reason = "closed", reason.strip()
@@ -589,10 +584,10 @@ def list_requirement_attachments(requirement_id: str) -> list[dict[str, Any]]:
     """列出需求附件元数据。"""
     _identity("requirements:read")
     with SessionLocal() as db:
-        _requirement_or_error(db, requirement_id)
+        row = _requirement_or_error(db, requirement_id)
         return [{"id": item.id, "name": item.original_name, "content_type": item.content_type, "size_bytes": item.size_bytes,
                  "kind": item.kind, "created_at": item.created_at.isoformat()} for item in db.query(RequirementAttachment).filter(
-                 RequirementAttachment.requirement_id == requirement_id).order_by(RequirementAttachment.created_at).all()]
+                 RequirementAttachment.requirement_id == row.id).order_by(RequirementAttachment.created_at).all()]
 
 
 @mcp.tool()
@@ -600,9 +595,9 @@ def download_requirement_attachment(requirement_id: str, attachment_id: str) -> 
     """下载需求附件，返回 Base64 内容和元数据。"""
     _identity("requirements:read")
     with SessionLocal() as db:
-        _requirement_or_error(db, requirement_id)
+        row = _requirement_or_error(db, requirement_id)
         item = db.query(RequirementAttachment).filter(RequirementAttachment.id == attachment_id,
-                                                       RequirementAttachment.requirement_id == requirement_id).first()
+                                                       RequirementAttachment.requirement_id == row.id).first()
         if not item:
             raise ValueError("附件不存在")
         path = Path(settings.upload_dir).resolve() / item.stored_name
@@ -617,10 +612,10 @@ def get_requirement_records(requirement_id: str) -> dict[str, Any]:
     """读取需求的审计历史、编辑版本和审核记录。"""
     _identity("requirements:read")
     with SessionLocal() as db:
-        _requirement_or_error(db, requirement_id)
-        events = db.query(AuditEvent).filter(AuditEvent.object_type == "requirement", AuditEvent.object_id == requirement_id).order_by(AuditEvent.created_at).all()
-        revisions = db.query(RequirementRevision).filter(RequirementRevision.requirement_id == requirement_id).order_by(RequirementRevision.created_at).all()
-        reviews = db.query(ReviewDecision).filter(ReviewDecision.requirement_id == requirement_id).order_by(ReviewDecision.created_at).all()
+        row = _requirement_or_error(db, requirement_id)
+        events = db.query(AuditEvent).filter(AuditEvent.object_type == "requirement", AuditEvent.object_id == row.id).order_by(AuditEvent.created_at).all()
+        revisions = db.query(RequirementRevision).filter(RequirementRevision.requirement_id == row.id).order_by(RequirementRevision.created_at).all()
+        reviews = db.query(ReviewDecision).filter(ReviewDecision.requirement_id == row.id).order_by(ReviewDecision.created_at).all()
         return {"history": [{"id": x.id, "action": x.action, "details": x.details, "created_at": x.created_at.isoformat()} for x in events],
                 "revisions": [{"id": x.id, "editor_id": x.editor_id, "snapshot": x.snapshot, "reason": x.reason, "created_at": x.created_at.isoformat()} for x in revisions],
                 "reviews": [{"id": x.id, "reviewer_id": x.reviewer_id, "action": x.action, "reason": x.reason, "metadata": x.metadata_json, "created_at": x.created_at.isoformat()} for x in reviews]}
@@ -631,10 +626,10 @@ def get_requirement_triage(requirement_id: str) -> list[dict[str, Any]]:
     """读取需求的 AI/规则分诊报告。"""
     _identity("requirements:read")
     with SessionLocal() as db:
-        _requirement_or_error(db, requirement_id)
+        row = _requirement_or_error(db, requirement_id)
         return [{"id": x.id, "requirement_version": x.requirement_version, "provider": x.provider, "model": x.model,
                  "report": x.report, "confidence": x.confidence, "created_at": x.created_at.isoformat()} for x in db.query(TriageReport).filter(
-                 TriageReport.requirement_id == requirement_id).order_by(TriageReport.created_at.desc()).all()]
+                 TriageReport.requirement_id == row.id).order_by(TriageReport.created_at.desc()).all()]
 
 
 @mcp.tool()
@@ -644,7 +639,8 @@ def list_background_jobs(requirement_id: str | None = None, limit: int = 100) ->
     with SessionLocal() as db:
         query = db.query(BackgroundJob)
         if requirement_id:
-            query = query.filter(BackgroundJob.object_id == requirement_id)
+            row = _requirement_or_error(db, requirement_id)
+            query = query.filter(BackgroundJob.object_id == row.id)
         return [{"id": x.id, "job_type": x.job_type, "object_id": x.object_id, "status": x.status, "attempts": x.attempts,
                  "last_error": x.last_error, "created_at": x.created_at.isoformat()} for x in query.order_by(BackgroundJob.created_at.desc()).limit(min(max(limit, 1), 100)).all()]
 
@@ -654,15 +650,15 @@ def set_requirement_following(requirement_id: str, following: bool) -> dict[str,
     """以令牌所属账号关注或取消关注需求。"""
     _, actor = _identity("requirements:write")
     with SessionLocal() as db:
-        _requirement_or_error(db, requirement_id)
-        row = db.query(RequirementFollower).filter(RequirementFollower.requirement_id == requirement_id,
-                                                   RequirementFollower.user_id == actor.id).first()
-        if following and not row:
-            db.add(RequirementFollower(requirement_id=requirement_id, user_id=actor.id))
-        elif not following and row:
-            db.delete(row)
+        row = _requirement_or_error(db, requirement_id)
+        existing = db.query(RequirementFollower).filter(RequirementFollower.requirement_id == row.id,
+                                                        RequirementFollower.user_id == actor.id).first()
+        if following and not existing:
+            db.add(RequirementFollower(requirement_id=row.id, user_id=actor.id))
+        elif not following and existing:
+            db.delete(existing)
         db.commit()
-        return {"requirement_id": requirement_id, "following": following}
+        return {"requirement_id": row.id, "following": following}
 
 
 @mcp.tool()

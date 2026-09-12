@@ -153,8 +153,11 @@ def analyze_requirement(db: Session, requirement_id: str) -> TriageReport:
             db, "github_issue", requirement.id,
             f"github_issue:{requirement.id}:pending_review:v{requirement.version}",
         )
-    audit(db, None, "triage.completed", "requirement", requirement.id,
-          provider=provider, before=before, after=requirement.status)
+    # 重新分析已处于待审核的需求时状态不变，不应产生"由待审核变为待审核"的时间线记录
+    audit_details = {"provider": provider}
+    if requirement.status != before:
+        audit_details.update(before=before, after=requirement.status)
+    audit(db, None, "triage.completed", "requirement", requirement.id, **audit_details)
     db.commit()
     db.refresh(row)
     return row

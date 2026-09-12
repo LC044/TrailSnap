@@ -164,9 +164,10 @@ const triageText = computed(() => String(
 const renderMarkdown = (value?: string) => markdown.render(value || '')
 const formatBytes = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`
 const historyLabel = (event: RequirementHistory) => {
-  if (event.before && event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
+  if (event.before && event.after && event.before !== event.after) return `状态由“${statusLabel(event.before)}”变为“${statusLabel(event.after)}”`
   if (event.action === 'requirement.created') return '需求已提交'
   if (event.action === 'requirement.updated') return '需求内容已更新'
+  if (event.action === 'triage.completed') return 'AI 分析完成，进入待审核'
   if (event.after) return `状态更新为“${statusLabel(event.after)}”`
   return '需求有新动态'
 }
