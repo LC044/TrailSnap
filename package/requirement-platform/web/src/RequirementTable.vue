@@ -20,7 +20,7 @@
                 <el-icon :size="18"><component :is="typeIcon(item.type)" /></el-icon>
               </span>
               <div style="min-width: 0">
-                <p class="req-title req-title-link" @click="emit('open', item)"><span class="req-number">REQ-{{ item.public_number }}</span> {{ item.title }}</p>
+                <button class="req-title req-title-link" type="button" @click="emit('open', item)"><span class="req-number">REQ-{{ item.public_number }}</span> {{ item.title }}</button>
                 <p class="req-desc">{{ item.description }}</p>
               </div>
             </div>
@@ -64,9 +64,10 @@
       <div>暂无需求</div>
     </div>
 
-    <div v-if="items.length > pageSize" class="table-foot">
+    <div v-if="items.length" class="table-foot">
       <span class="total">共 {{ items.length }} 条需求</span>
       <el-pagination
+        v-if="items.length > pageSize"
         layout="prev, pager, next"
         :total="items.length"
         :page-size="pageSize"
@@ -105,4 +106,6 @@ const canWithdraw = (item: Requirement) =>
 .t-improvement { background: #f5f3ff; color: #7c3aed; }
 .t-bug { background: #fff7ed; color: #ea580c; }
 .req-number { color: var(--rp-primary); font-size: 12px; font-weight: 700; white-space: nowrap; }
+.req-title-link { display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--rp-text); text-align: left; cursor: pointer; }
+.req-title-link:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 3px; border-radius: 3px; }
 </style>

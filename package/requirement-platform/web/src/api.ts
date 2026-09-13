@@ -45,6 +45,40 @@ export type AIConnection = { id: string; name: string; provider: string; api_bas
 export type AITaskRoute = { task_type: string; label: string; description: string; enabled: boolean; model_ids: string[]; source: 'managed' | 'environment' | 'none'; updated_at?: string }
 export type AISettings = { connections: AIConnection[]; routes: AITaskRoute[]; legacy_environment_configured: boolean }
 
+export type UsageBreakdownItem = {
+  key: string; label?: string; requests: number; input_tokens: number; output_tokens: number
+  cache_read_tokens: number; cache_creation_tokens: number; input_total_tokens: number
+  real_total_tokens: number; cache_hit_rate: number; total_cost_usd: number
+}
+export type UsageOverview = {
+  total: {
+    requests: number; input_tokens: number; output_tokens: number; cache_read_tokens: number
+    cache_creation_tokens: number; input_total_tokens: number; real_total_tokens: number
+    cache_hit_rate: number; total_cost_usd: number; date_from?: string; date_to?: string
+  }
+  by_model: UsageBreakdownItem[]
+  by_provider: UsageBreakdownItem[]
+  by_app_type: UsageBreakdownItem[]
+  by_device: UsageBreakdownItem[]
+  device_count: number
+}
+export type UsageDailyPoint = {
+  date: string; requests: number; input_tokens: number; output_tokens: number
+  cache_read_tokens: number; cache_creation_tokens: number; total_cost_usd: number
+}
+export type UsageImportRecord = {
+  id: string; device_id: string; device_label: string; file_name: string; file_sha256: string
+  file_size: number; user_version?: number; detail_rows: number; detail_new: number
+  detail_dup: number; detail_aged_out: number; rollup_rows: number; rollup_upserted: number
+  date_min?: string; date_max?: string; imported_by?: string; imported_at?: string
+}
+export type UsageImportResult = {
+  import_id: string; device_id: string; device_label: string; file_name: string
+  file_sha256: string; user_version?: number; detail_rows: number; detail_new: number
+  detail_dup: number; detail_aged_out: number; rollup_rows: number; rollup_upserted: number
+  date_min?: string; date_max?: string
+}
+
 const client = axios.create({ baseURL: import.meta.env.VITE_REQUIREMENT_API_URL || '/api', timeout: 20000 })
 client.interceptors.request.use(config => {
   const token = localStorage.getItem('rp_token')
@@ -119,6 +153,16 @@ export const api = {
   agentTokens: () => call<AgentToken[]>('get', '/admin/agent-tokens'),
   createAgentToken: (data: { name: string; scopes: string[]; expires_in_days?: number | null; project_key?: string; agent_role?: string | null; task_id?: string | null }) => call<AgentToken & { token: string }>('post', '/admin/agent-tokens', data),
   revokeAgentToken: (id: string) => call<{ revoked: boolean }>('delete', `/admin/agent-tokens/${id}`),
+  usageOverview: (params = '') => call<UsageOverview>('get', `/usage/overview${params}`),
+  usageDaily: (params = '') => call<UsageDailyPoint[]>('get', `/usage/daily${params}`),
+  usageFilters: () => call<{ models: string[]; app_types: string[] }>('get', '/usage/filters'),
+  usageImports: () => call<UsageImportRecord[]>('get', '/usage/imports'),
+  uploadUsageImport: (deviceLabel: string, file: File) => {
+    const data = new FormData(); data.append('file', file); data.append('device_label', deviceLabel)
+    return client.post('/usage/imports', data).then(response => response.data.data as UsageImportResult)
+  },
+  deleteUsageImport: (id: string) => call<{ deleted: boolean; detail_removed: number }>('delete', `/usage/imports/${id}`),
+  deleteUsageDevice: (id: string) => call<{ deleted: boolean; device_label: string }>('delete', `/usage/devices/${id}`),
   aiSettings: () => call<AISettings>('get', '/admin/ai-settings'),
   createAIConnection: (data: unknown) => call<AIConnection>('post', '/admin/ai-connections', data),
   updateAIConnection: (id: string, data: unknown) => call<AIConnection>('patch', `/admin/ai-connections/${id}`, data),
