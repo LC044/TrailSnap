@@ -59,6 +59,16 @@ a { color: inherit; }
 .analysis-stages li.active { color:var(--rp-primary); font-weight:600; }.analysis-stages li.active span { border-color:var(--rp-primary); box-shadow:0 0 0 4px var(--rp-primary-soft); }
 .analysis-stages li.done { color:var(--rp-text-2); }.analysis-stages li.done span { border-color:var(--rp-primary); background:var(--rp-primary); }
 .analysis-result { padding:14px; border:1px solid var(--rp-border); border-radius:12px; }.analysis-result p { margin:7px 0; color:var(--rp-text-2); line-height:1.65; }.analysis-result small { color:var(--rp-text-3); }
+.analysis-stream { overflow:hidden; border:1px solid var(--rp-border); border-radius:12px; background:#111827; color:#d1fae5; }
+.analysis-stream-head { display:flex; justify-content:space-between; gap:12px; padding:10px 12px; border-bottom:1px solid #374151; color:#f9fafb; font-size:13px; }
+.analysis-stream-head span { color:#9ca3af; font-size:12px; }
+.analysis-stream pre { min-height:90px; max-height:220px; margin:0; padding:12px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; }
+.analysis-stream .analysis-reasoning { min-height:0; color:#bfdbfe; background:#172033; }
+.analysis-output-label { padding:7px 12px; border-top:1px solid #374151; border-bottom:1px solid #374151; color:#9ca3af; font-size:12px; }
+.analysis-retries { margin:0; padding:8px 12px 10px 28px; border-top:1px solid #374151; color:#fbbf24; font-size:12px; line-height:1.5; }
+.analysis-questions { display:grid; gap:14px; padding:16px; border:1px solid var(--rp-border); border-radius:12px; background:var(--rp-surface-muted); }
+.analysis-questions-head { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }.analysis-questions-head span { color:var(--rp-text-3); font-size:12px; }
+.analysis-question { display:grid; gap:7px; }.analysis-question label { color:var(--rp-text); font-size:14px; font-weight:600; line-height:1.5; }.analysis-question small { color:var(--rp-text-3); line-height:1.45; }
 
 /* ---------- 头像 ---------- */
 .avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 600; flex: none; user-select: none; }

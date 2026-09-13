@@ -173,18 +173,6 @@
               </el-form-item>
             </div>
 
-            <div v-if="!user && preflightQuestions.length" class="section ai-preflight">
-              <h2 class="section-head"><el-icon><MagicStick /></el-icon>AI 希望先确认</h2>
-              <el-alert type="info" :closable="false" title="回答后会随需求一起提交；不确定时可以直接填写“不确定”。" />
-              <el-form-item v-for="question in preflightQuestions" :key="question.question_id" :label="question.question">
-                <el-select v-if="question.suggested_options.length" v-model="preflightAnswers[question.question_id]" allow-create filterable placeholder="选择或输入答案">
-                  <el-option v-for="option in question.suggested_options" :key="option" :label="option" :value="option" />
-                </el-select>
-                <el-input v-else v-model="preflightAnswers[question.question_id]" type="textarea" :rows="2" placeholder="请输入答案或“不确定”" />
-                <div class="field-hint">{{ question.rationale }}</div>
-              </el-form-item>
-            </div>
-
             <div v-if="requirementForm.type === 'bug'" class="section">
               <h2 class="section-head"><el-icon><Warning /></el-icon>问题细节</h2>
               <el-form-item label="复现步骤">
@@ -508,21 +496,41 @@
       </div>
     </footer>
 
-    <el-dialog v-model="analysisDialog" title="AI 需求分析" width="min(92vw, 560px)" :close-on-click-modal="analysisProgress.done" :show-close="analysisProgress.done">
+    <el-dialog v-model="analysisDialog" title="AI 需求分析" width="min(94vw, 680px)" :close-on-click-modal="analysisProgress.done" :show-close="analysisProgress.done">
       <div class="analysis-progress-dialog">
         <el-progress :percentage="analysisProgress.percent" :status="analysisProgress.failed ? 'exception' : analysisProgress.done ? 'success' : undefined" />
         <div class="analysis-current"><el-icon :class="{ spinning: !analysisProgress.done }"><MagicStick /></el-icon><div><strong>{{ analysisProgress.title }}</strong><p>{{ analysisProgress.detail }}</p></div></div>
         <ol class="analysis-stages">
           <li v-for="stage in analysisProgress.stages" :key="stage.label" :class="stage.status"><span></span>{{ stage.label }}</li>
         </ol>
+        <div v-if="analysisProgress.reasoningOutput || analysisProgress.output || analysisProgress.attempt" class="analysis-stream">
+          <div class="analysis-stream-head"><strong>AI 分析过程</strong><span v-if="analysisProgress.attempt">第 {{ analysisProgress.attempt }}/{{ analysisProgress.maxAttempts }} 次</span></div>
+          <pre v-if="analysisProgress.reasoningOutput" class="analysis-reasoning">{{ analysisProgress.reasoningOutput }}</pre>
+          <div v-if="analysisProgress.output" class="analysis-output-label">结构化输出</div>
+          <pre v-if="analysisProgress.output" ref="analysisOutputEl">{{ analysisProgress.output }}</pre>
+          <pre v-else-if="!analysisProgress.reasoningOutput" ref="analysisOutputEl">等待 AI 返回内容…</pre>
+          <ul v-if="analysisProgress.retryMessages.length" class="analysis-retries"><li v-for="(message, index) in analysisProgress.retryMessages" :key="index">第 {{ index + 1 }} 次校验未通过：{{ message }}</li></ul>
+        </div>
         <div v-if="analysisProgress.summary" class="analysis-result">
           <strong>分析结果</strong><p>{{ analysisProgress.summary }}</p>
-          <small v-if="analysisProgress.model">由 {{ analysisProgress.model }} 完成结构化分析</small>
         </div>
-        <el-alert v-if="analysisProgress.done" :type="analysisProgress.failed ? 'warning' : 'success'" :closable="false" :title="analysisProgress.failed ? '需求已保存，AI 分析仍可在后台继续' : 'AI 已完成分析，结果已写入需求详情'" />
+        <div v-if="analysisProgress.done && preflightQuestions.length" class="analysis-questions">
+          <div class="analysis-questions-head"><strong>AI 需要补充确认</strong><span>回答后将自动完善并提交表单</span></div>
+          <div v-for="question in preflightQuestions" :key="question.question_id" class="analysis-question">
+            <label>{{ question.question }}</label>
+            <el-select v-if="question.suggested_options.length" v-model="preflightAnswers[question.question_id]" allow-create filterable placeholder="选择或输入答案">
+              <el-option v-for="option in question.suggested_options" :key="option" :label="option" :value="option" />
+            </el-select>
+            <el-input v-else v-model="preflightAnswers[question.question_id]" type="textarea" :rows="2" placeholder="请输入答案；不确定时可填写“不确定”" />
+            <small>{{ question.rationale }}</small>
+          </div>
+        </div>
+        <el-alert v-if="analysisProgress.appliedUpdates.length" type="success" :closable="false" :title="`AI 已根据回答更新：${analysisProgress.appliedUpdates.join('、')}`" />
+        <el-alert v-if="analysisProgress.done" :type="analysisProgress.failed ? 'warning' : 'success'" :closable="false" :title="analysisProgress.failed ? (submittedRequirement ? '需求已保存，AI 分析仍可在后台继续' : 'AI 分析未通过，可查看详细原因后重试') : (submittedRequirement ? 'AI 已完成分析，结果已写入需求详情' : (preflightQuestions.length ? '请直接在下方回答，AI 将自动完善并提交需求' : 'AI 已完成提交前分析'))" />
       </div>
       <template #footer>
         <el-button v-if="analysisProgress.done" @click="analysisDialog = false">关闭</el-button>
+        <el-button v-if="analysisProgress.done && preflightQuestions.length" type="primary" :loading="busy" @click="answerPreflightAndSubmit">应用回答并提交需求</el-button>
         <el-button v-if="analysisProgress.done && submittedRequirement" type="primary" @click="openAnalyzedRequirement">查看需求与分析结果</el-button>
       </template>
     </el-dialog>
@@ -721,9 +729,11 @@ const agentTokens = ref<AgentToken[]>([])
 const dashboard = ref<Dashboard | null>(null), detailHistory = ref<RequirementHistory[]>([])
 const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), statusDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
 const analysisDialog = ref(false)
+const analysisOutputEl = ref<HTMLElement | null>(null)
 const submittedRequirement = ref<Requirement | null>(null)
 const analysisProgress = reactive({
-  percent: 0, title: '', detail: '', done: false, failed: false, summary: '', model: '',
+  percent: 0, title: '', detail: '', done: false, failed: false, summary: '', output: '', reasoningOutput: '', attempt: 0, maxAttempts: 3,
+  retryMessages: [] as string[], appliedUpdates: [] as string[],
   stages: [] as Array<{ label: string; status: 'waiting' | 'active' | 'done' }>,
 })
 function setAnalysisStage(index: number, status: 'waiting' | 'active' | 'done') {
@@ -764,7 +774,7 @@ const genericMcpConfig = computed(() => JSON.stringify({
 }, null, 2))
 const candidateSelection = reactive<Record<string, string>>({})
 const preflightChecked = ref(false)
-const preflightQuestions = ref<Array<{ question_id: string; question: string; rationale: string; suggested_options: string[] }>>([])
+const preflightQuestions = ref<Array<{ question_id: string; target_field?: string; question: string; rationale: string; suggested_options: string[] }>>([])
 const preflightAnswers = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
@@ -917,37 +927,93 @@ function onUserCommand(command: string | number | object) {
 }
 function onNotification() { ElMessage.info('暂无新通知') }
 
+function resetAnalysisProgress(preserveAppliedUpdates = false) {
+  Object.assign(analysisProgress, {
+    percent: 12, title: '正在准备分析', detail: '校验输入并整理需求上下文', done: false, failed: false, summary: '',
+    output: '', reasoningOutput: '', attempt: 0, maxAttempts: 3, retryMessages: [],
+    appliedUpdates: preserveAppliedUpdates ? analysisProgress.appliedUpdates : [],
+    stages: [
+      { label: '整理需求信息', status: 'active' }, { label: '调用分析模型', status: 'waiting' },
+      { label: '保存需求与附件', status: 'waiting' }, { label: '后台结构化分诊', status: 'waiting' },
+    ],
+  })
+}
+
+async function runPreflightAnalysis() {
+  analysisProgress.percent = 30
+  analysisProgress.title = '正在进行提交前分析'
+  analysisProgress.detail = 'AI 正在检查信息完整度并判断是否需要追问'
+  setAnalysisStage(0, 'done'); setAnalysisStage(1, 'active')
+  const result = await api.streamPreflightTriage({ ...requirementForm, answers: preflightAnswers }, event => {
+    if (event.type === 'attempt') {
+      analysisProgress.attempt = event.attempt || 1
+      analysisProgress.maxAttempts = event.max_attempts || 3
+      if (analysisProgress.attempt > 1) analysisProgress.output += `\n\n—— 第 ${analysisProgress.attempt} 次输出 ——\n`
+      analysisProgress.detail = `AI 正在生成并校验结构化结果（第 ${analysisProgress.attempt}/${analysisProgress.maxAttempts} 次）`
+    } else if (event.type === 'delta' && event.content) {
+      if (event.channel === 'reasoning') analysisProgress.reasoningOutput += event.content
+      else analysisProgress.output += event.content
+      nextTick(() => { if (analysisOutputEl.value) analysisOutputEl.value.scrollTop = analysisOutputEl.value.scrollHeight })
+    } else if (event.type === 'retry') {
+      analysisProgress.retryMessages.push(event.reason || '输出格式不符合要求')
+      analysisProgress.detail = `本次输出未通过校验，正在自动重试（最多 ${analysisProgress.maxAttempts} 次）`
+    }
+  })
+  analysisProgress.summary = String(result.analysis?.problem_summary || '')
+  const publicSteps = Array.isArray(result.analysis?.analysis_steps) ? result.analysis.analysis_steps.filter(Boolean) : []
+  if (!analysisProgress.reasoningOutput && publicSteps.length) {
+    analysisProgress.reasoningOutput = publicSteps.map((step: string, index: number) => `${index + 1}. ${step}`).join('\n')
+  }
+  return result
+}
+
+const editableFormLabels: Record<string, string> = {
+  type: '需求类型', title: '标题', description: '需求描述', current_behavior: '当前行为', expected_behavior: '期望行为',
+  steps_to_reproduce: '复现步骤', severity: '影响程度', product_version: '产品版本',
+}
+
+function applyAIFormUpdates(updates: unknown) {
+  const values = updates && typeof updates === 'object' ? updates as Record<string, unknown> : {}
+  const changed: string[] = []
+  for (const [field, rawValue] of Object.entries(values)) {
+    if (!(field in editableFormLabels) || typeof rawValue !== 'string' || !rawValue.trim()) continue
+    const value = rawValue.trim()
+    if (field === 'type' && !['bug', 'improvement', 'feature'].includes(value)) continue
+    if (field === 'severity' && !['low', 'medium', 'high', 'critical'].includes(value)) continue
+    if (field === 'title' && (value.length < 4 || value.length > 160)) continue
+    if (field === 'description' && (value.length < 10 || value.length > 8000)) continue
+    if (field in requirementForm && requirementForm[field as keyof typeof requirementForm] !== value) {
+      ;(requirementForm as Record<string, unknown>)[field] = value
+      changed.push(editableFormLabels[field]!)
+    }
+  }
+  analysisProgress.appliedUpdates = changed
+}
+
 async function submitRequirement() {
   const titleLength = requirementForm.title.trim().length
   const descriptionLength = requirementForm.description.trim().length
   if (titleLength < 4 || titleLength > 160) { ElMessage.error('标题需要 4–160 个字符'); return }
   if (descriptionLength < 10 || descriptionLength > 8000) { ElMessage.error('需求描述需要 10–8,000 个字符'); return }
   busy.value = true
-  Object.assign(analysisProgress, {
-    percent: 12, title: '正在准备分析', detail: '校验输入并整理需求上下文', done: false, failed: false, summary: '', model: '',
-    stages: [
-      { label: '整理需求信息', status: 'active' }, { label: '调用分析模型', status: 'waiting' },
-      { label: '保存需求与附件', status: 'waiting' }, { label: '后台结构化分诊', status: 'waiting' },
-    ],
-  })
+  resetAnalysisProgress(preflightChecked.value && analysisProgress.appliedUpdates.length > 0)
   analysisDialog.value = true
   try {
-    if (!user.value && !preflightChecked.value) {
-      analysisProgress.percent = 30; analysisProgress.title = '正在进行提交前分析'; analysisProgress.detail = 'AI 正在检查信息完整度并判断是否需要追问'
-      setAnalysisStage(0, 'done'); setAnalysisStage(1, 'active')
-      const preflight = await api.preflightTriage({ ...requirementForm, answers: preflightAnswers })
+    if (!preflightChecked.value) {
+      const preflight = await runPreflightAnalysis()
       preflightChecked.value = true
-      preflightQuestions.value = preflight.available ? preflight.questions : []
+      preflightQuestions.value = preflight.available ? (preflight.questions || []) : []
       if (preflightQuestions.value.length) {
-        analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.title = '分析完成，需要补充信息'; analysisProgress.detail = `AI 提出了 ${preflightQuestions.value.length} 个问题，回答后再次提交`
+        analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.title = '分析完成，需要补充信息'; analysisProgress.detail = `AI 提出了 ${preflightQuestions.value.length} 个问题，请直接在当前窗口回答`
         analysisProgress.summary = String(preflight.analysis?.problem_summary || '')
-        analysisProgress.model = preflight.model || ''
         setAnalysisStage(1, 'done')
-        window.setTimeout(() => { analysisDialog.value = false }, 900)
-        ElMessage.info('AI 提出了几个关键问题，回答后再次点击提交')
+        ElMessage.info('请在当前窗口回答问题，AI 会自动完善并提交表单')
         return
       }
-      if (!preflight.available) ElMessage.info('AI 当前不可用，将直接提交需求')
+      if (!preflight.available) {
+        analysisProgress.retryMessages.push(preflight.reason || '模型未返回可用结果')
+        ElMessage.info('AI 分析未通过校验，将直接提交需求；详细原因可在窗口中查看')
+      }
     }
     analysisProgress.percent = 48; analysisProgress.title = '正在保存需求'; analysisProgress.detail = '创建需求记录并加入后台分析队列'
     setAnalysisStage(0, 'done'); setAnalysisStage(1, 'done'); setAnalysisStage(2, 'active')
@@ -977,7 +1043,6 @@ async function submitRequirement() {
       submittedRequirement.value = analyzed
       analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.title = 'AI 分析已完成'; analysisProgress.detail = '结构化结果已保存，可在需求详情中持续查看'
       analysisProgress.summary = String(analyzed.confirmed_summary || analyzed.triage?.problem_summary || analyzed.triage?.summary || '')
-      analysisProgress.model = analyzed.triage_model || String(analyzed.triage?.model || '')
       setAnalysisStage(3, 'done')
     } else {
       analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.failed = true; analysisProgress.title = '后台分析仍在进行'; analysisProgress.detail = '等待时间较长，但需求已经保存，不会丢失；稍后进入详情页刷新即可查看结果'
@@ -988,6 +1053,34 @@ async function submitRequirement() {
     analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.failed = true; analysisProgress.title = '提交或分析失败'; analysisProgress.detail = errorMessage(e)
     ElMessage.error(errorMessage(e))
   } finally { busy.value = false }
+}
+
+async function answerPreflightAndSubmit() {
+  if (busy.value) return
+  const answered = Object.fromEntries(preflightQuestions.value.map(question => [question.question_id, (preflightAnswers[question.question_id] || '不确定').trim()]))
+  busy.value = true
+  resetAnalysisProgress()
+  analysisDialog.value = true
+  analysisProgress.title = '正在根据回答完善需求'
+  analysisProgress.detail = 'AI 正在结合你的回答更新需求表单'
+  try {
+    const result = await runPreflightAnalysis()
+    const directUpdates = Object.fromEntries(preflightQuestions.value.flatMap(question => {
+      const answer = answered[question.question_id]
+      return question.target_field && question.target_field in editableFormLabels && answer && answer !== '不确定' ? [[question.target_field, answer]] : []
+    }))
+    applyAIFormUpdates({ ...directUpdates, ...(result.analysis?.form_updates || {}) })
+    preflightQuestions.value = []
+    preflightChecked.value = true
+  } catch (e) {
+    analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.failed = true
+    analysisProgress.title = '未能根据回答完善需求'; analysisProgress.detail = errorMessage(e)
+    ElMessage.error(errorMessage(e))
+    return
+  } finally {
+    busy.value = false
+  }
+  await submitRequirement()
 }
 
 async function openAnalyzedRequirement() {

@@ -107,6 +107,8 @@ class TriageReportV2(BaseModel):
     context_bundle_id: str | None = None
     problem_summary: str = Field(min_length=2, max_length=2000)
     category: Literal["bug", "improvement", "feature"]
+    analysis_steps: list[str] = Field(default_factory=list, max_length=8)
+    form_updates: dict[str, str] = Field(default_factory=dict)
     confirmed_facts: list[dict[str, Any]] = Field(default_factory=list)
     hypotheses: list[dict[str, Any]] = Field(default_factory=list)
     evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
