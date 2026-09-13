@@ -2,6 +2,7 @@ import base64
 import os
 import tempfile
 import atexit
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -21,7 +22,10 @@ from requirement_platform.db import SessionLocal, engine  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
 from requirement_platform import mcp_server  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
-from requirement_platform.models import BackgroundJob, GitHubIdentity, Requirement, RequirementFollower, TriageReport  # noqa: E402
+from requirement_platform.models import (  # noqa: E402
+    AIConnection, AIModel, AITaskRoute, AgentRun, BackgroundJob, DeliveryTask, GitHubIdentity, IdempotencyRecord, Requirement,
+    RequirementFollower, RequirementSpec, TriageReport,
+)
 from requirement_platform.services import (  # noqa: E402
     GitHubClient, analyze_requirement, closing_issue_numbers, requirement_status_from_github,
 )
@@ -427,7 +431,7 @@ def test_manager_imports_github_issues(monkeypatch):
         synced = client.post("/api/admin/github/issues/sync", headers=auth(owner["token"]))
         assert synced.status_code == 200, synced.text
         assert synced.json()["data"]["created"] == 1
-        rows = client.get("/api/requirements?status=candidate", headers=auth(owner["token"])).json()["data"]
+        rows = client.get("/api/requirements?status=submitted", headers=auth(owner["token"])).json()["data"]
         imported = next(row for row in rows if row["github_issue_number"] == 99992)
         assert imported["source"] == "github"
         assert imported["type"] == "feature"
@@ -528,19 +532,17 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         })
         assert closed.status_code == 200, closed.text
         detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
-        assert detail["status"] == "closed"
-        history = client.get(f"/api/requirements/{created['id']}/history").json()["data"]
-        event = history[-1]
-        assert (event["before"], event["after"], event["actor_name"], event["source"]) == (
-            "submitted", "closed", "GitHub @octocat", "github_webhook",
-        )
+        assert detail["status"] == "submitted"
+        assert detail["github_state"] == "closed"
 
         reopened = client.post("/api/hooks/github", headers={**headers, "X-GitHub-Delivery": "delivery-reopen"}, json={
             "action": "reopened", "issue": {"number": 99993, "state": "open", "labels": [{"name": "status: closed"}]},
             "sender": {"id": 123456789, "login": "octocat"},
         })
         assert reopened.status_code == 200, reopened.text
-        assert client.get(f"/api/requirements/{created['id']}").json()["data"]["status"] == "pending_review"
+        reopened_detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
+        assert reopened_detail["status"] == "submitted"
+        assert reopened_detail["github_state"] == "open"
 
         pull_request_headers = {
             "X-Hub-Signature-256": "sha256=test", "X-GitHub-Event": "pull_request",
@@ -558,7 +560,7 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         })
         assert merged.status_code == 200, merged.text
         detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
-        assert detail["status"] == "closed"
+        assert detail["status"] == "submitted"
         assert detail["github_pull_requests"] == [{
             "number": 321, "title": "feat: 完成 Webhook 状态同步",
             "url": "https://github.com/LC044/TrailSnap/pull/321", "state": "merged",
@@ -570,7 +572,7 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
             assert jobs.query(BackgroundJob).filter(
                 BackgroundJob.object_id == created["id"],
                 BackgroundJob.idempotency_key == f"github_issue:{created['id']}:pr-merged:delivery-pr-merged",
-            ).count() == 1
+            ).count() == 0
         finally:
             jobs.close()
 
@@ -643,7 +645,311 @@ def test_triage_rerun_does_not_record_noop_status_change():
         triage_events = [event for event in history if event["action"] == "triage.completed"]
         assert len(triage_events) == 2
         first_event, second_event = triage_events
-        assert (first_event["before"], first_event["after"]) == ("submitted", "pending_review")
+        assert (first_event["before"], first_event["after"]) == ("submitted", "needs_information")
         # 第二次分析状态未变化：不携带 before/after，前端不会渲染成"由待审核变为待审核"
         assert second_event["before"] is None
         assert second_event["after"] is None
+
+
+def _spec_content():
+    return {
+        "problem": "筛选变化后旧选择仍然存在，可能误操作不可见照片。",
+        "user_scenario": "用户在照片列表选择照片后切换相册筛选。",
+        "goal": "切换筛选后安全清理旧选择。",
+        "confirmed_facts": ["当前选择状态由前端维护"],
+        "references": ["REQ test"],
+        "in_scope": ["照片筛选和选择状态"],
+        "out_of_scope": ["批量删除语义"],
+        "behavior_rules": ["筛选标识变化时清空选择"],
+        "acceptance": [{"id": "AC-01", "given": "已选择照片", "when": "切换筛选",
+                        "then": "选择数量归零", "required": True, "verification": "e2e"}],
+        "test_data_requirements": ["selection-basic@1"],
+        "environment_requirements": ["desktop and mobile viewport"],
+        "constraints": ["使用统一主题色"], "risks": [], "dependencies": [],
+        "release_requirements": [], "rollback_requirements": [], "blocking_questions": [],
+        "assumptions": [], "repository": "LC044/TrailSnap", "target_branch": "master",
+    }
+
+
+def test_phase_a_spec_approval_and_phase_b_manual_agent_protocol(monkeypatch):
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        created = client.post("/api/requirements", headers=auth(owner["token"]), json={
+            "type": "improvement", "title": "筛选后清理选择状态",
+            "description": "切换筛选条件后不能保留不可见照片的选择状态。",
+            "expected_behavior": "切换筛选后选择数量归零。",
+        }).json()["data"]
+        monkeypatch.setattr("requirement_platform.delivery.GitHubClient.get_branch_sha", lambda _self, branch: "a" * 40)
+        spec_response = client.post(f"/api/requirements/{created['id']}/specs",
+            headers={**auth(owner["token"]), "Idempotency-Key": "create-spec-1"},
+            json={"content": _spec_content(), "expected_requirement_state_version": created["state_version"]})
+        assert spec_response.status_code == 200, spec_response.text
+        spec = spec_response.json()["data"]
+        approved_response = client.post(f"/api/specs/{spec['id']}/approve",
+            headers={**auth(owner["token"]), "Idempotency-Key": "approve-spec-1"},
+            json={"expected_state_version": spec["state_version"]})
+        assert approved_response.status_code == 200, approved_response.text
+        approved = approved_response.json()["data"]
+        assert approved["status"] == "approved"
+        assert approved["content"]["base_sha"] == "a" * 40
+
+        task_response = client.post("/api/delivery-tasks",
+            headers={**auth(owner["token"]), "Idempotency-Key": "create-task-1"},
+            json={"spec_id": spec["id"], "risk_level": "low", "budget": {"minutes": 60}})
+        assert task_response.status_code == 202, task_response.text
+        task = task_response.json()["data"]
+        assert task["context_bundle"]["content"]["spec"]["hash"] == approved["content_hash"]
+        duplicate_task = client.post("/api/delivery-tasks",
+            headers={**auth(owner["token"]), "Idempotency-Key": "create-task-1"},
+            json={"spec_id": spec["id"], "risk_level": "low", "budget": {"minutes": 60}})
+        assert duplicate_task.json()["data"]["id"] == task["id"]
+
+        token_response = client.post("/api/admin/agent-tokens", headers=auth(owner["token"]), json={
+            "name": "phase-b-codex", "scopes": ["specs:read", "tasks:claim", "runs:write"],
+            "agent_role": "coding", "task_id": task["id"], "expires_in_days": 1,
+        })
+        assert token_response.status_code == 200, token_response.text
+        agent_token = token_response.json()["data"]["token"]
+        agent_headers = {"Authorization": f"Bearer {agent_token}", "Idempotency-Key": "claim-1"}
+        claim = client.post("/api/agent-runs/claim", headers=agent_headers,
+                            json={"runner_name": "local-codex", "provider": "codex", "role": "coding"})
+        assert claim.status_code == 200, claim.text
+        run = claim.json()["data"]
+        repeated_claim = client.post("/api/agent-runs/claim", headers=agent_headers,
+                            json={"runner_name": "local-codex", "provider": "codex", "role": "coding"})
+        assert repeated_claim.json()["data"]["id"] == run["id"]
+        assert repeated_claim.json()["data"]["lease_token"] == run["lease_token"]
+
+        heartbeat_payload = {"attempt_id": run["attempt_id"], "lease_token": run["lease_token"],
+                             "expected_state_version": run["state_version"], "session_reference": "codex-session-1"}
+        heartbeat_headers = {"Authorization": f"Bearer {agent_token}", "Idempotency-Key": "heartbeat-1"}
+        beat = client.post(f"/api/agent-runs/{run['id']}/heartbeat", headers=heartbeat_headers, json=heartbeat_payload)
+        assert beat.status_code == 200, beat.text
+        repeated_beat = client.post(f"/api/agent-runs/{run['id']}/heartbeat", headers=heartbeat_headers, json=heartbeat_payload)
+        assert repeated_beat.json()["data"]["state_version"] == beat.json()["data"]["state_version"]
+
+        plan_payload = {"attempt_id": run["attempt_id"], "lease_token": run["lease_token"],
+            "expected_state_version": beat.json()["data"]["state_version"], "goal_summary": "清理过期选择状态",
+            "scope_summary": "只修改照片筛选与选择状态", "acceptance_plan": {"AC-01": "新增端到端测试"},
+            "affected_modules": ["package/website"], "migrations": [], "ambiguities": [],
+            "out_of_scope": ["批量删除语义"]}
+        plan = client.post(f"/api/agent-runs/{run['id']}/implementation-plan",
+            headers={"Authorization": f"Bearer {agent_token}", "Idempotency-Key": "plan-1"}, json=plan_payload)
+        assert plan.status_code == 200, plan.text
+
+        result_payload = {"attempt_id": run["attempt_id"], "lease_token": run["lease_token"],
+            "expected_state_version": plan.json()["data"]["state_version"], "status": "succeeded",
+            "summary": "实现完成", "changed_files": ["package/website/src/example.ts"],
+            "acceptance_coverage": {"AC-01": "passed"}, "self_test_results": [{"name": "unit", "passed": True}],
+            "head_sha": "b" * 40}
+        result_headers = {"Authorization": f"Bearer {agent_token}", "Idempotency-Key": "result-1"}
+        result = client.post(f"/api/agent-runs/{run['id']}/results", headers=result_headers, json=result_payload)
+        assert result.status_code == 200, result.text
+        repeated_result = client.post(f"/api/agent-runs/{run['id']}/results", headers=result_headers, json=result_payload)
+        assert repeated_result.status_code == 200
+        assert repeated_result.json()["data"]["id"] == run["id"]
+
+        task_now = client.get(f"/api/delivery-tasks/{task['id']}", headers=auth(owner["token"])).json()["data"]
+        monkeypatch.setattr("requirement_platform.delivery.GitHubClient.get_pull_request", lambda _self, number: {
+            "number": number, "html_url": "https://github.com/LC044/TrailSnap/pull/123",
+            "head": {"sha": "b" * 40}, "base": {"sha": "a" * 40, "ref": "master",
+            "repo": {"full_name": "LC044/TrailSnap"}},
+        })
+        pr_payload = {"pull_request_number": 123, "url": "https://github.com/LC044/TrailSnap/pull/123",
+                      "head_sha": "b" * 40, "base_sha": "a" * 40,
+                      "covered_acceptance_ids": ["AC-01"], "expected_state_version": task_now["state_version"]}
+        pr_headers = {"Authorization": f"Bearer {agent_token}", "Idempotency-Key": "link-pr-1"}
+        linked = client.post(f"/api/delivery-tasks/{task['id']}/pull-requests", headers=pr_headers, json=pr_payload)
+        assert linked.status_code == 200, linked.text
+        repeated_link = client.post(f"/api/delivery-tasks/{task['id']}/pull-requests", headers=pr_headers, json=pr_payload)
+        assert repeated_link.status_code == 200
+
+        db = SessionLocal()
+        try:
+            assert db.query(RequirementSpec).filter(RequirementSpec.id == spec["id"]).one().status == "approved"
+            assert db.query(DeliveryTask).filter(DeliveryTask.id == task["id"]).one().state == "pr_open"
+            assert db.query(AgentRun).filter(AgentRun.id == run["id"]).one().status == "succeeded"
+            assert db.query(IdempotencyRecord).filter(IdempotencyRecord.idempotency_key == "result-1").count() == 1
+            claim_record = db.query(IdempotencyRecord).filter(IdempotencyRecord.idempotency_key == "claim-1").one()
+            assert "lease_token" not in claim_record.response
+        finally:
+            db.close()
+
+
+def test_requirement_content_change_revokes_approved_delivery_authorization(monkeypatch):
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        created = client.post("/api/requirements", headers=auth(owner["token"]), json={
+            "type": "improvement", "title": "验证规格修订边界",
+            "description": "批准规格后修改需求正文时必须撤销旧执行授权。",
+        }).json()["data"]
+        monkeypatch.setattr("requirement_platform.delivery.GitHubClient.get_branch_sha", lambda _self, branch: "c" * 40)
+        spec = client.post(f"/api/requirements/{created['id']}/specs",
+            headers={**auth(owner["token"]), "Idempotency-Key": "revision-spec-create"},
+            json={"content": _spec_content(), "expected_requirement_state_version": created["state_version"]}).json()["data"]
+        approved = client.post(f"/api/specs/{spec['id']}/approve",
+            headers={**auth(owner["token"]), "Idempotency-Key": "revision-spec-approve"},
+            json={"expected_state_version": spec["state_version"]}).json()["data"]
+        task = client.post("/api/delivery-tasks",
+            headers={**auth(owner["token"]), "Idempotency-Key": "revision-task-create"},
+            json={"spec_id": approved["id"]}).json()["data"]
+
+        changed = client.patch(f"/api/requirements/{created['id']}", headers=auth(owner["token"]),
+                               json={"description": "修改后的需求正文，需要重新批准规格。"})
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["data"]["status"] == "submitted"
+
+        db = SessionLocal()
+        try:
+            assert db.query(RequirementSpec).filter(RequirementSpec.id == approved["id"]).one().status == "superseded"
+            revoked_task = db.query(DeliveryTask).filter(DeliveryTask.id == task["id"]).one()
+            assert revoked_task.state == "cancelled"
+            assert "旧执行授权已失效" in revoked_task.blocked_reason
+        finally:
+            db.close()
+
+
+def test_registered_user_can_answer_structured_clarification():
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        created = client.post("/api/requirements", headers=auth(owner["token"]), json={
+            "type": "bug", "title": "缺少复现步骤的问题", "description": "导入一批照片以后页面没有显示预期结果。",
+        }).json()["data"]
+        db = SessionLocal()
+        try:
+            analyze_requirement(db, created["id"])
+        finally:
+            db.close()
+        detail = client.get(f"/api/requirements/{created['id']}", headers=auth(owner["token"])).json()["data"]
+        assert detail["status"] == "needs_information"
+        assert detail["clarifications"]
+        initial_revision = detail["content_revision"]
+        answered = None
+        for question in detail["clarifications"]:
+            answered = client.post(f"/api/requirements/{created['id']}/clarifications/{question['question_id']}/answers",
+                headers=auth(owner["token"]), json={"answer": "从相册页点击导入后打开照片列表。",
+                                                     "expected_state_version": detail["state_version"]})
+            assert answered.status_code == 200, answered.text
+            detail = answered.json()["data"]
+        assert answered is not None
+        assert detail["status"] == "submitted"
+        assert detail["content_revision"] == initial_revision + len(detail["clarifications"])
+
+
+def test_anonymous_preflight_outage_does_not_block_submission():
+    with TestClient(app) as client:
+        payload = {"type": "feature", "title": "匿名提交仍然可用", "description": "即使分析模型当前不可用也应该能够直接保存需求。"}
+        preflight = client.post("/api/requirements/preflight-triage", json=payload)
+        assert preflight.status_code == 200
+        assert preflight.json()["data"] == {"available": False, "questions": [], "reason": "ai_not_configured"}
+        created = client.post("/api/requirements", json=payload)
+        assert created.status_code == 200, created.text
+
+
+def test_admin_can_manage_encrypted_ai_models_and_task_routes(monkeypatch):
+    import httpx
+    from requirement_platform.ai_settings import decrypt_api_key
+
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        headers = auth(owner["token"])
+        connection = client.post("/api/admin/ai-connections", headers=headers, json={
+            "name": "primary-openai", "api_base": "https://ai-primary.invalid/v1",
+            "api_key": "top-secret-api-key", "timeout_seconds": 12,
+        })
+        assert connection.status_code == 200, connection.text
+        connection_data = connection.json()["data"]
+        assert connection_data["api_key_hint"] == "••••-key"
+        assert "api_key" not in connection_data
+
+        primary = client.post(f"/api/admin/ai-connections/{connection_data['id']}/models", headers=headers,
+                              json={"model_name": "primary-model", "display_name": "Primary"}).json()["data"]
+        backup = client.post(f"/api/admin/ai-connections/{connection_data['id']}/models", headers=headers,
+                             json={"model_name": "backup-model", "display_name": "Backup",
+                                   "supports_json_mode": False}).json()["data"]
+        route = client.put("/api/admin/ai-task-routes/preflight_triage", headers=headers,
+                           json={"enabled": True, "model_ids": [primary["id"], backup["id"]]})
+        assert route.status_code == 200, route.text
+        assert route.json()["data"]["model_ids"] == [primary["id"], backup["id"]]
+
+        calls = []
+        def routed_analysis(payload, duplicates, target):
+            calls.append(target.model_name)
+            if target.model_name == "primary-model":
+                raise httpx.ConnectError("primary unavailable")
+            return {
+                "schema_version": 2, "requirement_revision": 1, "context_bundle_id": None,
+                "problem_summary": "备用模型分析成功", "summary": "备用模型分析成功", "category": payload["type"],
+                "confirmed_facts": [], "hypotheses": [], "evidence_refs": [], "completeness_items": [],
+                "blocking_questions": [], "nonblocking_questions": [], "duplicate_candidates": duplicates,
+                "value_assessment": {}, "feasibility": "unknown", "affected_components": [], "risks": [],
+                "effort_range": "unknown", "recommended_disposition": "pending_review", "acceptance_draft": [],
+                "model": target.model_name, "prompt_version": "triage-v2", "knowledge_revision": None,
+                "generated_at": datetime.now(timezone.utc).isoformat(), "fallback_reason": None,
+            }
+        monkeypatch.setattr("requirement_platform.services._call_triage_ai", routed_analysis)
+        preflight = client.post("/api/requirements/preflight-triage", json={
+            "type": "feature", "title": "验证模型路由切换", "description": "主模型不可用时应自动切换到备用模型。",
+        })
+        assert preflight.status_code == 200, preflight.text
+        assert preflight.json()["data"]["available"] is True
+        assert preflight.json()["data"]["model"] == "backup-model"
+        assert calls == ["primary-model", "backup-model"]
+
+        db = SessionLocal()
+        try:
+            stored = db.query(AIConnection).filter(AIConnection.id == connection_data["id"]).one()
+            assert stored.api_key_encrypted != "top-secret-api-key"
+            assert decrypt_api_key(stored.api_key_encrypted) == "top-secret-api-key"
+            assert db.query(AIModel).filter(AIModel.connection_id == stored.id).count() == 2
+            assert db.query(AITaskRoute).filter(AITaskRoute.task_type == "preflight_triage").one().model_ids == [primary["id"], backup["id"]]
+        finally:
+            db.close()
+
+
+def test_late_triage_is_superseded_and_does_not_override_human_state(monkeypatch):
+    from types import SimpleNamespace
+    from requirement_platform import services as service_module
+
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        created = client.post("/api/requirements", headers=auth(owner["token"]), json={
+            "type": "feature", "title": "验证迟到分诊守卫", "description": "分诊期间发生编辑和人工决策时不能被旧结果覆盖。",
+        }).json()["data"]
+
+        target = SimpleNamespace(connection_id="test", provider="openai_compatible", model_name="test")
+        monkeypatch.setattr(service_module, "resolve_model_targets", lambda _db, _task_type: [target])
+
+        def delayed_result(payload, duplicates, _target):
+            other = SessionLocal()
+            try:
+                row = other.query(Requirement).filter(Requirement.id == created["id"]).one()
+                row.title = "管理员已经修改标题"
+                row.content_revision += 1
+                row.version += 1
+                row.state_version += 1
+                row.status = "candidate"
+                other.commit()
+            finally:
+                other.close()
+            return {
+                "schema_version": 2, "requirement_revision": payload["content_revision"], "context_bundle_id": None,
+                "problem_summary": "旧摘要", "summary": "旧摘要", "category": "feature", "confirmed_facts": [],
+                "hypotheses": [], "evidence_refs": [], "completeness_items": [], "blocking_questions": [],
+                "nonblocking_questions": [], "duplicate_candidates": duplicates, "value_assessment": {},
+                "feasibility": "unknown", "affected_components": [], "risks": [], "effort_range": "unknown",
+                "recommended_disposition": "pending_review", "acceptance_draft": [], "model": "test",
+                "prompt_version": "triage-v2", "knowledge_revision": None,
+                "generated_at": datetime.now(timezone.utc).isoformat(), "fallback_reason": None,
+            }
+
+        monkeypatch.setattr(service_module, "_call_triage_ai", delayed_result)
+        db = SessionLocal()
+        try:
+            report = analyze_requirement(db, created["id"])
+            assert report.status == "superseded"
+        finally:
+            db.close()
+        detail = client.get(f"/api/requirements/{created['id']}", headers=auth(owner["token"])).json()["data"]
+        assert detail["status"] == "candidate"
+        assert detail["title"] == "管理员已经修改标题"
