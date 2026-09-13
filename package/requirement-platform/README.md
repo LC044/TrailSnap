@@ -23,6 +23,18 @@ requirement-platform/
 └── .env.example         生产环境变量模板
 ```
 
+### 代码分层
+
+后端以传输适配器、领域用例和外部集成为边界：
+
+- `api/` 只处理 HTTP 协议和统一响应；认证、AI 设置、需求、GitHub、版本、管理员和用量接口各自注册 Router，`main.py` 负责应用装配与尚在迁移的交付路由。
+- `domain/` 保存 REST 与 MCP 共用的需求、版本和交付规则。领域函数不提交事务，由 REST、MCP 或 worker 在用例完成后统一提交。
+- `integrations/` 保存 GitHub 等外部系统的映射与协议规则。
+- `presenters.py` 负责读模型组装；列表查询通过批量上下文预取公共关联数据。
+- `usage.py` 是独立的 FastAPI Router，同时封装用量导入和统计查询。
+
+前端使用 Vue Router 管理 URL、Pinia 管理登录态，并按 `views/`、`layouts/`、`stores/`、`composables/`、`api/` 分层。`App.vue` 只保留仍在逐步迁移的提交表单与跨页面弹窗协调；`TokenUsage.vue` 只协调筛选、总览和数据加载，趋势/分布图与导入管理位于 `components/usage/`。新增页面不得再直接堆入 `App.vue`。
+
 ## 本地开发
 
 后端：

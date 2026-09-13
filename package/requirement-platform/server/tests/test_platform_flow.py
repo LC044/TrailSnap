@@ -236,7 +236,7 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         ).json()["data"]
 
         monkeypatch.setattr(
-            "requirement_platform.main.GitHubClient.get_issue",
+            "requirement_platform.api.github.GitHubClient.get_issue",
             lambda _self, number: {"number": number, "html_url": f"https://github.com/LC044/TrailSnap/issues/{number}", "state": "open"},
         )
         linked = client.post(
@@ -425,7 +425,7 @@ def test_manager_imports_github_issues(monkeypatch):
         owner = client.post(
             "/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}
         ).json()["data"]
-        monkeypatch.setattr("requirement_platform.main.GitHubClient.list_issues", lambda _self: [{
+        monkeypatch.setattr("requirement_platform.api.github.GitHubClient.list_issues", lambda _self: [{
             "number": 99992, "title": "从 GitHub 导入功能建议", "body": "这是从 GitHub Issue 导入的完整需求说明。",
             "html_url": "https://github.com/LC044/TrailSnap/issues/99992", "state": "closed",
             "labels": [{"name": "enhancement"}, {"name": "status: candidate"}],
@@ -526,7 +526,7 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         finally:
             db.close()
 
-        monkeypatch.setattr("requirement_platform.main.verify_webhook", lambda _body, _signature: True)
+        monkeypatch.setattr("requirement_platform.api.github.verify_webhook", lambda _body, _signature: True)
         headers = {"X-Hub-Signature-256": "sha256=test", "X-GitHub-Event": "issues"}
         closed = client.post("/api/hooks/github", headers={**headers, "X-GitHub-Delivery": "delivery-close"}, json={
             "action": "closed", "issue": {"number": 99993, "state": "closed", "labels": [{"name": "status: candidate"}]},

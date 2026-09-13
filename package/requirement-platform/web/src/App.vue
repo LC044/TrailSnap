@@ -1,43 +1,7 @@
 <template>
   <div class="app-shell" :class="{ 'nav-collapsed': navCollapsed }">
-    <header class="topbar">
-      <div class="topbar-inner">
-        <div class="brand">
-          <img :src="logoUrl" alt="行影集" />
-          <span class="brand-copy"><span>行影集</span><small>需求管理平台</small></span>
-        </div>
-        <nav ref="navEl" class="nav" aria-label="主导航">
-          <button v-for="item in visibleTabs" :key="item.key" :class="{ active: tab === item.key }" :title="navCollapsed ? item.label : undefined" @click="switchTab(item.key)">
-            <el-icon :size="19"><component :is="item.icon" /></el-icon><span class="nav-label">{{ item.label }}</span>
-          </button>
-        </nav>
-        <div class="topbar-side">
-          <button class="icon-btn" type="button" aria-label="通知" @click="onNotification">
-            <el-icon :size="18"><Bell /></el-icon>
-            <span v-if="false" class="dot"></span>
-          </button>
-          <el-dropdown v-if="user" trigger="click" @command="onUserCommand">
-            <button class="user-chip" type="button">
-              <span class="avatar" :style="{ width: '30px', height: '30px', fontSize: '13px', ...avatarColor(user.username) }">
-                {{ user.username.slice(0, 1) }}
-              </span>
-              <span class="nav-label" style="font-size: 14px">{{ user.username }}</span>
-              <el-icon :size="12"><ArrowDown /></el-icon>
-            </button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="mine">我的需求</el-dropdown-item>
-                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-button v-else type="primary" @click="authDialog = true"><span class="nav-label">登录 / 注册</span><el-icon class="collapsed-login"><User /></el-icon></el-button>
-          <button class="collapse-btn" type="button" :aria-label="navCollapsed ? '展开导航' : '折叠导航'" @click="toggleNavigation">
-            <el-icon><Expand v-if="navCollapsed" /><Fold v-else /></el-icon><span class="nav-label">折叠导航</span>
-          </button>
-        </div>
-      </div>
-    </header>
+    <AppHeader ref="header" :items="visibleTabs" :active="tab" :collapsed="navCollapsed" :user="user"
+      @navigate="switchTab" @notification="onNotification" @login="authDialog = true" @toggle="toggleNavigation" @user-command="onUserCommand" />
 
     <main class="main">
       <!-- ============ 需求详情页 ============ -->
@@ -63,60 +27,12 @@
         <div v-else class="panel empty">需求不存在或你没有查看权限。</div>
       </section>
 
-      <!-- ============ 公开需求 ============ -->
-      <section v-else-if="tab === 'public'">
-        <div class="page-head public-page-head">
-          <div class="page-head-left">
-            <div class="page-head-icon"><el-icon :size="26"><Document /></el-icon></div>
-            <div>
-              <h1>公开需求</h1>
-              <p class="sub">一起把行影集变得更好</p>
-              <p class="desc">浏览和参与社区提出的需求，共同推动产品进步。</p>
-            </div>
-          </div>
-          <div class="stat-cards" aria-label="需求统计">
-            <div class="stat-card tone-blue"><span class="stat-icon"><el-icon><Document /></el-icon></span><div><div class="num">{{ stats.total }}</div><div class="label">全部需求</div></div></div>
-            <div class="stat-card tone-violet"><span class="stat-icon"><el-icon><Flag /></el-icon></span><div><div class="num">{{ stats.planned }}</div><div class="label">已规划</div></div></div>
-            <div class="stat-card tone-cyan"><span class="stat-icon"><el-icon><Promotion /></el-icon></span><div><div class="num">{{ stats.developing }}</div><div class="label">开发中</div></div></div>
-            <div class="stat-card tone-green"><span class="stat-icon"><el-icon><CircleCheckFilled /></el-icon></span><div><div class="num">{{ stats.done }}</div><div class="label">已完成</div></div></div>
-          </div>
-        </div>
-
-        <div class="filters">
-          <el-input v-model="filters.q" clearable placeholder="搜索 REQ 编号、标题、关键词或描述..." :prefix-icon="Search" class="search" @keyup.enter="loadRequirements" @clear="loadRequirements" />
-          <el-select v-model="filters.type" clearable placeholder="全部类型" class="select" @change="loadRequirements">
-            <el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" />
-          </el-select>
-          <el-select v-model="filters.status" clearable placeholder="全部状态" class="select" @change="loadRequirements">
-            <el-option v-for="status in statusOptions" :key="status" :label="statusLabel(status)" :value="status" />
-            <el-option label="已关闭" value="closed" />
-          </el-select>
-          <el-select v-model="sortBy" placeholder="最新更新" class="sort" @change="sortRequirements">
-            <el-option label="最新更新" value="updated" /><el-option label="最早提交" value="oldest" /><el-option label="关注最多" value="followers" />
-          </el-select>
-          <el-button class="submit-requirement-btn" type="primary" :icon="Plus" @click="switchTab('submit')">提交需求</el-button>
-        </div>
-
-        <RequirementTable :items="sortedRequirements" :manager="isManager" :user="user" @open="openDetail" @action="onRowAction" />
-      </section>
+      <PublicRequirementsPage v-else-if="tab === 'public'" :stats="stats" :filters="filters" :status-options="statusOptions"
+        v-model:sort-by="sortBy" :items="sortedRequirements" :manager="isManager" :user="user"
+        @reload="loadRequirements" @submit="switchTab('submit')" @open="openDetail" @action="onRowAction" />
 
       <!-- ============ 管理总览 ============ -->
-      <section v-else-if="tab === 'dashboard' && isManager">
-        <div class="page-head"><div class="page-head-left"><div class="page-head-icon"><el-icon :size="26"><DataAnalysis /></el-icon></div><div><h1>需求总览</h1><p class="desc">掌握需求规模、审核积压和版本推进情况。</p></div></div></div>
-        <div v-if="dashboard" class="dashboard-cards">
-          <article class="panel dashboard-card"><strong>{{ dashboard.total }}</strong><span>全部需求</span></article>
-          <article class="panel dashboard-card"><strong>{{ dashboard.new_last_7_days }}</strong><span>近 7 天新增</span></article>
-          <article class="panel dashboard-card"><strong>{{ dashboard.pending_review }}</strong><span>待处理</span></article>
-          <article class="panel dashboard-card"><strong>{{ dashboard.in_progress }}</strong><span>开发发布中</span></article>
-          <article class="panel dashboard-card"><strong>{{ dashboard.github_linked }}</strong><span>已关联 GitHub</span></article>
-          <article class="panel dashboard-card"><strong>{{ dashboard.anonymous }}</strong><span>匿名提交</span></article>
-        </div>
-        <div v-if="dashboard" class="metric-cards">
-          <article class="panel dashboard-card"><strong>{{ dashboard.contributor_count }}</strong><span>参与人数</span></article>
-          <article class="panel dashboard-card"><strong>{{ dashboard.follower_count }}</strong><span>关注总数</span></article>
-        </div>
-        <DashboardCharts v-if="dashboard" :data="dashboard" />
-      </section>
+      <DashboardPage v-else-if="tab === 'dashboard' && isManager && dashboard" :data="dashboard" />
 
       <!-- ============ 提交需求 ============ -->
       <section v-else-if="tab === 'submit'">
@@ -274,88 +190,14 @@
       </section>
 
       <!-- ============ 我的需求 ============ -->
-      <section v-else-if="tab === 'mine'">
-        <div class="page-head">
-          <div class="page-head-left">
-            <div class="page-head-icon"><el-icon :size="26"><Collection /></el-icon></div>
-            <div>
-              <h1>我的需求</h1>
-              <p class="sub">查看自己提交的需求和处理进度</p>
-              <p class="desc">跟踪每一条需求从提交到上线的全过程。</p>
-            </div>
-          </div>
-        </div>
-        <div v-if="!user" class="panel empty">
-          <el-icon><User /></el-icon>
-          <div>登录后查看自己的需求</div>
-          <div class="actions" style="justify-content: center"><el-button type="primary" @click="authDialog = true">登录 / 注册</el-button></div>
-        </div>
-        <template v-else>
-          <RequirementTable :items="myRequirements" :manager="isManager" :user="user" @open="openDetail" @action="onRowAction" />
-        </template>
-      </section>
+      <MyRequirementsPage v-else-if="tab === 'mine'" :items="myRequirements" :manager="isManager" :user="user"
+        @login="authDialog = true" @open="openDetail" @action="onRowAction" />
 
       <!-- ============ 版本计划 ============ -->
-      <section v-else-if="tab === 'versions'">
-        <div class="page-head">
-          <div class="page-head-left">
-            <div class="page-head-icon"><el-icon :size="26"><Flag /></el-icon></div>
-            <div>
-              <h1>版本计划</h1>
-              <p class="sub">人工选择进入版本开发候选的需求</p>
-              <p class="desc">跟踪每个版本的范围、进度和发布状态。</p>
-            </div>
-          </div>
-          <div class="page-head-actions">
-            <el-button v-if="isManager" type="primary" :icon="Plus" @click="openCreateBatch">创建版本批次</el-button>
-          </div>
-        </div>
-        <div v-if="!batches.length" class="panel empty">
-          <el-icon><Flag /></el-icon>
-          <div>暂无版本批次</div>
-        </div>
-        <div v-else class="batch-grid">
-          <article v-for="batch in batches" :key="batch.id" class="panel batch-card">
-            <div class="card-head">
-              <div>
-                <h2 class="card-title">{{ batch.name }}</h2>
-                <div class="meta"><span>{{ batch.version_name }}</span><span>{{ batchTypeLabel(batch.batch_type) }}</span><span v-if="batch.target_date">目标 {{ batch.target_date }}</span></div>
-              </div>
-              <span class="tag" :class="`s-${batch.status}`">{{ statusLabel(batch.status) }}</span>
-            </div>
-            <el-button v-if="isManager" class="batch-edit-btn" size="small" text :icon="EditPen" @click="openEditBatch(batch)">编辑</el-button>
-            <p class="description">{{ batch.goal }}</p>
-            <a v-if="batch.github_milestone_url" class="github-link" :href="batch.github_milestone_url" target="_blank" rel="noopener">
-              GitHub Milestone #{{ batch.github_milestone_number }}
-            </a>
-            <ul class="batch-items">
-              <li v-for="item in batch.items" :key="item.id">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
-                  <strong style="font-size:14px">{{ item.requirement_snapshot.title }}</strong>
-                  <span class="tag no-dot" :class="`d-${item.delivery_status}`">{{ deliveryLabel(item.delivery_status) }}</span>
-                </div>
-                <div v-if="isManager" class="actions" style="margin-top:8px">
-                  <el-select v-if="!['planning','candidate_selection','published','completed','cancelled'].includes(batch.status)" :model-value="item.delivery_status" size="small" style="width:150px" @change="updateDelivery(batch.id, item.id, String($event))">
-                    <el-option v-for="status in deliveryStatuses" :key="status" :label="deliveryLabel(status)" :value="status" />
-                  </el-select>
-                  <el-button v-if="['planning','candidate_selection'].includes(batch.status)" size="small" type="danger" plain @click="removeBatchItem(batch.id, item.id)">移出</el-button>
-                </div>
-              </li>
-            </ul>
-            <div v-if="isManager" class="actions">
-              <el-select v-if="['planning','candidate_selection'].includes(batch.status)" v-model="candidateSelection[batch.id]" filterable placeholder="选择候选需求" style="width:240px">
-                <el-option v-for="req in candidates" :key="req.id" :label="req.title" :value="req.id" />
-              </el-select>
-              <el-button v-if="['planning','candidate_selection'].includes(batch.status)" @click="addCandidate(batch.id)">加入</el-button>
-              <el-button v-if="batch.items.length && ['planning','candidate_selection'].includes(batch.status)" type="primary" @click="lockBatch(batch.id)">锁定范围</el-button>
-              <el-dropdown v-if="allowedBatchStatuses(batch.status).length" @command="updateBatchState(batch.id, String($event))">
-                <el-button>更新状态</el-button>
-                <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="status in allowedBatchStatuses(batch.status)" :key="status" :command="status">{{ statusLabel(status) }}</el-dropdown-item></el-dropdown-menu></template>
-              </el-dropdown>
-            </div>
-          </article>
-        </div>
-      </section>
+      <VersionPlanPage v-else-if="tab === 'versions'" :batches="batches" :candidates="candidates" :manager="isManager"
+        :candidate-selection="candidateSelection" :delivery-statuses="deliveryStatuses" :allowed-statuses="allowedBatchStatuses"
+        @create="openCreateBatch" @edit="openEditBatch" @add="addCandidate" @remove="removeBatchItem" @lock="lockBatch"
+        @update-state="updateBatchState" @update-delivery="updateDelivery" />
 
       <!-- ============ Token 用量 ============ -->
       <section v-else-if="tab === 'usage'">
@@ -363,127 +205,21 @@
       </section>
 
       <!-- ============ 需求审核 ============ -->
-      <section v-else-if="tab === 'admin' && isManager">
-        <div class="page-head">
-          <div class="page-head-left">
-            <div class="page-head-icon"><el-icon :size="26"><Checked /></el-icon></div>
-            <div>
-              <h1>需求审核</h1>
-              <p class="sub">AI 提供建议，最终结论由所有者或管理员确认</p>
-              <p class="desc">处理待审核需求，维护候选池质量。</p>
-            </div>
-          </div>
-          <div class="page-head-actions">
-            <el-select v-model="adminStatus" clearable placeholder="全部状态" style="width:150px" @change="loadAdmin">
-              <el-option v-for="status in reviewStatuses" :key="status" :label="statusLabel(status)" :value="status" />
-            </el-select>
-            <el-button :icon="Refresh" @click="loadAdmin">刷新</el-button>
-            <el-button type="primary" :loading="syncingGithub" @click="syncGithubIssues">从 GitHub 同步</el-button>
-          </div>
-        </div>
-        <RequirementTable :items="adminRequirements" manager :user="user" @open="openDetail" @action="onRowAction" />
-      </section>
+      <RequirementReviewPage v-else-if="tab === 'admin' && isManager" :items="adminRequirements" :user="user"
+        v-model:status="adminStatus" :statuses="reviewStatuses" :syncing="syncingGithub"
+        @reload="loadAdmin" @sync="syncGithubIssues" @open="openDetail" @action="onRowAction" />
 
       <!-- ============ GitHub 与 Agent 集成 ============ -->
-      <section v-else-if="tab === 'integrations' && isManager">
-        <div class="page-head">
-          <div class="page-head-left">
-            <div class="page-head-icon"><el-icon :size="26"><Connection /></el-icon></div>
-            <div><h1>GitHub 与 Agent 集成</h1><p class="sub">管理账号绑定和 MCP 访问令牌</p><p class="desc">令牌按作用域授权，可随时撤销；完整令牌只显示一次。</p></div>
-          </div>
-        </div>
-        <div class="integration-grid">
-          <article class="panel integration-card">
-            <h2>GitHub 账号</h2>
-            <div v-if="user?.github" class="account-row">
-              <img v-if="user.github.avatar_url" :src="user.github.avatar_url" alt="" class="github-avatar" />
-              <div><strong>@{{ user.github.login }}</strong><p class="meta">已绑定，可用于 GitHub 登录</p></div>
-              <el-button plain @click="unlinkGithub">解除绑定</el-button>
-            </div>
-            <div v-else><p class="meta">绑定后可使用 GitHub 登录；平台不会保存 GitHub OAuth 访问令牌。</p><el-button type="primary" :disabled="!githubOauthEnabled" @click="startGithub('link')">绑定 GitHub</el-button></div>
-            <p v-if="!githubOauthEnabled" class="form-hint">服务端尚未配置 GitHub OAuth App。</p>
-          </article>
-          <article class="panel integration-card">
-            <h2>MCP 接入地址</h2>
-            <code class="code-block">{{ mcpUrl }}</code>
-            <p class="meta">Codex 使用 Streamable HTTP 和 Bearer Token 连接此地址。</p>
-          </article>
-        </div>
-        <article class="panel integration-card" style="margin-top:16px">
-          <div class="section-title-row"><div><h2>Agent 令牌</h2><p class="meta">仅管理自己创建的令牌。</p></div><el-button type="primary" :icon="Key" @click="tokenDialog = true">创建令牌</el-button></div>
-          <el-table :data="agentTokens" style="width:100%">
-            <el-table-column prop="name" label="名称" /><el-table-column prop="token_prefix" label="前缀" width="140" />
-            <el-table-column label="作用域"><template #default="scope"><span class="meta">{{ scope.row.scopes.join('、') }}</span></template></el-table-column>
-            <el-table-column label="最后使用" width="170"><template #default="scope">{{ scope.row.last_used_at ? formatDateTime(scope.row.last_used_at) : '从未' }}</template></el-table-column>
-            <el-table-column label="状态" width="100"><template #default="scope"><span class="tag no-dot plain">{{ scope.row.revoked_at ? '已撤销' : '有效' }}</span></template></el-table-column>
-            <el-table-column label="操作" width="150"><template #default="scope"><el-button v-if="!scope.row.revoked_at" text type="primary" :icon="Connection" @click="openMcpConnection(scope.row)">接入</el-button><el-button v-if="!scope.row.revoked_at" text type="danger" @click="revokeToken(scope.row.id)">撤销</el-button></template></el-table-column>
-          </el-table>
-        </article>
-        <article class="panel mcp-guide" style="margin-top:16px">
-          <div class="section-title-row">
-            <div><h2>MCP 配置教程</h2><p class="meta">适用于 Codex 桌面端、CLI 和 IDE 扩展，三者共享同一份配置。</p></div>
-            <a class="github-link" href="https://developers.openai.com/codex/mcp" target="_blank" rel="noopener">查看官方 MCP 文档</a>
-          </div>
-          <ol class="guide-steps">
-            <li>
-              <strong>创建最小权限令牌</strong>
-              <p>点击上方“创建令牌”。只查询需求时选择 <code>requirements:read</code>；需要提交或审核时再增加对应写入作用域。令牌只显示一次，请立即保存。</p>
-            </li>
-            <li>
-              <strong>添加请求头配置（推荐）</strong>
-              <p>编辑用户级 <code>~/.codex/config.toml</code>。Codex 会在连接 MCP 时直接注入请求头，沙盒内的 Agent 无需读取宿主机环境变量。</p>
-              <pre class="code-block mcp-code"><code>{{ mcpConfigExample }}</code></pre>
-              <el-button size="small" @click="copyText(mcpConfigExample)">复制配置</el-button>
-            </li>
-            <li>
-              <strong>通过 Codex 设置界面接入</strong>
-              <p>URL 填 <code>{{ mcpUrl }}</code>；“Bearer 令牌环境变量”留空；在“标头”中填写 <code>Authorization</code> 和 <code>Bearer 完整令牌</code>；“来自环境变量的标头”留空。不要把 <code>bearer_token_env_var</code> 当作标头名。</p>
-            </li>
-            <li>
-              <strong>重启并验证</strong>
-              <p>重启 Codex 桌面端或 IDE 扩展，然后运行 <code>codex mcp list</code>，或在 Codex 中输入 <code>/mcp</code>，确认 <code>trailsnap_requirements</code> 已连接。</p>
-            </li>
-            <li>
-              <strong>可选：改用环境变量</strong>
-              <p>如果运行环境能够稳定继承宿主机变量，可用下面的配置避免把令牌明文保存在配置文件中。</p>
-              <pre class="code-block mcp-code"><code>{{ mcpEnvConfigExample }}</code></pre>
-              <el-button size="small" @click="copyText(mcpEnvConfigExample)">复制环境变量配置</el-button>
-            </li>
-          </ol>
-          <el-alert type="warning" :closable="false" show-icon title="令牌与连接安全">
-            请求头方案会把令牌保存在用户配置中，请勿提交该文件，并为令牌设置最小权限和有效期；泄露后应立即撤销。MCP 地址必须使用 HTTPS。出现 401 请检查令牌，出现 403 请检查作用域。
-          </el-alert>
-        </article>
-      </section>
+      <IntegrationSettingsPage v-else-if="tab === 'integrations' && isManager && user" :user="user" :tokens="agentTokens"
+        :github-oauth-enabled="githubOauthEnabled" :mcp-url="mcpUrl" :mcp-config="mcpConfigExample" :mcp-env-config="mcpEnvConfigExample"
+        @unlink-github="unlinkGithub" @link-github="startGithub('link')" @create-token="tokenDialog = true"
+        @connect-token="openMcpConnection" @revoke-token="revokeToken" @copy="copyText" />
 
       <!-- ============ AI 模型设置 ============ -->
       <AISettingsPage v-else-if="tab === 'ai-settings' && isManager" />
 
       <!-- ============ 角色管理 ============ -->
-      <section v-else-if="tab === 'users' && user?.role === 'owner'">
-        <div class="page-head">
-          <div class="page-head-left">
-            <div class="page-head-icon"><el-icon :size="26"><UserFilled /></el-icon></div>
-            <div>
-              <h1>角色管理</h1>
-              <p class="sub">所有者可以任命或移除管理员</p>
-            </div>
-          </div>
-        </div>
-        <el-table :data="users" class="panel users-panel">
-          <el-table-column prop="username" label="用户名" />
-          <el-table-column prop="email" label="邮箱" />
-          <el-table-column prop="role" label="角色">
-            <template #default="scope"><span class="tag no-dot plain">{{ roleLabel(scope.row.role) }}</span></template>
-          </el-table-column>
-          <el-table-column label="GitHub"><template #default="scope">{{ scope.row.github ? `@${scope.row.github.login}` : '未绑定' }}</template></el-table-column>
-          <el-table-column label="操作">
-            <template #default="scope">
-              <el-button v-if="scope.row.role !== 'owner'" size="small" @click="toggleRole(scope.row)">{{ scope.row.role === 'admin' ? '降为查看者' : '设为管理员' }}</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </section>
+      <UserManagementPage v-else-if="tab === 'users' && user?.role === 'owner'" :users="users" @toggle-role="toggleRole" />
     </main>
 
     <!-- ============ 页脚 ============ -->
@@ -668,24 +404,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
-  ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
-  Expand, Fold, InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Setting, Switch, Tickets, TrendCharts, User, UserFilled, Warning,
+  Checked, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
+  InfoFilled, MagicStick, Opportunity, Promotion, Service, Setting, Switch, Tickets, TrendCharts, Warning,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
+import { storeToRefs } from 'pinia'
 import axios from 'axios'
 import logoUrl from './assets/logo.svg'
 import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
 import {
-  avatarColor, batchTypeLabel, deliveryLabel, formatDateTime, requirementStatuses, reviewActionLabels, roleLabel,
+  requirementStatuses, reviewActionLabels,
   statusLabel,
 } from './labels'
-import RequirementTable from './RequirementTable.vue'
 import RequirementDetail from './RequirementDetail.vue'
-import DashboardCharts from './DashboardCharts.vue'
 import TokenUsage from './TokenUsage.vue'
 import AISettingsPage from './AISettingsPage.vue'
+import { useSessionStore } from './stores/session'
+import { usePreflightTriage } from './composables/usePreflightTriage'
+import PublicRequirementsPage from './views/requirements/PublicRequirementsPage.vue'
+import DashboardPage from './views/dashboard/DashboardPage.vue'
+import VersionPlanPage from './views/versions/VersionPlanPage.vue'
+import RequirementReviewPage from './views/requirements/RequirementReviewPage.vue'
+import UserManagementPage from './views/settings/UserManagementPage.vue'
+import MyRequirementsPage from './views/requirements/MyRequirementsPage.vue'
+import AppHeader from './layouts/AppHeader.vue'
+import IntegrationSettingsPage from './views/settings/IntegrationSettingsPage.vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { AppTab as Tab } from './router'
 
 const statusOptions = ['pending_review', 'candidate', 'scheduled', 'developing', 'testing', 'release_ready', 'released', 'deferred', 'rejected']
 const reviewStatuses = ['submitted', 'triaging', 'pending_review', 'needs_information', 'candidate', 'deferred', 'rejected', 'duplicate']
@@ -718,11 +465,13 @@ const emptyRequirementForm = () => ({
   severity: 'medium', product_version: '', visibility: 'public', submitter_name: '', submitter_contact: '', environment: {} as Record<string, unknown>,
 })
 
-type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'ai-settings' | 'users'
-const tab = ref<Tab>('public')
+const route = useRoute()
+const router = useRouter()
+const tab = ref<Tab>((route.meta.tab as Tab | undefined) || 'public')
 const navCollapsed = ref(localStorage.getItem('rp_nav_collapsed') === '1')
-const navEl = ref<HTMLElement | null>(null)
-const user = ref<ApiUser | null>(null)
+const header = ref<InstanceType<typeof AppHeader> | null>(null)
+const session = useSessionStore()
+const { user, isManager } = storeToRefs(session)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
 const agentTokens = ref<AgentToken[]>([])
@@ -731,19 +480,10 @@ const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), re
 const analysisDialog = ref(false)
 const analysisOutputEl = ref<HTMLElement | null>(null)
 const submittedRequirement = ref<Requirement | null>(null)
-const analysisProgress = reactive({
-  percent: 0, title: '', detail: '', done: false, failed: false, summary: '', output: '', reasoningOutput: '', attempt: 0, maxAttempts: 3,
-  retryMessages: [] as string[], appliedUpdates: [] as string[],
-  stages: [] as Array<{ label: string; status: 'waiting' | 'active' | 'done' }>,
-})
-function setAnalysisStage(index: number, status: 'waiting' | 'active' | 'done') {
-  const stage = analysisProgress.stages[index]
-  if (stage) stage.status = status
-}
 const githubOauthEnabled = ref(false), createdToken = ref(''), createdTokenId = ref(''), connectionToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
-const detailRouteNumber = ref<number | null>(routeRequirementNumber())
+const detailRouteNumber = ref<number | null>(route.name === 'requirement-detail' ? Number(route.params.number) : null)
 const detailLoading = ref(false), detailTarget = ref<Requirement | null>(null)
 const reviewTarget = ref<Requirement | null>(null)
 const statusTarget = ref<Requirement | null>(null)
@@ -776,8 +516,13 @@ const candidateSelection = reactive<Record<string, string>>({})
 const preflightChecked = ref(false)
 const preflightQuestions = ref<Array<{ question_id: string; target_field?: string; question: string; rationale: string; suggested_options: string[] }>>([])
 const preflightAnswers = reactive<Record<string, string>>({})
+const {
+  progress: analysisProgress,
+  reset: resetAnalysisProgress,
+  run: runPreflightAnalysis,
+  setStage: setAnalysisStage,
+} = usePreflightTriage(requirementForm, preflightAnswers, analysisOutputEl)
 
-const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
 const visibleTabs = computed(() => [
   { key: 'public' as Tab, label: '公开需求', icon: Document },
   { key: 'submit' as Tab, label: '提交需求', icon: EditPen },
@@ -837,9 +582,10 @@ async function switchTab(value: Tab) {
     detailRouteNumber.value = null
     detailTarget.value = null
     detailHistory.value = []
-    history.pushState({}, '', '/')
+    await router.push({ name: value })
   }
   tab.value = value
+  if (route.name !== value) await router.push({ name: value })
   await scrollActiveTab()
   try {
     if (value === 'public') await loadRequirements()
@@ -853,13 +599,10 @@ async function switchTab(value: Tab) {
 }
 async function scrollActiveTab() {
   await nextTick()
-  navEl.value?.querySelector<HTMLElement>('button.active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  header.value?.element?.querySelector<HTMLElement>('button.active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
 }
-function sortRequirements() { /* 由 computed 自动排序 */ }
-
 async function restoreSession() {
-  if (!localStorage.getItem('rp_token')) return
-  try { user.value = await api.me() } catch { localStorage.removeItem('rp_token') }
+  await session.restore()
 }
 
 async function submitAuth() {
@@ -872,8 +615,7 @@ async function submitAuth() {
     const result = authMode.value === 'login'
       ? await api.login({ identifier: authForm.email, password: authForm.password })
       : await api.register(authForm)
-    localStorage.setItem('rp_token', result.token)
-    user.value = result.user
+    session.acceptSession(result.token, result.user)
     authDialog.value = false
     ElMessage.success('登录成功')
     await switchTab('public')
@@ -926,46 +668,6 @@ function onUserCommand(command: string | number | object) {
   if (command === 'mine') switchTab('mine')
 }
 function onNotification() { ElMessage.info('暂无新通知') }
-
-function resetAnalysisProgress(preserveAppliedUpdates = false) {
-  Object.assign(analysisProgress, {
-    percent: 12, title: '正在准备分析', detail: '校验输入并整理需求上下文', done: false, failed: false, summary: '',
-    output: '', reasoningOutput: '', attempt: 0, maxAttempts: 3, retryMessages: [],
-    appliedUpdates: preserveAppliedUpdates ? analysisProgress.appliedUpdates : [],
-    stages: [
-      { label: '整理需求信息', status: 'active' }, { label: '调用分析模型', status: 'waiting' },
-      { label: '保存需求与附件', status: 'waiting' }, { label: '后台结构化分诊', status: 'waiting' },
-    ],
-  })
-}
-
-async function runPreflightAnalysis() {
-  analysisProgress.percent = 30
-  analysisProgress.title = '正在进行提交前分析'
-  analysisProgress.detail = 'AI 正在检查信息完整度并判断是否需要追问'
-  setAnalysisStage(0, 'done'); setAnalysisStage(1, 'active')
-  const result = await api.streamPreflightTriage({ ...requirementForm, answers: preflightAnswers }, event => {
-    if (event.type === 'attempt') {
-      analysisProgress.attempt = event.attempt || 1
-      analysisProgress.maxAttempts = event.max_attempts || 3
-      if (analysisProgress.attempt > 1) analysisProgress.output += `\n\n—— 第 ${analysisProgress.attempt} 次输出 ——\n`
-      analysisProgress.detail = `AI 正在生成并校验结构化结果（第 ${analysisProgress.attempt}/${analysisProgress.maxAttempts} 次）`
-    } else if (event.type === 'delta' && event.content) {
-      if (event.channel === 'reasoning') analysisProgress.reasoningOutput += event.content
-      else analysisProgress.output += event.content
-      nextTick(() => { if (analysisOutputEl.value) analysisOutputEl.value.scrollTop = analysisOutputEl.value.scrollHeight })
-    } else if (event.type === 'retry') {
-      analysisProgress.retryMessages.push(event.reason || '输出格式不符合要求')
-      analysisProgress.detail = `本次输出未通过校验，正在自动重试（最多 ${analysisProgress.maxAttempts} 次）`
-    }
-  })
-  analysisProgress.summary = String(result.analysis?.problem_summary || '')
-  const publicSteps = Array.isArray(result.analysis?.analysis_steps) ? result.analysis.analysis_steps.filter(Boolean) : []
-  if (!analysisProgress.reasoningOutput && publicSteps.length) {
-    analysisProgress.reasoningOutput = publicSteps.map((step: string, index: number) => `${index + 1}. ${step}`).join('\n')
-  }
-  return result
-}
 
 const editableFormLabels: Record<string, string> = {
   type: '需求类型', title: '标题', description: '需求描述', current_behavior: '当前行为', expected_behavior: '期望行为',
@@ -1124,10 +826,6 @@ function saveDraft() {
   ElMessage.success('草稿已保存，下次进入提交页可继续填写')
 }
 
-function routeRequirementNumber() {
-  const match = window.location.pathname.match(/^\/requirements\/REQ-(\d+)\/?$/i)
-  return match ? Number(match[1]) : null
-}
 async function loadDetail(number: number) {
   detailLoading.value = true
   try {
@@ -1143,7 +841,7 @@ async function loadDetail(number: number) {
 async function openDetail(item: Requirement) {
   if (!item.public_number) return
   detailRouteNumber.value = item.public_number
-  history.pushState({}, '', `/requirements/REQ-${item.public_number}`)
+  await router.push({ name: 'requirement-detail', params: { number: item.public_number } })
   window.scrollTo({ top: 0, behavior: 'smooth' })
   await loadDetail(item.public_number)
 }
@@ -1151,7 +849,7 @@ function closeDetail() {
   detailRouteNumber.value = null
   detailTarget.value = null
   detailHistory.value = []
-  history.pushState({}, '', '/')
+  void router.push({ name: tab.value })
 }
 function requirementLink(item: Requirement) { return `${window.location.origin}/requirements/REQ-${item.public_number}` }
 async function copyRequirementLink(item: Requirement) { await copyText(requirementLink(item)) }
@@ -1164,15 +862,16 @@ async function followDetail() {
     if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
   } catch (e) { ElMessage.error(errorMessage(e)) }
 }
-function handlePopState() {
-  const number = routeRequirementNumber()
+watch(() => route.fullPath, () => {
+  const number = route.name === 'requirement-detail' ? Number(route.params.number) : null
   detailRouteNumber.value = number
   if (number) void loadDetail(number)
   else {
     detailTarget.value = null
     detailHistory.value = []
+    tab.value = (route.meta.tab as Tab | undefined) || 'public'
   }
-}
+})
 
 function openEdit(item: Requirement) {
   editTarget.value = item
@@ -1399,14 +1098,12 @@ async function toggleRole(row: ApiUser) {
 }
 
 function logout() {
-  localStorage.removeItem('rp_token')
-  user.value = null
+  session.clear()
   tab.value = 'public'
   void loadRequirements()
 }
 
 onMounted(async () => {
-  window.addEventListener('popstate', handlePopState)
   const params = new URLSearchParams(window.location.search)
   try { githubOauthEnabled.value = (await api.authStatus()).github_oauth_enabled } catch { githubOauthEnabled.value = false }
   const githubError = params.get('github_error')
@@ -1422,8 +1119,7 @@ onMounted(async () => {
   if (githubGrant) {
     try {
       const result = await api.githubRedeem(githubGrant)
-      localStorage.setItem('rp_token', result.token)
-      user.value = result.user
+      session.acceptSession(result.token, result.user)
       ElMessage.success('GitHub 登录或绑定成功')
     } catch (e) { ElMessage.error(errorMessage(e)) }
     params.delete('github_grant')
@@ -1450,10 +1146,9 @@ onMounted(async () => {
   if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
   await scrollActiveTab()
 })
-onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState))
 </script>
 
-<style scoped>
+<style>
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .w-full { width: 100%; }
 .status-dialog-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }

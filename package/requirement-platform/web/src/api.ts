@@ -1,4 +1,6 @@
-import axios from 'axios'
+import { call, client } from './api/client'
+import { streamPreflightTriage } from './api/triage'
+export type { TriageStreamEvent } from './api/triage'
 
 export type GitHubIdentity = { github_user_id: number; login: string; avatar_url?: string; profile_url?: string; email?: string; linked_at: string; last_login_at?: string }
 export type GitHubPullRequest = { number: number; title: string; url: string; state: 'open' | 'closed' | 'merged'; draft: boolean; merged_at?: string; updated_at?: string }
@@ -77,59 +79,6 @@ export type UsageImportResult = {
   file_sha256: string; user_version?: number; detail_rows: number; detail_new: number
   detail_dup: number; detail_aged_out: number; rollup_rows: number; rollup_upserted: number
   date_min?: string; date_max?: string
-}
-
-const client = axios.create({ baseURL: import.meta.env.VITE_REQUIREMENT_API_URL || '/api', timeout: 20000 })
-client.interceptors.request.use(config => {
-  const token = localStorage.getItem('rp_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
-  return config
-})
-
-async function call<T>(method: string, url: string, data?: unknown, headers?: Record<string, string>): Promise<T> {
-  const response = await client.request({ method, url, data, headers })
-  return response.data.data as T
-}
-
-export type TriageStreamEvent = {
-  type: 'attempt' | 'delta' | 'retry' | 'complete' | 'error'
-  attempt?: number; max_attempts?: number; model?: string; content?: string; channel?: 'reasoning' | 'content'; reason?: string
-  available?: boolean; questions?: Array<{ question_id: string; target_field?: string; question: string; rationale: string; suggested_options: string[] }>
-  analysis?: Record<string, any>; connection_id?: string
-}
-
-async function streamPreflightTriage(data: unknown, onEvent: (event: TriageStreamEvent) => void): Promise<TriageStreamEvent> {
-  const baseUrl = import.meta.env.VITE_REQUIREMENT_API_URL || '/api'
-  const token = localStorage.getItem('rp_token')
-  const response = await fetch(`${baseUrl}/requirements/preflight-triage/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(data),
-  })
-  if (!response.ok || !response.body) {
-    const payload = await response.json().catch(() => ({}))
-    throw new Error(payload.detail || `AI 分析请求失败（HTTP ${response.status}）`)
-  }
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let terminal: TriageStreamEvent | null = null
-  while (true) {
-    const { value, done } = await reader.read()
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-    const blocks = buffer.split('\n\n')
-    buffer = blocks.pop() || ''
-    for (const block of blocks) {
-      const dataLine = block.split('\n').find(line => line.startsWith('data:'))
-      if (!dataLine) continue
-      const event = JSON.parse(dataLine.slice(5).trim()) as TriageStreamEvent
-      onEvent(event)
-      if (event.type === 'complete' || event.type === 'error') terminal = event
-    }
-    if (done) break
-  }
-  if (!terminal) throw new Error('AI 分析连接提前结束，请重试')
-  return terminal
 }
 
 export const api = {

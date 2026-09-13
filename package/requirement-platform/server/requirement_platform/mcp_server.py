@@ -24,15 +24,18 @@ from .models import (
 )
 from .security import resolve_agent_token
 from .services import (
-    GitHubClient, STATUS_LABELS, audit, enqueue, requirement_snapshot, requirement_status_from_github,
-    sync_batch_milestone,
+    GitHubClient, sync_batch_milestone,
 )
+from .domain.common import audit, enqueue, requirement_snapshot
+from .integrations.github import STATUS_LABELS, requirement_status_from_github
 from .delivery import (
     cancel_run as cancel_run_service, claim_task, create_delivery_task as create_delivery_task_service,
     heartbeat, idempotent_result, invalidate_delivery_authorizations, lease_token_for, register_artifact,
     link_pull_request as link_pr_service, requirement_transition, run_dict, spec_dict,
     submit_implementation_plan as submit_plan_service, submit_question, submit_result, task_dict,
 )
+from .domain import requirements as requirement_service
+from .domain import releases as release_service
 
 
 class DatabaseTokenVerifier:
@@ -247,32 +250,13 @@ def review_requirement(requirement_id: str, action: str, reason: str, priority: 
                        duplicate_of_id: str | None = None) -> dict[str, Any]:
     """人工授权的 Agent 审核需求并修改其状态。"""
     _, actor = _identity("requirements:review")
-    statuses = {"candidate": "candidate", "needs_information": "needs_information", "rejected": "rejected",
-                "deferred": "deferred", "duplicate": "duplicate", "close": "closed"}
-    if action not in statuses or len(reason.strip()) < 2:
-        raise ValueError("审核动作或理由无效")
-    if priority not in {"low", "normal", "high", "urgent"} or risk_level not in {"low", "medium", "high", "critical"}:
-        raise ValueError("优先级或风险等级无效")
     with SessionLocal() as db:
-        row = _requirement_or_error(db, requirement_id)
-        if action == "duplicate":
-            target = _requirement_or_error(db, duplicate_of_id or "")
-            if target.id == row.id:
-                raise ValueError("重复需求不能指向自身")
-            row.duplicate_of_id = target.id
-            for follower in db.query(RequirementFollower).filter(RequirementFollower.requirement_id == row.id).all():
-                if not db.query(RequirementFollower).filter(RequirementFollower.requirement_id == target.id,
-                                                           RequirementFollower.user_id == follower.user_id).first():
-                    db.add(RequirementFollower(requirement_id=target.id, user_id=follower.user_id))
-        before = row.status
-        requirement_transition(db, row, statuses[action], actor_id=actor.id, reason=reason.strip(), source="mcp")
-        row.review_reason, row.priority, row.risk_level = reason.strip(), priority, risk_level
-        _enqueue_requirement_github_sync(db, row)
-        db.add(ReviewDecision(requirement_id=row.id, reviewer_id=actor.id, action=action, reason=reason,
-                              metadata_json={"source": "mcp", "priority": priority, "risk_level": risk_level,
-                                             "duplicate_of_id": duplicate_of_id}))
-        audit(db, actor.id, f"requirement.{action}", "requirement", row.id, source="mcp", reason=reason,
-              before=before, after=row.status)
+        row = requirement_service.get_requirement(db, requirement_id)
+        requirement_service.review_requirement(
+            db, row, actor_id=actor.id, action=action, reason=reason,
+            priority=priority, risk_level=risk_level, duplicate_of_id=duplicate_of_id,
+            source="mcp", sync_suffix=secrets.token_hex(6),
+        )
         db.commit()
         return _requirement_dict(row)
 
@@ -287,14 +271,10 @@ def update_requirement_status(requirement_id: str, status: str, reason: str) -> 
         raise ValueError("状态变更理由至少需要 2 个字符")
     with SessionLocal() as db:
         row = _requirement_or_error(db, requirement_id)
-        if status in {"accepted", "developing", "testing", "release_ready", "merged", "released"} and db.query(
-            DeliveryTask.id
-        ).filter(DeliveryTask.requirement_id == row.id).first():
-            raise ValueError("新交付任务的状态只能由规格、执行、PR 和发布事实推进")
-        before = row.status
-        requirement_transition(db, row, status, actor_id=actor.id, reason=reason.strip(), source="mcp")
-        row.review_reason = reason.strip()
-        _enqueue_requirement_github_sync(db, row)
+        requirement_service.change_requirement_status(
+            db, row, actor_id=actor.id, status=status, reason=reason,
+            source="mcp", sync_suffix=secrets.token_hex(6),
+        )
         db.commit()
         return _requirement_dict(row)
 
@@ -305,15 +285,9 @@ def delete_requirement(requirement_id: str, reason: str) -> dict[str, Any]:
     _, actor = _identity("requirements:review")
     with SessionLocal() as db:
         row = _requirement_or_error(db, requirement_id)
-        active_batch = db.query(ReleaseBatchItem).join(ReleaseBatch, ReleaseBatch.id == ReleaseBatchItem.batch_id).filter(
-            ReleaseBatchItem.requirement_id == row.id,
-            ReleaseBatch.status.notin_({"completed", "cancelled"}),
-            ReleaseBatchItem.delivery_status != "removed",
-        ).first()
-        if active_batch:
-            raise ValueError("需求仍在活动版本中，请先移出版本")
-        row.deleted_at, row.deleted_by, row.delete_reason = datetime.now(timezone.utc), actor.id, reason.strip()
-        audit(db, actor.id, "requirement.deleted", "requirement", row.id, source="mcp", reason=reason)
+        requirement_service.soft_delete_requirement(
+            db, row, actor_id=actor.id, reason=reason, source="mcp"
+        )
         db.commit()
         return {"id": row.id, "deleted": True}
 
@@ -324,10 +298,7 @@ def restore_requirement(requirement_id: str) -> dict[str, Any]:
     _, actor = _identity("requirements:review")
     with SessionLocal() as db:
         row = _requirement_or_error(db, requirement_id, include_deleted=True)
-        if not row.deleted_at:
-            raise ValueError("需求未被删除")
-        row.deleted_at, row.deleted_by, row.delete_reason = None, None, None
-        audit(db, actor.id, "requirement.restored", "requirement", row.id, source="mcp")
+        requirement_service.restore_requirement(db, row, actor_id=actor.id, source="mcp")
         db.commit()
         return _requirement_dict(row)
 
@@ -425,24 +396,12 @@ def add_version_requirement(batch_id: str, requirement_id: str, priority_order: 
     """把候选需求加入未锁定的版本范围。"""
     _, actor = _identity("versions:write")
     with SessionLocal() as db:
-        batch = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
-        requirement = _requirement_or_error(db, requirement_id)
-        if not batch:
-            raise ValueError("版本批次不存在")
-        if batch.status not in {"planning", "candidate_selection"}:
-            raise ValueError("版本范围已锁定")
-        if requirement.status not in {"candidate", "scheduled"}:
-            raise ValueError("只能加入候选需求")
-        ranks = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-        if ranks.get(requirement.risk_level, 4) > ranks.get(batch.max_risk_level, 3):
-            raise ValueError("需求风险超过版本上限")
-        if db.query(ReleaseBatchItem).filter(ReleaseBatchItem.batch_id == batch.id,
-                                             ReleaseBatchItem.requirement_id == requirement.id).first():
-            raise ValueError("需求已在该版本中")
-        db.add(ReleaseBatchItem(batch_id=batch.id, requirement_id=requirement.id, priority_order=max(priority_order, 0),
-                                requirement_snapshot=requirement_snapshot(requirement)))
-        batch.status = "candidate_selection"
-        audit(db, actor.id, "release_batch.item_added", "release_batch", batch.id, source="mcp", requirement_id=requirement.id)
+        batch = release_service.get_batch(db, batch_id)
+        requirement = requirement_service.get_requirement(db, requirement_id)
+        release_service.add_item(
+            db, batch, requirement, actor_id=actor.id,
+            priority_order=priority_order, source="mcp",
+        )
         db.commit()
         return _batch_dict(batch, db)
 
@@ -456,10 +415,7 @@ def remove_version_requirement(batch_id: str, item_id: str) -> dict[str, Any]:
         item = db.query(ReleaseBatchItem).filter(ReleaseBatchItem.id == item_id, ReleaseBatchItem.batch_id == batch_id).first()
         if not batch or not item:
             raise ValueError("版本条目不存在")
-        if batch.status not in {"planning", "candidate_selection"}:
-            raise ValueError("版本范围已锁定")
-        audit(db, actor.id, "release_batch.item_removed", "release_batch", batch.id, source="mcp", requirement_id=item.requirement_id)
-        db.delete(item)
+        release_service.remove_item(db, batch, item, actor_id=actor.id, source="mcp")
         db.commit()
         return {"removed": True, "item_id": item_id}
 
@@ -470,21 +426,9 @@ def lock_version(batch_id: str) -> dict[str, Any]:
     _, actor = _identity("versions:write")
     with SessionLocal() as db:
         batch = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
-        items = db.query(ReleaseBatchItem).filter(ReleaseBatchItem.batch_id == batch_id).all()
-        if not batch or not items:
+        if not batch:
             raise ValueError("版本不存在或没有需求")
-        if batch.status not in {"planning", "candidate_selection"}:
-            raise ValueError("版本范围已锁定")
-        batch.status, batch.locked_at = "scope_locked", utcnow()
-        for item in items:
-            requirement = _requirement_or_error(db, item.requirement_id)
-            item.requirement_snapshot = requirement_snapshot(requirement)
-            before = requirement.status
-            requirement_transition(db, requirement, "scheduled", actor_id=actor.id,
-                                   reason=f"加入版本 {batch.version_name}", source="mcp")
-            _enqueue_requirement_github_sync(db, requirement)
-        enqueue(db, "github_milestone", batch.id, f"github_milestone:{batch.id}")
-        audit(db, actor.id, "release_batch.locked", "release_batch", batch.id, source="mcp", count=len(items))
+        release_service.lock_batch(db, batch, actor_id=actor.id, source="mcp")
         db.commit()
         return _batch_dict(batch, db)
 
@@ -493,36 +437,12 @@ def lock_version(batch_id: str) -> dict[str, Any]:
 def update_version_status(batch_id: str, status: str, reason: str) -> dict[str, Any]:
     """推进、暂停、阻塞、发布或完成版本；完成/取消仅所有者令牌可执行。"""
     _, actor = _identity("versions:write")
-    transitions = {"planning": {"cancelled"}, "candidate_selection": {"cancelled"},
-                   "scope_locked": {"developing", "blocked", "paused", "cancelled"},
-                   "developing": {"testing", "blocked", "paused", "cancelled"},
-                   "testing": {"developing", "release_ready", "blocked", "paused", "cancelled"},
-                   "release_ready": {"testing", "published", "blocked", "paused", "cancelled"},
-                   "published": {"completed"}, "blocked": {"developing", "testing", "release_ready", "paused", "cancelled"},
-                   "paused": {"developing", "testing", "release_ready", "blocked", "cancelled"}}
     with SessionLocal() as db:
-        batch = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
-        if not batch or status not in transitions.get(batch.status, set()):
-            raise ValueError("无效的版本状态流转")
-        if status in {"completed", "cancelled"} and actor.role != "owner":
-            raise PermissionError("只有所有者可以完成或取消版本")
-        items = db.query(ReleaseBatchItem).filter(ReleaseBatchItem.batch_id == batch.id).all()
-        if status == "published" and any(item.delivery_status not in {"completed", "removed"} for item in items):
-            raise ValueError("所有需求完成后才能发布")
-        before, batch.status = batch.status, status
-        requirement_status = {"developing": "developing", "testing": "testing", "release_ready": "release_ready",
-                              "published": "released", "completed": "released"}.get(status)
-        if requirement_status:
-            for item in items:
-                if requirement_status != "released" or item.delivery_status == "completed":
-                    requirement = _requirement_or_error(db, item.requirement_id)
-                    old = requirement.status
-                    if db.query(DeliveryTask.id).filter(DeliveryTask.requirement_id == requirement.id).first():
-                        raise ValueError("新交付任务不能由旧版本状态工具推进")
-                    requirement_transition(db, requirement, requirement_status, actor_id=actor.id,
-                                           reason=reason, source="mcp")
-                    _enqueue_requirement_github_sync(db, requirement)
-        audit(db, actor.id, "release_batch.status_changed", "release_batch", batch.id, source="mcp", before=before, after=status, reason=reason)
+        batch = release_service.get_batch(db, batch_id)
+        release_service.change_status(
+            db, batch, actor_id=actor.id, actor_role=actor.role,
+            status=status, reason=reason, source="mcp",
+        )
         db.commit()
         return _batch_dict(batch, db)
 
@@ -537,19 +457,9 @@ def update_version_delivery_status(batch_id: str, item_id: str, status: str) -> 
         item = db.query(ReleaseBatchItem).filter(ReleaseBatchItem.id == item_id, ReleaseBatchItem.batch_id == batch_id).first()
         if not batch or not item or status not in allowed:
             raise ValueError("版本条目或交付状态无效")
-        if batch.status in {"planning", "candidate_selection", "published", "completed", "cancelled"}:
-            raise ValueError("当前版本状态不能修改交付进度")
-        item.delivery_status = status
-        mapping = {"developing": "developing", "pr_open": "developing", "testing": "testing", "completed": "release_ready"}
-        if status in mapping:
-            requirement = _requirement_or_error(db, item.requirement_id)
-            before = requirement.status
-            if db.query(DeliveryTask.id).filter(DeliveryTask.requirement_id == requirement.id).first():
-                raise ValueError("新交付任务不能由旧版本条目工具推进")
-            requirement_transition(db, requirement, mapping[status], actor_id=actor.id,
-                                   reason=f"版本交付状态：{status}", source="mcp")
-            _enqueue_requirement_github_sync(db, requirement)
-        audit(db, actor.id, "release_batch.delivery_status", "release_batch", batch.id, source="mcp", item_id=item.id, status=status)
+        release_service.change_delivery_status(
+            db, batch, item, actor_id=actor.id, status=status, source="mcp"
+        )
         db.commit()
         return {"id": item.id, "delivery_status": item.delivery_status}
 
