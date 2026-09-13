@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class RegisterInput(BaseModel):
@@ -52,9 +52,13 @@ class AgentTokenCreate(BaseModel):
     name: str = Field(min_length=2, max_length=100)
     scopes: list[Literal[
         "requirements:read", "requirements:write", "requirements:review",
-        "versions:read", "versions:write", "github:write"
+        "versions:read", "versions:write", "github:write",
+        "specs:read", "tasks:write", "tasks:claim", "runs:write", "artifacts:write", "tests:submit"
     ]] = Field(min_length=1)
     expires_in_days: int | None = Field(default=90, ge=1, le=365)
+    project_key: Literal["trailsnap"] = "trailsnap"
+    agent_role: Literal["coding", "testing", "review"] | None = None
+    task_id: str | None = None
 
 
 class RequirementCreate(BaseModel):
@@ -71,6 +75,7 @@ class RequirementCreate(BaseModel):
     visibility: Literal["public", "private"] = "public"
     submitter_name: str | None = Field(default=None, max_length=50)
     submitter_contact: str | None = Field(default=None, max_length=255)
+    ai_clarification_answers: dict[str, str] = Field(default_factory=dict)
 
 
 class RequirementUpdate(BaseModel):
@@ -87,6 +92,254 @@ class RequirementUpdate(BaseModel):
     environment: dict[str, Any] | None = None
 
 
+class TriageQuestion(BaseModel):
+    question_id: str = Field(min_length=1, max_length=40)
+    target_field: str | None = Field(default=None, max_length=80)
+    question: str = Field(min_length=2, max_length=1000)
+    rationale: str = Field(min_length=2, max_length=1000)
+    blocking: bool = True
+    suggested_options: list[str] = Field(default_factory=list, max_length=6)
+
+
+class TriageReportV2(BaseModel):
+    schema_version: Literal[2] = 2
+    requirement_revision: int = Field(ge=1)
+    context_bundle_id: str | None = None
+    problem_summary: str = Field(min_length=2, max_length=2000)
+    category: Literal["bug", "improvement", "feature"]
+    confirmed_facts: list[dict[str, Any]] = Field(default_factory=list)
+    hypotheses: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
+    completeness_items: list[dict[str, Any]] = Field(default_factory=list)
+    blocking_questions: list[TriageQuestion] = Field(default_factory=list, max_length=3)
+    nonblocking_questions: list[TriageQuestion] = Field(default_factory=list, max_length=3)
+    duplicate_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    value_assessment: dict[str, Any] = Field(default_factory=dict)
+    feasibility: str = Field(default="unknown", max_length=100)
+    affected_components: list[str] = Field(default_factory=list)
+    risks: list[dict[str, Any] | str] = Field(default_factory=list)
+    effort_range: str = Field(default="unknown", max_length=100)
+    recommended_disposition: Literal["clarify", "pending_review", "possible_duplicate", "defer", "reject"]
+    acceptance_draft: list[str] = Field(default_factory=list)
+    model: str | None = None
+    prompt_version: str = "triage-v2"
+    knowledge_revision: str | None = None
+    generated_at: datetime
+    fallback_reason: str | None = None
+
+
+class PreflightTriageInput(RequirementCreate):
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
+class AIConnectionCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    provider: Literal["openai_compatible"] = "openai_compatible"
+    api_base: str = Field(min_length=8, max_length=500)
+    api_key: str = Field(default="", max_length=4000)
+    enabled: bool = True
+    timeout_seconds: int = Field(default=45, ge=3, le=180)
+    priority: int = Field(default=100, ge=0, le=10000)
+
+    @model_validator(mode="after")
+    def validate_api_base(self):
+        if not self.api_base.startswith(("http://", "https://")):
+            raise ValueError("api_base must use http or https")
+        return self
+
+
+class AIConnectionUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=100)
+    api_base: str | None = Field(default=None, min_length=8, max_length=500)
+    api_key: str | None = Field(default=None, max_length=4000)
+    clear_api_key: bool = False
+    enabled: bool | None = None
+    timeout_seconds: int | None = Field(default=None, ge=3, le=180)
+    priority: int | None = Field(default=None, ge=0, le=10000)
+
+    @model_validator(mode="after")
+    def validate_api_base(self):
+        if self.api_base is not None and not self.api_base.startswith(("http://", "https://")):
+            raise ValueError("api_base must use http or https")
+        return self
+
+
+class AIModelCreate(BaseModel):
+    model_name: str = Field(min_length=1, max_length=160)
+    display_name: str = Field(default="", max_length=160)
+    enabled: bool = True
+    supports_json_mode: bool = True
+    context_window: int | None = Field(default=None, ge=1024, le=10_000_000)
+
+
+class AIModelUpdate(BaseModel):
+    model_name: str | None = Field(default=None, min_length=1, max_length=160)
+    display_name: str | None = Field(default=None, max_length=160)
+    enabled: bool | None = None
+    supports_json_mode: bool | None = None
+    context_window: int | None = Field(default=None, ge=1024, le=10_000_000)
+
+
+AITaskType = Literal["preflight_triage", "requirement_triage", "spec_drafting", "coding", "testing", "review"]
+
+
+class AITaskRouteUpdate(BaseModel):
+    enabled: bool = True
+    model_ids: list[str] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def unique_models(self):
+        if len(self.model_ids) != len(set(self.model_ids)):
+            raise ValueError("model_ids must be unique")
+        return self
+
+
+class AIConnectionTestInput(BaseModel):
+    model_id: str | None = None
+
+
+class ClarificationAnswerInput(BaseModel):
+    answer: str = Field(min_length=1, max_length=4000)
+    expected_state_version: int = Field(ge=1)
+
+
+class SummaryCorrectionInput(BaseModel):
+    summary: str = Field(min_length=4, max_length=2000)
+    expected_state_version: int = Field(ge=1)
+
+
+class AcceptanceCriterionInput(BaseModel):
+    id: str = Field(min_length=1, max_length=30, pattern=r"^AC-[A-Za-z0-9_-]+$")
+    given: str = Field(min_length=1, max_length=2000)
+    when: str = Field(min_length=1, max_length=2000)
+    then: str = Field(min_length=1, max_length=3000)
+    required: bool = True
+    verification: str = Field(min_length=1, max_length=50)
+    dataset: str | None = Field(default=None, max_length=120)
+
+
+class RequirementSpecContent(BaseModel):
+    problem: str = Field(min_length=4, max_length=6000)
+    user_scenario: str = Field(min_length=4, max_length=6000)
+    goal: str = Field(min_length=4, max_length=4000)
+    confirmed_facts: list[str] = Field(default_factory=list)
+    references: list[str] = Field(default_factory=list)
+    in_scope: list[str] = Field(min_length=1)
+    out_of_scope: list[str] = Field(default_factory=list)
+    behavior_rules: list[str] = Field(default_factory=list)
+    acceptance: list[AcceptanceCriterionInput] = Field(min_length=1)
+    test_data_requirements: list[str] = Field(default_factory=list)
+    environment_requirements: list[str] = Field(default_factory=list)
+    constraints: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+    release_requirements: list[str] = Field(default_factory=list)
+    rollback_requirements: list[str] = Field(default_factory=list)
+    blocking_questions: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+    repository: Literal["LC044/TrailSnap"] = "LC044/TrailSnap"
+    target_branch: Literal["master"] = "master"
+    base_sha: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{40}$")
+
+    @model_validator(mode="after")
+    def unique_acceptance_ids(self):
+        ids = [item.id for item in self.acceptance]
+        if len(ids) != len(set(ids)):
+            raise ValueError("验收标准 ID 不能重复")
+        return self
+
+
+class RequirementSpecCreate(BaseModel):
+    content: RequirementSpecContent
+    expected_requirement_state_version: int = Field(ge=1)
+
+
+class RequirementSpecUpdate(BaseModel):
+    content: RequirementSpecContent
+    expected_state_version: int = Field(ge=1)
+
+
+class SpecApproveInput(BaseModel):
+    expected_state_version: int = Field(ge=1)
+    manual_base_sha: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{40}$")
+
+
+class DeliveryTaskCreate(BaseModel):
+    spec_id: str
+    risk_level: Literal["low", "medium", "high", "critical"] = "medium"
+    budget: dict[str, Any] = Field(default_factory=dict)
+    dependency_ids: list[str] = Field(default_factory=list)
+
+
+class AgentClaimInput(BaseModel):
+    runner_name: str = Field(min_length=1, max_length=120)
+    provider: Literal["codex", "claude"]
+    model: str | None = Field(default=None, max_length=100)
+    role: Literal["coding"] = "coding"
+
+
+class RunWriteInput(BaseModel):
+    attempt_id: str
+    lease_token: str
+    expected_state_version: int = Field(ge=1)
+
+
+class RunHeartbeatInput(RunWriteInput):
+    session_reference: str | None = Field(default=None, max_length=255)
+
+
+class ImplementationPlanInput(RunWriteInput):
+    goal_summary: str = Field(min_length=4, max_length=4000)
+    scope_summary: str = Field(min_length=4, max_length=4000)
+    acceptance_plan: dict[str, str] = Field(min_length=1)
+    affected_modules: list[str] = Field(default_factory=list)
+    migrations: list[str] = Field(default_factory=list)
+    ambiguities: list[str] = Field(default_factory=list, max_length=10)
+    out_of_scope: list[str] = Field(default_factory=list)
+
+
+class RunQuestionInput(RunWriteInput):
+    question: str = Field(min_length=2, max_length=4000)
+    blocking: bool = True
+
+
+class RunQuestionAnswerInput(BaseModel):
+    answer: str = Field(min_length=1, max_length=4000)
+    expected_run_state_version: int = Field(ge=1)
+    requires_spec_revision: bool = False
+
+
+class RunResultInput(RunWriteInput):
+    status: Literal["succeeded", "failed", "cancelled"]
+    summary: str = Field(min_length=1, max_length=8000)
+    changed_files: list[str] = Field(default_factory=list)
+    acceptance_coverage: dict[str, Any] = Field(default_factory=dict)
+    self_test_results: list[dict[str, Any]] = Field(default_factory=list)
+    known_limitations: list[str] = Field(default_factory=list)
+    head_sha: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{40}$")
+    usage: dict[str, Any] = Field(default_factory=dict)
+    exit_reason: str | None = Field(default=None, max_length=4000)
+
+
+class ArtifactInput(RunWriteInput):
+    kind: str = Field(min_length=1, max_length=40)
+    uri: str = Field(min_length=1, max_length=1000)
+    sha256: str = Field(pattern=r"^[0-9a-fA-F]{64}$")
+    mime_type: str = Field(min_length=1, max_length=120)
+    size_bytes: int = Field(ge=0)
+    access_level: Literal["private", "manager", "public"] = "private"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PullRequestLinkInput(BaseModel):
+    pull_request_number: int = Field(ge=1)
+    url: str = Field(min_length=8, max_length=500)
+    head_sha: str = Field(pattern=r"^[0-9a-fA-F]{40}$")
+    base_sha: str = Field(pattern=r"^[0-9a-fA-F]{40}$")
+    covered_acceptance_ids: list[str] = Field(default_factory=list)
+    expected_state_version: int = Field(ge=1)
+
+
 class ReviewInput(BaseModel):
     action: Literal["candidate", "needs_information", "rejected", "deferred", "duplicate", "close"]
     reason: str = Field(min_length=2, max_length=2000)
@@ -98,7 +351,7 @@ class ReviewInput(BaseModel):
 class RequirementStatusInput(BaseModel):
     status: Literal[
         "submitted", "triaging", "pending_review", "needs_information", "candidate", "scheduled",
-        "developing", "testing", "release_ready", "released", "deferred", "rejected", "duplicate",
+        "accepted", "developing", "testing", "release_ready", "merged", "released", "deferred", "rejected", "duplicate",
         "withdrawn", "closed",
     ]
     reason: str = Field(min_length=2, max_length=2000)
@@ -167,6 +420,9 @@ class RequirementRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     version: int
+    content_revision: int
+    state_version: int
+    confirmed_summary: str | None
     deleted_at: datetime | None
     deleted_by: str | None
     delete_reason: str | None
