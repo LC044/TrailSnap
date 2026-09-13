@@ -160,8 +160,11 @@ def requirement_data(row: Requirement, db: Session, *, include_private: bool = F
                          "recommended_disposition", "acceptance_draft", "fallback_reason"}
         data["triage"] = report.report if include_private else {key: value for key, value in report.report.items() if key in public_fields}
         data["triage_provider"] = report.provider if include_private else None
+        data["triage_model"] = report.model if include_private else None
     else:
         data["triage"] = None
+        data["triage_provider"] = None
+        data["triage_model"] = None
     attachments = db.query(RequirementAttachment).filter(
         RequirementAttachment.requirement_id == row.id
     ).order_by(RequirementAttachment.created_at).all() if include_private else []
@@ -203,12 +206,19 @@ def apply_github_status(
     """Apply one GitHub-originated transition and retain an attributable audit record."""
     row.github_state = issue.get("state", row.github_state)
     suggested = requirement_status_from_github(issue, current_status=row.status, action=action, changed_label=changed_label)
+    before = row.status
+    changed = suggested != before
+    if changed:
+        requirement_transition(
+            db, row, suggested, actor_id=actor_id,
+            reason=f"GitHub Issue 状态同步为 {issue.get('state', 'unknown')}", source=source,
+        )
     audit(
         db, actor_id, "github.requirement_state_observed", "requirement", row.id,
         platform_status=row.status, suggested_status=suggested, github_state=row.github_state,
         source=source, actor_name=actor_name, github_action=action,
     )
-    return False
+    return changed
 
 
 def next_requirement_number(db: Session) -> int:
@@ -675,13 +685,19 @@ def update_ai_task_route(task_type: str, payload: AITaskRouteUpdate,
     found = {item[0] for item in db.query(AIModel.id).filter(AIModel.id.in_(payload.model_ids)).all()} if payload.model_ids else set()
     if found != set(payload.model_ids):
         raise HTTPException(status_code=422, detail="One or more AI models do not exist")
+    selected_models = db.query(AIModel).filter(AIModel.id.in_(payload.model_ids)).all() if payload.model_ids else []
+    unsupported = [item.model_name for item in selected_models if payload.reasoning_effort not in (item.reasoning_levels or ["none"])]
+    if unsupported:
+        raise HTTPException(status_code=422, detail=f"所选思考等级不受模型支持：{', '.join(unsupported)}")
     row = db.query(AITaskRoute).filter(AITaskRoute.task_type == task_type).first()
     if not row:
         row = AITaskRoute(task_type=task_type, updated_by=actor.id)
         db.add(row)
-    row.enabled, row.model_ids, row.updated_by = payload.enabled, payload.model_ids, actor.id
+    row.enabled, row.model_ids, row.reasoning_effort, row.updated_by = (
+        payload.enabled, payload.model_ids, payload.reasoning_effort, actor.id
+    )
     audit(db, actor.id, "ai_task_route.updated", "ai_task_route", task_type,
-          enabled=row.enabled, model_ids=row.model_ids)
+          enabled=row.enabled, model_ids=row.model_ids, reasoning_effort=row.reasoning_effort)
     db.commit()
     return ok(next(item for item in ai_settings_dict(db)["routes"] if item["task_type"] == task_type))
 

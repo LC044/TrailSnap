@@ -31,7 +31,7 @@
         <el-button v-if="filterActive" link type="primary" @click="resetFilters">重置</el-button>
       </div>
       <div v-else class="page-head-actions">
-        <el-button v-if="manager" :icon="Refresh" @click="reloadAll">刷新</el-button>
+        <el-button v-if="manager" :icon="Refresh" @click="reloadAll(true)">刷新</el-button>
       </div>
     </div>
 
@@ -291,6 +291,8 @@ const overview = ref<UsageOverview | null>(null)
 const daily = ref<UsageDailyPoint[]>([])
 const imports = ref<UsageImportRecord[]>([])
 const loading = ref(false)
+const CACHE_TTL_MS = 5 * 60 * 1000
+const CACHE_PREFIX = 'rp_usage_cache:'
 
 // 趋势图五条曲线：cost 走右轴（美元），其余走左轴（token）
 type TokenSeriesKey = 'cache_creation_tokens' | 'cache_read_tokens' | 'input_tokens' | 'output_tokens'
@@ -391,15 +393,38 @@ function fmtTime(value?: string): string {
   return value.replace('T', ' ').slice(0, 16)
 }
 
-async function reloadAll() {
+function cacheKey(query: string) { return `${CACHE_PREFIX}${props.manager ? 'manager' : 'viewer'}:${query}` }
+function clearUsageCache() {
+  for (let index = sessionStorage.length - 1; index >= 0; index -= 1) {
+    const key = sessionStorage.key(index)
+    if (key?.startsWith(CACHE_PREFIX)) sessionStorage.removeItem(key)
+  }
+}
+async function reloadAll(force = false) {
   loading.value = true
   try {
     const query = buildParams()
+    if (!force) {
+      try {
+        const cached = JSON.parse(sessionStorage.getItem(cacheKey(query)) || 'null')
+        if (cached && Date.now() - cached.savedAt < CACHE_TTL_MS) {
+          overview.value = cached.overview
+          daily.value = cached.daily
+          filterOptions.value = cached.filterOptions
+          imports.value = cached.imports || []
+          return
+        }
+      } catch { sessionStorage.removeItem(cacheKey(query)) }
+    }
     const [overviewData, dailyData] = await Promise.all([api.usageOverview(query), api.usageDaily(query)])
     overview.value = overviewData
     daily.value = dailyData
     filterOptions.value = await api.usageFilters()
     if (props.manager) imports.value = await api.usageImports()
+    try {
+      sessionStorage.setItem(cacheKey(query), JSON.stringify({ savedAt: Date.now(), overview: overview.value,
+        daily: daily.value, filterOptions: filterOptions.value, imports: imports.value }))
+    } catch { /* storage may be disabled; data is still available in memory */ }
   } finally {
     loading.value = false
   }
@@ -599,7 +624,7 @@ async function upload(file: File) {
   try {
     importResult.value = await api.uploadUsageImport(deviceLabel.value.trim(), file)
     ElMessage.success('导入成功')
-    await reloadAll()
+    clearUsageCache(); await reloadAll(true)
   } catch (e) {
     if ((e as { response?: { status?: number } })?.response?.status === 409) ElMessage.warning('该文件之前已导入过')
     else ElMessage.error(((e as { response?: { data?: { msg?: string } } })?.response?.data?.msg) || '导入失败，请检查文件格式')
@@ -614,7 +639,7 @@ async function removeImport(row: UsageImportRecord) {
   try {
     await api.deleteUsageImport(row.id)
     ElMessage.success('已删除')
-    await reloadAll()
+    clearUsageCache(); await reloadAll(true)
   } catch (e) { ElMessage.error(String(e)) }
 }
 async function removeDevice(device: { id: string; label: string }) {
@@ -624,7 +649,7 @@ async function removeDevice(device: { id: string; label: string }) {
   try {
     await api.deleteUsageDevice(device.id)
     ElMessage.success('已删除')
-    await reloadAll()
+    clearUsageCache(); await reloadAll(true)
   } catch (e) { ElMessage.error(String(e)) }
 }
 </script>

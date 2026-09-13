@@ -46,11 +46,14 @@
         </div>
 
         <div class="models">
-          <div class="models-head"><h3>模型</h3><span>关闭 JSON Mode 可兼容不支持 response_format 的服务。</span></div>
+          <div class="models-head"><h3>模型</h3><span>配置模型支持的思考等级；关闭 JSON Mode 可兼容不支持 response_format 的服务。</span></div>
           <div v-for="model in connection.models" :key="model.id" class="model-row">
             <el-input v-model="model.display_name" placeholder="显示名称" />
             <el-input v-model="model.model_name" placeholder="上游模型名" />
             <el-input-number v-model="model.context_window" :min="1024" :max="10000000" placeholder="上下文" />
+            <el-select v-model="model.reasoning_levels" multiple collapse-tags placeholder="支持的思考等级">
+              <el-option v-for="level in reasoningOptions" :key="level" :label="reasoningLabel(level)" :value="level" />
+            </el-select>
             <el-checkbox v-model="model.supports_json_mode">JSON Mode</el-checkbox>
             <el-switch v-model="model.enabled" active-text="启用" />
             <div class="row-actions"><el-button size="small" @click="saveModel(model)">保存</el-button><el-button size="small" type="danger" link @click="removeModel(model)">删除</el-button></div>
@@ -59,6 +62,9 @@
             <el-input v-model="modelDraft(connection.id).display_name" placeholder="显示名称" />
             <el-input v-model="modelDraft(connection.id).model_name" placeholder="模型名，例如 gpt-5-mini" />
             <el-input-number v-model="modelDraft(connection.id).context_window" :min="1024" :max="10000000" placeholder="上下文" />
+            <el-select v-model="modelDraft(connection.id).reasoning_levels" multiple collapse-tags placeholder="支持的思考等级">
+              <el-option v-for="level in reasoningOptions" :key="level" :label="reasoningLabel(level)" :value="level" />
+            </el-select>
             <el-checkbox v-model="modelDraft(connection.id).supports_json_mode">JSON Mode</el-checkbox>
             <span></span>
             <el-button type="primary" plain @click="addModel(connection.id)">添加模型</el-button>
@@ -76,6 +82,9 @@
         <el-select v-model="route.model_ids" multiple filterable placeholder="依次选择主模型和备用模型">
           <el-option v-for="option in modelOptions" :key="option.id" :label="option.label" :value="option.id" :disabled="!option.enabled" />
         </el-select>
+        <el-select v-model="route.reasoning_effort" placeholder="思考等级">
+          <el-option v-for="level in routeReasoningLevels(route)" :key="level" :label="reasoningLabel(level)" :value="level" />
+        </el-select>
         <el-button @click="saveRoute(route)">保存路由</el-button>
       </div>
     </article>
@@ -90,14 +99,21 @@ import { api, type AIConnection, type AIModel, type AISettings, type AITaskRoute
 const loading = ref(false), saving = ref(false)
 const settings = ref<AISettings | null>(null)
 const connectionKeys = reactive<Record<string, string>>({})
-const modelDrafts = reactive<Record<string, { model_name: string; display_name: string; context_window?: number; supports_json_mode: boolean }>>({})
+const reasoningOptions = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+const reasoningLabel = (level: string) => ({ none: '关闭', minimal: '最低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' }[level] || level)
+const modelDrafts = reactive<Record<string, { model_name: string; display_name: string; context_window?: number; supports_json_mode: boolean; reasoning_levels: string[] }>>({})
 const newConnection = reactive({ name: '', api_base: '', api_key: '', timeout_seconds: 45 })
-const emptyModel = () => ({ model_name: '', display_name: '', context_window: 128000, supports_json_mode: true })
+const emptyModel = () => ({ model_name: '', display_name: '', context_window: 128000, supports_json_mode: true, reasoning_levels: ['none', 'low', 'medium', 'high'] })
 function modelDraft(connectionId: string) { return modelDrafts[connectionId] ||= emptyModel() }
 const modelOptions = computed(() => (settings.value?.connections || []).flatMap(connection => connection.models.map(model => ({
   id: model.id, label: `${connection.name} / ${model.display_name || model.model_name}`,
   enabled: connection.enabled && model.enabled,
 }))))
+function routeReasoningLevels(route: AITaskRoute) {
+  const models = (settings.value?.connections || []).flatMap(connection => connection.models).filter(model => route.model_ids.includes(model.id))
+  if (!models.length) return ['none']
+  return reasoningOptions.filter(level => models.every(model => (model.reasoning_levels || ['none']).includes(level)))
+}
 
 function message(error: any) { return error?.response?.data?.msg || error?.response?.data?.detail || '操作失败' }
 async function load() {
@@ -142,7 +158,8 @@ async function addModel(connectionId: string) {
 }
 async function saveModel(model: AIModel) {
   try { await api.updateAIModel(model.id, { model_name: model.model_name, display_name: model.display_name,
-    enabled: model.enabled, supports_json_mode: model.supports_json_mode, context_window: model.context_window || null }); ElMessage.success('模型已保存'); await load() }
+    enabled: model.enabled, supports_json_mode: model.supports_json_mode, context_window: model.context_window || null,
+    reasoning_levels: model.reasoning_levels.length ? model.reasoning_levels : ['none'] }); ElMessage.success('模型已保存'); await load() }
   catch (error) { ElMessage.error(message(error)) }
 }
 async function removeModel(model: AIModel) {
@@ -154,7 +171,7 @@ async function testConnection(connection: AIConnection) {
   catch (error) { ElMessage.error(message(error)) }
 }
 async function saveRoute(route: AITaskRoute) {
-  try { await api.updateAITaskRoute(route.task_type, { enabled: route.enabled, model_ids: route.model_ids }); ElMessage.success(`${route.label}路由已保存`); await load() }
+  try { await api.updateAITaskRoute(route.task_type, { enabled: route.enabled, model_ids: route.model_ids, reasoning_effort: route.reasoning_effort }); ElMessage.success(`${route.label}路由已保存`); await load() }
   catch (error) { ElMessage.error(message(error)) }
 }
 onMounted(load)
@@ -166,7 +183,7 @@ onMounted(load)
 .connection-list { display:grid; gap:16px; }.connection-grid { display:grid; grid-template-columns:1fr 2fr 1.5fr 150px; gap:12px; }
 .block-head,.models-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }.block-head h2,.models-head h3 { margin:0; }.block-head p,.models-head span,.route-help,.route-row p { color:var(--rp-text-3); font-size:13px; }
 .actions,.row-actions { display:flex; flex-wrap:wrap; gap:8px; }.models { margin-top:20px; border-top:1px solid var(--rp-border); padding-top:16px; }
-.model-row { display:grid; grid-template-columns:1fr 1.3fr 150px 110px 90px auto; gap:10px; align-items:center; margin-top:10px; }.add-model { padding-top:10px; border-top:1px dashed var(--rp-border); }
-.route-row { display:grid; grid-template-columns:minmax(190px,1fr) 60px minmax(280px,2fr) auto; gap:14px; align-items:center; padding:14px 0; border-top:1px solid var(--rp-border); }.route-row p { margin:4px 0 0; }
+.model-row { display:grid; grid-template-columns:1fr 1.3fr 140px minmax(170px,1fr) 110px 90px auto; gap:10px; align-items:center; margin-top:10px; }.add-model { padding-top:10px; border-top:1px dashed var(--rp-border); }
+.route-row { display:grid; grid-template-columns:minmax(190px,1fr) 60px minmax(260px,2fr) 130px auto; gap:14px; align-items:center; padding:14px 0; border-top:1px solid var(--rp-border); }.route-row p { margin:4px 0 0; }
 @media (max-width:900px) { .connection-grid,.model-row,.route-row { grid-template-columns:1fr; }.model-row { padding:12px 0; border-top:1px solid var(--rp-border); }.route-row { align-items:stretch; } }
 </style>

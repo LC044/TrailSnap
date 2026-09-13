@@ -288,6 +288,7 @@ class AIModel(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
     supports_json_mode: Mapped[bool] = mapped_column(Boolean, default=True)
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reasoning_levels: Mapped[list] = mapped_column(JSON, default=lambda: ["none", "low", "medium", "high"])
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -298,6 +299,7 @@ class AITaskRoute(Base):
     task_type: Mapped[str] = mapped_column(String(80), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     model_ids: Mapped[list] = mapped_column(JSON, default=list)
+    reasoning_effort: Mapped[str] = mapped_column(String(16), default="none")
     updated_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="RESTRICT"))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -37,7 +37,7 @@
           </section>
 
           <div v-if="requirement.triage" class="triage-box">
-            <div class="triage-head"><el-icon><MagicStick /></el-icon>我们理解的问题</div>
+            <div class="triage-head"><el-icon><MagicStick /></el-icon>AI 分析已完成<span v-if="requirement.triage_model">{{ requirement.triage_model }}</span></div>
             <div class="markdown-body compact" v-html="renderMarkdown(triageText)"></div>
             <div v-if="confirmedFacts.length" class="analysis-list"><strong>已确认的信息</strong><ul><li v-for="(fact, index) in confirmedFacts" :key="index">{{ fact }}</li></ul></div>
             <div v-if="acceptanceDraft.length" class="analysis-list"><strong>验收草案</strong><ul><li v-for="(item, index) in acceptanceDraft" :key="index">{{ item }}</li></ul></div>
@@ -46,6 +46,10 @@
               <el-input v-model="summaryCorrection" type="textarea" :rows="2" placeholder="如果理解有偏差，可在这里纠正摘要" />
               <el-button :loading="saving" @click="saveSummary">提交纠正</el-button>
             </div>
+          </div>
+          <div v-else class="triage-box triage-pending">
+            <div class="triage-head"><el-icon class="analysis-spin"><MagicStick /></el-icon>AI 正在分析</div>
+            <p>需求已进入后台分诊队列，正在生成问题摘要、完整度判断、重复候选与验收草案。完成后结果会显示在这里。</p>
           </div>
           <div v-if="openClarifications.length" class="clarification-box">
             <strong>还需要的信息</strong>
@@ -82,19 +86,17 @@
 
       <aside class="detail-sidebar">
         <article class="panel detail-status">
-          <div class="detail-tags">
-            <span class="tag" :class="`s-${requirement.status}`">{{ statusLabel(requirement.status) }}</span>
-            <span class="tag no-dot" :class="`t-${requirement.type}`">{{ typeLabel(requirement.type) }}</span>
-            <span class="tag no-dot" :class="`p-${requirement.priority}`">{{ priorityLabel(requirement.priority) }}</span>
-            <span class="tag no-dot" :class="`sev-${requirement.severity}`">影响：{{ severityLabel(requirement.severity) }}</span>
-          </div>
-          <dl>
-            <div><dt>产品版本</dt><dd>{{ requirement.product_version || '未填写' }}</dd></div>
-            <div><dt>来源</dt><dd>{{ requirement.source === 'github' ? 'GitHub' : '需求平台' }}</dd></div>
-            <div><dt>最后更新</dt><dd>{{ formatDateTime(requirement.updated_at) }}</dd></div>
+          <dl class="status-fields">
+            <div><dt><el-icon><View /></el-icon>需求状态</dt><dd><button class="status-control" type="button" :disabled="!manager" @click="emit('status')"><span class="tag" :class="`s-${requirement.status}`">{{ statusLabel(requirement.status) }}</span><el-icon v-if="manager"><ArrowDown /></el-icon></button></dd></div>
+            <div><dt><el-icon><Warning /></el-icon>优先级</dt><dd><span class="tag no-dot" :class="`p-${requirement.priority}`">{{ priorityLabel(requirement.priority) }}</span></dd></div>
+            <div><dt><el-icon><User /></el-icon>负责人</dt><dd>{{ requirement.assignee_name || '未指派' }}</dd></div>
+            <div><dt><el-icon><Flag /></el-icon>产品版本</dt><dd>{{ requirement.product_version || '未指定' }}</dd></div>
+            <div><dt><el-icon><CollectionTag /></el-icon>需求来源</dt><dd>{{ requirement.source === 'github' ? 'GitHub' : '需求平台' }}</dd></div>
+            <div><dt><el-icon><Calendar /></el-icon>创建时间</dt><dd>{{ formatDateTime(requirement.created_at) }}</dd></div>
+            <div><dt><el-icon><Clock /></el-icon>最后更新</dt><dd>{{ formatDateTime(requirement.updated_at) }}</dd></div>
           </dl>
           <a v-if="requirement.github_issue_url" class="github-link" :href="requirement.github_issue_url" target="_blank" rel="noopener noreferrer">
-            查看 GitHub Issue #{{ requirement.github_issue_number }}
+            <el-icon><Link /></el-icon>查看 GitHub Issue #{{ requirement.github_issue_number }}<el-icon><TopRight /></el-icon>
           </a>
           <div v-if="requirement.github_pull_requests?.length" class="related-prs">
             <h2>关联 Pull Request</h2>
@@ -113,10 +115,9 @@
             </a>
           </div>
           <div class="detail-actions">
-            <el-button v-if="canFollow" @click="emit('follow')">关注（{{ requirement.follower_count || 0 }}）</el-button>
-            <el-button v-if="manager" @click="emit('edit')">编辑</el-button>
-            <el-button v-if="manager" @click="emit('status')">修改状态</el-button>
-            <el-button v-if="manager" type="primary" @click="emit('review')">审核</el-button>
+            <el-button v-if="manager" type="primary" :icon="Edit" @click="emit('edit')">编辑需求</el-button>
+            <el-button v-if="canFollow" :icon="Star" @click="emit('follow')">关注（{{ requirement.follower_count || 0 }}）</el-button>
+            <el-button v-if="manager" :icon="Promotion" @click="emit('review')">提交审核</el-button>
           </div>
         </article>
 
@@ -139,11 +140,11 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { ArrowLeft, Link, MagicStick } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowLeft, Calendar, Clock, CollectionTag, Edit, Flag, Link, MagicStick, Promotion, Star, TopRight, User, View, Warning } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElInput, ElMessage, ElOption, ElSelect } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 import type { Requirement, RequirementHistory } from './api'
-import { avatarColor, formatDateTime, priorityLabel, severityLabel, statusLabel, typeLabel } from './labels'
+import { avatarColor, formatDateTime, priorityLabel, statusLabel } from './labels'
 import DeliveryWorkspace from './DeliveryWorkspace.vue'
 import { api } from './api'
 
@@ -237,6 +238,8 @@ const historyLabel = (event: RequirementHistory) => {
 .issue-section { margin: 18px 0 0; padding: 18px 0 0; border-top: 1px solid var(--rp-border); }
 .issue-section > .markdown-body { padding-left: 39px; }
 .triage-box, .review-note, .log-panel, .attachments, .contact-box { margin: 18px 0 0; }
+.triage-head { display:flex; align-items:center; gap:7px; font-weight:700; }.triage-head span { margin-left:auto; color:var(--rp-text-3); font-size:12px; font-weight:500; }
+.triage-pending p { margin:8px 0 0; color:var(--rp-text-3); font-size:13px; line-height:1.6; }.analysis-spin { animation:detail-spin 1.1s linear infinite; } @keyframes detail-spin { to { transform:rotate(360deg); } }
 .analysis-list { margin-top: 12px; font-size: 13px; }.analysis-list ul { margin: 6px 0 0; padding-left: 20px; color: var(--rp-text-2); }
 .analysis-next { display: flex; gap: 10px; margin-top: 12px; font-size: 13px; }.analysis-next span { color: var(--rp-text-2); }
 .summary-correction { display: grid; gap: 8px; margin-top: 14px; }
@@ -247,12 +250,15 @@ const historyLabel = (event: RequirementHistory) => {
 .log-panel, .attachments { padding-top: 16px; border-top: 1px solid var(--rp-border); }
 .detail-sidebar { position: sticky; top: 84px; }
 .detail-status, .detail-timeline { padding: 16px; }
-.detail-tags { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; border-bottom: 1px solid var(--rp-border); }
 .detail-status dl { margin: 0; }
-.detail-status dl > div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--rp-border); font-size: 13px; }
-.detail-status dt { color: var(--rp-text-3); }
+.detail-status dl > div { display: flex; align-items:center; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 13px; }
+.detail-status dt { display:flex; align-items:center; gap:7px; color: var(--rp-text-3); }
+.detail-status dt .el-icon { color:#718096; }
 .detail-status dd { margin: 0; color: var(--rp-text-2); text-align: right; }
-.github-link { display: inline-flex; margin-top: 12px; color: var(--rp-primary); font-size: 13px; text-decoration: none; }
+.status-control { display:flex; align-items:center; gap:4px; padding:3px 5px; border:0; border-radius:8px; background:var(--rp-primary-soft); color:var(--rp-primary); cursor:pointer; }
+.status-control:disabled { cursor:default; }
+.github-link { display: flex; align-items:center; gap:6px; margin-top: 8px; padding:10px 0; border-top:1px solid var(--rp-border); color: var(--rp-primary); font-size: 13px; text-decoration: none; }
+.github-link .el-icon:last-child { margin-left:auto; }
 .github-link:hover { text-decoration: underline; }
 .related-prs { margin-top: 16px; }
 .related-prs h2 { margin: 0 0 8px; color: var(--rp-text); font-size: 13px; }
@@ -263,9 +269,8 @@ const historyLabel = (event: RequirementHistory) => {
 .pr-state { flex: none; padding: 1px 6px; border-radius: 999px; background: #e2e8f0; color: #475569; font-size: 11px; }
 .pr-state.is-open { background: #dcfce7; color: #166534; }
 .pr-state.is-merged { background: #f3e8ff; color: #7e22ce; }
-.detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.detail-actions { display: grid; grid-template-columns: 1fr; gap: 8px; margin-top: 14px; }
 .detail-actions .el-button { margin-left: 0; }
-.detail-actions .el-button:first-child:last-child, .detail-actions .el-button:nth-last-child(3):first-child { grid-column: 1 / -1; }
 .detail-timeline h2 { margin: 0 0 16px; font-size: 16px; }
 .timeline-item { position: relative; display: flex; gap: 10px; padding: 0 0 16px; }
 .timeline-item:not(:last-child)::before { content: ''; position: absolute; left: 4px; top: 13px; bottom: 0; width: 1px; background: var(--rp-border); }
