@@ -1,4 +1,5 @@
 import base64
+import json
 import os
 import tempfile
 import atexit
@@ -27,8 +28,9 @@ from requirement_platform.models import (  # noqa: E402
     RequirementFollower, RequirementSpec, TriageReport,
 )
 from requirement_platform.services import (  # noqa: E402
-    GitHubClient, analyze_requirement, closing_issue_numbers, requirement_status_from_github,
+    GitHubClient, _call_triage_ai, analyze_requirement, closing_issue_numbers, requirement_status_from_github,
 )
+from requirement_platform.ai_settings import AIModelTarget  # noqa: E402
 
 
 def cleanup_database_handles():
@@ -1287,3 +1289,59 @@ def test_late_triage_is_superseded_and_does_not_override_human_state(monkeypatch
         detail = client.get(f"/api/requirements/{created['id']}", headers=auth(owner["token"])).json()["data"]
         assert detail["status"] == "candidate"
         assert detail["title"] == "管理员已经修改标题"
+
+
+def _test_ai_target() -> AIModelTarget:
+    return AIModelTarget(
+        connection_id="test", connection_name="Test", provider="openai_compatible",
+        api_base="http://example.test/v1", api_key="", model_id="test-model",
+        model_name="test-model", supports_json_mode=True, timeout_seconds=5,
+    )
+
+
+def test_triage_ai_normalizes_common_model_field_names(monkeypatch):
+    response = {
+        "analysis_steps": ["检查需求目标", "判断信息完整度"],
+        "form_updates": {"expected_behavior": "提交时实时展示 AI 输出", "unknown_field": "ignore"},
+        "facts": ["用户希望看到分析过程"],
+        "assumptions": ["当前界面缺少反馈"],
+        "blocking_questions": [], "non_blocking_questions": [],
+        "recommended_disposition": "pending_review",
+    }
+    monkeypatch.setattr("requirement_platform.services.request_chat_completion", lambda *_args, **_kwargs: json.dumps(response, ensure_ascii=False))
+    report = _call_triage_ai(
+        {"type": "improvement", "title": "展示 AI 分析输出", "description": "提交需求时实时展示模型返回的内容。", "content_revision": 1},
+        [], _test_ai_target(),
+    )
+    assert report["problem_summary"] == "展示 AI 分析输出"
+    assert report["category"] == "improvement"
+    assert report["confirmed_facts"][0]["statement"] == "用户希望看到分析过程"
+    assert report["hypotheses"][0]["statement"] == "当前界面缺少反馈"
+    assert report["analysis_steps"] == ["检查需求目标", "判断信息完整度"]
+    assert report["form_updates"] == {"expected_behavior": "提交时实时展示 AI 输出"}
+
+
+def test_triage_ai_retries_after_invalid_output(monkeypatch):
+    responses = iter([
+        "not-json",
+        json.dumps({
+            "problem_summary": "提交时展示 AI 的实时分析输出",
+            "category": "feature", "blocking_questions": [], "nonblocking_questions": [],
+            "recommended_disposition": "pending_review",
+        }, ensure_ascii=False),
+    ])
+    calls = []
+
+    def fake_completion(_target, messages, *, json_mode):
+        calls.append(messages.copy())
+        return next(responses)
+
+    monkeypatch.setattr("requirement_platform.services.request_chat_completion", fake_completion)
+    report = _call_triage_ai(
+        {"type": "feature", "title": "流式展示 AI 输出", "description": "用户可以看到模型正在生成的内容。", "content_revision": 1},
+        [], _test_ai_target(),
+    )
+    assert report["problem_summary"] == "提交时展示 AI 的实时分析输出"
+    assert len(calls) == 2
+    assert "未通过结构校验" in calls[1][-1]["content"]
+    assert "所有面向用户的文字必须使用简体中文" in calls[0][0]["content"]

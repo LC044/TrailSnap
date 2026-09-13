@@ -6,6 +6,7 @@ import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -95,7 +96,7 @@ from .security import (
     resolve_agent_token,
 )
 from .services import (
-    GitHubClient, analyze_draft, audit, closing_issue_numbers, enqueue, pull_request_summary,
+    GitHubClient, analyze_draft, analyze_draft_stream, audit, closing_issue_numbers, enqueue, pull_request_summary,
     requirement_snapshot, requirement_status_from_github, verify_webhook,
 )
 from . import usage as usage_api
@@ -726,6 +727,40 @@ def preflight_triage(payload: PreflightTriageInput, db: Session = Depends(get_db
     values = payload.model_dump(mode="json")
     values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": values.pop("answers", {})}
     return ok(analyze_draft(db, values))
+
+
+@app.post("/api/requirements/preflight-triage/stream")
+async def preflight_triage_stream(payload: PreflightTriageInput):
+    values = payload.model_dump(mode="json")
+    values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": values.pop("answers", {})}
+
+    async def events():
+        queue: asyncio.Queue[dict] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def publish(event: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+
+        def run_analysis() -> None:
+            with SessionLocal() as db:
+                try:
+                    result = analyze_draft_stream(db, values, publish)
+                    publish({"type": "complete" if result.get("available") else "error", **result})
+                except Exception as exc:
+                    logger.exception("Streaming preflight triage failed")
+                    publish({"type": "error", "available": False, "questions": [], "reason": str(exc)[:1000]})
+
+        task = asyncio.create_task(asyncio.to_thread(run_analysis))
+        try:
+            while True:
+                event = await queue.get()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                if event.get("type") in {"complete", "error"}:
+                    break
+        finally:
+            await task
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/api/requirements")

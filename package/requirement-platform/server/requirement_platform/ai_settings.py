@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -143,6 +144,47 @@ def request_chat_completion(target: AIModelTarget, messages: list[dict[str, str]
         )
         response.raise_for_status()
         return str(response.json()["choices"][0]["message"]["content"]).strip()
+
+
+def request_chat_completion_stream(
+    target: AIModelTarget,
+    messages: list[dict[str, str]],
+    *,
+    json_mode: bool,
+    on_chunk: Callable[[str, str], None] | None = None,
+) -> str:
+    """Call an OpenAI-compatible streaming endpoint and return the final content."""
+    body: dict[str, Any] = {"model": target.model_name, "temperature": 0.1, "messages": messages, "stream": True}
+    if target.reasoning_effort != "none":
+        body["reasoning_effort"] = target.reasoning_effort
+    if json_mode and target.supports_json_mode:
+        body["response_format"] = {"type": "json_object"}
+    content_parts: list[str] = []
+    with httpx.Client(timeout=target.timeout_seconds) as client:
+        with client.stream(
+            "POST",
+            f"{target.api_base}/chat/completions",
+            headers={"Authorization": f"Bearer {target.api_key}"} if target.api_key else {},
+            json=body,
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                event = json.loads(data)
+                delta = event.get("choices", [{}])[0].get("delta", {})
+                reasoning = delta.get("reasoning_content")
+                if isinstance(reasoning, str) and reasoning and on_chunk:
+                    on_chunk(reasoning, "reasoning")
+                chunk = delta.get("content")
+                if isinstance(chunk, str) and chunk:
+                    content_parts.append(chunk)
+                    if on_chunk:
+                        on_chunk(chunk, "content")
+    return "".join(content_parts).strip()
 
 
 def test_model_target(target: AIModelTarget) -> dict[str, Any]:
