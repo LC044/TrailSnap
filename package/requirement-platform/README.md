@@ -95,7 +95,7 @@ RP_GITHUB_REPO=LC044/TrailSnap
 RP_GITHUB_TOKEN=github_pat_xxx
 ```
 
-GitHub App 模式设置 `RP_GITHUB_APP_ID`、`RP_GITHUB_INSTALLATION_ID` 和 `RP_GITHUB_PRIVATE_KEY`。Webhook 地址为 `/api/hooks/github`，签名密钥使用 `RP_GITHUB_WEBHOOK_SECRET`，并订阅 Issues 与 Pull requests 事件。PR 描述使用 `Closes #<Issue 编号>`（也支持 Fixes/Resolves）后，需求详情会展示该 PR。Issue 的关闭、重开或标签变化只记录为外部事实，不直接改变平台审核状态；交付任务关联的 PR 合并后显示“已合并待发布”，不会冒充已发布。未配置凭据时，规格批准无法自动冻结基线；Owner 可填写完整 SHA 作为受审计兜底。
+GitHub App 模式设置 `RP_GITHUB_APP_ID`、`RP_GITHUB_INSTALLATION_ID` 和 `RP_GITHUB_PRIVATE_KEY`。Webhook 地址为 `/api/hooks/github`，签名密钥使用 `RP_GITHUB_WEBHOOK_SECRET`，并订阅 Issues 与 Pull requests 事件。PR 描述使用 `Closes #<Issue 编号>`（也支持 Fixes/Resolves）后，需求详情会展示该 PR。Issue 的关闭、重开或唯一状态标签会通过手动同步或 Webhook 映射回平台状态并写入时间线；交付任务关联的 PR 合并后仍只显示“已合并待发布”，不会冒充已发布。未配置凭据时，规格批准无法自动冻结基线；Owner 可填写完整 SHA 作为受审计兜底。
 
 GitHub 登录需要另外创建 GitHub OAuth App，并将 Authorization callback URL 配置为
 `https://feedback.trailsnap.cn/api/auth/github/callback`，然后设置 `RP_GITHUB_OAUTH_CLIENT_ID`、

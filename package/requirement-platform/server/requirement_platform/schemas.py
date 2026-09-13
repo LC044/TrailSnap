@@ -170,6 +170,9 @@ class AIModelCreate(BaseModel):
     enabled: bool = True
     supports_json_mode: bool = True
     context_window: int | None = Field(default=None, ge=1024, le=10_000_000)
+    reasoning_levels: list[Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]] = Field(
+        default_factory=lambda: ["none", "low", "medium", "high"], min_length=1
+    )
 
 
 class AIModelUpdate(BaseModel):
@@ -178,6 +181,9 @@ class AIModelUpdate(BaseModel):
     enabled: bool | None = None
     supports_json_mode: bool | None = None
     context_window: int | None = Field(default=None, ge=1024, le=10_000_000)
+    reasoning_levels: list[Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]] | None = Field(
+        default=None, min_length=1
+    )
 
 
 AITaskType = Literal["preflight_triage", "requirement_triage", "spec_drafting", "coding", "testing", "review"]
@@ -186,6 +192,7 @@ AITaskType = Literal["preflight_triage", "requirement_triage", "spec_drafting", 
 class AITaskRouteUpdate(BaseModel):
     enabled: bool = True
     model_ids: list[str] = Field(default_factory=list, max_length=10)
+    reasoning_effort: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "none"
 
     @model_validator(mode="after")
     def unique_models(self):

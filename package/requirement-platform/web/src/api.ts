@@ -15,8 +15,8 @@ export type Requirement = {
   visibility: string; status: string; priority: string; risk_level: string; review_reason?: string
   duplicate_of_id?: string; github_issue_number?: number; github_issue_url?: string; github_state?: string
   github_pull_requests: GitHubPullRequest[]
-  created_by?: string; created_by_name?: string; submitter_name?: string; submitter_contact?: string; upload_token?: string
-  created_at: string; updated_at: string; follower_count: number; triage?: Record<string, unknown>
+  created_by?: string; created_by_name?: string; assignee_name?: string; submitter_name?: string; submitter_contact?: string; upload_token?: string
+  created_at: string; updated_at: string; follower_count: number; triage?: Record<string, any>; triage_provider?: string; triage_model?: string
   content_revision: number; state_version: number; confirmed_summary?: string; clarifications?: Clarification[]
   specs?: RequirementSpec[]; delivery_tasks?: DeliveryTask[]
   deleted_at?: string; deleted_by?: string; delete_reason?: string; source: 'platform' | 'github'
@@ -40,9 +40,9 @@ export type Dashboard = {
   daily_new_30d: Array<{ date: string; count: number }>
   top_contributors: Array<{ user_id: string; name: string; count: number }>
 }
-export type AIModel = { id: string; connection_id: string; model_name: string; display_name: string; enabled: boolean; supports_json_mode: boolean; context_window?: number }
+export type AIModel = { id: string; connection_id: string; model_name: string; display_name: string; enabled: boolean; supports_json_mode: boolean; context_window?: number; reasoning_levels: string[] }
 export type AIConnection = { id: string; name: string; provider: string; api_base: string; has_api_key: boolean; api_key_hint?: string; enabled: boolean; timeout_seconds: number; priority: number; models: AIModel[] }
-export type AITaskRoute = { task_type: string; label: string; description: string; enabled: boolean; model_ids: string[]; source: 'managed' | 'environment' | 'none'; updated_at?: string }
+export type AITaskRoute = { task_type: string; label: string; description: string; enabled: boolean; model_ids: string[]; reasoning_effort: string; source: 'managed' | 'environment' | 'none'; updated_at?: string }
 export type AISettings = { connections: AIConnection[]; routes: AITaskRoute[]; legacy_environment_configured: boolean }
 
 export type UsageBreakdownItem = {
@@ -100,7 +100,7 @@ export const api = {
   githubRedeem: (grant: string) => call<{ token: string; user: User }>('post', '/auth/github/redeem', { grant }),
   githubUnlink: () => call<{ unlinked: boolean }>('delete', '/auth/github/link'),
   requirements: (params = '') => call<Requirement[]>('get', `/requirements${params}`),
-  preflightTriage: (data: unknown) => call<{ available: boolean; questions: Array<{ question_id: string; question: string; rationale: string; suggested_options: string[] }>; reason?: string }>('post', '/requirements/preflight-triage', data),
+  preflightTriage: (data: unknown) => call<{ available: boolean; questions: Array<{ question_id: string; question: string; rationale: string; suggested_options: string[] }>; analysis?: Record<string, any>; model?: string; reason?: string }>('post', '/requirements/preflight-triage', data),
   createRequirement: (data: unknown) => call<Requirement>('post', '/requirements', data),
   uploadAttachment: (id: string, file: File, uploadToken?: string) => {
     const data = new FormData(); data.append('file', file)

@@ -1,15 +1,14 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" :class="{ 'nav-collapsed': navCollapsed }">
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
           <img :src="logoUrl" alt="行影集" />
-          <span>行影集</span>
-          <span class="brand-sub">软件需求管理平台</span>
+          <span class="brand-copy"><span>行影集</span><small>需求管理平台</small></span>
         </div>
         <nav ref="navEl" class="nav" aria-label="主导航">
-          <button v-for="item in visibleTabs" :key="item.key" :class="{ active: tab === item.key }" @click="switchTab(item.key)">
-            {{ item.label }}
+          <button v-for="item in visibleTabs" :key="item.key" :class="{ active: tab === item.key }" :title="navCollapsed ? item.label : undefined" @click="switchTab(item.key)">
+            <el-icon :size="19"><component :is="item.icon" /></el-icon><span class="nav-label">{{ item.label }}</span>
           </button>
         </nav>
         <div class="topbar-side">
@@ -22,7 +21,7 @@
               <span class="avatar" :style="{ width: '30px', height: '30px', fontSize: '13px', ...avatarColor(user.username) }">
                 {{ user.username.slice(0, 1) }}
               </span>
-              <span style="font-size: 14px">{{ user.username }}</span>
+              <span class="nav-label" style="font-size: 14px">{{ user.username }}</span>
               <el-icon :size="12"><ArrowDown /></el-icon>
             </button>
             <template #dropdown>
@@ -32,7 +31,10 @@
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button v-else type="primary" @click="authDialog = true">登录 / 注册</el-button>
+          <el-button v-else type="primary" @click="authDialog = true"><span class="nav-label">登录 / 注册</span><el-icon class="collapsed-login"><User /></el-icon></el-button>
+          <button class="collapse-btn" type="button" :aria-label="navCollapsed ? '展开导航' : '折叠导航'" @click="toggleNavigation">
+            <el-icon><Expand v-if="navCollapsed" /><Fold v-else /></el-icon><span class="nav-label">折叠导航</span>
+          </button>
         </div>
       </div>
     </header>
@@ -506,6 +508,25 @@
       </div>
     </footer>
 
+    <el-dialog v-model="analysisDialog" title="AI 需求分析" width="min(92vw, 560px)" :close-on-click-modal="analysisProgress.done" :show-close="analysisProgress.done">
+      <div class="analysis-progress-dialog">
+        <el-progress :percentage="analysisProgress.percent" :status="analysisProgress.failed ? 'exception' : analysisProgress.done ? 'success' : undefined" />
+        <div class="analysis-current"><el-icon :class="{ spinning: !analysisProgress.done }"><MagicStick /></el-icon><div><strong>{{ analysisProgress.title }}</strong><p>{{ analysisProgress.detail }}</p></div></div>
+        <ol class="analysis-stages">
+          <li v-for="stage in analysisProgress.stages" :key="stage.label" :class="stage.status"><span></span>{{ stage.label }}</li>
+        </ol>
+        <div v-if="analysisProgress.summary" class="analysis-result">
+          <strong>分析结果</strong><p>{{ analysisProgress.summary }}</p>
+          <small v-if="analysisProgress.model">由 {{ analysisProgress.model }} 完成结构化分析</small>
+        </div>
+        <el-alert v-if="analysisProgress.done" :type="analysisProgress.failed ? 'warning' : 'success'" :closable="false" :title="analysisProgress.failed ? '需求已保存，AI 分析仍可在后台继续' : 'AI 已完成分析，结果已写入需求详情'" />
+      </div>
+      <template #footer>
+        <el-button v-if="analysisProgress.done" @click="analysisDialog = false">关闭</el-button>
+        <el-button v-if="analysisProgress.done && submittedRequirement" type="primary" @click="openAnalyzedRequirement">查看需求与分析结果</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="editDialog" title="编辑需求" width="min(92vw, 640px)">
       <el-form label-position="top">
         <div class="form-grid"><el-form-item label="类型" required><el-select v-model="editForm.type"><el-option label="新功能" value="feature" /><el-option label="体验优化" value="improvement" /><el-option label="问题修复" value="bug" /></el-select></el-form-item><el-form-item label="影响程度" required><el-select v-model="editForm.severity"><el-option label="低" value="low" /><el-option label="中" value="medium" /><el-option label="高" value="high" /><el-option label="严重" value="critical" /></el-select></el-form-item></div>
@@ -642,7 +663,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
-  InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
+  Expand, Fold, InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Setting, Switch, Tickets, TrendCharts, User, UserFilled, Warning,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
@@ -691,6 +712,7 @@ const emptyRequirementForm = () => ({
 
 type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'ai-settings' | 'users'
 const tab = ref<Tab>('public')
+const navCollapsed = ref(localStorage.getItem('rp_nav_collapsed') === '1')
 const navEl = ref<HTMLElement | null>(null)
 const user = ref<ApiUser | null>(null)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
@@ -698,6 +720,16 @@ const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<R
 const agentTokens = ref<AgentToken[]>([])
 const dashboard = ref<Dashboard | null>(null), detailHistory = ref<RequirementHistory[]>([])
 const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), statusDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
+const analysisDialog = ref(false)
+const submittedRequirement = ref<Requirement | null>(null)
+const analysisProgress = reactive({
+  percent: 0, title: '', detail: '', done: false, failed: false, summary: '', model: '',
+  stages: [] as Array<{ label: string; status: 'waiting' | 'active' | 'done' }>,
+})
+function setAnalysisStage(index: number, status: 'waiting' | 'active' | 'done') {
+  const stage = analysisProgress.stages[index]
+  if (stage) stage.status = status
+}
 const githubOauthEnabled = ref(false), createdToken = ref(''), createdTokenId = ref(''), connectionToken = ref('')
 const authMode = ref<'login' | 'register'>('login'), adminStatus = ref('pending_review')
 const sortBy = ref('updated')
@@ -737,17 +769,22 @@ const preflightAnswers = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
 const visibleTabs = computed(() => [
-  { key: 'public' as Tab, label: '公开需求' },
-  { key: 'submit' as Tab, label: '提交需求' },
-  { key: 'mine' as Tab, label: '我的需求' },
-  { key: 'versions' as Tab, label: '版本计划' },
-  { key: 'usage' as Tab, label: 'Token 用量' },
-  ...(isManager.value ? [{ key: 'dashboard' as Tab, label: '总览看板' }] : []),
-  ...(isManager.value ? [{ key: 'admin' as Tab, label: '需求审核' }] : []),
-  ...(isManager.value ? [{ key: 'ai-settings' as Tab, label: 'AI 设置' }] : []),
-  ...(isManager.value ? [{ key: 'integrations' as Tab, label: '集成设置' }] : []),
-  ...(user.value?.role === 'owner' ? [{ key: 'users' as Tab, label: '角色管理' }] : []),
+  { key: 'public' as Tab, label: '公开需求', icon: Document },
+  { key: 'submit' as Tab, label: '提交需求', icon: EditPen },
+  { key: 'mine' as Tab, label: '我的需求', icon: Collection },
+  { key: 'versions' as Tab, label: '版本计划', icon: Flag },
+  { key: 'usage' as Tab, label: 'Token 用量', icon: TrendCharts },
+  ...(isManager.value ? [{ key: 'dashboard' as Tab, label: '总览看板', icon: DataAnalysis }] : []),
+  ...(isManager.value ? [{ key: 'admin' as Tab, label: '需求审核', icon: Checked }] : []),
+  ...(isManager.value ? [{ key: 'ai-settings' as Tab, label: 'AI 设置', icon: MagicStick }] : []),
+  ...(isManager.value ? [{ key: 'integrations' as Tab, label: '集成设置', icon: Connection }] : []),
+  ...(user.value?.role === 'owner' ? [{ key: 'users' as Tab, label: '角色管理', icon: Setting }] : []),
 ])
+
+function toggleNavigation() {
+  navCollapsed.value = !navCollapsed.value
+  localStorage.setItem('rp_nav_collapsed', navCollapsed.value ? '1' : '0')
+}
 
 const plannedStatuses = ['scheduled', 'developing', 'testing', 'release_ready']
 const doneStatuses = ['released', 'published', 'completed']
@@ -886,19 +923,37 @@ async function submitRequirement() {
   if (titleLength < 4 || titleLength > 160) { ElMessage.error('标题需要 4–160 个字符'); return }
   if (descriptionLength < 10 || descriptionLength > 8000) { ElMessage.error('需求描述需要 10–8,000 个字符'); return }
   busy.value = true
+  Object.assign(analysisProgress, {
+    percent: 12, title: '正在准备分析', detail: '校验输入并整理需求上下文', done: false, failed: false, summary: '', model: '',
+    stages: [
+      { label: '整理需求信息', status: 'active' }, { label: '调用分析模型', status: 'waiting' },
+      { label: '保存需求与附件', status: 'waiting' }, { label: '后台结构化分诊', status: 'waiting' },
+    ],
+  })
+  analysisDialog.value = true
   try {
     if (!user.value && !preflightChecked.value) {
+      analysisProgress.percent = 30; analysisProgress.title = '正在进行提交前分析'; analysisProgress.detail = 'AI 正在检查信息完整度并判断是否需要追问'
+      setAnalysisStage(0, 'done'); setAnalysisStage(1, 'active')
       const preflight = await api.preflightTriage({ ...requirementForm, answers: preflightAnswers })
       preflightChecked.value = true
       preflightQuestions.value = preflight.available ? preflight.questions : []
       if (preflightQuestions.value.length) {
+        analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.title = '分析完成，需要补充信息'; analysisProgress.detail = `AI 提出了 ${preflightQuestions.value.length} 个问题，回答后再次提交`
+        analysisProgress.summary = String(preflight.analysis?.problem_summary || '')
+        analysisProgress.model = preflight.model || ''
+        setAnalysisStage(1, 'done')
+        window.setTimeout(() => { analysisDialog.value = false }, 900)
         ElMessage.info('AI 提出了几个关键问题，回答后再次点击提交')
         return
       }
       if (!preflight.available) ElMessage.info('AI 当前不可用，将直接提交需求')
     }
+    analysisProgress.percent = 48; analysisProgress.title = '正在保存需求'; analysisProgress.detail = '创建需求记录并加入后台分析队列'
+    setAnalysisStage(0, 'done'); setAnalysisStage(1, 'done'); setAnalysisStage(2, 'active')
     const aiAnswers = Object.fromEntries(preflightQuestions.value.map(item => [item.question_id, (preflightAnswers[item.question_id] || '不确定').trim()]))
     const created = await api.createRequirement({ ...requirementForm, ai_clarification_answers: aiAnswers })
+    submittedRequirement.value = created
     let uploadError: unknown = null
     for (const file of pendingFiles.value) {
       try { await api.uploadAttachment(created.id, file, created.upload_token) } catch (e) { uploadError = e; break }
@@ -909,11 +964,36 @@ async function submitRequirement() {
     Object.keys(preflightAnswers).forEach(key => delete preflightAnswers[key])
     pendingFiles.value = []
     if (fileInput.value) fileInput.value.value = ''
+    analysisProgress.percent = 68; analysisProgress.title = '需求已保存，AI 正在后台分析'; analysisProgress.detail = '分析器会提取问题摘要、完整度、重复候选和验收草案'
+    setAnalysisStage(2, 'done'); setAnalysisStage(3, 'active')
+    let analyzed: Requirement | null = null
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const latest = await api.requirementByNumber(created.public_number!)
+      if (latest.triage) { analyzed = latest; break }
+      analysisProgress.percent = Math.min(94, 68 + attempt)
+      await new Promise(resolve => window.setTimeout(resolve, 1500))
+    }
+    if (analyzed) {
+      submittedRequirement.value = analyzed
+      analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.title = 'AI 分析已完成'; analysisProgress.detail = '结构化结果已保存，可在需求详情中持续查看'
+      analysisProgress.summary = String(analyzed.confirmed_summary || analyzed.triage?.problem_summary || analyzed.triage?.summary || '')
+      analysisProgress.model = analyzed.triage_model || String(analyzed.triage?.model || '')
+      setAnalysisStage(3, 'done')
+    } else {
+      analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.failed = true; analysisProgress.title = '后台分析仍在进行'; analysisProgress.detail = '等待时间较长，但需求已经保存，不会丢失；稍后进入详情页刷新即可查看结果'
+    }
     if (uploadError) ElMessage.warning(`需求已提交，但有附件上传失败：${errorMessage(uploadError)}`)
     else ElMessage.success('需求已提交')
-    if (user.value) await switchTab('mine')
-    else { await switchTab('public'); await openDetail(created) }
-  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+  } catch (e) {
+    analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.failed = true; analysisProgress.title = '提交或分析失败'; analysisProgress.detail = errorMessage(e)
+    ElMessage.error(errorMessage(e))
+  } finally { busy.value = false }
+}
+
+async function openAnalyzedRequirement() {
+  const target = submittedRequirement.value
+  analysisDialog.value = false
+  if (target) await openDetail(target)
 }
 
 const allowedFilePattern = /\.(png|jpe?g|webp|txt|log|json|pdf)$/i

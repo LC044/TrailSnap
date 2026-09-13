@@ -425,13 +425,13 @@ def test_manager_imports_github_issues(monkeypatch):
         ).json()["data"]
         monkeypatch.setattr("requirement_platform.main.GitHubClient.list_issues", lambda _self: [{
             "number": 99992, "title": "从 GitHub 导入功能建议", "body": "这是从 GitHub Issue 导入的完整需求说明。",
-            "html_url": "https://github.com/LC044/TrailSnap/issues/99992", "state": "open",
+            "html_url": "https://github.com/LC044/TrailSnap/issues/99992", "state": "closed",
             "labels": [{"name": "enhancement"}, {"name": "status: candidate"}],
         }])
         synced = client.post("/api/admin/github/issues/sync", headers=auth(owner["token"]))
         assert synced.status_code == 200, synced.text
         assert synced.json()["data"]["created"] == 1
-        rows = client.get("/api/requirements?status=submitted", headers=auth(owner["token"])).json()["data"]
+        rows = client.get("/api/requirements?status=closed", headers=auth(owner["token"])).json()["data"]
         imported = next(row for row in rows if row["github_issue_number"] == 99992)
         assert imported["source"] == "github"
         assert imported["type"] == "feature"
@@ -532,7 +532,7 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         })
         assert closed.status_code == 200, closed.text
         detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
-        assert detail["status"] == "submitted"
+        assert detail["status"] == "closed"
         assert detail["github_state"] == "closed"
 
         reopened = client.post("/api/hooks/github", headers={**headers, "X-GitHub-Delivery": "delivery-reopen"}, json={
@@ -541,7 +541,7 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         })
         assert reopened.status_code == 200, reopened.text
         reopened_detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
-        assert reopened_detail["status"] == "submitted"
+        assert reopened_detail["status"] == "pending_review"
         assert reopened_detail["github_state"] == "open"
 
         pull_request_headers = {
@@ -560,7 +560,7 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         })
         assert merged.status_code == 200, merged.text
         detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
-        assert detail["status"] == "submitted"
+        assert detail["status"] == "pending_review"
         assert detail["github_pull_requests"] == [{
             "number": 321, "title": "feat: 完成 Webhook 状态同步",
             "url": "https://github.com/LC044/TrailSnap/pull/321", "state": "merged",
@@ -1198,13 +1198,15 @@ def test_admin_can_manage_encrypted_ai_models_and_task_routes(monkeypatch):
                              json={"model_name": "backup-model", "display_name": "Backup",
                                    "supports_json_mode": False}).json()["data"]
         route = client.put("/api/admin/ai-task-routes/preflight_triage", headers=headers,
-                           json={"enabled": True, "model_ids": [primary["id"], backup["id"]]})
+                           json={"enabled": True, "model_ids": [primary["id"], backup["id"]],
+                                 "reasoning_effort": "low"})
         assert route.status_code == 200, route.text
         assert route.json()["data"]["model_ids"] == [primary["id"], backup["id"]]
+        assert route.json()["data"]["reasoning_effort"] == "low"
 
         calls = []
         def routed_analysis(payload, duplicates, target):
-            calls.append(target.model_name)
+            calls.append((target.model_name, target.reasoning_effort))
             if target.model_name == "primary-model":
                 raise httpx.ConnectError("primary unavailable")
             return {
@@ -1224,7 +1226,7 @@ def test_admin_can_manage_encrypted_ai_models_and_task_routes(monkeypatch):
         assert preflight.status_code == 200, preflight.text
         assert preflight.json()["data"]["available"] is True
         assert preflight.json()["data"]["model"] == "backup-model"
-        assert calls == ["primary-model", "backup-model"]
+        assert calls == [("primary-model", "low"), ("backup-model", "low")]
 
         db = SessionLocal()
         try:
@@ -1232,7 +1234,9 @@ def test_admin_can_manage_encrypted_ai_models_and_task_routes(monkeypatch):
             assert stored.api_key_encrypted != "top-secret-api-key"
             assert decrypt_api_key(stored.api_key_encrypted) == "top-secret-api-key"
             assert db.query(AIModel).filter(AIModel.connection_id == stored.id).count() == 2
-            assert db.query(AITaskRoute).filter(AITaskRoute.task_type == "preflight_triage").one().model_ids == [primary["id"], backup["id"]]
+            stored_route = db.query(AITaskRoute).filter(AITaskRoute.task_type == "preflight_triage").one()
+            assert stored_route.model_ids == [primary["id"], backup["id"]]
+            assert stored_route.reasoning_effort == "low"
         finally:
             db.close()
 
