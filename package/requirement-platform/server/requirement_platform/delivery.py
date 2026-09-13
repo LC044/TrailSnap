@@ -21,7 +21,8 @@ from .models import (
     RequirementSpec, TriageReport, utcnow,
 )
 from .schemas import RequirementSpecContent
-from .services import GitHubClient, audit, enqueue
+from .services import GitHubClient
+from .domain.common import audit, enqueue
 
 
 LEASE_SECONDS = 90

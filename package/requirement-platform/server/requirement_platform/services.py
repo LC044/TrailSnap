@@ -1,9 +1,7 @@
-import hashlib
-import hmac
 import json
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from typing import Any, Callable
 
@@ -14,8 +12,6 @@ from sqlalchemy.orm import Session
 from .ai_settings import AIModelTarget, request_chat_completion, request_chat_completion_stream, resolve_model_targets
 from .config import settings
 from .models import (
-    AuditEvent,
-    BackgroundJob,
     ClarificationQuestion,
     ReleaseBatch,
     ReleaseBatchItem,
@@ -23,40 +19,16 @@ from .models import (
     TriageReport,
 )
 from .schemas import TriageReportV2
-
-
-def requirement_snapshot(row: Requirement) -> dict[str, Any]:
-    return {
-        "id": row.id,
-        "type": row.type,
-        "title": row.title,
-        "description": row.description,
-        "current_behavior": row.current_behavior,
-        "expected_behavior": row.expected_behavior,
-        "steps_to_reproduce": row.steps_to_reproduce,
-        "severity": row.severity,
-        "product_version": row.product_version,
-        "environment": row.environment,
-        "visibility": row.visibility,
-        "status": row.status,
-        "priority": row.priority,
-        "risk_level": row.risk_level,
-        "version": row.version,
-        "content_revision": row.content_revision,
-    }
-
-
-def audit(db: Session, actor_id: str | None, action: str, object_type: str, object_id: str, **details) -> None:
-    db.add(AuditEvent(actor_id=actor_id, action=action, object_type=object_type, object_id=object_id, details=details))
-
-
-def enqueue(db: Session, job_type: str, object_id: str, key: str, payload: dict | None = None) -> BackgroundJob:
-    existing = db.query(BackgroundJob).filter(BackgroundJob.idempotency_key == key).first()
-    if existing:
-        return existing
-    job = BackgroundJob(job_type=job_type, object_id=object_id, payload=payload or {}, idempotency_key=key)
-    db.add(job)
-    return job
+from .domain.common import audit, enqueue, requirement_snapshot, retry_at
+from .integrations.github import (
+    STATUS_LABEL_PREFIX,
+    STATUS_LABELS,
+    closing_issue_numbers,
+    github_state_for_requirement,
+    pull_request_summary,
+    requirement_status_from_github,
+    verify_webhook,
+)
 
 
 def _duplicates(db: Session, requirement: Requirement) -> list[dict[str, Any]]:
@@ -339,89 +311,6 @@ def analyze_requirement(db: Session, requirement_id: str) -> TriageReport:
     return row
 
 
-STATUS_LABEL_PREFIX = "status:"
-STATUS_LABELS = {
-    "submitted": ("status: submitted", "d4c5f9", "已提交，等待分析"),
-    "triaging": ("status: triaging", "bfdadc", "正在分析"),
-    "pending_review": ("status: pending-review", "fbca04", "等待人工审核"),
-    "needs_information": ("status: needs-information", "fef2c0", "需要补充信息"),
-    "candidate": ("status: candidate", "0e8a16", "版本开发候选"),
-    "accepted": ("status: accepted", "0e8a16", "规格已批准"),
-    "scheduled": ("status: scheduled", "1d76db", "已进入版本范围"),
-    "developing": ("status: developing", "5319e7", "正在开发"),
-    "testing": ("status: testing", "7057ff", "正在测试"),
-    "release_ready": ("status: release-ready", "006b75", "等待发布"),
-    "merged": ("status: merged", "8250df", "已合并，等待发布"),
-    "released": ("status: released", "0e8a16", "已发布"),
-    "deferred": ("status: deferred", "c5def5", "暂缓处理"),
-    "rejected": ("status: rejected", "d73a4a", "未采纳"),
-    "duplicate": ("status: duplicate", "cfd3d7", "重复需求"),
-    "withdrawn": ("status: withdrawn", "cfd3d7", "提交者已撤回"),
-    "closed": ("status: closed", "6a737d", "已关闭"),
-}
-
-# Both systems may initiate a transition, but they share one mapping: platform
-# statuses are projected to GitHub labels/state, while explicit GitHub state or
-# managed-label changes are translated back to a platform status.
-GITHUB_CLOSED_REQUIREMENT_STATUSES = {"released", "rejected", "duplicate", "withdrawn", "closed"}
-
-# Match GitHub's issue-closing keywords, rather than treating every casual
-# "#123" mention as permission to close the linked requirement.
-CLOSING_ISSUE_PATTERN = re.compile(
-    r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+/[\w.-]+)?#(\d+)\b"
-)
-
-
-def closing_issue_numbers(pull_request: dict[str, Any]) -> set[int]:
-    return {int(number) for number in CLOSING_ISSUE_PATTERN.findall(pull_request.get("body") or "")}
-
-
-def pull_request_summary(pull_request: dict[str, Any]) -> dict[str, Any]:
-    merged = bool(pull_request.get("merged") or pull_request.get("merged_at"))
-    return {
-        "number": pull_request.get("number"),
-        "title": pull_request.get("title") or f"Pull Request #{pull_request.get('number')}",
-        "url": pull_request.get("html_url"),
-        "state": "merged" if merged else pull_request.get("state", "open"),
-        "draft": bool(pull_request.get("draft")),
-        "merged_at": pull_request.get("merged_at"),
-        "updated_at": pull_request.get("updated_at"),
-    }
-
-
-def github_state_for_requirement(status: str) -> str:
-    return "closed" if status in GITHUB_CLOSED_REQUIREMENT_STATUSES else "open"
-
-
-def requirement_status_from_github(issue: dict[str, Any], current_status: str = "submitted",
-                                   action: str | None = None, changed_label: str | None = None) -> str:
-    """Translate an explicit GitHub change without guessing from unrelated edits."""
-    status_by_label = {label.lower(): status for status, (label, _color, _description) in STATUS_LABELS.items()}
-    labels = {
-        (item.get("name", "") if isinstance(item, dict) else str(item)).lower()
-        for item in issue.get("labels", [])
-    }
-    matched = {status_by_label[label] for label in labels if label in status_by_label}
-    # A webhook emitted by our outbound synchronization already contains the
-    # platform's label and matching native state. Treat it as an echo.
-    if matched == {current_status} and issue.get("state") == github_state_for_requirement(current_status):
-        return current_status
-    if action == "closed":
-        return "closed"
-    if action == "reopened":
-        return "pending_review"
-    if action == "labeled" and changed_label and changed_label.lower() in status_by_label:
-        return status_by_label[changed_label.lower()]
-    if len(matched) == 1:
-        label_status = matched.pop()
-        if issue.get("state") != github_state_for_requirement(label_status):
-            return "closed" if issue.get("state") == "closed" else "pending_review"
-        return label_status
-    if issue.get("state") == "closed":
-        return "closed"
-    return current_status
-
-
 class GitHubClient:
     def __init__(self):
         self.base_url = "https://api.github.com"
@@ -624,12 +513,9 @@ def sync_batch_milestone(db: Session, batch_id: str) -> None:
     db.commit()
 
 
-def verify_webhook(body: bytes, signature: str | None) -> bool:
-    if not settings.github_webhook_secret:
-        return False
-    expected = "sha256=" + hmac.new(settings.github_webhook_secret.encode(), body, hashlib.sha256).hexdigest()
-    return bool(signature and hmac.compare_digest(expected, signature))
-
-
-def retry_at(attempts: int) -> datetime:
-    return datetime.now(timezone.utc) + timedelta(seconds=min(3600, 2 ** min(attempts, 10)))
+__all__ = [
+    "GitHubClient", "STATUS_LABELS", "analyze_draft", "analyze_draft_stream", "analyze_requirement",
+    "audit", "closing_issue_numbers", "enqueue", "pull_request_summary", "requirement_snapshot",
+    "requirement_status_from_github", "retry_at", "sync_batch_milestone", "sync_requirement_issue", "verify_webhook",
+]
+# Keep these re-exports while callers migrate to domain and integration modules.

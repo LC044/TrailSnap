@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 from .config import settings
 from .db import SessionLocal, init_db
 from .models import BackgroundJob
-from .services import analyze_requirement, retry_at, sync_batch_milestone, sync_requirement_issue
+from .services import analyze_requirement, sync_batch_milestone, sync_requirement_issue
+from .domain.common import retry_at
 
 
 HANDLERS = {

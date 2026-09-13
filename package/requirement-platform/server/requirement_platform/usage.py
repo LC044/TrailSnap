@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session
 
@@ -32,8 +32,10 @@ from .usage_models import (
     UsageProvider,
     UsageRequestLog,
 )
+from .api.responses import ok
 
 logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/usage", tags=["usage"])
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 MAX_IMPORT_BYTES = 64 * 1024 * 1024  # 64MB
@@ -623,6 +625,7 @@ def usage_daily(
 # API 端点
 # ---------------------------------------------------------------------------
 
+@router.post("/imports")
 async def upload_usage_import(
     file: UploadFile = File(...),
     device_label: str = Form(...),
@@ -633,13 +636,14 @@ async def upload_usage_import(
     result = import_ccswitch_export(
         db, label=device_label, file_name=file.filename or "export.sql", raw=raw, imported_by=actor.id,
     )
-    return {"code": 0, "msg": "success", "data": result}
+    return ok(result)
 
 
+@router.get("/imports")
 def list_usage_imports(actor: User = Depends(manager), db: Session = Depends(get_db)):
     imports = db.query(UsageImport).order_by(UsageImport.imported_at.desc()).all()
     devices = {device.id: device.label for device in db.query(UsageDevice).all()}
-    return {"code": 0, "msg": "success", "data": [{
+    return ok([{
         "id": row.id, "device_id": row.device_id, "device_label": devices.get(row.device_id, "?"),
         "file_name": row.file_name, "file_sha256": row.file_sha256, "file_size": row.file_size,
         "user_version": row.user_version, "detail_rows": row.detail_rows, "detail_new": row.detail_new,
@@ -647,9 +651,10 @@ def list_usage_imports(actor: User = Depends(manager), db: Session = Depends(get
         "rollup_rows": row.rollup_rows, "rollup_upserted": row.rollup_upserted,
         "date_min": row.date_min, "date_max": row.date_max, "imported_by": row.imported_by,
         "imported_at": row.imported_at.isoformat() if row.imported_at else None,
-    } for row in imports]}
+    } for row in imports])
 
 
+@router.delete("/imports/{import_id}")
 def delete_usage_import(import_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
     """按导入批次删除其明细（rollup 保留——它是设备累计值，不与批次绑定）。"""
     row = db.query(UsageImport).filter(UsageImport.id == import_id).first()
@@ -660,9 +665,10 @@ def delete_usage_import(import_id: str, actor: User = Depends(manager), db: Sess
     )
     db.delete(row)
     db.commit()
-    return {"code": 0, "msg": "success", "data": {"deleted": True, "detail_removed": deleted}}
+    return ok({"deleted": True, "detail_removed": deleted})
 
 
+@router.delete("/devices/{device_id}")
 def delete_usage_device(device_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
     """删除整个设备及其全部用量数据（级联：明细/rollup/providers/imports）。"""
     device = db.query(UsageDevice).filter(UsageDevice.id == device_id).first()
@@ -674,27 +680,30 @@ def delete_usage_device(device_id: str, actor: User = Depends(manager), db: Sess
     db.query(UsageImport).filter(UsageImport.device_id == device_id).delete(synchronize_session=False)
     db.delete(device)
     db.commit()
-    return {"code": 0, "msg": "success", "data": {"deleted": True, "device_label": device.label}}
+    return ok({"deleted": True, "device_label": device.label})
 
 
+@router.get("/overview")
 def get_usage_overview(
-    date_from: str | None = None, date_to: str | None = None,
-    model: str | None = None, app_type: str | None = None,
+    date_from: str | None = Query(default=None), date_to: str | None = Query(default=None),
+    model: str | None = Query(default=None), app_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """公开接口：总览与分布，无需登录。"""
-    return {"code": 0, "msg": "success", "data": usage_overview(db, date_from, date_to, model, app_type)}
+    return ok(usage_overview(db, date_from, date_to, model, app_type))
 
 
+@router.get("/daily")
 def get_usage_daily(
-    date_from: str | None = None, date_to: str | None = None,
-    model: str | None = None, app_type: str | None = None,
+    date_from: str | None = Query(default=None), date_to: str | None = Query(default=None),
+    model: str | None = Query(default=None), app_type: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     """公开接口：日序列，无需登录。"""
-    return {"code": 0, "msg": "success", "data": usage_daily(db, date_from, date_to, model, app_type)}
+    return ok(usage_daily(db, date_from, date_to, model, app_type))
 
 
+@router.get("/filters")
 def get_usage_filters(db: Session = Depends(get_db)):
     """公开接口：筛选下拉的可选值，无需登录。"""
-    return {"code": 0, "msg": "success", "data": usage_filters(db)}
+    return ok(usage_filters(db))
