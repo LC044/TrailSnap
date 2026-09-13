@@ -354,6 +354,11 @@
         </div>
       </section>
 
+      <!-- ============ Token 用量 ============ -->
+      <section v-else-if="tab === 'usage'">
+        <TokenUsage :manager="isManager" />
+      </section>
+
       <!-- ============ 需求审核 ============ -->
       <section v-else-if="tab === 'admin' && isManager">
         <div class="page-head">
@@ -632,6 +637,7 @@ import {
 import RequirementTable from './RequirementTable.vue'
 import RequirementDetail from './RequirementDetail.vue'
 import DashboardCharts from './DashboardCharts.vue'
+import TokenUsage from './TokenUsage.vue'
 
 const statusOptions = ['pending_review', 'candidate', 'scheduled', 'developing', 'testing', 'release_ready', 'released', 'deferred', 'rejected']
 const reviewStatuses = ['submitted', 'triaging', 'pending_review', 'needs_information', 'candidate', 'deferred', 'rejected', 'duplicate']
@@ -664,7 +670,7 @@ const emptyRequirementForm = () => ({
   severity: 'medium', product_version: '', visibility: 'public', submitter_name: '', submitter_contact: '', environment: {} as Record<string, unknown>,
 })
 
-type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'integrations' | 'users'
+type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'users'
 const tab = ref<Tab>('public')
 const user = ref<ApiUser | null>(null)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
@@ -712,6 +718,7 @@ const visibleTabs = computed(() => [
   { key: 'submit' as Tab, label: '提交需求' },
   { key: 'mine' as Tab, label: '我的需求' },
   { key: 'versions' as Tab, label: '版本计划' },
+  { key: 'usage' as Tab, label: 'Token 用量' },
   ...(isManager.value ? [{ key: 'dashboard' as Tab, label: '总览看板' }] : []),
   ...(isManager.value ? [{ key: 'admin' as Tab, label: '需求审核' }] : []),
   ...(isManager.value ? [{ key: 'integrations' as Tab, label: '集成设置' }] : []),
@@ -1202,7 +1209,7 @@ onMounted(async () => {
     history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`)
   }
   const requestedTab = params.get('view') as Tab | null
-  if (requestedTab && ['public', 'dashboard', 'submit', 'mine', 'admin', 'versions', 'integrations', 'users'].includes(requestedTab)) tab.value = requestedTab
+  if (requestedTab && ['public', 'dashboard', 'submit', 'mine', 'admin', 'versions', 'usage', 'integrations', 'users'].includes(requestedTab)) tab.value = requestedTab
   const requestedType = params.get('type')
   if (requestedType && ['bug', 'improvement', 'feature'].includes(requestedType)) requirementForm.type = requestedType
   if (tab.value === 'submit') {

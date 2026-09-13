@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -66,6 +66,7 @@ from .services import (
     GitHubClient, audit, closing_issue_numbers, enqueue, pull_request_summary,
     requirement_snapshot, requirement_status_from_github, verify_webhook,
 )
+from . import usage as usage_api
 
 
 logger = logging.getLogger(__name__)
@@ -1192,6 +1193,59 @@ def list_jobs(_actor: User = Depends(manager), db: Session = Depends(get_db)):
         "id": row.id, "job_type": row.job_type, "object_id": row.object_id, "status": row.status,
         "attempts": row.attempts, "last_error": row.last_error, "created_at": row.created_at.isoformat(),
     } for row in rows])
+
+
+@app.get("/api/usage/overview")
+def usage_overview_endpoint(
+    date_from: str | None = Query(default=None), date_to: str | None = Query(default=None),
+    model: str | None = Query(default=None), app_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """cc-switch 用量总览（公开，无需登录）。"""
+    return usage_api.get_usage_overview(date_from, date_to, model, app_type, db)
+
+
+@app.get("/api/usage/daily")
+def usage_daily_endpoint(
+    date_from: str | None = Query(default=None), date_to: str | None = Query(default=None),
+    model: str | None = Query(default=None), app_type: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """cc-switch 用量日序列（公开，无需登录）。"""
+    return usage_api.get_usage_daily(date_from, date_to, model, app_type, db)
+
+
+@app.get("/api/usage/filters")
+def usage_filters_endpoint(db: Session = Depends(get_db)):
+    """cc-switch 用量筛选可选值（公开，无需登录）。"""
+    return usage_api.get_usage_filters(db)
+
+
+@app.post("/api/usage/imports")
+async def usage_import_endpoint(
+    file: UploadFile = File(...), device_label: str = Form(...),
+    actor: User = Depends(manager), db: Session = Depends(get_db),
+):
+    """上传 cc-switch 导出的 SQL 备份（仅管理员）。"""
+    return await usage_api.upload_usage_import(file=file, device_label=device_label, actor=actor, db=db)
+
+
+@app.get("/api/usage/imports")
+def usage_imports_endpoint(actor: User = Depends(manager), db: Session = Depends(get_db)):
+    """导入历史列表（仅管理员）。"""
+    return usage_api.list_usage_imports(actor=actor, db=db)
+
+
+@app.delete("/api/usage/imports/{import_id}")
+def usage_import_delete_endpoint(import_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    """删除一次导入及其明细（仅管理员）。"""
+    return usage_api.delete_usage_import(import_id, actor=actor, db=db)
+
+
+@app.delete("/api/usage/devices/{device_id}")
+def usage_device_delete_endpoint(device_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    """删除整个设备的全部用量数据（仅管理员）。"""
+    return usage_api.delete_usage_device(device_id, actor=actor, db=db)
 
 
 @app.get("/api/admin/dashboard")

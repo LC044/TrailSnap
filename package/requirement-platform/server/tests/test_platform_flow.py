@@ -647,3 +647,280 @@ def test_triage_rerun_does_not_record_noop_status_change():
         # 第二次分析状态未变化：不携带 before/after，前端不会渲染成"由待审核变为待审核"
         assert second_event["before"] is None
         assert second_event["after"] is None
+
+
+# ---------------------------------------------------------------------------
+# cc-switch 用量导入与统计
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def clean_usage_tables():
+    """用量统计是全局聚合，用例之间清空用量表避免相互累加。"""
+    from requirement_platform.db import init_db
+    from requirement_platform.usage_models import (
+        UsageDailyRollup, UsageDevice, UsageImport, UsageProvider, UsageRequestLog,
+    )
+
+    init_db()  # 单独运行用例时 lifespan 尚未执行，先确保表存在
+    db = SessionLocal()
+    try:
+        for model in (UsageRequestLog, UsageDailyRollup, UsageProvider, UsageImport, UsageDevice):
+            db.query(model).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+    yield
+
+
+def _ccswitch_sql(*, rollups="", logs="", providers="('prov-1', 'claude', 'Zhipu GLM', '{}', 'custom')") -> str:
+    """构造一份最小 cc-switch 导出 SQL（rollups/logs 为空时省略对应 INSERT）。"""
+    rollup_stmt = (
+        'INSERT INTO "usage_daily_rollups" ("date", "app_type", "provider_id", "model", "request_model", '
+        '"pricing_model", "request_count", "success_count", "input_tokens", "output_tokens", '
+        '"cache_read_tokens", "cache_creation_tokens", "total_cost_usd") VALUES ' + rollups + ";"
+        if rollups else ""
+    )
+    log_stmt = (
+        'INSERT INTO "proxy_request_logs" ("request_id", "provider_id", "app_type", "model", "request_model", '
+        '"input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "input_cost_usd", '
+        '"output_cost_usd", "cache_read_cost_usd", "cache_creation_cost_usd", "total_cost_usd", "latency_ms", '
+        '"status_code", "session_id", "data_source", "created_at") VALUES ' + logs + ";"
+        if logs else ""
+    )
+    return f"""-- CC Switch SQLite 导出
+PRAGMA foreign_keys=OFF;
+BEGIN TRANSACTION;
+CREATE TABLE providers (
+    id TEXT NOT NULL, app_type TEXT NOT NULL, name TEXT NOT NULL,
+    settings_config TEXT NOT NULL, website_url TEXT, category TEXT,
+    PRIMARY KEY (id, app_type)
+);
+CREATE TABLE proxy_request_logs (
+    request_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, app_type TEXT NOT NULL,
+    model TEXT NOT NULL, request_model TEXT,
+    input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+    input_cost_usd TEXT NOT NULL DEFAULT '0', output_cost_usd TEXT NOT NULL DEFAULT '0',
+    cache_read_cost_usd TEXT NOT NULL DEFAULT '0', cache_creation_cost_usd TEXT NOT NULL DEFAULT '0',
+    total_cost_usd TEXT NOT NULL DEFAULT '0', latency_ms INTEGER NOT NULL, first_token_ms INTEGER,
+    duration_ms INTEGER, status_code INTEGER NOT NULL, error_message TEXT, session_id TEXT,
+    provider_type TEXT, is_streaming INTEGER NOT NULL DEFAULT 0,
+    cost_multiplier TEXT NOT NULL DEFAULT '1.0', created_at INTEGER NOT NULL,
+    data_source TEXT NOT NULL DEFAULT 'proxy'
+);
+CREATE TABLE usage_daily_rollups (
+    date TEXT NOT NULL, app_type TEXT NOT NULL, provider_id TEXT NOT NULL,
+    model TEXT NOT NULL, request_model TEXT NOT NULL DEFAULT '',
+    pricing_model TEXT NOT NULL DEFAULT '', request_count INTEGER NOT NULL DEFAULT 0,
+    success_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_creation_tokens INTEGER NOT NULL DEFAULT 0, total_cost_usd TEXT NOT NULL DEFAULT '0',
+    avg_latency_ms INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
+);
+INSERT INTO "providers" ("id", "app_type", "name", "settings_config", "category") VALUES {providers};
+{rollup_stmt}
+{log_stmt}
+COMMIT;
+"""
+
+
+def _rollup(date: str, model: str, count: int, cost: str, tokens_in: int = 1000, tokens_out: int = 200) -> str:
+    return f"('{date}', 'claude', 'prov-1', '{model}', '', '', {count}, {count}, {tokens_in}, {tokens_out}, 0, 0, '{cost}')"
+
+
+def _log(request_id: str, model: str, created_at: int, cost: str = "0.01",
+         tokens_in: int = 100, tokens_out: int = 50) -> str:
+    return (f"('{request_id}', 'prov-1', 'claude', '{model}', NULL, {tokens_in}, {tokens_out}, 0, 0, "
+            f"'0.005', '0.005', '0', '0', '{cost}', 120, 200, 'sess-1', 'proxy', {created_at})")
+
+
+# 2026-08-14 00:13 上海时间 = 1786637600 epoch（UTC 2026-08-13 16:13）
+LOG_EPOCH = 1786637600
+
+
+def _import_usage(client: TestClient, token: str, label: str, sql: str, filename: str = "export.sql"):
+    return client.post(
+        "/api/usage/imports",
+        headers=auth(token),
+        files={"file": (filename, sql.encode("utf-8"), "application/sql")},
+        data={"device_label": label},
+    )
+
+
+def _usage_owner(client: TestClient) -> dict:
+    """登录 owner；单独运行用例时用户可能尚未注册，注册即可（第一个注册用户自动成为 owner）。"""
+    response = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"})
+    if response.status_code == 200:
+        return response.json()["data"]
+    return register(client, "owner", "owner@example.com")
+
+
+def _usage_viewer(client: TestClient) -> dict:
+    response = client.post("/api/auth/login", json={"identifier": "viewer@example.com", "password": "password123"})
+    if response.status_code == 200:
+        return response.json()["data"]
+    return register(client, "viewer", "viewer@example.com")
+
+
+def _usage_plain_viewer(client: TestClient) -> dict:
+    """专用 viewer：不复用 viewer@example.com（它会先被角色管理用例提升为 admin）。"""
+    response = client.post("/api/auth/login", json={"identifier": "usage-viewer@example.com", "password": "password123"})
+    if response.status_code == 200:
+        return response.json()["data"]
+    return register(client, "usage-viewer", "usage-viewer@example.com")
+
+
+def test_usage_import_overview_and_daily(clean_usage_tables):
+    sql = _ccswitch_sql(
+        rollups=f"{_rollup('2026-04-27', 'glm-5.2', 10, '0.5')},{_rollup('2026-04-28', 'glm-5.2', 20, '1.0')}",
+        logs=f"{_log('req-1', 'glm-5.2', LOG_EPOCH)},{_log('req-2', 'gpt-5.6-sol', LOG_EPOCH + 100, cost='0.02')}",
+    )
+    with TestClient(app) as client:
+        owner = _usage_owner(client)
+        response = _import_usage(client, owner["token"], "办公本", sql)
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        assert data["detail_new"] == 2
+        assert data["rollup_rows"] == 2
+        assert data["date_min"] == "2026-04-27"
+        # 明细日期按上海时区归并为 2026-08-14
+        assert data["date_max"] == "2026-08-14"
+
+        # 公开接口无需登录
+        overview = client.get("/api/usage/overview")
+        assert overview.status_code == 200, overview.text
+        payload = overview.json()["data"]
+        assert payload["device_count"] == 1
+        # 总计 = rollup 30 请求 + 明细 2 请求
+        assert payload["total"]["requests"] == 32
+        # 成本 = 0.5 + 1.0 + 0.01 + 0.02
+        assert abs(payload["total"]["total_cost_usd"] - 1.53) < 1e-6
+        assert payload["total"]["date_from"] == "2026-04-27"
+        models = {item["key"]: item for item in payload["by_model"]}
+        assert models["glm-5.2"]["requests"] == 31
+        assert models["gpt-5.6-sol"]["requests"] == 1
+        providers = {item["key"]: item for item in payload["by_provider"]}
+        assert providers["prov-1"]["label"] == "Zhipu GLM"
+
+        daily = client.get("/api/usage/daily").json()["data"]
+        by_date = {item["date"]: item for item in daily}
+        assert by_date["2026-04-27"]["requests"] == 10
+        assert by_date["2026-04-28"]["requests"] == 20
+        assert by_date["2026-08-14"]["requests"] == 2
+        # 补零：中间日期存在且为 0
+        assert by_date["2026-04-29"]["requests"] == 0
+
+        # 筛选：按模型
+        filtered = client.get("/api/usage/daily", params={"model": "gpt-5.6-sol"}).json()["data"]
+        filtered_total = sum(item["requests"] for item in filtered)
+        assert filtered_total == 1
+        # 筛选：按日期范围
+        ranged = client.get("/api/usage/overview", params={"date_from": "2026-04-28", "date_to": "2026-04-28"}).json()["data"]
+        assert ranged["total"]["requests"] == 20
+        # 筛选可选值
+        filters = client.get("/api/usage/filters").json()["data"]
+        assert "glm-5.2" in filters["models"]
+        assert "gpt-5.6-sol" in filters["models"]
+        assert "claude" in filters["app_types"]
+
+
+def test_usage_import_dedup_and_aging(clean_usage_tables):
+    """同一设备二次导入：SHA 重复拒绝、request_id 跳过、rollup 覆盖、过期明细清理。"""
+    with TestClient(app) as client:
+        owner = _usage_owner(client)
+
+        # 第一次导入：含 8 月明细（req-old-1/2）+ 4 月 rollup
+        first_sql = _ccswitch_sql(
+            rollups=_rollup("2026-04-27", "glm-5.2", 10, "0.5"),
+            logs=f"{_log('req-old-1', 'glm-5.2', LOG_EPOCH)},{_log('req-old-2', 'glm-5.2', LOG_EPOCH + 50)}",
+        )
+        response = _import_usage(client, owner["token"], "家里台式机", first_sql)
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["detail_new"] == 2
+
+        # 同一文件再次导入 → 409
+        dup = _import_usage(client, owner["token"], "家里台式机", first_sql)
+        assert dup.status_code == 409
+
+        # 第二次导入：rollup 已覆盖到 2026-08-14（旧明细日期），新明细是 8 月 15 日
+        second_sql = _ccswitch_sql(
+            rollups=f"{_rollup('2026-04-27', 'glm-5.2', 15, '0.7')},{_rollup('2026-08-14', 'glm-5.2', 2, '0.03')}",
+            logs=f"{_log('req-old-1', 'glm-5.2', LOG_EPOCH)},{_log('req-new-1', 'glm-5.2', LOG_EPOCH + 86400)}",
+        )
+        response = _import_usage(client, owner["token"], "家里台式机", second_sql)
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        # 旧明细 2 条（req-old-1/req-old-2，日期 2026-08-14 <= rollup 最大日期）被清理
+        assert data["detail_aged_out"] == 2
+        # 删除后重新插入 2 条（req-old-1 + req-new-1），无重复跳过
+        assert data["detail_new"] == 2
+        assert data["detail_dup"] == 0
+
+        # rollup：4 月的 15 > 10 覆盖，8 月 14 新增
+        assert data["rollup_rows"] == 2
+        assert data["rollup_upserted"] == 1
+
+        # 最终统计：请求 = 15 + 2（rollup）+ 2（明细），旧明细已并入 rollup 不双计
+        overview = client.get("/api/usage/overview").json()["data"]
+        assert overview["total"]["requests"] == 19
+        assert abs(overview["total"]["total_cost_usd"] - (0.7 + 0.03 + 0.01 + 0.01)) < 1e-6
+
+
+def test_usage_cross_device_merge_and_permissions(clean_usage_tables):
+    """跨设备 rollup 求和、供应商名称映射、权限控制。"""
+    device_a = _ccswitch_sql(
+        rollups=_rollup("2026-04-27", "glm-5.2", 10, "0.5"),
+        logs="",
+    )
+    device_b = _ccswitch_sql(
+        rollups=_rollup("2026-04-27", "glm-5.2", 30, "1.5"),
+        logs="",
+        providers="('prov-1', 'claude', 'MiniMax', '{}', 'custom')",
+    )
+    with TestClient(app) as client:
+        owner = _usage_owner(client)
+        viewer = _usage_plain_viewer(client)
+
+        first = _import_usage(client, owner["token"], "设备A", device_a)
+        assert first.status_code == 200, first.text
+        second = _import_usage(client, owner["token"], "设备B", device_b)
+        assert second.status_code == 200, second.text
+
+        # 两台设备同一天的 rollup 相加而非覆盖
+        overview = client.get("/api/usage/overview").json()["data"]
+        assert overview["total"]["requests"] == 40
+        assert abs(overview["total"]["total_cost_usd"] - 2.0) < 1e-6
+        assert overview["device_count"] == 2
+        models = {item["key"]: item for item in overview["by_model"]}
+        assert models["glm-5.2"]["requests"] == 40
+
+        # viewer 不能导入、不能看导入列表，但可以看公开统计
+        denied = _import_usage(client, viewer["token"], "设备A", device_a)
+        assert denied.status_code == 403
+        listing = client.get("/api/usage/imports", headers=auth(viewer["token"]))
+        assert listing.status_code == 403
+        public_overview = client.get("/api/usage/overview")
+        assert public_overview.status_code == 200
+
+        # 管理员删除设备 → 数据级联清空
+        device_id = second.json()["data"]["device_id"]
+        removed = client.delete(f"/api/usage/devices/{device_id}", headers=auth(owner["token"]))
+        assert removed.status_code == 200, removed.text
+        overview = client.get("/api/usage/overview").json()["data"]
+        assert overview["total"]["requests"] == 10
+        assert overview["device_count"] == 1
+
+
+def test_usage_import_rejects_malicious_sql(clean_usage_tables):
+    """authorizer 应拒绝 ATTACH 等危险语句。"""
+    with TestClient(app) as client:
+        owner = _usage_owner(client)
+        malicious = _ccswitch_sql() + "\nATTACH DATABASE 'evil.db' AS evil;"
+        response = _import_usage(client, owner["token"], "坏设备", malicious)
+        assert response.status_code == 400
+
+        # 单独的 ATTACH 也应被拒绝
+        attach_only = "ATTACH DATABASE 'evil.db' AS evil;"
+        response = _import_usage(client, owner["token"], "坏设备2", attach_only)
+        assert response.status_code == 400
