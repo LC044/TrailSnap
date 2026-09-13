@@ -19,7 +19,7 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--rp-bg); }
 button, input, textarea, select { font: inherit; }
 a { color: inherit; }
-.app-shell { --rp-sidebar-width: 236px; min-height: 100vh; background: radial-gradient(circle at 14% 0, rgba(219,234,254,.72), transparent 28rem), linear-gradient(180deg, #f8fbff 0, var(--rp-bg) 28rem); transition: padding-left .2s ease; }
+.app-shell { --rp-sidebar-width: 236px; min-height: 100vh; padding-left: var(--rp-sidebar-width); background: radial-gradient(circle at 14% 0, rgba(219,234,254,.72), transparent 28rem), linear-gradient(180deg, #f8fbff 0, var(--rp-bg) 28rem); transition: padding-left .2s ease; }
 .app-shell.nav-collapsed { --rp-sidebar-width: 72px; }
 
 /* ---------- 侧边导航 ---------- */
@@ -64,7 +64,7 @@ a { color: inherit; }
 .avatar { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-weight: 600; flex: none; user-select: none; }
 
 /* ---------- 主体 ---------- */
-.main { width: calc(100% - var(--rp-sidebar-width)); max-width: 1440px; min-height: calc(100vh - 60px); margin: 0 auto 0 var(--rp-sidebar-width); padding: 34px 32px 64px; transition: width .2s ease, margin-left .2s ease; }
+.main { width: 100%; max-width: 1440px; min-height: calc(100vh - 60px); margin: 0 auto; padding: 34px 32px 64px; }
 
 /* 页头 */
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 26px; flex-wrap: wrap; }
@@ -231,7 +231,7 @@ a { color: inherit; }
 .empty .el-icon { font-size: 40px; margin-bottom: 10px; color: #cbd5e1; }
 
 /* ---------- 页脚 ---------- */
-.footer { margin-left: var(--rp-sidebar-width); border-top: 1px solid var(--rp-border); background: #fff; transition: margin-left .2s ease; }
+.footer { border-top: 1px solid var(--rp-border); background: #fff; }
 .footer-inner { max-width: 1440px; margin: auto; padding: 18px 32px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--rp-text-3); font-size: 13px; }
 .footer-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--rp-text-2); }
 .footer-brand img { width: 22px; height: 22px; border-radius: 6px; }
