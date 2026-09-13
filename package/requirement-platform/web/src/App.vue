@@ -47,6 +47,8 @@
           :history="detailHistory"
           :manager="isManager"
           :can-follow="canFollow"
+          :can-edit-summary="canEditSummary"
+          :user-role="user?.role || 'viewer'"
           @back="closeDetail"
           @copy-link="copyRequirementLink(detailTarget)"
           @follow="followDetail"
@@ -54,6 +56,7 @@
           @status="openStatusChange(detailTarget)"
           @review="openReview(detailTarget)"
           @download="downloadAttachment(detailTarget, $event)"
+          @refresh="refreshDetail"
         />
         <div v-else class="panel empty">需求不存在或你没有查看权限。</div>
       </section>
@@ -168,6 +171,18 @@
               </el-form-item>
             </div>
 
+            <div v-if="!user && preflightQuestions.length" class="section ai-preflight">
+              <h2 class="section-head"><el-icon><MagicStick /></el-icon>AI 希望先确认</h2>
+              <el-alert type="info" :closable="false" title="回答后会随需求一起提交；不确定时可以直接填写“不确定”。" />
+              <el-form-item v-for="question in preflightQuestions" :key="question.question_id" :label="question.question">
+                <el-select v-if="question.suggested_options.length" v-model="preflightAnswers[question.question_id]" allow-create filterable placeholder="选择或输入答案">
+                  <el-option v-for="option in question.suggested_options" :key="option" :label="option" :value="option" />
+                </el-select>
+                <el-input v-else v-model="preflightAnswers[question.question_id]" type="textarea" :rows="2" placeholder="请输入答案或“不确定”" />
+                <div class="field-hint">{{ question.rationale }}</div>
+              </el-form-item>
+            </div>
+
             <div v-if="requirementForm.type === 'bug'" class="section">
               <h2 class="section-head"><el-icon><Warning /></el-icon>问题细节</h2>
               <el-form-item label="复现步骤">
@@ -231,7 +246,7 @@
 
             <div class="submit-quota">所有非管理员用户合计每小时最多提交 20 条需求。</div>
             <div class="actions">
-              <el-button type="primary" size="large" :icon="Promotion" :loading="busy" native-type="submit">提交需求</el-button>
+              <el-button type="primary" size="large" :icon="Promotion" :loading="busy" native-type="submit">{{ !user && !preflightChecked ? 'AI 分析并继续' : '提交需求' }}</el-button>
               <el-button size="large" @click="saveDraft">保存草稿</el-button>
             </div>
           </el-form>
@@ -451,6 +466,9 @@
         </article>
       </section>
 
+      <!-- ============ AI 模型设置 ============ -->
+      <AISettingsPage v-else-if="tab === 'ai-settings' && isManager" />
+
       <!-- ============ 角色管理 ============ -->
       <section v-else-if="tab === 'users' && user?.role === 'owner'">
         <div class="page-head">
@@ -519,6 +537,8 @@
       <el-form label-position="top">
         <el-form-item label="令牌名称"><el-input v-model="tokenForm.name" placeholder="例如 Codex 需求助手" /></el-form-item>
         <el-form-item label="有效期（天）"><el-input-number v-model="tokenForm.expires_in_days" :min="1" :max="365" /></el-form-item>
+        <el-form-item label="Agent 角色"><el-select v-model="tokenForm.agent_role" clearable placeholder="通用管理客户端"><el-option label="编码" value="coding" /><el-option label="测试" value="testing" /><el-option label="审查" value="review" /></el-select></el-form-item>
+        <el-form-item label="限制到交付任务（可选）"><el-input v-model="tokenForm.task_id" placeholder="DeliveryTask UUID；留空表示不限具体任务" /></el-form-item>
         <el-form-item label="授权作用域"><el-checkbox-group v-model="tokenForm.scopes"><el-checkbox v-for="scope in scopeOptions" :key="scope" :value="scope">{{ scope }}</el-checkbox></el-checkbox-group></el-form-item>
       </el-form>
       <el-alert v-if="createdToken" type="success" :closable="false" title="请立即复制，关闭后无法再次查看"><code class="code-block">{{ createdToken }}</code><div class="token-created-actions"><el-button @click="copyText(createdToken)">复制令牌</el-button><el-button type="primary" :icon="Connection" @click="openCreatedTokenConnection">接入</el-button></div></el-alert>
@@ -622,7 +642,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
-  InfoFilled, Key, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
+  InfoFilled, Key, MagicStick, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
@@ -636,6 +656,7 @@ import RequirementTable from './RequirementTable.vue'
 import RequirementDetail from './RequirementDetail.vue'
 import DashboardCharts from './DashboardCharts.vue'
 import TokenUsage from './TokenUsage.vue'
+import AISettingsPage from './AISettingsPage.vue'
 
 const statusOptions = ['pending_review', 'candidate', 'scheduled', 'developing', 'testing', 'release_ready', 'released', 'deferred', 'rejected']
 const reviewStatuses = ['submitted', 'triaging', 'pending_review', 'needs_information', 'candidate', 'deferred', 'rejected', 'duplicate']
@@ -668,7 +689,7 @@ const emptyRequirementForm = () => ({
   severity: 'medium', product_version: '', visibility: 'public', submitter_name: '', submitter_contact: '', environment: {} as Record<string, unknown>,
 })
 
-type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'users'
+type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'ai-settings' | 'users'
 const tab = ref<Tab>('public')
 const navEl = ref<HTMLElement | null>(null)
 const user = ref<ApiUser | null>(null)
@@ -695,8 +716,8 @@ const reviewForm = reactive({ action: 'candidate', reason: '', priority: 'normal
 const statusForm = reactive({ status: '', reason: '' })
 const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: 'feature', target_date: '', max_risk_level: 'high' })
 const batchEditTarget = ref<Batch | null>(null)
-const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write']
-const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90 })
+const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write', 'specs:read', 'tasks:write', 'tasks:claim', 'runs:write', 'artifacts:write']
+const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90, project_key: 'trailsnap', agent_role: '', task_id: '' })
 const mcpUrl = `${window.location.origin}/mcp/`
 const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer trp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
 const mcpEnvConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
@@ -710,6 +731,9 @@ const genericMcpConfig = computed(() => JSON.stringify({
   },
 }, null, 2))
 const candidateSelection = reactive<Record<string, string>>({})
+const preflightChecked = ref(false)
+const preflightQuestions = ref<Array<{ question_id: string; question: string; rationale: string; suggested_options: string[] }>>([])
+const preflightAnswers = reactive<Record<string, string>>({})
 
 const isManager = computed(() => user.value?.role === 'admin' || user.value?.role === 'owner')
 const visibleTabs = computed(() => [
@@ -720,6 +744,7 @@ const visibleTabs = computed(() => [
   { key: 'usage' as Tab, label: 'Token 用量' },
   ...(isManager.value ? [{ key: 'dashboard' as Tab, label: '总览看板' }] : []),
   ...(isManager.value ? [{ key: 'admin' as Tab, label: '需求审核' }] : []),
+  ...(isManager.value ? [{ key: 'ai-settings' as Tab, label: 'AI 设置' }] : []),
   ...(isManager.value ? [{ key: 'integrations' as Tab, label: '集成设置' }] : []),
   ...(user.value?.role === 'owner' ? [{ key: 'users' as Tab, label: '角色管理' }] : []),
 ])
@@ -740,6 +765,11 @@ const sortedRequirements = computed(() => {
   return list
 })
 const canFollow = computed(() => !!user.value && !!detailTarget.value)
+const canEditSummary = computed(() => !!user.value && !!detailTarget.value && (isManager.value || detailTarget.value.created_by === user.value.id))
+
+async function refreshDetail() {
+  if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
+}
 
 async function loadRequirements() {
   const p = new URLSearchParams()
@@ -821,7 +851,7 @@ async function createToken() {
   if (tokenForm.name.trim().length < 2 || !tokenForm.scopes.length) { ElMessage.error('请填写名称并至少选择一个作用域'); return }
   busy.value = true
   try {
-    const result = await api.createAgentToken({ ...tokenForm })
+    const result = await api.createAgentToken({ ...tokenForm, agent_role: tokenForm.agent_role || null, task_id: tokenForm.task_id.trim() || null })
     createdToken.value = result.token
     createdTokenId.value = result.id
     await loadIntegrations()
@@ -857,12 +887,26 @@ async function submitRequirement() {
   if (descriptionLength < 10 || descriptionLength > 8000) { ElMessage.error('需求描述需要 10–8,000 个字符'); return }
   busy.value = true
   try {
-    const created = await api.createRequirement(requirementForm)
+    if (!user.value && !preflightChecked.value) {
+      const preflight = await api.preflightTriage({ ...requirementForm, answers: preflightAnswers })
+      preflightChecked.value = true
+      preflightQuestions.value = preflight.available ? preflight.questions : []
+      if (preflightQuestions.value.length) {
+        ElMessage.info('AI 提出了几个关键问题，回答后再次点击提交')
+        return
+      }
+      if (!preflight.available) ElMessage.info('AI 当前不可用，将直接提交需求')
+    }
+    const aiAnswers = Object.fromEntries(preflightQuestions.value.map(item => [item.question_id, (preflightAnswers[item.question_id] || '不确定').trim()]))
+    const created = await api.createRequirement({ ...requirementForm, ai_clarification_answers: aiAnswers })
     let uploadError: unknown = null
     for (const file of pendingFiles.value) {
       try { await api.uploadAttachment(created.id, file, created.upload_token) } catch (e) { uploadError = e; break }
     }
     Object.assign(requirementForm, emptyRequirementForm())
+    preflightChecked.value = false
+    preflightQuestions.value = []
+    Object.keys(preflightAnswers).forEach(key => delete preflightAnswers[key])
     pendingFiles.value = []
     if (fileInput.value) fileInput.value.value = ''
     if (uploadError) ElMessage.warning(`需求已提交，但有附件上传失败：${errorMessage(uploadError)}`)
@@ -1213,7 +1257,7 @@ onMounted(async () => {
     history.replaceState({}, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`)
   }
   const requestedTab = params.get('view') as Tab | null
-  if (requestedTab && ['public', 'dashboard', 'submit', 'mine', 'admin', 'versions', 'usage', 'integrations', 'users'].includes(requestedTab)) tab.value = requestedTab
+  if (requestedTab && ['public', 'dashboard', 'submit', 'mine', 'admin', 'versions', 'usage', 'integrations', 'ai-settings', 'users'].includes(requestedTab)) tab.value = requestedTab
   const requestedType = params.get('type')
   if (requestedType && ['bug', 'improvement', 'feature'].includes(requestedType)) requirementForm.type = requestedType
   if (tab.value === 'submit') {
@@ -1223,7 +1267,7 @@ onMounted(async () => {
     } catch { localStorage.removeItem('rp_draft') }
   }
   if (!user.value) await restoreSession()
-  if ((['admin', 'dashboard', 'integrations'].includes(tab.value) && !isManager.value) || (tab.value === 'users' && user.value?.role !== 'owner')) tab.value = 'public'
+  if ((['admin', 'dashboard', 'integrations', 'ai-settings'].includes(tab.value) && !isManager.value) || (tab.value === 'users' && user.value?.role !== 'owner')) tab.value = 'public'
   await Promise.all([loadRequirements(), loadBatches()])
   if (tab.value === 'mine') await loadMine()
   if (tab.value === 'admin') await loadAdmin()

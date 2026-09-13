@@ -1,5 +1,5 @@
 import hashlib
-import hashlib
+import asyncio
 import json
 import logging
 import secrets
@@ -12,18 +12,26 @@ import httpx
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from jose import JWTError, jwt
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .db import get_db, init_db
+from .db import SessionLocal, get_db, init_db
 from .models import (
+    AIConnection,
+    AIModel,
+    AITaskRoute,
+    AgentRun,
+    AgentRunQuestion,
     BackgroundJob,
     AgentToken,
     AuditEvent,
+    ClarificationQuestion,
+    DeliveryTask,
+    DomainEvent,
     GitHubIdentity,
     OAuthLoginGrant,
     ReleaseBatch,
@@ -32,41 +40,77 @@ from .models import (
     RequirementAttachment,
     RequirementFollower,
     RequirementRevision,
+    RequirementSpec,
     ReviewDecision,
+    PullRequestLink,
     TriageReport,
     User,
     WebhookEvent,
     utcnow,
 )
 from .schemas import (
+    AIConnectionCreate,
+    AIConnectionTestInput,
+    AIConnectionUpdate,
+    AIModelCreate,
+    AIModelUpdate,
+    AITaskRouteUpdate,
+    AgentClaimInput,
+    ArtifactInput,
     AgentTokenCreate,
     BatchCreate,
     BatchItemInput,
     BatchRead,
     BatchStatusInput,
     BatchUpdate,
+    ClarificationAnswerInput,
+    DeliveryTaskCreate,
     DeliveryStatusInput,
     GitHubIdentityRead,
     GitHubIssueLinkInput,
+    ImplementationPlanInput,
     LoginInput,
+    PreflightTriageInput,
+    PullRequestLinkInput,
     RegisterInput,
     ReasonInput,
     RequirementCreate,
     RequirementRead,
     RequirementStatusInput,
     RequirementUpdate,
+    RequirementSpecCreate,
+    RequirementSpecUpdate,
     ReviewInput,
     RoleUpdate,
+    RunHeartbeatInput,
+    RunQuestionInput,
+    RunQuestionAnswerInput,
+    RunResultInput,
+    SpecApproveInput,
+    SummaryCorrectionInput,
     UserRead,
 )
 from .security import (
     authenticate, create_agent_token_value, create_token, current_user, hash_password, manager, optional_user, owner,
+    resolve_agent_token,
 )
 from .services import (
-    GitHubClient, audit, closing_issue_numbers, enqueue, pull_request_summary,
+    GitHubClient, analyze_draft, audit, closing_issue_numbers, enqueue, pull_request_summary,
     requirement_snapshot, requirement_status_from_github, verify_webhook,
 )
 from . import usage as usage_api
+from .ai_settings import (
+    AIModelTarget, TASK_TYPES, connection_dict, decrypt_api_key, encrypt_api_key, model_dict,
+    settings_dict as ai_settings_dict, test_model_target,
+)
+from .delivery import (
+    DomainConflict, answer_run_question, approve_spec, cancel_run, claim_task, create_delivery_task, create_spec,
+    heartbeat as heartbeat_service, idempotent_result, link_pull_request as link_pr_service,
+    invalidate_delivery_authorizations, lease_token_for, register_artifact, requirement_transition, run_dict, spec_dict,
+    submit_question as submit_question_service,
+    submit_result as submit_result_service, task_dict, update_spec,
+    submit_implementation_plan,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -74,6 +118,20 @@ logger = logging.getLogger(__name__)
 
 def ok(data=None, msg: str = "success"):
     return {"code": 0, "msg": msg, "data": data}
+
+
+def agent_with_scope(required_scope: str):
+    def dependency(authorization: str | None = Header(default=None, alias="Authorization"), db: Session = Depends(get_db)):
+        if not authorization or not authorization.lower().startswith("bearer "):
+            raise HTTPException(status_code=401, detail="Agent token required")
+        token = resolve_agent_token(db, authorization.split(" ", 1)[1].strip())
+        if not token or required_scope not in token.scopes:
+            raise HTTPException(status_code=403, detail=f"Missing agent scope: {required_scope}")
+        creator = db.query(User).filter(User.id == token.created_by, User.is_active.is_(True)).first()
+        if not creator or creator.role not in {"admin", "owner"} or token.project_key != "trailsnap":
+            raise HTTPException(status_code=403, detail="Agent token owner or project is no longer authorized")
+        return token
+    return dependency
 
 
 def user_data(row: User, db: Session) -> dict:
@@ -98,7 +156,8 @@ def requirement_data(row: Requirement, db: Session, *, include_private: bool = F
         TriageReport.created_at.desc()
     ).first()
     if report:
-        public_fields = {"summary", "category", "user_value", "recommendation", "confidence"}
+        public_fields = {"schema_version", "problem_summary", "category", "completeness_items", "duplicate_candidates",
+                         "recommended_disposition", "acceptance_draft", "fallback_reason"}
         data["triage"] = report.report if include_private else {key: value for key, value in report.report.items() if key in public_fields}
         data["triage_provider"] = report.provider if include_private else None
     else:
@@ -108,10 +167,26 @@ def requirement_data(row: Requirement, db: Session, *, include_private: bool = F
     ).order_by(RequirementAttachment.created_at).all() if include_private else []
     data["attachments"] = [{
         "id": item.id, "name": item.original_name, "content_type": item.content_type,
-        "size_bytes": item.size_bytes, "kind": item.kind,
+        "size_bytes": item.size_bytes, "kind": item.kind, "content_sha256": item.content_sha256,
+        "processing_status": item.processing_status, "processing_error": item.processing_error,
         "created_at": item.created_at.isoformat(),
         "download_url": f"/api/requirements/{row.id}/attachments/{item.id}",
     } for item in attachments]
+    questions = db.query(ClarificationQuestion).filter(ClarificationQuestion.requirement_id == row.id).order_by(
+        ClarificationQuestion.created_at
+    ).all()
+    if row.created_by is not None and include_private:
+        data["clarifications"] = [{"id": item.id, "question_id": item.question_id, "target_field": item.target_field,
+                                   "question": item.question, "rationale": item.rationale, "blocking": item.blocking,
+                                   "suggested_options": item.suggested_options, "status": item.status,
+                                   "answer": item.answer, "round_number": item.round_number} for item in questions]
+    else:
+        data["clarifications"] = []
+    if include_private:
+        specs = db.query(RequirementSpec).filter(RequirementSpec.requirement_id == row.id).order_by(RequirementSpec.revision.desc()).all()
+        data["specs"] = [spec_dict(db, item) for item in specs]
+        tasks = db.query(DeliveryTask).filter(DeliveryTask.requirement_id == row.id).order_by(DeliveryTask.created_at.desc()).all()
+        data["delivery_tasks"] = [task_dict(db, item) for item in tasks]
     return data
 
 
@@ -126,18 +201,14 @@ def apply_github_status(
     source: str = "github",
 ) -> bool:
     """Apply one GitHub-originated transition and retain an attributable audit record."""
-    before = row.status
-    after = requirement_status_from_github(issue, current_status=before, action=action, changed_label=changed_label)
     row.github_state = issue.get("state", row.github_state)
-    if after == before:
-        return False
-    row.status = after
+    suggested = requirement_status_from_github(issue, current_status=row.status, action=action, changed_label=changed_label)
     audit(
-        db, actor_id, "requirement.status_changed", "requirement", row.id,
-        before=before, after=after, reason=f"GitHub 状态同步：{action or 'manual_sync'}",
+        db, actor_id, "github.requirement_state_observed", "requirement", row.id,
+        platform_status=row.status, suggested_status=suggested, github_state=row.github_state,
         source=source, actor_name=actor_name, github_action=action,
     )
-    return True
+    return False
 
 
 def next_requirement_number(db: Session) -> int:
@@ -204,6 +275,12 @@ async def validation_error(_request: Request, exc: RequestValidationError):
         status_code=422,
         content={"code": 422, "msg": f"{field}：{message}", "data": {"errors": exc.errors()}},
     )
+
+
+@app.exception_handler(DomainConflict)
+async def domain_conflict(_request: Request, exc: DomainConflict):
+    return JSONResponse(status_code=409, content={"code": 409, "msg": str(exc),
+        "data": {"current_version": exc.current_version, "allowed_actions": exc.allowed_actions}})
 
 
 @app.get("/api/health")
@@ -428,6 +505,7 @@ def list_agent_tokens(actor: User = Depends(manager), db: Session = Depends(get_
         query = query.filter(AgentToken.created_by == actor.id)
     rows = query.order_by(AgentToken.created_at.desc()).all()
     return ok([{"id": row.id, "name": row.name, "token_prefix": row.token_prefix, "scopes": row.scopes,
+                "project_key": row.project_key, "agent_role": row.agent_role, "task_id": row.task_id,
                 "expires_at": row.expires_at.isoformat() if row.expires_at else None,
                 "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
                 "revoked_at": row.revoked_at.isoformat() if row.revoked_at else None,
@@ -436,10 +514,15 @@ def list_agent_tokens(actor: User = Depends(manager), db: Session = Depends(get_
 
 @app.post("/api/admin/agent-tokens")
 def create_agent_token(payload: AgentTokenCreate, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    if payload.task_id and not db.query(DeliveryTask).filter(DeliveryTask.id == payload.task_id).first():
+        raise HTTPException(status_code=404, detail="Delivery task not found")
+    if "tasks:claim" in payload.scopes and payload.agent_role not in {None, "coding"}:
+        raise HTTPException(status_code=409, detail="Phase B only supports coding task claims")
     value, prefix, token_hash = create_agent_token_value()
     expires_at = datetime.now(timezone.utc) + timedelta(days=payload.expires_in_days) if payload.expires_in_days else None
     row = AgentToken(name=payload.name, token_prefix=prefix, token_hash=token_hash,
-                     scopes=sorted(set(payload.scopes)), created_by=actor.id, expires_at=expires_at)
+                     scopes=sorted(set(payload.scopes)), created_by=actor.id, expires_at=expires_at,
+                     project_key=payload.project_key, agent_role=payload.agent_role, task_id=payload.task_id)
     db.add(row)
     db.flush()
     audit(db, actor.id, "agent_token.created", "agent_token", row.id, name=row.name, scopes=row.scopes)
@@ -463,6 +546,172 @@ def revoke_agent_token(token_id: str, actor: User = Depends(manager), db: Sessio
     return ok({"revoked": True})
 
 
+@app.get("/api/admin/ai-settings")
+def get_ai_settings(_actor: User = Depends(manager), db: Session = Depends(get_db)):
+    return ok(ai_settings_dict(db))
+
+
+@app.post("/api/admin/ai-connections")
+def create_ai_connection(payload: AIConnectionCreate, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    encrypted, hint = encrypt_api_key(payload.api_key)
+    row = AIConnection(
+        name=payload.name.strip(), provider=payload.provider, api_base=payload.api_base.rstrip("/"),
+        api_key_encrypted=encrypted, api_key_hint=hint, enabled=payload.enabled,
+        timeout_seconds=payload.timeout_seconds, priority=payload.priority, created_by=actor.id,
+    )
+    db.add(row)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="AI connection name already exists") from exc
+    audit(db, actor.id, "ai_connection.created", "ai_connection", row.id,
+          name=row.name, provider=row.provider, api_base=row.api_base)
+    db.commit()
+    db.refresh(row)
+    return ok(connection_dict(db, row))
+
+
+@app.patch("/api/admin/ai-connections/{connection_id}")
+def update_ai_connection(connection_id: str, payload: AIConnectionUpdate,
+                         actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(AIConnection).filter(AIConnection.id == connection_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="AI connection not found")
+    values = payload.model_dump(exclude_unset=True, exclude={"api_key", "clear_api_key"})
+    for key, value in values.items():
+        setattr(row, key, value.rstrip("/") if key == "api_base" else value)
+    if payload.clear_api_key:
+        row.api_key_encrypted, row.api_key_hint = None, None
+    elif payload.api_key:
+        row.api_key_encrypted, row.api_key_hint = encrypt_api_key(payload.api_key)
+    audit(db, actor.id, "ai_connection.updated", "ai_connection", row.id,
+          fields=sorted(payload.model_fields_set - {"api_key"}), api_key_changed=bool(payload.api_key or payload.clear_api_key))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="AI connection name already exists") from exc
+    db.refresh(row)
+    return ok(connection_dict(db, row))
+
+
+@app.delete("/api/admin/ai-connections/{connection_id}")
+def delete_ai_connection(connection_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(AIConnection).filter(AIConnection.id == connection_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="AI connection not found")
+    model_ids = [item[0] for item in db.query(AIModel.id).filter(AIModel.connection_id == row.id).all()]
+    for route in db.query(AITaskRoute).all():
+        filtered = [item for item in (route.model_ids or []) if item not in model_ids]
+        if filtered != (route.model_ids or []):
+            route.model_ids = filtered
+            if not filtered:
+                route.enabled = False
+    audit(db, actor.id, "ai_connection.deleted", "ai_connection", row.id, name=row.name)
+    db.delete(row)
+    db.commit()
+    return ok({"deleted": True})
+
+
+@app.post("/api/admin/ai-connections/{connection_id}/models")
+def create_ai_model(connection_id: str, payload: AIModelCreate,
+                    actor: User = Depends(manager), db: Session = Depends(get_db)):
+    if not db.query(AIConnection.id).filter(AIConnection.id == connection_id).first():
+        raise HTTPException(status_code=404, detail="AI connection not found")
+    row = AIModel(connection_id=connection_id, **payload.model_dump())
+    db.add(row)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="Model already exists on this connection") from exc
+    audit(db, actor.id, "ai_model.created", "ai_model", row.id,
+          connection_id=connection_id, model_name=row.model_name)
+    db.commit()
+    db.refresh(row)
+    return ok(model_dict(row))
+
+
+@app.patch("/api/admin/ai-models/{model_id}")
+def update_ai_model(model_id: str, payload: AIModelUpdate,
+                    actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(AIModel).filter(AIModel.id == model_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="AI model not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(row, key, value)
+    audit(db, actor.id, "ai_model.updated", "ai_model", row.id, fields=sorted(payload.model_fields_set))
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Model already exists on this connection") from exc
+    db.refresh(row)
+    return ok(model_dict(row))
+
+
+@app.delete("/api/admin/ai-models/{model_id}")
+def delete_ai_model(model_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(AIModel).filter(AIModel.id == model_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="AI model not found")
+    for route in db.query(AITaskRoute).all():
+        if model_id in (route.model_ids or []):
+            route.model_ids = [item for item in route.model_ids if item != model_id]
+            if not route.model_ids:
+                route.enabled = False
+    audit(db, actor.id, "ai_model.deleted", "ai_model", row.id, model_name=row.model_name)
+    db.delete(row)
+    db.commit()
+    return ok({"deleted": True})
+
+
+@app.put("/api/admin/ai-task-routes/{task_type}")
+def update_ai_task_route(task_type: str, payload: AITaskRouteUpdate,
+                         actor: User = Depends(manager), db: Session = Depends(get_db)):
+    if task_type not in TASK_TYPES:
+        raise HTTPException(status_code=404, detail="Unknown AI task type")
+    if payload.enabled and not payload.model_ids:
+        raise HTTPException(status_code=422, detail="Enabled AI task routes require at least one model")
+    found = {item[0] for item in db.query(AIModel.id).filter(AIModel.id.in_(payload.model_ids)).all()} if payload.model_ids else set()
+    if found != set(payload.model_ids):
+        raise HTTPException(status_code=422, detail="One or more AI models do not exist")
+    row = db.query(AITaskRoute).filter(AITaskRoute.task_type == task_type).first()
+    if not row:
+        row = AITaskRoute(task_type=task_type, updated_by=actor.id)
+        db.add(row)
+    row.enabled, row.model_ids, row.updated_by = payload.enabled, payload.model_ids, actor.id
+    audit(db, actor.id, "ai_task_route.updated", "ai_task_route", task_type,
+          enabled=row.enabled, model_ids=row.model_ids)
+    db.commit()
+    return ok(next(item for item in ai_settings_dict(db)["routes"] if item["task_type"] == task_type))
+
+
+@app.post("/api/admin/ai-connections/{connection_id}/test")
+def test_ai_connection(connection_id: str, payload: AIConnectionTestInput,
+                       _actor: User = Depends(manager), db: Session = Depends(get_db)):
+    connection = db.query(AIConnection).filter(AIConnection.id == connection_id).first()
+    if not connection:
+        raise HTTPException(status_code=404, detail="AI connection not found")
+    query = db.query(AIModel).filter(AIModel.connection_id == connection.id, AIModel.enabled.is_(True))
+    model = query.filter(AIModel.id == payload.model_id).first() if payload.model_id else query.order_by(AIModel.created_at).first()
+    if not model:
+        raise HTTPException(status_code=409, detail="Please add and enable a model before testing")
+    target = AIModelTarget(
+        connection_id=connection.id, connection_name=connection.name, provider=connection.provider,
+        api_base=connection.api_base.rstrip("/"), api_key=decrypt_api_key(connection.api_key_encrypted),
+        model_id=model.id, model_name=model.model_name, supports_json_mode=model.supports_json_mode,
+        timeout_seconds=connection.timeout_seconds,
+    )
+    return ok(test_model_target(target))
+
+
+@app.post("/api/requirements/preflight-triage")
+def preflight_triage(payload: PreflightTriageInput, db: Session = Depends(get_db)):
+    values = payload.model_dump(mode="json")
+    values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": values.pop("answers", {})}
+    return ok(analyze_draft(db, values))
+
+
 @app.post("/api/requirements")
 def create_requirement(payload: RequirementCreate, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
     is_manager = bool(user and user.role in {"admin", "owner"})
@@ -476,6 +725,9 @@ def create_requirement(payload: RequirementCreate, user: User | None = Depends(o
         if recent >= settings.non_admin_hourly_submission_limit:
             raise HTTPException(status_code=429, detail="所有非管理员用户每小时最多提交 20 条需求，请稍后再试")
     values = payload.model_dump()
+    preflight_answers = values.pop("ai_clarification_answers", {})
+    if preflight_answers:
+        values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": preflight_answers}
     if user:
         values["submitter_name"] = None
         values["submitter_contact"] = None
@@ -537,6 +789,7 @@ async def upload_requirement_attachment(
     stored_name = f"{secrets.token_hex(16)}{suffix}"
     target = upload_dir / stored_name
     size = 0
+    digest = hashlib.sha256()
     try:
         with target.open("wb") as output:
             while chunk := await file.read(1024 * 1024):
@@ -544,6 +797,7 @@ async def upload_requirement_attachment(
                 if size > settings.max_attachment_bytes:
                     raise HTTPException(status_code=413, detail="单个附件不能超过 5MB")
                 output.write(chunk)
+                digest.update(chunk)
         if size == 0:
             raise HTTPException(status_code=422, detail="附件不能为空")
     except Exception:
@@ -553,14 +807,21 @@ async def upload_requirement_attachment(
         requirement_id=row.id, uploaded_by=user.id if user else None, original_name=original_name, stored_name=stored_name,
         content_type=(file.content_type or "application/octet-stream")[:100], size_bytes=size,
         kind="image" if suffix in IMAGE_ATTACHMENT_EXTENSIONS else "file",
+        content_sha256=digest.hexdigest(), processing_status="stored",
     )
     db.add(attachment)
     db.flush()
+    row.content_revision += 1
+    row.version += 1
+    invalidate_delivery_authorizations(db, row, actor_id=user.id if user else None,
+                                       reason="需求附件变化，旧执行授权已失效", source="attachment")
+    enqueue(db, "triage", row.id, f"triage:{row.id}:content:{row.content_revision}")
     audit(db, user.id if user else None, "requirement.attachment_uploaded", "requirement", row.id,
-          attachment_id=attachment.id, name=original_name, size_bytes=size)
+          attachment_id=attachment.id, name=original_name, size_bytes=size, content_revision=row.content_revision)
     db.commit()
     return ok({"id": attachment.id, "name": original_name, "content_type": attachment.content_type,
-               "size_bytes": size, "kind": attachment.kind,
+               "size_bytes": size, "kind": attachment.kind, "content_sha256": attachment.content_sha256,
+               "processing_status": attachment.processing_status,
                "download_url": f"/api/requirements/{row.id}/attachments/{attachment.id}"})
 
 
@@ -702,10 +963,11 @@ def update_requirement(
     for key, value in payload.model_dump(exclude_unset=True).items():
         setattr(row, key, value)
     row.version += 1
+    row.content_revision += 1
+    invalidate_delivery_authorizations(db, row, actor_id=user.id,
+                                       reason="需求内容变化，旧执行授权已失效", source="rest")
     if row.status == "needs_information":
-        before = row.status
-        row.status = "submitted"
-        audit(db, user.id, "requirement.status_changed", "requirement", row.id, before=before, after=row.status)
+        requirement_transition(db, row, "submitted", actor_id=user.id, reason="用户补充了需求信息", source="rest")
     enqueue_github_sync(db, row)
     enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
     audit(db, user.id, "requirement.updated", "requirement", row.id, version=row.version)
@@ -722,7 +984,7 @@ def withdraw_requirement(requirement_id: str, user: User = Depends(current_user)
     if row.status in {"scheduled", "developing", "testing", "release_ready", "released"}:
         raise HTTPException(status_code=409, detail="Scheduled requirement cannot be withdrawn")
     before = row.status
-    row.status = "withdrawn"
+    requirement_transition(db, row, "withdrawn", actor_id=user.id, reason="用户撤回需求", source="rest")
     enqueue_github_sync(db, row)
     audit(db, user.id, "requirement.withdrawn", "requirement", row.id, before=before, after=row.status)
     db.commit()
@@ -759,7 +1021,7 @@ def queue_triage(requirement_id: str, actor: User = Depends(manager), db: Sessio
     key = f"triage:{row.id}:v{row.version}:manual:{int(datetime.now().timestamp()) // 60}"
     job = enqueue(db, "triage", row.id, key)
     before = row.status
-    row.status = "triaging"
+    requirement_transition(db, row, "triaging", actor_id=actor.id, reason="管理员重新发起分诊", source="rest")
     enqueue_github_sync(db, row)
     audit(db, actor.id, "triage.queued", "requirement", row.id, job_id=job.id, before=before, after=row.status)
     db.commit()
@@ -788,7 +1050,8 @@ def review_requirement(requirement_id: str, payload: ReviewInput, actor: User = 
             if not exists:
                 db.add(RequirementFollower(requirement_id=target.id, user_id=follower.user_id))
     before = row.status
-    row.status = status_by_action[payload.action]
+    requirement_transition(db, row, status_by_action[payload.action], actor_id=actor.id,
+                           reason=payload.reason, source="review")
     row.review_reason = payload.reason
     row.priority = payload.priority
     row.risk_level = payload.risk_level
@@ -813,14 +1076,14 @@ def update_requirement_status(
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
+    if payload.status in {"accepted", "developing", "testing", "release_ready", "merged", "released"} and db.query(
+        DeliveryTask.id
+    ).filter(DeliveryTask.requirement_id == row.id).first():
+        raise DomainConflict("新交付任务的状态只能由规格、执行、PR 和发布事实推进", current_version=row.state_version)
     before = row.status
-    row.status = payload.status
+    requirement_transition(db, row, payload.status, actor_id=actor.id, reason=payload.reason, source="rest")
     row.review_reason = payload.reason
     enqueue_github_sync(db, row)
-    audit(
-        db, actor.id, "requirement.status_changed", "requirement", row.id,
-        before=before, after=row.status, reason=payload.reason,
-    )
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
 
@@ -831,13 +1094,346 @@ def close_requirement(requirement_id: str, payload: ReasonInput, actor: User = D
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
     before = row.status
-    row.status, row.review_reason = "closed", payload.reason
+    requirement_transition(db, row, "closed", actor_id=actor.id, reason=payload.reason, source="rest")
+    row.review_reason = payload.reason
     enqueue_github_sync(db, row)
     db.add(ReviewDecision(requirement_id=row.id, reviewer_id=actor.id, action="close", reason=payload.reason))
     audit(db, actor.id, "requirement.closed", "requirement", row.id,
           before=before, after=row.status, reason=payload.reason)
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
+
+
+@app.post("/api/requirements/{requirement_id}/summary-corrections")
+def correct_requirement_summary(requirement_id: str, payload: SummaryCorrectionInput,
+                                actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row or (row.created_by != actor.id and actor.role not in {"admin", "owner"}):
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    if row.state_version != payload.expected_state_version:
+        raise DomainConflict("需求已变化，请刷新后重试", current_version=row.state_version)
+    before = row.confirmed_summary
+    row.confirmed_summary = payload.summary.strip()
+    row.content_revision += 1
+    row.version += 1
+    row.state_version += 1
+    invalidate_delivery_authorizations(db, row, actor_id=actor.id,
+                                       reason="确认摘要变化，旧执行授权已失效", source="summary_correction")
+    enqueue(db, "triage", row.id, f"triage:{row.id}:content:{row.content_revision}")
+    audit(db, actor.id, "requirement.summary_corrected", "requirement", row.id,
+          before=before, after=row.confirmed_summary, content_revision=row.content_revision)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True, include_contact=actor.role in {"admin", "owner"}))
+
+
+@app.post("/api/requirements/{requirement_id}/clarifications/{question_id}/answers")
+def answer_clarification(requirement_id: str, question_id: str, payload: ClarificationAnswerInput,
+                         actor: User = Depends(current_user), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row or row.created_by is None or (row.created_by != actor.id and actor.role not in {"admin", "owner"}):
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    if row.state_version != payload.expected_state_version:
+        raise DomainConflict("需求已变化，请刷新后重试", current_version=row.state_version)
+    question = db.query(ClarificationQuestion).filter(ClarificationQuestion.requirement_id == row.id,
+                                                       ClarificationQuestion.question_id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Clarification question not found")
+    if question.status == "answered":
+        raise DomainConflict("该问题已经回答", current_version=row.state_version)
+    question.answer, question.answer_source = payload.answer.strip(), "user"
+    question.answered_by, question.answered_at, question.status = actor.id, utcnow(), "answered"
+    if question.target_field in {"expected_behavior", "steps_to_reproduce", "current_behavior"} and not getattr(row, question.target_field):
+        setattr(row, question.target_field, payload.answer.strip())
+    row.content_revision += 1
+    row.version += 1
+    invalidate_delivery_authorizations(db, row, actor_id=actor.id,
+                                       reason="澄清答案变化，旧执行授权已失效", source="clarification")
+    db.flush()
+    remaining = db.query(ClarificationQuestion).filter(ClarificationQuestion.requirement_id == row.id,
+                                                        ClarificationQuestion.status == "open",
+                                                        ClarificationQuestion.blocking.is_(True)).count()
+    if remaining == 0:
+        requirement_transition(db, row, "submitted", actor_id=actor.id, reason="用户完成本轮澄清", source="clarification")
+        enqueue(db, "triage", row.id, f"triage:{row.id}:content:{row.content_revision}")
+    else:
+        row.state_version += 1
+    audit(db, actor.id, "clarification.answered", "clarification", question.id,
+          requirement_id=row.id, question_id=question.question_id, content_revision=row.content_revision)
+    db.commit()
+    return ok(requirement_data(row, db, include_private=True, include_contact=actor.role in {"admin", "owner"}))
+
+
+@app.get("/api/requirements/{requirement_id}/specs")
+def list_requirement_specs(requirement_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    rows = db.query(RequirementSpec).filter(RequirementSpec.requirement_id == requirement_id).order_by(RequirementSpec.revision.desc()).all()
+    return ok([spec_dict(db, row) for row in rows])
+
+
+@app.post("/api/requirements/{requirement_id}/specs")
+def create_requirement_spec(requirement_id: str, payload: RequirementSpecCreate,
+                            idempotency_key: str = Header(alias="Idempotency-Key"),
+                            actor: User = Depends(manager), db: Session = Depends(get_db)):
+    requirement = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not requirement:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=actor.id, operation="create_spec", key=idempotency_key,
+        request=request_data, action=lambda: spec_dict(db, create_spec(db, requirement, payload.content, actor.id,
+                                                        payload.expected_requirement_state_version)))
+    db.commit()
+    return ok(response)
+
+
+@app.patch("/api/specs/{spec_id}")
+def update_requirement_spec(spec_id: str, payload: RequirementSpecUpdate,
+                            idempotency_key: str = Header(alias="Idempotency-Key"),
+                            actor: User = Depends(manager), db: Session = Depends(get_db)):
+    spec = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
+    if not spec:
+        raise HTTPException(status_code=404, detail="Spec not found")
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=actor.id, operation="update_spec", key=idempotency_key,
+        request=request_data, action=lambda: spec_dict(db, update_spec(db, spec, payload.content, actor.id,
+                                                        payload.expected_state_version)))
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/specs/{spec_id}/approve")
+def approve_requirement_spec(spec_id: str, payload: SpecApproveInput,
+                             idempotency_key: str = Header(alias="Idempotency-Key"),
+                             actor: User = Depends(manager), db: Session = Depends(get_db)):
+    spec = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
+    if not spec:
+        raise HTTPException(status_code=404, detail="Spec not found")
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=actor.id, operation="approve_spec", key=idempotency_key,
+        request=request_data, action=lambda: spec_dict(db, approve_spec(db, spec, actor.id, payload.expected_state_version,
+            manual_base_sha=payload.manual_base_sha, allow_manual_sha=actor.role == "owner")))
+    db.commit()
+    return ok(response)
+
+
+@app.get("/api/specs/{spec_id}")
+def get_requirement_spec(spec_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    spec = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
+    if not spec:
+        raise HTTPException(status_code=404, detail="Spec not found")
+    return ok(spec_dict(db, spec))
+
+
+@app.post("/api/delivery-tasks", status_code=202)
+def create_task(payload: DeliveryTaskCreate, idempotency_key: str = Header(alias="Idempotency-Key"),
+                actor: User = Depends(manager), db: Session = Depends(get_db)):
+    spec = db.query(RequirementSpec).filter(RequirementSpec.id == payload.spec_id).first()
+    if not spec:
+        raise HTTPException(status_code=404, detail="Spec not found")
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=actor.id, operation="create_delivery_task", key=idempotency_key,
+        request=request_data, action=lambda: task_dict(db, create_delivery_task(db, spec, actor.id,
+            risk_level=payload.risk_level, budget=payload.budget, dependency_ids=payload.dependency_ids), include_context=True))
+    db.commit()
+    return ok(response, "accepted")
+
+
+@app.get("/api/delivery-tasks")
+def list_delivery_tasks(actor: User = Depends(manager), db: Session = Depends(get_db)):
+    return ok([task_dict(db, row) for row in db.query(DeliveryTask).order_by(DeliveryTask.created_at.desc()).all()])
+
+
+@app.get("/api/delivery-tasks/{task_id}")
+def get_delivery_task(task_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    row = db.query(DeliveryTask).filter(DeliveryTask.id == task_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Delivery task not found")
+    return ok(task_dict(db, row, include_context=True))
+
+
+@app.post("/api/agent-runs/claim")
+def claim_delivery_task(payload: AgentClaimInput, idempotency_key: str = Header(alias="Idempotency-Key"),
+                        token: AgentToken = Depends(agent_with_scope("tasks:claim")), db: Session = Depends(get_db)):
+    if token.agent_role not in {None, payload.role}:
+        raise HTTPException(status_code=403, detail="Agent token role does not match claim role")
+    request_data = payload.model_dump(mode="json")
+    def action():
+        run, lease_token, task = claim_task(db, runner_name=payload.runner_name, provider=payload.provider,
+                                            model=payload.model, role=payload.role, restricted_task_id=token.task_id)
+        result = run_dict(db, run, include_lease=True, lease_token=lease_token)
+        result["task"] = task_dict(db, task, include_context=True)
+        return result
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="claim_task", key=idempotency_key,
+                                    request=request_data, action=action)
+    response = dict(response)
+    if "lease_token" not in response:
+        response["lease_token"] = lease_token_for(db.query(AgentRun).filter(AgentRun.id == response["id"]).one())
+    db.commit()
+    return ok(response)
+
+
+def _agent_run_for_token(db: Session, run_id: str, token: AgentToken) -> AgentRun:
+    run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+    if not run or (token.task_id and run.task_id != token.task_id):
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    return run
+
+
+@app.get("/api/agent-runs/{run_id}")
+def get_agent_run(run_id: str, token: AgentToken = Depends(agent_with_scope("runs:write")), db: Session = Depends(get_db)):
+    return ok(run_dict(db, _agent_run_for_token(db, run_id, token)))
+
+
+@app.post("/api/agent-runs/{run_id}/heartbeat")
+def heartbeat_run(run_id: str, payload: RunHeartbeatInput,
+                  idempotency_key: str = Header(alias="Idempotency-Key"),
+                  token: AgentToken = Depends(agent_with_scope("runs:write")), db: Session = Depends(get_db)):
+    run = _agent_run_for_token(db, run_id, token)
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="heartbeat_run", key=idempotency_key,
+        request=request_data, action=lambda: run_dict(db, heartbeat_service(db, run, attempt_id=payload.attempt_id,
+            lease_token=payload.lease_token, expected_state_version=payload.expected_state_version,
+            session_reference=payload.session_reference)))
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/agent-runs/{run_id}/questions")
+def request_run_clarification(run_id: str, payload: RunQuestionInput,
+                              idempotency_key: str = Header(alias="Idempotency-Key"),
+                              token: AgentToken = Depends(agent_with_scope("runs:write")), db: Session = Depends(get_db)):
+    run = _agent_run_for_token(db, run_id, token)
+    request_data = payload.model_dump(mode="json")
+    def action():
+        question = submit_question_service(db, run, attempt_id=payload.attempt_id, lease_token=payload.lease_token,
+            expected_state_version=payload.expected_state_version, question=payload.question, blocking=payload.blocking)
+        db.flush()
+        return {"id": question.id, "run": run_dict(db, run)}
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="request_clarification",
+                                    key=idempotency_key, request=request_data, action=action)
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/agent-runs/{run_id}/implementation-plan")
+def submit_run_plan(run_id: str, payload: ImplementationPlanInput,
+                    idempotency_key: str = Header(alias="Idempotency-Key"),
+                    token: AgentToken = Depends(agent_with_scope("runs:write")), db: Session = Depends(get_db)):
+    run = _agent_run_for_token(db, run_id, token)
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="submit_implementation_plan",
+        key=idempotency_key, request=request_data, action=lambda: run_dict(db, submit_implementation_plan(
+            db, run, attempt_id=payload.attempt_id, lease_token=payload.lease_token,
+            expected_state_version=payload.expected_state_version, plan={
+                key: value for key, value in request_data.items()
+                if key not in {"attempt_id", "lease_token", "expected_state_version"}
+            })))
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/agent-runs/{run_id}/results")
+def submit_run_result(run_id: str, payload: RunResultInput,
+                      idempotency_key: str = Header(alias="Idempotency-Key"),
+                      token: AgentToken = Depends(agent_with_scope("runs:write")), db: Session = Depends(get_db)):
+    run = _agent_run_for_token(db, run_id, token)
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="submit_run_result",
+        key=idempotency_key, request=request_data, action=lambda: run_dict(db, submit_result_service(db, run,
+            attempt_id=payload.attempt_id, lease_token=payload.lease_token,
+            expected_state_version=payload.expected_state_version, result=request_data)))
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/agent-runs/{run_id}/artifacts")
+def submit_run_artifact(run_id: str, payload: ArtifactInput,
+                        idempotency_key: str = Header(alias="Idempotency-Key"),
+                        token: AgentToken = Depends(agent_with_scope("artifacts:write")), db: Session = Depends(get_db)):
+    run = _agent_run_for_token(db, run_id, token)
+    request_data = payload.model_dump(mode="json")
+    def action():
+        row = register_artifact(db, run, attempt_id=payload.attempt_id, lease_token=payload.lease_token,
+                                expected_state_version=payload.expected_state_version, producer_token_id=token.id,
+                                artifact=request_data)
+        return {"id": row.id, "run_state_version": run.state_version, "sha256": row.sha256, "uri": row.uri}
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="register_artifact",
+                                    key=idempotency_key, request=request_data, action=action)
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/delivery-tasks/{task_id}/pull-requests")
+def link_delivery_pull_request(task_id: str, payload: PullRequestLinkInput,
+                               idempotency_key: str = Header(alias="Idempotency-Key"),
+                               token: AgentToken = Depends(agent_with_scope("runs:write")), db: Session = Depends(get_db)):
+    task = db.query(DeliveryTask).filter(DeliveryTask.id == task_id).first()
+    if not task or (token.task_id and token.task_id != task.id):
+        raise HTTPException(status_code=404, detail="Delivery task not found")
+    request_data = payload.model_dump(mode="json")
+    def action():
+        row = link_pr_service(db, task, number=payload.pull_request_number, url=payload.url,
+                              head_sha=payload.head_sha, base_sha=payload.base_sha,
+                              covered_ids=payload.covered_acceptance_ids,
+                              expected_state_version=payload.expected_state_version)
+        db.flush()
+        return {"id": row.id, "task": task_dict(db, task)}
+    response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="link_pull_request",
+                                    key=idempotency_key, request=request_data, action=action)
+    db.commit()
+    return ok(response)
+
+
+@app.post("/api/agent-runs/{run_id}/cancel")
+def cancel_agent_run(run_id: str, actor: User = Depends(manager), db: Session = Depends(get_db)):
+    run = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Agent run not found")
+    cancel_run(db, run, actor.id)
+    db.commit()
+    return ok(run_dict(db, run))
+
+
+@app.post("/api/agent-run-questions/{question_id}/answer")
+def answer_agent_question(question_id: str, payload: RunQuestionAnswerInput,
+                          idempotency_key: str = Header(alias="Idempotency-Key"),
+                          actor: User = Depends(manager), db: Session = Depends(get_db)):
+    question = db.query(AgentRunQuestion).filter(AgentRunQuestion.id == question_id).first()
+    if not question:
+        raise HTTPException(status_code=404, detail="Agent question not found")
+    request_data = payload.model_dump(mode="json")
+    response, _ = idempotent_result(db, actor_key=actor.id, operation="answer_agent_question", key=idempotency_key,
+        request=request_data, action=lambda: run_dict(db, answer_run_question(db, question, actor_id=actor.id,
+            answer=payload.answer, expected_run_state_version=payload.expected_run_state_version,
+            requires_spec_revision=payload.requires_spec_revision)))
+    db.commit()
+    return ok(response)
+
+
+@app.get("/api/events")
+def list_events(request: Request, cursor: int = 0, limit: int = Query(default=100, ge=1, le=500),
+                actor: User = Depends(manager), db: Session = Depends(get_db)):
+    def serialize(row: DomainEvent) -> dict:
+        return {"cursor": row.sequence, "id": row.id, "event_type": row.event_type,
+                "aggregate_type": row.aggregate_type, "aggregate_id": row.aggregate_id,
+                "aggregate_version": row.aggregate_version, "source": row.source,
+                "payload": row.payload, "created_at": row.created_at.isoformat()}
+    if "text/event-stream" in request.headers.get("accept", ""):
+        async def stream():
+            last_event_id = request.headers.get("last-event-id", "")
+            current = max(cursor, int(last_event_id) if last_event_id.isdigit() else 0)
+            while True:
+                with SessionLocal() as stream_db:
+                    rows = stream_db.query(DomainEvent).filter(DomainEvent.sequence > current).order_by(DomainEvent.sequence).limit(limit).all()
+                    payloads = [serialize(row) for row in rows]
+                if payloads:
+                    for payload in payloads:
+                        current = payload["cursor"]
+                        yield f"id: {current}\nevent: {payload['event_type']}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                else:
+                    yield ": keepalive\n\n"
+                await asyncio.sleep(5)
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+    rows = db.query(DomainEvent).filter(DomainEvent.sequence > cursor).order_by(DomainEvent.sequence).limit(limit).all()
+    return ok([serialize(row) for row in rows])
 
 
 @app.delete("/api/requirements/{requirement_id}")
@@ -975,10 +1571,9 @@ def close_requirement_github_issue(requirement_id: str, payload: ReasonInput, ac
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row or not row.github_issue_number:
         raise HTTPException(status_code=404, detail="Linked GitHub issue not found")
-    before = row.status
-    row.status, row.review_reason = "closed", payload.reason
-    enqueue_github_sync(db, row)
-    audit(db, actor.id, "requirement.closed", "requirement", row.id, before=before, after="closed",
+    data = GitHubClient().update_issue_state(row.github_issue_number, "closed")
+    row.github_state = data.get("state", "closed")
+    audit(db, actor.id, "github.issue.closed", "requirement", row.id, platform_status=row.status,
           issue_number=row.github_issue_number, reason=payload.reason, source="platform")
     db.commit()
     return ok(requirement_data(row, db, include_private=True))
@@ -1097,10 +1692,9 @@ def lock_batch(batch_id: str, actor: User = Depends(manager), db: Session = Depe
         if requirement:
             item.requirement_snapshot = requirement_snapshot(requirement)
             before = requirement.status
-            requirement.status = "scheduled"
+            requirement_transition(db, requirement, "scheduled", actor_id=actor.id,
+                                   reason=f"加入版本 {batch.version_name}", source="release_batch")
             enqueue_github_sync(db, requirement)
-            audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id,
-                  before=before, after=requirement.status, reason=f"加入版本 {batch.version_name}")
     enqueue(db, "github_milestone", batch.id, f"github_milestone:{batch.id}")
     audit(db, actor.id, "release_batch.locked", "release_batch", batch.id, count=len(items))
     db.commit()
@@ -1151,10 +1745,11 @@ def update_batch_status(batch_id: str, payload: BatchStatusInput, actor: User = 
             requirement = db.query(Requirement).filter(Requirement.id == item.requirement_id).first()
             if requirement and (requirement_status != "released" or item.delivery_status == "completed"):
                 before_status = requirement.status
-                requirement.status = requirement_status
+                if db.query(DeliveryTask.id).filter(DeliveryTask.requirement_id == requirement.id).first():
+                    raise DomainConflict("新交付任务不能由旧版本状态接口推进", current_version=requirement.state_version)
+                requirement_transition(db, requirement, requirement_status, actor_id=actor.id,
+                                       reason=payload.reason, source="release_batch")
                 enqueue_github_sync(db, requirement)
-                audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id,
-                      before=before_status, after=requirement.status, reason=payload.reason)
     audit(db, actor.id, "release_batch.status_changed", "release_batch", batch.id, before=before, after=payload.status, reason=payload.reason)
     db.commit()
     return ok(batch_data(batch, db, include_private=True))
@@ -1177,10 +1772,11 @@ def update_delivery_status(
     mapping = {"developing": "developing", "pr_open": "developing", "testing": "testing", "completed": "release_ready"}
     if requirement and payload.status in mapping:
         before_status = requirement.status
-        requirement.status = mapping[payload.status]
+        if db.query(DeliveryTask.id).filter(DeliveryTask.requirement_id == requirement.id).first():
+            raise DomainConflict("新交付任务不能由旧版本条目接口推进", current_version=requirement.state_version)
+        requirement_transition(db, requirement, mapping[payload.status], actor_id=actor.id,
+                               reason=f"版本交付状态：{payload.status}", source="release_batch")
         enqueue_github_sync(db, requirement)
-        audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id,
-              before=before_status, after=requirement.status, reason=f"版本交付状态：{payload.status}")
     audit(db, actor.id, "release_batch.delivery_status", "release_batch", batch_id, item_id=item.id, status=payload.status)
     db.commit()
     return ok({"id": item.id, "delivery_status": item.delivery_status})
@@ -1341,6 +1937,21 @@ async def github_webhook(
         linked_issue_numbers = closing_issue_numbers(pull_request)
         if pull_request_number:
             summary = pull_request_summary({**pull_request, "number": pull_request_number})
+            delivery_link = db.query(PullRequestLink).filter(
+                PullRequestLink.repository == settings.github_repo,
+                PullRequestLink.pull_request_number == pull_request_number,
+            ).first()
+            if delivery_link:
+                delivery_link.url = summary.get("url") or delivery_link.url
+                delivery_link.head_sha = str((pull_request.get("head") or {}).get("sha") or delivery_link.head_sha)
+                delivery_link.state = summary["state"]
+                task = db.query(DeliveryTask).filter(DeliveryTask.id == delivery_link.task_id).one()
+                if summary["state"] == "merged" and task.state != "merged":
+                    task.state, task.state_version = "merged", task.state_version + 1
+                    requirement = db.query(Requirement).filter(Requirement.id == task.requirement_id).one()
+                    requirement_transition(db, requirement, "merged", actor_id=None,
+                                           reason=f"关联 PR #{pull_request_number} 已合并，等待版本发布",
+                                           source="github_pull_request_webhook")
             linked_rows = db.query(Requirement).filter(
                 Requirement.github_issue_number.is_not(None), Requirement.deleted_at.is_(None)
             ).all()
@@ -1365,16 +1976,24 @@ async def github_webhook(
                         pull_request_number=pull_request_number, pull_request_url=summary.get("url"),
                         newly_linked=is_linked and not was_linked,
                     )
-                if is_linked and summary["state"] == "merged" and row.status not in {"closed", "released"}:
-                    before = row.status
-                    row.status = "closed"
-                    row.review_reason = f"关联 PR #{pull_request_number} 已合并，自动关闭需求"
-                    audit(
-                        db, None, "requirement.closed", "requirement", row.id,
-                        before=before, after="closed", reason=row.review_reason,
-                        source="github_pull_request_webhook", pull_request_number=pull_request_number,
-                    )
-                    enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:pr-merged:{delivery_id}")
+                if is_linked and summary["state"] == "merged":
+                    audit(db, None, "github.pull_request.merged", "requirement", row.id,
+                          source="github_pull_request_webhook", pull_request_number=pull_request_number)
     event.processed = True
     db.commit()
     return ok({"accepted": True})
+    ClarificationQuestion,
+    DeliveryTask,
+    DomainEvent,
+    RequirementSpec,
+    ClarificationAnswerInput,
+    DeliveryTaskCreate,
+    PreflightTriageInput,
+    PullRequestLinkInput,
+    RequirementSpecCreate,
+    RequirementSpecUpdate,
+    RunHeartbeatInput,
+    RunQuestionInput,
+    RunResultInput,
+    SpecApproveInput,
+    SummaryCorrectionInput,

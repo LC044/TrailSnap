@@ -37,8 +37,26 @@
           </section>
 
           <div v-if="requirement.triage" class="triage-box">
-            <div class="triage-head"><el-icon><MagicStick /></el-icon>AI 分析建议</div>
+            <div class="triage-head"><el-icon><MagicStick /></el-icon>我们理解的问题</div>
             <div class="markdown-body compact" v-html="renderMarkdown(triageText)"></div>
+            <div v-if="confirmedFacts.length" class="analysis-list"><strong>已确认的信息</strong><ul><li v-for="(fact, index) in confirmedFacts" :key="index">{{ fact }}</li></ul></div>
+            <div v-if="acceptanceDraft.length" class="analysis-list"><strong>验收草案</strong><ul><li v-for="(item, index) in acceptanceDraft" :key="index">{{ item }}</li></ul></div>
+            <div class="analysis-next"><strong>下一步</strong><span>{{ nextStep }}</span></div>
+            <div v-if="canEditSummary" class="summary-correction">
+              <el-input v-model="summaryCorrection" type="textarea" :rows="2" placeholder="如果理解有偏差，可在这里纠正摘要" />
+              <el-button :loading="saving" @click="saveSummary">提交纠正</el-button>
+            </div>
+          </div>
+          <div v-if="openClarifications.length" class="clarification-box">
+            <strong>还需要的信息</strong>
+            <article v-for="question in openClarifications" :key="question.id">
+              <p>{{ question.question }}<small>{{ question.rationale }}</small></p>
+              <el-select v-if="question.suggested_options.length" v-model="answers[question.question_id]" allow-create filterable placeholder="选择或输入答案">
+                <el-option v-for="option in question.suggested_options" :key="option" :label="option" :value="option" />
+              </el-select>
+              <el-input v-else v-model="answers[question.question_id]" type="textarea" :rows="2" placeholder="也可以回答“不确定”" />
+              <el-button type="primary" size="small" :loading="saving" @click="answer(question.question_id)">提交答复</el-button>
+            </article>
           </div>
           <div v-if="requirement.review_reason" class="review-note">
             <strong>审核说明</strong>
@@ -51,7 +69,7 @@
           <div v-if="requirement.attachments?.length" class="attachments">
             <strong>附件（仅本人和管理员可见）</strong>
             <div v-for="attachment in requirement.attachments" :key="attachment.id" class="file-row">
-              <span>{{ attachment.name }}（{{ formatBytes(attachment.size_bytes) }}）</span>
+              <span>{{ attachment.name }}（{{ formatBytes(attachment.size_bytes) }} · {{ attachment.processing_status === 'stored' ? '已安全保存' : attachment.processing_status }}）</span>
               <el-button link type="primary" @click="emit('download', attachment)">下载</el-button>
             </div>
           </div>
@@ -59,6 +77,7 @@
             <strong>提交人联系方式（仅管理员可见）：</strong>{{ requirement.submitter_contact }}
           </div>
         </article>
+        <DeliveryWorkspace v-if="manager" :requirement="requirement" :user-role="userRole" @refresh="emit('refresh')" />
       </div>
 
       <aside class="detail-sidebar">
@@ -119,12 +138,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { ArrowLeft, Link, MagicStick } from '@element-plus/icons-vue'
-import { ElButton, ElIcon } from 'element-plus'
+import { ElButton, ElIcon, ElInput, ElMessage, ElOption, ElSelect } from 'element-plus'
 import MarkdownIt from 'markdown-it'
 import type { Requirement, RequirementHistory } from './api'
 import { avatarColor, formatDateTime, priorityLabel, severityLabel, statusLabel, typeLabel } from './labels'
+import DeliveryWorkspace from './DeliveryWorkspace.vue'
+import { api } from './api'
 
 type Attachment = NonNullable<Requirement['attachments']>[number]
 
@@ -133,6 +154,8 @@ const props = defineProps<{
   history: RequirementHistory[]
   manager: boolean
   canFollow: boolean
+  canEditSummary: boolean
+  userRole: string
 }>()
 const emit = defineEmits<{
   back: []
@@ -142,6 +165,7 @@ const emit = defineEmits<{
   status: []
   review: []
   download: [attachment: Attachment]
+  refresh: []
 }>()
 
 const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -154,8 +178,29 @@ markdown.renderer.rules.link_open = (tokens, index, options, _env, self) => {
 }
 
 const triageText = computed(() => String(
-  props.requirement.triage?.summary || props.requirement.triage?.recommendation || '分析已完成',
+  props.requirement.confirmed_summary || props.requirement.triage?.problem_summary || props.requirement.triage?.summary || '分析已完成',
 ))
+const confirmedFacts = computed(() => ((props.requirement.triage?.confirmed_facts as Array<Record<string, unknown>> | undefined) || []).map(item => String(item.statement || item.value || '')).filter(Boolean))
+const acceptanceDraft = computed(() => (props.requirement.triage?.acceptance_draft as string[] | undefined) || [])
+const openClarifications = computed(() => (props.requirement.clarifications || []).filter(item => item.status === 'open'))
+const nextStep = computed(() => openClarifications.value.length ? '等待补充关键信息' : props.requirement.status === 'pending_review' ? '等待维护者审核' : statusLabel(props.requirement.status))
+const summaryCorrection = ref('')
+const answers = reactive<Record<string, string>>({})
+const saving = ref(false)
+watch(() => props.requirement.id, () => { summaryCorrection.value = props.requirement.confirmed_summary || '' })
+async function saveSummary() {
+  if (summaryCorrection.value.trim().length < 4) { ElMessage.error('请填写至少 4 个字符'); return }
+  saving.value = true
+  try { await api.correctSummary(props.requirement.id, summaryCorrection.value.trim(), props.requirement.state_version); ElMessage.success('摘要纠正已提交'); emit('refresh') }
+  catch (error: any) { ElMessage.error(error?.response?.data?.msg || '提交失败') } finally { saving.value = false }
+}
+async function answer(questionId: string) {
+  const value = (answers[questionId] || '').trim()
+  if (!value) { ElMessage.error('请填写答案，也可以填写“不确定”'); return }
+  saving.value = true
+  try { await api.answerClarification(props.requirement.id, questionId, value, props.requirement.state_version); ElMessage.success('答案已提交'); emit('refresh') }
+  catch (error: any) { ElMessage.error(error?.response?.data?.msg || '提交失败') } finally { saving.value = false }
+}
 const renderMarkdown = (value?: string) => markdown.render(value || '')
 const formatBytes = (size: number) => size < 1024 * 1024 ? `${Math.ceil(size / 1024)}KB` : `${(size / 1024 / 1024).toFixed(1)}MB`
 const historyLabel = (event: RequirementHistory) => {
@@ -192,6 +237,11 @@ const historyLabel = (event: RequirementHistory) => {
 .issue-section { margin: 18px 0 0; padding: 18px 0 0; border-top: 1px solid var(--rp-border); }
 .issue-section > .markdown-body { padding-left: 39px; }
 .triage-box, .review-note, .log-panel, .attachments, .contact-box { margin: 18px 0 0; }
+.analysis-list { margin-top: 12px; font-size: 13px; }.analysis-list ul { margin: 6px 0 0; padding-left: 20px; color: var(--rp-text-2); }
+.analysis-next { display: flex; gap: 10px; margin-top: 12px; font-size: 13px; }.analysis-next span { color: var(--rp-text-2); }
+.summary-correction { display: grid; gap: 8px; margin-top: 14px; }
+.clarification-box { display: grid; gap: 12px; margin: 18px 0 0; padding: 14px; border: 1px solid var(--rp-border); border-radius: 10px; }
+.clarification-box article { display: grid; gap: 8px; }.clarification-box p { margin: 0; font-size: 14px; }.clarification-box small { display: block; margin-top: 3px; color: var(--rp-text-3); }
 .review-note { padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid var(--rp-border); }
 .review-note > strong { font-size: 13px; }
 .log-panel, .attachments { padding-top: 16px; border-top: 1px solid var(--rp-border); }

@@ -1,6 +1,7 @@
 """Authenticated MCP tools for requirement and release management."""
 
 import base64
+import hashlib
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,13 +18,20 @@ from sqlalchemy import func
 from .config import settings
 from .db import SessionLocal
 from .models import (
-    AgentToken, AuditEvent, BackgroundJob, ReleaseBatch, ReleaseBatchItem, Requirement, RequirementAttachment,
-    RequirementFollower, RequirementRevision, ReviewDecision, TriageReport, User, utcnow,
+    AgentRun, AgentToken, AuditEvent, BackgroundJob, ClarificationQuestion, DeliveryTask, DomainEvent, ReleaseBatch, ReleaseBatchItem, Requirement,
+    RequirementAttachment, RequirementFollower, RequirementRevision, RequirementSpec, ReviewDecision,
+    TriageReport, User, utcnow,
 )
 from .security import resolve_agent_token
 from .services import (
     GitHubClient, STATUS_LABELS, audit, enqueue, requirement_snapshot, requirement_status_from_github,
     sync_batch_milestone,
+)
+from .delivery import (
+    cancel_run as cancel_run_service, claim_task, create_delivery_task as create_delivery_task_service,
+    heartbeat, idempotent_result, invalidate_delivery_authorizations, lease_token_for, register_artifact,
+    link_pull_request as link_pr_service, requirement_transition, run_dict, spec_dict,
+    submit_implementation_plan as submit_plan_service, submit_question, submit_result, task_dict,
 )
 
 
@@ -50,10 +58,11 @@ class DatabaseTokenVerifier:
 mcp = MCPServer(
     name="trailsnap-requirements",
     title="TrailSnap 需求管理",
-    version="0.4.0",
+    version="0.5.0",
     instructions=(
         "用于查询和管理 TrailSnap 需求与版本。任何写入、审核、删除和 GitHub 操作都必须遵循令牌作用域；"
-        "删除为可恢复的软删除。执行 review_requirement 前先读取需求详情，理由必须具体。"
+        "删除为可恢复的软删除。编码任务必须先领取并提交覆盖全部必需 AC 的 ImplementationPlan；"
+        "所有运行写入必须携带 attempt、lease、state version 和幂等键。Agent 无合并或发布权限。"
     ),
     token_verifier=DatabaseTokenVerifier(),
     auth=AuthSettings(
@@ -89,6 +98,8 @@ def _requirement_dict(row: Requirement) -> dict[str, Any]:
         "log_text": row.log_text, "current_behavior": row.current_behavior, "expected_behavior": row.expected_behavior,
         "steps_to_reproduce": row.steps_to_reproduce, "severity": row.severity, "product_version": row.product_version,
         "environment": row.environment, "visibility": row.visibility, "status": row.status,
+        "content_revision": row.content_revision, "state_version": row.state_version,
+        "confirmed_summary": row.confirmed_summary,
         "priority": row.priority, "risk_level": row.risk_level, "review_reason": row.review_reason,
         "duplicate_of_id": row.duplicate_of_id,
         "github_issue_number": row.github_issue_number, "github_issue_url": row.github_issue_url,
@@ -136,16 +147,12 @@ def _enqueue_requirement_github_sync(db, row: Requirement) -> None:
 
 
 def _apply_github_status(db, row: Requirement, issue: dict[str, Any], actor: User) -> bool:
-    before = row.status
-    after = requirement_status_from_github(issue, current_status=before)
     row.github_state = issue.get("state", row.github_state)
-    if after == before:
-        return False
-    row.status = after
-    audit(db, actor.id, "requirement.status_changed", "requirement", row.id,
-          before=before, after=after, reason="GitHub 状态同步：manual_sync",
+    suggested = requirement_status_from_github(issue, current_status=row.status)
+    audit(db, actor.id, "github.requirement_state_observed", "requirement", row.id,
+          platform_status=row.status, suggested_status=suggested, github_state=row.github_state,
           source="github_manual_sync", actor_name=actor.username)
-    return True
+    return False
 
 
 @mcp.tool()
@@ -225,6 +232,9 @@ def update_requirement(requirement_id: str, type: str | None = None, title: str 
             if value is not None:
                 setattr(row, field, value.strip() if isinstance(value, str) else value)
         row.version += 1
+        row.content_revision += 1
+        invalidate_delivery_authorizations(db, row, actor_id=actor.id,
+                                           reason="需求内容变化，旧执行授权已失效", source="mcp")
         _enqueue_requirement_github_sync(db, row)
         enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
         audit(db, actor.id, "requirement.updated", "requirement", row.id, source="mcp", version=row.version)
@@ -255,7 +265,8 @@ def review_requirement(requirement_id: str, action: str, reason: str, priority: 
                                                            RequirementFollower.user_id == follower.user_id).first():
                     db.add(RequirementFollower(requirement_id=target.id, user_id=follower.user_id))
         before = row.status
-        row.status, row.review_reason, row.priority, row.risk_level = statuses[action], reason.strip(), priority, risk_level
+        requirement_transition(db, row, statuses[action], actor_id=actor.id, reason=reason.strip(), source="mcp")
+        row.review_reason, row.priority, row.risk_level = reason.strip(), priority, risk_level
         _enqueue_requirement_github_sync(db, row)
         db.add(ReviewDecision(requirement_id=row.id, reviewer_id=actor.id, action=action, reason=reason,
                               metadata_json={"source": "mcp", "priority": priority, "risk_level": risk_level,
@@ -276,14 +287,14 @@ def update_requirement_status(requirement_id: str, status: str, reason: str) -> 
         raise ValueError("状态变更理由至少需要 2 个字符")
     with SessionLocal() as db:
         row = _requirement_or_error(db, requirement_id)
+        if status in {"accepted", "developing", "testing", "release_ready", "merged", "released"} and db.query(
+            DeliveryTask.id
+        ).filter(DeliveryTask.requirement_id == row.id).first():
+            raise ValueError("新交付任务的状态只能由规格、执行、PR 和发布事实推进")
         before = row.status
-        row.status = status
+        requirement_transition(db, row, status, actor_id=actor.id, reason=reason.strip(), source="mcp")
         row.review_reason = reason.strip()
         _enqueue_requirement_github_sync(db, row)
-        audit(
-            db, actor.id, "requirement.status_changed", "requirement", row.id,
-            source="mcp", before=before, after=row.status, reason=reason.strip(),
-        )
         db.commit()
         return _requirement_dict(row)
 
@@ -357,17 +368,16 @@ def link_github_issue(requirement_id: str, issue_number: int) -> dict[str, Any]:
 
 @mcp.tool()
 def close_github_issue(requirement_id: str, reason: str) -> dict[str, Any]:
-    """关闭平台需求，并由后台任务同步关闭已关联的 GitHub Issue。"""
+    """只关闭已关联的 GitHub Issue；不会改变平台审核或交付状态。"""
     _, actor = _identity("github:write")
     with SessionLocal() as db:
         row = _requirement_or_error(db, requirement_id)
         if not row.github_issue_number:
             raise ValueError("需求不存在或尚未关联 Issue")
-        before = row.status
-        row.status, row.review_reason = "closed", reason.strip()
-        _enqueue_requirement_github_sync(db, row)
-        audit(db, actor.id, "requirement.closed", "requirement", row.id, source="mcp",
-              before=before, after="closed", issue_number=row.github_issue_number, reason=reason)
+        data = GitHubClient().update_issue_state(row.github_issue_number, "closed")
+        row.github_state = data.get("state", "closed")
+        audit(db, actor.id, "github.issue.closed", "requirement", row.id, source="mcp",
+              platform_status=row.status, issue_number=row.github_issue_number, reason=reason)
         db.commit()
         return _requirement_dict(row)
 
@@ -469,9 +479,10 @@ def lock_version(batch_id: str) -> dict[str, Any]:
         for item in items:
             requirement = _requirement_or_error(db, item.requirement_id)
             item.requirement_snapshot = requirement_snapshot(requirement)
-            before, requirement.status = requirement.status, "scheduled"
+            before = requirement.status
+            requirement_transition(db, requirement, "scheduled", actor_id=actor.id,
+                                   reason=f"加入版本 {batch.version_name}", source="mcp")
             _enqueue_requirement_github_sync(db, requirement)
-            audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id, source="mcp", before=before, after="scheduled")
         enqueue(db, "github_milestone", batch.id, f"github_milestone:{batch.id}")
         audit(db, actor.id, "release_batch.locked", "release_batch", batch.id, source="mcp", count=len(items))
         db.commit()
@@ -505,9 +516,12 @@ def update_version_status(batch_id: str, status: str, reason: str) -> dict[str, 
             for item in items:
                 if requirement_status != "released" or item.delivery_status == "completed":
                     requirement = _requirement_or_error(db, item.requirement_id)
-                    old, requirement.status = requirement.status, requirement_status
+                    old = requirement.status
+                    if db.query(DeliveryTask.id).filter(DeliveryTask.requirement_id == requirement.id).first():
+                        raise ValueError("新交付任务不能由旧版本状态工具推进")
+                    requirement_transition(db, requirement, requirement_status, actor_id=actor.id,
+                                           reason=reason, source="mcp")
                     _enqueue_requirement_github_sync(db, requirement)
-                    audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id, source="mcp", before=old, after=requirement_status, reason=reason)
         audit(db, actor.id, "release_batch.status_changed", "release_batch", batch.id, source="mcp", before=before, after=status, reason=reason)
         db.commit()
         return _batch_dict(batch, db)
@@ -530,10 +544,11 @@ def update_version_delivery_status(batch_id: str, item_id: str, status: str) -> 
         if status in mapping:
             requirement = _requirement_or_error(db, item.requirement_id)
             before = requirement.status
-            requirement.status = mapping[status]
+            if db.query(DeliveryTask.id).filter(DeliveryTask.requirement_id == requirement.id).first():
+                raise ValueError("新交付任务不能由旧版本条目工具推进")
+            requirement_transition(db, requirement, mapping[status], actor_id=actor.id,
+                                   reason=f"版本交付状态：{status}", source="mcp")
             _enqueue_requirement_github_sync(db, requirement)
-            audit(db, actor.id, "requirement.status_changed", "requirement", requirement.id, source="mcp",
-                  before=before, after=requirement.status, reason=f"版本交付状态：{status}")
         audit(db, actor.id, "release_batch.delivery_status", "release_batch", batch.id, source="mcp", item_id=item.id, status=status)
         db.commit()
         return {"id": item.id, "delivery_status": item.delivery_status}
@@ -565,18 +580,30 @@ def upload_requirement_attachment(requirement_id: str, filename: str, content_ba
         stored_name = f"mcp-{secrets.token_hex(16)}{suffix}"
         target = upload_dir / stored_name
         target.write_bytes(content)
-        item = RequirementAttachment(requirement_id=row.id, uploaded_by=actor.id, original_name=safe_name, stored_name=stored_name,
-                                     content_type=content_type[:100], size_bytes=len(content), kind="image" if suffix in {".png", ".jpg", ".jpeg", ".webp"} else "file")
+        item = RequirementAttachment(
+            requirement_id=row.id, uploaded_by=actor.id, original_name=safe_name, stored_name=stored_name,
+            content_type=content_type[:100], size_bytes=len(content),
+            kind="image" if suffix in {".png", ".jpg", ".jpeg", ".webp"} else "file",
+            content_sha256=hashlib.sha256(content).hexdigest(), processing_status="stored",
+        )
         try:
             db.add(item)
             db.flush()
-            audit(db, actor.id, "requirement.attachment_uploaded", "requirement", row.id, source="mcp", attachment_id=item.id, name=safe_name)
+            row.content_revision += 1
+            row.version += 1
+            invalidate_delivery_authorizations(db, row, actor_id=actor.id,
+                                               reason="需求附件变化，旧执行授权已失效", source="mcp")
+            enqueue(db, "triage", row.id, f"triage:{row.id}:content:{row.content_revision}")
+            audit(db, actor.id, "requirement.attachment_uploaded", "requirement", row.id, source="mcp",
+                  attachment_id=item.id, name=safe_name, content_revision=row.content_revision)
             db.commit()
         except Exception:
             db.rollback()
             target.unlink(missing_ok=True)
             raise
-        return {"id": item.id, "name": item.original_name, "content_type": item.content_type, "size_bytes": item.size_bytes, "kind": item.kind}
+        return {"id": item.id, "name": item.original_name, "content_type": item.content_type,
+                "size_bytes": item.size_bytes, "kind": item.kind,
+                "content_sha256": item.content_sha256, "processing_status": item.processing_status}
 
 
 @mcp.tool()
@@ -671,7 +698,8 @@ def withdraw_requirement(requirement_id: str, reason: str = "Agent 请求撤回"
             raise PermissionError("只能撤回令牌所属账号创建的需求")
         if row.status in {"scheduled", "developing", "testing", "release_ready", "released"}:
             raise ValueError("已排期需求不能撤回")
-        before, row.status = row.status, "withdrawn"
+        before = row.status
+        requirement_transition(db, row, "withdrawn", actor_id=actor.id, reason=reason, source="mcp")
         audit(db, actor.id, "requirement.withdrawn", "requirement", row.id, source="mcp", before=before, after="withdrawn", reason=reason)
         db.commit()
         return _requirement_dict(row)
@@ -751,6 +779,280 @@ def sync_github_milestone(batch_id: str) -> dict[str, Any]:
         sync_batch_milestone(db, batch_id)
         batch = db.query(ReleaseBatch).filter(ReleaseBatch.id == batch_id).first()
         return _batch_dict(batch, db)
+
+
+@mcp.tool()
+def get_requirement_spec(spec_id: str) -> dict[str, Any]:
+    """读取已批准或历史需求规格；编码前必须以此规格为准。"""
+    _identity("specs:read")
+    with SessionLocal() as db:
+        row = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
+        if not row:
+            raise ValueError("规格不存在")
+        return spec_dict(db, row)
+
+
+@mcp.tool()
+def answer_clarification(requirement_id: str, question_id: str, answer: str,
+                         expected_state_version: int, idempotency_key: str) -> dict[str, Any]:
+    """代表受信任管理员答复结构化澄清问题；匿名需求不会产生后续问题。"""
+    token, actor = _identity("requirements:write")
+    request = {"requirement_id": requirement_id, "question_id": question_id, "answer": answer,
+               "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        requirement = _requirement_or_error(db, requirement_id)
+        question = db.query(ClarificationQuestion).filter(
+            ClarificationQuestion.requirement_id == requirement.id,
+            ClarificationQuestion.question_id == question_id,
+        ).first()
+        if not question:
+            raise ValueError("澄清问题不存在")
+        def action():
+            if requirement.state_version != expected_state_version or question.status != "open":
+                raise ValueError("需求或澄清问题已经变化")
+            question.answer, question.answer_source = answer.strip(), "admin_agent"
+            question.answered_by, question.answered_at, question.status = actor.id, utcnow(), "answered"
+            if question.target_field in {"expected_behavior", "steps_to_reproduce", "current_behavior"} and not getattr(requirement, question.target_field):
+                setattr(requirement, question.target_field, answer.strip())
+            requirement.content_revision += 1
+            requirement.version += 1
+            invalidate_delivery_authorizations(db, requirement, actor_id=actor.id,
+                                               reason="澄清答案改变需求内容，旧执行授权已失效", source="mcp")
+            db.flush()
+            remaining = db.query(ClarificationQuestion).filter(
+                ClarificationQuestion.requirement_id == requirement.id,
+                ClarificationQuestion.status == "open", ClarificationQuestion.blocking.is_(True),
+            ).count()
+            if remaining == 0:
+                requirement_transition(db, requirement, "submitted", actor_id=actor.id,
+                                       reason="管理员 Agent 完成本轮澄清", source="mcp")
+                enqueue(db, "triage", requirement.id, f"triage:{requirement.id}:content:{requirement.content_revision}")
+            else:
+                requirement.state_version += 1
+            return _requirement_dict(requirement)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="answer_clarification",
+                                        key=idempotency_key, request=request, action=action)
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def create_delivery_task(spec_id: str, idempotency_key: str, risk_level: str = "medium",
+                         budget: dict[str, Any] | None = None,
+                         dependency_ids: list[str] | None = None) -> dict[str, Any]:
+    """为一个已批准规格创建唯一交付任务；重复请求返回同一任务。"""
+    token, actor = _identity("tasks:write")
+    request = {"spec_id": spec_id, "risk_level": risk_level, "budget": budget or {},
+               "dependency_ids": dependency_ids or []}
+    with SessionLocal() as db:
+        spec = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
+        if not spec:
+            raise ValueError("规格不存在")
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="create_delivery_task",
+            key=idempotency_key, request=request, action=lambda: task_dict(db, create_delivery_task_service(
+                db, spec, actor.id, risk_level=risk_level, budget=budget or {},
+                dependency_ids=dependency_ids or []), include_context=True))
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def claim_delivery_task(runner_name: str, provider: str, idempotency_key: str,
+                        model: str | None = None) -> dict[str, Any]:
+    """原子领取一个已批准的编码任务，返回租约、attempt 和完整 Context Bundle。"""
+    token, _ = _identity("tasks:claim")
+    if provider not in {"codex", "claude"} or token.agent_role not in {None, "coding"}:
+        raise ValueError("令牌角色或 provider 不允许领取编码任务")
+    request = {"runner_name": runner_name, "provider": provider, "model": model}
+    with SessionLocal() as db:
+        def action():
+            run, lease, task = claim_task(db, runner_name=runner_name, provider=provider, model=model,
+                                          role="coding", restricted_task_id=token.task_id)
+            result = run_dict(db, run, include_lease=True, lease_token=lease)
+            result["task"] = task_dict(db, task, include_context=True)
+            return result
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="claim_task",
+                                        key=idempotency_key, request=request, action=action)
+        response = dict(response)
+        if "lease_token" not in response:
+            response["lease_token"] = lease_token_for(db.query(AgentRun).filter(AgentRun.id == response["id"]).one())
+        db.commit()
+        return response
+
+
+def _run_for_token(db, run_id: str, token: AgentToken) -> AgentRun:
+    row = db.query(AgentRun).filter(AgentRun.id == run_id).first()
+    if not row or (token.task_id and token.task_id != row.task_id):
+        raise ValueError("执行不存在或不属于此令牌")
+    return row
+
+
+@mcp.tool()
+def heartbeat_run(run_id: str, attempt_id: str, lease_token: str, expected_state_version: int,
+                  idempotency_key: str, session_reference: str | None = None) -> dict[str, Any]:
+    """续租当前执行；默认租约为 90 秒。"""
+    token, _ = _identity("runs:write")
+    request = {"run_id": run_id, "attempt_id": attempt_id, "expected_state_version": expected_state_version,
+               "session_reference": session_reference}
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="heartbeat_run",
+            key=idempotency_key, request=request, action=lambda: run_dict(db, heartbeat(db, run,
+                attempt_id=attempt_id, lease_token=lease_token, expected_state_version=expected_state_version,
+                session_reference=session_reference)))
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def request_clarification(run_id: str, question: str, blocking: bool, attempt_id: str,
+                          lease_token: str, expected_state_version: int, idempotency_key: str) -> dict[str, Any]:
+    """执行中发现规格歧义时提出问题；阻塞问题会暂停当前执行。"""
+    token, _ = _identity("runs:write")
+    request = {"run_id": run_id, "question": question, "blocking": blocking, "attempt_id": attempt_id,
+               "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        def action():
+            item = submit_question(db, run, attempt_id=attempt_id, lease_token=lease_token,
+                                   expected_state_version=expected_state_version, question=question, blocking=blocking)
+            db.flush()
+            return {"question_id": item.id, "run": run_dict(db, run)}
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="request_clarification",
+                                        key=idempotency_key, request=request, action=action)
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def submit_implementation_plan(run_id: str, goal_summary: str, scope_summary: str,
+                               acceptance_plan: dict[str, str], attempt_id: str, lease_token: str,
+                               expected_state_version: int, idempotency_key: str,
+                               affected_modules: list[str] | None = None,
+                               migrations: list[str] | None = None,
+                               ambiguities: list[str] | None = None,
+                               out_of_scope: list[str] | None = None) -> dict[str, Any]:
+    """编码前提交结构化实现计划；必须覆盖全部必需 AC，歧义会暂停执行。"""
+    token, _ = _identity("runs:write")
+    plan = {"goal_summary": goal_summary, "scope_summary": scope_summary,
+            "acceptance_plan": acceptance_plan, "affected_modules": affected_modules or [],
+            "migrations": migrations or [], "ambiguities": ambiguities or [], "out_of_scope": out_of_scope or []}
+    request = {**plan, "run_id": run_id, "attempt_id": attempt_id,
+               "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="submit_implementation_plan",
+            key=idempotency_key, request=request, action=lambda: run_dict(db, submit_plan_service(
+                db, run, attempt_id=attempt_id, lease_token=lease_token,
+                expected_state_version=expected_state_version, plan=plan)))
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def submit_run_result(run_id: str, status: str, summary: str, attempt_id: str, lease_token: str,
+                      expected_state_version: int, idempotency_key: str, changed_files: list[str] | None = None,
+                      acceptance_coverage: dict[str, Any] | None = None,
+                      self_test_results: list[dict[str, Any]] | None = None,
+                      known_limitations: list[str] | None = None, head_sha: str | None = None,
+                      usage: dict[str, Any] | None = None, exit_reason: str | None = None) -> dict[str, Any]:
+    """上报编码结果和证据；自然语言成功不会自动赋予合并资格。"""
+    token, _ = _identity("runs:write")
+    if status not in {"succeeded", "failed", "cancelled"}:
+        raise ValueError("无效执行结果")
+    result = {"status": status, "summary": summary, "changed_files": changed_files or [],
+              "acceptance_coverage": acceptance_coverage or {}, "self_test_results": self_test_results or [],
+              "known_limitations": known_limitations or [], "head_sha": head_sha, "usage": usage or {},
+              "exit_reason": exit_reason}
+    request = {**result, "run_id": run_id, "attempt_id": attempt_id, "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="submit_run_result",
+            key=idempotency_key, request=request, action=lambda: run_dict(db, submit_result(db, run,
+                attempt_id=attempt_id, lease_token=lease_token, expected_state_version=expected_state_version,
+                result=result)))
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def submit_run_artifact(run_id: str, kind: str, uri: str, sha256: str, mime_type: str, size_bytes: int,
+                        attempt_id: str, lease_token: str, expected_state_version: int,
+                        idempotency_key: str, access_level: str = "private",
+                        metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    """登记执行产生的证据或产物元数据；内容本身应存放在受 ACL 保护的位置。"""
+    token, _ = _identity("artifacts:write")
+    artifact = {"kind": kind, "uri": uri, "sha256": sha256, "mime_type": mime_type,
+                "size_bytes": size_bytes, "access_level": access_level, "metadata": metadata or {}}
+    request = {**artifact, "run_id": run_id, "attempt_id": attempt_id,
+               "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        def action():
+            row = register_artifact(db, run, attempt_id=attempt_id, lease_token=lease_token,
+                                    expected_state_version=expected_state_version,
+                                    producer_token_id=token.id, artifact=artifact)
+            return {"id": row.id, "run_state_version": run.state_version, "sha256": row.sha256, "uri": row.uri}
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="register_artifact",
+                                        key=idempotency_key, request=request, action=action)
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def link_pull_request(task_id: str, pull_request_number: int, url: str, head_sha: str, base_sha: str,
+                      covered_acceptance_ids: list[str], expected_state_version: int,
+                      idempotency_key: str) -> dict[str, Any]:
+    """关联 GitHub PR；平台会回查仓库、master、head/base SHA。"""
+    token, _ = _identity("runs:write")
+    request = {"task_id": task_id, "pull_request_number": pull_request_number, "url": url,
+               "head_sha": head_sha, "base_sha": base_sha, "covered_acceptance_ids": covered_acceptance_ids,
+               "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        task = db.query(DeliveryTask).filter(DeliveryTask.id == task_id).first()
+        if not task or (token.task_id and token.task_id != task.id):
+            raise ValueError("交付任务不存在或不属于此令牌")
+        def action():
+            row = link_pr_service(db, task, number=pull_request_number, url=url, head_sha=head_sha,
+                                  base_sha=base_sha, covered_ids=covered_acceptance_ids,
+                                  expected_state_version=expected_state_version)
+            db.flush()
+            return {"link_id": row.id, "task": task_dict(db, task)}
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="link_pull_request",
+                                        key=idempotency_key, request=request, action=action)
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def get_run(run_id: str) -> dict[str, Any]:
+    """查询当前执行、租约状态和澄清问题。"""
+    token, _ = _identity("runs:write")
+    with SessionLocal() as db:
+        return run_dict(db, _run_for_token(db, run_id, token))
+
+
+@mcp.tool()
+def cancel_run(run_id: str) -> dict[str, Any]:
+    """由具备任务管理权限的受信任客户端取消执行并撤销后续动作。"""
+    token, actor = _identity("tasks:write")
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        cancel_run_service(db, run, actor.id)
+        db.commit()
+        return run_dict(db, run)
+
+
+@mcp.tool()
+def list_events(cursor: int = 0, limit: int = 100) -> list[dict[str, Any]]:
+    """按游标读取规格和交付语义事件。"""
+    _identity("specs:read")
+    with SessionLocal() as db:
+        rows = db.query(DomainEvent).filter(DomainEvent.sequence > cursor).order_by(DomainEvent.sequence).limit(min(max(limit, 1), 500)).all()
+        return [{"cursor": row.sequence, "id": row.id, "event_type": row.event_type,
+                 "aggregate_type": row.aggregate_type, "aggregate_id": row.aggregate_id,
+                 "aggregate_version": row.aggregate_version, "source": row.source,
+                 "payload": row.payload, "created_at": row.created_at.isoformat()} for row in rows]
 
 
 def _transport_security_settings() -> TransportSecuritySettings:
