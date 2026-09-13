@@ -45,31 +45,50 @@
       <!-- 总览卡片 -->
       <div class="summary-grid">
         <div class="panel summary-card cost">
-          <div class="summary-label">总成本 (USD)</div>
-          <div class="summary-value">${{ fmtCost(overview.total.total_cost_usd) }}</div>
-          <div class="summary-sub">{{ overview.total.requests.toLocaleString() }} 次请求</div>
+          <span class="summary-icon">$</span>
+          <div class="summary-content">
+            <div class="summary-label">总成本 (USD)</div>
+            <div class="summary-value">${{ fmtCost(overview.total.total_cost_usd) }}</div>
+            <div class="summary-sub">统计周期内累计成本</div>
+          </div>
         </div>
-        <div class="panel summary-card">
-          <div class="summary-label">输入 Tokens</div>
-          <div class="summary-value">{{ fmtTokens(overview.total.input_tokens) }}</div>
-          <div class="summary-sub">缓存读 {{ fmtTokens(overview.total.cache_read_tokens) }}</div>
+        <div class="panel summary-card token-total">
+          <div class="token-total-main">
+            <span class="summary-icon">T</span>
+            <div class="summary-content">
+              <div class="summary-label" title="新增输入、输出、缓存创建和缓存命中互不重叠后相加">真实消耗 Tokens</div>
+              <div class="summary-value total-token-value">{{ overview.total.real_total_tokens.toLocaleString() }}</div>
+              <div class="summary-sub">≈ {{ fmtTokens(overview.total.real_total_tokens) }} · 新增输入 + 输出 + 缓存</div>
+            </div>
+          </div>
+          <div class="token-breakdown">
+            <div class="token-breakdown-row input-row">
+              <span class="breakdown-dot"></span><span class="breakdown-label">新增输入</span>
+              <strong>{{ fmtTokens(overview.total.input_tokens) }}</strong>
+              <span class="breakdown-cache">缓存命中 {{ fmtTokens(overview.total.cache_read_tokens) }}</span>
+            </div>
+            <div class="token-breakdown-row output-row">
+              <span class="breakdown-dot"></span><span class="breakdown-label">输出</span>
+              <strong>{{ fmtTokens(overview.total.output_tokens) }}</strong>
+              <span class="breakdown-cache">缓存创建 {{ fmtTokens(overview.total.cache_creation_tokens) }}</span>
+            </div>
+          </div>
         </div>
-        <div class="panel summary-card">
-          <div class="summary-label">输出 Tokens</div>
-          <div class="summary-value">{{ fmtTokens(overview.total.output_tokens) }}</div>
-          <div class="summary-sub">缓存写 {{ fmtTokens(overview.total.cache_creation_tokens) }}</div>
-        </div>
-        <div class="panel summary-card">
-          <div class="summary-label">设备数</div>
-          <div class="summary-value">{{ overview.device_count }}</div>
-          <div class="summary-sub">{{ deviceLabels }}</div>
+        <div class="panel summary-card requests">
+          <span class="summary-icon">次</span>
+          <div class="summary-content">
+            <div class="summary-label">请求数</div>
+            <div class="summary-value">{{ overview.total.requests.toLocaleString() }}</div>
+            <div class="summary-sub">缓存命中率 {{ fmtPercent(overview.total.cache_hit_rate) }} · {{ overview.device_count }} 台设备</div>
+          </div>
         </div>
       </div>
 
+      <div class="analytics-grid">
       <!-- 日趋势：五条曲线同图，双 Y 轴 -->
       <article class="panel chart-card trend-card">
         <div class="chart-head">
-          <h2>用量趋势</h2>
+          <div><h2>用量趋势</h2><p>成本与 Token 用量的变化趋势</p></div>
           <el-button size="small" text @click="showTrendTable = !showTrendTable">{{ showTrendTable ? '图表' : '明细' }}</el-button>
         </div>
         <div v-show="!showTrendTable" ref="trendWrap" class="trend-wrap" @pointerleave="hoverIndex = null">
@@ -130,7 +149,7 @@
         </div>
         <div v-show="showTrendTable" class="trend-table-wrap">
           <table class="trend-table">
-            <thead><tr><th>日期</th><th>请求</th><th>输入 Tokens</th><th>输出 Tokens</th><th>缓存命中</th><th>缓存创建</th><th>成本 (USD)</th></tr></thead>
+            <thead><tr><th>日期</th><th>请求</th><th>新增输入</th><th>输出</th><th>缓存命中</th><th>缓存创建</th><th>成本 (USD)</th></tr></thead>
             <tbody>
               <tr v-for="point in points" :key="point.date">
                 <td>{{ point.date }}</td>
@@ -145,6 +164,25 @@
           </table>
         </div>
       </article>
+
+      <article class="panel chart-card cost-card">
+        <div class="chart-head"><div><h2>成本构成</h2><p>按模型的成本占比</p></div></div>
+        <div v-if="modelRows.length" class="cost-breakdown">
+          <div class="donut" :style="donutStyle" role="img" :aria-label="`总成本 ${fmtCost(overview.total.total_cost_usd)} 美元，按模型构成`">
+            <div class="donut-hole"><strong>${{ fmtCost(overview.total.total_cost_usd) }}</strong><span>总成本</span></div>
+          </div>
+          <div class="cost-legend">
+            <div v-for="(row, index) in modelRows.slice(0, 5)" :key="row.key" class="cost-legend-row">
+              <span class="cost-dot" :style="{ background: donutColors[index % donutColors.length] }"></span>
+              <span class="cost-name" :title="row.label">{{ row.label }}</span>
+              <strong>${{ fmtCost(row.total_cost_usd) }}</strong>
+              <span>{{ costPct(row.total_cost_usd) }}%</span>
+            </div>
+          </div>
+        </div>
+        <p v-else class="chart-empty">暂无数据</p>
+      </article>
+      </div>
 
       <!-- 分布 -->
       <div class="charts-grid">
@@ -261,7 +299,7 @@ const legendSeries: Array<{ key: SeriesKey; label: string }> = [
   { key: 'cost', label: '成本' },
   { key: 'cache_creation_tokens', label: '缓存创建' },
   { key: 'cache_read_tokens', label: '缓存命中' },
-  { key: 'input_tokens', label: '输入' },
+  { key: 'input_tokens', label: '新增输入' },
   { key: 'output_tokens', label: '输出' },
 ]
 const seriesVisible = reactive<Record<SeriesKey, boolean>>({
@@ -334,11 +372,6 @@ const devices = computed(() => {
   return [...seen.values()]
 })
 
-const deviceLabels = computed(() => {
-  const items = overview.value?.by_device ?? []
-  if (items.length) return items.map(item => item.label).join('、')
-  return devices.value.map(device => device.label).join('、') || '—'
-})
 function fmtCost(value: number): string {
   if (value >= 1000) return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
   if (value >= 1) return value.toFixed(2)
@@ -349,6 +382,9 @@ function fmtTokens(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
   return String(value)
+}
+function fmtPercent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`
 }
 function fmtTime(value?: string): string {
   if (!value) return '—'
@@ -529,6 +565,24 @@ const providerRows = computed(() => toRows(overview.value?.by_provider ?? []).sl
 const appTypeLabels: Record<string, string> = { claude: 'Claude Code', 'claude-desktop': 'Claude Desktop', codex: 'Codex', gemini: 'Gemini' }
 const appTypeRows = computed(() => toRows(overview.value?.by_app_type ?? [], appTypeLabels))
 const deviceRows = computed(() => toRows(overview.value?.by_device ?? []))
+const donutColors = ['#ff8747', '#2f74ef', '#8b5cf6', '#10a59c', '#cbd5e1']
+const costPct = (value: number) => {
+  const total = overview.value?.total.total_cost_usd || 0
+  return total ? ((value / total) * 100).toFixed(1) : '0.0'
+}
+const donutStyle = computed(() => {
+  const rows = modelRows.value.slice(0, 5)
+  const total = rows.reduce((sum, row) => sum + row.total_cost_usd, 0)
+  if (!total) return { background: '#eef2f7' }
+  let start = 0
+  const stops = rows.map((row, index) => {
+    const end = start + (row.total_cost_usd / total) * 100
+    const stop = `${donutColors[index % donutColors.length]} ${start.toFixed(2)}% ${end.toFixed(2)}%`
+    start = end
+    return stop
+  })
+  return { background: `conic-gradient(${stops.join(', ')})` }
+})
 
 // ---------- 导入 ----------
 function onFileChange(event: Event) {
@@ -576,7 +630,7 @@ async function removeDevice(device: { id: string; label: string }) {
 </script>
 
 <style scoped>
-.usage-page { max-width: 1200px; margin: 0 auto; }
+.usage-page { max-width: 1376px; margin: 0 auto; }
 .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
 .page-head-left { display: flex; gap: 14px; align-items: center; }
 .page-head h1 { margin: 0; font-size: 22px; }
@@ -588,42 +642,58 @@ async function removeDevice(device: { id: string; label: string }) {
 .empty .el-icon { font-size: 32px; opacity: .5; }
 .empty-hint { font-size: 13px; margin: 0; }
 
-.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
-.summary-card { margin-bottom: 0; }
-.summary-card.cost { border-top: 3px solid var(--rp-primary); }
-.summary-label { font-size: 13px; color: var(--rp-text-3); }
-.summary-value { font-size: 28px; font-weight: 800; margin-top: 4px; font-variant-numeric: tabular-nums; color: var(--rp-text); }
-.summary-card.cost .summary-value { color: var(--rp-primary); }
-.summary-sub { font-size: 12.5px; color: var(--rp-text-3); margin-top: 4px; }
+.summary-grid { display: grid; grid-template-columns: minmax(220px, .9fr) minmax(460px, 2fr) minmax(220px, .9fr); gap: 14px; margin-bottom: 16px; }
+.summary-card { --summary-color: #ff6b2c; --summary-soft: #fff0e8; min-height: 124px; margin-bottom: 0; padding: 20px; display: flex; align-items: flex-start; gap: 15px; overflow: hidden; position: relative; }
+.summary-card::after { content: ''; position: absolute; right: -16px; bottom: -24px; width: 90px; height: 90px; border-radius: 50%; background: var(--summary-soft); opacity: .55; }
+.summary-card.token-total { --summary-color: #2563eb; --summary-soft: #eaf2ff; align-items: center; justify-content: space-between; gap: 24px; }
+.summary-card.requests { --summary-color: #8b5cf6; --summary-soft: #f2ecff; }
+.summary-icon { width: 42px; height: 42px; display: inline-flex; align-items: center; justify-content: center; flex: none; border-radius: 13px; background: var(--summary-soft); color: var(--summary-color); font-size: 14px; font-weight: 800; }
+.summary-content { min-width: 0; position: relative; z-index: 1; }
+.summary-label { font-size: 13px; color: var(--rp-text-2); }
+.summary-value { font-size: 28px; font-weight: 800; margin-top: 5px; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--rp-text); }
+.total-token-value { font-size: clamp(22px, 2vw, 28px); }
+.summary-card.cost { border-color: rgba(255,107,44,.42); background: linear-gradient(135deg, #fff 30%, #fff9f5); }
+.summary-card.cost .summary-value { color: #ef5b1b; }
+.summary-sub { font-size: 12px; color: var(--rp-text-3); margin-top: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.token-total-main { display: flex; align-items: flex-start; gap: 15px; flex: none; }
+.token-breakdown { min-width: 290px; display: grid; gap: 9px; padding-left: 20px; border-left: 1px solid var(--rp-border); }
+.token-breakdown-row { display: grid; grid-template-columns: 8px 34px minmax(58px, auto) minmax(104px, auto); align-items: center; gap: 7px; font-size: 12px; }
+.breakdown-dot { width: 7px; height: 7px; border-radius: 50%; background: #2563eb; }
+.output-row .breakdown-dot { background: #10b981; }
+.breakdown-label { color: var(--rp-text-2); }
+.token-breakdown-row strong { color: var(--rp-text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.breakdown-cache { color: var(--rp-text-3); white-space: nowrap; }
 
+.analytics-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(330px, .92fr); gap: 16px; margin-bottom: 16px; }
 .charts-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
 .chart-card { margin-bottom: 0; min-width: 0; }
 .chart-card h2 { margin: 0 0 14px; font-size: 17px; }
 .chart-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; gap: 10px; flex-wrap: wrap; }
 .chart-head h2 { margin: 0; }
-.trend-card { grid-column: 1 / -1; margin-bottom: 16px; }
+.chart-head p { margin: 4px 0 0; color: var(--rp-text-3); font-size: 12.5px; }
+.trend-card { min-width: 0; }
 .trend-wrap { position: relative; }
 .trend-svg { display: block; }
 .trend-svg:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 2px; border-radius: 8px; }
 .trend-svg text { font-size: 11.5px; fill: var(--rp-text-3); font-variant-numeric: tabular-nums; }
 .trend-svg .gridline { stroke: var(--rp-border); stroke-width: 1; }
 .trend-svg .tick-label { fill: var(--rp-text-3); }
-.trend-svg .cost-tick { fill: #c2703d; }
-/* 五条曲线配色：同一色系的和谐搭配（成本右轴用暖陶色区分量纲） */
-.series-cost { stroke: #c2703d; fill: none; stroke-width: 2.5; }
-.cost-area { fill: rgba(194, 112, 61, .08); }
-.series-cache_creation_tokens { stroke: #9d7bbd; }
-.series-cache_read_tokens { stroke: #5b8db8; }
-.series-input_tokens { stroke: #4c7fb5; stroke-width: 2.5; }
-.series-output_tokens { stroke: #6faf8f; }
+.trend-svg .cost-tick { fill: #ea580c; }
+/* 主数据使用高辨识度冷色，成本使用暖橙色区分量纲。 */
+.series-cost { stroke: #f97316; fill: none; stroke-width: 2.5; }
+.cost-area { fill: rgba(249, 115, 22, .075); }
+.series-cache_creation_tokens { stroke: #8b5cf6; }
+.series-cache_read_tokens { stroke: #06b6d4; }
+.series-input_tokens { stroke: #2563eb; stroke-width: 2.6; }
+.series-output_tokens { stroke: #10b981; stroke-width: 2.35; }
 .trend-line { stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; fill: none; }
 .trend-svg .crosshair { stroke: var(--rp-text-3); stroke-width: 1; }
 .trend-svg .hover-dot { stroke: var(--rp-card); stroke-width: 2; }
-.hover-dot.series-cost { fill: #c2703d; }
-.hover-dot.series-cache_creation_tokens { fill: #9d7bbd; }
-.hover-dot.series-cache_read_tokens { fill: #5b8db8; }
-.hover-dot.series-input_tokens { fill: #4c7fb5; }
-.hover-dot.series-output_tokens { fill: #6faf8f; }
+.hover-dot.series-cost { fill: #f97316; }
+.hover-dot.series-cache_creation_tokens { fill: #8b5cf6; }
+.hover-dot.series-cache_read_tokens { fill: #06b6d4; }
+.hover-dot.series-input_tokens { fill: #2563eb; }
+.hover-dot.series-output_tokens { fill: #10b981; }
 /* 图例 */
 .chart-legend { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 0 0; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--rp-border); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; color: var(--rp-text-2); cursor: pointer; transition: opacity .15s, border-color .15s; }
@@ -631,11 +701,11 @@ async function removeDevice(device: { id: string; label: string }) {
 .legend-item:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 2px; }
 .legend-item.off { opacity: .4; }
 .legend-swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex: none; }
-.legend-swatch.series-cost { background: #c2703d; }
-.legend-swatch.series-cache_creation_tokens { background: #9d7bbd; }
-.legend-swatch.series-cache_read_tokens { background: #5b8db8; }
-.legend-swatch.series-input_tokens { background: #4c7fb5; }
-.legend-swatch.series-output_tokens { background: #6faf8f; }
+.legend-swatch.series-cost { background: #f97316; }
+.legend-swatch.series-cache_creation_tokens { background: #8b5cf6; }
+.legend-swatch.series-cache_read_tokens { background: #06b6d4; }
+.legend-swatch.series-input_tokens { background: #2563eb; }
+.legend-swatch.series-output_tokens { background: #10b981; }
 .legend-value { font-variant-numeric: tabular-nums; color: var(--rp-text); }
 .chart-tip { position: absolute; pointer-events: none; background: #0f172a; color: #fff; border-radius: 8px; padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; box-shadow: 0 4px 12px rgba(15, 23, 42, .2); z-index: 5; min-width: 130px; }
 .chart-tip strong { font-size: 13px; line-height: 1.3; }
@@ -655,6 +725,19 @@ async function removeDevice(device: { id: string; label: string }) {
 .hbar-value { font-size: 13px; color: var(--rp-text); font-variant-numeric: tabular-nums; text-align: right; }
 .chart-empty { color: var(--rp-text-3); font-size: 13px; margin: 8px 0; }
 
+.cost-card { min-height: 372px; }
+.cost-breakdown { min-height: 285px; display: grid; align-content: center; gap: 24px; }
+.donut { width: 174px; height: 174px; margin: 2px auto 0; padding: 20px; border-radius: 50%; box-shadow: 0 10px 28px -18px rgba(15,23,42,.4); }
+.donut-hole { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background: var(--rp-card); box-shadow: inset 0 0 0 1px rgba(226,232,240,.8); }
+.donut-hole strong { font-size: 20px; letter-spacing: -.02em; }
+.donut-hole span { margin-top: 4px; color: var(--rp-text-3); font-size: 11.5px; }
+.cost-legend { display: grid; gap: 8px; }
+.cost-legend-row { display: grid; grid-template-columns: 9px minmax(0,1fr) auto 44px; align-items: center; gap: 8px; font-size: 12px; }
+.cost-dot { width: 8px; height: 8px; border-radius: 50%; }
+.cost-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--rp-text-2); }
+.cost-legend-row strong { font-variant-numeric: tabular-nums; }
+.cost-legend-row > span:last-child { color: var(--rp-text-3); text-align: right; font-variant-numeric: tabular-nums; }
+
 .import-panel h2 { margin: 0 0 14px; font-size: 17px; }
 .import-form { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .import-hint { font-size: 12.5px; color: var(--rp-text-3); }
@@ -667,8 +750,27 @@ async function removeDevice(device: { id: string; label: string }) {
 
 @media (max-width: 960px) {
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-card.cost { grid-column: 1; grid-row: 1; }
+  .summary-card.requests { grid-column: 2; grid-row: 1; }
+  .summary-card.token-total { grid-column: 1 / -1; grid-row: 2; }
+  .analytics-grid { grid-template-columns: 1fr; }
   .charts-grid { grid-template-columns: 1fr; }
   .hbar-row { grid-template-columns: 92px minmax(0, 1fr) 68px; }
   .page-head-actions.usage-filters { width: 100%; justify-content: flex-start; }
+}
+@media (max-width: 560px) {
+  .summary-grid { gap: 10px; }
+  .summary-card { min-height: 112px; padding: 14px; gap: 10px; }
+  .summary-card.token-total { align-items: stretch; gap: 14px; }
+  .token-total-main { gap: 10px; }
+  .token-breakdown { min-width: 0; padding-left: 12px; }
+  .token-breakdown-row { grid-template-columns: 7px 48px auto; gap: 5px; }
+  .breakdown-cache { grid-column: 2 / -1; }
+  .summary-icon { width: 34px; height: 34px; border-radius: 10px; }
+  .summary-value { font-size: 22px; }
+  .usage-filters > * { width: 100% !important; }
+  .cost-card { min-height: 0; }
+  .chart-card { padding: 15px; }
+  .trend-wrap { overflow-x: auto; }
 }
 </style>

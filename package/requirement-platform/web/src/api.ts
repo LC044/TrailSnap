@@ -36,12 +36,14 @@ export type Dashboard = {
 
 export type UsageBreakdownItem = {
   key: string; label?: string; requests: number; input_tokens: number; output_tokens: number
-  cache_read_tokens: number; cache_creation_tokens: number; total_cost_usd: number
+  cache_read_tokens: number; cache_creation_tokens: number; input_total_tokens: number
+  real_total_tokens: number; cache_hit_rate: number; total_cost_usd: number
 }
 export type UsageOverview = {
   total: {
     requests: number; input_tokens: number; output_tokens: number; cache_read_tokens: number
-    cache_creation_tokens: number; total_cost_usd: number; date_from?: string; date_to?: string
+    cache_creation_tokens: number; input_total_tokens: number; real_total_tokens: number
+    cache_hit_rate: number; total_cost_usd: number; date_from?: string; date_to?: string
   }
   by_model: UsageBreakdownItem[]
   by_provider: UsageBreakdownItem[]

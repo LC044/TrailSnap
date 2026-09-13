@@ -672,17 +672,22 @@ def clean_usage_tables():
     yield
 
 
-def _ccswitch_sql(*, rollups="", logs="", providers="('prov-1', 'claude', 'Zhipu GLM', '{}', 'custom')") -> str:
+def _ccswitch_sql(
+    *, rollups="", logs="", providers="('prov-1', 'claude', 'Zhipu GLM', '{}', 'custom')",
+    with_semantics: bool = False,
+) -> str:
     """构造一份最小 cc-switch 导出 SQL（rollups/logs 为空时省略对应 INSERT）。"""
+    semantics_column = ', "input_token_semantics"' if with_semantics else ""
+    semantics_schema = "input_token_semantics INTEGER NOT NULL DEFAULT 0," if with_semantics else ""
     rollup_stmt = (
         'INSERT INTO "usage_daily_rollups" ("date", "app_type", "provider_id", "model", "request_model", '
         '"pricing_model", "request_count", "success_count", "input_tokens", "output_tokens", '
-        '"cache_read_tokens", "cache_creation_tokens", "total_cost_usd") VALUES ' + rollups + ";"
+        f'"cache_read_tokens", "cache_creation_tokens"{semantics_column}, "total_cost_usd") VALUES ' + rollups + ";"
         if rollups else ""
     )
     log_stmt = (
         'INSERT INTO "proxy_request_logs" ("request_id", "provider_id", "app_type", "model", "request_model", '
-        '"input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "input_cost_usd", '
+        f'"input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens"{semantics_column}, "input_cost_usd", '
         '"output_cost_usd", "cache_read_cost_usd", "cache_creation_cost_usd", "total_cost_usd", "latency_ms", '
         '"status_code", "session_id", "data_source", "created_at") VALUES ' + logs + ";"
         if logs else ""
@@ -700,6 +705,7 @@ CREATE TABLE proxy_request_logs (
     model TEXT NOT NULL, request_model TEXT,
     input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,
     cache_read_tokens INTEGER NOT NULL DEFAULT 0, cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+    {semantics_schema}
     input_cost_usd TEXT NOT NULL DEFAULT '0', output_cost_usd TEXT NOT NULL DEFAULT '0',
     cache_read_cost_usd TEXT NOT NULL DEFAULT '0', cache_creation_cost_usd TEXT NOT NULL DEFAULT '0',
     total_cost_usd TEXT NOT NULL DEFAULT '0', latency_ms INTEGER NOT NULL, first_token_ms INTEGER,
@@ -714,7 +720,7 @@ CREATE TABLE usage_daily_rollups (
     pricing_model TEXT NOT NULL DEFAULT '', request_count INTEGER NOT NULL DEFAULT 0,
     success_count INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL DEFAULT 0, cache_read_tokens INTEGER NOT NULL DEFAULT 0,
-    cache_creation_tokens INTEGER NOT NULL DEFAULT 0, total_cost_usd TEXT NOT NULL DEFAULT '0',
+    cache_creation_tokens INTEGER NOT NULL DEFAULT 0, {semantics_schema} total_cost_usd TEXT NOT NULL DEFAULT '0',
     avg_latency_ms INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (date, app_type, provider_id, model, request_model, pricing_model)
 );
@@ -733,6 +739,17 @@ def _log(request_id: str, model: str, created_at: int, cost: str = "0.01",
          tokens_in: int = 100, tokens_out: int = 50) -> str:
     return (f"('{request_id}', 'prov-1', 'claude', '{model}', NULL, {tokens_in}, {tokens_out}, 0, 0, "
             f"'0.005', '0.005', '0', '0', '{cost}', 120, 200, 'sess-1', 'proxy', {created_at})")
+
+
+def _semantic_log(
+    request_id: str, app_type: str, created_at: int, *, tokens_in: int,
+    tokens_out: int, cache_read: int, cache_creation: int, semantics: int,
+) -> str:
+    return (
+        f"('{request_id}', 'prov-1', '{app_type}', 'test-model', NULL, {tokens_in}, {tokens_out}, "
+        f"{cache_read}, {cache_creation}, {semantics}, '0', '0', '0', '0', '0', 120, 200, "
+        f"'sess-1', 'proxy', {created_at})"
+    )
 
 
 # 2026-08-14 00:13 上海时间 = 1786637600 epoch（UTC 2026-08-13 16:13）
@@ -823,6 +840,44 @@ def test_usage_import_overview_and_daily(clean_usage_tables):
         assert "glm-5.2" in filters["models"]
         assert "gpt-5.6-sol" in filters["models"]
         assert "claude" in filters["app_types"]
+
+
+def test_usage_uses_ccswitch_real_token_semantics(clean_usage_tables):
+    """真实消耗不重复计算缓存，并兼容 TOTAL/FRESH/LEGACY 三种输入语义。"""
+    logs = ",".join([
+        # Codex legacy：input 包含 cache read，但不保证包含 cache creation。
+        _semantic_log("legacy", "codex", LOG_EPOCH, tokens_in=1000, tokens_out=50,
+                      cache_read=600, cache_creation=100, semantics=0),
+        # Codex TOTAL：input 包含两类缓存。
+        _semantic_log("total", "codex", LOG_EPOCH + 1, tokens_in=1000, tokens_out=50,
+                      cache_read=300, cache_creation=200, semantics=1),
+        # FRESH：已经是新增输入，不再扣缓存。
+        _semantic_log("fresh", "codex", LOG_EPOCH + 2, tokens_in=500, tokens_out=50,
+                      cache_read=300, cache_creation=100, semantics=2),
+        # Claude 输入天然为 fresh；即使是 legacy，也不扣 cache read。
+        _semantic_log("claude", "claude", LOG_EPOCH + 3, tokens_in=200, tokens_out=50,
+                      cache_read=5000, cache_creation=0, semantics=0),
+    ])
+    sql = _ccswitch_sql(logs=logs, with_semantics=True)
+
+    with TestClient(app) as client:
+        owner = _usage_owner(client)
+        response = _import_usage(client, owner["token"], "语义测试", sql)
+        assert response.status_code == 200, response.text
+
+        total = client.get("/api/usage/overview").json()["data"]["total"]
+        # fresh input = (1000-600) + (1000-300-200) + 500 + 200
+        assert total["input_tokens"] == 1600
+        assert total["output_tokens"] == 200
+        assert total["cache_read_tokens"] == 6200
+        assert total["cache_creation_tokens"] == 400
+        assert total["input_total_tokens"] == 8200
+        assert total["real_total_tokens"] == 8400
+        assert abs(total["cache_hit_rate"] - (6200 / 8200)) < 1e-6
+
+        daily = client.get("/api/usage/daily").json()["data"]
+        point = next(item for item in daily if item["date"] == "2026-08-14")
+        assert point["input_tokens"] == 1600
 
 
 def test_usage_import_dedup_and_aging(clean_usage_tables):

@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import func
+from sqlalchemy import and_, case, func
 from sqlalchemy.orm import Session
 
 from .db import get_db
@@ -37,6 +37,12 @@ logger = logging.getLogger(__name__)
 
 TZ_SHANGHAI = ZoneInfo("Asia/Shanghai")
 MAX_IMPORT_BYTES = 64 * 1024 * 1024  # 64MB
+
+# 与 cc-switch input_token_semantics 保持一致。
+INPUT_SEMANTICS_LEGACY = 0
+INPUT_SEMANTICS_TOTAL = 1
+INPUT_SEMANTICS_FRESH = 2
+CACHE_INCLUSIVE_APPS = ("codex", "gemini", "grokbuild")
 
 
 # ---------------------------------------------------------------------------
@@ -82,9 +88,28 @@ def _parse_export(raw: bytes) -> tuple[sqlite3.Connection, int]:
         raise HTTPException(status_code=400, detail=f"SQL 解析失败：{exc}") from exc
 
 
-def _fetch_dict_rows(conn: sqlite3.Connection, table: str, columns: list[str]) -> list[dict]:
-    names = ",".join(f'"{col}"' for col in columns)
+def _fetch_dict_rows(
+    conn: sqlite3.Connection,
+    table: str,
+    columns: list[str],
+    optional_defaults: dict[str, int | float | str] | None = None,
+) -> list[dict]:
+    """读取导出表；新增列缺失时用默认值兼容旧版 cc-switch 备份。"""
     try:
+        available = {row[1] for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()}
+        if not available:
+            return []
+        selections: list[str] = []
+        for col in columns:
+            if col in available:
+                selections.append(f'"{col}"')
+            elif optional_defaults and col in optional_defaults:
+                value = optional_defaults[col]
+                literal = f"'{value}'" if isinstance(value, str) else str(value)
+                selections.append(f'{literal} AS "{col}"')
+            else:
+                return []
+        names = ",".join(selections)
         cursor = conn.execute(f"SELECT {names} FROM {table}")
     except sqlite3.OperationalError:
         return []
@@ -170,7 +195,9 @@ def import_ccswitch_export(db: Session, *, label: str, file_name: str, raw: byte
             conn, "usage_daily_rollups",
             ["date", "app_type", "provider_id", "model", "request_model", "pricing_model",
              "request_count", "success_count", "input_tokens", "output_tokens",
-             "cache_read_tokens", "cache_creation_tokens", "total_cost_usd"],
+             "cache_read_tokens", "cache_creation_tokens", "input_token_semantics", "total_cost_usd"],
+            # cc-switch 的日聚合自引入该列起就保存“新增输入”；旧聚合也按该口径生成。
+            optional_defaults={"input_token_semantics": INPUT_SEMANTICS_FRESH},
         )
         rollup_index: dict[tuple, UsageDailyRollup] = {
             (row.device_id, row.date, row.app_type, row.provider_id, row.model, row.request_model, row.pricing_model): row
@@ -182,10 +209,11 @@ def import_ccswitch_export(db: Session, *, label: str, file_name: str, raw: byte
             current = rollup_index.get(key)
             if current is not None:
                 stats.rollup_rows += 1
-                if int(row["request_count"] or 0) > current.request_count:
+                if int(row["request_count"] or 0) >= current.request_count:
                     current.request_count = int(row["request_count"] or 0)
                     current.success_count = int(row["success_count"] or 0)
                     current.input_tokens = int(row["input_tokens"] or 0)
+                    current.input_token_semantics = int(row["input_token_semantics"] or 0)
                     current.output_tokens = int(row["output_tokens"] or 0)
                     current.cache_read_tokens = int(row["cache_read_tokens"] or 0)
                     current.cache_creation_tokens = int(row["cache_creation_tokens"] or 0)
@@ -196,6 +224,7 @@ def import_ccswitch_export(db: Session, *, label: str, file_name: str, raw: byte
                 provider_id=row["provider_id"], model=row["model"], request_model=row["request_model"] or "",
                 pricing_model=row["pricing_model"] or "", request_count=int(row["request_count"] or 0),
                 success_count=int(row["success_count"] or 0), input_tokens=int(row["input_tokens"] or 0),
+                input_token_semantics=int(row["input_token_semantics"] or 0),
                 output_tokens=int(row["output_tokens"] or 0), cache_read_tokens=int(row["cache_read_tokens"] or 0),
                 cache_creation_tokens=int(row["cache_creation_tokens"] or 0),
                 total_cost_usd=_num(row["total_cost_usd"]),
@@ -210,8 +239,10 @@ def import_ccswitch_export(db: Session, *, label: str, file_name: str, raw: byte
             conn, "proxy_request_logs",
             ["request_id", "provider_id", "app_type", "model", "request_model",
              "input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens",
+             "input_token_semantics",
              "input_cost_usd", "output_cost_usd", "cache_read_cost_usd", "cache_creation_cost_usd",
              "total_cost_usd", "latency_ms", "status_code", "session_id", "data_source", "created_at"],
+            optional_defaults={"input_token_semantics": INPUT_SEMANTICS_LEGACY},
         )
         file_dates: list[str] = [row["date"] for row in rollup_rows if row.get("date")]
         new_rollup_max = max(file_dates) if file_dates else None
@@ -246,6 +277,7 @@ def import_ccswitch_export(db: Session, *, label: str, file_name: str, raw: byte
                 provider_id=row["provider_id"] or "", app_type=row["app_type"] or "",
                 model=row["model"] or "", request_model=row.get("request_model"),
                 input_tokens=int(row["input_tokens"] or 0), output_tokens=int(row["output_tokens"] or 0),
+                input_token_semantics=int(row["input_token_semantics"] or 0),
                 cache_read_tokens=int(row["cache_read_tokens"] or 0),
                 cache_creation_tokens=int(row["cache_creation_tokens"] or 0),
                 input_cost_usd=_num(row["input_cost_usd"]), output_cost_usd=_num(row["output_cost_usd"]),
@@ -314,6 +346,49 @@ def _date_range(db: Session, date_from: str | None, date_to: str | None) -> tupl
     return date_from or overall_min, date_to or overall_max
 
 
+def _fresh_input_expr(model):
+    """按 cc-switch 口径把来源各异的 input_tokens 统一为“新增输入”。
+
+    Anthropic 等来源的 input 已排除缓存；Codex/Gemini/GrokBuild 的原始 input
+    可能包含缓存读/创建，需结合 input_token_semantics 扣除，且保留防负数保护。
+    """
+    cache_total = model.cache_read_tokens + model.cache_creation_tokens
+    cache_inclusive = model.app_type.in_(CACHE_INCLUSIVE_APPS)
+    return case(
+        (model.input_token_semantics == INPUT_SEMANTICS_FRESH, model.input_tokens),
+        (
+            and_(
+                cache_inclusive,
+                model.input_token_semantics == INPUT_SEMANTICS_TOTAL,
+                model.input_tokens >= cache_total,
+            ),
+            model.input_tokens - cache_total,
+        ),
+        (
+            and_(
+                cache_inclusive,
+                model.input_token_semantics == INPUT_SEMANTICS_LEGACY,
+                model.input_tokens >= model.cache_read_tokens,
+            ),
+            model.input_tokens - model.cache_read_tokens,
+        ),
+        else_=model.input_tokens,
+    )
+
+
+def _add_token_metrics(item: dict) -> None:
+    """补充 cc-switch 展示口径：真实消耗与输入侧缓存命中率。"""
+    cacheable_input = (
+        item["input_tokens"] + item["cache_read_tokens"] + item["cache_creation_tokens"]
+    )
+    item["input_total_tokens"] = cacheable_input
+    item["real_total_tokens"] = cacheable_input + item["output_tokens"]
+    item["cache_hit_rate"] = round(
+        item["cache_read_tokens"] / cacheable_input if cacheable_input else 0.0,
+        6,
+    )
+
+
 def usage_overview(
     db: Session, date_from: str | None, date_to: str | None,
     model: str | None = None, app_type: str | None = None,
@@ -336,7 +411,7 @@ def usage_overview(
     rollup_count = db.query(func.coalesce(func.sum(UsageDailyRollup.request_count), 0)).filter(*rollup_filter).scalar() or 0
     total = {
         "requests": int(log_count) + int(rollup_count),
-        "input_tokens": int(_sum_pair(UsageRequestLog.input_tokens, UsageDailyRollup.input_tokens)),
+        "input_tokens": int(_sum_pair(_fresh_input_expr(UsageRequestLog), _fresh_input_expr(UsageDailyRollup))),
         "output_tokens": int(_sum_pair(UsageRequestLog.output_tokens, UsageDailyRollup.output_tokens)),
         "cache_read_tokens": int(_sum_pair(UsageRequestLog.cache_read_tokens, UsageDailyRollup.cache_read_tokens)),
         "cache_creation_tokens": int(_sum_pair(UsageRequestLog.cache_creation_tokens, UsageDailyRollup.cache_creation_tokens)),
@@ -344,6 +419,7 @@ def usage_overview(
         "date_from": date_from,
         "date_to": date_to,
     }
+    _add_token_metrics(total)
 
     def _breakdown(dimension: str) -> list[dict]:
         """按维度聚合（明细按行数计请求，rollup 按 request_count 计）。"""
@@ -352,7 +428,7 @@ def usage_overview(
         log_rows = db.query(
             log_dim.label("key"),
             func.count(UsageRequestLog.request_id).label("requests"),
-            func.sum(UsageRequestLog.input_tokens).label("input_tokens"),
+            func.sum(_fresh_input_expr(UsageRequestLog)).label("input_tokens"),
             func.sum(UsageRequestLog.output_tokens).label("output_tokens"),
             func.sum(UsageRequestLog.cache_read_tokens).label("cache_read_tokens"),
             func.sum(UsageRequestLog.cache_creation_tokens).label("cache_creation_tokens"),
@@ -361,7 +437,7 @@ def usage_overview(
         rollup_rows = db.query(
             rollup_dim.label("key"),
             func.sum(UsageDailyRollup.request_count).label("requests"),
-            func.sum(UsageDailyRollup.input_tokens).label("input_tokens"),
+            func.sum(_fresh_input_expr(UsageDailyRollup)).label("input_tokens"),
             func.sum(UsageDailyRollup.output_tokens).label("output_tokens"),
             func.sum(UsageDailyRollup.cache_read_tokens).label("cache_read_tokens"),
             func.sum(UsageDailyRollup.cache_creation_tokens).label("cache_creation_tokens"),
@@ -391,6 +467,7 @@ def usage_overview(
         items = sorted(merged.values(), key=lambda item: -item["total_cost_usd"])
         for item in items:
             item["total_cost_usd"] = round(item["total_cost_usd"], 6)
+            _add_token_metrics(item)
             if dimension == "provider_id":
                 item["label"] = provider_names.get(item["key"], item["key"] or "未知")
         return items
@@ -399,7 +476,7 @@ def usage_overview(
     log_device_rows = db.query(
         UsageRequestLog.device_id.label("key"),
         func.count(UsageRequestLog.request_id).label("requests"),
-        func.sum(UsageRequestLog.input_tokens).label("input_tokens"),
+        func.sum(_fresh_input_expr(UsageRequestLog)).label("input_tokens"),
         func.sum(UsageRequestLog.output_tokens).label("output_tokens"),
         func.sum(UsageRequestLog.cache_read_tokens).label("cache_read_tokens"),
         func.sum(UsageRequestLog.cache_creation_tokens).label("cache_creation_tokens"),
@@ -408,7 +485,7 @@ def usage_overview(
     rollup_device_rows = db.query(
         UsageDailyRollup.device_id.label("key"),
         func.sum(UsageDailyRollup.request_count).label("requests"),
-        func.sum(UsageDailyRollup.input_tokens).label("input_tokens"),
+        func.sum(_fresh_input_expr(UsageDailyRollup)).label("input_tokens"),
         func.sum(UsageDailyRollup.output_tokens).label("output_tokens"),
         func.sum(UsageDailyRollup.cache_read_tokens).label("cache_read_tokens"),
         func.sum(UsageDailyRollup.cache_creation_tokens).label("cache_creation_tokens"),
@@ -434,6 +511,7 @@ def usage_overview(
     by_device = sorted(device_map.values(), key=lambda item: -item["total_cost_usd"])
     for item in by_device:
         item["total_cost_usd"] = round(item["total_cost_usd"], 6)
+        _add_token_metrics(item)
 
     return {
         "total": total,
@@ -484,7 +562,7 @@ def usage_daily(
     log_rows = db.query(
         UsageRequestLog.created_date.label("day"),
         func.count(UsageRequestLog.request_id).label("requests"),
-        func.sum(UsageRequestLog.input_tokens).label("input_tokens"),
+        func.sum(_fresh_input_expr(UsageRequestLog)).label("input_tokens"),
         func.sum(UsageRequestLog.output_tokens).label("output_tokens"),
         func.sum(UsageRequestLog.cache_read_tokens).label("cache_read_tokens"),
         func.sum(UsageRequestLog.cache_creation_tokens).label("cache_creation_tokens"),
@@ -496,7 +574,7 @@ def usage_daily(
     rollup_rows = db.query(
         UsageDailyRollup.date.label("day"),
         func.sum(UsageDailyRollup.request_count).label("requests"),
-        func.sum(UsageDailyRollup.input_tokens).label("input_tokens"),
+        func.sum(_fresh_input_expr(UsageDailyRollup)).label("input_tokens"),
         func.sum(UsageDailyRollup.output_tokens).label("output_tokens"),
         func.sum(UsageDailyRollup.cache_read_tokens).label("cache_read_tokens"),
         func.sum(UsageDailyRollup.cache_creation_tokens).label("cache_creation_tokens"),

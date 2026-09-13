@@ -7,7 +7,7 @@
           <span>行影集</span>
           <span class="brand-sub">软件需求管理平台</span>
         </div>
-        <nav class="nav" aria-label="主导航">
+        <nav ref="navEl" class="nav" aria-label="主导航">
           <button v-for="item in visibleTabs" :key="item.key" :class="{ active: tab === item.key }" @click="switchTab(item.key)">
             {{ item.label }}
           </button>
@@ -60,7 +60,7 @@
 
       <!-- ============ 公开需求 ============ -->
       <section v-else-if="tab === 'public'">
-        <div class="page-head">
+        <div class="page-head public-page-head">
           <div class="page-head-left">
             <div class="page-head-icon"><el-icon :size="26"><Document /></el-icon></div>
             <div>
@@ -69,14 +69,11 @@
               <p class="desc">浏览和参与社区提出的需求，共同推动产品进步。</p>
             </div>
           </div>
-          <div class="page-head-actions">
-            <div class="stat-cards">
-              <div class="stat-card"><div class="num">{{ stats.total }}</div><div class="label">公开需求</div></div>
-              <div class="stat-card"><div class="num">{{ stats.planned }}</div><div class="label">已规划</div></div>
-              <div class="stat-card"><div class="num">{{ stats.developing }}</div><div class="label">开发中</div></div>
-              <div class="stat-card"><div class="num">{{ stats.done }}</div><div class="label">已完成</div></div>
-            </div>
-            <el-button type="primary" size="large" :icon="Plus" @click="switchTab('submit')">提交需求</el-button>
+          <div class="stat-cards" aria-label="需求统计">
+            <div class="stat-card tone-blue"><span class="stat-icon"><el-icon><Document /></el-icon></span><div><div class="num">{{ stats.total }}</div><div class="label">全部需求</div></div></div>
+            <div class="stat-card tone-violet"><span class="stat-icon"><el-icon><Flag /></el-icon></span><div><div class="num">{{ stats.planned }}</div><div class="label">已规划</div></div></div>
+            <div class="stat-card tone-cyan"><span class="stat-icon"><el-icon><Promotion /></el-icon></span><div><div class="num">{{ stats.developing }}</div><div class="label">开发中</div></div></div>
+            <div class="stat-card tone-green"><span class="stat-icon"><el-icon><CircleCheckFilled /></el-icon></span><div><div class="num">{{ stats.done }}</div><div class="label">已完成</div></div></div>
           </div>
         </div>
 
@@ -92,6 +89,7 @@
           <el-select v-model="sortBy" placeholder="最新更新" class="sort" @change="sortRequirements">
             <el-option label="最新更新" value="updated" /><el-option label="最早提交" value="oldest" /><el-option label="关注最多" value="followers" />
           </el-select>
+          <el-button class="submit-requirement-btn" type="primary" :icon="Plus" @click="switchTab('submit')">提交需求</el-button>
         </div>
 
         <RequirementTable :items="sortedRequirements" :manager="isManager" :user="user" @open="openDetail" @action="onRowAction" />
@@ -621,7 +619,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import {
   ArrowDown, Bell, Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
   InfoFilled, Key, Opportunity, Plus, Promotion, Refresh, Search, Service, Switch, Tickets, User, UserFilled, Warning,
@@ -672,6 +670,7 @@ const emptyRequirementForm = () => ({
 
 type Tab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'users'
 const tab = ref<Tab>('public')
+const navEl = ref<HTMLElement | null>(null)
 const user = ref<ApiUser | null>(null)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
@@ -764,6 +763,7 @@ async function switchTab(value: Tab) {
     history.pushState({}, '', '/')
   }
   tab.value = value
+  await scrollActiveTab()
   try {
     if (value === 'public') await loadRequirements()
     if (value === 'mine') await loadMine()
@@ -773,6 +773,10 @@ async function switchTab(value: Tab) {
     if (value === 'users') await loadUsers()
     if (value === 'integrations') await loadIntegrations()
   } catch (e) { ElMessage.error(errorMessage(e)) }
+}
+async function scrollActiveTab() {
+  await nextTick()
+  navEl.value?.querySelector<HTMLElement>('button.active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
 }
 function sortRequirements() { /* 由 computed 自动排序 */ }
 
@@ -1227,6 +1231,7 @@ onMounted(async () => {
   if (tab.value === 'users') await loadUsers()
   if (tab.value === 'integrations') await loadIntegrations()
   if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
+  await scrollActiveTab()
 })
 onBeforeUnmount(() => window.removeEventListener('popstate', handlePopState))
 </script>

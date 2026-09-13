@@ -6,38 +6,33 @@
 
     <header class="detail-header">
       <div>
-        <h1>{{ requirement.title }} <span>REQ-{{ requirement.public_number }}</span></h1>
-        <p>
-          {{ requirement.created_by_name || '用户' }} 于 {{ formatDateTime(requirement.created_at) }} 提交
-          · {{ requirement.follower_count || 0 }} 人关注
-        </p>
+        <div class="detail-eyebrow">需求详情 <span>REQ-{{ requirement.public_number }}</span></div>
+        <h1>{{ requirement.title }}</h1>
+        <div class="detail-meta">
+          <span class="avatar" :style="{ ...avatarColor(requirement.created_by_name || '用户') }">{{ (requirement.created_by_name || '用户').slice(0, 1) }}</span>
+          <strong>{{ requirement.created_by_name || '用户' }}</strong>
+          <span>{{ formatDateTime(requirement.created_at) }}</span><span>·</span><span>{{ requirement.follower_count || 0 }} 人关注</span>
+        </div>
       </div>
       <el-button :icon="Link" @click="emit('copyLink')">复制链接</el-button>
     </header>
 
     <div class="detail-layout">
       <div class="detail-main">
-        <article class="panel issue-content">
-          <div class="issue-author">
-            <span class="avatar" :style="{ ...avatarColor(requirement.created_by_name || '用户') }">
-              {{ (requirement.created_by_name || '用户').slice(0, 1) }}
-            </span>
-            <strong>{{ requirement.created_by_name || '用户' }}</strong>
-            <span>描述了这个需求</span>
-          </div>
-
+        <article class="panel issue-content detail-section-card">
+          <h2 class="detail-section-title"><span class="detail-section-icon">概</span>需求描述</h2>
           <div class="markdown-body" v-html="renderMarkdown(requirement.description)"></div>
 
           <section v-if="requirement.steps_to_reproduce" class="issue-section">
-            <h2>复现步骤</h2>
+            <h2 class="detail-section-title"><span class="detail-section-icon">复</span>复现步骤</h2>
             <div class="markdown-body" v-html="renderMarkdown(requirement.steps_to_reproduce)"></div>
           </section>
           <section v-if="requirement.current_behavior" class="issue-section">
-            <h2>当前行为</h2>
+            <h2 class="detail-section-title"><span class="detail-section-icon">现</span>当前行为</h2>
             <div class="markdown-body" v-html="renderMarkdown(requirement.current_behavior)"></div>
           </section>
           <section v-if="requirement.expected_behavior" class="issue-section">
-            <h2>期望行为</h2>
+            <h2 class="detail-section-title"><span class="detail-section-icon">期</span>期望行为</h2>
             <div class="markdown-body" v-html="renderMarkdown(requirement.expected_behavior)"></div>
           </section>
 
@@ -177,20 +172,26 @@ const historyLabel = (event: RequirementHistory) => {
 .detail-back { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 18px; padding: 7px 0; border: 0; background: transparent; color: var(--rp-text-2); cursor: pointer; }
 .detail-back:hover { color: var(--rp-primary); }
 .detail-back:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 3px; border-radius: 4px; }
-.detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 20px; }
-.detail-header h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.3; overflow-wrap: anywhere; }
-.detail-header h1 span { color: var(--rp-text-3); font-weight: 400; }
-.detail-header p { margin: 0; color: var(--rp-text-3); font-size: 13px; }
-.detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 20px; align-items: start; }
+.detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+.detail-eyebrow { margin-bottom: 8px; color: var(--rp-primary); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+.detail-eyebrow span { margin-left: 8px; color: var(--rp-text-3); font-weight: 600; letter-spacing: .02em; }
+.detail-header h1 { margin: 0 0 12px; max-width: 920px; font-size: 28px; line-height: 1.3; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.detail-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--rp-text-3); font-size: 13px; }
+.detail-meta .avatar { width: 26px; height: 26px; font-size: 11px; }
+.detail-meta strong { color: var(--rp-text-2); font-weight: 600; }
+.detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
 .detail-main, .detail-sidebar { min-width: 0; }
-.issue-content { padding: 0; overflow: hidden; }
+.issue-content { padding: 20px; overflow: hidden; }
+.detail-section-card { background: rgba(255,255,255,.96); }
+.detail-section-title { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; color: var(--rp-text); font-size: 16px; }
+.detail-section-icon { width: 29px; height: 29px; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; background: var(--rp-primary-soft); color: var(--rp-primary); font-size: 12px; font-weight: 800; }
 .issue-author { display: flex; align-items: center; gap: 8px; padding: 12px 18px; border-bottom: 1px solid var(--rp-border); background: #f8fafc; color: var(--rp-text-3); font-size: 13px; }
 .issue-author .avatar { width: 28px; height: 28px; font-size: 12px; }
 .issue-author strong { color: var(--rp-text); }
-.issue-content > .markdown-body { padding: 20px; }
-.issue-section { margin: 0 20px; padding: 18px 0; border-top: 1px solid var(--rp-border); }
-.issue-section h2 { margin: 0 0 10px; font-size: 16px; }
-.triage-box, .review-note, .log-panel, .attachments, .contact-box { margin: 0 20px 18px; }
+.issue-content > .markdown-body { padding: 0 0 4px 39px; }
+.issue-section { margin: 18px 0 0; padding: 18px 0 0; border-top: 1px solid var(--rp-border); }
+.issue-section > .markdown-body { padding-left: 39px; }
+.triage-box, .review-note, .log-panel, .attachments, .contact-box { margin: 18px 0 0; }
 .review-note { padding: 12px 14px; border-radius: 10px; background: #f8fafc; border: 1px solid var(--rp-border); }
 .review-note > strong { font-size: 13px; }
 .log-panel, .attachments { padding-top: 16px; border-top: 1px solid var(--rp-border); }
@@ -247,7 +248,7 @@ const historyLabel = (event: RequirementHistory) => {
   .detail-header { display: grid; }
   .detail-header h1 { font-size: 22px; }
   .detail-header .el-button { width: 100%; }
-  .issue-content > .markdown-body { padding: 16px; }
-  .issue-section, .triage-box, .review-note, .log-panel, .attachments, .contact-box { margin-left: 16px; margin-right: 16px; }
+  .detail-meta { align-items: flex-start; }
+  .issue-content > .markdown-body, .issue-section > .markdown-body { padding-left: 0; }
 }
 </style>
