@@ -159,7 +159,9 @@ export const api = {
   usageImports: () => call<UsageImportRecord[]>('get', '/usage/imports'),
   uploadUsageImport: (deviceLabel: string, file: File) => {
     const data = new FormData(); data.append('file', file); data.append('device_label', deviceLabel)
-    return client.post('/usage/imports', data).then(response => response.data.data as UsageImportResult)
+    return client.post('/usage/imports', data, {
+      timeout: 120000,
+    }).then(response => response.data.data as UsageImportResult)
   },
   deleteUsageImport: (id: string) => call<{ deleted: boolean; detail_removed: number }>('delete', `/usage/imports/${id}`),
   deleteUsageDevice: (id: string) => call<{ deleted: boolean; device_label: string }>('delete', `/usage/devices/${id}`),
