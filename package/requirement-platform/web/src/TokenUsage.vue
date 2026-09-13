@@ -761,11 +761,11 @@ async function removeDevice(device: { id: string; label: string }) {
 @media (max-width: 560px) {
   .summary-grid { gap: 10px; }
   .summary-card { min-height: 112px; padding: 14px; gap: 10px; }
-  .summary-card.token-total { align-items: stretch; gap: 14px; }
+  .summary-card.token-total { align-items: stretch; flex-direction: column; gap: 14px; }
   .token-total-main { gap: 10px; }
-  .token-breakdown { min-width: 0; padding-left: 12px; }
-  .token-breakdown-row { grid-template-columns: 7px 48px auto; gap: 5px; }
-  .breakdown-cache { grid-column: 2 / -1; }
+  .token-breakdown { min-width: 0; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--rp-border); }
+  .token-breakdown-row { grid-template-columns: 7px 58px minmax(58px, auto) 1fr; gap: 5px; }
+  .breakdown-cache { text-align: right; }
   .summary-icon { width: 34px; height: 34px; border-radius: 10px; }
   .summary-value { font-size: 22px; }
   .usage-filters > * { width: 100% !important; }
