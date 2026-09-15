@@ -5,6 +5,11 @@
     <div class="map-stage flex-1 min-h-0 relative overflow-hidden md:h-full">
       <div class="map-grid" aria-hidden="true" />
       <div class="map-radar" aria-hidden="true"><span /><span /><span /></div>
+      <div class="map-mode-switch map-glass">
+        <button class="active focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="emit('switch-view', 'map')">足迹地图</button>
+        <button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="emit('switch-view', 'statistics')">城市排行</button>
+        <button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="emit('switch-view', 'trajectory')">轨迹回放</button>
+      </div>
       <MapContainer
         ref="mapContainerRef"
         :level="level"
@@ -17,6 +22,11 @@
         @select-region="handleSelectRegion"
         @update-top-regions="(regions) => topRegions = regions"
       />
+      <div class="map-legend map-glass">
+        <span><i class="legend-dot legend-dot--place" />已打卡城市</span>
+        <span><i class="legend-dot legend-dot--route" />轨迹光点</span>
+        <span><i class="legend-dot legend-dot--active" />当前筛选</span>
+      </div>
 
       <div v-if="timelineYears.length" class="journey-timeline hidden md:flex" aria-label="足迹年份时间轴">
         <button
@@ -156,6 +166,7 @@ const emit = defineEmits<{
   (e: 'click-location', name: string, level?: string): void
   (e: 'change-level', level: string, viewState: { zoom: number, center: number[], parentRegion?: string }): void
   (e: 'select-year', year: number | null): void
+  (e: 'switch-view', mode: 'map' | 'statistics' | 'trajectory'): void
 }>()
 
 const mapContainerRef = ref<InstanceType<typeof MapContainer> | null>(null)
@@ -539,6 +550,16 @@ onUnmounted(() => {
 .location-insight-panel :deep(.border-gray-200),
 .location-insight-panel :deep(.border-gray-300) { border-color: rgba(var(--theme-rgb), 0.16) !important; }
 
+.map-mode-switch { position: absolute; z-index: 14; top: 26px; right: 28px; display: flex; gap: 3px; padding: 4px; border-radius: 12px; }
+.map-mode-switch button { padding: 7px 12px; border-radius: 8px; color: #91abc0; font-size: 11px; transition: color 180ms ease, background-color 180ms ease; }
+.map-mode-switch button:hover, .map-mode-switch button.active { color: #effaff; background: rgba(var(--theme-rgb), .22); }
+.map-legend { position: absolute; z-index: 12; bottom: 116px; left: 28px; display: flex; gap: 14px; padding: 8px 11px; border-radius: 10px; color: #9bb5ca; font-size: 10px; }
+.map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.legend-dot { width: 7px; height: 7px; border-radius: 999px; box-shadow: 0 0 8px currentColor; }
+.legend-dot--place { color: #35b7ff; background: #35b7ff; }
+.legend-dot--route { color: #ffb454; background: #ffb454; }
+.legend-dot--active { color: var(--theme-primary); background: var(--theme-primary); }
+
 .journey-timeline {
   position: absolute;
   z-index: 8;
@@ -632,5 +653,12 @@ onUnmounted(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .map-radar span { animation: none; opacity: 0.2; inset: 15%; }
+}
+@media (max-width: 767px) {
+  .map-mode-switch { top: 16px; right: 14px; }
+  .map-mode-switch button { padding: 6px 8px; font-size: 10px; }
+  .map-mode-switch button:nth-child(n+2) { display: none; }
+  .map-legend { bottom: 96px; left: 14px; gap: 8px; padding: 7px 8px; }
+  .map-legend span { font-size: 9px; }
 }
 </style>

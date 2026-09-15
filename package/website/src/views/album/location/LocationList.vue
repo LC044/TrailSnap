@@ -12,6 +12,9 @@
       </div>
 
       <div class="flex min-w-0 items-center gap-1 lg:gap-3">
+        <RouterLink to="/footprint" class="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="3D 足迹地图 · 全屏沉浸查看">
+          <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
+        </RouterLink>
         <!-- Add Scene Button (Left) -->
         <button
           v-if="level === 'scene'"
@@ -383,6 +386,7 @@
       :available-years="availableYears"
       @click-location="goToLocation"
       @select-year="selectYear"
+      @switch-view="(mode) => viewMode = mode"
       @change-level="(level: string, viewState?: { zoom: number; center: number[]; parentRegion?: string }) => changeLevel(level as any, viewState)"
     />
 
@@ -449,7 +453,7 @@ import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X } from 'lucide-vue-next'
+import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X, Globe2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LocationMap from './LocationMap.vue'

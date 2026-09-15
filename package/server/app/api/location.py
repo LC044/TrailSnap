@@ -5,6 +5,8 @@ from uuid import UUID
 from app.dependencies import get_db, BaseResponse
 from app.schemas import location as schemas
 from app.crud import location as crud
+from app.crud import footprint as footprint_crud
+from app.schemas.footprint import FootprintResponse
 from app.schemas import photo as photo_schemas
 from app.schemas import scene as scene_schemas
 from app.crud import scene as scene_crud
@@ -13,6 +15,36 @@ from app.db.models import User
 from app.schemas.photo import Photo
 
 router = APIRouter()
+
+@router.get("/footprint", response_model=BaseResponse[FootprintResponse], summary="获取三维足迹地图")
+def get_footprint(
+    year: int | None = Query(None, ge=1, le=9998, description="拍摄年份；不传则为全部年份"),
+    bbox: str | None = Query(None, max_length=120, description="可见范围 west,south,east,north；只裁剪地图图层"),
+    max_points: int = Query(800, ge=200, le=2000, description="城市和照片地点连线各自的数量上限"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    try:
+        data = footprint_crud.get_footprint(db, current_user.id, year, bbox, max_points)
+        return BaseResponse.success(data=data)
+    except ValueError as exc:
+        return BaseResponse.fail(code=422, msg=str(exc))
+
+
+@router.get("/footprint/photos", response_model=BaseResponse[List[Photo]], summary="获取足迹城市照片")
+def get_footprint_photos(
+    city_id: str = Query(..., min_length=4, max_length=2000),
+    year: int | None = Query(None, ge=1, le=9998),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(24, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    try:
+        return BaseResponse.success(data=footprint_crud.get_footprint_photos(db, current_user.id, city_id, year, skip, limit))
+    except ValueError as exc:
+        return BaseResponse.fail(code=422, msg=str(exc))
+
 
 @router.get("/search", response_model=List[schemas.LocationSearchItem], summary="搜索位置")
 def search_locations(

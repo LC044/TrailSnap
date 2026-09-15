@@ -79,10 +79,40 @@ let myMap: echarts.ECharts | null = null
 const { isDarkMode, currentTheme } = useTheme()
 const isDark = isDarkMode
 
-let cachedMapData: { data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] } } | null = null
+let cachedMapData: { data: any[], max: number, geoJson: any, mapName: string, routeData: any[], viewState?: { zoom: number, center: number[] } } | null = null
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
 let distributionRequestId = 0
 const MOBILE_ROAM_ZOOM_DAMPING = 0.35
+const MAP_SERIES_ID = 'location-regions'
+const ROUTE_SERIES_ID = 'location-routes'
+const ROUTE_GEO_ID = 'location-route-geo'
+const MAP_SCALE_LIMIT = { min: 0.7, max: 8 }
+
+const buildRouteData = (nodes: any[]) => {
+  const routeNodes = nodes
+    .filter(node => node.lat != null && node.lng != null)
+    .sort((a, b) => `${a.startDate}T${a.startTime || ''}`.localeCompare(`${b.startDate}T${b.startTime || ''}`))
+    .slice(0, 80)
+
+  return routeNodes.slice(0, -1).map((node, index) => {
+    const next = routeNodes[index + 1]
+    return {
+      coords: [[node.lng, node.lat], [next.lng, next.lat]],
+      fromName: node.locationName,
+      toName: next.locationName,
+    }
+  })
+}
+
+const getMapView = () => (myMap?.getOption() as any)?.series?.find((series: any) => series.id === MAP_SERIES_ID)
+
+// 底图负责交互；路线 geo 必须同步底图的中心和缩放，不能只在首次渲染时对齐。
+const setMapView = (zoom: number, center: number[] | null) => {
+  myMap?.setOption({
+    geo: { id: ROUTE_GEO_ID, zoom, center },
+    series: [{ id: MAP_SERIES_ID, zoom, center }],
+  })
+}
 
 // 双击下钻检测：记录上一次单击的区块名与时间，用于区分「单击选中」与「双击进入下一级」
 let lastClickName = ''
@@ -91,31 +121,29 @@ const DBL_CLICK_THRESHOLD = 350
 
 const handleZoom = (type: 'in' | 'out') => {
   if (!myMap) return
-  const currentOption = myMap.getOption()
-  const series = currentOption ? (currentOption as any).series[0] : null
+  const series = getMapView()
   if (!series) return
   const currentZoom = series.zoom || 1
-  const newZoom = type === 'in' ? currentZoom * 1.2 : currentZoom / 1.2
-  myMap.setOption({
-    series: [{ zoom: newZoom }]
-  })
+  const newZoom = Math.max(MAP_SCALE_LIMIT.min, Math.min(MAP_SCALE_LIMIT.max, type === 'in' ? currentZoom * 1.2 : currentZoom / 1.2))
+  setMapView(newZoom, series.center || null)
 }
 
 const resetMap = () => {
   if (!myMap) return
-  myMap.dispatchAction({ type: 'restore' })
+  const viewState = cachedMapData?.viewState
+  setMapView(viewState?.zoom || (props.parentRegion ? 0.9 : 1.2), viewState?.center?.length ? viewState.center : null)
 }
 
 const clearSelection = () => {
   if (myMap && props.selectedRegion) {
     myMap.dispatchAction({
       type: 'downplay',
-      seriesIndex: 0,
+      seriesId: MAP_SERIES_ID,
       name: props.selectedRegion
     })
     myMap.dispatchAction({
       type: 'unselect',
-      seriesIndex: 0,
+      seriesId: MAP_SERIES_ID,
       name: props.selectedRegion
     })
   }
@@ -157,6 +185,8 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
     echarts.registerMap(mapName, geoJson)
 
     let distribution = await locationService.getDistribution(props.level as 'city' | 'province' | 'district' | 'scene' | undefined, props.startDate, props.endDate)
+    const timeline = await locationService.getTimelineNodes(0, 500, props.startDate, props.endDate, 'city')
+    const routeData = buildRouteData(timeline.nodes)
 
     if (props.parentRegion && geoJson.features) {
       const nameMap = buildNameMap(geoJson)
@@ -184,12 +214,12 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
     const maxVal = Math.max(...values, 10)
     const visualMax = maxVal > p90 * 2 ? p90 * 1.5 : maxVal
 
-    cachedMapData = { data, max: visualMax, geoJson, mapName, viewState }
-    renderMap(data, visualMax, geoJson, mapName, viewState)
+    cachedMapData = { data, max: visualMax, geoJson, mapName, routeData, viewState }
+    renderMap(data, visualMax, geoJson, mapName, viewState, routeData)
     myMap.hideLoading()
 
     myMap.on('click', (params: any) => {
-      if (!params.name) return
+      if (params.seriesId !== MAP_SERIES_ID || !params.name) return
       const name = params.name
       const value = params.value || 0
       const now = Date.now()
@@ -224,12 +254,16 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
     // the map jump several zoom levels. Counter-adjust each mobile zoom event
     // to 35% of its original delta while leaving one-finger panning untouched.
     myMap.on('georoam', (params: any) => {
-      if (!myMap || window.innerWidth >= 768 || typeof params.zoom !== 'number') return
-      const series = (myMap.getOption() as any)?.series?.[0]
+      if (!myMap) return
+      const series = getMapView()
+      if (!series) return
       const currentZoom = Number(series?.zoom) || 1
-      const dampedFactor = 1 + (params.zoom - 1) * MOBILE_ROAM_ZOOM_DAMPING
-      const zoom = currentZoom / params.zoom * dampedFactor
-      myMap.setOption({ series: [{ zoom }] })
+      let zoom = currentZoom
+      if (window.innerWidth < 768 && typeof params.zoom === 'number') {
+        const dampedFactor = 1 + (params.zoom - 1) * MOBILE_ROAM_ZOOM_DAMPING
+        zoom = Math.max(MAP_SCALE_LIMIT.min, Math.min(MAP_SCALE_LIMIT.max, currentZoom / params.zoom * dampedFactor))
+      }
+      setMapView(zoom, series.center || null)
     })
 
   } catch (e) {
@@ -238,7 +272,7 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
   }
 }
 
-const renderMap = (data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] }) => {
+const renderMap = (data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] }, routeData: any[] = []) => {
   if (!myMap) return
 
   const isDarkMode = true
@@ -262,6 +296,18 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
 
   const option = {
     backgroundColor: 'transparent',
+    // ECharts 的 lines 系列必须绑定 geo 坐标系；地图 series 本身不会自动创建 geo。
+    // 使用相同 GeoJSON，并在每次视角变化时同步中心与缩放。
+    geo: {
+      id: ROUTE_GEO_ID,
+      map: mapName,
+      roam: false,
+      silent: true,
+      zoom: viewState?.zoom || (props.parentRegion ? 0.9 : 1.2),
+      center: viewState?.center?.length ? viewState.center : null,
+      itemStyle: { areaColor: 'transparent', borderColor: 'transparent' },
+      emphasis: { itemStyle: { areaColor: 'transparent' } },
+    },
     tooltip: {
       trigger: 'item',
       formatter: (params: any) => {
@@ -276,6 +322,7 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
     },
     visualMap: {
       show: false,
+      seriesIndex: 1,
       min: 1,
       max: max,
       left: isMobile ? 'center' : 'left',
@@ -290,14 +337,27 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
     },
     series: [
       {
+        id: ROUTE_SERIES_ID,
+        name: '旅行路线',
+        type: 'lines',
+        coordinateSystem: 'geo',
+        polyline: true,
+        zlevel: 2,
+        silent: true,
+        effect: { show: routeData.length > 0, period: 8, trailLength: 0, symbol: 'circle', symbolSize: 6, color: '#ffb454' },
+        lineStyle: { width: 0, opacity: 0 },
+        data: routeData,
+      },
+      {
+        id: MAP_SERIES_ID,
         name: '照片数量',
         type: 'map',
         map: mapName,
         roam: true,
-        scaleLimit: { min: 0.7, max: 8 },
+        scaleLimit: MAP_SCALE_LIMIT,
         selectedMode: 'single',
         zoom: viewState?.zoom || (props.parentRegion ? 0.9 : 1.2),
-        center: viewState?.center || undefined,
+        center: viewState?.center?.length ? viewState.center : null,
         nameMap: nameMap,
         data: data,
         label: {
@@ -382,6 +442,8 @@ const refreshDistribution = async () => {
       props.startDate,
       props.endDate
     )
+    const timeline = await locationService.getTimelineNodes(0, 500, props.startDate, props.endDate, 'city')
+    const routeData = buildRouteData(timeline.nodes)
     // 自动巡游或快速点击年份时，只应用最后一次请求，避免旧响应覆盖新年份。
     if (requestId !== distributionRequestId || !myMap) return
 
@@ -407,11 +469,12 @@ const refreshDistribution = async () => {
     const p90 = values[Math.floor(values.length * 0.9)] || 10
     const maxVal = Math.max(...values, 10)
     const visualMax = maxVal > p90 * 2 ? p90 * 1.5 : maxVal
-    cachedMapData = { ...cachedMapData, data, max: visualMax, geoJson, mapName }
+    cachedMapData = { ...cachedMapData, data, max: visualMax, geoJson, mapName, routeData }
 
     myMap.setOption({
       visualMap: { max: visualMax },
-      series: [{
+      series: [{ id: ROUTE_SERIES_ID, data: routeData, effect: { show: routeData.length > 0 } }, {
+        id: MAP_SERIES_ID,
         data,
         animationDurationUpdate: 480,
         animationEasingUpdate: 'cubicOut',
@@ -443,7 +506,9 @@ watch([() => props.startDate, () => props.endDate], () => {
 watch([isDark, currentTheme], () => {
   if (props.viewMode === 'map' && myMap) {
     if (cachedMapData) {
-      renderMap(cachedMapData.data, cachedMapData.max, cachedMapData.geoJson, cachedMapData.mapName, cachedMapData.viewState)
+      const series = getMapView()
+      const viewState = series ? { zoom: series.zoom, center: series.center } : cachedMapData.viewState
+      renderMap(cachedMapData.data, cachedMapData.max, cachedMapData.geoJson, cachedMapData.mapName, viewState, cachedMapData.routeData)
     } else {
       initMap()
     }
@@ -455,8 +520,8 @@ watch(() => props.selectedRegion, (val) => {
     // If selectedRegion is cleared from parent
     const currentOption = myMap.getOption()
     if (currentOption) {
-      myMap.dispatchAction({ type: 'downplay', seriesIndex: 0 })
-      myMap.dispatchAction({ type: 'unselect', seriesIndex: 0 })
+      myMap.dispatchAction({ type: 'downplay', seriesId: MAP_SERIES_ID })
+      myMap.dispatchAction({ type: 'unselect', seriesId: MAP_SERIES_ID })
     }
   }
 })

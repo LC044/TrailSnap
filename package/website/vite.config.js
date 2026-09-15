@@ -1,9 +1,39 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path';
+import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
+
+// Ship the globe's workers, textures and widget resources with TrailSnap. The
+// map must not depend on a third-party script CDN or a Cesium ion account.
+function cesiumAssetsPlugin() {
+  const require = createRequire(import.meta.url)
+  const sourceRoot = path.join(path.dirname(require.resolve('cesium/package.json')), 'Build/Cesium')
+  const folders = ['Assets', 'Workers', 'ThirdParty', 'Widgets']
+  let outputRoot = ''
+  return {
+    name: 'trailsnap-cesium-assets',
+    configResolved(config) { outputRoot = path.resolve(config.root, config.build.outDir, 'cesium') },
+    configureServer(server) {
+      server.middlewares.use('/cesium', (req, res, next) => {
+        let pathname
+        try { pathname = decodeURIComponent((req.url || '').split('?')[0]) } catch { return next() }
+        const file = path.resolve(sourceRoot, `.${pathname}`)
+        if (!file.startsWith(`${sourceRoot}${path.sep}`) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return next()
+        const contentTypes = { '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.xml': 'application/xml', '.wasm': 'application/wasm', '.jpg': 'image/jpeg', '.png': 'image/png', '.svg': 'image/svg+xml' }
+        res.setHeader('Content-Type', contentTypes[path.extname(file)] || 'application/octet-stream')
+        res.setHeader('Cache-Control', 'public, max-age=3600')
+        fs.createReadStream(file).pipe(res)
+      })
+    },
+    writeBundle() {
+      for (const folder of folders) fs.cpSync(path.join(sourceRoot, folder), path.join(outputRoot, folder), { recursive: true })
+    },
+  }
+}
 
 function pwaPlugin() {
   return {
@@ -12,6 +42,7 @@ function pwaPlugin() {
     generateBundle(_, bundle) {
       const precache = Object.keys(bundle)
         .filter((fileName) => /\.(?:js|css|woff2?|ttf|svg|png|jpe?g|webp)$/i.test(fileName))
+        .filter((fileName) => !/(?:cesiumRuntime|Cesium)-/.test(fileName))
         .map((fileName) => `/${fileName}`)
 
       const source = `
@@ -25,6 +56,14 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  // Cache only bundled public globe resources, never private map/photo URLs.
+  if (url.pathname.startsWith('/cesium/')) {
+    event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
+      if (response.ok) caches.open(CACHE_NAME).then((cache) => cache.put(request, response.clone()));
+      return response;
+    })));
+    return;
+  }
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).then((response) => {
       caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', response.clone()));
@@ -53,8 +92,10 @@ const apiTarget = (process.env.TS_API_BASE_URL || 'http://127.0.0.1:8000').repla
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: { CESIUM_BASE_URL: JSON.stringify('/cesium/') },
   plugins: [
     vue(),
+    cesiumAssetsPlugin(),
     // Element Plus 按需：仅用 resolver 注册第三方组件，不扫描本地 components 目录
     // （本地组件仍走各文件显式 import，避免行为变化）。
     Components({
