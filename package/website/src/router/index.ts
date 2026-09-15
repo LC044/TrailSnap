@@ -83,6 +83,13 @@ const routes: RouteRecordRaw[] = [
     ],
   },
 
+  {
+    path: '/footprint',
+    name: 'Footprint',
+    component: () => import('@/views/album/location/FootprintPage.vue'),
+    meta: { layout: 'blank', title: '3D 足迹地图', navGroup: 'albums' },
+  },
+
   // Annual Report (Standalone Layout)
   {
     path: '/annual-report',

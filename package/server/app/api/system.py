@@ -85,7 +85,17 @@ async def _proxy_tianditu_resource(
     """
     if not _TIANDITU_HOST.fullmatch(host):
         raise HTTPException(status_code=404, detail="Unsupported map host")
-    upstream = f"https://{host}/{path}"
+    upstream_hosts = [host]
+    tile_match = re.fullmatch(r"t([0-7])\.tianditu\.(gov\.cn|com)", host, re.IGNORECASE)
+    if tile_match and path.lower().startswith("dataserver"):
+        start = int(tile_match.group(1))
+        domain = tile_match.group(2)
+        # A single Tianditu tile shard can occasionally return 5xx while the
+        # other official shards remain healthy. Rotate through three shards so
+        # a transient upstream failure does not leave holes in the globe.
+        upstream_hosts.extend(
+            f"t{(start + offset) % 8}.tianditu.{domain}" for offset in (1, 2)
+        )
     map_key = None
     proxy_prefix = "/api/system/map-proxy"
     params = list(request.query_params.multi_items())
@@ -115,41 +125,56 @@ async def _proxy_tianditu_resource(
         )
     # Server-side keys must not inherit the browser/WebView origin. Browser
     # keys may be domain-bound, while server keys are validated as server calls.
+    last_error: Exception | None = None
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(upstream, params=params, headers=headers) as response:
-                body = await response.read()
-                content_type = response.headers.get("Content-Type", "application/octet-stream")
-                if "javascript" in content_type or "text/" in content_type:
-                    charset = response.charset or "utf-8"
-                    body = _rewrite_tianditu_text(
-                        body.decode(charset, errors="replace"),
-                        proxy_prefix=proxy_prefix,
-                        map_key=map_key,
-                    ).encode("utf-8")
-                    content_type = content_type.split(";", 1)[0] + "; charset=utf-8"
-                # Only success responses are cacheable: an upstream 403/502
-                # would otherwise poison the WebView cache for a full day.
-                cache_control = "no-store"
-                if response.status == 200:
-                    cache_control = (
-                        "private, max-age=3600"
-                        if map_token
-                        else "public, max-age=86400"
-                    )
-                return Response(
-                    content=body,
-                    status_code=response.status,
-                    media_type=None,
-                    headers={
-                        "Content-Type": content_type,
-                        "Cache-Control": cache_control,
-                        "X-Content-Type-Options": "nosniff",
-                    },
-                )
+        session_context = aiohttp.ClientSession(timeout=timeout)
     except aiohttp.ClientError as error:
-        logger.warning("Tianditu proxy failed for %s: %s", upstream, error)
+        logger.warning("Tianditu proxy session failed: %s", error)
         raise HTTPException(status_code=502, detail="Map service is unavailable") from error
+    async with session_context as session:
+        for index, upstream_host in enumerate(upstream_hosts):
+            upstream = f"https://{upstream_host}/{path}"
+            try:
+                async with session.get(upstream, params=params, headers=headers) as response:
+                    if response.status >= 500 and index < len(upstream_hosts) - 1:
+                        await response.read()
+                        continue
+                    body = await response.read()
+                    content_type = response.headers.get("Content-Type", "application/octet-stream")
+                    if "javascript" in content_type or "text/" in content_type:
+                        charset = response.charset or "utf-8"
+                        body = _rewrite_tianditu_text(
+                            body.decode(charset, errors="replace"),
+                            proxy_prefix=proxy_prefix,
+                            map_key=map_key,
+                        ).encode("utf-8")
+                        content_type = content_type.split(";", 1)[0] + "; charset=utf-8"
+                    # Only success responses are cacheable: an upstream 403/502
+                    # would otherwise poison the WebView cache for a full day.
+                    cache_control = "no-store"
+                    if response.status == 200:
+                        cache_control = (
+                            "private, max-age=3600"
+                            if map_token
+                            else "public, max-age=86400"
+                        )
+                    return Response(
+                        content=body,
+                        status_code=response.status,
+                        media_type=None,
+                        headers={
+                            "Content-Type": content_type,
+                            "Cache-Control": cache_control,
+                            "X-Content-Type-Options": "nosniff",
+                        },
+                    )
+            except aiohttp.ClientError as error:
+                last_error = error
+                if index < len(upstream_hosts) - 1:
+                    continue
+                break
+    logger.warning("Tianditu proxy failed for %s: %s", upstream, last_error)
+    raise HTTPException(status_code=502, detail="Map service is unavailable") from last_error
 
 
 @router.get("/map-proxy/{map_token}/{host}/{path:path}", include_in_schema=False)
