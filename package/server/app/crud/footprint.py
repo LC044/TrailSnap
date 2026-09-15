@@ -12,7 +12,7 @@ from hashlib import sha256
 from math import isfinite
 from uuid import UUID
 
-from sqlalchemy import String, and_, case, cast, extract, func, or_, select
+from sqlalchemy import Integer, String, and_, case, cast, extract, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models.photo import Photo
@@ -241,7 +241,14 @@ def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
     } for row in route_rows]
 
     key, _, _, city, _ = _place_expressions()
-    year_expr = extract("year", Photo.photo_time)
+    # SQLite's strftime parser rounds a value such as 23:59:59.999999 into
+    # the following day. Read the ISO year directly so the timeline preserves
+    # the same calendar year used by the exclusive date-range filter.
+    year_expr = (
+        cast(func.substr(cast(Photo.photo_time, String), 1, 4), Integer)
+        if db.get_bind().dialect.name == "sqlite"
+        else extract("year", Photo.photo_time)
+    )
     timeline_rows = db.execute(select(
         year_expr.label("year"), func.count(Photo.id).label("photo_count"),
         func.count(func.distinct(case((and_(*_gps_filters(), city != ""), key)))).label("city_count"),
