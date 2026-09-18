@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-18 (0.15.0)
+
+### New
+
+- Added an immersive 3D footprint map to the location album: a 3D globe showing the cities you've visited and travel routes, with 2D/3D/globe views, year filters, city search, journey replay, and year tour. Layer controls include photo heatmap, province boundaries, and 3D terrain.
+- Requirement platform admins can now change requirement statuses from the web UI: suggested transitions are ranked by common flow, and a reason is required and recorded in the timeline.
+- Added an agent-native delivery workflow to the requirement platform: approved specs become the single source of truth for agents, with delivery tasks, run records, PR links, and clarification Q&A all visible. AI triage now streams its feedback.
+- The requirement platform can import cc-switch backups to track token usage: real consumption and cost in a unified accounting model, with trend charts, model and device breakdowns, and request details.
+
+### Improvements
+
+- AI requirement triage supports per-model reasoning effort settings.
+- Fixed footprint year boundaries so photos taken at the very end of a year are not rolled into the next one by millisecond rounding.
+
+### Bug Fixes
+
+- Fixed Tianditu map tiles breaking on the mobile app: SDK default layers no longer bypass the server proxy, photo markers render correctly again, and stale caches are invalidated automatically after upgrading.
+- Fixed connecting to a new server on the mobile app: scanning a QR code or typing a new address no longer fails with "Failed to fetch", expired credentials are cleared silently, and the "scan or auto-discover" dead loop is gone.
+
 ## 2026-09-11 (0.14.2)
 
 ### New
