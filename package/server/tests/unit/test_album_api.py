@@ -49,6 +49,29 @@ def test_read_albums_returns_list_from_crud():
     assert response.data == albums
 
 
+
+def test_read_smart_album_overview_returns_crud_data():
+    user = _user()
+    db = MagicMock()
+    section = album_api.schemas.SmartAlbumSection(
+        item_count=2,
+        photo_count=7,
+        representatives=[album_api.schemas.SmartAlbumRepresentative(
+            entity_id="person-1",
+            name="Person 1",
+            photo_id=uuid4(),
+            photo_count=4,
+        )],
+    )
+    overview = album_api.schemas.SmartAlbumOverview(people=section)
+
+    with patch.object(album_api.crud, "get_smart_album_overview", return_value=overview) as crud_call:
+        response = album_api.read_smart_album_overview(db=db, current_user=user)
+
+    crud_call.assert_called_once_with(db, owner_id=user.id)
+    assert response.code == 0
+    assert response.data is overview
+
 # ----------------------------- GET /albums/{id} -----------------------
 
 

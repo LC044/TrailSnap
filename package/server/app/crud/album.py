@@ -1,8 +1,11 @@
 from typing import List, Optional, Union
+import json
+import logging
+import time
 from uuid import UUID
 
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, func, or_, text
 from datetime import datetime
 
 from app.db.models.album import Album, AlbumPhoto
@@ -13,6 +16,27 @@ from app.db.models.image_vector import ImageVector
 from app.db.models.user import User
 from app.schemas import album as album_schemas
 import numpy as np
+
+logger = logging.getLogger("app.album")
+
+
+def _postgresql_cte_hint(db: Session) -> str:
+    """Materialize reused CTEs on PostgreSQL to avoid repeating their joins."""
+    try:
+        return "MATERIALIZED" if db.get_bind().dialect.name == "postgresql" else ""
+    except Exception:
+        return ""
+
+
+def _decode_face_rect(value):
+    """Decode JSON face rectangles for databases that return TEXT from raw SQL."""
+    if value is None or isinstance(value, list):
+        return value
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, list) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _build_folder_condition(folders):
@@ -400,3 +424,316 @@ def batch_update_album_association(db: Session, photo_ids: List[UUID], album_id:
 
 # Metadata CRUD
 
+
+def _smart_people_section(db: Session, owner_id: UUID, representative_limit: int) -> album_schemas.SmartAlbumSection:
+    """Build the people summary in a single database round trip."""
+    query = text(
+        f"""
+        WITH valid_faces AS {_postgresql_cte_hint(db)} (
+            SELECT
+                fi.id AS identity_id,
+                fi.identity_name,
+                f.id AS face_id,
+                f.photo_id,
+                f.face_rect,
+                (f.id = fi.default_face_id) AS is_default_face
+            FROM faces f
+            JOIN face_identities fi ON fi.id = f.face_identity_id
+            JOIN photos p ON p.id = f.photo_id
+            WHERE f.face_identity_id IS NOT NULL
+              AND fi.owner_id = :owner_id
+              AND fi.is_deleted = false
+              AND fi.is_hidden = false
+              AND f.is_deleted = false
+              AND p.owner_id = :owner_id
+              AND p.is_deleted = false
+        ),
+        face_stats AS (
+            SELECT identity_id, COUNT(DISTINCT photo_id) AS photo_count
+            FROM valid_faces
+            GROUP BY identity_id
+        ),
+        overall_stats AS (
+            SELECT
+                COUNT(DISTINCT identity_id) AS item_count,
+                COUNT(DISTINCT photo_id) AS photo_count
+            FROM valid_faces
+        ),
+        top_identities AS (
+            SELECT identity_id, photo_count
+            FROM face_stats
+            ORDER BY photo_count DESC, identity_id ASC
+            LIMIT :representative_limit
+        ),
+        ranked_faces AS (
+            SELECT
+                vf.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY vf.identity_id
+                    ORDER BY vf.is_default_face DESC, vf.face_id ASC
+                ) AS face_rank
+            FROM valid_faces vf
+            WHERE vf.identity_id IN (SELECT identity_id FROM top_identities)
+        )
+        SELECT
+            ti.identity_id,
+            rf.identity_name,
+            rf.photo_id,
+            rf.face_rect,
+            ti.photo_count,
+            os.item_count,
+            os.photo_count AS total_photo_count
+        FROM top_identities ti
+        JOIN ranked_faces rf
+          ON rf.identity_id = ti.identity_id
+         AND rf.face_rank = 1
+        CROSS JOIN overall_stats os
+        ORDER BY ti.photo_count DESC, ti.identity_id ASC
+        """
+    )
+    rows = db.execute(query, {
+        "owner_id": str(owner_id),
+        "representative_limit": representative_limit,
+    }).mappings().all()
+
+    if not rows:
+        return album_schemas.SmartAlbumSection()
+
+    first = rows[0]
+    representatives = [
+        album_schemas.SmartAlbumRepresentative(
+            entity_id=str(row["identity_id"]),
+            name=row["identity_name"] or "未命名",
+            photo_id=row["photo_id"],
+            face_rect=_decode_face_rect(row["face_rect"]),
+            photo_count=int(row["photo_count"] or 0),
+        )
+        for row in rows
+        if row["photo_id"] is not None
+    ]
+    return album_schemas.SmartAlbumSection(
+        item_count=int(first["item_count"] or 0),
+        photo_count=int(first["total_photo_count"] or 0),
+        representatives=representatives,
+    )
+
+
+def _smart_location_section(db: Session, owner_id: UUID, representative_limit: int) -> album_schemas.SmartAlbumSection:
+    """Build the city-level location summary in a single database round trip."""
+    query = text(
+        f"""
+        WITH valid_locations AS {_postgresql_cte_hint(db)} (
+            SELECT
+                p.id AS photo_id,
+                pm.city AS location_name,
+                p.photo_time,
+                p.upload_time
+            FROM photos p
+            JOIN photo_metadata pm ON pm.photo_id = p.id
+            WHERE p.owner_id = :owner_id
+              AND p.is_deleted = false
+              AND pm.city IS NOT NULL
+              AND pm.city <> ''
+        ),
+        city_stats AS (
+            SELECT location_name, COUNT(photo_id) AS photo_count
+            FROM valid_locations
+            GROUP BY location_name
+        ),
+        overall_stats AS (
+            SELECT
+                COUNT(DISTINCT location_name) AS item_count,
+                COUNT(DISTINCT photo_id) AS photo_count
+            FROM valid_locations
+        ),
+        top_cities AS (
+            SELECT location_name, photo_count
+            FROM city_stats
+            ORDER BY photo_count DESC, location_name ASC
+            LIMIT :representative_limit
+        ),
+        ranked_photos AS (
+            SELECT
+                vl.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY vl.location_name
+                    ORDER BY
+                        CASE WHEN vl.photo_time IS NULL THEN 1 ELSE 0 END,
+                        vl.photo_time DESC,
+                        vl.upload_time DESC,
+                        vl.photo_id ASC
+                ) AS photo_rank
+            FROM valid_locations vl
+            WHERE vl.location_name IN (SELECT location_name FROM top_cities)
+        )
+        SELECT
+            tc.location_name,
+            rp.photo_id,
+            tc.photo_count,
+            os.item_count,
+            os.photo_count AS total_photo_count
+        FROM top_cities tc
+        JOIN ranked_photos rp
+          ON rp.location_name = tc.location_name
+         AND rp.photo_rank = 1
+        CROSS JOIN overall_stats os
+        ORDER BY tc.photo_count DESC, tc.location_name ASC
+        """
+    )
+    rows = db.execute(query, {
+        "owner_id": str(owner_id),
+        "representative_limit": representative_limit,
+    }).mappings().all()
+
+    if not rows:
+        return album_schemas.SmartAlbumSection()
+
+    first = rows[0]
+    representatives = [
+        album_schemas.SmartAlbumRepresentative(
+            entity_id=row["location_name"],
+            name=row["location_name"],
+            photo_id=row["photo_id"],
+            photo_count=int(row["photo_count"] or 0),
+        )
+        for row in rows
+        if row["photo_id"] is not None
+    ]
+    return album_schemas.SmartAlbumSection(
+        item_count=int(first["item_count"] or 0),
+        photo_count=int(first["total_photo_count"] or 0),
+        representatives=representatives,
+    )
+
+
+def _smart_classification_section(db: Session, owner_id: UUID, representative_limit: int) -> album_schemas.SmartAlbumSection:
+    """Build the AI-classification summary in a single database round trip."""
+    query = text(
+        f"""
+        WITH valid_relations AS {_postgresql_cte_hint(db)} (
+            SELECT
+                ptr.tag_id,
+                ptr.photo_id,
+                ptr.created_at,
+                ptr.id AS relation_id
+            FROM photo_tag_relations ptr
+            JOIN photo_tags pt ON pt.id = ptr.tag_id
+            JOIN photos p ON p.id = ptr.photo_id
+            WHERE pt.owner_id = :owner_id
+              AND pt.is_deleted = false
+              AND p.owner_id = :owner_id
+              AND p.is_deleted = false
+              AND ptr.is_deleted = false
+        ),
+        tag_stats AS (
+            SELECT tag_id, COUNT(DISTINCT photo_id) AS photo_count
+            FROM valid_relations
+            GROUP BY tag_id
+        ),
+        overall_stats AS (
+            SELECT
+                COUNT(DISTINCT tag_id) AS item_count,
+                COUNT(DISTINCT photo_id) AS photo_count
+            FROM valid_relations
+        ),
+        top_tags AS (
+            SELECT
+                pt.id AS tag_id,
+                pt.tag_name,
+                pt.cover_id,
+                ts.photo_count
+            FROM photo_tags pt
+            JOIN tag_stats ts ON ts.tag_id = pt.id
+            WHERE pt.owner_id = :owner_id
+              AND pt.is_deleted = false
+            ORDER BY ts.photo_count DESC, pt.id ASC
+            LIMIT :representative_limit
+        ),
+        ranked_relations AS (
+            SELECT
+                vr.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY vr.tag_id
+                    ORDER BY vr.created_at DESC, vr.relation_id DESC
+                ) AS relation_rank
+            FROM valid_relations vr
+            WHERE vr.tag_id IN (SELECT tag_id FROM top_tags)
+        ),
+        explicit_covers AS (
+            SELECT tt.tag_id, p.id AS photo_id
+            FROM top_tags tt
+            JOIN photos p ON p.id = tt.cover_id
+            WHERE p.owner_id = :owner_id
+              AND p.is_deleted = false
+        ),
+        fallback_covers AS (
+            SELECT rr.tag_id, rr.photo_id
+            FROM ranked_relations rr
+            WHERE rr.relation_rank = 1
+        )
+        SELECT
+            tt.tag_id,
+            tt.tag_name,
+            COALESCE(ec.photo_id, fc.photo_id) AS photo_id,
+            tt.photo_count,
+            os.item_count,
+            os.photo_count AS total_photo_count
+        FROM top_tags tt
+        LEFT JOIN explicit_covers ec ON ec.tag_id = tt.tag_id
+        LEFT JOIN fallback_covers fc ON fc.tag_id = tt.tag_id
+        CROSS JOIN overall_stats os
+        ORDER BY tt.photo_count DESC, tt.tag_id ASC
+        """
+    )
+    rows = db.execute(query, {
+        "owner_id": str(owner_id),
+        "representative_limit": representative_limit,
+    }).mappings().all()
+
+    if not rows:
+        return album_schemas.SmartAlbumSection()
+
+    first = rows[0]
+    representatives = [
+        album_schemas.SmartAlbumRepresentative(
+            entity_id=str(row["tag_id"]),
+            name=row["tag_name"],
+            photo_id=row["photo_id"],
+            photo_count=int(row["photo_count"] or 0),
+        )
+        for row in rows
+        if row["photo_id"] is not None
+    ]
+    return album_schemas.SmartAlbumSection(
+        item_count=int(first["item_count"] or 0),
+        photo_count=int(first["total_photo_count"] or 0),
+        representatives=representatives,
+    )
+
+
+def get_smart_album_overview(db: Session, owner_id: UUID, representative_limit: int = 4) -> album_schemas.SmartAlbumOverview:
+    """Return counts and representative covers for the three built-in smart albums."""
+    started_at = time.perf_counter()
+    section_timings: dict[str, float] = {}
+
+    def timed_section(name: str, builder) -> album_schemas.SmartAlbumSection:
+        section_started_at = time.perf_counter()
+        result = builder()
+        section_timings[name] = (time.perf_counter() - section_started_at) * 1000
+        return result
+
+    overview = album_schemas.SmartAlbumOverview(
+        people=timed_section("people", lambda: _smart_people_section(db, owner_id, representative_limit)),
+        location=timed_section("location", lambda: _smart_location_section(db, owner_id, representative_limit)),
+        classification=timed_section("classification", lambda: _smart_classification_section(db, owner_id, representative_limit)),
+    )
+    duration_ms = (time.perf_counter() - started_at) * 1000
+    logger.info(
+        "Smart album overview generated user_id=%s duration_ms=%.1f people_ms=%.1f location_ms=%.1f classification_ms=%.1f",
+        owner_id,
+        duration_ms,
+        section_timings.get("people", 0),
+        section_timings.get("location", 0),
+        section_timings.get("classification", 0),
+    )
+    return overview

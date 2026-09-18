@@ -80,17 +80,20 @@
           @keydown.space.prevent="navigateToSmartAlbum(album)"
         >
           <!-- Cover -->
-          <div class="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-gradient-to-br from-gray-100 to-gray-200 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 dark:from-gray-800 dark:to-gray-900 sm:mb-3 sm:aspect-square sm:h-auto sm:w-full">
-             <!-- Icon/Cover Content -->
-             <component :is="album.icon" class="h-6 w-6 text-gray-400 transition-colors duration-300 group-hover:text-primary-500 sm:h-12 sm:w-12" stroke-width="1.5" />
-             
-             <!-- Overlay -->
-             <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors"></div>
+          <div class="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-gray-100 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 sm:mb-3 sm:aspect-square sm:h-auto sm:w-full">
+            <SmartAlbumCover
+              :type="album.id"
+              :icon="album.icon"
+              :data="album.data"
+              :loading="smartOverviewLoading"
+              :alt-prefix="`${album.title}封面`"
+            />
+            <div class="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/5"></div>
           </div>
           <!-- Info -->
           <div class="min-w-0 flex-1 sm:mt-2">
-             <h3 class="truncate font-semibold text-gray-900 dark:text-white sm:font-bold">{{ album.title }}</h3>
-             <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ album.description }}</p>
+            <h3 class="truncate font-semibold text-gray-900 dark:text-white sm:font-bold">{{ album.title }}</h3>
+            <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ smartAlbumDescription(album) }}</p>
           </div>
           <ChevronRight class="h-5 w-5 shrink-0 text-gray-300 dark:text-gray-600 sm:hidden" />
         </div>
@@ -362,18 +365,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
 import { Plus, Sparkles, Edit2, Trash2, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles, ChevronRight } from 'lucide-vue-next'
-import { albumService } from '@/api/album'
+import { albumService, type SmartAlbumSection } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { format } from 'date-fns'
 import { useWindowSize } from '@vueuse/core'
 import { useUiStore } from '@/stores/uiStore'
+import SmartAlbumCover from '@/components/SmartAlbumCover.vue'
 
 const router = useRouter()
 const store = useAlbumStore()
@@ -400,29 +404,77 @@ const formatDate = (timestamp: number) => {
 }
 
 // Smart Albums Configuration
-const smartAlbums = [
+type SmartAlbumKind = 'people' | 'location' | 'classification'
+
+interface SmartAlbumCard {
+  id: SmartAlbumKind
+  title: string
+  description: string
+  emptyDescription: string
+  itemUnit: string
+  icon: Component
+  route: string
+  data?: SmartAlbumSection | null
+}
+
+const smartOverview = computed(() => store.smartAlbumOverview)
+const smartOverviewLoading = ref(false)
+
+const smartAlbums = computed<SmartAlbumCard[]>(() => [
   {
     id: 'people',
     title: '人物相册',
     description: '智能人脸识别',
+    emptyDescription: '暂无人物内容',
+    itemUnit: '位人物',
     icon: Users,
-    route: '/album/people'
+    route: '/album/people',
+    data: smartOverview.value?.people
   },
   {
     id: 'location',
     title: '位置相册',
     description: '按地点分类',
+    emptyDescription: '暂无位置内容',
+    itemUnit: '个地点',
     icon: MapPin,
-    route: '/album/location'
+    route: '/album/location',
+    data: smartOverview.value?.location
   },
   {
     id: 'classification',
     title: '智能分类',
     description: 'AI自动分类',
+    emptyDescription: '暂无分类内容',
+    itemUnit: '个分类',
     icon: Tag,
-    route: '/album/classification'
+    route: '/album/classification',
+    data: smartOverview.value?.classification
   }
-]
+])
+
+const formatSmartCount = (value: number | undefined) => (value ?? 0).toLocaleString('zh-CN')
+
+const smartAlbumDescription = (album: SmartAlbumCard) => {
+  if (smartOverviewLoading.value) return album.description
+  const section = album.data
+  if (!section || section.item_count <= 0) {
+    return album.emptyDescription
+  }
+  return `${formatSmartCount(section.item_count)} ${album.itemUnit} · ${formatSmartCount(section.photo_count)} 张照片`
+}
+
+const loadSmartOverview = async () => {
+  if (store.hasFreshSmartAlbumOverview()) return
+  smartOverviewLoading.value = true
+  try {
+    await store.fetchSmartAlbumOverview()
+  } catch (error) {
+    console.error('Failed to load smart album overview', error)
+  } finally {
+    smartOverviewLoading.value = false
+  }
+}
 
 const navigateToSmartAlbum = (album: any) => {
   if (album.route) {
@@ -710,7 +762,7 @@ const confirmDelete = async (album: Album) => {
 }
 
 onMounted(async () => {
-  await store.fetchAlbums()
+  await Promise.all([store.fetchAlbums(), loadSmartOverview()])
 })
 
 </script>

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, Integer, UniqueConstraint, Float
+from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, Integer, UniqueConstraint, Float, Index, text
 from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -32,4 +32,11 @@ class PhotoTagRelation(Base):
 
     __table_args__ = (
         UniqueConstraint('photo_id', 'tag_id', name='uq_photo_tag'),
+        Index(
+            "ix_photo_tag_relations_tag_alive",
+            "tag_id",
+            "photo_id",
+            postgresql_where=text("is_deleted = false"),
+            sqlite_where=text("is_deleted = false"),
+        ),
     )

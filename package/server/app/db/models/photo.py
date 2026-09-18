@@ -4,7 +4,7 @@
 import uuid
 import enum
 from datetime import datetime
-from sqlalchemy import Column, String, Text, ForeignKey, DateTime, BigInteger, Integer, Enum, Float, JSON, Boolean, Index
+from sqlalchemy import Column, String, Text, ForeignKey, DateTime, BigInteger, Integer, Enum, Float, JSON, Boolean, Index, text
 from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -27,6 +27,13 @@ class Photo(Base):
     __table_args__ = (
         Index("ix_photos_file_path", "file_path", postgresql_using="hash"),
         Index("uq_photos_owner_backup_key", "owner_id", "backup_key", unique=True),
+        Index(
+            "ix_photos_owner_alive",
+            "owner_id",
+            "id",
+            postgresql_where=text("is_deleted = false"),
+            sqlite_where=text("is_deleted = false"),
+        ),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
