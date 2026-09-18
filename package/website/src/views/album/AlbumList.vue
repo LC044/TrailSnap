@@ -118,6 +118,7 @@
           @click="navigateToAlbum(album.id)"
           @keydown.enter="navigateToAlbum(album.id)"
           @keydown.space.prevent="navigateToAlbum(album.id)"
+          @touchstart="album.type !== 'system' ? onAlbumTouchStart(album, $event) : undefined"
         >
           <!-- Cover -->
           <div class="relative mb-2.5 aspect-square overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 dark:bg-gray-800 sm:mb-3 sm:rounded-xl">
@@ -140,7 +141,7 @@
             </div>
 
             <!-- Actions (Only for User Albums) -->
-            <div v-if="album.type !== 'system'" class="absolute right-2 top-2 z-10 flex gap-1.5 opacity-100 transition-opacity duration-200 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+            <div v-if="album.type !== 'system'" class="absolute right-2 top-2 z-10 hidden gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 md:flex md:group-hover:opacity-100">
               <button
                 type="button"
                 @click.stop="openEditModal(album)"
@@ -181,6 +182,45 @@
         <button type="button" @click="openCreateModal('user')" class="mt-4 rounded-lg px-3 py-2 text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">创建第一个相册</button>
       </div>
     </section>
+
+    <!-- Mobile Long-Press Context Menu (positioned near the pressed card) -->
+    <Transition name="popover">
+      <div
+        v-if="showContextMenu"
+        class="fixed inset-0 z-[120] md:hidden"
+        @click.self="closeContextMenu"
+        @touchstart.self="closeContextMenu"
+      >
+        <div
+          class="absolute min-w-[160px] -translate-x-1/2 -translate-y-full rounded-xl bg-white/95 py-1 shadow-xl ring-1 ring-black/5 backdrop-blur-md dark:bg-gray-900/95 dark:ring-white/10"
+          :style="menuStyle"
+          role="menu"
+          :aria-label="`相册 ${contextMenuAlbum?.title} 的操作`"
+          @click.stop
+          @touchstart.stop
+        >
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-200 dark:hover:bg-gray-800"
+            role="menuitem"
+            @click="editFromContextMenu"
+          >
+            <Edit2 class="h-4 w-4 text-gray-500 dark:text-gray-400" />
+            <span>编辑相册</span>
+          </button>
+          <div class="mx-2 border-t border-gray-100 dark:border-gray-800"></div>
+          <button
+            type="button"
+            class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-red-500 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:hover:bg-red-500/10"
+            role="menuitem"
+            @click="deleteFromContextMenu"
+          >
+            <Trash2 class="h-4 w-4" />
+            <span>删除相册</span>
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Create/Edit Modal -->
     <el-dialog
@@ -377,6 +417,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { format } from 'date-fns'
 import { useWindowSize } from '@vueuse/core'
 import { useUiStore } from '@/stores/uiStore'
+import { useOverlayStack } from '@/composables/useOverlayStack'
+import { useLongPress } from '@/composables/useLongPress'
 import SmartAlbumCover from '@/components/SmartAlbumCover.vue'
 
 const router = useRouter()
@@ -765,6 +807,66 @@ onMounted(async () => {
   await Promise.all([store.fetchAlbums(), loadSmartOverview()])
 })
 
+// ----- 移动端长按相册卡片触发的位置感知的上下文菜单 -----
+interface ContextMenuPos { x: number; y: number }
+const contextMenuAlbum = ref<Album | null>(null)
+const menuPos = ref<ContextMenuPos>({ x: 0, y: 0 })
+const showContextMenu = ref(false)
+useOverlayStack(showContextMenu, () => {
+  showContextMenu.value = false
+  contextMenuAlbum.value = null
+})
+
+const menuStyle = computed(() => ({
+  left: `${menuPos.value.x}px`,
+  // 弹出在触点上方 8px,顶部留出 ~44px 边距避免顶到屏幕外
+  top: `${Math.max(44, menuPos.value.y - 8)}px`,
+}))
+
+const openContextMenu = (album: Album, pos: ContextMenuPos) => {
+  contextMenuAlbum.value = album
+  menuPos.value = pos
+  showContextMenu.value = true
+}
+
+const closeContextMenu = () => {
+  showContextMenu.value = false
+  contextMenuAlbum.value = null
+}
+
+const editFromContextMenu = async () => {
+  const album = contextMenuAlbum.value
+  closeContextMenu()
+  if (album) await openEditModal(album)
+}
+
+const deleteFromContextMenu = async () => {
+  const album = contextMenuAlbum.value
+  closeContextMenu()
+  if (album) await confirmDelete(album)
+}
+
+// useLongPress 接收 onLongPress 时一并返回触点坐标,避免闭包泄露 DOM 引用
+const { onTouchstart: longPressHandler } = useLongPress({
+  onLongPress: (event: TouchEvent) => {
+    const album = currentAlbumForLongPress.value
+    if (!album || album.type === 'system') return
+    const touch = event.changedTouches?.[0]
+    const pos: ContextMenuPos = touch
+      ? { x: touch.clientX, y: touch.clientY }
+      : menuPos.value
+    openContextMenu(album, pos)
+  },
+})
+
+const currentAlbumForLongPress = ref<Album | null>(null)
+
+const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
+  if (!isMobile.value || album.type === 'system') return
+  currentAlbumForLongPress.value = album
+  longPressHandler(event)
+}
+
 </script>
 
 <style scoped>
@@ -792,4 +894,14 @@ onMounted(async () => {
 .mobile-tool-subtitle {
   @apply mt-0.5 block whitespace-nowrap text-[11px] text-gray-500 dark:text-gray-400;
 }
+
+.slide-up-enter-active,
+.slide-up-leave-active { transition: all 0.3s ease; }
+.slide-up-enter-from,
+.slide-up-leave-to { transform: translateY(20px); opacity: 0; }
+
+.popover-enter-active,
+.popover-leave-active { transition: opacity 0.15s ease, transform 0.15s ease; }
+.popover-enter-from,
+.popover-leave-to { opacity: 0; transform: translate(-50%, calc(-100% + 6px)) scale(0.95); }
 </style>
