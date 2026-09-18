@@ -443,11 +443,15 @@ const initMap = () => {
   
   // 所有客户端都通过 TrailSnap Server 的服务端 Key 代理加载瓦片。
   if (vecTileUrl && cvaTileUrl) {
-    map.value = new T.Map('trajectory-map', { layers: [] })
-    const vecLayer = new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 });
-    const cvaLayer = new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 });
-    map.value.addOverLay(vecLayer);
-    map.value.addOverLay(cvaLayer);
+    // 天地图 SDK 在 layers 为空数组时仍会自动注入默认底图层（TMAP_NORMAL_MAP），
+    // 其 WMTS 瓦片 URL 在运行时拼接、不走代理，手机 App 上会被原生网络边界拦截
+    // 导致裂图。必须在构造函数里显式传入代理图层。
+    map.value = new T.Map('trajectory-map', {
+      layers: [
+        new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }),
+        new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 })
+      ]
+    })
   } else {
     map.value = new T.Map('trajectory-map')
   }

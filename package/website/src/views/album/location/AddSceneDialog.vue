@@ -181,16 +181,18 @@ const initMap = async () => {
     }
 
     // 手机 App / Web 生产环境走服务器代理瓦片；默认图层会在 App 上直连
-    // 天地图，被原生网络边界拦截导致底图空白。
+    // 天地图，被原生网络边界拦截导致底图空白。天地图 SDK 在 layers 为空
+    // 数组时仍会自动注入默认底图层，必须在构造函数里显式传入代理图层。
     const vecTileUrl = getTiandituTileTemplate('vec_w', mapAccessToken)
     const cvaTileUrl = getTiandituTileTemplate('cva_w', mapAccessToken)
     map = vecTileUrl && cvaTileUrl
-      ? new T.Map('add-scene-map', { layers: [] })
+      ? new T.Map('add-scene-map', {
+          layers: [
+            new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }),
+            new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 })
+          ]
+        })
       : new T.Map('add-scene-map')
-    if (vecTileUrl && cvaTileUrl) {
-      map.addOverLay(new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }))
-      map.addOverLay(new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 }))
-    }
     // 如果有坐标，移动到该坐标
     if (form.latitude && form.longitude) {
       map.centerAndZoom(new T.LngLat(form.longitude, form.latitude), 14)

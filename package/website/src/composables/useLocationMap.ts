@@ -79,13 +79,17 @@ export function useLocationMap(callbacks?: {
 
     const vecTileUrl = getTiandituTileTemplate('vec_w', mapAccessToken)
     const cvaTileUrl = getTiandituTileTemplate('cva_w', mapAccessToken)
+    // 天地图 SDK 在 layers 为空数组时仍会自动注入默认底图层（TMAP_NORMAL_MAP），
+    // 其 WMTS 瓦片 URL 在运行时拼接、不走代理，手机 App 上会被原生网络边界拦截
+    // 导致裂图。必须在构造函数里显式传入代理图层。
     map = vecTileUrl && cvaTileUrl
-      ? new T.Map(opts.containerId, { layers: [] })
+      ? new T.Map(opts.containerId, {
+          layers: [
+            new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }),
+            new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 })
+          ]
+        })
       : new T.Map(opts.containerId)
-    if (vecTileUrl && cvaTileUrl) {
-      map.addOverLay(new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }))
-      map.addOverLay(new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 }))
-    }
     map.centerAndZoom(center, zoom)
     map.enableScrollWheelZoom()
 
