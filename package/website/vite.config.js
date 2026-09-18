@@ -127,6 +127,9 @@ export default defineConfig({
       '/api': {
         target: apiTarget,
         changeOrigin: true,
+        // 保留原始 Host（X-Forwarded-Host）：后端 map-proxy 用它把天地图 SDK 内部
+        // URL 改写成绝对路径。手机 App 页面跑在 http://localhost，相对路径会 404。
+        xfwd: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       }
     }

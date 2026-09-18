@@ -31,15 +31,42 @@ def _rewrite_tianditu_text(
     """Route URLs constructed inside the Tianditu SDK back through TrailSnap.
 
     The SDK builds most endpoints by concatenating protocol, host and path, so
-    replacing only literal absolute URLs is insufficient.  These two source
-    expressions cover the API/service bundles; map tiles are explicitly
-    replaced by the client with TrailSnap's tile proxy.
+    replacing only literal absolute URLs is insufficient.  These source
+    expressions cover the API/service bundles and the runtime-concatenated WMTS
+    tile getters; client-created tile layers already use the proxy directly.
+
+    ``proxy_prefix`` may be absolute (``https://host/api/system/map-proxy/...``).
+    The packaged mobile App serves the page from ``http://localhost``, so a
+    relative prefix would resolve SDK subrequests (qv, components.js, tiles)
+    against the wrong origin and 404. Callers therefore pass an absolute
+    prefix derived from the incoming request whenever one is available.
     """
     proxy_api = f'"{proxy_prefix}/api.tianditu.gov.cn"'
     value = value.replace('T.Protocol.value+"api.tianditu."+T.Domain', proxy_api)
+    # The geocoder endpoint is built as T.Protocol.value+"location.tianditu.gov.cn/data/getCityName"
+    # (path suffix inside the string literal), so the needle must not include the closing quote.
     value = value.replace(
-        'T.Protocol.value+"location.tianditu.gov.cn"',
-        f'"{proxy_prefix}/location.tianditu.gov.cn"',
+        'T.Protocol.value+"location.tianditu.gov.cn',
+        f'"{proxy_prefix}/location.tianditu.gov.cn',
+    )
+    # Default base layers (TMAP_NORMAL_MAP & friends) build their WMTS URLs at
+    # runtime as T.Protocol.value+"t"+<random 0-7>+".tianditu."+T.Domain+"/<layer>/wmts?..."+T.tk.
+    # Rewrite the shared prefix so those tiles also flow through the proxy; the
+    # proxy drops the redacted ``tk=server`` parameter and injects the real key.
+    value = value.replace(
+        'T.Protocol.value+"t"+T.q.W(0,7)+".tianditu."+T.Domain+"/',
+        f'"{proxy_prefix}/t0.tianditu.gov.cn/',
+    )
+    # The SDK caches submodules (components.js, service.js, styles) in
+    # localStorage under TDT_* keys and compares T.lR.ZR against TDT_version.
+    # Sessions served by older TrailSnap builds may have cached a copy whose
+    # embedded URLs point at the wrong origin. Bump the marker so every client
+    # discards stale entries and refetches through this proxy.
+    value = re.sub(
+        r'(T\.lR=\{ZR:")[0-9]+(")',
+        r"\g<1>trailsnap2\g<2>",
+        value,
+        count=1,
     )
     value = re.sub(
         r"https?:\/\/((?:api|location|t[0-7])\.tianditu\.(?:gov\.cn|com))",
@@ -53,6 +80,25 @@ def _rewrite_tianditu_text(
             'window.TMAP_AUTHKEY="server"',
         )
     return value
+
+
+def _public_origin(request: Request) -> str:
+    """Best-effort origin of the TrailSnap entry point as seen by this client.
+
+    The mobile App loads the SDK from the configured server origin, but the
+    request may traverse a reverse proxy (nginx) or the Vite dev proxy, both of
+    which can rewrite the Host header. Trust forwarded headers first, then the
+    Host header, so rewritten SDK URLs stay usable from the original client.
+    """
+    host = request.headers.get("x-forwarded-host", "").split(",")[0].strip()
+    if not host:
+        host = request.headers.get("host", "").strip()
+    if not host:
+        return ""
+    scheme = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    if not scheme:
+        scheme = request.url.scheme
+    return f"{scheme}://{host}"
 
 
 def _map_user_id(map_token: str) -> str:
@@ -110,7 +156,10 @@ async def _proxy_tianditu_resource(
         map_key = random.choice(keys)
         params = [(name, value) for name, value in params if name.lower() != "tk"]
         params.append(("tk", map_key))
-        proxy_prefix = f"/api/system/map-proxy/{map_token}"
+        # The SDK response embeds this prefix into runtime-concatenated URLs
+        # (qv/components submodules, WMTS tile getters). The mobile App serves
+        # its page from http://localhost, so it must be absolute.
+        proxy_prefix = f"{_public_origin(request)}/api/system/map-proxy/{map_token}"
     timeout = aiohttp.ClientTimeout(total=30, connect=8)
     headers = {"Accept": request.headers.get("accept", "*/*")}
     if map_token:

@@ -96,23 +96,15 @@ const initMap = () => {
   
   // 所有客户端都使用 TrailSnap Server 注入服务端 Key 的同源代理。
   if (vecTileUrl && cvaTileUrl) {
-    // 初始化地图时不添加默认图层
+    // 天地图 SDK 在 layers 为空数组时仍会自动注入默认底图层（TMAP_NORMAL_MAP），
+    // 其 WMTS 瓦片 URL 在运行时拼接、不走代理，手机 App 上会被原生网络边界拦截
+    // 导致裂图。必须在构造函数里显式传入代理图层。
     map.value = new T.Map('tianditu-map', {
-      layers: []
+      layers: [
+        new T.TileLayer(vecTileUrl, { minZoom: 1, maxZoom: 18 }),
+        new T.TileLayer(cvaTileUrl, { minZoom: 1, maxZoom: 18 })
+      ]
     })
-    
-    // 添加代理图层
-    const vecLayer = new T.TileLayer(vecTileUrl, {
-      minZoom: 1,
-      maxZoom: 18
-    });
-    const cvaLayer = new T.TileLayer(cvaTileUrl, {
-      minZoom: 1,
-      maxZoom: 18
-    });
-    
-    map.value.addOverLay(vecLayer);
-    map.value.addOverLay(cvaLayer);
   } else {
     // 开发环境下直接使用天地图默认图层
     map.value = new T.Map('tianditu-map')

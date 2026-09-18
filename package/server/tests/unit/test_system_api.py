@@ -241,6 +241,52 @@ def test_tianditu_sdk_urls_are_rewritten_to_server_proxy():
     assert "https://t3.tianditu.gov.cn" not in rewritten
 
 
+def test_tianditu_sdk_runtime_wmts_getters_are_rewritten_to_proxy():
+    """默认底图层的 WMTS URL 运行时拼接，字面量正则覆盖不到，必须整体替换前缀。"""
+    source = (
+        't:function(){return T.Protocol.value+"t"+T.q.W(0,7)+".tianditu."+T.Domain+'
+        '"/vec_w/wmts?SERVICE=WMTS&REQUEST=GetTile&FORMAT=tiles&"+T.tk}'
+    )
+    rewritten = system_api._rewrite_tianditu_text(
+        source, proxy_prefix="/api/system/map-proxy/map-token"
+    )
+
+    assert '"/api/system/map-proxy/map-token/t0.tianditu.gov.cn/vec_w/wmts' in rewritten
+    assert 'T.Protocol.value+"t"' not in rewritten
+    assert 'T.q.W(0,7)' not in rewritten
+
+
+def test_public_origin_prefers_forwarded_host():
+    """反向代理 / Vite dev 代理会改写 Host，必须优先信任 X-Forwarded-Host。"""
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "scheme": "http",
+        "server": ("127.0.0.1", 8000),
+        "path": "/api/system/map-proxy/token/api.tianditu.gov.cn/api",
+        "query_string": b"v=4.0",
+        "headers": [
+            (b"host", b"127.0.0.1:8000"),
+            (b"x-forwarded-host", b"192.168.1.168:5176"),
+            (b"x-forwarded-proto", b"http"),
+        ],
+    })
+    assert system_api._public_origin(request) == "http://192.168.1.168:5176"
+
+
+def test_public_origin_falls_back_to_host_header():
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "scheme": "http",
+        "server": ("example.com", 80),
+        "path": "/api/system/map-proxy/token/api.tianditu.gov.cn/api",
+        "query_string": b"v=4.0",
+        "headers": [(b"host", b"photos.example.com")],
+    })
+    assert system_api._public_origin(request) == "http://photos.example.com"
+
+
 def test_tianditu_sdk_server_key_is_redacted_and_token_is_preserved():
     source = (
         'window.TMAP_AUTHKEY="server-secret";'
