@@ -70,6 +70,20 @@ export const useAlbumStore = defineStore('album', () => {
       apiAlbums.value = apiAlbums.value.filter(a => a.id !== albumId);
   }
 
+  const updateAlbum = async (albumId: string, payload: Parameters<typeof albumService.updateAlbum>[1]) => {
+      const updated = await albumService.updateAlbum(albumId, payload);
+      const idx = apiAlbums.value.findIndex(a => a.id === albumId);
+      if (idx >= 0) apiAlbums.value[idx] = updated;
+      return updated;
+  }
+
+  const setAlbumCover = async (albumId: string, photoId: string) => {
+      const updated = await albumService.setAlbumCover(albumId, photoId);
+      const idx = apiAlbums.value.findIndex(a => a.id === albumId);
+      if (idx >= 0) apiAlbums.value[idx] = updated;
+      return updated;
+  }
+
   const addPhotoToAlbum = async (albumId: string, file: File) => {
       await albumService.uploadPhoto(file, albumId);
   }
@@ -143,6 +157,8 @@ export const useAlbumStore = defineStore('album', () => {
     fetchAlbums,
     createCustomAlbum,
     deleteAlbum,
+    updateAlbum,
+    setAlbumCover,
     addPhotoToAlbum,
     getAlbumDetails,
     removePhotoFromAlbum,
