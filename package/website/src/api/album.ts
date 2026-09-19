@@ -2,6 +2,26 @@ import request from '@/utils/request';
 import type { ApiAlbum, Album, CreateAlbumDto, Photo, PhotoMetadata, TimelineStats, PhotoGroup, FilterOptions } from '@/types/album';
 import { thumbnailUrl } from '@/utils/mediaUrl';
 
+export interface SmartAlbumRepresentative {
+  entity_id: string
+  name: string
+  photo_id?: string | null
+  face_rect?: number[] | null
+  photo_count: number
+}
+
+export interface SmartAlbumSection {
+  item_count: number
+  photo_count: number
+  representatives: SmartAlbumRepresentative[]
+}
+
+export interface SmartAlbumOverview {
+  people: SmartAlbumSection
+  location: SmartAlbumSection
+  classification: SmartAlbumSection
+}
+
 export const albumService = {
   // Albums
   async getAlbums() {
@@ -26,6 +46,11 @@ export const albumService = {
   },
   async deleteAlbum(id: string) {
     await request.delete(`/api/albums/${id}`);
+  },
+
+  async getSmartAlbumOverview() {
+    const data = await request.get<SmartAlbumOverview>('/api/albums/smart-overview');
+    return data.data;
   },
 
   // Stats

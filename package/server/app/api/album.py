@@ -42,6 +42,12 @@ async def create_album(album: schemas.AlbumCreate, background_tasks: BackgroundT
 def read_albums(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     return BaseResponse(data=crud.get_albums(db, skip=skip, limit=limit, user_id=current_user.id))
 
+@router.get("/smart-overview", response_model=BaseResponse[schemas.SmartAlbumOverview])
+def read_smart_album_overview(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Return counts and representative covers for built-in smart albums."""
+    return BaseResponse(data=crud.get_smart_album_overview(db, owner_id=current_user.id))
+
+
 @router.get("/{album_id}", response_model=BaseResponse[schemas.Album])
 def read_album(album_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_album = crud.get_album(db, album_id=album_id, user_id=current_user.id)

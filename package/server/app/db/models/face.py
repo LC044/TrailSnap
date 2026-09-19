@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, DECIMAL, JSON, Integer, Index
+from sqlalchemy import Column, String, ForeignKey, DateTime, Boolean, DECIMAL, JSON, Integer, Index, text
 from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -52,6 +52,13 @@ class Face(Base):
         Index("idx_face_photo_id", "photo_id"),
         # 为face_identity_id加索引
         Index("idx_face_identity_id", "face_identity_id"),
+        Index(
+            "ix_faces_identity_alive",
+            "face_identity_id",
+            "photo_id",
+            postgresql_where=text("is_deleted = false"),
+            sqlite_where=text("is_deleted = false"),
+        ),
         # 向量索引
         Index(
             "idx_face_feature",

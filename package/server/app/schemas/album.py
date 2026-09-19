@@ -44,3 +44,22 @@ class TimelineStats(BaseModel):
     total_photos: int
     time_range: Optional[Dict[str, datetime]] = None
     timeline: List[TimelineItem] = []
+
+class SmartAlbumRepresentative(BaseModel):
+    entity_id: str
+    name: str
+    photo_id: Optional[UUID] = None
+    face_rect: Optional[List[float]] = None
+    photo_count: int = 0
+
+
+class SmartAlbumSection(BaseModel):
+    item_count: int = 0
+    photo_count: int = 0
+    representatives: List[SmartAlbumRepresentative] = Field(default_factory=list)
+
+
+class SmartAlbumOverview(BaseModel):
+    people: SmartAlbumSection = Field(default_factory=SmartAlbumSection)
+    location: SmartAlbumSection = Field(default_factory=SmartAlbumSection)
+    classification: SmartAlbumSection = Field(default_factory=SmartAlbumSection)

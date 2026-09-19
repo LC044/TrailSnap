@@ -3,7 +3,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { albumService } from '@/api/album'
+import { albumService, type SmartAlbumOverview } from '@/api/album'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import type { ApiAlbum, Album, AlbumImage } from '@/types/album'
 
@@ -12,6 +12,12 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 export const useAlbumStore = defineStore('album', () => {
   // --- 状态 ---
   const apiAlbums = ref<ApiAlbum[]>([])
+
+  // 智能相册概览只需要支撑首页展示，短时间内允许使用缓存，避免每次进入相册页都触发聚合查询。
+  const SMART_ALBUM_OVERVIEW_CACHE_TTL_MS = 30 * 1000
+  const smartAlbumOverview = ref<SmartAlbumOverview | null>(null)
+  const smartAlbumOverviewFetchedAt = ref(0)
+  let smartAlbumOverviewRequest: Promise<SmartAlbumOverview | null> | null = null
   // --- 动作 ---
   const fetchAlbums = async () => {
       try {
@@ -19,6 +25,37 @@ export const useAlbumStore = defineStore('album', () => {
           apiAlbums.value = albumsData;
       } catch (e) {
           console.error("获取相册失败", e)
+      }
+  }
+
+  const hasFreshSmartAlbumOverview = () => {
+      return Boolean(
+          smartAlbumOverview.value &&
+          Date.now() - smartAlbumOverviewFetchedAt.value < SMART_ALBUM_OVERVIEW_CACHE_TTL_MS
+      )
+  }
+
+  const fetchSmartAlbumOverview = async (options?: { force?: boolean }) => {
+      if (!options?.force && hasFreshSmartAlbumOverview()) {
+          return smartAlbumOverview.value
+      }
+      if (smartAlbumOverviewRequest) {
+          return smartAlbumOverviewRequest
+      }
+
+      const request = (async () => {
+          const data = await albumService.getSmartAlbumOverview()
+          smartAlbumOverview.value = data
+          smartAlbumOverviewFetchedAt.value = Date.now()
+          return data
+      })()
+      smartAlbumOverviewRequest = request
+      try {
+          return await request
+      } finally {
+          if (smartAlbumOverviewRequest === request) {
+              smartAlbumOverviewRequest = null
+          }
       }
   }
 
@@ -100,6 +137,9 @@ export const useAlbumStore = defineStore('album', () => {
 
   return {
     allAlbums,
+    smartAlbumOverview,
+    hasFreshSmartAlbumOverview,
+    fetchSmartAlbumOverview,
     fetchAlbums,
     createCustomAlbum,
     deleteAlbum,

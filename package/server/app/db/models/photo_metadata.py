@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import Column, String, ForeignKey, Text, JSON, DECIMAL, Index
+from sqlalchemy import Column, String, ForeignKey, Text, JSON, DECIMAL, Index, text
 from app.db.types import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -14,6 +14,13 @@ class PhotoMetadata(Base):
         Index('idx_location_city', 'city'),
         Index('idx_location_province', 'province'),
         Index('idx_location_country', 'country'),
+        Index(
+            "ix_photo_metadata_city_photo",
+            "city",
+            "photo_id",
+            postgresql_where=text("city IS NOT NULL AND city <> ''"),
+            sqlite_where=text("city IS NOT NULL AND city <> ''"),
+        ),
     )
 
     photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), primary_key=True)
