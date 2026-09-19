@@ -149,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { useTheme } from '@/composables/useTheme'
+import { injectTheme } from '@/composables/useTheme'
 import { MapPin, X, ChevronRight, Trophy, Images, Calendar } from 'lucide-vue-next'
 import type { AlbumImage } from '@/types/album'
 import type { TimelineNode } from '@/types/location'
@@ -175,7 +175,7 @@ const emit = defineEmits<{
   (e: 'change-level', level: string, viewState: { zoom: number, center: number[], parentRegion?: string }): void
 }>()
 
-const { currentTheme } = useTheme()
+const { currentTheme } = injectTheme()
 </script>
 
 <style scoped>

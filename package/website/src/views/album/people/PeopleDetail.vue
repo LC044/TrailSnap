@@ -15,19 +15,21 @@
     @confirm-delete="handleConfirmDelete"
     @set-cover="handleSetCover"
   >
+    <template #title-extra>
+      <button
+        type="button"
+        class="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 rounded-full disabled:cursor-not-allowed disabled:opacity-50"
+        title="编辑人物信息"
+        aria-label="编辑人物信息"
+        :disabled="!identity"
+        @click="editDialogVisible = true"
+      >
+        <PencilIcon class="h-4 w-4" />
+      </button>
+    </template>
+
     <template #header-actions>
-      <div class="flex items-center gap-2">
-        <button
-          type="button"
-          class="flex items-center gap-2 rounded-full border border-gray-200/50 bg-white/80 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur-md transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900"
-          :disabled="!identity"
-          title="生成此人物的时光机"
-          @click="startPersonTimeline"
-        >
-          <HistoryIcon class="h-4 w-4" />
-          <span class="hidden sm:inline">人物时光机</span>
-        </button>
-        <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
+      <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
         <button
           type="button"
           class="rounded-full border border-gray-200/50 bg-white/80 p-2 text-gray-700 shadow-sm backdrop-blur-md transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900"
@@ -39,6 +41,12 @@
         </button>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="timeline">
+              <div class="flex items-center gap-2">
+                <HistoryIcon class="h-4 w-4" />
+                <span>人物时光机</span>
+              </div>
+            </el-dropdown-item>
             <el-dropdown-item command="edit">
               <div class="flex items-center gap-2">
                 <PencilIcon class="h-4 w-4" />
@@ -53,8 +61,7 @@
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
-        </el-dropdown>
-      </div>
+      </el-dropdown>
     </template>
 
     <template #batch-actions="{ selectedIds, clearSelection }">
@@ -74,6 +81,7 @@
     v-model:visible="editDialogVisible"
     :identity="identity"
     @saved="(updated: FaceIdentity) => identity = updated"
+    @cover-changed="(updated: FaceIdentity) => identity = updated"
   />
 
   <FaceRescanDialog
@@ -225,6 +233,8 @@ const handlePersonCommand = (command: string) => {
     editDialogVisible.value = true
   } else if (command === 'rescan') {
     rescanDialogVisible.value = true
+  } else if (command === 'timeline') {
+    startPersonTimeline()
   }
 }
 

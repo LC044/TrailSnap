@@ -37,9 +37,9 @@
             {{ data.pending_faces_count }}位待确认 / {{ data.unidentified_photos_count }}张未识别
           </span>
         </div>
-        <button 
+        <button
           class="text-xs text-orange-500 border border-orange-500 rounded px-2 py-0.5 whitespace-nowrap ml-2"
-          @click="$router.push('/album/people')"
+          @click="$router.push({ path: '/album/people', query: { view: 'solo' } })"
         >
           快速标注
         </button>

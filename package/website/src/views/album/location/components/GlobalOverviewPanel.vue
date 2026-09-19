@@ -13,10 +13,10 @@
 
     <div v-else class="space-y-6">
       <div>
-        <div class="mb-4 flex items-center justify-between">
+        <div class="overview-header mb-4 flex items-center justify-between">
           <div>
             <div class="cockpit-kicker">TRAVEL INTELLIGENCE</div>
-            <h2 class="text-xl font-bold text-white">足迹概览</h2>
+            <h2 class="overview-title text-xl font-bold">足迹概览</h2>
           </div>
           <div class="live-indicator"><span /> 数据已同步</div>
         </div>
@@ -30,15 +30,12 @@
             </div>
           </div>
           <div class="min-w-0 flex-1">
-            <div class="text-base font-semibold text-white">探索中国</div>
-            <div class="mt-1 text-xs text-[#7891aa]">已点亮 {{ globalStats.province_count }} / 34 个省级行政区</div>
-            <div class="progress-track mt-4">
-              <div :style="{ width: `${explorationPercentage}%`, backgroundColor: currentTheme.primary }" />
-            </div>
+            <div class="overview-title text-base font-semibold">探索中国</div>
+            <div class="overview-muted mt-1 text-xs">{{ globalStats.province_count }} / 34 个省级行政区</div>
           </div>
         </div>
 
-        <div class="mt-3 grid grid-cols-3 gap-2">
+        <div class="overview-metrics mt-3 grid grid-cols-3 gap-2">
           <div class="metric-card">
             <div class="metric-label">点亮省份</div>
             <div class="metric-value">
@@ -60,7 +57,7 @@
     </div>
 
     <!-- Top 5 排行榜 -->
-    <div>
+    <div class="overview-extra">
       <h3 class="section-heading">
         <Trophy class="w-4 h-4 text-yellow-500" /> 热门打卡地
       </h3>
@@ -75,8 +72,8 @@
           </div>
           <div class="flex-1">
             <div class="flex justify-between text-sm mb-1">
-              <span class="text-[#c8d9e9] group-hover:text-primary-500 transition-colors">{{ item.name }}</span>
-              <span class="text-[#7189a0]">{{ item.count }} 张</span>
+              <span class="overview-title group-hover:text-primary-500 transition-colors">{{ item.name }}</span>
+              <span class="overview-muted">{{ item.count }} 张</span>
             </div>
             <div class="h-1 w-full bg-[#152a40] rounded-full overflow-hidden">
               <div class="h-full rounded-full transition-all duration-1000" 
@@ -95,7 +92,7 @@
     </div>
 
     <!-- 时间轴趋势图 -->
-    <div v-if="globalStats && (globalStats.province_count > 0 || globalStats.city_count > 0)">
+    <div v-if="globalStats && (globalStats.province_count > 0 || globalStats.city_count > 0)" class="overview-extra">
       <div class="flex items-center justify-between mb-3">
         <h3 class="section-heading">
           <TrendingUp class="w-4 h-4 text-primary-500" /> 足迹趋势
@@ -111,15 +108,15 @@
     </div>
 
     <!-- 最近去过的地方 -->
-    <div class="pt-2">
+    <div class="overview-extra pt-2">
       <h3 class="section-heading mb-3">
         <MapPin class="w-4 h-4 text-primary-500" /> 最近去过
       </h3>
       <div v-if="recentTrips.length > 0" class="space-y-2">
         <div v-for="(trip, index) in recentTrips" :key="index" class="recent-trip flex items-center justify-between p-3 rounded-xl cursor-pointer focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" role="button" tabindex="0" @click="emit('click-location', trip.locationName, trip.level)" @keydown.enter="emit('click-location', trip.locationName, trip.level)">
           <div class="flex flex-col">
-            <span class="text-sm font-medium text-[#dcecff]">{{ trip.locationName }}</span>
-            <span class="text-xs text-[#7189a0] mt-0.5">{{ trip.startDate }}</span>
+            <span class="overview-title text-sm font-medium">{{ trip.locationName }}</span>
+            <span class="overview-muted mt-0.5 text-xs">{{ trip.startDate }}</span>
           </div>
           <div class="flex items-center gap-1.5 text-xs text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 px-2 py-1 rounded-md">
             <Images class="w-3 h-3" />
@@ -138,7 +135,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { echarts } from '@/utils/echarts'
-import { useTheme } from '@/composables/useTheme'
+import { injectTheme } from '@/composables/useTheme'
 import { MapPin, Trophy, TrendingUp, Images } from 'lucide-vue-next'
 import type { LocationStatistics, TimelineNode } from '@/types/location'
 
@@ -154,7 +151,7 @@ const emit = defineEmits<{
   (e: 'click-location', name: string, level?: string): void
 }>()
 
-const { isDarkMode, currentTheme } = useTheme()
+const { isDarkMode, currentTheme } = injectTheme()
 const isDark = isDarkMode
 
 const trendChartContainer = ref<HTMLElement | null>(null)
@@ -253,7 +250,9 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.overview-cockpit { color: #c8d9e9; }
+.overview-cockpit { color: var(--location-text); }
+.overview-title { color: var(--location-text); }
+.overview-muted { color: var(--location-muted); }
 .cockpit-kicker {
   margin-bottom: 3px;
   color: var(--theme-primary);
@@ -265,7 +264,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #7189a0;
+  color: var(--location-muted);
   font-size: 10px;
 }
 .live-indicator span {
@@ -282,7 +281,7 @@ onUnmounted(() => {
   padding: 15px;
   border: 1px solid rgba(var(--theme-rgb), 0.24);
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.11), rgba(15, 35, 57, 0.52));
+  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.11), var(--location-control));
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
 }
 .progress-orbit {
@@ -304,33 +303,43 @@ onUnmounted(() => {
   justify-content: center;
   border: 1px solid rgba(var(--theme-rgb), 0.15);
   border-radius: 999px;
-  background: #0a192b;
+  background: var(--location-bg);
 }
-.progress-orbit__inner strong { color: #fff; font-size: 20px; line-height: 1; }
-.progress-orbit__inner span { margin-top: 4px; color: #7189a0; font-size: 9px; }
-.progress-track { height: 4px; overflow: hidden; border-radius: 999px; background: #172c42; }
+.progress-orbit__inner strong { color: var(--location-text); font-size: 20px; line-height: 1; }
+.progress-orbit__inner span { margin-top: 4px; color: var(--location-muted); font-size: 9px; }
+.progress-track { height: 4px; overflow: hidden; border-radius: 999px; background: rgba(var(--theme-rgb), 0.14); }
 .progress-track div { height: 100%; border-radius: inherit; box-shadow: 0 0 10px rgba(var(--theme-rgb), 0.6); }
 .metric-card {
   min-width: 0;
   padding: 11px;
   border: 1px solid rgba(var(--theme-rgb), 0.16);
   border-radius: 12px;
-  background: rgba(15, 35, 57, 0.62);
+  background: var(--location-control);
 }
-.metric-label { overflow: hidden; color: #7189a0; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.metric-value { margin-top: 4px; color: #f0f8ff; font-size: 22px; font-weight: 700; }
+.metric-label { overflow: hidden; color: var(--location-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.metric-value { margin-top: 4px; color: var(--location-text); font-size: 22px; font-weight: 700; }
 .metric-value--small { font-size: 17px; line-height: 28px; }
-.section-heading { display: flex; align-items: center; gap: 6px; color: #a9bed1; font-size: 13px; font-weight: 600; }
+.section-heading { display: flex; align-items: center; gap: 6px; color: var(--location-text); font-size: 13px; font-weight: 600; }
 .ranking-row { transition: background-color 180ms ease; }
 .ranking-row:hover { background: rgba(var(--theme-rgb), 0.07); }
-.dimension-toggle { display: flex; padding: 2px; border: 1px solid rgba(var(--theme-rgb), 0.14); border-radius: 8px; background: #0b1a2c; }
-.dimension-toggle button { padding: 3px 8px; border-radius: 6px; color: #7189a0; font-size: 10px; }
-.dimension-toggle button.active { color: #e8f6ff; background: rgba(var(--theme-rgb), 0.18); }
-.chart-card { padding: 8px; border: 1px solid rgba(var(--theme-rgb), 0.15); border-radius: 14px; background: rgba(13, 31, 51, 0.62); }
-.recent-trip { border: 1px solid rgba(var(--theme-rgb), 0.13); background: rgba(13, 31, 51, 0.58); transition: border-color 180ms ease, background-color 180ms ease; }
+.dimension-toggle { display: flex; padding: 2px; border: 1px solid rgba(var(--theme-rgb), 0.14); border-radius: 8px; background: var(--location-bg); }
+.dimension-toggle button { padding: 3px 8px; border-radius: 6px; color: var(--location-muted); font-size: 10px; }
+.dimension-toggle button.active { color: var(--location-text); background: rgba(var(--theme-rgb), 0.18); }
+.chart-card { padding: 8px; border: 1px solid rgba(var(--theme-rgb), 0.15); border-radius: 14px; background: var(--location-control); }
+.recent-trip { border: 1px solid rgba(var(--theme-rgb), 0.13); background: var(--location-control); transition: border-color 180ms ease, background-color 180ms ease; }
 .recent-trip:hover { border-color: rgba(var(--theme-rgb), 0.4); background: rgba(var(--theme-rgb), 0.08); }
 .animate-fade-in {
   animation: fadeIn 0.3s ease-in-out;
+}
+
+@media (max-width: 767px) {
+  .overview-header { display: none; }
+  .overview-cockpit, .overview-cockpit > div { margin-top: 0; }
+  .exploration-card { gap: 12px; padding: 10px 12px; border-radius: 14px; }
+  .progress-orbit { width: 64px; height: 64px; }
+  .progress-orbit__inner { width: 52px; height: 52px; }
+  .progress-orbit__inner strong { font-size: 17px; }
+  .metric-card { padding: 9px; }
 }
 
 @keyframes fadeIn {

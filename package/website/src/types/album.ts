@@ -186,6 +186,19 @@ export interface FaceIdentity {
   is_hidden?: boolean
 }
 
+// 合影组合相册成员
+export interface GroupAlbumIdentity {
+  identity_id: string
+  identity_name?: string | null
+}
+
+// GET /faces/group-albums 返回的合影组合相册
+export interface GroupAlbumItem {
+  identities: GroupAlbumIdentity[]
+  photo_count: number
+  cover: Photo
+}
+
 export interface FilterOptions {
   years: number[];
   cities: string[];
