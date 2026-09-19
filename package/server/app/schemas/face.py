@@ -74,3 +74,19 @@ class AddPhotosToIdentityRequest(BaseModel):
 class FaceRescanApplyRequest(BaseModel):
     add_face_ids: List[int] = Field(default_factory=list, description="确认新增或改归属的人脸ID")
     remove_face_ids: List[int] = Field(default_factory=list, description="确认从当前人物移出的人脸ID")
+
+
+class GroupAlbumIdentity(BaseModel):
+    identity_id: UUID = Field(..., description="人物ID")
+    identity_name: Optional[str] = Field(None, description="人物名称")
+
+
+class GroupAlbumItem(BaseModel):
+    """合影组合相册：一组经常同框出现的“可展示人物”及其共同照片。
+
+    与“个人”栏口径一致：组合成员都满足单人展示阈值（照片数 >= min_photos）；
+    photo_count 是同时包含全部成员的照片数。
+    """
+    identities: List[GroupAlbumIdentity] = Field(default_factory=list, description="组合成员")
+    photo_count: int = Field(0, description="组合合影照片数")
+    cover: Photo = Field(..., description="封面照片（组合内最新一张）")

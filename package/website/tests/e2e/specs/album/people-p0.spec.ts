@@ -112,10 +112,12 @@ test.describe.serial('P0 - 人物相册', () => {
     releaseMutex = await acquireMutex(PEOPLE_MUTEX, 120_000)
     authToken = await ensureAuthSession(request, page, testInfo)
     if (!authToken) return
-    // 清理 PeopleList 上的过滤器 localStorage，避免前面的用例遗留 hidden 等选项影响渲染
+    // 清理 PeopleList 上的过滤器 localStorage，避免前面的用例遗留 hidden 等选项影响渲染；
+    // 同时清理视图切换状态，避免遗留"合影"视图导致个人列表断言失败
     await page.addInitScript(() => {
       try {
         localStorage.removeItem('people_filter')
+        localStorage.removeItem('people_view_mode')
       } catch {
         // ignore
       }
@@ -488,6 +490,81 @@ test.describe.serial('P0 - 人物相册', () => {
     const after = await listIdentities(request, authToken)
     const me = after.find((i) => i.id === probe.identity.id)
     expect(me?.identity_name).toBe(originalName)
+  })
+
+  test('2.5.11 详情页标题旁编辑按钮 - 打开对话框并自动聚焦姓名输入框 @p0', async ({ page, request }, testInfo) => {
+    const probe = await requireAnyIdentity(request, testInfo)
+    if (!probe.ok) return
+
+    await gotoRetry(page, `/album/people/${probe.identity.id}`)
+
+    // 标题旁的编辑按钮（#title-extra 插槽，PencilIcon）
+    const editBtn = page.locator('.unified-photo-page button[title="编辑人物信息"]')
+    await expect(editBtn).toBeVisible({ timeout: 10_000 })
+    await editBtn.click()
+
+    // 对话框出现后姓名输入框应自动获得焦点
+    const dialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
+    await expect(dialog).toBeVisible({ timeout: 5_000 })
+    const nameInput = dialog.locator('input[placeholder="输入姓名..."]')
+    await expect(nameInput).toBeVisible({ timeout: 5_000 })
+    await expect(nameInput).toBeFocused({ timeout: 5_000 })
+  })
+
+  test('2.5.12 编辑对话框更换封面 - 从人物照片里选择新封面 @p0', async ({ page, request }, testInfo) => {
+    const probe = await requireIdentityWithPhotos(request, testInfo)
+    if (!probe.ok) return
+
+    await gotoRetry(page, `/album/people/${probe.identity.id}`)
+
+    // 打开编辑对话框
+    const editBtn = page.locator('.unified-photo-page button[title="编辑人物信息"]')
+    await expect(editBtn).toBeVisible({ timeout: 10_000 })
+    await editBtn.click()
+    const dialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
+    await expect(dialog).toBeVisible({ timeout: 5_000 })
+
+    // 点"更换封面"展开候选照片网格（候选来自 /identities/{id}/photos）
+    const changeCoverBtn = dialog.getByRole('button', { name: '更换封面' })
+    await expect(changeCoverBtn).toBeVisible({ timeout: 5_000 })
+    await changeCoverBtn.click()
+
+    const coverGrid = dialog.locator('.cover-photo-grid')
+    await expect(coverGrid).toBeVisible({ timeout: 10_000 })
+    const candidates = coverGrid.locator('button')
+    await expect
+      .poll(() => candidates.count(), { timeout: 15_000, message: 'wait for cover candidates to render' })
+      .toBeGreaterThan(0)
+    if ((await candidates.count()) <= 1) {
+      testInfo.skip(true, 'Identity has only one photo; cannot verify cover change with a different photo')
+      return
+    }
+
+    // 选一张非当前封面的照片（data-photo-id 标记了每张候选）
+    const currentPhotoId = probe.identity.cover_photo?.photo_id
+    const target = currentPhotoId
+      ? coverGrid.locator(`button:not([data-photo-id="${currentPhotoId}"])`).first()
+      : candidates.first()
+
+    const coverReq = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/faces/identities/${probe.identity.id}/cover`) &&
+        res.request().method() === 'PUT' &&
+        res.status() === 200,
+      { timeout: 15_000 },
+    )
+    await target.click()
+    await coverReq
+
+    // 选完收起网格，头像图保持可见
+    await expect(coverGrid).toBeHidden({ timeout: 10_000 })
+    await expect(dialog.locator('img[alt="人物封面"]')).toBeVisible()
+
+    // 后端确认封面已换
+    const after = await listIdentities(request, authToken)
+    const me = after.find((i) => i.id === probe.identity.id)
+    expect(me, 'identity should still exist after cover change').toBeTruthy()
+    expect(me?.cover_photo?.photo_id).not.toBe(currentPhotoId)
   })
 })
 

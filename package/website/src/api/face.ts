@@ -1,5 +1,5 @@
 import request from '@/utils/request';
-import type { FaceIdentity } from '@/types/album';
+import type { FaceIdentity, GroupAlbumItem } from '@/types/album';
 
 export interface FaceRescanCandidate {
   face_id: number;
@@ -26,9 +26,9 @@ export interface FaceRescanPreview {
 }
 
 export const faceApi = {
-  async listIdentities(page = 1, limit = 20, types?: string[]) {
+  async listIdentities(page = 1, limit = 20, types?: string[], minPhotos?: number) {
     const data = await request.get<FaceIdentity[]>('/api/faces/identities', {
-      params: { skip: (page - 1) * limit, limit, types }
+      params: { skip: (page - 1) * limit, limit, types, min_photos: minPhotos }
     });
     return data.data;
   },
@@ -36,6 +36,18 @@ export const faceApi = {
   async getIdentityPhotos(id: string, page = 1, limit = 50) {
     const data = await request.get<any[]>(`/api/faces/identities/${id}/photos`, {
       params: { skip: (page - 1) * limit, limit }
+    });
+    return data.data;
+  },
+
+  async listGroupAlbums() {
+    const data = await request.get<GroupAlbumItem[]>('/api/faces/group-albums');
+    return data.data;
+  },
+
+  async getGroupAlbumPhotos(identityIds: string[], page = 1, limit = 500) {
+    const data = await request.get<any[]>('/api/faces/group-albums/photos', {
+      params: { identity_ids: identityIds, skip: (page - 1) * limit, limit }
     });
     return data.data;
   },

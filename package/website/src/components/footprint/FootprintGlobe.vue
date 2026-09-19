@@ -88,6 +88,16 @@ function gold(alpha = 1) { return C.Color.fromCssColorString('#ffc779').withAlph
 function isMobile() { return !!container.value && container.value.clientWidth < 700 }
 function geographicPosition(city: FootprintCity, height = 1800) { return C.Cartesian3.fromDegrees(city.lng, city.lat, height) }
 
+function syncRenderQuality() {
+  if (!viewer || viewer.isDestroyed()) return
+  // Cesium renders labels and billboards into the WebGL canvas. Capping mobile
+  // devices at 1.25 made that canvas visibly softer than the surrounding DOM
+  // on common 2.5x/3x phone displays. 2x keeps text crisp without the cost of
+  // rendering the full native DPR on high-density screens.
+  viewer.resolutionScale = Math.min(window.devicePixelRatio || 1, 2)
+  viewer.scene.globe.maximumScreenSpaceError = isMobile() ? 2.5 : 2
+}
+
 async function processCoordinates(kind: 'routes' | 'boundaries', payload: any): Promise<any> {
   if (!worker) return kind === 'boundaries' ? boundaryLines(payload) : payload.routes.map((r: FootprintRoute) => arcCoordinates(r.from, r.to, payload.raised))
   const id = ++nextJobId
@@ -522,6 +532,7 @@ function syncAnimation() {
 
 function resize() {
   if (!viewer) return
+  syncRenderQuality()
   viewer.resize()
   requestRender()
   clearTimeout(resizeTimer)
@@ -568,12 +579,11 @@ onMounted(async () => {
       scene3DOnly: false, shouldAnimate: false,
       contextOptions: { webgl: { alpha: false, antialias: true, powerPreference: 'high-performance' } },
     })
-    viewer.resolutionScale = Math.min(window.devicePixelRatio, isMobile() ? 1.25 : 1.5)
+    syncRenderQuality()
     viewer.scene.backgroundColor = C.Color.fromCssColorString('#020810')
     viewer.scene.globe.baseColor = C.Color.fromCssColorString('#07182a')
     viewer.scene.globe.enableLighting = false
     viewer.scene.globe.showGroundAtmosphere = true
-    viewer.scene.globe.maximumScreenSpaceError = isMobile() ? 3.5 : 2
     viewer.scene.globe.tileCacheSize = isMobile() ? 128 : 256
     viewer.scene.fog.density = 0.0001
     viewer.scene.postProcessStages.fxaa.enabled = true
