@@ -107,11 +107,12 @@ async function gotoRetry(page: Page, url: string, retries = 2): Promise<void> {
   }
 }
 
-/** 清掉 PeopleList 的筛选 localStorage，保证每次进页面是默认 (named + unnamed) 状态。 */
+/** 清掉 PeopleList 的筛选 localStorage，保证每次进页面是默认 (named + unnamed) 状态；同时清掉视图切换状态，保证默认"个人"视图。 */
 async function clearPeopleFilter(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {
       localStorage.removeItem('people_filter')
+      localStorage.removeItem('people_view_mode')
     } catch {
       // ignore
     }

@@ -1,5 +1,5 @@
 from operator import rshift
-from typing import List, Optional
+from typing import Dict, List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -321,6 +321,133 @@ def get_identity_photos(db: Session, identity_id: UUID, skip: int = 0, limit: in
     if owner_id:
         query = query.filter(Photo.owner_id == owner_id, Photo.is_deleted == False)
     return query.order_by(desc(Photo.id)).offset(skip).limit(limit).all()
+
+def get_group_albums(
+    db: Session,
+    min_photos: int = 0,
+    owner_id: Optional[UUID] = None
+) -> List[schemas.GroupAlbumItem]:
+    """合影组合相册列表。
+
+    语义：与“个人”栏同口径——只有照片数达到展示阈值（min_photos）的“可展示人物”
+    才参与组合；每张照片里出现的可展示人物集合构成一个组合；组合的照片数 =
+    同时包含该组全部成员的照片数。返回组合列表（成员 + 照片数 + 封面），
+    按组合照片数倒序、成员 id 排序保证稳定输出。
+    """
+    # 1. 可展示人物（与 get_identities_with_details 的统计口径一致：
+    #    distinct photo 数 >= min_photos，未隐藏、未软删）
+    photo_counts_subq = db.query(
+        Face.face_identity_id.label("identity_id"),
+        func.count(func.distinct(Face.photo_id)).label("count")
+    ).filter(
+        Face.face_identity_id.isnot(None),
+        Face.is_deleted == False
+    )
+    if owner_id:
+        photo_counts_subq = photo_counts_subq.join(Photo).filter(
+            Photo.owner_id == owner_id,
+            Photo.is_deleted == False
+        )
+    photo_counts_subq = photo_counts_subq.group_by(Face.face_identity_id).subquery()
+
+    displayable_rows = db.query(photo_counts_subq.c.identity_id).join(
+        FaceIdentity, FaceIdentity.id == photo_counts_subq.c.identity_id
+    ).filter(
+        FaceIdentity.is_deleted == False,
+        FaceIdentity.is_hidden == False,
+        photo_counts_subq.c.count >= min_photos
+    )
+    if owner_id:
+        displayable_rows = displayable_rows.filter(FaceIdentity.owner_id == owner_id)
+    displayable_ids = {row.identity_id for row in displayable_rows.all()}
+    if len(displayable_ids) < 2:
+        return []
+
+    # 2. 每张照片里的可展示人物集合（只统计活跃照片）
+    face_rows = db.query(Face.photo_id, Face.face_identity_id).join(
+        Photo, Face.photo_id == Photo.id
+    ).filter(
+        Face.face_identity_id.in_(displayable_ids),
+        Face.is_deleted == False,
+        Photo.is_deleted == False
+    )
+    if owner_id:
+        face_rows = face_rows.filter(Photo.owner_id == owner_id)
+
+    members_by_photo: Dict[UUID, set] = {}
+    for photo_id, identity_id in face_rows.distinct().all():
+        members_by_photo.setdefault(photo_id, set()).add(identity_id)
+
+    # 3. 按“可展示人物组合”聚合照片。每张照片只贡献给它实际包含的组合，
+    #    不做超集归并（“张三+李四”相册不含三人照；三人照属于“张三+李四+王五”）
+    photos_by_group: Dict[frozenset, List[UUID]] = {}
+    for photo_id, members in members_by_photo.items():
+        if len(members) >= 2:
+            photos_by_group.setdefault(frozenset(members), []).append(photo_id)
+
+    if not photos_by_group:
+        return []
+
+    # 4. 封面取组合内 photo_time 最新的一张；一次取回涉及的 Photo + 名称
+    all_photo_ids = {pid for pids in photos_by_group.values() for pid in pids}
+    photos_by_id = {
+        photo.id: photo
+        for photo in db.query(Photo).filter(Photo.id.in_(all_photo_ids))
+    }
+    identity_names = {
+        identity.id: identity.identity_name
+        for identity in db.query(FaceIdentity).filter(FaceIdentity.id.in_(displayable_ids))
+    }
+
+    # 5. 组装：按成员 id 排序保证组合内顺序稳定，按 photo_count 倒序
+    results = []
+    for members, pids in photos_by_group.items():
+        covers = [photos_by_id[pid] for pid in pids if pid in photos_by_id]
+        if not covers:
+            continue
+        cover = max(covers, key=lambda p: (p.photo_time is not None, p.photo_time))
+        results.append(schemas.GroupAlbumItem(
+            identities=[
+                schemas.GroupAlbumIdentity(identity_id=iid, identity_name=identity_names.get(iid))
+                for iid in sorted(members)
+            ],
+            photo_count=len(pids),
+            cover=cover
+        ))
+    results.sort(key=lambda item: (-item.photo_count, tuple(str(i.identity_id) for i in item.identities)))
+    return results
+
+
+def get_group_album_photos(
+    db: Session,
+    identity_ids: List[UUID],
+    skip: int = 0,
+    limit: int = 500,
+    owner_id: Optional[UUID] = None
+) -> List[Photo]:
+    """指定人物组合的合影照片：同时包含全部成员的照片，按拍摄时间倒序。"""
+    if not identity_ids:
+        return []
+
+    # 每张照片命中的成员数
+    hits_subq = db.query(
+        Face.photo_id.label("photo_id"),
+        func.count(func.distinct(Face.face_identity_id)).label("hits")
+    ).filter(
+        Face.face_identity_id.in_(identity_ids),
+        Face.is_deleted == False
+    ).group_by(Face.photo_id).subquery()
+
+    query = db.query(Photo).join(
+        hits_subq, Photo.id == hits_subq.c.photo_id
+    ).filter(
+        hits_subq.c.hits == len(identity_ids),
+        Photo.is_deleted == False
+    )
+    if owner_id:
+        query = query.filter(Photo.owner_id == owner_id)
+
+    return query.order_by(Photo.photo_time.desc().nullslast(), desc(Photo.id)).offset(skip).limit(limit).all()
 
 def remove_photos_from_identity(db: Session, identity_id: UUID, photo_ids: List[UUID], owner_id: Optional[UUID] = None) -> int:
     identity = get_identity(db, identity_id, owner_id)

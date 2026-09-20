@@ -4,20 +4,20 @@
     
     <!-- 面包屑导航 -->
     <div v-if="parentRegion" class="map-glass absolute top-20 left-6 z-10 flex items-center gap-2 backdrop-blur-md px-3 py-2 rounded-xl animate-fade-in">
-      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="p-1 rounded text-[#7891aa] hover:text-primary-500 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="返回上一级">
+      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="map-muted p-1 rounded hover:text-primary-500 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="返回上一级">
         <ArrowLeft class="w-4 h-4" />
       </button>
-      <div class="w-px h-4 bg-[#29425a]"></div>
-      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="text-sm font-medium text-[#7891aa] hover:text-primary-500 transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none">
+      <div class="map-divider w-px h-4"></div>
+      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="map-muted text-sm font-medium hover:text-primary-500 transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none">
         <MapPin class="w-4 h-4" />
         全国
       </button>
       <ChevronRight class="w-4 h-4 text-gray-400" />
-      <span class="text-sm font-bold text-white pr-2">{{ parentRegion }}</span>
+      <span class="map-text text-sm font-bold pr-2">{{ parentRegion }}</span>
     </div>
     
     <!-- Map Controls Overlay -->
-    <div class="absolute bottom-32 right-6 flex flex-col gap-2 z-10">
+    <div class="map-controls absolute bottom-32 right-6 flex flex-col gap-2 z-10">
        <button @click="handleZoom('in')" class="map-control focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="放大">
          <ZoomIn class="w-5 h-5" />
        </button>
@@ -35,7 +35,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { echarts } from '@/utils/echarts'
 import { locationService } from '@/api/location'
-import { useTheme } from '@/composables/useTheme'
+import { injectTheme } from '@/composables/useTheme'
 import { MapPin, ChevronRight, ZoomIn, ZoomOut, RotateCcw, ArrowLeft } from 'lucide-vue-next'
 import request from '@/utils/request'
 
@@ -76,7 +76,7 @@ const emit = defineEmits<{
 const mapContainer = ref<HTMLElement | null>(null)
 let myMap: echarts.ECharts | null = null
 
-const { isDarkMode, currentTheme } = useTheme()
+const { isDarkMode, currentTheme } = injectTheme()
 const isDark = isDarkMode
 
 let cachedMapData: { data: any[], max: number, geoJson: any, mapName: string, routeData: any[], viewState?: { zoom: number, center: number[] } } | null = null
@@ -85,6 +85,7 @@ let distributionRequestId = 0
 const MOBILE_ROAM_ZOOM_DAMPING = 0.35
 const MAP_SERIES_ID = 'location-regions'
 const ROUTE_SERIES_ID = 'location-routes'
+const CLUSTER_SERIES_ID = 'location-clusters'
 const ROUTE_GEO_ID = 'location-route-geo'
 const MAP_SCALE_LIMIT = { min: 0.7, max: 8 }
 
@@ -102,6 +103,19 @@ const buildRouteData = (nodes: any[]) => {
       toName: next.locationName,
     }
   })
+}
+
+const buildClusterData = (data: any[], geoJson: any, mobile: boolean) => {
+  const centers = new Map<string, number[]>()
+  geoJson?.features?.forEach((feature: any) => {
+    const center = feature.properties?.centroid || feature.properties?.center
+    if (feature.properties?.name && Array.isArray(center)) centers.set(feature.properties.name, center)
+  })
+  return data
+    .filter(item => Number(item.value) > 0 && centers.has(item.name))
+    .sort((a, b) => Number(b.value) - Number(a.value))
+    .slice(0, mobile ? 14 : 28)
+    .map(item => ({ name: item.name, value: [...(centers.get(item.name) || []), Number(item.value)] }))
 }
 
 const getMapView = () => (myMap?.getOption() as any)?.series?.find((series: any) => series.id === MAP_SERIES_ID)
@@ -166,7 +180,7 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
   myMap.showLoading({
     text: '',
     color: currentTheme.value.primary,
-    maskColor: 'rgba(7, 17, 31, 0.84)',
+    maskColor: isDark.value ? 'rgba(7, 17, 31, 0.84)' : 'rgba(248, 250, 252, 0.84)',
     spinnerRadius: 14,
     lineWidth: 3
   })
@@ -219,9 +233,9 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
     myMap.hideLoading()
 
     myMap.on('click', (params: any) => {
-      if (params.seriesId !== MAP_SERIES_ID || !params.name) return
+      if (![MAP_SERIES_ID, CLUSTER_SERIES_ID].includes(params.seriesId) || !params.name) return
       const name = params.name
-      const value = params.value || 0
+      const value = Array.isArray(params.value) ? Number(params.value[2] || 0) : Number(params.value || 0)
       const now = Date.now()
 
       // 双击同一区块 → 下钻到下一级（等价于右侧「进入城市/区县地图」按钮）
@@ -275,13 +289,13 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
 const renderMap = (data: any[], max: number, geoJson: any, mapName: string, viewState?: { zoom: number, center: number[] }, routeData: any[] = []) => {
   if (!myMap) return
 
-  const isDarkMode = true
+  const isDarkMode = isDark.value
   const isMobile = window.innerWidth < 768
 
   const nameMap = buildNameMap(geoJson)
 
   const rgbStr = currentTheme.value.rgb
-  const bgRgb = [11, 28, 48]
+  const bgRgb = isDarkMode ? [11, 28, 48] : [229, 238, 247]
   
   const mixColor = (ratio: number) => {
     const [r1, g1, b1] = rgbStr.split(',').map(Number)
@@ -293,6 +307,7 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
   }
 
   const inRangeColors = [mixColor(0.24), mixColor(0.55), mixColor(0.92)]
+  const clusterData = buildClusterData(data, geoJson, isMobile)
 
   const option = {
     backgroundColor: 'transparent',
@@ -312,7 +327,8 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
       trigger: 'item',
       formatter: (params: any) => {
         if (!params.value) return params.name
-        return `<div style="font-weight:bold">${params.name}</div><div style="font-size:12px">照片数量: ${params.value}</div>`
+        const count = Array.isArray(params.value) ? params.value[2] : params.value
+        return `<div style="font-weight:bold">${params.name}</div><div style="font-size:12px">照片数量: ${count}</div>`
       },
       backgroundColor: isDarkMode ? 'rgba(30, 41, 59, 0.9)' : 'rgba(255, 255, 255, 0.9)',
       borderColor: isDarkMode ? '#475569' : '#e2e8f0',
@@ -370,7 +386,7 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
         },
         labelLayout: { hideOverlap: true },
         itemStyle: {
-          areaColor: '#0d2238',
+          areaColor: isDarkMode ? '#0d2238' : '#e5eef7',
           borderColor: `rgba(${rgbStr}, 0.34)`,
           borderWidth: 0.9,
           shadowColor: `rgba(${rgbStr}, 0.16)`,
@@ -402,6 +418,26 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
             textBorderWidth: 2
           }
         }
+      },
+      {
+        id: CLUSTER_SERIES_ID,
+        name: '足迹聚合',
+        type: 'effectScatter',
+        coordinateSystem: 'geo',
+        zlevel: 4,
+        data: clusterData,
+        symbolSize: (value: number[]) => Math.max(16, Math.min(34, 13 + Math.log2(Number(value[2]) + 1) * 3.6)),
+        rippleEffect: { scale: 2.2, brushType: 'stroke' },
+        itemStyle: { color: '#ff9f2f', shadowBlur: 10, shadowColor: 'rgba(255, 159, 47, 0.45)' },
+        label: {
+          show: true,
+          position: 'inside',
+          formatter: (params: any) => String(params.value?.[2] || ''),
+          color: '#ffffff',
+          fontSize: isMobile ? 10 : 11,
+          fontWeight: 700,
+        },
+        emphasis: { scale: 1.12 },
       }
     ],
     toolbox: {
@@ -470,6 +506,7 @@ const refreshDistribution = async () => {
     const maxVal = Math.max(...values, 10)
     const visualMax = maxVal > p90 * 2 ? p90 * 1.5 : maxVal
     cachedMapData = { ...cachedMapData, data, max: visualMax, geoJson, mapName, routeData }
+    const clusterData = buildClusterData(data, geoJson, window.innerWidth < 768)
 
     myMap.setOption({
       visualMap: { max: visualMax },
@@ -478,7 +515,7 @@ const refreshDistribution = async () => {
         data,
         animationDurationUpdate: 480,
         animationEasingUpdate: 'cubicOut',
-      }],
+      }, { id: CLUSTER_SERIES_ID, data: clusterData }],
     })
   } catch (error) {
     console.error('Map distribution refresh failed', error)
@@ -550,16 +587,20 @@ onUnmounted(() => {
 .immersive-map { z-index: 3; }
 .map-glass {
   border: 1px solid rgba(var(--theme-rgb), 0.22);
-  background: rgba(7, 17, 31, 0.82);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28), inset 0 1px rgba(255, 255, 255, 0.04);
+  background: var(--location-control);
+  box-shadow: 0 12px 36px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.1);
 }
+
+.map-text { color: var(--location-text); }
+.map-muted { color: var(--location-muted); }
+.map-divider { background: rgba(var(--theme-rgb), 0.24); }
 .map-control {
   padding: 8px;
   border: 1px solid rgba(var(--theme-rgb), 0.2);
   border-radius: 10px;
-  color: #a9bed1;
-  background: rgba(7, 17, 31, 0.84);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  color: var(--location-muted);
+  background: var(--location-control);
+  box-shadow: 0 8px 24px var(--location-shadow);
   backdrop-filter: blur(14px);
   transition: color 180ms ease, border-color 180ms ease, background-color 180ms ease;
 }
@@ -569,6 +610,15 @@ onUnmounted(() => {
   background: rgba(var(--theme-rgb), 0.1);
 }
 .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+@media (max-width: 767px) {
+  .map-controls {
+    right: 14px;
+    bottom: calc(var(--mobile-sheet-height, 230px) + 12px);
+    gap: 6px;
+    transition: bottom 300ms ease;
+  }
+  .map-control { padding: 7px; border-radius: 9px; }
+}
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }

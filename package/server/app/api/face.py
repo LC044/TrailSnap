@@ -216,6 +216,43 @@ def get_identity_photos(
     data = crud_face.get_identity_photos(db, id, skip=skip, limit=limit, owner_id=current_user.id)
     return BaseResponse(code=200, msg="获取成功", data=data)
 
+
+@router.get("/group-albums", response_model=BaseResponse[List[schemas.GroupAlbumItem]], summary="获取合影组合相册列表", description="按同框人物组合聚合的合影相册：组合成员均为满足展示阈值的可展示人物，每张封面照片为该组合最新一张合影")
+def list_group_albums(
+    min_photos: Optional[int] = Query(None, ge=0, description="单人展示阈值（组合成员的照片数下限）；不传时取用户配置 ai.face_recognition_min_photos"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    获取合影组合相册列表。组合 = 一组经常同框出现的可展示人物；
+    相册照片 = 同时包含该组全部成员的照片。
+    """
+    if min_photos is None:
+        min_photos = config_manager.get_user_config(current_user.id, db).ai.face_recognition_min_photos
+    data = crud_face.get_group_albums(db, min_photos=min_photos, owner_id=current_user.id)
+    return BaseResponse(code=200, msg="获取成功", data=data)
+
+
+@router.get("/group-albums/photos", response_model=BaseResponse[List[app.schemas.photo.Photo]], summary="获取合影组合相册的照片", description="返回同时包含指定全部人物的照片，按拍摄时间倒序")
+def list_group_album_photos(
+    identity_ids: List[UUID] = Query(..., alias="identity_ids", description="组合成员的人物ID列表（>= 2 个）"),
+    skip: int = Query(0, ge=0, description="跳过的记录数"),
+    limit: int = Query(50, ge=1, le=1000, description="每页数量"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    获取指定人物组合的合影照片（同时包含全部成员）。
+    """
+    data = crud_face.get_group_album_photos(
+        db,
+        identity_ids=identity_ids,
+        skip=skip,
+        limit=limit,
+        owner_id=current_user.id
+    )
+    return BaseResponse(code=200, msg="获取成功", data=data)
+
 @router.delete("/identities/{id}", summary="删除人物", description="删除指定人物，但保留其关联的照片（解除关联）")
 def delete_identity(
     id: UUID = Path(..., description="人物ID"),

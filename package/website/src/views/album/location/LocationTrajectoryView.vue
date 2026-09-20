@@ -1,13 +1,13 @@
 <template>
-  <div class="trajectory-cockpit relative flex h-full w-full flex-col overflow-hidden md:flex-row">
+  <div class="trajectory-cockpit relative flex h-full w-full flex-col overflow-hidden md:flex-row" :class="{ 'trajectory-dark': isDarkMode }">
     <section class="trajectory-map-stage relative order-1 h-full min-h-0 flex-1 md:order-2">
       <div id="trajectory-map" class="h-full w-full overflow-hidden" />
       <div class="map-vignette pointer-events-none absolute inset-0" aria-hidden="true" />
 
       <div v-if="timelineNodes.length" class="journey-hud hidden md:block">
         <div class="hud-kicker">{{ selectedJourney ? 'SELECTED JOURNEY' : 'ALL JOURNEYS' }}</div>
-        <div class="mt-1 text-base font-semibold text-white">{{ selectedJourney?.title || '全部足迹总览' }}</div>
-        <div class="mt-1 flex items-center gap-3 text-xs text-[#7891aa]">
+        <div class="trajectory-title mt-1 text-base font-semibold">{{ selectedJourney?.title || '全部足迹总览' }}</div>
+        <div class="trajectory-muted mt-1 flex items-center gap-3 text-xs">
           <template v-if="selectedJourney">
             <span>{{ selectedJourney.dateRange }}</span>
             <span>{{ selectedJourney.nodes.length }} 个停留点</span>
@@ -69,8 +69,8 @@
           <div class="panel-kicker">JOURNEY ARCHIVE</div>
           <div class="mt-1 flex items-end justify-between">
             <div>
-              <h2 class="text-lg font-bold text-white">旅行轨迹</h2>
-              <p class="mt-1 text-xs text-[#7891aa]">按连续旅行时间自动整理</p>
+              <h2 class="trajectory-title text-lg font-bold">旅行轨迹</h2>
+              <p class="trajectory-muted mt-1 text-xs">按连续旅行时间自动整理</p>
             </div>
             <div class="text-right">
               <div class="text-lg font-semibold text-primary-500">{{ journeyGroups.length }}</div>
@@ -79,7 +79,7 @@
           </div>
         </header>
 
-        <div v-if="!journeyGroups.length && !loading" class="flex flex-col items-center justify-center py-16 text-[#7891aa]">
+        <div v-if="!journeyGroups.length && !loading" class="trajectory-muted flex flex-col items-center justify-center py-16">
           <Map class="mb-3 h-10 w-10 opacity-50" />
           <p class="text-sm">暂无轨迹数据</p>
         </div>
@@ -92,8 +92,8 @@
           >
             <span class="overview-icon"><Map class="h-4 w-4" /></span>
             <span class="min-w-0 flex-1">
-              <span class="block text-sm font-semibold text-[#e4f2ff]">全部足迹总览</span>
-              <span class="mt-1 block text-[11px] text-[#7891aa]">汇聚所有地点与历史轨迹</span>
+              <span class="trajectory-title block text-sm font-semibold">全部足迹总览</span>
+              <span class="trajectory-muted mt-1 block text-[11px]">汇聚所有地点与历史轨迹</span>
             </span>
             <ChevronRight class="h-4 w-4 text-primary-500" />
           </button>
@@ -113,11 +113,11 @@
                 <div v-else class="grid h-14 w-14 shrink-0 place-items-center rounded-xl bg-[#132b42] text-primary-500"><Route class="h-5 w-5" /></div>
                 <div class="min-w-0 flex-1">
                   <div class="flex items-start justify-between gap-2">
-                    <h3 class="truncate text-sm font-semibold text-[#e4f2ff]">{{ journey.title }}</h3>
+                    <h3 class="trajectory-title truncate text-sm font-semibold">{{ journey.title }}</h3>
                     <span class="journey-count">{{ journey.photoCount }}</span>
                   </div>
-                  <div class="mt-1 text-[11px] text-[#7891aa]">{{ journey.dateRange }}</div>
-                  <div class="mt-2 flex items-center gap-1 overflow-hidden text-[11px] text-[#9fb5c8]">
+                  <div class="trajectory-muted mt-1 text-[11px]">{{ journey.dateRange }}</div>
+                  <div class="trajectory-muted mt-2 flex items-center gap-1 overflow-hidden text-[11px]">
                     <template v-for="(location, index) in journey.locations.slice(0, 3)" :key="location">
                       <ChevronRight v-if="index" class="h-3 w-3 shrink-0 text-primary-500" />
                       <span class="truncate">{{ location }}</span>
@@ -137,10 +137,10 @@
               >
                 <span class="stop-index">{{ index + 1 }}</span>
                 <span class="min-w-0 flex-1">
-                  <span class="block truncate text-xs text-[#c7d9e9]">{{ node.locationName }}</span>
-                  <span class="block text-[10px] text-[#617b93]">{{ formatNodeDate(node) }}</span>
+                  <span class="trajectory-title block truncate text-xs">{{ node.locationName }}</span>
+                  <span class="trajectory-muted block text-[10px]">{{ formatNodeDate(node) }}</span>
                 </span>
-                <span class="text-[10px] text-[#7891aa]">{{ node.photoCount }} 张</span>
+                <span class="trajectory-muted text-[10px]">{{ node.photoCount }} 张</span>
               </button>
             </div>
           </article>
@@ -175,7 +175,7 @@ const loading = ref(false)
 const limit = 100
 
 const router = useRouter()
-const { currentTheme } = injectTheme()
+const { currentTheme, isDarkMode } = injectTheme()
 const timelineNodes = ref<TimelineNode[]>([])
 const map = ref<any>(null)
 const mapAccessToken = ref('')
@@ -529,14 +529,18 @@ const drawTrajectory = (fitViewport = false) => {
      const dateLabel = node.startDate === node.endDate ? formatDate(node.startDate).short : formatDate(node.startDate).short + '-' + formatDate(node.endDate).short;
 
      const accent = currentTheme.value.primary
+     const markerSurface = isDarkMode.value ? '#10243a' : '#ffffff'
+     const markerRing = isDarkMode.value ? 'rgba(7,17,31,.72)' : 'rgba(255,255,255,.88)'
+     const markerLabel = isDarkMode.value ? 'rgba(7,17,31,.92)' : 'rgba(255,255,255,.94)'
+     const markerText = isDarkMode.value ? '#dcecff' : '#0f172a'
      const html = `
        <div style="position:relative;width:${size}px;height:${size}px;cursor:pointer;filter:drop-shadow(0 8px 14px rgba(0,0,0,.38));">
-         <div style="width:100%;height:100%;overflow:hidden;border:2px solid ${accent};border-radius:999px;background:#10243a;box-shadow:0 0 0 4px rgba(7,17,31,.72),0 0 22px ${accent}55;">
+         <div style="width:100%;height:100%;overflow:hidden;border:2px solid ${accent};border-radius:999px;background:${markerSurface};box-shadow:0 0 0 4px ${markerRing},0 0 22px ${accent}55;">
            <img src="${coverUrl}" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'" />
          </div>
-         <div style="position:absolute;left:-5px;top:-6px;display:grid;width:20px;height:20px;place-items:center;border:2px solid #07111f;border-radius:999px;background:${accent};color:white;font:700 10px/1 sans-serif;">${index + 1}</div>
-         <div style="position:absolute;right:-7px;bottom:-5px;min-width:22px;height:18px;padding:0 5px;border:1px solid ${accent}88;border-radius:9px;background:rgba(7,17,31,.92);color:#dcecff;font:600 10px/16px sans-serif;text-align:center;">${photoCount}</div>
-         <div style="position:absolute;left:50%;bottom:-29px;transform:translateX(-50%);padding:3px 7px;border:1px solid ${accent}55;border-radius:7px;background:rgba(7,17,31,.9);color:#dcecff;font:600 10px/1.2 sans-serif;white-space:nowrap;">${dateLabel} · ${node.locationName}</div>
+         <div style="position:absolute;left:-5px;top:-6px;display:grid;width:20px;height:20px;place-items:center;border:2px solid ${markerSurface};border-radius:999px;background:${accent};color:white;font:700 10px/1 sans-serif;">${index + 1}</div>
+         <div style="position:absolute;right:-7px;bottom:-5px;min-width:22px;height:18px;padding:0 5px;border:1px solid ${accent}88;border-radius:9px;background:${markerLabel};color:${markerText};font:600 10px/16px sans-serif;text-align:center;">${photoCount}</div>
+         <div style="position:absolute;left:50%;bottom:-29px;transform:translateX(-50%);padding:3px 7px;border:1px solid ${accent}55;border-radius:7px;background:${markerLabel};color:${markerText};font:600 10px/1.2 sans-serif;white-space:nowrap;">${dateLabel} · ${node.locationName}</div>
        </div>`;
 
      const label = new T.Label({
@@ -609,8 +613,8 @@ watch([() => props.startDate, () => props.endDate, () => props.level], () => {
     }
 })
 
-// 主题色变化时重绘轨迹（仅折线颜色变化，重绘所有 overlay 较重但保证一致性）
-watch(() => currentTheme.value.primary, () => {
+// 主题变化时同步重绘轨迹卡片、文字和折线。
+watch([() => currentTheme.value.primary, isDarkMode], () => {
   if (map.value && timelineNodes.value.length > 0) {
     drawTrajectory()
   }
@@ -638,14 +642,22 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.trajectory-cockpit { color: #dcecff; background: #07111f; }
-.trajectory-map-stage { isolation: isolate; background: #07111f; }
-#trajectory-map { background: #0a1727; }
-#trajectory-map :deep(.tdt-tile-pane img) {
+.trajectory-cockpit { color: var(--location-text); background: var(--location-bg); }
+.trajectory-title { color: var(--location-text); }
+.trajectory-muted { color: var(--location-muted); }
+.trajectory-map-stage { isolation: isolate; background: var(--location-bg); }
+#trajectory-map { background: var(--location-bg); }
+.trajectory-dark #trajectory-map :deep(.tdt-tile-pane img) {
   filter: invert(0.88) hue-rotate(175deg) saturate(0.65) brightness(0.66) contrast(1.14);
 }
 .map-vignette {
   z-index: 3;
+  background:
+    radial-gradient(circle at 58% 46%, transparent 36%, rgba(15, 23, 42, 0.04) 74%, rgba(15, 23, 42, 0.12) 100%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.2), transparent 18%);
+  box-shadow: inset 0 0 90px rgba(15, 23, 42, 0.08);
+}
+.trajectory-dark .map-vignette {
   background:
     radial-gradient(circle at 58% 46%, transparent 28%, rgba(4, 11, 20, 0.14) 64%, rgba(4, 11, 20, 0.58) 100%),
     linear-gradient(90deg, rgba(7, 17, 31, 0.46), transparent 18%);
@@ -654,8 +666,8 @@ onUnmounted(() => {
 .journey-panel {
   z-index: 1000;
   border-color: rgba(var(--theme-rgb), 0.18);
-  background: linear-gradient(180deg, rgba(8, 21, 37, 0.98), rgba(5, 14, 26, 0.99));
-  box-shadow: 16px 0 48px rgba(0, 0, 0, 0.24), inset -1px 0 rgba(255, 255, 255, 0.025);
+  background: var(--location-panel);
+  box-shadow: 16px 0 48px var(--location-shadow), inset -1px 0 rgba(255, 255, 255, 0.08);
 }
 .panel-kicker,
 .hud-kicker {
@@ -668,7 +680,7 @@ onUnmounted(() => {
   overflow: hidden;
   border: 1px solid rgba(var(--theme-rgb), 0.12);
   border-radius: 15px;
-  background: rgba(13, 31, 51, 0.64);
+  background: var(--location-control);
   transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 .overview-card {
@@ -679,14 +691,14 @@ onUnmounted(() => {
   padding: 12px;
   border: 1px solid rgba(var(--theme-rgb), 0.14);
   border-radius: 15px;
-  background: rgba(13, 31, 51, 0.58);
+  background: var(--location-control);
   text-align: left;
   transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
 }
 .overview-card:hover,
 .overview-card.active {
   border-color: rgba(var(--theme-rgb), 0.5);
-  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.16), rgba(13, 31, 51, 0.82));
+  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.16), var(--location-control));
   box-shadow: 0 0 24px rgba(var(--theme-rgb), 0.08);
 }
 .overview-icon {
@@ -703,7 +715,7 @@ onUnmounted(() => {
 .journey-card:hover { border-color: rgba(var(--theme-rgb), 0.34); }
 .journey-card.active {
   border-color: rgba(var(--theme-rgb), 0.58);
-  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.14), rgba(13, 31, 51, 0.82));
+  background: linear-gradient(135deg, rgba(var(--theme-rgb), 0.14), var(--location-control));
   box-shadow: 0 0 26px rgba(var(--theme-rgb), 0.08), inset 0 1px rgba(255, 255, 255, 0.035);
 }
 .journey-count {
@@ -753,8 +765,8 @@ onUnmounted(() => {
   padding: 14px 16px;
   border: 1px solid rgba(var(--theme-rgb), 0.2);
   border-radius: 14px;
-  background: rgba(7, 17, 31, 0.82);
-  box-shadow: 0 14px 42px rgba(0, 0, 0, 0.3), inset 0 1px rgba(255, 255, 255, 0.04);
+  background: var(--location-panel);
+  box-shadow: 0 14px 42px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(16px);
 }
 .route-mode-badge {
@@ -778,8 +790,8 @@ onUnmounted(() => {
   padding: 12px 14px;
   border: 1px solid rgba(var(--theme-rgb), 0.24);
   border-radius: 15px;
-  background: rgba(7, 17, 31, 0.86);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.34), inset 0 1px rgba(255, 255, 255, 0.04);
+  background: var(--location-panel);
+  box-shadow: 0 16px 48px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(18px);
 }
 .play-button {
@@ -798,7 +810,7 @@ onUnmounted(() => {
   height: 3px;
   overflow: hidden;
   border-radius: 999px;
-  background: #1b3248;
+  background: rgba(var(--theme-rgb), 0.14);
 }
 .playback-track div {
   height: 100%;
@@ -812,7 +824,7 @@ onUnmounted(() => {
   padding: 5px 7px;
   border: 1px solid rgba(var(--theme-rgb), 0.2);
   border-radius: 8px;
-  color: #a9bed1;
+  color: var(--location-text);
   background: rgba(var(--theme-rgb), 0.08);
   font-size: 11px;
 }
@@ -828,8 +840,8 @@ onUnmounted(() => {
   padding: 8px 12px;
   border: 1px solid rgba(var(--theme-rgb), 0.2);
   border-radius: 999px;
-  color: #a9bed1;
-  background: rgba(7, 17, 31, 0.86);
+  color: var(--location-text);
+  background: var(--location-panel);
   font-size: 11px;
   backdrop-filter: blur(14px);
 }

@@ -1,25 +1,28 @@
 <template>
   <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-full min-h-0' : 'container mx-auto', isImmersiveMap ? 'location-immersive' : '']">
     <!-- Header -->
-    <div class="location-toolbar container mx-auto flex sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
-      <div class="flex shrink-0 flex-col gap-3">
-        <div class="flex w-full shrink-0 items-center gap-3 rounded-full border border-gray-200/50 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-900/80 md:w-auto">
+    <div class="location-toolbar container mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
+      <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
+        <div class="location-title-group flex shrink-0 items-center gap-2 rounded-full border border-gray-200/50 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-900/80">
           <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
           <h1 class="whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
         </div>
+        <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
+          <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
+        </RouterLink>
       </div>
 
-      <div class="flex min-w-0 items-center gap-1 lg:gap-3">
-        <RouterLink to="/footprint" class="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="3D 足迹地图 · 全屏沉浸查看">
+      <div class="location-toolbar-actions flex w-full min-w-0 items-center gap-1 md:w-auto lg:gap-2">
+        <RouterLink to="/footprint" class="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:flex" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>
         <!-- Add Scene Button (Left) -->
         <button
           v-if="level === 'scene'"
           @click="editingScene = null; showAddScene = true"
-          class="px-3 py-1.5 rounded-lg bg-primary-500 text-white hover:bg-primary-600 shadow-sm transition-all flex items-center gap-1.5"
+          class="location-add-scene flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-white shadow-sm transition-all hover:bg-primary-600"
           title="新增景区"
         >
           <Plus class="w-4 h-4" />
@@ -30,19 +33,20 @@
         <div
           ref="yearMenuRef"
           data-testid="location-year-desktop"
-          class="relative hidden rounded-lg bg-gray-200 p-1 dark:bg-gray-800 lg:flex"
+          class="location-year-control relative flex min-w-0 rounded-lg bg-gray-200 p-1 dark:bg-gray-800"
         >
            <button
-             @click="showYearMenu = !showYearMenu"
-             class="px-3 py-1.5 rounded-md text-sm font-medium bg-white dark:bg-gray-700 shadow-sm text-gray-900 dark:text-white flex items-center gap-1.5"
+             @click="openMobileSheet('time')"
+             class="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
            >
+             <Calendar class="hidden h-4 w-4 sm:block" />
              {{ selectedYear ? selectedYear + '年' : (isCustomRange ? '自定义范围' : '全部时间') }}
              <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showYearMenu }" />
            </button>
 
            <div
              v-show="showYearMenu"
-             class="absolute top-full right-0 mt-2 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-[60] max-h-60 overflow-y-auto"
+             class="absolute top-full right-0 mt-2 hidden w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-[60] max-h-60 overflow-y-auto lg:block"
            >
              <button
                @click="selectYear(null); showYearMenu = false"
@@ -100,11 +104,11 @@
         </div>
 
         <!-- Level Toggle -->
-        <div class="bg-gray-200 dark:bg-gray-800 p-0 md:p-1 rounded-lg flex relative" ref="levelMenuRef">
+        <div class="location-level-control bg-gray-200 dark:bg-gray-800 p-0 md:p-1 rounded-lg flex relative" ref="levelMenuRef">
           <!-- Mobile Dropdown Trigger -->
           <button
-            @click="showLevelMenu = !showLevelMenu"
-            class="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
+            @click="openMobileSheet('level')"
+              class="location-level-trigger flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
           >
             {{ currentLevelLabel }}
             <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showLevelMenu }" />
@@ -113,7 +117,7 @@
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showLevelMenu"
-            class="absolute left-0 top-full z-[60] mt-2 flex max-h-[80vh] w-40 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 lg:hidden"
+            class="location-level-menu absolute left-0 top-full z-[60] mt-2 hidden max-h-[80vh] w-40 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
           >
             <!-- Level Options -->
             <div class="py-1">
@@ -216,7 +220,7 @@
           </div>
 
           <!-- Desktop Buttons -->
-          <div data-testid="location-level-desktop" class="hidden lg:flex">
+          <div data-testid="location-level-desktop" class="location-level-desktop hidden lg:flex">
             <button
               @click="changeLevel('district')"
               :class="['px-4 py-1.5 rounded-md text-sm transition-all bg-white dark:bg-gray-700', level === 'district' ? ' shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
@@ -252,12 +256,12 @@
             </button>
           </div>
 
-          <div v-show="viewMode === 'map'" class="my-auto mx-1 hidden h-4 w-px bg-gray-300 dark:bg-gray-600 lg:block"></div>
+          <div v-show="viewMode === 'map'" class="location-level-divider my-auto mx-1 hidden h-4 w-px bg-gray-300 dark:bg-gray-600 lg:block"></div>
 
           <button
             v-show="viewMode === 'map'"
             @click="level = 'photo-map'"
-            :class="['hidden lg:flex px-3 py-1.5 rounded-md text-sm font-medium transition-all items-center gap-1.5 bg-white dark:bg-gray-700', level === 'photo-map' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
+            :class="['location-photo-map-desktop hidden lg:flex px-3 py-1.5 rounded-md text-sm font-medium transition-all items-center gap-1.5 bg-white dark:bg-gray-700', level === 'photo-map' ? 'shadow-sm text-primary-500 font-medium' : 'bg-white/60 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
             title="地图照片"
           >
             <Images class="w-4 h-4" />
@@ -265,20 +269,23 @@
           </button>
         </div>
         <!-- View Toggle -->
-        <div class="relative flex rounded-lg bg-gray-200 p-0 dark:bg-gray-800 lg:p-1" ref="viewMenuRef">
+        <div class="location-view-control relative flex rounded-lg bg-gray-200 p-0 dark:bg-gray-800 lg:p-1" ref="viewMenuRef">
           <!-- Mobile Dropdown Trigger -->
           <button
-            @click="showViewMenu = !showViewMenu"
-            class="flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
+            @click="openMobileSheet('view')"
+            :aria-label="`切换视图，当前${currentViewLabel}`"
+            :title="currentViewLabel"
+            class="location-view-trigger flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
           >
-            <component :is="currentViewIcon" class="w-4 h-4" />
-            <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showViewMenu }" />
+            <component :is="currentViewIcon" class="h-4 w-4" />
+            <span>{{ currentViewLabel }}视图</span>
+            <ChevronDown class="h-4 w-4" />
           </button>
 
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showViewMenu"
-            class="absolute right-0 top-full z-[60] mt-2 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 lg:hidden"
+            class="location-view-menu absolute right-0 top-full z-[60] mt-2 hidden w-36 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
           >
             <button
               @click="viewMode = 'grid'; showViewMenu = false"
@@ -325,7 +332,7 @@
           </div>
 
           <!-- Desktop Buttons -->
-          <div class="hidden lg:flex">
+          <div class="location-view-desktop hidden lg:flex">
             <button
               @click="viewMode = 'grid'"
               :class="['p-1.5 rounded-md transition-all bg-white dark:bg-gray-700', viewMode === 'grid' ? 'shadow-sm text-primary-500' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200']"
@@ -372,6 +379,58 @@
         </div>
       </div>
     </div>
+
+    <!-- Mobile filter/action sheets: one task per sheet, shared interaction model. -->
+    <Teleport to="body">
+      <Transition name="mobile-sheet-fade">
+        <div v-if="activeMobileSheet" class="location-sheet-layer lg:hidden" @click.self="closeMobileSheet">
+          <section class="location-filter-sheet" role="dialog" aria-modal="true" :aria-label="mobileSheetTitle">
+            <div class="location-filter-sheet__handle" aria-hidden="true" />
+            <header class="location-filter-sheet__header">
+              <h2>{{ mobileSheetTitle }}</h2>
+              <button type="button" aria-label="关闭" @click="closeMobileSheet" class="location-sheet-close focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none">
+                <X class="h-5 w-5" />
+              </button>
+            </header>
+
+            <div v-if="activeMobileSheet === 'time'" class="location-sheet-options">
+              <button type="button" :class="{ active: !selectedYear && !isCustomRange }" @click="selectYear(null)">
+                <span>全部时间</span><Check v-if="!selectedYear && !isCustomRange" class="h-5 w-5" />
+              </button>
+              <button v-for="year in availableYears" :key="`sheet-${year}`" type="button" :class="{ active: selectedYear === year }" @click="selectYear(year)">
+                <span>{{ year }}年</span><Check v-if="selectedYear === year" class="h-5 w-5" />
+              </button>
+              <button type="button" :class="{ active: isCustomRange }" @click="handleCustomRangeClick">
+                <span class="flex items-center gap-2"><Calendar class="h-4 w-4" />自定义范围</span><Check v-if="isCustomRange" class="h-5 w-5" />
+              </button>
+              <div v-if="isCustomRange" class="location-sheet-dates">
+                <el-date-picker v-model="dateRangeStart" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" class="!w-full" />
+                <el-date-picker v-model="dateRangeEnd" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" class="!w-full" />
+              </div>
+            </div>
+
+            <div v-else-if="activeMobileSheet === 'level'" class="location-sheet-options">
+              <button v-for="opt in levelOptions" :key="`sheet-${opt.value}`" type="button" :class="{ active: level === opt.value }" @click="changeLevel(opt.value as any)">
+                <span>{{ opt.label }}</span><Check v-if="level === opt.value" class="h-5 w-5" />
+              </button>
+              <button v-if="viewMode === 'map'" type="button" :class="{ active: level === 'photo-map' }" @click="level = 'photo-map'; fetchLocations()">
+                <span>地图照片</span><Check v-if="level === 'photo-map'" class="h-5 w-5" />
+              </button>
+            </div>
+
+            <div v-else class="location-view-grid">
+              <button v-for="item in mobileViewOptions" :key="item.value" type="button" :class="{ active: viewMode === item.value }" @click="viewMode = item.value">
+                <component :is="item.icon" class="h-6 w-6" />
+                <span>{{ item.label }}</span>
+                <Check v-if="viewMode === item.value" class="location-view-check h-4 w-4" />
+              </button>
+            </div>
+
+            <button type="button" class="location-sheet-confirm focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" @click="closeMobileSheet">确定</button>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Map View -->
     <LocationMapView
@@ -487,6 +546,26 @@ const dateRange = ref<[string, string] | null>(null)
 const isCustomRange = ref(false)
 const parentRegion = ref<string | undefined>(undefined)
 const isImmersiveMap = computed(() => viewMode.value === 'map' || viewMode.value === 'trajectory')
+type MobileSheet = 'time' | 'level' | 'view'
+const activeMobileSheet = ref<MobileSheet | null>(null)
+
+const mobileSheetTitle = computed(() => ({
+  time: '选择时间范围',
+  level: '选择地图层级',
+  view: '选择视图模式'
+}[activeMobileSheet.value || 'time']))
+
+const closeMobileSheet = () => { activeMobileSheet.value = null }
+
+const openMobileSheet = (sheet: MobileSheet) => {
+  if (window.innerWidth < 1024) {
+    activeMobileSheet.value = sheet
+    return
+  }
+  if (sheet === 'time') showYearMenu.value = !showYearMenu.value
+  if (sheet === 'level') showLevelMenu.value = !showLevelMenu.value
+  if (sheet === 'view') showViewMenu.value = !showViewMenu.value
+}
 
 const dateRangeStart = computed({
   get: () => dateRange.value?.[0] || '',
@@ -525,7 +604,7 @@ const filterOptions = [
 ]
 
 const isMobile = computed(() => {
-  return window.innerWidth <= 768
+  return window.innerWidth < 1024
 })
 
 const locations = computed(() => {
@@ -571,9 +650,6 @@ const currentLevelLabel = computed(() => {
     if (option) label = option.label
   }
   
-  if (selectedYear.value) {
-    return `${label} · ${selectedYear.value}`
-  }
   return label
 })
 
@@ -594,6 +670,27 @@ const currentViewIcon = computed(() => {
     default: return LayoutGrid
   }
 })
+
+const currentViewLabel = computed(() => {
+  switch (viewMode.value) {
+    case 'grid': return '网格'
+    case 'map': return '地图'
+    case 'timeline': return '时间轴'
+    case 'trajectory': return '轨迹'
+    case 'statistics': return '统计'
+    case 'puzzle': return '拼图'
+    default: return '视图'
+  }
+})
+
+const mobileViewOptions = [
+  { value: 'map' as const, label: '地图视图', icon: Map },
+  { value: 'grid' as const, label: '网格视图', icon: LayoutGrid },
+  { value: 'timeline' as const, label: '时间轴视图', icon: Clock },
+  { value: 'trajectory' as const, label: '轨迹视图', icon: Route },
+  { value: 'statistics' as const, label: '统计视图', icon: BarChart3 },
+  { value: 'puzzle' as const, label: '照片拼图', icon: Shapes },
+]
 
 // Fetch data for Grid View
 const fetchLocations = async () => {
@@ -817,10 +914,36 @@ onMounted(() => {
 </script>
 
 <style scoped>
+:global(:root) {
+  --location-bg: #f8fafc;
+  --location-panel: rgba(255, 255, 255, 0.96);
+  --location-control: rgba(255, 255, 255, 0.9);
+  --location-text: #0f172a;
+  --location-muted: #64748b;
+  --location-map-area: #e5eef7;
+  --location-map-border: rgba(var(--theme-rgb), 0.34);
+  --location-shadow: rgba(15, 23, 42, 0.12);
+}
+
+:global(html.dark) {
+  --location-bg: #07111f;
+  --location-panel: rgba(10, 25, 43, 0.96);
+  --location-control: rgba(12, 28, 49, 0.88);
+  --location-text: #dcecff;
+  --location-muted: #7891aa;
+  --location-map-area: #0d2238;
+  --location-map-border: rgba(var(--theme-rgb), 0.34);
+  --location-shadow: rgba(0, 0, 0, 0.3);
+}
+
+.location-toolbar {
+  container: location-toolbar / inline-size;
+}
+
 .location-immersive {
   padding: 0;
   overflow: hidden;
-  background: #07111f;
+  background: var(--location-bg);
   isolation: isolate;
 }
 
@@ -840,19 +963,31 @@ onMounted(() => {
 .location-immersive .location-toolbar > div:first-child > div,
 .location-immersive .location-toolbar > div:last-child > div {
   border-color: rgba(var(--theme-rgb), 0.24) !important;
-  background: rgba(7, 17, 31, 0.78) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  background: var(--location-control) !important;
+  box-shadow: 0 12px 32px var(--location-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(18px);
 }
 
 .location-immersive .location-toolbar button {
-  background-color: rgba(12, 28, 49, 0.88) !important;
+  background-color: var(--location-control) !important;
   border-color: rgba(var(--theme-rgb), 0.18) !important;
 }
 
 .location-immersive .location-toolbar h1,
 .location-immersive .location-toolbar button:not(.text-primary-500) {
-  color: #e5f3ff;
+  color: var(--location-text);
+}
+
+@container location-toolbar (max-width: 1250px) {
+  .location-immersive .location-level-desktop,
+  .location-immersive .location-level-divider,
+  .location-immersive .location-photo-map-desktop {
+    display: none !important;
+  }
+  .location-immersive .location-level-trigger {
+    display: flex !important;
+  }
+  .location-immersive .location-level-menu { display: flex; }
 }
 
 @media (max-width: 1023px) {
@@ -860,6 +995,151 @@ onMounted(() => {
     padding: 12px 12px 0;
   }
 }
+
+@media (max-width: 767px) {
+  .location-toolbar { gap: 8px; padding-bottom: 0; }
+  .location-toolbar-heading { min-height: 52px; }
+  .location-title-group {
+    gap: 6px;
+    padding: 0;
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .location-immersive .location-toolbar .location-toolbar-heading .location-title-group {
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none;
+  }
+  .location-title-group button { padding: 8px; background: transparent !important; }
+  .location-title-group h1 { font-size: 20px; }
+  .location-footprint-link { min-height: 38px; padding: 7px 11px; border-radius: 12px; font-size: 13px; }
+  .location-toolbar-actions {
+    display: flex;
+    gap: 8px;
+  }
+  .location-toolbar-actions > * {
+    min-width: 0;
+  }
+  .location-toolbar-actions > :deep(a),
+  .location-toolbar-actions button {
+    min-height: 40px;
+  }
+  .location-year-control,
+  .location-level-control { width: auto; min-width: 0; flex: 1 1 0; }
+  .location-view-control { width: auto; min-width: 0; flex: 1.2 1 0; }
+  .location-add-scene { width: 40px; flex: 0 0 40px; padding-inline: 0; }
+  .location-year-control button,
+  .location-level-trigger,
+  .location-view-trigger {
+    min-height: 42px;
+    padding-inline: 9px;
+    font-size: 12px;
+    border: 1px solid rgba(var(--theme-rgb), 0.12);
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
+  }
+  .location-level-menu {
+    left: 0;
+    right: auto;
+    width: min(240px, calc(100vw - 24px));
+  }
+  .location-view-menu {
+    right: 0;
+    width: min(180px, calc(100vw - 24px));
+  }
+}
+
+.location-sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: calc(var(--ts-tabbar-h, 0px) + env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(2px);
+}
+
+.location-filter-sheet {
+  width: min(100%, 520px);
+  max-height: min(76vh, 640px);
+  overflow-y: auto;
+  padding: 8px 16px 16px;
+  border: 1px solid rgba(var(--theme-rgb), 0.16);
+  border-radius: 22px 22px 0 0;
+  color: var(--location-text);
+  background: var(--location-panel);
+  box-shadow: 0 -18px 50px rgba(15, 23, 42, 0.18);
+}
+
+.location-filter-sheet__handle {
+  width: 40px;
+  height: 5px;
+  margin: 0 auto 8px;
+  border-radius: 999px;
+  background: #cbd5e1;
+}
+
+.location-filter-sheet__header {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(var(--theme-rgb), 0.12);
+}
+.location-filter-sheet__header h2 { font-size: 17px; font-weight: 700; }
+.location-sheet-close { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; color: var(--location-muted); }
+
+.location-sheet-options { padding: 8px 0; }
+.location-sheet-options > button {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 8px;
+  color: var(--location-text);
+  font-size: 15px;
+}
+.location-sheet-options > button.active { color: var(--theme-primary); background: rgba(var(--theme-rgb), 0.08); }
+.location-sheet-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 0 2px; }
+
+.location-view-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px 0; }
+.location-view-grid button {
+  position: relative;
+  display: flex;
+  min-height: 86px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 13px;
+  color: var(--location-text);
+  background: var(--location-control);
+}
+.location-view-grid button.active { border-color: var(--theme-primary); color: var(--theme-primary); background: rgba(var(--theme-rgb), 0.08); }
+.location-view-check { position: absolute; top: 8px; right: 8px; }
+.location-sheet-confirm {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 13px;
+  color: white;
+  background: var(--theme-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+.mobile-sheet-fade-enter-active, .mobile-sheet-fade-leave-active { transition: opacity 180ms ease; }
+.mobile-sheet-fade-enter-active .location-filter-sheet, .mobile-sheet-fade-leave-active .location-filter-sheet { transition: transform 220ms ease; }
+.mobile-sheet-fade-enter-from, .mobile-sheet-fade-leave-to { opacity: 0; }
+.mobile-sheet-fade-enter-from .location-filter-sheet, .mobile-sheet-fade-leave-to .location-filter-sheet { transform: translateY(100%); }
 </style>
 
 <style>

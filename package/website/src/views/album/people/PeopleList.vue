@@ -1,14 +1,38 @@
 <template>
   <div class="container mx-auto people-list py-6 px-4">
     <div class="mb-8 flex flex-row justify-between items-start sm:items-center gap-4">
-      <div class="flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-        <button @click="goBack" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+          <button @click="goBack" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
               <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        </button>
-        <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">人物</h1>
+          </button>
+          <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">人物</h1>
+        </div>
+
+        <!-- 个人 / 合影 切换 -->
+        <div
+          class="flex rounded-full bg-gray-200 dark:bg-gray-800 p-1"
+          role="tablist"
+          aria-label="人物视图切换"
+          data-testid="people-view-toggle"
+        >
+          <button
+            v-for="opt in viewOptions"
+            :key="opt.value"
+            role="tab"
+            :aria-selected="viewMode === opt.value"
+            class="px-4 py-1 rounded-full text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+            :class="viewMode === opt.value
+              ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
+            @click="switchView(opt.value)"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
 
-      <div class="flex items-center gap-3 flex-wrap justify-end">
+      <div v-if="viewMode === 'solo'" class="flex items-center gap-3 flex-wrap justify-end">
         <el-popover
           v-if="!isMergeMode" 
           placement="bottom-end"
@@ -84,12 +108,14 @@
       </div>
     </div>
 
-    <div v-if="loading" class="flow-grid">
-      <div v-for="i in 15" :key="i" class="flex flex-col items-center">
-        <div class="w-full aspect-square bg-gray-200 dark:bg-gray-800 rounded-full animate-pulse"></div>
-        <div class="mt-3 w-16 h-3 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
+    <!-- 个人：头像网格 -->
+    <template v-if="viewMode === 'solo'">
+      <div v-if="loading" class="flow-grid">
+        <div v-for="i in 15" :key="i" class="flex flex-col items-center">
+          <div class="w-full aspect-square bg-gray-200 dark:bg-gray-800 rounded-full animate-pulse"></div>
+          <div class="mt-3 w-16 h-3 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
+        </div>
       </div>
-    </div>
 
     <div v-else-if="identities.length === 0" class="flex flex-col items-center justify-center h-[60vh] text-gray-500">
       <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
@@ -151,11 +177,64 @@
         </div>
       </div>
     </div>
+    </template>
+
+    <!-- 合影：组合相册卡片（移动端单列，封面 3:4） -->
+    <template v-else>
+      <div v-if="loading" class="group-grid">
+        <div v-for="i in 6" :key="i" class="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+          <div class="w-full aspect-[3/4] bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+          <div class="p-3"><div class="h-3 w-2/3 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div></div>
+        </div>
+      </div>
+
+      <div v-else-if="groupAlbums.length === 0" class="flex flex-col items-center justify-center h-[60vh] text-gray-500">
+        <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
+          <UsersIcon class="w-12 h-12 opacity-20" />
+        </div>
+        <p class="text-lg font-medium">暂无合影</p>
+        <p class="text-sm opacity-60">识别到多人同框的照片后会自动显示在此处</p>
+      </div>
+
+      <div v-else class="group-grid">
+        <button
+          v-for="album in groupAlbums"
+          :key="groupAlbumKey(album)"
+          type="button"
+          class="group text-left rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm transition-all hover:shadow-md hover:border-gray-300 dark:hover:border-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          data-testid="group-album-card"
+          @click="openGroupAlbum(album)"
+        >
+          <div class="relative w-full aspect-[3/4] overflow-hidden bg-gray-100 dark:bg-gray-800">
+            <img
+              :src="thumbnailUrl(album.cover.id, 'medium', album.cover.owner_id)"
+              class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+              :alt="groupAlbumTitle(album)"
+            />
+            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 pt-8">
+              <p class="text-xs font-medium text-white drop-shadow-sm">
+                {{ album.identities.length }} 人同框
+              </p>
+            </div>
+          </div>
+          <div class="p-3">
+            <p class="text-sm font-medium text-gray-800 dark:text-gray-100 line-clamp-2">
+              {{ groupAlbumTitle(album) }}
+            </p>
+            <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              {{ album.photo_count }} 张合影
+            </p>
+          </div>
+        </button>
+      </div>
+    </template>
 
     <IdentityEditDialog
       v-model:visible="editDialogVisible"
       :identity="currentEditingIdentity"
       @saved="handleEditSaved"
+      @cover-changed="fetchIdentities"
     />
 
     <FaceRescanDialog
@@ -163,6 +242,7 @@
       :identity="rescanIdentity"
       @applied="fetchIdentities"
     />
+
 
     <!-- Context Menu -->
     <Teleport to="body">
@@ -205,13 +285,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { faceApi } from '@/api/face'
-import type { FaceIdentity, CoverPhotoInfo } from '@/types/album'
+import type { FaceIdentity, CoverPhotoInfo, GroupAlbumItem } from '@/types/album'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   User as UserIcon,
+  Users as UsersIcon,
   MoreVertical as MoreVerticalIcon,
   CheckSquare as CheckSquareIcon,
   Check as CheckIcon,
@@ -225,14 +306,90 @@ import {
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
 import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
 import PersonAvatar from '@/components/PersonAvatar.vue'
+import { thumbnailUrl } from '@/utils/mediaUrl'
 
 
 const router = useRouter()
+const route = useRoute()
 const goBack = useAppBack('/album')
 const loading = ref(true)
 const identities = ref<FaceIdentity[]>([])
 const isMergeMode = ref(false)
 const selectedIds = ref<string[]>([])
+
+// 视图切换：个人（默认）/ 合影；选择持久化到 localStorage（与 people_filter 同模式），
+// 避免进入合影详情返回后组件重建又回到"个人"
+type PeopleViewMode = 'solo' | 'group'
+const viewOptions: { value: PeopleViewMode, label: string }[] = [
+  { value: 'solo', label: '个人' },
+  { value: 'group', label: '合影' }
+]
+const PEOPLE_VIEW_KEY = 'people_view_mode'
+const loadSavedViewMode = (): PeopleViewMode => {
+  try {
+    const saved = localStorage.getItem(PEOPLE_VIEW_KEY)
+    if (saved === 'solo' || saved === 'group') return saved
+  } catch (e) {
+    console.error('Failed to load view mode', e)
+  }
+  return 'solo'
+}
+const viewMode = ref<PeopleViewMode>(loadSavedViewMode())
+const groupAlbums = ref<GroupAlbumItem[]>([])
+const groupLoaded = ref(false)
+const soloLoaded = ref(false)
+
+const switchView = (mode: PeopleViewMode, persist = true) => {
+  if (viewMode.value === mode) return
+  viewMode.value = mode
+  if (persist) {
+    try {
+      localStorage.setItem(PEOPLE_VIEW_KEY, mode)
+    } catch (e) {
+      console.error('Failed to save view mode', e)
+    }
+  }
+  // 离开批量模式，避免残留选中态
+  isMergeMode.value = false
+  selectedIds.value = []
+  if (mode === 'group' && !groupLoaded.value) {
+    fetchGroupAlbums()
+  } else if (mode === 'solo' && !soloLoaded.value) {
+    fetchIdentities()
+  }
+}
+
+const fetchGroupAlbums = async () => {
+  loading.value = true
+  try {
+    groupAlbums.value = await faceApi.listGroupAlbums()
+    groupLoaded.value = true
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('获取合影列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 合影组合相册标题：成员名字（顿号分隔）
+const groupAlbumTitle = (album: GroupAlbumItem) => {
+  return album.identities
+    .map(i => i.identity_name?.trim() || '未命名')
+    .join('、')
+}
+
+const groupAlbumKey = (album: GroupAlbumItem) => {
+  return album.identities.map(i => i.identity_id).sort().join('+')
+}
+
+const openGroupAlbum = (album: GroupAlbumItem) => {
+  router.push({
+    name: 'GroupAlbumDetail',
+    params: { ids: album.identities.map(i => i.identity_id).sort().join(',') },
+    query: { names: album.identities.map(i => i.identity_name?.trim() || '未命名').join('、') }
+  })
+}
 
 // Filter
 const filterOptions = ref<string[]>(['named', 'unnamed'])
@@ -456,7 +613,24 @@ const confirmMerge = async () => {
   }
 }
 
-onMounted(fetchIdentities)
+onMounted(() => {
+  // ?view=solo|group 显式覆盖（如首页"快速标注"入口固定进个人视图），否则用持久化的视图；
+  // 覆盖时不回写 localStorage，避免入口意图悄悄覆盖用户偏好
+  const queryView = route.query.view as string | undefined
+  if (queryView === 'solo' || queryView === 'group') {
+    if (queryView !== viewMode.value) {
+      switchView(queryView, false)
+      return
+    }
+  }
+  if (viewMode.value === 'group') {
+    // 恢复持久化的"合影"视图
+    fetchGroupAlbums()
+  } else {
+    fetchIdentities()
+    soloLoaded.value = true
+  }
+})
 </script>
 
 <style scoped>
@@ -482,6 +656,33 @@ onMounted(fetchIdentities)
   .flow-grid {
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 2rem;
+  }
+}
+
+/* 合影网格：移动端单列，平板双列，桌面最多三列 */
+.group-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .group-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .group-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+}
+
+@media (min-width: 1536px) {
+  .group-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 

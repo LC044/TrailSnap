@@ -1,15 +1,10 @@
 <template>
-  <div class="location-map-cockpit flex flex-col md:flex-row w-full h-full relative">
+  <div class="location-map-cockpit flex flex-col md:flex-row w-full h-full relative" :style="isMobile ? { '--mobile-sheet-height': `${sheetHeight}px` } : {}">
     <!-- 左侧地图区域（移动端撑满，抽屉浮于其上） -->
     <!-- min-h-0 让 flex-1 在移动端 flex-col 下正确分配高度（见 LocationPuzzleView 同名注释） -->
     <div class="map-stage flex-1 min-h-0 relative overflow-hidden md:h-full">
       <div class="map-grid" aria-hidden="true" />
       <div class="map-radar" aria-hidden="true"><span /><span /><span /></div>
-      <div class="map-mode-switch map-glass">
-        <button class="active focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="emit('switch-view', 'map')">足迹地图</button>
-        <button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="emit('switch-view', 'statistics')">城市排行</button>
-        <button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="emit('switch-view', 'trajectory')">轨迹回放</button>
-      </div>
       <MapContainer
         ref="mapContainerRef"
         :level="level"
@@ -23,9 +18,8 @@
         @update-top-regions="(regions) => topRegions = regions"
       />
       <div class="map-legend map-glass">
-        <span><i class="legend-dot legend-dot--place" />已打卡城市</span>
-        <span><i class="legend-dot legend-dot--route" />轨迹光点</span>
-        <span><i class="legend-dot legend-dot--active" />当前筛选</span>
+        <span><i class="legend-dot legend-dot--place" />已到达</span>
+        <span><i class="legend-dot legend-dot--unvisited" />未到达</span>
       </div>
 
       <div v-if="timelineYears.length" class="journey-timeline hidden md:flex" aria-label="足迹年份时间轴">
@@ -64,12 +58,12 @@
     <!-- 右侧信息面板：移动端为 fixed 底部抽屉（peek/expand），桌面端为侧栏 -->
     <div
       class="location-insight-panel fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+env(safe-area-inset-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 backdrop-blur-xl border-t md:border-t-0 md:border-l rounded-t-2xl md:rounded-none shadow-2xl transition-[height] duration-300 ease-out"
-      :class="{ '!transition-none': isDragging }"
+      :class="[`sheet-${sheetState}`, { '!transition-none': isDragging }]"
       :style="isMobile ? { height: sheetHeight + 'px' } : {}"
     >
       <!-- 拖拽手柄区（仅移动端：点击切换 peek/expand，拖拽连续调高度） -->
       <div
-        class="md:hidden shrink-0 h-8 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+        class="md:hidden shrink-0 h-6 flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
         @pointerdown="onHandlePointerDown"
         @click="onHandleClick"
         @keydown.enter="onHandleClick"
@@ -81,7 +75,12 @@
         <div class="w-10 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
       </div>
 
-      <el-scrollbar class="flex-1">
+      <div class="sheet-mobile-header md:hidden">
+        <h2>足迹概览</h2>
+        <span><i />数据已同步</span>
+      </div>
+
+      <el-scrollbar class="sheet-scroll flex-1">
         <div class="p-4 md:p-5 space-y-6">
           
           <RegionDetailsPanel
@@ -409,19 +408,24 @@ const clearSelection = () => {
   regionRecentVisits.value = []
 }
 
-/* ----------------------- 移动端底部抽屉：peek / expand ----------------------- */
-// 桌面端为侧栏（md:static md:h-full），sheetHeight 仅移动端生效（内联高度门控 isMobile）。
-const PEEK_H = 208                                   // 收起态：露手柄 + 标题 + 探索进度卡
-const expandedH = () => Math.min(                    // 展开态：~70vh，但至少留 header + 120px 地图可点
+/* ----------------------- 移动端底部抽屉：收起 / 半展开 / 全展开 ----------------------- */
+const COLLAPSED_H = 62
+const HALF_H = 230
+const expandedH = () => Math.min(
   Math.round(window.innerHeight * 0.7),
   window.innerHeight - 240
 )
-const sheetHeight = ref(PEEK_H)
+const sheetHeight = ref(HALF_H)
 const isDragging = ref(false)
 let dragMoved = false
 let dragOrigin = { startY: 0, startH: 0 }
 
-const clampSheetH = (h: number) => Math.max(PEEK_H, Math.min(h, expandedH()))
+const clampSheetH = (h: number) => Math.max(COLLAPSED_H, Math.min(h, expandedH()))
+const sheetState = computed<'collapsed' | 'half' | 'full'>(() => {
+  if (sheetHeight.value < (COLLAPSED_H + HALF_H) / 2) return 'collapsed'
+  if (sheetHeight.value < (HALF_H + expandedH()) / 2) return 'half'
+  return 'full'
+})
 
 const onHandlePointerDown = (e: PointerEvent) => {
   if (e.button !== 0) return
@@ -444,15 +448,17 @@ const onHandlePointerUp = () => {
   isDragging.value = false
   window.removeEventListener('pointermove', onHandlePointerMove)
   window.removeEventListener('pointerup', onHandlePointerUp)
-  // 释放后按中点 snap 到最近档位
-  const mid = (PEEK_H + expandedH()) / 2
-  sheetHeight.value = sheetHeight.value > mid ? expandedH() : PEEK_H
+  const stops = [COLLAPSED_H, HALF_H, expandedH()]
+  sheetHeight.value = stops.reduce((nearest, stop) =>
+    Math.abs(stop - sheetHeight.value) < Math.abs(nearest - sheetHeight.value) ? stop : nearest
+  )
 }
 
 const onHandleClick = () => {
-  // 拖动产生的位移不触发切换
   if (dragMoved) return
-  sheetHeight.value = sheetHeight.value > PEEK_H + 1 ? PEEK_H : expandedH()
+  if (sheetState.value === 'collapsed') sheetHeight.value = HALF_H
+  else if (sheetState.value === 'half') sheetHeight.value = expandedH()
+  else sheetHeight.value = COLLAPSED_H
 }
 
 // 移动端判定（沿用 MainLayout 的 ref + resize 监听模式，仓内无响应式 isMobile 组合式）
@@ -466,7 +472,7 @@ const onWindowResize = () => {
 
 // 选中区块自动展开、清除自动收起（桌面端 sheetHeight 被 md:h-full 忽略，写入无害）
 watch(selectedRegion, (v) => {
-  if (isMobile.value) sheetHeight.value = v ? expandedH() : PEEK_H
+  if (isMobile.value) sheetHeight.value = v ? expandedH() : HALF_H
 })
 
 onMounted(() => {
@@ -486,14 +492,14 @@ onUnmounted(() => {
 
 <style scoped>
 .location-map-cockpit {
-  color: #dcecff;
-  background: #07111f;
+  color: var(--location-text);
+  background: var(--location-bg);
 }
 
 .map-stage {
   background:
     radial-gradient(circle at 48% 44%, rgba(var(--theme-rgb), 0.12), transparent 36%),
-    linear-gradient(145deg, #08182b 0%, #07111f 58%, #050c17 100%);
+    var(--location-bg);
 }
 
 .map-grid {
@@ -533,32 +539,45 @@ onUnmounted(() => {
 
 .location-insight-panel {
   border-color: rgba(var(--theme-rgb), 0.2);
-  background: linear-gradient(180deg, rgba(10, 25, 43, 0.96), rgba(5, 14, 26, 0.98));
-  box-shadow: -18px 0 46px rgba(0, 0, 0, 0.3), inset 1px 0 rgba(255, 255, 255, 0.025);
+  color: var(--location-text);
+  background: var(--location-panel);
+  box-shadow: -18px 0 46px var(--location-shadow), inset 1px 0 rgba(255, 255, 255, 0.08);
 }
+
+.sheet-mobile-header {
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 8px;
+}
+.sheet-mobile-header h2 { color: var(--location-text); font-size: 16px; font-weight: 700; }
+.sheet-mobile-header span { display: inline-flex; align-items: center; gap: 6px; color: var(--location-muted); font-size: 11px; }
+.sheet-mobile-header i { width: 7px; height: 7px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.35); }
 
 .location-insight-panel :deep(.text-gray-900),
 .location-insight-panel :deep(.text-gray-800),
-.location-insight-panel :deep(.text-gray-700) { color: #dcecff !important; }
+.location-insight-panel :deep(.text-gray-700) { color: var(--location-text) !important; }
 .location-insight-panel :deep(.text-gray-600),
 .location-insight-panel :deep(.text-gray-500),
-.location-insight-panel :deep(.text-gray-400) { color: #7891aa !important; }
+.location-insight-panel :deep(.text-gray-400) { color: var(--location-muted) !important; }
 .location-insight-panel :deep(.bg-white),
 .location-insight-panel :deep(.bg-gray-50),
-.location-insight-panel :deep(.bg-gray-100) { background-color: rgba(13, 31, 51, 0.7) !important; }
+.location-insight-panel :deep(.bg-gray-100) { background-color: var(--location-control) !important; }
 .location-insight-panel :deep(.border-gray-100),
 .location-insight-panel :deep(.border-gray-200),
 .location-insight-panel :deep(.border-gray-300) { border-color: rgba(var(--theme-rgb), 0.16) !important; }
 
-.map-mode-switch { position: absolute; z-index: 14; top: 26px; right: 28px; display: flex; gap: 3px; padding: 4px; border-radius: 12px; }
-.map-mode-switch button { padding: 7px 12px; border-radius: 8px; color: #91abc0; font-size: 11px; transition: color 180ms ease, background-color 180ms ease; }
-.map-mode-switch button:hover, .map-mode-switch button.active { color: #effaff; background: rgba(var(--theme-rgb), .22); }
-.map-legend { position: absolute; z-index: 12; bottom: 116px; left: 28px; display: flex; gap: 14px; padding: 8px 11px; border-radius: 10px; color: #9bb5ca; font-size: 10px; }
+.map-glass {
+  border: 1px solid rgba(var(--theme-rgb), 0.2);
+  background: var(--location-control);
+  box-shadow: 0 8px 24px var(--location-shadow);
+  backdrop-filter: blur(14px);
+}
+.map-legend { position: absolute; z-index: 12; bottom: 116px; left: 28px; display: flex; gap: 14px; padding: 8px 11px; border-radius: 10px; color: var(--location-muted); font-size: 10px; }
 .map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .legend-dot { width: 7px; height: 7px; border-radius: 999px; box-shadow: 0 0 8px currentColor; }
 .legend-dot--place { color: #35b7ff; background: #35b7ff; }
-.legend-dot--route { color: #ffb454; background: #ffb454; }
-.legend-dot--active { color: var(--theme-primary); background: var(--theme-primary); }
+.legend-dot--unvisited { color: #b9dfff; background: #b9dfff; }
 
 .journey-timeline {
   position: absolute;
@@ -572,8 +591,8 @@ onUnmounted(() => {
   padding: 15px 18px;
   border: 1px solid rgba(var(--theme-rgb), 0.2);
   border-radius: 16px;
-  background: rgba(7, 17, 31, 0.84);
-  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.32), inset 0 1px rgba(255, 255, 255, 0.04);
+  background: var(--location-panel);
+  box-shadow: 0 16px 50px var(--location-shadow), inset 0 1px rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(18px);
 }
 
@@ -615,7 +634,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  color: #7690aa;
+  color: var(--location-muted);
   background: transparent;
 }
 
@@ -623,13 +642,13 @@ onUnmounted(() => {
   z-index: 1;
   width: calc(7px + 5px * var(--node-weight));
   height: calc(7px + 5px * var(--node-weight));
-  border: 2px solid #0b172a;
+  border: 2px solid var(--location-bg);
   border-radius: 999px;
   background: #5b7894;
 }
 
 .timeline-node:hover,
-.timeline-node.active { color: #e5f5ff; }
+.timeline-node.active { color: var(--location-text); }
 .timeline-node:hover .timeline-dot,
 .timeline-node.active .timeline-dot {
   background: var(--theme-primary);
@@ -640,10 +659,10 @@ onUnmounted(() => {
 .timeline-summary {
   display: flex;
   gap: 14px;
-  color: #7690aa;
+  color: var(--location-muted);
   font-size: 11px;
 }
-.timeline-summary span:first-child { display: flex; align-items: center; gap: 5px; color: #b9cee2; }
+.timeline-summary span:first-child { display: flex; align-items: center; gap: 5px; color: var(--location-text); }
 .timeline-summary button { color: var(--theme-primary); }
 
 @keyframes radar-wave {
@@ -655,10 +674,14 @@ onUnmounted(() => {
   .map-radar span { animation: none; opacity: 0.2; inset: 15%; }
 }
 @media (max-width: 767px) {
-  .map-mode-switch { top: 16px; right: 14px; }
-  .map-mode-switch button { padding: 6px 8px; font-size: 10px; }
-  .map-mode-switch button:nth-child(n+2) { display: none; }
-  .map-legend { bottom: 96px; left: 14px; gap: 8px; padding: 7px 8px; }
+  .location-insight-panel.sheet-collapsed .sheet-scroll { display: none; }
+  .location-insight-panel.sheet-half :deep(.overview-extra),
+  .location-insight-panel.sheet-half :deep(.overview-metrics) { display: none; }
+  .location-insight-panel.sheet-half :deep(.overview-cockpit),
+  .location-insight-panel.sheet-half :deep(.overview-cockpit > div),
+  .location-insight-panel.sheet-half :deep(.overview-cockpit > div > div) { margin-top: 0; margin-bottom: 0; }
+  .location-insight-panel .sheet-scroll :deep(.el-scrollbar__view) > div { padding-top: 0.25rem; }
+  .map-legend { bottom: calc(var(--mobile-sheet-height, 230px) + 12px); left: 14px; gap: 8px; padding: 7px 9px; transition: bottom 300ms ease; }
   .map-legend span { font-size: 9px; }
 }
 </style>

@@ -237,8 +237,6 @@
     <div class="p-2 border-t border-slate-200 dark:border-slate-800 shrink-0 flex flex-col space-y-1">
       <SidebarTaskManager :is-collapsed="isCollapsed" />
 
-      <NotificationBell variant="row" :collapsed="isCollapsed" />
-
       <RouterLink
         v-for="item in desktopSystemNavItems"
         :key="item.href"
@@ -259,9 +257,15 @@
           :title="isCollapsed ? accountName : undefined"
           class="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800"
         >
-          <span class="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-            <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" :alt="accountName" class="h-full w-full object-cover" />
+          <span class="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-visible rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+            <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" :alt="accountName" class="h-full w-full rounded-full object-cover" />
             <span v-else>{{ accountInitial }}</span>
+            <!-- 未读通知红点（服务端通知 + 任务完成/失败） -->
+            <span
+              v-if="notificationStore.unreadCount > 0"
+              class="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white dark:ring-slate-900"
+              aria-label="有未读通知"
+            />
           </span>
           <span v-if="!isCollapsed" class="ml-3 min-w-0 flex-1">
             <span class="block truncate text-sm font-medium">{{ accountName }}</span>
@@ -271,6 +275,14 @@
         </button>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="notifications">
+              <Bell class="mr-2 h-4 w-4" />
+              通知
+              <span
+                v-if="notificationStore.unreadCount > 0"
+                class="ml-1.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-semibold leading-4 text-white"
+              >{{ notificationStore.unreadCount > 99 ? '99+' : notificationStore.unreadCount }}</span>
+            </el-dropdown-item>
             <el-dropdown-item command="profile"><UserCircle class="mr-2 h-4 w-4" />个人资料</el-dropdown-item>
             <el-dropdown-item command="settings"><Settings class="mr-2 h-4 w-4" />设置</el-dropdown-item>
             <el-dropdown-item v-if="!isTauriApp()" divided command="logout"><LogOut class="mr-2 h-4 w-4" />退出登录</el-dropdown-item>
@@ -311,6 +323,7 @@ import {
   Settings,
   LogOut,
   Bot,
+  Bell,
 } from 'lucide-vue-next'
 import { useDebounceFn } from '@vueuse/core'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -318,7 +331,7 @@ import searchService, { type SearchSuggestion } from '@/api/search'
 import { injectNavItems, getNavIcon, getThumbnailUrl } from '@/composables/useNavItems'
 import NavAddDialog from '@/components/NavAddDialog.vue'
 import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
-import NotificationBell from '@/components/NotificationBell.vue'
+import { useNotificationStore } from '@/stores/notificationStore'
 import { parseDateRange } from '@/utils/date'
 import { desktopNavSections, systemNavItems } from '@/config/navigation'
 import type { AppNavItem } from '@/config/navigation'
@@ -333,6 +346,7 @@ const router = useRouter()
 const store = usePhotoStore()
 const userStore = useUserStore()
 const uiStore = useUiStore()
+const notificationStore = useNotificationStore()
 
 // 主动式记忆红点：未读的主动消息数量
 const proactiveUnread = ref(0)
@@ -356,7 +370,9 @@ const accountName = computed(() => userStore.userInfo?.nickname || userStore.use
 const accountInitial = computed(() => accountName.value.slice(0, 1).toUpperCase())
 
 const handleAccountCommand = async (command: string) => {
-  if (command === 'profile') {
+  if (command === 'notifications') {
+    notificationStore.openDrawer()
+  } else if (command === 'profile') {
     await router.push('/settings#profile')
   } else if (command === 'settings') {
     await router.push('/settings')
