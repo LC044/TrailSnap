@@ -11,7 +11,7 @@ from app.db.models.scene import Scene
 from app.db.sql import as_date_string, date_only
 
 
-TIME_COMPARE_RADIUS_M = 100
+TIME_COMPARE_RADIUS_M = 200
 TIME_COMPARE_SCENE_DISTANCE_M = 500
 TIME_COMPARE_VISUAL_WEIGHT = 0.90
 TIME_COMPARE_DISTANCE_WEIGHT = 0.1
