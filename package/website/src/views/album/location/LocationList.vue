@@ -836,8 +836,9 @@ const changeLevel = (newLevel: 'city' | 'province' | 'district' | 'scene', viewS
   // Map initialization is handled by LocationMapView watcher on 'level' and 'parentRegion'
 }
 
-const goToLocation = (name: string, overrideLevel?: string) => {
+const goToLocation = (name: string, overrideLevel?: string, sceneId?: string) => {
   const query: any = { level: overrideLevel || level.value }
+  if (sceneId) query.sceneId = sceneId
   if (dateRange.value) {
     query.startDate = dateRange.value[0]
     query.endDate = dateRange.value[1]

@@ -92,6 +92,13 @@ const routes: RouteRecordRaw[] = [
     meta: { layout: 'blank', title: '3D 足迹地图', navGroup: 'albums' },
   },
 
+  {
+    path: '/time-compare/:sceneId',
+    name: 'LocationTimeCompare',
+    component: () => import('@/views/album/location/LocationTimeCompare.vue'),
+    meta: { layout: 'blank', title: '地点时光对照', navGroup: 'albums' },
+  },
+
   // Annual Report (Standalone Layout)
   {
     path: '/annual-report',

@@ -21,9 +21,9 @@
     <div v-else class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-12 gap-6">
       <div
         v-for="loc in locations"
-        :key="loc.name"
+        :key="loc.id || loc.name"
         class="group cursor-pointer flex flex-col"
-        @click="$emit('click', loc.name)"
+        @click="$emit('click', loc.name, undefined, loc.id)"
       >
         <div class="relative w-full aspect-square rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 shadow-sm group-hover:shadow-md transition-all duration-300">
            <div class="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">

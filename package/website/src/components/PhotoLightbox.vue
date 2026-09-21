@@ -136,6 +136,12 @@
                                     <span>查看AI分析结果</span>
                                 </div>
                             </el-dropdown-item>
+                            <el-dropdown-item v-if="timeCompareLocationKey" command="timeCompare">
+                                <div class="flex items-center gap-2">
+                                    <History class="w-4 h-4" />
+                                    <span>这里以前</span>
+                                </div>
+                            </el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
@@ -445,6 +451,11 @@
                 <span class="text-[11px]">AI 分析</span>
               </button>
 
+              <button v-if="timeCompareLocationKey" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(openTimeCompare)">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><History class="w-5 h-5" /></span>
+                <span class="text-[11px]">这里以前</span>
+              </button>
+
               <button
                 class="flex flex-col items-center gap-1.5 bg-transparent p-0 disabled:opacity-40"
                 :class="showMobileProcessing ? 'text-primary-400' : 'text-white/90'"
@@ -651,6 +662,7 @@ import {
     Sparkles,
     Binary,
     LoaderCircle,
+    History,
 } from 'lucide-vue-next'
 // xgplayer 体积大（~数百 KB），且只在查看视频时需要，故改为按需动态导入；
 // 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
@@ -668,6 +680,8 @@ import PersonSelector from './PersonSelector.vue'
 const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
 import { useOverlayStack } from '@/composables/useOverlayStack'
+import { locationService } from '@/api/location'
+import { useRouter } from 'vue-router'
 
 
 interface Props {
@@ -699,6 +713,7 @@ const props = withDefaults(defineProps<Props>(), {
     deleteTitle: '删除确认',
     deleteMessage: '确定要删除这张照片吗？删除后将移入回收站，可稍后恢复。'
 })
+const router = useRouter()
 
 const showOriginal = ref(false)
 const isEditing = ref(false)
@@ -963,6 +978,7 @@ const lightboxHistoryId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let historyEntryActive = false
 let historyBackPending = false
 let historyListenerMounted = false
+let pendingTimeCompareRoute: { sceneId: string; photoId: string } | null = null
 
 const isCurrentLightboxHistoryEntry = () =>
     window.history.state?.[LIGHTBOX_HISTORY_KEY] === lightboxHistoryId
@@ -989,6 +1005,11 @@ const handleHistoryPopState = () => {
 
     historyEntryActive = false
     if (props.visible) emit('close')
+    if (pendingTimeCompareRoute) {
+        const target = pendingTimeCompareRoute
+        pendingTimeCompareRoute = null
+        router.push({ name: 'LocationTimeCompare', params: { sceneId: target.sceneId }, query: { photoId: target.photoId } })
+    }
 }
 
 // State
@@ -996,6 +1017,7 @@ const showSidebar = ref(false)
 const forceOpenLocationEdit = ref(false)
 const loading = ref(false)
 const metadata = ref<PhotoMetadata | null>(null)
+const timeCompareLocationKey = ref<string | null>(null)
 
 // OCR State
 const showOCR = ref(false)
@@ -1319,7 +1341,22 @@ const handleCommand = (command: string) => {
         if (props.image) {
             fetchDescription(props.image.id)
         }
+    } else if (command === 'timeCompare') {
+        openTimeCompare()
     }
+}
+
+const openTimeCompare = () => {
+    if (!timeCompareLocationKey.value || !props.image) return
+    const target = { sceneId: timeCompareLocationKey.value, photoId: props.image.id }
+    if (historyEntryActive && isCurrentLightboxHistoryEntry()) {
+        pendingTimeCompareRoute = target
+        historyBackPending = true
+        window.history.back()
+        return
+    }
+    emit('close')
+    router.push({ name: 'LocationTimeCompare', params: { sceneId: target.sceneId }, query: { photoId: target.photoId } })
 }
 
 const photoProcessingOperationLabel = (operation: PhotoProcessingOperation) =>
@@ -1480,9 +1517,20 @@ const handlePersonSelected = async (person: any) => {
 
 const fetchMetadata = async (photoId: string) => {
     loading.value = true
+    timeCompareLocationKey.value = null
     try {
         const data = await albumService.getMetadata(photoId)
+        if (props.image?.id !== photoId) return
         metadata.value = data
+        const hasGps = data.latitude != null && data.longitude != null
+        if (data.scene_id || hasGps) {
+            try {
+                const compare = await locationService.getTimeCompareSummary({ photoId })
+                if (props.image?.id === photoId && compare.eligible) timeCompareLocationKey.value = compare.scene_id || 'gps'
+            } catch (error) {
+                console.warn('Failed to check time comparison availability', error)
+            }
+        }
     } catch (error) {
         console.error("Failed to fetch metadata", error)
     } finally {

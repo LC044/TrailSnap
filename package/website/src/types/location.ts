@@ -63,6 +63,40 @@ export interface TimelineResponse {
   total: number;
 }
 
+export interface TimeCompareYear {
+  year: number
+  photo_count: number
+  first_date: string
+  last_date: string
+  cover: Photo
+}
+
+export interface TimeCompareVisit {
+  date: string
+  photo_count: number
+  first_time: string
+  last_time: string
+  cover: Photo
+}
+
+export interface TimeCompareSummary {
+  eligible: boolean
+  reason?: 'precise_location_required' | 'multiple_years_required' | string
+  match_type?: 'scene' | 'nearby_gps' | string
+  radius_m?: number
+  visual_similarity?: number
+  scene_id?: string
+  location_name?: string
+  location_address?: string
+  city?: string
+  source_photo_id?: string
+  source_photo_year?: number
+  years: TimeCompareYear[]
+  visits: TimeCompareVisit[]
+  first_photo?: Photo
+  latest_photo?: Photo
+}
+
 export interface TrajectoryPoint {
   photoId: string;
   capturedAt: string;

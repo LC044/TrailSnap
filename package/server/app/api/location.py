@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, Path, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
+from datetime import date
 from uuid import UUID
 from app.dependencies import get_db, BaseResponse
 from app.schemas import location as schemas
@@ -140,6 +141,51 @@ def get_map_markers(
     """
     return crud.get_map_markers(db, current_user.id, start_date, end_date)
 
+
+@router.get("/time-compare", response_model=BaseResponse[schemas.TimeCompareSummary], summary="获取地点时光对照摘要")
+def get_time_compare_summary(
+    scene_id: Optional[UUID] = Query(None, description="具体地点 ID"),
+    photo_id: Optional[UUID] = Query(None, description="从单张照片解析具体地点"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    if not scene_id and not photo_id:
+        return BaseResponse.fail(code=422, msg="scene_id or photo_id is required")
+    result = crud.get_time_compare_summary(db, current_user.id, scene_id=scene_id, photo_id=photo_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Location or photo not found")
+    return BaseResponse.success(data=result)
+
+
+@router.get("/time-compare/photos", response_model=BaseResponse[List[Photo]], summary="获取地点的对照照片")
+def get_time_compare_photos(
+    scene_id: Optional[UUID] = Query(None, description="具体地点 ID"),
+    photo_id: Optional[UUID] = Query(None, description="GPS 邻近匹配的锚点照片 ID"),
+    reference_photo_id: Optional[UUID] = Query(None, description="用于相似视角排序的另一侧照片 ID"),
+    year: Optional[int] = Query(None, ge=1, le=9998, description="兼容旧客户端的拍摄年份"),
+    visit_date: Optional[date] = Query(None, description="拍摄日，用于排除同日连拍"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    if not scene_id and not photo_id:
+        return BaseResponse.fail(code=422, msg="scene_id or photo_id is required")
+    photos = crud.get_time_compare_photos(
+        db,
+        current_user.id,
+        scene_id=scene_id,
+        photo_id=photo_id,
+        reference_photo_id=reference_photo_id,
+        year=year,
+        skip=skip,
+        limit=limit,
+        visit_date=visit_date,
+    )
+    if photos is None:
+        raise HTTPException(status_code=404, detail="Location not found")
+    return BaseResponse.success(data=photos)
+
 @router.post("/scenes", response_model=BaseResponse[scene_schemas.Scene], summary="创建景区")
 def create_scene(
     scene: scene_schemas.SceneCreate,
@@ -218,6 +264,7 @@ def delete_scene(
 def get_location_photos(
     name: str = Path(..., description="位置名称"),
     level: str = Query('city', regex='^(city|province|district|scene)$', description="分组级别：city 或 province 或 district 或 scene"),
+    scene_id: Optional[UUID] = Query(None, description="景区 ID；景区详情优先按 ID 查询"),
     start_date: str = Query(None, description="开始日期"),
     end_date: str = Query(None, description="结束日期"),
     skip: int = 0,
@@ -230,7 +277,7 @@ def get_location_photos(
     """
     import time
     st = time.time()
-    photos = crud.get_location_photos(db, current_user.id, name, level, skip, limit, start_date, end_date)
+    photos = crud.get_location_photos(db, current_user.id, name, level, skip, limit, start_date, end_date, scene_id)
     et = time.time()
     print(f"get_location_photos: {et - st} s")
     return photos
