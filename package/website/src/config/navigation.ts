@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import {
   Home,
+  BookHeart,
   Image as ImageIcon,
   Images,
   Layers,
@@ -14,7 +15,7 @@ import {
   Wrench,
 } from 'lucide-vue-next'
 
-export type NavGroup = 'home' | 'photos' | 'search' | 'albums' | 'tickets' | 'tools' | 'more'
+export type NavGroup = 'home' | 'photos' | 'search' | 'albums' | 'memories' | 'tickets' | 'tools' | 'more'
 
 export interface AppNavItem {
   label: string
@@ -47,6 +48,7 @@ export const desktopNavSections: AppNavSection[] = [
     items: [
       { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums', activeMatch: 'path' },
       { label: '智能分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
+      { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories', activeMatch: 'path' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums', activeMatch: 'path' },
     ],
   },
@@ -70,6 +72,7 @@ export const mobileMoreSections: AppNavSection[] = [
   {
     label: '回忆与行程',
     items: [
+      { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories' },
       { label: '行程票据', href: '/ticket', icon: Ticket, navGroup: 'tickets' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums' },
     ],

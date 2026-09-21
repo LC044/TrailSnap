@@ -27,6 +27,7 @@
     <div v-else-if="dashboardData" class="py-3 space-y-2">
  
       <OnThisDay />
+      <MemoryDiscovery />
      <!-- Banners Area -->
       <div class="mx-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Annual Report Banner -->
@@ -132,6 +133,7 @@ import FaceSection from '@/components/home/FaceSection.vue';
 import ContentStats from '@/components/home/ContentStats.vue';
 import TimeChart from '@/components/home/TimeChart.vue';
 import OnThisDay from '@/components/OnThisDay.vue';
+import MemoryDiscovery from '@/components/home/MemoryDiscovery.vue';
 import StorageCenter from '@/components/home/StorageCenter.vue';
 
 const loading = ref(false);

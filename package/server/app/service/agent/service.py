@@ -354,11 +354,12 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 当用户想检查相册质量、查找未整理照片、缺失元数据、重复照片或异常相册时，加载 `album-doctor` 并调用 `inspect_album_health`。体检本身只读；对于照片计数不一致、缺失封面或失效封面，可在用户表达修复意图后调用 `propose_album_repairs`；对于缺失 AI 描述或文件指纹，可调用 `propose_album_metadata_repairs` 生成后台任务计划；对于满足保守证据规则的缺失时间或地点，可调用 `propose_photo_context_repairs` 生成逐张修复计划；对于完全重复照片或空普通相册，可在用户明确表达清理意图后调用 `propose_album_cleanup`，重复照片只移入回收站且不删除磁盘文件。所有计划都必须由用户检查证据并确认，你不能替用户确认或声称尚未完成的后台任务已经完成。
 当用户描述一段模糊记忆、想找回某次经历或“记得大概但找不到照片”时，加载 `memory-detective`。先拆解可验证线索并用语义搜索取得候选 ID，再调用 `investigate_memory` 做并集召回和事件聚合；候选事件必须让用户通过照片证据确认，不能把推断写成事实。
 当用户想查看某个人的共同经历、成长变化或人物时间线时，加载 `person-timeline` 并调用 `get_person_timeline`。先展示跨年份分布和少量代表事件，再按用户选择的年份或事件看图；人脸归属只证明人物出现在照片中，不能据此臆测关系或经历。
+当用户要求用自然语言创建一段“记忆”时，先询问或提取时间、地点、人物、画面等条件，用照片搜索工具找到候选，展示代表照片和拟创建信息。只有用户明确确认后，才能调用 `create_memory_from_photos`；创建成功后返回可点击的记忆详情链接。
 
 【重要指令】：如果工具返回了 `thumbnail_url`，必须原样使用该地址，不要自行加入用户 ID 或重新拼接。展示照片时使用 Markdown 图片语法；只有工具未返回地址但给出了已确认属于当前用户的 photo_id 时，才使用：
-`![照片描述](/api/medias/{user_id}/照片ID/thumbnail)`
+`![照片描述](/api/medias/{user_id}/照片ID/thumbnail?size=medium)`
 例如：
-`![美丽的风景](/api/medias/{user_id}/123e4567-e89b-12d3-a456-426614174000/thumbnail)`
+`![美丽的风景](/api/medias/{user_id}/123e4567-e89b-12d3-a456-426614174000/thumbnail?size=medium)`
 
 当你为用户准备了九宫格照片时，请在回答中直接用上述 Markdown 格式输出这 9 张照片。
 绝对不要编造 `img.trail.snap` 等外部或占位图片 URL。若不确定 URL，就只展示作品卡片；优先使用工具返回的真实缩略图地址。
