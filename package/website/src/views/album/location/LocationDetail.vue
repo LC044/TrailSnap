@@ -10,7 +10,20 @@
     @confirm-delete="handleConfirmDelete"
     @back="goBack"
     @load-more="loadMore"
-  />
+  >
+    <template #header-actions>
+      <button
+        v-if="timeCompareSummary?.eligible && sceneId"
+        type="button"
+        class="flex min-h-10 items-center gap-2 rounded-full bg-primary-500 px-3 text-sm font-semibold text-white shadow-lg shadow-primary-500/30 transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900 sm:px-4"
+        @click="openTimeCompare"
+      >
+        <History class="h-4 w-4" />
+        <span>时光对照</span>
+        <span class="hidden text-white/75 sm:inline">{{ timeSpanLabel }}</span>
+      </button>
+    </template>
+  </UnifiedPhotoPage>
 </template>
 
 <script setup lang="ts">
@@ -24,6 +37,8 @@ import { mapPhotoToImage, usePhotoStore } from '@/stores/photoStore'
 import { useLocationStore } from '@/stores/locationStore'
 import type { AlbumImage, Photo } from '@/types/album'
 import { ElMessage } from 'element-plus'
+import { History } from 'lucide-vue-next'
+import type { TimeCompareSummary } from '@/types/location'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,6 +48,7 @@ const name = route.params.name as string
 const level = (route.query.level as 'city' | 'province' | 'district' | 'scene') || 'city'
 const startDate = route.query.startDate as string | undefined
 const endDate = route.query.endDate as string | undefined
+const sceneId = route.query.sceneId as string | undefined
 
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])
@@ -43,6 +59,27 @@ const hasMore = ref(true)
 const totalCount = ref(0) // Optional: if API returned total count, but currently it doesn't.
 const pendingRemoveIds = ref(new Set<string>())
 const photoStore = usePhotoStore()
+const timeCompareSummary = ref<TimeCompareSummary | null>(null)
+
+const timeSpanLabel = computed(() => {
+  const years = timeCompareSummary.value?.years || []
+  if (years.length < 2) return ''
+  return `${years[0].year}—${years[years.length - 1].year}`
+})
+
+const openTimeCompare = () => {
+  if (!sceneId) return
+  router.push({ name: 'LocationTimeCompare', params: { sceneId } })
+}
+
+const fetchTimeCompareSummary = async () => {
+  if (level !== 'scene' || !sceneId) return
+  try {
+    timeCompareSummary.value = await locationService.getTimeCompareSummary({ sceneId })
+  } catch (error) {
+    console.warn('Failed to load time comparison summary', error)
+  }
+}
 
 const title = computed(() => {
   if (name === 'map_selection') return route.query.title as string || '地图精选'
@@ -91,7 +128,7 @@ const fetchAllPhotos = async () => {
       while (hasNext) {
         // Encode name to ensure special characters (like / or ?) don't break the path
         const safeName = encodeURIComponent(name)
-        const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate)
+        const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId)
 
         const newPhotos = rawPhotos.map(mapPhotoToImage)
 
@@ -124,7 +161,7 @@ const loadMore = async () => {
     const limit = 100
     // Encode name to ensure special characters (like / or ?) don't break the path
     const safeName = encodeURIComponent(name)
-    const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate)
+    const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId)
 
     const newPhotos = rawPhotos.map(mapPhotoToImage)
 
@@ -167,5 +204,6 @@ const handleConfirmDelete = async (ids: string[], callback: (success: boolean) =
 onMounted(() => {
   // loadMore()
   fetchAllPhotos()
+  fetchTimeCompareSummary()
 })
 </script>

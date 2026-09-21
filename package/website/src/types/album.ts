@@ -27,6 +27,7 @@ export interface PhotoMetadata {
   district?: string;
   latitude?: number;
   longitude?: number;
+  scene_id?: string;
   tags?: Tag[];
   make?: string;
   model?: string;

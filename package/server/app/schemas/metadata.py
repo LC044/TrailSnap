@@ -59,6 +59,7 @@ class BatchLocationUpdate(BaseModel):
 
 class PhotoMetadata(PhotoMetadataBase):
     photo_id: UUID
+    scene_id: Optional[UUID] = None
     file_path: Optional[str] = None
     albums: Optional[List[Album]] = None
     faces_identities: Optional[List[FaceIdentitySchema]] = None

@@ -338,7 +338,7 @@ const renderScenes = () => {
     }
     if (!centerPt) return
 
-    const handleClick = () => goToScene(scene.name)
+    const handleClick = () => goToScene(scene)
 
     // Draw Marker
     const marker = createMarkerLabel(centerPt, 'blue')
@@ -392,7 +392,7 @@ const renderScenes = () => {
         // Single Scene (No Photos)
         const scene = cluster.properties.sceneData
         
-        const handleClick = () => goToScene(scene.name)
+        const handleClick = () => goToScene(scene)
 
         // Draw Marker
         const marker = createMarkerLabel(point, 'orange')
@@ -422,15 +422,15 @@ const renderScenes = () => {
   })
 }
 
-const goToScene = (name: string) => {
-  const query: any = { level: 'scene' }
+const goToScene = (scene: any) => {
+  const query: any = { level: 'scene', sceneId: scene.id }
   if (props.startDate) {
     query.startDate = props.startDate
     query.endDate = props.endDate
   }
   router.push({
     name: 'LocationDetail',
-    params: { name: name },
+    params: { name: scene.name },
     query
   })
 }

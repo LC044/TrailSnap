@@ -2,10 +2,437 @@ from sqlalchemy.orm import Session, joinedload, contains_eager
 from uuid import UUID
 from sqlalchemy import and_, func, desc, extract, case, or_
 from math import asin, ceil, cos, radians, sin, sqrt
-from app.db.models.photo import Photo
+from datetime import date
+import numpy as np
+from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
+from app.db.models.image_vector import ImageVector
 from app.db.models.scene import Scene
 from app.db.sql import as_date_string, date_only
+
+
+TIME_COMPARE_RADIUS_M = 200
+TIME_COMPARE_SCENE_DISTANCE_M = 500
+TIME_COMPARE_VISUAL_WEIGHT = 0.90
+TIME_COMPARE_DISTANCE_WEIGHT = 0.1
+TIME_COMPARE_TIME_WEIGHT = 0.15
+TIME_COMPARE_MIN_VISUAL_SIMILARITY = 0.45
+
+
+def _valid_coordinates(latitude, longitude):
+    if latitude is None or longitude is None:
+        return False
+    latitude = float(latitude)
+    longitude = float(longitude)
+    return -90 <= latitude <= 90 and -180 <= longitude <= 180
+
+
+def _nearby_time_compare_rows(
+    db: Session,
+    owner_id: UUID,
+    latitude,
+    longitude,
+    radius_m: int = TIME_COMPARE_RADIUS_M,
+    year: int = None,
+    visit_date: date = None,
+):
+    """Fetch owner photos within an exact GPS radius using an indexed bounding box first."""
+    if not _valid_coordinates(latitude, longitude):
+        return []
+
+    center_lat = float(latitude)
+    center_lng = float(longitude)
+    radius_km = radius_m / 1000
+    lat_delta = radius_km / 111.32
+    lng_scale = max(abs(cos(radians(center_lat))), 0.01)
+    lng_delta = radius_km / (111.32 * lng_scale)
+
+    query = db.query(Photo, PhotoMetadata).join(
+        PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+    ).filter(
+        Photo.owner_id == owner_id,
+        Photo.is_deleted == False,
+        Photo.photo_time.isnot(None),
+        Photo.file_type != FileType.video,
+        PhotoMetadata.latitude.between(center_lat - lat_delta, center_lat + lat_delta),
+        PhotoMetadata.longitude.between(center_lng - lng_delta, center_lng + lng_delta),
+    )
+    if year is not None:
+        query = query.filter(extract('year', Photo.photo_time) == year)
+    if visit_date is not None:
+        query = query.filter(func.date(Photo.photo_time) == visit_date.isoformat())
+
+    candidates = query.order_by(Photo.photo_time.asc(), Photo.id.asc()).all()
+    return [
+        (photo, metadata)
+        for photo, metadata in candidates
+        if _haversine_km(
+            center_lat,
+            center_lng,
+            float(metadata.latitude),
+            float(metadata.longitude),
+        ) <= radius_km
+    ]
+
+
+def _cosine_similarity(left, right):
+    if left is None or right is None:
+        return None
+    left = np.asarray(left, dtype=float)
+    right = np.asarray(right, dtype=float)
+    denominator = np.linalg.norm(left) * np.linalg.norm(right)
+    if denominator == 0:
+        return None
+    return max(0.0, min(1.0, float(np.dot(left, right) / denominator)))
+
+
+def _photo_orientation(photo):
+    if not photo.width or not photo.height:
+        return None
+    ratio = photo.width / photo.height
+    if ratio > 1.1:
+        return "landscape"
+    if ratio < 0.9:
+        return "portrait"
+    return "square"
+
+
+def _orientation_compatible(left_photo, right_photo):
+    left = _photo_orientation(left_photo)
+    right = _photo_orientation(right_photo)
+    return left is None or right is None or left == right
+
+
+def _comparison_score(
+    reference_photo,
+    reference_metadata,
+    candidate_photo,
+    candidate_metadata,
+    reference_embedding=None,
+    candidate_embedding=None,
+    distance_limit_m: int = TIME_COMPARE_RADIUS_M,
+):
+    """Rank comparison value: matching view first, then proximity and time span."""
+    similarity = _cosine_similarity(reference_embedding, candidate_embedding)
+    if _valid_coordinates(reference_metadata.latitude, reference_metadata.longitude) and _valid_coordinates(
+        candidate_metadata.latitude, candidate_metadata.longitude
+    ):
+        distance_m = _haversine_km(
+            float(reference_metadata.latitude),
+            float(reference_metadata.longitude),
+            float(candidate_metadata.latitude),
+            float(candidate_metadata.longitude),
+        ) * 1000
+        distance_score = max(0.0, 1.0 - distance_m / max(distance_limit_m, 1))
+    else:
+        distance_score = 0.5
+
+    days = abs((candidate_photo.photo_time - reference_photo.photo_time).total_seconds()) / 86400
+    time_score = min(days / 180, 1.0)
+    if similarity is None:
+        # Missing embeddings must not make an otherwise useful GPS match vanish.
+        return 0.55 * distance_score + 0.45 * time_score
+    return (
+        TIME_COMPARE_VISUAL_WEIGHT * similarity
+        + TIME_COMPARE_DISTANCE_WEIGHT * distance_score
+        + TIME_COMPARE_TIME_WEIGHT * time_score
+    )
+
+
+def _embedding_map(db: Session, photo_ids):
+    if not photo_ids:
+        return {}
+    return dict(db.query(ImageVector.photo_id, ImageVector.embedding).filter(
+        ImageVector.photo_id.in_(photo_ids)
+    ).all())
+
+
+def _rank_rows_for_reference(db: Session, rows, reference_row, distance_limit_m=TIME_COMPARE_RADIUS_M):
+    if not reference_row:
+        return rows
+    reference_photo, reference_metadata = reference_row
+    rows = [row for row in rows if _orientation_compatible(reference_photo, row[0])]
+    embeddings = _embedding_map(db, [reference_photo.id, *[photo.id for photo, _ in rows]])
+    return sorted(
+        rows,
+        key=lambda row: (
+            _comparison_score(
+                reference_photo,
+                reference_metadata,
+                row[0],
+                row[1],
+                embeddings.get(reference_photo.id),
+                embeddings.get(row[0].id),
+                distance_limit_m,
+            ),
+            row[0].photo_time,
+        ),
+        reverse=True,
+    )
+
+
+def _recommended_pair(db: Session, rows, source_row=None, distance_limit_m=TIME_COMPARE_RADIUS_M):
+    if len({photo.photo_time.date() for photo, _ in rows}) < 2:
+        return None, None
+
+    if source_row:
+        source_photo = source_row[0]
+        candidates = [
+            row for row in rows
+            if row[0].photo_time.date() != source_photo.photo_time.date()
+            and _orientation_compatible(source_photo, row[0])
+        ]
+        ranked = _rank_rows_for_reference(db, candidates, source_row, distance_limit_m)
+        if not ranked:
+            return None, None
+        partner = ranked[0][0]
+        return (partner, source_photo) if partner.photo_time < source_photo.photo_time else (source_photo, partner)
+
+    # Without an anchor, find the strongest cross-year pair. Keep the search
+    # bounded for very large Scenes while retaining every year and both ends.
+    if len(rows) > 200:
+        rows_by_year = {}
+        for row in rows:
+            rows_by_year.setdefault(row[0].photo_time.year, []).append(row)
+        quota = max(1, 200 // len(rows_by_year))
+        sampled = []
+        for year_rows in rows_by_year.values():
+            if len(year_rows) <= quota:
+                sampled.extend(year_rows)
+                continue
+            step = len(year_rows) / quota
+            sampled.extend(year_rows[min(int(index * step), len(year_rows) - 1)] for index in range(quota))
+        rows = sampled[:200]
+    embeddings = _embedding_map(db, [photo.id for photo, _ in rows])
+    best = None
+    for index, left_row in enumerate(rows):
+        for right_row in rows[index + 1:]:
+            if left_row[0].photo_time.date() == right_row[0].photo_time.date():
+                continue
+            if not _orientation_compatible(left_row[0], right_row[0]):
+                continue
+            score = _comparison_score(
+                left_row[0], left_row[1], right_row[0], right_row[1],
+                embeddings.get(left_row[0].id), embeddings.get(right_row[0].id),
+                distance_limit_m,
+            )
+            if best is None or score > best[0]:
+                best = (score, left_row[0], right_row[0])
+    if not best:
+        return None, None
+    earlier, later = best[1], best[2]
+    return (earlier, later) if earlier.photo_time <= later.photo_time else (later, earlier)
+
+
+def _pair_visual_similarity(db: Session, left_photo, right_photo):
+    if not left_photo or not right_photo:
+        return None
+    embeddings = _embedding_map(db, [left_photo.id, right_photo.id])
+    return _cosine_similarity(embeddings.get(left_photo.id), embeddings.get(right_photo.id))
+
+
+def _visible_scene(db: Session, owner_id: UUID, scene_id: UUID):
+    return db.query(Scene).filter(
+        Scene.id == scene_id,
+        or_(Scene.owner_id == owner_id, Scene.owner_id.is_(None)),
+    ).first()
+
+
+def get_time_compare_summary(
+    db: Session,
+    owner_id: UUID,
+    scene_id: UUID = None,
+    photo_id: UUID = None,
+):
+    """Return a Scene comparison, or a GPS-nearby comparison for an unassigned photo."""
+    source_photo = None
+    source_metadata = None
+    if photo_id:
+        source_row = db.query(Photo, PhotoMetadata).join(
+            PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+        ).filter(
+            Photo.id == photo_id,
+            Photo.owner_id == owner_id,
+            Photo.is_deleted == False,
+        ).first()
+        if not source_row:
+            return None
+        source_photo, source_metadata = source_row
+        # A canonical Scene always wins. GPS proximity is only the fallback for
+        # photos that have not been assigned to a Scene.
+        scene_id = source_metadata.scene_id
+
+    if not scene_id and not source_photo:
+        return None
+
+    scene = None
+    match_type = "scene"
+    radius_m = None
+    if scene_id:
+        scene = _visible_scene(db, owner_id, scene_id)
+        if not scene:
+            return None
+        scene_rows = db.query(Photo, PhotoMetadata).join(
+            PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+        ).filter(
+            Photo.owner_id == owner_id,
+            Photo.is_deleted == False,
+            Photo.photo_time.isnot(None),
+            Photo.file_type != FileType.video,
+            PhotoMetadata.scene_id == scene.id,
+        ).order_by(Photo.photo_time.asc(), Photo.id.asc()).all()
+        rows = scene_rows
+    else:
+        match_type = "nearby_gps"
+        radius_m = TIME_COMPARE_RADIUS_M
+        if not _valid_coordinates(source_metadata.latitude, source_metadata.longitude):
+            return {
+                "eligible": False,
+                "reason": "precise_location_required",
+                "match_type": match_type,
+                "source_photo_id": source_photo.id,
+                "source_photo_year": source_photo.photo_time.year if source_photo.photo_time else None,
+                "years": [],
+            }
+        rows = _nearby_time_compare_rows(
+            db,
+            owner_id,
+            source_metadata.latitude,
+            source_metadata.longitude,
+            radius_m,
+        )
+
+    grouped = {}
+    city = None
+    for photo, metadata in rows:
+        city = city or metadata.city
+        grouped.setdefault(photo.photo_time.year, []).append(photo)
+
+    years = []
+    for year in sorted(grouped):
+        photos = grouped[year]
+        years.append({
+            "year": year,
+            "photo_count": len(photos),
+            "first_date": photos[0].photo_time,
+            "last_date": photos[-1].photo_time,
+            "cover": photos[-1],
+        })
+
+    visits = []
+    visits_grouped = {}
+    for photo, _ in rows:
+        visits_grouped.setdefault(photo.photo_time.date(), []).append(photo)
+    for captured_date in sorted(visits_grouped):
+        photos = visits_grouped[captured_date]
+        visits.append({
+            "date": captured_date,
+            "photo_count": len(photos),
+            "first_time": photos[0].photo_time,
+            "last_time": photos[-1].photo_time,
+            "cover": photos[-1],
+        })
+
+    recommended_earlier, recommended_later = _recommended_pair(
+        db,
+        rows,
+        (source_photo, source_metadata) if source_photo else None,
+        radius_m or TIME_COMPARE_SCENE_DISTANCE_M,
+    )
+    visual_similarity = _pair_visual_similarity(db, recommended_earlier, recommended_later)
+    eligible = len(visits) >= 2 and recommended_earlier is not None and recommended_later is not None
+    reason = None if eligible else "multiple_visits_required"
+    if len(visits) >= 2 and (recommended_earlier is None or recommended_later is None):
+        reason = "orientation_match_required"
+    if eligible and visual_similarity is not None and visual_similarity < TIME_COMPARE_MIN_VISUAL_SIMILARITY:
+        eligible = False
+        reason = "similar_view_required"
+    return {
+        "eligible": eligible,
+        "reason": reason,
+        "match_type": match_type,
+        "radius_m": radius_m,
+        "visual_similarity": visual_similarity,
+        "scene_id": scene.id if scene else None,
+        "location_name": scene.name if scene else f"{source_metadata.district or source_metadata.city or '照片位置'}附近",
+        "location_address": scene.address if scene else None,
+        "city": city,
+        "source_photo_id": source_photo.id if source_photo else None,
+        "source_photo_year": source_photo.photo_time.year if source_photo and source_photo.photo_time else None,
+        "years": years,
+        "visits": visits,
+        "first_photo": recommended_earlier,
+        "latest_photo": recommended_later,
+    }
+
+
+def get_time_compare_photos(
+    db: Session,
+    owner_id: UUID,
+    scene_id: UUID = None,
+    year: int = None,
+    skip: int = 0,
+    limit: int = 100,
+    photo_id: UUID = None,
+    reference_photo_id: UUID = None,
+    radius_m: int = TIME_COMPARE_RADIUS_M,
+    visit_date: date = None,
+):
+    reference_row = None
+    if reference_photo_id:
+        reference_row = db.query(Photo, PhotoMetadata).join(
+            PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+        ).filter(
+            Photo.id == reference_photo_id,
+            Photo.owner_id == owner_id,
+            Photo.is_deleted == False,
+        ).first()
+
+    if scene_id:
+        scene = _visible_scene(db, owner_id, scene_id)
+        if not scene:
+            return None
+        rows = db.query(Photo, PhotoMetadata).join(
+            PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+        ).filter(
+            Photo.owner_id == owner_id,
+            Photo.is_deleted == False,
+            Photo.photo_time.isnot(None),
+            Photo.file_type != FileType.video,
+            PhotoMetadata.scene_id == scene.id,
+        ).order_by(Photo.photo_time.asc(), Photo.id.asc()).all()
+        if visit_date is not None:
+            rows = [row for row in rows if row[0].photo_time.date() == visit_date]
+        elif year is not None:
+            rows = [row for row in rows if row[0].photo_time.year == year]
+        rows = _rank_rows_for_reference(db, rows, reference_row, TIME_COMPARE_SCENE_DISTANCE_M)
+        return [photo for photo, _ in rows][skip:skip + limit]
+
+    if not photo_id:
+        return None
+    source = db.query(Photo, PhotoMetadata).join(
+        PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+    ).filter(
+        Photo.id == photo_id,
+        Photo.owner_id == owner_id,
+        Photo.is_deleted == False,
+    ).first()
+    if not source:
+        return None
+    _, metadata = source
+    if not _valid_coordinates(metadata.latitude, metadata.longitude):
+        return []
+    rows = _nearby_time_compare_rows(
+        db,
+        owner_id,
+        metadata.latitude,
+        metadata.longitude,
+        radius_m,
+        year,
+        visit_date,
+    )
+    rows = _rank_rows_for_reference(db, rows, reference_row or source, radius_m)
+    return [photo for photo, _ in rows][skip:skip + limit]
 
 def get_location_years(db: Session, owner_id: UUID):
     has_location = or_(
@@ -148,7 +575,7 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
         
     return locations
 
-def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'city', skip: int = 0, limit: int = 50, start_date: str = None, end_date: str = None):
+def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'city', skip: int = 0, limit: int = 50, start_date: str = None, end_date: str = None, scene_id: UUID = None):
     # 使用 join 配合 contains_eager 替代 joinedload，避免产生重复的 JOIN 查询，提升性能
     query = db.query(Photo).join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)
     query = query.filter(Photo.owner_id == owner_id, Photo.is_deleted == False)
@@ -160,8 +587,11 @@ def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'ci
     elif level == 'district':
         col = PhotoMetadata.district
     elif level == 'scene':
-        col = Scene.name
-        query = query.join(Scene, PhotoMetadata.scene_id == Scene.id)
+        if scene_id:
+            col = PhotoMetadata.scene_id
+        else:
+            col = Scene.name
+            query = query.join(Scene, PhotoMetadata.scene_id == Scene.id)
     else:
         return []
         
@@ -171,7 +601,7 @@ def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'ci
         query = query.filter(Photo.photo_time <= f"{end_date} 23:59:59")
 
     return query.filter(
-        col == name
+        col == (scene_id if level == 'scene' and scene_id else name)
     ).order_by(
         desc(Photo.photo_time)
     ).offset(skip).limit(limit).all()

@@ -1,8 +1,8 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional, List, Union
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.schemas.photo import Photo
 
 class LocationBase(BaseModel):
@@ -70,3 +70,37 @@ class TrajectoryResponse(BaseModel):
     points: List[TrajectoryPoint]
     totalPhotos: int
     sampled: bool = False
+
+
+class TimeCompareYear(BaseModel):
+    year: int
+    photo_count: int
+    first_date: datetime
+    last_date: datetime
+    cover: Photo
+
+
+class TimeCompareVisit(BaseModel):
+    date: date
+    photo_count: int
+    first_time: datetime
+    last_time: datetime
+    cover: Photo
+
+
+class TimeCompareSummary(BaseModel):
+    eligible: bool
+    reason: Optional[str] = None
+    match_type: Optional[str] = None
+    radius_m: Optional[int] = None
+    visual_similarity: Optional[float] = None
+    scene_id: Optional[UUID] = None
+    location_name: Optional[str] = None
+    location_address: Optional[str] = None
+    city: Optional[str] = None
+    source_photo_id: Optional[UUID] = None
+    source_photo_year: Optional[int] = None
+    years: List[TimeCompareYear] = Field(default_factory=list)
+    visits: List[TimeCompareVisit] = Field(default_factory=list)
+    first_photo: Optional[Photo] = None
+    latest_photo: Optional[Photo] = None

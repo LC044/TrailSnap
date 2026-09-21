@@ -113,3 +113,127 @@ def test_delete_scene_403_on_value_error():
             location_api.delete_scene(scene_id=scene_id, db=db, current_user=user)
 
     assert getattr(exc_info.value, "status_code", None) == 403
+
+
+# ----------------------- GET /locations/time-compare -----------------------
+
+
+def test_time_compare_summary_uses_canonical_scene_id():
+    user = _user()
+    db = MagicMock()
+    scene_id = uuid4()
+    expected = {"eligible": False, "reason": "multiple_years_required", "years": []}
+
+    with patch.object(location_api.crud, "get_time_compare_summary", return_value=expected) as crud_call:
+        response = location_api.get_time_compare_summary(
+            scene_id=scene_id,
+            photo_id=None,
+            db=db,
+            current_user=user,
+        )
+
+    crud_call.assert_called_once_with(db, user.id, scene_id=scene_id, photo_id=None)
+    assert response.code == 0
+    assert response.data == expected
+
+
+def test_time_compare_photos_scopes_query_to_user_scene_and_year():
+    user = _user()
+    db = MagicMock()
+    scene_id = uuid4()
+    expected = [SimpleNamespace(id=uuid4())]
+
+    with patch.object(location_api.crud, "get_time_compare_photos", return_value=expected) as crud_call:
+        response = location_api.get_time_compare_photos(
+            scene_id=scene_id,
+            photo_id=None,
+            reference_photo_id=None,
+            year=2026,
+            visit_date=None,
+            skip=5,
+            limit=20,
+            db=db,
+            current_user=user,
+        )
+
+    crud_call.assert_called_once_with(
+        db,
+        user.id,
+        scene_id=scene_id,
+        photo_id=None,
+        reference_photo_id=None,
+        year=2026,
+        visit_date=None,
+        skip=5,
+        limit=20,
+    )
+    assert response.code == 0
+    assert response.data == expected
+
+
+def test_time_compare_photos_accepts_gps_anchor_photo():
+    user = _user()
+    db = MagicMock()
+    photo_id = uuid4()
+    expected = [SimpleNamespace(id=uuid4())]
+
+    with patch.object(location_api.crud, "get_time_compare_photos", return_value=expected) as crud_call:
+        response = location_api.get_time_compare_photos(
+            scene_id=None,
+            photo_id=photo_id,
+            reference_photo_id=photo_id,
+            year=2024,
+            visit_date=None,
+            skip=0,
+            limit=100,
+            db=db,
+            current_user=user,
+        )
+
+    crud_call.assert_called_once_with(
+        db,
+        user.id,
+        scene_id=None,
+        photo_id=photo_id,
+        reference_photo_id=photo_id,
+        year=2024,
+        visit_date=None,
+        skip=0,
+        limit=100,
+    )
+    assert response.data == expected
+
+
+def test_time_compare_photos_accepts_all_visits_for_ranked_picker():
+    user = _user()
+    db = MagicMock()
+    scene_id = uuid4()
+    reference_photo_id = uuid4()
+    expected = [SimpleNamespace(id=uuid4()), SimpleNamespace(id=uuid4())]
+
+    with patch.object(location_api.crud, "get_time_compare_photos", return_value=expected) as crud_call:
+        response = location_api.get_time_compare_photos(
+            scene_id=scene_id,
+            photo_id=None,
+            reference_photo_id=reference_photo_id,
+            year=None,
+            visit_date=None,
+            skip=0,
+            limit=500,
+            db=db,
+            current_user=user,
+        )
+
+    crud_call.assert_called_once_with(
+        db,
+        user.id,
+        scene_id=scene_id,
+        photo_id=None,
+        reference_photo_id=reference_photo_id,
+        year=None,
+        visit_date=None,
+        skip=0,
+        limit=500,
+    )
+    assert response.code == 0
+    assert response.data == expected

@@ -1,5 +1,5 @@
 import request from '@/utils/request';
-import type { Location, Scene, SceneCreate, SceneUpdate, LocationStatistics, TimelineResponse, TrajectoryResponse } from '@/types/location';
+import type { Location, Scene, SceneCreate, SceneUpdate, LocationStatistics, TimelineResponse, TrajectoryResponse, TimeCompareSummary } from '@/types/location';
 import type { Photo } from '@/types/album';
 
 export interface OverviewStats {
@@ -83,9 +83,9 @@ export const locationService = {
     return data.data;
   },
   
-  async getLocationPhotos(name: string, level: 'city' | 'province' | 'district' | 'scene' = 'city', skip: number = 0, limit: number = 50, startDate?: string, endDate?: string) {
+  async getLocationPhotos(name: string, level: 'city' | 'province' | 'district' | 'scene' = 'city', skip: number = 0, limit: number = 50, startDate?: string, endDate?: string, sceneId?: string) {
     const data = await request.get<Photo[]>(`/api/locations/${name}/photos`, {
-      params: { level, skip, limit, start_date: startDate || undefined, end_date: endDate || undefined }
+      params: { level, skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, scene_id: sceneId || undefined }
     });
     return data.data;
   },
@@ -109,6 +109,32 @@ export const locationService = {
       params: { start_date: startDate || undefined, end_date: endDate || undefined }
     });
     return data.data;
+  },
+
+  async getTimeCompareSummary(params: { sceneId?: string; photoId?: string }) {
+    const response = await request.get<TimeCompareSummary>('/api/locations/time-compare', {
+      params: { scene_id: params.sceneId, photo_id: params.photoId }
+    });
+    return response.data;
+  },
+
+  async getTimeComparePhotos(params: { sceneId?: string; photoId?: string; referencePhotoId?: string }, visitDate?: string, skip: number = 0, limit: number = 100) {
+    const response = await request.get<Photo[]>('/api/locations/time-compare/photos', {
+      params: {
+        scene_id: params.sceneId,
+        photo_id: params.photoId,
+        reference_photo_id: params.referencePhotoId,
+        visit_date: visitDate || undefined,
+        skip,
+        limit,
+      }
+    });
+    return response.data;
+  },
+
+  async getPhotoBlob(photoId: string) {
+    const response = await request.get<Blob>(`/api/medias/${photoId}/file`, { responseType: 'blob' });
+    return response.data;
   },
 
   async getScene(id: string) {
