@@ -223,7 +223,7 @@ watch(
     inputMessage.value = request.prompt;
     nextTick(() => {
       if (request.autoSend) sendMessage();
-      else ElMessage.info('风格需求已填入，发送后 Agent 会生成个性化页面');
+      else ElMessage.info('需求已填入，发送后 Agent 会继续处理');
     });
   },
   { immediate: true }

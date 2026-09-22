@@ -36,6 +36,8 @@ from app.service.agent.actions import (
     propose_album_repair_plan,
     propose_photo_context_repair_plan,
 )
+from app.schemas.memory import MemoryCreate
+from app.service import memory as memory_service
 
 # 聚合摘要每类分布返回的 top-N 条目数
 SUMMARY_TOP_N = 8
@@ -896,6 +898,41 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
                 "summary": row.summary, "status": row.status, "preview": row.preview,
             }}, ensure_ascii=False)
 
+    @tool
+    def create_memory_from_photos(
+        title: str,
+        photo_ids: List[str],
+        story: Optional[str] = None,
+        place_names: Optional[List[str]] = None,
+        cover_photo_id: Optional[str] = None,
+    ) -> str:
+        """根据已经检索并由用户确认的照片创建正式记忆。
+
+        调用前必须向用户展示拟使用的标题、照片数量、时间/地点范围和代表照片，并得到用户明确确认。
+        不得把搜索候选直接创建为记忆。photo_ids 必须来自当前用户的照片搜索结果，至少包含一张照片。
+        story 只能基于工具返回的照片描述和用户陈述，不得补写未经证实的经历。
+        """
+        if not title.strip() or not photo_ids:
+            return json.dumps({"error": "标题和照片不能为空"}, ensure_ascii=False)
+        with SessionLocal() as db:
+            try:
+                row = memory_service.create(db, user_id, MemoryCreate(
+                    title=title.strip(),
+                    story=story,
+                    photo_ids=photo_ids,
+                    cover_photo_id=cover_photo_id,
+                    place_names=place_names or [],
+                    origin="agent",
+                ))
+            except (ValueError, HTTPException) as exc:
+                detail = getattr(exc, "detail", str(exc))
+                return json.dumps({"error": detail}, ensure_ascii=False)
+            return json.dumps({"memory": {
+                "id": str(row.id), "title": row.title,
+                "photo_count": len(row.photo_links),
+                "url": f"/memories/{row.id}",
+            }}, ensure_ascii=False)
+
     return [
         search_photos_tool, 
         # get_travel_history_tool, 
@@ -907,4 +944,5 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
         search_ocr, get_trip_tickets, get_travel_timeline, discover_trips, inspect_album_health, propose_album_repairs, propose_album_metadata_repairs, propose_photo_context_repairs, propose_album_cleanup, investigate_memory, get_person_timeline, view_photos,
         create_contact_sheet, select_representative_photos, create_artifact_draft,
         get_artifact_context, save_artifact_html_page, propose_album_organization,
+        create_memory_from_photos,
     ]

@@ -90,6 +90,7 @@ def test_get_agent_tools_returns_expected_names():
         "get_artifact_context",
         "save_artifact_html_page",
         "propose_album_organization",
+        "create_memory_from_photos",
     ])
 
 

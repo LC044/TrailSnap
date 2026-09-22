@@ -26,6 +26,8 @@ html.dark {
 .border-primary-500 { border-color: var(--theme-primary); }
 .focus\:border-primary-500:focus { border-color: var(--theme-primary); }
 .focus\:ring-primary-500:focus { --tw-ring-color: var(--theme-primary); }
+.focus-visible\:ring-primary-500:focus-visible { --tw-ring-color: var(--theme-primary); }
+.hover\:text-primary-600:hover { color: var(--theme-primary); }
 
 /* 2. 添加关键的 hover 规则 */
 /* 注意：您需要使用反斜杠 '\' 来转义 Tailwind 类名中的冒号 */
