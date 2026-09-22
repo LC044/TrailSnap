@@ -1,19 +1,12 @@
 <template>
   <div class="container mx-auto">
     <!-- Navbar -->
-    <div class="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 h-14 flex items-center justify-between px-4 transition-opacity duration-300">
-      <h1 class="text-lg font-bold text-gray-800 dark:text-white">相册概览</h1>
-      <div class="flex items-center space-x-4">
-        <button class="rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$router.push('/recycle-bin')" title="回收站">
-          <i class="mgc_delete_2_line text-2xl"></i>
-        </button>
-        <button class="relative rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="showStorageDialog = true" title="存储中心">
+    <div class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-4 backdrop-blur-md transition-colors dark:border-gray-800 dark:bg-gray-900/90">
+      <h1 class="text-lg font-bold text-gray-800 dark:text-white">首页</h1>
+      <div class="hidden items-center md:flex">
+        <button class="relative rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300 dark:hover:bg-gray-800" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
           <i class="mgc_hard_drive_line text-2xl"></i>
-          <!-- Badge can be controlled by storage usage state if we fetch it -->
           <span v-if="showStorageBadge" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
-        <button class="rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$router.push('/settings')" title="设置">
-          <i class="mgc_settings_4_line text-2xl"></i>
         </button>
       </div>
     </div>

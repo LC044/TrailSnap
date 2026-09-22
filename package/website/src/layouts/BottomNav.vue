@@ -1,19 +1,34 @@
 <template>
-  <!-- 移动端底部 Tab 栏（替代旧版顶部悬浮药丸，根治窄屏挤压）。仅 <768px 显示。 -->
+  <!-- 移动端液体玻璃底栏，仅 <768px 显示。 -->
   <Transition name="bottom-nav-slide">
     <nav
       v-show="!uiStore.selectionActive"
-      class="fixed bottom-0 inset-x-0 z-40 md:hidden bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 pb-[env(safe-area-inset-bottom)] transition-colors duration-300"
+      class="liquid-glass-nav fixed inset-x-3 bottom-[calc(26px_+_env(safe-area-inset-bottom))] z-40 md:hidden"
+      :class="{ 'is-flowing': bubbleMoving }"
       aria-label="主导航"
     >
-      <div class="grid grid-cols-5 h-14">
+      <div class="relative z-10 grid h-14 grid-cols-5 px-1">
+        <span
+          class="liquid-bubble-track"
+          :style="{ transform: `translate3d(${activeTabIndex * 100}%, 0, 0)` }"
+          aria-hidden="true"
+        >
+          <span
+            class="liquid-bubble"
+            :class="[
+              bubbleMoving ? 'is-moving' : '',
+              bubbleDirection === 'right' ? 'moves-right' : 'moves-left',
+              activeTabIndex === 2 ? 'is-search' : '',
+            ]"
+          />
+        </span>
+
         <!-- 首页 -->
         <RouterLink
           to="/"
           :class="tabClass(isGroup('home'))"
           aria-label="首页"
         >
-          <span v-if="isGroup('home')" class="absolute top-0 inset-x-3 h-0.5 bg-primary-500 rounded-full" />
           <Home class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">首页</span>
         </RouterLink>
@@ -24,7 +39,6 @@
           :class="tabClass(isGroup('photos'))"
           aria-label="照片"
         >
-          <span v-if="isGroup('photos')" class="absolute top-0 inset-x-3 h-0.5 bg-primary-500 rounded-full" />
           <ImageIcon class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">照片</span>
         </RouterLink>
@@ -35,20 +49,16 @@
           :class="tabClass(isGroup('search'))"
           aria-label="搜索"
         >
-          <span v-if="isGroup('search')" class="absolute top-0 inset-x-3 h-0.5 bg-primary-500 rounded-full" />
-          <span class="w-7 h-7 rounded-full bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center">
-            <Search class="w-4 h-4 shrink-0" />
-          </span>
+          <Search class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
         </RouterLink>
 
         <!-- 相册 -->
         <RouterLink
           to="/album"
-          :class="tabClass(isGroup('albums'))"
+          :class="tabClass(albumsTabActive)"
           aria-label="相册"
         >
-          <span v-if="isGroup('albums')" class="absolute top-0 inset-x-3 h-0.5 bg-primary-500 rounded-full" />
           <Images class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">相册</span>
         </RouterLink>
@@ -61,7 +71,6 @@
           aria-label="更多"
           aria-haspopup="dialog"
         >
-          <span v-if="moreActive" class="absolute top-0 inset-x-3 h-0.5 bg-primary-500 rounded-full" />
           <Menu class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">更多</span>
         </button>
@@ -80,12 +89,15 @@
     class="more-sheet"
   >
     <div class="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_12px)]">
-      <!-- 拖拽手柄 -->
-      <div class="relative mb-4 flex min-h-8 items-center justify-center">
-        <div class="w-10 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+      <div class="relative mb-4 flex items-center justify-between pt-3">
+        <div class="absolute left-1/2 top-0 h-1 w-10 -translate-x-1/2 rounded-full bg-slate-300 dark:bg-slate-600" />
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 dark:text-slate-100">更多</h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400">探索、整理与应用设置</p>
+        </div>
         <button
           type="button"
-          class="absolute right-0 flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-700"
+          class="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-700"
           aria-label="关闭更多导航"
           @click="closeMoreSheet"
         >
@@ -172,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRoute, useRouter, type RouteLocationRaw } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import {
@@ -268,12 +280,39 @@ onMounted(() => window.addEventListener('popstate', handleMoreHistoryPopState))
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', handleMoreHistoryPopState)
   if (historyEntryActive && isCurrentMoreHistoryEntry()) window.history.back()
+  if (bubbleTimer) clearTimeout(bubbleTimer)
   resolvePendingClose()
 })
 
 const isGroup = (group: NavGroup) => route.meta.navGroup === group
 const isCurrentPath = (href: string) => route.path === href || route.path.startsWith(`${href}/`)
-const moreActive = computed(() => ['tickets', 'tools', 'more'].includes(String(route.meta.navGroup)))
+const moreActive = computed(() =>
+  mobileMoreSections.some(section => section.items.some(item => isCurrentPath(item.href)))
+)
+const albumsTabActive = computed(() => isGroup('albums') && !moreActive.value)
+const routeTabIndex = computed(() => {
+  if (moreActive.value) return 4
+  if (isGroup('albums')) return 3
+  if (isGroup('search')) return 2
+  if (isGroup('photos')) return 1
+  return 0
+})
+const activeTabIndex = computed(() => moreSheetVisible.value ? 4 : routeTabIndex.value)
+const bubbleMoving = ref(false)
+const bubbleDirection = ref<'left' | 'right'>('right')
+let bubbleTimer: ReturnType<typeof setTimeout> | undefined
+
+watch(activeTabIndex, async (nextIndex, previousIndex) => {
+  bubbleDirection.value = nextIndex >= previousIndex ? 'right' : 'left'
+  bubbleMoving.value = false
+  await nextTick()
+  bubbleMoving.value = true
+  if (bubbleTimer) clearTimeout(bubbleTimer)
+  bubbleTimer = setTimeout(() => {
+    bubbleMoving.value = false
+  }, 340)
+})
+
 const accountName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '我的账号')
 const accountInitial = computed(() => accountName.value.trim().charAt(0).toUpperCase() || '我')
 
@@ -293,10 +332,10 @@ const handleLogout = async () => {
 
 const tabClass = (active: boolean) =>
   [
-    'relative flex flex-col items-center justify-center gap-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none',
+    'liquid-tab-item relative isolate my-0.5 flex flex-col items-center justify-center gap-0.5 rounded-full transition-colors duration-200 focus-visible:outline-none',
     active
-      ? 'text-primary-600 dark:text-primary-400'
-      : 'text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400'
+      ? 'is-active'
+      : 'text-slate-600 dark:text-slate-300'
   ].join(' ')
 
 // 路由切换时复位选择模式标志，防止「选择中跳走 → Tab 栏卡在隐藏」残留
@@ -319,13 +358,168 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 </style>
 
 <style scoped>
+.liquid-glass-nav {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.78);
+  border-radius: 9999px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.62));
+  box-shadow:
+    0 14px 34px rgba(15, 23, 42, 0.18),
+    0 3px 10px rgba(15, 23, 42, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.95),
+    inset 0 -1px 1px rgba(148, 163, 184, 0.18);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms ease,
+    backdrop-filter 220ms ease;
+}
+
+.liquid-glass-nav.is-flowing {
+  transform: scale(1.006);
+  box-shadow:
+    0 17px 38px rgba(15, 23, 42, 0.22),
+    0 4px 12px rgba(15, 23, 42, 0.1),
+    inset 0 1px 1px rgba(255, 255, 255, 0.98);
+  -webkit-backdrop-filter: blur(28px) saturate(195%);
+  backdrop-filter: blur(28px) saturate(195%);
+}
+
+.liquid-glass-nav::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.46), transparent 42%, rgba(255, 255, 255, 0.16));
+  content: '';
+  pointer-events: none;
+}
+
+.liquid-bubble-track {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 4px;
+  z-index: -1;
+  width: calc((100% - 8px) / 5);
+  padding: 4px;
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.liquid-bubble {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 9999px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(var(--theme-rgb), 0.14));
+  box-shadow:
+    0 5px 14px rgba(var(--theme-rgb), 0.18),
+    inset 0 1px 2px rgba(255, 255, 255, 0.9);
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.liquid-bubble.is-search:not(.is-moving) {
+  transform: scaleX(1.12);
+}
+
+.liquid-bubble.is-moving.moves-right {
+  transform-origin: right center;
+  animation: liquid-stretch-right 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.liquid-bubble.is-moving.moves-left {
+  transform-origin: left center;
+  animation: liquid-stretch-left 320ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.liquid-tab-item :deep(svg) {
+  transition: transform 100ms ease, filter 200ms ease;
+}
+
+.liquid-tab-item:hover,
+.liquid-tab-item.is-active {
+  color: var(--theme-primary);
+}
+
+.liquid-tab-item:focus-visible {
+  box-shadow:
+    0 0 0 2px rgba(var(--theme-rgb), 0.7),
+    0 0 0 4px rgba(255, 255, 255, 0.7);
+}
+
+.liquid-tab-item:active :deep(svg) {
+  transform: scale(0.9);
+}
+
+.liquid-tab-item.is-active :deep(svg) {
+  animation: liquid-icon-pop 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  filter: drop-shadow(0 2px 4px rgba(var(--theme-rgb), 0.24));
+}
+
+:global(.dark) .liquid-glass-nav {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.7));
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.42),
+    inset 0 1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.3);
+}
+
+:global(.dark) .liquid-glass-nav.is-flowing {
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.18);
+}
+
+:global(.dark) .liquid-bubble {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(var(--theme-rgb), 0.2));
+  box-shadow:
+    0 5px 16px rgba(var(--theme-rgb), 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.16);
+}
+
+@keyframes liquid-stretch-right {
+  0% { transform: scaleX(1); }
+  34% { transform: scaleX(1.34) scaleY(0.96); }
+  72% { transform: scaleX(0.96) scaleY(1.03); }
+  100% { transform: scaleX(1); }
+}
+
+@keyframes liquid-stretch-left {
+  0% { transform: scaleX(1); }
+  34% { transform: scaleX(1.34) scaleY(0.96); }
+  72% { transform: scaleX(0.96) scaleY(1.03); }
+  100% { transform: scaleX(1); }
+}
+
+@keyframes liquid-icon-pop {
+  0% { transform: scale(0.9) translateY(1px); }
+  58% { transform: scale(1.08) translateY(-1px); }
+  100% { transform: scale(1) translateY(0); }
+}
+
 .bottom-nav-slide-enter-active,
 .bottom-nav-slide-leave-active {
-  transition: transform 0.25s ease, opacity 0.25s ease;
+  transition: transform 0.3s ease, opacity 0.25s ease;
 }
 .bottom-nav-slide-enter-from,
 .bottom-nav-slide-leave-to {
-  transform: translateY(100%);
+  transform: translateY(calc(100% + 24px)) scale(0.96);
   opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-nav,
+  .liquid-bubble-track,
+  .liquid-bubble,
+  .liquid-tab-item :deep(svg) {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 </style>

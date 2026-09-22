@@ -68,17 +68,26 @@ const {
 
 /* 页面过渡动画（原 App.vue 中的样式） */
 .fade-slide-enter-active {
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition:
+    opacity 200ms ease,
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .fade-slide-enter-from {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(3px) scale(0.995);
 }
 .fade-slide-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 90ms ease, transform 90ms ease;
 }
 .fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-20px);
+  opacity: 0.96;
+  transform: scale(0.995);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-slide-enter-active,
+  .fade-slide-leave-active {
+    transition-duration: 0.01ms;
+  }
 }
 </style>

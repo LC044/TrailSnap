@@ -2,7 +2,7 @@
   <aside
     :class="[
       'flex flex-col transition-all duration-300 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 z-40',
-      isCollapsed ? 'w-16' : 'w-64'
+      isCollapsed ? 'w-16' : 'w-60'
     ]"
   >
     <!-- 顶部 Logo 区域 (可折叠) -->
@@ -27,7 +27,7 @@
     </div>
 
     <!-- 主要导航菜单 -->
-    <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-1 custom-scrollbar">
+    <nav class="flex-1 overflow-y-auto px-2.5 py-3 custom-scrollbar">
       <!-- 搜索功能 -->
       <div class="mb-2">
         <div v-if="!isCollapsed" class="relative">
@@ -41,7 +41,7 @@
             @focus="handleFocus"
             type="text"
             placeholder="搜索或描述画面..."
-            class="w-full pl-9 pr-7 py-2 text-sm bg-slate-100 dark:bg-slate-800 border border-transparent dark:border-slate-700 rounded-lg focus:outline-none focus:border-primary-500 focus:bg-white dark:focus:bg-slate-900 text-slate-700 dark:text-slate-200 transition-colors"
+            class="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-8 text-sm text-slate-700 shadow-sm transition-all placeholder:text-slate-400 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:bg-slate-900"
           />
           <button
             v-if="searchText"
@@ -120,7 +120,7 @@
         <button
           v-else
           @click="openSearch"
-          class="flex bg-transparent items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative w-full"
+          class="sidebar-icon-button text-slate-700 dark:text-slate-200"
           title="搜索"
         >
           <Search class="w-5 h-5 shrink-0" />
@@ -129,11 +129,14 @@
 
       <button
         type="button"
-        class="mb-2 flex w-full items-center rounded-lg px-3 py-2.5 text-slate-700 transition-colors hover:bg-slate-100 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-primary-400"
+        :class="[
+          'ai-assistant-button mb-3 flex w-full items-center text-left text-slate-800 dark:text-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
+          isCollapsed ? 'h-10 justify-center rounded-xl' : 'min-h-14 rounded-xl px-2.5 py-2',
+        ]"
         :title="isCollapsed ? 'AI 助手' : undefined"
         @click="uiStore.openAgent()"
       >
-        <span class="relative shrink-0">
+        <span :class="['relative flex shrink-0 items-center justify-center', isCollapsed ? '' : 'h-8 w-8 rounded-lg bg-white/70 shadow-sm dark:bg-slate-800/70']">
           <Bot class="h-5 w-5" />
           <span
             v-if="proactiveUnread > 0"
@@ -141,36 +144,55 @@
             aria-hidden="true"
           />
         </span>
-        <span v-if="!isCollapsed" class="ml-3 truncate">AI 助手</span>
+        <span v-if="!isCollapsed" class="ml-2.5 min-w-0">
+          <span class="block truncate text-sm font-semibold">AI 助手</span>
+          <span class="block truncate text-[11px] text-slate-500 dark:text-slate-400">搜照片、整理相册</span>
+        </span>
+        <Sparkles v-if="!isCollapsed" class="ml-auto h-4 w-4 shrink-0 text-primary-500/70" />
       </button>
 
       <section v-for="(section, sectionIndex) in desktopNavSections" :key="section.label">
-        <div v-if="sectionIndex" class="my-3 border-t border-slate-200 dark:border-slate-800" />
-        <h2 v-if="!isCollapsed" class="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+        <div v-if="sectionIndex" class="h-4" />
+        <button
+          v-if="!isCollapsed && section.collapsible"
+          type="button"
+          class="mb-1 flex h-7 w-full items-center justify-between rounded-lg px-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          :aria-expanded="isSectionExpanded(section)"
+          @click="toggleSection(section.label)"
+        >
+          <span>{{ section.label }}</span>
+          <ChevronDown
+            class="h-3.5 w-3.5 transition-transform duration-200"
+            :class="{ '-rotate-90': !isSectionExpanded(section) }"
+          />
+        </button>
+        <h2 v-else-if="!isCollapsed" class="mb-1 flex h-7 items-center px-2.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-400">
           {{ section.label }}
         </h2>
-        <RouterLink
-          v-for="item in section.items"
-          :key="item.href"
-          :to="item.href"
-          :title="isCollapsed ? item.label : undefined"
-          class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-          :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isDesktopNavActive(item) }"
-        >
-          <component :is="item.icon" class="w-5 h-5 shrink-0" />
-          <transition name="fade">
-            <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
-          </transition>
-        </RouterLink>
+        <div v-show="isSectionExpanded(section)" class="space-y-0.5">
+          <RouterLink
+            v-for="item in section.items"
+            :key="item.href"
+            :to="item.href"
+            :title="isCollapsed ? item.label : undefined"
+            class="sidebar-nav-button text-slate-700 dark:text-slate-200"
+            :class="{ 'sidebar-nav-active': isDesktopNavActive(item) }"
+          >
+            <component :is="item.icon" class="w-5 h-5 shrink-0" />
+            <transition name="fade">
+              <span v-if="!isCollapsed" class="ml-3 truncate">{{ item.label }}</span>
+            </transition>
+          </RouterLink>
+        </div>
       </section>
-      <div class="my-4 border-t border-slate-200 dark:border-slate-800"></div>
+      <div class="h-5"></div>
       <!-- 快捷访问 -->
       <div v-if="!isCollapsed" class="px-1">
         <div class="flex items-center justify-between px-2 mb-1">
-          <span class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">快捷访问</span>
+          <span class="text-xs font-semibold text-slate-400 dark:text-slate-400 uppercase tracking-wider">快捷访问</span>
           <button
             @click="openAddDialog"
-            class="p-0.5 text-slate-400 hover:text-primary-500 transition-colors"
+            class="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:bg-slate-800"
             title="添加快捷导航"
           >
             <Plus class="w-3.5 h-3.5" />
@@ -180,8 +202,8 @@
           <div
             v-for="item in navItemsList"
             :key="`${item.entity_type}-${item.entity_id}`"
-            class="flex items-center px-2 py-1.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group cursor-pointer"
-            :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': isActiveRoute(item.route_path) }"
+            class="sidebar-quick-button group text-slate-700 dark:text-slate-200"
+            :class="{ 'sidebar-nav-active': isActiveRoute(item.route_path) }"
             @click="router.push(item.route_path)"
           >
             <div class="w-7 h-7 rounded-md overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
@@ -234,7 +256,7 @@
     </nav>
 
     <!-- 底部设置与回收站入口 -->
-    <div class="p-2 border-t border-slate-200 dark:border-slate-800 shrink-0 flex flex-col space-y-1">
+    <div class="flex shrink-0 flex-col space-y-1 border-t border-slate-200 p-2.5 dark:border-slate-800">
       <SidebarTaskManager :is-collapsed="isCollapsed" />
 
       <RouterLink
@@ -242,8 +264,8 @@
         :key="item.href"
         :to="item.href"
         :title="isCollapsed ? item.label : undefined"
-        class="flex items-center px-3 py-2.5 rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-primary-600 dark:hover:text-primary-400 transition-colors group"
-        :class="{ 'bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 font-medium': route.path === item.href }"
+        class="sidebar-nav-button text-slate-700 dark:text-slate-200"
+        :class="{ 'sidebar-nav-active': route.path === item.href }"
       >
         <component :is="item.icon" class="w-5 h-5 shrink-0" />
         <transition name="fade">
@@ -255,7 +277,7 @@
         <button
           type="button"
           :title="isCollapsed ? accountName : undefined"
-          class="flex w-full items-center rounded-lg px-3 py-2.5 text-left text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800"
+          class="flex min-h-10 w-full items-center rounded-xl px-2.5 py-2 text-left text-slate-700 transition-all hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <span class="relative flex h-6 w-6 shrink-0 items-center justify-center overflow-visible rounded-full bg-primary-100 text-xs font-semibold text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
             <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" :alt="accountName" class="h-full w-full rounded-full object-cover" />
@@ -334,7 +356,7 @@ import SidebarTaskManager from '@/components/SidebarTaskManager.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { parseDateRange } from '@/utils/date'
 import { desktopNavSections, systemNavItems } from '@/config/navigation'
-import type { AppNavItem } from '@/config/navigation'
+import type { AppNavItem, AppNavSection } from '@/config/navigation'
 import { useUserStore } from '@/stores/user'
 import { ElMessageBox } from 'element-plus'
 import { useUiStore } from '@/stores/uiStore'
@@ -398,6 +420,39 @@ const isDesktopNavActive = (item: AppNavItem) => {
   }
   return route.meta.navGroup === item.navGroup
 }
+
+const SIDEBAR_SECTIONS_KEY = 'trailsnap_sidebar_sections'
+const loadExpandedSections = (): Record<string, boolean> => {
+  try {
+    return JSON.parse(localStorage.getItem(SIDEBAR_SECTIONS_KEY) || '{}')
+  } catch {
+    return {}
+  }
+}
+const expandedSections = ref<Record<string, boolean>>(loadExpandedSections())
+const isSectionExpanded = (section: AppNavSection) =>
+  !section.collapsible || isCollapsed.value || Boolean(expandedSections.value[section.label])
+
+const toggleSection = (label: string) => {
+  expandedSections.value = {
+    ...expandedSections.value,
+    [label]: !expandedSections.value[label],
+  }
+  localStorage.setItem(SIDEBAR_SECTIONS_KEY, JSON.stringify(expandedSections.value))
+}
+
+watch(
+  () => route.path,
+  () => {
+    const activeSection = desktopNavSections.find(section =>
+      section.collapsible && section.items.some(isDesktopNavActive)
+    )
+    if (activeSection && !expandedSections.value[activeSection.label]) {
+      expandedSections.value = { ...expandedSections.value, [activeSection.label]: true }
+    }
+  },
+  { immediate: true },
+)
 
 // 路由激活状态判断：完全匹配，避免首页（/）一直处于激活状态
 const isActiveRoute = (path: string) => {
@@ -611,6 +666,92 @@ const getIcon = (type: string) => {
 </script>
 
 <style scoped>
+.sidebar-nav-button,
+.sidebar-icon-button {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 2.5rem;
+  align-items: center;
+  border-radius: 0.75rem;
+  padding-inline: 0.625rem;
+  font-size: 0.875rem;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 180ms ease,
+    transform 120ms ease;
+}
+
+.sidebar-nav-button:hover,
+.sidebar-icon-button:hover,
+.sidebar-quick-button:hover {
+  color: var(--theme-primary);
+  background: rgba(var(--theme-rgb), 0.08);
+}
+
+.sidebar-nav-button:active,
+.sidebar-icon-button:active,
+.sidebar-quick-button:active,
+.ai-assistant-button:active {
+  transform: scale(0.98);
+}
+
+.sidebar-nav-button:focus-visible,
+.sidebar-icon-button:focus-visible,
+.sidebar-quick-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--theme-primary);
+}
+
+.sidebar-nav-active {
+  color: var(--theme-primary) !important;
+  font-weight: 600;
+  background:
+    linear-gradient(100deg, rgba(var(--theme-rgb), 0.13), rgba(var(--theme-rgb), 0.07)) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--theme-rgb), 0.12),
+    0 3px 10px rgba(var(--theme-rgb), 0.06);
+}
+
+.sidebar-quick-button {
+  display: flex;
+  min-height: 2.5rem;
+  cursor: pointer;
+  align-items: center;
+  border-radius: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 180ms ease,
+    transform 120ms ease;
+}
+
+.ai-assistant-button {
+  border: 1px solid rgba(var(--theme-rgb), 0.16);
+  background:
+    linear-gradient(135deg, rgba(var(--theme-rgb), 0.13), rgba(var(--theme-rgb), 0.04));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    0 4px 12px rgba(var(--theme-rgb), 0.06);
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 180ms ease,
+    transform 120ms ease;
+}
+
+.ai-assistant-button:hover {
+  border-color: rgba(var(--theme-rgb), 0.3);
+  color: var(--theme-primary);
+  background:
+    linear-gradient(135deg, rgba(var(--theme-rgb), 0.18), rgba(var(--theme-rgb), 0.07));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 6px 16px rgba(var(--theme-rgb), 0.12);
+}
+
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease, width 0.2s ease;
