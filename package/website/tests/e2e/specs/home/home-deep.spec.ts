@@ -6,14 +6,14 @@ import { ensureAuthSession } from '../../helpers/auth';
  *
  * 首页此前只有 home.spec.ts 的两条极简 smoke（仅 body 可见 + nav links）。
  * 本文件补齐：
- *   - Navbar h1"相册概览"渲染
- *   - 顶部 navbar 含"回收站""存储中心"两个 icon 按钮（通过 title 锚定）
+ *   - Navbar h1"首页"渲染
+ *   - 顶部 navbar 含"存储中心" icon 按钮（通过 title 锚定；回收站入口已收敛进侧边栏）
  *   - 主体主区域渲染
  *   - 年度回忆录 banner 可见
  *   - 路由不被 catch-all 接管为 NotFound
  *
  * 注意：
- *   - HomePage main 区需要等 dashboard 数据回来后才挂载，因此先等 "相册概览"
+ *   - HomePage main 区需要等 dashboard 数据回来后才挂载，因此先等 "首页"
  *     h1 出现，再断言其内部 icon 按钮
  *   - icon-only 按钮 hover state 偶发 Playwright 可见性 false，所以用 count()
  */
@@ -22,28 +22,28 @@ test.describe('Smoke - 首页深度 @smoke', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
   });
 
-  test('首页 - Navbar 标题"相册概览"渲染', async ({ page }) => {
+  test('首页 - Navbar 标题"首页"渲染', async ({ page }) => {
     await page.goto('/');
-    // HomePage.vue 模板硬编码 <h1>相册概览</h1>
-    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 10_000 });
+    // HomePage.vue 模板硬编码 <h1>首页</h1>
+    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('首页 - 顶部 navbar 含回收站 / 存储中心 icon 按钮', async ({ page }) => {
+  test('首页 - 顶部 navbar 含存储中心 icon 按钮', async ({ page }) => {
     await page.goto('/');
     // 先等主区域挂载（Dashboard 数据回来后 Navbar 才渲染 main 部分）
-    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
 
     // 通过 title 属性锚定 icon button；用 count() 而非 toBeVisible()，
     // 因为 hover-state / 尺寸极小时 Playwright 可见性判断偶发 false
-    const recycleCount = await page.getByTitle('回收站').count();
     const storageCount = await page.getByTitle('存储中心').count();
-    expect(recycleCount).toBeGreaterThan(0);
     expect(storageCount).toBeGreaterThan(0);
+    // 回收站入口已从首页顶栏移除（与侧边栏重复）
+    expect(await page.getByTitle('回收站').count()).toBe(0);
   });
 
   test('首页 - 主体主区域渲染', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // main 元素可见（HomePage.vue 顶层包了 main）
@@ -52,7 +52,7 @@ test.describe('Smoke - 首页深度 @smoke', () => {
 
   test('首页 - 年度回忆录 banner 可见', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // 年度回忆录 h3 显示 "[year] 年度回忆录"，断言 banner 存在
@@ -71,7 +71,7 @@ test.describe('Smoke - 首页深度 @smoke', () => {
 
   test('首页 - 内容细分入口使用照片类型与智能分类的真实路由', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /内容细分/ }).click();
     await expect(page.getByRole('link', { name: /照片：/ })).toHaveAttribute('href', '/photos?file_types=image');
@@ -82,7 +82,7 @@ test.describe('Smoke - 首页深度 @smoke', () => {
 
   test('首页 - 今日新增携带当天导入时间范围进入照片页', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('h1', { hasText: '相册概览' }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: /今日新增/ }).click();
     await expect(page).toHaveURL(/\/photos\?.*uploaded_after=.*uploaded_before=/);

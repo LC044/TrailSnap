@@ -401,7 +401,7 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('打开 AgentChat -> 输入文字 -> update:modelValue 触发 send', async ({ page }) => {
     await page.goto('/')
-    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+    const agentEntry = page.getByRole('button', { name: 'AI 助手' })
     await expect(agentEntry).toBeVisible({ timeout: 10_000 })
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
@@ -418,7 +418,7 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('Shift+Enter 换行而不发送 -> 输入框保留换行内容', async ({ page }) => {
     await page.goto('/')
-    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+    const agentEntry = page.getByRole('button', { name: 'AI 助手' })
     await expect(agentEntry).toBeVisible({ timeout: 10_000 })
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
@@ -435,7 +435,7 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('生成态 isGenerating=true -> 按钮切到 agent-stop-btn', async ({ page }) => {
     await page.goto('/')
-    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true })
+    const agentEntry = page.getByRole('button', { name: 'AI 助手' })
     await expect(agentEntry).toBeVisible({ timeout: 10_000 })
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })

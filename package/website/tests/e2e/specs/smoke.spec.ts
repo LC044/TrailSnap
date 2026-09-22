@@ -24,7 +24,7 @@ test.describe('页面打开冒烟 @smoke', () => {
     await page.goto('/');
 
     // HomePage 顶部固定 h1（模板静态写死，与 API 数据无关）
-    await expect(page.locator('h1', { hasText: '相册概览' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '首页' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('404 兜底页能打开', async ({ page, request }, testInfo) => {
