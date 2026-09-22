@@ -4,13 +4,13 @@
     <nav
       v-show="!uiStore.selectionActive"
       class="liquid-glass-nav fixed inset-x-3 bottom-[calc(26px_+_env(safe-area-inset-bottom))] z-40 md:hidden"
-      :class="{ 'is-flowing': bubbleMoving }"
+      :class="{ 'is-flowing': bubbleMoving, 'is-dark': isDarkMode }"
       aria-label="主导航"
     >
       <div class="relative z-10 grid h-14 grid-cols-5 px-1">
         <span
           class="liquid-bubble-track"
-          :style="{ transform: `translate3d(${activeTabIndex * 100}%, 0, 0)` }"
+          :style="{ transform: `translate3d(${displayedTabIndex * 100}%, 0, 0)` }"
           aria-hidden="true"
         >
           <span
@@ -18,7 +18,7 @@
             :class="[
               bubbleMoving ? 'is-moving' : '',
               bubbleDirection === 'right' ? 'moves-right' : 'moves-left',
-              activeTabIndex === 2 ? 'is-search' : '',
+              displayedTabIndex === 2 ? 'is-search' : '',
             ]"
           />
         </span>
@@ -26,8 +26,10 @@
         <!-- 首页 -->
         <RouterLink
           to="/"
-          :class="tabClass(isGroup('home'))"
+          :class="tabClass(displayedTabIndex === 0)"
           aria-label="首页"
+          @pointerdown="previewTab(0)"
+          @click="previewTab(0)"
         >
           <Home class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">首页</span>
@@ -36,8 +38,10 @@
         <!-- 照片 -->
         <RouterLink
           to="/photos"
-          :class="tabClass(isGroup('photos'))"
+          :class="tabClass(displayedTabIndex === 1)"
           aria-label="照片"
+          @pointerdown="previewTab(1)"
+          @click="previewTab(1)"
         >
           <ImageIcon class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">照片</span>
@@ -46,8 +50,10 @@
         <!-- 搜索（居中强调，跳全屏搜索页） -->
         <RouterLink
           to="/mobile-search"
-          :class="tabClass(isGroup('search'))"
+          :class="tabClass(displayedTabIndex === 2)"
           aria-label="搜索"
+          @pointerdown="previewTab(2)"
+          @click="previewTab(2)"
         >
           <Search class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">搜索</span>
@@ -56,8 +62,10 @@
         <!-- 相册 -->
         <RouterLink
           to="/album"
-          :class="tabClass(albumsTabActive)"
+          :class="tabClass(displayedTabIndex === 3)"
           aria-label="相册"
+          @pointerdown="previewTab(3)"
+          @click="previewTab(3)"
         >
           <Images class="w-5 h-5 shrink-0" />
           <span class="text-[10px] leading-none whitespace-nowrap">相册</span>
@@ -67,7 +75,7 @@
         <button
           type="button"
           @click="openMoreSheet"
-          :class="tabClass(moreActive)"
+          :class="tabClass(displayedTabIndex === 4)"
           aria-label="更多"
           aria-haspopup="dialog"
         >
@@ -203,11 +211,13 @@ import { useUserStore } from '@/stores/user'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { mobileMoreSections, type NavGroup } from '@/config/navigation'
 import { isTauriApp, toServerUrl } from '@/config/server'
+import { injectTheme } from '@/composables/useTheme'
 
 const route = useRoute()
 const router = useRouter()
 const uiStore = useUiStore()
 const userStore = useUserStore()
+const { isDarkMode } = injectTheme()
 
 const { items: navItemsList } = injectNavItems()
 
@@ -276,11 +286,23 @@ watch(moreSheetVisible, visible => {
   if (!visible && historyEntryActive && !historyBackPending) void closeMoreSheet()
 }, { flush: 'sync' })
 
-onMounted(() => window.addEventListener('popstate', handleMoreHistoryPopState))
+let preloadTimer: ReturnType<typeof setTimeout> | undefined
+
+onMounted(() => {
+  window.addEventListener('popstate', handleMoreHistoryPopState)
+  // Warm the four primary route chunks after the initial screen settles. This
+  // removes the one-time parse delay on the first visit without competing with
+  // initial rendering and API requests.
+  preloadTimer = setTimeout(() => {
+    void Promise.allSettled([0, 1, 2, 3].map(preloadTab))
+  }, 500)
+})
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', handleMoreHistoryPopState)
   if (historyEntryActive && isCurrentMoreHistoryEntry()) window.history.back()
   if (bubbleTimer) clearTimeout(bubbleTimer)
+  if (pendingTabTimer) clearTimeout(pendingTabTimer)
+  if (preloadTimer) clearTimeout(preloadTimer)
   resolvePendingClose()
 })
 
@@ -298,11 +320,34 @@ const routeTabIndex = computed(() => {
   return 0
 })
 const activeTabIndex = computed(() => moreSheetVisible.value ? 4 : routeTabIndex.value)
+const pendingTabIndex = ref<number | null>(null)
 const bubbleMoving = ref(false)
 const bubbleDirection = ref<'left' | 'right'>('right')
 let bubbleTimer: ReturnType<typeof setTimeout> | undefined
+let pendingTabTimer: ReturnType<typeof setTimeout> | undefined
 
-watch(activeTabIndex, async (nextIndex, previousIndex) => {
+const preloadTab = (index: number) => {
+  if (index === 0) return import('@/views/HomePage.vue')
+  if (index === 1) return import('@/views/PhotosPage.vue')
+  if (index === 2) return import('@/views/search/MobileSearch.vue')
+  if (index === 3) return import('@/views/album/AlbumList.vue')
+  return Promise.resolve()
+}
+
+const previewTab = (index: number) => {
+  if (index === routeTabIndex.value) return
+  pendingTabIndex.value = index
+  void preloadTab(index)
+  if (pendingTabTimer) clearTimeout(pendingTabTimer)
+  // Clear an optimistic state if a navigation guard rejects the route.
+  pendingTabTimer = setTimeout(() => {
+    pendingTabIndex.value = null
+  }, 2000)
+}
+
+const displayedTabIndex = computed(() => pendingTabIndex.value ?? activeTabIndex.value)
+
+watch(displayedTabIndex, async (nextIndex, previousIndex) => {
   bubbleDirection.value = nextIndex >= previousIndex ? 'right' : 'left'
   bubbleMoving.value = false
   await nextTick()
@@ -311,6 +356,11 @@ watch(activeTabIndex, async (nextIndex, previousIndex) => {
   bubbleTimer = setTimeout(() => {
     bubbleMoving.value = false
   }, 340)
+})
+
+watch(routeTabIndex, () => {
+  pendingTabIndex.value = null
+  if (pendingTabTimer) clearTimeout(pendingTabTimer)
 })
 
 const accountName = computed(() => userStore.userInfo?.nickname || userStore.userInfo?.username || '我的账号')
@@ -359,39 +409,53 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 
 <style scoped>
 .liquid-glass-nav {
+  isolation: isolate;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 9999px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.62));
+    linear-gradient(145deg, rgba(255, 255, 255, 0.58), rgba(248, 250, 252, 0.28));
   box-shadow:
-    0 14px 34px rgba(15, 23, 42, 0.18),
+    0 18px 42px rgba(15, 23, 42, 0.16),
     0 3px 10px rgba(15, 23, 42, 0.08),
-    inset 0 1px 1px rgba(255, 255, 255, 0.95),
-    inset 0 -1px 1px rgba(148, 163, 184, 0.18);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.92),
+    inset 0 -1px 1px rgba(100, 116, 139, 0.16);
+  -webkit-backdrop-filter: blur(16px) saturate(175%) contrast(108%);
+  backdrop-filter: blur(16px) saturate(175%) contrast(108%);
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms ease,
-    backdrop-filter 220ms ease;
+    box-shadow 220ms ease;
 }
 
 .liquid-glass-nav.is-flowing {
   transform: scale(1.006);
   box-shadow:
-    0 17px 38px rgba(15, 23, 42, 0.22),
+    0 21px 46px rgba(15, 23, 42, 0.19),
     0 4px 12px rgba(15, 23, 42, 0.1),
-    inset 0 1px 1px rgba(255, 255, 255, 0.98);
-  -webkit-backdrop-filter: blur(28px) saturate(195%);
-  backdrop-filter: blur(28px) saturate(195%);
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.96),
+    inset 0 -1px 1px rgba(100, 116, 139, 0.18);
+}
+
+.liquid-glass-nav::before {
+  position: absolute;
+  z-index: 0;
+  inset: 1px;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.72), transparent 24%),
+    radial-gradient(circle at 82% 115%, rgba(var(--theme-rgb), 0.1), transparent 34%);
+  content: '';
+  pointer-events: none;
 }
 
 .liquid-glass-nav::after {
   position: absolute;
+  z-index: 0;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(115deg, rgba(255, 255, 255, 0.46), transparent 42%, rgba(255, 255, 255, 0.16));
+  background:
+    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.3) 22%, transparent 38%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.18), transparent 42%, rgba(15, 23, 42, 0.04));
   content: '';
   pointer-events: none;
 }
@@ -412,12 +476,17 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   display: block;
   width: 100%;
   height: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.64);
   border-radius: 9999px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(var(--theme-rgb), 0.14));
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.74), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.4), rgba(var(--theme-rgb), 0.13));
   box-shadow:
-    0 5px 14px rgba(var(--theme-rgb), 0.18),
-    inset 0 1px 2px rgba(255, 255, 255, 0.9);
+    0 7px 18px rgba(var(--theme-rgb), 0.16),
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.88),
+    inset 0 -1px 1px rgba(var(--theme-rgb), 0.1);
+  -webkit-backdrop-filter: blur(7px) saturate(190%);
+  backdrop-filter: blur(7px) saturate(190%);
   transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
@@ -460,27 +529,36 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   filter: drop-shadow(0 2px 4px rgba(var(--theme-rgb), 0.24));
 }
 
-:global(.dark) .liquid-glass-nav {
-  border-color: rgba(255, 255, 255, 0.14);
-  background: linear-gradient(135deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.7));
+.liquid-glass-nav.is-dark {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.62), rgba(15, 23, 42, 0.38));
   box-shadow:
     0 16px 38px rgba(0, 0, 0, 0.42),
-    inset 0 1px 1px rgba(255, 255, 255, 0.14),
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.2),
     inset 0 -1px 1px rgba(0, 0, 0, 0.3);
 }
 
-:global(.dark) .liquid-glass-nav.is-flowing {
-  box-shadow:
-    0 18px 42px rgba(0, 0, 0, 0.5),
-    inset 0 1px 1px rgba(255, 255, 255, 0.18);
+.liquid-glass-nav.is-dark::before {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.2), transparent 25%),
+    radial-gradient(circle at 82% 115%, rgba(var(--theme-rgb), 0.16), transparent 36%);
 }
 
-:global(.dark) .liquid-bubble {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(var(--theme-rgb), 0.2));
+.liquid-glass-nav.is-dark::after {
+  background:
+    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.11) 22%, transparent 38%),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 45%, rgba(0, 0, 0, 0.1));
+}
+
+.liquid-glass-nav.is-dark .liquid-bubble {
+  border-color: rgba(255, 255, 255, 0.22);
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.18), transparent 40%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(var(--theme-rgb), 0.2));
   box-shadow:
     0 5px 16px rgba(var(--theme-rgb), 0.18),
-    inset 0 1px 1px rgba(255, 255, 255, 0.16);
+    inset 0 1.5px 1px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.12);
 }
 
 @keyframes liquid-stretch-right {

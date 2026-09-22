@@ -3,7 +3,7 @@
   <div
     :class="[isDarkMode ? 'dark' : '']"
     :style="themeStyle"
-    class="h-screen w-full flex font-sans transition-colors duration-300 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 overflow-hidden"
+    class="h-screen w-full flex font-sans transition-colors duration-300 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 overflow-hidden"
   >
     <!-- 左侧导航栏 -->
     <Sidebar class="hidden md:flex" />
@@ -11,7 +11,7 @@
     <!-- 右侧主体内容区 -->
     <div class="flex-1 flex flex-col min-w-0 transition-all duration-300 relative" id="main-content-wrapper">
       <!-- 页面内容（移动端底部留出 Tab 栏 + safe-area 高度） -->
-      <main class="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-900 box-border relative pb-[calc(var(--ts-tabbar-h)_+_env(safe-area-inset-bottom))] md:pb-0">
+      <main class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 box-border relative pb-[calc(var(--ts-tabbar-h)_+_env(safe-area-inset-bottom))] md:pb-0">
         <transition name="fade-slide" mode="out-in">
           <router-view />
         </transition>

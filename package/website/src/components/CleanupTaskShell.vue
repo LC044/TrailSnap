@@ -3,28 +3,35 @@
   颜色、图标、文案由父组件传入，差异点收敛到 props。
 -->
 <template>
-  <div class="container mx-auto px-4 flex flex-col">
+  <div class="container mx-auto flex min-h-full flex-col px-4">
     <!-- Header -->
-    <div class="sticky top-0 z-30 backdrop-blur-md">
-      <div class="mx-auto px-4 py-3 flex items-center gap-4 justify-between flex-shrink-0">
-        <div class="flex items-center gap-2">
-          <button @click="onBack" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 dark:bg-gray-900 rounded-full transition-colors">
+    <div class="sticky top-0 z-30 -mx-4 border-b border-gray-200/70 bg-gray-50/90 px-4 backdrop-blur-md dark:border-gray-800/70 dark:bg-gray-900/90 md:mx-0 md:border-b-0 md:bg-transparent md:px-0 md:dark:bg-transparent">
+      <div class="mx-auto flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
+        <div class="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            aria-label="返回工具箱"
+            @click="onBack"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-gray-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:bg-gray-800 dark:focus-visible:ring-offset-gray-900"
+          >
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
-          <h1 class="text-xl font-bold text-gray-800 dark:text-gray-100">{{ title }}</h1>
+          <h1 class="min-w-0 truncate text-lg font-bold text-gray-900 dark:text-gray-100 sm:text-xl">{{ title }}</h1>
         </div>
-        <div class="flex gap-2">
+        <div v-if="canRescan || canBulkAction" class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
           <button
             v-if="canRescan"
+            type="button"
             @click="onRescan"
-            class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-sm"
+            class="min-h-10 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 dark:focus-visible:ring-offset-gray-900 sm:px-4"
           >
             重新扫描
           </button>
           <button
             v-if="canBulkAction"
+            type="button"
             @click="onBulkAction"
-            class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors shadow-sm"
+            class="min-h-10 rounded-xl bg-red-500 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900 sm:px-4"
           >
             {{ bulkActionLabel }}
           </button>

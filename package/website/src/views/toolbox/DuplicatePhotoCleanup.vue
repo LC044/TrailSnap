@@ -26,15 +26,16 @@
     @start="startNewScan"
   >
     <!-- Result Content -->
-    <div class="flex-1 overflow-y-auto space-y-6 pb-20 scrollbar-hide" ref="containerRef">
-        <div v-for="(group, gIndex) in groups" :key="gIndex" class="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="flex-1 space-y-4 pb-24 pt-4 scrollbar-hide md:space-y-6 md:pt-2" ref="containerRef">
+        <div v-for="(group, gIndex) in groups" :key="gIndex" class="rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-4">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
                     重复组 {{ gIndex + 1 }} ({{ group.photos.length }} 张)
                 </span>
                 <button 
+                    type="button"
                     @click="toggleGroupSelection(gIndex)"
-                    class="text-sm text-primary-500 hover:text-primary-600 font-medium dark:bg-gray-900"
+                    class="min-h-9 rounded-lg px-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300 dark:focus-visible:ring-offset-gray-800"
                 >
                     {{ isGroupAllSelected(gIndex) ? '取消全选' : '选择冗余项' }}
                 </button>
@@ -58,19 +59,19 @@
                     <i class="mgc_right_line"></i>
                  </button>
 
-                <div 
+                <div
                     :ref="el => setScrollRef(el, gIndex)"
-                    class="flex gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1"
+                    class="grid grid-cols-2 gap-3 px-0.5 py-1 md:flex md:gap-4 md:overflow-x-auto md:px-1 md:py-2 md:snap-x md:snap-mandatory"
                     @scroll="updateScrollState(gIndex)"
                 >
                     <div 
                         v-for="(photo, pIndex) in group.photos" 
                         :key="photo.id"
-                        class="relative flex-shrink-0 w-32 sm:w-40 snap-start"
+                        class="relative min-w-0 md:w-40 md:flex-shrink-0 md:snap-start"
                     >
                         <!-- Photo Card -->
                         <div 
-                            class="relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-colors bg-gray-100 dark:bg-gray-700"
+                            class="relative aspect-square overflow-hidden rounded-xl border-2 bg-gray-100 transition-colors dark:bg-gray-700"
                             :class="selectedPhotos.has(photo.id) ? 'border-orange-500' : 'border-transparent'"
                             @click="openLightbox(gIndex, pIndex)"
                         >
@@ -84,13 +85,15 @@
                                 建议保留
                             </div>
                             <!-- Selection Checkbox -->
-                            <div 
-                                class="absolute top-1 left-1 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors z-10"
+                            <button
+                                type="button"
+                                :aria-label="selectedPhotos.has(photo.id) ? `取消选择 ${photo.filename}` : `选择 ${photo.filename}`"
+                                class="absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                                 :class="selectedPhotos.has(photo.id) ? 'bg-orange-500 border-orange-500' : 'bg-black/30 border-white hover:bg-black/50'"
                                 @click.stop="togglePhotoSelection(photo.id)"
                             >
                                 <i v-if="selectedPhotos.has(photo.id)" class="mgc_check_line text-white text-sm"></i>
-                            </div>
+                            </button>
                             <!-- Video Indicator (List View) -->
                             <div v-if="photo.file_type === 'video'" class="flex mb-1 absolute top-1 right-2 justify-center pointer-events-none z-10 items-center">
                                 <div class="text-white text-sm">
@@ -103,12 +106,12 @@
                             </div>
                         </div>
                         <div class="mt-1.5 px-1">
-                            <div class="text-xs text-gray-700 dark:text-gray-300 truncate text-center font-medium">
+                            <div class="truncate text-left text-xs font-medium text-gray-700 dark:text-gray-300">
                                 {{ photo.filename }}
                             </div>
                         </div>
                         <!-- File Path -->
-                        <div v-if="photo.file_path" class="text-xs text-gray-500 dark:text-gray-400 truncate text-center " :title="photo.file_path">
+                        <div v-if="photo.file_path" class="truncate px-1 text-left text-[11px] text-gray-500 dark:text-gray-400" :title="photo.file_path">
                             {{ photo.file_path }}
                         </div>
                     </div>

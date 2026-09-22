@@ -2,226 +2,234 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer components {
-  .page-item {
-    @apply snap-start h-screen w-full flex flex-col justify-center items-center p-6 box-border;
-  }
-}
-
-/* src/styles/theme.css */
-[class^='mgc_']::before, [class*=' mgc_']::before {
-  color: inherit !important;
-}
-
-html.dark {
-  /* 自定义深色背景颜色 */
-  --el-bg-color: #111827;
-}
-
-/* 定义动态颜色类，映射到 JS 注入的变量 */
-.text-primary-600 { color: var(--theme-primary); }
-.text-primary-500 { color: var(--theme-primary); } /* 近似处理 */
-.bg-primary-600 { background-color: var(--theme-primary); }
-.bg-primary-500 { background-color: var(--theme-primary); }
-.border-primary-500 { border-color: var(--theme-primary); }
-.focus\:border-primary-500:focus { border-color: var(--theme-primary); }
-.focus\:ring-primary-500:focus { --tw-ring-color: var(--theme-primary); }
-.focus-visible\:ring-primary-500:focus-visible { --tw-ring-color: var(--theme-primary); }
-.hover\:text-primary-600:hover { color: var(--theme-primary); }
-
-/* 2. 添加关键的 hover 规则 */
-/* 注意：您需要使用反斜杠 '\' 来转义 Tailwind 类名中的冒号 */
-.hover\:text-primary-500:hover {
-    color: var(--theme-primary);
-    /* 建议在 hover 时稍微变亮或变暗，以提供视觉反馈 */
-    filter: brightness(0.9);
-}
-.hover\:bg-primary-500:hover { background-color: var(--theme-primary); filter: brightness(0.92); }
-.hover\:bg-primary-600:hover { background-color: var(--theme-primary); filter: brightness(0.88); }
-.hover\:bg-primary-700:hover { background-color: var(--theme-primary); filter: brightness(0.82); }
-
-/* 3. 添加深色模式下的 hover 规则 (确保在深色模式下颜色不变暗，反而可以更亮) */
-.dark .hover\:text-primary-500:hover {
-    color: var(--theme-primary);
-    filter: brightness(1.2); /* 在深色背景下稍微增亮 */
-}
-.dark .hover\:bg-primary-500:hover { filter: brightness(1.15); }
-.dark .hover\:bg-primary-600:hover { filter: brightness(1.10); }
-.dark .hover\:bg-primary-700:hover { filter: brightness(1.05); }
-
-/* RGB 版本的背景色，用于支持 opacity (bg-primary-50 等) */
-.bg-primary-50 { background-color: rgba(var(--theme-rgb), 0.1); }
-.bg-primary-200 { background-color: rgba(var(--theme-rgb), 0.3); }
-.shadow-primary-200 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
-.shadow-primary-500 { --tw-shadow-color: rgba(var(--theme-rgb), 0.5); }
-.shadow-primary-500\/20 { --tw-shadow-color: rgba(var(--theme-rgb), 0.2); }
-.shadow-primary-500\/30 { --tw-shadow-color: rgba(var(--theme-rgb), 0.3); }
-.shadow-primary-500\/40 { --tw-shadow-color: rgba(var(--theme-rgb), 0.4); }
-
-/* 深色模式下的微调 */
-.dark .text-primary-500 { color: var(--theme-primary); }
-.dark .text-primary-400 { color: var(--theme-primary); filter: brightness(1.2); }
-.dark .text-primary-300 { color: var(--theme-primary); filter: brightness(0.8); }
-.dark .text-primary-200 { color: var(--theme-primary); filter: brightness(0.6); }
-.dark .bg-primary-900 { background-color: rgba(var(--theme-rgb), 0.9); }
-.dark .bg-primary-800 { background-color: rgba(var(--theme-rgb), 0.8); }
-.dark .bg-primary-700 { background-color: rgba(var(--theme-rgb), 0.7); }
-.dark .dark\:bg-primary-900\\\/20 { background-color: rgba(var(--theme-rgb), 0.2) !important; }
-.dark .dark\:text-primary-400 { color: var(--theme-primary) !important; filter: brightness(1.2); }
-
-/* 动画 */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
+/* TrailSnap design foundation. Theme colors are injected by useTheme.ts. */
 :root {
-  --bg-color: #fafafa;
-  --text-color: #333333;
-  --accent-color: #4FC3F7;
-  /* 悬浮底栏高度与间距，供内容区和浮层避让。 */
-  --ts-tabbar-h: 70px;
-}
-
-.dark {
-  --bg-color: #111827;
-  --text-color: #E0E0E0;
-  --accent-color: #61AFEF;
-}
-
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  color-scheme: light;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --ts-color-page: #f7f8fa;
+  --ts-color-surface: #ffffff;
+  --ts-color-surface-muted: #f3f4f6;
+  --ts-color-surface-raised: #ffffff;
+  --ts-color-text: #111827;
+  --ts-color-text-secondary: #64748b;
+  --ts-color-text-tertiary: #94a3b8;
+  --ts-color-border: #e5e7eb;
+  --ts-color-divider: #eef0f3;
+  --ts-color-overlay: rgb(15 23 42 / 52%);
+  --ts-color-danger: #ef4444;
+
+  --ts-space-1: 4px;
+  --ts-space-2: 8px;
+  --ts-space-3: 12px;
+  --ts-space-4: 16px;
+  --ts-space-5: 20px;
+  --ts-space-6: 24px;
+  --ts-space-8: 32px;
+  --ts-space-10: 40px;
+
+  --ts-radius-control: 12px;
+  --ts-radius-card: 16px;
+  --ts-radius-dialog: 24px;
+  --ts-radius-pill: 9999px;
+
+  --ts-control-sm: 36px;
+  --ts-control-md: 44px;
+  --ts-control-lg: 48px;
+  --ts-page-gutter: 16px;
+  --ts-section-gap: 24px;
+
+  --ts-shadow-card: 0 1px 2px rgb(15 23 42 / 4%), 0 6px 18px rgb(15 23 42 / 3%);
+  --ts-shadow-floating: 0 18px 48px rgb(15 23 42 / 16%), 0 4px 14px rgb(15 23 42 / 8%);
+  --ts-glass-bg: rgb(255 255 255 / 78%);
+  --ts-glass-border: rgb(255 255 255 / 72%);
+  --ts-glass-blur: 24px;
+
+  /* 56px navigation + 26px bottom offset + 16px breathing room. */
+  --ts-tabbar-h: 98px;
+
+  --bg-color: var(--ts-color-page);
+  --text-color: var(--ts-color-text);
+  --accent-color: var(--theme-primary, #0ea5e9);
+
+  --el-color-primary: var(--theme-primary, #0ea5e9);
+  --el-bg-color: var(--ts-color-surface);
+  --el-bg-color-page: var(--ts-color-page);
+  --el-fill-color-blank: var(--ts-color-surface);
+  --el-border-color: var(--ts-color-border);
+  --el-border-radius-base: var(--ts-radius-control);
+  --el-border-radius-small: 10px;
+  --el-text-color-primary: var(--ts-color-text);
+  --el-text-color-regular: var(--ts-color-text-secondary);
 }
 
-html {
-  scroll-behavior: smooth;
-  overscroll-behavior-y: auto;
+html.dark {
+  color-scheme: dark;
+  --ts-color-page: #111827;
+  --ts-color-surface: #182131;
+  --ts-color-surface-muted: #202b3c;
+  --ts-color-surface-raised: #1f2937;
+  --ts-color-text: #f8fafc;
+  --ts-color-text-secondary: #cbd5e1;
+  --ts-color-text-tertiary: #94a3b8;
+  --ts-color-border: #334155;
+  --ts-color-divider: #273449;
+  --ts-color-overlay: rgb(2 6 23 / 68%);
+  --ts-shadow-card: 0 1px 2px rgb(0 0 0 / 18%), 0 8px 22px rgb(0 0 0 / 12%);
+  --ts-shadow-floating: 0 20px 52px rgb(0 0 0 / 42%), 0 4px 14px rgb(0 0 0 / 28%);
+  --ts-glass-bg: rgb(17 24 39 / 76%);
+  --ts-glass-border: rgb(255 255 255 / 12%);
+  --bg-color: var(--ts-color-page);
+  --text-color: var(--ts-color-text);
 }
 
-/* 全局滚动条统一为侧边栏使用的轻量样式。 */
+@media (min-width: 768px) {
+  :root {
+    --ts-page-gutter: 24px;
+    --ts-section-gap: 32px;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root { --ts-page-gutter: 32px; }
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    overscroll-behavior-y: auto;
+    background: var(--ts-color-page);
+  }
+
+  html, body, #app {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    background: var(--ts-color-page);
+    color: var(--ts-color-text);
+  }
+
+  button, input, textarea, select { font: inherit; }
+  button, [role='button'] { -webkit-tap-highlight-color: transparent; }
+  a { color: inherit; text-decoration: none; }
+
+  #app {
+    width: 100%;
+    min-height: 100vh;
+    background: var(--ts-color-page);
+    color: var(--ts-color-text);
+    transition: background-color 200ms ease, color 200ms ease;
+  }
+}
+
+@layer components {
+  .page-item {
+    @apply snap-start h-screen w-full flex flex-col justify-center items-center p-6 box-border;
+  }
+
+  .ts-focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2;
+  }
+
+  .ts-glass {
+    background: var(--ts-glass-bg);
+    border-color: var(--ts-glass-border);
+    -webkit-backdrop-filter: blur(var(--ts-glass-blur)) saturate(150%);
+    backdrop-filter: blur(var(--ts-glass-blur)) saturate(150%);
+  }
+
+  .ts-bottom-safe {
+    padding-bottom: calc(var(--ts-tabbar-h) + env(safe-area-inset-bottom));
+  }
+
+  .ts-scrollbar-hidden {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .ts-scrollbar-hidden::-webkit-scrollbar { display: none; }
+}
+
+[class^='mgc_']::before, [class*=' mgc_']::before { color: inherit !important; }
+
+/* Dynamic theme utilities that Tailwind cannot derive from the injected color. */
+.text-primary-600, .text-primary-500 { color: var(--theme-primary); }
+.bg-primary-600, .bg-primary-500 { background-color: var(--theme-primary); }
+.border-primary-500 { border-color: var(--theme-primary); }
+.focus\:border-primary-500:focus { border-color: var(--theme-primary); }
+.focus\:ring-primary-500:focus,
+.focus-visible\:ring-primary-500:focus-visible { --tw-ring-color: var(--theme-primary); }
+.hover\:text-primary-600:hover,
+.hover\:text-primary-500:hover { color: var(--theme-primary); filter: brightness(.9); }
+.hover\:bg-primary-500:hover { background-color: var(--theme-primary); filter: brightness(.92); }
+.hover\:bg-primary-600:hover { background-color: var(--theme-primary); filter: brightness(.88); }
+.hover\:bg-primary-700:hover { background-color: var(--theme-primary); filter: brightness(.82); }
+
+.bg-primary-50 { background-color: rgba(var(--theme-rgb), .1); }
+.bg-primary-200 { background-color: rgba(var(--theme-rgb), .3); }
+.shadow-primary-200 { --tw-shadow-color: rgba(var(--theme-rgb), .3); }
+.shadow-primary-500 { --tw-shadow-color: rgba(var(--theme-rgb), .5); }
+.shadow-primary-500\/20 { --tw-shadow-color: rgba(var(--theme-rgb), .2); }
+.shadow-primary-500\/30 { --tw-shadow-color: rgba(var(--theme-rgb), .3); }
+.shadow-primary-500\/40 { --tw-shadow-color: rgba(var(--theme-rgb), .4); }
+
+.dark .text-primary-500 { color: var(--theme-primary); }
+.dark .text-primary-400 { color: var(--theme-primary); filter: brightness(1.2); }
+.dark .text-primary-300 { color: var(--theme-primary); filter: brightness(.8); }
+.dark .text-primary-200 { color: var(--theme-primary); filter: brightness(.6); }
+.dark .bg-primary-900 { background-color: rgba(var(--theme-rgb), .9); }
+.dark .bg-primary-800 { background-color: rgba(var(--theme-rgb), .8); }
+.dark .bg-primary-700 { background-color: rgba(var(--theme-rgb), .7); }
+.dark .dark\:bg-primary-900\\\/20 { background-color: rgba(var(--theme-rgb), .2) !important; }
+.dark .dark\:text-primary-400 { color: var(--theme-primary) !important; filter: brightness(1.2); }
+.dark .hover\:text-primary-500:hover { filter: brightness(1.2); }
+.dark .hover\:bg-primary-500:hover { filter: brightness(1.15); }
+.dark .hover\:bg-primary-600:hover { filter: brightness(1.1); }
+.dark .hover\:bg-primary-700:hover { filter: brightness(1.05); }
+
+/* Compact, consistent scrollbars for desktop surfaces. */
 @supports (-moz-appearance: none) {
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+  * { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+  html.dark * { scrollbar-color: #475569 transparent; }
+}
+
+*::-webkit-scrollbar { width: 4px !important; height: 4px !important; }
+*::-webkit-scrollbar-track { background: transparent !important; }
+*::-webkit-scrollbar-thumb { background-color: #cbd5e1 !important; border-radius: 4px !important; }
+html.dark *::-webkit-scrollbar-thumb { background-color: #475569 !important; }
+*::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
+
+html.capacitor-native .h-screen { height: calc(100dvh - env(safe-area-inset-top)); }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 180ms ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-slide-enter-active { transition: opacity 200ms ease, transform 220ms cubic-bezier(.22, 1, .36, 1); }
+.fade-slide-enter-from { opacity: 0; transform: translateY(3px) scale(.995); }
+.fade-slide-leave-active { transition: opacity 90ms ease, transform 90ms ease; }
+.fade-slide-leave-to { opacity: .96; transform: scale(.995); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
-
-  html.dark * {
-    scrollbar-color: #475569 transparent;
-  }
-}
-
-*::-webkit-scrollbar {
-  width: 4px !important;
-  height: 4px !important;
-}
-
-*::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-
-*::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1 !important;
-  border-radius: 4px !important;
-}
-
-html.dark *::-webkit-scrollbar-thumb {
-  background-color: #475569 !important;
-}
-
-/* 隐藏 Chromium / WebView2 原生滚动条两端的箭头按钮。 */
-*::-webkit-scrollbar-button,
-*::-webkit-scrollbar-button:single-button,
-*::-webkit-scrollbar-button:vertical:decrement,
-*::-webkit-scrollbar-button:vertical:increment,
-*::-webkit-scrollbar-button:horizontal:decrement,
-*::-webkit-scrollbar-button:horizontal:increment {
-  display: none !important;
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  width: 0 !important;
-  height: 0 !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  background-image: none !important;
-}
-
-html,
-body,
-#app {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
-  box-sizing: border-box;
-  /* overflow: hidden; */
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 0;
-}
-
-/* 全局或 App 级别基础设置 */
-#app {
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  color: #333; /* 字体颜色 */
-  /* background: linear-gradient(to right, #E3B5C6, #D8C6B8); */
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  transition: background-color 0.3s, color 0.3s;
-  min-height: 100vh;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0rem;
-  /* display: flex; */
-  flex-direction:column;
-  justify-content: center;
-  align-items: center;
-  /* text-align: center; */
-}
-
-/* The main layout uses h-screen. Compensate for the top safe-area padding
-   applied to body so a native WebView never becomes taller than its viewport. */
-html.capacitor-native .h-screen {
-  height: calc(100dvh - env(safe-area-inset-top));
-}
-
-/* 页面过渡动画 (从 MainLayout.vue 移动过来) */
-.fade-slide-enter-active {
-  transition: opacity 0.5s ease, transform 0.5s ease;
-}
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(20px);
-}
-.fade-slide-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateY(-20px);
 }

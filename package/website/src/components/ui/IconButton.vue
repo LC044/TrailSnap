@@ -4,7 +4,7 @@
     :aria-label="label"
     :title="title || label"
     :disabled="disabled"
-    class="inline-flex shrink-0 items-center justify-center rounded-xl transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-offset-gray-900"
+    class="inline-flex shrink-0 items-center justify-center rounded-[var(--ts-radius-control)] transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-offset-gray-900"
     :class="[sizeClass, variantClass]"
   >
     <slot />
@@ -29,8 +29,8 @@ const props = withDefaults(defineProps<{
 })
 
 const sizeClass = computed(() => ({
-  sm: 'h-8 w-8',
-  md: 'h-10 w-10',
+  sm: 'h-9 w-9',
+  md: 'h-11 w-11',
   lg: 'h-12 w-12',
 }[props.size]))
 

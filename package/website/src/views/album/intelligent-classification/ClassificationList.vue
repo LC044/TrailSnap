@@ -2,8 +2,8 @@
   <div class="container mx-auto classification-list py-6 px-4 flex flex-col">
     <!-- Header -->
     <div class="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
-      <div class="flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-        <button @click="goBack" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
+      <div class="classification-title-group flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+        <button @click="goBack" class="classification-back-btn p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">
           <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
         </button>
         <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">智能分类</h1>
@@ -108,3 +108,22 @@ onMounted(() => {
   fetchTags()
 })
 </script>
+
+<style scoped>
+/* 移动端标题组：与位置相册一致，去掉胶囊背景（LocationList.vue .location-title-group 同款） */
+@media (max-width: 767px) {
+  .classification-title-group {
+    gap: 6px;
+    padding: 0;
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .classification-back-btn {
+    padding: 8px;
+    background: transparent;
+  }
+}
+</style>
