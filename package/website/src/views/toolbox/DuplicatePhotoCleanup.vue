@@ -26,7 +26,7 @@
     @start="startNewScan"
   >
     <!-- Result Content -->
-    <div class="flex-1 space-y-4 pb-24 pt-4 scrollbar-hide md:space-y-6 md:pt-2" ref="containerRef">
+    <div class="flex-1 space-y-4 overflow-y-auto pb-24 pt-4 scrollbar-hide md:space-y-6 md:pt-2" ref="containerRef">
         <div v-for="(group, gIndex) in groups" :key="gIndex" class="rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-4">
             <div class="flex items-center justify-between mb-3">
                 <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
