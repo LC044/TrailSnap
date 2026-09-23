@@ -7,6 +7,7 @@
     top="5vh"
     class="identity-edit-dialog rounded-xl"
     @update:model-value="$emit('update:visible', $event)"
+    @opened="focusNameInput"
   >
     <el-form label-position="top">
       <el-form-item label="封面">
@@ -100,7 +101,7 @@
         </div>
       </el-form-item>
       <el-form-item label="姓名">
-        <el-input v-model="form.identity_name" placeholder="输入姓名..." />
+        <el-input ref="nameInputRef" v-model="form.identity_name" placeholder="输入姓名..." />
       </el-form-item>
       <el-form-item label="描述">
         <el-input v-model="form.description" type="textarea" :rows="3" placeholder="输入描述..." />
@@ -130,6 +131,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import type { InputInstance } from 'element-plus'
 import type { FaceIdentity } from '@/types/album'
 import { faceApi } from '@/api/face'
 import { ElMessage } from 'element-plus'
@@ -159,6 +161,13 @@ const form = ref({
   tags: [] as string[]
 })
 const saving = ref(false)
+
+// 弹窗动画结束后聚焦姓名输入框；此时仍在移动端点击的瞬时激活窗口内，
+// focus() 会直接唤起输入法
+const nameInputRef = ref<InputInstance | null>(null)
+const focusNameInput = () => {
+  nameInputRef.value?.focus()
+}
 
 // 更换封面：候选来自该人物自己的照片（后端一定能从中找到对应人脸）
 const currentIdentity = ref<FaceIdentity | null>(null)
