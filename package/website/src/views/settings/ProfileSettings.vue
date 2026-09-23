@@ -49,8 +49,8 @@
 
     <!-- Photo Selector Dialog -->
     <el-dialog v-model="showGallerySelector" title="选择头像" width="80%" top="5vh" class="gallery-selector-dialog">
-      <div class="h-[60vh] -mx-4 -mt-4 -mb-4">
-        <PhotoSelector v-if="showGallerySelector" :is-selector="true" title="选择头像照片" @select="handleSelectFromGallery" @cancel="showGallerySelector = false" />
+      <div class="h-[80vh] -mx-4 -mt-4 -mb-4">
+        <PhotoSelector v-if="showGallerySelector" :is-selector="true" title="头像" @select="handleSelectFromGallery" @cancel="showGallerySelector = false" />
       </div>
     </el-dialog>
   </div>

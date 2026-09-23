@@ -3,23 +3,30 @@
     :model-value="visible"
     title="编辑人物信息"
     :width="dialogWidth"
-    class="rounded-xl"
+    :fullscreen="isMobile"
+    top="5vh"
+    class="identity-edit-dialog rounded-xl"
     @update:model-value="$emit('update:visible', $event)"
-    @opened="focusNameInput"
   >
     <el-form label-position="top">
       <el-form-item label="封面">
         <div class="w-full">
-          <div class="flex items-center gap-4">
-            <div class="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800">
-              <img
-                v-if="coverInfo"
-                :src="coverAvatarUrl"
-                class="absolute max-w-none"
-                :style="getFaceCropStyle(coverInfo)"
-                alt="人物封面"
-              />
-              <UserIcon v-else class="h-full w-full p-4 text-gray-400" />
+          <div class="flex items-center justify-between gap-4 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800">
+                <img
+                  v-if="coverInfo"
+                  :src="coverAvatarUrl"
+                  class="absolute max-w-none"
+                  :style="getFaceCropStyle(coverInfo)"
+                  alt="当前人物封面"
+                />
+                <UserIcon v-else class="h-full w-full p-4 text-gray-400 dark:text-gray-500" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-800 dark:text-gray-100">当前封面</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">从人物照片中选择更合适的一张</p>
+              </div>
             </div>
             <el-button
               :disabled="coverLoaded && coverPhotos.length === 0"
@@ -27,46 +34,73 @@
             >
               <span class="flex items-center gap-1.5">
                 <CameraIcon class="h-4 w-4" />
-                <span>更换封面</span>
+                <span>{{ showCoverPicker ? '收起' : '选择照片' }}</span>
               </span>
             </el-button>
           </div>
 
-          <div v-if="showCoverPicker" class="mt-3">
+          <div v-if="showCoverPicker" class="mt-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p class="text-sm font-medium text-gray-800 dark:text-gray-100">选择新封面</p>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">图片将完整显示，人物相册中会自动聚焦人脸</p>
+              </div>
+              <span v-if="coverLoaded && coverPhotos.length" class="shrink-0 text-xs text-gray-400 dark:text-gray-500">
+                {{ coverPhotos.length }} 张
+              </span>
+            </div>
+
             <div
               v-loading="coverLoading"
-              class="cover-photo-grid grid min-h-20 max-h-44 grid-cols-4 sm:grid-cols-5 gap-2 overflow-y-auto"
+              class="cover-photo-grid grid min-h-24 max-h-[46vh] grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-4"
             >
               <button
                 v-for="p in coverPhotos"
                 :key="p.id"
                 type="button"
                 :data-photo-id="p.id"
-                class="relative aspect-square overflow-hidden rounded-lg border-2 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed"
-                :class="p.id === coverInfo?.photo_id
-                  ? 'border-primary-500'
+                class="group relative aspect-[4/3] overflow-hidden rounded-lg border-2 bg-gray-100 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed dark:bg-gray-900"
+                :class="p.id === selectedCoverId
+                  ? 'border-primary-500 ring-2 ring-primary-500/20'
                   : 'border-transparent hover:border-gray-300 dark:hover:border-gray-600'"
                 :disabled="settingCoverId !== null"
-                :title="p.id === coverInfo?.photo_id ? '当前封面' : '设为封面'"
-                @click="pickCover(p.id)"
+                :aria-pressed="p.id === selectedCoverId"
+                :title="p.id === coverInfo?.photo_id ? '当前封面' : '选择这张照片'"
+                @click="selectCover(p.id)"
               >
-                <img :src="p.url" class="h-full w-full object-cover" loading="lazy" alt="封面候选" />
+                <img :src="p.url" class="h-full w-full object-contain" loading="lazy" alt="封面候选照片" />
                 <div
-                  v-if="settingCoverId === p.id"
-                  class="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-black/50"
+                  v-if="p.id === selectedCoverId"
+                  class="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary-500 text-white shadow"
                 >
-                  <Loader2Icon class="h-5 w-5 animate-spin text-primary-500" />
+                  <CheckIcon class="h-4 w-4" />
                 </div>
+                <span
+                  v-if="p.id === coverInfo?.photo_id"
+                  class="absolute bottom-1.5 left-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[11px] text-white"
+                >
+                  当前
+                </span>
               </button>
             </div>
-            <p v-if="coverLoaded && coverPhotos.length === 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            <p v-if="coverLoaded && coverPhotos.length === 0" class="py-5 text-center text-sm text-gray-500 dark:text-gray-400">
               该人物暂无照片，无法更换封面
             </p>
+            <div v-if="coverPhotos.length" class="mt-3 flex justify-end">
+              <el-button
+                type="primary"
+                :loading="settingCoverId !== null"
+                :disabled="!hasCoverChanged"
+                @click="applyCover"
+              >
+                使用此照片
+              </el-button>
+            </div>
           </div>
         </div>
       </el-form-item>
       <el-form-item label="姓名">
-        <el-input ref="nameInputRef" v-model="form.identity_name" placeholder="输入姓名..." />
+        <el-input v-model="form.identity_name" placeholder="输入姓名..." />
       </el-form-item>
       <el-form-item label="描述">
         <el-input v-model="form.description" type="textarea" :rows="3" placeholder="输入描述..." />
@@ -96,14 +130,13 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import type { InputInstance } from 'element-plus'
 import type { FaceIdentity } from '@/types/album'
 import { faceApi } from '@/api/face'
 import { ElMessage } from 'element-plus'
 import { useWindowSize } from '@vueuse/core'
 import { getFaceCropStyle } from '@/utils/faceCrop'
 import { thumbnailUrl } from '@/utils/mediaUrl'
-import { Camera as CameraIcon, Loader2 as Loader2Icon, User as UserIcon } from 'lucide-vue-next'
+import { Camera as CameraIcon, Check as CheckIcon, User as UserIcon } from 'lucide-vue-next'
 
 const props = defineProps<{
   visible: boolean
@@ -117,7 +150,8 @@ const emit = defineEmits<{
 }>()
 
 const { width } = useWindowSize()
-const dialogWidth = computed(() => width.value < 640 ? '90%' : '400px')
+const isMobile = computed(() => width.value < 640)
+const dialogWidth = computed(() => isMobile.value ? '100%' : '560px')
 
 const form = ref({
   identity_name: '',
@@ -126,13 +160,6 @@ const form = ref({
 })
 const saving = ref(false)
 
-// 弹窗动画结束后聚焦姓名输入框；此时仍在移动端点击的瞬时激活窗口内，
-// focus() 会直接唤起输入法
-const nameInputRef = ref<InputInstance | null>(null)
-const focusNameInput = () => {
-  nameInputRef.value?.focus()
-}
-
 // 更换封面：候选来自该人物自己的照片（后端一定能从中找到对应人脸）
 const currentIdentity = ref<FaceIdentity | null>(null)
 const coverPhotos = ref<{ id: string, url: string }[]>([])
@@ -140,9 +167,13 @@ const coverLoaded = ref(false)
 const coverLoading = ref(false)
 const showCoverPicker = ref(false)
 const settingCoverId = ref<string | null>(null)
+const selectedCoverId = ref<string | null>(null)
 
 const coverInfo = computed(() => currentIdentity.value?.cover_photo ?? props.identity?.cover_photo ?? null)
 const coverAvatarUrl = computed(() => coverInfo.value ? thumbnailUrl(coverInfo.value.photo_id, 'medium') : '')
+const hasCoverChanged = computed(() => (
+  selectedCoverId.value !== null && selectedCoverId.value !== coverInfo.value?.photo_id
+))
 
 const defaultTags = ["自己", "朋友", "家人", "同事", "女朋友", "男朋友", "同学"]
 
@@ -177,10 +208,12 @@ watch(() => props.identity?.id, () => {
   coverPhotos.value = []
   coverLoaded.value = false
   showCoverPicker.value = false
+  selectedCoverId.value = null
 })
 
 const toggleCoverPicker = async () => {
   showCoverPicker.value = !showCoverPicker.value
+  selectedCoverId.value = coverInfo.value?.photo_id ?? null
   if (showCoverPicker.value && !coverLoaded.value) {
     await loadCoverPhotos()
   }
@@ -192,7 +225,7 @@ const loadCoverPhotos = async () => {
   try {
     // 取最近 100 张供挑选
     const photos = await faceApi.getIdentityPhotos(props.identity.id, 1, 100)
-    coverPhotos.value = photos.map(p => ({ id: p.id, url: thumbnailUrl(p.id, 'small', p.owner_id) }))
+    coverPhotos.value = photos.map(p => ({ id: p.id, url: thumbnailUrl(p.id, 'medium', p.owner_id) }))
   } catch (e) {
     console.error('Failed to fetch cover candidates', e)
     ElMessage.error('加载照片失败')
@@ -202,12 +235,13 @@ const loadCoverPhotos = async () => {
   }
 }
 
-const pickCover = async (photoId: string) => {
-  if (!props.identity || settingCoverId.value) return
-  if (photoId === coverInfo.value?.photo_id) {
-    showCoverPicker.value = false
-    return
-  }
+const selectCover = (photoId: string) => {
+  if (!settingCoverId.value) selectedCoverId.value = photoId
+}
+
+const applyCover = async () => {
+  if (!props.identity || !selectedCoverId.value || !hasCoverChanged.value || settingCoverId.value) return
+  const photoId = selectedCoverId.value
   settingCoverId.value = photoId
   try {
     await faceApi.setCover(props.identity.id, photoId)
@@ -247,3 +281,22 @@ const submit = async () => {
   }
 }
 </script>
+
+<style>
+.identity-edit-dialog {
+  display: flex;
+  max-height: 90vh;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.identity-edit-dialog .el-dialog__body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.identity-edit-dialog.is-fullscreen {
+  max-height: 100vh;
+}
+</style>

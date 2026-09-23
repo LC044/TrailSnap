@@ -4,8 +4,8 @@
       <button @click="emit('toggle-sidebar')" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors dark:bg-slate-800 p-1 rounded-md">
         <Menu class="w-5 h-5" />
       </button>
-      <div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center hidden sm:flex">
-        <Bot class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+      <div class="w-8 h-8 rounded-full bg-primary-500/10 flex items-center justify-center hidden sm:flex">
+        <Bot class="w-5 h-5 text-primary-600 dark:text-primary-500" />
       </div>
       <div class="flex min-w-0 flex-col">
         <div class="flex min-w-0 items-center gap-2">
@@ -58,7 +58,7 @@ const emit = defineEmits<{
 
 <style scoped>
 .agent-chat-header {
-  @apply px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10;
+  @apply px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10;
 }
 
 </style>

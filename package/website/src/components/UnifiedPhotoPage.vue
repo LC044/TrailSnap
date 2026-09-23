@@ -294,7 +294,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
@@ -370,7 +370,7 @@ const emit = defineEmits<{
   (e: 'photo-update', event: any): void
   (e: 'remove-from-album', ids: string[]): void // General delete/remove event
   (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void): void
-  (e: 'refresh-data', done: () => void): void
+  (e: 'refresh-data', done: (success?: boolean) => void): void
 }>()
 
 // UI State
@@ -402,12 +402,13 @@ const captureVisibleMonth = () => {
 }
 
 const restoreVisibleMonth = (anchor: { month?: string; top: number } | null) => {
-  if (!anchor?.month) return
+  if (!anchor?.month) return false
   const block = document.querySelector<HTMLElement>(`.month-block[data-month="${CSS.escape(anchor.month)}"]`)
-  if (!block) return
+  if (!block) return false
   const delta = block.getBoundingClientRect().top - anchor.top
   const container = getScrollContainer()
   container.scrollBy({ top: delta, behavior: 'auto' })
+  return true
 }
 
 const captureVisiblePhoto = (excludedIds: string[]) => {
@@ -440,17 +441,32 @@ const restoreVisiblePhoto = (anchor: { id: string; top: number } | null) => {
   })
 }
 
-const handleRefreshData = () => {
-  if (refreshingData.value || isPhotoInteractionActive.value) return
+const refreshDataPreservingPosition = (): Promise<boolean> => {
+  if (refreshingData.value || isPhotoInteractionActive.value) return Promise.resolve(false)
   refreshingData.value = true
-  const anchor = captureVisibleMonth()
-  emit('refresh-data', () => {
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      restoreVisibleMonth(anchor)
-      refreshingData.value = false
-    }))
+  const monthAnchor = captureVisibleMonth()
+  const photoAnchor = captureVisiblePhoto([])
+  const container = getScrollContainer()
+  const previousScrollTop = container === window ? window.scrollY : (container as HTMLElement).scrollTop
+  return new Promise((resolve) => {
+    emit('refresh-data', (success = true) => {
+      void nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+        // Restore the month first so the virtual gallery renders the same area,
+        // then align the exact photo if it still exists.
+        if (!restoreVisibleMonth(monthAnchor)) {
+          container.scrollTo({ top: previousScrollTop, behavior: 'auto' })
+        }
+        requestAnimationFrame(() => {
+          restoreVisiblePhoto(photoAnchor)
+          refreshingData.value = false
+          resolve(success)
+        })
+      })))
+    })
   })
 }
+
+const handleRefreshData = () => { void refreshDataPreservingPosition() }
 
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768
@@ -744,7 +760,9 @@ const handleBatchAddToAlbum = (ids: string[]) => {
 // Expose pendingRemoveIds to parent if needed, or methods to manipulate it
 defineExpose({
     galleryRef,
-    pendingRemoveIds
+    pendingRemoveIds,
+    refreshDataPreservingPosition,
+    isPhotoInteractionActive
 })
 </script>
 

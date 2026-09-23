@@ -49,7 +49,7 @@ export const desktopNavSections: AppNavSection[] = [
     collapsible: true,
     items: [
       { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums', activeMatch: 'path' },
-      { label: '智能分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
+      { label: '分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories', activeMatch: 'path' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums', activeMatch: 'path' },
       { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums', activeMatch: 'path' },
@@ -71,7 +71,7 @@ export const mobileMoreSections: AppNavSection[] = [
     label: '探索',
     items: [
       { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums' },
-      { label: '智能分类', href: '/album/classification', icon: Tags, navGroup: 'albums' },
+      { label: '分类', href: '/album/classification', icon: Tags, navGroup: 'albums' },
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums' },
       { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums' },

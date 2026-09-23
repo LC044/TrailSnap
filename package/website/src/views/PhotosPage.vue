@@ -1,5 +1,6 @@
 <template>
   <UnifiedPhotoPage
+    ref="unifiedPhotoPageRef"
     :loading="photoStore.loading"
     :error="photoStore.error"
     :photos="images"
@@ -12,8 +13,6 @@
     :show-back="false"
     :allow-folder-view="true"
     :store="photoStore"
-    :update-available="photoStore.dataStale"
-    update-message="发现新照片或照片信息更新，点击刷新"
     @load-more="photoStore.loadPhotos"
     @retry="photoStore.loadPhotos(true)"
     @upload="triggerUpload"
@@ -103,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, onActivated } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -123,6 +122,44 @@ const router = useRouter()
 const route = useRoute()
 const store = useAlbumStore()
 const photoStore = usePhotoStore()
+const unifiedPhotoPageRef = ref<InstanceType<typeof UnifiedPhotoPage> | null>(null)
+const pageActive = ref(false)
+let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let autoRefreshRunning = false
+
+const scheduleAutoRefresh = (delay = 400) => {
+  if (!pageActive.value || autoRefreshTimer !== null || autoRefreshRunning || !photoStore.dataStale) return
+  autoRefreshTimer = setTimeout(() => {
+    autoRefreshTimer = null
+    void autoRefreshIfCountChanged()
+  }, delay)
+}
+
+const autoRefreshIfCountChanged = async () => {
+  if (!pageActive.value || autoRefreshRunning || !photoStore.dataStale) return
+  if (!photoStore.timelineStats || unifiedPhotoPageRef.value?.isPhotoInteractionActive) {
+    scheduleAutoRefresh(1000)
+    return
+  }
+  autoRefreshRunning = true
+  let shouldRetry = true
+  try {
+    const changed = await photoStore.hasCurrentContextPhotoCountChanged()
+    if (changed && pageActive.value) {
+      shouldRetry = await unifiedPhotoPageRef.value?.refreshDataPreservingPosition() ?? false
+    }
+  } catch (error) {
+    shouldRetry = false
+    console.error('自动检查照片数量失败', error)
+  } finally {
+    autoRefreshRunning = false
+    if (shouldRetry && pageActive.value && photoStore.dataStale) scheduleAutoRefresh()
+  }
+}
+
+watch(() => photoStore.dataStale, (stale) => {
+  if (stale) scheduleAutoRefresh()
+})
 
 // State
 const images = computed(() => photoStore.images)
@@ -170,15 +207,19 @@ const handlePhotoUpdate = (event: { id: string, location?: string, tags?: string
   console.log('Update photo:', event)
 }
 
-const refreshPhotoData = async (done: () => void = () => {}) => {
+const refreshPhotoData = async (done: (success?: boolean) => void = () => {}) => {
+  let success = false
   try {
     await photoStore.refreshCurrentContext()
     await Promise.all([
       photoStore.fetchAvailableFilters(),
       store.fetchAlbums(),
     ])
+    success = true
+  } catch (error) {
+    console.error('刷新照片失败', error)
   } finally {
-    done()
+    done(success)
   }
 }
 
@@ -227,10 +268,12 @@ const initData = () => {
 }
 
 onMounted(() => {
+  pageActive.value = true
   initData()
 })
 
 onActivated(() => {
+  pageActive.value = true
   const currentQueryStr = JSON.stringify(route.query)
   if (currentQueryStr !== lastQueryStr) {
     initData()
@@ -238,7 +281,7 @@ onActivated(() => {
     // keep-alive 会保留已加载月份。重新进入页面时使照片缓存失效，
     // 否则即使时间线统计更新，已有月份仍不会重新请求。
     if (photoStore.dataStale) {
-      refreshPhotoData()
+      scheduleAutoRefresh()
     } else {
       photoStore.fetchAvailableFilters()
       store.fetchAlbums()
@@ -246,7 +289,15 @@ onActivated(() => {
   }
 })
 
+onDeactivated(() => {
+  pageActive.value = false
+  if (autoRefreshTimer !== null) clearTimeout(autoRefreshTimer)
+  autoRefreshTimer = null
+})
+
 onUnmounted(() => {
+  pageActive.value = false
+  if (autoRefreshTimer !== null) clearTimeout(autoRefreshTimer)
   // photoStore.resetAll() // 移除销毁时的清空，让 keep-alive 保持数据
 })
 </script>

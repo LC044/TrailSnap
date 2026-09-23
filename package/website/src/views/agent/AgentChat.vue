@@ -41,6 +41,7 @@
               :is-selection-mode="isSelectionMode"
               :is-selected="selectedMessages.includes(msg.id!)"
               :is-last-assistant="isLastAssistantMessage(index)"
+              :is-generating="isGenerating && isLastAssistantMessage(index)"
               :is-last-user="isLastUserMessage(index)"
               :is-dropdown-active="activeDropdownIndex === index"
               :render-markdown="renderMarkdown"
@@ -59,8 +60,8 @@
                 <Bot class="w-4 h-4" />
               </div>
               <div class="message-bubble assistant flex items-center gap-2 py-3">
-                <Loader2 class="w-4 h-4 animate-spin text-indigo-500" />
-                <span class="text-sm text-slate-500">思考中...</span>
+                <Loader2 class="w-4 h-4 animate-spin text-primary-500" />
+                <span class="text-sm text-slate-500 dark:text-slate-400">正在处理…</span>
               </div>
             </div>
           </div>
@@ -166,7 +167,10 @@ const loadModels = async () => {
     } else if (list.length > 0) {
       selectedModelValue.value = `${list[0].conn_id}|${list[0].model}`;
     }
-    selectedReasoningValue.value = res.chat_reasoning_effort || 'none';
+    const selectedModel = list.find(item => `${item.conn_id}|${item.model}` === selectedModelValue.value);
+    const levels = selectedModel?.reasoning_levels?.length ? selectedModel.reasoning_levels : ['none'];
+    const configuredReasoning = res.chat_reasoning_effort || 'none';
+    selectedReasoningValue.value = levels.includes(configuredReasoning) ? configuredReasoning : levels[0];
   } catch (e) {
     console.error('Failed to load models', e);
   } finally {
@@ -894,7 +898,7 @@ onMounted(() => {
 }
 
 .agent-chat-messages {
-  @apply flex-1 overflow-y-auto p-4 scroll-smooth;
+  @apply flex-1 overflow-y-auto bg-slate-50 p-4 scroll-smooth sm:p-6 dark:bg-slate-950/40;
 }
 
 .message-wrapper {
@@ -906,7 +910,7 @@ onMounted(() => {
 }
 
 .message-avatar.assistant {
-  @apply bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400;
+  @apply bg-primary-500/10 text-primary-600 dark:text-primary-500;
 }
 
 .message-bubble {

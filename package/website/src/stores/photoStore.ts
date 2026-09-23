@@ -176,6 +176,22 @@ export const photoStoreSetup = () => {
       if (!dataStale.value) staleTaskTypes.value = [];
   }
 
+  // Task completion only signals that the data may have changed. Check the
+  // visible context before rebuilding the gallery, since metadata tasks do
+  // not necessarily add or remove photos.
+  const hasCurrentContextPhotoCountChanged = async (): Promise<boolean> => {
+      if (currentContext.value.type === 'search' || !timelineStats.value) return false;
+      const contextKey = getContextKey();
+      const targetRevision = getRequiredRevision();
+      const previousCount = timelineStats.value.total_photos;
+      const albumId = currentContext.value.type === 'album' ? currentContext.value.id : undefined;
+      const stats = await albumService.getTimelineStats(albumId, cleanFilters());
+      if (getContextKey() !== contextKey) return false;
+      if (stats.total_photos !== previousCount) return true;
+      acknowledgeContextRevision(contextKey, targetRevision);
+      return false;
+  }
+
   // 筛选条件持久化到 trailsnap:selectedFilters，刷新/重开后恢复（P1 2.1.9 回归用例依赖）。
   {
       const FILTER_CACHE_KEY = 'selectedFilters'
@@ -430,16 +446,18 @@ export const photoStoreSetup = () => {
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
       const monthsToReload = [...loadedDates];
+      const stats = await albumService.getTimelineStats(
+          context.type === 'album' ? context.id : undefined,
+          cleanFilters()
+      );
+      if (getContextKey() !== contextKey) return;
       cancelAllPendingLoads();
       images.value = [];
       photoOffsetMap.clear();
       loadedDates.clear();
-
-      if (context.type === 'album' && context.id) {
-          await fetchTimelineStats(context.id);
-      } else {
-          await fetchTimelineStats();
-      }
+      // Update the timeline in the same Vue tick as the image cache. Keeping
+      // its virtual height prevents the browser from clamping scroll to top.
+      timelineStats.value = stats;
 
       if (currentContext.value.type !== context.type || currentContext.value.id !== context.id) return;
 
@@ -559,6 +577,7 @@ export const photoStoreSetup = () => {
     loadAlbumPhotos,
     loadFolderPhotos,
     refreshCurrentContext,
+    hasCurrentContextPhotoCountChanged,
     markDataStale,
     loadPhotosByMonth,
     removeLocalPhoto,
