@@ -6,7 +6,7 @@
       </button>
       <div>
         <h1 class="text-2xl font-bold text-gray-800 dark:text-white">修改图片元数据</h1>
-        <p class="text-sm text-gray-500">选择一个文件夹，将其中的照片根据文件名中的时间（YYYYMMDD_HHMMSS）批量修改拍摄时间，该操作将直接修改图片元数据且不可逆。</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">选择目录或相册，批量修改其中照片的拍摄信息。操作会直接修改原始文件元数据且不可逆。</p>
       </div>
     </div>
 
@@ -39,8 +39,12 @@
     <!-- Configuration Form -->
     <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
       <el-form label-position="top" :disabled="isTaskRunning">
-        <el-form-item label="目标文件夹" required>
-          <div class="flex items-center gap-4 w-full">
+        <el-form-item label="处理范围" required>
+          <el-radio-group v-model="targetType" class="mb-3 w-full">
+            <el-radio value="folder">存储目录</el-radio>
+            <el-radio value="album">相册</el-radio>
+          </el-radio-group>
+          <div v-if="targetType === 'folder'" class="flex items-center gap-4 w-full">
             <el-input 
               v-model="targetRootPath" 
               placeholder="请选择要进行操作的文件夹" 
@@ -53,7 +57,15 @@
             </el-input>
             <el-button type="primary" plain @click="showFolderSelector = true">选择目录</el-button>
           </div>
-          <div class="text-xs text-gray-500 mt-1">此文件夹（包含其所有子文件夹）内的所有照片（支持JPG、JPEG、等支持exif元数据的格式）都将根据文件名中的时间进行修改。</div>
+          <button v-else type="button" :disabled="isTaskRunning" class="flex min-h-14 w-full items-center gap-3 rounded-lg border border-gray-300 bg-white p-2 text-left hover:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800" @click="openAlbumSelector">
+            <span v-if="selectedAlbum" class="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-md bg-primary-50 text-primary-500 dark:bg-primary-900/30">
+              <img v-if="selectedAlbum.cover?.id" :src="thumbnailUrl(selectedAlbum.cover.id, 'small', selectedAlbum.cover.owner_id)" :alt="`${selectedAlbum.name}的封面`" class="h-full w-full object-cover" />
+              <Folder v-else class="h-5 w-5" />
+            </span>
+            <span class="min-w-0 flex-1 truncate text-sm" :class="selectedAlbum ? 'text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'">{{ selectedAlbum ? `${selectedAlbum.name}（${selectedAlbum.num_photos} 个项目）` : '请选择相册' }}</span>
+            <span class="shrink-0 text-sm text-primary-600 dark:text-primary-400">{{ selectedAlbum ? '更换' : '选择相册' }}</span>
+          </button>
+          <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ targetType === 'folder' ? '将处理该目录及子目录中已入库的照片。' : '只处理选中相册内的照片，照片原有存储位置不变。' }}支持可写入 EXIF 的图片格式。</div>
         </el-form-item>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -97,7 +109,7 @@
             type="primary" 
             size="large" 
             :loading="starting" 
-            :disabled="!targetRootPath || isTaskRunning"
+            :disabled="!(targetType === 'folder' ? targetRootPath : targetAlbumId) || isTaskRunning"
             @click="startProcess"
           >
             开始修改拍摄信息
@@ -139,6 +151,15 @@
       </template>
     </el-dialog>
 
+    <AlbumSelector
+      v-model:visible="showAlbumSelector"
+      mode="select"
+      :selection-albums="albums"
+      :selected-album-id="targetAlbumId"
+      :loading="albumsLoading"
+      @select="targetAlbumId = $event"
+    />
+
   </div>
 </template>
 
@@ -149,12 +170,22 @@ import { ArrowLeft, Folder, Loader2, CheckCircle2, XCircle } from 'lucide-vue-ne
 import { toolboxApi } from '@/api/toolbox'
 import { tasksApi } from '@/api/tasks'
 import { settingsApi } from '@/api/settings'
+import { albumService } from '@/api/album'
+import type { ApiAlbum } from '@/types/album'
+import { useUserStore } from '@/stores/user'
+import { thumbnailUrl } from '@/utils/mediaUrl'
+import AlbumSelector from '@/components/AlbumSelector.vue'
 import { ElMessage } from 'element-plus'
 import type { Task as TaskResponse } from '@/api/tasks'
 
 const goBack = useAppBack('/toolbox')
+const userStore = useUserStore()
 
 const targetRootPath = ref('')
+const targetType = ref<'folder' | 'album'>('folder')
+const targetAlbumId = ref('')
+const albums = ref<ApiAlbum[]>([])
+const albumsLoading = ref(false)
 const tempSelectedPath = ref('')
 const starting = ref(false)
 const clearing = ref(false)
@@ -165,6 +196,31 @@ const timeMode = ref('auto')
 const customTime = ref('')
 
 const showFolderSelector = ref(false)
+const showAlbumSelector = ref(false)
+const selectedAlbum = computed(() => albums.value.find(album => album.id === targetAlbumId.value))
+
+const openAlbumSelector = () => {
+  showAlbumSelector.value = true
+  loadAlbums()
+}
+
+const loadAlbums = async () => {
+  if (albumsLoading.value) return
+  albumsLoading.value = true
+  try {
+    const result: ApiAlbum[] = []
+    let page: ApiAlbum[]
+    do {
+      page = await albumService.getAlbums(result.length, 100)
+      result.push(...page)
+    } while (page.length === 100)
+    albums.value = result.filter(album => album.owner_id === userStore.userInfo?.id)
+  } catch {
+    ElMessage.error('加载相册失败')
+  } finally {
+    albumsLoading.value = false
+  }
+}
 
 const activeTask = ref<TaskResponse | null>(null)
 let pollTimer: number | undefined
@@ -250,8 +306,8 @@ const stopPolling = () => {
 }
 
 const startProcess = async () => {
-  if (!targetRootPath.value) {
-    ElMessage.warning('请选择目标目录')
+  if (targetType.value === 'folder' ? !targetRootPath.value : !targetAlbumId.value) {
+    ElMessage.warning('请选择目标目录或相册')
     return
   }
 
@@ -262,8 +318,8 @@ const startProcess = async () => {
   
   starting.value = true
   try {
-    const payload: any = {
-      target_root_path: targetRootPath.value,
+    const payload: Parameters<typeof toolboxApi.createTimeFromFilenameTask>[0] = {
+      ...(targetType.value === 'folder' ? { target_root_path: targetRootPath.value } : { album_id: targetAlbumId.value }),
       only_missing_metadata: onlyMissingMetadata.value,
       time_mode: timeMode.value
     }

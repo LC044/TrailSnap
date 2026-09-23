@@ -80,6 +80,7 @@ interface TaskCategoryStatus {
   task_name: string
   pending: number
   failed: number
+  status: 'active' | 'paused'
 }
 
 const props = defineProps<{
@@ -96,7 +97,7 @@ let fetchInFlight = false
 let pendingRefresh = false
 
 const activeCategories = computed(() => {
-  return groupedStatus.value.filter(cat => cat.pending > 0)
+  return groupedStatus.value.filter(cat => cat.status !== 'paused' && cat.pending > 0)
 })
 
 const totalPending = computed(() => {
@@ -127,15 +128,19 @@ const fetchStatus = async () => {
       }
     } else if (wasPending.value && totalPending.value === 0) {
       // 从有任务过渡到全部完成
-      ElMessage.success('所有后台任务已处理完成')
       wasPending.value = false
-      showSuccess.value = true
       expanded.value = false
-
       if (successTimer) window.clearTimeout(successTimer)
-      successTimer = window.setTimeout(() => {
+      successTimer = null
+      if (groupedStatus.value.every(cat => cat.pending === 0)) {
+        ElMessage.success('所有后台任务已处理完成')
+        showSuccess.value = true
+        successTimer = window.setTimeout(() => {
+          showSuccess.value = false
+        }, 3000)
+      } else {
         showSuccess.value = false
-      }, 3000)
+      }
     }
   } catch {
     // Ignore

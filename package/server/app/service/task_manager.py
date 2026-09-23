@@ -332,6 +332,7 @@ class TaskManager:
 
         self.paused_categories.add(category)
         self._save_system_state('paused_categories', list(self.paused_categories))
+        self.publish_event('task.category', {'category': category, 'status': 'paused'})
         logging.info(f"Paused task category: {category}")
 
     def resume_category(self, category: str):
@@ -342,6 +343,7 @@ class TaskManager:
         if category in self.paused_categories:
             self.paused_categories.remove(category)
             self._save_system_state('paused_categories', list(self.paused_categories))
+            self.publish_event('task.category', {'category': category, 'status': 'active'})
             self.start_worker_if_needed()
             logging.info(f"Resumed task category: {category}")
 

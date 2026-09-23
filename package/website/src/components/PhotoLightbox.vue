@@ -1,6 +1,16 @@
 <template>
   <Transition name="fade">
-    <div v-if="visible" class="fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm" @click="close" tabindex="0">
+    <div
+      v-if="visible"
+      class="photo-lightbox-shell fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm"
+      :class="{
+        'details-active': mobileDetailsProgress > 0.01,
+        'details-settling': isMobileDetailsSettling,
+      }"
+      :style="mobileDetailsRootStyle"
+      @click="close"
+      tabindex="0"
+    >
 
       <!-- Top Toolbar (Desktop) — hidden in edit mode；移动端见下方专用布局 -->
       <Transition name="viewer-controls">
@@ -186,7 +196,7 @@
         <div
           ref="mediaViewport"
           data-testid="photo-lightbox-media"
-          class="relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
+          class="photo-lightbox-media relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
           @click.stop="handleMediaTap"
           @wheel.prevent="handleWheel"
           @touchstart="startTouch"
@@ -317,7 +327,7 @@
         <div
           v-if="!isEditing && controlsVisible"
           data-testid="photo-lightbox-mobile-toolbar"
-          class="md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
+          class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
         >
           <div class="flex items-start gap-1 min-w-0">
             <button
@@ -353,13 +363,13 @@
 
       <Transition name="viewer-thumbnails">
         <div
-          v-if="!isEditing && controlsVisible && thumbnailWindow.length > 0"
+          v-if="!isEditing && controlsVisible && thumbnailWindow.length > 0 && (!showSidebar || isMobileDetailsDragging || isMobileDetailsSettling)"
           data-testid="photo-lightbox-thumbnails"
-          class="fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
+          class="viewer-thumbnail-layer fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
           :class="thumbnailStripPaddingClass"
           @click.stop
         >
-          <div ref="thumbnailStrip" class="flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto scrollbar-hide">
+          <div ref="thumbnailStrip" class="photo-thumbnail-strip flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto">
             <button
               v-for="entry in thumbnailWindow"
               :key="entry.item.id"
@@ -381,7 +391,7 @@
         <div
           v-if="mobileDockVisible"
           data-testid="photo-lightbox-mobile-actions"
-          class="md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-black/85"
+          class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-black/85"
           @click.stop
         >
           <div class="flex items-stretch justify-around">
@@ -500,7 +510,13 @@
         :allow-edit="allowEdit"
         :allow-delete="allowDelete"
         :force-open-location-edit="forceOpenLocationEdit"
-        @close="showSidebar = false"
+        :mobile-progress="mobileDetailsProgress"
+        :mobile-dragging="isMobileDetailsDragging"
+        :mobile-settling="isMobileDetailsSettling"
+        @close="closeDetails"
+        @mobile-drag-start="startDetailsSheetDrag"
+        @mobile-drag-move="moveDetailsSheetDrag"
+        @mobile-drag-end="endDetailsSheetDrag"
         @update="handleSidebarUpdate"
         @delete="handleDelete"
         @highlight-face="handleHighlightFace"
@@ -785,8 +801,8 @@ useHotkeys([
   { key: 'P', handler: () => { showPersonSelector.value = true }, when: () => props.allowAddToPerson },
   { key: 'f', handler: () => emit('transfer', 'move'), when: () => props.allowMoveToFolder },
   { key: 'F', handler: () => emit('transfer', 'move'), when: () => props.allowMoveToFolder },
-  { key: 'l', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) }, when: () => props.allowEdit },
-  { key: 'L', handler: () => { showSidebar.value = true; forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) }, when: () => props.allowEdit },
+  { key: 'l', handler: () => { openDetails(); forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) }, when: () => props.allowEdit },
+  { key: 'L', handler: () => { openDetails(); forceOpenLocationEdit.value = true; nextTick(() => { forceOpenLocationEdit.value = false }) }, when: () => props.allowEdit },
   { key: '?', handler: () => toggleShortcutHelp() },
   { key: 'h', handler: () => toggleShortcutHelp() },
   { key: 'H', handler: () => toggleShortcutHelp() },
@@ -877,7 +893,12 @@ const runMobileAction = (action: () => void) => {
 
 const isStillImage = computed(() => !props.image?.file_type || props.image.file_type === 'image')
 
-const mobileDockVisible = computed(() => !isEditing.value && controlsVisible.value && !!props.image)
+const mobileDockVisible = computed(() =>
+    !isEditing.value
+    && controlsVisible.value
+    && !!props.image
+    && (!showSidebar.value || isMobileDetailsDragging.value || isMobileDetailsSettling.value)
+)
 
 // 缩略图条与底部操作栏都贴底，移动端要为操作栏让出高度，否则两者重叠。
 // 操作栏约 4.25rem（图标 + 文字 + 内边距），再加安全区。
@@ -1014,10 +1035,25 @@ const handleHistoryPopState = () => {
 
 // State
 const showSidebar = ref(false)
+const mobileDetailsProgress = ref(0)
+const isMobileDetailsDragging = ref(false)
+const isMobileDetailsSettling = ref(false)
 const forceOpenLocationEdit = ref(false)
 const loading = ref(false)
 const metadata = ref<PhotoMetadata | null>(null)
 const timeCompareLocationKey = ref<string | null>(null)
+const MOBILE_DETAILS_SETTLE_MS = 380
+let mobileDetailsSettleTimer: ReturnType<typeof setTimeout> | null = null
+
+const mobileDetailsRootStyle = computed(() => {
+    const progress = mobileDetailsProgress.value
+    return {
+        '--mobile-details-progress': progress.toFixed(4),
+        '--mobile-details-photo-y': `${(-18 * progress).toFixed(2)}dvh`,
+        '--mobile-details-photo-scale': (1 - 0.22 * progress).toFixed(4),
+        '--mobile-details-chrome-opacity': (1 - progress).toFixed(4),
+    }
+})
 
 // OCR State
 const showOCR = ref(false)
@@ -1087,6 +1123,11 @@ const touchStartY = ref(0)
 const touchStartTime = ref(0)
 const touchDeltaX = ref(0)
 const touchDeltaY = ref(0)
+const touchGestureAxis = ref<'pending' | 'horizontal' | 'vertical'>('pending')
+const detailsDragStartProgress = ref(0)
+const detailsDragVelocityY = ref(0)
+let detailsDragLastY = 0
+let detailsDragLastTime = 0
 const suppressNextTap = ref(false)
 let suppressTapTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1182,6 +1223,7 @@ onUnmounted(() => {
     }
     if (suppressTapTimer) clearTimeout(suppressTapTimer)
     if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
+    if (mobileDetailsSettleTimer) clearTimeout(mobileDetailsSettleTimer)
     if (photoProcessingPollTimer) {
         clearInterval(photoProcessingPollTimer)
         photoProcessingPollTimer = null
@@ -1191,6 +1233,8 @@ onUnmounted(() => {
 const isDragging = ref(false)
 watch(() => props.image, async (newImg, oldImg) => {
     // 1. Reset State
+    metadata.value = null
+    loading.value = !!newImg
     showOriginal.value = false
     isEditing.value = false
     scale.value = 1
@@ -1276,6 +1320,9 @@ watch(() => props.visible, async (newVal) => {
         showPersonSelector.value = false
         showDescription.value = false
         showSidebar.value = false
+        mobileDetailsProgress.value = 0
+        isMobileDetailsDragging.value = false
+        isMobileDetailsSettling.value = false
         showOCR.value = false
         showShortcutHint.value = false
         showShortcutHelp.value = false
@@ -1317,11 +1364,56 @@ useOverlayStack(computed(() => props.visible), close)
 // 后注册即后入栈，Android 返回键先收动作面板，再关查看器
 useOverlayStack(showMobileMenu, closeMobileMenu)
 
-const toggleSidebar = () => {
-    showSidebar.value = !showSidebar.value
-    if (showSidebar.value) {
-        showOCR.value = false // Close OCR if Sidebar opens
+const isMobileViewport = () => window.matchMedia('(max-width: 767px)').matches
+
+const finishMobileDetailsSettle = (open: boolean) => {
+    if (mobileDetailsSettleTimer) clearTimeout(mobileDetailsSettleTimer)
+    mobileDetailsSettleTimer = null
+    mobileDetailsProgress.value = open ? 1 : 0
+    showSidebar.value = open
+    isMobileDetailsDragging.value = false
+    isMobileDetailsSettling.value = false
+}
+
+const settleMobileDetails = (open: boolean) => {
+    if (!isMobileViewport() || prefersReducedMotion()) {
+        finishMobileDetailsSettle(open)
+        return
     }
+
+    if (mobileDetailsSettleTimer) clearTimeout(mobileDetailsSettleTimer)
+    showSidebar.value = true
+    isMobileDetailsDragging.value = false
+    isMobileDetailsSettling.value = true
+    requestAnimationFrame(() => {
+        mobileDetailsProgress.value = open ? 1 : 0
+    })
+    mobileDetailsSettleTimer = setTimeout(
+        () => finishMobileDetailsSettle(open),
+        MOBILE_DETAILS_SETTLE_MS,
+    )
+}
+
+const openDetails = () => {
+    showOCR.value = false
+    if (!isMobileViewport()) {
+        showSidebar.value = true
+        return
+    }
+    settleMobileDetails(true)
+}
+
+const closeDetails = () => {
+    if (!isMobileViewport()) {
+        showSidebar.value = false
+        return
+    }
+    settleMobileDetails(false)
+}
+
+const toggleSidebar = () => {
+    if (showSidebar.value) closeDetails()
+    else openDetails()
 }
 
 const handleCommand = (command: string) => {
@@ -1334,7 +1426,7 @@ const handleCommand = (command: string) => {
     } else if (command === 'moveToFolder' && props.allowMoveToFolder) {
         emit('transfer', 'move')
     } else if (command === 'adjustLocation' && props.allowEdit) {
-        showSidebar.value = true
+        openDetails()
         forceOpenLocationEdit.value = true
         nextTick(() => { forceOpenLocationEdit.value = false })
     } else if (command === 'viewDescription') {
@@ -1366,7 +1458,7 @@ const refreshPhotoProcessingResult = async (tracker: PhotoProcessingTracker) => 
     if (props.image?.id !== tracker.photoId) return
 
     if (tracker.operation === 'OCR') {
-        showSidebar.value = false
+        finishMobileDetailsSettle(false)
         showOCR.value = true
         await fetchOCR(tracker.photoId)
     } else if (tracker.operation === 'VISUAL_DESCRIPTION') {
@@ -1517,6 +1609,7 @@ const handlePersonSelected = async (person: any) => {
 
 const fetchMetadata = async (photoId: string) => {
     loading.value = true
+    metadata.value = null
     timeCompareLocationKey.value = null
     try {
         const data = await albumService.getMetadata(photoId)
@@ -1542,7 +1635,7 @@ const fetchMetadata = async (photoId: string) => {
 const toggleOCR = async () => {
     showOCR.value = !showOCR.value
     if (showOCR.value) {
-        showSidebar.value = false // Close Sidebar if OCR opens
+        finishMobileDetailsSettle(false)
         if (props.image) {
             await fetchOCR(props.image.id)
         }
@@ -1682,6 +1775,59 @@ const stopDrag = () => {
     window.removeEventListener('mouseup', stopDrag)
 }
 
+const beginMobileDetailsDrag = (clientY: number) => {
+    if (!isMobileViewport()) return
+    if (mobileDetailsSettleTimer) clearTimeout(mobileDetailsSettleTimer)
+    mobileDetailsSettleTimer = null
+    isMobileDetailsSettling.value = false
+    isMobileDetailsDragging.value = true
+    detailsDragStartProgress.value = mobileDetailsProgress.value
+    detailsDragVelocityY.value = 0
+    detailsDragLastY = clientY
+    detailsDragLastTime = performance.now()
+    showSidebar.value = true
+    showOCR.value = false
+}
+
+const updateMobileDetailsDrag = (clientY: number) => {
+    if (!isMobileDetailsDragging.value) return
+    const now = performance.now()
+    const elapsed = Math.max(now - detailsDragLastTime, 1)
+    detailsDragVelocityY.value = (clientY - detailsDragLastY) / elapsed
+    detailsDragLastY = clientY
+    detailsDragLastTime = now
+
+    const openDistance = Math.max(window.innerHeight * 0.42, 280)
+    const rawProgress = detailsDragStartProgress.value - (clientY - touchStartY.value) / openDistance
+    mobileDetailsProgress.value = Math.max(0, Math.min(1, rawProgress))
+}
+
+const finishMobileDetailsDrag = () => {
+    if (!isMobileDetailsDragging.value) return
+    const projectedProgress = mobileDetailsProgress.value
+        - detailsDragVelocityY.value * 180 / Math.max(window.innerHeight * 0.42, 280)
+    const shouldOpen = detailsDragVelocityY.value < -0.55
+        || (detailsDragVelocityY.value <= 0.55 && projectedProgress >= 0.48)
+    settleMobileDetails(shouldOpen)
+}
+
+const startDetailsSheetDrag = (clientY: number) => {
+    touchStartY.value = clientY
+    touchStartTime.value = performance.now()
+    beginMobileDetailsDrag(clientY)
+}
+
+const moveDetailsSheetDrag = (clientY: number) => {
+    touchDeltaY.value = clientY - touchStartY.value
+    updateMobileDetailsDrag(clientY)
+}
+
+const endDetailsSheetDrag = () => {
+    finishMobileDetailsDrag()
+    touchStartTime.value = 0
+    touchDeltaY.value = 0
+}
+
 // Touch Support (Pinch & Drag)
 const startTouch = (e: TouchEvent) => {
     if (isSwipeAnimating.value) return
@@ -1710,6 +1856,7 @@ const startTouch = (e: TouchEvent) => {
         touchStartTime.value = performance.now()
         touchDeltaX.value = 0
         touchDeltaY.value = 0
+        touchGestureAxis.value = 'pending'
         window.addEventListener('touchmove', onTouchMove, { passive: false })
         window.addEventListener('touchend', stopTouch)
         window.addEventListener('touchcancel', stopTouch)
@@ -1736,13 +1883,28 @@ const onTouchMove = (e: TouchEvent) => {
         translateX.value = e.touches[0].clientX - startX.value
         translateY.value = e.touches[0].clientY - startY.value
     } else if (e.touches.length === 1 && scale.value === 1 && touchStartTime.value > 0) {
-        touchDeltaX.value = e.touches[0].clientX - touchStartX.value
-        touchDeltaY.value = e.touches[0].clientY - touchStartY.value
-        if (Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value)) {
+        const touch = e.touches[0]
+        touchDeltaX.value = touch.clientX - touchStartX.value
+        touchDeltaY.value = touch.clientY - touchStartY.value
+        if (touchGestureAxis.value === 'pending') {
+            const distance = Math.hypot(touchDeltaX.value, touchDeltaY.value)
+            if (distance < 10) return
+            touchGestureAxis.value = Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value) * 1.15
+                ? 'horizontal'
+                : 'vertical'
+            if (touchGestureAxis.value === 'vertical' && isMobileViewport()) {
+                beginMobileDetailsDrag(touch.clientY)
+            }
+        }
+
+        if (touchGestureAxis.value === 'horizontal') {
             e.preventDefault()
             const atStart = touchDeltaX.value > 0 && !props.hasPrev
             const atEnd = touchDeltaX.value < 0 && !props.hasNext
             swipeOffset.value = (atStart || atEnd) ? touchDeltaX.value * 0.22 : touchDeltaX.value
+        } else if (touchGestureAxis.value === 'vertical' && isMobileViewport()) {
+            e.preventDefault()
+            updateMobileDetailsDrag(touch.clientY)
         }
     }
 }
@@ -1790,6 +1952,24 @@ const animateNavigation = (direction: 'prev' | 'next', callback: () => void) => 
 }
 
 const stopTouch = () => {
+    if (isMobileDetailsDragging.value && touchGestureAxis.value === 'vertical') {
+        const moved = Math.abs(touchDeltaY.value) > 10
+        finishMobileDetailsDrag()
+        if (moved) {
+            suppressNextTap.value = true
+            if (suppressTapTimer) clearTimeout(suppressTapTimer)
+            suppressTapTimer = setTimeout(() => { suppressNextTap.value = false }, 350)
+        }
+        touchStartTime.value = 0
+        touchDeltaX.value = 0
+        touchDeltaY.value = 0
+        touchGestureAxis.value = 'pending'
+        window.removeEventListener('touchmove', onTouchMove)
+        window.removeEventListener('touchend', stopTouch)
+        window.removeEventListener('touchcancel', stopTouch)
+        return
+    }
+
     const elapsed = performance.now() - touchStartTime.value
     const distance = Math.abs(touchDeltaX.value)
     const width = mediaViewport.value?.clientWidth || window.innerWidth || 1
@@ -1815,6 +1995,7 @@ const stopTouch = () => {
     touchStartTime.value = 0
     touchDeltaX.value = 0
     touchDeltaY.value = 0
+    touchGestureAxis.value = 'pending'
     window.removeEventListener('touchmove', onTouchMove)
     window.removeEventListener('touchend', stopTouch)
     window.removeEventListener('touchcancel', stopTouch)
@@ -1879,7 +2060,7 @@ const handleDelete = () => {
 // Edit Mode
 const enterEditMode = () => {
     isEditing.value = true
-    showSidebar.value = false
+    finishMobileDetailsSettle(false)
     showOCR.value = false
 }
 
@@ -1915,6 +2096,14 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 </script>
 
 <style scoped>
+.photo-thumbnail-strip {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.photo-thumbnail-strip::-webkit-scrollbar {
+    display: none;
+}
+
 .live-photo-video::-webkit-media-controls,
 .live-photo-video::-webkit-media-controls-enclosure,
 .live-photo-video::-webkit-media-controls-panel,
@@ -1973,6 +2162,38 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
     transform: translateY(100%);
 }
 
+@media (max-width: 767px) {
+    .photo-lightbox-media {
+        transform: translate3d(0, var(--mobile-details-photo-y), 0)
+            scale(var(--mobile-details-photo-scale));
+        transform-origin: 50% 38%;
+        will-change: transform;
+    }
+
+    .mobile-viewer-toolbar,
+    .viewer-thumbnail-layer,
+    .mobile-viewer-dock {
+        opacity: var(--mobile-details-chrome-opacity);
+        will-change: opacity;
+    }
+
+    .details-active .mobile-viewer-toolbar,
+    .details-active .viewer-thumbnail-layer,
+    .details-active .mobile-viewer-dock {
+        pointer-events: none;
+    }
+
+    .details-settling .photo-lightbox-media {
+        transition: transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .details-settling .mobile-viewer-toolbar,
+    .details-settling .viewer-thumbnail-layer,
+    .details-settling .mobile-viewer-dock {
+        transition: opacity 240ms ease;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .viewer-controls-enter-active,
     .viewer-controls-leave-active,
@@ -1983,7 +2204,11 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
     .sheet-enter-active,
     .sheet-leave-active,
     .sheet-enter-active .sheet-panel,
-    .sheet-leave-active .sheet-panel {
+    .sheet-leave-active .sheet-panel,
+    .details-settling .photo-lightbox-media,
+    .details-settling .mobile-viewer-toolbar,
+    .details-settling .viewer-thumbnail-layer,
+    .details-settling .mobile-viewer-dock {
         transition-duration: 0ms;
     }
 }

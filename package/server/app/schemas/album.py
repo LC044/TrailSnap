@@ -23,6 +23,7 @@ class AlbumUpdate(AlbumBase):
 
 class Album(AlbumBase):
     id: UUID
+    owner_id: Optional[UUID] = None
     create_time: datetime
     cover: Optional[Photo] = None
     type: str = "user"

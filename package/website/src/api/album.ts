@@ -24,8 +24,8 @@ export interface SmartAlbumOverview {
 
 export const albumService = {
   // Albums
-  async getAlbums() {
-    const data = await request.get<ApiAlbum[]>('/api/albums');
+  async getAlbums(skip = 0, limit = 100) {
+    const data = await request.get<ApiAlbum[]>('/api/albums', { params: { skip, limit } });
     return data.data;
   },
   async getAlbum(id: string) {

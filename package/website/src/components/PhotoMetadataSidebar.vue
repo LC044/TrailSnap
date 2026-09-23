@@ -1,14 +1,28 @@
 <template>
+  <Transition
+    name="metadata-sheet"
+    :css="!mobileDragging && !mobileSettling"
+    @after-leave="destroyPreviewMap"
+  >
   <div
     v-if="visible"
-    class="w-80 flex-shrink-0 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 h-full overflow-y-auto z-[103] shadow-2xl"
+    data-testid="photo-metadata-panel"
+    class="photo-metadata-panel w-80 flex-shrink-0 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 h-full overflow-y-auto z-[103] shadow-2xl"
+    :class="{ 'is-mobile-dragging': mobileDragging, 'is-mobile-settling': mobileSettling }"
+    :style="mobilePanelStyle"
     @click.stop
+    @touchstart.passive="startSheetTouch"
+    @touchmove="moveSheetTouch"
+    @touchend="endSheetTouch"
+    @touchcancel="cancelSheetTouch"
   >
     <!-- Header -->
-    <div class="p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur z-10">
-        <h3 class="font-bold text-gray-900 dark:text-white">详细信息</h3>
-        <button @click="$emit('close')" class="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-200">
-            <PanelRightClose v-if="visible" class="w-4 h-4" />
+    <div class="metadata-sheet-header p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur z-10">
+        <span class="metadata-drag-handle md:hidden absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
+        <h3 class="font-bold text-gray-900 dark:text-white">照片信息</h3>
+        <button @click="$emit('close')" aria-label="关闭照片信息" class="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-200">
+            <X class="w-4 h-4 md:hidden" />
+            <PanelRightClose v-if="visible" class="hidden md:block w-4 h-4" />
             <PanelRightOpen v-else class="w-4 h-4" />
         </button>
     </div>
@@ -18,8 +32,22 @@
     </div>
 
     <div v-else-if="metadata" class="p-4 space-y-6">
+        <div class="metadata-summary-card md:hidden space-y-3 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
+            <div class="flex items-start gap-2">
+                <p class="flex-1 text-base font-semibold text-gray-900 dark:text-white break-all">{{ image?.filename || '无文件名' }}</p>
+                <button v-if="allowEdit" @click="openBasicEditDialog" class="text-primary-500 p-1" aria-label="编辑基本信息"><Pencil class="w-4 h-4" /></button>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-300">{{ formatTime(image?.timestamp) }}</p>
+            <div class="flex flex-wrap gap-2 border-t border-gray-200 dark:border-gray-700 pt-3">
+                <span v-if="image?.width && image?.height" class="metadata-fact">{{ image.width }} × {{ image.height }}</span>
+                <span class="metadata-fact">{{ formatSize(image?.size) }}</span>
+                <span v-if="metadata.model" class="metadata-fact">{{ metadata.model }}</span>
+            </div>
+            <p v-if="metadata.shooting_params" class="text-sm text-gray-600 dark:text-gray-300">{{ formatShootingParams(metadata.shooting_params) }}</p>
+            <button @click="showExifDialog = true" class="text-sm font-medium text-primary-500 bg-transparent p-0">查看完整 EXIF</button>
+        </div>
         <!-- File Name & Info -->
-        <div class="space-y-1">
+        <div class="hidden md:block space-y-1">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <Info class="w-3.5 h-3.5" />
@@ -46,7 +74,7 @@
             </button>
         </div>
         <!-- Date & Time -->
-        <div class="space-y-1">
+        <div class="hidden md:block space-y-1">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <CalendarDays class="w-3.5 h-3.5" />
@@ -61,7 +89,7 @@
             </p>
         </div>
         <!-- Camera Info -->
-        <div class="space-y-1" v-if="metadata.make || metadata.model">
+        <div class="hidden md:block space-y-1" v-if="metadata.make || metadata.model">
             <div class="flex items-center gap-2 text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <Camera class="w-3.5 h-3.5" />
                 <span>{{ metadata.make}}</span>
@@ -74,7 +102,7 @@
             </p>
         </div>
         <!-- Location -->
-        <div class="space-y-2">
+        <div class="metadata-section-card space-y-2 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4 md:bg-transparent md:dark:bg-transparent md:p-0">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <MapPin class="w-3.5 h-3.5" />
@@ -89,10 +117,15 @@
                     metadata.address || '无位置信息'
                 }}
             </p>
+            <div v-if="hasPhotoCoordinates && !previewMapError" class="relative h-44 md:h-36 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+                <div id="photo-metadata-map" class="w-full h-full"></div>
+                <div v-if="previewMapLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80"><Loader2 class="w-5 h-5 animate-spin text-primary-500" /></div>
+            </div>
+            <p v-if="hasPhotoCoordinates" class="text-xs text-gray-500 dark:text-gray-400">{{ metadata.latitude?.toFixed(6) }}, {{ metadata.longitude?.toFixed(6) }}</p>
         </div>
 
         <!-- Tags -->
-        <div class="space-y-2">
+        <div class="metadata-section-card space-y-2">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <Tags class="w-3.5 h-3.5" />
@@ -131,7 +164,7 @@
         </div>
 
         <!-- Faces -->
-        <div class="space-y-2">
+        <div class="metadata-section-card space-y-2">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <User class="w-3.5 h-3.5" />
@@ -156,7 +189,7 @@
         </div>
 
         <!-- Albums -->
-        <div class="space-y-2">
+        <div class="metadata-section-card space-y-2">
             <div class="flex items-center justify-between text-gray-500 text-xs font-medium uppercase tracking-wider">
                 <div class="flex items-center gap-2">
                     <User class="w-3.5 h-3.5" />
@@ -206,6 +239,7 @@
          <a href='/settings#task-management'  class="text-sm text-primary-500 hover:underline">点击查看任务管理</a>
     </div>
   </div>
+  </Transition>
 
   <!-- EXIF Dialog -->
   <el-dialog
@@ -276,14 +310,15 @@
     v-model="showLocationEditDialog"
     title="编辑位置"
     width="720px"
+    class="photo-location-edit-dialog"
     destroy-on-close
     align-center
     append-to-body
     @opened="initLocationMap"
     @closed="destroyLocationMap"
   >
-    <div class="flex gap-4">
-      <div class="flex-1 h-[360px] rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 relative">
+    <div class="photo-location-edit-content flex gap-4">
+      <div class="photo-location-edit-map flex-1 h-[360px] rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 relative">
         <div id="location-edit-map" class="w-full h-full"></div>
         <div v-if="locationMapLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80">
           <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
@@ -292,7 +327,7 @@
           <p class="text-sm text-gray-500">地图加载失败，请检查地图 API 配置</p>
         </div>
       </div>
-      <div class="w-52 flex flex-col gap-3">
+      <div class="photo-location-edit-controls w-52 flex flex-col gap-3">
         <el-autocomplete
           v-model="locationSearchQuery"
           :fetch-suggestions="handleLocationSearch"
@@ -319,7 +354,7 @@
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="showLocationEditDialog = false" :disabled="savingLocation">取消</el-button>
-        <el-button type="primary" @click="saveLocationEdit" :loading="savingLocation" :disabled="!locationForm.latitude && !currentMapLat">
+        <el-button type="primary" @click="saveLocationEdit" :loading="savingLocation" :disabled="!locationMapReady || (!locationMapHasMarker && !hasPhotoCoordinates)">
           保存
         </el-button>
       </span>
@@ -349,10 +384,83 @@ interface Props {
   allowEdit?: boolean
   allowDelete?: boolean
   forceOpenLocationEdit?: boolean
+  mobileProgress?: number
+  mobileDragging?: boolean
+  mobileSettling?: boolean
 }
 
-const props = defineProps<Props>()
-const emit = defineEmits(['close', 'delete', 'update', 'highlight-face'])
+const props = withDefaults(defineProps<Props>(), {
+  mobileProgress: 1,
+  mobileDragging: false,
+  mobileSettling: false,
+})
+const emit = defineEmits([
+  'close',
+  'delete',
+  'update',
+  'highlight-face',
+  'mobile-drag-start',
+  'mobile-drag-move',
+  'mobile-drag-end',
+])
+const mobilePanelStyle = computed(() => ({
+    '--mobile-details-translate': `${((1 - props.mobileProgress) * 100).toFixed(3)}%`,
+}))
+const hasPhotoCoordinates = computed(() => props.metadata?.latitude != null && props.metadata?.longitude != null
+    && Number.isFinite(props.metadata.latitude) && Number.isFinite(props.metadata.longitude)
+    && Math.abs(props.metadata.latitude) <= 90 && Math.abs(props.metadata.longitude) <= 180)
+const previewMapLoading = ref(false)
+const { initMap: initPreviewMap, destroy: destroyPreviewMap, mapError: previewMapError } = useLocationMap()
+let previewGeneration = 0
+watch(() => [props.visible, props.loading, props.image?.id, props.metadata?.latitude, props.metadata?.longitude] as const, async () => {
+    const generation = ++previewGeneration
+    if (!props.visible || props.loading || !hasPhotoCoordinates.value) return
+    destroyPreviewMap()
+    previewMapLoading.value = true
+    await nextTick()
+    if (generation !== previewGeneration) return
+    await initPreviewMap({
+        containerId: 'photo-metadata-map',
+        initialLat: props.metadata!.latitude,
+        initialLng: props.metadata!.longitude,
+        initialZoom: 15
+    })
+    if (generation === previewGeneration) previewMapLoading.value = false
+}, { immediate: true })
+
+let sheetTouchY = 0
+let sheetTouchCanClose = false
+let sheetTouchDragging = false
+const startSheetTouch = (event: TouchEvent) => {
+    sheetTouchY = event.touches[0]?.clientY || 0
+    const target = event.target as HTMLElement
+    sheetTouchCanClose = window.matchMedia('(max-width: 767px)').matches
+        && (event.currentTarget as HTMLElement).scrollTop <= 0
+        && !target.closest('#photo-metadata-map, button, a, input, textarea')
+    sheetTouchDragging = false
+}
+const moveSheetTouch = (event: TouchEvent) => {
+    if (!sheetTouchCanClose || event.touches.length !== 1) return
+    const clientY = event.touches[0]?.clientY || sheetTouchY
+    if (clientY - sheetTouchY <= 6) return
+    if (event.cancelable) event.preventDefault()
+    if (!sheetTouchDragging) {
+        sheetTouchDragging = true
+        emit('mobile-drag-start', sheetTouchY)
+    }
+    emit('mobile-drag-move', clientY)
+}
+const endSheetTouch = (event: TouchEvent) => {
+    if (sheetTouchDragging) emit('mobile-drag-end')
+    else if (sheetTouchCanClose && (event.changedTouches[0]?.clientY || sheetTouchY) - sheetTouchY > 70) emit('close')
+    sheetTouchCanClose = false
+    sheetTouchDragging = false
+}
+const cancelSheetTouch = () => {
+    if (sheetTouchDragging) emit('mobile-drag-end')
+    sheetTouchCanClose = false
+    sheetTouchDragging = false
+}
 
 // Location edit state
 const showLocationEditDialog = ref(false)
@@ -375,6 +483,7 @@ const {
   currentLng: currentMapLng,
   currentLocationDetail: mapLocationDetail,
   mapReady: locationMapReady,
+  hasMarker: locationMapHasMarker,
   mapError: locationMapError,
   initMap: initLocationMapComposable,
   setMarker: setLocationMarker,
@@ -400,7 +509,7 @@ watch(() => props.forceOpenLocationEdit, (val) => {
   if (val && props.visible && props.allowEdit) {
     nextTick(() => openLocationEditDialog())
   }
-})
+}, { immediate: true })
 
 // State
 const showExifDialog = ref(false)
@@ -663,8 +772,8 @@ const saveLocationEdit = async () => {
     if (!props.image) return
     savingLocation.value = true
     try {
-        const lat = currentMapLat.value || locationForm.latitude
-        const lng = currentMapLng.value || locationForm.longitude
+        const lat = locationMapHasMarker.value ? currentMapLat.value : locationForm.latitude
+        const lng = locationMapHasMarker.value ? currentMapLng.value : locationForm.longitude
         const updates: any = {
             latitude: lat,
             longitude: lng,
@@ -686,3 +795,90 @@ const saveLocationEdit = async () => {
     }
 }
 </script>
+
+<style>
+@media (max-width: 767px) {
+  .photo-metadata-panel {
+    position: fixed;
+    inset: 42dvh 0 0;
+    width: 100%;
+    height: 58dvh;
+    border-left: 0;
+    border-radius: 24px 24px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    overscroll-behavior: contain;
+    transform: translate3d(0, var(--mobile-details-translate, 0%), 0);
+    box-shadow: 0 -12px 36px rgb(0 0 0 / 18%);
+    will-change: transform;
+  }
+
+  .photo-metadata-panel.is-mobile-settling {
+    transition: transform 380ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .metadata-sheet-header {
+    min-height: 56px;
+    padding-top: 18px;
+  }
+
+  .metadata-drag-handle {
+    transition: width 160ms ease, opacity 160ms ease;
+  }
+
+  .photo-metadata-panel.is-mobile-dragging .metadata-drag-handle {
+    width: 52px;
+    opacity: 0.8;
+  }
+
+  .metadata-summary-card,
+  .metadata-section-card {
+    border: 1px solid rgb(226 232 240 / 70%);
+    background: rgb(248 250 252 / 88%);
+  }
+
+  .dark .metadata-summary-card,
+  .dark .metadata-section-card {
+    border-color: rgb(51 65 85 / 70%);
+    background: rgb(30 41 59 / 72%);
+  }
+
+  .metadata-section-card {
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .metadata-fact {
+    border-radius: 999px;
+    background: rgb(226 232 240 / 75%);
+    padding: 4px 9px;
+    font-size: 12px;
+    line-height: 16px;
+    color: rgb(71 85 105);
+  }
+
+  .dark .metadata-fact {
+    background: rgb(51 65 85 / 80%);
+    color: rgb(203 213 225);
+  }
+
+  .photo-location-edit-dialog.el-dialog {
+    width: 100vw !important;
+    height: 100dvh;
+    margin: 0 !important;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .photo-location-edit-dialog .el-dialog__header { flex: none; }
+  .photo-location-edit-dialog .el-dialog__body { flex: 1; min-height: 0; padding: 8px 12px; }
+  .photo-location-edit-dialog .el-dialog__footer { flex: none; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .photo-location-edit-content { height: 100%; flex-direction: column; gap: 8px; }
+  .photo-location-edit-map { flex: 1; min-height: 0; }
+  .photo-location-edit-controls { width: 100%; flex: none; gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .metadata-sheet-enter-active.photo-metadata-panel,
+  .metadata-sheet-leave-active.photo-metadata-panel,
+  .photo-metadata-panel.is-mobile-settling { transition-duration: 0ms; }
+}
+</style>

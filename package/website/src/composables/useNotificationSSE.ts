@@ -138,6 +138,7 @@ export function useNotificationSSE(opts: UseNotificationSSEOptions): UseNotifica
     es.addEventListener('task.updated', handle as EventListener);
     es.addEventListener('task.created', handle as EventListener);
     es.addEventListener('task.retry', handle as EventListener);
+    es.addEventListener('task.category', handle as EventListener);
     es.addEventListener('notification.created', handle as EventListener);
     es.addEventListener('notification.read', handle as EventListener);
   };

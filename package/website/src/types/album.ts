@@ -136,6 +136,7 @@ export interface AlbumCondition {
 
 export interface ApiAlbum {
   id: string;
+  owner_id?: string;
   name: string;
   create_time: string;
   description?: string;

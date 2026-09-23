@@ -298,6 +298,7 @@ const retrySingleTask = async (row: any) => {
 const pauseCategory = async (category: string) => {
     try {
         await tasksApi.pauseCategory(category)
+        notifyStore.handleEvent('task.category', { category, status: 'paused' })
         ElMessage.success('已暂停')
         fetchTasks()
     } catch (e) {
@@ -308,6 +309,7 @@ const pauseCategory = async (category: string) => {
 const resumeCategory = async (category: string) => {
     try {
         await tasksApi.resumeCategory(category)
+        notifyStore.handleEvent('task.category', { category, status: 'active' })
         ElMessage.success('已继续')
         fetchTasks()
     } catch (e) {

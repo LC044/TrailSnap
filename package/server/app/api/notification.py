@@ -68,7 +68,7 @@ async def notification_events(
     db: Session = Depends(get_db),
 ):
     """SSE channel for all notifications. Carries:
-    - ``task.updated`` / ``task.created`` / ``task.retry`` (bridged from
+    - ``task.updated`` / ``task.created`` / ``task.retry`` / ``task.category`` (bridged from
       TaskManager, in-memory only, not persisted);
     - ``notification.created`` / ``notification.read`` (persisted notifications).
     A keep-alive ``ping`` is sent every 15 seconds.
