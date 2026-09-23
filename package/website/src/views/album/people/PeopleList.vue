@@ -6,12 +6,7 @@
     >
       <div class="people-toolbar-leading flex items-center gap-3 flex-wrap">
         <div class="people-title-group flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <button
-            type="button"
-            aria-label="返回"
-            class="people-back-btn p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-            @click="goBack"
-          >
+          <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
           <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
@@ -680,10 +675,25 @@ onMounted(() => {
   box-shadow: 0 0 0 2px var(--theme-primary), 0 0 0 4px rgb(255 255 255 / 0.9);
 }
 
+.people-title-group {
+  width: auto;
+  min-width: 0;
+  min-height: 40px;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.people-title-group button { padding: 8px; background: transparent !important; }
 /* 移动端普通态保持单行，进入批量态后才展开第二行操作栏。 */
 @media (max-width: 767px) {
-  .people-list {
-    padding-top: 0;
+  .people-list:not(.people-immersive) {
+    padding-top: 0px;
+    padding-inline: 16px;
   }
 
   .people-toolbar {
@@ -718,19 +728,7 @@ onMounted(() => {
     flex-wrap: nowrap;
   }
 
-  .people-title-group {
-    width: auto;
-    min-width: 0;
-    min-height: 40px;
-    flex-shrink: 0;
-    gap: 2px;
-    padding: 0;
-    border-color: transparent;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
+
   .people-back-btn {
     display: inline-flex;
     width: 40px;

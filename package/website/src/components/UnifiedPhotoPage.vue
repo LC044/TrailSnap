@@ -5,8 +5,8 @@
       <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-4 py-3 pointer-events-auto">
         <!-- Back & Title -->
         <slot name="header-left">
-          <div v-if="showBack || title || $slots['title-extra']" class="flex items-center gap-3 w-full max-w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-            <button v-if="showBack" @click="$emit('back')" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
+          <div v-if="showBack || title || $slots['title-extra']" class="flex items-center gap-3 w-full max-w-full md:w-auto px-3 py-1.5">
+            <button v-if="showBack" @click="$emit('back')" class="rounded-full p-1.5 backdrop-blur-md transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:bg-gray-900">
               <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </button>
             <div class="pr-2 min-w-0" v-if="!loadingTitle">
