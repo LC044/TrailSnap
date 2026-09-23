@@ -291,7 +291,9 @@
 
               <div
                 v-else-if="image && image.file_type === 'video'"
+                data-testid="photo-lightbox-video"
                 class="relative w-full h-full flex items-center justify-center bg-black"
+                @click.stop
               >
                 <div ref="videoPlayer" class="w-full h-full"></div>
               </div>
@@ -363,7 +365,7 @@
 
       <Transition name="viewer-thumbnails">
         <div
-          v-if="!isEditing && controlsVisible && thumbnailWindow.length > 0 && (!showSidebar || isMobileDetailsDragging || isMobileDetailsSettling)"
+          v-if="!isEditing && !isCurrentVideo && controlsVisible && thumbnailWindow.length > 0 && (!showSidebar || isMobileDetailsDragging || isMobileDetailsSettling)"
           data-testid="photo-lightbox-thumbnails"
           class="viewer-thumbnail-layer fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
           :class="thumbnailStripPaddingClass"
@@ -892,11 +894,13 @@ const runMobileAction = (action: () => void) => {
 }
 
 const isStillImage = computed(() => !props.image?.file_type || props.image.file_type === 'image')
+const isCurrentVideo = computed(() => props.image?.file_type === 'video')
 
 const mobileDockVisible = computed(() =>
     !isEditing.value
     && controlsVisible.value
     && !!props.image
+    && !isCurrentVideo.value
     && (!showSidebar.value || isMobileDetailsDragging.value || isMobileDetailsSettling.value)
 )
 
@@ -1831,6 +1835,9 @@ const endDetailsSheetDrag = () => {
 // Touch Support (Pinch & Drag)
 const startTouch = (e: TouchEvent) => {
     if (isSwipeAnimating.value) return
+    // Keep the player's progress, volume and option menus interactive while
+    // allowing horizontal swipes that begin on the video surface.
+    if (e.target instanceof Element && e.target.closest('xg-controls')) return
     // Only handle pinch or drag if needed
     if (e.touches.length === 2) {
         // Pinch start

@@ -53,8 +53,8 @@
   --ts-glass-border: rgb(255 255 255 / 72%);
   --ts-glass-blur: 24px;
 
-  /* 56px navigation + 26px bottom offset + 16px breathing room. */
-  --ts-tabbar-h: 98px;
+  /* 56px navigation + 20px bottom offset + 16px breathing room. */
+  --ts-tabbar-h: 92px;
 
   --bg-color: var(--ts-color-page);
   --text-color: var(--ts-color-text);

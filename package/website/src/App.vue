@@ -20,7 +20,7 @@ import { provideNavItems } from '@/composables/useNavItems';
 import { useUserStore } from '@/stores/user';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useAlbumStore } from '@/stores/albumStore';
-import { usePhotoStore } from '@/stores/photoStore';
+import { usePhotoStore, usePhotosPageStore } from '@/stores/photoStore';
 import { useGalleryBackup } from '@/composables/useGalleryBackup';
 import { isMobileApp } from '@/config/server';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -63,6 +63,7 @@ const userStore = useUserStore();
 const notifyStore = useNotificationStore();
 const albumStore = useAlbumStore();
 const photoStore = usePhotoStore();
+const photosPageStore = usePhotosPageStore();
 const token = computed(() => userStore.token);
 const galleryBackup = useGalleryBackup();
 const sseEnabled = ref(false);
@@ -114,6 +115,7 @@ useNotificationSSE({
 
     if (taskCompleted && PHOTO_DATA_TASKS.has(data?.type)) {
       photoStore.markDataStale(data?.type);
+      photosPageStore.markDataStale(data?.type);
     }
 
     if (taskCompleted && data?.type === 'SCAN_ALBUM') {
@@ -121,6 +123,7 @@ useNotificationSSE({
       void albumStore.fetchAlbums();
       if (albumId) {
         photoStore.markDataStale(data?.type, albumId);
+        photosPageStore.markDataStale(data?.type);
       }
     }
   },

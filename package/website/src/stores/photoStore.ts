@@ -237,14 +237,25 @@ export const photoStoreSetup = () => {
       return filters;
   }
 
-  const fetchTimelineStats = async (albumId?: string) => {
+  let timelineRequestId = 0;
+  const fetchTimelineStats = async (albumId?: string): Promise<boolean> => {
+    const requestId = ++timelineRequestId;
+    loading.value = true;
+    error.value = null;
     try {
       timelineStats.value = undefined
       const filters = cleanFilters();
       const stats = await albumService.getTimelineStats(albumId, filters)
+      if (requestId !== timelineRequestId) return false;
       timelineStats.value = stats
+      return true;
     } catch (e) {
+      if (requestId !== timelineRequestId) return false;
       console.error("获取时间轴统计失败", e)
+      error.value = '加载失败，请重试';
+      return false;
+    } finally {
+      if (requestId === timelineRequestId) loading.value = false;
     }
   }
 
@@ -393,6 +404,7 @@ export const photoStoreSetup = () => {
   const loadPhotos = async (reset: boolean = false) => {
       // Placeholder if needed, but loadPhotosByMonth is the main driver now
       if (reset) {
+          cancelAllPendingLoads();
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
@@ -400,13 +412,13 @@ export const photoStoreSetup = () => {
       }
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
-      await fetchTimelineStats();
-      acknowledgeContextRevision(contextKey, targetRevision);
+      if (await fetchTimelineStats()) acknowledgeContextRevision(contextKey, targetRevision);
       // Logic to load initial view could go here
   }
 
   const loadAlbumPhotos = async (albumId: string, reset: boolean = false) => {
       if (reset) {
+          cancelAllPendingLoads();
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
@@ -414,8 +426,7 @@ export const photoStoreSetup = () => {
       currentContext.value = { type: 'album', id: albumId };
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
-      await fetchTimelineStats(albumId);
-      acknowledgeContextRevision(contextKey, targetRevision);
+      if (await fetchTimelineStats(albumId)) acknowledgeContextRevision(contextKey, targetRevision);
   }
 
   const loadFolderPhotos = async (folder: string, reset: boolean = false, direct: boolean = false) => {
@@ -536,6 +547,8 @@ export const photoStoreSetup = () => {
       removeLocalPhotos(photoIds);
   }
   const resetAll = () => {
+      ++timelineRequestId;
+      cancelAllPendingLoads();
       timelineStats.value = { total_photos: 0, time_range: {start: null, end: null}, timeline: [] };
       images.value = [];
       photoOffsetMap.clear();
@@ -593,4 +606,6 @@ export const photoStoreSetup = () => {
 }
 
 export const usePhotoStore = defineStore('photo', photoStoreSetup)
+// “全部照片”页长期缓存；其他照片视图使用独立的 store。
+export const usePhotosPageStore = defineStore('photosPage', photoStoreSetup)
 

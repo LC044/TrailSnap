@@ -3,7 +3,7 @@
   <Transition name="bottom-nav-slide">
     <nav
       v-show="!uiStore.selectionActive"
-      class="liquid-glass-nav fixed inset-x-3 bottom-[calc(26px_+_env(safe-area-inset-bottom))] z-40 md:hidden"
+      class="liquid-glass-nav fixed inset-x-3 bottom-[calc(20px_+_env(safe-area-inset-bottom))] z-40 md:hidden"
       :class="{ 'is-flowing': bubbleMoving, 'is-dark': isDarkMode }"
       aria-label="主导航"
     >
@@ -171,19 +171,19 @@
       <!-- 快捷访问 -->
       <div v-if="navItemsList.length" class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
         <div class="px-1 mb-2 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">快捷访问</div>
-        <div class="space-y-1 max-h-[40vh] overflow-y-auto">
+        <div class="grid grid-cols-3 gap-2 max-h-[40vh] overflow-y-auto">
           <RouterLink
             v-for="item in navItemsList"
             :key="`${item.entity_type}-${item.entity_id}`"
             :to="item.route_path"
             @click.prevent="navigateFromMore(item.route_path)"
-            class="flex items-center gap-2 px-2 py-2 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            class="flex min-w-0 min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           >
-            <div class="w-7 h-7 rounded overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
-              <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" class="w-full h-full object-cover" loading="lazy" />
+            <div class="w-9 h-9 rounded overflow-hidden shrink-0 bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+              <img v-if="item.cover_photo_id" :src="getThumbnailUrl(item)" alt="" class="w-full h-full object-cover" loading="lazy" />
               <component v-else :is="getNavIcon(item.entity_type)" class="w-4 h-4 text-slate-400" />
             </div>
-            <span class="truncate text-sm">{{ item.name }}</span>
+            <span class="w-full truncate text-center text-xs" :title="item.name">{{ item.name }}</span>
           </RouterLink>
         </div>
       </div>

@@ -46,7 +46,7 @@
           <div v-if="showFilterPanel" class="absolute left-0 right-0 top-full mt-2 pointer-events-none px-4">
             <div class="max-w-7xl mx-auto flex justify-end">
               <div ref="filterPanelRef" class="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden w-full max-w-md pointer-events-auto">
-                 <FilterPanel />
+                 <FilterPanel :store="photoStore" />
               </div>
             </div>
           </div>
@@ -102,10 +102,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, onActivated, onDeactivated, watch } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, computed, nextTick, onUnmounted, onActivated, onDeactivated, watch } from 'vue'
+import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
-import { usePhotoStore } from '@/stores/photoStore'
+import { usePhotosPageStore } from '@/stores/photoStore'
 import { Filter, X, Settings, FolderPlus, UploadCloud } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
@@ -121,7 +121,7 @@ defineOptions({
 const router = useRouter()
 const route = useRoute()
 const store = useAlbumStore()
-const photoStore = usePhotoStore()
+const photoStore = usePhotosPageStore()
 const unifiedPhotoPageRef = ref<InstanceType<typeof UnifiedPhotoPage> | null>(null)
 const pageActive = ref(false)
 let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -254,8 +254,19 @@ const applyQueryFilters = () => {
 }
 
 let lastQueryStr = ''
+let initialized = false
+let savedScrollTop = 0
+
+const getScrollContainer = () => document.querySelector('main') as HTMLElement | null
+
+onBeforeRouteLeave((_to, from) => {
+  if (pageActive.value && from.name === 'Photos') {
+    savedScrollTop = getScrollContainer()?.scrollTop ?? 0
+  }
+})
 
 const initData = () => {
+  initialized = true
   lastQueryStr = JSON.stringify(route.query)
   photoStore.resetAll()
   // 从路由查询参数应用筛选条件（如存储中心跳转过来的“截图/视频/实况图”）
@@ -263,23 +274,21 @@ const initData = () => {
   // Initial Load
   photoStore.fetchAvailableFilters()
   store.fetchAlbums()
-  photoStore.fetchTimelineStats()
   photoStore.loadPhotos(true)
+  savedScrollTop = 0
 }
-
-onMounted(() => {
-  pageActive.value = true
-  initData()
-})
 
 onActivated(() => {
   pageActive.value = true
   const currentQueryStr = JSON.stringify(route.query)
-  if (currentQueryStr !== lastQueryStr) {
+  if (!initialized || currentQueryStr !== lastQueryStr) {
     initData()
   } else {
-    // keep-alive 会保留已加载月份。重新进入页面时使照片缓存失效，
-    // 否则即使时间线统计更新，已有月份仍不会重新请求。
+    // keep-alive 保留列表，主滚动容器却可能被其他页面压回顶部。
+    void nextTick(() => {
+      const container = getScrollContainer()
+      if (container && savedScrollTop > 0) container.scrollTop = savedScrollTop
+    })
     if (photoStore.dataStale) {
       scheduleAutoRefresh()
     } else {

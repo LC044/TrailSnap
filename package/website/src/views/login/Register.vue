@@ -1,24 +1,29 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
-    <el-card class="w-full max-w-md shadow-lg">
-      <template #header>
-        <div class="text-center">
-          <h2 class="text-xl font-bold text-gray-800 dark:text-white">注册 TrailSnap 账号</h2>
+  <main class="auth-page">
+    <section class="auth-panel" aria-labelledby="register-title">
+      <div class="auth-content">
+        <div class="auth-brand">
+          <img src="@/assets/logo.svg" alt="" class="auth-brand-icon" />
+          <span>行影集 <span class="auth-brand-en">TrailSnap</span></span>
         </div>
-      </template>
-      
+        <header class="auth-heading">
+          <h1 id="register-title">创建账号</h1>
+          <p>开始记录和整理你的旅程</p>
+        </header>
       <el-form
         ref="formRef"
         :model="form"
         :rules="rules"
         label-position="top"
         size="large"
+        class="auth-form"
         @submit.prevent="handleRegister"
       >
         <el-form-item label="用户名" prop="username">
           <el-input 
             v-model="form.username" 
             placeholder="请输入用户名"
+            autocomplete="username"
           />
         </el-form-item>
 
@@ -26,13 +31,16 @@
           <el-input 
             v-model="form.nickname" 
             placeholder="请输入昵称"
+            autocomplete="nickname"
           />
         </el-form-item>
 
         <el-form-item label="电子邮箱" prop="email">
           <el-input 
             v-model="form.email" 
+            type="email"
             placeholder="请输入电子邮箱"
+            autocomplete="email"
           />
         </el-form-item>
         
@@ -41,6 +49,7 @@
             v-model="form.password" 
             type="password" 
             placeholder="请输入密码"
+            autocomplete="new-password"
             show-password
           />
         </el-form-item>
@@ -50,11 +59,15 @@
             v-model="form.confirmPassword" 
             type="password" 
             placeholder="请再次输入密码"
+            autocomplete="new-password"
             show-password
           />
         </el-form-item>
 
-        <el-divider>安全问题（用于找回密码）</el-divider>
+        <div class="auth-section">
+          <h2>设置安全问题</h2>
+          <p>忘记密码时，可通过安全问题找回账号</p>
+        </div>
 
         <el-form-item label="安全问题" prop="security_question">
           <el-select v-model="form.security_question" placeholder="请选择安全问题" class="w-full">
@@ -81,26 +94,17 @@
           <el-input 
             v-model="form.security_answer" 
             placeholder="请输入答案"
+            autocomplete="off"
           />
         </el-form-item>
 
-        <el-form-item>
-          <el-button 
-            type="primary" 
-            class="w-full" 
-            :loading="loading" 
-            @click="handleRegister"
-          >
-            注册
-          </el-button>
-        </el-form-item>
+        <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading">注册</el-button>
 
-        <div class="text-center mt-4">
-          <router-link to="/login" class="text-blue-600 hover:underline text-sm">已有账号？立即登录</router-link>
-        </div>
+        <p class="auth-switch">已有账号？<router-link to="/login" class="auth-link">立即登录</router-link></p>
       </el-form>
-    </el-card>
-  </div>
+      </div>
+    </section>
+  </main>
 </template>
 
 <script setup lang="ts">
@@ -108,6 +112,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { authService } from '@/api/auth';
+import './auth.css';
 
 const router = useRouter();
 const formRef = ref<FormInstance>();

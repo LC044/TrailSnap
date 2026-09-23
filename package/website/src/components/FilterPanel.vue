@@ -126,11 +126,14 @@
 </template>
 
 <script setup lang="ts">
-import { usePhotoStore } from '@/stores/photoStore';
+import { usePhotoStore, usePhotosPageStore } from '@/stores/photoStore';
 import { computed, reactive } from 'vue';
 import { ChevronDown } from 'lucide-vue-next';
 
-const store = usePhotoStore();
+const props = defineProps<{
+  store?: ReturnType<typeof usePhotoStore> | ReturnType<typeof usePhotosPageStore>
+}>();
+const store = props.store || usePhotoStore();
 const availableFilters = computed(() => store.availableFilters);
 const selectedFilters = store.selectedFilters;
 
