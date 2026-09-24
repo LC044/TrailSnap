@@ -1,5 +1,5 @@
 <template>
-  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-full min-h-0' : 'container mx-auto', isImmersiveMap ? 'location-immersive' : '']">
+  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-full min-h-0' : 'container mx-auto', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
     <!-- Header -->
     <div class="location-toolbar container mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
@@ -9,12 +9,12 @@
           </button>
           <h1 class="whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
         </div>
-        <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 py-2 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
+        <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-full bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>
       </div>
 
-      <div class="location-toolbar-actions flex w-full min-w-0 items-center gap-1 md:w-auto lg:gap-2">
+      <div :class="['location-toolbar-actions flex w-full min-w-0 items-center gap-1 md:w-auto lg:gap-2', { 'is-dark': isDarkMode }]">
         <RouterLink to="/footprint" class="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:flex" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>
@@ -37,11 +37,11 @@
         >
            <button
              @click="openMobileSheet('time')"
-             class="flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
+             class="location-filter-trigger flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white"
            >
-             <Calendar class="hidden h-4 w-4 sm:block" />
-             {{ selectedYear ? selectedYear + '年' : (isCustomRange ? '自定义范围' : '全部时间') }}
-             <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showYearMenu }" />
+             <Calendar class="location-filter-icon h-4 w-4 shrink-0" />
+             <span class="location-filter-value truncate">{{ selectedYear ? selectedYear + '年' : (isCustomRange ? '自定义范围' : '全部时间') }}</span>
+             <ChevronDown class="location-filter-chevron h-3.5 w-3.5 shrink-0 transition-transform duration-200" :class="{ 'rotate-180': showYearMenu }" />
            </button>
 
            <div
@@ -108,10 +108,11 @@
           <!-- Mobile Dropdown Trigger -->
           <button
             @click="openMobileSheet('level')"
-              class="location-level-trigger flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
+              class="location-filter-trigger location-level-trigger flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
           >
-            {{ currentLevelLabel }}
-            <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showLevelMenu }" />
+            <MapPin class="location-filter-icon h-4 w-4 shrink-0" />
+            <span class="location-filter-value truncate">{{ currentLevelLabel }}</span>
+            <ChevronDown class="location-filter-chevron h-3.5 w-3.5 shrink-0 transition-transform duration-200" :class="{ 'rotate-180': showLevelMenu }" />
           </button>
 
           <!-- Mobile Dropdown Menu -->
@@ -275,11 +276,11 @@
             @click="openMobileSheet('view')"
             :aria-label="`切换视图，当前${currentViewLabel}`"
             :title="currentViewLabel"
-            class="location-view-trigger flex w-full items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
+            class="location-filter-trigger location-view-trigger flex w-full min-w-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-md bg-white px-3 py-1.5 text-sm font-medium text-gray-900 shadow-sm dark:bg-gray-700 dark:text-white lg:hidden"
           >
-            <component :is="currentViewIcon" class="h-4 w-4" />
-            <span>{{ currentViewLabel }}视图</span>
-            <ChevronDown class="h-4 w-4" />
+            <component :is="currentViewIcon" class="location-filter-icon h-4 w-4 shrink-0" />
+            <span class="location-filter-value truncate">{{ currentViewLabel }}</span>
+            <ChevronDown class="location-filter-chevron h-3.5 w-3.5 shrink-0" />
           </button>
 
           <!-- Mobile Dropdown Menu -->
@@ -383,7 +384,11 @@
     <!-- Mobile filter/action sheets: one task per sheet, shared interaction model. -->
     <Teleport to="body">
       <Transition name="mobile-sheet-fade">
-        <div v-if="activeMobileSheet" class="location-sheet-layer lg:hidden" @click.self="closeMobileSheet">
+        <div
+          v-if="activeMobileSheet"
+          :class="['location-sheet-layer lg:hidden', { 'location-dark': isDarkMode }]"
+          @click.self="closeMobileSheet"
+        >
           <section class="location-filter-sheet" role="dialog" aria-modal="true" :aria-label="mobileSheetTitle">
             <div class="location-filter-sheet__handle" aria-hidden="true" />
             <header class="location-filter-sheet__header">
@@ -507,12 +512,13 @@
 import { ref, onMounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
+import { injectTheme } from '@/composables/useTheme'
 import { storeToRefs } from 'pinia'
 import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { ArrowLeft, LayoutGrid, Map, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X, Globe2 } from 'lucide-vue-next'
+import { ArrowLeft, LayoutGrid, Map, MapPin, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X, Globe2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LocationMap from './LocationMap.vue'
@@ -527,6 +533,7 @@ import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const router = useRouter()
 const goBack = useAppBack('/album')
+const { isDarkMode } = injectTheme()
 const locationStore = useLocationStore()
 const { level, viewMode, filterStatus } = storeToRefs(locationStore)
 const locationsRaw = ref<Location[]>([])
@@ -926,7 +933,7 @@ onMounted(() => {
   --location-shadow: rgba(15, 23, 42, 0.12);
 }
 
-:global(html.dark) {
+.location-dark {
   --location-bg: #07111f;
   --location-panel: rgba(10, 25, 43, 0.96);
   --location-control: rgba(12, 28, 49, 0.88);
@@ -997,30 +1004,56 @@ onMounted(() => {
   }
 }
 
+.location-title-group {
+  gap: 6px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.location-immersive .location-toolbar .location-toolbar-heading .location-title-group {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+}
+.location-title-group button { padding: 8px; background: transparent !important; }
+
 @media (max-width: 767px) {
-  .location-toolbar { gap: 8px; padding-bottom: 0; }
-  .location-toolbar-heading { min-height: 52px; }
-  .location-title-group {
-    gap: 6px;
-    padding: 0;
-    border-color: transparent;
-    border-radius: 0;
-    background: transparent;
-    box-shadow: none;
-    backdrop-filter: none;
+  .location-list:not(.location-immersive) {
+    padding-top: 12px;
+    padding-inline: 16px;
   }
-  .location-immersive .location-toolbar .location-toolbar-heading .location-title-group {
-    border-color: transparent !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    backdrop-filter: none;
+  .location-toolbar { gap: 10px; padding-bottom: 14px; }
+  .location-toolbar-heading { min-height: 46px; }
+
+  .location-footprint-link {
+    min-height: 38px;
+    padding: 7px 12px;
+    font-size: 13px;
+    box-shadow: 0 6px 18px rgba(var(--theme-rgb), 0.22);
   }
-  .location-title-group button { padding: 8px; background: transparent !important; }
-  .location-title-group h1 { font-size: 20px; }
-  .location-footprint-link { min-height: 38px; padding: 7px 11px; border-radius: 12px; font-size: 13px; }
   .location-toolbar-actions {
     display: flex;
-    gap: 8px;
+    gap: 0;
+    padding: 4px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+  }
+  .location-toolbar-actions.is-dark {
+    border-color: rgba(148, 163, 184, 0.2);
+    background: rgba(15, 29, 48, 0.88);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .location-toolbar-actions.is-dark .location-level-control::before,
+  .location-toolbar-actions.is-dark .location-view-control::before {
+    background: rgba(148, 163, 184, 0.2);
   }
   .location-toolbar-actions > * {
     min-width: 0;
@@ -1030,18 +1063,54 @@ onMounted(() => {
     min-height: 40px;
   }
   .location-year-control,
-  .location-level-control { width: auto; min-width: 0; flex: 1 1 0; }
-  .location-view-control { width: auto; min-width: 0; flex: 1.2 1 0; }
+  .location-level-control,
+  .location-view-control {
+    position: relative;
+    width: auto;
+    min-width: 0;
+    flex: 1 1 0;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .location-level-control::before,
+  .location-view-control::before {
+    position: absolute;
+    z-index: 1;
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 1px;
+    content: '';
+    background: rgba(148, 163, 184, 0.22);
+  }
   .location-add-scene { width: 40px; flex: 0 0 40px; padding-inline: 0; }
-  .location-year-control button,
-  .location-level-trigger,
-  .location-view-trigger {
-    min-height: 42px;
-    padding-inline: 9px;
-    font-size: 12px;
-    border: 1px solid rgba(var(--theme-rgb), 0.12);
+  .location-filter-trigger {
+    min-height: 44px;
+    gap: 5px;
+    padding-inline: 8px;
+    border: 0;
     border-radius: 12px;
-    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
+    color: var(--location-text);
+    background: transparent;
+    box-shadow: none;
+    font-size: 13px;
+    transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
+  }
+  .location-filter-trigger:active {
+    transform: scale(0.97);
+    background: rgba(var(--theme-rgb), 0.1);
+  }
+  .location-filter-icon {
+    color: var(--theme-primary);
+    opacity: 0.9;
+  }
+  .location-filter-value {
+    max-width: 76px;
+  }
+  .location-filter-chevron {
+    color: var(--location-muted);
+    opacity: 0.75;
   }
   .location-level-menu {
     left: 0;
@@ -1061,21 +1130,24 @@ onMounted(() => {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: calc(var(--ts-tabbar-h, 0px) + env(safe-area-inset-bottom));
+  padding: 0 12px calc(var(--ts-tabbar-h, 0px) + env(safe-area-inset-bottom) + 12px);
   background: rgba(15, 23, 42, 0.34);
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .location-filter-sheet {
-  width: min(100%, 520px);
+  width: 100%;
+  max-width: 440px;
   max-height: min(76vh, 640px);
   overflow-y: auto;
   padding: 8px 16px 16px;
   border: 1px solid rgba(var(--theme-rgb), 0.16);
-  border-radius: 22px 22px 0 0;
+  border-radius: 24px;
   color: var(--location-text);
   background: var(--location-panel);
-  box-shadow: 0 -18px 50px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 20px 56px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
 }
 
 .location-filter-sheet__handle {
@@ -1138,9 +1210,19 @@ onMounted(() => {
   font-weight: 600;
 }
 .mobile-sheet-fade-enter-active, .mobile-sheet-fade-leave-active { transition: opacity 180ms ease; }
-.mobile-sheet-fade-enter-active .location-filter-sheet, .mobile-sheet-fade-leave-active .location-filter-sheet { transition: transform 220ms ease; }
+.mobile-sheet-fade-enter-active .location-filter-sheet, .mobile-sheet-fade-leave-active .location-filter-sheet { transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
 .mobile-sheet-fade-enter-from, .mobile-sheet-fade-leave-to { opacity: 0; }
-.mobile-sheet-fade-enter-from .location-filter-sheet, .mobile-sheet-fade-leave-to .location-filter-sheet { transform: translateY(100%); }
+.mobile-sheet-fade-enter-from .location-filter-sheet, .mobile-sheet-fade-leave-to .location-filter-sheet { transform: translateY(28px) scale(0.98); opacity: 0; }
+
+@media (max-width: 374px) {
+  .location-sheet-layer {
+    padding-inline: 8px;
+  }
+  .location-filter-sheet {
+    padding-inline: 12px;
+    border-radius: 20px;
+  }
+}
 </style>
 
 <style>

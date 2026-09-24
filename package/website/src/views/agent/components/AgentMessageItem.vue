@@ -36,8 +36,12 @@
               <span>{{ toolLabel(event.tool_name) }}{{ event.type === 'tool_start' ? '…' : event.status === 'error' ? '失败' : '完成' }}</span>
             </div>
           </div>
-          <div v-if="msg.isMarkdown" class="markdown-body" v-html="renderMarkdown(msg.content, msg.artifacts?.flatMap(item => item.photo_ids || []) || [])"></div>
-          <div v-else class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+          <div v-if="msg.content && msg.isMarkdown" class="markdown-body" v-html="renderMarkdown(msg.content, msg.artifacts?.flatMap(item => item.photo_ids || []) || [])"></div>
+          <div v-else-if="msg.content" class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+          <div v-if="msg.role === 'assistant' && isGenerating" class="generation-status" role="status" aria-live="polite">
+            <span class="generation-status-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>正在处理，回复尚未完成</span>
+          </div>
           <button v-for="artifact in msg.artifacts" :key="artifact.id" type="button" class="mt-3 flex w-full items-center gap-3 rounded-xl border border-primary-500/30 bg-slate-50 p-3 text-left text-slate-800 transition hover:border-primary-500 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700" @click="router.push(artifact.url)">
             <NotebookText class="h-5 w-5 shrink-0 text-primary-500" />
             <span class="min-w-0 flex-1"><span class="block text-xs text-slate-500 dark:text-slate-400">旅行日志草稿</span><span class="block truncate font-medium">{{ artifact.title }}</span></span>
@@ -65,7 +69,7 @@
             </button>
             
             <!-- 重新生成按钮：只在最后一条助手消息显示 -->
-            <button v-if="msg.role === 'assistant' && isLastAssistant" @click="emit('regenerate', msg, index)" class="bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded-md" title="重新生成">
+            <button v-if="msg.role === 'assistant' && isLastAssistant && !isGenerating" @click="emit('regenerate', msg, index)" class="bg-transparent hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded-md" title="重新生成">
               <RefreshCw class="w-4 h-4"/>
             </button>
             
@@ -141,6 +145,7 @@ const props = defineProps<{
   isSelectionMode: boolean;
   isSelected: boolean;
   isLastAssistant: boolean;
+  isGenerating: boolean;
   isLastUser: boolean;
   isDropdownActive: boolean;
   renderMarkdown: (content: string, fallbackPhotoIds?: string[]) => string;
@@ -168,7 +173,7 @@ const emit = defineEmits<{
 }
 
 .message-avatar.assistant {
-  @apply bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400;
+  @apply bg-primary-500/10 text-primary-600 dark:text-primary-500;
 }
 
 .message-avatar.user {
@@ -180,10 +185,35 @@ const emit = defineEmits<{
 }
 
 .message-bubble.user {
-  @apply bg-indigo-600 text-white rounded-br-sm;
+  @apply bg-primary-500 text-white rounded-br-sm;
 }
 
 .message-bubble.assistant {
-  @apply bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-slate-700 rounded-bl-sm;
+  @apply bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-bl-sm;
+}
+
+.generation-status {
+  @apply mt-2 flex items-center gap-2 border-t border-slate-100 pt-2 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400;
+}
+
+.generation-status-dots {
+  @apply flex items-center gap-0.5;
+}
+
+.generation-status-dots i {
+  @apply h-1 w-1 rounded-full bg-primary-500;
+  animation: processing-pulse 1.2s ease-in-out infinite;
+}
+
+.generation-status-dots i:nth-child(2) { animation-delay: 0.2s; }
+.generation-status-dots i:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes processing-pulse {
+  0%, 70%, 100% { opacity: 0.3; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .generation-status-dots i { animation: none; opacity: 1; }
 }
 </style>

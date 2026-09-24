@@ -3,6 +3,7 @@
     v-model="dialogVisible"
     title="批量修正位置"
     width="900px"
+    class="batch-location-dialog"
     destroy-on-close
     :close-on-click-modal="false"
     align-center
@@ -10,8 +11,8 @@
     @opened="initBatchMap"
     @closed="destroyBatchMap"
   >
-    <div class="flex gap-4 h-[500px]">
-      <div class="flex-1 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 relative">
+    <div class="batch-location-content flex gap-4 h-[500px]">
+      <div class="batch-location-map flex-1 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 relative">
         <div id="batch-location-map" class="w-full h-full"></div>
         <div v-if="mapLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80">
           <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
@@ -21,7 +22,7 @@
         </div>
       </div>
 
-      <div class="w-64 flex flex-col gap-3">
+      <div class="batch-location-controls w-64 flex flex-col gap-3">
         <div class="text-sm text-gray-500 dark:text-gray-400">
           已选 <span class="font-bold text-gray-900 dark:text-white">{{ photoIds.length }}</span> 张照片
         </div>
@@ -50,7 +51,7 @@
 
         <el-input v-model="formattedAddress" placeholder="自定义地址（留空使用自动解析）" size="small" />
 
-        <div class="flex-1 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-900">
+        <div class="batch-location-photos flex-1 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-900">
           <div class="grid grid-cols-3 gap-1">
             <div v-for="photo in photos" :key="photo.id" class="aspect-square rounded overflow-hidden">
               <img
@@ -63,14 +64,14 @@
           </div>
         </div>
 
-        <p class="text-xs text-gray-400">拖拽地图标记选择位置</p>
+        <p class="text-xs text-gray-400 dark:text-gray-500">点击地图或拖拽标记选择位置</p>
       </div>
     </div>
 
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="dialogVisible = false" :disabled="submitting">取消</el-button>
-        <el-button type="primary" @click="handleApply" :loading="submitting" :disabled="!currentMapLat && !currentMapLng">
+        <el-button type="primary" @click="handleApply" :loading="submitting" :disabled="!mapReady || !hasMarker">
           应用到全部 ({{ photoIds.length }})
         </el-button>
       </span>
@@ -104,12 +105,14 @@ const submitting = ref(false)
 const searchQuery = ref('')
 const formattedAddress = ref('')
 const batchLocationDetail = ref<LocationDetail | null>(null)
+let openingGeneration = 0
 
 const {
   currentLat: currentMapLat,
   currentLng: currentMapLng,
   currentLocationDetail,
   mapReady,
+  hasMarker,
   mapError,
   initMap,
   setMarker,
@@ -124,15 +127,33 @@ const {
 })
 
 const initBatchMap = async () => {
+  const generation = ++openingGeneration
   mapLoading.value = true
+  // AlbumImage is a gallery summary and does not contain GPS. Read the selected
+  // photos' metadata until one with valid coordinates can anchor the map.
+  let initialPosition: { lat: number; lng: number } | undefined
+  for (let index = 0; index < props.photoIds.length && !initialPosition; index += 8) {
+    const results = await Promise.all(props.photoIds.slice(index, index + 8).map(id =>
+      albumService.getMetadata(id).catch(() => null)
+    ))
+    if (generation !== openingGeneration) return
+    const gps = results.find(item => item && typeof item.latitude === 'number' && typeof item.longitude === 'number'
+      && Number.isFinite(item.latitude) && Number.isFinite(item.longitude)
+      && Math.abs(item.latitude!) <= 90 && Math.abs(item.longitude!) <= 180)
+    if (gps) initialPosition = { lat: gps.latitude!, lng: gps.longitude! }
+  }
+  if (generation !== openingGeneration) return
   await initMap({
     containerId: 'batch-location-map',
+    initialLat: initialPosition?.lat,
+    initialLng: initialPosition?.lng,
     enableDrag: true
   })
-  mapLoading.value = false
+  if (generation === openingGeneration) mapLoading.value = false
 }
 
 const destroyBatchMap = () => {
+  openingGeneration++
   destroyMap()
   searchQuery.value = ''
   formattedAddress.value = ''
@@ -148,7 +169,7 @@ const handleSelect = (item: any) => {
 }
 
 const handleApply = async () => {
-  if (!currentMapLat.value && !currentMapLng.value) {
+  if (!mapReady.value || !hasMarker.value) {
     ElMessage.warning('请先在地图上选择位置')
     return
   }
@@ -186,3 +207,30 @@ const handleApply = async () => {
   }
 }
 </script>
+
+<style>
+@media (max-width: 767px) {
+  .batch-location-dialog.el-dialog {
+    width: 100vw !important;
+    height: 100dvh;
+    margin: 0 !important;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .batch-location-dialog .el-dialog__header { flex: none; }
+  .batch-location-dialog .el-dialog__body {
+    flex: 1;
+    min-height: 0;
+    padding: 8px 12px;
+  }
+  .batch-location-dialog .el-dialog__footer {
+    flex: none;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+  .batch-location-content { height: 100%; flex-direction: column; gap: 8px; }
+  .batch-location-map { flex: 1; min-height: 0; }
+  .batch-location-controls { width: 100%; flex: none; gap: 6px; }
+  .batch-location-photos { display: none; }
+}
+</style>

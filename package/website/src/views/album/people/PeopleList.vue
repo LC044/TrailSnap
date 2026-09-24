@@ -1,17 +1,22 @@
 <template>
   <div class="container mx-auto people-list py-6 px-4">
-    <div class="mb-8 flex flex-row justify-between items-start sm:items-center gap-4">
-      <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <button @click="goBack" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors bg-white dark:bg-gray-900">
-              <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
+    <div
+      class="people-toolbar mb-8 flex flex-row justify-between items-start sm:items-center gap-4 border-gray-200/70 bg-gray-50/90 dark:border-gray-700/70 dark:bg-gray-900/90"
+      :class="{ 'is-selection-mode': isMergeMode }"
+    >
+      <div class="people-toolbar-leading flex items-center gap-3 flex-wrap">
+        <div class="people-title-group flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
+          <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
+            <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
-          <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">人物</h1>
+          <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
+            {{ isMergeMode ? `已选择 ${selectedIds.length} 项` : '人物' }}
+          </h1>
         </div>
 
         <!-- 个人 / 合影 切换 -->
         <div
-          class="flex rounded-full bg-gray-200 dark:bg-gray-800 p-1"
+          class="people-view-toggle flex rounded-full bg-gray-200 dark:bg-gray-800 p-1"
           role="tablist"
           aria-label="人物视图切换"
           data-testid="people-view-toggle"
@@ -32,7 +37,7 @@
         </div>
       </div>
 
-      <div v-if="viewMode === 'solo'" class="flex items-center gap-3 flex-wrap justify-end">
+      <div v-if="viewMode === 'solo'" class="people-actions flex items-center gap-3 flex-wrap justify-end">
         <el-popover
           v-if="!isMergeMode" 
           placement="bottom-end"
@@ -40,7 +45,11 @@
           trigger="click"
         >
           <template #reference>
-            <button class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300 dark:bg-gray-800">
+            <button
+              type="button"
+              aria-label="筛选人物"
+              class="people-filter-btn p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300 dark:bg-gray-800 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+            >
               <FilterIcon class="w-5 h-5" />
             </button>
           </template>
@@ -55,55 +64,63 @@
           </div>
         </el-popover>
 
-        <template v-if="isMergeMode">
+        <div
+          v-if="isMergeMode"
+          class="people-bulk-actions border-gray-200/75 bg-white/70 dark:border-gray-700/80 dark:bg-gray-800/70"
+        >
           <button 
+            type="button"
             @click="confirmMerge"
             :disabled="selectedIds.length < 2"
-            class="px-3 py-1.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-1.5 shadow-sm text-sm"
+            class="people-bulk-btn bg-transparent text-primary-600 hover:bg-gray-100 dark:hover:bg-gray-700 md:bg-primary-600 md:text-white md:hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <MergeIcon class="w-4 h-4" />
-            <span>合并 ({{ selectedIds.length }})</span>
+            <span>合并<span class="hidden md:inline"> ({{ selectedIds.length }})</span></span>
           </button>
           
           <button 
+            type="button"
             @click="handleBulkHide"
             :disabled="selectedIds.length === 0"
-            class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-sm text-sm border border-gray-200 dark:border-gray-700"
+            class="people-bulk-btn bg-transparent text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 md:bg-gray-100 md:dark:bg-gray-800 md:hover:bg-gray-200 md:dark:hover:bg-gray-700 disabled:opacity-50 border border-transparent md:border-gray-200 md:dark:border-gray-700"
           >
             <EyeOffIcon class="w-4 h-4" />
             <span>隐藏</span>
           </button>
 
           <button 
+            type="button"
             @click="handleBulkShow"
             :disabled="selectedIds.length === 0"
-            class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-sm text-sm border border-gray-200 dark:border-gray-700"
+            class="people-bulk-btn bg-transparent text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 md:bg-gray-100 md:dark:bg-gray-800 md:hover:bg-gray-200 md:dark:hover:bg-gray-700 disabled:opacity-50 border border-transparent md:border-gray-200 md:dark:border-gray-700"
           >
             <EyeIcon class="w-4 h-4" />
             <span>显示</span>
           </button>
 
           <button 
+            type="button"
             @click="handleBulkDelete"
             :disabled="selectedIds.length === 0"
-            class="px-3 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 transition-all flex items-center gap-1.5 shadow-sm text-sm border border-red-200 dark:border-red-800/30"
+            class="people-bulk-btn bg-transparent text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 md:bg-red-50 md:dark:bg-red-900/20 md:hover:bg-red-100 md:dark:hover:bg-red-900/40 disabled:opacity-50 border border-transparent md:border-red-200 md:dark:border-red-800/30"
           >
             <TrashIcon class="w-4 h-4" />
             <span>删除</span>
           </button>
-        </template>
+        </div>
         
         <button 
+          type="button"
           @click="toggleMergeMode"
           :class="[
-            'px-4 py-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium shadow-sm',
+            'people-mode-btn px-4 py-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none',
             isMergeMode 
-              ? 'bg-gray-200 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-800 dark:text-gray-200' 
+              ? 'bg-transparent dark:bg-transparent border-transparent text-primary-600 shadow-none'
               : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
           ]"
         >
           <CheckSquareIcon class="w-4 h-4" />
-          <span>{{ isMergeMode ? '取消' : '批量' }}</span>
+          <span>{{ isMergeMode ? '完成' : '批量' }}</span>
         </button>
       </div>
     </div>
@@ -634,6 +651,191 @@ onMounted(() => {
 </script>
 
 <style scoped>
+
+.people-bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.people-bulk-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+  transition: all 180ms ease;
+}
+
+.people-bulk-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--theme-primary), 0 0 0 4px rgb(255 255 255 / 0.9);
+}
+
+.people-title-group {
+  width: auto;
+  min-width: 0;
+  min-height: 40px;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 0;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.people-title-group button { padding: 8px; background: transparent !important; }
+/* 移动端普通态保持单行，进入批量态后才展开第二行操作栏。 */
+@media (max-width: 767px) {
+  .people-list:not(.people-immersive) {
+    padding-top: 0px;
+    padding-inline: 16px;
+  }
+
+  .people-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 -1rem 1.5rem;
+    padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+    border-bottom-width: 1px;
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.04);
+    backdrop-filter: blur(20px) saturate(165%);
+    -webkit-backdrop-filter: blur(20px) saturate(165%);
+  }
+
+  .people-toolbar-leading {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .people-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 2px;
+    flex-wrap: nowrap;
+  }
+
+
+  .people-back-btn {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    align-items: center;
+    justify-content: center;
+    margin-left: -6px;
+    padding: 0;
+    background: transparent;
+  }
+
+  .people-view-toggle {
+    flex-shrink: 0;
+    padding: 3px;
+  }
+
+  .people-view-toggle button {
+    min-width: 48px;
+    min-height: 34px;
+    padding: 0 10px;
+  }
+
+  .people-filter-btn,
+  .people-mode-btn {
+    min-height: 40px;
+  }
+
+  .people-filter-btn {
+    width: 40px;
+    border-radius: 9999px;
+    background: transparent;
+  }
+
+  .people-mode-btn {
+    align-self: center;
+    border-radius: 9999px;
+    padding: 0 10px;
+  }
+
+  .is-selection-mode .people-mode-btn :deep(svg) {
+    display: none;
+  }
+
+  .is-selection-mode .people-view-toggle {
+    display: none;
+  }
+
+  .people-toolbar.is-selection-mode {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-bottom: 10px;
+  }
+
+  .is-selection-mode .people-toolbar-leading,
+  .is-selection-mode .people-actions {
+    display: contents;
+  }
+
+  .is-selection-mode .people-title-group {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .is-selection-mode .people-mode-btn {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .people-bulk-actions {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 2px;
+    width: 100%;
+    padding: 4px;
+    border-width: 1px;
+    border-radius: 16px;
+    box-shadow: 0 6px 20px rgb(15 23 42 / 0.06);
+  }
+
+  .people-bulk-actions .people-bulk-btn {
+    min-width: 0;
+    min-height: 48px;
+    justify-content: center;
+    border-radius: 12px;
+    padding: 0 6px;
+    box-shadow: none;
+  }
+
+  .people-bulk-actions .people-bulk-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  @media (max-width: 359px) {
+    .people-mode-btn {
+      width: 40px;
+      justify-content: center;
+      padding: 0;
+    }
+
+    .people-mode-btn span {
+      display: none;
+    }
+  }
+}
 
 /* 流式布局核心 CSS */
 .flow-grid {

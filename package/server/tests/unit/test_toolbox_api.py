@@ -446,6 +446,47 @@ def test_start_time_from_filename_task_enqueues_when_no_pending():
     assert response.data is new_task
 
 
+def test_start_time_from_filename_task_rejects_unowned_album():
+    from fastapi import HTTPException
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    with pytest.raises(HTTPException) as exc:
+        toolbox_api.start_time_from_filename_task(
+            req=toolbox_api.TimeFromFilenameRequest(album_id=uuid4()),
+            db=db, current_user=_user(),
+        )
+    assert exc.value.status_code == 404
+
+
+def test_start_time_from_filename_task_enqueues_owned_album_with_json_id():
+    user = _user()
+    album_id = uuid4()
+    db = MagicMock()
+    manager = MagicMock()
+    with patch.object(toolbox_api.crud_task, "get_latest_task_by_type_and_owner",
+                      return_value=None), patch.object(
+        toolbox_api.TaskManager, "get_instance", return_value=manager,
+    ):
+        toolbox_api.start_time_from_filename_task(
+            req=toolbox_api.TimeFromFilenameRequest(album_id=album_id),
+            db=db, current_user=user,
+        )
+
+    assert manager.add_task.call_args.kwargs["payload"]["album_id"] == str(album_id)
+
+
+def test_start_time_from_filename_task_requires_one_target():
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        toolbox_api.start_time_from_filename_task(
+            req=toolbox_api.TimeFromFilenameRequest(),
+            db=MagicMock(), current_user=_user(),
+        )
+    assert exc.value.status_code == 422
+
+
 def test_get_latest_time_from_filename_task_returns_latest():
     user = _user()
     db = MagicMock()

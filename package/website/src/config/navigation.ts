@@ -29,6 +29,7 @@ export interface AppNavItem {
 export interface AppNavSection {
   label: string
   items: AppNavItem[]
+  collapsible?: boolean
 }
 
 export const desktopNavSections: AppNavSection[] = [
@@ -45,23 +46,20 @@ export const desktopNavSections: AppNavSection[] = [
   },
   {
     label: '探索',
+    collapsible: true,
     items: [
       { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums', activeMatch: 'path' },
-      { label: '智能分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
+      { label: '分类', href: '/album/classification', icon: Tags, navGroup: 'albums', activeMatch: 'path' },
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories', activeMatch: 'path' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums', activeMatch: 'path' },
-    ],
-  },
-  {
-    label: '旅程',
-    items: [
       { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums', activeMatch: 'path' },
-      { label: '车票', href: '/ticket', icon: Ticket, navGroup: 'tickets', activeMatch: 'exact' },
     ],
   },
   {
-    label: '管理',
+    label: '更多',
+    collapsible: true,
     items: [
+      { label: '车票', href: '/ticket', icon: Ticket, navGroup: 'tickets', activeMatch: 'exact' },
       { label: '工具箱', href: '/toolbox', icon: Wrench, navGroup: 'tools', activeMatch: 'path' },
       { label: '断舍离', href: '/swipe-filter', icon: Layers, navGroup: 'tools', activeMatch: 'path' },
     ],
@@ -70,23 +68,21 @@ export const desktopNavSections: AppNavSection[] = [
 
 export const mobileMoreSections: AppNavSection[] = [
   {
-    label: '回忆与行程',
+    label: '探索',
     items: [
+      { label: '人物', href: '/album/people', icon: Users, navGroup: 'albums' },
+      { label: '分类', href: '/album/classification', icon: Tags, navGroup: 'albums' },
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories' },
-      { label: '行程票据', href: '/ticket', icon: Ticket, navGroup: 'tickets' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums' },
+      { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums' },
     ],
   },
   {
-    label: '整理工具',
+    label: '旅程与管理',
     items: [
+      { label: '车票', href: '/ticket', icon: Ticket, navGroup: 'tickets' },
       { label: '工具箱', href: '/toolbox', icon: Wrench, navGroup: 'tools' },
       { label: '断舍离', href: '/swipe-filter', icon: Layers, navGroup: 'tools' },
-    ],
-  },
-  {
-    label: '应用',
-    items: [
       { label: '回收站', href: '/recycle-bin', icon: Trash2, navGroup: 'more' },
       { label: '设置', href: '/settings', icon: Settings, navGroup: 'more' },
     ],

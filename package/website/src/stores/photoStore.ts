@@ -176,6 +176,22 @@ export const photoStoreSetup = () => {
       if (!dataStale.value) staleTaskTypes.value = [];
   }
 
+  // Task completion only signals that the data may have changed. Check the
+  // visible context before rebuilding the gallery, since metadata tasks do
+  // not necessarily add or remove photos.
+  const hasCurrentContextPhotoCountChanged = async (): Promise<boolean> => {
+      if (currentContext.value.type === 'search' || !timelineStats.value) return false;
+      const contextKey = getContextKey();
+      const targetRevision = getRequiredRevision();
+      const previousCount = timelineStats.value.total_photos;
+      const albumId = currentContext.value.type === 'album' ? currentContext.value.id : undefined;
+      const stats = await albumService.getTimelineStats(albumId, cleanFilters());
+      if (getContextKey() !== contextKey) return false;
+      if (stats.total_photos !== previousCount) return true;
+      acknowledgeContextRevision(contextKey, targetRevision);
+      return false;
+  }
+
   // 筛选条件持久化到 trailsnap:selectedFilters，刷新/重开后恢复（P1 2.1.9 回归用例依赖）。
   {
       const FILTER_CACHE_KEY = 'selectedFilters'
@@ -221,14 +237,25 @@ export const photoStoreSetup = () => {
       return filters;
   }
 
-  const fetchTimelineStats = async (albumId?: string) => {
+  let timelineRequestId = 0;
+  const fetchTimelineStats = async (albumId?: string): Promise<boolean> => {
+    const requestId = ++timelineRequestId;
+    loading.value = true;
+    error.value = null;
     try {
       timelineStats.value = undefined
       const filters = cleanFilters();
       const stats = await albumService.getTimelineStats(albumId, filters)
+      if (requestId !== timelineRequestId) return false;
       timelineStats.value = stats
+      return true;
     } catch (e) {
+      if (requestId !== timelineRequestId) return false;
       console.error("获取时间轴统计失败", e)
+      error.value = '加载失败，请重试';
+      return false;
+    } finally {
+      if (requestId === timelineRequestId) loading.value = false;
     }
   }
 
@@ -377,6 +404,7 @@ export const photoStoreSetup = () => {
   const loadPhotos = async (reset: boolean = false) => {
       // Placeholder if needed, but loadPhotosByMonth is the main driver now
       if (reset) {
+          cancelAllPendingLoads();
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
@@ -384,13 +412,13 @@ export const photoStoreSetup = () => {
       }
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
-      await fetchTimelineStats();
-      acknowledgeContextRevision(contextKey, targetRevision);
+      if (await fetchTimelineStats()) acknowledgeContextRevision(contextKey, targetRevision);
       // Logic to load initial view could go here
   }
 
   const loadAlbumPhotos = async (albumId: string, reset: boolean = false) => {
       if (reset) {
+          cancelAllPendingLoads();
           images.value = [];
           photoOffsetMap.clear();
           loadedDates.clear();
@@ -398,8 +426,7 @@ export const photoStoreSetup = () => {
       currentContext.value = { type: 'album', id: albumId };
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
-      await fetchTimelineStats(albumId);
-      acknowledgeContextRevision(contextKey, targetRevision);
+      if (await fetchTimelineStats(albumId)) acknowledgeContextRevision(contextKey, targetRevision);
   }
 
   const loadFolderPhotos = async (folder: string, reset: boolean = false, direct: boolean = false) => {
@@ -430,16 +457,18 @@ export const photoStoreSetup = () => {
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
       const monthsToReload = [...loadedDates];
+      const stats = await albumService.getTimelineStats(
+          context.type === 'album' ? context.id : undefined,
+          cleanFilters()
+      );
+      if (getContextKey() !== contextKey) return;
       cancelAllPendingLoads();
       images.value = [];
       photoOffsetMap.clear();
       loadedDates.clear();
-
-      if (context.type === 'album' && context.id) {
-          await fetchTimelineStats(context.id);
-      } else {
-          await fetchTimelineStats();
-      }
+      // Update the timeline in the same Vue tick as the image cache. Keeping
+      // its virtual height prevents the browser from clamping scroll to top.
+      timelineStats.value = stats;
 
       if (currentContext.value.type !== context.type || currentContext.value.id !== context.id) return;
 
@@ -518,6 +547,8 @@ export const photoStoreSetup = () => {
       removeLocalPhotos(photoIds);
   }
   const resetAll = () => {
+      ++timelineRequestId;
+      cancelAllPendingLoads();
       timelineStats.value = { total_photos: 0, time_range: {start: null, end: null}, timeline: [] };
       images.value = [];
       photoOffsetMap.clear();
@@ -559,6 +590,7 @@ export const photoStoreSetup = () => {
     loadAlbumPhotos,
     loadFolderPhotos,
     refreshCurrentContext,
+    hasCurrentContextPhotoCountChanged,
     markDataStale,
     loadPhotosByMonth,
     removeLocalPhoto,
@@ -574,4 +606,6 @@ export const photoStoreSetup = () => {
 }
 
 export const usePhotoStore = defineStore('photo', photoStoreSetup)
+// “全部照片”页长期缓存；其他照片视图使用独立的 store。
+export const usePhotosPageStore = defineStore('photosPage', photoStoreSetup)
 

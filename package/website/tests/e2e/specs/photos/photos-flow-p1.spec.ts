@@ -179,6 +179,10 @@ test.describe('P1 - 照片流核心功能', () => {
     const videoOrPlayer = page.locator('video, [class*="xgplayer"], [class*="xgplayer-"]').first()
     await expect(videoOrPlayer).toBeVisible({ timeout: 10_000 })
 
+    // 视频控制栏需要独占底部交互区域，避免缩略图与移动端操作栏挡住进度和倍速。
+    await expect(page.getByTestId('photo-lightbox-thumbnails')).toHaveCount(0)
+    await expect(page.getByTestId('photo-lightbox-mobile-actions')).toHaveCount(0)
+
     // 清理筛选缓存，避免污染后续 2.1.6+ 用例（selectedFilters 会持久化到 localStorage）
     await page.evaluate(() => localStorage.removeItem('trailsnap:selectedFilters'))
   })

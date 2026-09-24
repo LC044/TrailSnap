@@ -34,6 +34,7 @@ export function useLocationMap(callbacks?: {
   const currentLng = ref(0)
   const currentLocationDetail = ref<LocationDetail | null>(null)
   const mapReady = ref(false)
+  const hasMarker = ref(false)
   const mapError = ref<string | null>(null)
   const theme = injectTheme()
 
@@ -71,7 +72,8 @@ export function useLocationMap(callbacks?: {
     container.innerHTML = ''
     activeContainerId = opts.containerId
 
-    const hasCoords = opts.initialLat && opts.initialLng
+    const hasCoords = opts.initialLat !== undefined && opts.initialLng !== undefined
+      && Number.isFinite(opts.initialLat) && Number.isFinite(opts.initialLng)
     const center = hasCoords
       ? new T.LngLat(opts.initialLng, opts.initialLat)
       : new T.LngLat(104.195, 35.861)
@@ -140,6 +142,7 @@ export function useLocationMap(callbacks?: {
     map.addOverLay(marker)
     currentLat.value = lat
     currentLng.value = lng
+    hasMarker.value = true
   }
 
   const enableMarkerDrag = () => {
@@ -292,15 +295,17 @@ export function useLocationMap(callbacks?: {
     autocompleteCallback = null
     activeContainerId = null
     mapReady.value = false
+    hasMarker.value = false
     mapError.value = null
     currentLat.value = 0
     currentLng.value = 0
+    currentLocationDetail.value = null
   }
 
   onUnmounted(() => destroy())
 
   return {
-    currentLat, currentLng, currentLocationDetail, mapReady, mapError,
+    currentLat, currentLng, currentLocationDetail, mapReady, hasMarker, mapError,
     initMap, setMarker, enableMarkerDrag, disableMarkerDrag,
     centerOnPosition, searchLocation, searchAndSelect, destroy,
     applyDarkMode

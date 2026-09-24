@@ -19,7 +19,8 @@ test.describe('Smoke - AgentChat 弹窗交互 @smoke', () => {
   test('点击侧边栏 AI 助手打开 AgentChat 弹窗 - 出现 agent-chat-overlay', async ({ page }) => {
     await page.goto('/');
 
-    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true });
+    // 按钮卡片含主标题 + 副标题（"搜照片、整理相册"），用子串匹配 accessible name
+    const agentEntry = page.getByRole('button', { name: 'AI 助手' });
     await expect(agentEntry).toBeVisible({ timeout: 10_000 });
     await agentEntry.click();
 
@@ -30,7 +31,7 @@ test.describe('Smoke - AgentChat 弹窗交互 @smoke', () => {
   test('AgentChat 弹窗可通过 Header 关闭按钮关闭 - overlay 消失', async ({ page }) => {
     await page.goto('/');
 
-    const agentEntry = page.getByRole('button', { name: 'AI 助手', exact: true });
+    const agentEntry = page.getByRole('button', { name: 'AI 助手' });
     await expect(agentEntry).toBeVisible({ timeout: 10_000 });
     await agentEntry.click();
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 });
@@ -44,6 +45,6 @@ test.describe('Smoke - AgentChat 弹窗交互 @smoke', () => {
     // overlay 通过 v-if 卸载，DOM 中应彻底消失
     await expect(page.locator('.agent-chat-overlay')).toHaveCount(0, { timeout: 5_000 });
     // 侧边栏入口仍可用，证明 modelValue 已回退
-    await expect(page.getByRole('button', { name: 'AI 助手', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'AI 助手' })).toBeVisible();
   });
 });

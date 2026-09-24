@@ -40,6 +40,24 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     })
   }
 
+  async function swipeVertical(target: Locator, fromY: number, toY: number) {
+    const box = await target.boundingBox()
+    expect(box).not.toBeNull()
+    const x = box!.x + box!.width / 2
+    await target.dispatchEvent('touchstart', {
+      touches: [{ identifier: 1, clientX: x, clientY: fromY }],
+      changedTouches: [{ identifier: 1, clientX: x, clientY: fromY }],
+    })
+    await target.dispatchEvent('touchmove', {
+      touches: [{ identifier: 1, clientX: x, clientY: toY }],
+      changedTouches: [{ identifier: 1, clientX: x, clientY: toY }],
+    })
+    await target.dispatchEvent('touchend', {
+      touches: [],
+      changedTouches: [{ identifier: 1, clientX: x, clientY: toY }],
+    })
+  }
+
   test('长按照片进入多选，日期选择框仅在选择模式显示', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 2, 20)
     if (!probe.ok) return
@@ -166,6 +184,29 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
       if (!thumbnailBox || !dockBox) return false
       return thumbnailBox.y + thumbnailBox.height <= dockBox.y + 1
     }).toBe(true)
+  })
+
+  test('上滑照片跟手展开详情，下拉详情恢复照片模式', async ({ page, request }, testInfo) => {
+    const probe = await requirePhotos(request, testInfo, 1, 20)
+    if (!probe.ok) return
+
+    const media = await openFirstPhoto(page)
+    const initialTransform = await media.evaluate(element => getComputedStyle(element).transform)
+
+    await swipeVertical(media, 700, 280)
+
+    const details = page.getByTestId('photo-metadata-panel')
+    await expect(details).toBeVisible()
+    await expect(page.getByTestId('photo-lightbox-mobile-actions')).toBeHidden()
+    await expect.poll(() => media.evaluate(element => getComputedStyle(element).transform))
+      .not.toBe(initialTransform)
+
+    await swipeVertical(details, 380, 720)
+
+    await expect(details).toBeHidden()
+    await expect(page.getByTestId('photo-lightbox-mobile-actions')).toBeVisible()
+    await expect.poll(() => media.evaluate(element => getComputedStyle(element).transform))
+      .toBe(initialTransform)
   })
 
   test('右上角更多按钮弹出功能面板并可展开单项处理任务', async ({ page, request }, testInfo) => {

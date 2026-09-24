@@ -379,6 +379,7 @@ public class GalleryBackupPlugin extends Plugin {
 
         Intent contentIntent = new Intent(getContext(), MainActivity.class);
         contentIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        contentIntent.putExtra(EXTRA_NOTIFICATION_ACTION, "open");
         PendingIntent contentPendingIntent = PendingIntent.getActivity(
             getContext(), 4700, contentIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
@@ -433,7 +434,7 @@ public class GalleryBackupPlugin extends Plugin {
     }
 
     public void handleNotificationAction(String action) {
-        if (!"pause".equals(action) && !"resume".equals(action)) return;
+        if (!"pause".equals(action) && !"resume".equals(action) && !"open".equals(action)) return;
         getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putString(PREF_PENDING_ACTION, action).apply();
         JSObject data = new JSObject();

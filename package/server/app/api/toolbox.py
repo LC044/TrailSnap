@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
@@ -11,6 +11,7 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.dependencies import get_db, BaseResponse
 from app.db.models.photo import Photo
+from app.db.models.album import Album
 from app.db.models.task import TaskType, TaskStatus, Task
 from app.service.task_manager import TaskManager
 from app.crud import task as crud_task
@@ -54,7 +55,8 @@ class RenameRequest(BaseModel):
     template: Optional[str] = 'IMG_{date}_{time}'
 
 class TimeFromFilenameRequest(BaseModel):
-    target_root_path: str
+    target_root_path: Optional[str] = None
+    album_id: Optional[UUID] = None
     only_missing_metadata: Optional[bool] = False
     make: Optional[str] = None
     model: Optional[str] = None
@@ -589,6 +591,12 @@ def start_time_from_filename_task(
     """
     触发从文件名修改时间任务。
     """
+    if bool(req.target_root_path) == bool(req.album_id):
+        raise HTTPException(status_code=422, detail="请选择一个目录或相册")
+    if req.album_id and not db.query(Album).filter(
+        Album.id == req.album_id, Album.owner_id == current_user.id
+    ).first():
+        raise HTTPException(status_code=404, detail="相册不存在")
     existing_task = crud_task.get_latest_task_by_type_and_owner(
         db, TaskType.BATCH_TIME_FROM_FILENAME, current_user.id,
         [TaskStatus.PENDING.value, TaskStatus.PROCESSING.value]
@@ -600,7 +608,7 @@ def start_time_from_filename_task(
     task = TaskManager.get_instance().add_task(
         db,
         type=TaskType.BATCH_TIME_FROM_FILENAME,
-        payload=req.model_dump(),
+        payload=req.model_dump(mode="json"),
         owner_id=current_user.id
     )
     return BaseResponse(data=task)

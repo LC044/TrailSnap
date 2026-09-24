@@ -3,12 +3,14 @@ import os
 import logging
 from datetime import datetime
 from typing import Dict, Any
+from uuid import UUID
 
 from PIL import Image
 from sqlalchemy.orm import Session, joinedload
 from app.db.models.task import Task, TaskType
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.photo import Photo
+from app.db.models.album import Album, AlbumPhoto
 from app.db.models.photo_metadata import PhotoMetadata
 from app.utils.exif import get_exif_data
 
@@ -36,16 +38,21 @@ class TimeFromFilenameStrategy(BaseTaskStrategy):
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         payload = task.payload or {}
         target_root_path = payload.get('target_root_path')
+        album_id = UUID(str(payload['album_id'])) if payload.get('album_id') else None
         only_missing_metadata = payload.get('only_missing_metadata', False)
         make = payload.get('make')
         model = payload.get('model')
         time_mode = payload.get('time_mode', 'auto')
         custom_time_str = payload.get('custom_time')
 
-        if not target_root_path:
-            raise ValueError("Missing target_root_path in task payload")
+        if not target_root_path and not album_id:
+            raise ValueError("Missing target_root_path or album_id in task payload")
 
-        abs_target = os.path.abspath(target_root_path)
+        abs_target = os.path.abspath(target_root_path) if target_root_path else None
+        if album_id and not db.query(Album).filter(
+            Album.id == album_id, Album.owner_id == task.owner_id
+        ).first():
+            raise ValueError("Album no longer exists or is not owned by task owner")
 
         # Parse custom_time if provided
         custom_time = None
@@ -56,19 +63,23 @@ class TimeFromFilenameStrategy(BaseTaskStrategy):
                 raise ValueError(f"Invalid custom_time format: {custom_time_str}. Expected YYYY-MM-DD HH:mm:ss")
 
         # Get photos with metadata eagerly loaded to avoid N+1 queries
-        photos = (
+        photos_query = (
             db.query(Photo)
             .outerjoin(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)
             .options(joinedload(Photo.metadata_info))
             .filter(Photo.owner_id == task.owner_id, Photo.is_deleted.is_(False))
-            .all()
         )
+        if album_id:
+            photos_query = photos_query.join(AlbumPhoto, AlbumPhoto.photo_id == Photo.id).filter(
+                AlbumPhoto.album_id == album_id
+            )
+        photos = photos_query.all()
 
         target_photos = []
         for p in photos:
             if p.file_path and os.path.exists(p.file_path):
                 try:
-                    if os.path.abspath(p.file_path).startswith(abs_target):
+                    if album_id or os.path.commonpath((abs_target, os.path.abspath(p.file_path))) == abs_target:
                         if only_missing_metadata:
                             if self._has_missing_metadata(p):
                                 target_photos.append(p)

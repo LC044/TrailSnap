@@ -524,8 +524,8 @@ test.describe.serial('P0 - 人物相册', () => {
     const dialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
     await expect(dialog).toBeVisible({ timeout: 5_000 })
 
-    // 点"更换封面"展开候选照片网格（候选来自 /identities/{id}/photos）
-    const changeCoverBtn = dialog.getByRole('button', { name: '更换封面' })
+    // 点"选择照片"展开候选照片网格（候选来自 /identities/{id}/photos）
+    const changeCoverBtn = dialog.getByRole('button', { name: '选择照片' })
     await expect(changeCoverBtn).toBeVisible({ timeout: 5_000 })
     await changeCoverBtn.click()
 
@@ -540,12 +540,15 @@ test.describe.serial('P0 - 人物相册', () => {
       return
     }
 
-    // 选一张非当前封面的照片（data-photo-id 标记了每张候选）
+    // 选一张非当前封面的照片（data-photo-id 标记了每张候选；仅选中，不发请求）
     const currentPhotoId = probe.identity.cover_photo?.photo_id
     const target = currentPhotoId
       ? coverGrid.locator(`button:not([data-photo-id="${currentPhotoId}"])`).first()
       : candidates.first()
 
+    await target.click()
+
+    // 确认更换流程：点"使用此照片"才触发 PUT /cover
     const coverReq = page.waitForResponse(
       (res) =>
         res.url().includes(`/api/faces/identities/${probe.identity.id}/cover`) &&
@@ -553,12 +556,12 @@ test.describe.serial('P0 - 人物相册', () => {
         res.status() === 200,
       { timeout: 15_000 },
     )
-    await target.click()
+    await dialog.getByRole('button', { name: '使用此照片' }).click()
     await coverReq
 
-    // 选完收起网格，头像图保持可见
+    // 确认后收起网格，头像图保持可见
     await expect(coverGrid).toBeHidden({ timeout: 10_000 })
-    await expect(dialog.locator('img[alt="人物封面"]')).toBeVisible()
+    await expect(dialog.locator('img[alt="当前人物封面"]')).toBeVisible()
 
     // 后端确认封面已换
     const after = await listIdentities(request, authToken)

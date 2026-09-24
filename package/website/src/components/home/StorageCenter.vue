@@ -54,29 +54,26 @@
             <span class="text-xs font-medium text-amber-600 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400 px-3 py-1 rounded-full">可回收预估</span>
           </div>
           
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-            <div 
+          <div class="flex-1 divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 dark:divide-gray-700 dark:border-gray-700 sm:grid sm:grid-cols-2 sm:gap-3 sm:divide-y-0 sm:overflow-visible sm:border-0">
+            <button
               v-for="(item, key) in recoverableItems" 
               :key="key"
-              class="group relative p-4 sm:p-5 rounded-2xl border border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/30 hover:bg-white dark:hover:bg-gray-750 hover:shadow-md hover:border-primary-200 dark:hover:border-primary-800/50 transition-all cursor-pointer overflow-hidden flex flex-col justify-between"
+              type="button"
+              class="group grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto_auto] items-center gap-3 bg-gray-50/50 px-3 py-3 text-left transition-colors hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:bg-gray-800/30 dark:hover:bg-primary-900/20 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:rounded-xl sm:border sm:border-gray-100 sm:p-4 dark:sm:border-gray-700"
               @click="handleRecoverableClick(key)"
             >
-              <div class="absolute right-0 top-0 h-full w-1.5 bg-transparent group-hover:bg-primary-500 transition-colors"></div>
-              <div class="flex justify-between items-start mb-4">
-                <div class="w-12 h-12 rounded-xl bg-white dark:bg-gray-700 shadow-sm flex items-center justify-center text-primary-500 group-hover:scale-110 group-hover:text-primary-600 transition-all">
-                  <component :is="item.icon" class="w-6 h-6" />
-                </div>
-                <div class="text-right">
-                  <p class="text-2xl font-bold text-gray-800 dark:text-gray-100 tracking-tight">{{ formatSize(item.size) }}</p>
-                </div>
+              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-primary-500 shadow-sm transition-transform group-hover:scale-105 dark:bg-gray-700 sm:h-11 sm:w-11">
+                <component :is="item.icon" class="h-5 w-5" />
               </div>
-              <div>
-                <h4 class="font-bold text-gray-800 dark:text-gray-200 text-base">{{ item.label }}</h4>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
-                  <i class="mgc_file_line"></i> {{ item.count }} 个文件可处理
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200 sm:text-base">{{ item.label }}</h4>
+                <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+                  {{ item.count.toLocaleString() }} 个文件
                 </p>
               </div>
-            </div>
+              <p class="whitespace-nowrap text-sm font-bold tracking-tight text-gray-800 dark:text-gray-100 sm:text-base">{{ formatSize(item.size) }}</p>
+              <ChevronRight class="h-4 w-4 text-gray-300 dark:text-gray-600 sm:hidden" aria-hidden="true" />
+            </button>
           </div>
         </div>
       </div>
@@ -243,7 +240,7 @@
 import { ref, onMounted, nextTick, shallowRef, computed, reactive, type Component } from 'vue';
 import { useRouter } from 'vue-router';
 import { echarts } from '@/utils/echarts';
-import { Copy, Image as ImageIcon, Smartphone, Video } from 'lucide-vue-next';
+import { ChevronRight, Copy, Image as ImageIcon, Smartphone, Video } from 'lucide-vue-next';
 import { storageApi, type StorageOverview, type LargeFile } from '@/api/storage';
 import { tasksApi } from '@/api/tasks';
 import { ElMessage, ElMessageBox } from 'element-plus';

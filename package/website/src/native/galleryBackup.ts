@@ -54,8 +54,8 @@ interface GalleryBackupNativePlugin {
     currentFile: string
   }): Promise<void>
   cancelBackupNotification(): Promise<void>
-  consumeNotificationAction(): Promise<{ action: 'pause' | 'resume' | '' }>
-  addListener(eventName: 'notificationAction', listener: (event: { action: 'pause' | 'resume' }) => void): Promise<PluginListenerHandle>
+  consumeNotificationAction(): Promise<{ action: 'pause' | 'resume' | 'open' | '' }>
+  addListener(eventName: 'notificationAction', listener: (event: { action: 'pause' | 'resume' | 'open' }) => void): Promise<PluginListenerHandle>
 }
 
 export const galleryBackupNative = registerPlugin<GalleryBackupNativePlugin>('GalleryBackup')

@@ -1,19 +1,12 @@
 <template>
   <div class="container mx-auto">
     <!-- Navbar -->
-    <div class="sticky top-0 z-20 backdrop-blur-md border-b border-gray-100 dark:border-gray-800 h-14 flex items-center justify-between px-4 transition-opacity duration-300">
-      <h1 class="text-lg font-bold text-gray-800 dark:text-white">相册概览</h1>
-      <div class="flex items-center space-x-4">
-        <button class="rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$router.push('/recycle-bin')" title="回收站">
-          <i class="mgc_delete_2_line text-2xl"></i>
-        </button>
-        <button class="relative rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="showStorageDialog = true" title="存储中心">
+    <div class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-4 backdrop-blur-md transition-colors dark:border-gray-800 dark:bg-gray-900/90">
+      <h1 class="text-lg font-bold text-gray-800 dark:text-white">首页</h1>
+      <div class="hidden items-center md:flex">
+        <button class="relative rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300 dark:hover:bg-gray-800" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
           <i class="mgc_hard_drive_line text-2xl"></i>
-          <!-- Badge can be controlled by storage usage state if we fetch it -->
           <span v-if="showStorageBadge" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
-        </button>
-        <button class="rounded-lg p-1 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-colors md:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$router.push('/settings')" title="设置">
-          <i class="mgc_settings_4_line text-2xl"></i>
         </button>
       </div>
     </div>
@@ -68,15 +61,21 @@
           </div>
         </div>
       </div>
-      <OverviewCards :data="dashboardData.card" @show-storage="showStorageDialog = true" />
-      
-      <div class="mx-4 my-3 bg-white dark:bg-neutral-900 rounded-xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
-        <div class="flex flex-col lg:flex-row gap-6">
-          <div class="w-full lg:w-64 flex-shrink-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100 dark:border-gray-800">
-             <TimeChart :data="dashboardData.time" />
-          </div>
-          <div class="flex-1 overflow-hidden lg:border-r border-gray-100 dark:border-gray-800 lg:pr-6">
-             <HeatmapSection />
+      <div class="space-y-3">
+        <OverviewCards
+          :data="dashboardData.card"
+          :content="dashboardData.content"
+          @show-storage="showStorageDialog = true"
+        />
+
+        <div class="mx-4 bg-white dark:bg-neutral-900 rounded-xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
+          <div class="flex flex-col lg:flex-row gap-6">
+            <div class="w-full lg:w-64 flex-shrink-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100 dark:border-gray-800">
+              <TimeChart :data="dashboardData.time" />
+            </div>
+            <div class="flex-1 overflow-hidden lg:border-r border-gray-100 dark:border-gray-800 lg:pr-6">
+              <HeatmapSection />
+            </div>
           </div>
         </div>
       </div>
@@ -90,30 +89,15 @@
       <p>加载失败，请下拉刷新</p>
     </div>
 
-    <!-- Storage Center Dialog -->
-    <el-dialog
+    <ResponsiveDialog
       v-model="showStorageDialog"
-      width="92%"
-      top="4vh"
-      :show-close="false"
-      class="storage-dialog"
-      destroy-on-close
+      title="存储空间管理"
+      max-width="75rem"
+      mobile-mode="fullscreen"
+      mobile-back
     >
-      <template #header="{ close }">
-        <div class="flex justify-between items-center px-2">
-          <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <i class="mgc_hard_drive_line text-primary-500"></i>
-            存储空间管理
-          </h2>
-          <button @click="close" class="w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors group">
-            <i class="mgc_close_line text-xl md:text-2xl text-gray-500 dark:text-gray-400 group-hover:text-gray-800 dark:group-hover:text-white transition-colors"></i>
-          </button>
-        </div>
-      </template>
-      <div class="h-[80vh] overflow-y-auto scrollbar-hide px-4 md:px-6 bg-gray-50/50 dark:bg-gray-900/50">
-        <StorageCenter />
-      </div>
-    </el-dialog>
+      <StorageCenter />
+    </ResponsiveDialog>
   </div>
 </template>
 
@@ -135,6 +119,7 @@ import TimeChart from '@/components/home/TimeChart.vue';
 import OnThisDay from '@/components/OnThisDay.vue';
 import MemoryDiscovery from '@/components/home/MemoryDiscovery.vue';
 import StorageCenter from '@/components/home/StorageCenter.vue';
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue';
 
 const loading = ref(false);
 const dashboardData = ref<DashboardResponse | null>(null);
@@ -169,23 +154,3 @@ onActivated(() => {
   fetchData(true);
 });
 </script>
-
-<style scoped>
-:deep(.storage-dialog) {
-  border-radius: 24px;
-  overflow: hidden;
-  max-width: 1200px;
-}
-:deep(.storage-dialog .el-dialog__header) {
-  margin-right: 0;
-  padding: 24px 24px 16px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-:deep(.storage-dialog .el-dialog__body) {
-  padding: 0;
-}
-</style>
-
-<style scoped>
-/* Any additional global overrides */
-</style>

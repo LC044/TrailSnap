@@ -4,6 +4,7 @@ import { Preferences } from '@capacitor/preferences'
 import { albumService } from '@/api/album'
 import { getServerUrl } from '@/config/server'
 import { useUserStore } from '@/stores/user'
+import router from '@/router'
 import { galleryBackupNative, supportsGalleryBackup, type GalleryAsset, type GalleryCursor } from '@/native/galleryBackup'
 import {
   adaptTransferTuning,
@@ -87,14 +88,17 @@ const lastError = ref('')
 const lastRunAt = ref<number | null>(null)
 const queueItems = ref<BackupQueueItem[]>([])
 const overallProgress = computed(() => {
+  if (status.value === 'idle') return 100
   if (!totalItems.value) return running.value ? 0 : 100
-  return Math.min(100, Math.round(((processedItems.value + activeItemProgress.value) / totalItems.value) * 100))
+  const progress = Math.round(((processedItems.value + activeItemProgress.value) / totalItems.value) * 100)
+  return running.value ? Math.min(99, progress) : Math.min(100, progress)
 })
 
 let initializedKey = ''
 let notificationListenerReady = false
 let notificationShown = false
 let lastNotificationAt = 0
+let notificationUpdate: Promise<void> = Promise.resolve()
 let resumeWaiters: Array<() => void> = []
 let speedSamples: Array<{ at: number; bytes: number }> = []
 let transferTuning: TransferTuning | null = null
@@ -112,10 +116,12 @@ async function readJson<T>(key: string, fallback: T): Promise<T> {
   }
 }
 
-async function applyNotificationAction(action: 'pause' | 'resume' | '') {
+async function applyNotificationAction(action: 'pause' | 'resume' | 'open' | '') {
   if (!action) return
   await galleryBackupNative.consumeNotificationAction().catch(() => ({ action: '' as const }))
-  if (action === 'pause') pauseBackup()
+  if (action === 'open') {
+    await router.push({ path: '/settings', hash: '#mobile-backup' })
+  } else if (action === 'pause') pauseBackup()
   else resumeBackup()
 }
 
@@ -198,14 +204,16 @@ async function syncNotification(force = false, state?: 'running' | 'paused' | 'c
   if (!force && now - lastNotificationAt < 500) return
   lastNotificationAt = now
   notificationShown = true
-  await galleryBackupNative.updateBackupNotification({
+  const payload = {
     state: state || (pauseRequested.value ? 'paused' : 'running'),
     processed: processedItems.value,
     total: totalItems.value,
     percent: overallProgress.value,
     speed: formatSpeed(speedBytesPerSecond.value),
     currentFile: currentFile.value,
-  }).catch(() => undefined)
+  } as const
+  notificationUpdate = notificationUpdate.then(() => galleryBackupNative.updateBackupNotification(payload)).catch(() => undefined)
+  await notificationUpdate
 }
 
 async function waitIfPaused() {
@@ -624,6 +632,9 @@ async function runBackup(options: { manual?: boolean } = {}) {
         }
         totalBytes.value += [...companionBytes.values()].reduce((sum, size) => sum + Math.max(0, size), 0)
       }
+      // Late live-photo companions and media added during this run can exceed
+      // the initial MediaStore count. Keep the denominator aligned with work.
+      totalItems.value = Math.max(totalItems.value, processedItems.value + freshAssets.length)
       const operations = new Map<string, BackupOperation>()
       for (const asset of freshAssets) {
         const pair = livePhotoPair(asset)
@@ -792,8 +803,9 @@ async function runBackup(options: { manual?: boolean } = {}) {
     await Preferences.set({ key: storageKey('last_run'), value: String(lastRunAt.value) })
     status.value = 'idle'
     speedBytesPerSecond.value = 0
-    if (notificationShown) await syncNotification(true, 'completed')
-    else await galleryBackupNative.cancelBackupNotification().catch(() => undefined)
+    await notificationUpdate
+    await galleryBackupNative.cancelBackupNotification().catch(() => undefined)
+    notificationShown = false
   } catch (error) {
     lastError.value = error instanceof Error ? error.message : String(error)
     status.value = 'error'

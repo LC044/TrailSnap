@@ -164,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { useOverlayStack } from '@/composables/useOverlayStack'
@@ -409,10 +409,6 @@ onMounted(() => {
     photoStore.resetAll()
     albumStore.fetchAlbums()
     photoStore.loadAlbumPhotos(albumId, true)
-})
-
-onUnmounted(() => {
-    photoStore.resetAll()
 })
 
 </script>

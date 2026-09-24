@@ -45,7 +45,7 @@ export const toolboxApi = {
     return data.data
   },
 
-  async createTimeFromFilenameTask(payload: { target_root_path: string }) {
+  async createTimeFromFilenameTask(payload: { target_root_path?: string; album_id?: string; only_missing_metadata?: boolean; time_mode?: string; custom_time?: string; make?: string; model?: string }) {
     const data = await request.post<TaskResponse>('/api/toolbox/time-from-filename/tasks', payload)
     return data.data
   },
