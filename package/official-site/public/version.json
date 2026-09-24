@@ -168,5 +168,10 @@
         "version": "0.15.0",
         "update_info": "- 新增 3D 足迹地图：三维地球展示去过的城市与旅行连线，支持旅程回放与年份巡游<br>- 需求平台支持管理员修改需求状态、Agent 交付工作流与 AI 流式分析<br>- 需求平台支持导入 cc-switch 备份统计 Token 用量与成本<br>- 修复手机 App 天地图瓦片裂图的问题<br>- 修复手机 App 连接新服务器失败的问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.15.0"
+    },
+    {
+        "version": "0.16.0",
+        "update_info": "- 新增记忆片段：自动从照片发现候选记忆，确认为有封面、有故事、有时间线的真实经历<br>- 新增地点时光对照：同一地点跨年份照片拖动对比今昔，一键生成对比作品<br>- 人物相册新增合影组合视图，支持自定义人物封面<br>- 批量修时间工具支持按相册处理<br>- 全站视觉升级：桌面侧边栏焕新，移动端液体玻璃底栏",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.16.0"
     }
 ]

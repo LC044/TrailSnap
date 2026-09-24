@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-24 (0.16.0)
+
+### New
+
+- Memory fragments: TrailSnap now discovers candidate memories from the people, places, and ticket clues in your photos and surfaces them on the home page. Confirm them to turn scattered photos into real events with a cover, a story timeline, and linked photos, people, places, and tickets. You can also create memories manually from albums, photo selections, or the AI assistant — and AI only writes a memory after you explicitly confirm it.
+- Location time compare: drag a split line to compare photos of the same place across years. Enter from a location's detail page or the "This place back then" action in the photo viewer. Includes a year track, photo swapping, and one-tap then-and-now artwork generation that hides exact coordinates by default when sharing.
+- Group albums in the people page: photos are aggregated by co-occurring people — "me and dad" or "the three of us" each become their own album with the latest group photo as the cover.
+- Custom people covers: pick a person's cover from their own photos; the edit dialog is now full-screen on mobile.
+- The batch time-fix toolbox tool now accepts an album as the processing scope, touching only that album's photos in place.
+
+### Improvements
+
+- Major visual refresh: desktop sidebar with rounded buttons and primary-gradient active states, a floating liquid-glass bottom bar with a directional bubble indicator on mobile, a unified design-token system, and navigation regrouped into Photos / Explore / More with collapsible, remembered groups.
+- Smart album overview now shows real content covers (face crops for people, representative photos for places and categories) and loads faster with new database indexes.
+- Mobile album actions: long-press a custom album for an edit/delete menu, and a new "more" menu on album detail pages (edit / change cover / delete).
+- Mobile location album filters moved to a bottom sheet, the map info drawer now snaps to three positions, and the 3D footprint globe renders at higher resolution on mobile.
+- AI assistant chat improvements: reworked model picker, loading animation during generation, and repeated regeneration disabled while busy.
+- Photo page data management hardening: state split between global and home views to stop cross-page pollution, scroll position preserved across refreshes, and timeline stats protected against request races.
+- Task management: SSE push on status changes, per-category status filters, and an explicit all-clear prompt; mobile backup notifications now deep-link to backup settings.
+- Rebuilt login and registration pages with a unified visual style.
+
+### Bug Fixes
+
+- Fixed the photo gallery showing an "empty album" placeholder on load errors.
+- Fixed duplicate/similar photo cleanup pages failing to scroll in some browsers.
+- Restored auto-focus on the name input when opening the person edit dialog.
+- Fixed overlapping elements interfering with video preview interactions.
+
+### Upgrade Notes
+
+- You can upgrade directly from 0.15.x; database migrations run automatically. Updating the Server and clients together is recommended.
+
 ## 2026-09-18 (0.15.0)
 
 ### New
