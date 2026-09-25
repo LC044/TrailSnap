@@ -3,17 +3,16 @@
     :title="album?.title || '相册详情'"
     :subtitle="`${album?.count || 0} 个项目`"
     :loading="photoStore.loading"
+    :allow-upload="false"
     :photos="images"
     :timeline-stats="photoStore.timelineStats"
     :timeline-items="timelineItems"
-    :allow-upload="isUserAlbum"
     :delete-label="isUserAlbum ? '从相册中移除' : '删除'"
     :pending-remove-ids="pendingRemoveIds"
     :has-more="photoStore.hasMore"
     :update-available="photoStore.dataStale"
     update-message="相册内容已更新，点击刷新"
     @back="goBack"
-    @upload="triggerUpload"
     @load-more="loadMorePhotos"
     @retry="photoStore.loadAlbumPhotos(albumId, true)"
     @confirm-delete="handleConfirmDelete"
@@ -75,21 +74,6 @@
               @select="handleAddPhotosToAlbum"
               @cancel="showPhotoSelector = false"
             />
-          </div>
-        </div>
-      </Transition>
-
-      <!-- Upload Progress Toast -->
-      <Transition name="slide-up">
-        <div v-if="showUploadModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-            <div class="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-              <h3 class="font-bold text-lg text-gray-900 dark:text-white">上传照片</h3>
-              <button @click="showUploadModal = false" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><X class="w-5 h-5" /></button>
-            </div>
-            <div class="p-6 overflow-y-auto">
-              <MultiFileUpload :albumId="albumId" @upload-complete="handleUploadComplete" />
-            </div>
           </div>
         </div>
       </Transition>
@@ -173,9 +157,8 @@ import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { albumService } from '@/api/album'
-import { X, Folder, Loader2, Check, ImagePlus, MoreVertical, Edit2, Trash2, Image as ImageIcon } from 'lucide-vue-next'
+import { Folder, Loader2, Check, ImagePlus, MoreVertical, Edit2, Trash2, Image as ImageIcon } from 'lucide-vue-next'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
-import MultiFileUpload from '@/components/MultiFileUpload.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'
 import { format } from 'date-fns'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -195,9 +178,7 @@ const images = computed(() => photoStore.images)
 const isUserAlbum = computed(() => album.value?.type === 'user' || album.value?.type === 'custom')
 
 // UI State
-const showUploadModal = ref(false)
 const showPhotoSelector = ref(false)
-useOverlayStack(showUploadModal, () => { showUploadModal.value = false })
 useOverlayStack(showPhotoSelector, () => { showPhotoSelector.value = false })
 const pendingRemoveIds = ref(new Set<string>())
 
@@ -218,15 +199,6 @@ const editDialogWidth = computed(() => width.value < 640 ? 'calc(100% - 24px)' :
 const timelineItems = computed(() => photoStore.timelineStats?.timeline || [])
 
 // Actions
-const triggerUpload = () => {
-    showUploadModal.value = true
-}
-
-const handleUploadComplete = () => {
-    showUploadModal.value = false
-    photoStore.loadAlbumPhotos(albumId, true)
-}
-
 const handleAddPhotosToAlbum = async (ids: string[]) => {
     if (ids.length === 0) return
     try {

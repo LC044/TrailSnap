@@ -132,10 +132,6 @@ export const useTicketStore = defineStore('ticket', () => {
 
       lastFetchTime.value = now;
       
-      // 获取车票后，自动触发统计数据更新
-      // 不等待其完成，异步执行
-      fetchAndCacheStats();
-      
     } catch (err: any) {
       error.value = err.response?.data?.detail || '获取车票失败，请重试';
       console.error('Fetch tickets error:', err);

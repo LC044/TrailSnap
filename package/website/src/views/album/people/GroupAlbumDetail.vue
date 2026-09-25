@@ -10,7 +10,13 @@
     :allow-upload="false"
     :show-back="true"
     @back="goBack"
-  />
+  >
+    <template #header-extension>
+      <div v-if="identityIds.length === 2" class="pointer-events-auto mx-4 mb-3">
+        <button class="rounded-lg bg-primary-50 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300" @click="router.push({ path: `/album/people/${identityIds[0]}/timeline`, query: { with: identityIds[1] } })">查看共同时间线</button>
+      </div>
+    </template>
+  </UnifiedPhotoPage>
 </template>
 
 <script setup lang="ts">

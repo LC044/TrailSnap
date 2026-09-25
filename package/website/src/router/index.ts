@@ -14,6 +14,7 @@ const StatisticsPage = () => import('@/views/ticket/StatisticsPage.vue');
 const Settings = () => import('@/views/Settings.vue');
 const PeopleList = () => import('@/views/album/people/PeopleList.vue');
 const PeopleDetail = () => import('@/views/album/people/PeopleDetail.vue');
+const PersonTimeline = () => import('@/views/album/people/PersonTimeline.vue');
 const GroupAlbumDetail = () => import('@/views/album/people/GroupAlbumDetail.vue');
 const LocationList = () => import('@/views/album/location/LocationList.vue');
 const LocationDetail = () => import('@/views/album/location/LocationDetail.vue');
@@ -57,6 +58,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/album/:id', name: 'AlbumDetail', component: AlbumDetail, meta: { title: '相册详情', navGroup: 'albums' } },
       { path: '/album/people', name: 'PeopleList', component: PeopleList, meta: { title: '人物相册', navGroup: 'albums', desktopAICapability: 'face' } },
       { path: '/album/people/group/:ids', name: 'GroupAlbumDetail', component: GroupAlbumDetail, meta: { title: '合影相册', navGroup: 'albums', desktopAICapability: 'face' } },
+      { path: '/album/people/:id/timeline', name: 'PersonTimeline', component: PersonTimeline, meta: { title: '人物时光线', navGroup: 'albums', desktopAICapability: 'face' } },
       { path: '/album/people/:id', name: 'PeopleDetail', component: PeopleDetail, meta: { title: '人物详情', navGroup: 'albums', desktopAICapability: 'face' } },
       { path: '/album/location', name: 'LocationList', component: LocationList, meta: { title: '位置相册', navGroup: 'albums' } },
       { path: '/album/location/:name', name: 'LocationDetail', component: LocationDetail, meta: { title: '位置详情', navGroup: 'albums' } },

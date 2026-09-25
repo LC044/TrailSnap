@@ -10,7 +10,7 @@ from typing import Iterable
 from uuid import UUID
 
 from PIL import Image, ImageDraw, ImageOps
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, exists, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.db.models import AIArtifact
@@ -20,6 +20,7 @@ from app.db.models.image_description import ImageDescription
 from app.db.models.ocr import OCR
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
+from app.db.models.person_timeline import PersonTimelineHide
 from app.db.models.trip import FlightTicket, TrainTicket
 from app.service.storage import get_available_photo_path, get_preview_path
 
@@ -743,6 +744,13 @@ def build_person_timeline(
         Photo.is_deleted.is_(False),
         Face.face_identity_id == person_id,
         Face.is_deleted.is_(False),
+        ~exists().where(and_(
+            PersonTimelineHide.owner_id == owner_id,
+            PersonTimelineHide.person_a_id == person_id,
+            PersonTimelineHide.person_b_id == UUID(int=0),
+            PersonTimelineHide.start_at <= Photo.photo_time,
+            PersonTimelineHide.end_at > Photo.photo_time,
+        )),
     ]
     if start:
         filters.append(Photo.photo_time >= start)
@@ -957,6 +965,24 @@ def create_artifact(db: Session, user_id: str, session_id: str | None, artifact_
     owned_ids = {str(row[0]) for row in owned}
     if set(normalized_photo_ids) - owned_ids:
         raise ValueError("包含不存在或无权访问的照片")
+    if artifact_type == "person_story" and normalized_photo_ids:
+        hidden_ids = db.query(Photo.id).join(
+            PersonTimelineHide,
+            and_(PersonTimelineHide.owner_id == Photo.owner_id,
+                 PersonTimelineHide.start_at <= Photo.photo_time,
+                 PersonTimelineHide.end_at > Photo.photo_time),
+        ).filter(
+            Photo.owner_id == user_id, Photo.id.in_(normalized_photo_ids),
+            exists().where(and_(Face.photo_id == Photo.id,
+                                Face.face_identity_id == PersonTimelineHide.person_a_id,
+                                Face.is_deleted.is_(False))),
+            or_(PersonTimelineHide.person_b_id == UUID(int=0),
+                exists().where(and_(Face.photo_id == Photo.id,
+                                    Face.face_identity_id == PersonTimelineHide.person_b_id,
+                                    Face.is_deleted.is_(False)))),
+        ).distinct().all()
+        if hidden_ids:
+            raise ValueError("人物故事包含已隐藏的片段，请重新选择照片")
     requested_ticket_ids = list(dict.fromkeys(ticket_ids))[:50]
     owned_ticket_ids = {
         str(row[0]) for row in db.query(TrainTicket.id).filter(TrainTicket.owner_id == user_id, TrainTicket.id.in_(requested_ticket_ids)).all()

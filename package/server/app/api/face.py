@@ -8,7 +8,7 @@ from app.schemas import face as schemas
 from app.crud import face as crud_face
 from app.core.config_manager import config_manager
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from uuid import UUID
 
 from app.schemas.face import FaceIdentitySchema, RemovePhotosRequest, SetCoverRequest, MergeRequest, FaceIdentityCreate, AddPhotosToIdentityRequest
@@ -16,6 +16,10 @@ from app.schemas.face import FaceIdentitySchema, RemovePhotosRequest, SetCoverRe
 from app.db.models.photo import Photo
 from app.db.models.face import Face
 from app.db.models.user import User
+from app.db.models.person_timeline import PersonTimelineHide
+from app.service import person_timeline
+from datetime import datetime, timedelta
+import uuid
 
 import numpy as np
 import logging
@@ -23,6 +27,77 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class TimelineHideInput(BaseModel):
+    start_at: datetime
+    end_at: datetime
+
+
+def _timeline_scope(db: Session, user: User, id: UUID, with_id: Optional[UUID]):
+    return person_timeline.scope(db, user.id, id, with_id)
+
+
+@router.get("/identities/{id}/timeline", response_model=BaseResponse[dict])
+def get_person_timeline(id: UUID, with_id: Optional[UUID] = None,
+                        db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    first, second, people = _timeline_scope(db, current_user, id, with_id)
+    result = person_timeline.timeline(db, current_user.id, first, second, people)
+    result["people"].sort(key=lambda person: person["id"] != str(id))
+    return BaseResponse.success(result)
+
+
+@router.get("/identities/{id}/timeline/years/{year}", response_model=BaseResponse[dict])
+def get_person_timeline_year(id: UUID, year: int, with_id: Optional[UUID] = None,
+                             skip: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=200),
+                             db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    first, second, _ = _timeline_scope(db, current_user, id, with_id)
+    return BaseResponse.success(person_timeline.year_detail(db, current_user.id, first, second, year, skip, limit))
+
+
+@router.get("/identities/{id}/timeline/hidden", response_model=BaseResponse[list[dict]])
+def list_person_timeline_hides(id: UUID, with_id: Optional[UUID] = None,
+                               db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    first, second, _ = _timeline_scope(db, current_user, id, with_id)
+    rows = db.query(PersonTimelineHide).filter_by(owner_id=current_user.id, person_a_id=first, person_b_id=second).order_by(PersonTimelineHide.start_at.desc()).all()
+    photos = person_timeline.photo_query(db, current_user.id, first, second, include_hidden=True)
+    return BaseResponse.success([{
+        "id": str(row.id), "start_at": row.start_at.isoformat(), "end_at": row.end_at.isoformat(),
+        "photo_count": photos.filter(Photo.photo_time >= row.start_at, Photo.photo_time < row.end_at).count(),
+    } for row in rows])
+
+
+@router.post("/identities/{id}/timeline/hidden", response_model=BaseResponse[dict])
+def hide_person_timeline_segment(id: UUID, payload: TimelineHideInput, with_id: Optional[UUID] = None,
+                                 dry_run: bool = False, db: Session = Depends(get_db),
+                                 current_user: User = Depends(deps.get_current_user)):
+    first, second, _ = _timeline_scope(db, current_user, id, with_id)
+    if payload.start_at >= payload.end_at or payload.end_at - payload.start_at > timedelta(days=31):
+        raise HTTPException(status_code=400, detail="时间范围无效或超过 31 天")
+    affected = person_timeline.photo_query(db, current_user.id, first, second, include_hidden=True).filter(
+        Photo.photo_time >= payload.start_at, Photo.photo_time < payload.end_at)
+    count = affected.count()
+    if dry_run:
+        return BaseResponse.success({"photo_count": count,
+                                     "photos": [person_timeline.photo_dict(row) for row in affected.order_by(Photo.photo_time).limit(20).all()]})
+    row = PersonTimelineHide(id=uuid.uuid4(), owner_id=current_user.id, person_a_id=first,
+                             person_b_id=second, start_at=payload.start_at, end_at=payload.end_at)
+    db.add(row)
+    db.commit()
+    return BaseResponse.success({"id": str(row.id), "photo_count": count})
+
+
+@router.delete("/identities/{id}/timeline/hidden/{rule_id}", response_model=BaseResponse[dict])
+def restore_person_timeline_segment(id: UUID, rule_id: UUID, with_id: Optional[UUID] = None,
+                                    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    first, second, _ = _timeline_scope(db, current_user, id, with_id)
+    row = db.query(PersonTimelineHide).filter_by(id=rule_id, owner_id=current_user.id,
+        person_a_id=first, person_b_id=second).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="隐藏片段不存在")
+    db.delete(row)
+    db.commit()
+    return BaseResponse.success({"restored": True})
 
 from app.service.face_cluster import FaceClusterService, FaceRescanConflictError, FaceRescanError
 

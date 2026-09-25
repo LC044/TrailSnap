@@ -47,7 +47,9 @@
           <TicketList
             :loading="loading"
             :error="error"
-            :filtered-tickets="filteredTickets"
+            :filtered-tickets="visibleTickets"
+            :total-count="filteredTickets.length"
+            :has-more="visibleTickets.length < filteredTickets.length"
             :view-mode="viewMode"
             :selected-tickets="selectedTickets"
             :current-theme="currentTheme"
@@ -58,6 +60,7 @@
             @view-paper="openPaperTicketModal"
             @view-photo="openPhotoLightbox"
             @open-ticket-modal="openTicketModal()"
+            @load-more="visibleTicketLimit += 100"
           />
         </section>
       </div>
@@ -264,7 +267,7 @@ const handleFileImport = async (event: Event) => {
 // 监听车票变化，自动更新统计数据
 watch(tickets, () => {
   ticketStore.fetchAndCacheStats();
-}, { deep: true });
+});
 
 // 排序选项配置
 const sortOptions: { label: string; value: SortType }[] = [
@@ -357,6 +360,10 @@ const filteredTickets = computed<TicketFrontend[]>(() => {
     }
   });
 });
+
+// Keep the initial DOM small so large collections do not block navigation.
+const visibleTicketLimit = ref(100);
+const visibleTickets = computed(() => filteredTickets.value.slice(0, visibleTicketLimit.value));
 
 const uniqueCities = computed(() => {
   const cities = new Set<string>();

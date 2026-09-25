@@ -6,6 +6,7 @@ from sqlalchemy import func, desc
 import sqlalchemy as sa
 
 from app.db.models.face import Face, FaceIdentity
+from app.db.models.person_timeline import PersonTimelineHide
 from app.db.models.photo import Photo
 from app.schemas import face as schemas
 from app.core.config_manager import config_manager
@@ -152,6 +153,11 @@ def delete_identity(db: Session, identity_id: UUID, owner_id: Optional[UUID] = N
     if not identity:
         return False
 
+    for model in (PersonTimelineHide,):
+        db.query(model).filter(
+            model.owner_id == identity.owner_id,
+            sa.or_(model.person_a_id == identity_id, model.person_b_id == identity_id),
+        ).delete(synchronize_session=False)
     db.delete(identity)
     db.commit()
     return True
@@ -521,6 +527,19 @@ def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner
         for face in faces:
             face.face_identity_id = target_id
             db.add(face)
+
+        # Keep user-authored story exclusions when a source identity is merged.
+        for rule in db.query(PersonTimelineHide).filter(
+            PersonTimelineHide.owner_id == target.owner_id,
+            sa.or_(PersonTimelineHide.person_a_id == source_id, PersonTimelineHide.person_b_id == source_id),
+        ).all():
+            members = [target_id if value == source_id else value for value in (rule.person_a_id, rule.person_b_id)]
+            if members[0] == members[1]:
+                db.delete(rule)
+            elif members[1] == UUID(int=0):
+                rule.person_a_id, rule.person_b_id = members
+            else:
+                rule.person_a_id, rule.person_b_id = sorted(members, key=str)
 
         # Soft delete source
         source.is_deleted = True

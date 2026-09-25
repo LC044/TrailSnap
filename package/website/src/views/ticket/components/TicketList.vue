@@ -37,6 +37,11 @@
           @view-photo="$emit('view-photo', $event)"
         />
       </div>
+      <div v-if="hasMore" class="flex justify-center py-6">
+        <button class="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-primary-600 dark:hover:text-primary-400" @click="$emit('load-more')">
+          加载更多（已显示 {{ filteredTickets.length }} / {{ totalCount }}）
+        </button>
+      </div>
     </div>
 
     <div v-else class="flex flex-col items-center justify-center py-20 text-center">
@@ -60,6 +65,8 @@ defineProps<{
   loading: boolean;
   error: string | null;
   filteredTickets: TicketFrontend[];
+  totalCount: number;
+  hasMore: boolean;
   viewMode: string;
   selectedTickets: (number | string)[];
   currentTheme: ThemeColor;
@@ -73,5 +80,6 @@ defineEmits<{
   (e: 'view-paper', ticket: TicketFrontend): void;
   (e: 'view-photo', ticket: TicketFrontend): void;
   (e: 'open-ticket-modal'): void;
+  (e: 'load-more'): void;
 }>();
 </script>

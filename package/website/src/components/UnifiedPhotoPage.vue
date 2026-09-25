@@ -1,11 +1,12 @@
 <template>
-  <div class="unified-photo-page container mx-auto py-1 px-4 min-h-screen">
+  <div class="unified-photo-page relative container mx-auto py-1 px-4 min-h-screen">
+    <slot name="hero"></slot>
     <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
-    <div v-if="layoutMode !== 'folder'" class="sticky md:top-0 z-30 pointer-events-none">
-      <div class="flex md:flex-row items-center justify-between gap-4 mx-auto px-4 py-3 pointer-events-auto">
+    <div v-if="layoutMode !== 'folder'" class="z-30 pointer-events-none" :class="headerOverlay ? 'absolute inset-x-0 top-0' : 'sticky md:top-0'">
+      <div class="flex items-center justify-between gap-2 sm:gap-4 mx-auto px-2 sm:px-4 py-3 pointer-events-auto">
         <!-- Back & Title -->
         <slot name="header-left">
-          <div v-if="showBack || title || $slots['title-extra']" class="flex items-center gap-3 w-full max-w-full md:w-auto px-3 py-1.5">
+          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 max-w-full md:w-auto px-1 sm:px-3 py-1.5">
             <button v-if="showBack" @click="$emit('back')" class="rounded-full p-1.5 backdrop-blur-md transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:bg-gray-900">
               <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </button>
@@ -23,7 +24,7 @@
         </slot>
 
         <!-- Controls -->
-        <div class="flex items-center gap-2 ml-auto animate-in fade-in slide-in-from-right-4 duration-300">
+        <div class="flex shrink-0 items-center gap-1 sm:gap-2 ml-auto animate-in fade-in slide-in-from-right-4 duration-300">
           
           <slot name="header-controls-start"></slot>
 
@@ -124,15 +125,15 @@
           <slot name="header-actions"></slot>
 
           <!-- Upload Button -->
-          <template v-if="allowUpload">
-            <button 
-              @click="$emit('upload')"
-              class="bg-primary-500 hover:bg-primary-600 text-white p-2 sm:px-4 sm:py-2 rounded-full shadow-lg shadow-primary-500/30 flex items-center gap-2 text-sm font-medium transition-all active:scale-95"
-            >
-              <UploadCloud class="w-5 h-5" />
-              <span class="hidden sm:inline">上传</span>
-            </button>
-          </template>
+          <button
+            v-if="allowUpload"
+            @click="$emit('upload')"
+            class="bg-primary-500 hover:bg-primary-600 text-white p-2 sm:px-4 sm:py-2 rounded-full shadow-lg shadow-primary-500/30 flex items-center gap-2 text-sm font-medium transition-all active:scale-95"
+            title="上传"
+          >
+            <UploadCloud class="w-5 h-5" />
+            <span class="hidden sm:inline">上传</span>
+          </button>
 
         </div>
       </div>
@@ -335,6 +336,7 @@ const props = withDefaults(defineProps<{
   pendingRemoveIds?: Set<string>
   store?: any
   showBack?: boolean
+  headerOverlay?: boolean
   allowFolderView?: boolean
   updateAvailable?: boolean
   updateMessage?: string
@@ -353,6 +355,7 @@ const props = withDefaults(defineProps<{
   confirmRemove: false,
   pendingRemoveIds: () => new Set(),
   showBack: true,
+  headerOverlay: false,
   allowFolderView: false,
   updateAvailable: false,
   updateMessage: '发现照片更新，点击刷新'
