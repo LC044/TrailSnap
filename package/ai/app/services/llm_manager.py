@@ -5,11 +5,51 @@ import sys
 import os
 import subprocess
 import shutil
+from pathlib import Path
 import httpx
 from app.config import settings
 from app.services.unified_model_manager import ai_model_manager
 
 logger = logging.getLogger(__name__)
+
+
+def _available_cpu_count(cgroup_root: Path = Path("/sys/fs/cgroup")) -> int:
+    """Count CPUs available to this container, including a cgroup quota."""
+    counts = [max(1, os.cpu_count() or 1)]
+    if hasattr(os, "sched_getaffinity"):
+        try:
+            counts.append(max(1, len(os.sched_getaffinity(0))))
+        except OSError:
+            pass
+
+    quota_files = (
+        (cgroup_root / "cpu.max", None),
+        (cgroup_root / "cpu/cpu.cfs_quota_us", cgroup_root / "cpu/cpu.cfs_period_us"),
+    )
+    for quota_path, period_path in quota_files:
+        try:
+            if period_path is None:
+                quota, period = quota_path.read_text().split()[:2]
+            else:
+                quota, period = quota_path.read_text().strip(), period_path.read_text().strip()
+            if quota != "max" and int(quota) > 0 and int(period) > 0:
+                counts.append(max(1, int(quota) // int(period)))
+                break
+        except (OSError, ValueError, IndexError):
+            continue
+    return max(1, min(counts))
+
+
+def _llama_thread_count() -> int:
+    """Use at least three threads when available, scaling with larger CPUs."""
+    override = os.getenv("LLAMA_ARG_THREADS", "").strip()
+    if override:
+        threads = int(override)
+        if threads < 1:
+            raise ValueError("LLAMA_ARG_THREADS must be a positive integer")
+        return threads
+    available = _available_cpu_count()
+    return min(available, max(3, (available + 1) // 2))
 
 
 class LLMModelNotReadyError(ValueError):
@@ -74,7 +114,9 @@ class LLMProcessManager:
             logger.info(f"Starting llama.cpp server subprocess on port {self.port} with model {resolved_path}...")
             # Docker resolves llama-server from PATH; desktop passes the path
             # detected or installed by the Tauri shell.
-            command = [self._llama_server_executable(), "-m", resolved_path]
+            threads = _llama_thread_count()
+            command = [self._llama_server_executable(), "-m", resolved_path, "--threads", str(threads)]
+            logger.info("llama.cpp CPU threads: %s (available: %s)", threads, _available_cpu_count())
             if mmproj:
                 command.extend(["--mmproj", mmproj])
             command.extend([

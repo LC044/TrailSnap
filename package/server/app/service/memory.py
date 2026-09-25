@@ -29,6 +29,7 @@ from app.db.models.memory import (
 from app.db.models.photo import ImageType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.trip import FlightTicket, TrainTicket
+from app.db.models.user import User
 from app.schemas.memory import MemoryCreate, MemorySplitRequest, MemoryUpdate
 
 
@@ -439,6 +440,9 @@ def discover(
     min_photos: int = 5,
     max_candidates: int = 50,
 ) -> list[Memory]:
+    # Serialize discovery for one owner. The fingerprint check and insert must
+    # share this lock; otherwise concurrent requests can both pass the check.
+    db.query(User.id).filter(User.id == owner_id).with_for_update().first()
     _retire_legacy_candidates(db, owner_id)
     query = (
         db.query(Photo, PhotoMetadata)

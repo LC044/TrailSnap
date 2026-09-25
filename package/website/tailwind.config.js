@@ -1,8 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 const { addDynamicIconSelectors } = require('@iconify/tailwind')
 
+// 无 /N 透明度修饰符时，Tailwind 传入 'var(--tw-bg-opacity, 1)' 这类占位串，
+// Number() 后为 NaN；此时直接用档位固有的强度值，有修饰符时才与数值相乘。
+// 曾因把占位串当数值运算输出 rgba(var(--theme-rgb), NaN)，整条声明被浏览器
+// 丢弃，@apply 该色的元素（如 AI 助手用户气泡）背景完全透明。
 const themedColor = (strength = 1) => ({ opacityValue }) => {
-  const opacity = opacityValue === undefined ? strength : Number(opacityValue) * strength
+  const modifier = Number(opacityValue)
+  const opacity = Number.isFinite(modifier) ? modifier * strength : strength
   return `rgba(var(--theme-rgb), ${opacity})`
 }
 

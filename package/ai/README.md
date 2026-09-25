@@ -135,6 +135,7 @@ AI 服务的推理后端按 **CUDA > OpenVINO > CoreML（仅 Apple Silicon）> C
 | `LLM_MODEL_PATH` | `""` | 本地 LLM 模型路径（留空则首次启动自动下载 MiniCPM-V-4_6-Q4_K_M） |
 | `LLM_SERVER_PORT` | `8002` | llama.cpp 子进程监听端口 |
 | `LLM_IDLE_TIMEOUT` | `300` | LLM 子进程空闲多久后退出（秒） |
+| `LLAMA_ARG_THREADS` | 自动 | llama.cpp 计算线程数；自动取可用 CPU 的约一半，有至少 3 个可用 CPU 时不少于 3，并考虑容器 CPU 配额和亲和性；设置正整数可覆盖 |
 | `IDLE_TIMEOUT` | `600` | 服务整体空闲多久后 `sys.exit(0)` 释放内存（秒，仅非 Windows 生效） |
 | `CHECK_INTERVAL` | `60` | 空闲检查轮询间隔（秒） |
 | `OPENVINO_DEVICE` | 自动探测 | 强制指定 OpenVINO 设备 |

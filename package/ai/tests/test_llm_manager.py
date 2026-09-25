@@ -94,6 +94,31 @@ def test_get_resolved_model_path_uses_explicit_env(monkeypatch, tmp_path):
     assert resolved.endswith("explicit.gguf")
 
 
+@pytest.mark.parametrize("available, expected", [(1, 1), (2, 2), (5, 3), (8, 4), (28, 14)])
+def test_llama_threads_scale_with_available_cpus(monkeypatch, available, expected):
+    from app.services import llm_manager as lm
+
+    monkeypatch.delenv("LLAMA_ARG_THREADS", raising=False)
+    monkeypatch.setattr(lm, "_available_cpu_count", lambda: available)
+    assert lm._llama_thread_count() == expected
+
+
+def test_llama_threads_allow_explicit_override(monkeypatch):
+    from app.services import llm_manager as lm
+
+    monkeypatch.setenv("LLAMA_ARG_THREADS", "6")
+    assert lm._llama_thread_count() == 6
+
+
+def test_llama_cpu_count_respects_container_quota(monkeypatch, tmp_path):
+    from app.services import llm_manager as lm
+
+    monkeypatch.setattr(lm.os, "cpu_count", lambda: 28)
+    monkeypatch.setattr(lm.os, "sched_getaffinity", lambda _pid: set(range(28)), raising=False)
+    (tmp_path / "cpu.max").write_text("500000 100000")
+    assert lm._available_cpu_count(tmp_path) == 5
+
+
 def test_get_resolved_model_path_finds_gguf_in_model_dir(monkeypatch, tmp_path):
     """Without an explicit path, ``_get_resolved_model_path`` composes a path inside ``MODEL_PATH``."""
     from app.services import llm_manager as lm
