@@ -149,7 +149,7 @@
       @select="handlePersonSelected"
     />
     <!-- Virtual Scroll Container -->
-    <div :style="{ height: totalHeight + 'px', position: 'relative' }">
+    <div ref="virtualContentEl" :style="{ height: totalHeight + 'px', position: 'relative' }">
       <div
         v-for="block in monthBlocks"
         :key="block.key"
@@ -666,12 +666,23 @@ onUnmounted(() => {
 
 // --- Virtual Scroll & Layout ---
 const galleryEl = ref<HTMLElement | null>(null)
+const virtualContentEl = ref<HTMLElement | null>(null)
 const containerWidth = ref(1000)
 
 const scrollContainerRef = ref<HTMLElement | Window | null>(null)
 const { y: containerScrollTop } = useScroll(scrollContainerRef)
 
 const scrollTop = computed(() => containerScrollTop.value)
+
+// Month block coordinates are relative to the virtual content, which may sit
+// below a page header or an album introduction inside the scroll container.
+const virtualContentTop = () => {
+  const container = scrollContainerRef.value
+  const viewportTop = container && container !== window
+    ? (container as HTMLElement).getBoundingClientRect().top
+    : 0
+  return scrollTop.value + (virtualContentEl.value?.getBoundingClientRect().top ?? 0) - viewportTop
+}
 
 const viewportHeight = ref(window.innerHeight)
 
@@ -1073,7 +1084,8 @@ const getRange = (key: string) => {
 
 const updateVisibleBlocks = () => {
     const buffer = 1000 // Month Buffer
-    const visibleMonths = getVisibleBlocks(scrollTop.value, viewportHeight.value, buffer)
+    const relativeScrollTop = scrollTop.value - virtualContentTop()
+    const visibleMonths = getVisibleBlocks(relativeScrollTop, viewportHeight.value, buffer)
     visibleBlocksList.value = visibleMonths
 
     const newMonthKeys = new Set<string>()
@@ -1086,8 +1098,8 @@ const updateVisibleBlocks = () => {
     const rowUnit = rHeight + rGap
     const rowBuffer = rowUnit * 2 
     
-    const startY = scrollTop.value - rowBuffer
-    const endY = scrollTop.value + viewportHeight.value + rowBuffer
+    const startY = relativeScrollTop - rowBuffer
+    const endY = relativeScrollTop + viewportHeight.value + rowBuffer
 
     visibleMonths.forEach(m => {
         newMonthKeys.add(m.key)
@@ -1142,7 +1154,7 @@ const handleScroll = useDebounceFn(() => {
     updateVisibleBlocks()
     // Update active date based on first visible block
     if (visibleBlocksList.value.length > 0) {
-        const center = scrollTop.value + viewportHeight.value / 2
+        const center = scrollTop.value - virtualContentTop() + viewportHeight.value / 2
         const current = visibleBlocksList.value.find(b => {
              return (b.top <= center) && (b.top + b.height >= center)
         }) || visibleBlocksList.value[0]
@@ -1293,7 +1305,7 @@ const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
         const block = monthBlocks.value.find(b => b.year === year && b.month === month)
         if (block) {
             const day = dayMatch ? block.days.find(item => item.day === parseInt(dayMatch[3])) : null
-            const targetTop = block.top + (day?.top ?? 0) + 60
+            const targetTop = Math.max(0, virtualContentTop() + block.top + (day?.top ?? 0) - 80)
             const container = scrollContainerRef.value
             if (container && container !== window) {
                 (container as HTMLElement).scrollTo({ top: targetTop, behavior })

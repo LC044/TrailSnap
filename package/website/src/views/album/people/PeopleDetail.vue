@@ -38,22 +38,22 @@
     </template>
     <template #intro>
       <section class="mb-5 bg-white px-1 pb-4 pt-5 dark:bg-gray-900 sm:rounded-2xl sm:px-6 sm:py-6">
-        <div class="flex items-center gap-4">
-          <PersonAvatar v-if="identity" :person="identity" class="!w-16 shrink-0 sm:!w-20" />
-          <div v-else class="h-16 w-16 shrink-0 animate-pulse rounded-full bg-gray-200 dark:bg-gray-800"></div>
+        <div class="flex items-center gap-2 sm:gap-4">
+          <PersonAvatar v-if="identity" :person="identity" class="!w-12 shrink-0 sm:!w-20" />
+          <div v-else class="h-12 w-12 shrink-0 animate-pulse rounded-full bg-gray-200 dark:bg-gray-800 sm:h-20 sm:w-20"></div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <h1 class="truncate text-xl font-bold text-gray-900 dark:text-gray-100 sm:text-2xl">{{ identity?.identity_name || '人物相册' }}</h1>
-              <button type="button" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" title="编辑人物信息" aria-label="编辑人物信息" :disabled="!identity" @click="editDialogVisible = true">
+              <h1 class="truncate text-lg font-bold text-gray-900 dark:text-gray-100 sm:text-2xl">{{ identity?.identity_name || '人物相册' }}</h1>
+              <button type="button" class="shrink-0 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" title="编辑人物信息" aria-label="编辑人物信息" :disabled="!identity" @click="editDialogVisible = true">
                 <PencilIcon class="h-4 w-4" />
               </button>
             </div>
             <p class="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">{{ identity?.tags?.length ? `${identity.tags.join(' · ')} ｜ ` : '' }}{{ images.length }} 张照片</p>
           </div>
-        </div>
-        <div class="mt-5 inline-flex rounded-xl bg-gray-100 p-1 dark:bg-gray-800" role="tablist" aria-label="人物详情视图">
-          <button role="tab" :aria-selected="true" class="rounded-lg bg-white px-5 py-2 text-sm font-semibold text-primary-600 shadow-sm dark:bg-gray-700 dark:text-primary-300">照片</button>
-          <button role="tab" :aria-selected="false" class="rounded-lg px-5 py-2 text-sm text-gray-600 dark:text-gray-300" @click="router.push(`/album/people/${identityId}/timeline`)">时光线</button>
+          <div class="ml-auto inline-flex shrink-0 rounded-xl bg-gray-100 p-1 dark:bg-gray-800" role="tablist" aria-label="人物详情视图">
+            <button role="tab" :aria-selected="true" class="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-primary-600 shadow-sm dark:bg-gray-700 dark:text-primary-300 sm:px-5">照片</button>
+            <button role="tab" :aria-selected="false" class="rounded-lg px-3 py-2 text-sm text-gray-600 dark:text-gray-300 sm:px-5" @click="router.push(`/album/people/${identityId}/timeline`)">时光线</button>
+          </div>
         </div>
       </section>
     </template>
