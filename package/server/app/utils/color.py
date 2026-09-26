@@ -8,6 +8,61 @@ import colorsys
 from PIL import Image
 
 
+CURRENT_COLOR_ANALYSIS_VERSION = 2
+
+
+def _classify_tones(brightness: float, saturation: float, warm_ratio: float, cool_ratio: float) -> str:
+    """Describe visible color properties, without inferring a person's mood."""
+    if saturation > 0.5 and brightness > 0.55:
+        return 'vibrant'
+    if saturation < 0.16 and brightness < 0.35:
+        return 'muted'
+    if warm_ratio > 0.35:
+        return 'warm'
+    if cool_ratio > 0.35:
+        return 'cool'
+    return 'neutral'
+
+
+def saved_palette_metrics(colors: list) -> tuple[float, float, float, float, float] | None:
+    """Return normalized brightness, saturation, warm/cool shares and ratio sum."""
+    weighted = []
+    for color in colors or []:
+        if not isinstance(color, dict):
+            continue
+        hex_color = color.get('hex')
+        ratio = color.get('ratio')
+        if not isinstance(hex_color, str) or len(hex_color) != 7 or not isinstance(ratio, (int, float)) or ratio <= 0:
+            continue
+        try:
+            r, g, b = _hex_to_rgb(hex_color)
+        except ValueError:
+            continue
+        weighted.append((colorsys.rgb_to_hsv(r / 255, g / 255, b / 255), ratio))
+    total = sum(ratio for _, ratio in weighted)
+    if not total:
+        return None
+    brightness_sum = sum(hsv[2] * ratio for hsv, ratio in weighted)
+    saturation_sum = sum(hsv[1] * ratio for hsv, ratio in weighted)
+    brightness = brightness_sum / total
+    saturation = saturation_sum / total
+    warm = sum(ratio for (h, s, _), ratio in weighted if (h < 0.12 or h > 0.88) and s > 0.2) / total
+    cool = sum(ratio for (h, s, _), ratio in weighted if 0.45 < h < 0.75 and s > 0.2) / total
+    return brightness, saturation, warm, cool, total
+
+
+def classify_saved_palette(colors: list, saved_brightness: float | None = None, saved_saturation: float | None = None) -> str | None:
+    """Reclassify old records whose metrics used unnormalised top-five ratios."""
+    metrics = saved_palette_metrics(colors)
+    if not metrics:
+        return None
+    brightness, saturation, warm, cool, total = metrics
+    if saved_brightness is not None and saved_saturation is not None:
+        if total >= 0.8 or abs(saved_brightness - brightness * total) > 0.01 or abs(saved_saturation - saturation * total) > 0.01:
+            return None
+    return _classify_tones(brightness, saturation, warm, cool)
+
+
 def extract_color_info(img: Image.Image, max_size: int = 100) -> dict:
     """
     从图片中提取主色调、亮度、饱和度及情绪暗示。
@@ -62,39 +117,31 @@ def extract_color_info(img: Image.Image, max_size: int = 100) -> dict:
             'ratio': ratio,
         })
 
-    # --- 3. 计算加权亮度和饱和度 ---
+    # --- 3. 从所有颜色簇计算加权亮度和饱和度 ---
     brightness_sum = 0.0
     saturation_sum = 0.0
-    weighted_hue = 0.0
     warm_ratio = 0.0
+    cool_ratio = 0.0
 
-    for c in dominant_colors:
-        r, g, b = _hex_to_rgb(c['hex'])
+    for c in quantized.values():
+        r = c['sum_r'] / c['count']
+        g = c['sum_g'] / c['count']
+        b = c['sum_b'] / c['count']
         h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
-        brightness_sum += v * c['ratio']
-        saturation_sum += s * c['ratio']
-        weighted_hue += h * c['ratio']
+        ratio = c['count'] / n
+        brightness_sum += v * ratio
+        saturation_sum += s * ratio
         # 暖色：红/橙/黄 (h < 0.12 or h > 0.88) 且饱和度 > 0.2
         if (h < 0.12 or h > 0.88) and s > 0.2:
-            warm_ratio += c['ratio']
+            warm_ratio += ratio
+        if 0.45 < h < 0.75 and s > 0.2:
+            cool_ratio += ratio
 
     avg_brightness = round(brightness_sum, 3)
     avg_saturation = round(saturation_sum, 3)
 
     # --- 4. 情绪分类（纯基于色彩属性，不依赖场景分类）---
-    is_high_sat = avg_saturation > 0.5
-    is_bright = avg_brightness > 0.55
-
-    if is_high_sat and is_bright:
-        emotion_hint = 'vibrant'
-    elif not is_high_sat and not is_bright:
-        emotion_hint = 'muted'
-    elif warm_ratio > 0.5:
-        emotion_hint = 'warm'
-    elif 0.45 < weighted_hue < 0.75:
-        emotion_hint = 'cool'
-    else:
-        emotion_hint = 'neutral'
+    emotion_hint = _classify_tones(avg_brightness, avg_saturation, warm_ratio, cool_ratio)
 
     return {
         'dominant_colors': dominant_colors,

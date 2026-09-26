@@ -69,11 +69,11 @@
         />
 
         <div class="mx-4 bg-white dark:bg-neutral-900 rounded-xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
-          <div class="flex flex-col lg:flex-row gap-6">
-            <div class="w-full lg:w-64 flex-shrink-0 pt-4 lg:pt-0 border-t lg:border-t-0 border-gray-100 dark:border-gray-800">
+          <div class="flex flex-col xl:flex-row gap-6">
+            <div class="w-full xl:w-64 flex-shrink-0 pt-4 xl:pt-0 border-t xl:border-t-0 border-gray-100 dark:border-gray-800">
               <TimeChart :data="dashboardData.time" />
             </div>
-            <div class="flex-1 overflow-hidden lg:border-r border-gray-100 dark:border-gray-800 lg:pr-6">
+            <div class="flex-1 min-w-0 xl:border-r border-gray-100 dark:border-gray-800 xl:pr-6">
               <HeatmapSection />
             </div>
           </div>

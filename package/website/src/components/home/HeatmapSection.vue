@@ -17,6 +17,7 @@
           <span class="ec-legend-item"><span class="ec-legend-dot" style="background-color: var(--ec-muted)"></span>平淡</span>
           <span class="ec-legend-item"><span class="ec-legend-dot" style="background-color: var(--ec-empty)"></span>无</span>
         </div>
+        <span v-if="reanalysisRemaining > 0" class="ec-refresh-status">正在更新历史照片色彩，剩余 {{ reanalysisRemaining }} 张</span>
       </div>
       <el-select v-model="selectedYear" size="small" class="ec-select" @change="fetchData" placeholder="过去一年">
         <el-option label="过去一年" :value="undefined" />
@@ -25,11 +26,11 @@
     </div>
 
     <!-- 日历色块主体 -->
-    <div class="ec-grid-scroll" ref="scrollContainer">
-      <div class="ec-grid" :style="{ gridTemplateColumns: gridTemplateCols }">
-        <template v-for="(col, colIndex) in flatColumns" :key="colIndex">
-          <div class="ec-col" :style="{ width: col.width + 'px' }">
-            <template v-for="(day, rowIndex) in col.days" :key="`${colIndex}-${rowIndex}`">
+    <div class="ec-year-view">
+      <div class="ec-grid" :style="{ gridTemplateColumns: `repeat(${gridColumns.length}, minmax(0, 1fr))` }">
+        <template v-for="(col, colIndex) in gridColumns" :key="colIndex">
+          <div class="ec-col">
+            <template v-for="(day, rowIndex) in col" :key="`${colIndex}-${rowIndex}`">
               <el-tooltip v-if="day.valid" placement="top" effect="dark" :show-after="120" :offset="4">
                 <template #content>
                   <div class="ec-tip">
@@ -45,25 +46,51 @@
                 <div
                   class="ec-cell"
                   :class="{ 'ec-cell-empty': day.count === 0, 'ec-cell-photo': day.count > 0 }"
-                  :style="day.count > 0 ? getCellStyle(day) : {}"
+                  :style="day.count > 0 ? { ...getCellStyle(day), transform: `scale(${getCellScale(day.count)})` } : {}"
                   @click="day.count > 0 ? $router.push({ path: '/search', query: { q: day.date, type: 'date' } }) : undefined"
                 ></div>
               </el-tooltip>
               <div v-else class="ec-cell ec-cell-void"></div>
             </template>
             <!-- 月份标签 -->
-            <div v-if="col.monthLabel" class="ec-month-label">{{ col.monthLabel }}</div>
+            <div v-if="monthLabelMap[colIndex]" class="ec-month-label">{{ monthLabelMap[colIndex] }}</div>
           </div>
         </template>
+      </div>
+    </div>
+    <div class="ec-mobile-view">
+      <div class="ec-month-nav">
+        <button type="button" aria-label="上一个月" :disabled="mobileMonthIndex === 0" @click="changeMobileMonth(-1)">‹</button>
+        <select v-model.number="mobileMonthIndex" aria-label="选择月份" @change="mobileSelectedDate = null">
+          <option v-for="(month, index) in mobileMonths" :key="month" :value="index">{{ Number(month.slice(0, 4)) }}年{{ Number(month.slice(5, 7)) }}月</option>
+        </select>
+        <button type="button" aria-label="下一个月" :disabled="mobileMonthIndex >= mobileMonths.length - 1" @click="changeMobileMonth(1)">›</button>
+      </div>
+      <div class="ec-mobile-grid" role="grid" :aria-label="`${mobileMonthLabel}拍摄日历`">
+        <span v-for="weekday in weekdays" :key="weekday" class="ec-weekday">{{ weekday }}</span>
+        <template v-for="(day, index) in mobileMonthDays" :key="day?.date || `padding-${index}`">
+          <span v-if="!day" />
+          <button v-else type="button" class="ec-mobile-day" :class="{ 'ec-mobile-day-selected': mobileSelectedDate === day.date }"
+            :aria-label="`${day.displayDate}，${day.count}张照片`" :aria-pressed="mobileSelectedDate === day.date"
+            @click="mobileSelectedDate = day.date">
+            <span class="ec-mobile-day-number">{{ Number(day.date.slice(-2)) }}</span>
+            <span class="ec-mobile-dot" :class="{ 'ec-cell-empty': day.count === 0 }"
+              :style="day.count > 0 ? { ...getCellStyle(day), transform: `scale(${getCellScale(day.count)})` } : {}" />
+          </button>
+        </template>
+      </div>
+      <div v-if="mobileSelectedDay" class="ec-mobile-detail">
+        <span>{{ mobileSelectedDay.displayDate }} · {{ mobileSelectedDay.count }} 张照片<span v-if="mobileSelectedDay.count && mobileSelectedDay.emotionHint"> · {{ getEmotionLabel(mobileSelectedDay.emotionHint) }}</span></span>
+        <button v-if="mobileSelectedDay.count" type="button" @click="$router.push({ path: '/search', query: { q: mobileSelectedDay.date, type: 'date' } })">查看照片 ›</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { dashboardApi, type EmotionCalendarResponse } from '@/api/dashboard';
-import { format, subDays, startOfYear, endOfYear, eachDayOfInterval, getDay } from 'date-fns';
+import { format, subDays, startOfYear, endOfYear, startOfMonth, endOfMonth, eachDayOfInterval, getDay } from 'date-fns';
 import { ElMessage } from 'element-plus';
 
 interface GridDay {
@@ -78,22 +105,48 @@ interface GridDay {
   emotionHint: string | null;
 }
 
-interface FlatColumn {
-  days: GridDay[];
-  width: number;
-  monthLabel: string;
-  compressed: boolean;
-}
-
 const selectedYear = ref<number | undefined>(undefined);
 const totalPhotos = ref(0);
 const totalDays = ref(0);
 const availableYears = ref<number[]>([]);
-const scrollContainer = ref<HTMLElement | null>(null);
+const reanalysisRemaining = ref(0);
+let reanalysisTimer: ReturnType<typeof setTimeout> | null = null;
+let active = false;
 const vibrantRatio = ref(0);
 
 const gridColumns = ref<GridDay[][]>([]);
 const monthLabels = ref<{ text: string; index: number }[]>([]);
+const mobileMonths = ref<string[]>([]);
+const mobileMonthIndex = ref(0);
+const mobileSelectedDate = ref<string | null>(null);
+const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+
+const monthLabelMap = computed<Record<number, string>>(() =>
+  Object.fromEntries(monthLabels.value.map(label => [label.index, label.text]))
+);
+const calendarDayMap = computed<Record<string, GridDay>>(() =>
+  Object.fromEntries(gridColumns.value.flat().filter(day => day.valid).map(day => [day.date, day]))
+);
+const mobileMonthLabel = computed(() => {
+  const key = mobileMonths.value[mobileMonthIndex.value];
+  return key ? `${Number(key.slice(0, 4))}年${Number(key.slice(5, 7))}月` : '';
+});
+const mobileMonthDays = computed<(GridDay | null)[]>(() => {
+  const key = mobileMonths.value[mobileMonthIndex.value];
+  if (!key) return [];
+  const first = new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1);
+  return [
+    ...Array(getDay(first)).fill(null),
+    ...eachDayOfInterval({ start: startOfMonth(first), end: endOfMonth(first) }).map(date =>
+      calendarDayMap.value[format(date, 'yyyy-MM-dd')] || null
+    ),
+  ];
+});
+const mobileSelectedDay = computed(() => mobileSelectedDate.value ? calendarDayMap.value[mobileSelectedDate.value] : null);
+const changeMobileMonth = (direction: number) => {
+  mobileMonthIndex.value = Math.min(Math.max(mobileMonthIndex.value + direction, 0), mobileMonths.value.length - 1);
+  mobileSelectedDate.value = null;
+};
 
 const showVibrant = computed(() => vibrantRatio.value >= 0.01);
 
@@ -113,79 +166,8 @@ const getEmotionLabel = (hint: string | null): string => {
   return hint ? (map[hint] || hint) : '日常';
 };
 
-// 计算每列宽度：有照片的列按拍摄数量映射 14px-36px，无照片固定 12px
-const getColWidth = (days: GridDay[]): number => {
-  const hasPhoto = days.some(d => d.valid && d.count > 0);
-  if (!hasPhoto) return 12;
-  const maxCount = Math.max(...days.filter(d => d.valid).map(d => d.count), 0);
-  // 映射 1-50+ → 14px-36px
-  if (maxCount <= 0) return 12;
-  return Math.min(14 + Math.floor(maxCount * 0.44), 36);
-};
-
-// 检测连续无照片列，压缩宽度
-const isCompressedCol = (days: GridDay[]): boolean => {
-  const allEmpty = days.every(d => !d.valid || d.count === 0);
-  return allEmpty;
-};
-
-const flatColumns = computed<FlatColumn[]>(() => {
-  const monthMap: Record<number, string> = {};
-  monthLabels.value.forEach(l => { monthMap[l.index] = l.text; });
-
-  // 检测连续压缩区段
-  const compressedFlags = gridColumns.value.map(col => isCompressedCol(col));
-
-  // 连续30天以上无照片的区域压缩
-  let inCompressedRun = false;
-  let runStart = 0;
-  const compressed = compressedFlags.slice(); // copy
-
-  for (let i = 0; i < compressedFlags.length; i++) {
-    if (compressedFlags[i]) {
-      if (!inCompressedRun) {
-        inCompressedRun = true;
-        runStart = i;
-      }
-    } else {
-      if (inCompressedRun) {
-        const runLen = i - runStart;
-        // 连续4周以上无照片（约28天）压缩
-        if (runLen >= 4) {
-          // 保留首尾各1列，中间折叠为1列
-          for (let j = runStart + 1; j < i - 1; j++) {
-            compressed[j] = true; // 标记为需要压缩
-          }
-        }
-        inCompressedRun = false;
-      }
-    }
-  }
-  // 尾部处理
-  if (inCompressedRun) {
-    const runLen = compressedFlags.length - runStart;
-    if (runLen >= 4) {
-      for (let j = runStart + 1; j < compressedFlags.length - 1; j++) {
-        compressed[j] = true;
-      }
-    }
-  }
-
-  return gridColumns.value.map((col, idx) => {
-    const isCompressed = compressed[idx];
-    const width = isCompressed ? 6 : getColWidth(col);
-    return {
-      days: col,
-      width,
-      monthLabel: monthMap[idx] || '',
-      compressed: isCompressed,
-    };
-  });
-});
-
-const gridTemplateCols = computed(() => {
-  return flatColumns.value.map(c => c.width + 'px').join(' ');
-});
+const getCellScale = (count: number): number =>
+  Math.min(0.58 + 0.42 * Math.log1p(count) / Math.log1p(50), 1);
 
 const getCellStyle = (day: GridDay): Record<string, string> => {
   if (day.count === 0) return { backgroundColor: 'var(--ec-empty)' };
@@ -193,13 +175,12 @@ const getCellStyle = (day: GridDay): Record<string, string> => {
   const emotionKey = day.emotionHint || 'neutral';
   const bgColorVar = emotionVarMap[emotionKey] || emotionVarMap.neutral;
 
-  // 照片数量越多颜色越深（不透明度越高），映射 0.4-1.0
-  const opacity = Math.min(0.4 + day.count * 0.05, 1.0);
+  // 少量照片也保持足够对比度；数量增加时逐渐加深
+  const opacity = Math.min(0.65 + day.count * 0.03, 1.0);
 
   if (day.dominantColor) {
-    // 核心优化：将照片提取的主题色与情绪规范色进行混合（如 55%主题色 + 45%情绪色）
-    // 既保留了每天照片真实的色彩倾向，又能统一到整体色系中，解决单纯提取颜色导致画面"脏、乱"的问题
-    const mixedColor = `color-mix(in srgb, ${day.dominantColor} 55%, ${bgColorVar})`;
+    // 以代表照片的色彩为主，分类色只用于保持图例的识别性
+    const mixedColor = `color-mix(in srgb, ${day.dominantColor} 60%, ${bgColorVar})`;
     return { backgroundColor: `color-mix(in srgb, ${mixedColor} ${opacity * 100}%, transparent)` };
   }
 
@@ -271,15 +252,20 @@ const buildGrid = (calendarData: EmotionCalendarResponse['data']) => {
     }
   }
 
+  // 滚动年度可能从月底开始，短暂的首月标签会与下月重叠。
+  const firstMonth = days[0].getMonth();
+  if (days.filter(day => day.getMonth() === firstMonth && day.getFullYear() === days[0].getFullYear()).length < 14) {
+    labels.shift();
+  }
+
   gridColumns.value = columns;
   monthLabels.value = labels;
-
-  if (!selectedYear.value || selectedYear.value === today.getFullYear()) {
-    nextTick(() => {
-      if (scrollContainer.value) {
-        scrollContainer.value.scrollLeft = scrollContainer.value.scrollWidth;
-      }
-    });
+  const previousMonth = mobileMonths.value[mobileMonthIndex.value];
+  mobileMonths.value = [...new Set(days.map(day => format(day, 'yyyy-MM')))];
+  const previousIndex = mobileMonths.value.indexOf(previousMonth);
+  mobileMonthIndex.value = previousIndex >= 0 ? previousIndex : mobileMonths.value.length - 1;
+  if (mobileSelectedDate.value && !days.some(day => format(day, 'yyyy-MM-dd') === mobileSelectedDate.value)) {
+    mobileSelectedDate.value = null;
   }
 };
 
@@ -288,10 +274,15 @@ const fetchData = async () => {
     const res = await dashboardApi.getEmotionCalendar(selectedYear.value || undefined);
     totalPhotos.value = res.total_photos;
     totalDays.value = res.total_days;
+    reanalysisRemaining.value = res.reanalysis_remaining || 0;
     if (res.available_years) {
       availableYears.value = res.available_years;
     }
     buildGrid(res.data);
+    if (reanalysisTimer) clearTimeout(reanalysisTimer);
+    if (active && reanalysisRemaining.value > 0) {
+      reanalysisTimer = setTimeout(fetchData, 60_000);
+    }
   } catch (error) {
     console.error('Failed to fetch emotion calendar data:', error);
     ElMessage.error('加载拍摄情况失败');
@@ -299,7 +290,12 @@ const fetchData = async () => {
 };
 
 onMounted(() => {
+  active = true;
   fetchData();
+});
+onUnmounted(() => {
+  active = false;
+  if (reanalysisTimer) clearTimeout(reanalysisTimer);
 });
 </script>
 
@@ -334,9 +330,6 @@ html.dark .emotion-calendar {
   --ec-legend-text: #B0B4BB;
   --ec-month-color: #D0D2D6;
   --ec-hover-ring: #606773;
-}
-html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
-  background-color: #3A3F48;
 }
 </style>
 
@@ -388,6 +381,7 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .ec-legend-item {
   display: flex;
@@ -407,33 +401,23 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
   flex-shrink: 0;
 }
 
-/* ===== 日历网格滚动区 ===== */
-.ec-grid-scroll {
-  overflow-x: auto;
-  padding-bottom: 28px;
-}
-.ec-grid-scroll::-webkit-scrollbar {
-  height: 5px;
-}
-.ec-grid-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.ec-grid-scroll::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 4px;
-}
+/* ===== 全年概览：周等宽，始终铺满容器 ===== */
+.ec-year-view { padding-bottom: 28px; }
+.ec-mobile-view { display: none; }
 
 /* ===== 网格 ===== */
 .ec-grid {
-  display: flex;
+  display: grid;
   gap: 2px;
+  width: 100%;
 }
+.ec-refresh-status { font-size: 12px; color: var(--ec-stats-color); }
 .ec-col {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   position: relative;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 /* ===== 色块 ===== */
@@ -441,7 +425,7 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 50%;
-  transition: opacity 0.15s ease, box-shadow 0.15s ease;
+  transition: opacity 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 .ec-cell-empty {
   background-color: var(--ec-empty);
@@ -511,6 +495,25 @@ html.dark .ec-grid-scroll::-webkit-scrollbar-thumb {
   }
   .ec-header {
     margin-bottom: 18px;
+    flex-wrap: wrap;
   }
+}
+
+@media (max-width: 767px) {
+  .ec-year-view { display: none; }
+  .ec-mobile-view { display: block; }
+  .ec-month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: var(--ec-title-color); }
+  .ec-month-nav button { width: 40px; height: 40px; border-radius: 8px; font-size: 28px; line-height: 1; }
+  .ec-month-nav button:disabled { opacity: 0.3; }
+  .ec-month-nav button:not(:disabled):hover { background: var(--ec-empty); }
+  .ec-month-nav select { min-height: 40px; padding: 0 8px; border-radius: 8px; background: var(--ec-bg); color: var(--ec-title-color); font-weight: 600; }
+  .ec-mobile-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+  .ec-weekday { text-align: center; font-size: 12px; color: var(--ec-month-color); padding-bottom: 4px; }
+  .ec-mobile-day { min-width: 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 8px; color: var(--ec-title-color); }
+  .ec-mobile-day-selected { box-shadow: inset 0 0 0 2px var(--ec-hover-ring); }
+  .ec-mobile-day-number { font-size: 11px; line-height: 1; }
+  .ec-mobile-dot { width: min(26px, 70%); aspect-ratio: 1; border-radius: 50%; }
+  .ec-mobile-detail { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--ec-bg); color: var(--ec-stats-color); font-size: 12px; }
+  .ec-mobile-detail button { color: var(--ec-cool); font-weight: 600; white-space: nowrap; }
 }
 </style>

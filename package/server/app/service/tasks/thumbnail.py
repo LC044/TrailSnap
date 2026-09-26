@@ -11,7 +11,7 @@ from app.db.models.photo import Photo
 from app.db.models.photo_color import PhotoColor
 from app.service import storage
 from app.core.config_manager import ImageSettings, config_manager
-from app.utils.color import extract_color_info
+from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
 
 def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, storage_root: str, config: ImageSettings = None):
     try:
@@ -148,6 +148,8 @@ class GenerateThumbnailStrategy(BaseTaskStrategy):
                             existing.brightness = color_info.get('brightness')
                             existing.saturation = color_info.get('saturation')
                             existing.emotion_hint = color_info.get('emotion_hint')
+                            existing.analysis_version = CURRENT_COLOR_ANALYSIS_VERSION
+                            existing.analysis_attempted_at = None
                         else:
                             color_record = PhotoColor(
                                 photo_id=photo.id,
@@ -155,6 +157,7 @@ class GenerateThumbnailStrategy(BaseTaskStrategy):
                                 brightness=color_info.get('brightness'),
                                 saturation=color_info.get('saturation'),
                                 emotion_hint=color_info.get('emotion_hint'),
+                                analysis_version=CURRENT_COLOR_ANALYSIS_VERSION,
                             )
                             db.add(color_record)
                     except Exception as e:

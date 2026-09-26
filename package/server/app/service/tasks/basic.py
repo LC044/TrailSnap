@@ -25,7 +25,7 @@ from app.utils import exif
 from app.utils.hash import calculate_file_md5
 from app.schemas import photo as photo_schemas
 from app.utils import motion_photo
-from app.utils.color import extract_color_info
+from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
 
 def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str, image_config=None):
     """
@@ -424,6 +424,7 @@ class BasicTaskStrategy(BaseTaskStrategy):
                         brightness=color_info.get('brightness'),
                         saturation=color_info.get('saturation'),
                         emotion_hint=color_info.get('emotion_hint'),
+                        analysis_version=CURRENT_COLOR_ANALYSIS_VERSION,
                     )
                     db.add(color_record)
                 except Exception as e:

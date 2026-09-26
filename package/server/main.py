@@ -80,6 +80,7 @@ async def lifespan(app: FastAPI):
     from app.service.jobs.update_check import update_check_job
     from app.service.jobs.moment_caption import moment_caption_job
     from app.service.jobs.proactive_memory import proactive_memory_job
+    from app.service.jobs.color_reanalysis import reanalyze_color_batch
 
     job_scheduler = JobScheduler()
     job_scheduler.register_cron_job(
@@ -109,8 +110,14 @@ async def lifespan(app: FastAPI):
     )
     # 服务启动后立即跑一次版本检查（去重键保证同一版本不会重复推送），
     # 之后每 6 小时再触发一次。
-    from datetime import datetime
+    from datetime import datetime, timedelta
     job_scheduler.register_interval_job("update_check", 6 * 3600, update_check_job, next_run_time=datetime.now())
+    # Existing color rows are v1 after migration. Refresh a small batch in the
+    # background so upgrades do not block startup or require a manual rescan.
+    job_scheduler.register_interval_job(
+        "color_reanalysis", 15, reanalyze_color_batch,
+        next_run_time=datetime.now() + timedelta(seconds=10),
+    )
     job_scheduler.start()
 
     discovery_service = DiscoveryService()

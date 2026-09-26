@@ -84,6 +84,7 @@ export interface EmotionCalendarResponse {
   total_days: number;
   data: EmotionCalendarItem[];
   available_years: number[];
+  reanalysis_remaining: number;
 }
 
 export const dashboardApi = {

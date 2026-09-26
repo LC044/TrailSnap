@@ -296,7 +296,7 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
     await page.goto(`/album/people/${identityId}`)
     const chatRequest = page.waitForRequest(request => request.url().endsWith('/api/agent/chat') && request.method() === 'POST')
     await page.getByRole('button', { name: '人物操作' }).click()
-    await page.getByRole('menuitem', { name: '人物时光机' }).click()
+    await page.getByRole('menuitem', { name: 'AI 解读时光线' }).click()
     const payload = JSON.parse((await chatRequest).postData() || '{}')
 
     await expect(page.locator('.agent-chat-overlay')).toBeVisible()

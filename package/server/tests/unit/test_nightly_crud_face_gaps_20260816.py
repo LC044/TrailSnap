@@ -677,7 +677,9 @@ def test_merge_identities_moves_faces_and_soft_deletes_sources():
             return _q(first=target)
         if calls[0] == 2:
             return _q(first=source)
-        return _q(all=[moved_face])
+        if args[0] is crud_face.Face:
+            return _q(all=[moved_face])
+        return _q(all=[])
 
     db.query = MagicMock(side_effect=query_factory)
 

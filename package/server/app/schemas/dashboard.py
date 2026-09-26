@@ -64,6 +64,7 @@ class EmotionCalendarResponse(BaseModel):
     total_days: int
     data: List[EmotionCalendarItem]
     available_years: List[int]
+    reanalysis_remaining: int = 0
 
 class DashboardResponse(BaseModel):
     card: DashboardCard

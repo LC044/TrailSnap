@@ -18,7 +18,7 @@ search-by-color experience.  These tests cover the three branches of
 import pytest
 from PIL import Image
 
-from app.utils.color import extract_color_info
+from app.utils.color import classify_saved_palette, extract_color_info
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
@@ -93,3 +93,30 @@ def test_extract_color_info_empty_image_returns_safe_payload():
         "saturation": None,
         "emotion_hint": None,
     }
+
+
+def test_multicolor_photo_uses_all_pixels_for_brightness_and_saturation():
+    """Many small color clusters must not collapse into a dark muted result."""
+    img = Image.new("RGB", (100, 100))
+    img.putdata([((x * 11 + y * 3) % 80 + 160,
+                  (x * 7 + y * 13) % 80 + 80,
+                  (x * 5 + y * 17) % 60 + 20)
+                 for y in range(100) for x in range(100)])
+
+    result = extract_color_info(img)
+
+    assert result["brightness"] > 0.6
+    assert result["saturation"] > 0.5
+    assert result["emotion_hint"] == "vibrant"
+    assert sum(color["ratio"] for color in result["dominant_colors"]) < 0.8
+
+
+def test_saved_palette_only_corrects_matching_legacy_metrics():
+    colors = [
+        {"hex": "#CC6633", "ratio": 0.1},
+        {"hex": "#BB5522", "ratio": 0.1},
+    ]
+    # Old extraction summed top-five HSV values without dividing by their
+    # combined ratio; these metrics are therefore artificially small.
+    assert classify_saved_palette(colors, 0.153, 0.157) == "vibrant"
+    assert classify_saved_palette(colors, 0.7, 0.7) is None

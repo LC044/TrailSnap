@@ -398,8 +398,7 @@ def test_get_emotion_calendar_stats_handles_photo_color_query_failure_gracefully
 
 
 def test_get_emotion_calendar_stats_picks_dominant_color_and_emotion_hint():
-    """When PhotoColor rows exist, dominant_color + emotion_hint reflect
-    the most frequent hex + emotion_hint across photos on that day."""
+    """The calendar uses one photo's color and matching metrics per day."""
     from app.crud import dashboard as crud_dashboard
 
     photo_a = uuid4()
@@ -444,9 +443,73 @@ def test_get_emotion_calendar_stats_picks_dominant_color_and_emotion_hint():
 
     item = result.data[0]
     assert item.emotion_hint == "happy"
-    assert item.dominant_color in {"#ff0000", "#00ff00"}
-    assert item.brightness == pytest.approx(0.5)
+    assert item.dominant_color == "#ff0000"
+    assert item.brightness == pytest.approx(0.7)
     assert item.saturation == pytest.approx(0.5)
+
+
+def test_representative_color_keeps_distinctive_photo_and_ignores_screenshot():
+    from app.crud.dashboard import _representative_day_color
+    from app.db.models.photo import ImageType
+
+    muted_ids = [uuid4() for _ in range(5)]
+    vivid_id = uuid4()
+    screenshot_id = uuid4()
+    colors = {
+        str(pid): SimpleNamespace(dominant_colors=[{"hex": "#555555", "ratio": 1}],
+                                  emotion_hint="muted", brightness=0.33, saturation=0.0)
+        for pid in muted_ids
+    }
+    colors[str(vivid_id)] = SimpleNamespace(dominant_colors=[{"hex": "#DE5533", "ratio": 1}],
+                                            emotion_hint="warm", brightness=0.87, saturation=0.77)
+    colors[str(screenshot_id)] = SimpleNamespace(dominant_colors=[{"hex": "#FF0000", "ratio": 1}],
+                                                 emotion_hint="vibrant", brightness=1.0, saturation=1.0)
+    meta = {str(pid): (None, ImageType.CAMERA) for pid in muted_ids + [vivid_id]}
+    meta[str(screenshot_id)] = (None, ImageType.SCREENSHOT)
+
+    color, hint, brightness, saturation = _representative_day_color(
+        muted_ids + [vivid_id, screenshot_id], colors, meta)
+
+    assert (color, hint) == ("#DE5533", "warm")
+    assert brightness == pytest.approx(0.87)
+    assert saturation == pytest.approx(0.77)
+
+
+def test_emotion_calendar_corrects_legacy_muted_color_records():
+    from app.crud import dashboard as crud_dashboard
+
+    photo_id = uuid4()
+    color = SimpleNamespace(
+        photo_id=photo_id,
+        emotion_hint="muted",
+        brightness=0.153,
+        saturation=0.157,
+        dominant_colors=[
+            {"hex": "#CC6633", "ratio": 0.1},
+            {"hex": "#BB5522", "ratio": 0.1},
+        ],
+    )
+    db = MagicMock(name="db")
+    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
+    chain = MagicMock()
+    chain.filter.return_value = chain
+    for method in ("join", "outerjoin", "group_by", "order_by"):
+        setattr(chain, method, MagicMock(return_value=chain))
+    chain.all.side_effect = [
+        [Row(photo_date=date(2025, 8, 15), count=1)],
+        [Row(photo_date=date(2025, 8, 15), photo_id=photo_id)],
+        [color],
+        [],
+        [Row(year=2025)],
+    ]
+    db.query.return_value = chain
+
+    with patch.object(crud_dashboard, "date_only", return_value=MagicMock()), \
+         patch.object(crud_dashboard, "as_date_string", side_effect=lambda d: d.isoformat()):
+        result = crud_dashboard.get_emotion_calendar_stats(db, owner_id=uuid4(), year=2025)
+
+    assert result.data[0].emotion_hint == "vibrant"
+    assert result.reanalysis_remaining == 1
 
 
 # ---------------------------------------------------------------------------

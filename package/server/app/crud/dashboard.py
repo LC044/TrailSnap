@@ -3,9 +3,10 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, desc
 from datetime import datetime, date, timedelta
+import colorsys
 
 from app.crud.face import get_identities_with_details
-from app.db.models.photo import Photo, FileType
+from app.db.models.photo import Photo, FileType, ImageType
 from app.db.models.face import Face, FaceIdentity
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.sql import as_date, as_date_string, date_only
@@ -16,6 +17,67 @@ from app.schemas.dashboard import (
     HeatmapResponse, HeatmapItem,
     EmotionCalendarResponse, EmotionCalendarItem
 )
+from app.utils.color import CURRENT_COLOR_ANALYSIS_VERSION, classify_saved_palette, saved_palette_metrics
+
+
+def _representative_day_color(photo_ids: list, color_map: dict, photo_meta: dict):
+    """Choose a distinctive real photo, with one vote per half-hour burst."""
+    candidates = []
+    for photo_id in photo_ids:
+        record = color_map.get(str(photo_id))
+        if not record or not record.dominant_colors:
+            continue
+        hint = record.emotion_hint
+        brightness = record.brightness
+        saturation = record.saturation
+        is_legacy_muted = hint == 'muted' and getattr(record, 'analysis_version', 1) < CURRENT_COLOR_ANALYSIS_VERSION
+        metrics = saved_palette_metrics(record.dominant_colors) if is_legacy_muted else None
+        if metrics:
+            corrected = classify_saved_palette(record.dominant_colors, brightness, saturation)
+            if corrected:
+                hint = corrected
+                brightness, saturation = metrics[:2]
+        brightness = brightness if brightness is not None else 0.5
+        saturation = saturation if saturation is not None else 0.0
+        shot_time, image_type = photo_meta.get(str(photo_id), (None, None))
+        salience = saturation * (0.6 + 0.4 * brightness) + 0.1 * (1 - abs(brightness - 0.55))
+        bucket = shot_time.replace(minute=(shot_time.minute // 30) * 30, second=0, microsecond=0) if shot_time else photo_id
+        candidates.append((photo_id, record, hint, brightness, saturation, salience, bucket, image_type))
+
+    if not candidates:
+        return None
+    camera_candidates = [c for c in candidates if c[7] != ImageType.SCREENSHOT and c[7] != ImageType.SCREENSHOT.value]
+    if camera_candidates:
+        candidates = camera_candidates
+    burst_best = {}
+    for candidate in candidates:
+        key = candidate[6]
+        if key not in burst_best or candidate[5] > burst_best[key][5]:
+            burst_best[key] = candidate
+    independent = list(burst_best.values())
+    hint_counts = {}
+    for candidate in independent:
+        hint_counts[candidate[2]] = hint_counts.get(candidate[2], 0) + 1
+    selected = max(independent, key=lambda c: (0.75 * c[5] + 0.25 * hint_counts[c[2]] / len(independent), str(c[0])))
+
+    # A neutral background can be the largest palette entry. Prefer a nearby
+    # chromatic swatch from this same photo when its area is still meaningful.
+    colors = selected[1].dominant_colors
+    swatches = [c for c in colors if isinstance(c, dict) and isinstance(c.get('hex'), str)]
+    if not swatches:
+        color = colors[0] if isinstance(colors[0], str) else None
+    else:
+        first_ratio = swatches[0].get('ratio', 1)
+        eligible = [c for c in swatches if c.get('ratio', 0) >= first_ratio * 0.5] or swatches[:1]
+        def chroma(c):
+            try:
+                hex_color = c['hex']
+                rgb = [int(hex_color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+                return colorsys.rgb_to_hsv(*rgb)[1] * c.get('ratio', 1)
+            except (ValueError, TypeError):
+                return 0
+        color = max(eligible, key=chroma)['hex']
+    return color, selected[2], round(selected[3], 3), round(selected[4], 3)
 
 def get_dashboard_stats(db: Session, owner_id: UUID) -> DashboardResponse:
     # 1. Card Stats
@@ -249,19 +311,23 @@ def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = N
     date_counts = db.query(
         date_expr.label('photo_date'),
         func.count(Photo.id).label('count'),
-    ).filter(Photo.owner_id == owner_id, Photo.photo_time != None, *time_filter) \
+    ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False, Photo.photo_time != None, *time_filter) \
         .group_by(date_expr).order_by(date_expr).all()
 
     # 2. Photo IDs per date
     photo_date_rows = db.query(
         date_expr.label('photo_date'),
         Photo.id.label('photo_id'),
-    ).filter(Photo.owner_id == owner_id, Photo.photo_time != None, *time_filter).all()
+        Photo.photo_time.label('shot_time'),
+        Photo.image_type.label('image_type'),
+    ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False, Photo.photo_time != None, *time_filter).all()
 
     photo_by_date: dict = {}
+    photo_meta: dict = {}
     for row in photo_date_rows:
         d = as_date_string(row.photo_date)
         photo_by_date.setdefault(d, []).append(row.photo_id)
+        photo_meta[str(row.photo_id)] = (getattr(row, 'shot_time', None), getattr(row, 'image_type', None))
 
     all_photo_ids = [pid for ids in photo_by_date.values() for pid in ids]
 
@@ -317,31 +383,9 @@ def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = N
         emotion_hint = None
         all_categories: list = []
 
-        color_records = [color_map[str(pid)] for pid in photo_ids if str(pid) in color_map]
-
-        if color_records:
-            emotion_counts: dict = {}
-            brightness_sum = 0.0
-            saturation_sum = 0.0
-            top_color_counts: dict = {}
-
-            for cr in color_records:
-                if cr.emotion_hint:
-                    emotion_counts[cr.emotion_hint] = emotion_counts.get(cr.emotion_hint, 0) + 1
-                if cr.brightness is not None:
-                    brightness_sum += cr.brightness
-                if cr.saturation is not None:
-                    saturation_sum += cr.saturation
-                if cr.dominant_colors and len(cr.dominant_colors) > 0:
-                    top_color = cr.dominant_colors[0].get('hex') if isinstance(cr.dominant_colors[0], dict) else cr.dominant_colors[0]
-                    top_color_counts[top_color] = top_color_counts.get(top_color, 0) + 1
-
-            if emotion_counts:
-                emotion_hint = max(emotion_counts, key=emotion_counts.get)
-            if top_color_counts:
-                dominant_color = max(top_color_counts, key=top_color_counts.get)
-            avg_brightness = round(brightness_sum / len(color_records), 3) if brightness_sum else None
-            avg_saturation = round(saturation_sum / len(color_records), 3) if saturation_sum else None
+        representative = _representative_day_color(photo_ids, color_map, photo_meta)
+        if representative:
+            dominant_color, emotion_hint, avg_brightness, avg_saturation = representative
 
         # Collect classification tags from JOIN (not stored in PhotoColor)
         for pid in photo_ids:
@@ -362,7 +406,7 @@ def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = N
     # Available years
     years_query = db.query(
         func.extract('year', Photo.photo_time).label('year')
-    ).filter(Photo.owner_id == owner_id, Photo.photo_time != None) \
+    ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False, Photo.photo_time != None) \
         .group_by(func.extract('year', Photo.photo_time)) \
         .order_by(desc('year')).all()
 
@@ -372,6 +416,10 @@ def get_emotion_calendar_stats(db: Session, owner_id: UUID, year: int | None = N
         total_photos=total_photos,
         total_days=len(date_counts),
         data=data,
-        available_years=available_years
+        available_years=available_years,
+        reanalysis_remaining=sum(
+            getattr(color, 'analysis_version', 1) < CURRENT_COLOR_ANALYSIS_VERSION
+            for color in color_map.values()
+        ),
     )
 
