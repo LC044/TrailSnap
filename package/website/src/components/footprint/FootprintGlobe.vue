@@ -28,6 +28,7 @@ import type { FootprintCity, FootprintRoute } from '@/types/footprint'
 const props = withDefaults(defineProps<{
   cities: FootprintCity[]
   routes: FootprintRoute[]
+  year: number | null
   mode: '2d' | '3d' | 'globe'
   layers: { photos: boolean; routes: boolean; heatmap: boolean; boundaries: boolean; terrain: boolean }
   selectedCityId: string | null
@@ -72,6 +73,7 @@ let terrain: Cesium.ArcGISTiledElevationTerrainProvider | undefined
 let activeTrail: Cesium.Entity | undefined
 let activeDot: Cesium.Entity | undefined
 let routePaths: Cesium.Cartesian3[][] = []
+let lastFramedYear = props.year
 let resizeTimer: ReturnType<typeof setTimeout> | undefined
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
 let borderController: AbortController | undefined
@@ -258,12 +260,21 @@ async function renderRoutes() {
   if (!viewer) return
   const generation = ++routeGeneration
   const routes = props.routes.slice(0, 800)
-  const coordinates: ArcPosition[][] = await processCoordinates('routes', { routes, raised: props.mode !== '2d' }).catch(() => [])
-  if (disposed || !viewer || generation !== routeGeneration) return
-  routeSource.entities.suspendEvents()
+  // Remove the previous year's entities before an asynchronous worker can
+  // leave them visible over the newly selected cities.
   routeSource.entities.removeAll()
   routeSource.show = props.layers.routes
   activeTrail = activeDot = undefined
+  routePaths = []
+  requestRender()
+  const raised = props.mode !== '2d'
+  // Yearly route sets are small. Build them immediately so year switches do
+  // not show an empty map while waiting for the worker round trip.
+  const coordinates: ArcPosition[][] = routes.length <= 200
+    ? routes.map(route => arcCoordinates(route.from, route.to, raised))
+    : await processCoordinates('routes', { routes, raised }).catch(() => [])
+  if (disposed || !viewer || generation !== routeGeneration) return
+  routeSource.entities.suspendEvents()
   routePaths = coordinates.map(arc => arc.map(point => C.Cartesian3.fromDegrees(...point)))
   routes.forEach((route, index) => {
     if (!routePaths[index]?.length) return
@@ -273,7 +284,7 @@ async function renderRoutes() {
         positions: routePaths[index], width: 2,
         arcType: C.ArcType.NONE,
         material: new C.PolylineGlowMaterialProperty({ glowPower: 0.16, taperPower: 0.4, color: gold(0.7) }),
-        depthFailMaterial: new C.PolylineGlowMaterialProperty({ glowPower: 0.1, color: gold(0.25) }),
+        depthFailMaterial: props.mode === '2d' ? undefined : new C.PolylineGlowMaterialProperty({ glowPower: 0.1, color: gold(0.25) }),
       },
     })
   })
@@ -435,6 +446,30 @@ function resetView(duration = 1.2) {
     camera.flyToBoundingSphere(new C.BoundingSphere(target, 0), { offset, duration: prefersReducedMotion.matches ? 0 : duration })
   }
   requestRender()
+}
+
+function frameYearRoutes(): boolean {
+  if (!viewer || props.mode !== '2d' || !props.routes.length) return false
+  const positions = props.routes.flatMap(route => [route.from, route.to]).filter(validPosition)
+  if (!positions.length) return false
+  const lngs = positions.map(position => position[0])
+  const lats = positions.map(position => position[1])
+  const west = Math.min(...lngs), east = Math.max(...lngs)
+  const south = Math.min(...lats), north = Math.max(...lats)
+  // A single 2D rectangle cannot frame a route spanning the date line.
+  if (east - west > 180) { resetView(0); return true }
+  const width = Math.max(36, east - west + 12)
+  const height = Math.max(24, north - south + 12)
+  // Leave room for the right insight panel and bottom playback dock.
+  const centerLng = (west + east) / 2 + (isMobile() ? 0 : 4)
+  const centerLat = (south + north) / 2 - (isMobile() ? 0 : 2)
+  viewer.camera.cancelFlight()
+  viewer.camera.setView({ destination: C.Rectangle.fromDegrees(
+    Math.max(-180, centerLng - width / 2), Math.max(-90, centerLat - height / 2),
+    Math.min(180, centerLng + width / 2), Math.min(90, centerLat + height / 2),
+  ) })
+  requestRender()
+  return true
 }
 
 function globeOrientation(position: Cesium.Cartesian3) {
@@ -688,7 +723,10 @@ onMounted(async () => {
 })
 
 watch(() => props.cities, renderCities)
-watch(() => props.routes, () => { void renderRoutes() })
+watch(() => props.routes, () => {
+  void renderRoutes()
+  if (props.year !== lastFramedYear && frameYearRoutes()) lastFramedYear = props.year
+})
 watch(() => props.mode, changeMode)
 watch(() => props.selectedCityId, renderCities)
 watch(() => props.activeRouteIndex, updateRouteSelection)

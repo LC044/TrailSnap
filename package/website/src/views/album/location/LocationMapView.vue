@@ -13,6 +13,7 @@
         :end-date="endDate"
         :parent-region="parentRegion"
         :selected-region="selectedRegion"
+        :show-route-points="showRoutePoints"
         @change-level="(l, state) => emit('change-level', l, state)"
         @select-region="handleSelectRegion"
         @update-top-regions="(regions) => topRegions = regions"
@@ -20,6 +21,19 @@
       <div class="map-legend map-glass">
         <span><i class="legend-dot legend-dot--place" />已到达</span>
         <span><i class="legend-dot legend-dot--unvisited" />未到达</span>
+        <button
+          type="button"
+          class="legend-route-toggle"
+          :class="{ 'legend-route-toggle--active': showRoutePoints }"
+          role="switch"
+          :aria-checked="showRoutePoints"
+          :aria-label="showRoutePoints ? '隐藏轨迹点' : '显示轨迹点'"
+          @click="showRoutePoints = !showRoutePoints"
+        >
+          <Eye v-if="showRoutePoints" class="h-3.5 w-3.5" />
+          <EyeOff v-else class="h-3.5 w-3.5" />
+          轨迹点 {{ showRoutePoints ? '开' : '关' }}
+        </button>
       </div>
 
       <div v-if="timelineYears.length" class="journey-timeline hidden md:flex" aria-label="足迹年份时间轴">
@@ -130,7 +144,7 @@ import request from '@/utils/request'
 import MapContainer from './components/MapContainer.vue'
 import GlobalOverviewPanel from './components/GlobalOverviewPanel.vue'
 import RegionDetailsPanel from './components/RegionDetailsPanel.vue'
-import { CalendarDays, Pause, Play } from 'lucide-vue-next'
+import { CalendarDays, Eye, EyeOff, Pause, Play } from 'lucide-vue-next'
 
 const ADMIN_SUFFIX_REGEX = /(省|市|自治区|特别行政区|回族自治区|壮族自治区|维吾尔自治区|县|区)$/
 
@@ -169,6 +183,7 @@ const emit = defineEmits<{
 }>()
 
 const mapContainerRef = ref<InstanceType<typeof MapContainer> | null>(null)
+const showRoutePoints = ref(true)
 
 // 状态
 const selectedRegion = ref<string | null>(null)
@@ -578,6 +593,9 @@ onUnmounted(() => {
 .legend-dot { width: 7px; height: 7px; border-radius: 999px; box-shadow: 0 0 8px currentColor; }
 .legend-dot--place { color: #35b7ff; background: #35b7ff; }
 .legend-dot--unvisited { color: #b9dfff; background: #b9dfff; }
+.legend-route-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 1px 3px; border: 0; border-radius: 4px; background: transparent; color: var(--location-muted); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.legend-route-toggle:hover, .legend-route-toggle:focus-visible, .legend-route-toggle--active { color: #ffb454; }
+.legend-route-toggle:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
 
 .journey-timeline {
   position: absolute;

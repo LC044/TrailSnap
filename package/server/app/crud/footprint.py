@@ -7,7 +7,7 @@ or invent a connection over skipped photos. All coordinates are WGS84 EXIF GPS.
 
 import base64
 import binascii
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from hashlib import sha256
 from math import isfinite
 from uuid import UUID
@@ -100,9 +100,9 @@ def _elapsed_seconds(db, later, earlier):
     return extract("epoch", later - earlier)
 
 
-def _source(owner_id, year):
+def _source(owner_id, year, start_date: date | None = None, end_date: date | None = None):
     key, country, province, city, name = _place_expressions()
-    return select(
+    query = select(
         Photo.id.label("photo_id"), Photo.photo_time.label("taken_at"),
         PhotoMetadata.latitude.label("lat"), PhotoMetadata.longitude.label("lng"),
         key.label("key"), country.label("country"), province.label("province"),
@@ -112,7 +112,12 @@ def _source(owner_id, year):
         ).label("cover_rank"),
     ).join(PhotoMetadata, PhotoMetadata.photo_id == Photo.id).where(
         *_photo_filters(owner_id, year), *_gps_filters(),
-    ).cte("footprint_source")
+    )
+    if start_date is not None:
+        query = query.where(Photo.photo_time >= datetime.combine(start_date, time.min))
+    if end_date is not None:
+        query = query.where(Photo.photo_time < datetime.combine(end_date + timedelta(days=1), time.min))
+    return query.cte("footprint_source")
 
 
 def _visits(db, source):
@@ -151,6 +156,56 @@ def _visits(db, source):
         func.max(case((points.c.last_rank == 1, points.c.lat))).label("end_lat"),
         func.max(case((points.c.last_rank == 1, points.c.lng))).label("end_lng"),
     ).group_by(points.c.visit_no, points.c.key).cte("footprint_visits")
+
+
+def _sample_routes(db: Session, visits, max_points: int, bounds=None) -> tuple[list[dict], bool]:
+    connection_columns = [
+        func.lag(visits.c[column]).over(order_by=visits.c.visit_no).label("previous_" + column)
+        for column in ("key", "name", "end_at", "start_lat", "start_lng")
+    ]
+    connections = select(visits, *connection_columns).cte("footprint_connections")
+    route_query = select(connections).where(
+        connections.c.previous_key.is_not(None), connections.c.previous_key != connections.c.key,
+        _elapsed_seconds(db, connections.c.start_at, connections.c.previous_end_at) <= VISIT_GAP_SECONDS,
+        connections.c.start_at > connections.c.previous_end_at,
+    )
+    if bounds:
+        route_query = route_query.where(or_(
+            _in_bbox(connections.c.start_lat, connections.c.start_lng, bounds),
+            _in_bbox(connections.c.previous_start_lat, connections.c.previous_start_lng, bounds),
+        ))
+    # Sample original edges evenly; never connect visits across omitted edges.
+    counted = route_query.add_columns(
+        func.row_number().over(order_by=connections.c.start_at).label("route_rank"),
+        func.count().over().label("total_routes"),
+    ).cte("footprint_ranked_routes")
+    bucket = func.floor((counted.c.route_rank - 1) * (max_points - 1.0) / func.nullif(counted.c.total_routes - 1, 0))
+    rows = db.execute(select(counted).where(or_(
+        counted.c.total_routes <= max_points,
+        counted.c.route_rank == 1,
+        counted.c.route_rank == counted.c.total_routes,
+        bucket > func.floor((counted.c.route_rank - 2) * (max_points - 1.0) / func.nullif(counted.c.total_routes - 1, 0)),
+    )).order_by(counted.c.start_at).limit(max_points)).mappings().all()
+    routes = [{
+        "id": "route_" + sha256(f'{row["previous_key"]}|{row["key"]}|{row["start_at"].isoformat()}'.encode()).hexdigest()[:20],
+        # A visit uses the same anchor for its incoming and outgoing edge.
+        "from": [float(row["previous_start_lng"]), float(row["previous_start_lat"])],
+        "to": [float(row["start_lng"]), float(row["start_lat"])],
+        "from_name": row["previous_name"], "to_name": row["name"],
+        "start_at": row["previous_end_at"], "end_at": row["start_at"],
+        "photo_count": row["photo_count"],
+    } for row in rows]
+    return routes, bool(rows and rows[0]["total_routes"] > max_points)
+
+
+def get_map_routes(db: Session, owner_id: UUID, start_date: date | None = None,
+                   end_date: date | None = None, max_points: int = 300) -> list[dict]:
+    """Return bounded real visit edges across the selected date range."""
+    if start_date and end_date and start_date > end_date:
+        raise ValueError("开始日期不得晚于结束日期")
+    source = _source(owner_id, None, start_date, end_date)
+    routes, _ = _sample_routes(db, _visits(db, source), max_points)
+    return routes
 
 
 def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
@@ -198,47 +253,7 @@ def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
         "first_at": row["first_at"], "last_at": row["last_at"],
     } for row in city_rows[:max_points]]
 
-    connection_columns = [
-        func.lag(visits.c[column]).over(order_by=visits.c.visit_no).label("previous_" + column)
-        for column in ("key", "name", "end_at", "start_lat", "start_lng")
-    ]
-    connections = select(visits, *connection_columns).cte("footprint_connections")
-    route_query = select(connections).where(
-        connections.c.previous_key.is_not(None), connections.c.previous_key != connections.c.key,
-        _elapsed_seconds(db, connections.c.start_at, connections.c.previous_end_at) <= VISIT_GAP_SECONDS,
-        # Simultaneous timestamps cannot establish a direction of travel.
-        connections.c.start_at > connections.c.previous_end_at,
-    )
-    if bounds:
-        route_query = route_query.where(or_(
-            _in_bbox(connections.c.start_lat, connections.c.start_lng, bounds),
-            _in_bbox(connections.c.previous_start_lat, connections.c.previous_start_lng, bounds),
-        ))
-    # Uniform sampling keeps the beginning and end of a long history without
-    # connecting across omitted visits. Every returned line is an original edge.
-    counted_routes = route_query.add_columns(
-        func.row_number().over(order_by=connections.c.start_at).label("route_rank"),
-        func.count().over().label("total_routes"),
-    ).cte("footprint_ranked_routes")
-    bucket = func.floor((counted_routes.c.route_rank - 1) * (max_points - 1.0) / func.nullif(counted_routes.c.total_routes - 1, 0))
-    sample_query = select(counted_routes).where(or_(
-        counted_routes.c.total_routes <= max_points,
-        counted_routes.c.route_rank == 1,
-        counted_routes.c.route_rank == counted_routes.c.total_routes,
-        bucket > func.floor((counted_routes.c.route_rank - 2) * (max_points - 1.0) / func.nullif(counted_routes.c.total_routes - 1, 0)),
-    )).order_by(counted_routes.c.start_at).limit(max_points)
-    route_rows = db.execute(sample_query).mappings().all()
-    routes = [{
-        "id": "route_" + sha256(f'{row["previous_key"]}|{row["key"]}|{row["start_at"].isoformat()}'.encode()).hexdigest()[:20],
-        # One visit uses one stable anchor for both its incoming and outgoing
-        # edge. This keeps a journey continuous without inventing a detailed
-        # GPS track inside a city.
-        "from": [float(row["previous_start_lng"]), float(row["previous_start_lat"])],
-        "to": [float(row["start_lng"]), float(row["start_lat"])],
-        "from_name": row["previous_name"], "to_name": row["name"],
-        "start_at": row["previous_end_at"], "end_at": row["start_at"],
-        "photo_count": row["photo_count"],
-    } for row in route_rows]
+    routes, routes_sampled = _sample_routes(db, visits, max_points, bounds)
 
     key, _, _, city, _ = _place_expressions()
     # SQLite's strftime parser rounds a value such as 23:59:59.999999 into
@@ -259,7 +274,7 @@ def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
     return {
         "years": [row["year"] for row in timeline], "summary": dict(summary_row), "cities": cities,
         "routes": routes, "timeline": timeline,
-        "sampled": len(city_rows) > max_points or bool(route_rows and route_rows[0]["total_routes"] > max_points),
+        "sampled": len(city_rows) > max_points or routes_sampled,
     }
 
 

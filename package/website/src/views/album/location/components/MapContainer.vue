@@ -35,6 +35,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { echarts } from '@/utils/echarts'
 import { locationService } from '@/api/location'
+import type { FootprintRoute } from '@/types/footprint'
 import { injectTheme } from '@/composables/useTheme'
 import { MapPin, ChevronRight, ZoomIn, ZoomOut, RotateCcw, ArrowLeft } from 'lucide-vue-next'
 import request from '@/utils/request'
@@ -65,6 +66,7 @@ const props = defineProps<{
   endDate?: string
   parentRegion?: string
   selectedRegion: string | null
+  showRoutePoints: boolean
 }>()
 
 const emit = defineEmits<{
@@ -84,25 +86,47 @@ let resizeTimer: ReturnType<typeof setTimeout> | null = null
 let distributionRequestId = 0
 const MOBILE_ROAM_ZOOM_DAMPING = 0.35
 const MAP_SERIES_ID = 'location-regions'
-const ROUTE_SERIES_ID = 'location-routes'
+const ROUTE_SERIES_ID = 'location-route-points'
 const CLUSTER_SERIES_ID = 'location-clusters'
 const ROUTE_GEO_ID = 'location-route-geo'
 const MAP_SCALE_LIMIT = { min: 0.7, max: 8 }
 
-const buildRouteData = (nodes: any[]) => {
-  const routeNodes = nodes
-    .filter(node => node.lat != null && node.lng != null)
-    .sort((a, b) => `${a.startDate}T${a.startTime || ''}`.localeCompare(`${b.startDate}T${b.startTime || ''}`))
-    .slice(0, 80)
+type MapRouteLine = { coords: [[number, number], [number, number]]; fromName: string; toName: string }
+const buildRouteData = (routes: FootprintRoute[]): MapRouteLine[] => routes.map(route => ({
+  coords: [route.from, route.to], fromName: route.from_name, toName: route.to_name,
+}))
 
-  return routeNodes.slice(0, -1).map((node, index) => {
-    const next = routeNodes[index + 1]
-    return {
-      coords: [[node.lng, node.lat], [next.lng, next.lat]],
-      fromName: node.locationName,
-      toName: next.locationName,
-    }
-  })
+const routeBand = (zoom: number) => zoom < 1.7 ? 0 : zoom < 3 ? 1 : 2
+let lastRouteBand = -1
+
+const routeDistanceKm = ({ coords: [[lng1, lat1], [lng2, lat2]] }: MapRouteLine) => {
+  const rad = Math.PI / 180
+  const a = Math.sin((lat2 - lat1) * rad / 2) ** 2
+    + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin((lng2 - lng1) * rad / 2) ** 2
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)))
+}
+
+const sampleLines = (lines: MapRouteLine[], limit: number) => {
+  if (lines.length <= limit) return lines
+  return Array.from({ length: limit }, (_, i) => lines[Math.round(i * (lines.length - 1) / (limit - 1))])
+}
+
+const visibleRoutes = (lines: MapRouteLine[], zoom: number) => {
+  if (!props.showRoutePoints) return []
+  const minimumKm = [20, 5, 0][routeBand(zoom)]
+  const filtered = lines.filter(line => routeDistanceKm(line) >= minimumKm)
+  return sampleLines(filtered, window.innerWidth < 768 ? 24 : 48)
+}
+
+const updateRouteLayers = (zoom: number) => {
+  if (!myMap || !cachedMapData) return
+  const band = routeBand(zoom)
+  if (band === lastRouteBand) return
+  lastRouteBand = band
+  const points = visibleRoutes(cachedMapData.routeData, zoom)
+  myMap.setOption({ series: [
+    { id: ROUTE_SERIES_ID, data: points, effect: { show: points.length > 0 } },
+  ] })
 }
 
 const buildClusterData = (data: any[], geoJson: any, mobile: boolean) => {
@@ -126,6 +150,7 @@ const setMapView = (zoom: number, center: number[] | null) => {
     geo: { id: ROUTE_GEO_ID, zoom, center },
     series: [{ id: MAP_SERIES_ID, zoom, center }],
   })
+  updateRouteLayers(zoom)
 }
 
 // 双击下钻检测：记录上一次单击的区块名与时间，用于区分「单击选中」与「双击进入下一级」
@@ -199,8 +224,7 @@ const initMap = async (viewState?: { zoom: number, center: number[] }) => {
     echarts.registerMap(mapName, geoJson)
 
     let distribution = await locationService.getDistribution(props.level as 'city' | 'province' | 'district' | 'scene' | undefined, props.startDate, props.endDate)
-    const timeline = await locationService.getTimelineNodes(0, 500, props.startDate, props.endDate, 'city')
-    const routeData = buildRouteData(timeline.nodes)
+    const routeData = buildRouteData(await locationService.getMapRoutes(props.startDate, props.endDate))
 
     if (props.parentRegion && geoJson.features) {
       const nameMap = buildNameMap(geoJson)
@@ -308,6 +332,9 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
 
   const inRangeColors = [mixColor(0.24), mixColor(0.55), mixColor(0.92)]
   const clusterData = buildClusterData(data, geoJson, isMobile)
+  const initialZoom = viewState?.zoom || (props.parentRegion ? 0.9 : 1.2)
+  const routePoints = visibleRoutes(routeData, initialZoom)
+  lastRouteBand = routeBand(initialZoom)
 
   const option = {
     backgroundColor: 'transparent',
@@ -354,15 +381,15 @@ const renderMap = (data: any[], max: number, geoJson: any, mapName: string, view
     series: [
       {
         id: ROUTE_SERIES_ID,
-        name: '旅行路线',
+        name: '轨迹点',
         type: 'lines',
         coordinateSystem: 'geo',
         polyline: true,
         zlevel: 2,
         silent: true,
-        effect: { show: routeData.length > 0, period: 8, trailLength: 0, symbol: 'circle', symbolSize: 6, color: '#ffb454' },
+        effect: { show: routePoints.length > 0, period: 8, trailLength: 0, symbol: 'circle', symbolSize: 6, color: '#ffb454' },
         lineStyle: { width: 0, opacity: 0 },
-        data: routeData,
+        data: routePoints,
       },
       {
         id: MAP_SERIES_ID,
@@ -478,8 +505,7 @@ const refreshDistribution = async () => {
       props.startDate,
       props.endDate
     )
-    const timeline = await locationService.getTimelineNodes(0, 500, props.startDate, props.endDate, 'city')
-    const routeData = buildRouteData(timeline.nodes)
+    const routeData = buildRouteData(await locationService.getMapRoutes(props.startDate, props.endDate))
     // 自动巡游或快速点击年份时，只应用最后一次请求，避免旧响应覆盖新年份。
     if (requestId !== distributionRequestId || !myMap) return
 
@@ -507,10 +533,13 @@ const refreshDistribution = async () => {
     const visualMax = maxVal > p90 * 2 ? p90 * 1.5 : maxVal
     cachedMapData = { ...cachedMapData, data, max: visualMax, geoJson, mapName, routeData }
     const clusterData = buildClusterData(data, geoJson, window.innerWidth < 768)
+    const currentZoom = Number(getMapView()?.zoom) || (props.parentRegion ? 0.9 : 1.2)
+    const routePoints = visibleRoutes(routeData, currentZoom)
+    lastRouteBand = routeBand(currentZoom)
 
     myMap.setOption({
       visualMap: { max: visualMax },
-      series: [{ id: ROUTE_SERIES_ID, data: routeData, effect: { show: routeData.length > 0 } }, {
+      series: [{ id: ROUTE_SERIES_ID, data: routePoints, effect: { show: routePoints.length > 0 } }, {
         id: MAP_SERIES_ID,
         data,
         animationDurationUpdate: 480,
@@ -538,6 +567,11 @@ watch([() => props.startDate, () => props.endDate], () => {
   if (props.viewMode === 'map' && props.level !== 'photo-map' && props.level !== 'scene') {
     nextTick(() => { void refreshDistribution() })
   }
+})
+
+watch(() => props.showRoutePoints, () => {
+  lastRouteBand = -1
+  updateRouteLayers(Number(getMapView()?.zoom) || (props.parentRegion ? 0.9 : 1.2))
 })
 
 watch([isDark, currentTheme], () => {

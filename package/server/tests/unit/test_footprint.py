@@ -1,6 +1,6 @@
 """Execute footprint SQL against an isolated SQLite database, never user data."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.api import location as location_api
-from app.crud.footprint import get_footprint, get_footprint_photos, parse_bbox
+from app.crud.footprint import get_footprint, get_footprint_photos, get_map_routes, parse_bbox
 from app.db.base import Base
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
@@ -175,6 +175,21 @@ def test_sampling_keeps_counts_and_only_original_edges(footprint_db, photo, owne
         assert int(route["to_name"].split()[1]) - int(route["from_name"].split()[1]) == 1
 
 
+def test_map_routes_cover_selected_history_without_inventing_edges(footprint_db, photo, owner):
+    photo(city="Before", at="2023-12-31T23:00:00")
+    start = datetime(2024, 1, 1)
+    for index in range(61):
+        photo(city=f"City {index:03}", at=start + timedelta(hours=index))
+    photo(city="After", at="2024-02-01T00:00:00")
+
+    routes = get_map_routes(footprint_db, owner, date(2024, 1, 1), date(2024, 1, 31), max_points=50)
+    assert len(routes) == 50
+    assert routes[0]["from_name"] == "City 000"
+    assert routes[-1]["to_name"] == "City 060"
+    assert all(int(route["to_name"].split()[1]) - int(route["from_name"].split()[1]) == 1 for route in routes)
+    assert get_map_routes(footprint_db, owner, date(2024, 2, 1), date(2024, 2, 1)) == []
+
+
 @pytest.mark.parametrize("bbox", ["1,2,3", "nan,0,1,2", "inf,0,1,2", "181,0,1,2", "0,5,1,2", "0,-91,1,2", "a,0,1,2"])
 def test_invalid_bbox_is_rejected(bbox):
     with pytest.raises(ValueError):
@@ -199,6 +214,9 @@ def test_http_contract_pagination_and_validation(footprint_db, photo, owner):
         body = client.get("/locations/footprint").json()
         assert body["code"] == 0
         assert body["data"]["routes"][0]["from"] == [104.06, 30.67]
+        map_routes = client.get("/locations/map-routes", params={"start_date": "2024-01-01", "end_date": "2024-01-02"}).json()
+        assert map_routes["code"] == 0
+        assert [(route["from_name"], route["to_name"]) for route in map_routes["data"]] == [("A", "B")]
         city_id = next(city["id"] for city in body["data"]["cities"] if city["name"] == "B")
         photos = client.get("/locations/footprint/photos", params={"city_id": city_id, "limit": 1}).json()
         assert photos["code"] == 0
@@ -208,4 +226,5 @@ def test_http_contract_pagination_and_validation(footprint_db, photo, owner):
         assert client.get("/locations/footprint/photos", params={"city_id": "bad!"}).json()["code"] == 422
         assert client.get("/locations/footprint", params={"year": 9999}).status_code == 422
         assert client.get("/locations/footprint", params={"max_points": 199}).status_code == 422
+        assert client.get("/locations/map-routes", params={"max_points": 49}).status_code == 422
         assert client.get("/locations/footprint/photos", params={"city_id": city_id, "skip": -1}).status_code == 422

@@ -1,6 +1,7 @@
 import request from '@/utils/request';
 import type { Location, Scene, SceneCreate, SceneUpdate, LocationStatistics, TimelineResponse, TrajectoryResponse, TimeCompareSummary } from '@/types/location';
 import type { Photo } from '@/types/album';
+import type { FootprintRoute } from '@/types/footprint';
 
 export interface OverviewStats {
   total_distance_km: number;
@@ -95,6 +96,13 @@ export const locationService = {
       params: { skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, level }
     });
     return data.data;
+  },
+
+  async getMapRoutes(startDate?: string, endDate?: string) {
+    const response = await request.get<FootprintRoute[]>('/api/locations/map-routes', {
+      params: { start_date: startDate || undefined, end_date: endDate || undefined, max_points: 300 }
+    });
+    return response.data;
   },
 
   async getTrajectory(startDate: string, endDate: string, maxPoints: number = 360) {

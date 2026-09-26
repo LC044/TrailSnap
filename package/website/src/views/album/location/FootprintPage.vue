@@ -10,7 +10,7 @@
     </aside>
 
     <main class="footprint-stage">
-      <FootprintGlobe v-if="!sceneError" ref="globe" :cities="mapCities" :routes="playbackKind === 'route' && activeRouteIndex >= 0 ? data?.routes || [] : mapRoutes" :mode="mode" :layers="layers"
+      <FootprintGlobe v-if="!sceneError" ref="globe" :cities="mapCities" :routes="playbackKind === 'route' && activeRouteIndex >= 0 ? data?.routes || [] : mapRoutes" :year="year" :mode="mode" :layers="layers"
         :selected-city-id="selectedCityId" :active-route-index="activeRouteIndex" :playing="playing" :rotating="rotating" :playback-speed="speed"
         @select-city="selectCity" @ready="sceneReady = true" @error="sceneError = $event" @status="sceneStatus = $event" @view-change="store.loadViewport" />
       <FootprintFallback v-else :cities="mapCities" :routes="mapRoutes" :mode="mode" :layers="layers" :selected-city-id="selectedCityId" :active-route-index="activeRouteIndex" :playing="playing" :rotating="rotating" @select-city="selectCity" />

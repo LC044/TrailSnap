@@ -7,7 +7,7 @@ from app.dependencies import get_db, BaseResponse
 from app.schemas import location as schemas
 from app.crud import location as crud
 from app.crud import footprint as footprint_crud
-from app.schemas.footprint import FootprintResponse
+from app.schemas.footprint import FootprintResponse, FootprintRoute
 from app.schemas import photo as photo_schemas
 from app.schemas import scene as scene_schemas
 from app.crud import scene as scene_crud
@@ -16,6 +16,21 @@ from app.db.models import User
 from app.schemas.photo import Photo
 
 router = APIRouter()
+
+@router.get("/map-routes", response_model=BaseResponse[List[FootprintRoute]], summary="获取地图足迹连线")
+def get_map_routes(
+    start_date: date | None = Query(None, description="开始日期"),
+    end_date: date | None = Query(None, description="结束日期"),
+    max_points: int = Query(300, ge=50, le=800, description="最多返回的真实地点连线数量"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    try:
+        return BaseResponse.success(data=footprint_crud.get_map_routes(
+            db, current_user.id, start_date, end_date, max_points,
+        ))
+    except ValueError as exc:
+        return BaseResponse.fail(code=422, msg=str(exc))
 
 @router.get("/footprint", response_model=BaseResponse[FootprintResponse], summary="获取三维足迹地图")
 def get_footprint(

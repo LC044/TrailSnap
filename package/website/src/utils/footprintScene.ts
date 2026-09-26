@@ -9,6 +9,17 @@ export function validPosition(position: number[]): boolean {
 /** Great-circle interpolation follows the short path across the date line. */
 export function arcCoordinates(from: GeoPosition, to: GeoPosition, raised = true): ArcPosition[] {
   if (!validPosition(from) || !validPosition(to)) return []
+  if (!raised) {
+    // Cesium's 2D projection needs points on the map plane. A raised
+    // great-circle path can project far away during scene/year changes.
+    const deltaLng = ((to[0] - from[0] + 540) % 360) - 180
+    const deltaLat = to[1] - from[1]
+    const segments = Math.max(20, Math.min(96, Math.ceil(Math.hypot(deltaLng, deltaLat) * 2)))
+    return Array.from({ length: segments + 1 }, (_, i) => {
+      const t = i / segments
+      return [from[0] + deltaLng * t, from[1] + deltaLat * t, 0]
+    }) as ArcPosition[]
+  }
   const rad = Math.PI / 180
   const vector = ([lng, lat]: GeoPosition) => [Math.cos(lat * rad) * Math.cos(lng * rad), Math.cos(lat * rad) * Math.sin(lng * rad), Math.sin(lat * rad)]
   const a = vector(from)
