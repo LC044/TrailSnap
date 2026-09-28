@@ -84,9 +84,9 @@ export const locationService = {
     return data.data;
   },
   
-  async getLocationPhotos(name: string, level: 'city' | 'province' | 'district' | 'scene' = 'city', skip: number = 0, limit: number = 50, startDate?: string, endDate?: string, sceneId?: string) {
+  async getLocationPhotos(name: string, level: 'city' | 'province' | 'district' | 'scene' = 'city', skip: number = 0, limit: number = 50, startDate?: string, endDate?: string, sceneId?: string, placeKey?: string) {
     const data = await request.get<Photo[]>(`/api/locations/${name}/photos`, {
-      params: { level, skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, scene_id: sceneId || undefined }
+      params: { level, skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, scene_id: sceneId || undefined, place_key: placeKey || undefined }
     });
     return data.data;
   },

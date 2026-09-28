@@ -280,6 +280,7 @@ def get_location_photos(
     name: str = Path(..., description="位置名称"),
     level: str = Query('city', regex='^(city|province|district|scene)$', description="分组级别：city 或 province 或 district 或 scene"),
     scene_id: Optional[UUID] = Query(None, description="景区 ID；景区详情优先按 ID 查询"),
+    place_key: Optional[str] = Query(None, max_length=2000, description="关联探索的精确行政区标识"),
     start_date: str = Query(None, description="开始日期"),
     end_date: str = Query(None, description="结束日期"),
     skip: int = 0,
@@ -292,7 +293,8 @@ def get_location_photos(
     """
     import time
     st = time.time()
-    photos = crud.get_location_photos(db, current_user.id, name, level, skip, limit, start_date, end_date, scene_id)
+    extra = {"place_key": place_key} if isinstance(place_key, str) else {}
+    photos = crud.get_location_photos(db, current_user.id, name, level, skip, limit, start_date, end_date, scene_id, **extra)
     et = time.time()
     print(f"get_location_photos: {et - st} s")
     return photos

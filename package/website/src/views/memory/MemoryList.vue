@@ -1,40 +1,43 @@
 <template>
   <div class="min-h-full bg-gray-50 px-4 py-5 dark:bg-gray-900 md:px-7 md:py-7">
     <div class="mx-auto max-w-7xl">
-      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">记忆</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="grid grid-cols-4 gap-2 lg:flex lg:flex-wrap">
+          <RouterLink to="/explore/relations" class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm">
+            <Network class="h-4 w-4 shrink-0" />关联探索
+          </RouterLink>
           <button
-            class="rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 text-sm font-medium text-primary-700 shadow-sm hover:bg-primary-100 dark:border-primary-900 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+            class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 shadow-sm hover:bg-primary-100 dark:border-primary-900 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
             @click="createWithAgent"
-          ><Bot class="mr-1.5 inline h-4 w-4" />和 AI 创建</button>
+          ><Bot class="h-4 w-4 shrink-0" /><span class="sm:hidden">AI 创建</span><span class="hidden sm:inline">和 AI 创建</span></button>
           <button
-            class="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+            class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
             :disabled="store.discovering"
             @click="runDiscovery"
           >
-            <RefreshCw class="mr-1.5 inline h-4 w-4" :class="{ 'animate-spin': store.discovering }" />
+            <RefreshCw class="h-4 w-4 shrink-0" :class="{ 'animate-spin': store.discovering }" />
             {{ store.discovering ? '正在发现' : '发现记忆' }}
           </button>
           <RouterLink
             to="/memories/new"
-            class="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-          ><Plus class="mr-1.5 inline h-4 w-4" />新建记忆</RouterLink>
+            class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-primary-500 px-1 text-xs font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
+          ><Plus class="h-4 w-4 shrink-0" />新建记忆</RouterLink>
         </div>
       </header>
 
       <div class="mt-7 flex flex-col gap-3 border-b border-gray-200 dark:border-gray-700 sm:flex-row sm:items-end sm:justify-between">
-        <nav class="-mb-px flex gap-6 overflow-x-auto" aria-label="记忆状态">
+        <nav class="-mb-px flex gap-2 overflow-x-auto sm:gap-6" aria-label="记忆状态">
           <button
             v-for="tab in tabs"
             :key="tab.status"
-            class="whitespace-nowrap border-b-2 px-1 pb-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+            class="whitespace-nowrap border-b-2 px-1 pb-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:text-sm"
             :class="store.activeStatus === tab.status ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
             @click="changeTab(tab.status)"
-          >{{ tab.label }} <span class="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs dark:bg-gray-800">{{ store.counts[tab.status] }}</span></button>
+          >{{ tab.label }} <span class="ml-0.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800 sm:ml-1 sm:px-2">{{ store.counts[tab.status] }}</span></button>
         </nav>
         <div v-if="store.activeStatus !== 'ignored'" class="mb-2 flex items-center gap-2">
           <button class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400" @click="selectMode = !selectMode">
@@ -101,7 +104,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { BookHeart, Bot, LoaderCircle, Plus, RefreshCw } from 'lucide-vue-next'
+import { BookHeart, Bot, LoaderCircle, Network, Plus, RefreshCw } from 'lucide-vue-next'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
 import { memoryApi } from '@/api/memory'
 import { useMemoryStore } from '@/stores/memoryStore'

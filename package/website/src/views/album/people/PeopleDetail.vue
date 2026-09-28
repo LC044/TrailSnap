@@ -58,6 +58,7 @@
       </section>
     </template>
     <template #header-actions>
+      <RouterLink :to="{ path: '/explore/relations', query: { root: `person:${identityId}` } }" class="mr-2 inline-flex min-h-11 items-center rounded-full bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
       <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
         <button
           type="button"
