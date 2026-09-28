@@ -3,7 +3,7 @@
     ref="pageElement"
     class="relation-page min-h-full bg-gray-50 pb-24 text-gray-900 dark:bg-gray-950 dark:text-gray-100 md:pb-10"
   >
-    <div class="mx-auto max-w-7xl px-3 pt-3 sm:px-5 md:px-7 md:pt-7">
+    <div class="mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] pt-3 md:pt-7">
       <section
         class="cover relative isolate overflow-hidden rounded-[28px] bg-gray-900 text-white shadow-xl md:rounded-[36px]"
       >
