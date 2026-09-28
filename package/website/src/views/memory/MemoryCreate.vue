@@ -1,6 +1,6 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-4 py-5 dark:bg-gray-900 md:px-7 md:py-7">
-    <div class="mx-auto max-w-6xl">
+  <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] py-4 dark:bg-gray-900 md:py-7">
+    <div class="mx-auto max-w-screen-2xl">
       <header class="flex flex-wrap items-center gap-3">
         <button class="rounded-full p-2 text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
         <div class="min-w-0 flex-1"><h1 class="text-2xl font-bold text-gray-900 dark:text-white">新建记忆</h1><p class="text-sm text-gray-500 dark:text-gray-400">选择属于同一段经历的照片</p></div>

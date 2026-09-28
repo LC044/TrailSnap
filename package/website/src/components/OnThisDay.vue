@@ -3,7 +3,7 @@
     v-if="photos.length > 0"
     :class="['mb-6 animate-fade-in transition-all duration-300', isFullScreen ? 'fixed inset-0 z-[9999] bg-black mb-0' : '']"
   >
-    <div v-if="!isFullScreen" class="flex items-center justify-between px-4 mb-3">
+    <div v-if="!isFullScreen" class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-2">
         <div class="flex h-10 w-10 items-center justify-center rounded-full bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
           <CalendarCheck class="w-6 h-6" />
@@ -55,7 +55,7 @@
       </div>
     </div>
 
-    <div :class="isFullScreen ? 'w-full h-full' : 'px-4'">
+    <div :class="isFullScreen ? 'w-full h-full' : ''">
       <el-carousel
         :key="isFullScreen ? 'fullscreen' : 'normal'"
         :interval="5000"

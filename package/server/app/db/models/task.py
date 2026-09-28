@@ -36,6 +36,7 @@ class TaskType(str, enum.Enum):
     BATCH_RENAME = "BATCH_RENAME"
     BATCH_TIME_FROM_FILENAME = "BATCH_TIME_FROM_FILENAME"
     EXTRACT_EMOTION = "EXTRACT_EMOTION"
+    DISCOVER_CHAPTERS = "DISCOVER_CHAPTERS"
 
 # Tasks started explicitly by a user are allowed to run even when the same
 # category is paused for the automatic photo-processing pipeline.
@@ -65,6 +66,7 @@ DEFAULT_PRIORITIES = {
     TaskType.BATCH_RENAME: 1000,
     TaskType.BATCH_TIME_FROM_FILENAME: 1000,
     TaskType.EXTRACT_EMOTION: 6,
+    TaskType.DISCOVER_CHAPTERS: 1000,
 }
 
 CATEGORY_DESCRIPTION_MAP = {
@@ -86,6 +88,7 @@ CATEGORY_DESCRIPTION_MAP = {
     TaskType.BATCH_RENAME: '用于批量重命名文件',
     TaskType.BATCH_TIME_FROM_FILENAME: '用于根据文件名提取时间并批量修改照片的拍摄时间和设备信息',
     TaskType.EXTRACT_EMOTION: '用于提取照片的主色调、亮度、饱和度及情绪色彩',
+    TaskType.DISCOVER_CHAPTERS: '用于从照片时间与地点线索发现人生章节建议',
 }
 
 CATEGORY_NAME_MAP = {
@@ -106,6 +109,7 @@ CATEGORY_NAME_MAP = {
     TaskType.BATCH_RENAME: '批量重命名',
     TaskType.BATCH_TIME_FROM_FILENAME: '修改拍摄信息',
     TaskType.EXTRACT_EMOTION: '色彩情绪提取',
+    TaskType.DISCOVER_CHAPTERS: '发现人生章节',
 }
 
 class Task(Base):

@@ -1,5 +1,5 @@
 <template>
-  <main class="mx-auto max-w-6xl px-4 py-5 text-gray-900 dark:text-gray-100 sm:px-6">
+  <main class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] py-5 text-gray-900 dark:text-gray-100">
     <div class="mb-5 flex items-center justify-between gap-3">
       <button class="rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/album/people')">← 人物相册</button>
       <div class="flex gap-2">

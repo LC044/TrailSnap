@@ -1,6 +1,6 @@
 <template>
   <section
-    class="group relative mx-4 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-primary-100 hover:shadow-md dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-primary-900/60"
+    class="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-primary-100 hover:shadow-md dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-primary-900/60"
     aria-labelledby="photo-overview-title"
   >
     <button

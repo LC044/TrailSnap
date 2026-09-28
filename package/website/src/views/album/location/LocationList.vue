@@ -1,7 +1,7 @@
 <template>
-  <div :class="['location-list flex flex-col relative py-6 px-4', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? 'h-full min-h-0' : 'container mx-auto', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
+  <div :class="['location-list mx-auto w-full max-w-screen-2xl flex flex-col relative py-6 px-[var(--ts-page-gutter)]', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? '!max-w-none !px-0 h-full min-h-0 !py-0' : '', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
     <!-- Header -->
-    <div class="location-toolbar container mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
+    <div class="location-toolbar mx-auto w-full max-w-screen-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
         <div class="location-title-group flex shrink-0 items-center gap-2 rounded-full border border-gray-200/50 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-900/80">
           <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
@@ -1024,7 +1024,6 @@ onMounted(() => {
 @media (max-width: 767px) {
   .location-list:not(.location-immersive) {
     padding-top: 12px;
-    padding-inline: 16px;
   }
   .location-toolbar { gap: 10px; padding-bottom: 14px; }
   .location-toolbar-heading { min-height: 46px; }

@@ -3,10 +3,10 @@
   颜色、图标、文案由父组件传入，差异点收敛到 props。
 -->
 <template>
-  <div class="container mx-auto flex min-h-full flex-col px-4">
+  <div class="mx-auto w-full max-w-screen-2xl flex min-h-full flex-col px-[var(--ts-page-gutter)]">
     <!-- Header -->
-    <div class="sticky top-0 z-30 -mx-4 border-b border-gray-200/70 bg-gray-50/90 px-4 backdrop-blur-md dark:border-gray-800/70 dark:bg-gray-900/90 md:mx-0 md:border-b-0 md:bg-transparent md:px-0 md:dark:bg-transparent">
-      <div class="mx-auto flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
+    <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] border-b border-gray-200/70 bg-gray-50/90 px-[var(--ts-page-gutter)] backdrop-blur-md dark:border-gray-800/70 dark:bg-gray-900/90 md:border-b-0 md:bg-transparent md:dark:bg-transparent">
+      <div class="mx-auto flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div class="flex min-w-0 items-center gap-2">
           <button
             type="button"

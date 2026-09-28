@@ -1,5 +1,5 @@
 <template>
-  <main class="mx-auto min-h-full max-w-6xl px-4 py-6 sm:px-8">
+  <main class="mx-auto w-full max-w-screen-2xl min-h-full px-[var(--ts-page-gutter)] py-6">
     <div v-if="loading" class="flex justify-center py-20 text-gray-500 dark:text-gray-400"><LoaderCircle class="h-6 w-6 animate-spin" /></div>
     <template v-else-if="artifact">
       <button type="button" class="mb-5 inline-flex items-center gap-1 rounded-lg text-sm text-gray-600 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300" @click="router.back()"><ArrowLeft class="h-4 w-4" />返回</button>

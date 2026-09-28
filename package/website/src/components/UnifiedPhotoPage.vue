@@ -1,9 +1,9 @@
 <template>
-  <div class="unified-photo-page relative container mx-auto py-1 px-4 min-h-screen">
+  <div class="unified-photo-page relative mx-auto w-full max-w-screen-2xl py-1 px-[var(--ts-page-gutter)] min-h-screen">
     <slot name="hero"></slot>
     <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
     <div v-if="layoutMode !== 'folder'" class="z-30 pointer-events-none" :class="headerOverlay ? 'absolute inset-x-0 top-0' : 'sticky md:top-0'">
-      <div class="flex items-center justify-between gap-2 sm:gap-4 mx-auto px-2 sm:px-4 py-3 pointer-events-auto">
+      <div class="flex items-center justify-between gap-2 sm:gap-4 mx-auto py-3 pointer-events-auto">
         <!-- Back & Title -->
         <slot name="header-left">
           <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 max-w-full md:w-auto px-1 sm:px-3 py-1.5">
@@ -151,7 +151,7 @@
     />
 
     <!-- Main Content Area -->
-    <div class="mx-auto sm:px-6 lg:px-8">
+    <div class="mx-auto">
       <div
         v-if="updateAvailable && !isPhotoInteractionActive"
         class="sticky top-16 z-20 flex justify-center mb-3 pointer-events-none"

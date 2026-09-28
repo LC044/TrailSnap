@@ -31,3 +31,4 @@ from .memory import (
     MemoryTicket,
 )
 from .person_timeline import PersonTimelineHide
+from .chapter import LifeChapter

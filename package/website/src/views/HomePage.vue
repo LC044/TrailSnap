@@ -1,7 +1,7 @@
 <template>
-  <div class="container mx-auto">
+  <div class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)]">
     <!-- Navbar -->
-    <div class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-4 backdrop-blur-md transition-colors dark:border-gray-800 dark:bg-gray-900/90">
+    <div class="sticky top-0 z-20 -mx-[var(--ts-page-gutter)] flex h-14 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-[var(--ts-page-gutter)] backdrop-blur-md transition-colors dark:border-gray-800 dark:bg-gray-900/90">
       <h1 class="text-lg font-bold text-gray-800 dark:text-white">首页</h1>
       <div class="hidden items-center md:flex">
         <button class="relative rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300 dark:hover:bg-gray-800" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
@@ -18,11 +18,11 @@
 
     <!-- Content -->
     <div v-else-if="dashboardData" class="py-3 space-y-2">
- 
+
       <OnThisDay />
       <MemoryDiscovery />
      <!-- Banners Area -->
-      <div class="mx-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Annual Report Banner -->
         <div 
           class="p-4 rounded-xl bg-gradient-to-r from-orange-100 to-amber-50 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800/50 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
@@ -68,7 +68,7 @@
           @show-storage="showStorageDialog = true"
         />
 
-        <div class="mx-4 bg-white dark:bg-neutral-900 rounded-xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
+        <div class="bg-white dark:bg-neutral-900 rounded-xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
           <div class="flex flex-col xl:flex-row gap-6">
             <div class="w-full xl:w-64 flex-shrink-0 pt-4 xl:pt-0 border-t xl:border-t-0 border-gray-100 dark:border-gray-800">
               <TimeChart :data="dashboardData.time" />

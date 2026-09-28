@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-4 py-5 dark:bg-gray-900 md:px-7 md:py-7">
-    <div class="mx-auto max-w-7xl">
-      <header class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+  <div class="min-h-full bg-gray-50 dark:bg-gray-900 px-[var(--ts-page-gutter)] py-4 md:py-7">
+    <div class="mx-auto max-w-screen-2xl">
+      <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">记忆</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
@@ -25,6 +25,8 @@
           ><Plus class="mr-1.5 inline h-4 w-4" />新建记忆</RouterLink>
         </div>
       </header>
+
+      <ChapterShelf />
 
       <div class="mt-7 flex flex-col gap-3 border-b border-gray-200 dark:border-gray-700 sm:flex-row sm:items-end sm:justify-between">
         <nav class="-mb-px flex gap-6 overflow-x-auto" aria-label="记忆状态">
@@ -103,6 +105,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { BookHeart, Bot, LoaderCircle, Plus, RefreshCw } from 'lucide-vue-next'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
+import ChapterShelf from '@/components/chapter/ChapterShelf.vue'
 import { memoryApi } from '@/api/memory'
 import { useMemoryStore } from '@/stores/memoryStore'
 import { useUiStore } from '@/stores/uiStore'

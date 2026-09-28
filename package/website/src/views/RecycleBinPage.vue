@@ -1,5 +1,5 @@
 <template>
-  <div class="recycle-bin-page container mx-auto flex flex-col">
+  <div class="recycle-bin-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] flex flex-col">
     <MobilePageHeader
       v-if="isMobileViewport"
       :title="isSelectionMode ? `已选择 ${effectiveSelectedCount} 项` : '最近删除'"
@@ -36,9 +36,9 @@
       </template>
     </MobilePageHeader>
     <!-- Header -->
-    <div v-else class="sticky top-0 z-30 mb-6 bg-white/90 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/90 dark:border-gray-800">
+    <div v-else class="sticky top-0 z-30 mb-6 -mx-[var(--ts-page-gutter)] bg-white/90 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/90 dark:border-gray-800">
       <!-- Responsive Header -->
-      <div class="flex items-center justify-between px-4 py-3">
+      <div class="flex items-center justify-between px-[var(--ts-page-gutter)] py-3">
         <!-- Left Side -->
         <div class="flex items-center gap-2">
           <!-- Back button: visible unless we are in mobile selection mode -->
@@ -102,7 +102,7 @@
         </div>
       </div>
       <!-- Hint Text -->
-      <div class="px-4 pb-3 text-xs md:text-sm text-gray-500 dark:text-gray-400">
+      <div class="pb-3 text-xs md:text-sm text-gray-500 dark:text-gray-400">
         已删除的内容仅保留{{ retentionDays }}天，逾期将永久删除。
       </div>
     </div>
@@ -111,7 +111,7 @@
          page stays interactive and reports real progress instead of freezing on a
          request that would otherwise outlive the HTTP timeout. -->
     <Transition name="bar-slide">
-      <div v-if="isPurging" class="mx-auto w-full px-4 pb-3">
+      <div v-if="isPurging" class="mx-auto w-full pb-3">
         <div class="rounded-xl border border-gray-200 bg-white/90 px-4 py-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/90">
           <div class="mb-2 flex items-center justify-between text-sm">
             <span class="flex items-center gap-2 font-medium text-gray-700 dark:text-gray-200">
@@ -132,14 +132,14 @@
 
     <!-- "Select all" spans the whole bin, not just the loaded pages. Say so explicitly
          so a destructive action is never ambiguous. -->
-    <div v-if="isSelectionMode && selectAllAcrossPages && totalCount > photos.length" class="mx-auto w-full px-4 pb-2">
+    <div v-if="isSelectionMode && selectAllAcrossPages && totalCount > photos.length" class="mx-auto w-full pb-2">
       <div class="rounded-lg bg-primary-50 px-3 py-2 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
         已选中回收站中的全部 {{ totalCount }} 项（包含尚未加载的 {{ totalCount - photos.length }} 项）
       </div>
     </div>
 
     <!-- Gallery -->
-    <div class="mx-auto w-full px-2 sm:px-4" :class="{ 'pb-28': isSelectionMode }">
+    <div class="mx-auto w-full" :class="{ 'pb-28': isSelectionMode }">
       <!-- Empty State -->
       <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">

@@ -1,5 +1,5 @@
 <template>
-  <section v-if="items.length" class="mx-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
+  <section v-if="items.length" class="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-800">
     <div class="flex items-center justify-between">
       <div>
         <h2 class="flex items-center gap-2 font-bold text-gray-900 dark:text-white"><Sparkles class="h-4 w-4 text-amber-500" />发现新的记忆</h2>

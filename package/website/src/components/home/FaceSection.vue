@@ -1,7 +1,7 @@
 <template>
   <div class="bg-white dark:bg-neutral-900 rounded-lg py-3 my-3">
     <!-- Header -->
-    <div class="flex justify-between items-center px-4 mb-3">
+    <div class="flex justify-between items-center mb-3">
       <h3 class="text-base font-bold text-gray-800 dark:text-gray-100">人物相册</h3>
       <span 
         class="text-xs text-blue-500 cursor-pointer"
@@ -12,7 +12,7 @@
     </div>
 
     <!-- Top 3 Faces -->
-    <div class="flex overflow-x-auto px-4 space-x-4 pb-2 no-scrollbar">
+    <div class="flex overflow-x-auto space-x-4 pb-2 no-scrollbar">
       <div 
         v-for="face in data.top_faces"
         :key="face.id"
@@ -26,7 +26,7 @@
     </div>
 
     <!-- Pending Alert -->
-    <div class="px-4 mt-2">
+    <div class="mt-2">
       <div 
         v-if="data.pending_faces_count > 0"
         class="bg-[#FFF7E8] dark:bg-orange-900/20 rounded-md p-2 flex items-center justify-between"

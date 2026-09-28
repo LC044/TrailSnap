@@ -43,8 +43,8 @@
         leave-from-class="transform translate-y-0 opacity-100"
         leave-to-class="transform -translate-y-2 opacity-0"
       >
-          <div v-if="showFilterPanel" class="absolute left-0 right-0 top-full mt-2 pointer-events-none px-4">
-            <div class="max-w-7xl mx-auto flex justify-end">
+          <div v-if="showFilterPanel" class="absolute left-0 right-0 top-full mt-2 pointer-events-none px-[var(--ts-page-gutter)]">
+            <div class="max-w-screen-2xl mx-auto flex justify-end">
               <div ref="filterPanelRef" class="bg-white/95 dark:bg-gray-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden w-full max-w-md pointer-events-auto">
                  <FilterPanel :store="photoStore" />
               </div>

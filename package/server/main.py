@@ -32,7 +32,7 @@ from app.api import (
     user, train_ticket, flight_ticket, album, index, settings, face, ocr,
     location, location_stats, search, classification, system, media, stats, photo, tasks,
     annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav, guess_city, storage,
-    notification, moment, swipe_filter, ai_artifact, agent_action, memory
+    notification, moment, swipe_filter, ai_artifact, agent_action, memory, chapter
 )
 from railway.api import router as railway_router
 from app.core.logger import setup_logging
@@ -355,6 +355,7 @@ app.include_router(guess_city.router, prefix="/guess-city", tags=["GuessCity"])
 app.include_router(storage.router, prefix="/storage", tags=["Storage"])
 app.include_router(moment.router, prefix="/moments", tags=["Moments"])
 app.include_router(memory.router, prefix="/memories", tags=["Memories"])
+app.include_router(chapter.router, prefix="/chapters", tags=["Life Chapters"])
 
 # Streamable HTTP MCP endpoint. It intentionally sits outside OpenAPI because
 # MCP has its own discovery and tool schemas.
