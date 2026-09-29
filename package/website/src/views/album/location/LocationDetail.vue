@@ -12,6 +12,7 @@
     @load-more="loadMore"
   >
     <template #header-actions>
+      <RouterLink v-if="name !== 'map_selection'" :to="{ path: '/explore/relations', query: placeKey ? { root: placeKey } : sceneId ? { root: `place:scene:${sceneId}` } : { placeName: name } }" class="inline-flex min-h-11 items-center rounded-full bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
       <button
         v-if="timeCompareSummary?.eligible && sceneId"
         type="button"
@@ -49,6 +50,7 @@ const level = (route.query.level as 'city' | 'province' | 'district' | 'scene') 
 const startDate = route.query.startDate as string | undefined
 const endDate = route.query.endDate as string | undefined
 const sceneId = route.query.sceneId as string | undefined
+const placeKey = route.query.place_key as string | undefined
 
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])
@@ -128,7 +130,7 @@ const fetchAllPhotos = async () => {
       while (hasNext) {
         // Encode name to ensure special characters (like / or ?) don't break the path
         const safeName = encodeURIComponent(name)
-        const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId)
+        const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId, placeKey)
 
         const newPhotos = rawPhotos.map(mapPhotoToImage)
 
@@ -161,7 +163,7 @@ const loadMore = async () => {
     const limit = 100
     // Encode name to ensure special characters (like / or ?) don't break the path
     const safeName = encodeURIComponent(name)
-    const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId)
+    const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId, placeKey)
 
     const newPhotos = rawPhotos.map(mapPhotoToImage)
 

@@ -15,19 +15,29 @@ from app.utils.color import CURRENT_COLOR_ANALYSIS_VERSION, extract_color_info
 logger = logging.getLogger(__name__)
 
 
+def _pending_colors(db, now):
+    retry_before = now - timedelta(days=1)
+    return db.query(PhotoColor, Photo).join(Photo, PhotoColor.photo_id == Photo.id).filter(
+        PhotoColor.analysis_version < CURRENT_COLOR_ANALYSIS_VERSION,
+        Photo.is_deleted == False,
+        or_(PhotoColor.analysis_attempted_at == None, PhotoColor.analysis_attempted_at < retry_before),
+    )
+
+
+def has_pending_color_reanalysis() -> bool:
+    """Only schedule the upgrade job when an eligible old color row exists."""
+    with SessionLocal() as db:
+        return _pending_colors(db, datetime.now(timezone.utc)).first() is not None
+
+
 def reanalyze_color_batch(batch_size: int = 100) -> dict[str, int]:
     """Process a bounded batch; stale failures become eligible again tomorrow."""
     now = datetime.now(timezone.utc)
-    retry_before = now - timedelta(days=1)
     processed = 0
     failed = 0
     with SessionLocal() as db:
         try:
-            query = db.query(PhotoColor, Photo).join(Photo, PhotoColor.photo_id == Photo.id).filter(
-                PhotoColor.analysis_version < CURRENT_COLOR_ANALYSIS_VERSION,
-                Photo.is_deleted == False,
-                or_(PhotoColor.analysis_attempted_at == None, PhotoColor.analysis_attempted_at < retry_before),
-            ).order_by(PhotoColor.id).limit(batch_size)
+            query = _pending_colors(db, now).order_by(PhotoColor.id).limit(batch_size)
             if db.bind.dialect.name == 'postgresql':
                 query = query.with_for_update(of=PhotoColor, skip_locked=True)
             rows = query.all()
@@ -60,3 +70,11 @@ def reanalyze_color_batch(batch_size: int = 100) -> dict[str, int]:
     if processed or failed:
         logger.info('Color reanalysis batch: processed=%d failed=%d', processed, failed)
     return {'processed': processed, 'failed': failed}
+
+
+def reanalyze_pending_colors(batch_size: int = 100) -> None:
+    """Drain eligible upgrade rows in one background job, committing each batch."""
+    while True:
+        result = reanalyze_color_batch(batch_size)
+        if result['processed'] + result['failed'] < batch_size:
+            return

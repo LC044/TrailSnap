@@ -45,7 +45,9 @@ def test_upgrade_reanalyzes_available_photo_and_defers_missing_file(tmp_path, mo
     monkeypatch.setattr(color_reanalysis.storage, 'get_available_photo_path',
                         lambda _owner, photo_id, path: path if photo_id == photo_ids[0] else None)
     try:
+        assert color_reanalysis.has_pending_color_reanalysis() is True
         assert color_reanalysis.reanalyze_color_batch() == {'processed': 1, 'failed': 1}
+        assert color_reanalysis.has_pending_color_reanalysis() is False
         with make_session() as db:
             refreshed = db.query(PhotoColor).filter(PhotoColor.photo_id == photo_ids[0]).one()
             missing = db.query(PhotoColor).filter(PhotoColor.photo_id == photo_ids[1]).one()
@@ -60,6 +62,25 @@ def test_upgrade_reanalyzes_available_photo_and_defers_missing_file(tmp_path, mo
             db.commit()
         monkeypatch.setattr(color_reanalysis.storage, 'get_available_photo_path',
                             lambda _owner, _photo_id, _path: str(image_path))
+        assert color_reanalysis.has_pending_color_reanalysis() is True
         assert color_reanalysis.reanalyze_color_batch() == {'processed': 1, 'failed': 0}
+        assert color_reanalysis.has_pending_color_reanalysis() is False
     finally:
         engine.dispose()
+
+
+def test_one_time_reanalysis_drains_multiple_batches(monkeypatch):
+    batches = iter([
+        {'processed': 2, 'failed': 0},
+        {'processed': 1, 'failed': 1},
+        {'processed': 1, 'failed': 0},
+    ])
+    calls = []
+
+    def run_batch(batch_size):
+        calls.append(batch_size)
+        return next(batches)
+
+    monkeypatch.setattr(color_reanalysis, 'reanalyze_color_batch', run_batch)
+    color_reanalysis.reanalyze_pending_colors(batch_size=2)
+    assert calls == [2, 2, 2]

@@ -7,6 +7,7 @@
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/30"></div>
         <div class="absolute left-0 right-0 top-0 flex items-center justify-between p-4 md:p-6">
           <button class="rounded-full bg-black/25 p-2 text-white backdrop-blur hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
+          <RouterLink v-if="memory.status === 'confirmed'" :to="{ path: '/explore/relations', query: { root: `memory:${memory.id}` } }" class="inline-flex min-h-11 items-center rounded-lg bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
           <button class="rounded-lg bg-white/95 px-4 py-2 text-sm font-medium text-gray-800 shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="openEdit"><Pencil class="mr-1.5 inline h-4 w-4" />编辑记忆</button>
         </div>
         <div class="absolute bottom-0 left-0 right-0 mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] pb-7 text-white">

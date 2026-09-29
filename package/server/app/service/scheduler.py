@@ -12,6 +12,7 @@ from typing import Callable, Optional, Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 
 logger = logging.getLogger("app.service.scheduler")
 
@@ -72,6 +73,18 @@ class JobScheduler:
             return True
         except Exception as e:
             logger.error(f"JobScheduler: failed to register job '{name}': {e}")
+            return False
+
+    def register_once_job(self, name: str, run_time: Any, fn: Callable) -> bool:
+        """Run a background job once at the given time."""
+        try:
+            self._scheduler.add_job(
+                fn, DateTrigger(run_date=run_time), id=name, replace_existing=True
+            )
+            logger.info("JobScheduler: registered one-time job '%s'.", name)
+            return True
+        except Exception as e:
+            logger.error("JobScheduler: failed to register job '%s': %s", name, e)
             return False
 
     def start(self):

@@ -65,6 +65,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/album/classification', name: 'ClassificationList', component: ClassificationList, meta: { title: '智能分类', navGroup: 'albums', desktopAICapability: 'classification' } },
       { path: '/album/classification/:name', name: 'ClassificationDetail', component: ClassificationDetail, meta: { title: '分类详情', navGroup: 'albums', desktopAICapability: 'classification' } },
       { path: '/moon', name: 'MoonJournal', component: MoonJournal, meta: { title: '月迹', navGroup: 'albums' } },
+      { path: '/explore/relations', name: 'Relations', component: () => import('@/views/explore/RelationsPage.vue'), meta: { title: '关联探索', navGroup: 'memories' } },
       { path: '/memories', name: 'MemoryList', component: () => import('@/views/memory/MemoryList.vue'), meta: { title: '记忆', navGroup: 'memories' } },
       { path: '/chapters', name: 'ChapterList', component: () => import('@/views/chapter/ChapterList.vue'), meta: { title: '人生章节', navGroup: 'memories' } },
       { path: '/chapters/new', name: 'ChapterCreate', component: () => import('@/views/chapter/ChapterEditor.vue'), meta: { title: '新建章节', navGroup: 'memories' } },

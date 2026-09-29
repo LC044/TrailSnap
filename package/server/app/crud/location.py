@@ -575,7 +575,7 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
         
     return locations
 
-def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'city', skip: int = 0, limit: int = 50, start_date: str = None, end_date: str = None, scene_id: UUID = None):
+def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'city', skip: int = 0, limit: int = 50, start_date: str = None, end_date: str = None, scene_id: UUID = None, place_key: str = None):
     # 使用 join 配合 contains_eager 替代 joinedload，避免产生重复的 JOIN 查询，提升性能
     query = db.query(Photo).join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)
     query = query.filter(Photo.owner_id == owner_id, Photo.is_deleted == False)
@@ -600,9 +600,17 @@ def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'ci
     if end_date:
         query = query.filter(Photo.photo_time <= f"{end_date} 23:59:59")
 
-    return query.filter(
-        col == (scene_id if level == 'scene' and scene_id else name)
-    ).order_by(
+    if place_key:
+        from fastapi import HTTPException
+        from app.service.relations import parse_key, region_conditions
+        _, region = parse_key(place_key)
+        if not isinstance(region, tuple) or region[0] != level or region[1][-1] != name.strip():
+            raise HTTPException(400, "地点标识与查询条件不一致")
+        query = query.filter(*region_conditions(place_key))
+    else:
+        query = query.filter(col == (scene_id if level == 'scene' and scene_id else name))
+
+    return query.order_by(
         desc(Photo.photo_time)
     ).offset(skip).limit(limit).all()
 
