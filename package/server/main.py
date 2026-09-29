@@ -32,7 +32,7 @@ from app.api import (
     user, train_ticket, flight_ticket, album, index, settings, face, ocr,
     location, location_stats, search, classification, system, media, stats, photo, tasks,
     annual_report, auth, deps, agent, agent_token, toolbox, metadata, nav, guess_city, storage,
-    notification, moment, swipe_filter, ai_artifact, agent_action, memory
+    notification, moment, swipe_filter, ai_artifact, agent_action, memory, relations
 )
 from railway.api import router as railway_router
 from app.core.logger import setup_logging
@@ -80,7 +80,9 @@ async def lifespan(app: FastAPI):
     from app.service.jobs.update_check import update_check_job
     from app.service.jobs.moment_caption import moment_caption_job
     from app.service.jobs.proactive_memory import proactive_memory_job
-    from app.service.jobs.color_reanalysis import reanalyze_color_batch
+    from app.service.jobs.color_reanalysis import (
+        has_pending_color_reanalysis, reanalyze_pending_colors,
+    )
 
     job_scheduler = JobScheduler()
     job_scheduler.register_cron_job(
@@ -112,12 +114,12 @@ async def lifespan(app: FastAPI):
     # 之后每 6 小时再触发一次。
     from datetime import datetime, timedelta
     job_scheduler.register_interval_job("update_check", 6 * 3600, update_check_job, next_run_time=datetime.now())
-    # Existing color rows are v1 after migration. Refresh a small batch in the
-    # background so upgrades do not block startup or require a manual rescan.
-    job_scheduler.register_interval_job(
-        "color_reanalysis", 15, reanalyze_color_batch,
-        next_run_time=datetime.now() + timedelta(seconds=10),
-    )
+    # Refresh legacy colors once in the background; each batch commits before
+    # the next one, and completed upgrades create no scheduler job on restart.
+    if has_pending_color_reanalysis():
+        job_scheduler.register_once_job(
+            "color_reanalysis", datetime.now() + timedelta(seconds=10), reanalyze_pending_colors,
+        )
     job_scheduler.start()
 
     discovery_service = DiscoveryService()
@@ -355,6 +357,7 @@ app.include_router(guess_city.router, prefix="/guess-city", tags=["GuessCity"])
 app.include_router(storage.router, prefix="/storage", tags=["Storage"])
 app.include_router(moment.router, prefix="/moments", tags=["Moments"])
 app.include_router(memory.router, prefix="/memories", tags=["Memories"])
+app.include_router(relations.router, prefix="/relations", tags=["Relations"])
 
 # Streamable HTTP MCP endpoint. It intentionally sits outside OpenAPI because
 # MCP has its own discovery and tool schemas.

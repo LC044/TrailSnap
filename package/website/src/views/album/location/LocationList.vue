@@ -1051,6 +1051,21 @@ onMounted(() => {
     background: rgba(15, 29, 48, 0.88);
     box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
+  .location-immersive .location-toolbar .location-toolbar-actions > .location-year-control,
+  .location-immersive .location-toolbar .location-toolbar-actions > .location-level-control,
+  .location-immersive .location-toolbar .location-toolbar-actions > .location-view-control {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .location-immersive .location-toolbar .location-filter-trigger {
+    background-color: transparent !important;
+    box-shadow: none;
+  }
+  .location-immersive .location-toolbar .location-filter-trigger:active {
+    background-color: rgba(var(--theme-rgb), 0.1) !important;
+  }
   .location-toolbar-actions.is-dark .location-level-control::before,
   .location-toolbar-actions.is-dark .location-view-control::before {
     background: rgba(148, 163, 184, 0.2);

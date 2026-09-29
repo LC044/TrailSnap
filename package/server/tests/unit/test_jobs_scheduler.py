@@ -76,6 +76,18 @@ def test_register_interval_job_with_next_run_time_passes_kwarg(fresh_scheduler):
     assert jobs[0].next_run_time == nrt
 
 
+def test_register_once_job_uses_date_trigger(fresh_scheduler):
+    from datetime import datetime, timezone
+    from apscheduler.triggers.date import DateTrigger
+
+    run_time = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    assert fresh_scheduler.register_once_job("color_reanalysis", run_time, MagicMock()) is True
+    job = fresh_scheduler._scheduler.get_jobs()[0]
+    assert job.id == "color_reanalysis"
+    assert isinstance(job.trigger, DateTrigger)
+    assert job.trigger.run_date == run_time
+
+
 def test_start_is_idempotent(fresh_scheduler):
     with patch.object(fresh_scheduler._scheduler, "start") as start_call:
         fresh_scheduler.start()
