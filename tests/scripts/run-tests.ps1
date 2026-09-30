@@ -67,6 +67,9 @@ param(
 
     [string]$Scope,
 
+    # Optional frontend spec paths, relative to package/website.
+    [string[]]$TestFiles = @(),
+
     [ValidateSet('auto', 'true', 'false')]
     [string]$ScanPrep = 'auto',
 
@@ -183,6 +186,8 @@ try {
 
     # ---------- e2e（Playwright）----------
     if ($Layer -in 'e2e', 'all') {
+        # services-up reloads EnvFile; explicit CLI choices must still win.
+        if ($ScanPrep -ne 'auto') { $env:TS_E2E_ENABLE_FIXTURE_SCAN = if ($ScanPrep -eq 'true') { 'true' } else { 'false' } }
         if ($Component -in 'website', 'all') {
             # TS_TEST_RESET_DB=true 时每轮都是新空库，但 photo-fixtures 的 state cache 跨轮稳定，
             # 上轮 ok=true 会让本轮 globalSetup 跳过扫描 → 空库无照片。注入唯一 prep run id 强制重扫；
@@ -209,11 +214,21 @@ try {
                 }
                 Write-Host '  确保 Playwright chromium 已安装...'; pnpm exec playwright install chromium
                 # 统一委托给 run-e2e.mjs，由其处理 scan/p0/p1/smoke/all/light/full
-                & node (Join-Path 'playwright' 'run-e2e.mjs') $Level
+                & node (Join-Path 'playwright' 'run-e2e.mjs') $Level @TestFiles
                 if ($LASTEXITCODE -ne 0) { throw "playwright 失败，退出码 $LASTEXITCODE" }
             }
             finally { Pop-Location }
         }
+    }
+
+    # ---------- frontend unit (Node test runner, no services) ----------
+    if ($Layer -in 'unit', 'all' -and $Component -in 'website', 'all') {
+        Push-Location (Join-Path $RepoRoot 'package' 'website')
+        try {
+            & node --test tests/unit/*.test.cjs
+            if ($LASTEXITCODE -ne 0) { throw "frontend unit 失败，退出码 $LASTEXITCODE" }
+        }
+        finally { Pop-Location }
     }
 
     # ---------- unit / integration（pytest）----------

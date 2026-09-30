@@ -26,12 +26,14 @@
   >
     <!-- Result Content -->
     <div class="flex-1 space-y-4 overflow-y-auto pb-24 pt-4 scrollbar-hide md:space-y-6 md:pt-2" ref="containerRef">
-        <div v-for="(group, gIndex) in groups" :key="gIndex" class="rounded-2xl border border-gray-200/80 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-4">
-            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <span class="text-sm font-medium text-gray-600 dark:text-gray-300">
-                    分组 {{ gIndex + 1 }} ({{ group.length }} 张)
-                </span>
-                <div class="flex items-center gap-1.5 sm:gap-3">
+        <PhotoCleanupGroup v-for="(group, gIndex) in groups" :key="gIndex"
+          :title="`分组 ${gIndex + 1}`" :photos="group"
+          :selected-ids="selectedPhotos" :all-selected="isGroupAllSelected(gIndex)"
+          first-badge="最佳" :highlighted-ids="compareGroupIndex === gIndex ? comparisonIds : undefined"
+          @toggle-group="toggleGroupSelection(gIndex)" @toggle-photo="togglePhotoSelection"
+          @open-photo="index => openLightbox(gIndex, index)" @delete-selection="deleteGroupSelection(gIndex)"
+        >
+          <template #actions>
                     <button
                         type="button"
                         @click="openComparison(gIndex)"
@@ -40,85 +42,9 @@
                         <i class="mgc_pic_2_line mr-1"></i>
                         {{ compareGroupIndex === gIndex && comparisonIds.size > 0 ? `开始对比 (${comparisonIds.size}/4)` : '对比照片' }}
                     </button>
-                    <button
-                        type="button"
-                        @click="toggleGroupSelection(gIndex)"
-                        class="min-h-9 rounded-lg px-2 text-sm font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-primary-400 dark:hover:bg-primary-900/20 dark:hover:text-primary-300 dark:focus-visible:ring-offset-gray-800"
-                    >
-                        {{ isGroupAllSelected(gIndex) ? '取消全选' : '全选' }}
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Horizontal Scroll Container -->
-            <div class="relative group-scroll-container group/scroll">
-                 <!-- Scroll Buttons (Desktop) -->
-                 <button 
-                    v-if="canScrollLeft(gIndex)"
-                    @click="scroll(gIndex, -1)"
-                    class="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-white/90 dark:bg-gray-700/90 rounded-full shadow-md hover:bg-white dark:hover:bg-gray-600 hidden md:flex items-center justify-center text-gray-700 dark:text-gray-200 opacity-0 group-hover/scroll:opacity-100 transition-opacity duration-300"
-                 >
-                    <i class="mgc_left_line"></i>
-                 </button>
-                 <button 
-                    v-if="canScrollRight(gIndex)"
-                    @click="scroll(gIndex, 1)"
-                    class="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 bg-white/90 dark:bg-gray-700/90 rounded-full shadow-md hover:bg-white dark:hover:bg-gray-600 hidden md:flex items-center justify-center text-gray-700 dark:text-gray-200 opacity-0 group-hover/scroll:opacity-100 transition-opacity duration-300"
-                 >
-                    <i class="mgc_right_line"></i>
-                 </button>
-
-                <div
-                    :ref="el => setScrollRef(el, gIndex)"
-                    class="grid grid-cols-2 gap-3 px-0.5 py-1 md:flex md:gap-4 md:overflow-x-auto md:px-1 md:py-2 md:snap-x md:snap-mandatory"
-                    @scroll="updateScrollState(gIndex)"
-                >
-                    <div 
-                        v-for="(photo, pIndex) in group" 
-                        :key="photo.id"
-                        class="relative min-w-0 md:w-40 md:flex-shrink-0 md:snap-start"
-                    >
-                        <!-- Photo Card -->
-                        <div 
-                            class="relative aspect-square overflow-hidden rounded-xl border-2 bg-gray-100 transition-colors dark:bg-gray-700"
-                            :class="selectedPhotos.has(photo.id) || comparisonIds.has(photo.id) ? 'border-primary-500' : 'border-transparent'"
-                            @click="openLightbox(gIndex, pIndex)"
-                        >
-                            <img 
-                                :src="photo.thumbnail" 
-                                class="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-                                loading="lazy"
-                            />
-                            <!-- Best Badge -->
-                            <div v-if="pIndex === 0" class="absolute bottom-1 left-1 bg-green-500/90 backdrop-blur-sm text-white text-[10px] px-1.5 py-0.5 rounded shadow-sm">
-                                最佳
-                            </div>
-                            <!-- Selection Checkbox -->
-                            <button
-                                type="button"
-                                :aria-label="selectedPhotos.has(photo.id) ? `取消选择 ${photo.filename}` : `选择 ${photo.filename}`"
-                                class="absolute left-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                                :class="selectedPhotos.has(photo.id) ? 'bg-primary-500 border-primary-500' : 'bg-black/30 border-white hover:bg-black/50'"
-                                @click.stop="togglePhotoSelection(photo.id)"
-                            >
-                                <i v-if="selectedPhotos.has(photo.id)" class="mgc_check_line text-white text-sm"></i>
-                            </button>
-                            <!-- Video Indicator (List View) -->
-                            <div v-if="photo.file_type === 'video'" class="flex mb-1 absolute top-1 right-2 justify-center pointer-events-none z-10 items-center">
-                                <div class="text-white text-sm">
-                                {{ photo.duration}}
-                                </div>
-                                <PlayCircle class="w-4 h-4 text-white drop-shadow-md opacity-90" />
-                            </div>
-                            <div v-else-if="photo.file_type === 'live_photo'" class="flex mb-1 absolute top-2 right-2 justify-center pointer-events-none z-10 items-center">
-                                <span class="icon-[tabler--live-photo] w-4 h-4 text-white drop-shadow-md opacity-90"></span>
-                            </div>
-                        </div>
-                        <div class="mt-1.5 px-1">
-                            <div class="truncate text-left text-xs font-medium text-gray-700 dark:text-gray-300">
-                                {{ photo.filename }}
-                            </div>
-                            <button
+          </template>
+          <template #photo-actions="{ photo }">
+<button
                                 type="button"
                                 class="mt-1.5 w-full rounded-md px-2 py-1.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-gray-800"
                                 :class="compareGroupIndex === gIndex && comparisonIds.has(photo.id)
@@ -130,22 +56,8 @@
                                 <i :class="compareGroupIndex === gIndex && comparisonIds.has(photo.id) ? 'mgc_check_line' : 'mgc_add_line'"></i>
                                 {{ compareGroupIndex === gIndex && comparisonIds.has(photo.id) ? '已加入对比' : '加入对比' }}
                             </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-             <!-- Group Action -->
-             <div v-if="getGroupSelectionCount(gIndex) > 0" class="mt-3 flex justify-end border-t border-gray-100 dark:border-gray-700 pt-3">
-                <button 
-                    type="button"
-                    @click="deleteGroupSelection(gIndex)"
-                    class="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-gray-800"
-                >
-                    <i class="mgc_delete_2_line"></i>
-                    删除选中 ({{ getGroupSelectionCount(gIndex) }}张)
-                </button>
-             </div>
-        </div>
+</template>
+        </PhotoCleanupGroup>
         
         <!-- Load More Spinner -->
         <div v-if="isLoadingMore" class="flex justify-center py-4">
@@ -189,7 +101,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import PhotoLightbox from '@/components/PhotoLightbox.vue';
 import SimilarPhotoCompareDialog from '@/components/SimilarPhotoCompareDialog.vue';
 import CleanupTaskShell from '@/components/CleanupTaskShell.vue';
-import request from '@/utils/request';
+import PhotoCleanupGroup from '@/components/PhotoCleanupGroup.vue';
 import { mapPhotoToImage } from '@/stores/photoStore'
 import { useInfiniteScroll } from '@vueuse/core';
 
@@ -217,33 +129,6 @@ useInfiniteScroll(containerRef, async () => {
         await loadMore();
     }
 }, { distance: 10 });
-
-// Scroll refs and state
-const scrollRefs = ref<HTMLElement[]>([]);
-const scrollState = reactive<Record<number, { left: boolean; right: boolean }>>({});
-
-const setScrollRef = (el: any, index: number) => {
-    if (el) scrollRefs.value[index] = el;
-};
-
-const updateScrollState = (index: number) => {
-    const el = scrollRefs.value[index];
-    if (!el) return;
-    scrollState[index] = {
-        left: el.scrollLeft > 0,
-        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1 // -1 for rounding
-    };
-};
-
-const canScrollLeft = (index: number) => scrollState[index]?.left ?? false;
-const canScrollRight = (index: number) => scrollState[index]?.right ?? true;
-
-const scroll = (index: number, direction: number) => {
-    const el = scrollRefs.value[index];
-    if (!el) return;
-    const scrollAmount = el.clientWidth * 0.8;
-    el.scrollBy({ left: scrollAmount * direction, behavior: 'smooth' });
-};
 
 // Data Fetching
 const fetchLatestTask = async () => {
@@ -293,10 +178,6 @@ const loadMore = async (reset = false) => {
         
         currentPage.value++;
         
-        // Initialize scroll states for new items
-        setTimeout(() => {
-            groups.value.forEach((_, i) => updateScrollState(i));
-        }, 100);
     } catch (err) {
         console.error(err);
         ElMessage.error('加载更多失败');
@@ -459,17 +340,9 @@ const toggleGroupSelection = (groupIndex: number) => {
     }
 };
 
-const getGroupSelectionCount = (groupIndex: number) => {
-    const group = groups.value[groupIndex];
-    return group.filter(p => selectedPhotos.value.has(p.id)).length;
-};
-
-// Delete Logic
 const deletePhotos = async (ids: string[]) => {
     try {
-        await request.delete('/api/photos/batch', {
-            data: { photo_ids: ids }
-        });
+        await photoApi.deletePhotos(ids);
         
         // Remove from local state
         const idSet = new Set(ids);

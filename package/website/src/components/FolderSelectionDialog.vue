@@ -2,32 +2,14 @@
   <el-dialog
     v-model="visible"
     :title="action === 'move' ? '移动图片' : '复制图片'"
-    width="500px"
+    width="min(94vw, 500px)"
     class="rounded-xl"
     :close-on-click-modal="false"
   >
     <div class="flex flex-col gap-4">
       <p class="text-sm text-gray-500 dark:text-gray-400">请选择目标外部文件夹。您可以直接在选中目录下创建新的子文件夹。</p>
       
-      <div class="border border-gray-200 dark:border-gray-700 rounded-lg h-[300px] overflow-y-auto p-2 bg-gray-50 dark:bg-gray-900/50">
-        <el-tree
-          ref="treeRef"
-          :props="defaultProps"
-          :load="loadNode"
-          lazy
-          highlight-current
-          @current-change="handleNodeClick"
-          node-key="path"
-          :empty-text="'无可选目录'"
-        >
-          <template #default="{ node, data }">
-            <div class="flex items-center gap-2 text-sm">
-              <Folder class="w-4 h-4 text-primary-500" />
-              <span>{{ data.name }}</span>
-            </div>
-          </template>
-        </el-tree>
-      </div>
+      <DirectoryTree v-if="visible" v-model="selectedPath" />
 
       <div class="flex flex-col gap-2">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">子文件夹名称（可选）</label>
@@ -50,8 +32,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { Folder } from 'lucide-vue-next'
-import { settingsApi } from '@/api/settings'
+import DirectoryTree from './DirectoryTree.vue'
 import { photoApi } from '@/api/photo'
 import { ElMessage } from 'element-plus'
 
@@ -69,16 +50,9 @@ const visible = computed({
   set: (val) => emit('update:visible', val)
 })
 
-const treeRef = ref()
 const selectedPath = ref('')
 const subFolderName = ref('')
 const submitting = ref(false)
-
-const defaultProps = {
-  label: 'name',
-  children: 'children',
-  isLeaf: 'is_leaf'
-}
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -86,28 +60,6 @@ watch(() => props.visible, (val) => {
     subFolderName.value = props.defaultSubFolder || ''
   }
 })
-
-const loadNode = async (node: any, resolve: (data: any[]) => void) => {
-  if (node.level === 0) {
-    try {
-      const res = await settingsApi.getDirectoryTree()
-      resolve(res.directories || [])
-    } catch (e) {
-      resolve([])
-    }
-  } else {
-    try {
-      const res = await settingsApi.getDirectoryTree(node.data.path)
-      resolve(res.directories || [])
-    } catch (e) {
-      resolve([])
-    }
-  }
-}
-
-const handleNodeClick = (data: any) => {
-  selectedPath.value = data.path
-}
 
 const submit = async () => {
   if (!selectedPath.value) return
