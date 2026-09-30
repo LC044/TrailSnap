@@ -1,0 +1,58 @@
+{
+  "requirement_reference": "REQ-134",
+  "prd": "doc/product-design/REQ-134-memory-relationship-graph-prd.md",
+  "status": "implemented_locally",
+  "prepared_at": "2026-09-27",
+  "goal_summary": "实现人物、地点、记忆、照片的有证据关联探索，桌面采用可逐层展开的全屏关系画布，移动端采用层级卡片。",
+  "scope_summary": "统一节点身份与权限过滤；新增一级邻居、共同记忆、证据及对象搜索接口；补充地点消歧与精确详情查询；接入人物、地点、已确认记忆入口；实现筛选、分页、探索历史和双对象比较。",
+  "acceptance_plan": {
+    "AC-01": "实现当前用户有效数据范围的节点解析和一级邻居查询；在 PeopleDetail、LocationDetail、MemoryDetail 接入入口；覆盖有效、无关联、隐藏、删除和越权对象。",
+    "AC-02": "使用 Pinia 管理画布节点、连线、坐标、每节点游标、类型筛选和比较对象；点击节点在原图追加下一层，节点去重并补画真实交叉连线；过期请求不得污染画布。",
+    "AC-03": "以对象关联的 confirmed Memory 集合求交，SQL层去重并稳定分页；独立展示共同照片；覆盖人物、地点、照片、记忆组合及无共同结果。",
+    "AC-04": "复用人物和记忆详情、媒体浏览器；地点详情支持完整行政路径或 scene_id；未解析文本地点进入来源记忆；验证返回探索状态。",
+    "AC-05": "服务端强制单次一级查询和结果上限，默认20邻居；画布允许持续扩展并支持平移、缩放、适应画布及全屏；按节点游标分页，SQL聚合后批量装配，检查大图库查询计划。",
+    "AC-06": "小于768px默认分组卡片，桌面可切换列表；实现卡片逐层探索、底部比较操作、滚动恢复、暗色主题和可访问操作；覆盖375px与430px视口。"
+  },
+  "acceptance_id_note": "以上AC编号来自PRD。本轮用户明确授权直接本地实现，无需需求平台批准或领取；本文件不表示已向平台提交。",
+  "affected_modules": [
+    "package/server/app/api/relations.py (新增)",
+    "package/server/app/schemas/relations.py (新增)",
+    "package/server/app/service/relations.py (新增)",
+    "package/server/main.py",
+    "package/server/app/db/models/memory.py",
+    "package/server/app/service/memory.py",
+    "package/server/app/api/location.py",
+    "package/server/app/crud/location.py",
+    "package/server/app/schemas/location.py",
+    "package/website/src/api/relations.ts (新增)",
+    "package/website/src/types/relations.ts (新增)",
+    "package/website/src/stores/relationStore.ts (新增)",
+    "package/website/src/views/explore/RelationsPage.vue (新增)",
+    "package/website/src/components/relations/ (新增)",
+    "package/website/src/views/album/people/PeopleDetail.vue",
+    "package/website/src/views/album/location/LocationDetail.vue",
+    "package/website/src/views/memory/MemoryDetail.vue",
+    "package/website/src/router/index.ts",
+    "package/website/src/api/location.ts",
+    "package/website/src/utils/echarts.ts",
+    "package/server/tests/unit/",
+    "package/server/tests/",
+    "package/website/tests/e2e/"
+  ],
+  "migrations": [],
+  "implementation_adjustment": "使用现有业务表的实时SQL投影及按证据动态地点解析，未变更ORM，无迁移或回填。实际变更及验证结果见PRD实现说明。",
+  "out_of_scope": [
+    "图数据库、全库全景图和任意递归路径搜索",
+    "跨用户或共享相册关系网络",
+    "大模型关系推断、亲疏排序",
+    "图谱编辑和分享导出",
+    "Git提交、推送、PR、合并和发布（本轮用户未要求）"
+  ],
+  "validation_plan": [
+    "按PRD的T01至T15覆盖语义、权限、消歧、去重、状态变更与前端历史。",
+    "测试执行统一使用tests/scripts/run-tests.ps1及tests/.env.test；先选择相关单元与集成范围，再执行桌面及移动端闭环。",
+    "验证前端生产构建与路由懒加载。",
+    "性能结果注明参考硬件、数据库、数据集、冷暖态与并发；未实测不宣称达标。"
+  ],
+  "platform_workflow": "用户指示：无需在需求平台批准和领取，直接实现代码即可。"
+}

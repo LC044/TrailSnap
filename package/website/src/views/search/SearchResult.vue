@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen pb-8">
+  <div class="min-h-screen pb-8 px-[var(--ts-page-gutter)]">
     <!-- Header -->
-    <div class="sticky top-0 z-30 backdrop-blur-md">
-      <div class="mx-auto px-4 py-3 flex items-center gap-4">
+    <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
+      <div class="mx-auto py-3 flex items-center gap-4">
         <button 
           @click="goBack"
           class="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800 transition-colors"
@@ -19,7 +19,7 @@
     </div>
 
     <!-- Content -->
-    <div class="mx-auto px-4 py-6">
+    <div class="mx-auto py-6">
       <!-- Loading State (Initial) -->
       <div v-if="loading && photos.length === 0" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-4">
         <div v-for="i in 20" :key="i" class="aspect-square bg-gray-200 dark:bg-gray-800 rounded-lg animate-pulse"></div>

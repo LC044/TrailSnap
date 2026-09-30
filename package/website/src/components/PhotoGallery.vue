@@ -212,6 +212,10 @@
                                {{ day.year }}年{{ String(day.month).padStart(2, '0') }}月
                              </span>
                              <span v-else>{{ day.year }}年</span>
+                             <el-popover v-if="isYearStart(day) && chapterLinks[String(day.year)]?.length" placement="bottom" :width="230" trigger="click">
+                               <template #reference><button class="pointer-events-auto rounded-md px-2 py-1 text-xs text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30" @click.stop>查看这一阶段</button></template>
+                               <RouterLink v-for="chapter in chapterLinks[String(day.year)]" :key="chapter.id" :to="`/chapters/${chapter.id}`" class="block rounded p-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700">{{ chapter.title }}</RouterLink>
+                             </el-popover>
                         </div>
                     </div>
 
@@ -560,6 +564,7 @@ import PersonSelector from './PersonSelector.vue'
 import GalleryChrome from './GalleryChrome.vue'
 import { faceApi } from '@/api/face'
 import { photoApi } from '@/api/photo'
+import { chapterApi } from '@/api/chapter'
 import {
   MOBILE_GRID_COLUMNS,
   getMobileDateHeaderMode,
@@ -639,6 +644,7 @@ const isAddingPerson = ref(false)
 const photoStore = usePhotoStore()
 const userStore = useUserStore()
 const store = computed(() => props.store || photoStore)
+const chapterLinks = ref<Record<string, Array<{ id: string; title: string }>>>({})
 
 // --- Image Loading Logic ---
 const loadedImages = reactive<Record<string, string>>({})
@@ -908,6 +914,12 @@ const shouldShowDateHeader = (day: DayBlock, dayIndex: number) => {
   const blockIndex = monthBlocks.value.findIndex(block => block.key === `${day.year}-${day.month}`)
   return blockIndex === 0 || monthBlocks.value[blockIndex - 1]?.year !== day.year
 }
+const isYearStart = (day: DayBlock) => {
+  if (store.value?.currentContext?.type !== 'all') return false
+  const blockIndex = monthBlocks.value.findIndex(block => block.key === `${day.year}-${day.month}`)
+  return blockIndex >= 0 && (blockIndex === 0 || monthBlocks.value[blockIndex - 1]?.year !== day.year)
+    && monthBlocks.value[blockIndex]?.days[0]?.key === day.key
+}
 
 const touchDistance = (touches: TouchList) => Math.hypot(
   touches[1].clientX - touches[0].clientX,
@@ -1064,6 +1076,12 @@ const layoutOptions = {
 }
 
 const { monthBlocks, totalHeight, getVisibleBlocks, recalculateLayout, colCount, rowHeight, gap } = useVirtualLayout(layoutOptions)
+
+watch(() => [...new Set(monthBlocks.value.map(block => block.year))].sort().join(','), async value => {
+  if (!value || store.value?.currentContext?.type !== 'all') { chapterLinks.value = {}; return }
+  try { chapterLinks.value = await chapterApi.yearLinks(value.split(',').map(Number)) }
+  catch { chapterLinks.value = {} }
+}, { immediate: true })
 
 const getDateHeaderHeight = (day: DayBlock, block: MonthBlock) => {
   if (!shouldShowDateHeader(day, block.days.indexOf(day))) return 0

@@ -1,6 +1,6 @@
 <template>
   <div class="h-full bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
-    <div class="mx-auto flex h-full w-full max-w-7xl">
+    <div class="mx-auto flex h-full w-full max-w-screen-2xl">
       <aside class="hidden w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-100 px-5 py-8 dark:border-gray-800 dark:bg-gray-900 md:block">
         <h1 class="px-2 text-2xl font-bold">设置</h1>
         <p class="mt-1 px-2 text-sm text-gray-500 dark:text-gray-400">管理账号、图库与系统服务</p>

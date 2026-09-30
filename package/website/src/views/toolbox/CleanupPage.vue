@@ -1,8 +1,8 @@
 <template>
-  <div class="container mx-auto px-4 flex flex-col">
+  <div class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] flex flex-col">
     <!-- Header -->
-    <div class="sticky top-0 z-30 backdrop-blur-md">
-      <div class="flex px-4 py-3 items-center justify-between flex-shrink-0">
+    <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
+      <div class="flex py-3 items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-4">
             <button 
             @click="goBack"

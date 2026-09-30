@@ -1,6 +1,6 @@
 <template>
   <div class="moon-journal min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" data-testid="moon-journal">
-    <div class="mx-auto max-w-[1600px] px-3 py-3 sm:px-5 md:px-8 md:py-6">
+    <div class="mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] py-3 md:py-6">
       <header class="relative isolate min-h-[168px] overflow-hidden rounded-3xl bg-gray-950 text-white shadow-lg md:min-h-[190px]">
         <img
           v-if="heroPhoto"

@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto py-6 px-4 max-w-4xl">
+  <div class="mx-auto w-full max-w-4xl px-[var(--ts-page-gutter)] py-6">
     <div class="flex items-center gap-4 mb-6">
       <button @click="goBack" class="p-2 hover:bg-gray-100 bg-transparent dark:hover:bg-gray-800 rounded-full transition-colors">
         <ArrowLeft class="w-6 h-6 text-gray-600 dark:text-gray-300" />

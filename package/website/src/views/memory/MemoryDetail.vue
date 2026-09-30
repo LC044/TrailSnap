@@ -7,9 +7,10 @@
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/30"></div>
         <div class="absolute left-0 right-0 top-0 flex items-center justify-between p-4 md:p-6">
           <button class="rounded-full bg-black/25 p-2 text-white backdrop-blur hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
+          <RouterLink v-if="memory.status === 'confirmed'" :to="{ path: '/explore/relations', query: { root: `memory:${memory.id}` } }" class="inline-flex min-h-11 items-center rounded-lg bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
           <button class="rounded-lg bg-white/95 px-4 py-2 text-sm font-medium text-gray-800 shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="openEdit"><Pencil class="mr-1.5 inline h-4 w-4" />编辑记忆</button>
         </div>
-        <div class="absolute bottom-0 left-0 right-0 mx-auto max-w-6xl px-5 pb-7 text-white md:px-8">
+        <div class="absolute bottom-0 left-0 right-0 mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] pb-7 text-white">
           <div class="mb-3 flex flex-wrap items-center gap-2">
             <span v-if="memory.status === 'candidate'" class="rounded-full bg-amber-400/95 px-3 py-1 text-xs font-semibold text-amber-950">待确认</span>
             <span v-else class="rounded-full bg-emerald-500/90 px-3 py-1 text-xs font-semibold text-white">已确认</span>
@@ -24,7 +25,7 @@
         </div>
       </div>
 
-      <main class="mx-auto grid max-w-6xl gap-6 px-4 py-6 md:px-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <main class="mx-auto grid max-w-screen-2xl gap-6 px-[var(--ts-page-gutter)] py-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div class="space-y-6">
           <section v-if="memory.status === 'candidate'" class="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-800/60 dark:bg-amber-950/30">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

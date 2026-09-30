@@ -21,6 +21,7 @@ import {
   MapChart,
   LinesChart,
   EffectScatterChart,
+  GraphChart,
 } from 'echarts/charts'
 
 // —— 组件（option 顶层键）——
@@ -51,6 +52,7 @@ echarts.use([
   MapChart,
   LinesChart,
   EffectScatterChart,
+  GraphChart,
   // components
   TitleComponent,
   TooltipComponent,

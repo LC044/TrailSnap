@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto w-full max-w-[1600px] px-3 pb-6 pt-4 sm:px-5 sm:py-6 lg:px-8">
+  <div class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-6 pt-4 sm:py-6">
     <!-- Header -->
     <div class="mb-5 flex items-center justify-between gap-3 sm:mb-8">
       <div class="min-w-0">

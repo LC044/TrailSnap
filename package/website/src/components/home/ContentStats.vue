@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg mx-4 my-3 overflow-hidden transition-all duration-300">
+  <div class="bg-gray-100 dark:bg-gray-800 rounded-lg my-3 overflow-hidden transition-all duration-300">
     <!-- Header -->
     <button
       type="button"

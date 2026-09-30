@@ -1,11 +1,11 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 p-4 sm:p-6 transition-colors duration-300">
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 px-[var(--ts-page-gutter)] py-4 md:py-6 transition-colors duration-300">
     <!-- 页面标题 -->
     <h1 class="text-[clamp(1.5rem,5vw,2.5rem)] font-bold text-gray-800 dark:text-gray-100 mb-6 text-center">
       车票信息编辑
     </h1>
     <!-- 主要内容区域：桌面端左右布局，移动端上下布局 -->
-    <div class="max-w-6xl mx-auto">
+    <div class="max-w-screen-2xl mx-auto">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
         <!-- 表单编辑区：桌面端在左侧 -->
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 sm:p-6 transition-colors duration-300">

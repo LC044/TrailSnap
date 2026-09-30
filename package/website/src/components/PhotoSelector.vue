@@ -95,7 +95,7 @@
         </div>
       </div>
 
-      <div class="container mx-auto px-4 py-6">
+      <div class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] py-6">
         <PhotoGallery
           ref="galleryRef"
           :store="store"

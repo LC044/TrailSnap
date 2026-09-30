@@ -1,5 +1,5 @@
 <template>
-  <div class="flex-1 container mx-auto overflow-y-auto pb-8">
+  <div class="flex-1 mx-auto w-full max-w-screen-2xl overflow-y-auto pb-8">
     <!-- No location data empty state -->
     <div v-if="showNoLocation" class="flex flex-col items-center justify-center py-20 text-center">
       <Map class="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />

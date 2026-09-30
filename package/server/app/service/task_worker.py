@@ -26,7 +26,7 @@ from app.crud import task as crud_task
 from app.service.task_strategy import TaskStrategyFactory
 from app.service.adaptive_limiter import AdaptiveResourceLimiter
 # Import tasks to register strategies
-from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion
+from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
 
 class TaskQueueManager:
     def __init__(self):
@@ -94,6 +94,8 @@ def get_chunk_size(task_type):
     elif task_type == TaskType.CLUSTER_FACES:
         # One whole-library pass per batch. Batching several owners together
         # would serialise their clustering inside a single timeout window.
+        chunk_size = 1
+    elif task_type == TaskType.DISCOVER_CHAPTERS:
         chunk_size = 1
     elif task_type == TaskType.PROCESS_BASIC or task_type == TaskType.EXTRACT_METADATA:
         chunk_size = 16
@@ -1037,10 +1039,16 @@ class TaskWorker:
             # Tasks that should be preserved in DB after completion.
             # Only reference real TaskType members here — a non-existent
             # member raises AttributeError and crashes completion cleanup.
-            PRESERVED_TASK_TYPES = set()
+            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS}
 
             for item in items:
                 if item['status'] == TaskStatus.COMPLETED:
+                    if item['task_type'] in PRESERVED_TASK_TYPES:
+                        db.query(Task).filter(Task.id == item['task_id']).update({
+                            'status': TaskStatus.COMPLETED.value,
+                            'result': item.get('result') or {},
+                            'error': None,
+                        }, synchronize_session=False)
                     # Only delete if not in preserved types
                     if item['task_type'] not in PRESERVED_TASK_TYPES:
                         task_ids_completed.append(item['task_id'])

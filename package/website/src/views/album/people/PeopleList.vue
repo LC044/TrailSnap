@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto people-list py-6 px-4">
+  <div class="mx-auto w-full max-w-screen-2xl people-list px-[var(--ts-page-gutter)] py-4 md:py-6">
     <div
       class="people-toolbar mb-8 flex flex-row justify-between items-start sm:items-center gap-4 border-gray-200/70 bg-gray-50/90 dark:border-gray-700/70 dark:bg-gray-900/90"
       :class="{ 'is-selection-mode': isMergeMode }"
