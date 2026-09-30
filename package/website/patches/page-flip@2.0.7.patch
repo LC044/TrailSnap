@@ -1,0 +1,13 @@
+diff --git a/src/Render/Render.ts b/src/Render/Render.ts
+index 927ee523bd093bde64870cbda728ad0ecd966921..4b249ca2234e15ff01ad89fc99ad0c777d9be8f7 100644
+--- a/src/Render/Render.ts
++++ b/src/Render/Render.ts
+@@ -140,6 +140,8 @@ export abstract class Render {
+         this.update();
+ 
+         const loop = (timer: number): void => {
++            // A removed reader must not retain its pages through an endless RAF loop.
++            if (!this.app.getUI().getDistElement().isConnected) return;
+             this.render(timer);
+             requestAnimationFrame(loop);
+         };

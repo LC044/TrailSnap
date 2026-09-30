@@ -1,0 +1,69 @@
+
+.chapter-book { padding:9px; border:1px solid #e1ddd4; border-radius:12px; background:#eae5da; box-shadow:0 16px 40px rgb(35 31 24 / 8%); }
+.chapter-book .diary-spread { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); overflow:hidden; border-radius:5px; }
+.chapter-book .diary-page { position:relative; min-width:0; height:100%; padding:0; overflow:hidden; background:#fffdf8; }
+.chapter-book .diary-left { box-shadow:inset -14px 0 18px -18px rgb(45 36 20 / 35%); }
+.chapter-book .diary-right { border-left:1px solid #e7e2d8; box-shadow:inset 14px 0 18px -18px rgb(45 36 20 / 25%); }
+.chapter-book .diary-running { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:30px; padding-bottom:14px; border-bottom:1px solid #e7e2d8; font-size:10px; letter-spacing:.08em; color:#78716c; }
+.chapter-book .diary-cover-photo { position:relative; width:90%; margin:42px auto 0; padding:12px 12px 18px; background:white; box-shadow:0 7px 24px rgb(35 31 24 / 12%); transform:rotate(-1deg); }
+.chapter-book .diary-tape { position:absolute; z-index:1; top:-15px; left:40%; width:70px; height:28px; background:rgb(214 198 160 / 45%); transform:rotate(7deg); }
+.chapter-book .diary-photo-frame { padding:10px 10px 14px; background:white; box-shadow:0 5px 18px rgb(35 31 24 / 8%); }
+.chapter-book .diary-small-photo { min-width:0; padding:6px; background:white; box-shadow:0 3px 12px rgb(35 31 24 / 7%); }
+.chapter-book .diary-writing { background-image:repeating-linear-gradient(transparent,transparent 31px,rgb(120 113 108 / 10%) 31px,rgb(120 113 108 / 10%) 32px); }
+.chapter-book .diary-page-number { position:absolute; bottom:24px; right:32px; font:italic 13px Georgia,serif; color:#78716c; }
+.diary-reader .diary-turn { display:flex; min-height:44px; align-items:center; gap:8px; padding:8px 16px; border:1px solid #e5e7eb; border-radius:8px; font-size:13px; color:#4b5563; background:white; }
+.diary-reader .diary-turn:disabled { opacity:.35; cursor:default; }
+.dark .chapter-book { border-color:#44403c; background:#292524; box-shadow:0 16px 40px rgb(0 0 0 / 18%); }
+.dark .chapter-book .diary-page { background:#242526; }
+.dark .chapter-book .diary-right, .dark .chapter-book .diary-running { border-color:#44403c; }
+.dark .chapter-book .diary-running, .dark .chapter-book .diary-page-number { color:#a8a29e; }
+.dark .chapter-book .diary-cover-photo, .dark .chapter-book .diary-photo-frame, .dark .chapter-book .diary-small-photo { background:#343536; }
+.dark .chapter-book .diary-writing { background-image:repeating-linear-gradient(transparent,transparent 31px,rgb(214 211 209 / 10%) 31px,rgb(214 211 209 / 10%) 32px); }
+.dark .diary-reader .diary-turn { border-color:#4b5563; background:#1f2937; color:#d1d5db; }
+@media(max-width:767px) {
+  .chapter-book { padding:5px; }
+  .chapter-book .diary-spread { grid-template-columns:minmax(0,1fr); }
+  .chapter-book .diary-page { height:100%; padding:0; }
+  .chapter-book .diary-left { box-shadow:none; }
+  .chapter-book .diary-right { border-left:0; border-top:1px solid #e7e2d8; box-shadow:none; }
+  .chapter-book .diary-cover .diary-left { order:2; }
+  .chapter-book .diary-cover .diary-right { order:1; border-top:0; }
+  .chapter-book .diary-cover-photo { margin-top:20px; width:88%; }
+  .chapter-book .diary-running { margin-bottom:22px; }
+  .diary-reader .diary-turn { padding:8px 12px; }
+  .dark .chapter-book .diary-right { border-top-color:#44403c; }
+}
+
+
+/* All spreads share one paper size. Only the contents may scroll. */
+.chapter-book { position:relative; border-radius:6px; box-shadow:0 18px 40px rgb(35 31 24 / 14%), 0 3px 0 #d6cebf, 0 6px 0 #e6dece; }
+.chapter-book .book-stage { position:relative; height:clamp(620px, 62vw, 740px); }
+.chapter-book .diary-spread { height:100%; }
+.chapter-book .book-live { position:absolute; inset:0; }
+.chapter-book.book-animating .book-live { visibility:hidden; }
+.chapter-book .book-animation { position:absolute; inset:0; pointer-events:none; visibility:hidden; }
+.chapter-book .book-animation .stf__item { position:absolute; display:none; }
+.chapter-book.book-animating .book-animation { visibility:visible; }
+.chapter-book .diary-page-content { height:100%; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#d6cebf transparent; padding:32px 38px 64px; }
+.chapter-book .diary-page-number { z-index:1; bottom:0; right:0; padding:14px 32px; width:100%; text-align:right; background:linear-gradient(transparent, #fffdf8 25%); pointer-events:none; }
+.dark .chapter-book .diary-page-number { background:linear-gradient(transparent, #242526 25%); }
+.chapter-book .book-hard-cover { position:relative; height:100%; padding:36px; text-align:center; background:#77614e; color:#f1e7d3; border:8px solid #695442; outline:1px solid #bca181; outline-offset:-24px; box-shadow:inset 10px 0 20px rgb(0 0 0 / 20%); }
+.chapter-book .book-cover-content { height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:36px; }
+.chapter-book .book-hard-cover h2 { font-family:serif; font-size:36px; line-height:1.6; letter-spacing:.18em; overflow-wrap:anywhere; }
+.chapter-book .book-hard-cover p { font-size:11px; letter-spacing:.2em; }
+.chapter-book .book-side-tabs { display:none; }
+@media(min-width:768px) {
+  .chapter-book .book-stage::after { content:''; position:absolute; left:50%; top:0; bottom:0; width:28px; transform:translateX(-50%); background:linear-gradient(90deg, transparent, rgb(60 40 20 / 10%), transparent); pointer-events:none; z-index:10; }
+}
+@media(max-width:767px) {
+  .chapter-book .book-stage { height:clamp(500px, 145vw, 620px); overflow:hidden; }
+  .chapter-book .diary-page-content { padding:22px 20px 52px; }
+  .chapter-book:not(.daily-book) .book-live > .diary-right { display:none; }
+  .chapter-book.book-mobile-right:not(.daily-book) .book-live > .diary-left { display:none; }
+  .chapter-book.book-mobile-right:not(.daily-book) .book-live > .diary-right { display:block; }
+  .chapter-book .diary-right { border-top:0; }
+  .chapter-book .book-side-tabs { display:flex; gap:16px; padding:6px 10px 12px; font-size:12px; color:#78716c; }
+  .chapter-book .book-side-tabs button { min-height:44px; padding:0 12px; }
+  .chapter-book .book-side-tabs button[aria-pressed="true"] { text-decoration:underline; text-underline-offset:6px; }
+  .dark .chapter-book .book-side-tabs { color:#d6d3d1; }
+}

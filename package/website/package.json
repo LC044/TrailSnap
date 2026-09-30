@@ -54,6 +54,7 @@
     "lucide-vue-next": "^0.555.0",
     "markdown-it": "^14.1.1",
     "mingcute_icon": "^2.9.6",
+    "page-flip": "2.0.7",
     "piexifjs": "^1.0.6",
     "pinia": "^3.0.3",
     "pinyin-pro": "^3.28.0",
@@ -85,6 +86,9 @@
   "pnpm": {
     "overrides": {
       "@cesium/widgets": "14.4.1"
+    },
+    "patchedDependencies": {
+      "page-flip@2.0.7": "patches/page-flip@2.0.7.patch"
     }
   }
 }

@@ -7,6 +7,11 @@ settings:
 overrides:
   '@cesium/widgets': 14.4.1
 
+patchedDependencies:
+  page-flip@2.0.7:
+    hash: fc0ba35e1c672f9705186b1faa3a114c7f4464500f1d123845710b84422b31d3
+    path: patches/page-flip@2.0.7.patch
+
 importers:
 
   .:
@@ -95,6 +100,9 @@ importers:
       mingcute_icon:
         specifier: ^2.9.6
         version: 2.9.6
+      page-flip:
+        specifier: 2.0.7
+        version: 2.0.7(patch_hash=fc0ba35e1c672f9705186b1faa3a114c7f4464500f1d123845710b84422b31d3)
       piexifjs:
         specifier: ^1.0.6
         version: 1.0.6
@@ -2351,6 +2359,9 @@ packages:
 
   package-json-from-dist@1.0.1:
     resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
+
+  page-flip@2.0.7:
+    resolution: {integrity: sha512-96lQFUUz7r/LZzEUZJ3yBIMEKU9+m8HMFDzTvTdD6P7Ag/wXINjp9n0W7b4wanwnDbQETo4uNUoL3zMqpFxwGA==}
 
   pako@2.2.0:
     resolution: {integrity: sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w==}
@@ -5629,6 +5640,8 @@ snapshots:
   p-try@2.2.0: {}
 
   package-json-from-dist@1.0.1: {}
+
+  page-flip@2.0.7(patch_hash=fc0ba35e1c672f9705186b1faa3a114c7f4464500f1d123845710b84422b31d3): {}
 
   pako@2.2.0: {}
 

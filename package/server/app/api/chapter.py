@@ -9,8 +9,10 @@ from app.api.deps import get_current_user
 from app.db.models.user import User
 from app.db.models.task import Task, TaskStatus, TaskType
 from app.dependencies import BaseResponse, get_db
-from app.schemas.chapter import ChapterDefinition, ChapterMerge, ChapterPreview, ChapterSplit, ChapterUpdate, ChapterVersion
+from app.schemas.chapter import ChapterDefinition, ChapterDiaryDraft, ChapterDiaryGenerate, ChapterMerge, ChapterPreview, ChapterSplit, ChapterUpdate, ChapterVersion
 from app.service import chapter as service
+from app.schemas.chapter import ChapterDayCaption, ChapterDays
+from datetime import date
 
 router = APIRouter()
 
@@ -22,10 +24,10 @@ def _discovery_task(task: Task) -> dict:
 
 
 @router.get("")
-def list_chapters(status: str = Query("confirmed"), hidden: bool = Query(False),
+def list_chapters(status: str = Query("confirmed"), hidden: bool = Query(False), reveal: bool = Query(False),
                   skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=50),
                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return BaseResponse.success(data=service.list_owned(db, user.id, status=status, hidden=hidden,
+    return BaseResponse.success(data=service.list_owned(db, user.id, status=status, hidden=hidden, reveal=reveal,
                                                         skip=skip, limit=limit))
 
 
@@ -42,6 +44,14 @@ def preview_chapter(payload: ChapterPreview, user: User = Depends(get_current_us
                     db: Session = Depends(get_db)):
     return BaseResponse.success(data=service.preview(db, user.id, payload.start_date,
                                                      payload.end_date, payload.chapter_id))
+
+
+@router.post("/cover-options")
+def chapter_cover_options(payload: ChapterPreview, skip: int = Query(0, ge=0),
+                          limit: int = Query(30, ge=1, le=100),
+                          user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return BaseResponse.success(data=service.cover_options(db, user.id, payload.start_date,
+                                                           payload.end_date, skip, limit))
 
 
 @router.post("/discover")
@@ -129,6 +139,48 @@ def split_chapter(chapter_id: UUID, payload: ChapterSplit, user: User = Depends(
                   db: Session = Depends(get_db)):
     rows = service.split(db, user.id, chapter_id, payload)
     return BaseResponse.success(data=[service.serialize(db, row) for row in rows])
+
+
+@router.post("/{chapter_id}/diary/generate", response_model=BaseResponse[ChapterDiaryDraft])
+async def generate_diary(chapter_id: UUID, payload: ChapterDiaryGenerate,
+                         user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BaseResponse[ChapterDiaryDraft]:
+    from app.service import chapter_diary
+
+    return BaseResponse.success(data=await chapter_diary.generate(db, user.id, chapter_id, payload))
+
+
+@router.get("/{chapter_id}/diary/days", response_model=BaseResponse[ChapterDays])
+def diary_days(chapter_id: UUID, skip: int = Query(0, ge=0), limit: int = Query(6, ge=1, le=12),
+               year: int | None = Query(None, ge=1900, le=2200), month: int | None = Query(None, ge=1, le=12),
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BaseResponse[ChapterDays]:
+    from app.service import chapter_days
+    return BaseResponse.success(data=chapter_days.list_days(db, user.id, chapter_id, skip, limit, year, month))
+
+
+@router.post("/{chapter_id}/diary/days/{day}/generate", response_model=BaseResponse[ChapterDayCaption])
+async def generate_day(chapter_id: UUID, day: date, user: User = Depends(get_current_user),
+                       db: Session = Depends(get_db)) -> BaseResponse[ChapterDayCaption]:
+    from app.service import chapter_days
+    return BaseResponse.success(data=await chapter_days.generate(db, user.id, chapter_id, day))
+
+
+@router.get("/{chapter_id}/diary/days/{day}/photos", response_model=BaseResponse[dict])
+def day_photos(chapter_id: UUID, day: date, skip: int = Query(0, ge=0), limit: int = Query(30, ge=1, le=100),
+               user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BaseResponse[dict]:
+    from app.service import chapter_days
+    _, scoped = chapter_days.day_scope(db, user.id, chapter_id, day)
+    return BaseResponse.success(data=service.photos(db, scoped, skip, limit))
+
+
+@router.put("/{chapter_id}/diary/days/{day}", response_model=BaseResponse[ChapterDayCaption])
+def save_day(chapter_id: UUID, day: date, payload: ChapterDayCaption,
+                   user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BaseResponse[ChapterDayCaption]:
+    from app.service import chapter_days
+    from app.crud import moment
+    chapter_days.day_scope(db, user.id, chapter_id, day)
+    db.query(User).filter(User.id == user.id).with_for_update().one()
+    saved = moment.upsert_caption(db, user.id, "all", None, day, payload.caption.strip(), "manual")
+    return BaseResponse.success(data={"caption": saved.caption, "source": saved.source})
 
 
 @router.post("/{chapter_id}/{action}")

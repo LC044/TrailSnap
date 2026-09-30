@@ -24,6 +24,8 @@ def upgrade():
         sa.Column("is_hidden", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("title", sa.String(80), nullable=False),
         sa.Column("summary", sa.Text()),
+        sa.Column('summary_source', sa.String(length=16), server_default='user', nullable=False),
+        sa.Column('diary_entries', sa.JSON(), nullable=True),
         sa.Column("start_date", sa.Date(), nullable=False),
         sa.Column("end_date", sa.Date()),
         sa.Column("cover_photo_id", UUID(as_uuid=True), sa.ForeignKey("photos.id", ondelete="SET NULL")),

@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.db.models.chapter import LifeChapter
 from app.db.models.face import Face, FaceIdentity
+from app.db.models.image_description import ImageDescription
 from app.db.models.memory import Memory, MemoryPhoto, MemoryStatus
-from app.db.models.photo import ImageType, Photo
+from app.db.models.photo import FileType, ImageType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.schemas.chapter import ChapterDefinition, ChapterMerge, ChapterSplit, ChapterUpdate
 
@@ -56,9 +57,17 @@ def _validate_cover(db: Session, owner_id: UUID, cover_id: UUID | None, start: d
 def _cover(db: Session, row: LifeChapter) -> str | None:
     if row.cover_photo_id and _photo_query(db, row.owner_id, row.start_date, row.end_date).filter(Photo.id == row.cover_photo_id).first():
         return str(row.cover_photo_id)
-    photo = _photo_query(db, row.owner_id, row.start_date, row.end_date).filter(
+    candidates = _photo_query(db, row.owner_id, row.start_date, row.end_date).filter(
         or_(Photo.image_type.is_(None), Photo.image_type != ImageType.SCREENSHOT)
-    ).order_by(Photo.photo_time.asc()).first()
+    )
+    camera = candidates.filter(Photo.image_type == ImageType.CAMERA)
+    if camera.first():
+        candidates = camera
+    midpoint = row.start_date + ((row.end_date or date.today()) - row.start_date) / 2
+    photo = candidates.filter(Photo.photo_time >= datetime.combine(midpoint, time.min)).order_by(
+        Photo.photo_time.asc(), Photo.id.asc()).first()
+    if not photo:
+        photo = candidates.order_by(Photo.photo_time.desc(), Photo.id.desc()).first()
     if not photo:
         photo = _photo_query(db, row.owner_id, row.start_date, row.end_date).order_by(Photo.photo_time.asc()).first()
     return str(photo.id) if photo else None
@@ -76,6 +85,7 @@ def serialize(db: Session, row: LifeChapter, *, count: bool = True) -> dict:
     result = {
         "id": str(row.id), "status": row.status, "origin": row.origin,
         "is_hidden": row.is_hidden, "title": row.title, "summary": row.summary,
+        "summary_source": row.summary_source or "user",
         "start_date": row.start_date.isoformat(),
         "end_date": row.end_date.isoformat() if row.end_date else None,
         "cover_photo_id": _cover(db, row), "evidence": evidence,
@@ -88,26 +98,51 @@ def serialize(db: Session, row: LifeChapter, *, count: bool = True) -> dict:
 
 
 def list_owned(db: Session, owner_id: UUID, *, status: str = "confirmed", hidden: bool = False,
-               skip: int = 0, limit: int = 20) -> dict:
+               reveal: bool = False, skip: int = 0, limit: int = 20) -> dict:
     if status not in {"confirmed", "candidate", "ignored"}:
         raise HTTPException(400, "无效的章节状态")
     query = db.query(LifeChapter).filter(LifeChapter.owner_id == owner_id, LifeChapter.status == status)
     query = query.filter(LifeChapter.is_hidden.is_(hidden if status == "confirmed" else False))
     total = query.count()
     rows = query.order_by(LifeChapter.start_date.asc(), LifeChapter.id.asc()).offset(skip).limit(limit).all()
-    return {"items": [serialize(db, row) for row in rows], "total": total, "skip": skip, "limit": limit}
+    if hidden and not reveal:
+        items = [{"id": str(row.id), "status": row.status, "origin": row.origin,
+                  "is_hidden": True, "title": "已隐藏的章节", "summary": None,
+                  "start_date": "", "end_date": None, "cover_photo_id": None,
+                  "evidence": [], "photo_count": 0, "event_count": 0,
+                  "version": row.version, "source_ids": []} for row in rows]
+    else:
+        items = [serialize(db, row) for row in rows]
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 def get(db: Session, owner_id: UUID, chapter_id: UUID, *, manage: bool = False) -> dict:
     row = _owned(db, owner_id, chapter_id, manage=manage)
     result = serialize(db, row)
-    result["years"] = sorted({photo_time.year for (photo_time,) in _photo_query(
+    result["years"] = sorted({int(year) for (year,) in _photo_query(
         db, owner_id, row.start_date, row.end_date
-    ).with_entities(Photo.photo_time).yield_per(1000)})
+    ).with_entities(func.extract('year', Photo.photo_time)).distinct().all()}
+        | {int(year) for year in (row.diary_entries or {})
+           if row.start_date.year <= int(year) <= (row.end_date or date.today()).year})
+    result["diary_entries"] = diary_entries(db, row)
     result["people"] = people(db, row)
     result["places"] = places(db, row)
     result["events"] = events(db, row, 0, 6)["items"]
     return result
+
+
+def diary_entries(db: Session, row: LifeChapter) -> dict:
+    entries = {year: dict(entry) for year, entry in (row.diary_entries or {}).items()}
+    photo_ids = {UUID(id) for entry in entries.values() for id in entry.get("source_photo_ids", [])}
+    memory_ids = {UUID(id) for entry in entries.values() for id in entry.get("source_memory_ids", [])}
+    valid_photos = {str(id): when.year for id, when in _photo_query(db, row.owner_id, row.start_date, row.end_date)
+                    .filter(Photo.id.in_(photo_ids)).with_entities(Photo.id, Photo.photo_time).all()} if photo_ids else {}
+    valid_memories = {str(id) for (id,) in _events_query(db, row).filter(Memory.id.in_(memory_ids))
+                      .with_entities(Memory.id).all()} if memory_ids else set()
+    for year, entry in entries.items():
+        entry["source_photo_ids"] = [id for id in entry.get("source_photo_ids", []) if valid_photos.get(id) == int(year)]
+        entry["source_memory_ids"] = [id for id in entry.get("source_memory_ids", []) if id in valid_memories]
+    return entries
 
 
 def photos(db: Session, row: LifeChapter, skip: int, limit: int, year: int | None = None) -> dict:
@@ -116,9 +151,54 @@ def photos(db: Session, row: LifeChapter, skip: int, limit: int, year: int | Non
         query = query.filter(Photo.photo_time >= datetime(year, 1, 1), Photo.photo_time < datetime(year + 1, 1, 1))
     total = query.count()
     rows = query.order_by(Photo.photo_time.asc(), Photo.id.asc()).offset(skip).limit(limit).all()
-    return {"items": [{"id": str(p.id), "filename": p.filename,
-                       "photo_time": p.photo_time.isoformat(), "file_type": p.file_type.value,
-                       "width": p.width, "height": p.height} for p in rows], "total": total}
+    def item(p: Photo) -> dict:
+        return {"id": str(p.id), "filename": p.filename,
+                "photo_time": p.photo_time.isoformat(), "file_type": p.file_type.value,
+                "width": p.width, "height": p.height}
+    result = {"items": [item(photo) for photo in rows], "total": total}
+    if year and skip == 0 and total:
+        year_start = max(row.start_date, date(year, 1, 1))
+        year_end = min(row.end_date or date.today(), date(year, 12, 31))
+        midpoint = year_start + (year_end - year_start) / 2
+        preferred = query.filter(or_(Photo.image_type.is_(None), Photo.image_type != ImageType.SCREENSHOT))
+        featured = preferred.filter(Photo.photo_time >= datetime.combine(midpoint, time.min)).order_by(
+            Photo.photo_time.asc(), Photo.id.asc()).first()
+        if not featured:
+            featured = preferred.order_by(Photo.photo_time.desc(), Photo.id.desc()).first()
+        result["featured"] = item(featured or rows[0])
+        result["representatives"] = [item(photo) for photo in representative_photos(db, row, year)]
+    return result
+
+
+def representative_photos(db: Session, row: LifeChapter, year: int | None = None) -> list[Photo]:
+    """Sample across the entire range, rather than the first burst of photos."""
+    query = _photo_query(db, row.owner_id, row.start_date, row.end_date)
+    if year:
+        query = query.filter(Photo.photo_time >= datetime(year, 1, 1), Photo.photo_time < datetime(year + 1, 1, 1))
+    preferred = query.filter(or_(Photo.image_type.is_(None), Photo.image_type != ImageType.SCREENSHOT))
+    if not preferred.first():
+        preferred = query
+    camera = preferred.filter(Photo.image_type == ImageType.CAMERA, Photo.file_type == FileType.image)
+    if camera.count() >= 6:
+        preferred = camera
+    months = preferred.with_entities(func.extract('year', Photo.photo_time).label('year'),
+                                    func.extract('month', Photo.photo_time).label('month')).distinct().order_by('year', 'month').all()
+    size = min(6, len(months))
+    offsets = sorted({round((len(months) - 1) * index / max(1, size - 1)) for index in range(size)})
+    selected = []
+    for offset in offsets:
+        sample_year, month = (int(value) for value in months[offset])
+        next_month = datetime(sample_year + (month == 12), month % 12 + 1, 1)
+        sample = preferred.filter(Photo.photo_time >= datetime(sample_year, month, 1), Photo.photo_time < next_month).outerjoin(
+            ImageDescription, ImageDescription.photo_id == Photo.id
+        ).order_by(
+            (Photo.file_type == FileType.image).desc(),
+            (func.coalesce(ImageDescription.memory_score, 0) + func.coalesce(ImageDescription.quality_score, 0)).desc(),
+            Photo.photo_time.asc(), Photo.id.asc(),
+        ).first()
+        if sample:
+            selected.append(sample)
+    return selected
 
 
 def _events_query(db: Session, row: LifeChapter, year: int | None = None):
@@ -171,14 +251,47 @@ def preview(db: Session, owner_id: UUID, start: date, end: date | None,
     if end and end < start:
         raise HTTPException(400, "结束日期不能早于开始日期")
     new_query = _photo_query(db, owner_id, start, end)
-    result = {"photo_count": new_query.count(), "preview_photo_ids": [str(id) for (id,) in
-              new_query.with_entities(Photo.id).order_by(Photo.photo_time.asc()).limit(8).all()]}
+    photo_count = new_query.count()
+    # Spread suggestions across the range instead of showing only the first burst of photos.
+    sample_query = new_query.filter(Photo.image_type == ImageType.CAMERA)
+    sample_count = sample_query.count()
+    if not sample_count:
+        sample_query = new_query.filter(or_(Photo.image_type.is_(None), Photo.image_type != ImageType.SCREENSHOT))
+        sample_count = sample_query.count()
+    if not sample_count:
+        sample_query, sample_count = new_query, photo_count
+    offsets = sorted({round((sample_count - 1) * index / 7) for index in range(min(8, sample_count))})
+    samples = [sample_query.with_entities(Photo.id).order_by(Photo.photo_time.asc(), Photo.id.asc())
+               .offset(offset).first() for offset in offsets]
+    month_rows = new_query.with_entities(
+        func.extract('year', Photo.photo_time).label('year'),
+        func.extract('month', Photo.photo_time).label('month'),
+        func.count(Photo.id),
+    ).group_by('year', 'month').order_by('year', 'month').all()
+    result = {"photo_count": photo_count,
+              "preview_photo_ids": [str(sample[0]) for sample in samples if sample],
+              "month_counts": [{"month": f"{int(year):04d}-{int(month):02d}", "count": count}
+                               for year, month, count in month_rows]}
     if chapter_id:
         row = _owned(db, owner_id, chapter_id, manage=True)
         old = _photo_query(db, owner_id, row.start_date, row.end_date)
         result["previous_photo_count"] = old.count()
+        old_ids = old.with_entities(Photo.id).subquery()
+        new_ids = new_query.with_entities(Photo.id).subquery()
+        result["added_photo_count"] = new_query.filter(~Photo.id.in_(db.query(old_ids.c.id))).count()
+        result["removed_photo_count"] = old.filter(~Photo.id.in_(db.query(new_ids.c.id))).count()
         result["version"] = row.version
     return result
+
+
+def cover_options(db: Session, owner_id: UUID, start: date, end: date | None,
+                  skip: int, limit: int) -> dict:
+    if end and end < start:
+        raise HTTPException(400, "结束日期不能早于开始日期")
+    query = _photo_query(db, owner_id, start, end)
+    rows = query.order_by(Photo.photo_time.desc(), Photo.id.desc()).offset(skip).limit(limit).all()
+    return {"items": [{"id": str(photo.id), "photo_time": photo.photo_time.isoformat()}
+                      for photo in rows], "total": query.count()}
 
 
 def _write(db: Session, row: LifeChapter, values: dict, version: int):
@@ -196,7 +309,8 @@ def _write(db: Session, row: LifeChapter, values: dict, version: int):
 def create(db: Session, owner_id: UUID, data: ChapterDefinition) -> LifeChapter:
     _validate_cover(db, owner_id, data.cover_photo_id, data.start_date, data.end_date)
     row = LifeChapter(owner_id=owner_id, status="confirmed", origin="manual",
-                      title=data.title.strip(), summary=data.summary,
+                      title=data.title.strip(), summary=data.summary, summary_source=data.summary_source,
+                      diary_entries={year: entry.model_dump(mode="json") for year, entry in (data.diary_entries or {}).items()},
                       start_date=data.start_date, end_date=data.end_date,
                       cover_photo_id=data.cover_photo_id, confirmed_at=datetime.now())
     db.add(row)
@@ -208,9 +322,12 @@ def create(db: Session, owner_id: UUID, data: ChapterDefinition) -> LifeChapter:
 def update(db: Session, owner_id: UUID, chapter_id: UUID, data: ChapterUpdate) -> LifeChapter:
     row = _owned(db, owner_id, chapter_id, manage=True)
     _validate_cover(db, owner_id, data.cover_photo_id, data.start_date, data.end_date)
-    return _write(db, row, {"title": data.title.strip(), "summary": data.summary,
+    values = {"title": data.title.strip(), "summary": data.summary, "summary_source": data.summary_source,
                             "start_date": data.start_date, "end_date": data.end_date,
-                            "cover_photo_id": data.cover_photo_id}, data.version)
+                            "cover_photo_id": data.cover_photo_id}
+    if data.diary_entries is not None:
+        values["diary_entries"] = {year: entry.model_dump(mode="json") for year, entry in data.diary_entries.items()}
+    return _write(db, row, values, data.version)
 
 
 def transition(db: Session, owner_id: UUID, chapter_id: UUID, action: str, version: int) -> LifeChapter:
@@ -245,8 +362,26 @@ def merge(db: Session, owner_id: UUID, data: ChapterMerge) -> LifeChapter:
         raise HTTPException(400, "合并范围必须覆盖全部来源章节")
     _validate_cover(db, owner_id, data.cover_photo_id, start, end)
     confirmed = any(row.status == "confirmed" for row in rows)
+    merged_entries = {}
+    for source in rows:
+        for year, entry in (source.diary_entries or {}).items():
+            previous = merged_entries.get(year)
+            if previous and previous.get("body") != entry.get("body"):
+                body = "\n\n".join(text for text in (previous.get("body"), entry.get("body")) if text)
+                if len(body) > 1000:
+                    raise HTTPException(400, f"{year} 年的两段日记合计超过1000字，请先调整文字再合并")
+                merged_entries[year] = {
+                    "title": previous.get("title") or entry.get("title", ""), "body": body,
+                    "source": "ai" if previous.get("source") == entry.get("source") == "ai" else "user",
+                    "source_photo_ids": list(dict.fromkeys(previous.get("source_photo_ids", []) + entry.get("source_photo_ids", [])))[:12],
+                    "source_memory_ids": list(dict.fromkeys(previous.get("source_memory_ids", []) + entry.get("source_memory_ids", [])))[:8],
+                }
+            else:
+                merged_entries[year] = dict(entry)
     new = LifeChapter(owner_id=owner_id, origin="manual", status="confirmed" if confirmed else "candidate",
-                      title=data.title.strip(), summary=data.summary, start_date=start, end_date=end,
+                      title=data.title.strip(), summary=data.summary, summary_source=data.summary_source,
+                      diary_entries=merged_entries,
+                      start_date=start, end_date=end,
                       cover_photo_id=data.cover_photo_id, is_hidden=any(row.is_hidden for row in rows),
                       source_ids=[str(row.id) for row in rows],
                       confirmed_at=datetime.now() if confirmed else None)
@@ -274,6 +409,8 @@ def split(db: Session, owner_id: UUID, chapter_id: UUID, data: ChapterSplit) -> 
         raise HTTPException(400, "拆分日期必须在章节范围内")
     rows = [LifeChapter(owner_id=owner_id, status=row.status, origin="manual", is_hidden=row.is_hidden,
                         title=title.strip(), start_date=start, end_date=end,
+                        diary_entries={year: entry for year, entry in (row.diary_entries or {}).items()
+                                       if start.year <= int(year) <= (end or date.today()).year},
                         source_ids=[str(row.id)], confirmed_at=datetime.now() if row.status == "confirmed" else None)
             for title, start, end in ((data.first_title, row.start_date, data.split_date - timedelta(days=1)),
                                       (data.second_title, data.split_date, row.end_date))]
