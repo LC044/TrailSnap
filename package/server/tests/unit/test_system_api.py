@@ -432,3 +432,57 @@ def test_server_map_proxy_injects_configured_key_and_hides_it_from_sdk():
     assert b"server-secret" not in response.body
     assert response.headers["cache-control"] == "private, max-age=3600"
 
+
+def test_server_map_proxy_rewrites_nested_geocoder_target():
+    """Tianditu's ajaxproxy cannot fetch the client's private TrailSnap origin."""
+    from urllib.parse import quote
+
+    nested = (
+        "http://192.168.1.168:5176/api/system/map-proxy/map-token/"
+        "api.tianditu.gov.cn/geocoder?postStr=%7B%22lon%22%3A%22107%22%7D"
+        "&type=geocode&tk=server"
+    )
+    request = Request({
+        "type": "http", "method": "GET", "scheme": "http",
+        "server": ("localhost", 8000),
+        "path": "/api/system/map-proxy/map-token/api.tianditu.gov.cn/apiserver/ajaxproxy",
+        "query_string": f"proxyReqUrl={quote(quote(nested, safe=''), safe='')}".encode(),
+        "headers": [(b"host", b"localhost:8000"),
+                    (b"x-forwarded-host", b"192.168.1.168:5176"),
+                    (b"x-forwarded-proto", b"http")],
+    })
+    session = _fake_upstream(content_type="application/javascript", body=b"callback({});")
+    config = SimpleNamespace(map=SimpleNamespace(api_keys=["server-secret"]))
+
+    with patch.object(system_api, "_map_user_id", return_value="u-1"), \
+         patch.object(system_api.config_manager, "get_user_config", return_value=config), \
+         patch.object(system_api.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        response = asyncio.run(system_api._proxy_tianditu_resource(
+            "api.tianditu.gov.cn", "apiserver/ajaxproxy", request,
+            map_token="map-token", db=MagicMock()
+        ))
+
+    params = dict(session.get.call_args.kwargs["params"])
+    assert params["proxyReqUrl"].startswith("https://api.tianditu.gov.cn/geocoder?")
+    assert "tk=server-secret" in params["proxyReqUrl"]
+    assert "tk=server" not in params["proxyReqUrl"].replace("tk=server-secret", "")
+    assert params["tk"] == "server-secret"
+    assert response.body == b"callback({});"
+
+
+@pytest.mark.parametrize("target", [
+    "http://127.0.0.1:8000/api/system/map-proxy/map-token/api.tianditu.gov.cn/geocoder",
+    "http://192.168.1.168:5176/api/system/map-proxy/map-token/evil.example.com/geocoder",
+    "http://192.168.1.168:5176/api/system/map-proxy/other-token/api.tianditu.gov.cn/geocoder",
+    "http://192.168.1.168:5176/api/system/map-proxy/map-token/api.tianditu.gov.cn/geocoder#fragment",
+])
+def test_server_map_proxy_rejects_untrusted_ajaxproxy_target(target):
+    request = Request({
+        "type": "http", "method": "GET", "scheme": "http",
+        "server": ("localhost", 8000), "path": "/api/system/map-proxy/map-token/api.tianditu.gov.cn/apiserver/ajaxproxy",
+        "query_string": b"", "headers": [(b"host", b"192.168.1.168:5176")],
+    })
+    with pytest.raises(HTTPException) as exc:
+        system_api._rewrite_ajaxproxy_target(target, request, "map-token", "secret")
+    assert exc.value.status_code == 400
+

@@ -344,17 +344,19 @@
           </template>
         </el-autocomplete>
         <div class="text-xs text-gray-500 space-y-1">
-          <p>经度: {{ locationForm.longitude ? locationForm.longitude.toFixed(6) : '--' }}</p>
-          <p>纬度: {{ locationForm.latitude ? locationForm.latitude.toFixed(6) : '--' }}</p>
+          <p>经度: {{ locationMapHasMarker ? currentMapLng.toFixed(6) : '--' }}</p>
+          <p>纬度: {{ locationMapHasMarker ? currentMapLat.toFixed(6) : '--' }}</p>
         </div>
         <el-input v-model="locationForm.address" placeholder="详细地址" size="small" />
-        <p class="text-xs text-gray-400">拖拽地图标记可更新经纬度</p>
+        <p class="text-xs" :class="locationLookupFailed ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
+          {{ resolvingLocation ? '正在解析位置...' : locationLookupFailed ? '位置解析失败，请重新选择地图位置' : '拖拽地图标记可更新经纬度' }}
+        </p>
       </div>
     </div>
     <template #footer>
       <span class="dialog-footer">
         <el-button @click="showLocationEditDialog = false" :disabled="savingLocation">取消</el-button>
-        <el-button type="primary" @click="saveLocationEdit" :loading="savingLocation" :disabled="!locationMapReady || (!locationMapHasMarker && !hasPhotoCoordinates)">
+        <el-button type="primary" @click="saveLocationEdit" :loading="savingLocation" :disabled="!locationMapReady || !locationMapHasMarker || resolvingLocation || locationLookupFailed">
           保存
         </el-button>
       </span>
@@ -481,7 +483,8 @@ const locationForm = reactive({
 const {
   currentLat: currentMapLat,
   currentLng: currentMapLng,
-  currentLocationDetail: mapLocationDetail,
+  resolvingLocation,
+  locationLookupFailed,
   mapReady: locationMapReady,
   hasMarker: locationMapHasMarker,
   mapError: locationMapError,
@@ -501,6 +504,12 @@ const {
       locationForm.city = detail.city
       locationForm.district = detail.district
       locationForm.country = detail.country
+    } else {
+      locationForm.address = ''
+      locationForm.province = ''
+      locationForm.city = ''
+      locationForm.district = ''
+      locationForm.country = ''
     }
   }
 })
@@ -734,13 +743,13 @@ const handleDelete = () => {
 // Location edit methods
 const openLocationEditDialog = () => {
     if (!props.metadata) return
-    locationForm.latitude = (props.metadata as any).latitude || 0
-    locationForm.longitude = (props.metadata as any).longitude || 0
+    locationForm.latitude = props.metadata.latitude ?? 0
+    locationForm.longitude = props.metadata.longitude ?? 0
     locationForm.address = props.metadata.address || ''
-    locationForm.province = (props.metadata as any).province || ''
-    locationForm.city = (props.metadata as any).city || ''
-    locationForm.district = (props.metadata as any).district || ''
-    locationForm.country = (props.metadata as any).country || ''
+    locationForm.province = props.metadata.province || ''
+    locationForm.city = props.metadata.city || ''
+    locationForm.district = props.metadata.district || ''
+    locationForm.country = props.metadata.country || ''
     locationSearchQuery.value = ''
     showLocationEditDialog.value = true
 }
@@ -749,8 +758,8 @@ const initLocationMap = async () => {
     locationMapLoading.value = true
     await initLocationMapComposable({
         containerId: 'location-edit-map',
-        initialLat: locationForm.latitude || undefined,
-        initialLng: locationForm.longitude || undefined,
+        initialLat: hasPhotoCoordinates.value ? locationForm.latitude : undefined,
+        initialLng: hasPhotoCoordinates.value ? locationForm.longitude : undefined,
         enableDrag: true
     })
     locationMapLoading.value = false
@@ -769,20 +778,18 @@ const handleLocationSelect = (item: any) => {
 }
 
 const saveLocationEdit = async () => {
-    if (!props.image) return
+    if (!props.image || !locationMapHasMarker.value || resolvingLocation.value || locationLookupFailed.value) return
     savingLocation.value = true
     try {
-        const lat = locationMapHasMarker.value ? currentMapLat.value : locationForm.latitude
-        const lng = locationMapHasMarker.value ? currentMapLng.value : locationForm.longitude
-        const updates: any = {
-            latitude: lat,
-            longitude: lng,
+        const updates: Partial<PhotoMetadata> = {
+            latitude: currentMapLat.value,
+            longitude: currentMapLng.value,
+            address: locationForm.address,
+            province: locationForm.province,
+            city: locationForm.city,
+            district: locationForm.district,
+            country: locationForm.country,
         }
-        if (locationForm.address) updates.address = locationForm.address
-        if (locationForm.province) updates.province = locationForm.province
-        if (locationForm.city) updates.city = locationForm.city
-        if (locationForm.district) updates.district = locationForm.district
-        if (locationForm.country) updates.country = locationForm.country
         const updated = await albumService.updateMetadata(props.image.id, updates)
         emit('update', { id: props.image.id, ...updated })
         ElMessage.success('位置更新成功')

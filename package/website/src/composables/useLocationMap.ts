@@ -29,10 +29,14 @@ export function useLocationMap(callbacks?: {
   let geocoder: any = null
   let autocompleteCallback: ((results: any[]) => void) | null = null
   let activeContainerId: string | null = null
+  let geocodeGeneration = 0
+  let geocodeTimeout: ReturnType<typeof setTimeout> | null = null
 
   const currentLat = ref(0)
   const currentLng = ref(0)
   const currentLocationDetail = ref<LocationDetail | null>(null)
+  const resolvingLocation = ref(false)
+  const locationLookupFailed = ref(false)
   const mapReady = ref(false)
   const hasMarker = ref(false)
   const mapError = ref<string | null>(null)
@@ -222,12 +226,28 @@ export function useLocationMap(callbacks?: {
   }
 
   const reverseGeocode = (lat: number, lng: number) => {
+    const generation = ++geocodeGeneration
+    if (geocodeTimeout) clearTimeout(geocodeTimeout)
+    currentLocationDetail.value = null
+    resolvingLocation.value = !!geocoder
+    locationLookupFailed.value = false
+    callbacks?.onPositionChange?.(lat, lng)
     if (!geocoder) {
-      callbacks?.onPositionChange?.(lat, lng, undefined)
+      locationLookupFailed.value = true
       return
     }
+    geocodeTimeout = setTimeout(() => {
+      if (generation !== geocodeGeneration) return
+      resolvingLocation.value = false
+      locationLookupFailed.value = true
+      geocodeGeneration++
+    }, 10000)
     const lnglat = new T.LngLat(lng, lat)
     geocoder.getLocation(lnglat, (result: any) => {
+      if (generation !== geocodeGeneration) return
+      if (geocodeTimeout) clearTimeout(geocodeTimeout)
+      geocodeTimeout = null
+      resolvingLocation.value = false
       if (result && result.getStatus() === 0) {
         const addr = result.getAddress()
         const comp = result.getAddressComponent()
@@ -247,6 +267,7 @@ export function useLocationMap(callbacks?: {
         callbacks?.onPositionChange?.(lat, lng, detail)
       } else {
         currentLocationDetail.value = null
+        locationLookupFailed.value = true
         callbacks?.onPositionChange?.(lat, lng, undefined)
       }
     })
@@ -293,6 +314,9 @@ export function useLocationMap(callbacks?: {
     searchService = null
     geocoder = null
     autocompleteCallback = null
+    geocodeGeneration++
+    if (geocodeTimeout) clearTimeout(geocodeTimeout)
+    geocodeTimeout = null
     activeContainerId = null
     mapReady.value = false
     hasMarker.value = false
@@ -300,12 +324,14 @@ export function useLocationMap(callbacks?: {
     currentLat.value = 0
     currentLng.value = 0
     currentLocationDetail.value = null
+    resolvingLocation.value = false
+    locationLookupFailed.value = false
   }
 
   onUnmounted(() => destroy())
 
   return {
-    currentLat, currentLng, currentLocationDetail, mapReady, hasMarker, mapError,
+    currentLat, currentLng, currentLocationDetail, resolvingLocation, locationLookupFailed, mapReady, hasMarker, mapError,
     initMap, setMarker, enableMarkerDrag, disableMarkerDrag,
     centerOnPosition, searchLocation, searchAndSelect, destroy,
     applyDarkMode
