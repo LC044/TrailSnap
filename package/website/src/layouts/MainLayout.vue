@@ -12,9 +12,7 @@
     <div class="flex-1 flex flex-col min-w-0 transition-all duration-300 relative" id="main-content-wrapper">
       <!-- 页面内容（移动端底部留出 Tab 栏 + safe-area 高度） -->
       <main class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 box-border relative pb-[calc(var(--ts-tabbar-h)_+_env(safe-area-inset-bottom))] md:pb-0">
-        <transition name="fade-slide" mode="out-in">
-          <router-view />
-        </transition>
+        <router-view />
       </main>
     </div>
 
@@ -63,31 +61,3 @@ const {
 } = injectTheme();
 
 </script>
-
-<style scoped>
-
-/* 页面过渡动画（原 App.vue 中的样式） */
-.fade-slide-enter-active {
-  transition:
-    opacity 200ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(3px) scale(0.995);
-}
-.fade-slide-leave-active {
-  transition: opacity 90ms ease, transform 90ms ease;
-}
-.fade-slide-leave-to {
-  opacity: 0.96;
-  transform: scale(0.995);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .fade-slide-enter-active,
-  .fade-slide-leave-active {
-    transition-duration: 0.01ms;
-  }
-}
-</style>

@@ -25,6 +25,7 @@ from app.crud.album import (
 )
 from app.crud.cluster import remove_photo_from_clusters, remove_photos_from_clusters
 from app.crud.search_vector import POSITIVE_SENTIMENT_VECTOR
+from app.crud.photo_paths import escape_like, normalized_file_path
 from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene, PhotoDeclutterRecord
 from app.db.models.album import AlbumPhoto
 from app.db.models.photo import FileType, ImageType
@@ -402,13 +403,11 @@ def _build_photo_filter_query(
     #   - 相对路径（层级树浏览，如 "旅游/景点"）：匹配任意根目录下该相对路径。
     # folder_direct=True 时只匹配「本层直属」照片（不含更深子目录）。
     from sqlalchemy import or_ as _or
-    def _esc(s):
-        return s.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-    norm_expr = func.replace(Photo.file_path, '\\', '/')
+    norm_expr = normalized_file_path()
 
     if folder and folder.strip():
         f = folder.strip().replace('\\', '/').rstrip('/')
-        esc = _esc(f)
+        esc = escape_like(f)
         if f.startswith('/'):
             base_pat = esc + '/%'
             photo_query = photo_query.filter(norm_expr.like(base_pat, escape='\\'))
@@ -426,7 +425,7 @@ def _build_photo_filter_query(
             if not r:
                 continue
             rn = r.replace('\\', '/').rstrip('/')
-            esc = _esc(rn)
+            esc = escape_like(rn)
             photo_query = photo_query.filter(~norm_expr.like(esc + '/%', escape='\\'))
 
     # 时间范围过滤（Photo 表）

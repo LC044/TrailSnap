@@ -289,7 +289,13 @@ async function saveAll() {
   try {
     ensureSelections()
     aiForm.value.connections.forEach(conn => { conn.model_names = conn.models.map(model => model.model_name) })
-    await settingsApi.updateSettings({ ai: aiForm.value })
+    const keys = [
+      'connections', 'analysis_connection_id', 'analysis_model_name', 'analysis_reasoning_effort',
+      'chat_connection_id', 'chat_model_name', 'chat_reasoning_effort',
+      'visual_evaluation_prompt', 'visual_narrative_prompt', 'moment_day_caption_prompt',
+    ]
+    const ai = Object.fromEntries(keys.filter(key => aiForm.value[key] !== undefined).map(key => [key, aiForm.value[key]]))
+    await settingsApi.updateSettings({ ai })
     ElMessage.success('大模型配置已保存')
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败')

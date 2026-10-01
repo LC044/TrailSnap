@@ -16,6 +16,7 @@ from PIL import Image
 
 from app.schemas.ocr import OCRCreate
 from app.service.tasks.ci_limit import is_ci, ci_task_limit_reached, ci_remaining_budget, CI_TASK_PHOTO_LIMIT
+from app.service.tasks.photo_generator import generate_photo_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,7 @@ class OcrStrategy(BaseTaskStrategy):
         Handle OCR task
         """
         try:
-            force = task.payload.get('force', False)
+            force = (task.payload or {}).get('force', False)
             
             # 1. Single Photo Mode
             if task.payload and 'photo_id' in task.payload:
@@ -57,50 +58,12 @@ class OcrStrategy(BaseTaskStrategy):
                 return await self.process_single_photo(worker, photo, db)
 
             # 2. Generator Mode (Scan all)
-            photos_to_process = []
-            batch_size = 1000
-            offset = 0
-            
-            generated_count = 0
             # CI 限速：只生成到上限为止的子任务，避免入队大量会被跳过的任务
             remaining = ci_remaining_budget(db, OCR)
-
-            while True:
-                batch = db.query(Photo).offset(offset).limit(batch_size).all()
-                if not batch:
-                    break
-
-                tasks_to_create = []
-                for p in batch:
-                    if p.file_type == FileType.video:
-                        continue
-                    
-                    should_process = False
-                    if force:
-                        should_process = True
-                    else:
-                        tasks_status = p.processed_tasks or {}
-                        if not tasks_status.get('ocr'):
-                            should_process = True
-                    
-                    if should_process:
-                        if remaining is not None and generated_count >= remaining:
-                            break
-                        tasks_to_create.append({
-                            'type': TaskType.OCR,
-                            'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
-                            'priority': 1,
-                            'owner_id': p.owner_id
-                        })
-
-                if tasks_to_create:
-                    worker.add_tasks(db, tasks_to_create)
-                    generated_count += len(tasks_to_create)
-
-                offset += batch_size
-
-                if remaining is not None and generated_count >= remaining:
-                    break
+            generated_count = generate_photo_tasks(
+                db, worker, task, task_type=TaskType.OCR,
+                status_key="ocr", priority=1, budget=remaining,
+            )
 
             return {
                 'processed': 0,

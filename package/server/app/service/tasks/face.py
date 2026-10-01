@@ -13,6 +13,7 @@ from app.service.tasks.face_cluster import enqueue_cluster_faces
 from typing import Dict, Any, List
 from app.core.config_manager import config_manager
 from app.service import storage
+from app.service.tasks.photo_generator import generate_photo_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         try:
-            force = task.payload.get('force', False)
+            force = (task.payload or {}).get('force', False)
             
             if task.payload and 'photo_id' in task.payload:
                 photo_id = task.payload['photo_id']
@@ -44,41 +45,10 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                 return await self.process_single_photo(worker, photo, db)
 
             # Generator Mode
-            batch_size = 1000
-            offset = 0
-            generated_count = 0
-            
-            while True:
-                batch = db.query(Photo).offset(offset).limit(batch_size).all()
-                if not batch:
-                    break
-
-                tasks_to_create = []
-                for p in batch:
-                    if p.file_type == FileType.video:
-                        continue
-                    
-                    should_process = False
-                    if force:
-                        should_process = True
-                    else:
-                        tasks_status = p.processed_tasks or {}
-                        if not tasks_status.get('face'):
-                            should_process = True
-                    
-                    if should_process:
-                        tasks_to_create.append({
-                            'type': TaskType.RECOGNIZE_FACE,
-                            'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
-                            'priority': 2,
-                            'owner_id': p.owner_id
-                        })
-
-                if tasks_to_create:
-                    worker.add_tasks(db, tasks_to_create)
-                    generated_count += len(tasks_to_create)
-
-                offset += batch_size
+            generated_count = generate_photo_tasks(
+                db, worker, task, task_type=TaskType.RECOGNIZE_FACE,
+                status_key="face", priority=2,
+            )
 
             return {
                 'processed': 0,

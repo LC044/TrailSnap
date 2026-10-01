@@ -24,6 +24,7 @@ from sqlalchemy import func
 import app.crud.photo
 from app.core.config_manager import config_manager
 from app.crud.photo import save_and_create_photo
+from app.crud.photo_paths import under_directory
 from app.dependencies import get_db, BaseResponse
 from app.crud import album as crud_album
 from app.crud import face as crud_face
@@ -339,7 +340,7 @@ def read_photo_folders(
     极大提升大批量照片库下的目录树展开速度。
     """
     import os
-    from sqlalchemy import func, or_
+    from sqlalchemy import func
     from app.utils.path import get_user_roots, _normalize
 
     parent_path = (parent or "").replace("\\", "/").strip("/")
@@ -348,44 +349,9 @@ def read_photo_folders(
     def get_root_label(r):
         return os.path.basename(r) or r
 
-    def _esc(s):
-        return s.replace('%', '\\%').replace('_', '\\_')
-
-    def _stored_prefix_candidates(abs_dir):
-        """针对某个绝对目录，给出它在 DB file_path 里可能出现的所有前缀形式。
-
-        DB 里的 file_path 形态不统一：外部扫描目录通常存绝对路径，而历史上传
-        记录可能存相对路径。func.replace(file_path,'\\','/')
-        只统一分隔符、无法把相对路径转绝对，因此这里对每个根同时生成「绝对」与
-        「相对」两种前缀，用 OR 匹配，保证两种形态都能命中。
-        """
-        abs_dir = (abs_dir or "").replace("\\", "/").rstrip("/")
-        if not abs_dir:
-            return []
-        cands = {abs_dir}
-        try:
-            rel = os.path.relpath(abs_dir).replace("\\", "/").rstrip("/")
-            if rel and rel != abs_dir:
-                cands.add(rel)
-                cands.add("./" + rel)
-        except ValueError:
-            # Windows 下跨盘符 os.path.relpath 会抛错，绝对形态已足够覆盖
-            pass
-        return [c + "/" for c in cands]
-
-    def _under(expr, abs_dir):
-        """file_path 位于 abs_dir 子树下（含更深层级）。"""
-        cands = _stored_prefix_candidates(abs_dir)
-        if not cands:
-            return False
-        likes = [expr.like(_esc(c) + "%", escape='\\') for c in cands]
-        return or_(*likes) if len(likes) > 1 else likes[0]
-
     children = []
     own_count = 0
     breadcrumb = []
-
-    norm_expr = func.replace(Photo.file_path, '\\', '/')
 
     if not parent_path:
         for r in roots:
@@ -396,7 +362,7 @@ def read_photo_folders(
             count = db.query(func.count(Photo.id)).filter(
                 Photo.owner_id == current_user.id,
                 Photo.is_deleted == False,
-                _under(norm_expr, norm_r)
+                under_directory(norm_r)
             ).scalar()
             
             has_children = False
@@ -438,7 +404,7 @@ def read_photo_folders(
                 subtree_rows = db.query(Photo.file_path).filter(
                     Photo.owner_id == current_user.id,
                     Photo.is_deleted == False,
-                    _under(norm_expr, abs_dir)
+                    under_directory(abs_dir)
                 ).all()
 
                 own_count = 0

@@ -255,6 +255,7 @@ import { useAppBack } from '@/composables/useAppBack'
 import { ElMessage } from 'element-plus'
 import { RefreshCcw, ArrowLeft, Trash2, Clock, X, CheckSquare, MoreVertical, Disc, Loader2 } from 'lucide-vue-next'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
+import { usePhotoViewer } from '@/composables/usePhotoViewer'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { AlbumImage } from '@/types/album'
@@ -394,35 +395,7 @@ const calculateDaysRemaining = (photo: AlbumImage) => {
 }
 
 // Lightbox state
-const lightboxImage = ref<AlbumImage | null>(null)
-const currentIndex = computed(() => {
-  if (!lightboxImage.value) return -1
-  return photos.value.findIndex(p => p.id === lightboxImage.value!.id)
-})
-const hasPrev = computed(() => currentIndex.value > 0)
-const hasNext = computed(() => currentIndex.value < photos.value.length - 1 && currentIndex.value !== -1)
-
-const openLightbox = (photo: AlbumImage) => {
-  lightboxImage.value = photo
-}
-
-const closeLightbox = () => {
-  lightboxImage.value = null
-}
-
-const handlePrev = () => {
-  if (hasPrev.value) {
-    lightboxImage.value = photos.value[currentIndex.value - 1]
-  }
-}
-
-const handleNext = () => {
-  if (hasNext.value) {
-    lightboxImage.value = photos.value[currentIndex.value + 1]
-  } else if (hasMore.value) {
-    loadMore()
-  }
-}
+const { currentPhoto: lightboxImage, currentIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(photos, { onNextAtEnd: () => { if (hasMore.value) loadMore() } })
 
 const handlePhotoDelete = (photoId: string) => {
   showDeleteConfirm.value = true

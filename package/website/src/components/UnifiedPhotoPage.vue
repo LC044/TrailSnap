@@ -306,6 +306,7 @@ import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 import PhotoGallery from '@/components/PhotoGallery.vue'
 import FolderBrowser from '@/views/album/folder/FolderBrowser.vue'
 import AlbumTimeline from '@/components/AlbumTimeline.vue'
+import { usePhotoViewer } from '@/composables/usePhotoViewer'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ParticleExplosion from '@/components/ParticleExplosion.vue'
@@ -380,7 +381,7 @@ const emit = defineEmits<{
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
 const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder'>('grid')
 const activeDate = ref('')
-const lightboxImage = ref<AlbumImage | null>(null)
+const { currentPhoto: lightboxImage, currentIndex: lightboxIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(() => props.photos)
 const showViewOptions = ref(false)
 const viewOptionsRef = ref<HTMLElement | null>(null)
 const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
@@ -655,34 +656,6 @@ const closeAlbumSelectModal = () => {
 }
 
 // Lightbox
-const lightboxIndex = computed(() => {
-  if (!lightboxImage.value) return -1
-  return props.photos.findIndex(img => img.id === lightboxImage.value?.id)
-})
-
-const hasPrev = computed(() => lightboxIndex.value > 0)
-const hasNext = computed(() => lightboxIndex.value < props.photos.length - 1 && lightboxIndex.value !== -1)
-
-const openLightbox = (img: AlbumImage) => {
-  lightboxImage.value = img
-}
-
-const closeLightbox = () => {
-  lightboxImage.value = null
-}
-
-const handlePrev = () => {
-  if (hasPrev.value) {
-    lightboxImage.value = props.photos[lightboxIndex.value - 1]
-  }
-}
-
-const handleNext = () => {
-  if (hasNext.value) {
-    lightboxImage.value = props.photos[lightboxIndex.value + 1]
-  }
-}
-
 const handleLightboxSelect = (index: number) => {
   const target = props.photos[index]
   if (target) lightboxImage.value = target

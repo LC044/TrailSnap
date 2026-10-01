@@ -17,6 +17,7 @@ from app.core.config_manager import config_manager
 from app.crud import tag as crud_tag
 
 from app.service import storage
+from app.service.tasks.photo_generator import generate_photo_tasks
 
 logger = logging.getLogger(__name__)
 
@@ -49,38 +50,11 @@ class ClassifyImageStrategy(BaseTaskStrategy):
 
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         try:
-            force = task.payload.get('force', False)
-
             # Generator Mode
-            batch_size = 1000
-            offset = 0
-            generated_count = 0
-
-            while True:
-                batch = db.query(Photo).offset(offset).limit(batch_size).all()
-                if not batch:
-                    break
-
-                tasks_to_create = []
-                for p in batch:
-                    should_process = False
-                    if force:
-                        should_process = True
-                    else:
-                        tasks_status = p.processed_tasks or {}
-                        if not tasks_status.get('classification'):
-                            should_process = True
-                    if should_process:
-                        tasks_to_create.append({
-                            'type': TaskType.CLASSIFY_IMAGE,
-                            'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
-                            'priority': DEFAULT_PRIORITIES[TaskType.CLASSIFY_IMAGE],
-                            'owner_id': p.owner_id
-                        })
-                if tasks_to_create:
-                    worker.add_tasks(db, tasks_to_create)
-                    generated_count += len(tasks_to_create)
-                offset += batch_size
+            generated_count = generate_photo_tasks(
+                db, worker, task, task_type=TaskType.CLASSIFY_IMAGE,
+                status_key="classification", priority=DEFAULT_PRIORITIES[TaskType.CLASSIFY_IMAGE],
+            )
             return {
                 'processed': 0,
                 'generated_tasks': generated_count,

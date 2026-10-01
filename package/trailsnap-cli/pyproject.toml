@@ -12,9 +12,11 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "pytest>=7.0",
+    "pytest>=9.0.3",
     "pytest-mock>=3.10.0",
-    "responses>=0.23.0"
+    "responses>=0.23.0",
+    "requests>=2.33.0",
+    "urllib3>=2.8.0"
 ]
 
 [project.scripts]
@@ -28,3 +30,7 @@ testpaths = ["tests"]
 markers = [
     "smoke: P0 关键路径，秒级"
 ]
+
+# Runtime remains compatible with Python 3.9; security-patched test tools require 3.10+.
+[tool.uv.dependency-groups]
+dev = { requires-python = ">=3.10" }
