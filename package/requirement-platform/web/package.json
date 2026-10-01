@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
-    "axios": "^1.18.0",
+    "axios": "^1.20.0",
     "element-plus": "^2.11.9",
     "markdown-it": "^15.0.1",
     "pinia": "^3.0.4",
@@ -23,7 +23,16 @@
     "@vue/tsconfig": "^0.8.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.3",
-    "vitest": "^3.2.4",
+    "vitest": "^4.1.11",
     "vue-tsc": "^2.2.12"
+  },
+  "overrides": {
+    "brace-expansion": "^2.1.7",
+    "vite": "$vite"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@2": "^2.1.7"
+    }
   }
 }
