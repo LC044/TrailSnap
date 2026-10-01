@@ -144,8 +144,18 @@ def get_dashboard_stats(db: Session, owner_id: UUID) -> DashboardResponse:
 
     # Tags (Scenery, Food)
     # Need to check if tags exist. 
-    scenery_count = db.query(PhotoTagRelation).join(PhotoTag).filter(PhotoTag.tag_name == '风景').count()
-    food_count = db.query(PhotoTagRelation).join(PhotoTag).filter(PhotoTag.tag_name == '美食').count()
+    tag_counts = db.query(
+        PhotoTag.tag_name, func.count(PhotoTagRelation.id)
+    ).join(PhotoTagRelation, PhotoTagRelation.tag_id == PhotoTag.id).join(
+        Photo, Photo.id == PhotoTagRelation.photo_id
+    ).filter(
+        Photo.owner_id == owner_id, Photo.is_deleted.is_(False),
+        PhotoTagRelation.is_deleted.is_(False), PhotoTag.is_deleted.is_(False),
+        PhotoTag.tag_name.in_(['风景', '美食']),
+    ).group_by(PhotoTag.tag_name).all()
+    tag_count_map = dict(tag_counts)
+    scenery_count = tag_count_map.get('风景', 0)
+    food_count = tag_count_map.get('美食', 0)
 
     content_stats = DashboardContentStats(
         photos=photos_detail,
