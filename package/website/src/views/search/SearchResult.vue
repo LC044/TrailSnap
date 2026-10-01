@@ -100,6 +100,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import searchService from '@/api/search'
 import { albumService } from '@/api/album'
 import { mapPhotoToImage } from '@/stores/photoStore'
+import { usePhotoViewer } from '@/composables/usePhotoViewer'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
@@ -141,8 +142,7 @@ const galleryRef = ref<InstanceType<typeof FlatPhotoGallery> | null>(null)
 const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 
 // Lightbox State
-const showLightbox = ref(false)
-const lightboxIndex = ref(0)
+const { visible: showLightbox, index: lightboxIndex, open: openLightbox, close: closeLightbox, prev: prevPhoto, next: nextPhoto } = usePhotoViewer(photos)
 const showAlbumSelectModal = ref(false)
 const tempSelectedIds = ref<string[]>([])
 
@@ -191,40 +191,12 @@ const closeAlbumSelectModal = () => {
     galleryRef.value?.exitSelectionMode()
 }
 
-const openLightbox = (index: number) => {
-  lightboxIndex.value = index
-  showLightbox.value = true
-}
-
-const closeLightbox = () => {
-  showLightbox.value = false
-}
-
-const prevPhoto = () => {
-  if (lightboxIndex.value > 0) {
-    lightboxIndex.value--
-  }
-}
-
-const nextPhoto = () => {
-  if (lightboxIndex.value < photos.value.length - 1) {
-    lightboxIndex.value++
-  }
-}
-
 const handlePhotoDelete = async (id: string) => {
   try {
     await albumService.deletePhoto(id)
     photos.value = photos.value.filter(p => p.id !== id)
     ElMessage.success('删除成功')
     
-    if (photos.value.length === 0) {
-      closeLightbox()
-    } else {
-      if (lightboxIndex.value >= photos.value.length) {
-        lightboxIndex.value = photos.value.length - 1
-      }
-    }
   } catch (e) {
     console.error(e)
     ElMessage.error('删除失败')

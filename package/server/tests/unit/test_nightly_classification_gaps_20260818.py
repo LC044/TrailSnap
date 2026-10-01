@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from app.db.models.photo import FileType
 
 
 pytestmark = [pytest.mark.smoke]
@@ -31,6 +32,14 @@ def _run(coro):
 def _strategy():
     from app.service.tasks.classification import ClassifyImageStrategy
     return ClassifyImageStrategy()
+
+
+def _generator_query(db, batches):
+    query = db.query.return_value
+    query.filter.return_value = query
+    query.order_by.return_value = query
+    query.limit.return_value = query
+    query.all.side_effect = batches
 
 
 def _task(payload=None, owner_id=None, task_id=None, task_type="CLASSIFY_IMAGE"):
@@ -112,15 +121,16 @@ def test_process_generator_mode_generates_one_task_per_photo():
             id=uuid4(),
             owner_id=uuid4(),
             file_path=f"/p/{i}.jpg",
+            file_type=FileType.image,
             processed_tasks={"classification": False} if i % 2 == 0 else {"classification": True},
         )
         for i in range(3)
     ]
     db = MagicMock()
-    db.query.return_value.offset.return_value.limit.return_value.all.side_effect = [
+    _generator_query(db, [
         photos,
         [],
-    ]
+    ])
 
     worker = MagicMock()
     task = _task(payload={"force": False})
@@ -146,12 +156,13 @@ def test_process_generator_mode_force_reschedules_all_photos():
             id=uuid4(),
             owner_id=uuid4(),
             file_path=f"/p/{i}.jpg",
+            file_type=FileType.image,
             processed_tasks={"classification": True},
         )
         for i in range(2)
     ]
     db = MagicMock()
-    db.query.return_value.offset.return_value.limit.return_value.all.side_effect = [photos, []]
+    _generator_query(db, [photos, []])
     worker = MagicMock()
     task = _task(payload={"force": True})
 
@@ -164,9 +175,10 @@ def test_process_generator_mode_handles_missing_processed_tasks_dict():
     strategy = _strategy()
     photo = SimpleNamespace(
         id=uuid4(), owner_id=uuid4(), file_path="/p/x.jpg", processed_tasks=None,
+        file_type=FileType.image,
     )
     db = MagicMock()
-    db.query.return_value.offset.return_value.limit.return_value.all.side_effect = [[photo], []]
+    _generator_query(db, [[photo], []])
     worker = MagicMock()
     task = _task(payload={"force": False})
 

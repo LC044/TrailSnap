@@ -10,31 +10,7 @@
       </div>
     </div>
 
-    <!-- Active Task Status -->
-    <div v-if="activeTask" class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-bold flex items-center gap-2">
-          <Loader2 v-if="activeTask.status === 'pending' || activeTask.status === 'processing'" class="w-5 h-5 animate-spin text-primary-500" />
-          <CheckCircle2 v-else-if="activeTask.status === 'completed'" class="w-5 h-5 text-green-500" />
-          <XCircle v-else class="w-5 h-5 text-red-500" />
-          任务状态: {{ statusText }}
-        </h3>
-        <span class="text-sm font-medium text-gray-500">
-          {{ activeTask.processed_items }} / {{ activeTask.total_items }}
-        </span>
-      </div>
-      <el-progress 
-        :percentage="progressPercentage" 
-        :status="activeTask.status === 'completed' ? 'success' : (activeTask.status === 'failed' ? 'exception' : '')"
-        :stroke-width="12"
-        striped
-        :striped-flow="activeTask.status === 'processing'"
-      />
-      <div v-if="activeTask.status === 'failed' || activeTask.error" class="mt-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 rounded-lg text-sm flex justify-between items-center">
-        <span>{{ activeTask.error || '任务执行失败，未知错误' }}</span>
-        <el-button v-if="activeTask.status === 'failed'" type="danger" size="small" plain @click="clearFailedTask" :loading="clearing">清除失败任务</el-button>
-      </div>
-    </div>
+    <TaskStatusCard :task="activeTask" processing-label="整理中" :clearing="clearing" @clear="clearFailedTask" />
 
     <!-- Configuration Form -->
     <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
@@ -202,55 +178,25 @@
     </div>
 
     <!-- Folder Selection Dialog (Reused but slightly modified logic) -->
-    <el-dialog
-      v-model="showFolderSelector"
-      title="选择目标目录"
-      width="500px"
-      class="rounded-xl"
-    >
-      <div class="border border-gray-200 dark:border-gray-700 rounded-lg h-[300px] overflow-y-auto p-2 bg-gray-50 dark:bg-gray-900/50">
-        <el-tree
-          :props="{ label: 'name', children: 'children', isLeaf: 'is_leaf' }"
-          :load="loadNode"
-          lazy
-          highlight-current
-          @current-change="(data: any) => tempSelectedPath = data.path"
-          node-key="path"
-          :empty-text="'无可选目录'"
-        >
-          <template #default="{ data }">
-            <div class="flex items-center gap-2 text-sm">
-              <Folder class="w-4 h-4 text-primary-500" />
-              <span>{{ data.name }}</span>
-            </div>
-          </template>
-        </el-tree>
-      </div>
-      <template #footer>
-        <div class="flex justify-end gap-3">
-          <el-button @click="showFolderSelector = false">取消</el-button>
-          <el-button type="primary" :disabled="!tempSelectedPath" @click="confirmFolder">确认</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <DirectoryPickerDialog v-model:visible="showFolderSelector" v-model="targetRootPath" />
+
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, watch } from 'vue'
+import TaskStatusCard from '@/components/TaskStatusCard.vue'
+import DirectoryPickerDialog from '@/components/DirectoryPickerDialog.vue'
+import { useTaskMonitor } from '@/composables/useTaskMonitor'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Folder, Loader2, CheckCircle2, XCircle } from 'lucide-vue-next'
+import { ArrowLeft, Folder } from 'lucide-vue-next'
 import { toolboxApi } from '@/api/toolbox'
-import { tasksApi } from '@/api/tasks'
-import { settingsApi } from '@/api/settings'
 import { ElMessage } from 'element-plus'
-import type { Task as TaskResponse } from '@/api/tasks'
 
 const goBack = useAppBack('/toolbox')
 
 const targetRootPath = ref('')
-const tempSelectedPath = ref('')
 const strategy = ref('time')
 const timeGranularity = ref('ym')
 const timeFormat = ref('flat')
@@ -258,7 +204,6 @@ const locationGranularity = ref('province_city')
 const locationFormat = ref('flat')
 const actionType = ref('move')
 const starting = ref(false)
-const clearing = ref(false)
 
 const timeRange = ref<[string, string] | null>(null)
 const selectedCategories = ref<string[]>([])
@@ -270,8 +215,6 @@ const loadingOptions = ref(false)
 
 const showFolderSelector = ref(false)
 
-const activeTask = ref<TaskResponse | null>(null)
-let pollTimer: number | undefined
 
 watch([strategy, locationGranularity, locationFormat], async () => {
   if (['category', 'person', 'location'].includes(strategy.value)) {
@@ -300,84 +243,16 @@ watch([strategy, locationGranularity, locationFormat], async () => {
   }
 }, { immediate: true })
 
-const isTaskRunning = computed(() => {
-  return activeTask.value?.status === 'pending' || activeTask.value?.status === 'processing'
+const { activeTask, isTaskRunning, clearing, clearFailedTask: clearTask } = useTaskMonitor({
+  loadLatest: () => toolboxApi.getLatestOrganizeTask(),
+  taskType: 'ORGANIZE_PHOTOS',
+  onCompleted: () => ElMessage.success('图片整理已完成'),
+  onError: error => console.error('Failed to monitor task', error),
 })
 
-const statusText = computed(() => {
-  if (!activeTask.value) return ''
-  switch (activeTask.value.status) {
-    case 'pending': return '等待中'
-    case 'processing': return '整理中'
-    case 'completed': return '已完成'
-    case 'failed': return '失败'
-    case 'cancelled': return '已取消'
-    default: return activeTask.value.status
-  }
-})
-
-const progressPercentage = computed(() => {
-  if (!activeTask.value || !activeTask.value.total_items) return 0
-  return Math.min(100, Math.round((activeTask.value.processed_items || 0) / (activeTask.value.total_items || 0) * 100))
-})
-
-const loadNode = async (node: any, resolve: (data: any[]) => void) => {
-  try {
-    if (node.level === 0) {
-      const res = await settingsApi.getDirectoryTree()
-      resolve(res.directories || [])
-    } else {
-      const res = await settingsApi.getDirectoryTree(node.data.path)
-      resolve(res.directories || [])
-    }
-  } catch (e) {
-    resolve([])
-  }
-}
-
-const confirmFolder = () => {
-  targetRootPath.value = tempSelectedPath.value
-  showFolderSelector.value = false
-}
-
-const fetchLatestTask = async () => {
-  try {
-    const task = await toolboxApi.getLatestOrganizeTask()
-    activeTask.value = task
-    
-    if (task && (task.status === 'pending' || task.status === 'processing')) {
-      startPolling()
-    }
-  } catch (e) {
-    console.error('Failed to fetch latest organize task', e)
-  }
-}
-
-const startPolling = () => {
-  if (pollTimer) clearInterval(pollTimer)
-  pollTimer = window.setInterval(async () => {
-    if (!activeTask.value?.id) return
-    try {
-      const task = await tasksApi.getTask(activeTask.value.id)
-      activeTask.value = task
-      
-      if (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled') {
-        stopPolling()
-        if (task.status === 'completed') {
-          ElMessage.success('图片整理已完成')
-        }
-      }
-    } catch (e) {
-      console.error('Failed to poll task status', e)
-    }
-  }, 2000)
-}
-
-const stopPolling = () => {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = undefined
-  }
+const clearFailedTask = async () => {
+  try { await clearTask(); ElMessage.success('已清除失败任务') }
+  catch { ElMessage.error('清除任务失败') }
 }
 
 const startOrganize = async () => {
@@ -418,7 +293,6 @@ const startOrganize = async () => {
     const task = await toolboxApi.createOrganizeTask(payload)
     activeTask.value = task
     ElMessage.success('已开始整理任务')
-    startPolling()
   } catch (e: any) {
     ElMessage.error(e.response?.data?.detail || '创建任务失败')
   } finally {
@@ -426,28 +300,6 @@ const startOrganize = async () => {
   }
 }
 
-const clearFailedTask = async () => {
-  if (!activeTask.value || activeTask.value.status !== 'failed') return
-  
-  clearing.value = true
-  try {
-    await tasksApi.deleteFailedTasks(['ORGANIZE_PHOTOS'])
-    activeTask.value = null
-    ElMessage.success('已清除失败任务')
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.detail || '清除任务失败')
-  } finally {
-    clearing.value = false
-  }
-}
-
-onMounted(() => {
-  fetchLatestTask()
-})
-
-onUnmounted(() => {
-  stopPolling()
-})
 </script>
 
 <style scoped>

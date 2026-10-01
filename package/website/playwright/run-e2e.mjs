@@ -17,11 +17,14 @@
  *   - P1 - *  业务功能（非 smoke、非 p0）
  */
 
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { startServices, stopServices } from './service-manager.mjs'
 
 const VALID_SUITES = ['dev', 'p0', 'p1', 'smoke', 'scan', 'all', 'light', 'full']
 const suite = process.argv[2] ?? 'dev'
+const testFiles = process.argv.slice(3)
+const playwrightCli = createRequire(import.meta.url).resolve('@playwright/test/cli')
 
 if (!VALID_SUITES.includes(suite)) {
   console.error(`Unknown suite: "${suite}". Valid: ${VALID_SUITES.join(', ')}`)
@@ -60,16 +63,14 @@ function runPlaywright(suiteName) {
   }
   const cfg = SUITE_CONFIG[suiteName]
   const args = ['test']
+  if (suiteName !== 'scan') args.push(...testFiles)
   if (cfg && cfg.grep) {
     args.push('--grep', cfg.grep)
   }
   if (cfg && cfg.grepInvert) {
     args.push('--grep-invert', cfg.grepInvert)
   }
-  // execSync 走 shell，含空格 / | / < > & 的参数必须加引号，否则
-  // `--grep-invert @setup|@teardown` 的 | 会被当管道符、`--grep P1 - ` 会被拆成多参数
-  const quoted = args.map((a) => (/[\s|<>&]/.test(a) ? `"${a}"` : a))
-  execSync(['pnpm', 'exec', 'playwright', ...quoted].join(' '), { stdio: 'inherit', env })
+  execFileSync(process.execPath, [playwrightCli, ...args], { stdio: 'inherit', env })
 }
 
 if (suite !== 'scan' && shouldRunFixtureScan()) {

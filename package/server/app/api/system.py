@@ -1,5 +1,6 @@
 import re
 import random
+from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -115,6 +116,20 @@ def _map_user_id(map_token: str) -> str:
     return str(payload["sub"])
 
 
+def _rewrite_ajaxproxy_target(target: str, request: Request, map_token: str, map_key: str) -> str:
+    """Keep SDK ajaxproxy requests on Tianditu, never on the client's private origin."""
+    parsed = urlsplit(unquote(target))
+    origin = urlsplit(_public_origin(request))
+    expected_path = f"/api/system/map-proxy/{map_token}/api.tianditu.gov.cn/geocoder"
+    if (parsed.scheme != origin.scheme or parsed.netloc != origin.netloc
+            or parsed.path != expected_path or parsed.fragment):
+        raise HTTPException(status_code=400, detail="Unsupported map proxy target")
+    params = [(name, value) for name, value in parse_qsl(parsed.query, keep_blank_values=True)
+              if name.lower() != "tk"]
+    params.append(("tk", map_key))
+    return urlunsplit(("https", "api.tianditu.gov.cn", "/geocoder", urlencode(params), ""))
+
+
 async def _proxy_tianditu_resource(
     host: str,
     path: str,
@@ -155,6 +170,13 @@ async def _proxy_tianditu_resource(
             raise HTTPException(status_code=400, detail="Map API Key is missing")
         map_key = random.choice(keys)
         params = [(name, value) for name, value in params if name.lower() != "tk"]
+        if host.lower() == "api.tianditu.gov.cn" and path.lower() == "apiserver/ajaxproxy":
+            targets = [value for name, value in params if name == "proxyReqUrl"]
+            if len(targets) != 1:
+                raise HTTPException(status_code=400, detail="Invalid map proxy target")
+            target = _rewrite_ajaxproxy_target(targets[0], request, map_token, map_key)
+            params = [(name, value) for name, value in params if name != "proxyReqUrl"]
+            params.append(("proxyReqUrl", target))
         params.append(("tk", map_key))
         # The SDK response embeds this prefix into runtime-concatenated URLs
         # (qv/components submodules, WMTS tile getters). The mobile App serves

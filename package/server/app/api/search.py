@@ -138,7 +138,7 @@ async def get_search_suggestions(
 
         # 7. Tag
         tags = db.query(distinct(PhotoTag.tag_name))\
-            .filter(or_(Scene.owner_id == None, PhotoTag.owner_id == user.id), PhotoTag.tag_name.ilike(search_term))\
+            .filter(or_(PhotoTag.owner_id.is_(None), PhotoTag.owner_id == user.id), PhotoTag.tag_name.ilike(search_term))\
             .limit(limit).all()
         for t in tags:
             if t[0]:

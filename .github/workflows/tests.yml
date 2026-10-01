@@ -343,6 +343,10 @@ jobs:
         working-directory: package/website
         run: pnpm install --frozen-lockfile
 
+      - name: Run website unit tests
+        shell: pwsh
+        run: ./tests/scripts/run-tests.ps1 -Layer unit -Component website -Level smoke -EnvFile tests/.env.test
+
       - name: Install Playwright chromium
         working-directory: package/website
         run: pnpm exec playwright install --with-deps chromium

@@ -59,6 +59,7 @@ def _batch_query_chain(db, batches):
     ``batches`` (list of lists). Final empty list terminates the generator loop."""
     chain = db.query.return_value
     chain.filter.return_value = chain
+    chain.order_by.return_value = chain
     chain.offset.return_value = chain
     chain.limit.return_value = chain
     calls = {"i": 0}

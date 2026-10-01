@@ -18,6 +18,25 @@ export interface SwipeFilterBatch {
 }
 
 export const photoApi = {
+  async deletePhotos(photoIds: string[]) {
+    await request.delete('/api/photos/batch', { data: { photo_ids: photoIds } })
+  },
+
+  async downloadPhoto(photo: Pick<AlbumImage, 'id' | 'url' | 'filename'>) {
+    const response = await fetch(photo.url)
+    if (!response.ok) throw new Error('下载失败')
+    const url = window.URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    try {
+      link.href = url
+      link.download = photo.filename || `photo-${photo.id}.jpg`
+      document.body.appendChild(link)
+      link.click()
+    } finally {
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    }
+  },
   // Similar Photo Task API
   async createSimilarTask(threshold: number = 0.9) {
     const data = await request.post<TaskResponse>('/api/toolbox/similar/tasks', null, {
