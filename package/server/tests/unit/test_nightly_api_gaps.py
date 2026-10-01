@@ -309,7 +309,7 @@ def _make_query_mock(*, count=0, scalar=0, first=None, all_value=()):
 
 def _build_dashboard_queries(*, total_media=0, today_new=0, storage_bytes=0,
                              year_rows=(), month_peak=None):
-    """按 dashboard.py 调用顺序生成 12 个 query mock。"""
+    """按 dashboard.py 调用顺序生成 query mock。"""
     return [
         _make_query_mock(count=total_media),       # 0 total_media
         _make_query_mock(count=today_new),         # 1 today_new
@@ -317,12 +317,11 @@ def _build_dashboard_queries(*, total_media=0, today_new=0, storage_bytes=0,
         _make_query_mock(count=0),                 # 3 total_identified
         _make_query_mock(count=0),                 # 4 pending_faces
         _make_query_mock(scalar=0),                # 5 unidentified_photos
-        _make_query_mock(count=0),                 # 6 scenery_count
-        _make_query_mock(count=0),                 # 7 food_count
-        _make_query_mock(count=0),                 # 8 photos_count
-        _make_query_mock(count=0),                 # 9 videos_count
-        _make_query_mock(all_value=list(year_rows)),  # 10 year_stats
-        _make_query_mock(first=month_peak),        # 11 month_stats
+        _make_query_mock(count=0),                 # 6 photos_count
+        _make_query_mock(count=0),                 # 7 videos_count
+        _make_query_mock(all_value=[]),            # 8 tag counts
+        _make_query_mock(all_value=list(year_rows)),  # 9 year_stats
+        _make_query_mock(first=month_peak),        # 10 month_stats
     ]
 
 

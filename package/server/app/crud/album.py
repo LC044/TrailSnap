@@ -14,6 +14,7 @@ from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.face import Face
 from app.db.models.image_vector import ImageVector
 from app.db.models.user import User
+from app.crud.photo_paths import under_browse_folder
 from app.schemas import album as album_schemas
 import numpy as np
 
@@ -61,20 +62,7 @@ def _build_folder_condition(folders):
     if not normalized_folders:
         return None
 
-    def _escape_like(value: str) -> str:
-        return value.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-
-    normalized_path = func.replace(Photo.file_path, '\\', '/')
-    filters = []
-    for folder in normalized_folders:
-        escaped = _escape_like(folder)
-        # The first form covers relative stored paths, while the second covers
-        # absolute paths.  Both include all descendants of the chosen folder.
-        filters.append(or_(
-            normalized_path.like(escaped + '/%', escape='\\'),
-            normalized_path.like('%/' + escaped + '/%', escape='\\'),
-        ))
-    return or_(*filters)
+    return or_(*(under_browse_folder(folder) for folder in normalized_folders))
 
 
 # Album CRUD

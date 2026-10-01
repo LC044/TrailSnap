@@ -6,7 +6,7 @@
 
 ## 1. 总览
 
-四类测试，一个入口脚本，一份环境变量文件。
+五类测试，一个入口脚本，一份环境变量文件。
 
 | 层 | 位置 | 框架 | 触发 | 速度 |
 |---|---|---|---|---|
@@ -14,6 +14,7 @@
 | 后端集成 | `package/server/tests` | pytest | `run-tests.ps1 -Layer integration` | 需 DB |
 | AI 服务 | `package/ai/tests` | pytest | `run-tests.ps1 -Layer unit -Component ai` | 部分需模型/显存 |
 | 前端 E2E | `package/website/tests/e2e`、`package/website/e2e-system` | Playwright | `run-tests.ps1 -Layer e2e` | 慢，需 server+ai+web 全起 |
+| 前端单元 | `package/website/tests/unit` | Node test runner + Vue | `run-tests.ps1 -Layer unit -Component website` | 秒级，无外部服务 |
 
 **统一入口**：`tests/scripts/run-tests.ps1`（CI 与本地共用）。它按 `.env` 文件委托 `services-up.ps1` 拉起服务（dev 本地进程 或 docker compose 栈）、注入环境变量、调度对应测试运行器（uv/pytest、pnpm/playwright），测后委托 `services-down.ps1` 关闭服务。
 
@@ -98,6 +99,7 @@ pwsh .\tests\scripts\run-tests.ps1 -StopServices
 | `-Component` | server/ai/website/cli/all | 测哪个组件 |
 | `-Mode` | dev/docker | 服务载体；默认按 `TS_TEST_ENV` |
 | `-Scope` | all/photo/album/... | 业务域（unit/integration） |
+| `-TestFiles` | 前端 spec 路径数组（相对 `package/website`） | 缩小 E2E 文件范围，仍应用 `-Level` 的标签过滤 |
 | `-ScanPrep` | auto/true/false | e2e 是否先 scan；覆盖 `.env` |
 | `-Cleanup` | switch | 测后删库 |
 | `-StopServices` | switch | 只关服务，不启动/不测 |

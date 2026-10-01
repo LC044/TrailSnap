@@ -105,8 +105,7 @@ def test_get_dashboard_stats_empty_user_returns_zero_card_and_no_monthly_peak():
         {"scalar.return_value": 0},  # unidentified_photos
         {"count.return_value": 0},  # photos_count
         {"count.return_value": 0},  # videos_count
-        {"count.return_value": 0},  # scenery
-        {"count.return_value": 0},  # food
+        {"all.return_value": []},  # owner-scoped tag counts
         {"all.return_value": []},  # year_stats
         {"first.return_value": None},  # month_stats
     ]
@@ -155,8 +154,7 @@ def test_get_dashboard_stats_with_photos_populates_card_face_content_time():
         {"scalar.return_value": 3},  # unidentified_photos
         {"count.return_value": 150},  # photos
         {"count.return_value": 50},  # videos
-        {"count.return_value": 25},  # scenery
-        {"count.return_value": 7},  # food
+        {"all.return_value": [("风景", 25), ("美食", 7)]},
         {"all.return_value": year_rows},  # year_stats
         {"first.return_value": month_row},  # month_stats
     ]
@@ -198,8 +196,7 @@ def test_get_dashboard_stats_skips_null_year_rows_in_chart():
         {"count.return_value": 1},
         {"count.return_value": 0},
         {"scalar.return_value": 0},
-        {"count.return_value": 0},
-        {"count.return_value": 0},
+        {"all.return_value": []},
         {"scalar.return_value": 0},
         {"count.return_value": 1},
         {"count.return_value": 0},

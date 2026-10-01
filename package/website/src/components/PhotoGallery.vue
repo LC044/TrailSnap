@@ -9,139 +9,20 @@
     <!-- Skeleton Loader (Initial Load) -->
     <GalleryChrome :loading="loading" :error="error" :photos="photos" @retry="$emit('retry')" />
 
-    <!-- Batch Action Bar -->
-    <transition
-      enter-active-class="transition duration-300 ease-out"
-      enter-from-class="transform -translate-y-full opacity-0"
-      enter-to-class="transform translate-y-0 opacity-100"
-      leave-active-class="transition duration-200 ease-in"
-      leave-from-class="transform translate-y-0 opacity-100"
-      leave-to-class="transform -translate-y-full opacity-0"
+    <PhotoBatchActionBar
+      :visible="isSelectionMode && showActionBar" :selected-ids="localSelectedIds"
+      :is-all-selected="isAllSelected" :is-downloading="isDownloading" :delete-label="deleteLabel"
+      :album-context="store?.currentContext?.type === 'album'" allow-transfer
+      @cancel="exitSelectionMode" @select-all="toggleSelectAll" @download="handleDownload"
+      @delete="handleDelete" @person="openPersonSelector"
+      @add-to-album="ids => $emit('add-to-album', ids)"
+      @remove-from-album="ids => $emit('remove-from-album', ids)"
+      @set-album-cover="ids => $emit('set-album-cover', ids)"
+      @batch-edit-location="ids => $emit('batch-edit-location', ids)"
+      @transfer="(action, ids) => $emit('transfer', action, ids)"
     >
-      <div v-if="isSelectionMode && showActionBar" data-testid="photo-selection-bar" class="fixed bottom-[20px] left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
-        <div class="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-gray-200 dark:border-gray-700 shadow-lg rounded-full px-3 py-1 md:py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-fit max-w-full overflow-x-auto scrollbar-hide">
-          <div class="flex items-center gap-1 md:gap-3 flex-shrink-0">
-            <button @click="exitSelectionMode" class="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors dark:text-gray-300 bg-transparent" title="取消选择">
-              <X class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-            </button>
-            <span class="font-medium text-gray-900 dark:text-white whitespace-nowrap text-sm sm:text-base">
-              <span class="sm:hidden">{{ localSelectedIds.size }}</span>
-              <span class="hidden sm:inline">已选 {{ localSelectedIds.size }} 项</span>
-            </span>
-          </div>
-
-          <div class="h-6 w-px bg-gray-300 dark:bg-gray-600 flex-shrink-0"></div>
-
-          <div class="flex items-center gap-1 sm:gap-2 flex-nowrap">
-            <button @click="toggleSelectAll" class="p-2 sm:px-3 sm:py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors bg-transparent" :title="isAllSelected ? '取消全选' : '全选'">
-              <span class="hidden sm:inline">{{ isAllSelected ? '取消全选' : '全选' }}</span>
-              <CheckSquare class="w-5 h-5 sm:hidden" />
-            </button>
-            
-            <button
-                @click="$emit('add-to-album', Array.from(localSelectedIds))"
-                :disabled="localSelectedIds.size === 0"
-                class="bg-transparent flex items-center gap-2 p-2 sm:px-4 sm:py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
-                title="添加到相册"
-                >
-                <ImagePlusIcon class="w-5 h-5" />
-            </button>
-
-            <!-- Download Action -->
-            <button
-              @click="handleDownload"
-              :disabled="localSelectedIds.size === 0 || isDownloading"
-              class="bg-transparent p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed relative group"
-              title="保存到本地"
-            >
-              <Loader2 v-if="isDownloading" class="w-5 h-5 animate-spin" />
-              <Download v-else class="w-5 h-5" />
-            </button>
-
-            <!-- Delete/Remove Action -->
-            <button 
-              @click="handleDelete" 
-              :disabled="localSelectedIds.size === 0"
-              class="bg-transparent p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              :title="deleteLabel"
-            >
-              <Trash2 class="w-5 h-5" />
-            </button>
-
-            <!-- More Actions -->
-            <el-dropdown trigger="click" placement="top-end">
-              <button class="bg-transparent p-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                <MoreHorizontal class="w-5 h-5" />
-              </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item @click="openPersonSelector">
-                    <div class="flex items-center gap-2">
-                      <UserPlus class="w-4 h-4" />
-                      <span>添加到人物</span>
-                    </div>
-                  </el-dropdown-item>
-
-                  <el-dropdown-item 
-                    :disabled="localSelectedIds.size === 0"
-                    @click="$emit('transfer', 'move', Array.from(localSelectedIds))"
-                  >
-                     <div class="flex items-center gap-2">
-                        <FolderOutput class="w-4 h-4" />
-                        <span>移动到目录</span>
-                     </div>
-                  </el-dropdown-item>
-                  
-                  <el-dropdown-item 
-                    :disabled="localSelectedIds.size === 0"
-                    @click="$emit('transfer', 'copy', Array.from(localSelectedIds))"
-                  >
-                     <div class="flex items-center gap-2">
-                        <Copy class="w-4 h-4" />
-                        <span>复制到目录</span>
-                     </div>
-                  </el-dropdown-item>
-
-                  <el-dropdown-item 
-                    v-if="store?.currentContext?.type === 'album'"
-                    :disabled="localSelectedIds.size === 0"
-                    @click="$emit('remove-from-album', Array.from(localSelectedIds))"
-                  >
-                     <div class="flex items-center gap-2">
-                        <ImageMinusIcon class="w-4 h-4" />
-                        <span>移出相册</span>
-                     </div>
-                  </el-dropdown-item>
-
-                  <el-dropdown-item
-                    v-if="store?.currentContext?.type === 'album' && localSelectedIds.size===1"
-                    @click="$emit('set-album-cover', Array.from(localSelectedIds))"
-                  >
-                     <div class="flex items-center gap-2">
-                        <ImageIcon class="w-4 h-4" />
-                        <span>设为封面</span>
-                     </div>
-                  </el-dropdown-item>
-
-                  <el-dropdown-item
-                    :disabled="localSelectedIds.size === 0"
-                    @click="$emit('batch-edit-location', Array.from(localSelectedIds))"
-                  >
-                     <div class="flex items-center gap-2">
-                        <MapPin class="w-4 h-4" />
-                        <span>批量修正位置</span>
-                     </div>
-                  </el-dropdown-item>
-
-                  <div class="border-t border-gray-100 dark:border-gray-800 my-1 mx-2" v-if="$slots['batch-actions']"></div>
-                  <slot name="batch-actions" :selected-ids="localSelectedIds" :clear-selection="exitSelectionMode"></slot>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </div>
-        </div>
-      </div>
-    </transition>
+      <template v-if="$slots['batch-actions']" #batch-actions="scope"><slot name="batch-actions" v-bind="scope" /></template>
+    </PhotoBatchActionBar>
 
     <PersonSelector 
       v-model:visible="showPersonSelector"
@@ -549,8 +430,7 @@
 import {
   ref, computed, watch, onMounted, onUnmounted, nextTick, toRef, reactive
 } from 'vue'
-import { ElMessageBox, ElMessage } from 'element-plus'
-import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, X, Download, Trash2, FolderMinus, Loader2, PlaySquare, Play, PlayIcon, PlayCircleIcon, Plus, FolderPlus, PhoneOutgoingIcon, PictureInPicture, CloverIcon, ImageMinusIcon, ImagePlusIcon, Aperture, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy, Sparkles, Pencil, RotateCcw, Brain, ChevronDown } from 'lucide-vue-next'
+import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, Loader2, MoreHorizontal, Sparkles, Pencil, RotateCcw, Brain, ChevronDown } from 'lucide-vue-next'
 import { format } from 'date-fns'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -561,9 +441,9 @@ import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/
 import { useSelection } from '@/composables/useSelection'
 import { useWindowScroll, useScroll, useDebounceFn } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
+import PhotoBatchActionBar from './PhotoBatchActionBar.vue'
+import { usePhotoBatchActions } from '@/composables/usePhotoBatchActions'
 import GalleryChrome from './GalleryChrome.vue'
-import { faceApi } from '@/api/face'
-import { photoApi } from '@/api/photo'
 import { chapterApi } from '@/api/chapter'
 import {
   MOBILE_GRID_COLUMNS,
@@ -637,9 +517,6 @@ watch(() => localSelectedIds.size, () => {
   emit('selection-change', Array.from(localSelectedIds))
 })
 
-const isDownloading = ref(false)
-const downloadProgress = ref(0)
-const isAddingPerson = ref(false)
 
 const photoStore = usePhotoStore()
 const userStore = useUserStore()
@@ -1386,6 +1263,13 @@ const toggleDaySelection = (day: DayBlock) => {
     }
 }
 
+const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload } = usePhotoBatchActions({
+  selectedIds: () => localSelectedIds,
+  photos: () => props.photos,
+  clearSelection: () => exitSelectionMode(),
+  exitAfterDownload: true,
+})
+
 const handlePhotoClick = (photo: AlbumImage) => {
   if (isSelectionMode.value) {
     toggleSelection(photo)
@@ -1408,31 +1292,6 @@ const toggleSelectAll = () => {
     }
 }
 
-const handlePersonSelected = async (person: any) => {
-  if (localSelectedIds.size === 0) return
-  
-  isAddingPerson.value = true
-  try {
-    const ids = Array.from(localSelectedIds)
-    const res = await faceApi.addPhotosToIdentity(person.id, ids)
-    ElMessage.success(`成功添加 ${res.count} 张照片到 ${person.identity_name}`)
-    showPersonSelector.value = false
-    exitSelectionMode()
-  } catch (e: any) {
-    console.error(e)
-    ElMessage.error('添加失败')
-  } finally {
-    isAddingPerson.value = false
-  }
-}
-
-const showPersonSelector = ref(false)
-
-const openPersonSelector = () => {
-  showPersonSelector.value = true
-}
-
-// --- Moment Caption Editing State（moments 布局） ---
 const editingCaptionDay = ref<string | null>(null)
 const captionDraft = ref('')
 // 思考过程折叠态：默认展开，用户可点击折叠以专注看正文；生成结束 reasoning 清空后整块自动消失。
@@ -1512,40 +1371,6 @@ const handleDelete = () => {
     } else {
         emit('batch-delete', ids)
     }
-}
-
-const handleDownload = async () => {
-  if (localSelectedIds.size === 0) return
-
-  isDownloading.value = true
-  downloadProgress.value = 0
-  
-  try {
-    const ids = Array.from(localSelectedIds)
-    if (ids.length === 1) {
-      const photo = props.photos.find(p => p.id === ids[0])
-      if (photo) {
-        const response = await fetch(photo.url)
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = photo.filename || `photo-${photo.id}.jpg`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        window.URL.revokeObjectURL(url)
-      }
-    } else {
-      await photoApi.batchDownload(ids)
-    }
-  } catch (error) {
-    console.error('Failed to download photo:', error)
-  } finally {
-    isDownloading.value = false
-    downloadProgress.value = 0
-    exitSelectionMode()
-  }
 }
 
 defineExpose({
