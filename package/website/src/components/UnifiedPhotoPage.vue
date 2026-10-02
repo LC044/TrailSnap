@@ -1,21 +1,21 @@
 <template>
-  <div class="unified-photo-page relative mx-auto w-full max-w-screen-2xl py-1 px-[var(--ts-page-gutter)] min-h-screen">
-    <slot name="hero"></slot>
+  <div class="unified-photo-page relative mx-auto w-full max-w-screen-2xl py-1 px-[var(--ts-page-gutter)] min-h-screen" :style="{ '--photo-page-header-height': `${headerHeight}px` }">
+    <span ref="pageTopRef" class="pointer-events-none absolute left-0 top-0 h-px w-px" aria-hidden="true"></span>
     <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
-    <div v-if="layoutMode !== 'folder'" class="z-30 pointer-events-none" :class="headerOverlay ? 'absolute inset-x-0 top-0' : 'sticky md:top-0'">
-      <div class="flex items-center justify-between gap-2 sm:gap-4 mx-auto py-3 pointer-events-auto">
+    <div v-if="layoutMode !== 'folder'" ref="headerRef" class="pointer-events-none sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[env(safe-area-inset-top)]">
+      <div class="pointer-events-auto flex items-center justify-between gap-1 sm:gap-3 mx-auto py-1.5 sm:py-2">
         <!-- Back & Title -->
-        <slot name="header-left">
-          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 max-w-full md:w-auto px-1 sm:px-3 py-1.5">
-            <button v-if="showBack" @click="$emit('back')" class="rounded-full p-1.5 backdrop-blur-md transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:bg-gray-900">
-              <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
+        <slot name="header-left" :scrolled="headerScrolled">
+          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2 px-1" :class="headerScrolled ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
+            <button v-if="showBack" @click="$emit('back')" aria-label="返回" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full backdrop-blur-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" :class="headerScrolled ? 'bg-black/60 hover:bg-black/70' : 'hover:bg-white dark:hover:bg-gray-800'">
+              <ArrowLeft class="w-5 h-5" />
             </button>
-            <div class="pr-2 min-w-0" v-if="!loadingTitle">
-              <h1 class="max-w-[140px] md:max-w-[300px] text-sm md:text-lg font-bold text-gray-900 dark:text-white leading-tight flex items-center gap-2 truncate">
+            <div class="min-w-0 transition-colors duration-200" :class="headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
+              <h1 :title="title" class="leading-tight flex items-center gap-2" :class="headerScrolled ? 'text-sm sm:text-base font-semibold' : 'text-sm md:text-lg font-bold'">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>
               </h1>
-              <p class="text-xs text-gray-500 truncate">{{ subtitle }}</p>
+              <p v-if="subtitle && !headerScrolled" class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ subtitle }}</p>
             </div>
             <div v-else class="pr-2 animate-pulse">
               <div class="h-6 w-32 bg-gray-200 dark:bg-gray-800 rounded"></div>
@@ -24,7 +24,7 @@
         </slot>
 
         <!-- Controls -->
-        <div class="flex shrink-0 items-center gap-1 sm:gap-2 ml-auto animate-in fade-in slide-in-from-right-4 duration-300">
+        <div class="flex shrink-0 items-center justify-end gap-1 sm:gap-2 ml-auto">
           
           <slot name="header-controls-start"></slot>
 
@@ -32,7 +32,7 @@
           <div class="relative">
              <button
                @click="showViewOptions = !showViewOptions"
-               class="p-2 text-gray-700 dark:text-gray-200 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all"
+               class="flex h-11 w-11 items-center justify-center text-gray-700 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all"
                title="视图设置"
              >
                <Settings2 class="w-5 h-5" />
@@ -52,9 +52,13 @@
                    class="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 z-50 origin-top-right"
               >
                 <div class="space-y-3 p-1">
+                  <button type="button" class="sm:hidden flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="showViewOptions = false; enterBatchMode()">
+                    <CheckSquare class="h-4 w-4" />
+                    <span>批量选择</span>
+                  </button>
                   <!-- View Size -->
                   <div v-if="layoutMode !== 'diary'" class="space-y-2">
-                    <p class="text-xs font-medium text-gray-500 px-1">图片大小</p>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 px-1">图片大小</p>
                     <div class="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                       <button v-for="size in ['sm', 'md', 'lg']" :key="size"
                         @click="viewSize = size as any"
@@ -125,7 +129,7 @@
           <!-- Batch Select -->
           <button 
             @click="enterBatchMode"
-            class="p-2 text-gray-700 dark:text-gray-200 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all"
+            class="hidden sm:flex h-11 w-11 items-center justify-center text-gray-700 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all"
             title="批量选择"
           >
             <CheckSquare class="w-5 h-5" />
@@ -149,7 +153,11 @@
       </div>
 
       <!-- Header Extension Slot (e.g. Filter Panel) -->
-      <slot name="header-extension"></slot>
+      <div v-if="$slots['header-extension']" class="pointer-events-auto"><slot name="header-extension"></slot></div>
+    </div>
+
+    <div v-if="$slots.hero" :style="{ marginTop: `-${headerHeight}px` }">
+      <slot name="hero"></slot>
     </div>
 
     <!-- Timeline Navigation Sidebar (Right Sticky) — 文件夹视图有自己的目录树，隐藏时间轴 -->
@@ -164,7 +172,7 @@
     <div class="mx-auto">
       <div
         v-if="updateAvailable && !isPhotoInteractionActive"
-        class="sticky top-16 z-20 flex justify-center mb-3 pointer-events-none"
+        class="sticky top-[calc(var(--photo-page-header-height)_+_8px)] z-20 flex justify-center mb-3 pointer-events-none"
       >
         <button
           type="button"
@@ -324,7 +332,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
-import { onClickOutside } from '@vueuse/core'
+import { onClickOutside, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
   UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen
@@ -366,7 +374,6 @@ const props = withDefaults(defineProps<{
   pendingRemoveIds?: Set<string>
   store?: any
   showBack?: boolean
-  headerOverlay?: boolean
   allowFolderView?: boolean
   allowDiaryView?: boolean
   updateAvailable?: boolean
@@ -386,7 +393,6 @@ const props = withDefaults(defineProps<{
   confirmRemove: false,
   pendingRemoveIds: () => new Set(),
   showBack: true,
-  headerOverlay: false,
   allowFolderView: false,
   allowDiaryView: false,
   updateAvailable: false,
@@ -409,6 +415,16 @@ const emit = defineEmits<{
 }>()
 
 // UI State
+const pageTopRef = ref<HTMLElement | null>(null)
+const headerScrolled = ref(false)
+useIntersectionObserver(pageTopRef, ([entry]) => {
+  if (entry) headerScrolled.value = !entry.isIntersecting
+})
+const headerRef = ref<HTMLElement | null>(null)
+const headerHeight = ref(0)
+useResizeObserver(headerRef, () => {
+  headerHeight.value = headerRef.value?.offsetHeight ?? 0
+})
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
 const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder' | 'diary'>('grid')
 const activeDate = ref('')

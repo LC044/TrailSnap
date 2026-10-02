@@ -1,7 +1,6 @@
 <template>
   <UnifiedPhotoPage
     :title="title"
-    :subtitle="`${totalCount > 0 ? totalCount + ' 个项目' : (photos.length + (hasMore ? '+' : '')) + ' 个项目'}`"
     :loading="loading && photos.length === 0"
     :photos="photos"
     :has-more="hasMore"
@@ -11,16 +10,21 @@
     @back="goBack"
     @load-more="loadMore"
   >
+    <template #header-left="{ scrolled }">
+      <AlbumDetailTitle :title="title" :scrolled="scrolled" :subtitle="`${totalCount > 0 ? totalCount : `${photos.length}${hasMore ? '+' : ''}`} 个项目`" back-label="返回位置相册" @back="goBack" />
+    </template>
     <template #header-actions>
-      <RouterLink v-if="name !== 'map_selection'" :to="{ path: '/explore/relations', query: placeKey ? { root: placeKey } : sceneId ? { root: `place:scene:${sceneId}` } : { placeName: name } }" class="inline-flex min-h-11 items-center rounded-full bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
+      <RouterLink v-if="name !== 'map_selection'" :to="{ path: '/explore/relations', query: placeKey ? { root: placeKey } : sceneId ? { root: `place:scene:${sceneId}` } : { placeName: name } }" title="关联" aria-label="关联" class="inline-flex h-11 w-11 sm:w-auto items-center justify-center rounded-full bg-primary-500 sm:px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"><Link2 class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>
       <button
         v-if="timeCompareSummary?.eligible && sceneId"
         type="button"
-        class="flex min-h-10 items-center gap-2 rounded-full bg-primary-500 px-3 text-sm font-semibold text-white shadow-lg shadow-primary-500/30 transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900 sm:px-4"
+        title="时光对照"
+        aria-label="时光对照"
+        class="flex h-11 w-11 sm:w-auto items-center justify-center gap-2 rounded-full bg-primary-500 sm:px-4 text-sm font-semibold text-white shadow-lg shadow-primary-500/30 transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
         @click="openTimeCompare"
       >
         <History class="h-4 w-4" />
-        <span>时光对照</span>
+        <span class="hidden sm:inline">时光对照</span>
         <span class="hidden text-white/75 sm:inline">{{ timeSpanLabel }}</span>
       </button>
     </template>
@@ -34,11 +38,12 @@ import { useAppBack } from '@/composables/useAppBack'
 import { locationService } from '@/api/location'
 import { albumService } from '@/api/album'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
+import AlbumDetailTitle from '@/components/AlbumDetailTitle.vue'
 import { mapPhotoToImage, usePhotoStore } from '@/stores/photoStore'
 import { useLocationStore } from '@/stores/locationStore'
 import type { AlbumImage, Photo } from '@/types/album'
 import { ElMessage } from 'element-plus'
-import { History } from 'lucide-vue-next'
+import { History, Link2 } from 'lucide-vue-next'
 import type { TimeCompareSummary } from '@/types/location'
 
 const route = useRoute()

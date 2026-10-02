@@ -67,7 +67,7 @@
                       v-if="layoutMode !== 'moments' && shouldShowDateHeader(day, dayIdx)"
                       data-testid="photo-date-header"
                       :data-date-mode="mobileDateHeaderMode"
-                      class="flex items-center mb-0 sticky top-[80px] z-20 transition-opacity duration-300 pointer-events-none"
+                      class="flex items-center mb-0 sticky top-[calc(var(--photo-page-header-height,80px)_+_8px)] z-20 transition-opacity duration-300 pointer-events-none"
                       :class="dateHeaderContainerClass"
                     >
                         <div
