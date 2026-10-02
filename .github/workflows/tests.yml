@@ -108,8 +108,10 @@ jobs:
         with:
           node-version: '22.19.0'
           cache: npm
+          cache-dependency-path: integrations/pi/package-lock.json
 
       - name: Install + test
+        working-directory: integrations/pi
         run: |
           npm ci --ignore-scripts
           npm run check:pi

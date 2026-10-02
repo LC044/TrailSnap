@@ -11,8 +11,8 @@
   ],
   "license": "AGPL-3.0-only",
   "scripts": {
-    "check:pi": "tsc --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --types node --skipLibCheck --allowImportingTsExtensions integrations/pi/extensions/trailsnap-mcp.ts integrations/pi/tests/extension.test.ts",
-    "test:pi": "tsx --test integrations/pi/tests/*.test.ts"
+    "check:pi": "tsc --noEmit --module NodeNext --moduleResolution NodeNext --target ES2022 --types node --skipLibCheck --allowImportingTsExtensions extensions/trailsnap-mcp.ts tests/extension.test.ts",
+    "test:pi": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0"
@@ -38,10 +38,10 @@
   },
   "pi": {
     "extensions": [
-      "./integrations/pi/extensions/trailsnap-mcp.ts"
+      "./extensions/trailsnap-mcp.ts"
     ],
     "skills": [
-      "./skills/trailsnap-agent"
+      "../../skills/trailsnap-agent"
     ]
   }
 }
