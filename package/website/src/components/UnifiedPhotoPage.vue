@@ -53,7 +53,7 @@
               >
                 <div class="space-y-3 p-1">
                   <!-- View Size -->
-                  <div class="space-y-2">
+                  <div v-if="layoutMode !== 'diary'" class="space-y-2">
                     <p class="text-xs font-medium text-gray-500 px-1">图片大小</p>
                     <div class="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                       <button v-for="size in ['sm', 'md', 'lg']" :key="size"
@@ -70,7 +70,7 @@
 
                   <!-- Layout Mode -->
                   <div class="space-y-2">
-                    <p class="text-xs font-medium text-gray-500 px-1">布局模式</p>
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 px-1">布局模式</p>
                     <div class="grid grid-cols-1 gap-1">
                        <button
                         @click="layoutMode = 'waterfall'"
@@ -95,6 +95,16 @@
                       >
                         <LayoutList class="w-4 h-4" />
                         <span>朋友圈</span>
+                      </button>
+                      <button
+                        v-if="allowDiaryView"
+                        @click="layoutMode = 'diary'"
+                        :aria-pressed="layoutMode === 'diary'"
+                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        :class="layoutMode === 'diary' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
+                      >
+                        <BookOpen class="w-4 h-4" />
+                        <span>日记本</span>
                       </button>
                       <button
                         v-if="allowFolderView"
@@ -172,8 +182,26 @@
       <FolderBrowser
         v-if="layoutMode === 'folder'"
         v-model:view-size="viewSize"
+        :allow-diary-view="allowDiaryView"
         @switch-layout="(m) => layoutMode = m as any"
       />
+
+      <PhotoDiary
+        v-else-if="layoutMode === 'diary'"
+        ref="diaryRef"
+        :store="store"
+        :photos="photos"
+        :timeline="timelineItems"
+        :loading="loading"
+        :error="error"
+        :initial-date="activeDate"
+        @click-photo="openLightbox"
+        @active-date="activeDate = $event"
+        @entry-update="({ key, state }) => captionMap[key] = state"
+        @retry="$emit('retry')"
+      >
+        <template #empty><slot name="empty" /></template>
+      </PhotoDiary>
 
       <PhotoGallery
         v-else
@@ -299,11 +327,12 @@ import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
-  UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw
+  UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen
 } from 'lucide-vue-next'
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
+import PhotoDiary from '@/components/PhotoDiary.vue'
 import FolderBrowser from '@/views/album/folder/FolderBrowser.vue'
 import AlbumTimeline from '@/components/AlbumTimeline.vue'
 import { usePhotoViewer } from '@/composables/usePhotoViewer'
@@ -339,6 +368,7 @@ const props = withDefaults(defineProps<{
   showBack?: boolean
   headerOverlay?: boolean
   allowFolderView?: boolean
+  allowDiaryView?: boolean
   updateAvailable?: boolean
   updateMessage?: string
 }>(), {
@@ -358,6 +388,7 @@ const props = withDefaults(defineProps<{
   showBack: true,
   headerOverlay: false,
   allowFolderView: false,
+  allowDiaryView: false,
   updateAvailable: false,
   updateMessage: '发现照片更新，点击刷新'
 })
@@ -379,17 +410,25 @@ const emit = defineEmits<{
 
 // UI State
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
-const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder'>('grid')
+const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder' | 'diary'>('grid')
 const activeDate = ref('')
 const { currentPhoto: lightboxImage, currentIndex: lightboxIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(() => props.photos)
 const showViewOptions = ref(false)
 const viewOptionsRef = ref<HTMLElement | null>(null)
 const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
+const diaryRef = ref<InstanceType<typeof PhotoDiary> | null>(null)
 const refreshingData = ref(false)
 const isMobile = ref(typeof window !== 'undefined' && window.innerWidth < 768)
 const isPhotoInteractionActive = computed(() =>
-  !!lightboxImage.value || !!galleryRef.value?.isSelectionMode
+  !!lightboxImage.value || !!galleryRef.value?.isSelectionMode || !!diaryRef.value?.isEditing
 )
+watch(layoutMode, async (mode, previous) => {
+  showViewOptions.value = false
+  if (previous === 'diary' && mode !== 'folder') {
+    await nextTick()
+    galleryRef.value?.scrollToDate(activeDate.value, 'auto')
+  }
+})
 
 const getScrollContainer = (): HTMLElement | Window => {
   const main = document.querySelector('main') as HTMLElement | null
@@ -641,11 +680,17 @@ onClickOutside(viewOptionsRef, () => {
 })
 
 const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
-  galleryRef.value?.scrollToDate(date, behavior)
+  if (layoutMode.value === 'diary') diaryRef.value?.scrollToDate(date)
+  else galleryRef.value?.scrollToDate(date, behavior)
   activeDate.value = date
 }
 
-const enterBatchMode = () => {
+const enterBatchMode = async () => {
+  if (layoutMode.value === 'diary') {
+    layoutMode.value = 'grid'
+    await nextTick()
+    galleryRef.value?.scrollToDate(activeDate.value, 'auto')
+  }
   galleryRef.value?.enterSelectionMode()
 }
 
