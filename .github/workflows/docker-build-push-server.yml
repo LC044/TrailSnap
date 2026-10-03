@@ -18,9 +18,14 @@ on:
     - cron: '0 20 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: server-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push-server:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
@@ -57,14 +62,6 @@ jobs:
             echo "::notice::ACR secrets 配置不完整，本次仅推送 Docker Hub。"
           fi
 
-      - name: Login to Aliyun ACR
-        if: steps.acr_check.outputs.enabled == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ secrets.ACR_REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
-
       - name: Determine image tags
         id: set-tags
         run: |
@@ -89,7 +86,8 @@ jobs:
           echo "EXTRA_TAG=$EXTRA_TAG" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
 
-      - name: Build and push server
+      - name: Build and push server to Docker Hub
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./package/server
@@ -99,5 +97,38 @@ jobs:
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-server:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-server:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}
-            ${{ steps.acr_check.outputs.enabled == 'true' && format('{0}/{1}/trailsnap-server:{2}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE, env.BASE_TAG) || '' }}
-            ${{ steps.acr_check.outputs.enabled == 'true' && env.EXTRA_TAG != '' && format('{0}/{1}/trailsnap-server:{2}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE, env.EXTRA_TAG) || '' }}
+
+      # Copy the completed multi-platform image separately so ACR cannot stall
+      # BuildKit's Docker Hub exporter. Pin the source to this build's digest.
+      - name: Mirror server image to Aliyun ACR
+        id: acr_mirror
+        if: steps.acr_check.outputs.enabled == 'true'
+        timeout-minutes: 8
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
+          ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+
+          # Keep credentials off command-line arguments and reuse Docker Hub login.
+          AUTH_FILE="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+          printf '%s' "$ACR_PASSWORD" | timeout 30s skopeo login \
+            --authfile "$AUTH_FILE" --username "$ACR_USERNAME" --password-stdin "$ACR_REGISTRY"
+
+          SOURCE="docker://${DOCKER_HUB_USERNAME}/trailsnap-server@${IMAGE_DIGEST}"
+          for TAG in "$BASE_TAG" "$EXTRA_TAG"; do
+            [ -n "$TAG" ] || continue
+            timeout 180s skopeo copy --all --preserve-digests --retry-times 2 \
+              --authfile "$AUTH_FILE" "$SOURCE" \
+              "docker://${ACR_REGISTRY}/${ACR_NAMESPACE}/trailsnap-server:${TAG}"
+          done
+
+      - name: Report preview mirror failure
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.acr_mirror.outcome == 'failure' }}
+        run: echo '::warning::ACR preview mirror failed or timed out. Docker Hub publication succeeded. Non-PR builds require ACR synchronization to succeed.'

@@ -10,6 +10,10 @@ import router from '@/router';
 import { useUserStore } from '@/stores/user';
 import { getServerUrl, hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
 
+declare module 'axios' {
+  interface AxiosRequestConfig { silentError?: boolean }
+}
+
 // 创建 Axios 实例（类型不变）
 const service: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '',
@@ -70,7 +74,7 @@ service.interceptors.response.use(
     // 如果是标准结构 { code, message, data }
     if (res && typeof res === 'object' && 'code' in res) {
       if (res.code !== 200 && res.code !== 0) {
-        ElMessage.error(res.message || res.msg || '接口请求失败');
+        if (!response.config.silentError) ElMessage.error(res.message || res.msg || '接口请求失败');
         return Promise.reject(res);
       }
       return res;
@@ -168,7 +172,7 @@ service.interceptors.response.use(
       // when connectivity returns.  A real HTTP 401 above still logs out.
       errorMsg = '无法连接服务器，请检查网络后重试（登录状态已保留）';
     }
-    ElMessage.error(errorMsg);
+    if (!error.config?.silentError || error.response?.status === 401) ElMessage.error(errorMsg);
     return Promise.reject(error);
   }
 );

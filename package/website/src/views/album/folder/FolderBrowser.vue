@@ -114,6 +114,9 @@
               <el-dropdown-item command="moments">
                 <div class="flex items-center gap-2"><List class="w-4 h-4" /><span>朋友圈</span></div>
               </el-dropdown-item>
+              <el-dropdown-item v-if="allowDiaryView" command="diary">
+                <div class="flex items-center gap-2"><BookOpen class="w-4 h-4" /><span>日记本</span></div>
+              </el-dropdown-item>
               <el-dropdown-item command="folder">
                 <div class="flex items-center gap-2 text-primary-500"><FolderTree2 class="w-4 h-4" /><span>文件夹</span></div>
               </el-dropdown-item>
@@ -373,7 +376,7 @@ import {
   Folder, FolderOpen, FolderTree as FolderTree2, HardDrive, ChevronRight, ChevronDown,
   ArrowLeft, Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, LayoutDashboard, List,
   ArrowUpDown, ArrowUp, ArrowDown, Check, X, Download, Trash2, ImagePlusIcon,
-  MoreHorizontal, UserPlus, CheckSquare, Settings2
+  MoreHorizontal, UserPlus, CheckSquare, Settings2, BookOpen
 } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { albumService } from '@/api/album'
@@ -402,8 +405,9 @@ type SortField = 'name' | 'time' | 'size'
 type SortDir = 'asc' | 'desc'
 
 // viewSize 由父级「照片」视图统一控制（小/中/大），通过 v-model:view-size 双向同步
-const props = withDefaults(defineProps<{ viewSize?: ViewSize }>(), {
-  viewSize: 'md'
+const props = withDefaults(defineProps<{ viewSize?: ViewSize; allowDiaryView?: boolean }>(), {
+  viewSize: 'md',
+  allowDiaryView: false
 })
 const emit = defineEmits<{
   (e: 'update:viewSize', v: ViewSize): void

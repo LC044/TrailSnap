@@ -108,8 +108,10 @@ jobs:
         with:
           node-version: '22.19.0'
           cache: npm
+          cache-dependency-path: integrations/pi/package-lock.json
 
       - name: Install + test
+        working-directory: integrations/pi
         run: |
           npm ci --ignore-scripts
           npm run check:pi
@@ -320,7 +322,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.18.3
           run_install: false
 
       - name: Get pnpm store directory

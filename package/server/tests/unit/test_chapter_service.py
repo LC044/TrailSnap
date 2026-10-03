@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.user import User
-from app.schemas.chapter import ChapterDefinition, ChapterMerge, ChapterSplit, ChapterUpdate
+from app.schemas.chapter import ChapterDefinition, ChapterDiaryGenerate, ChapterMerge, ChapterSplit, ChapterUpdate
 from app.service import chapter
 from app.api import chapter as chapter_api
 from app.crud import task as crud_task
@@ -49,7 +49,15 @@ def test_chapter_time_membership_preview_and_owner_boundary(face_sqlite_session)
     assert chapter.year_links(db, owner.id, [2021, 2022, 2023]) == {
         "2021": [], "2022": [{"id": str(row.id), "title": "一月"}], "2023": []}
     assert [item["id"] for item in chapter.photos(db, row, 0, 10)["items"]] == [str(first.id), str(last.id)]
-    assert chapter.preview(db, owner.id, date(2022, 1, 1), date(2022, 2, 1), row.id)["photo_count"] == 3
+    assert chapter.photos(db, row, 0, 10, 2022)["featured"]["id"] == str(last.id)
+    range_preview = chapter.preview(db, owner.id, date(2022, 1, 1), date(2022, 2, 1), row.id)
+    assert range_preview["photo_count"] == 3
+    assert range_preview["added_photo_count"] == 1
+    assert range_preview["removed_photo_count"] == 0
+    assert range_preview["month_counts"] == [{"month": "2022-01", "count": 2}, {"month": "2022-02", "count": 1}]
+    assert str(last.id) in range_preview["preview_photo_ids"]
+    assert chapter.cover_options(db, owner.id, date(2022, 1, 1), date(2022, 2, 1), 0, 2)["total"] == 3
+    assert chapter.cover_options(db, stranger.id, date(2022, 1, 1), date(2022, 2, 1), 0, 2)["total"] == 1
     with pytest.raises(HTTPException) as exc:
         chapter.get(db, stranger.id, row.id)
     assert exc.value.status_code == 404
@@ -79,6 +87,11 @@ def test_chapter_merge_split_hidden_and_candidate_idempotence(face_sqlite_sessio
     chapter.transition(db, owner.id, candidate.id, "hide", candidate.version)
     assert chapter.list_owned(db, owner.id)["total"] == 0
     assert chapter.list_owned(db, owner.id, hidden=True)["total"] == 1
+    hidden_item = chapter.list_owned(db, owner.id, hidden=True)["items"][0]
+    assert hidden_item["title"] == "已隐藏的章节"
+    assert hidden_item["cover_photo_id"] is None
+    assert hidden_item["photo_count"] == 0
+    assert chapter.list_owned(db, owner.id, hidden=True, reveal=True)["items"][0]["title"] == candidate.title
     with pytest.raises(HTTPException):
         chapter.get(db, owner.id, candidate.id)
     chapter.transition(db, owner.id, candidate.id, "unhide", candidate.version)
@@ -225,3 +238,123 @@ def test_chapter_http_routes_create_read_and_hide(face_sqlite_session):
         assert client.get(f"/chapters/{chapter_id}").status_code == 404
         assert client.get(f"/chapters/{chapter_id}?manage=true").status_code == 200
         assert client.get("/chapters").json()["data"]["total"] == 0
+
+
+def test_diary_entries_survive_photo_removal_and_definition_edits(face_sqlite_session):
+    db = face_sqlite_session
+    owner = user(db, "diary-writer")
+    first = photo(db, owner, datetime(2021, 1, 1, 12), 1)
+    for month in (2, 4, 7, 10, 12):
+        photo(db, owner, datetime(2021, month, 1, 12), month)
+    db.commit()
+    row = chapter.create(db, owner.id, ChapterDefinition(
+        title="几年的日记", start_date=date(2020, 1, 1), end_date=date(2022, 12, 31),
+        diary_entries={"2020": {"title": "照片之外", "body": "这一年开始学摄影。"}},
+    ))
+    assert chapter.get(db, owner.id, row.id)["years"] == [2020, 2021]
+    samples = chapter.photos(db, row, 0, 2, 2021)["representatives"]
+    assert samples[0]["photo_time"].startswith("2021-01")
+    assert samples[-1]["photo_time"].startswith("2021-12")
+    assert len({item["id"] for item in samples}) == 6
+    chapter.update(db, owner.id, row.id, ChapterUpdate(
+        title="改个名字", start_date=row.start_date, end_date=row.end_date, version=row.version))
+    assert chapter.get(db, owner.id, row.id)["diary_entries"]["2020"]["body"] == "这一年开始学摄影。"
+    first.is_deleted = True
+    db.commit()
+    assert str(first.id) not in {item["id"] for item in chapter.photos(db, row, 0, 2, 2021)["representatives"]}
+
+
+def test_diary_draft_uses_only_scoped_facts_and_does_not_save(face_sqlite_session, monkeypatch):
+    from types import SimpleNamespace
+    from app.db.models.image_description import ImageDescription
+    from app.service import chapter_diary
+
+    db = face_sqlite_session
+    owner, stranger = user(db, "diary-ai-owner"), user(db, "diary-ai-stranger")
+    included = photo(db, owner, datetime(2021, 5, 1, 12), 1)
+    excluded = photo(db, owner, datetime(2022, 5, 1, 12), 2)
+    private = photo(db, stranger, datetime(2021, 5, 1, 12), 3)
+    for item, text in ((included, "湖边散步"), (excluded, "另一年的画面"), (private, "其他用户的画面")):
+        db.add(ImageDescription(photo_id=item.id, description=text))
+    db.commit()
+    row = chapter.create(db, owner.id, ChapterDefinition(
+        title="我的日记", summary="自己写的简介", start_date=date(2020, 1, 1), end_date=date(2023, 1, 1)))
+    version = row.version
+
+    class Model:
+        async def ainvoke(self, messages):
+            prompt = messages[1].content
+            assert "湖边散步" in prompt
+            assert "另一年的画面" not in prompt
+            assert "其他用户的画面" not in prompt
+            return SimpleNamespace(content='{"title":"湖边的一年","body":"五月的照片里，留下了湖边散步的画面。"}')
+
+    monkeypatch.setattr(chapter_diary, "configured_model", lambda *_: Model())
+    draft = asyncio.run(chapter_diary.generate(db, owner.id, row.id, ChapterDiaryGenerate(
+        scope="year", year=2021, version=version)))
+    assert draft["source_photo_ids"] == [str(included.id)]
+    assert draft["year"] == 2021
+    db.refresh(row)
+    assert row.version == version
+    assert row.summary == "自己写的简介"
+    assert row.diary_entries == {}
+    chapter.transition(db, owner.id, row.id, "hide", row.version)
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(chapter_diary.generate(db, owner.id, row.id, ChapterDiaryGenerate(version=row.version)))
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.parametrize("change,expected_status", [("invalid", 502), ("version", 409), ("hide", 404), ("delete_photo", 409)])
+def test_diary_generation_rejects_invalid_or_stale_drafts(face_sqlite_session, monkeypatch, change, expected_status):
+    from types import SimpleNamespace
+    from app.service import chapter_diary
+
+    db = face_sqlite_session
+    owner = user(db, "diary-conflict")
+    image = photo(db, owner, datetime(2021, 3, 1, 12), 1)
+    db.commit()
+    row = chapter.create(db, owner.id, ChapterDefinition(title="日记", start_date=date(2021, 1, 1)))
+    version = row.version
+
+    class Model:
+        async def ainvoke(self, messages):
+            if change == "version":
+                row.version += 1
+            elif change == "hide":
+                row.is_hidden = True
+            elif change == "delete_photo":
+                image.is_deleted = True
+            db.commit()
+            return SimpleNamespace(content="not JSON" if change == "invalid" else '{"title":"","body":"一段日记。"}')
+
+    monkeypatch.setattr(chapter_diary, "configured_model", lambda *_: Model())
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(chapter_diary.generate(db, owner.id, row.id, ChapterDiaryGenerate(version=version)))
+    assert exc.value.status_code == expected_status
+    db.refresh(row)
+    assert not row.diary_entries
+    assert row.summary is None
+
+
+def test_merging_diaries_keeps_both_texts_and_filters_stale_sources(face_sqlite_session):
+    db = face_sqlite_session
+    owner, stranger = user(db, "diary-merge"), user(db, "diary-other")
+    own = photo(db, owner, datetime(2021, 3, 1, 12), 1)
+    other = photo(db, stranger, datetime(2021, 3, 1, 12), 2)
+    db.commit()
+    definition = dict(start_date=date(2021, 1, 1), end_date=date(2021, 12, 31))
+    first = chapter.create(db, owner.id, ChapterDefinition(title="前篇", **definition,
+        diary_entries={"2021": {"title": "春天", "body": "春天学摄影。", "source": "ai",
+                                "source_photo_ids": [str(own.id), str(other.id)]}}))
+    second = chapter.create(db, owner.id, ChapterDefinition(title="后篇", **definition,
+        diary_entries={"2021": {"title": "秋天", "body": "秋天出去旅行。"}}))
+    merged = chapter.merge(db, owner.id, ChapterMerge(title="完整的一年", **definition,
+        chapter_ids=[first.id, second.id], versions={first.id: first.version, second.id: second.version}))
+    entry = chapter.get(db, owner.id, merged.id)["diary_entries"]["2021"]
+    assert entry["body"] == "春天学摄影。\n\n秋天出去旅行。"
+    assert entry["source_photo_ids"] == [str(own.id)]
+    own.is_deleted = True
+    db.commit()
+    detail = chapter.get(db, owner.id, merged.id)
+    assert detail["years"] == [2021]
+    assert detail["diary_entries"]["2021"]["source_photo_ids"] == []

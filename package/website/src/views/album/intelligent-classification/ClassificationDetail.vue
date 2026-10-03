@@ -1,7 +1,6 @@
 <template>
   <UnifiedPhotoPage
     :title="title"
-    :subtitle="`${(photos.length + (hasMore ? '+' : '')) + ' 个项目'}`"
     :loading="loading && photos.length === 0"
     :photos="photos"
     :has-more="hasMore"
@@ -11,6 +10,9 @@
     @back="goBack"
     @load-more="loadMore"
     >
+    <template #header-left="{ scrolled }">
+      <AlbumDetailTitle :title="title" :scrolled="scrolled" :subtitle="`${photos.length}${hasMore ? '+' : ''} 个项目`" back-label="返回智能分类" @back="goBack" />
+    </template>
     <template #batch-actions="{ selectedIds, clearSelection }">
       <el-dropdown-item
           v-if="selectedIds.size === 1"
@@ -39,6 +41,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { classificationService } from '@/api/classification'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
+import AlbumDetailTitle from '@/components/AlbumDetailTitle.vue'
 import { mapPhotoToImage, usePhotoStore } from '@/stores/photoStore'
 import type { AlbumImage } from '@/types/album'
 import { ElMessage } from 'element-plus'

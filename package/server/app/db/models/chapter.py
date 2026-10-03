@@ -23,6 +23,8 @@ class LifeChapter(Base):
     is_hidden = Column(Boolean, nullable=False, default=False)
     title = Column(String(80), nullable=False)
     summary = Column(Text, nullable=True)
+    summary_source = Column(String(16), nullable=False, default="user", server_default="user")
+    diary_entries = Column(JSON, nullable=True, default=dict)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=True)
     cover_photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="SET NULL"), nullable=True)

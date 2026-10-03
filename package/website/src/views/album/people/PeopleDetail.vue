@@ -1,6 +1,6 @@
 <template>
   <UnifiedPhotoPage
-    header-overlay
+    :title="identity?.identity_name || '人物相册'"
     :loading="loading"
     :photos="images"
     :timeline-items="timeline"
@@ -14,7 +14,7 @@
     @set-cover="handleSetCover"
   >
     <template #hero>
-      <div class="relative -mx-4 -mt-1 h-[90vw] min-h-[320px] max-h-[520px] overflow-hidden bg-gray-200 dark:bg-gray-800 sm:mx-0 sm:mt-0 sm:h-[420px] sm:rounded-b-3xl">
+      <div class="relative -mx-[var(--ts-page-gutter)] h-[90vw] min-h-[320px] max-h-[520px] overflow-hidden bg-gray-200 dark:bg-gray-800 sm:mx-0 sm:h-[420px] sm:rounded-b-3xl">
         <img
           v-if="coverPhotoId"
           :src="thumbnailUrl(coverPhotoId, 'medium')"
@@ -28,13 +28,8 @@
         <div class="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/55 to-transparent"></div>
       </div>
     </template>
-    <template #header-left>
-      <div class="flex min-w-0 items-center gap-2 px-1 text-white">
-        <button type="button" class="rounded-full bg-black/35 p-2.5 backdrop-blur-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回人物相册" @click="goBack">
-          <ArrowLeftIcon class="h-5 w-5" />
-        </button>
-        <span class="truncate rounded-full bg-black/25 px-3 py-1.5 text-sm font-semibold backdrop-blur-sm sm:text-base">{{ identity?.identity_name || '人物相册' }}</span>
-      </div>
+    <template #header-left="{ scrolled }">
+      <AlbumDetailTitle :title="identity?.identity_name || '人物相册'" :scrolled="scrolled" overlay back-label="返回人物相册" @back="goBack" />
     </template>
     <template #intro>
       <section class="mb-5 bg-white px-1 pb-4 pt-5 dark:bg-gray-900 sm:rounded-2xl sm:px-6 sm:py-6">
@@ -58,11 +53,11 @@
       </section>
     </template>
     <template #header-actions>
-      <RouterLink :to="{ path: '/explore/relations', query: { root: `person:${identityId}` } }" class="mr-2 inline-flex min-h-11 items-center rounded-full bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
+      <RouterLink :to="{ path: '/explore/relations', query: { root: `person:${identityId}` } }" title="关联" aria-label="关联" class="inline-flex h-11 w-11 sm:w-auto items-center justify-center rounded-full bg-primary-500 sm:px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"><Link2Icon class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>
       <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
         <button
           type="button"
-          class="rounded-full border border-gray-200/50 bg-white/80 p-2 text-gray-700 shadow-sm backdrop-blur-md transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900"
+          class="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200/50 bg-white/90 text-gray-700 shadow-sm backdrop-blur-xl transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-900"
           title="人物操作"
           aria-label="人物操作"
           :disabled="!identity"
@@ -129,10 +124,11 @@ import { faceApi } from '@/api/face'
 import type { FaceIdentity } from '@/types/album'
 
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
+import AlbumDetailTitle from '@/components/AlbumDetailTitle.vue'
 import PersonAvatar from '@/components/PersonAvatar.vue'
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
 import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
-import { ArrowLeft as ArrowLeftIcon, History as HistoryIcon, ImageIcon, MoreVertical as MoreVerticalIcon, Pencil as PencilIcon, RefreshCw as RefreshCwIcon, UserRound as UserRoundIcon } from 'lucide-vue-next'
+import { History as HistoryIcon, ImageIcon, Link2 as Link2Icon, MoreVertical as MoreVerticalIcon, Pencil as PencilIcon, RefreshCw as RefreshCwIcon, UserRound as UserRoundIcon } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useUiStore } from '@/stores/uiStore'

@@ -54,6 +54,7 @@
     "lucide-vue-next": "^0.555.0",
     "markdown-it": "^14.3.2",
     "mingcute_icon": "^2.9.6",
+    "page-flip": "2.0.7",
     "piexifjs": "^1.0.6",
     "pinia": "^3.0.3",
     "pinyin-pro": "^3.28.0",
@@ -99,6 +100,9 @@
       "sharp@<0.35.4": "^0.35.4",
       "tar@<7.5.18": "^7.5.18",
       "uuid@<11.1.1": "^11.1.1"
+    },
+    "patchedDependencies": {
+      "page-flip@2.0.7": "patches/page-flip@2.0.7.patch"
     }
   }
 }
