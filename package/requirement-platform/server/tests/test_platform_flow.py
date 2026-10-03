@@ -278,6 +278,73 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         tool_names = {item["name"] for item in tools.json()["result"]["tools"]}
         assert {"list_requirements", "update_requirement_status", "create_version", "upload_requirement_attachment", "get_requirement_records",
                 "sync_github_issues", "sync_github_milestone"} <= tool_names
+        claim_schema = next(item["inputSchema"] for item in tools.json()["result"]["tools"]
+                            if item["name"] == "claim_delivery_task")
+        assert {"runner_name", "provider", "idempotency_key"} <= set(claim_schema["required"])
+        for name, arguments, scope in [
+            ("review_requirement", {"requirement_id": created["id"], "action": "candidate", "reason": "测试权限"}, "requirements:review"),
+        ]:
+            denied = mcp_client.post("/", headers=headers, json={
+                "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            })
+            assert denied.status_code == 200, denied.text
+            result = denied.json()["result"]
+            assert result["isError"] is True
+            assert result["content"][0]["text"] == f"Error executing tool {name}: 缺少 MCP 作用域：{scope}"
+
+        # Existing read-only tokens can reach task claiming without tasks:* scopes.
+        with monkeypatch.context() as patch:
+            calls = []
+
+            def no_task(db, **kwargs):
+                calls.append(kwargs)
+                raise ValueError("当前没有可领取任务")
+
+            patch.setattr(mcp_server, "claim_task", no_task)
+            claim = mcp_client.post("/", headers=headers, json={
+                "jsonrpc": "2.0", "id": 8, "method": "tools/call",
+                "params": {"name": "claim_delivery_task", "arguments": {
+                    "runner_name": "pytest", "provider": "codex", "idempotency_key": "existing-token-claim",
+                }},
+            }).json()["result"]
+            assert claim["isError"] is True
+            assert "当前没有可领取任务" in claim["content"][0]["text"]
+            assert calls[0]["runner_name"] == "pytest"
+
+        # Valid read calls must still return structured data through the adapter.
+        readable = mcp_client.post("/", headers=headers, json={
+            "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+            "params": {"name": "get_requirement", "arguments": {"requirement_id": created["id"]}},
+        }).json()["result"]
+        assert not readable.get("isError")
+        assert readable["structuredContent"]["id"] == created["id"]
+
+        with monkeypatch.context() as patch:
+            actor = type("Actor", (), {"id": owner["user"]["id"]})()
+            patch.setattr(mcp_server, "_identity", lambda _scope: (None, actor))
+            invalid = mcp_client.post("/", headers=headers, json={
+                "jsonrpc": "2.0", "id": 6, "method": "tools/call",
+                "params": {"name": "review_requirement", "arguments": {
+                    "requirement_id": created["id"], "action": "approve", "reason": "测试无效审核动作",
+                }},
+            }).json()["result"]
+            assert invalid["isError"] is True
+            assert invalid["content"][0]["text"] == "Error executing tool review_requirement: 审核动作或理由无效"
+
+            def crash(*args, **kwargs):
+                raise RuntimeError("internal-secret")
+
+            patch.setattr(mcp_server.requirement_service, "review_requirement", crash)
+            unexpected = mcp_client.post("/", headers=headers, json={
+                "jsonrpc": "2.0", "id": 7, "method": "tools/call",
+                "params": {"name": "review_requirement", "arguments": {
+                    "requirement_id": created["id"], "action": "candidate", "reason": "测试异常屏蔽",
+                }},
+            }).json()["result"]
+            assert unexpected["isError"] is True
+            assert "Error executing tool review_requirement" in unexpected["content"][0]["text"]
+            assert "internal-secret" not in json.dumps(unexpected)
         rejected = mcp_client.post(
             "/",
             headers={**headers, "Host": "attacker.example"},
@@ -1037,7 +1104,7 @@ def test_phase_a_spec_approval_and_phase_b_manual_agent_protocol(monkeypatch):
         assert duplicate_task.json()["data"]["id"] == task["id"]
 
         token_response = client.post("/api/admin/agent-tokens", headers=auth(owner["token"]), json={
-            "name": "phase-b-codex", "scopes": ["specs:read", "tasks:claim", "runs:write"],
+            "name": "phase-b-codex", "scopes": ["specs:read", "runs:write"],
             "agent_role": "coding", "task_id": task["id"], "expires_in_days": 1,
         })
         assert token_response.status_code == 200, token_response.text
