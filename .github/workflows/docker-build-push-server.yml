@@ -7,25 +7,36 @@ on:
     paths:
       - 'package/server/**'
       - '.github/workflows/docker-build-push-server.yml'
+      - '.github/scripts/mirror-server-image.sh'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
     paths:
       - 'package/server/**'
       - '.github/workflows/docker-build-push-server.yml'
+      - '.github/scripts/mirror-server-image.sh'
   schedule:
     # 凌晨 4 点（北京时间，UTC+8）= UTC 20:00；每日构建并推送后端镜像
     - cron: '0 20 * * *'
   workflow_dispatch:
+    inputs:
+      mirror_version:
+        description: '仅补同步已发布版本到 ACR（例如 0.17.0），留空则正常构建'
+        type: string
+        required: false
+      mirror_digest:
+        description: '补同步的 Docker Hub 镜像 sha256 摘要，必须与 mirror_version 同时提供'
+        type: string
+        required: false
 
 concurrency:
-  group: server-image-${{ github.event.pull_request.number || github.ref }}
+  group: server-image-${{ inputs.mirror_version || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-push-server:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 90
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
@@ -64,8 +75,20 @@ jobs:
 
       - name: Determine image tags
         id: set-tags
+        env:
+          MIRROR_VERSION: ${{ inputs.mirror_version }}
+          MIRROR_DIGEST: ${{ inputs.mirror_digest }}
+          ACR_ENABLED: ${{ steps.acr_check.outputs.enabled }}
+          DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
+          set -euo pipefail
+          if [[ -n "$MIRROR_VERSION" || -n "$MIRROR_DIGEST" ]]; then
+            [[ "$MIRROR_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '::error::Invalid mirror_version'; exit 1; }
+            [[ "$MIRROR_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo '::error::Invalid mirror_digest'; exit 1; }
+            [[ "$ACR_ENABLED" == true ]] || { echo '::error::ACR secrets are required for mirror recovery'; exit 1; }
+            BASE_TAG="$MIRROR_VERSION"
+            EXTRA_TAG="latest"
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
             BASE_TAG=${GITHUB_REF#refs/tags/v}
             EXTRA_TAG="latest"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
@@ -84,10 +107,11 @@ jobs:
 
           echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
           echo "EXTRA_TAG=$EXTRA_TAG" >> $GITHUB_ENV
-          echo "DOCKER_HUB_USERNAME=${{ secrets.DOCKER_HUB_USERNAME }}" >> $GITHUB_ENV
+          echo "DOCKER_HUB_USERNAME=$DOCKER_HUB_USERNAME" >> $GITHUB_ENV
 
       - name: Build and push server to Docker Hub
         id: build
+        if: inputs.mirror_version == ''
         uses: docker/build-push-action@v5
         with:
           context: ./package/server
@@ -103,10 +127,13 @@ jobs:
       - name: Mirror server image to Aliyun ACR
         id: acr_mirror
         if: steps.acr_check.outputs.enabled == 'true'
-        timeout-minutes: 8
+        timeout-minutes: 70
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_DIGEST: ${{ inputs.mirror_digest || steps.build.outputs.digest }}
+          MIRROR_ONLY: ${{ inputs.mirror_version != '' }}
+          COPY_TIMEOUT_SECONDS: ${{ github.event_name == 'pull_request' && '180' || '1800' }}
+          COPY_ATTEMPTS: ${{ github.event_name == 'pull_request' && '1' || '2' }}
           ACR_REGISTRY: ${{ secrets.ACR_REGISTRY }}
           ACR_NAMESPACE: ${{ secrets.ACR_NAMESPACE }}
           ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
@@ -116,18 +143,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y skopeo
 
-          # Keep credentials off command-line arguments and reuse Docker Hub login.
-          AUTH_FILE="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
-          printf '%s' "$ACR_PASSWORD" | timeout 30s skopeo login \
-            --authfile "$AUTH_FILE" --username "$ACR_USERNAME" --password-stdin "$ACR_REGISTRY"
-
-          SOURCE="docker://${DOCKER_HUB_USERNAME}/trailsnap-server@${IMAGE_DIGEST}"
-          for TAG in "$BASE_TAG" "$EXTRA_TAG"; do
-            [ -n "$TAG" ] || continue
-            timeout 180s skopeo copy --all --preserve-digests --retry-times 2 \
-              --authfile "$AUTH_FILE" "$SOURCE" \
-              "docker://${ACR_REGISTRY}/${ACR_NAMESPACE}/trailsnap-server:${TAG}"
-          done
+          bash .github/scripts/mirror-server-image.sh
 
       - name: Report preview mirror failure
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.acr_mirror.outcome == 'failure' }}
