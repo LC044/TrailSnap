@@ -61,6 +61,9 @@
                     </button>
                     <template #dropdown>
                         <el-dropdown-menu class="w-36">
+                            <el-dropdown-item command="dailyFrame" :disabled="!canSetDailyFrame">
+                                <div class="flex items-center gap-2"><Film class="w-4 h-4" /><span>设为当天一帧</span></div>
+                            </el-dropdown-item>
                             <el-dropdown-item command="ocr">
                                 <div class="flex items-center gap-2">
                                     <ScanText class="w-4 h-4" />
@@ -428,6 +431,10 @@
             <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25"></div>
 
             <div class="grid grid-cols-4 gap-y-4">
+              <button :disabled="!canSetDailyFrame" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0 disabled:opacity-40" @click.stop="runMobileAction(() => handleCommand('dailyFrame'))">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><Film class="w-5 h-5" /></span>
+                <span class="text-[11px]">设为当天一帧</span>
+              </button>
               <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(toggleOriginal)">
                 <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20" :class="{ 'text-primary-400': showOriginal }"><Focus class="w-5 h-5" /></span>
                 <span class="text-[11px]">{{ showOriginal ? '预览图' : '查看原图' }}</span>
@@ -681,6 +688,7 @@ import {
     Binary,
     LoaderCircle,
     History,
+    Film,
 } from 'lucide-vue-next'
 // xgplayer 体积大（~数百 KB），且只在查看视频时需要，故改为按需动态导入；
 // 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
@@ -732,6 +740,7 @@ const props = withDefaults(defineProps<Props>(), {
     deleteMessage: '确定要删除这张照片吗？删除后将移入回收站，可稍后恢复。'
 })
 const router = useRouter()
+const canSetDailyFrame = computed(() => !!props.image && props.image.hasPhotoTime !== false)
 
 const showOriginal = ref(false)
 const isEditing = ref(false)
@@ -1004,6 +1013,7 @@ let historyEntryActive = false
 let historyBackPending = false
 let historyListenerMounted = false
 let pendingTimeCompareRoute: { sceneId: string; photoId: string } | null = null
+let pendingDailyFramePhoto: string | null = null
 
 const isCurrentLightboxHistoryEntry = () =>
     window.history.state?.[LIGHTBOX_HISTORY_KEY] === lightboxHistoryId
@@ -1030,6 +1040,11 @@ const handleHistoryPopState = () => {
 
     historyEntryActive = false
     if (props.visible) emit('close')
+    if (pendingDailyFramePhoto) {
+        const photo = pendingDailyFramePhoto
+        pendingDailyFramePhoto = null
+        router.push({ path: '/daily-frame', query: { photo } })
+    }
     if (pendingTimeCompareRoute) {
         const target = pendingTimeCompareRoute
         pendingTimeCompareRoute = null
@@ -1421,7 +1436,9 @@ const toggleSidebar = () => {
 }
 
 const handleCommand = (command: string) => {
-    if (command === 'ocr') {
+    if (command === 'dailyFrame') {
+        openDailyFrame()
+    } else if (command === 'ocr') {
         toggleOCR()
     } else if (command === 'addToAlbum' && props.allowAddToAlbum) {
         emit('add-to-album', props.image)
@@ -1440,6 +1457,19 @@ const handleCommand = (command: string) => {
     } else if (command === 'timeCompare') {
         openTimeCompare()
     }
+}
+
+const openDailyFrame = () => {
+    if (!canSetDailyFrame.value || !props.image) return
+    const photo = props.image.id
+    if (historyEntryActive && isCurrentLightboxHistoryEntry()) {
+        pendingDailyFramePhoto = photo
+        historyBackPending = true
+        window.history.back()
+        return
+    }
+    emit('close')
+    router.push({ path: '/daily-frame', query: { photo } })
 }
 
 const openTimeCompare = () => {

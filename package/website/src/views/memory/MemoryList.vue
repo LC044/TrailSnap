@@ -6,7 +6,10 @@
           <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">记忆</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
         </div>
-        <div class="grid grid-cols-4 gap-2 lg:flex lg:flex-wrap">
+        <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:flex lg:flex-wrap">
+          <RouterLink to="/daily-frame" class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm">
+            <Film class="h-4 w-4 shrink-0" />一日一帧
+          </RouterLink>
           <RouterLink to="/explore/relations" class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm">
             <Network class="h-4 w-4 shrink-0" />关联探索
           </RouterLink>
@@ -106,7 +109,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { BookHeart, Bot, LoaderCircle, Network, Plus, RefreshCw } from 'lucide-vue-next'
+import { BookHeart, Bot, Film, LoaderCircle, Network, Plus, RefreshCw } from 'lucide-vue-next'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
 import ChapterShelf from '@/components/chapter/ChapterShelf.vue'
 import { memoryApi } from '@/api/memory'

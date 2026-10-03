@@ -9,6 +9,10 @@ FROM python:3.12.12-slim
 
 WORKDIR /app
 
+# Daily-frame rendering needs a H.264 encoder and a font for Chinese captions.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk && \
+    rm -rf /var/lib/apt/lists/*
+
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_PYTHON_DOWNLOADS=never
 
