@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-10-03 (0.17.0)
+
+### New
+
+- Life chapters: organize photos and memories from a period into chapters, with discovery, manual editing, diary reading, and story browsing
+- Memory relationship graph: explore connections between people, places, and events to rediscover related experiences
+- Person timeline: review one person or shared photos of two people by year, with segment hiding, restoration, and AI interpretation
+- Daily frame: choose a photo or video clip for each day in a calendar, fill gaps, edit captions, and preview, export, and manage silent films with one second per day
+- Photo diary layout: browse photos by day and expand a day to see more images
+- Map route lines: connect photo locations to revisit travel routes
+- Background color reanalysis: reanalyze photo colors in batches to refresh color search data
+
+### Improvements
+
+- Configure local language model thread counts to suit your device
+- Improved person detail layouts and album titles that remain visible while scrolling
+- More consistent system settings and common action interfaces
+- Updated dependencies for more reliable installation and builds
+
+### Bug Fixes
+
+- Fixed virtual scrolling calculations in person and album galleries
+- Fixed coordinates not updating after map dragging and administrative regions not refreshing after saving locations
+- Fixed mixed-content requests behind HTTPS reverse proxies
+- Fixed several styling and AI concurrency issues
+
+### Upgrade Notes
+
+- Update Server, AI service, and clients together; Server applies database migrations on startup. Back up your database before upgrading
+- Daily frame film generation requires FFmpeg, FFprobe, H.264 encoding support, and a working Chinese font. Daily selections remain available when these components are missing, with an explanation shown in the interface
+
 ## 2026-09-24 (0.16.0)
 
 ### New

@@ -109,6 +109,9 @@ test.describe.serial('Nightly view coverage @views-coverage', () => {
     await page.route('**/api/locations/distribution**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: [{ name: '测试市', count: 3, level: 'city' }] }) })
     })
+    await page.route('**/api/locations/map-routes**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: [] }) })
+    })
     await page.route('**/api/locations/*/photos**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -121,10 +124,11 @@ test.describe.serial('Nightly view coverage @views-coverage', () => {
     })
 
     await page.goto('/album/location', { waitUntil: 'domcontentloaded' })
-    await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
     await page.locator('.location-list button[title="地图视图"]').first().click()
     await expect(page.getByRole('heading', { name: '足迹概览' })).toBeVisible({ timeout: 15_000 })
-    await page.locator('.location-list .cursor-pointer').filter({ hasText: '测试市' }).first().click()
+    const ranking = page.locator('.location-insight-panel .ranking-row').filter({ hasText: '测试市' })
+    await expect(ranking).toBeVisible({ timeout: 15_000 })
+    await ranking.click()
 
     await expect(page.getByText('照片数量')).toBeVisible()
     await expect(page.getByText('首次点亮')).toBeVisible()
