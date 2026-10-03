@@ -58,12 +58,14 @@ from .api.github import router as github_router
 from .api.requirements import router as requirements_router
 from .api.releases import router as releases_router
 
-def agent_with_scope(required_scope: str):
+def agent_with_scope(required_scope: str | None = None):
     def dependency(authorization: str | None = Header(default=None, alias="Authorization"), db: Session = Depends(get_db)):
         if not authorization or not authorization.lower().startswith("bearer "):
             raise HTTPException(status_code=401, detail="Agent token required")
         token = resolve_agent_token(db, authorization.split(" ", 1)[1].strip())
-        if not token or required_scope not in token.scopes:
+        if not token:
+            raise HTTPException(status_code=403, detail="Invalid or revoked agent token")
+        if required_scope and required_scope not in token.scopes:
             raise HTTPException(status_code=403, detail=f"Missing agent scope: {required_scope}")
         creator = db.query(User).filter(User.id == token.created_by, User.is_active.is_(True)).first()
         if not creator or creator.role not in {"admin", "owner"} or token.project_key != "trailsnap":
@@ -211,7 +213,7 @@ def get_delivery_task(task_id: str, actor: User = Depends(manager), db: Session 
 
 @app.post("/api/agent-runs/claim")
 def claim_delivery_task(payload: AgentClaimInput, idempotency_key: str = Header(alias="Idempotency-Key"),
-                        token: AgentToken = Depends(agent_with_scope("tasks:claim")), db: Session = Depends(get_db)):
+                        token: AgentToken = Depends(agent_with_scope()), db: Session = Depends(get_db)):
     if token.agent_role not in {None, payload.role}:
         raise HTTPException(status_code=403, detail="Agent token role does not match claim role")
     request_data = payload.model_dump(mode="json")

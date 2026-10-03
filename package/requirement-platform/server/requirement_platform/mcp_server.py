@@ -4,6 +4,7 @@ import base64
 import hashlib
 import secrets
 from datetime import datetime, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -12,6 +13,7 @@ from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func
 
@@ -38,6 +40,20 @@ from .domain import requirements as requirement_service
 from .domain import releases as release_service
 
 
+class RequirementMCPServer(MCPServer):
+    """Expose expected authorization and business errors only at the MCP boundary."""
+
+    def add_tool(self, fn, **kwargs):
+        @wraps(fn)
+        def invoke(*args, **call_kwargs):
+            try:
+                return fn(*args, **call_kwargs)
+            except (PermissionError, ValueError) as exc:
+                raise ToolError(str(exc)) from exc
+
+        return super().add_tool(invoke, **kwargs)
+
+
 class DatabaseTokenVerifier:
     async def verify_token(self, token: str) -> AccessToken | None:
         with SessionLocal() as db:
@@ -58,12 +74,13 @@ class DatabaseTokenVerifier:
             )
 
 
-mcp = MCPServer(
+mcp = RequirementMCPServer(
     name="trailsnap-requirements",
     title="TrailSnap 需求管理",
     version="0.5.0",
     instructions=(
-        "用于查询和管理 TrailSnap 需求与版本。任何写入、审核、删除和 GitHub 操作都必须遵循令牌作用域；"
+        "用于查询和管理 TrailSnap 需求与版本。任务创建、领取和取消仅需有效管理员令牌；"
+        "其余写入、审核、删除和 GitHub 操作仍必须遵循令牌作用域；"
         "删除为可恢复的软删除。编码任务必须先领取并提交覆盖全部必需 AC 的 ImplementationPlan；"
         "所有运行写入必须携带 attempt、lease、state version 和幂等键。Agent 无合并或发布权限。"
     ),
@@ -77,9 +94,11 @@ mcp = MCPServer(
 )
 
 
-def _identity(required_scope: str) -> tuple[AgentToken, User]:
+def _identity(required_scope: str | None = None) -> tuple[AgentToken, User]:
     access = get_access_token()
-    if not access or required_scope not in access.scopes:
+    if not access:
+        raise PermissionError("MCP 令牌无效或已撤销")
+    if required_scope and required_scope not in access.scopes:
         raise PermissionError(f"缺少 MCP 作用域：{required_scope}")
     token_id = (access.claims or {}).get("token_id")
     with SessionLocal() as db:
@@ -751,7 +770,7 @@ def create_delivery_task(spec_id: str, idempotency_key: str, risk_level: str = "
                          budget: dict[str, Any] | None = None,
                          dependency_ids: list[str] | None = None) -> dict[str, Any]:
     """为一个已批准规格创建唯一交付任务；重复请求返回同一任务。"""
-    token, actor = _identity("tasks:write")
+    token, actor = _identity()
     request = {"spec_id": spec_id, "risk_level": risk_level, "budget": budget or {},
                "dependency_ids": dependency_ids or []}
     with SessionLocal() as db:
@@ -770,7 +789,7 @@ def create_delivery_task(spec_id: str, idempotency_key: str, risk_level: str = "
 def claim_delivery_task(runner_name: str, provider: str, idempotency_key: str,
                         model: str | None = None) -> dict[str, Any]:
     """原子领取一个已批准的编码任务，返回租约、attempt 和完整 Context Bundle。"""
-    token, _ = _identity("tasks:claim")
+    token, _ = _identity()
     if provider not in {"codex", "claude"} or token.agent_role not in {None, "coding"}:
         raise ValueError("令牌角色或 provider 不允许领取编码任务")
     request = {"runner_name": runner_name, "provider": provider, "model": model}
@@ -944,8 +963,8 @@ def get_run(run_id: str) -> dict[str, Any]:
 
 @mcp.tool()
 def cancel_run(run_id: str) -> dict[str, Any]:
-    """由具备任务管理权限的受信任客户端取消执行并撤销后续动作。"""
-    token, actor = _identity("tasks:write")
+    """由持有有效管理员令牌的客户端取消执行并撤销后续动作。"""
+    token, actor = _identity()
     with SessionLocal() as db:
         run = _run_for_token(db, run_id, token)
         cancel_run_service(db, run, actor.id)
