@@ -21,6 +21,7 @@
 
       <OnThisDay />
       <MemoryDiscovery />
+      <DailyFrameCard />
      <!-- Banners Area -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Annual Report Banner -->
@@ -118,6 +119,7 @@ import ContentStats from '@/components/home/ContentStats.vue';
 import TimeChart from '@/components/home/TimeChart.vue';
 import OnThisDay from '@/components/OnThisDay.vue';
 import MemoryDiscovery from '@/components/home/MemoryDiscovery.vue';
+import DailyFrameCard from '@/components/home/DailyFrameCard.vue';
 import StorageCenter from '@/components/home/StorageCenter.vue';
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue';
 

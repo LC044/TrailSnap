@@ -27,6 +27,7 @@ from app.service.task_strategy import TaskStrategyFactory
 from app.service.adaptive_limiter import AdaptiveResourceLimiter
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
+from app.service.tasks import daily_frame
 
 class TaskQueueManager:
     def __init__(self):
@@ -1039,7 +1040,7 @@ class TaskWorker:
             # Tasks that should be preserved in DB after completion.
             # Only reference real TaskType members here — a non-existent
             # member raises AttributeError and crashes completion cleanup.
-            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS}
+            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS, TaskType.RENDER_DAILY_FRAME}
 
             for item in items:
                 if item['status'] == TaskStatus.COMPLETED:

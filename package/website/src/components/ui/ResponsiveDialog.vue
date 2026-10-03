@@ -5,6 +5,7 @@
         v-if="modelValue"
         class="fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-6"
         role="presentation"
+        :class="{ 'responsive-dialog-right': placement === 'right' }"
       >
         <button
           class="absolute inset-0 cursor-default bg-[var(--ts-color-overlay)] backdrop-blur-sm focus:outline-none"
@@ -61,12 +62,14 @@ const props = withDefaults(defineProps<{
   mobileBack?: boolean
   closeOnBackdrop?: boolean
   closeOnEscape?: boolean
+  placement?: 'center' | 'right'
 }>(), {
   maxWidth: '32rem',
   mobileMode: 'sheet',
   mobileBack: false,
   closeOnBackdrop: true,
   closeOnEscape: true,
+  placement: 'center',
 })
 
 const emit = defineEmits<{
@@ -125,8 +128,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   }
 }
 @media (min-width: 768px) {
+  .responsive-dialog-right { align-items: stretch; justify-content: flex-end; padding: 0; }
+  .responsive-dialog-right .responsive-dialog-panel { height: 100dvh; max-height: 100dvh; border-radius: 0; }
   .responsive-dialog-panel { max-width: var(--responsive-dialog-max-width); }
   .responsive-dialog-enter-from section,
   .responsive-dialog-leave-to section { transform: translateY(0.5rem) scale(0.98); }
+  .responsive-dialog-right.responsive-dialog-enter-from section,
+  .responsive-dialog-right.responsive-dialog-leave-to section { transform: translateX(100%); }
 }
 </style>

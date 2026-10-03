@@ -104,6 +104,14 @@ python -m uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 SQLite 的迁移说明和命令见 [`alembic_sqlite/README.md`](alembic_sqlite/README.md)。
 
+## 一日一帧影片生成
+
+选帧和日历功能不依赖编码器。生成预览及 MP4 需要 FFmpeg、同目录或 PATH 中的 FFprobe、libx264 编码器和中文字体；Docker 镜像已包含 FFmpeg 与 Noto CJK。
+
+原生部署可以设置 `TS_FFMPEG_PATH` 为 FFmpeg 可执行文件完整路径，设置 `TS_VIDEO_FONT` 为中文 TTF/TTC/OTF 字体文件路径，配置后重启服务。未配置字体时会尝试 Windows 微软雅黑、macOS 苹方和 Linux Noto CJK。缺少依赖时，制作页会显示原因并禁用生成。
+
+生成任务使用持久任务队列；预览和作品文件写入应用数据目录的 `users/<user-id>/daily-frame/`。输出为静音 H.264 MP4、30 fps，每个有效日期一秒；源素材在生成前及发布前都进行权限和可用性检查。
+
 ## 目录结构
 
 - `app/`: 应用代码
