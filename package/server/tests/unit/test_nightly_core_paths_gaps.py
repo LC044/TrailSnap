@@ -9,6 +9,7 @@ We mock the module's ``os`` and ``shutil`` interactions to keep the test
 hermetic and to avoid touching the real data directory on the host.
 """
 from unittest.mock import patch
+import gzip
 
 import pytest
 
@@ -16,6 +17,38 @@ from app.core import paths as core_paths
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_core]
+
+
+def test_compressed_seed_preserves_bytes_and_user_deletion(tmp_path, monkeypatch):
+    seeds = tmp_path / 'seeds'
+    seeds.mkdir()
+    content = 'city,lat,lon\n武汉,30.59,114.30\n'.encode('utf-8')
+    (seeds / 'CN.csv.gz').write_bytes(gzip.compress(content))
+    data = tmp_path / 'data'
+    sentinel = data / '.seeded.v1'
+    monkeypatch.setattr(core_paths, 'RG_SEED_DIR', str(seeds))
+    monkeypatch.setattr(core_paths, 'RG_DATA_DIR', str(data))
+    monkeypatch.setattr(core_paths, '_SEED_SENTINEL', str(sentinel))
+    core_paths.ensure_rg_seed()
+    target = data / 'CN.csv'
+    assert target.read_bytes() == content
+    assert sentinel.exists() and not (data / 'CN.csv.tmp').exists()
+    target.unlink()
+    core_paths.ensure_rg_seed()
+    assert not target.exists()
+
+
+def test_truncated_compressed_seed_never_publishes_partial_csv(tmp_path, monkeypatch):
+    seeds = tmp_path / 'seeds'
+    seeds.mkdir()
+    (seeds / 'CN.csv.gz').write_bytes(gzip.compress(b'city,lat,lon\n')[:-5])
+    data = tmp_path / 'data'
+    monkeypatch.setattr(core_paths, 'RG_SEED_DIR', str(seeds))
+    monkeypatch.setattr(core_paths, 'RG_DATA_DIR', str(data))
+    monkeypatch.setattr(core_paths, '_SEED_SENTINEL', str(data / '.seeded.v1'))
+    core_paths.ensure_rg_seed()
+    assert not (data / 'CN.csv').exists()
+    assert not (data / 'CN.csv.tmp').exists()
 
 
 def test_ensure_rg_seed_noop_when_sentinel_already_exists(tmp_path):

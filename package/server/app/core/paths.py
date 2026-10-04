@@ -14,12 +14,13 @@ TrailSnap 的可写数据统一放在 ``DATA_DIR`` 下：
 
 离线反向地理编码数据（rg_data）分为两部分：
   - ``RG_SEED_DIR``：镜像内置的只读种子（``resources/rg_data``），含 countries.json
-    与默认 CN.csv，由 Dockerfile 的 ``COPY . .`` 打进镜像。
+    与默认 CN.csv（Docker 镜像中压缩为 CN.csv.gz）。
   - ``RG_DATA_DIR``：用户下载/上传的城市 CSV，位于 DATA_DIR 下，持久化。
 首次启动时 ``ensure_rg_seed()`` 会把默认 CN.csv 从种子目录拷进数据目录，
 保证开箱即用中国反向编码；之后该目录归用户所有（删除不再自动恢复）。
 """
 import os
+import gzip
 import shutil
 import logging
 import sys
@@ -53,7 +54,7 @@ _SEED_SENTINEL = os.path.join(RG_DATA_DIR, '.seeded.v1')
 def ensure_rg_seed() -> None:
     """确保可写的反向地理编码数据目录存在，并在首次运行时播种默认 CN.csv。
 
-    首次启动（哨兵不存在）时，将镜像内置的 ``CN.csv`` 从 ``RG_SEED_DIR`` 拷进
+    首次启动（哨兵不存在）时，将镜像内置的 ``CN.csv`` 或 ``CN.csv.gz`` 解压/拷进
     ``RG_DATA_DIR``，使开箱即用的中国离线反向编码无需用户手动下载。
     哨兵使该行为具有粘性：用户之后删除的文件不会在重启时被自动恢复。
 
@@ -64,15 +65,20 @@ def ensure_rg_seed() -> None:
         return
 
     seed_cn = os.path.join(RG_SEED_DIR, 'CN.csv')
-    if os.path.exists(seed_cn):
+    seed_gz = seed_cn + '.gz'
+    if os.path.exists(seed_cn) or os.path.exists(seed_gz):
         target_cn = os.path.join(RG_DATA_DIR, 'CN.csv')
         if not os.path.exists(target_cn):
             tmp_cn = target_cn + '.tmp'
             try:
-                shutil.copy2(seed_cn, tmp_cn)
+                if os.path.exists(seed_cn):
+                    shutil.copy2(seed_cn, tmp_cn)
+                else:
+                    with gzip.open(seed_gz, 'rb') as source, open(tmp_cn, 'wb') as target:
+                        shutil.copyfileobj(source, target)
                 os.replace(tmp_cn, target_cn)  # 同文件系统下原子替换
                 logger.info("Seeded default reverse-geocoder data (CN.csv) into %s", RG_DATA_DIR)
-            except OSError as e:
+            except (OSError, EOFError) as e:
                 logger.warning("Failed to seed CN.csv into %s: %s", RG_DATA_DIR, e)
                 if os.path.exists(tmp_cn):
                     try:

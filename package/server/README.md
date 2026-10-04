@@ -106,7 +106,9 @@ SQLite 的迁移说明和命令见 [`alembic_sqlite/README.md`](alembic_sqlite/R
 
 ## 一日一帧影片生成
 
-选帧和日历功能不依赖编码器。生成预览及 MP4 需要 FFmpeg、同目录或 PATH 中的 FFprobe、libx264 编码器和中文字体；Docker 镜像已包含 FFmpeg 与 Noto CJK。
+选帧和日历功能不依赖编码器。生成预览及 MP4 需要 FFmpeg、同目录或 PATH 中的 FFprobe、libx264 编码器和中文字体；Docker 镜像已包含软件编解码版 FFmpeg 与 Noto 简体中文常规字体。
+
+Docker 中的视频尺寸、时长和缩略图由 FFprobe/FFmpeg 读取，不重复安装 OpenCV；原生及桌面环境继续支持 OpenCV。镜像保留常用视频解码器和所需滤镜，省去设备采集、图形播放和 GPU 加速依赖。离线定位种子在镜像中压缩保存，首次启动解压到持久数据目录；用户删除后的行为保持不变。镜像精简的测量口径和验证结果见[优化记录](../../doc/server_image_optimization.md)。
 
 原生部署可以设置 `TS_FFMPEG_PATH` 为 FFmpeg 可执行文件完整路径，设置 `TS_VIDEO_FONT` 为中文 TTF/TTC/OTF 字体文件路径，配置后重启服务。未配置字体时会尝试 Windows 微软雅黑、macOS 苹方和 Linux Noto CJK。缺少依赖时，制作页会显示原因并禁用生成。
 

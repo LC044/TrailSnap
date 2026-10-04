@@ -118,6 +118,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           provenance: false
+          # Reuse media compilation and locked Python wheels across source changes.
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
           tags: |
             ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-server:${{ env.BASE_TAG }}
             ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-server:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}
