@@ -157,7 +157,7 @@ onMounted(() => {
 onBeforeUnmount(() => { observer?.disconnect(); document.body.style.overflow = previousOverflow })
 </script>
 <style scoped>
-.mobile-diary-reader { position:fixed; inset:0; z-index:80; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:#fffdf8; color:#44403c; padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom); }
+.mobile-diary-reader { position:fixed; inset:0; z-index:80; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:#fffdf8; color:#44403c; padding-top:var(--ts-safe-area-top); padding-bottom:var(--ts-safe-area-bottom); }
 .mobile-diary-reader.dark { background:#242526; color:#e7e5e4; }
 .reader-header { flex-shrink:0; display:flex; align-items:center; justify-content:space-between; height:52px; padding:0 12px; font-size:14px; }
 .reader-header button { display:grid; place-items:center; width:44px; height:44px; }

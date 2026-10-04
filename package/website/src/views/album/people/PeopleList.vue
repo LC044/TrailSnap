@@ -9,7 +9,7 @@
           <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
-          <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
+          <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
             {{ isMergeMode ? `已选择 ${selectedIds.length} 项` : '人物' }}
           </h1>
         </div>
@@ -704,7 +704,7 @@ onMounted(() => {
     align-items: center;
     gap: 6px;
     margin: 0 -1rem 1.5rem;
-    padding: max(8px, env(safe-area-inset-top)) 12px 8px;
+    padding: max(8px, var(--ts-content-safe-area-top)) 12px 8px;
     border-bottom-width: 1px;
     box-shadow: 0 8px 24px rgb(15 23 42 / 0.04);
     backdrop-filter: blur(20px) saturate(165%);

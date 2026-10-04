@@ -7,7 +7,7 @@
           <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
             <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
           </button>
-          <h1 class="whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
+          <h1 class="ts-page-title whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
         </div>
         <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-full bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
@@ -1144,7 +1144,7 @@ onMounted(() => {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 0 12px calc(var(--ts-tabbar-h, 0px) + env(safe-area-inset-bottom) + 12px);
+  padding: 0 12px calc(var(--ts-tabbar-h, 0px) + var(--ts-safe-area-bottom) + 12px);
   background: rgba(15, 23, 42, 0.34);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);

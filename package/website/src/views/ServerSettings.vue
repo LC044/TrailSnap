@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 px-5 py-[max(2rem,env(safe-area-inset-top))] flex items-center justify-center">
+  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 px-5 py-[max(2rem,var(--ts-content-safe-area-top))] flex items-center justify-center">
     <section class="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6 sm:p-8 shadow-lg">
       <div class="flex items-center gap-3 mb-2">
         <div class="w-11 h-11 rounded-xl bg-primary-500 text-white flex items-center justify-center">

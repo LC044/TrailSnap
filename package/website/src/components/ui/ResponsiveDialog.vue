@@ -5,21 +5,24 @@
         v-if="modelValue"
         class="fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-6"
         role="presentation"
+        @wheel.self.prevent
         :class="{ 'responsive-dialog-right': placement === 'right' }"
       >
         <button
-          class="absolute inset-0 cursor-default bg-[var(--ts-color-overlay)] backdrop-blur-sm focus:outline-none"
+          class="absolute inset-0 cursor-default bg-[var(--ts-color-overlay)] focus:outline-none"
           type="button"
           aria-label="关闭弹窗"
           tabindex="-1"
           @click="closeOnBackdrop && close()"
         />
         <section
+          ref="panelRef"
+          tabindex="-1"
           role="dialog"
           aria-modal="true"
           :aria-labelledby="titleId"
           class="responsive-dialog-panel relative z-10 flex w-full flex-col overflow-hidden bg-white shadow-[var(--ts-shadow-floating)] dark:bg-gray-900 md:max-h-[90dvh] md:rounded-[var(--ts-radius-dialog)]"
-          :class="mobileMode === 'fullscreen' ? 'mobile-fullscreen h-[100dvh] rounded-none' : 'max-h-[92dvh] rounded-t-[var(--ts-radius-dialog)]'"
+          :class="[glass ? 'ts-liquid-glass ts-glass-sheet' : '', mobileMode === 'fullscreen' ? 'mobile-fullscreen h-[100dvh] rounded-none' : 'max-h-[92dvh] rounded-t-[var(--ts-radius-dialog)]']"
           :style="{ '--responsive-dialog-max-width': maxWidth }"
         >
           <div v-if="mobileMode === 'sheet'" class="mx-auto mt-2 h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-700 md:hidden" />
@@ -38,7 +41,7 @@
           <div class="responsive-dialog-body min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
             <slot />
           </div>
-          <footer v-if="$slots.footer" class="border-t border-gray-100 bg-white p-4 pb-[calc(1rem_+_env(safe-area-inset-bottom))] dark:border-gray-800 dark:bg-gray-900 md:p-5">
+          <footer v-if="$slots.footer" class="border-t border-gray-100 bg-white p-4 pb-[calc(1rem_+_var(--ts-safe-area-bottom))] dark:border-gray-800 dark:bg-gray-900 md:p-5">
             <slot name="footer" />
           </footer>
         </section>
@@ -48,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ChevronLeft, X } from 'lucide-vue-next'
 import IconButton from '@/components/ui/IconButton.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
@@ -62,6 +65,7 @@ const props = withDefaults(defineProps<{
   mobileBack?: boolean
   closeOnBackdrop?: boolean
   closeOnEscape?: boolean
+  glass?: boolean
   placement?: 'center' | 'right'
 }>(), {
   maxWidth: '32rem',
@@ -77,6 +81,8 @@ const emit = defineEmits<{
   close: []
 }>()
 
+const panelRef = ref<HTMLElement | null>(null)
+let returnFocus: HTMLElement | null = null
 const visible = computed(() => props.modelValue)
 const titleId = `responsive-dialog-${Math.random().toString(36).slice(2)}`
 
@@ -88,12 +94,25 @@ const close = () => {
 useOverlayStack(visible, close)
 
 const onKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Tab' && props.modelValue) {
+    const items = Array.from(panelRef.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, textarea, a[href], [tabindex="0"]') ?? []).filter(item => item.getClientRects().length > 0)
+    const first = items[0], last = items.at(-1)
+    if (!first) { event.preventDefault(); panelRef.value?.focus() }
+    else if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.value)) { event.preventDefault(); last?.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+  }
   if (event.key === 'Escape' && props.modelValue && props.closeOnEscape) close()
 }
 
 watch(visible, (isVisible) => {
-  if (isVisible) window.addEventListener('keydown', onKeydown)
-  else window.removeEventListener('keydown', onKeydown)
+  if (isVisible) {
+    returnFocus = document.activeElement as HTMLElement
+    window.addEventListener('keydown', onKeydown)
+    nextTick(() => panelRef.value?.focus({ preventScroll: true }))
+  } else {
+    window.removeEventListener('keydown', onKeydown)
+    if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true })
+  }
 }, { immediate: true })
 
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
@@ -111,11 +130,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .responsive-dialog-leave-to section { transform: translateY(1.5rem); opacity: 0; }
 @media (max-width: 767px) {
   .mobile-fullscreen .responsive-dialog-header {
-    min-height: calc(3.5rem + env(safe-area-inset-top));
-    padding-top: env(safe-area-inset-top);
+    min-height: calc(3.5rem + var(--ts-safe-area-top));
+    padding-top: var(--ts-safe-area-top);
   }
   .mobile-fullscreen .responsive-dialog-body {
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(1rem + var(--ts-safe-area-bottom));
   }
   .responsive-dialog-enter-active .mobile-fullscreen,
   .responsive-dialog-leave-active .mobile-fullscreen {

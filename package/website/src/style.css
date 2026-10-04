@@ -4,6 +4,12 @@
 
 /* TrailSnap design foundation. Theme colors are injected by useTheme.ts. */
 :root {
+  /* Android publishes native insets; browsers/iOS use their viewport insets. */
+  --ts-safe-area-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+  --ts-safe-area-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+  --ts-safe-area-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --ts-safe-area-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+  --ts-content-safe-area-top: var(--ts-safe-area-top);
   color-scheme: light;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -121,7 +127,7 @@ html.dark {
     margin: 0;
     min-width: 320px;
     min-height: 0;
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+    padding: var(--ts-safe-area-top) var(--ts-safe-area-right) 0 var(--ts-safe-area-left);
     background: var(--ts-color-page);
     color: var(--ts-color-text);
   }
@@ -156,7 +162,7 @@ html.dark {
   }
 
   .ts-bottom-safe {
-    padding-bottom: calc(var(--ts-tabbar-h) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom));
   }
 
   .ts-scrollbar-hidden {
@@ -216,7 +222,30 @@ html.dark {
 html.dark *::-webkit-scrollbar-thumb { background-color: #475569 !important; }
 *::-webkit-scrollbar-button { display: none !important; width: 0 !important; height: 0 !important; }
 
-html.capacitor-native .h-screen { height: calc(100dvh - env(safe-area-inset-top)); }
+html.capacitor-native .h-screen { height: calc(100dvh - var(--ts-safe-area-top)); }
+
+/* Android backgrounds reach the window edges; each layout owns its controls. */
+html.capacitor-android body { padding-top: 0; }
+html.capacitor-android .h-screen { height: 100dvh; }
+html.capacitor-android .ts-blank-layout,
+html.capacitor-android .ts-main-content {
+  padding-top: var(--ts-safe-area-top);
+  --ts-content-safe-area-top: 0px;
+}
+/* UnifiedPhotoPage already insets its sticky toolbar, with the hero behind it. */
+html.capacitor-android .ts-main-content:has(.unified-photo-page) { padding-top: 0; }
+html.capacitor-android .unified-photo-page { padding-top: 0; }
+
+main:has(> .photo-diary-mode) { overflow-y: hidden; }
+.unified-photo-page.photo-diary-mode {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding-bottom: 0;
+}
+.photo-diary-mode > .sticky { flex: none; }
+.photo-diary-mode > .photo-page-content { flex: 1; min-height: 0; }
 
 .fade-enter-active, .fade-leave-active { transition: opacity 180ms ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
@@ -232,4 +261,70 @@ html.capacitor-native .h-screen { height: calc(100dvh - env(safe-area-inset-top)
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
+}
+
+/* Clear liquid glass: one rim, transmitted detail and directional reflections. */
+.ts-liquid-glass {
+  --glass-tint: rgb(255 255 255 / 38%);
+  position: relative;
+  isolation: isolate;
+  color: var(--ts-color-text);
+  background: linear-gradient(135deg, rgb(255 255 255 / 50%), var(--glass-tint) 48%, rgb(255 255 255 / 20%));
+  border: 1px solid rgb(255 255 255 / 78%);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 10%);
+  -webkit-backdrop-filter: blur(3px) saturate(145%);
+  backdrop-filter: blur(3px) saturate(145%);
+}
+.ts-liquid-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 5%, rgb(255 255 255 / 28%) 18%, transparent 32%, transparent 72%, rgb(255 255 255 / 18%) 90%);
+
+}
+.dark .ts-liquid-glass {
+  --glass-tint: rgb(17 24 39 / 58%);
+  background: linear-gradient(135deg, rgb(69 83 106 / 66%), var(--glass-tint) 48%, rgb(17 24 39 / 46%));
+  border-color: rgb(255 255 255 / 30%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 22%);
+}
+.ts-glass-toolbar { border-radius: 999px; padding: 4px; gap: 4px; }
+.ts-glass-button {
+  display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 999px; border: 0;
+  color: var(--ts-color-text); background: transparent;
+  transition: transform 180ms cubic-bezier(.2,.8,.2,1), background-color 180ms ease;
+}
+.ts-glass-button:hover { color: var(--accent-color); }
+.ts-glass-button:active { transform: scale(.92); }
+.ts-glass-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.ts-glass-button[aria-expanded='true'] { color: var(--accent-color); background: transparent; }
+.ts-desktop-menu { position: absolute; right: 0; top: 100%; margin-top: 12px; width: 240px; border-radius: 20px; padding: 12px; z-index: 50; }
+.ts-glass-sheet.responsive-dialog-panel { --glass-tint: rgb(255 255 255 / 86%); }
+.dark .ts-glass-sheet.responsive-dialog-panel { --glass-tint: rgb(17 24 39 / 92%); }
+.ts-glass-sheet .responsive-dialog-body { padding-bottom: calc(16px + var(--ts-safe-area-bottom)); }
+.ts-action-content button { min-height: 48px; }
+.ts-action-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px; border-radius: 14px; text-align: left; color: var(--ts-color-text); }
+.ts-action-row:hover { background: rgba(var(--theme-rgb), .08); }
+.ts-action-row:disabled { opacity: .5; }
+.ts-action-row svg { width: 20px; height: 20px; }
+.ts-action-row.danger { color: var(--ts-color-danger); }
+@supports not (backdrop-filter: blur(3px)) {
+  .ts-liquid-glass { background: var(--ts-color-surface); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-glass-button, .responsive-dialog-panel { transition: none !important; }
+}
+
+/* A shared hierarchy for browsing pages and cover cards. */
+.ts-page-title { font-size: 24px; font-weight: 700; line-height: 1.25; letter-spacing: -.02em; }
+.ts-page-title.ts-compact-title { font-size: 16px; }
+.ts-section-title { font-size: 18px; font-weight: 600; line-height: 1.4; }
+.ts-card-title { font-size: 14px; font-weight: 600; line-height: 1.45; }
+
+@media (max-width: 639px) {
+  .ts-browse-page { --ts-page-gutter: 20px; }
+  .ts-browse-header { min-height: 70px; padding-block: 8px; gap: 12px; }
 }

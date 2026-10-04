@@ -3,10 +3,20 @@
     <div class="mx-auto max-w-screen-2xl">
       <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h1 class="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">记忆</h1>
+          <h1 class="ts-page-title text-gray-900 dark:text-white">记忆</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
         </div>
-        <div class="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:flex lg:flex-wrap">
+        <div class="flex items-center gap-2 sm:hidden" aria-label="记忆操作">
+          <button class="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" :disabled="store.discovering" @click="runDiscovery"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': store.discovering }" />{{ store.discovering ? '发现中…' : '发现记忆' }}</button>
+          <RouterLink to="/memories/new" class="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary-500 px-3 text-sm font-medium text-white"><Plus class="h-4 w-4" />新建记忆</RouterLink>
+          <div class="ts-liquid-glass ts-glass-toolbar"><button @click="showActions = true" class="ts-glass-button" aria-label="更多记忆操作"><MoreHorizontal class="h-5 w-5" /></button><ResponsiveDialog v-model="showActions" title="记忆操作" glass>
+              <button type="button" class="ts-action-row" @click="showActions = false; router.push('/daily-frame')"><Film class="mr-2 h-4 w-4" />一日一帧</button>
+              <button type="button" class="ts-action-row" @click="showActions = false; router.push('/explore/relations')"><Network class="mr-2 h-4 w-4" />关联探索</button>
+              <button type="button" class="ts-action-row" @click="showActions = false; createWithAgent()"><Bot class="mr-2 h-4 w-4" />和 AI 创建</button>
+              <button type="button" class="ts-action-row" v-if="store.activeStatus !== 'ignored'" @click="showActions = false; selectMode = !selectMode">{{ selectMode ? '取消批量选择' : '批量合并' }}</button>
+            </ResponsiveDialog></div>
+        </div>
+        <div class="hidden gap-2 sm:grid sm:grid-cols-5 lg:flex lg:flex-wrap">
           <RouterLink to="/daily-frame" class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm">
             <Film class="h-4 w-4 shrink-0" />一日一帧
           </RouterLink>
@@ -44,11 +54,11 @@
             @click="changeTab(tab.status)"
           >{{ tab.label }} <span class="ml-0.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800 sm:ml-1 sm:px-2">{{ store.counts[tab.status] }}</span></button>
         </nav>
-        <div v-if="store.activeStatus !== 'ignored'" class="mb-2 flex items-center gap-2">
-          <button class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400" @click="selectMode = !selectMode">
+        <div v-if="store.activeStatus !== 'ignored'" class="mb-2 items-center gap-2" :class="selectMode ? 'flex' : 'hidden sm:flex'">
+          <button class="min-h-11 text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400" @click="selectMode = !selectMode">
             {{ selectMode ? '取消选择' : '批量合并' }}
           </button>
-          <button v-if="selectMode" class="rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white disabled:opacity-50" :disabled="selectedIds.length < 2" @click="openMerge">合并 {{ selectedIds.length }} 段</button>
+          <button v-if="selectMode" class="min-h-11 rounded-lg bg-primary-500 px-3 text-sm text-white disabled:opacity-50" :disabled="selectedIds.length < 2" @click="openMerge">合并 {{ selectedIds.length }} 段</button>
         </div>
       </div>
 
@@ -85,7 +95,7 @@
 
       <div v-else class="mt-12 flex min-h-[340px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white px-6 text-center dark:border-gray-700 dark:bg-gray-800">
         <BookHeart class="h-12 w-12 text-primary-400" />
-        <h2 class="mt-4 text-lg font-semibold text-gray-900 dark:text-white">{{ emptyTitle }}</h2>
+        <h2 class="ts-section-title mt-4 text-lg font-semibold text-gray-900 dark:text-white">{{ emptyTitle }}</h2>
         <p class="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">{{ emptyDescription }}</p>
         <button v-if="store.activeStatus === 'candidate'" class="mt-5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600" @click="runDiscovery">开始发现</button>
         <RouterLink v-else-if="store.activeStatus === 'confirmed'" to="/memories/new" class="mt-5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600">从照片创建</RouterLink>
@@ -106,10 +116,11 @@
 </template>
 
 <script setup lang="ts">
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { BookHeart, Bot, Film, LoaderCircle, Network, Plus, RefreshCw } from 'lucide-vue-next'
+import { BookHeart, Bot, Film, LoaderCircle, MoreHorizontal, Network, Plus, RefreshCw } from 'lucide-vue-next'
 import MemoryCard from '@/components/memory/MemoryCard.vue'
 import ChapterShelf from '@/components/chapter/ChapterShelf.vue'
 import { memoryApi } from '@/api/memory'
@@ -118,6 +129,7 @@ import { useUiStore } from '@/stores/uiStore'
 import type { MemoryItem, MemoryStatus } from '@/types/memory'
 
 const store = useMemoryStore()
+const showActions = ref(false)
 const router = useRouter()
 const uiStore = useUiStore()
 const selectMode = ref(false)

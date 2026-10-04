@@ -1,6 +1,6 @@
 <template>
   <section ref="reader" class="photo-diary mx-auto max-w-5xl scroll-mt-24 py-4 md:pr-16" aria-label="照片日记本" tabindex="0" @keydown="onKeydown">
-    <div v-if="days.length" class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div v-if="days.length && !isMobile" class="mb-5 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3">
         <BookOpen class="h-5 w-5 text-primary-500" />
         <div>
@@ -22,7 +22,52 @@
       <button class="ml-3 min-h-11 underline" @click="retry">重新加载</button>
     </div>
 
-    <ChapterBook v-if="currentDay" :page-key="currentDay.key" :direction="direction" :ready="!waitingForPhotos" title="我的影像日记" @busy="turning = $event">
+    <template v-if="isMobile && currentDay">
+      <label class="diary-mobile-date flex items-center gap-2 text-gray-700 dark:text-gray-200">
+        <CalendarDays class="h-4 w-4 shrink-0 text-primary-500" />
+        <span class="sr-only">选择日记日期</span>
+        <select v-model="selectedKey" :disabled="navigationBusy" class="min-h-11 min-w-0 flex-1 rounded-lg bg-transparent text-sm">
+          <option v-for="day in days" :key="day.key" :value="day.key">{{ day.label }} · {{ day.count }} 张影像</option>
+        </select>
+      </label>
+      <div ref="mobilePaper" class="diary-mobile-paper" @pointerdown="pointerDown" @pointerup="pointerUp" @pointercancel="cancelSwipe" @click.capture="paperClick">
+        <ChapterBook class="diary-mobile-book" single-page portrait :page-key="currentDay.key + ':' + leafIndex" :direction="direction" :duration="420" :ready="!waitingForPhotos" title="我的影像日记" @busy="turning = $event">
+          <section class="diary-page">
+            <div class="diary-mobile-leaf">
+              <div class="diary-mobile-running text-gray-500 dark:text-gray-400"><span>{{ currentDay.label }} · {{ weekday }}</span><span>{{ mobileLeaf?.kind === 'photos' ? '影像' : '日记' }}</span></div>
+              <template v-if="mobileLeaf?.kind === 'photos'">
+                <div v-if="waitingForPhotos" class="flex-1 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-700" role="status" aria-label="正在加载照片" />
+                <div v-else class="diary-mobile-photos">
+                  <button v-for="photo in mobileLeaf.photos" :key="photo.id" class="min-h-0 overflow-hidden rounded-sm bg-white p-2 dark:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" :aria-label="'查看照片 ' + photo.filename" @click="$emit('click-photo', photo)">
+                    <img :src="photo.preview || photo.thumbnail" :alt="photo.filename" draggable="false" class="h-full w-full object-contain" />
+                  </button>
+                </div>
+              </template>
+              <template v-else>
+                <h3 class="mb-2 truncate font-serif text-lg text-gray-900 dark:text-gray-100">{{ locationMap[currentDay.key]?.primary || '值得记住的一天' }}</h3>
+                <p v-if="captionLoading" role="status" class="text-sm text-gray-500 dark:text-gray-400">正在读取日记…</p>
+                <p v-else class="diary-mobile-writing text-gray-700 dark:text-gray-200">{{ mobileLeaf?.text }}</p>
+              </template>
+              <p class="diary-mobile-folio text-gray-500 dark:text-gray-400">{{ leafIndex + 1 }} / {{ mobileLeaves.length }} 页</p>
+            </div>
+          </section>
+        </ChapterBook>
+      </div>
+      <nav class="diary-mobile-navigation" aria-label="日记翻页">
+        <button class="diary-mobile-control text-gray-700 dark:text-gray-200" aria-label="上一页" :disabled="navigationBusy || (!hasPrevious && leafIndex === 0)" @click="stepLeaf(-1)"><ArrowLeft class="h-5 w-5" /></button>
+        <div class="min-w-0 flex-1 text-center text-xs text-gray-500 dark:text-gray-400"><p>{{ dayIndex + 1 }} / {{ days.length }} 天</p><p class="mt-0.5">左右或上下轻扫翻页</p></div>
+        <button class="diary-mobile-control text-gray-700 dark:text-gray-200" aria-label="下一页" :disabled="navigationBusy || (!hasNext && leafIndex === mobileLeaves.length - 1)" @click="stepLeaf(1)"><ArrowRight class="h-5 w-5" /></button>
+        <el-dropdown trigger="click" placement="top-end">
+          <button class="diary-mobile-control text-gray-700 dark:text-gray-200" aria-label="日记操作"><MoreHorizontal class="h-5 w-5" /></button>
+          <template #dropdown><el-dropdown-menu>
+            <el-dropdown-item :disabled="captionLoading || generating || turning" @click="startEditing"><Feather class="mr-2 h-4 w-4" />{{ caption?.caption ? '编辑日记' : '写下这一天' }}</el-dropdown-item>
+            <el-dropdown-item v-if="!caption?.caption || caption.source !== 'manual'" :disabled="captionLoading || generating || turning || !canGenerate" @click="generateEntry"><Sparkles class="mr-2 h-4 w-4" />{{ generating ? '正在生成…' : caption?.caption ? 'AI 重新整理' : 'AI 写日记' }}</el-dropdown-item>
+          </el-dropdown-menu></template>
+        </el-dropdown>
+      </nav>
+      <p v-if="entryError" role="alert" class="text-xs text-red-600 dark:text-red-400">{{ entryError }}</p>
+    </template>
+    <ChapterBook v-else-if="currentDay" :page-key="currentDay.key" :direction="direction" :ready="!waitingForPhotos" title="我的影像日记" @busy="turning = $event">
       <section class="diary-page diary-left">
         <div class="diary-page-content">
           <div class="diary-running"><span>行影集 · 影像日记</span><span>{{ currentDay.label }}</span></div>
@@ -65,7 +110,7 @@
     <div v-else-if="loading" role="status" class="rounded-xl bg-gray-100 py-20 text-center text-gray-500 dark:bg-gray-800 dark:text-gray-400">正在整理影像日记…</div>
     <slot v-else name="empty"><p class="py-20 text-center text-gray-500 dark:text-gray-400">还没有可以写进日记的照片</p></slot>
 
-    <nav v-if="currentDay" class="mt-5 flex items-center justify-between gap-2" aria-label="日记翻页">
+    <nav v-if="currentDay && !isMobile" class="mt-5 flex items-center justify-between gap-2" aria-label="日记翻页">
       <button class="diary-navigation" :disabled="!hasPrevious || navigationBusy" @click="turn(-1)"><ArrowLeft class="h-4 w-4" /><span>上一页</span></button>
       <p class="min-w-0 flex-1 text-center text-xs text-gray-500 dark:text-gray-400">{{ currentDay.label }} · {{ dayIndex + 1 }} / {{ days.length }} 天<br />最近的日子在前</p>
       <button class="diary-navigation" :disabled="!hasNext || navigationBusy" @click="turn(1)"><span>下一页</span><ArrowRight class="h-4 w-4" /></button>
@@ -83,7 +128,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Feather, Sparkles } from 'lucide-vue-next'
+import { useMediaQuery, useResizeObserver } from '@vueuse/core'
+import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Feather, MoreHorizontal, Sparkles } from 'lucide-vue-next'
+import { diarySwipeDirection, paginateDiaryText } from '@/utils/diaryPagination'
 import ChapterBook from '@/components/chapter/ChapterBook.vue'
 import { useMomentCaptions } from '@/composables/useMomentCaptions'
 import type { CaptionState } from '@/composables/useMomentCaptions'
@@ -101,6 +148,7 @@ const editorVisible = ref(false), editingKey = ref(''), editingLabel = ref(''), 
 const { captionMap, loadingDays, loadMonth, generate, save, abortAll } = useMomentCaptions()
 const { locationMap, loadMonth: loadLocations } = useMomentLocations()
 let loadSequence = 0
+let selectLastLeaf = false
 const dateKey = (date: Date) => `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`
 const days = computed(() => {
   const timeline = props.timeline.length ? props.timeline : [...props.photos.reduce((map, photo) => {
@@ -128,6 +176,57 @@ const navigationBusy = computed(() => turning.value || monthLoading.value || sav
 const hasPrevious = computed(() => dayIndex.value > 0)
 const hasNext = computed(() => dayIndex.value + 1 < days.value.length)
 const isEditing = computed(() => editorVisible.value || generating.value)
+const isMobile = useMediaQuery('(max-width: 767px)')
+const mobilePaper = ref<HTMLElement>()
+const paperWidth = ref(350), paperHeight = ref(420), leafIndex = ref(0)
+useResizeObserver(mobilePaper, ([entry]) => {
+  paperWidth.value = entry.contentRect.width
+  paperHeight.value = entry.contentRect.height
+})
+type MobileLeaf = { kind: 'photos'; photos: AlbumImage[] } | { kind: 'text'; text: string }
+const mobileLeaves = computed<MobileLeaf[]>(() => {
+  const leaves: MobileLeaf[] = []
+  const photosPerPage = paperHeight.value >= 440 ? 2 : 1
+  for (let index = 0; index < dayPhotos.value.length; index += photosPerPage) leaves.push({ kind: 'photos', photos: dayPhotos.value.slice(index, index + photosPerPage) })
+  if (waitingForPhotos.value && !leaves.length) leaves.push({ kind: 'photos', photos: [] })
+  const context = document.createElement('canvas').getContext('2d')
+  if (context) context.font = '16px serif'
+  const text = caption.value?.caption || '照片留下了这一刻。\n打开日记操作，写下几句话，让回忆更完整。'
+  const pages = paginateDiaryText(text, Math.max(100, paperWidth.value - 52), Math.max(1, Math.floor((paperHeight.value - 136) / 28)), line => context?.measureText(line).width ?? Array.from(line).length * 16)
+  leaves.push(...pages.map(text => ({ kind: 'text' as const, text })))
+  return leaves
+})
+const mobileLeaf = computed(() => mobileLeaves.value[leafIndex.value])
+watch(selectedKey, () => { leafIndex.value = 0 })
+watch(() => mobileLeaves.value.length, length => { leafIndex.value = Math.min(leafIndex.value, length - 1) })
+function stepLeaf(delta: number) {
+  if (navigationBusy.value) return
+  direction.value = delta
+  const target = leafIndex.value + delta
+  if (target >= 0 && target < mobileLeaves.value.length) leafIndex.value = target
+  else {
+    selectLastLeaf = delta < 0 && hasPrevious.value
+    turn(delta)
+  }
+}
+let swipe: { id: number; x: number; y: number; time: number } | undefined
+let suppressClickUntil = 0
+function pointerDown(event: PointerEvent) {
+  if (!event.isPrimary || navigationBusy.value) return
+  swipe = { id: event.pointerId, x: event.clientX, y: event.clientY, time: performance.now() }
+  // Capture on the original target so a tap still reaches its photo button.
+  if (event.isTrusted) (event.target as Element).setPointerCapture(event.pointerId)
+}
+function cancelSwipe() { swipe = undefined }
+function pointerUp(event: PointerEvent) {
+  if (!swipe || event.pointerId !== swipe.id) return
+  const delta = diarySwipeDirection(event.clientX - swipe.x, event.clientY - swipe.y, performance.now() - swipe.time)
+  swipe = undefined
+  if (delta) { suppressClickUntil = performance.now() + 500; event.preventDefault(); stepLeaf(delta) }
+}
+function paperClick(event: MouseEvent) {
+  if (performance.now() < suppressClickUntil) { event.preventDefault(); event.stopPropagation() }
+}
 
 function findDate(date: string) {
   const [year, month, day] = date.split('-').map(Number)
@@ -148,7 +247,16 @@ async function loadDay(refresh = false) {
   const captionPromise = loadMonth(day.year, day.month, refresh).finally(() => { if (sequence === loadSequence) captionLoading.value = false })
   void loadLocations(day.year, day.month)
   try { await Promise.all([photosPromise, captionPromise]) }
-  finally { if (sequence === loadSequence) monthLoading.value = false }
+  finally {
+    if (sequence === loadSequence) {
+      monthLoading.value = false
+      if (selectLastLeaf) {
+        selectLastLeaf = false
+        await nextTick()
+        if (sequence === loadSequence) leafIndex.value = mobileLeaves.value.length - 1
+      }
+    }
+  }
 }
 function retry() { if (currentDay.value) void loadDay(true); else emit('retry') }
 function turn(value: number) {
@@ -163,11 +271,12 @@ function scrollToDate(date: string) {
   if (!day) return
   direction.value = days.value.indexOf(day) >= dayIndex.value ? 1 : -1
   selectedKey.value = day.key
-  reader.value?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  if (!isMobile.value) reader.value?.scrollIntoView({ block: 'start', behavior: 'smooth' })
 }
 function onKeydown(event: KeyboardEvent) {
   if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable="true"]') || editorVisible.value) return
-  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); turn(event.key === 'ArrowRight' ? 1 : -1) }
+  if (!isMobile.value && ['ArrowUp', 'ArrowDown'].includes(event.key)) return
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); const delta = ['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1; if (isMobile.value) stepLeaf(delta); else turn(delta) }
 }
 function startEditing() {
   editingKey.value = selectedKey.value
@@ -193,16 +302,35 @@ async function generateEntry() {
   try { await generate(key); if (captionMap[key]) emit('entry-update', { key, state: captionMap[key] }) }
   catch (error) { if (selectedKey.value === key) entryError.value = error instanceof Error ? error.message : '生成失败，请重试' }
 }
-onMounted(async () => { await nextTick(); reader.value?.scrollIntoView({ block: 'start', behavior: 'auto' }) })
+onMounted(async () => { await nextTick(); if (!isMobile.value) reader.value?.scrollIntoView({ block: 'start', behavior: 'auto' }) })
 onBeforeUnmount(() => { loadSequence++; abortAll() })
 defineExpose({ scrollToDate, isEditing })
 </script>
 
 <style scoped>
+.photo-diary { display:flex; flex-direction:column; height:100%; min-height:0; outline:none; }
+.photo-diary > :deep(.chapter-book) { flex:1; min-height:0; }
+.photo-diary :deep(.book-stage) { height:100%; min-height:0; }
+.photo-diary > nav, .photo-diary > div:first-child { flex:none; }
 .diary-navigation { display:flex; flex-shrink:0; align-items:center; gap:8px; min-height:44px; padding:8px 16px; border:1px solid #e5e7eb; border-radius:8px; background:white; color:#4b5563; font-size:13px; white-space:nowrap; }
 .diary-navigation:disabled { opacity:.4; cursor:default; }
 :global(.dark) .diary-navigation { border-color:#374151; background:#111827; color:#d1d5db; }
 .photo-diary :deep(.diary-page-content) { padding:26px 28px 56px; }
 .photo-diary :deep(.diary-running) { margin-bottom:22px; }
 @media(max-width:767px) { .photo-diary :deep(.diary-page-content) { padding:22px 20px 52px; } .diary-navigation { padding:8px 12px; } }
+@media(max-width:767px) {
+  .photo-diary { display:flex; flex-direction:column; height:100%; min-height:0; padding:0; outline:none; }
+  .diary-mobile-date, .diary-mobile-navigation { flex:none; }
+  .diary-mobile-paper { flex:1; min-height:0; touch-action:none; user-select:none; }
+  .diary-mobile-book { height:100%; box-sizing:border-box; }
+  .diary-mobile-book :deep(.book-stage) { height:100%; min-height:0; }
+  .diary-mobile-leaf { display:flex; flex-direction:column; height:100%; padding:16px; overflow:hidden; }
+  .diary-mobile-running { display:flex; justify-content:space-between; gap:8px; flex:none; margin-bottom:12px; font-size:10px; }
+  .diary-mobile-photos { display:grid; grid-auto-rows:minmax(0,1fr); flex:1; min-height:0; gap:12px; }
+  .diary-mobile-writing { white-space:pre-wrap; overflow-wrap:anywhere; font:16px/28px serif; }
+  .diary-mobile-folio { flex:none; margin-top:auto; padding-top:8px; text-align:right; font-size:10px; }
+  .diary-mobile-navigation { display:flex; align-items:center; gap:4px; padding:8px 0; }
+  .diary-mobile-control { display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; }
+  .diary-mobile-control:disabled { opacity:.35; }
+}
 </style>

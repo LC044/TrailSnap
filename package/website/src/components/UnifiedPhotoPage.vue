@@ -1,17 +1,17 @@
 <template>
-  <div class="unified-photo-page relative mx-auto w-full max-w-screen-2xl py-1 px-[var(--ts-page-gutter)] min-h-screen" :style="{ '--photo-page-header-height': `${headerHeight}px` }">
+  <div class="ts-browse-page unified-photo-page relative mx-auto w-full max-w-screen-2xl py-0 px-[var(--ts-page-gutter)] min-h-screen" :class="{ 'photo-diary-mode': layoutMode === 'diary' }" :style="{ '--photo-page-header-height': `${headerHeight}px` }">
     <span ref="pageTopRef" class="pointer-events-none absolute left-0 top-0 h-px w-px" aria-hidden="true"></span>
     <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
-    <div v-if="layoutMode !== 'folder'" ref="headerRef" class="pointer-events-none sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[env(safe-area-inset-top)]">
-      <div class="pointer-events-auto flex items-center justify-between gap-1 sm:gap-3 mx-auto py-1.5 sm:py-2">
+    <div v-if="layoutMode !== 'folder'" ref="headerRef" class="pointer-events-none sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[var(--ts-safe-area-top)]">
+      <div class="ts-browse-header pointer-events-auto flex items-center justify-between gap-1 sm:gap-3 mx-auto py-1.5 sm:py-2">
         <!-- Back & Title -->
         <slot name="header-left" :scrolled="headerScrolled">
-          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2 px-1" :class="headerScrolled ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
+          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
             <button v-if="showBack" @click="$emit('back')" aria-label="返回" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full backdrop-blur-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" :class="headerScrolled ? 'bg-black/60 hover:bg-black/70' : 'hover:bg-white dark:hover:bg-gray-800'">
               <ArrowLeft class="w-5 h-5" />
             </button>
             <div class="min-w-0 transition-colors duration-200" :class="headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
-              <h1 :title="title" class="leading-tight flex items-center gap-2" :class="headerScrolled ? 'text-sm sm:text-base font-semibold' : 'text-sm md:text-lg font-bold'">
+              <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled }">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>
               </h1>
@@ -24,7 +24,7 @@
         </slot>
 
         <!-- Controls -->
-        <div class="flex shrink-0 items-center justify-end gap-1 sm:gap-2 ml-auto">
+        <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center justify-end gap-1 sm:gap-2 ml-auto">
           
           <slot name="header-controls-start"></slot>
 
@@ -32,25 +32,16 @@
           <div class="relative">
              <button
                @click="showViewOptions = !showViewOptions"
-               class="flex h-11 w-11 items-center justify-center text-gray-700 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all"
+               class="ts-glass-button"
                title="视图设置"
+               aria-label="更多照片视图"
+               :aria-expanded="showViewOptions"
              >
                <Settings2 class="w-5 h-5" />
              </button>
 
              <!-- Secondary Menu Dropdown -->
-            <Transition
-              enter-active-class="transition duration-200 ease-out"
-              enter-from-class="transform scale-95 opacity-0"
-              enter-to-class="transform scale-100 opacity-100"
-              leave-active-class="transition duration-75 ease-in"
-              leave-from-class="transform scale-100 opacity-100"
-              leave-to-class="transform scale-95 opacity-0"
-            >
-              <div v-if="showViewOptions" 
-                   ref="viewOptionsRef"
-                   class="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 z-50 origin-top-right"
-              >
+            <AdaptiveMenu v-model="showViewOptions" title="照片视图" ref="viewOptionsRef">
                 <div class="space-y-3 p-1">
                   <button type="button" class="sm:hidden flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="showViewOptions = false; enterBatchMode()">
                     <CheckSquare class="h-4 w-4" />
@@ -62,7 +53,7 @@
                     <div class="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                       <button v-for="size in ['sm', 'md', 'lg']" :key="size"
                         @click="viewSize = size as any"
-                        class="flex-1 p-1.5 rounded text-center transition-colors dark:bg-gray-800"
+                        class="flex-1 min-h-11 p-1.5 rounded text-center transition-colors dark:bg-gray-800"
                         :class="{ 'bg-white dark:bg-gray-700 shadow-sm text-primary-500': viewSize === size, 'text-gray-700 dark:text-gray-300': viewSize !== size }"
                       >
                         <Grid3x3 v-if="size === 'sm'" class="w-4 h-4 mx-auto" />
@@ -77,24 +68,24 @@
                     <p class="text-xs font-medium text-gray-500 dark:text-gray-400 px-1">布局模式</p>
                     <div class="grid grid-cols-1 gap-1">
                        <button
-                        @click="layoutMode = 'waterfall'"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        @click="showViewOptions = false; layoutMode = 'waterfall'"
+                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
                         :class="layoutMode === 'waterfall' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutDashboard class="w-4 h-4" />
                         <span>自适应</span>
                       </button>
                       <button
-                        @click="layoutMode = 'grid'"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        @click="showViewOptions = false; layoutMode = 'grid'"
+                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
                         :class="layoutMode === 'grid' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutGrid class="w-4 h-4" />
                         <span>正方形</span>
                       </button>
                       <button
-                        @click="layoutMode = 'moments'"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        @click="showViewOptions = false; layoutMode = 'moments'"
+                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
                         :class="layoutMode === 'moments' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutList class="w-4 h-4" />
@@ -102,9 +93,9 @@
                       </button>
                       <button
                         v-if="allowDiaryView"
-                        @click="layoutMode = 'diary'"
+                        @click="showViewOptions = false; layoutMode = 'diary'"
                         :aria-pressed="layoutMode === 'diary'"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
                         :class="layoutMode === 'diary' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <BookOpen class="w-4 h-4" />
@@ -112,8 +103,8 @@
                       </button>
                       <button
                         v-if="allowFolderView"
-                        @click="layoutMode = 'folder'"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        @click="showViewOptions = false; layoutMode = 'folder'"
+                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
                         :class="layoutMode === 'folder' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <FolderTree class="w-4 h-4" />
@@ -122,14 +113,13 @@
                     </div>
                   </div>
                 </div>
-              </div>
-            </Transition>
+            </AdaptiveMenu>
            </div>
 
           <!-- Batch Select -->
           <button 
             @click="enterBatchMode"
-            class="hidden sm:flex h-11 w-11 items-center justify-center text-gray-700 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl hover:bg-white dark:hover:bg-gray-900 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50 transition-all"
+            v-if="!mobileMenu" class="ts-glass-button"
             title="批量选择"
           >
             <CheckSquare class="w-5 h-5" />
@@ -142,8 +132,9 @@
           <button
             v-if="allowUpload"
             @click="$emit('upload')"
-            class="bg-primary-500 hover:bg-primary-600 text-white p-2 sm:px-4 sm:py-2 rounded-full shadow-lg shadow-primary-500/30 flex items-center gap-2 text-sm font-medium transition-all active:scale-95"
+            class="ts-glass-button gap-2 text-sm font-medium sm:w-auto sm:px-4"
             title="上传"
+            aria-label="上传照片"
           >
             <UploadCloud class="w-5 h-5" />
             <span class="hidden sm:inline">上传</span>
@@ -156,20 +147,20 @@
       <div v-if="$slots['header-extension']" class="pointer-events-auto"><slot name="header-extension"></slot></div>
     </div>
 
-    <div v-if="$slots.hero" :style="{ marginTop: `-${headerHeight}px` }">
+    <div v-if="$slots.hero && layoutMode !== 'diary'" :style="{ marginTop: `-${headerHeight}px` }">
       <slot name="hero"></slot>
     </div>
 
     <!-- Timeline Navigation Sidebar (Right Sticky) — 文件夹视图有自己的目录树，隐藏时间轴 -->
     <AlbumTimeline
-      v-if="layoutMode !== 'folder'"
+      v-if="layoutMode !== 'folder' && layoutMode !== 'diary'"
       :items="timelineItems"
       :active-date="activeDate"
       @select="scrollToDate"
     />
 
     <!-- Main Content Area -->
-    <div class="mx-auto">
+    <div class="photo-page-content mx-auto w-full">
       <div
         v-if="updateAvailable && !isPhotoInteractionActive"
         class="sticky top-[calc(var(--photo-page-header-height)_+_8px)] z-20 flex justify-center mb-3 pointer-events-none"
@@ -184,7 +175,7 @@
           <span>{{ refreshingData ? '正在刷新…' : updateMessage }}</span>
         </button>
       </div>
-      <slot name="intro"></slot>
+      <slot v-if="layoutMode !== 'diary'" name="intro"></slot>
 
       <!-- 文件夹视图（作为一种布局模式，与自适应/正方形/朋友圈并列） -->
       <FolderBrowser
@@ -331,8 +322,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
-import { onClickOutside, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
+import { ref, computed, nextTick, onUnmounted, watch, useSlots } from 'vue'
+import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core'
+import { injectTheme } from '@/composables/useTheme'
+import { useMediaQuery, onClickOutside, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
 import {
   ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
   UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen
@@ -351,6 +345,18 @@ import AlbumSelector from '@/components/AlbumSelector.vue'
 import FolderSelectionDialog from '@/components/FolderSelectionDialog.vue'
 import LocationBatchEditor from '@/components/LocationBatchEditor.vue'
 import type { AlbumImage } from '@/types/album'
+
+const slots = useSlots()
+const { isDarkMode } = injectTheme()
+function updateStatusBar(overlay: boolean) {
+  if (Capacitor.getPlatform() !== 'android') return
+  // The hero has a dark top gradient, so white status icons remain readable.
+  void SystemBars.setStyle({
+    bar: SystemBarType.StatusBar,
+    style: overlay || isDarkMode.value ? SystemBarsStyle.Dark : SystemBarsStyle.Light,
+  }).catch(error => console.warn('Unable to update status bar style', error))
+}
+onUnmounted(() => updateStatusBar(false))
 
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
@@ -424,13 +430,15 @@ const headerRef = ref<HTMLElement | null>(null)
 const headerHeight = ref(0)
 useResizeObserver(headerRef, () => {
   headerHeight.value = headerRef.value?.offsetHeight ?? 0
-})
+}, { box: 'border-box' })
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
 const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder' | 'diary'>('grid')
+watch([isDarkMode, layoutMode], () => updateStatusBar(Boolean(slots.hero) && !['folder', 'diary'].includes(layoutMode.value)), { immediate: true })
 const activeDate = ref('')
 const { currentPhoto: lightboxImage, currentIndex: lightboxIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(() => props.photos)
+const mobileMenu = useMediaQuery('(max-width: 639px)')
 const showViewOptions = ref(false)
-const viewOptionsRef = ref<HTMLElement | null>(null)
+const viewOptionsRef = ref<InstanceType<typeof AdaptiveMenu> | null>(null)
 const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
 const diaryRef = ref<InstanceType<typeof PhotoDiary> | null>(null)
 const refreshingData = ref(false)
@@ -692,7 +700,7 @@ const handleLocationBatchSuccess = () => {
 }
 
 onClickOutside(viewOptionsRef, () => {
-  showViewOptions.value = false
+  if (!mobileMenu.value) showViewOptions.value = false
 })
 
 const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {

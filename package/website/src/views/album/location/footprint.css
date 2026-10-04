@@ -146,7 +146,7 @@
 @media (max-width: 767px) {
   .footprint-page { min-height: 380px; }
   .footprint-nav { display: none; }
-  .footprint-header { top: max(12px, env(safe-area-inset-top)); left: 12px; right: 12px; display: block; }
+  .footprint-header { top: max(12px, var(--ts-safe-area-top)); left: 12px; right: 12px; display: block; }
   .header-title { display: none; }
   .header-tools { display: grid; grid-template-columns: auto 1fr 36px 36px 36px; gap: 6px; }
   .year-control { height: 36px; padding: 0 7px; }
@@ -175,7 +175,7 @@
   .city-photos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .map-controls { top: 41%; right: 12px; }
   .map-controls button { width: 29px; height: 31px; }
-  .timeline-dock { left: 12px; right: 12px; bottom: max(32px, calc(env(safe-area-inset-bottom) + 20px)); padding: 12px 13px 9px; }
+  .timeline-dock { left: 12px; right: 12px; bottom: max(32px, calc(var(--ts-safe-area-bottom) + 20px)); padding: 12px 13px 9px; }
   .timeline-top .eyebrow { display: none; }
   .playback-heading strong { font-size: 11px; margin: 0; }
   .playback-tools { gap: 3px; }
@@ -186,7 +186,7 @@
   .route-note { font-size: 8px; margin-top: 8px !important; }
   .route-progress { margin-top: 8px; font-size: 8px; }
   .route-progress > span:first-child { max-width: 96px; overflow: hidden; white-space: nowrap; }
-  .map-status { bottom: max(12px, env(safe-area-inset-bottom)); left: 16px; right: 16px; font-size: 8px; max-width: calc(100% - 35px); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+  .map-status { bottom: max(12px, var(--ts-safe-area-bottom)); left: 16px; right: 16px; font-size: 8px; max-width: calc(100% - 35px); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
   .loading-chip { top: 92px; padding: 7px 10px; font-size: 10px; }
   .empty-state { top: 47%; width: calc(100% - 34px); }
   .ui-hidden .map-controls { right: 12px; }

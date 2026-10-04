@@ -84,7 +84,7 @@
 
     <!-- 右侧配置面板：移动端为 fixed 底部抽屉（peek/expand），桌面端为侧栏 -->
     <div
-      class="fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+env(safe-area-inset-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
+      class="fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
       :class="{ '!transition-none': isDragging }"
       :style="isMobile ? { height: sheetHeight + 'px' } : {}"
     >

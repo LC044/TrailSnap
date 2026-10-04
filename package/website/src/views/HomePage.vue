@@ -1,8 +1,13 @@
 <template>
-  <div class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)]">
+  <div class="ts-browse-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)]">
     <!-- Navbar -->
-    <div class="sticky top-0 z-20 -mx-[var(--ts-page-gutter)] flex h-14 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-[var(--ts-page-gutter)] backdrop-blur-md transition-colors dark:border-gray-800 dark:bg-gray-900/90">
-      <h1 class="text-lg font-bold text-gray-800 dark:text-white">首页</h1>
+    <div class="ts-browse-header sticky top-0 z-20 -mx-[var(--ts-page-gutter)] flex min-h-[68px] gap-3 py-2 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-[var(--ts-page-gutter)] transition-colors dark:border-gray-800 dark:bg-gray-900/90">
+      <h1 class="ts-page-title text-gray-800 dark:text-white">首页</h1>
+      <div class="ts-liquid-glass ts-glass-toolbar flex items-center">
+        <button class="ts-glass-button" aria-label="搜索照片" @click="router.push('/mobile-search')"><Search class="h-5 w-5" /></button>
+        <button class="ts-glass-button" aria-label="浏览照片" @click="router.push('/photos')"><Images class="h-5 w-5" /></button>
+        <button class="ts-glass-button" aria-label="更多首页操作" @click="showHomeActions = true"><MoreHorizontal class="h-5 w-5" /></button>
+      </div>
       <div class="hidden items-center md:flex">
         <button class="relative rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300 dark:hover:bg-gray-800" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
           <i class="mgc_hard_drive_line text-2xl"></i>
@@ -11,6 +16,12 @@
       </div>
     </div>
 
+    <ResponsiveDialog v-model="showHomeActions" title="首页快捷操作" glass>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/memories')"><BookHeart />回忆</button>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/daily-frame')"><Film />一日一帧</button>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/annual-report')"><CalendarDays />年度回忆录</button>
+      <button class="ts-action-row" @click="showHomeActions = false; showStorageDialog = true"><HardDrive />存储中心</button>
+    </ResponsiveDialog>
     <!-- Loading State -->
     <div v-if="loading" class="flex items-center justify-center min-h-[400px] h-full">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
@@ -34,7 +45,7 @@
                <i class="mgc_calendar_line text-xl"></i>
             </div>
             <div>
-              <h3 class="font-bold text-orange-800 dark:text-orange-200 text-sm">{{ annualYear }} 年度回忆录</h3>
+              <h3 class="ts-card-title font-bold text-orange-800 dark:text-orange-200 text-sm">{{ annualYear }} 年度回忆录</h3>
               <p class="text-xs text-orange-600 dark:text-orange-300/80">一帧一画，定格步履与温柔</p>
             </div>
           </div>
@@ -53,7 +64,7 @@
                <i class="mgc_location_line text-xl"></i>
             </div>
             <div>
-              <h3 class="font-bold text-primary-800 dark:text-primary-200 text-sm">猜城市</h3>
+              <h3 class="ts-card-title font-bold text-primary-800 dark:text-primary-200 text-sm">猜城市</h3>
               <p class="text-xs text-primary-600 dark:text-primary-300/80">凭借零星线索，找回关于那座城的记忆</p>
             </div>
           </div>
@@ -85,7 +96,7 @@
       <!-- <ToolsSection /> -->
     </div>
     <!-- Error State -->
-    <div v-else class="flex flex-col items-center justify-center min-h-[400px] h-full text-gray-500">
+    <div v-else class="flex flex-col items-center justify-center min-h-[400px] h-full text-gray-500 dark:text-gray-400">
       <i class="mgc_warning_line text-4xl mb-2"></i>
       <p>加载失败，请下拉刷新</p>
     </div>
@@ -103,6 +114,10 @@
 </template>
 
 <script setup lang="ts">
+import { useRouter } from 'vue-router';
+import { Search, Images, MoreHorizontal, BookHeart, Film, CalendarDays, HardDrive } from 'lucide-vue-next';
+const router = useRouter();
+const showHomeActions = ref(false);
 import { ref, computed, onMounted, onActivated } from 'vue';
 import { dashboardApi, DashboardResponse } from '@/api/dashboard';
 import { ElMessage } from 'element-plus';

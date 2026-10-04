@@ -71,7 +71,7 @@
 
     <!-- 右侧信息面板：移动端为 fixed 底部抽屉（peek/expand），桌面端为侧栏 -->
     <div
-      class="location-insight-panel fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+env(safe-area-inset-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 backdrop-blur-xl border-t md:border-t-0 md:border-l rounded-t-2xl md:rounded-none shadow-2xl transition-[height] duration-300 ease-out"
+      class="location-insight-panel fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 backdrop-blur-xl border-t md:border-t-0 md:border-l rounded-t-2xl md:rounded-none shadow-2xl transition-[height] duration-300 ease-out"
       :class="[`sheet-${sheetState}`, { '!transition-none': isDragging }]"
       :style="isMobile ? { height: sheetHeight + 'px' } : {}"
     >

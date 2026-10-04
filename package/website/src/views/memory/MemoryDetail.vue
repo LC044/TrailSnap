@@ -6,9 +6,18 @@
         <img v-if="memory.cover_photo_id" :src="thumbnailUrl(memory.cover_photo_id, 'medium')" :alt="memory.title" class="h-full w-full object-cover" />
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/30"></div>
         <div class="absolute left-0 right-0 top-0 flex items-center justify-between p-4 md:p-6">
-          <button class="rounded-full bg-black/25 p-2 text-white backdrop-blur hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
-          <RouterLink v-if="memory.status === 'confirmed'" :to="{ path: '/explore/relations', query: { root: `memory:${memory.id}` } }" class="inline-flex min-h-11 items-center rounded-lg bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
-          <button class="rounded-lg bg-white/95 px-4 py-2 text-sm font-medium text-gray-800 shadow hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="openEdit"><Pencil class="mr-1.5 inline h-4 w-4" />编辑记忆</button>
+          <button class="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 text-white backdrop-blur hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
+          <div class="flex items-center gap-2">
+            <RouterLink v-if="memory.status === 'confirmed'" :to="{ path: '/explore/relations', query: { root: `memory:${memory.id}` } }" class="hidden sm:inline-flex min-h-11 items-center rounded-lg bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
+            <button class="flex h-11 w-11 sm:w-auto items-center justify-center gap-2 rounded-full sm:rounded-lg bg-white/95 sm:px-4 text-sm font-medium text-gray-800 shadow hover:bg-white dark:bg-gray-800/95 dark:text-gray-100 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="编辑记忆" @click="openEdit"><Pencil class="h-5 w-5" /><span class="hidden sm:inline">编辑记忆</span></button>
+            <div class="ts-liquid-glass ts-glass-toolbar sm:hidden"><button @click="showActions = true" class="ts-glass-button" aria-label="更多记忆操作"><MoreHorizontal class="h-5 w-5" /></button><ResponsiveDialog v-model="showActions" title="记忆操作" glass>
+                <button type="button" class="ts-action-row" v-if="memory.status === 'confirmed'" @click="showActions = false; router.push({ path: '/explore/relations', query: { root: `memory:${memory.id}` } })">关联探索</button>
+                <button type="button" class="ts-action-row" v-if="memory.status === 'confirmed'" :disabled="isStoryGenerating" @click="showActions = false; generateStory()">{{ isStoryGenerating ? '正在创作…' : memory.story ? 'AI 重新创作' : 'AI 生成故事' }}</button>
+                <button type="button" class="ts-action-row" @click="showActions = false; toggleSelectionMode()">{{ selectionMode ? '完成选择' : '选择照片' }}</button>
+                <button type="button" class="ts-action-row" v-if="(memory.photos?.length || 0) > 1" @click="showActions = false; openSplit()">拆分记忆</button>
+                <button type="button" class="ts-action-row" v-if="memory.status === 'confirmed'" @click="showActions = false; deleteMemory()">删除这段记忆</button>
+              </ResponsiveDialog></div>
+          </div>
         </div>
         <div class="absolute bottom-0 left-0 right-0 mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] pb-7 text-white">
           <div class="mb-3 flex flex-wrap items-center gap-2">
@@ -34,8 +43,8 @@
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">确认前所有信息都只是建议，你可以先调整照片、标题和地点。</p>
               </div>
               <div class="flex gap-2">
-                <button class="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="confirmMemory">确认记忆</button>
-                <button class="rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40" @click="ignoreMemory">忽略</button>
+                <button class="min-h-11 rounded-lg bg-primary-500 px-4 text-sm font-medium text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="confirmMemory">确认记忆</button>
+                <button class="min-h-11 rounded-lg border border-amber-300 px-4 text-sm font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-200 dark:hover:bg-amber-900/40" @click="ignoreMemory">忽略</button>
               </div>
             </div>
           </section>
@@ -45,7 +54,7 @@
               <h2 class="text-lg font-bold text-gray-900 dark:text-white">这段记忆</h2>
               <button
                 v-if="memory.status === 'confirmed'"
-                class="rounded-lg bg-primary-50 px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-60 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                class="hidden sm:block min-h-11 rounded-lg bg-primary-50 px-3 text-sm font-medium text-primary-700 hover:bg-primary-100 disabled:opacity-60 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
                 :disabled="isStoryGenerating"
                 @click="generateStory"
               ><Sparkles class="mr-1 inline h-4 w-4" :class="{ 'animate-pulse': isStoryGenerating }" />{{ isStoryGenerating ? '正在创作，请稍候' : memory.story ? 'AI 重新创作' : 'AI 生成故事' }}</button>
@@ -57,9 +66,9 @@
           <section class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 md:p-6">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-lg font-bold text-gray-900 dark:text-white">照片时间线</h2>
-              <div class="flex items-center gap-2">
+              <div class="items-center gap-2" :class="selectionMode ? 'flex' : 'hidden sm:flex'">
                 <button class="rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="toggleSelectionMode">{{ selectionMode ? '完成选择' : '选择照片' }}</button>
-                <button v-if="(memory.photos?.length || 0) > 1" class="rounded-lg px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="openSplit"><Split class="mr-1 inline h-4 w-4" />拆分</button>
+                <button v-if="(memory.photos?.length || 0) > 1" class="hidden sm:block rounded-lg px-3 py-1.5 text-sm text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="openSplit"><Split class="mr-1 inline h-4 w-4" />拆分</button>
               </div>
             </div>
             <div class="mt-6 space-y-8">
@@ -83,7 +92,7 @@
                 </div>
               </div>
             </div>
-            <div v-if="selectedPhotoIds.length" class="sticky bottom-4 mt-4 flex items-center justify-between rounded-xl bg-gray-900 px-4 py-3 text-white shadow-xl dark:bg-gray-700">
+            <div v-if="selectedPhotoIds.length" class="sticky bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom)+12px)] sm:bottom-4 mt-4 flex items-center justify-between gap-2 rounded-xl bg-gray-900 px-4 py-3 text-white shadow-xl dark:bg-gray-700">
               <span class="text-sm">已选择 {{ selectedPhotoIds.length }} 张</span>
               <button class="rounded-lg bg-red-500 px-3 py-1.5 text-sm hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400" @click="removeSelectedPhotos">从记忆移除</button>
             </div>
@@ -121,7 +130,7 @@
               </div>
             </div>
           </section>
-          <button v-if="memory.status === 'confirmed'" class="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 hover:border-red-200 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" @click="deleteMemory">删除这段记忆</button>
+          <button v-if="memory.status === 'confirmed'" class="hidden sm:block w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 hover:border-red-200 hover:text-red-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300" @click="deleteMemory">删除这段记忆</button>
         </aside>
       </main>
     </template>
@@ -173,10 +182,11 @@
 </template>
 
 <script setup lang="ts">
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Images, LoaderCircle, MapPin, Pencil, Sparkles, Split } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Images, LoaderCircle, MapPin, MoreHorizontal, Pencil, Sparkles, Split } from 'lucide-vue-next'
 import { memoryApi } from '@/api/memory'
 import type { MemoryItem, MemoryPhoto } from '@/types/memory'
 import type { AlbumImage } from '@/types/album'
@@ -185,6 +195,7 @@ import { toServerUrl } from '@/config/server'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const route = useRoute()
+const showActions = ref(false)
 const router = useRouter()
 const memory = ref<MemoryItem | null>(null)
 const loading = ref(true)
