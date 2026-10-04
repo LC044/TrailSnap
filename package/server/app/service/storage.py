@@ -15,9 +15,10 @@ from sqlalchemy.orm import Session
 from app.core.config_manager import config_manager, ImageSettings
 from app.service import user_storage
 from app.utils.path_validation import validate_target_path
+from app.utils.video_tools import probe_video, extract_video_frame
+import numpy as np
 try:
     import cv2
-    import numpy as np
 except ImportError:
     cv2 = None
 
@@ -168,8 +169,23 @@ def _score_video_thumbnail_frame(frame) -> float:
 
 def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, config: ImageSettings = None):
     if cv2 is None:
-        logging.warning("opencv-python not installed, skipping video thumbnail generation")
-        return None
+        try:
+            info = probe_video(file_path)
+            best_frame, fallback_frame, best_score = None, None, float('-inf')
+            for second in _video_thumbnail_candidate_seconds(info[2] or 0):
+                frame = extract_video_frame(file_path, second)
+                if frame is None:
+                    continue
+                if fallback_frame is None:
+                    fallback_frame = frame
+                score = _score_video_thumbnail_frame(np.asarray(frame))
+                if score > best_score:
+                    best_frame, best_score = frame, score
+            selected = best_frame if best_frame is not None else fallback_frame
+            return _save_thumbnails(selected, file_id, user_id, config=config) if selected is not None else None
+        except Exception as exc:
+            logging.warning("FFmpeg video thumbnail failed for %s: %s", file_path, exc)
+            return None
     cap = None
     try:
         cap = cv2.VideoCapture(file_path)
@@ -304,7 +320,7 @@ def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None
                     return img.width, img.height, None
         elif ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm'):
             if cv2 is None:
-                return None, None, None
+                return probe_video(file_path)
             cap = cv2.VideoCapture(file_path)
             if not cap.isOpened():
                 return None, None, None

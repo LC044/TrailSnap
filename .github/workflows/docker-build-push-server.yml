@@ -34,23 +34,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-push-server:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+  build-server:
+    name: Build Server (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     if: |
+      inputs.mirror_version == '' && inputs.mirror_digest == '' && (
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
       startsWith(github.ref, 'refs/tags/') ||
-      contains(github.event.head_commit.message, '构建后端')
+      contains(github.event.head_commit.message, '构建后端'))
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          install: true
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      # Compile FFmpeg on each native CPU rather than emulating ARM on x86.
+      # Publish immutable digests; only the merge job updates the public tags.
+      - name: Build and push platform digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: ./package/server
+          platforms: linux/${{ matrix.arch }}
+          provenance: false
+          outputs: type=image,name=${{ secrets.DOCKER_HUB_USERNAME }}/trailsnap-server,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=server-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=server-${{ matrix.arch }}
+
+      - name: Export platform digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo '::error::Invalid build digest'; exit 1; }
+          mkdir -p "$RUNNER_TEMP/server-digests"
+          touch "$RUNNER_TEMP/server-digests/${DIGEST#sha256:}"
+
+      - name: Upload platform digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/server-digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  build-and-push-server:
+    needs: build-server
+    # Mirror recovery skips both native builds and uses the requested digest.
+    # Ordinary builds publish a tag only after both platforms have succeeded.
+    if: |
+      always() && !cancelled() && (
+      needs.build-server.result == 'success' ||
+      (github.event_name == 'workflow_dispatch' && (inputs.mirror_version != '' || inputs.mirror_digest != '')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -109,18 +170,35 @@ jobs:
           echo "EXTRA_TAG=$EXTRA_TAG" >> $GITHUB_ENV
           echo "DOCKER_HUB_USERNAME=$DOCKER_HUB_USERNAME" >> $GITHUB_ENV
 
-      - name: Build and push server to Docker Hub
-        id: build
-        if: inputs.mirror_version == ''
-        uses: docker/build-push-action@v5
+      - name: Download platform digests
+        if: inputs.mirror_version == '' && inputs.mirror_digest == ''
+        uses: actions/download-artifact@v4
         with:
-          context: ./package/server
-          platforms: linux/amd64,linux/arm64
-          push: true
-          provenance: false
-          tags: |
-            ${{ env.DOCKER_HUB_USERNAME }}/trailsnap-server:${{ env.BASE_TAG }}
-            ${{ env.EXTRA_TAG != '' && format('{0}/trailsnap-server:{1}', env.DOCKER_HUB_USERNAME, env.EXTRA_TAG) || '' }}
+          path: ${{ runner.temp }}/server-digests
+          pattern: server-digests-*
+          merge-multiple: true
+
+      - name: Publish multi-platform server manifest
+        id: build
+        if: inputs.mirror_version == '' && inputs.mirror_digest == ''
+        run: |
+          set -euo pipefail
+          IMAGE="${DOCKER_HUB_USERNAME}/trailsnap-server"
+          mapfile -t digests < <(find "$RUNNER_TEMP/server-digests" -maxdepth 1 -type f -printf '%f\n' | sort)
+          [[ ${#digests[@]} -eq 2 ]] || { echo '::error::Expected two platform digests'; exit 1; }
+          refs=()
+          for digest in "${digests[@]}"; do
+            [[ "$digest" =~ ^[a-f0-9]{64}$ ]] || { echo '::error::Invalid platform digest'; exit 1; }
+            refs+=("${IMAGE}@sha256:${digest}")
+          done
+          tags=(-t "${IMAGE}:${BASE_TAG}")
+          if [[ -n "$EXTRA_TAG" ]]; then tags+=(-t "${IMAGE}:${EXTRA_TAG}"); fi
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"
+          docker buildx imagetools inspect "${IMAGE}:${BASE_TAG}" --raw > "$RUNNER_TEMP/server-index.json"
+          jq -e '[.manifests[].platform | .os + "/" + .architecture] | sort == ["linux/amd64", "linux/arm64"]' "$RUNNER_TEMP/server-index.json"
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE}:${BASE_TAG}" --format '{{.Manifest.Digest}}')
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo '::error::Invalid manifest digest'; exit 1; }
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       # Copy the completed multi-platform image separately so ACR cannot stall
       # BuildKit's Docker Hub exporter. Pin the source to this build's digest.

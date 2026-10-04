@@ -210,6 +210,17 @@ def test_video_thumbnail_frame_score_rejects_black_frame():
     assert _score_video_thumbnail_frame(detailed) > 0
 
 
+def test_ffmpeg_thumbnail_backend_skips_black_first_frame(monkeypatch):
+    monkeypatch.setattr(storage, 'cv2', None)
+    monkeypatch.setattr(storage, 'probe_video', lambda path: (8, 8, 10.0))
+    black = Image.fromarray(np.zeros((8, 8, 3), dtype=np.uint8))
+    detail = Image.fromarray(np.repeat((np.indices((8, 8)).sum(axis=0) % 2 * 180 + 30)[:, :, None], 3, axis=2).astype(np.uint8))
+    monkeypatch.setattr(storage, 'extract_video_frame', lambda path, second: black if second == 0 else detail)
+    with patch.object(storage, '_save_thumbnails', return_value='thumbnail.webp') as save_mock:
+        assert generate_video_thumbnail('video.mp4', uuid.uuid4(), uuid.uuid4()) == 'thumbnail.webp'
+    assert np.asarray(save_mock.call_args.args[0]).mean() > 0
+
+
 class _FakeVideoCapture:
     def __init__(self, opened=True):
         self.opened = opened
