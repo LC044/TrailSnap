@@ -246,7 +246,8 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
 
   test('更多导航可显式关闭且长内容限制在视口内滚动', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: '更多' }).click()
+    // exact: 首页 header 另有 aria-label="更多首页操作" 按钮，子串匹配会命中两个。
+    await page.getByRole('button', { name: '更多', exact: true }).click()
 
     const drawer = page.locator('.more-sheet')
     await expect(drawer).toBeVisible()
@@ -258,7 +259,7 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await page.getByRole('button', { name: '关闭更多导航' }).click()
     await expect(drawer).toBeHidden()
 
-    await page.getByRole('button', { name: '更多' }).click()
+    await page.getByRole('button', { name: '更多', exact: true }).click()
     await expect(drawer).toBeVisible()
     const pathname = new URL(page.url()).pathname
     await page.goBack()
