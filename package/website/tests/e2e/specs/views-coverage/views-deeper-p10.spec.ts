@@ -177,7 +177,7 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       await page.goto('/ticket')
       await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
 
-      await page.locator('button[title="统计报表"]').first().click()
+      await page.getByRole('button', { name: '统计报表', exact: true }).click()
       await page.waitForURL(/\/statistics/, { timeout: 10_000 })
     })
 
@@ -188,7 +188,7 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       await page.goto('/ticket')
       await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
 
-      await page.locator('button[title="导出数据"]').first().click()
+      await page.getByRole('button', { name: '导出车票', exact: true }).click()
       await expect(
         page.locator('.el-dialog__title', { hasText: '导出车票数据' }),
       ).toBeVisible({ timeout: 5_000 })

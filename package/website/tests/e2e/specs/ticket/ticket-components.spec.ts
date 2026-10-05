@@ -44,7 +44,7 @@ test.describe('P1 - 车票子组件 @ticket-components', () => {
     await gotoTicketPage(page)
 
     // 新增按钮含「+」或 icon
-    const addBtn = page.locator('nav.sticky button').filter({ hasText: /新增|添加/ }).first()
+    const addBtn = page.getByRole('button', { name: '新增车票', exact: true })
     await addBtn.dispatchEvent('click')
     // 弹窗标题
     const dialog = page.getByText('选择添加票据类型')
@@ -60,7 +60,7 @@ test.describe('P1 - 车票子组件 @ticket-components', () => {
     await page.route('**/api/flight-ticket**', mockEmptyTickets)
     await gotoTicketPage(page)
 
-    const addBtn = page.locator('nav.sticky button').filter({ hasText: /新增|添加/ }).first()
+    const addBtn = page.getByRole('button', { name: '新增车票', exact: true })
     await addBtn.dispatchEvent('click')
     await expect(page.getByText('选择添加票据类型')).toBeVisible({ timeout: 5_000 })
 
@@ -79,7 +79,7 @@ test.describe('P1 - 车票子组件 @ticket-components', () => {
     await gotoTicketPage(page)
 
     // TicketHeader 中"导出数据"按钮（title=导出数据）
-    const exportBtn = page.locator('button[title="导出数据"]')
+    const exportBtn = page.getByRole('button', { name: '导出车票', exact: true })
     await expect(exportBtn).toBeVisible({ timeout: 5_000 })
     await exportBtn.dispatchEvent('click')
 
@@ -108,7 +108,7 @@ test.describe('P1 - 车票子组件 @ticket-components', () => {
     await page.route('**/api/flight-ticket**', mockEmptyTickets)
     await gotoTicketPage(page)
 
-    const search = page.locator('nav.sticky input[placeholder*="搜索"]')
+    const search = page.getByRole('searchbox', { name: '搜索车票', exact: true })
     await expect(search).toBeVisible({ timeout: 5_000 })
     await search.fill('北京')
     // 客户端 v-model 直接更新 store；这里验证输入后 value 落到 input 上

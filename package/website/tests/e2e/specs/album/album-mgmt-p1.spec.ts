@@ -10,10 +10,10 @@ import { e2eEnv } from '../../../../playwright/e2e-env'
  * 覆盖 doc/e2e-test-checklist.md §2.2。Nightly 用例，不带 @smoke 标签。
  *
  * UI 约定（src/views/album/AlbumList.vue）：
- *   - 头部 "新建相册" 按钮是 el-dropdown 触发器，3 个 dropdown-item：
+ *   - 头部 "新建相册" 按钮打开锚定菜单，3 个类型按钮：
  *     普通相册 / 条件相册 / 智能相册
- *   - 创建/编辑共用一个 el-dialog（title 区分），输入框绑 v-model="form.name"
- *   - 提交按钮文本 "保存"
+ *   - 创建/编辑共用一个 ResponsiveDialog（title 区分），输入框绑 v-model="form.name"
+ *   - 新建提交按钮文本 "创建相册"
  *   - 相册卡片右上角悬停出现编辑/删除按钮（user 类型相册可见）
  *
  * 鉴权说明：`request` fixture 直连后端（不经 vite 代理），路径不带 /api 前缀
@@ -77,7 +77,7 @@ async function waitForAlbumByName(
 }
 
 async function openNewAlbumDialog(page: Page, kind: 'user' | 'conditional' | 'smart'): Promise<void> {
-  // 点击 "新建相册" 按钮（el-dropdown trigger）
+  // 新建类型菜单显示在加号按钮旁
   const trigger = page.getByRole('button', { name: /新建相册/ })
   try {
     await expect(trigger).toBeVisible({ timeout: 10_000 })
@@ -88,15 +88,13 @@ async function openNewAlbumDialog(page: Page, kind: 'user' | 'conditional' | 'sm
   }
   await trigger.click()
 
-  // el-dropdown 菜单里的三个选项
+  // 类型菜单里的三个选项
   const labelMap: Record<typeof kind, string> = {
     user: '普通相册',
     conditional: '条件相册',
     smart: '智能相册',
   }
-  const item = page.getByRole('menuitem', { name: labelMap[kind] }).or(
-    page.locator('.el-dropdown-menu__item', { hasText: labelMap[kind] }),
-  )
+  const item = page.getByRole('button', { name: labelMap[kind], exact: true })
   await expect(item.first()).toBeVisible({ timeout: 5_000 })
   await item.first().click()
 }
@@ -142,7 +140,7 @@ test.describe('P1 - 相册管理', () => {
     await desc.fill('P1 自动化测试创建')
 
     // UI 保存 + 等 dialog 关闭（ElMessage "相册创建成功" 在此期间出现）
-    const saveBtn = page.locator('.el-dialog button', { hasText: '保存' })
+    const saveBtn = page.getByRole('dialog').getByRole('button', { name: '创建相册', exact: true })
     await expect(saveBtn).toBeVisible({ timeout: 5_000 })
     await saveBtn.click()
 

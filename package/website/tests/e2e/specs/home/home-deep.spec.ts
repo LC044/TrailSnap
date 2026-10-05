@@ -69,15 +69,20 @@ test.describe('Smoke - 首页深度 @smoke', () => {
     await expect(page.locator('.not-found')).toHaveCount(0);
   });
 
-  test('首页 - 内容细分入口使用照片类型与智能分类的真实路由', async ({ page }) => {
+  test('首页 - 足迹统计展示真实城市、省份与记录天数并可跳转', async ({ page }) => {
+    await page.route('**/api/location-stats/overview**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, msg: 'success', data: { city_count: 8, province_count: 3, travel_days: 42 } }),
+    }));
     await page.goto('/');
-    await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
-
-    await page.getByRole('button', { name: /内容细分/ }).click();
-    await expect(page.getByRole('link', { name: /照片：/ })).toHaveAttribute('href', '/photos?file_types=image');
-    await expect(page.getByRole('link', { name: /视频：/ })).toHaveAttribute('href', '/photos?file_types=video,live_photo');
-    await expect(page.getByRole('link', { name: /风景：/ })).toHaveAttribute('href', /\/album\/classification\//);
-    await expect(page.getByRole('link', { name: /美食：/ })).toHaveAttribute('href', /\/album\/classification\//);
+    const footprint = page.getByRole('region', { name: '我的足迹' });
+    await expect(footprint).toBeVisible({ timeout: 15_000 });
+    await expect(footprint.getByRole('button', { name: '记录城市 8 座，查看足迹统计' })).toBeVisible();
+    await expect(footprint.getByRole('button', { name: '记录省份 3 个，查看足迹统计' })).toBeVisible();
+    await expect(footprint.getByRole('button', { name: '记录天数 42 天，查看足迹统计' })).toBeVisible();
+    await footprint.getByRole('button', { name: '查看足迹', exact: true }).click();
+    await expect(page).toHaveURL(/\/album\/location$/);
   });
 
   test('首页 - 今日新增携带当天导入时间范围进入照片页', async ({ page }) => {

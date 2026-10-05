@@ -436,7 +436,7 @@ test.describe.serial('P0 - 人物相册', () => {
     await gotoRetry(page, '/album/people')
     await gotoRetry(page, `/album/people/${probe.identity.id}`)
     // UnifiedPhotoPage 头部左侧返回按钮：圆形 hover bg，children 包含 ArrowLeft svg
-    const backBtn = page.locator('.unified-photo-page button:has(svg.lucide-arrow-left)').first()
+    const backBtn = page.getByRole('button', { name: '返回', exact: true })
     await expect(backBtn).toBeVisible({ timeout: 10_000 })
     await backBtn.click()
     // dev 模式 4 worker 并发 + Vite HMR 偶尔会让 router.back() 慢于 5s；

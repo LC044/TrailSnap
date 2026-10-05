@@ -279,7 +279,7 @@ test.describe('P1 - TicketExportModal 车票导出弹窗 @views-coverage', () =>
     })
 
     await page.goto('/ticket')
-    const exportBtn = page.getByRole('button', { name: '导出数据' })
+    const exportBtn = page.getByRole('button', { name: '导出车票', exact: true })
     await expect(exportBtn).toBeVisible({ timeout: 15_000 })
     await exportBtn.click()
 
@@ -301,7 +301,7 @@ test.describe('P1 - TicketExportModal 车票导出弹窗 @views-coverage', () =>
     })
 
     await page.goto('/ticket')
-    await page.getByRole('button', { name: '导出数据' }).click()
+    await page.getByRole('button', { name: '导出车票', exact: true }).click()
     await expect(page.locator('.el-dialog__title', { hasText: '导出车票数据' })).toBeVisible({ timeout: 5_000 })
 
     await page.locator('.el-dialog').getByText('仿真纸质票 (PNG)').click()
@@ -323,7 +323,7 @@ test.describe('P1 - TicketExportModal 车票导出弹窗 @views-coverage', () =>
     })
 
     await page.goto('/ticket')
-    await page.getByRole('button', { name: '导出数据' }).click()
+    await page.getByRole('button', { name: '导出车票', exact: true }).click()
     await expect(page.locator('.el-dialog__title', { hasText: '导出车票数据' })).toBeVisible({ timeout: 5_000 })
 
     await page.locator('.el-dialog').getByText('JSON 格式').click()
@@ -401,7 +401,7 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('打开 AgentChat -> 输入文字 -> update:modelValue 触发 send', async ({ page }) => {
     await page.goto('/')
-    const agentEntry = page.getByRole('button', { name: 'AI 助手' })
+    const agentEntry = page.locator('.ai-assistant-button')
     await expect(agentEntry).toBeVisible({ timeout: 10_000 })
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
@@ -418,7 +418,7 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('Shift+Enter 换行而不发送 -> 输入框保留换行内容', async ({ page }) => {
     await page.goto('/')
-    const agentEntry = page.getByRole('button', { name: 'AI 助手' })
+    const agentEntry = page.locator('.ai-assistant-button')
     await expect(agentEntry).toBeVisible({ timeout: 10_000 })
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })
@@ -435,7 +435,7 @@ test.describe('P1 - AgentInput 输入区交互 @views-coverage', () => {
 
   test('生成态 isGenerating=true -> 按钮切到 agent-stop-btn', async ({ page }) => {
     await page.goto('/')
-    const agentEntry = page.getByRole('button', { name: 'AI 助手' })
+    const agentEntry = page.locator('.ai-assistant-button')
     await expect(agentEntry).toBeVisible({ timeout: 10_000 })
     await agentEntry.click()
     await expect(page.locator('.agent-chat-overlay')).toBeVisible({ timeout: 10_000 })

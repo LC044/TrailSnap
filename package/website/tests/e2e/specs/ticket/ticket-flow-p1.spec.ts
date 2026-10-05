@@ -419,7 +419,7 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await switchToGridView(page)
 
     // 点击头部「新增」→ 弹出类型选择器 → 选「火车票」
-    await page.locator('nav button', { hasText: '新增' }).first().click()
+    await page.getByRole('button', { name: '新增车票', exact: true }).click()
     const trainTypeBtn = page.locator('button', { hasText: '火车票' }).first()
     await expect(trainTypeBtn).toBeVisible({ timeout: 5_000 })
     await trainTypeBtn.click()
@@ -462,7 +462,7 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await gotoRetry(page, '/ticket')
     await switchToGridView(page)
 
-    await page.locator('nav button', { hasText: '新增' }).first().click()
+    await page.getByRole('button', { name: '新增车票', exact: true }).click()
     const flightTypeBtn = page.locator('button', { hasText: '飞机票' }).first()
     await expect(flightTypeBtn).toBeVisible({ timeout: 5_000 })
     await flightTypeBtn.click()

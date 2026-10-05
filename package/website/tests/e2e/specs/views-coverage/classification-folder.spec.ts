@@ -93,7 +93,7 @@ test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
     await expect(page.getByText('海边').first()).toBeVisible()
     await expect(page.getByText('夜景').first()).toBeVisible()
     // 返回按钮（带 ArrowLeft 图标的 button）
-    const backBtn = page.locator('button:has(.lucide-arrow-left)').first()
+    const backBtn = page.getByRole('button', { name: '返回相册', exact: true })
     await expect(backBtn).toBeVisible()
   })
 
