@@ -1,27 +1,26 @@
 <template>
   <header
+    class="min-h-[var(--ts-header-height)]"
     :class="[
       mobileOnly && 'md:hidden',
       sticky && 'sticky top-0 z-30',
-      bordered && 'border-b border-gray-200/80 dark:border-gray-800/80',
-      glass && 'ts-glass',
+      bordered && 'border-b',
+      glass && 'ts-page-header',
     ]"
   >
     <div
-      class="mx-auto flex min-h-14 w-full items-center gap-2 px-[var(--ts-page-gutter)]"
+      class="mx-auto flex min-h-[var(--ts-header-height)] w-full items-center gap-2 px-[var(--ts-page-gutter)]"
       :class="widthClass"
     >
       <slot name="leading">
-        <IconButton v-if="showBack" label="返回" @click="handleBack">
-          <ArrowLeft class="h-5 w-5" />
-        </IconButton>
+        <BackButton v-if="showBack" label="返回" @click="handleBack" />
       </slot>
 
       <div class="min-w-0 flex-1 py-2">
         <div class="flex min-w-0 items-center gap-2">
           <h1
-            class="truncate font-bold tracking-tight text-gray-950 dark:text-white"
-            :class="large ? 'text-xl md:text-2xl' : 'text-base md:text-lg'"
+            class="ts-page-title truncate"
+            :class="!large && 'ts-compact-title'"
           >
             {{ title }}
           </h1>
@@ -40,9 +39,8 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed } from 'vue'
-import { ArrowLeft } from 'lucide-vue-next'
-import IconButton from '@/components/ui/IconButton.vue'
 import { useAppBack } from '@/composables/useAppBack'
 
 const props = withDefaults(defineProps<{

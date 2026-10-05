@@ -503,7 +503,7 @@ html.dark .emotion-calendar {
   .ec-year-view { display: none; }
   .ec-mobile-view { display: block; }
   .ec-month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: var(--ec-title-color); }
-  .ec-month-nav button { width: 40px; height: 40px; border-radius: 8px; font-size: 28px; line-height: 1; }
+  .ec-month-nav button { width: var(--ts-control-md); height: var(--ts-control-md); border-radius: var(--ts-radius-control); font-size: 28px; line-height: 1; }
   .ec-month-nav button:disabled { opacity: 0.3; }
   .ec-month-nav button:not(:disabled):hover { background: var(--ec-empty); }
   .ec-month-nav select { min-height: 40px; padding: 0 8px; border-radius: 8px; background: var(--ec-bg); color: var(--ec-title-color); font-weight: 600; }
@@ -514,6 +514,6 @@ html.dark .emotion-calendar {
   .ec-mobile-day-number { font-size: 11px; line-height: 1; }
   .ec-mobile-dot { width: min(26px, 70%); aspect-ratio: 1; border-radius: 50%; }
   .ec-mobile-detail { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--ec-bg); color: var(--ec-stats-color); font-size: 12px; }
-  .ec-mobile-detail button { color: var(--ec-cool); font-weight: 600; white-space: nowrap; }
+  .ec-mobile-detail button { min-height: var(--ts-control-md); color: var(--ec-cool); font-weight: 600; white-space: nowrap; }
 }
 </style>

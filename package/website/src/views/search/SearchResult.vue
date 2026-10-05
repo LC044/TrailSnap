@@ -3,12 +3,7 @@
     <!-- Header -->
     <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
       <div class="mx-auto py-3 flex items-center gap-4">
-        <button 
-          @click="goBack"
-          class="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800 transition-colors"
-        >
-          <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        </button>
+        <BackButton label="返回" @click="goBack" />
         <div>
           <h1 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">
             {{ title }}
@@ -92,10 +87,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Search } from 'lucide-vue-next'
+import { Search } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import searchService from '@/api/search'
 import { albumService } from '@/api/album'

@@ -62,13 +62,7 @@
         v-if="scope === 'province'"
         class="absolute top-6 left-6 z-20 flex items-center gap-2 bg-white/90 dark:bg-gray-800/90 backdrop-blur-md px-3 py-2 rounded-xl shadow-md border border-gray-200 dark:border-gray-700 animate-fade-in"
       >
-        <button
-          class="p-1 -ml-1 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-primary-500 dark:hover:text-primary-400 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-          title="返回全国"
-          @click="handleDrillUp"
-        >
-          <ArrowLeft class="w-4 h-4" />
-        </button>
+        <BackButton label="返回全国" @click="handleDrillUp" />
         <div class="w-px h-4 bg-gray-300 dark:bg-gray-600" />
         <button
           class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors flex items-center gap-1 px-1 rounded-lg focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
@@ -241,8 +235,9 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ArrowLeft, ChevronRight, ImageOff, MapPin } from 'lucide-vue-next'
+import { ChevronRight, ImageOff, MapPin } from 'lucide-vue-next'
 import PuzzleCanvas from './components/PuzzleCanvas.vue'
 import PuzzlePanel from './components/PuzzlePanel.vue'
 import PhotoSelector from '@/components/PhotoSelector.vue'

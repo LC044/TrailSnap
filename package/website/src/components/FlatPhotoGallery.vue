@@ -41,6 +41,8 @@
                   'shrink-animation grayscale opacity-70': pendingRemoveIds.has(img.id)
                 }"
                 @click="handlePhotoClick(img)"
+                @touchstart.passive="handlePhotoTouchStart(img, $event)"
+                @contextmenu="isSelectionMode && $event.preventDefault()"
                 @vue:mounted="loadImage(img)"
                 @vue:unmounted="cancelImageLoad(img.id)"
             >
@@ -115,6 +117,7 @@ import { format } from 'date-fns'
 import { usePhotoStore } from '@/stores/photoStore'
 import type { AlbumImage } from '@/types/album'
 import { useSelection } from '@/composables/useSelection'
+import { useLongPress } from '@/composables/useLongPress'
 import { useWindowScroll, useScroll } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
 import PhotoBatchActionBar from './PhotoBatchActionBar.vue'
@@ -311,6 +314,24 @@ const toggleSelection = (photo: AlbumImage) => {
   }
 }
 
+let pressedPhoto: AlbumImage | null = null
+let suppressNextPhotoClick = false
+const { onTouchstart: startLongPress } = useLongPress({
+  onLongPress: () => {
+    if (!pressedPhoto) return
+    enterSelectionMode()
+    if (!localSelectedIds.has(pressedPhoto.id)) toggleSelectionId(pressedPhoto.id)
+    // Ignore the click synthesized on release, which would deselect the photo.
+    suppressNextPhotoClick = true
+  }
+})
+const handlePhotoTouchStart = (photo: AlbumImage, event: TouchEvent) => {
+  suppressNextPhotoClick = false
+  if (isSelectionMode.value || event.touches.length !== 1) return
+  pressedPhoto = photo
+  startLongPress(event)
+}
+
 const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, handlePersonSelected, handleDownload } = usePhotoBatchActions({
   selectedIds: () => localSelectedIds,
   photos: () => props.photos,
@@ -319,6 +340,10 @@ const { isDownloading, isAddingPerson, showPersonSelector, openPersonSelector, h
 })
 
 const handlePhotoClick = (photo: AlbumImage) => {
+  if (suppressNextPhotoClick) {
+    suppressNextPhotoClick = false
+    return
+  }
   if (isSelectionMode.value) {
     toggleSelection(photo)
   } else {

@@ -1,76 +1,38 @@
 <template>
-  <nav class="sticky top-0 z-30 shadow-sm h-14 transition-colors duration-300 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md">
-    <div class="mx-auto px-[var(--ts-page-gutter)] h-full flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center border border-primary-500 bg-primary-50 dark:bg-slate-700/50 transition-colors">
-          <TrainFront class="w-5 h-5 text-primary-600 dark:text-primary-400" />
-        </div>
-        <span class="text-lg font-medium tracking-wide text-slate-800 dark:text-white hidden sm:block">车票管理</span>
+  <header class="ts-page-header sticky top-0 z-30 border-b">
+    <div class="mx-auto flex min-h-[var(--ts-header-height)] items-center justify-between gap-3 px-[var(--ts-page-gutter)] py-2">
+      <h1 class="ts-page-title min-w-0 truncate"><span class="sm:hidden">车票</span><span class="hidden sm:inline">车票管理</span></h1>
+      <div class="relative mx-4 hidden min-w-0 max-w-md flex-1 lg:block">
+        <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ts-color-text-tertiary)]" />
+        <input :value="searchQuery" @input="handleSearchInput" type="search" aria-label="搜索车票" placeholder="搜索车次 / 地点 / 乘车人" class="ts-input w-full pl-9" />
       </div>
-
-      <div class="flex-1 max-w-md mx-4 hidden md:block">
-        <div class="relative group">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-primary-500 transition-colors" />
-          <input
-            :value="searchQuery"
-            @input="handleSearchInput"
-            type="text"
-            placeholder="搜索车次 / 地点 / 乘车人"
-            class="w-full pl-9 pr-4 py-1.5 bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-full focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-200 dark:focus:ring-primary-900 transition-all text-sm dark:text-white dark:placeholder-slate-400"
-          />
-        </div>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <button
-          @click="$emit('go-to-statistics')"
-          class="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-700 dark:bg-slate-800 rounded-full transition-colors"
-          title="统计报表"
-        >
-          <BarChart2 class="w-5 h-5" />
-        </button>
-        <div class="flex items-center gap-1 border-l border-slate-200 dark:border-slate-700 ml-1 pl-2">
-          <button
-            @click="triggerImport"
-            class="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-700 dark:bg-slate-800 rounded-full transition-colors"
-            title="导入数据"
-          >
-            <Upload class="w-5 h-5" />
-          </button>
-          <button
-            @click="$emit('handle-export')"
-            class="p-2 text-slate-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-slate-700 dark:bg-slate-800 rounded-full transition-colors"
-            title="导出数据"
-          >
-            <Download class="w-5 h-5" />
-          </button>
-        </div>
-
-        <button
-          @click="$emit('open-ticket-modal')"
-          class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-full transition-all active:scale-95 shadow-md shadow-primary-200 dark:shadow-none ml-2"
-        >
-          <Plus class="w-4 h-4" />
-          <span class="text-sm font-medium">新增</span>
-        </button>
-        
-        <input 
-          type="file" 
-          ref="fileInput" 
-          class="hidden" 
-          accept=".json,.csv" 
-          @change="handleFileImport" 
-        />
+      <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center">
+        <button class="ts-glass-button lg:hidden" aria-label="搜索车票" :aria-expanded="showSearch" @click="showSearch = !showSearch"><Search class="h-5 w-5" /></button>
+        <button class="ts-glass-button hidden md:inline-flex" aria-label="统计报表" @click="emit('go-to-statistics')"><BarChart2 class="h-5 w-5" /></button>
+        <button class="ts-glass-button hidden md:inline-flex" aria-label="导入车票" @click="triggerImport"><Upload class="h-5 w-5" /></button>
+        <button class="ts-glass-button hidden md:inline-flex" aria-label="导出车票" @click="emit('handle-export')"><Download class="h-5 w-5" /></button>
+        <button class="ts-glass-button md:hidden" aria-label="更多车票操作" @click="showActions = true"><MoreHorizontal class="h-5 w-5" /></button>
+        <button class="ts-glass-button text-primary-600 dark:text-primary-400" aria-label="新增车票" @click="emit('open-ticket-modal')"><Plus class="h-5 w-5" /></button>
       </div>
     </div>
-  </nav>
+    <div v-if="showSearch" class="px-[var(--ts-page-gutter)] pb-3 lg:hidden">
+      <input :value="searchQuery" @input="handleSearchInput" type="search" aria-label="搜索车票" placeholder="搜索车次 / 地点 / 乘车人" class="ts-input w-full" />
+    </div>
+    <input type="file" ref="fileInput" class="hidden" accept=".json,.csv" @change="handleFileImport" />
+  </header>
+  <ResponsiveDialog v-model="showActions" title="车票操作">
+    <button class="ts-action-row" @click="showActions = false; emit('go-to-statistics')"><BarChart2 />统计报表</button>
+    <button class="ts-action-row" @click="showActions = false; triggerImport()"><Upload />导入车票</button>
+    <button class="ts-action-row" @click="showActions = false; emit('handle-export')"><Download />导出车票</button>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
 import { 
-  TrainFront, Search, BarChart2, Upload, Download, Plus 
+  Search, BarChart2, Upload, Download, Plus, MoreHorizontal
 } from 'lucide-vue-next';
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue';
 
 defineProps<{
   searchQuery: string;
@@ -84,6 +46,8 @@ const emit = defineEmits<{
   (e: 'handle-file-import', event: Event): void;
 }>();
 
+const showActions = ref(false);
+const showSearch = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const handleSearchInput = (event: Event) => {

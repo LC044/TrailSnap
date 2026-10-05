@@ -3,14 +3,7 @@
     <!-- 标题 / 面包屑 -->
     <div>
       <div class="flex items-center gap-2 mb-1">
-        <button
-          v-if="scope === 'province'"
-          class="p-1 -ml-1 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-          title="返回全国"
-          @click="emit('drill-up')"
-        >
-          <ChevronLeft class="w-5 h-5" />
-        </button>
+        <BackButton v-if="scope === 'province'" label="返回全国" @click="emit('drill-up')" />
         <h2 class="text-xl font-bold text-gray-800 dark:text-white">
           {{ scope === 'nation' ? '全国照片拼图' : activeProvince }}
         </h2>
@@ -143,8 +136,9 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed } from 'vue'
-import { ChevronLeft, Shuffle, Sparkles, Trophy } from 'lucide-vue-next'
+import { Shuffle, Sparkles, Trophy } from 'lucide-vue-next'
 import type { PhotoStrategy, PuzzleConfig, PuzzleScope } from '@/composables/useMapPuzzle'
 
 const props = defineProps<{

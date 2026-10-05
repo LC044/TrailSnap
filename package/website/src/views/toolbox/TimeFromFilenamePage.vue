@@ -1,11 +1,9 @@
 <template>
   <div class="mx-auto w-full max-w-4xl px-[var(--ts-page-gutter)] py-6">
     <div class="flex items-center gap-4 mb-6">
-      <button @click="goBack" class="p-2 hover:bg-gray-100 bg-transparent dark:hover:bg-gray-800 rounded-full transition-colors">
-        <ArrowLeft class="w-6 h-6 text-gray-600 dark:text-gray-300" />
-      </button>
+      <BackButton label="返回工具箱" @click="goBack" />
       <div>
-        <h1 class="text-2xl font-bold text-gray-800 dark:text-white">修改图片元数据</h1>
+        <h1 class="ts-page-title text-gray-800 dark:text-white">修改图片元数据</h1>
         <p class="text-sm text-gray-500 dark:text-gray-400">选择目录或相册，批量修改其中照片的拍摄信息。操作会直接修改原始文件元数据且不可逆。</p>
       </div>
     </div>
@@ -13,7 +11,7 @@
     <TaskStatusCard :task="activeTask" processing-label="处理中" :clearing="clearing" @clear="clearFailedTask" />
 
     <!-- Configuration Form -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="ts-surface p-6">
       <el-form label-position="top" :disabled="isTaskRunning">
         <el-form-item label="处理范围" required>
           <el-radio-group v-model="targetType" class="mb-3 w-full">
@@ -47,12 +45,12 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <el-form-item label="拍摄品牌（Make）">
             <el-input v-model="make" placeholder="例如: Apple, Samsung, Canon" clearable />
-            <div class="text-xs text-gray-500 mt-1">选填，将同步更新到照片的设备品牌信息</div>
+            <div class="text-xs text-gray-500 mt-1 dark:text-gray-400">选填，将同步更新到照片的设备品牌信息</div>
           </el-form-item>
 
           <el-form-item label="拍摄型号（Model）">
             <el-input v-model="model" placeholder="例如: iPhone 15, Galaxy S24" clearable />
-            <div class="text-xs text-gray-500 mt-1">选填，将同步更新到照片的设备型号信息</div>
+            <div class="text-xs text-gray-500 mt-1 dark:text-gray-400">选填，将同步更新到照片的设备型号信息</div>
           </el-form-item>
         </div>
 
@@ -76,7 +74,7 @@
 
         <el-form-item>
           <el-checkbox v-model="onlyMissingMetadata">仅修改元数据缺失的图片</el-checkbox>
-          <div class="text-xs text-gray-500 mt-1">勾选后，仅对缺少拍摄设备信息（品牌、型号）的照片进行修改，否则对所有照片强制进行修改（包括已存在品牌、型号的照片）。
+          <div class="text-xs text-gray-500 mt-1 dark:text-gray-400">勾选后，仅对缺少拍摄设备信息（品牌、型号）的照片进行修改，否则对所有照片强制进行修改（包括已存在品牌、型号的照片）。
           <br><span class="text-red-500">注意：如果照片已存在品牌、型号信息，勾选后将不会修改。</span></div>
         </el-form-item>
 
@@ -111,12 +109,13 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed } from 'vue'
 import TaskStatusCard from '@/components/TaskStatusCard.vue'
 import DirectoryPickerDialog from '@/components/DirectoryPickerDialog.vue'
 import { useTaskMonitor } from '@/composables/useTaskMonitor'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Folder } from 'lucide-vue-next'
+import { Folder } from 'lucide-vue-next'
 import { toolboxApi } from '@/api/toolbox'
 import { albumService } from '@/api/album'
 import type { ApiAlbum } from '@/types/album'

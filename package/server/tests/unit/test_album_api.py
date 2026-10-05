@@ -50,7 +50,8 @@ def test_read_albums_returns_list_from_crud():
 
 
 
-def test_read_smart_album_overview_returns_crud_data():
+@pytest.mark.parametrize("skip,limit", [(0, 4), (4, 12)])
+def test_read_smart_album_overview_returns_crud_data(skip, limit):
     user = _user()
     db = MagicMock()
     section = album_api.schemas.SmartAlbumSection(
@@ -66,9 +67,9 @@ def test_read_smart_album_overview_returns_crud_data():
     overview = album_api.schemas.SmartAlbumOverview(people=section)
 
     with patch.object(album_api.crud, "get_smart_album_overview", return_value=overview) as crud_call:
-        response = album_api.read_smart_album_overview(db=db, current_user=user)
+        response = album_api.read_smart_album_overview(skip=skip, limit=limit, db=db, current_user=user)
 
-    crud_call.assert_called_once_with(db, owner_id=user.id)
+    crud_call.assert_called_once_with(db, owner_id=user.id, representative_limit=limit, representative_skip=skip)
     assert response.code == 0
     assert response.data is overview
 

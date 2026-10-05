@@ -1,9 +1,11 @@
 <!-- src/layouts/BlankLayout.vue -->
 <template>
-  <div class="ts-blank-layout h-screen overflow-y-auto font-sans bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200">
-    <transition name="fade-slide" mode="out-in">
-      <router-view />
-    </transition>
+  <div class="ts-blank-layout ts-page-background h-screen overflow-y-auto font-sans">
+    <router-view v-slot="{ Component }">
+      <transition name="fade-slide" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
   </div>
 </template>
 
@@ -17,10 +19,10 @@ injectTheme();
 <style scoped>
 /* 复用过渡动画 */
 .fade-slide-enter-active {
-  transition: opacity 0.5s ease, transform 0.5s ease;
+  transition: opacity var(--ts-motion-normal) ease, transform var(--ts-motion-page) var(--ts-ease);
 }
 .fade-slide-enter-from {
   opacity: 0;
-  transform: translateY(20px);
+  transform: translateY(8px);
 }
 </style>

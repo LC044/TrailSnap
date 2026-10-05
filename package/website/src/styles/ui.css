@@ -1,0 +1,145 @@
+/* Shared controls and surfaces. Keep content/media free of backdrop filters. */
+/* Responsive hidden/flex utilities must win over the default control display. */
+@layer ts-control-layout {
+  .ts-button, .ts-icon-button, .ts-glass-button { display: inline-flex; }
+}
+.ts-page-background { background: var(--ts-color-page); color: var(--ts-color-text); }
+.ts-surface {
+  background: var(--ts-color-surface);
+  color: var(--ts-color-text);
+  border: 1px solid var(--ts-color-border);
+  border-radius: var(--ts-radius-card);
+  box-shadow: var(--ts-shadow-card);
+}
+.ts-muted { color: var(--ts-color-text-secondary); }
+/* Translucent primary steps are background tints; text needs an opaque color. */
+.dark [class~="dark:text-primary-200"] { color: color-mix(in srgb, var(--theme-primary), white 45%); filter: none; }
+.dark [class~="dark:text-primary-300"] { color: color-mix(in srgb, var(--theme-primary), white 35%); filter: none; }
+.dark [class~="dark:text-primary-400"] { color: color-mix(in srgb, var(--theme-primary), white 25%); filter: none; }
+.dark [class~="dark:text-primary-500"] { color: color-mix(in srgb, var(--theme-primary), white 15%); filter: none; }
+.ts-sidebar { border-color: var(--ts-glass-border); transition: width var(--ts-motion-normal) var(--ts-ease); }
+.ts-settings-nav { border-color: var(--ts-color-divider); }
+.ts-divider { border-color: var(--ts-color-divider); }
+.ts-page-header {
+  min-height: var(--ts-header-height);
+  border-color: var(--ts-color-divider);
+  background: var(--ts-glass-bg);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
+}
+.ts-button, .ts-icon-button {
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: var(--ts-space-2);
+  min-height: var(--ts-control-md);
+  padding: 0 var(--ts-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--ts-radius-control);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease,
+    border-color var(--ts-motion-fast) ease, transform var(--ts-motion-fast) var(--ts-ease);
+}
+.ts-button-sm { min-height: var(--ts-control-sm); padding-inline: var(--ts-space-3); }
+.ts-button-lg { min-height: var(--ts-control-lg); padding-inline: var(--ts-space-5); font-size: 16px; }
+.ts-button-primary { background: var(--theme-primary); color: white; box-shadow: 0 3px 10px rgba(var(--theme-rgb), .16); }
+.ts-button-secondary { border-color: var(--ts-color-border); background: var(--ts-color-surface); color: var(--ts-color-text); }
+.ts-button-ghost { background: transparent; color: var(--ts-color-text-secondary); }
+.ts-button-danger { background: var(--ts-color-danger); color: white; }
+.ts-button-primary:hover, .ts-button-danger:hover { filter: brightness(.94); }
+.ts-button-secondary:hover, .ts-button-ghost:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
+.ts-button:active, .ts-icon-button:active { transform: scale(.97); }
+.ts-button:disabled, .ts-icon-button:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
+.ts-icon-button { width: var(--ts-control-md); height: var(--ts-control-md); padding: 0; }
+.ts-icon-button.ts-button-sm { width: var(--ts-control-sm); height: var(--ts-control-sm); }
+.ts-icon-button.ts-button-lg { width: var(--ts-control-lg); height: var(--ts-control-lg); }
+.ts-icon-danger { color: var(--ts-color-danger); background: transparent; }
+.ts-icon-danger:hover { background: color-mix(in srgb, var(--ts-color-danger) 10%, transparent); }
+.ts-button:focus-visible, .ts-icon-button:focus-visible, .ts-input:focus-visible {
+  outline: 2px solid var(--theme-primary);
+  outline-offset: 3px;
+}
+.ts-input {
+  min-height: var(--ts-control-md);
+  min-width: 0;
+  padding: 10px var(--ts-space-3);
+  border: 1px solid var(--ts-color-border);
+  border-radius: var(--ts-radius-control);
+  background: var(--ts-color-surface);
+  color: var(--ts-color-text);
+  font-size: 14px;
+  transition: border-color var(--ts-motion-fast) ease, box-shadow var(--ts-motion-fast) ease;
+}
+.ts-input::placeholder { color: var(--ts-color-text-tertiary); }
+.ts-input:focus { border-color: var(--theme-primary); }
+.ts-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ts-space-2); }
+.ts-section-stack { display: flex; flex-direction: column; gap: var(--ts-section-gap); }
+.ts-main-scroll:has(.ts-bottom-safe) { padding-bottom: 0; }
+.ts-bottom-safe { padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom)); }
+@media (min-width: 768px) { .ts-bottom-safe { padding-bottom: var(--ts-space-8); } }
+
+/* Element Plus uses the same scale, including teleported menus and dialogs. */
+.el-button { font-family: var(--ts-font-sans); font-weight: 600; border-radius: var(--ts-radius-control); }
+.el-button:not(.is-text):not(.is-link) { min-height: var(--ts-control-md); padding-inline: var(--ts-space-4); }
+.el-button.el-button--small:not(.is-text):not(.is-link) { min-height: var(--ts-control-sm); padding-inline: var(--ts-space-3); }
+.el-button.el-button--large:not(.is-text):not(.is-link) { min-height: var(--ts-control-lg); }
+.el-input .el-input__wrapper, .el-select .el-select__wrapper {
+  min-height: var(--ts-control-md);
+  border-radius: var(--ts-radius-control);
+  background-color: var(--ts-color-surface);
+}
+.el-input--small .el-input__wrapper, .el-select--small .el-select__wrapper { min-height: var(--ts-control-sm); }
+.el-input--large .el-input__wrapper, .el-select--large .el-select__wrapper { min-height: var(--ts-control-lg); }
+.el-textarea .el-textarea__inner { border-radius: var(--ts-radius-control); padding: var(--ts-space-3); }
+.el-form .el-form-item { margin-bottom: var(--ts-space-6); }
+.el-form-item .el-form-item__label { color: var(--ts-color-text-secondary); font-weight: 500; }
+.el-dialog, .el-message-box, .el-drawer {
+  --el-dialog-bg-color: var(--ts-glass-panel);
+  --el-messagebox-border-radius: var(--ts-radius-dialog);
+  --el-drawer-bg-color: var(--ts-glass-panel);
+  border: 1px solid var(--ts-glass-border);
+  background: var(--ts-glass-panel);
+  box-shadow: var(--ts-shadow-floating);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation));
+}
+.el-dialog, .el-message-box { border-radius: var(--ts-radius-dialog); }
+.el-dialog { --el-dialog-padding-primary: 24px; max-width: calc(100vw - 32px); }
+.el-dialog .el-dialog__header, .el-drawer .el-drawer__header { color: var(--ts-color-text); }
+.el-dialog .el-dialog__headerbtn { width: 44px; height: 44px; }
+.el-dialog .el-dialog__footer, .el-message-box .el-message-box__btns { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.el-dialog__footer .el-button + .el-button, .el-message-box__btns .el-button + .el-button { margin-left: 0; }
+.el-popper.is-light { --el-bg-color-overlay: var(--ts-glass-panel); border-color: var(--ts-color-border); border-radius: var(--ts-radius-control); box-shadow: var(--ts-shadow-floating); }
+.el-dropdown-menu { padding: 8px; border-radius: var(--ts-radius-control); }
+.el-dropdown-menu .el-dropdown-menu__item { min-height: var(--ts-control-sm); border-radius: 8px; }
+.ts-settings-section.el-collapse { --el-collapse-header-height: 64px; --el-collapse-header-bg-color: transparent; --el-collapse-content-bg-color: transparent; border: 1px solid var(--ts-color-border); }
+.ts-settings-section .el-collapse-item__wrap { border-bottom: 0; }
+.ts-settings-section .el-collapse-item__header { padding-right: 20px; border-bottom-color: var(--ts-color-divider); }
+.ts-settings-section .el-collapse-item__content { padding-bottom: 0; }
+/* Carousel arrows are controls too; keep their visual size and hit area aligned. */
+.el-carousel .el-carousel__arrow { width: var(--ts-control-md); height: var(--ts-control-md); }
+
+@media (max-width: 767px) {
+  .ts-button-sm, .ts-icon-button.ts-button-sm { min-height: var(--ts-control-md); }
+  .ts-icon-button.ts-button-sm { width: var(--ts-control-md); height: var(--ts-control-md); }
+  .ts-input, .el-input .el-input__inner, .el-select .el-select__placeholder, .el-textarea .el-textarea__inner { font-size: 16px; }
+  .el-button.el-button--small:not(.is-text):not(.is-link) { min-height: var(--ts-control-md); }
+  .el-dialog { --el-dialog-padding-primary: 16px; max-width: calc(100vw - 24px); max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); display: flex; flex-direction: column; }
+  .el-dialog .el-dialog__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .el-dialog .el-dialog__header, .el-dialog .el-dialog__footer { flex-shrink: 0; }
+  .el-message-box { max-width: calc(100vw - 32px); }
+  .ts-settings-section.el-collapse { margin-bottom: var(--ts-space-6); }
+}
+@supports not (backdrop-filter: blur(8px)) {
+  .ts-glass, .ts-liquid-glass, .ts-page-header, .el-dialog, .el-message-box, .el-drawer { background: var(--ts-color-surface); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-button, .ts-icon-button, .ts-input { transition: none; }
+}
+
+/* Date ranges and their calendars need an opaque reading surface. */
+.el-range-editor.el-input__wrapper { min-height: var(--ts-control-md); background: var(--ts-color-surface); border-radius: var(--ts-radius-control); }
+.el-popper.is-light.el-picker__popper { --el-bg-color-overlay: var(--ts-color-surface); background: var(--ts-color-surface); }

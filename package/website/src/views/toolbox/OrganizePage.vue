@@ -1,19 +1,17 @@
 <template>
   <div class="mx-auto w-full max-w-4xl px-[var(--ts-page-gutter)] py-6">
     <div class="flex items-center gap-4 mb-6">
-      <button @click="goBack" class="p-2 hover:bg-gray-100 bg-transparent dark:hover:bg-gray-800 rounded-full transition-colors">
-        <ArrowLeft class="w-6 h-6 text-gray-600 dark:text-gray-300" />
-      </button>
+      <BackButton label="返回工具箱" @click="goBack" />
       <div>
-        <h1 class="text-2xl font-bold text-gray-800 dark:text-white">图片文件整理</h1>
-        <p class="text-sm text-gray-500">按照特定规则自动将照片分类整理到指定的外部文件夹中。</p>
+        <h1 class="ts-page-title text-gray-800 dark:text-white">图片文件整理</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">按照特定规则自动将照片分类整理到指定的外部文件夹中。</p>
       </div>
     </div>
 
     <TaskStatusCard :task="activeTask" processing-label="整理中" :clearing="clearing" @clear="clearFailedTask" />
 
     <!-- Configuration Form -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="ts-surface p-6">
       <el-form label-position="top" :disabled="isTaskRunning">
         <el-form-item label="目标根目录" required>
           <div class="flex items-center gap-4 w-full">
@@ -29,7 +27,7 @@
             </el-input>
             <el-button type="primary" plain @click="showFolderSelector = true">选择目录</el-button>
           </div>
-          <div class="text-xs text-gray-500 mt-1">选中的目录必须是已配置的外部图库或主存储目录。子文件夹将在此目录下自动创建。</div>
+          <div class="text-xs text-gray-500 mt-1 dark:text-gray-400">选中的目录必须是已配置的外部图库或主存储目录。子文件夹将在此目录下自动创建。</div>
         </el-form-item>
 
         <el-form-item label="整理规则" required>
@@ -58,7 +56,7 @@
             value-format="YYYY-MM-DD"
             class="!w-full max-w-md"
           />
-          <div class="text-xs text-gray-500 mt-1">留空则默认整理所有时间的照片。</div>
+          <div class="text-xs text-gray-500 mt-1 dark:text-gray-400">留空则默认整理所有时间的照片。</div>
         </el-form-item>
 
         <el-form-item v-if="strategy === 'time'" label="时间目录结构" required>
@@ -67,7 +65,7 @@
               <el-radio label="flat" size="large">平铺结构 (例如: 2026-01-01)</el-radio>
               <el-radio label="nested" size="large">递归结构 (例如: 2026/01/01)</el-radio>
             </el-radio-group>
-            <div class="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+            <div class="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800 dark:text-gray-400">
               <ul class="list-disc pl-4 space-y-1">
                 <li><strong>平铺结构：</strong> 所有时间文件夹都将直接创建在目标根目录下，不会有层级嵌套。</li>
                 <li><strong>递归结构：</strong> 会按照年份、月份、日期依次创建多层级的文件夹结构。</li>
@@ -129,7 +127,7 @@
               <el-radio label="flat" size="large">平铺结构 (例如: 浙江省-杭州市)</el-radio>
               <el-radio label="nested" size="large">递归结构 (例如: 浙江省/杭州市)</el-radio>
             </el-radio-group>
-            <div class="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800">
+            <div class="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-lg border border-gray-100 dark:border-gray-800 dark:text-gray-400">
               <ul class="list-disc pl-4 space-y-1">
                 <li><strong>平铺结构：</strong> 将位置信息拼接为单个文件夹名称，不会有层级嵌套。</li>
                 <li><strong>递归结构：</strong> 会按照省份、城市、区县依次创建多层级的文件夹结构。</li>
@@ -185,12 +183,13 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch } from 'vue'
 import TaskStatusCard from '@/components/TaskStatusCard.vue'
 import DirectoryPickerDialog from '@/components/DirectoryPickerDialog.vue'
 import { useTaskMonitor } from '@/composables/useTaskMonitor'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Folder } from 'lucide-vue-next'
+import { Folder } from 'lucide-vue-next'
 import { toolboxApi } from '@/api/toolbox'
 import { ElMessage } from 'element-plus'
 

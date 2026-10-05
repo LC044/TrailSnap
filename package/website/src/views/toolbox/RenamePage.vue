@@ -1,19 +1,17 @@
 <template>
   <div class="mx-auto w-full max-w-4xl px-[var(--ts-page-gutter)] py-6">
     <div class="flex items-center gap-4 mb-6">
-      <button @click="goBack" class="p-2 hover:bg-gray-100 bg-transparent dark:hover:bg-gray-800 rounded-full transition-colors">
-        <ArrowLeft class="w-6 h-6 text-gray-600 dark:text-gray-300" />
-      </button>
+      <BackButton label="返回工具箱" @click="goBack" />
       <div>
-        <h1 class="text-2xl font-bold text-gray-800 dark:text-white">批量重命名</h1>
-        <p class="text-sm text-gray-500">选择一个文件夹，将其中的图片按拍摄时间 (YYYYMMDD_HHMMSS) 批量重命名。</p>
+        <h1 class="ts-page-title text-gray-800 dark:text-white">批量重命名</h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400">选择一个文件夹，将其中的图片按拍摄时间 (YYYYMMDD_HHMMSS) 批量重命名。</p>
       </div>
     </div>
 
     <TaskStatusCard :task="activeTask" processing-label="重命名中" :clearing="clearing" @clear="clearFailedTask" />
 
     <!-- Configuration Form -->
-    <div class="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+    <div class="ts-surface p-6">
       <el-form label-position="top" :disabled="isTaskRunning">
         <el-form-item label="目标文件夹" required>
           <div class="flex items-center gap-4 w-full">
@@ -29,14 +27,14 @@
             </el-input>
             <el-button type="primary" plain @click="showFolderSelector = true">选择目录</el-button>
           </div>
-          <div class="text-xs text-gray-500 mt-1">此文件夹（包含其所有子文件夹）内的所有照片都将被重命名。</div>
+          <div class="text-xs text-gray-500 mt-1 dark:text-gray-400">此文件夹（包含其所有子文件夹）内的所有照片都将被重命名。</div>
         </el-form-item>
 
         <div class="grid grid-cols-1 gap-6">
           <el-form-item label="命名模板（不含后缀）">
             <el-input v-model="template" placeholder="例如: IMG_{date}_{time}" clearable />
             <div class="mt-3">
-              <p class="text-xs text-gray-500 mb-2">点击变量插入到模板末尾：</p>
+              <p class="text-xs text-gray-500 mb-2 dark:text-gray-400">点击变量插入到模板末尾：</p>
               <div class="flex flex-wrap gap-2">
                 <el-tag
                   v-for="v in variables"
@@ -50,7 +48,7 @@
                 </el-tag>
               </div>
             </div>
-            <div class="text-xs text-gray-500 mt-2">默认模板为 IMG_{date}_{time}。如果有相同名字的照片，会自动追加 (1), (2)...</div>
+            <div class="text-xs text-gray-500 mt-2 dark:text-gray-400">默认模板为 IMG_{date}_{time}。如果有相同名字的照片，会自动追加 (1), (2)...</div>
           </el-form-item>
         </div>
 
@@ -82,12 +80,13 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed } from 'vue'
 import TaskStatusCard from '@/components/TaskStatusCard.vue'
 import DirectoryPickerDialog from '@/components/DirectoryPickerDialog.vue'
 import { useTaskMonitor } from '@/composables/useTaskMonitor'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Folder } from 'lucide-vue-next'
+import { Folder } from 'lucide-vue-next'
 import { toolboxApi } from '@/api/toolbox'
 import { ElMessage } from 'element-plus'
 

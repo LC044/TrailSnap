@@ -33,7 +33,7 @@
             </div>
             <div class="agent-reasoning-section">
               <div class="agent-reasoning-heading"><span>思考强度</span><span class="text-primary-600 dark:text-primary-500">{{ reasoningLabel(reasoning) }}</span></div>
-              <div class="agent-reasoning-track" role="radiogroup" aria-label="思考强度" :style="{ '--progress': `${((Math.max(0, reasoningLevels.indexOf(reason)) + 0.5) / reasoningLevels.length) * 100}%` }">
+              <div class="agent-reasoning-track" role="radiogroup" aria-label="思考强度" :style="{ '--progress': `${((Math.max(0, reasoningLevels.indexOf(reasoning)) + 0.5) / reasoningLevels.length) * 100}%` }">
                 <span class="agent-reasoning-fill"></span>
                 <button v-for="level in reasoningLevels" :key="level" type="button" role="radio" :aria-checked="level === reasoning" :aria-label="reasoningLabel(level)" :title="reasoningLabel(level)" class="agent-reasoning-step" :class="{ 'is-active': level === reasoning }" @click="emit('update:reasoning', level)"><span></span></button>
               </div>
@@ -156,16 +156,21 @@ onMounted(resize);
 
 <style scoped>
 .agent-chat-input-area {
-  @apply p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800;
+  @apply p-3 sm:p-4 border-t;
+  flex-shrink: 0;
+  padding-bottom: max(12px, var(--ts-safe-area-bottom));
+  border-color: var(--ts-color-divider);
+  background: var(--ts-color-surface);
 }
 
 :global(.agent-model-popover) { max-width: calc(100vw - 24px); box-sizing: border-box; }
 
 .agent-input {
-  @apply w-full pl-4 pr-12 pt-3 pb-14 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply w-full pl-4 pr-12 pt-3 pb-16 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed;
   /* 自适应高度由 JS 控制，这里禁用手动拖拽并隐藏初始滚动条 */
   @apply resize-none overflow-y-auto leading-6;
-  max-height: 120px;
+  max-height: 160px;
+  border-radius: var(--ts-radius-card);
 }
 
 .agent-input:focus {
@@ -174,7 +179,7 @@ onMounted(resize);
 }
 
 .agent-model-trigger {
-  @apply absolute bottom-2 left-2 flex max-w-[calc(100%_-_4rem)] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm transition-colors hover:border-primary-500/50 hover:bg-primary-500/5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 focus-visible:outline-none;
+  @apply absolute bottom-2 left-2 flex min-h-11 max-w-[calc(100%_-_4rem)] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 shadow-sm transition-colors hover:border-primary-500/50 hover:bg-primary-500/5 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600 focus-visible:outline-none;
 }
 
 .agent-trigger-divider { @apply h-3 w-px shrink-0 bg-slate-200 dark:bg-slate-500; }
@@ -202,10 +207,11 @@ onMounted(resize);
 
 /* 输入框可变高，按钮改为贴底对齐（原先垂直居中会在多行时飘到中间） */
 .agent-send-btn {
-  @apply absolute right-2 bottom-2 p-2 bg-primary-500 text-white rounded-full hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
+  @apply absolute right-2 bottom-2 h-11 w-11 flex items-center justify-center bg-primary-500 text-white rounded-full hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors;
 }
 
 .agent-stop-btn {
-  @apply absolute right-2 bottom-2 p-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors;
+  @apply absolute right-2 bottom-2 h-11 w-11 flex items-center justify-center bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors;
 }
+@media (max-width: 767px) { .agent-input { font-size: 16px; } }
 </style>

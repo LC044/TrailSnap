@@ -71,7 +71,7 @@
                       :class="dateHeaderContainerClass"
                     >
                         <div
-                          class="flex items-center font-bold text-gray-800 dark:text-gray-200 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm pointer-events-auto"
+                          class="ts-liquid-glass ts-photo-date flex items-center font-semibold pointer-events-auto"
                           :class="dateHeaderContentClass"
                           @click="mobileDateHeaderMode === 'day' && isSelectionMode && toggleDaySelection(day)"
                         >

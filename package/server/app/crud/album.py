@@ -413,7 +413,7 @@ def batch_update_album_association(db: Session, photo_ids: List[UUID], album_id:
 # Metadata CRUD
 
 
-def _smart_people_section(db: Session, owner_id: UUID, representative_limit: int) -> album_schemas.SmartAlbumSection:
+def _smart_people_section(db: Session, owner_id: UUID, representative_limit: int, representative_skip: int = 0) -> album_schemas.SmartAlbumSection:
     """Build the people summary in a single database round trip."""
     query = text(
         f"""
@@ -451,7 +451,7 @@ def _smart_people_section(db: Session, owner_id: UUID, representative_limit: int
             SELECT identity_id, photo_count
             FROM face_stats
             ORDER BY photo_count DESC, identity_id ASC
-            LIMIT :representative_limit
+            LIMIT :representative_limit OFFSET :representative_skip
         ),
         ranked_faces AS (
             SELECT
@@ -471,17 +471,18 @@ def _smart_people_section(db: Session, owner_id: UUID, representative_limit: int
             ti.photo_count,
             os.item_count,
             os.photo_count AS total_photo_count
-        FROM top_identities ti
-        JOIN ranked_faces rf
+        FROM overall_stats os
+        LEFT JOIN top_identities ti ON true
+        LEFT JOIN ranked_faces rf
           ON rf.identity_id = ti.identity_id
          AND rf.face_rank = 1
-        CROSS JOIN overall_stats os
         ORDER BY ti.photo_count DESC, ti.identity_id ASC
         """
     )
     rows = db.execute(query, {
         "owner_id": str(owner_id),
         "representative_limit": representative_limit,
+        "representative_skip": representative_skip,
     }).mappings().all()
 
     if not rows:
@@ -506,7 +507,7 @@ def _smart_people_section(db: Session, owner_id: UUID, representative_limit: int
     )
 
 
-def _smart_location_section(db: Session, owner_id: UUID, representative_limit: int) -> album_schemas.SmartAlbumSection:
+def _smart_location_section(db: Session, owner_id: UUID, representative_limit: int, representative_skip: int = 0) -> album_schemas.SmartAlbumSection:
     """Build the city-level location summary in a single database round trip."""
     query = text(
         f"""
@@ -538,7 +539,7 @@ def _smart_location_section(db: Session, owner_id: UUID, representative_limit: i
             SELECT location_name, photo_count
             FROM city_stats
             ORDER BY photo_count DESC, location_name ASC
-            LIMIT :representative_limit
+            LIMIT :representative_limit OFFSET :representative_skip
         ),
         ranked_photos AS (
             SELECT
@@ -560,17 +561,18 @@ def _smart_location_section(db: Session, owner_id: UUID, representative_limit: i
             tc.photo_count,
             os.item_count,
             os.photo_count AS total_photo_count
-        FROM top_cities tc
-        JOIN ranked_photos rp
+        FROM overall_stats os
+        LEFT JOIN top_cities tc ON true
+        LEFT JOIN ranked_photos rp
           ON rp.location_name = tc.location_name
          AND rp.photo_rank = 1
-        CROSS JOIN overall_stats os
         ORDER BY tc.photo_count DESC, tc.location_name ASC
         """
     )
     rows = db.execute(query, {
         "owner_id": str(owner_id),
         "representative_limit": representative_limit,
+        "representative_skip": representative_skip,
     }).mappings().all()
 
     if not rows:
@@ -594,7 +596,7 @@ def _smart_location_section(db: Session, owner_id: UUID, representative_limit: i
     )
 
 
-def _smart_classification_section(db: Session, owner_id: UUID, representative_limit: int) -> album_schemas.SmartAlbumSection:
+def _smart_classification_section(db: Session, owner_id: UUID, representative_limit: int, representative_skip: int = 0) -> album_schemas.SmartAlbumSection:
     """Build the AI-classification summary in a single database round trip."""
     query = text(
         f"""
@@ -635,7 +637,7 @@ def _smart_classification_section(db: Session, owner_id: UUID, representative_li
             WHERE pt.owner_id = :owner_id
               AND pt.is_deleted = false
             ORDER BY ts.photo_count DESC, pt.id ASC
-            LIMIT :representative_limit
+            LIMIT :representative_limit OFFSET :representative_skip
         ),
         ranked_relations AS (
             SELECT
@@ -666,16 +668,17 @@ def _smart_classification_section(db: Session, owner_id: UUID, representative_li
             tt.photo_count,
             os.item_count,
             os.photo_count AS total_photo_count
-        FROM top_tags tt
+        FROM overall_stats os
+        LEFT JOIN top_tags tt ON true
         LEFT JOIN explicit_covers ec ON ec.tag_id = tt.tag_id
         LEFT JOIN fallback_covers fc ON fc.tag_id = tt.tag_id
-        CROSS JOIN overall_stats os
         ORDER BY tt.photo_count DESC, tt.tag_id ASC
         """
     )
     rows = db.execute(query, {
         "owner_id": str(owner_id),
         "representative_limit": representative_limit,
+        "representative_skip": representative_skip,
     }).mappings().all()
 
     if not rows:
@@ -699,7 +702,7 @@ def _smart_classification_section(db: Session, owner_id: UUID, representative_li
     )
 
 
-def get_smart_album_overview(db: Session, owner_id: UUID, representative_limit: int = 4) -> album_schemas.SmartAlbumOverview:
+def get_smart_album_overview(db: Session, owner_id: UUID, representative_limit: int = 4, representative_skip: int = 0) -> album_schemas.SmartAlbumOverview:
     """Return counts and representative covers for the three built-in smart albums."""
     started_at = time.perf_counter()
     section_timings: dict[str, float] = {}
@@ -711,9 +714,9 @@ def get_smart_album_overview(db: Session, owner_id: UUID, representative_limit: 
         return result
 
     overview = album_schemas.SmartAlbumOverview(
-        people=timed_section("people", lambda: _smart_people_section(db, owner_id, representative_limit)),
-        location=timed_section("location", lambda: _smart_location_section(db, owner_id, representative_limit)),
-        classification=timed_section("classification", lambda: _smart_classification_section(db, owner_id, representative_limit)),
+        people=timed_section("people", lambda: _smart_people_section(db, owner_id, representative_limit, representative_skip)),
+        location=timed_section("location", lambda: _smart_location_section(db, owner_id, representative_limit, representative_skip)),
+        classification=timed_section("classification", lambda: _smart_classification_section(db, owner_id, representative_limit, representative_skip)),
     )
     duration_ms = (time.perf_counter() - started_at) * 1000
     logger.info(

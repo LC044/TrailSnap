@@ -1,6 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 const { addDynamicIconSelectors } = require('@iconify/tailwind')
 
+// Existing gray/slate/neutral utilities share one neutral scale during migration.
+const neutral = {
+  50: '#f5f6f8', 100: '#eef0f3', 200: '#dfe3e9', 300: '#c8cfd9',
+  400: '#8d98a8', 500: '#647184', 600: '#4d596b', 700: '#303947',
+  800: '#1b2028', 900: '#101318', 950: '#090b0f',
+}
+
 // 无 /N 透明度修饰符时，Tailwind 传入 'var(--tw-bg-opacity, 1)' 这类占位串，
 // Number() 后为 NaN；此时直接用档位固有的强度值，有修饰符时才与数值相乘。
 // 曾因把占位串当数值运算输出 rgba(var(--theme-rgb), NaN)，整条声明被浏览器
@@ -16,7 +23,9 @@ export default {
   content: ["./index.html", "./src/**/*.{vue,js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: { sans: ['var(--ts-font-sans)'] },
       colors: {
+        gray: neutral, slate: neutral, neutral,
         // Runtime theme palette. Lower steps are translucent surfaces; higher
         // steps keep the selected theme hue for text, borders and controls.
         primary: {

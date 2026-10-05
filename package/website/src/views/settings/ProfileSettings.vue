@@ -1,17 +1,17 @@
 <template>
   <div>
     <div class="mb-4 md:mb-6 flex justify-between items-center">
-      <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">个人资料</h2>
+      <h2 class="ts-page-title">个人资料</h2>
     </div>
 
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 max-w-2xl">
+    <div class="ts-surface p-4 md:p-6 max-w-2xl">
       <el-form label-position="top" :model="form" @submit.prevent="handleSave">
         <!-- Avatar Section -->
         <el-form-item label="头像">
-          <div class="flex items-center gap-6">
+          <div class="flex flex-wrap items-center gap-4">
             <el-avatar :size="80" :src="toServerUrl(form.avatar || defaultAvatar)" class="border-2 border-gray-200 dark:border-gray-700" />
             <div class="flex flex-col gap-2">
-              <div class="flex gap-2">
+              <div class="ts-form-actions">
                 <el-upload
                   :auto-upload="true"
                   :show-file-list="false"
@@ -22,19 +22,19 @@
                 </el-upload>
                 <el-button @click="showGallerySelector = true">从图库选择</el-button>
               </div>
-              <span class="text-xs text-gray-500">支持本地上传或从已上传的照片中选择</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">支持本地上传或从已上传的照片中选择</span>
             </div>
           </div>
         </el-form-item>
 
         <el-form-item label="用户名">
           <el-input v-model="form.username" disabled />
-          <span class="text-xs text-gray-500 mt-1">用户名不可修改</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">用户名不可修改</span>
         </el-form-item>
 
         <el-form-item label="邮箱">
           <el-input v-model="form.email" disabled />
-          <span class="text-xs text-gray-500 mt-1">邮箱暂不支持修改</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">邮箱暂不支持修改</span>
         </el-form-item>
 
         <el-form-item label="昵称">

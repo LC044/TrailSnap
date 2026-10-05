@@ -2,7 +2,7 @@
   <Teleport to="body">
     <section class="mobile-diary-reader" :class="{ dark: isDarkMode }" :style="themeStyle" aria-label="全屏日记阅读器">
       <header class="reader-header">
-        <button aria-label="退出日记阅读" @click="router.push('/chapters')"><ArrowLeft :size="20" /></button>
+        <BackButton label="退出日记阅读" @click="router.push('/chapters')" />
         <span class="truncate font-serif">{{ chapter.title }}<small>{{ day?.day || '影像日记' }}</small></span>
         <button aria-label="显示或隐藏阅读工具" :aria-expanded="controls" @click="controls = !controls"><MoreHorizontal :size="22" /></button>
       </header>
@@ -68,9 +68,10 @@
   </Teleport>
 </template>
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, ArrowUpRight, ChevronLeft, ChevronRight, Feather, Images, List, MoreHorizontal, Sparkles } from 'lucide-vue-next'
+import { ArrowUpRight, ChevronLeft, ChevronRight, Feather, Images, List, MoreHorizontal, Sparkles } from 'lucide-vue-next'
 import { injectTheme } from '@/composables/useTheme'
 import type { ChapterDay, ChapterDetail, ChapterPhoto } from '@/types/chapter'
 import ChapterBook from './ChapterBook.vue'

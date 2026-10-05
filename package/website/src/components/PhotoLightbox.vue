@@ -2,7 +2,7 @@
   <Transition name="fade">
     <div
       v-if="visible"
-      class="photo-lightbox-shell fixed inset-0 z-[100] flex bg-black/95 backdrop-blur-sm"
+      class="photo-lightbox-shell fixed inset-0 z-[100] flex"
       :class="{
         'details-active': mobileDetailsProgress > 0.01,
         'details-settling': isMobileDetailsSettling,
@@ -23,7 +23,7 @@
             <X class="w-6 h-6" />
         </button>
 
-        <div class="flex items-center gap-1 pointer-events-auto p-0">
+        <div class="viewer-desktop-actions ts-liquid-glass ts-glass-toolbar flex items-center gap-1 pointer-events-auto">
             <!-- Zoom Controls -->
             <button @click.stop="zoomOut" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="缩小 (-)">
                 <ZoomOut class="w-6 h-6" />
@@ -177,7 +177,7 @@
       />
 
       <!-- Main Image Area (hidden when editing) -->
-      <div v-else class="flex-1 relative flex items-center justify-center h-full overflow-hidden group">
+      <div v-else class="viewer-stage flex-1 relative flex items-center justify-center h-full overflow-hidden group">
 
         <!-- Navigation -->
         <button
@@ -335,14 +335,8 @@
           class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,var(--ts-safe-area-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
         >
           <div class="flex items-start gap-1 min-w-0">
-            <button
-              @click.stop="close"
-              class="pointer-events-auto shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white/90 active:bg-white/15 bg-transparent p-0"
-              aria-label="返回"
-            >
-              <ChevronLeft class="w-6 h-6" />
-            </button>
-            <div class="min-w-0 pt-0.5 leading-tight text-white drop-shadow-md">
+            <BackButton class="pointer-events-auto" @click.stop="close" />
+            <div class="viewer-caption min-w-0 pt-0.5 leading-tight">
               <div v-if="captureDateText" class="text-sm font-medium truncate">{{ captureDateText }}</div>
               <div class="text-[11px] text-white/75 flex items-center gap-1 min-w-0">
                 <span v-if="captureTimeText" class="shrink-0">{{ captureTimeText }}</span>
@@ -355,14 +349,9 @@
             </div>
           </div>
 
-          <button
-            data-testid="photo-lightbox-mobile-more"
-            @click.stop="openMobileMenu"
-            class="pointer-events-auto shrink-0 w-9 h-9 flex items-center justify-center rounded-full text-white bg-white/15 active:bg-white/25 p-0"
-            aria-label="更多功能"
-          >
-            <MoreHorizontal class="w-5 h-5" />
-          </button>
+          <div class="viewer-mobile-tools ts-liquid-glass ts-glass-toolbar flex pointer-events-auto shrink-0">
+            <button class="ts-glass-button" aria-label="照片信息" :aria-expanded="showSidebar" @click.stop="toggleSidebar"><Info class="h-5 w-5" /></button>
+          </div>
         </div>
       </Transition>
 
@@ -399,23 +388,12 @@
           class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,var(--ts-safe-area-bottom))] bg-black/85"
           @click.stop
         >
-          <div class="flex items-stretch justify-around">
-            <button class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-white/90 active:bg-white/10 bg-transparent" @click.stop="downloadImage">
-              <Download class="w-6 h-6" />
-              <span class="text-[11px]">下载</span>
-            </button>
-            <button v-if="allowEdit && isStillImage" class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-white/90 active:bg-white/10 bg-transparent" @click.stop="enterEditMode">
-              <Pencil class="w-6 h-6" />
-              <span class="text-[11px]">编辑</span>
-            </button>
-            <button class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg active:bg-white/10 bg-transparent" :class="showSidebar ? 'text-primary-400' : 'text-white/90'" @click.stop="toggleSidebar">
-              <Info class="w-6 h-6" />
-              <span class="text-[11px]">信息</span>
-            </button>
-            <button v-if="allowDelete" class="flex flex-col items-center gap-1 px-3 py-1 rounded-lg text-red-400 active:bg-white/10 bg-transparent" @click.stop="handleDelete">
-              <Trash2 class="w-6 h-6" />
-              <span class="text-[11px]">删除</span>
-            </button>
+          <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-stretch justify-around">
+            <button class="ts-glass-button" aria-label="下载" @click.stop="downloadImage"><Download class="h-5 w-5" /></button>
+            <button v-if="allowEdit && isStillImage" class="ts-glass-button" aria-label="编辑" @click.stop="enterEditMode"><Pencil class="h-5 w-5" /></button>
+            <button class="ts-glass-button" aria-label="AI 分析" @click.stop="handleCommand('viewDescription')"><Sparkles class="h-5 w-5" /></button>
+            <button v-if="allowDelete" class="ts-glass-button viewer-delete" aria-label="删除" @click.stop="handleDelete"><Trash2 class="h-5 w-5" /></button>
+            <button data-testid="photo-lightbox-mobile-more" class="ts-glass-button" aria-label="更多功能" @click.stop="openMobileMenu"><MoreHorizontal class="h-5 w-5" /></button>
           </div>
         </div>
       </Transition>
@@ -428,9 +406,9 @@
             class="sheet-panel absolute bottom-0 left-0 right-0 rounded-t-2xl bg-gray-900/95 border-t border-white/10 px-3 pt-3 pb-[max(0.75rem,var(--ts-safe-area-bottom))]"
             @click.stop
           >
-            <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25"></div>
+            <div class="viewer-menu-header"><h2>更多</h2><button class="ts-icon-button ts-button-ghost" aria-label="关闭更多功能" @click.stop="closeMobileMenu"><X class="h-5 w-5" /></button></div>
 
-            <div class="grid grid-cols-4 gap-y-4">
+            <div class="viewer-menu-grid grid grid-cols-4 gap-y-4">
               <button :disabled="!canSetDailyFrame" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0 disabled:opacity-40" @click.stop="runMobileAction(() => handleCommand('dailyFrame'))">
                 <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><Film class="w-5 h-5" /></span>
                 <span class="text-[11px]">设为当天一帧</span>
@@ -633,38 +611,30 @@
         @select="handlePersonSelected"
       />
 
-      <el-dialog
-        v-model="showDescription"
-        title="AI智能分析"
-        align-center
-        class="rounded-xl w-[90%] md:w-[500px]"
-        append-to-body
-      >
-        <div v-loading="descriptionLoading">
-            <div v-if="imageDescription">
-                <p v-if="imageDescription.narrative" class="mb-4 text-lg font-medium">{{ imageDescription.narrative }}</p>
-                <p v-if="imageDescription.description" class="mb-2 text-gray-600 dark:text-gray-300">{{ imageDescription.description }}</p>
-                
-                <div class="flex gap-2 mt-4">
-                    <el-tag v-if="imageDescription.memory_score !== null">回忆值: {{ imageDescription.memory_score }}</el-tag>
-                    <el-tag v-if="imageDescription.quality_score !== null" type="success">质量分: {{ imageDescription.quality_score }}</el-tag>
-                </div>
-                 <div class="flex flex-wrap gap-2 mt-2" v-if="imageDescription.tags && imageDescription.tags.length">
-                    <el-tag v-for="tag in imageDescription.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
-                </div>
-                <p v-if="imageDescription.reason" class="mt-2 text-sm text-gray-500">评分理由: {{ imageDescription.reason }}</p>
+      <ResponsiveDialog v-model="showDescription" title="AI 智能分析" max-width="38rem">
+        <div v-loading="descriptionLoading" class="analysis-content min-h-40">
+          <div v-if="imageDescription" class="space-y-4">
+            <section v-if="imageDescription.narrative || imageDescription.description" class="ts-surface p-4 space-y-3">
+              <p v-if="imageDescription.narrative" class="text-base font-semibold leading-7">{{ imageDescription.narrative }}</p>
+              <p v-if="imageDescription.description" class="text-sm leading-7 text-gray-600 dark:text-gray-300">{{ imageDescription.description }}</p>
+            </section>
+            <div class="grid grid-cols-2 gap-3">
+              <div v-if="imageDescription.memory_score != null" class="ts-surface p-4"><p class="text-xs text-gray-500 dark:text-gray-400">回忆值</p><p class="mt-2 text-xl font-semibold">{{ imageDescription.memory_score }}</p></div>
+              <div v-if="imageDescription.quality_score != null" class="ts-surface p-4"><p class="text-xs text-gray-500 dark:text-gray-400">质量分</p><p class="mt-2 text-xl font-semibold">{{ imageDescription.quality_score }}</p></div>
             </div>
-            <div v-else class="text-center py-8 text-gray-500">
-                暂无描述信息
-            </div>
+            <section v-if="imageDescription.tags?.length" class="ts-surface p-4"><h3 class="mb-3 text-sm font-semibold">画面标签</h3><div class="flex flex-wrap gap-2"><span v-for="tag in imageDescription.tags" :key="tag" class="analysis-tag">{{ tag }}</span></div></section>
+            <section v-if="imageDescription.reason" class="ts-surface p-4"><h3 class="mb-2 text-sm font-semibold">评分理由</h3><p class="text-sm leading-7 text-gray-600 dark:text-gray-300">{{ imageDescription.reason }}</p></section>
+          </div>
+          <p v-else-if="!descriptionLoading" class="py-8 text-center text-gray-500 dark:text-gray-400">暂无描述信息</p>
         </div>
-      </el-dialog>
+      </ResponsiveDialog>
 
     </div>
   </Transition>
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch, computed, onUnmounted, nextTick, onMounted, defineAsyncComponent } from 'vue'
 import {
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info,
@@ -688,8 +658,7 @@ import {
     Binary,
     LoaderCircle,
     History,
-    Film,
-} from 'lucide-vue-next'
+    Film } from 'lucide-vue-next'
 // xgplayer 体积大（~数百 KB），且只在查看视频时需要，故改为按需动态导入；
 // 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
 import type Player from 'xgplayer'
@@ -705,6 +674,7 @@ import PersonSelector from './PersonSelector.vue'
 // PhotoEditor 依赖 fabric（~数百 KB），只在用户点击编辑时才需要，异步化以延迟加载。
 const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
+import ResponsiveDialog from './ui/ResponsiveDialog.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { locationService } from '@/api/location'
 import { useRouter } from 'vue-router'
@@ -776,7 +746,9 @@ const toggleShortcutHelp = () => {
 }
 
 const handleEscKey = () => {
-  if (shortcutHelpOpened.value) {
+  if (showDescription.value) {
+    showDescription.value = false
+  } else if (shortcutHelpOpened.value) {
     showShortcutHelp.value = false
   } else {
     close()
@@ -2133,6 +2105,43 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 </script>
 
 <style scoped>
+ .analysis-content { overflow-wrap: anywhere; color: var(--ts-color-text); }
+.analysis-tag { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--ts-color-surface-muted); font-size: 12px; line-height: 1.5; }
+.photo-lightbox-shell { background: var(--ts-color-page); color: var(--ts-color-text); }
+[data-testid="photo-lightbox-toolbar"] { background: none; padding: 12px 16px; }
+[data-testid="photo-lightbox-toolbar"] > button { width: 44px; height: 44px; background: var(--ts-glass-bg); border: 1px solid var(--ts-color-border); box-shadow: var(--ts-shadow-glass); }
+[data-testid="photo-lightbox-toolbar"] button { color: var(--ts-color-text); }
+[data-testid="photo-lightbox-toolbar"] button[class*="text-red-"] { color: var(--ts-color-danger); }
+.viewer-stage > button { background: var(--ts-glass-bg); color: var(--ts-color-text); border: 1px solid var(--ts-color-border); }
+.viewer-caption { color: var(--ts-color-text); }
+.viewer-caption > div:first-child { font-size: 16px; font-weight: 600; }
+.viewer-caption > div:last-child { color: var(--ts-color-text-secondary); font-size: 12px; margin-top: 4px; }
+.mobile-viewer-toolbar { background: none; padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
+.mobile-viewer-toolbar > div:first-child { align-items: center; gap: 10px; }
+.viewer-mobile-tools button { width: 44px; height: 40px; color: var(--ts-color-text); background: transparent; }
+.viewer-thumbnail-layer { background: none; }
+.photo-thumbnail-strip button { border-radius: 12px; background: var(--ts-color-surface-muted); }
+.photo-thumbnail-strip button:not(.border-primary-500) { border-color: transparent; }
+.mobile-viewer-dock { background: none; padding-inline: 12px; padding-bottom: calc(12px + var(--ts-safe-area-bottom)); }
+.viewer-action-pill { max-width: 440px; margin-inline: auto; --glass-tint: var(--ts-glass-panel); }
+.viewer-action-pill button { min-width: 44px; min-height: 44px; flex: 1; color: var(--ts-color-text); border-radius: var(--ts-radius-pill); }
+.viewer-action-pill button.viewer-delete { color: var(--ts-color-danger); }
+.sheet-panel { background: var(--ts-glass-panel); color: var(--ts-color-text); border-color: var(--ts-color-border); border-radius: var(--ts-radius-dialog) var(--ts-radius-dialog) 0 0; box-shadow: var(--ts-shadow-floating); max-height: calc(100dvh - var(--ts-safe-area-top) - 16px); overflow-y: auto; backdrop-filter: blur(var(--ts-glass-blur-panel)); }
+.sheet-panel button { color: var(--ts-color-text); }
+.sheet-panel button > span:first-child { background: var(--ts-color-surface-muted); }
+ .viewer-menu-header { display: flex; align-items: center; justify-content: center; position: relative; min-height: 64px; margin-bottom: 12px; }
+.viewer-menu-header h2 { font-size: 18px; font-weight: 600; }
+.viewer-menu-header button { position: absolute; right: 0; background: var(--ts-color-surface-muted); border-radius: var(--ts-radius-pill); }
+.viewer-menu-grid { background: var(--ts-menu-card); border-radius: 24px; padding: 16px 8px; }
+.viewer-menu-grid button { min-height: 72px; }
+.viewer-menu-grid button > span:first-child { background: transparent; }
+.sheet-panel { inset-inline: 12px; bottom: calc(12px + var(--ts-safe-area-bottom)); border: 1px solid var(--ts-glass-border); border-radius: 32px; padding: 8px 16px 16px; max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); }
+
+@media (max-width: 767px) {
+  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(98px + var(--ts-safe-area-bottom)); }
+  .viewer-stage { box-sizing: border-box; padding-top: calc(80px + var(--ts-safe-area-top)); padding-bottom: calc(168px + var(--ts-safe-area-bottom)); }
+}
+
 .photo-thumbnail-strip {
     scrollbar-width: none;
     -ms-overflow-style: none;

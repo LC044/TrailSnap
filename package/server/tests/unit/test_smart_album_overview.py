@@ -154,3 +154,40 @@ def test_smart_album_overview_uses_three_queries_and_returns_covers():
     assert overview.classification.representatives[0].name == "travel"
     assert overview.classification.representatives[0].photo_id == photo_ids[3]
     assert overview.classification.representatives[0].photo_count == 2
+
+
+def test_smart_album_paging_reaches_every_group_and_preserves_totals():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine, tables=[
+        User.__table__, Scene.__table__, Photo.__table__, PhotoMetadata.__table__,
+        FaceIdentity.__table__, Face.__table__, PhotoTag.__table__, PhotoTagRelation.__table__,
+    ])
+    with sessionmaker(bind=engine)() as db:
+        owner_id, other_id = uuid.uuid4(), uuid.uuid4()
+        for user_id in [owner_id, other_id]:
+            db.add(User(id=user_id, username=str(user_id), email=f"{user_id}@example.com", hashed_password="x"))
+        for user_id, count in [(owner_id, 7), (other_id, 2)]:
+            for index in range(count):
+                photo_id = uuid.uuid4()
+                db.add(_photo(photo_id, user_id, f"{user_id}-{index}", datetime(2026, 1, index + 1)))
+                db.add(PhotoMetadata(photo_id=photo_id, city=f"City {index}"))
+                identity = FaceIdentity(id=uuid.uuid4(), identity_name=f"Person {index}", owner_id=user_id, is_deleted=False, is_hidden=False)
+                tag = PhotoTag(id=uuid.uuid4(), tag_name=f"Tag {index}", owner_id=user_id, is_deleted=False)
+                db.add_all([identity, tag])
+                db.flush()
+                db.add(Face(photo_id=photo_id, face_identity_id=identity.id, face_rect=[0, 0, 1, 1], is_deleted=False))
+                db.add(PhotoTagRelation(photo_id=photo_id, tag_id=tag.id, created_at=datetime(2026, 1, 1), is_deleted=False))
+        db.commit()
+
+        first = get_smart_album_overview(db, owner_id, representative_limit=4)
+        second = get_smart_album_overview(db, owner_id, representative_limit=4, representative_skip=4)
+        past_end = get_smart_album_overview(db, owner_id, representative_limit=4, representative_skip=8)
+        for kind in ["people", "location", "classification"]:
+            page_one, page_two, empty = (getattr(page, kind) for page in [first, second, past_end])
+            assert len(page_one.representatives) == 4
+            assert len(page_two.representatives) == 3
+            assert len({item.entity_id for item in page_one.representatives + page_two.representatives}) == 7
+            assert empty.representatives == []
+            for page in [page_one, page_two, empty]:
+                assert page.item_count == 7
+                assert page.photo_count == 7

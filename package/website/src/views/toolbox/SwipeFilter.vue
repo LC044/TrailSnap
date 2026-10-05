@@ -2,13 +2,7 @@
   <div class="h-screen w-full bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex flex-col overflow-hidden relative select-none">
     <!-- 顶部状态栏 -->
     <header class="flex-none h-14 flex items-center justify-between px-4 z-20 bg-gradient-to-b from-slate-50/80 dark:from-slate-900/80 to-transparent">
-      <button
-        @click="handleBack"
-        class="p-2 rounded-full bg-slate-200/50 dark:bg-slate-800/50 text-slate-700 dark:text-white hover:bg-slate-300/50 dark:hover:bg-slate-700 transition-colors backdrop-blur-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none"
-        title="返回工具箱"
-      >
-        <ArrowLeft class="w-5 h-5" />
-      </button>
+      <BackButton label="返回工具箱" @click="handleBack" />
       <div class="flex flex-col items-center">
         <h1 class="text-sm font-semibold tracking-wider text-slate-800 dark:text-slate-100">照片筛选</h1>
         <span class="text-xs text-slate-500 dark:text-slate-400">
@@ -338,10 +332,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin, Sparkles, Hand, Play } from 'lucide-vue-next'
+import { Trash2, Heart, Undo, Maximize2, CheckCircle, MapPin, Sparkles, Hand, Play } from 'lucide-vue-next'
 import { photoApi } from '@/api/photo'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Photo } from '@/types/album'

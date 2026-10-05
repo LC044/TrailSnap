@@ -3,6 +3,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useStorage } from '@vueuse/core'
 import { albumService, type SmartAlbumOverview } from '@/api/album'
 import { mapPhotoToImage } from '@/stores/photoStore'
 import type { ApiAlbum, Album, AlbumImage } from '@/types/album'
@@ -10,6 +11,42 @@ import type { ApiAlbum, Album, AlbumImage } from '@/types/album'
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export const useAlbumStore = defineStore('album', () => {
+  const sectionDefaults = [
+    { id: 'mine', title: '我的相册' }, { id: 'memories', title: '回忆' },
+    { id: 'people', title: '人物相册' }, { id: 'location', title: '位置相册' },
+    { id: 'classification', title: '智能分类' },
+  ]
+  const sectionOrder = useStorage<string[]>('ts-album-section-order', sectionDefaults.map(section => section.id))
+  const hiddenSections = useStorage<string[]>('ts-album-hidden-sections', [])
+  const collapsedSections = useStorage<Record<string, boolean>>('ts-album-collapsed', {})
+  const sections = computed(() => [...sectionDefaults].sort((a, b) => {
+    const rank = (id: string) => { const index = sectionOrder.value.indexOf(id); return index < 0 ? sectionDefaults.length : index }
+    return rank(a.id) - rank(b.id)
+  }))
+  const moveSection = (id: string, direction: number) => {
+    const ids = sections.value.map(section => section.id)
+    const index = ids.indexOf(id), target = index + direction
+    if (index < 0 || target < 0 || target >= ids.length) return
+    ;[ids[index], ids[target]] = [ids[target]!, ids[index]!]
+    sectionOrder.value = ids
+  }
+  const toggleSection = (id: string) => {
+    hiddenSections.value = hiddenSections.value.includes(id) ? hiddenSections.value.filter(value => value !== id) : [...hiddenSections.value, id]
+  }
+  const sectionLoading = ref<Record<string, boolean>>({})
+  const sectionErrors = ref<Record<string, boolean>>({})
+  const loadMoreSection = async (kind: keyof SmartAlbumOverview) => {
+    const section = smartAlbumOverview.value?.[kind]
+    if (!section || sectionLoading.value[kind] || section.representatives.length >= section.item_count) return
+    sectionLoading.value[kind] = true
+    sectionErrors.value[kind] = false
+    try {
+      const data = await albumService.getSmartAlbumOverview(section.representatives.length, 12)
+      const seen = new Set(section.representatives.map(item => item.entity_id))
+      section.representatives.push(...data[kind].representatives.filter(item => !seen.has(item.entity_id)))
+    } catch { sectionErrors.value[kind] = true }
+    finally { sectionLoading.value[kind] = false }
+  }
   // --- 状态 ---
   const apiAlbums = ref<ApiAlbum[]>([])
 
@@ -21,8 +58,13 @@ export const useAlbumStore = defineStore('album', () => {
   // --- 动作 ---
   const fetchAlbums = async () => {
       try {
-          const albumsData = await albumService.getAlbums();
-          apiAlbums.value = albumsData;
+          const albums: ApiAlbum[] = []
+          let page: ApiAlbum[]
+          do {
+              page = await albumService.getAlbums(albums.length, 100)
+              albums.push(...page)
+          } while (page.length === 100)
+          apiAlbums.value = albums;
       } catch (e) {
           console.error("获取相册失败", e)
       }
@@ -150,6 +192,7 @@ export const useAlbumStore = defineStore('album', () => {
   }
 
   return {
+    sections, hiddenSections, collapsedSections, moveSection, toggleSection, sectionLoading, sectionErrors, loadMoreSection,
     allAlbums,
     smartAlbumOverview,
     hasFreshSmartAlbumOverview,

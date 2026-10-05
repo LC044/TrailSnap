@@ -2,20 +2,14 @@
   <div class="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 px-[var(--ts-page-gutter)] py-6">
     <div class="mx-auto w-full max-w-screen-2xl mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
-        <button 
-          @click="goBack"
-          class="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
-        >
-          <ArrowLeft class="w-4 h-4" />
-          <span>返回列表</span>
-        </button>
+        <BackButton label="返回列表" @click="goBack" />
         <h1 class="text-2xl font-light text-slate-800 dark:text-white tracking-wide">
           旅行足迹报告
         </h1>
       </div>
       
       <div class="flex items-center gap-2 flex-wrap">
-        <div class="flex items-center gap-2 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700 relative" ref="yearMenuRef">
+        <div class="ts-surface flex items-center gap-2 p-1 relative" ref="yearMenuRef">
           <span class="px-3 py-1 text-xs font-medium text-slate-500 dark:text-slate-400 self-center">时间</span>
           
           <button
@@ -28,7 +22,7 @@
 
            <div
              v-show="showYearMenu"
-             class="absolute top-full right-0 mt-2 w-32 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden z-[60] max-h-60 overflow-y-auto"
+             class="ts-surface absolute top-full right-0 mt-2 w-32 overflow-hidden z-[60] max-h-60 overflow-y-auto"
            >
              <button
                @click="selectYear(null); showYearMenu = false"
@@ -72,7 +66,7 @@
     <div class="mx-auto w-full max-w-screen-2xl space-y-6">
       
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div class="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 group">
+        <div class="ts-surface relative overflow-hidden p-6 group">
           <div class="absolute right-0 top-0 w-32 h-32 bg-primary-50 dark:bg-slate-700 rounded-full blur-3xl -mr-10 -mt-10 transition-colors"></div>
           <div class="relative z-10">
             <div class="flex items-center gap-2 mb-2">
@@ -94,7 +88,7 @@
           </div>
         </div>
 
-        <div class="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+        <div class="ts-surface relative overflow-hidden p-6">
           <div class="relative z-10">
             <div class="flex items-center gap-2 mb-2">
               <div class="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400">
@@ -118,7 +112,7 @@
           </div>
         </div>
 
-        <div class="relative overflow-hidden bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+        <div class="ts-surface relative overflow-hidden p-6">
           <div class="relative z-10">
             <div class="flex items-center gap-2 mb-2">
               <div class="p-2 rounded-lg bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
@@ -137,7 +131,7 @@
         </div>
       </div>
 
-      <div class="bg-white dark:bg-slate-800 rounded-2xl p-1 shadow-md border border-slate-200 dark:border-slate-700 relative h-[600px] overflow-hidden">
+      <div class="ts-surface p-1 relative h-[600px] overflow-hidden">
         <div class="absolute top-4 right-4 z-20 bg-white/80 dark:bg-slate-700/80 backdrop-blur p-2 rounded-lg shadow border border-slate-200 dark:border-slate-600">
            <span class="text-xs font-bold text-slate-500 dark:text-slate-300">GEO TRAIL</span>
          </div>
@@ -146,7 +140,7 @@
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 h-80 flex flex-col relative">
+        <div class="ts-surface p-6 h-80 flex flex-col relative">
           <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">出行频率趋势</h3>
           <div ref="trendChart" class="flex-1 w-full"></div>
           <div v-if="loading" class="absolute inset-0 flex items-center justify-center">
@@ -157,7 +151,7 @@
           </div>
         </div>
         
-        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 h-80 flex flex-col relative">
+        <div class="ts-surface p-6 h-80 flex flex-col relative">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-slate-800 dark:text-white">最爱去的城市</h3>
             <button @click="toggleShowAllCities" class="text-xs px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600">
@@ -179,9 +173,10 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, watch, onUnmounted, computed } from 'vue';
 import { echarts } from '@/utils/echarts';
-import { ArrowLeft, Route, MapPin, Clock, ChevronDown } from 'lucide-vue-next';
+import { Route, MapPin, Clock, ChevronDown } from 'lucide-vue-next';
 import { onClickOutside } from '@vueuse/core';
 import { injectTheme } from '@/composables/useTheme';
 import { useTicketStore } from '@/stores/ticketStore';

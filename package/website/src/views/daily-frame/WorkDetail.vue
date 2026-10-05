@@ -1,6 +1,6 @@
 <template>
   <div class="df-page space-y-5">
-    <header><RouterLink to="/daily-frame" class="text-sm text-primary-600 dark:text-primary-400">← 返回日历和作品</RouterLink><h1 class="mt-2 text-2xl font-bold">{{ work?.settings.title || '一日一帧影片' }}</h1></header>
+    <header><BackButton to="/daily-frame" label="返回日历和作品" /><h1 class="mt-2 text-2xl font-bold">{{ work?.settings.title || '一日一帧影片' }}</h1></header>
     <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }} <button type="button" class="underline" @click="load">重新加载</button></p>
     <section v-if="work" class="df-panel space-y-4">
       <div class="flex flex-wrap justify-between gap-2"><span class="text-primary-600 dark:text-primary-400">{{ workStatus(work.status) }}</span><span class="text-sm text-gray-500 dark:text-gray-400">{{ work.settings.start_date }} — {{ work.settings.end_date }}</span></div>
@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'

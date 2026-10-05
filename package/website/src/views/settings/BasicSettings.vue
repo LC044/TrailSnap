@@ -1,9 +1,9 @@
 <template>
   <div>
     <!-- Header with Actions -->
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">系统设置</h1>
-      <div class="flex gap-2">
+    <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+      <h1 class="ts-page-title">系统设置</h1>
+      <div class="ts-form-actions">
         <el-upload
           :auto-upload="false"
           :show-file-list="false"

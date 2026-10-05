@@ -1,40 +1,44 @@
 <template>
   <div class="ts-browse-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)]">
     <!-- Navbar -->
-    <div class="ts-browse-header sticky top-0 z-20 -mx-[var(--ts-page-gutter)] flex min-h-[68px] gap-3 py-2 items-center justify-between border-b border-gray-100 bg-gray-50/90 px-[var(--ts-page-gutter)] transition-colors dark:border-gray-800 dark:bg-gray-900/90">
+    <div class="ts-browse-header sticky top-0 z-20 -mx-[var(--ts-page-gutter)] flex gap-2 py-2 items-center justify-between px-[var(--ts-page-gutter)]">
       <h1 class="ts-page-title text-gray-800 dark:text-white">首页</h1>
-      <div class="ts-liquid-glass ts-glass-toolbar flex items-center">
+      <div class="ts-liquid-glass ts-glass-toolbar ml-auto flex items-center">
         <button class="ts-glass-button" aria-label="搜索照片" @click="router.push('/mobile-search')"><Search class="h-5 w-5" /></button>
-        <button class="ts-glass-button" aria-label="浏览照片" @click="router.push('/photos')"><Images class="h-5 w-5" /></button>
-        <button class="ts-glass-button" aria-label="更多首页操作" @click="showHomeActions = true"><MoreHorizontal class="h-5 w-5" /></button>
-      </div>
+        <button class="ts-glass-button" aria-label="回收站" @click="router.push('/recycle-bin')"><Trash2 class="h-5 w-5" /></button>
+        <button class="ts-glass-button" aria-label="AI 助手" @click="uiStore.openAgent()"><Bot class="h-5 w-5" /></button>
+        <button class="ts-glass-button" aria-label="更多首页操作" :aria-expanded="showHomeActions" aria-haspopup="menu" @click="showHomeActions = !showHomeActions"><MoreHorizontal class="h-5 w-5" /></button>
+    <AdaptiveMenu mobile-presentation="popover" v-model="showHomeActions" title="首页快捷操作" glass>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/memories')"><BookHeart />回忆</button>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/daily-frame')"><Film />为今天留一个瞬间</button>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/annual-report')"><CalendarDays />年度回忆录</button>
+      <button class="ts-action-row" @click="showHomeActions = false; router.push('/game')"><MapPin />猜城市</button>
+      <button class="ts-action-row" @click="showHomeActions = false; showStorageDialog = true"><HardDrive />存储中心</button>
+    </AdaptiveMenu>
       <div class="hidden items-center md:flex">
-        <button class="relative rounded-lg p-1.5 text-gray-600 transition-colors hover:bg-gray-100 hover:text-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300 dark:hover:bg-gray-800" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
-          <i class="mgc_hard_drive_line text-2xl"></i>
+        <button class="ts-icon-button ts-button-ghost relative" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
+          <HardDrive class="h-5 w-5" />
           <span v-if="showStorageBadge" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>
       </div>
+      </div>
+
     </div>
 
-    <ResponsiveDialog v-model="showHomeActions" title="首页快捷操作" glass>
-      <button class="ts-action-row" @click="showHomeActions = false; router.push('/memories')"><BookHeart />回忆</button>
-      <button class="ts-action-row" @click="showHomeActions = false; router.push('/daily-frame')"><Film />一日一帧</button>
-      <button class="ts-action-row" @click="showHomeActions = false; router.push('/annual-report')"><CalendarDays />年度回忆录</button>
-      <button class="ts-action-row" @click="showHomeActions = false; showStorageDialog = true"><HardDrive />存储中心</button>
-    </ResponsiveDialog>
+
     <!-- Loading State -->
     <div v-if="loading" class="flex items-center justify-center min-h-[400px] h-full">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
     </div>
 
     <!-- Content -->
-    <div v-else-if="dashboardData" class="py-3 space-y-2">
+    <div v-else-if="dashboardData" class="py-3 space-y-4">
 
       <OnThisDay />
       <MemoryDiscovery />
-      <DailyFrameCard />
+      <DailyFrameCard class="hidden md:flex" />
      <!-- Banners Area -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="hidden md:grid md:grid-cols-2 gap-4">
         <!-- Annual Report Banner -->
         <div 
           class="p-4 rounded-xl bg-gradient-to-r from-orange-100 to-amber-50 dark:from-orange-900/30 dark:to-amber-900/20 border border-orange-200 dark:border-orange-800/50 flex items-center justify-between cursor-pointer hover:shadow-md transition-shadow"
@@ -80,7 +84,7 @@
           @show-storage="showStorageDialog = true"
         />
 
-        <div class="bg-white dark:bg-neutral-900 rounded-xl p-5 border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-300">
+        <div class="ts-surface p-4 md:p-6">
           <div class="flex flex-col xl:flex-row gap-6">
             <div class="w-full xl:w-64 flex-shrink-0 pt-4 xl:pt-0 border-t xl:border-t-0 border-gray-100 dark:border-gray-800">
               <TimeChart :data="dashboardData.time" />
@@ -91,8 +95,10 @@
           </div>
         </div>
       </div>
-      <FaceSection :data="dashboardData.face" />
-      <ContentStats :data="dashboardData.content" />
+      <div class="grid items-start gap-4 lg:grid-cols-2">
+        <FootprintCard :data="footprintData" :loading="footprintLoading" @retry="fetchFootprint" />
+        <FaceSection :data="dashboardData.face" />
+      </div>
       <!-- <ToolsSection /> -->
     </div>
     <!-- Error State -->
@@ -115,11 +121,14 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
-import { Search, Images, MoreHorizontal, BookHeart, Film, CalendarDays, HardDrive } from 'lucide-vue-next';
+import { Search, Trash2, Bot, MapPin, MoreHorizontal, BookHeart, Film, CalendarDays, HardDrive } from 'lucide-vue-next';
+import { useUiStore } from '@/stores/uiStore';
+const uiStore = useUiStore();
 const router = useRouter();
 const showHomeActions = ref(false);
 import { ref, computed, onMounted, onActivated } from 'vue';
 import { dashboardApi, DashboardResponse } from '@/api/dashboard';
+import { locationService, type OverviewStats } from '@/api/location';
 import { ElMessage } from 'element-plus';
 
 defineOptions({
@@ -130,21 +139,36 @@ defineOptions({
 import OverviewCards from '@/components/home/OverviewCards.vue';
 import HeatmapSection from '@/components/home/HeatmapSection.vue';
 import FaceSection from '@/components/home/FaceSection.vue';
-import ContentStats from '@/components/home/ContentStats.vue';
+import FootprintCard from '@/components/home/FootprintCard.vue';
 import TimeChart from '@/components/home/TimeChart.vue';
 import OnThisDay from '@/components/OnThisDay.vue';
 import MemoryDiscovery from '@/components/home/MemoryDiscovery.vue';
 import DailyFrameCard from '@/components/home/DailyFrameCard.vue';
 import StorageCenter from '@/components/home/StorageCenter.vue';
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue';
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue';
 
 const loading = ref(false);
 const dashboardData = ref<DashboardResponse | null>(null);
+const footprintData = ref<OverviewStats | null>(null);
+const footprintLoading = ref(false);
+const fetchFootprint = async () => {
+  if (footprintLoading.value) return;
+  footprintLoading.value = true;
+  try {
+    footprintData.value = await locationService.getOverview();
+  } catch (error) {
+    console.error('Failed to load home footprint statistics', error);
+  } finally {
+    footprintLoading.value = false;
+  }
+};
 const showStorageDialog = ref(false);
 const showStorageBadge = ref(false);
 const annualYear = computed(() => new Date().getFullYear() - 1);
 
 const fetchData = async (silent = false) => {
+  void fetchFootprint();
   if (!silent) {
     loading.value = true;
   }

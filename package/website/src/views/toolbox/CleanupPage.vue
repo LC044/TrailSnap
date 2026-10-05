@@ -4,17 +4,12 @@
     <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
       <div class="flex py-3 items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-4">
-            <button 
-            @click="goBack"
-            class="p-2 -ml-2 rounded-full hover:bg-gray-100 dark:bg-gray-900 dark:hover:bg-gray-800 transition-colors"
-            >
-            <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-            </button>
+            <BackButton label="返回工具箱" @click="goBack" />
             <div>
             <h1 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">
                 清理相册
             </h1>
-            <p class="text-xs text-gray-500">{{ subtitle }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ subtitle }}</p>
             </div>
         </div>
         
@@ -32,7 +27,7 @@
     <!-- Content -->
     <div class="mx-auto py-6">
         <!-- Empty State -->
-      <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
+      <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500 dark:text-gray-400">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
           <ImageIcon class="w-12 h-12 opacity-20" />
         </div>
@@ -88,10 +83,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed, watch, onUnmounted, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, Image as ImageIcon } from 'lucide-vue-next'
+import { Image as ImageIcon } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { photoApi } from '@/api/photo'
 import { albumService } from '@/api/album'

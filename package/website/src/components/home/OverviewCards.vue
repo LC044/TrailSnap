@@ -1,6 +1,6 @@
 <template>
   <section
-    class="group relative overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:border-primary-100 hover:shadow-md dark:border-gray-800 dark:bg-neutral-900 dark:hover:border-primary-900/60"
+    class="ts-surface group relative overflow-hidden transition-all duration-300 hover:border-primary-100 hover:shadow-md dark:hover:border-primary-900/60"
     aria-labelledby="photo-overview-title"
   >
     <button
@@ -66,7 +66,7 @@
       <span class="text-xs text-gray-400 dark:text-gray-500">当前媒体文件占用 {{ formattedStorage }}</span>
       <button
         type="button"
-        class="flex shrink-0 items-center gap-1 rounded-md text-xs font-medium text-primary-600 transition-colors hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+        class="ts-button ts-button-ghost px-2 text-primary-600 dark:text-primary-400"
         @click="emit('showStorage')"
       >
         查看存储

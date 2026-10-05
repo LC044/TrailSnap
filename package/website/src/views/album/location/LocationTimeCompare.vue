@@ -2,14 +2,7 @@
   <div class="time-compare min-h-screen bg-gray-950 text-white">
     <header class="fixed inset-x-0 top-0 z-30 flex h-16 items-center justify-between border-b border-white/10 bg-gray-950/85 px-3 backdrop-blur-xl md:px-6">
       <div class="flex min-w-0 items-center gap-2 md:gap-3">
-        <button
-          type="button"
-          class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-white/80 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
-          aria-label="返回"
-          @click="goBack"
-        >
-          <ArrowLeft class="h-5 w-5" />
-        </button>
+        <BackButton label="返回" @click="goBack" />
         <div class="min-w-0">
           <div class="truncate text-sm font-semibold md:text-base">{{ summary?.location_name || '地点时光对照' }}</div>
           <div class="text-xs text-white/60">{{ summary?.match_type === 'nearby_gps' ? `相似视角优先 · GPS ${summary.radius_m} 米内` : '相似视角优先' }}</div>
@@ -196,9 +189,10 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, CalendarDays, ChevronsLeftRight, Download, Images, LoaderCircle, LockKeyhole, Pause, Play, X } from 'lucide-vue-next'
+import { CalendarDays, ChevronsLeftRight, Download, Images, LoaderCircle, LockKeyhole, Pause, Play, X } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { locationService } from '@/api/location'
 import { mapPhotoToImage } from '@/stores/photoStore'

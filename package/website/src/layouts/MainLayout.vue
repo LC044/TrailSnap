@@ -3,7 +3,7 @@
   <div
     :class="[isDarkMode ? 'dark' : '']"
     :style="themeStyle"
-    class="h-screen w-full flex font-sans transition-colors duration-300 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-200 overflow-hidden"
+    class="ts-page-background h-screen w-full flex font-sans transition-colors duration-300 overflow-hidden"
   >
     <!-- 左侧导航栏 -->
     <Sidebar class="hidden md:flex" />
@@ -11,7 +11,7 @@
     <!-- 右侧主体内容区 -->
     <div class="ts-main-content flex-1 flex flex-col min-w-0 transition-colors duration-300 relative" id="main-content-wrapper">
       <!-- 页面内容（移动端底部留出 Tab 栏 + safe-area 高度） -->
-      <main class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 box-border relative pb-[calc(var(--ts-tabbar-h)_+_var(--ts-safe-area-bottom))] md:pb-0">
+      <main class="ts-main-scroll flex-1 min-h-0 overflow-y-auto box-border relative pb-[calc(var(--ts-tabbar-h)_+_var(--ts-safe-area-bottom))] md:pb-0">
         <router-view />
       </main>
     </div>

@@ -13,6 +13,7 @@ import 'element-plus/es/components/notification/style/css'
 import 'element-plus/es/components/loading/style/css'
 
 import './style.css'
+import './styles/ui.css'
 
 import App from './App.vue'
 import router from '@/router';

@@ -1,7 +1,7 @@
 <template>
   <div class="agent-chat-header">
     <div class="flex items-center gap-3">
-      <button @click="emit('toggle-sidebar')" class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors dark:bg-slate-800 p-1 rounded-md">
+      <button @click="emit('toggle-sidebar')" class="ts-icon-button ts-button-ghost" aria-label="会话列表">
         <Menu class="w-5 h-5" />
       </button>
       <div class="w-8 h-8 rounded-full bg-primary-500/10 flex items-center justify-center hidden sm:flex">
@@ -27,11 +27,11 @@
       
       <div class="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
-      <button @click="emit('toggle-fullscreen')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:bg-slate-800 p-1 rounded-md" :title="isFullscreen ? '退出全屏' : '全屏'">
+      <button @click="emit('toggle-fullscreen')" class="ts-icon-button ts-button-ghost" :aria-label="isFullscreen ? '退出全屏' : '全屏'" :title="isFullscreen ? '退出全屏' : '全屏'">
         <Minimize2 v-if="isFullscreen" class="w-5 h-5" />
         <Maximize2 v-else class="w-5 h-5" />
       </button>
-      <button @click="emit('close')" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors dark:bg-slate-800 p-1 rounded-md">
+      <button @click="emit('close')" class="ts-icon-button ts-button-ghost" aria-label="关闭 AI 助手">
         <X class="w-5 h-5" />
       </button>
     </div>
@@ -58,7 +58,12 @@ const emit = defineEmits<{
 
 <style scoped>
 .agent-chat-header {
-  @apply px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10;
+  @apply px-3 py-2 border-b flex justify-between items-center z-10;
+  min-height: var(--ts-header-height);
+  flex-shrink: 0;
+  border-color: var(--ts-color-divider);
+  background: var(--ts-glass-bg);
+  backdrop-filter: blur(var(--ts-glass-blur));
 }
 
 </style>

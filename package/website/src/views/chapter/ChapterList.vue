@@ -1,16 +1,16 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-4 py-6 dark:bg-gray-900 md:px-8">
+  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-6">
     <div class="mx-auto max-w-7xl">
       <div class="flex flex-wrap items-start justify-between gap-4">
-        <div><RouterLink to="/memories" class="text-sm text-primary-600 dark:text-primary-400">← 记忆中心</RouterLink><h1 class="mt-4 font-serif text-3xl text-gray-900 dark:text-white">人生章节</h1><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">把数年的照片装订成日记，按天自动整理，慢慢翻阅。</p></div>
-        <div class="flex gap-2"><button class="rounded-lg border border-primary-200 px-4 py-2 text-primary-600 disabled:opacity-50 dark:border-primary-800 dark:text-primary-400" :disabled="discovering" @click="discover">{{ discovering ? '正在寻找线索' : '发现章节建议' }}</button><RouterLink to="/chapters/new" class="rounded-lg bg-primary-500 px-4 py-2 text-white">新建章节</RouterLink></div>
+        <div><RouterLink to="/memories" class="text-sm text-primary-600 dark:text-primary-400">← 记忆中心</RouterLink><h1 class="ts-page-title mt-4">人生章节</h1><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">把数年的照片装订成日记，按天自动整理，慢慢翻阅。</p></div>
+        <div class="ts-form-actions"><button class="ts-button ts-button-secondary border border-primary-200 text-primary-600 disabled:opacity-50 dark:border-primary-800 dark:text-primary-400" :disabled="discovering" @click="discover">{{ discovering ? '正在寻找线索' : '发现章节建议' }}</button><RouterLink to="/chapters/new" class="ts-button ts-button-primary">新建章节</RouterLink></div>
       </div>
       <div class="mt-7 flex gap-5 overflow-x-auto border-b border-gray-200 dark:border-gray-700">
         <button v-for="tab in tabs" :key="tab.key" class="shrink-0 border-b-2 px-1 py-3 text-sm" :class="active === tab.key ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 dark:text-gray-400'" @click="choose(tab.key)">{{ tab.name }}</button>
       </div>
       <div v-if="store.loading" class="py-24 text-center text-gray-500 dark:text-gray-400">正在整理章节…</div>
-      <div v-else-if="loadError" class="mt-7 rounded-2xl border border-red-200 bg-white px-5 py-16 text-center dark:border-red-900 dark:bg-gray-800"><h2 class="font-serif text-xl text-gray-900 dark:text-white">章节暂时无法加载</h2><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">请稍后重试；已有章节不会因此丢失。</p><button class="mt-5 rounded-lg border border-primary-200 px-4 py-2 text-sm text-primary-600 dark:border-primary-800 dark:text-primary-400" @click="choose(active)">重新加载</button></div>
-      <div v-else-if="!store.items.length" class="mt-7 rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-20 text-center dark:border-gray-700 dark:bg-gray-800"><h2 class="font-serif text-xl text-gray-900 dark:text-white">{{ active === 'confirmed' ? '为这些年的照片，写一本日记' : '这里暂时没有章节' }}</h2><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ active === 'confirmed' ? '选一段时光，照片会按天自动汇入，AI 整理成日记，随时可以修改。' : '章节建议根据照片线索生成，是否成立由你确认。' }}</p><div v-if="active === 'confirmed'" class="mt-6 flex flex-wrap justify-center gap-3"><RouterLink to="/chapters/new" class="min-h-11 rounded-lg bg-primary-500 px-5 py-3 text-sm text-white">创建第一本日记</RouterLink><button class="min-h-11 rounded-lg border border-primary-200 px-5 py-3 text-sm text-primary-600 disabled:opacity-50 dark:border-primary-800 dark:text-primary-400" :disabled="discovering" @click="discover">从照片发现章节</button></div></div>
+      <div v-else-if="loadError" class="ts-surface mt-7 border-red-200 px-5 py-16 text-center dark:border-red-900"><h2 class="font-serif text-xl text-gray-900 dark:text-white">章节暂时无法加载</h2><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">请稍后重试；已有章节不会因此丢失。</p><button class="ts-button ts-button-secondary mt-5 border border-primary-200 text-primary-600 dark:border-primary-800 dark:text-primary-400" @click="choose(active)">重新加载</button></div>
+      <div v-else-if="!store.items.length" class="ts-surface mt-7 border-dashed px-5 py-20 text-center"><h2 class="font-serif text-xl text-gray-900 dark:text-white">{{ active === 'confirmed' ? '为这些年的照片，写一本日记' : '这里暂时没有章节' }}</h2><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ active === 'confirmed' ? '选一段时光，照片会按天自动汇入，AI 整理成日记，随时可以修改。' : '章节建议根据照片线索生成，是否成立由你确认。' }}</p><div v-if="active === 'confirmed'" class="mt-6 flex flex-wrap justify-center gap-3"><RouterLink to="/chapters/new" class="ts-button ts-button-primary">创建第一本日记</RouterLink><button class="ts-button ts-button-secondary min-h-11 border border-primary-200 text-primary-600 disabled:opacity-50 dark:border-primary-800 dark:text-primary-400" :disabled="discovering" @click="discover">从照片发现章节</button></div></div>
       <div v-else class="mt-7 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         <article v-for="item in store.items" :key="item.id" class="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
           <RouterLink :to="`/chapters/${item.id}${store.hidden ? '?manage=1' : ''}`" class="block">
@@ -25,7 +25,7 @@
           </div>
         </article>
       </div>
-      <div v-if="store.total > store.items.length" class="mt-5 text-center"><button class="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm text-primary-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-primary-400" :disabled="store.loadingMore" @click="more">{{ store.loadingMore ? '正在加载…' : `加载更多（已显示 ${store.items.length} / ${store.total}）` }}</button></div>
+      <div v-if="store.total > store.items.length" class="mt-5 text-center"><button class="ts-button ts-button-secondary border border-gray-200 bg-white text-primary-600 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-primary-400" :disabled="store.loadingMore" @click="more">{{ store.loadingMore ? '正在加载…' : `加载更多（已显示 ${store.items.length} / ${store.total}）` }}</button></div>
     </div>
   </div>
 </template>

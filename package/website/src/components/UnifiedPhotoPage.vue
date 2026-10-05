@@ -7,9 +7,7 @@
         <!-- Back & Title -->
         <slot name="header-left" :scrolled="headerScrolled">
           <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
-            <button v-if="showBack" @click="$emit('back')" aria-label="返回" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full backdrop-blur-sm transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" :class="headerScrolled ? 'bg-black/60 hover:bg-black/70' : 'hover:bg-white dark:hover:bg-gray-800'">
-              <ArrowLeft class="w-5 h-5" />
-            </button>
+            <BackButton label="返回" v-if="showBack" @click="$emit('back')" />
             <div class="min-w-0 transition-colors duration-200" :class="headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
               <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled }">
                 <span class="truncate">{{ title }}</span>
@@ -43,9 +41,9 @@
              <!-- Secondary Menu Dropdown -->
             <AdaptiveMenu v-model="showViewOptions" title="照片视图" ref="viewOptionsRef">
                 <div class="space-y-3 p-1">
-                  <button type="button" class="sm:hidden flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="showViewOptions = false; enterBatchMode()">
-                    <CheckSquare class="h-4 w-4" />
-                    <span>批量选择</span>
+                  <button v-if="allowUpload" type="button" class="sm:hidden flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="showViewOptions = false; $emit('upload')">
+                    <UploadCloud class="h-4 w-4" />
+                    <span>上传照片</span>
                   </button>
                   <!-- View Size -->
                   <div v-if="layoutMode !== 'diary'" class="space-y-2">
@@ -53,7 +51,7 @@
                     <div class="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                       <button v-for="size in ['sm', 'md', 'lg']" :key="size"
                         @click="viewSize = size as any"
-                        class="flex-1 min-h-11 p-1.5 rounded text-center transition-colors dark:bg-gray-800"
+                        class="ts-icon-button ts-button-ghost flex-1 min-h-11 text-center dark:bg-gray-800"
                         :class="{ 'bg-white dark:bg-gray-700 shadow-sm text-primary-500': viewSize === size, 'text-gray-700 dark:text-gray-300': viewSize !== size }"
                       >
                         <Grid3x3 v-if="size === 'sm'" class="w-4 h-4 mx-auto" />
@@ -69,7 +67,7 @@
                     <div class="grid grid-cols-1 gap-1">
                        <button
                         @click="showViewOptions = false; layoutMode = 'waterfall'"
-                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
                         :class="layoutMode === 'waterfall' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutDashboard class="w-4 h-4" />
@@ -77,7 +75,7 @@
                       </button>
                       <button
                         @click="showViewOptions = false; layoutMode = 'grid'"
-                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
                         :class="layoutMode === 'grid' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutGrid class="w-4 h-4" />
@@ -85,7 +83,7 @@
                       </button>
                       <button
                         @click="showViewOptions = false; layoutMode = 'moments'"
-                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
                         :class="layoutMode === 'moments' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <LayoutList class="w-4 h-4" />
@@ -95,7 +93,7 @@
                         v-if="allowDiaryView"
                         @click="showViewOptions = false; layoutMode = 'diary'"
                         :aria-pressed="layoutMode === 'diary'"
-                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
                         :class="layoutMode === 'diary' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <BookOpen class="w-4 h-4" />
@@ -104,7 +102,7 @@
                       <button
                         v-if="allowFolderView"
                         @click="showViewOptions = false; layoutMode = 'folder'"
-                        class="flex min-h-11 items-center gap-2 px-3 py-2 rounded-lg transition-colors text-sm"
+                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
                         :class="layoutMode === 'folder' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
                       >
                         <FolderTree class="w-4 h-4" />
@@ -128,9 +126,20 @@
           <!-- Header Actions Slot -->
           <slot name="header-actions"></slot>
 
-          <!-- Upload Button -->
+          <!-- Mobile Batch Select -->
           <button
-            v-if="allowUpload"
+            v-if="mobileMenu"
+            @click="enterBatchMode"
+            class="ts-glass-button"
+            title="批量选择"
+            aria-label="批量选择"
+          >
+            <CheckSquare class="w-5 h-5" />
+          </button>
+
+          <!-- Desktop Upload Button -->
+          <button
+            v-if="allowUpload && !mobileMenu"
             @click="$emit('upload')"
             class="ts-glass-button gap-2 text-sm font-medium sm:w-auto sm:px-4"
             title="上传"
@@ -167,7 +176,7 @@
       >
         <button
           type="button"
-          class="pointer-events-auto flex items-center gap-2 rounded-full bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 text-sm font-medium shadow-lg shadow-primary-500/30 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          class="ts-button ts-button-primary pointer-events-auto flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-primary-500/30 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           :disabled="refreshingData"
           @click="handleRefreshData"
         >
@@ -322,15 +331,15 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import { ref, computed, nextTick, onUnmounted, watch, useSlots } from 'vue'
 import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core'
 import { injectTheme } from '@/composables/useTheme'
 import { useMediaQuery, onClickOutside, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
 import {
-  ArrowLeft, Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
-  UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen
-} from 'lucide-vue-next'
+  Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
+  UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen } from 'lucide-vue-next'
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'

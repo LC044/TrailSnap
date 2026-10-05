@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-full bg-gray-50 px-4 py-6 dark:bg-gray-900 md:px-8">
     <div class="mx-auto max-w-5xl">
-      <button class="text-sm text-primary-600 dark:text-primary-400" @click="router.back()">← 返回章节</button>
+      <BackButton label="返回章节" @click="router.back()" />
       <h1 class="mt-5 font-serif text-3xl text-gray-900 dark:text-white">{{ chapter ? '整理这本影像日记' : '把这些年的照片，装订成日记' }}</h1>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">先选一段时光和一张封面。日记会按年份收录照片，每一页都可以手写或让 AI 起草。</p>
       <div class="mt-7 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
@@ -45,9 +45,9 @@
           </div>
           <button v-if="preview && preview.photo_count" type="button" class="text-sm text-primary-600 dark:text-primary-400" @click="openCoverPicker">浏览全部照片，选择封面 →</button>
           <div class="sticky bottom-20 z-10 flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-white pb-[max(0.75rem,var(--ts-safe-area-bottom))] pt-5 dark:border-gray-700 dark:bg-gray-800 md:bottom-0">
-            <button type="button" class="rounded-lg border border-gray-300 px-4 py-2 dark:border-gray-600" @click="router.back()">取消</button>
-            <button type="submit" class="min-h-11 rounded-lg px-4 py-2 disabled:opacity-50" :class="chapter?.status === 'candidate' ? 'border border-primary-300 text-primary-600 dark:border-primary-700 dark:text-primary-400' : 'bg-primary-500 text-white'" :disabled="saving || !validRange || !form.title.trim()">{{ saving ? '保存中' : chapter?.status === 'candidate' ? '保存建议' : chapter ? '保存日记' : '创建并翻开日记' }}</button>
-            <button v-if="chapter?.status === 'candidate'" type="button" class="rounded-lg bg-primary-500 px-5 py-2 text-white disabled:opacity-50" :disabled="saving || !validRange || !form.title.trim()" @click="save(true)">确认并保存</button>
+            <button type="button" class="ts-button ts-button-secondary border border-gray-300 dark:border-gray-600" @click="router.back()">取消</button>
+            <button type="submit" class="ts-button ts-button-ghost min-h-11 disabled:opacity-50" :class="chapter?.status === 'candidate' ? 'border border-primary-300 text-primary-600 dark:border-primary-700 dark:text-primary-400' : 'bg-primary-500 text-white'" :disabled="saving || !validRange || !form.title.trim()">{{ saving ? '保存中' : chapter?.status === 'candidate' ? '保存建议' : chapter ? '保存日记' : '创建并翻开日记' }}</button>
+            <button v-if="chapter?.status === 'candidate'" type="button" class="ts-button ts-button-primary bg-primary-500 text-white disabled:opacity-50" :disabled="saving || !validRange || !form.title.trim()" @click="save(true)">确认并保存</button>
           </div>
         </form>
         <aside class="h-fit rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'

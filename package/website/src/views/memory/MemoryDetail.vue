@@ -1,12 +1,12 @@
 <template>
-  <div class="min-h-full bg-gray-50 dark:bg-gray-900">
+  <div class="ts-page-background min-h-full">
     <div v-if="loading" class="flex min-h-[70vh] items-center justify-center"><LoaderCircle class="h-8 w-8 animate-spin text-primary-500" /></div>
     <template v-else-if="memory">
       <div class="relative h-[34vh] min-h-[280px] max-h-[480px] overflow-hidden bg-gray-900">
         <img v-if="memory.cover_photo_id" :src="thumbnailUrl(memory.cover_photo_id, 'medium')" :alt="memory.title" class="h-full w-full object-cover" />
         <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/15 to-black/30"></div>
         <div class="absolute left-0 right-0 top-0 flex items-center justify-between p-4 md:p-6">
-          <button class="flex h-11 w-11 items-center justify-center rounded-full bg-black/25 text-white backdrop-blur hover:bg-black/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
+          <BackButton label="返回" @click="router.back()" />
           <div class="flex items-center gap-2">
             <RouterLink v-if="memory.status === 'confirmed'" :to="{ path: '/explore/relations', query: { root: `memory:${memory.id}` } }" class="hidden sm:inline-flex min-h-11 items-center rounded-lg bg-primary-500 px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300">关联</RouterLink>
             <button class="flex h-11 w-11 sm:w-auto items-center justify-center gap-2 rounded-full sm:rounded-lg bg-white/95 sm:px-4 text-sm font-medium text-gray-800 shadow hover:bg-white dark:bg-gray-800/95 dark:text-gray-100 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="编辑记忆" @click="openEdit"><Pencil class="h-5 w-5" /><span class="hidden sm:inline">编辑记忆</span></button>
@@ -49,7 +49,7 @@
             </div>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 md:p-6">
+          <section class="ts-surface p-5 md:p-6">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h2 class="text-lg font-bold text-gray-900 dark:text-white">这段记忆</h2>
               <button
@@ -63,7 +63,7 @@
             <button v-else class="mt-3 rounded-lg text-sm text-primary-600 hover:underline dark:text-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" @click="openEdit">写下这段经历</button>
           </section>
 
-          <section class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 md:p-6">
+          <section class="ts-surface p-5 md:p-6">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-lg font-bold text-gray-900 dark:text-white">照片时间线</h2>
               <div class="items-center gap-2" :class="selectionMode ? 'flex' : 'hidden sm:flex'">
@@ -98,12 +98,12 @@
             </div>
           </section>
 
-          <section v-if="memory.tickets?.length" class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800 md:p-6">
+          <section v-if="memory.tickets?.length" class="ts-surface p-5 md:p-6">
             <h2 class="text-lg font-bold text-gray-900 dark:text-white">行程票据</h2>
             <div class="mt-4 grid gap-3 sm:grid-cols-2">
               <div v-for="ticket in memory.tickets" :key="`${ticket.type}-${ticket.id}`" class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
                 <div class="flex items-center justify-between"><span class="text-sm font-semibold text-primary-600 dark:text-primary-400">{{ ticket.type === 'train' ? '火车票' : '机票' }}</span><span class="font-mono text-sm text-gray-700 dark:text-gray-200">{{ ticket.code }}</span></div>
-                <div class="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><span>{{ ticket.from }}</span><ArrowRight class="h-4 w-4 text-gray-400" /><span>{{ ticket.to }}</span></div>
+                <div class="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><span>{{ ticket.from }}</span><ArrowRight class="h-4 w-4 text-gray-400 dark:text-gray-400" /><span>{{ ticket.to }}</span></div>
                 <p v-if="ticket.date_time" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ formatDateTime(ticket.date_time) }}</p>
               </div>
             </div>
@@ -111,7 +111,7 @@
         </div>
 
         <aside class="space-y-5">
-          <section v-if="memory.evidence.length" class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <section v-if="memory.evidence.length" class="ts-surface p-5">
             <h2 class="flex items-center gap-2 font-bold text-gray-900 dark:text-white"><Sparkles class="h-4 w-4 text-primary-500" />形成依据</h2>
             <ul class="mt-4 space-y-3">
               <li v-for="item in memory.evidence" :key="item.id" class="flex gap-3 text-sm text-gray-600 dark:text-gray-300">
@@ -120,7 +120,7 @@
             </ul>
             <p class="mt-4 text-xs text-gray-400 dark:text-gray-500">待确认依据不会自动成为用户事实。</p>
           </section>
-          <section v-if="memory.people.length" class="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+          <section v-if="memory.people.length" class="ts-surface p-5">
             <h2 class="font-bold text-gray-900 dark:text-white">人物</h2>
             <div class="mt-4 space-y-3">
               <div v-for="person in memory.people" :key="person.id" class="flex items-center gap-3">
@@ -182,11 +182,12 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, CalendarDays, CheckCircle2, Images, LoaderCircle, MapPin, MoreHorizontal, Pencil, Sparkles, Split } from 'lucide-vue-next'
+import { ArrowRight, CalendarDays, CheckCircle2, Images, LoaderCircle, MapPin, MoreHorizontal, Pencil, Sparkles, Split } from 'lucide-vue-next'
 import { memoryApi } from '@/api/memory'
 import type { MemoryItem, MemoryPhoto } from '@/types/memory'
 import type { AlbumImage } from '@/types/album'

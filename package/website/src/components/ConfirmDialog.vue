@@ -10,14 +10,14 @@
           <div class="flex gap-3 justify-end">
              <button 
                @click="cancel"
-               class="px-4 py-2 text-gray-600 dark:text-gray-300 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors font-medium text-sm"
+               class="ts-button ts-button-secondary"
              >
                {{ cancelText }}
              </button>
              <button 
                @click="confirm"
-               class="px-4 py-2 text-white rounded-lg transition-colors shadow-lg font-medium text-sm"
-               :class="type === 'danger' ? 'bg-red-500 hover:bg-red-600 shadow-red-500/30' : 'bg-primary-500 hover:bg-primary-600 shadow-primary-500/30'"
+               class="ts-button"
+               :class="type === 'danger' ? 'ts-button-danger' : 'ts-button-primary'"
              >
                {{ confirmText }}
              </button>

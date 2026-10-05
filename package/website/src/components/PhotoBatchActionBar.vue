@@ -1,66 +1,74 @@
 <template>
+  <Teleport to="body">
+    <div v-if="visible && showMobileHeader" class="selection-mobile-header" data-testid="photo-selection-header">
+      <button class="ts-button ts-button-ghost" @click="$emit('select-all')">{{ isAllSelected ? '取消全选' : '全选' }}</button>
+      <span class="font-semibold" aria-live="polite">已选 {{ selectionCount }} 项</span>
+      <button class="ts-icon-button ts-button-ghost" aria-label="取消选择" @click="$emit('cancel')"><X class="h-5 w-5" /></button>
+    </div>
     <transition
       enter-active-class="transition duration-300 ease-out"
-      enter-from-class="transform -translate-y-full opacity-0"
+      enter-from-class="transform translate-y-6 opacity-0"
       enter-to-class="transform translate-y-0 opacity-100"
       leave-active-class="transition duration-200 ease-in"
       leave-from-class="transform translate-y-0 opacity-100"
-      leave-to-class="transform -translate-y-full opacity-0"
+      leave-to-class="transform translate-y-6 opacity-0"
     >
-      <div v-if="visible" data-testid="photo-selection-bar" class="fixed bottom-[20px] left-0 right-0 z-40 flex justify-center pointer-events-none px-4">
-        <div class="bg-white/90 dark:bg-gray-900/90 backdrop-blur-md border border-gray-200 dark:border-gray-700 shadow-lg rounded-full px-3 py-1 md:py-1 flex items-center gap-2 sm:gap-6 pointer-events-auto min-w-fit max-w-full overflow-x-auto scrollbar-hide">
-          <div class="flex items-center gap-1 md:gap-3 flex-shrink-0">
-            <button @click="$emit('cancel')" class="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors dark:text-gray-300 bg-transparent" title="取消选择">
+      <div v-if="visible" data-testid="photo-selection-bar" class="fixed bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] left-0 right-0 z-40 flex justify-center pointer-events-none px-3">
+        <div class="ts-liquid-glass selection-toolbar pointer-events-auto">
+          <div class="selection-summary flex items-center gap-2">
+            <button @click="$emit('cancel')" class="ts-icon-button ts-button-ghost sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-800 dark:text-gray-300" title="取消选择" aria-label="取消选择">
               <X class="w-5 h-5 text-gray-600 dark:text-gray-300" />
             </button>
             <span class="font-medium text-gray-900 dark:text-white whitespace-nowrap text-sm sm:text-base">
-              <span class="sm:hidden">{{ localSelectedIds.size }}</span>
-              <span class="hidden sm:inline">已选 {{ localSelectedIds.size }} 项</span>
+              <span class="sm:hidden">已选 {{ selectionCount }} 项</span>
+              <span class="hidden sm:inline">已选 {{ selectionCount }} 项</span>
             </span>
+            <button @click="$emit('select-all')" class="ts-button ts-button-ghost selection-all" :title="isAllSelected ? '取消全选' : '全选'">
+              <span class="">{{ isAllSelected ? '取消全选' : '全选' }}</span>
+
+            </button>
           </div>
 
-          <div class="h-6 w-px bg-gray-300 dark:bg-gray-600 flex-shrink-0"></div>
+          <div class="hidden md:block h-6 w-px bg-gray-300 dark:bg-gray-600 flex-shrink-0"></div>
 
-          <div class="flex items-center gap-1 sm:gap-2 flex-nowrap">
-            <button @click="$emit('select-all')" class="p-2 sm:px-3 sm:py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors bg-transparent" :title="isAllSelected ? '取消全选' : '全选'">
-              <span class="hidden sm:inline">{{ isAllSelected ? '取消全选' : '全选' }}</span>
-              <CheckSquare class="w-5 h-5 sm:hidden" />
-            </button>
+          <div class="selection-actions" :style="{ '--selection-action-columns': actionColumns }">
+            <slot name="actions">
+
 
             <button
                 @click="$emit('add-to-album', selectedArray)"
                 :disabled="localSelectedIds.size === 0"
-                class="bg-transparent flex items-center gap-2 p-2 sm:px-4 sm:py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                class="ts-icon-button ts-button-ghost flex items-center gap-2 sm:px-4 sm:py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="添加到相册"
                 >
-                <ImagePlusIcon class="w-5 h-5" />
+                <ImagePlusIcon class="w-5 h-5" /><span>加入相册</span>
             </button>
 
             <!-- Download Action -->
             <button
               @click="$emit('download')"
               :disabled="localSelectedIds.size === 0 || isDownloading"
-              class="bg-transparent p-2 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed relative group"
+              class="ts-icon-button ts-button-ghost text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 disabled:opacity-50 disabled:cursor-not-allowed relative group"
               title="保存到本地"
             >
               <Loader2 v-if="isDownloading" class="w-5 h-5 animate-spin" />
-              <Download v-else class="w-5 h-5" />
+              <Download v-else class="w-5 h-5" /><span>保存</span>
             </button>
 
             <!-- Delete/Remove Action -->
             <button
               @click="$emit('delete')"
               :disabled="localSelectedIds.size === 0"
-              class="bg-transparent p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="ts-icon-button ts-icon-danger text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               :title="deleteLabel"
             >
-              <Trash2 class="w-5 h-5" />
+              <Trash2 class="w-5 h-5" /><span>{{ deleteLabel }}</span>
             </button>
 
             <!-- More Actions -->
             <el-dropdown trigger="click" placement="top-end">
-              <button class="bg-transparent p-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                <MoreHorizontal class="w-5 h-5" />
+              <button class="ts-icon-button ts-button-ghost text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
+                <MoreHorizontal class="w-5 h-5" /><span>更多</span>
               </button>
               <template #dropdown>
                 <el-dropdown-menu>
@@ -127,10 +135,12 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            </slot>
           </div>
         </div>
       </div>
     </transition>
+  </Teleport>
 
 </template>
 <script setup lang="ts">
@@ -144,8 +154,12 @@ const props = withDefaults(defineProps<{
   deleteLabel: string
   albumContext?: boolean
   allowTransfer?: boolean
-}>(), { albumContext: false, allowTransfer: false })
+  selectedCount?: number
+  actionColumns?: number
+  showMobileHeader?: boolean
+}>(), { albumContext: false, allowTransfer: false, actionColumns: 4, showMobileHeader: true })
 const localSelectedIds = computed(() => props.selectedIds)
+const selectionCount = computed(() => props.selectedCount ?? props.selectedIds.size)
 const selectedArray = computed(() => Array.from(props.selectedIds))
 const emit = defineEmits<{
   cancel: []; 'select-all': []; download: []; delete: []; person: []
@@ -154,3 +168,21 @@ const emit = defineEmits<{
   transfer: [action: 'move' | 'copy', ids: string[]]
 }>()
 </script>
+
+<style scoped>
+.selection-mobile-header { display: none; }
+.selection-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 24px; background: var(--ts-glass-panel); max-width: 100%; }
+.selection-summary { flex-shrink: 0; }
+.selection-actions { display: flex; gap: 4px; }
+.selection-actions :deep(button) { width: auto; padding-inline: 12px; gap: 6px; font-size: 13px; }
+@media (max-width: 767px) {
+  .selection-mobile-header { position: fixed; top: 0; inset-inline: 0; z-index: 60; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: calc(var(--ts-header-height) + var(--ts-safe-area-top)); padding: calc(8px + var(--ts-safe-area-top)) 12px 8px; background: var(--ts-glass-panel); color: var(--ts-color-text); border-bottom: 1px solid var(--ts-color-divider); backdrop-filter: blur(var(--ts-glass-blur-panel)); }
+  .selection-toolbar { width: min(100%, 440px); padding: 6px; border-radius: var(--ts-radius-pill); }
+  .selection-summary { display: none; }
+  .selection-summary { width: 100%; }
+  .selection-all { margin-left: auto; padding-inline: 12px; }
+  .selection-actions { width: 100%; display: grid; grid-template-columns: repeat(var(--selection-action-columns, 4), minmax(0, 1fr)); }
+  .selection-actions :deep(.el-dropdown) { display: block; min-width: 0; }
+  .selection-actions :deep(button) { width: 100%; min-width: 0; height: 54px; flex-direction: column; gap: 3px; padding: 4px 0; font-size: 11px; }
+}
+</style>

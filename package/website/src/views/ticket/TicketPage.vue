@@ -1,7 +1,7 @@
 <template>
   <div 
     :class="[isDarkMode ? 'dark' : '']"
-    class="mx-auto w-full max-w-screen-2xl min-h-screen font-sans transition-colors duration-300 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200"
+    class="ts-page-background mx-auto w-full max-w-screen-2xl min-h-full font-sans"
   >
     <TicketHeader
       v-model:searchQuery="searchQuery"
