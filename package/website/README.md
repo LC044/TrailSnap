@@ -73,6 +73,14 @@ GitHub Actions 会在手动运行 `Build Mobile App`、提交信息包含 `构�
 `v*.*.*` 标签时构建 APK。只有版本标签会把 APK 追加到同标签的正式 GitHub Release；
 手动运行和提交关键字触发的安装包只保留在对应 Actions 运行的 Artifacts 中。
 
+Android 在各系统版本上统一采用边到边显示，保留状态栏和系统导航操作。
+`MainActivity` 负责读取系统栏及刘海的 WindowInsets，向页面注入
+`--safe-area-inset-*`；`SystemBars.insetsHandling` 设为 `disable`，避免容器重复留白。
+页面使用 `src/style.css` 中的 `--ts-safe-area-*`，浏览器和 iOS 自动回退到 `env()`。
+普通页面由布局避让顶部安全区；相册封面延伸到状态栏后方，工具栏自行避让一次。
+修改后应在不同 Android/WebView 版本上检查相册初始位置、滚动后的工具栏、
+横竖屏切换、底部手势/三键导航以及软键盘打开和关闭。
+
 ## 环境变量（暂不需要）
 
 在根目录下创建 `.env` 或 `.env.local` 文件来配置环境变量：

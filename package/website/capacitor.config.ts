@@ -16,6 +16,10 @@ const config: CapacitorConfig = {
     // Self-hosted instances are often exposed on a LAN over HTTP.
     allowMixedContent: true,
   },
+  plugins: {
+    // MainActivity handles insets consistently on all Android/WebView versions.
+    SystemBars: { insetsHandling: 'disable' },
+  },
 }
 
 export default config

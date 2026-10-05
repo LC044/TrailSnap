@@ -3,7 +3,7 @@
   <Transition name="bottom-nav-slide">
     <nav
       v-show="!uiStore.selectionActive"
-      class="liquid-glass-nav fixed inset-x-3 bottom-[calc(20px_+_env(safe-area-inset-bottom))] z-40 md:hidden"
+      class="liquid-glass-nav fixed inset-x-3 bottom-[calc(20px_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
       :class="{ 'is-flowing': bubbleMoving, 'is-dark': isDarkMode }"
       aria-label="主导航"
     >
@@ -96,7 +96,7 @@
     :close-on-press-escape="true"
     class="more-sheet"
   >
-    <div class="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_12px)]">
+    <div class="px-4 pt-3 pb-[calc(var(--ts-safe-area-bottom)_+_12px)]">
       <div class="relative mb-4 flex items-center justify-between pt-3">
         <div class="absolute left-1/2 top-0 h-1 w-10 -translate-x-1/2 rounded-full bg-slate-300 dark:bg-slate-600" />
         <div>
@@ -414,14 +414,14 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 9999px;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.58), rgba(248, 250, 252, 0.28));
+    linear-gradient(145deg, rgba(255, 255, 255, 0.4), rgba(248, 250, 252, 0.18));
   box-shadow:
     0 18px 42px rgba(15, 23, 42, 0.16),
     0 3px 10px rgba(15, 23, 42, 0.08),
     inset 0 1.5px 1px rgba(255, 255, 255, 0.92),
     inset 0 -1px 1px rgba(100, 116, 139, 0.16);
-  -webkit-backdrop-filter: blur(16px) saturate(175%) contrast(108%);
-  backdrop-filter: blur(16px) saturate(175%) contrast(108%);
+  -webkit-backdrop-filter: blur(3px) saturate(145%) contrast(103%);
+  backdrop-filter: blur(3px) saturate(145%) contrast(103%);
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 220ms ease;
@@ -485,8 +485,8 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
     0 7px 18px rgba(var(--theme-rgb), 0.16),
     inset 0 1.5px 1px rgba(255, 255, 255, 0.88),
     inset 0 -1px 1px rgba(var(--theme-rgb), 0.1);
-  -webkit-backdrop-filter: blur(7px) saturate(190%);
-  backdrop-filter: blur(7px) saturate(190%);
+  -webkit-backdrop-filter: blur(2px) saturate(155%);
+  backdrop-filter: blur(2px) saturate(155%);
   transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }

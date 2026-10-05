@@ -1,4 +1,5 @@
 import 'mingcute_icon/font/Mingcute.css';
+import { Capacitor } from '@capacitor/core'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'  // 1. 导入 createPinia
 // Element Plus 按需引入：模板组件（el-dialog / el-select 等）与 v-loading 指令由
@@ -25,6 +26,7 @@ import { registerConnectionDeepLinks } from '@/config/serverConnection'
 import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
 
 async function bootstrap() {
+  document.documentElement.classList.toggle('capacitor-android', Capacitor.getPlatform() === 'android')
   document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
   await initializeServerConfig()
   installNativeNetworkPolicy(getServerUrl)

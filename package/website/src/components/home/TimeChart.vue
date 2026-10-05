@@ -2,7 +2,7 @@
   <div class="w-full h-full flex flex-col justify-between">
     <!-- Header -->
     <div class="flex justify-between items-center mb-4">
-      <h3 class="text-base font-bold text-gray-800 dark:text-gray-100">拍摄时光</h3>
+      <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100">拍摄时光</h3>
       <span class="text-xs text-gray-500">{{ latestYear }}年占{{ latestYearData?.percentage }}%</span>
     </div>
 

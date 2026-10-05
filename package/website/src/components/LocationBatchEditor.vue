@@ -226,7 +226,7 @@ const handleApply = async () => {
   }
   .batch-location-dialog .el-dialog__footer {
     flex: none;
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-bottom: max(12px, var(--ts-safe-area-bottom));
   }
   .batch-location-content { height: 100%; flex-direction: column; gap: 8px; }
   .batch-location-map { flex: 1; min-height: 0; }

@@ -25,7 +25,7 @@
           <div class="absolute top-0 right-0 w-32 h-32 bg-primary-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
           <div class="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -ml-8 -mb-8 pointer-events-none"></div>
           
-          <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 w-full text-left mb-2 z-10">总占用空间</h3>
+          <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 w-full text-left mb-2 z-10">总占用空间</h3>
           <div class="text-center z-10 my-2">
             <p class="text-3xl sm:text-4xl font-black text-primary-500 tracking-tight">{{ formatSize(overviewData.total_size) }}</p>
           </div>
@@ -47,7 +47,7 @@
         <!-- Recoverable Space -->
         <div class="xl:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
           <div class="flex items-center justify-between mb-4 sm:mb-6">
-            <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+            <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
               <i class="mgc_magic_line text-amber-500 text-xl"></i>
               空间清理建议
             </h3>
@@ -82,14 +82,14 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- By Type -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-          <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+          <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
             <i class="mgc_pie_chart_line text-blue-500 text-xl"></i> 文件类型分布
           </h3>
           <div ref="typeChartRef" class="w-full h-[260px] sm:h-[280px]"></div>
         </div>
         <!-- By Device -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-          <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+          <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
             <i class="mgc_camera_line text-orange-500 text-xl"></i> 拍摄设备分布
           </h3>
           <div ref="deviceChartRef" class="w-full h-[260px] sm:h-[280px]"></div>
@@ -98,7 +98,7 @@
         <!-- By Time -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
           <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
-            <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+            <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
               <i class="mgc_chart_bar_line text-indigo-500 text-xl"></i> 历史占用分布
             </h3>
             <div class="flex items-center gap-2 flex-wrap">
@@ -139,7 +139,7 @@
 
       <!-- Folder Treemap -->
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-        <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+        <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <i class="mgc_folder_2_line text-emerald-500 text-xl"></i> 文件夹占用比例
         </h3>
         <div ref="folderChartRef" class="w-full h-[300px] sm:h-[360px]"></div>
@@ -147,7 +147,7 @@
 
       <!-- 3. Top Large Files Block -->
       <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
-        <h3 class="text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+        <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <i class="mgc_layout_list_line text-rose-500 text-xl"></i> 空间占用 Top 20
         </h3>
 

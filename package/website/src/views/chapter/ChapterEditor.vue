@@ -44,7 +44,7 @@
             </div>
           </div>
           <button v-if="preview && preview.photo_count" type="button" class="text-sm text-primary-600 dark:text-primary-400" @click="openCoverPicker">浏览全部照片，选择封面 →</button>
-          <div class="sticky bottom-20 z-10 flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-white pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-5 dark:border-gray-700 dark:bg-gray-800 md:bottom-0">
+          <div class="sticky bottom-20 z-10 flex flex-wrap justify-end gap-2 border-t border-gray-200 bg-white pb-[max(0.75rem,var(--ts-safe-area-bottom))] pt-5 dark:border-gray-700 dark:bg-gray-800 md:bottom-0">
             <button type="button" class="rounded-lg border border-gray-300 px-4 py-2 dark:border-gray-600" @click="router.back()">取消</button>
             <button type="submit" class="min-h-11 rounded-lg px-4 py-2 disabled:opacity-50" :class="chapter?.status === 'candidate' ? 'border border-primary-300 text-primary-600 dark:border-primary-700 dark:text-primary-400' : 'bg-primary-500 text-white'" :disabled="saving || !validRange || !form.title.trim()">{{ saving ? '保存中' : chapter?.status === 'candidate' ? '保存建议' : chapter ? '保存日记' : '创建并翻开日记' }}</button>
             <button v-if="chapter?.status === 'candidate'" type="button" class="rounded-lg bg-primary-500 px-5 py-2 text-white disabled:opacity-50" :disabled="saving || !validRange || !form.title.trim()" @click="save(true)">确认并保存</button>

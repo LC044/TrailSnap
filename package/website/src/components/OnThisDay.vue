@@ -9,7 +9,7 @@
           <CalendarCheck class="w-6 h-6" />
         </div>
         <div>
-          <h2 class="text-base font-bold text-gray-800 dark:text-white">那年今日</h2>
+          <h2 class="ts-section-title text-base font-bold text-gray-800 dark:text-white">那年今日</h2>
           <p class="text-xs text-gray-500 dark:text-gray-400">重温美好回忆</p>
         </div>
       </div>

@@ -204,7 +204,7 @@
     </main>
 
     <!-- 底部操作栏 -->
-    <footer class="flex-none pt-4 px-6 flex items-center justify-center gap-8 z-20 bg-gradient-to-t from-slate-50 dark:from-slate-900 to-transparent pb-[calc(2rem+env(safe-area-inset-bottom))]">
+    <footer class="flex-none pt-4 px-6 flex items-center justify-center gap-8 z-20 bg-gradient-to-t from-slate-50 dark:from-slate-900 to-transparent pb-[calc(2rem+var(--ts-safe-area-bottom))]">
       <button
         @click="swipeLeft"
         :disabled="photos.length === 0"

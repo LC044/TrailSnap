@@ -332,7 +332,7 @@
         <div
           v-if="!isEditing && controlsVisible"
           data-testid="photo-lightbox-mobile-toolbar"
-          class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
+          class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,var(--ts-safe-area-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
         >
           <div class="flex items-start gap-1 min-w-0">
             <button
@@ -396,7 +396,7 @@
         <div
           v-if="mobileDockVisible"
           data-testid="photo-lightbox-mobile-actions"
-          class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-black/85"
+          class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,var(--ts-safe-area-bottom))] bg-black/85"
           @click.stop
         >
           <div class="flex items-stretch justify-around">
@@ -425,7 +425,7 @@
         <div v-if="showMobileMenu" class="md:hidden fixed inset-0 z-[104]" data-testid="photo-lightbox-mobile-sheet" @click.stop="closeMobileMenu">
           <div class="absolute inset-0 bg-black/55 backdrop-blur-[2px]"></div>
           <div
-            class="sheet-panel absolute bottom-0 left-0 right-0 rounded-t-2xl bg-gray-900/95 border-t border-white/10 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+            class="sheet-panel absolute bottom-0 left-0 right-0 rounded-t-2xl bg-gray-900/95 border-t border-white/10 px-3 pt-3 pb-[max(0.75rem,var(--ts-safe-area-bottom))]"
             @click.stop
           >
             <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-white/25"></div>
@@ -919,8 +919,8 @@ const mobileDockVisible = computed(() =>
 // 内联 style 无法按断点区分，会把桌面端的缩略图条一起顶高。
 const thumbnailStripPaddingClass = computed(() =>
     mobileDockVisible.value
-        ? 'pb-[calc(0.75rem+4.25rem+env(safe-area-inset-bottom))] md:pb-[calc(0.75rem+env(safe-area-inset-bottom))]'
-        : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]',
+        ? 'pb-[calc(0.75rem+4.25rem+var(--ts-safe-area-bottom))] md:pb-[calc(0.75rem+var(--ts-safe-area-bottom))]'
+        : 'pb-[calc(0.75rem+var(--ts-safe-area-bottom))]',
 )
 
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']

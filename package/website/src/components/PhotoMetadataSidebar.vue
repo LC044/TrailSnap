@@ -812,7 +812,7 @@ const saveLocationEdit = async () => {
     height: 58dvh;
     border-left: 0;
     border-radius: 24px 24px 0 0;
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--ts-safe-area-bottom);
     overscroll-behavior: contain;
     transform: translate3d(0, var(--mobile-details-translate, 0%), 0);
     box-shadow: 0 -12px 36px rgb(0 0 0 / 18%);
@@ -878,7 +878,7 @@ const saveLocationEdit = async () => {
   }
   .photo-location-edit-dialog .el-dialog__header { flex: none; }
   .photo-location-edit-dialog .el-dialog__body { flex: 1; min-height: 0; padding: 8px 12px; }
-  .photo-location-edit-dialog .el-dialog__footer { flex: none; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+  .photo-location-edit-dialog .el-dialog__footer { flex: none; padding-bottom: max(12px, var(--ts-safe-area-bottom)); }
   .photo-location-edit-content { height: 100%; flex-direction: column; gap: 8px; }
   .photo-location-edit-map { flex: 1; min-height: 0; }
   .photo-location-edit-controls { width: 100%; flex: none; gap: 6px; }

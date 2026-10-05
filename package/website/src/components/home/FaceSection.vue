@@ -2,7 +2,7 @@
   <div class="bg-white dark:bg-neutral-900 rounded-lg py-3 my-3">
     <!-- Header -->
     <div class="flex justify-between items-center mb-3">
-      <h3 class="text-base font-bold text-gray-800 dark:text-gray-100">人物相册</h3>
+      <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100">人物相册</h3>
       <span 
         class="text-xs text-blue-500 cursor-pointer"
         @click="$router.push('/album/people')"

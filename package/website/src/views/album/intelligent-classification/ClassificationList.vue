@@ -6,7 +6,7 @@
         <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
           <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
         </button>
-        <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">智能分类</h1>
+        <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">智能分类</h1>
       </div>
     </div>
 
@@ -56,7 +56,7 @@
           </div>
 
           <div class="mt-2.5 px-1">
-            <h3 class="font-semibold text-gray-900 dark:text-white truncate" :title="tag.tag_name">
+            <h3 class="ts-card-title font-semibold text-gray-900 dark:text-white truncate" :title="tag.tag_name">
               {{ tag.tag_name }}
             </h3>
             <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-0.5">

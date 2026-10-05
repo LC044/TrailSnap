@@ -17,7 +17,7 @@
             <Images class="h-5 w-5" aria-hidden="true" />
           </span>
           <div>
-            <h2 id="photo-overview-title" class="text-base font-bold text-gray-900 dark:text-gray-100">我的照片</h2>
+            <h2 id="photo-overview-title" class="ts-section-title text-base font-bold text-gray-900 dark:text-gray-100">我的照片</h2>
             <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">珍藏生活中的每一段时光</p>
           </div>
         </div>

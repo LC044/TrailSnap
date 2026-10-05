@@ -28,7 +28,7 @@
         </button>
       </div>
 
-      <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,var(--ts-safe-area-bottom))]">
         <div v-if="loading" class="flex justify-center py-10 text-primary-500"><Loader2 class="h-6 w-6 animate-spin" /></div>
         <div v-else-if="filteredAlbums.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
           {{ searchQuery ? '未找到相关相册' : mode === 'add' ? '暂无普通相册' : '暂无可选相册' }}

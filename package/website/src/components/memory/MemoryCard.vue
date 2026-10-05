@@ -65,11 +65,14 @@
 
       <p v-else-if="memory.story" class="mt-3 line-clamp-2 text-sm text-gray-600 dark:text-gray-300">{{ memory.story }}</p>
 
-      <div class="mt-4 flex items-center gap-2">
+      <div v-if="!selectable" class="mt-4 flex items-center gap-2">
         <template v-if="memory.status === 'candidate'">
-          <button class="flex-1 rounded-lg bg-primary-500 px-3 py-2 text-sm font-medium text-white transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$emit('confirm', memory)">确认记忆</button>
-          <button class="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$emit('open', memory)">查看并整理</button>
-          <button class="rounded-lg px-2 py-2 text-sm text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" aria-label="忽略候选" @click="$emit('ignore', memory)">忽略</button>
+          <button class="min-h-11 flex-1 rounded-lg bg-primary-500 px-3 text-sm font-medium text-white transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$emit('confirm', memory)">确认记忆</button>
+          <button class="min-h-11 flex-1 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$emit('open', memory)">查看详情</button>
+          <el-dropdown trigger="click" placement="top-end">
+            <button class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="更多候选记忆操作"><MoreHorizontal class="h-5 w-5" /></button>
+            <template #dropdown><el-dropdown-menu><el-dropdown-item @click="$emit('ignore', memory)">忽略候选</el-dropdown-item></el-dropdown-menu></template>
+          </el-dropdown>
         </template>
         <template v-else-if="memory.status === 'ignored'">
           <button class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="$emit('restore', memory)">恢复为待确认</button>
@@ -84,7 +87,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CalendarDays, Image as ImageIcon, Images, MapPin, Sparkles } from 'lucide-vue-next'
+import { CalendarDays, Image as ImageIcon, Images, MapPin, MoreHorizontal, Sparkles } from 'lucide-vue-next'
 import type { MemoryItem } from '@/types/memory'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 
