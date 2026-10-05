@@ -178,5 +178,10 @@
         "version": "0.17.0",
         "update_info": "- 新增人生章节：将照片与记忆整理为可阅读的日记和故事<br>- 新增记忆关系图与人物时光线，回看人物、地点和经历的联系<br>- 新增一日一帧：挑选每日瞬间，预览和导出每天一秒的静音影片<br>- 照片日记布局、地图轨迹连线与后台色彩重分析<br>- 优化设置和相册浏览，修复位置编辑、虚拟滚动与 HTTPS 部署问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.0"
+    },
+    {
+        "version": "0.17.1",
+        "update_info": "- 手机照片日记支持单页阅读、文字分页和手势翻页<br>- 统一液体玻璃工具栏与底部操作菜单，优化首页、相册和记忆布局<br>- 修复 Android 系统栏安全区与键盘布局<br>- Server 镜像压缩层本地实测减少约 59%–61%，保留常见视频与影片生成能力<br>- 改进多架构镜像构建和国内镜像同步",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.1"
     }
 ]

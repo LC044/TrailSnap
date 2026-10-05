@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-04 (0.17.1)
+
+### New
+
+- Mobile photo diaries now support single-page reading, automatic text pagination, date selection, and swipe navigation
+
+### Improvements
+
+- Unified liquid-glass toolbars and responsive action menus across photos, albums, and memories, with bottom sheets on small screens
+- Refined headings, cards, and spacing on home, album, and memory pages for mobile browsing
+- Reduced Server Docker image size: local measurements show about 61% / 59% smaller compressed layers on AMD64 / ARM64, while retaining common video reading, thumbnails, and daily-frame film generation
+
+### Bug Fixes
+
+- Fixed Android system-bar safe areas and keyboard layout spacing for photo covers and toolbars
+- Improved multi-architecture Server builds and synchronization to the China container registry
+
 ## 2026-10-03 (0.17.0)
 
 ### New
