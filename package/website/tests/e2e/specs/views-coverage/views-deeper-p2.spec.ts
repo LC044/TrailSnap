@@ -13,9 +13,13 @@ async function mockTicketApis(page: Page, tickets: (typeof trainTicket)[]) {
     from: ticket.departure_station, to: ticket.arrival_station, date_time: ticket.date_time,
     name: ticket.name, price: ticket.price, distance: ticket.total_mileage,
     duration: ticket.total_running_time, comments: ticket.comments, photo_id: null,
-    albums: [], memories: [], candidates: [],
+    seat_type: ticket.seat_type, carriage: ticket.carriage, seat_num: ticket.seat_num, berth_type: ticket.berth_type,
+    albums: [], memories: [], candidates: [], photos: [],
   }))
   await page.route('**/api/ticket-wallet?**', route => route.fulfill({ json: ok({ items, total: items.length }) }))
+  for (const item of items) {
+    await page.route(`**/api/ticket-wallet/train/${item.id}`, route => route.fulfill({ json: ok(item) }))
+  }
   await page.route('**/api/train-ticket**', async (route: Route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok({ items: tickets, total: tickets.length })) })
@@ -113,7 +117,7 @@ test.describe('票夹交通统计 / 纪念票面 @views-coverage', () => {
     await page.locator('main article').getByRole('button').first().click()
     const detail = page.getByRole('dialog', { name: '火车票详情', exact: true })
     await detail.getByRole('button', { name: '更多票据操作', exact: true }).click()
-    await detail.getByRole('button', { name: '纪念票面', exact: true }).click()
+    await page.getByRole('button', { name: '纪念票面', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '纪念票面', exact: true })
     await expect(dialog).toBeVisible()
     const style = dialog.getByRole('combobox', { name: '票面样式', exact: true })
