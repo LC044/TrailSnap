@@ -160,8 +160,8 @@
     <Transition name="drawer">
       <div v-if="pickerOpen" class="fixed inset-0 z-40" @click.self="closePicker">
         <div class="absolute inset-0 bg-black/55 backdrop-blur-sm" @click="closePicker"></div>
-        <aside class="absolute inset-x-0 bottom-0 max-h-[72vh] overflow-hidden rounded-t-3xl border-t border-white/10 bg-gray-900 shadow-2xl md:inset-y-0 md:left-auto md:w-[420px] md:max-h-none md:rounded-none md:border-l md:border-t-0">
-          <div class="flex items-center justify-between border-b border-white/10 px-4 py-4">
+        <aside ref="pickerPanel" :style="pickerGesture.style.value" class="absolute inset-x-0 bottom-0 flex max-h-[72vh] flex-col overflow-hidden rounded-t-3xl border-t border-white/10 bg-gray-900 shadow-2xl md:inset-y-0 md:left-auto md:w-[420px] md:max-h-none md:rounded-none md:border-l md:border-t-0">
+          <div class="picker-drag-zone flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-4" @pointerdown="pickerGesture.start" @pointermove="pickerGesture.move" @pointerup="pickerGesture.finish" @pointercancel="pickerGesture.finish" @lostpointercapture="pickerGesture.finish">
             <div>
               <h2 class="font-semibold">正在更换{{ pickerSide === 'left' ? '较早' : '较晚' }}照片</h2>
               <p class="mt-0.5 text-xs text-white/60">全部候选 · 按与另一侧的匹配分排序 · {{ pickerPhotos.length }} 张</p>
@@ -169,7 +169,7 @@
             <button type="button" class="grid h-9 w-9 place-items-center rounded-full text-white/75 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="关闭照片选择器" @click="closePicker"><X class="h-5 w-5" /></button>
           </div>
           <div v-if="pickerLoading" class="flex h-48 items-center justify-center"><LoaderCircle class="h-7 w-7 animate-spin text-primary-500" /></div>
-          <div v-else class="grid max-h-[calc(72vh-73px)] grid-cols-3 gap-2 overflow-y-auto p-3 md:max-h-[calc(100vh-73px)]">
+          <div v-else class="grid min-h-0 grid-cols-3 gap-2 overflow-y-auto p-3 md:max-h-[calc(100vh-73px)]">
             <button
               v-for="photo in pickerPhotos"
               :key="photo.id"
@@ -191,6 +191,7 @@
 <script setup lang="ts">
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useSheetGesture } from '@/composables/useSheetGesture'
 import { useRoute, useRouter } from 'vue-router'
 import { CalendarDays, ChevronsLeftRight, Download, Images, LoaderCircle, LockKeyhole, Pause, Play, X } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
@@ -220,6 +221,8 @@ const compareCanvas = ref<HTMLElement | null>(null)
 const photoCache = new Map<string, Photo[]>()
 
 const pickerOpen = ref(false)
+const pickerPanel = ref<HTMLElement | null>(null)
+const pickerGesture = useSheetGesture(pickerPanel, pickerOpen, computed(() => true), closePicker)
 const pickerSide = ref<CompareSide>('right')
 const pickerPhotos = ref<Photo[]>([])
 const pickerLoading = ref(false)
@@ -541,6 +544,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+@media (max-width: 767px) { .picker-drag-zone { touch-action: none; user-select: none; } }
 .time-compare {
   background:
     radial-gradient(circle at 50% 0%, rgba(var(--theme-rgb), 0.08), transparent 34rem),

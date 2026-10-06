@@ -26,6 +26,8 @@
     </div>
 
 
+    <DisplayDiagnostics v-if="showDisplayDiagnostics" class="mt-3" />
+
     <!-- Loading State -->
     <div v-if="loading" class="flex items-center justify-center min-h-[400px] h-full">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
@@ -147,6 +149,8 @@ import DailyFrameCard from '@/components/home/DailyFrameCard.vue';
 import StorageCenter from '@/components/home/StorageCenter.vue';
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue';
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue';
+import DisplayDiagnostics from '@/components/home/DisplayDiagnostics.vue';
+const showDisplayDiagnostics = import.meta.env.DEV && new URLSearchParams(window.location.search).get('displayDiagnostics') === '1';
 
 const loading = ref(false);
 const dashboardData = ref<DashboardResponse | null>(null);

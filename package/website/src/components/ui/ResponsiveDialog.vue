@@ -5,6 +5,7 @@
         v-if="modelValue"
         class="fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-6"
         role="presentation"
+        :style="{ visibility: navigationDismissed ? 'hidden' : undefined }"
         @wheel.self.prevent
         :class="{ 'responsive-dialog-right': placement === 'right' }"
       >
@@ -23,10 +24,12 @@
           :aria-labelledby="titleId"
           class="responsive-dialog-panel relative z-10 flex w-full flex-col overflow-hidden bg-[var(--ts-color-surface)] shadow-[var(--ts-shadow-floating)] md:max-h-[90dvh] md:rounded-[var(--ts-radius-dialog)]"
           :class="[glass ? 'ts-liquid-glass ts-glass-sheet' : '', mobileMode === 'fullscreen' ? 'mobile-fullscreen h-[100dvh] rounded-none' : 'max-h-[92dvh] rounded-t-[var(--ts-radius-dialog)]']"
-          :style="{ '--responsive-dialog-max-width': maxWidth }"
+          :style="{ '--responsive-dialog-max-width': maxWidth, ...sheet.style.value }"
         >
-          <div v-if="mobileMode === 'sheet'" class="mx-auto mt-2 h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-700 md:hidden" />
-          <header class="responsive-dialog-header ts-divider flex min-h-[var(--ts-header-height)] shrink-0 items-center gap-3 border-b px-4 md:px-6">
+          <div v-if="mobileMode === 'sheet'" class="sheet-drag-zone flex h-7 shrink-0 items-center justify-center md:hidden" @pointerdown="sheet.start" @pointermove="sheet.move" @pointerup="sheet.finish" @pointercancel="sheet.finish" @lostpointercapture="sheet.finish">
+            <span class="h-1 w-10 rounded-full bg-gray-300 dark:bg-gray-700" />
+          </div>
+          <header class="responsive-dialog-header ts-divider flex min-h-[var(--ts-header-height)] shrink-0 items-center gap-3 border-b px-4 md:px-6" :class="{ 'sheet-drag-zone': mobileMode === 'sheet' }" @pointerdown="sheet.start" @pointermove="sheet.move" @pointerup="sheet.finish" @pointercancel="sheet.finish" @lostpointercapture="sheet.finish">
             <BackButton v-if="mobileBack" class="md:hidden" label="返回" @click="close" />
             <div class="min-w-0 flex-1">
               <h2 :id="titleId" class="truncate text-base font-semibold text-[var(--ts-color-text)]">{{ title }}</h2>
@@ -50,10 +53,12 @@
 
 <script setup lang="ts">
 import BackButton from '@/components/ui/BackButton.vue'
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import IconButton from '@/components/ui/IconButton.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
+import { useSheetGesture } from '@/composables/useSheetGesture'
+import { useRouteDismiss } from '@/composables/useRouteDismiss'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -82,6 +87,7 @@ const emit = defineEmits<{
 }>()
 
 const panelRef = ref<HTMLElement | null>(null)
+const navigationDismissed = ref(false)
 let returnFocus: HTMLElement | null = null
 const visible = computed(() => props.modelValue)
 const titleId = `responsive-dialog-${Math.random().toString(36).slice(2)}`
@@ -92,6 +98,14 @@ const close = () => {
 }
 
 useOverlayStack(visible, close)
+const dismissForNavigation = () => {
+  if (!props.modelValue) return
+  navigationDismissed.value = true
+  close()
+}
+useRouteDismiss(dismissForNavigation)
+onDeactivated(dismissForNavigation)
+const sheet = useSheetGesture(panelRef, visible, computed(() => props.mobileMode === 'sheet'), close)
 
 const onKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Tab' && props.modelValue) {
@@ -106,6 +120,7 @@ const onKeydown = (event: KeyboardEvent) => {
 
 watch(visible, (isVisible) => {
   if (isVisible) {
+    navigationDismissed.value = false
     returnFocus = document.activeElement as HTMLElement
     window.addEventListener('keydown', onKeydown)
     nextTick(() => panelRef.value?.focus({ preventScroll: true }))
@@ -130,6 +145,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .responsive-dialog-enter-from section,
 .responsive-dialog-leave-to section { transform: translateY(1.5rem); opacity: 0; }
 @media (max-width: 767px) {
+  .sheet-drag-zone { touch-action: none; user-select: none; cursor: grab; }
+  .sheet-drag-zone:active { cursor: grabbing; }
   .mobile-fullscreen .responsive-dialog-header {
     min-height: calc(3.5rem + var(--ts-safe-area-top));
     padding-top: var(--ts-safe-area-top);
@@ -146,6 +163,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     transform: translateX(100%);
     opacity: 1;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .responsive-dialog-enter-active, .responsive-dialog-leave-active,
+  .responsive-dialog-enter-active section, .responsive-dialog-leave-active section { transition: none !important; }
 }
 @media (min-width: 768px) {
   .responsive-dialog-right { align-items: stretch; justify-content: flex-end; padding: 0; }

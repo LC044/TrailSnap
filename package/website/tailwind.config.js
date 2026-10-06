@@ -1,5 +1,16 @@
 /** @type {import('tailwindcss').Config} */
 const { addDynamicIconSelectors } = require('@iconify/tailwind')
+const defaultTheme = require('tailwindcss/defaultTheme')
+
+// Scale spacing without changing width/height utilities or control hit areas.
+const scaleRemValues = (values) => Object.fromEntries(
+  Object.entries(values).map(([key, value]) => [key,
+    typeof value === 'string' && value.endsWith('rem')
+      ? `calc(var(--ts-spacing-unit, 1rem) * ${parseFloat(value)})`
+      : value,
+  ]),
+)
+const scaledSpacing = scaleRemValues(defaultTheme.spacing)
 
 // Existing gray/slate/neutral utilities share one neutral scale during migration.
 const neutral = {
@@ -24,6 +35,18 @@ export default {
   theme: {
     extend: {
       fontFamily: { sans: ['var(--ts-font-sans)'] },
+      padding: scaledSpacing,
+      margin: scaledSpacing,
+      gap: scaledSpacing,
+      space: scaledSpacing,
+      borderRadius: scaleRemValues(defaultTheme.borderRadius),
+      borderWidth: Object.fromEntries(Object.entries(defaultTheme.borderWidth).map(([key, value]) => [
+        key, parseFloat(value) ? `calc(var(--ts-border-unit, 1px) * ${parseFloat(value)})` : value,
+      ])),
+      fontSize: {
+        sm: ['var(--ts-font-sm, 0.875rem)', { lineHeight: '1.25rem' }],
+        xs: ['var(--ts-font-xs, 0.75rem)', { lineHeight: '1rem' }],
+      },
       colors: {
         gray: neutral, slate: neutral, neutral,
         // Runtime theme palette. Lower steps are translucent surfaces; higher

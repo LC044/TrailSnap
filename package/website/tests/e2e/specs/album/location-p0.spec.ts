@@ -268,8 +268,7 @@ test.describe.serial('P0 - 位置相册', () => {
     const qs = new URLSearchParams({ level: probe.location.level }).toString()
     await gotoRetry(page, `/album/location/${encodeURIComponent(probe.location.name)}?${qs}`)
 
-    // UnifiedPhotoPage 顶部返回按钮：圆形 hover bg，children 包含 ArrowLeft svg
-    const backBtn = page.getByRole('button', { name: '返回', exact: true })
+    const backBtn = page.getByRole('button', { name: '返回位置相册', exact: true })
     await expect(backBtn).toBeVisible({ timeout: 10_000 })
     await backBtn.click()
 

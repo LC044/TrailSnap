@@ -25,6 +25,7 @@ import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
 import { useUserStore } from '@/stores/user'
 import { registerConnectionDeepLinks } from '@/config/serverConnection'
 import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
+import { registerButtonMotion } from '@/composables/useButtonMotion'
 
 async function bootstrap() {
   document.documentElement.classList.toggle('capacitor-android', Capacitor.getPlatform() === 'android')
@@ -43,6 +44,7 @@ async function bootstrap() {
   app.use(router);
   app.mount('#app');
   registerElementPlusOverlayBridge()
+  registerButtonMotion()
 
   await router.isReady()
   await registerConnectionDeepLinks(router)

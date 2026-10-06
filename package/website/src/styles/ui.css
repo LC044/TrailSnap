@@ -7,7 +7,7 @@
 .ts-surface {
   background: var(--ts-color-surface);
   color: var(--ts-color-text);
-  border: 1px solid var(--ts-color-border);
+  border: var(--ts-border-unit, 1px) solid var(--ts-color-border);
   border-radius: var(--ts-radius-card);
   box-shadow: var(--ts-shadow-card);
 }
@@ -34,14 +34,14 @@
   gap: var(--ts-space-2);
   min-height: var(--ts-control-md);
   padding: 0 var(--ts-space-4);
-  border: 1px solid transparent;
+  border: var(--ts-border-unit, 1px) solid transparent;
   border-radius: var(--ts-radius-control);
-  font-size: 14px;
+  font-size: var(--ts-font-sm, 14px);
   font-weight: 600;
   line-height: 1.4;
   cursor: pointer;
   transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease,
-    border-color var(--ts-motion-fast) ease, transform var(--ts-motion-fast) var(--ts-ease);
+    border-color var(--ts-motion-fast) ease, transform var(--ts-motion-fast) var(--ts-ease), box-shadow 120ms ease;
 }
 .ts-button-sm { min-height: var(--ts-control-sm); padding-inline: var(--ts-space-3); }
 .ts-button-lg { min-height: var(--ts-control-lg); padding-inline: var(--ts-space-5); font-size: 16px; }
@@ -51,7 +51,8 @@
 .ts-button-danger { background: var(--ts-color-danger); color: white; }
 .ts-button-primary:hover, .ts-button-danger:hover { filter: brightness(.94); }
 .ts-button-secondary:hover, .ts-button-ghost:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
-.ts-button:active, .ts-icon-button:active { transform: scale(.97); }
+.ts-is-pressed { box-shadow: inset 0 3px 7px rgb(0 0 0 / 22%), inset 0 -1px 0 var(--ts-glass-highlight) !important; }
+.el-button, .ts-action-row { transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease, box-shadow 120ms ease; }
 .ts-button:disabled, .ts-icon-button:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
 .ts-icon-button { width: var(--ts-control-md); height: var(--ts-control-md); padding: 0; }
 .ts-icon-button.ts-button-sm { width: var(--ts-control-sm); height: var(--ts-control-sm); }
@@ -65,8 +66,8 @@
 .ts-input {
   min-height: var(--ts-control-md);
   min-width: 0;
-  padding: 10px var(--ts-space-3);
-  border: 1px solid var(--ts-color-border);
+  padding: calc(var(--ts-space-5) / 2) var(--ts-space-3);
+  border: var(--ts-border-unit, 1px) solid var(--ts-color-border);
   border-radius: var(--ts-radius-control);
   background: var(--ts-color-surface);
   color: var(--ts-color-text);
@@ -138,6 +139,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .ts-button, .ts-icon-button, .ts-input { transition: none; }
+  .ts-button, .ts-icon-button, .ts-glass-button, .el-button, .ts-action-row, .ts-desktop-menu { transition: none !important; animation: none !important; }
 }
 
 /* Date ranges and their calendars need an opaque reading surface. */

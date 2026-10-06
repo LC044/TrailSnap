@@ -3,7 +3,7 @@
   <Transition name="bottom-nav-slide">
     <nav
       v-show="!uiStore.selectionActive"
-      class="ts-liquid-glass liquid-glass-nav fixed inset-x-3 bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
+      class="ts-liquid-glass liquid-glass-nav fixed inset-x-[var(--ts-space-3)] bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
       :class="{ 'is-flowing': bubbleMoving, 'is-dark': isDarkMode }"
       aria-label="主导航"
     >
@@ -428,7 +428,7 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   display: block;
   width: 100%;
   height: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.64);
+  border: var(--ts-border-unit, 1px) solid rgba(255, 255, 255, 0.64);
   border-radius: 9999px;
   background:
     radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.74), transparent 38%),
@@ -458,6 +458,8 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 }
 
 .liquid-tab-item :deep(svg) {
+  width: var(--ts-mobile-icon-size, 20px);
+  height: var(--ts-mobile-icon-size, 20px);
   transition: transform 100ms ease, filter 200ms ease;
 }
 

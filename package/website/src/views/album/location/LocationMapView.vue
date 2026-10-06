@@ -73,7 +73,7 @@
     <div
       class="location-insight-panel fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 backdrop-blur-xl border-t md:border-t-0 md:border-l rounded-t-2xl md:rounded-none shadow-2xl transition-[height] duration-300 ease-out"
       :class="[`sheet-${sheetState}`, { '!transition-none': isDragging }]"
-      :style="isMobile ? { height: sheetHeight + 'px' } : {}"
+      :style="isMobile ? { height: sheetHeight + 'px', transition: 'none' } : {}"
     >
       <!-- 拖拽手柄区（仅移动端：点击切换 peek/expand，拖拽连续调高度） -->
       <div
@@ -133,6 +133,7 @@
 </template>
 
 <script setup lang="ts">
+import { useAnchoredSheet } from '@/composables/useAnchoredSheet'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { locationService } from '@/api/location'
 import { albumService } from '@/api/album'
@@ -430,64 +431,29 @@ const expandedH = () => Math.min(
   Math.round(window.innerHeight * 0.7),
   window.innerHeight - 240
 )
-const sheetHeight = ref(HALF_H)
-const isDragging = ref(false)
-let dragMoved = false
-let dragOrigin = { startY: 0, startH: 0 }
-
-const clampSheetH = (h: number) => Math.max(COLLAPSED_H, Math.min(h, expandedH()))
+const isMobile = ref(window.innerWidth < 768)
+const sheetMotion = useAnchoredSheet(HALF_H, () => [COLLAPSED_H, HALF_H, Math.max(HALF_H, expandedH())], isMobile)
+const sheetHeight = sheetMotion.height
+const isDragging = sheetMotion.dragging
+const onHandlePointerDown = sheetMotion.start
+const onHandleClick = sheetMotion.toggle
 const sheetState = computed<'collapsed' | 'half' | 'full'>(() => {
   if (sheetHeight.value < (COLLAPSED_H + HALF_H) / 2) return 'collapsed'
   if (sheetHeight.value < (HALF_H + expandedH()) / 2) return 'half'
   return 'full'
 })
 
-const onHandlePointerDown = (e: PointerEvent) => {
-  if (e.button !== 0) return
-  dragOrigin = { startY: e.clientY, startH: sheetHeight.value }
-  isDragging.value = true
-  dragMoved = false
-  window.addEventListener('pointermove', onHandlePointerMove)
-  window.addEventListener('pointerup', onHandlePointerUp)
-}
-
-const onHandlePointerMove = (e: PointerEvent) => {
-  if (!isDragging.value) return
-  const dy = e.clientY - dragOrigin.startY
-  if (Math.abs(dy) > 3) dragMoved = true
-  // 上拖 dy<0 → 高度增大（抽屉向上展开）
-  sheetHeight.value = clampSheetH(dragOrigin.startH - dy)
-}
-
-const onHandlePointerUp = () => {
-  isDragging.value = false
-  window.removeEventListener('pointermove', onHandlePointerMove)
-  window.removeEventListener('pointerup', onHandlePointerUp)
-  const stops = [COLLAPSED_H, HALF_H, expandedH()]
-  sheetHeight.value = stops.reduce((nearest, stop) =>
-    Math.abs(stop - sheetHeight.value) < Math.abs(nearest - sheetHeight.value) ? stop : nearest
-  )
-}
-
-const onHandleClick = () => {
-  if (dragMoved) return
-  if (sheetState.value === 'collapsed') sheetHeight.value = HALF_H
-  else if (sheetState.value === 'half') sheetHeight.value = expandedH()
-  else sheetHeight.value = COLLAPSED_H
-}
-
 // 移动端判定（沿用 MainLayout 的 ref + resize 监听模式，仓内无响应式 isMobile 组合式）
-const isMobile = ref(false)
 const updateIsMobile = () => { isMobile.value = window.innerWidth < 768 }
 
 const onWindowResize = () => {
   updateIsMobile()
-  if (isMobile.value) sheetHeight.value = clampSheetH(sheetHeight.value)
+  sheetMotion.resize()
 }
 
 // 选中区块自动展开、清除自动收起（桌面端 sheetHeight 被 md:h-full 忽略，写入无害）
 watch(selectedRegion, (v) => {
-  if (isMobile.value) sheetHeight.value = v ? expandedH() : HALF_H
+  if (isMobile.value) sheetMotion.settle(v ? Math.max(HALF_H, expandedH()) : HALF_H)
 })
 
 onMounted(() => {
@@ -499,8 +465,6 @@ onMounted(() => {
 onUnmounted(() => {
   stopPlayback()
   window.removeEventListener('resize', onWindowResize)
-  window.removeEventListener('pointermove', onHandlePointerMove)
-  window.removeEventListener('pointerup', onHandlePointerUp)
 })
 
 </script>

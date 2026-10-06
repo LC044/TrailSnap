@@ -80,7 +80,7 @@
     <div
       class="fixed md:static inset-x-0 bottom-[calc(var(--ts-tabbar-h)+var(--ts-safe-area-bottom))] md:inset-auto z-30 md:z-auto flex flex-col h-auto md:h-full md:w-80 lg:w-96 bg-white/95 dark:bg-gray-900/95 backdrop-blur-md border-t md:border-t-0 md:border-l border-gray-200 dark:border-gray-700 rounded-t-2xl md:rounded-none shadow-2xl md:shadow-sm transition-[height] duration-300 ease-out"
       :class="{ '!transition-none': isDragging }"
-      :style="isMobile ? { height: sheetHeight + 'px' } : {}"
+      :style="isMobile ? { height: sheetHeight + 'px', transition: 'none' } : {}"
     >
       <!-- 拖拽手柄区（仅移动端：点击切换 peek/expand，拖拽连续调高度） -->
       <div
@@ -235,6 +235,7 @@
 </template>
 
 <script setup lang="ts">
+import { useAnchoredSheet } from '@/composables/useAnchoredSheet'
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ChevronRight, ImageOff, MapPin } from 'lucide-vue-next'
@@ -415,52 +416,19 @@ const expandedH = () => Math.min(                    // 展开态：~70vh，但�
   Math.round(window.innerHeight * 0.7),
   window.innerHeight - 240
 )
-const sheetHeight = ref(PEEK_H)
-const isDragging = ref(false)
-let dragMoved = false
-let dragOrigin = { startY: 0, startH: 0 }
-
-const clampSheetH = (h: number) => Math.max(PEEK_H, Math.min(h, expandedH()))
-
-const onHandlePointerDown = (e: PointerEvent) => {
-  if (e.button !== 0) return
-  dragOrigin = { startY: e.clientY, startH: sheetHeight.value }
-  isDragging.value = true
-  dragMoved = false
-  window.addEventListener('pointermove', onHandlePointerMove)
-  window.addEventListener('pointerup', onHandlePointerUp)
-}
-
-const onHandlePointerMove = (e: PointerEvent) => {
-  if (!isDragging.value) return
-  const dy = e.clientY - dragOrigin.startY
-  if (Math.abs(dy) > 3) dragMoved = true
-  // 上拖 dy<0 → 高度增大（抽屉向上展开）
-  sheetHeight.value = clampSheetH(dragOrigin.startH - dy)
-}
-
-const onHandlePointerUp = () => {
-  isDragging.value = false
-  window.removeEventListener('pointermove', onHandlePointerMove)
-  window.removeEventListener('pointerup', onHandlePointerUp)
-  // 释放后按中点 snap 到最近档位
-  const mid = (PEEK_H + expandedH()) / 2
-  sheetHeight.value = sheetHeight.value > mid ? expandedH() : PEEK_H
-}
-
-const onHandleClick = () => {
-  // 拖动产生的位移不触发切换
-  if (dragMoved) return
-  sheetHeight.value = sheetHeight.value > PEEK_H + 1 ? PEEK_H : expandedH()
-}
+const isMobile = ref(window.innerWidth < 768)
+const sheetMotion = useAnchoredSheet(PEEK_H, () => [PEEK_H, Math.max(PEEK_H, expandedH())], isMobile)
+const sheetHeight = sheetMotion.height
+const isDragging = sheetMotion.dragging
+const onHandlePointerDown = sheetMotion.start
+const onHandleClick = sheetMotion.toggle
 
 // 移动端判定（沿用 MainLayout 的 ref + resize 监听模式，仓内无响应式 isMobile 组合式）
-const isMobile = ref(false)
 const updateIsMobile = () => { isMobile.value = window.innerWidth < 768 }
 
 const onWindowResize = () => {
   updateIsMobile()
-  if (isMobile.value) sheetHeight.value = clampSheetH(sheetHeight.value)
+  sheetMotion.resize()
 }
 
 onMounted(() => {
@@ -471,8 +439,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', onWindowResize)
-  window.removeEventListener('pointermove', onHandlePointerMove)
-  window.removeEventListener('pointerup', onHandlePointerUp)
 })
 </script>
 

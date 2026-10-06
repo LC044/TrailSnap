@@ -123,6 +123,39 @@ html.dark {
   --text-color: var(--ts-color-text);
 }
 
+/* Match the 440px mobile design at full size; keep smaller screens readable.
+   Spacing shrinks by at most 10%; root rem and control hit areas stay stable. */
+@media (max-width: 767px) {
+  :root {
+    --ts-spacing-unit: clamp(0.9rem, 3.63636vw, 1rem);
+    --ts-border-unit: clamp(0.9px, 0.227273vw, 1px);
+    --ts-space-1: calc(var(--ts-spacing-unit) * 0.25);
+    --ts-space-2: calc(var(--ts-spacing-unit) * 0.5);
+    --ts-space-3: calc(var(--ts-spacing-unit) * 0.75);
+    --ts-space-4: var(--ts-spacing-unit);
+    --ts-space-5: calc(var(--ts-spacing-unit) * 1.25);
+    --ts-space-6: calc(var(--ts-spacing-unit) * 1.5);
+    --ts-space-8: calc(var(--ts-spacing-unit) * 2);
+    --ts-space-10: calc(var(--ts-spacing-unit) * 2.5);
+    --ts-radius-control: calc(var(--ts-spacing-unit) * 0.75);
+    --ts-radius-card: calc(var(--ts-spacing-unit) * 1.25);
+    --ts-radius-dialog: calc(var(--ts-spacing-unit) * 1.5);
+    --ts-page-gutter: var(--ts-spacing-unit);
+    --ts-section-gap: calc(var(--ts-spacing-unit) * 1.5);
+    --ts-tabbar-offset: calc(var(--ts-spacing-unit) * 1.25);
+    --ts-tabbar-h: calc(56px + var(--ts-tabbar-offset) + var(--ts-space-4));
+    --ts-mobile-icon-size: clamp(18px, 4.54545vw, 20px);
+    --ts-font-sm: clamp(13px, 3.18182vw, 14px);
+    --ts-font-xs: clamp(11px, 2.72727vw, 12px);
+  }
+
+  .ts-glass-button > svg.w-5.h-5,
+  .ts-icon-button > svg.w-5.h-5 {
+    width: var(--ts-mobile-icon-size);
+    height: var(--ts-mobile-icon-size);
+  }
+}
+
 @media (min-width: 768px) {
   :root {
     --ts-page-gutter: 24px;
@@ -296,7 +329,7 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
   isolation: isolate;
   color: var(--ts-color-text);
   background: var(--glass-tint);
-  border: 1px solid var(--ts-glass-border);
+  border: var(--ts-border-unit, 1px) solid var(--ts-glass-border);
   box-shadow: var(--ts-shadow-glass);
   -webkit-backdrop-filter: blur(var(--ts-glass-blur-clear)) saturate(var(--ts-glass-saturation));
   backdrop-filter: blur(var(--ts-glass-blur-clear)) saturate(var(--ts-glass-saturation));
@@ -313,10 +346,10 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 }
 .ts-glass-toolbar {
   --glass-tint: color-mix(in srgb, var(--ts-color-surface) 68%, transparent);
-  border: 1px solid var(--ts-color-border);
+  border: var(--ts-border-unit, 1px) solid var(--ts-color-border);
   border-radius: var(--ts-radius-pill);
-  padding: 2px;
-  gap: 2px;
+  padding: calc(var(--ts-space-1) / 2);
+  gap: calc(var(--ts-space-1) / 2);
 }
 /* A toolbar has one outer rim; reflected bands look like nested outlines. */
 .ts-glass-toolbar::before { content: ''; background: linear-gradient(145deg, var(--ts-glass-highlight), transparent 34%, transparent 70%, var(--ts-glass-highlight)); opacity: .45; }
@@ -326,10 +359,9 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
   flex-shrink: 0; align-items: center; justify-content: center;
   min-width: var(--ts-control-md); height: 40px; border-radius: var(--ts-radius-pill); border: 0;
   color: var(--ts-color-text); background: transparent;
-  transition: transform var(--ts-motion-fast) var(--ts-ease), background-color var(--ts-motion-fast) ease;
+  transition: transform var(--ts-motion-fast) var(--ts-ease), background-color var(--ts-motion-fast) ease, box-shadow 120ms ease;
 }
 .ts-glass-button:hover { color: var(--accent-color); }
-.ts-glass-button:active { transform: scale(.96); }
 .ts-glass-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .ts-glass-button[aria-expanded='true'] { color: var(--accent-color); background: transparent; }
 .ts-desktop-menu { --glass-tint: var(--ts-glass-panel); backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); position: absolute; right: 0; top: 100%; margin-top: 12px; width: 240px; border-radius: 20px; padding: 12px; z-index: 50; }
@@ -354,7 +386,7 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .ts-page-title { font-size: 24px; font-weight: 700; line-height: 1.25; letter-spacing: -.02em; }
 .ts-page-title.ts-compact-title { font-size: 16px; }
 .ts-section-title { font-size: 18px; font-weight: 600; line-height: 1.4; }
-.ts-card-title { font-size: 14px; font-weight: 600; line-height: 1.45; }
+.ts-card-title { font-size: var(--ts-font-sm, 14px); font-weight: 600; line-height: 1.45; }
 
 @media (max-width: 639px) {
   .ts-browse-header { min-height: var(--ts-header-height); padding-block: 8px; gap: 8px; }
@@ -372,10 +404,10 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 
 /* System album menus: frosted shell, quiet separators and clear content groups. */
 .ts-desktop-menu { width: min(260px, calc(100vw - 32px)); padding: 6px; border-radius: 24px; border-color: var(--ts-glass-border); }
-.ts-desktop-menu > .ts-action-row { min-height: 52px; padding-inline: 16px; border-radius: 0; font-weight: 500; }
-.ts-desktop-menu > .ts-action-row + .ts-action-row { border-top: 1px solid var(--ts-color-divider); }
-.ts-desktop-menu > .ts-action-row:first-child { border-radius: 18px 18px 0 0; }
-.ts-desktop-menu > .ts-action-row:last-child { border-radius: 0 0 18px 18px; }
+.ts-desktop-menu .ts-menu-content > .ts-action-row { min-height: 52px; padding-inline: 16px; border-radius: 0; font-weight: 500; }
+.ts-desktop-menu .ts-menu-content > .ts-action-row + .ts-action-row { border-top: 1px solid var(--ts-color-divider); }
+.ts-desktop-menu .ts-menu-content > .ts-action-row:first-child { border-radius: 18px 18px 0 0; }
+.ts-desktop-menu .ts-menu-content > .ts-action-row:last-child { border-radius: 0 0 18px 18px; }
 .ts-action-content { padding: 6px; border-radius: 20px; background: var(--ts-menu-card); }
 .ts-action-content > .ts-action-row + .ts-action-row { border-top: 1px solid var(--ts-color-divider); }
 .ts-glass-sheet:not(.mobile-fullscreen) .responsive-dialog-header { position: relative; border-bottom: 0; min-height: 76px; }
