@@ -184,7 +184,9 @@ async def import_tickets(
 ):
     """Read legacy arrays or versioned mixed ticket backups with ownership checks."""
     from app.api.ticket_wallet import import_wallet
-    return await import_wallet(file, db, current_user)
+    result = await import_wallet(file, db, current_user)
+    # Keep the legacy endpoint's success code while sharing the owned importer.
+    return BaseResponse(code=200, msg=result.msg, data=result.data)
 
 
 @router.get("/export", summary="导出车票数据")
