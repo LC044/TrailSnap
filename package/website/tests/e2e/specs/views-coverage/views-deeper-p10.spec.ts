@@ -26,6 +26,7 @@ const ok = <T>(data: T): { code: number; message: string; data: T } => ({
 
 /** 阻止 ticketStore 通过真实接口拉数据，否则未登录态会被 401 拦到 /login。 */
 async function stubTickets(page: Page) {
+  await page.route('**/api/ticket-wallet?**', route => route.fulfill({ json: ok({ items: [], total: 0 }) }))
   await page.route('**/api/train-ticket**', (route: Route) =>
     route.fulfill({
       status: 200,
@@ -141,63 +142,49 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       })
     })
 
-    test('页面挂载 -> 车票管理标题可见 + 触发 train-ticket / flight-ticket 列表拉取', async ({
-      page,
-    }) => {
-      const trainCalls: string[] = []
-      const flightCalls: string[] = []
-      await page.route('**/api/train-ticket**', (route: Route) => {
-        if (route.request().method() !== 'GET') return route.continue()
-        trainCalls.push(route.request().url())
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(ok({ items: [], total: 0 })),
-        })
+    test('页面挂载 -> 票夹标题可见并拉取统一票据列表', async ({ page }) => {
+      const calls: URL[] = []
+      await page.route('**/api/ticket-wallet?**', route => {
+        calls.push(new URL(route.request().url()))
+        return route.fulfill({ json: ok({ items: [], total: 0 }) })
       })
-      await page.route('**/api/flight-ticket**', (route: Route) => {
-        if (route.request().method() !== 'GET') return route.continue()
-        flightCalls.push(route.request().url())
-        return route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(ok({ items: [], total: 0 })),
-        })
-      })
-
       await page.goto('/ticket')
-      await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
-
-      await expect.poll(() => trainCalls.length).toBeGreaterThan(0)
-      await expect.poll(() => flightCalls.length).toBeGreaterThan(0)
+      await expect(page.getByRole('heading', { name: '票夹', exact: true })).toBeVisible()
+      await expect.poll(() => calls.length).toBeGreaterThan(0)
+      expect(calls[0].searchParams.get('skip')).toBe('0')
+      expect(calls[0].searchParams.get('limit')).toBe('1000')
     })
 
-    test('点击「统计报表」按钮 -> 路由跳转到 /statistics', async ({ page }) => {
+    test('更多菜单「交通统计」 -> 路由跳转到 /statistics', async ({ page }) => {
       await stubTickets(page)
       await page.goto('/ticket')
-      await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByRole('heading', { name: '票夹', exact: true })).toBeVisible({ timeout: 15_000 })
 
-      await page.getByRole('button', { name: '统计报表', exact: true }).click()
+      await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+      await page.getByRole('button', { name: '交通统计', exact: true }).click()
       await page.waitForURL(/\/statistics/, { timeout: 10_000 })
     })
 
-    test('点击「导出数据」按钮 -> TicketExportModal 打开（页面级 handleExport 触发）', async ({
+    test('更多菜单「导出票据」打开导出弹窗', async ({
       page,
     }) => {
       await stubTickets(page)
       await page.goto('/ticket')
-      await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByRole('heading', { name: '票夹', exact: true })).toBeVisible({ timeout: 15_000 })
 
-      await page.getByRole('button', { name: '导出车票', exact: true }).click()
+      await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+      await page.getByRole('button', { name: '导出票据', exact: true }).click()
       await expect(
-        page.locator('.el-dialog__title', { hasText: '导出车票数据' }),
+        page.getByRole('dialog', { name: '导出票据', exact: true }),
       ).toBeVisible({ timeout: 5_000 })
     })
 
     test('导入非法文件 -> ElMessage.error 反馈且不抛未捕获异常', async ({ page }) => {
       let importCalls = 0
+      const pageErrors: Error[] = []
+      page.on('pageerror', error => pageErrors.push(error))
       await stubTickets(page)
-      await page.route('**/api/train-ticket/import**', (route: Route) => {
+      await page.route('**/api/ticket-wallet/import', (route: Route) => {
         importCalls += 1
         return route.fulfill({
           status: 400,
@@ -207,10 +194,9 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       })
 
       await page.goto('/ticket')
-      await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
+      await expect(page.getByRole('heading', { name: '票夹', exact: true })).toBeVisible({ timeout: 15_000 })
 
-      // 隐藏的 <input type="file"> 来自 TicketHeader.triggerImport，setInputFiles
-      // 会自动触发 change 事件 -> TicketHeader emit('handle-file-import') -> TicketPage.handleFileImport
+      // 隐藏的备份文件输入会触发统一票据导入接口。
       const fileInput = page.locator('input[type="file"]').first()
       await fileInput.setInputFiles({
         name: 'broken.csv',
@@ -220,6 +206,7 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
 
       await expect.poll(() => importCalls).toBeGreaterThan(0)
       await expect(page.locator('.el-message--error').first()).toBeVisible({ timeout: 10_000 })
+      expect(pageErrors).toEqual([])
     })
   })
 })

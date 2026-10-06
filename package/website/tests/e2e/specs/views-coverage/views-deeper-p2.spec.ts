@@ -6,7 +6,16 @@ test.describe.configure({ mode: 'serial' })
 
 const ok = (data: unknown) => ({ code: 0, message: 'success', data })
 
-async function mockTicketApis(page: Page, tickets: unknown[]) {
+async function mockTicketApis(page: Page, tickets: (typeof trainTicket)[]) {
+  const items = tickets.map(ticket => ({
+    type: 'train', id: ticket.id, key: `train:${ticket.id}`,
+    title: `${ticket.departure_station} → ${ticket.arrival_station}`, code: ticket.train_code,
+    from: ticket.departure_station, to: ticket.arrival_station, date_time: ticket.date_time,
+    name: ticket.name, price: ticket.price, distance: ticket.total_mileage,
+    duration: ticket.total_running_time, comments: ticket.comments, photo_id: null,
+    albums: [], memories: [], candidates: [],
+  }))
+  await page.route('**/api/ticket-wallet?**', route => route.fulfill({ json: ok({ items, total: items.length }) }))
   await page.route('**/api/train-ticket**', async (route: Route) => {
     if (route.request().method() === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok({ items: tickets, total: tickets.length })) })
@@ -80,35 +89,37 @@ test.describe('LocationTrajectoryView 轨迹视图 @views-coverage', () => {
   })
 })
 
-test.describe('TicketCityStatsModal / TicketPaperModal 车票弹窗 @views-coverage', () => {
+test.describe('票夹交通统计 / 纪念票面 @views-coverage', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('足迹统计卡 -> TicketCityStatsModal 显示城市列表', async ({ page }) => {
+  test('更多菜单交通统计 -> 旅行足迹报告显示票据里程和城市数量', async ({ page }) => {
     await mockTicketApis(page, [trainTicket])
     await page.goto('/ticket')
-    await expect(page.getByText('点击查看足迹地图')).toBeVisible({ timeout: 15_000 })
-    await page.getByText('点击查看足迹地图').click()
-    await expect(page.getByRole('heading', { name: '足迹地图' })).toBeVisible({ timeout: 5_000 })
-    const cityModal = page.getByText('足迹地图').locator('xpath=ancestor::div[contains(@class,"fixed")][1]')
-    await expect(cityModal).toBeVisible()
-    await expect(cityModal.getByText('北京南', { exact: true })).toBeVisible()
-    await expect(cityModal.getByText('上海虹桥', { exact: true })).toBeVisible()
+    await expect(page.locator('main article')).toHaveCount(1)
+    await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+    await page.getByRole('button', { name: '交通统计', exact: true }).click()
+    await expect(page).toHaveURL(/\/statistics/)
+    await expect(page.getByRole('heading', { name: '旅行足迹报告', exact: true })).toBeVisible()
+    await expect(page.getByText('年度总里程', { exact: true }).locator('..').locator('..')).toContainText('1,318')
+    await expect(page.getByText('点亮城市', { exact: true }).locator('..').locator('..').locator('.text-4xl')).toHaveText('2')
   })
 
-  test('车票卡片纸票按钮 -> TicketPaperModal 打开并可切换票面样式', async ({ page }) => {
+  test('票据详情 -> 纪念票面打开并可切换票面样式', async ({ page }) => {
     await mockTicketApis(page, [trainTicket])
     await page.goto('/ticket')
-    await expect(page.locator('button[title="查看仿真纸质车票"]')).toBeVisible({ timeout: 15_000 })
-    await page.locator('button[title="查看仿真纸质车票"]').click()
-    const dialog = page.locator('.paper-ticket-dialog')
-    await expect(dialog).toBeVisible({ timeout: 5_000 })
-    await expect(dialog.getByText('仿真纸质车票')).toBeVisible()
-    await dialog.getByText('红票').click()
-    await expect(dialog.getByText('红票')).toBeVisible()
+    await expect(page.locator('main article')).toHaveCount(1)
+    await page.locator('main article').getByRole('button').first().click()
+    const detail = page.getByRole('dialog', { name: '火车票详情', exact: true })
+    await detail.getByRole('button', { name: '更多票据操作', exact: true }).click()
+    await detail.getByRole('button', { name: '纪念票面', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '纪念票面', exact: true })
+    await expect(dialog).toBeVisible()
+    const style = dialog.getByRole('combobox', { name: '票面样式', exact: true })
+    await expect(style).toHaveValue('blue')
+    await style.selectOption('red')
+    await expect(style).toHaveValue('red')
+    await expect(dialog.getByText('G123', { exact: true })).toBeVisible()
   })
 })
-
-
-

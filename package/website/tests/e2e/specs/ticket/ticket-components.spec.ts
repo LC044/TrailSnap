@@ -22,7 +22,7 @@ test.describe('P1 - 票夹组件 @ticket-components', () => {
   })
   test('新增类型选择器只展示支持的火车票和机票', async ({ page }) => {
     await mockWallet(page); await gotoTicketPage(page)
-    await page.getByRole('button', { name: '新增票据', exact: true }).click()
+    await page.locator('main header').getByRole('button', { name: '新增票据', exact: true }).click()
     const dialog = page.getByRole('dialog', { name: '新增票据', exact: true })
     await expect(dialog.getByRole('button', { name: '火车票', exact: true })).toBeVisible()
     await expect(dialog.getByRole('button', { name: '机票', exact: true })).toBeVisible()
@@ -30,7 +30,7 @@ test.describe('P1 - 票夹组件 @ticket-components', () => {
   })
   test('选择火车票后关闭类型选择器并打开编辑表单', async ({ page }) => {
     await mockWallet(page); await gotoTicketPage(page)
-    await page.getByRole('button', { name: '新增票据', exact: true }).click()
+    await page.locator('main header').getByRole('button', { name: '新增票据', exact: true }).click()
     const selector = page.getByRole('dialog', { name: '新增票据', exact: true })
     await selector.getByRole('button', { name: '火车票', exact: true }).click()
     await expect(selector).toBeHidden()
