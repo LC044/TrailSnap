@@ -5,7 +5,7 @@
         v-if="modelValue"
         class="fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-6"
         role="presentation"
-        :style="{ visibility: navigationDismissed ? 'hidden' : undefined }"
+        :style="{ visibility: navigationDismissed ? 'hidden' : undefined, height: `${viewportHeight}px`, top: `${viewportTop}px`, '--dialog-viewport-height': `${viewportHeight}px` }"
         @wheel.self.prevent
         :class="{ 'responsive-dialog-right': placement === 'right' }"
       >
@@ -59,6 +59,9 @@ import IconButton from '@/components/ui/IconButton.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useSheetGesture } from '@/composables/useSheetGesture'
 import { useRouteDismiss } from '@/composables/useRouteDismiss'
+import { isTopOverlay } from '@/composables/useOverlayStack'
+import { useModalScrollLock } from '@/composables/useModalScrollLock'
+import { useDialogHistory } from '@/composables/useDialogHistory'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
@@ -71,6 +74,8 @@ const props = withDefaults(defineProps<{
   closeOnEscape?: boolean
   glass?: boolean
   placement?: 'center' | 'right'
+  beforeClose?: () => boolean | Promise<boolean>
+  history?: boolean
 }>(), {
   maxWidth: '32rem',
   mobileMode: 'sheet',
@@ -87,17 +92,26 @@ const emit = defineEmits<{
 }>()
 
 const panelRef = ref<HTMLElement | null>(null)
+const viewportHeight = ref(window.visualViewport?.height ?? window.innerHeight)
+const viewportTop = ref(window.visualViewport?.offsetTop ?? 0)
+const updateViewport = () => { viewportHeight.value = window.visualViewport?.height ?? window.innerHeight; viewportTop.value = window.visualViewport?.offsetTop ?? 0 }
+window.addEventListener('resize', updateViewport)
+window.visualViewport?.addEventListener('resize', updateViewport)
+window.visualViewport?.addEventListener('scroll', updateViewport)
 const navigationDismissed = ref(false)
 let returnFocus: HTMLElement | null = null
 const visible = computed(() => props.modelValue)
 const titleId = `responsive-dialog-${Math.random().toString(36).slice(2)}`
 
-const close = () => {
+const close = async () => {
+  if (props.beforeClose && !await props.beforeClose()) return
   emit('update:modelValue', false)
   emit('close')
 }
 
 useOverlayStack(visible, close)
+useModalScrollLock(visible)
+useDialogHistory(visible, () => Boolean(props.history))
 const dismissForNavigation = () => {
   if (!props.modelValue) return
   navigationDismissed.value = true
@@ -108,14 +122,14 @@ onDeactivated(dismissForNavigation)
 const sheet = useSheetGesture(panelRef, visible, computed(() => props.mobileMode === 'sheet'), close)
 
 const onKeydown = (event: KeyboardEvent) => {
-  if (event.key === 'Tab' && props.modelValue) {
+  if (event.key === 'Tab' && props.modelValue && isTopOverlay(close)) {
     const items = Array.from(panelRef.value?.querySelectorAll<HTMLElement>('button:not(:disabled), input, select, textarea, a[href], [tabindex="0"]') ?? []).filter(item => item.getClientRects().length > 0)
     const first = items[0], last = items.at(-1)
     if (!first) { event.preventDefault(); panelRef.value?.focus() }
     else if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.value)) { event.preventDefault(); last?.focus() }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
   }
-  if (event.key === 'Escape' && props.modelValue && props.closeOnEscape) close()
+  if (event.key === 'Escape' && props.modelValue && props.closeOnEscape && isTopOverlay(close)) { event.preventDefault(); event.stopImmediatePropagation(); void close() }
 }
 
 watch(visible, (isVisible) => {
@@ -130,7 +144,7 @@ watch(visible, (isVisible) => {
   }
 }, { immediate: true })
 
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+onBeforeUnmount(() => { window.removeEventListener('keydown', onKeydown); window.removeEventListener('resize', updateViewport); window.visualViewport?.removeEventListener('resize', updateViewport); window.visualViewport?.removeEventListener('scroll', updateViewport) })
 </script>
 
 <style scoped>
@@ -145,6 +159,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 .responsive-dialog-enter-from section,
 .responsive-dialog-leave-to section { transform: translateY(1.5rem); opacity: 0; }
 @media (max-width: 767px) {
+  .mobile-fullscreen { height: var(--dialog-viewport-height, 100dvh); }
   .sheet-drag-zone { touch-action: none; user-select: none; cursor: grab; }
   .sheet-drag-zone:active { cursor: grabbing; }
   .mobile-fullscreen .responsive-dialog-header {

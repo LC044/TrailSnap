@@ -43,6 +43,7 @@
         <button class="speed-button focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none" @click="cycleSpeed">{{ playbackSpeed }}×</button>
       </div>
 
+      <RouterLink v-if="selectedJourney" :to="{ path: '/ticket', query: { start: new Date(nodeStartTime(selectedJourney.nodes[0]!)).toISOString(), end: new Date(nodeEndTime(selectedJourney.nodes.at(-1)!) + 1).toISOString() } }" class="absolute right-3 top-3 z-30 ts-button ts-button-secondary">可能相关票据</RouterLink>
       <div v-if="loading || detailLoading" class="loading-chip">
         <LoaderCircle class="h-4 w-4 animate-spin text-primary-500" />
         {{ detailLoading ? '正在加载 GPS 精细轨迹' : '正在整理旅行足迹' }}

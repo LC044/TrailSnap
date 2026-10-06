@@ -268,71 +268,56 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
   })
 })
 
-test.describe('P1 - TicketExportModal 车票导出弹窗 @views-coverage', () => {
+test.describe('P1 - 票夹导出弹窗 @views-coverage', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
+    const items = ['train', 'flight'].map((type, index) => ({
+      id: `export-${index}`, type, key: `${type}:export-${index}`, title: '上海 → 成都', code: index ? 'MU1234' : 'G1234',
+      from: '上海', to: '成都', date_time: '2026-08-09T10:30:00', price: 680, name: '测试乘客', distance: 1700,
+      duration: 180, comments: '', photo_id: null, albums: [], memories: [], candidates: [],
+    }))
+    await page.route('**/api/ticket-wallet?**', route => route.fulfill({ json: { code: 200, msg: 'success', data: { items, total: items.length } } }))
+    await page.route('**/api/railway/stats/batch', route => route.fulfill({ json: { code: 200, msg: 'success', data: [] } }))
   })
-
-  test('点击导出数据按钮打开弹窗 -> 三个格式按钮可见', async ({ page }) => {
-    await page.route('**/api/train-ticket/**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: [] }) })
-    })
-
+  async function openExport(page: Page) {
     await page.goto('/ticket')
-    const exportBtn = page.getByRole('button', { name: '导出车票', exact: true })
-    await expect(exportBtn).toBeVisible({ timeout: 15_000 })
-    await exportBtn.click()
-
-    await expect(page.locator('.el-dialog__title', { hasText: '导出车票数据' })).toBeVisible({ timeout: 5_000 })
-    await expect(page.locator('.el-dialog').getByText('JSON 格式')).toBeVisible()
-    await expect(page.locator('.el-dialog').getByText('CSV 格式')).toBeVisible()
-    await expect(page.locator('.el-dialog').getByText('仿真纸质票 (PNG)')).toBeVisible()
+    await expect(page.locator('main article')).toHaveCount(2)
+    await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+    await page.getByRole('button', { name: '导出票据', exact: true }).click()
+    return page.getByRole('dialog', { name: '导出票据', exact: true })
+  }
+  test('导出弹窗显示JSON、CSV和火车票纪念PNG', async ({ page }) => {
+    const dialog = await openExport(page)
+    await expect(dialog.getByRole('button', { name: '票据备份（JSON）', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: '表格数据（CSV）', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: '火车票纪念票面（PNG）', exact: true })).toBeEnabled()
+    await expect(dialog).toContainText('1 张火车票')
+    await expect(dialog).toContainText('1 张将跳过')
   })
-
-  test('未选票时点击 PNG -> 显示请先选择要导出的车票警告且不调用导出', async ({ page }) => {
-    const exportCalls: string[] = []
-    await page.route('**/api/train-ticket/export**', async (route) => {
-      exportCalls.push(route.request().url())
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 0, message: 'success', data: 'mock' }),
-      })
-    })
-
+  test('空票夹禁用PNG，不创建下载', async ({ page }) => {
+    await page.route('**/api/ticket-wallet?**', route => route.fulfill({ json: { code: 200, msg: 'success', data: { items: [], total: 0 } } }))
     await page.goto('/ticket')
-    await page.getByRole('button', { name: '导出车票', exact: true }).click()
-    await expect(page.locator('.el-dialog__title', { hasText: '导出车票数据' })).toBeVisible({ timeout: 5_000 })
-
-    await page.locator('.el-dialog').getByText('仿真纸质票 (PNG)').click()
-
-    await expect(page.locator('.el-message', { hasText: '请先选择要导出的车票' })).toBeVisible({ timeout: 5_000 })
-    await page.waitForTimeout(500)
-    expect(exportCalls.length).toBe(0)
+    await expect(page.getByRole('heading', { name: '还没有票据', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+    await page.getByRole('button', { name: '导出票据', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '导出票据', exact: true }).getByRole('button', { name: '火车票纪念票面（PNG）', exact: true })).toBeDisabled()
   })
-
-  test('点击 JSON 按钮 -> 触发 GET /api/train-ticket/export?format=json', async ({ page }) => {
-    const exportCalls: string[] = []
-    await page.route('**/api/train-ticket/export**', async (route) => {
-      exportCalls.push(`${route.request().method()} ${route.request().url()}`)
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 0, message: 'success', data: 'mock-json-blob' }),
-      })
-    })
-
-    await page.goto('/ticket')
-    await page.getByRole('button', { name: '导出车票', exact: true }).click()
-    await expect(page.locator('.el-dialog__title', { hasText: '导出车票数据' })).toBeVisible({ timeout: 5_000 })
-
-    await page.locator('.el-dialog').getByText('JSON 格式').click()
-
-    await expect.poll(() => exportCalls.some((s) => s.includes('format=json')), { timeout: 5_000 }).toBeTruthy()
-    await expect(page.locator('.el-dialog__title', { hasText: '导出车票数据' })).toHaveCount(0, { timeout: 5_000 })
+  test('JSON下载包含版本和混合票据类型，导出后关闭弹窗', async ({ page }) => {
+    const dialog = await openExport(page)
+    const pending = page.waitForEvent('download')
+    await dialog.getByRole('button', { name: '票据备份（JSON）', exact: true }).click()
+    const download = await pending
+    const stream = await download.createReadStream()
+    if (!stream) throw Error('Missing export stream')
+    const chunks: Buffer[] = []
+    for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+    const backup = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    expect(backup.version).toBe(1)
+    expect(backup.items).toHaveLength(2)
+    expect(backup.items.map((item: { type: string }) => item.type).sort()).toEqual(['flight', 'train'])
+    await expect(dialog).toBeHidden()
   })
 })
-
 test.describe('P1 - DuplicatePhotoCleanup 重复照片清理 @views-coverage', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return

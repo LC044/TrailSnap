@@ -1,167 +1,88 @@
-import { test, expect, type Page, type Route } from '@playwright/test'
-
+import { test, expect, type Page } from '@playwright/test'
 import { ensureAuthSession } from '../../helpers/auth'
 
-/**
- * P1 - 车票子组件覆盖（coverage-gaps-frontend.md 5 个未覆盖模块）
- *
- * 1. TicketTypeSelectorModal -- 触发条件：TicketHeader 「+ 新增」按钮
- *    -> showTypeSelector=true -> 弹窗；选 train / flight -> emit('select-type')
- * 2. TicketExportModal    -- TicketHeader 「导出数据」按钮
- *    -> isExportModalOpen=true -> 弹窗；JSON/CSV/PNG 按钮 emit('execute', format)
- * 3. TicketHeader         -- 搜索框输入 -> emit('update:searchQuery')
- * 4. TicketFilterBar      -- 类型下拉 + 排序按钮 -> emit('update:filterType' / 'change-sort-type')
- * 5. TicketStatsSidebar  -- 报表入口；title="统计报表" -> emit('go-to-statistics')
- *
- * Mock /api/train-ticket 与 /api/flight-ticket 让 TicketList 渲染空态；其他子组件
- * 不依赖列表数据，可独立验证交互。
- */
-
 test.describe.configure({ mode: 'serial' })
-
-async function mockEmptyTickets(route: Route) {
-  return route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ code: 0, message: 'success', data: [] }),
-  })
+const summary = (type: 'train' | 'flight', id: string, title: string, code: string) => ({
+  type, id, key: `${type}:${id}`, title, code, from: '上海', to: '成都', date_time: '2026-08-09T10:30:00',
+  price: 680, name: '测试乘客', distance: 1700, duration: 180, comments: '', photo_id: null,
+  albums: [], memories: [], candidates: [],
+})
+async function mockWallet(page: Page, items: ReturnType<typeof summary>[] = []) {
+  await page.route('**/api/ticket-wallet?**', route => route.fulfill({ json: { code: 200, msg: 'success', data: { items, total: items.length } } }))
+  await page.route('**/api/railway/stats/batch', route => route.fulfill({ json: { code: 200, msg: 'success', data: [] } }))
 }
-
 async function gotoTicketPage(page: Page) {
   await page.goto('/ticket')
-  await expect(page.locator('body')).toBeVisible()
-  await expect(page.getByText('车票管理').first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { name: '票夹', exact: true })).toBeVisible()
 }
 
-test.describe('P1 - 车票子组件 @ticket-components', () => {
+test.describe('P1 - 票夹组件 @ticket-components', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
-
-  test('点击「+ 新增」-> TicketTypeSelectorModal 出现两个选项', async ({ page }) => {
-    await page.route('**/api/train-ticket**', mockEmptyTickets)
-    await page.route('**/api/flight-ticket**', mockEmptyTickets)
-    await gotoTicketPage(page)
-
-    // 新增按钮含「+」或 icon
-    const addBtn = page.getByRole('button', { name: '新增车票', exact: true })
-    await addBtn.dispatchEvent('click')
-    // 弹窗标题
-    const dialog = page.getByText('选择添加票据类型')
-    await expect(dialog).toBeVisible({ timeout: 5_000 })
-    // 在弹窗中定位选项（避开外部过滤器中的同名文案）
-    const dialogScope = dialog.locator('xpath=ancestor::div[contains(@class, "fixed")][1]')
-    await expect(dialogScope.getByText('火车票')).toBeVisible()
-    await expect(dialogScope.getByText('飞机票')).toBeVisible()
+  test('新增类型选择器只展示支持的火车票和机票', async ({ page }) => {
+    await mockWallet(page); await gotoTicketPage(page)
+    await page.getByRole('button', { name: '新增票据', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '新增票据', exact: true })
+    await expect(dialog.getByRole('button', { name: '火车票', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: '机票', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: '电影票', exact: true })).toHaveCount(0)
   })
-
-  test('TicketTypeSelectorModal 点击火车票 -> 弹窗关闭 + 后续表单弹出', async ({ page }) => {
-    await page.route('**/api/train-ticket**', mockEmptyTickets)
-    await page.route('**/api/flight-ticket**', mockEmptyTickets)
-    await gotoTicketPage(page)
-
-    const addBtn = page.getByRole('button', { name: '新增车票', exact: true })
-    await addBtn.dispatchEvent('click')
-    await expect(page.getByText('选择添加票据类型')).toBeVisible({ timeout: 5_000 })
-
-    // 点击「火车票」按钮（grid 布局，按文字锁定）
-    await page.getByText('火车票').first().click()
-    // 弹窗关闭（Transition name="fade" 卸载需要时间，等待 DOM count 变 0）
-    await expect(page.getByText('选择添加票据类型')).toHaveCount(0, { timeout: 5_000 })
+  test('选择火车票后关闭类型选择器并打开编辑表单', async ({ page }) => {
+    await mockWallet(page); await gotoTicketPage(page)
+    await page.getByRole('button', { name: '新增票据', exact: true }).click()
+    const selector = page.getByRole('dialog', { name: '新增票据', exact: true })
+    await selector.getByRole('button', { name: '火车票', exact: true }).click()
+    await expect(selector).toBeHidden()
+    await expect(page.getByRole('dialog', { name: '新增火车票', exact: true }).getByRole('textbox', { name: '车次', exact: true })).toBeVisible()
   })
-
-  // 避免后面 test 跟上一个中的选项重叠，这里仅依赖 mock 数据
-
-
-  test('点击「导出数据」-> TicketExportModal 出现三种格式按钮', async ({ page }) => {
-    await page.route('**/api/train-ticket**', mockEmptyTickets)
-    await page.route('**/api/flight-ticket**', mockEmptyTickets)
-    await gotoTicketPage(page)
-
-    // TicketHeader 中"导出数据"按钮（title=导出数据）
-    const exportBtn = page.getByRole('button', { name: '导出车票', exact: true })
-    await expect(exportBtn).toBeVisible({ timeout: 5_000 })
-    await exportBtn.dispatchEvent('click')
-
-    // 弹窗标题
-    await expect(page.getByText('导出车票数据')).toBeVisible({ timeout: 5_000 })
-    // 三种格式按钮（PNG 按钮文案为 "仿真纸质票 (PNG)"）
-    await expect(page.getByText('JSON 格式')).toBeVisible()
-    await expect(page.getByText('CSV 格式')).toBeVisible()
-    await expect(page.getByText('仿真纸质票 (PNG)')).toBeVisible()
+  test('更多菜单打开导出，空票夹不能导出纪念PNG', async ({ page }) => {
+    await mockWallet(page); await gotoTicketPage(page)
+    await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+    await page.getByRole('button', { name: '导出票据', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '导出票据', exact: true })
+    await expect(dialog.getByRole('button', { name: '票据备份（JSON）', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: '表格数据（CSV）', exact: true })).toBeVisible()
+    await expect(dialog.getByRole('button', { name: '火车票纪念票面（PNG）', exact: true })).toBeDisabled()
   })
-
-  test('TicketHeader 搜索框输入 -> 触发 update:searchQuery', async ({ page }) => {
-    let lastValue: string | null = null
-    // 监听输入事件：DOM 事件不直接挂到 Vue emit 上，改用 input 事件后看 TicketList 是否过滤
-    await page.route('**/api/train-ticket**', (route) => {
-      // 当带 ?search= 关键词时返回过滤后的结果（这里用空集，验证流程跑通即可）
-      const url = new URL(route.request().url())
-      const q = url.searchParams.get('search') ?? url.searchParams.get('q')
-      if (q) lastValue = q
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ code: 0, message: 'success', data: [] }),
-      })
-    })
-    await page.route('**/api/flight-ticket**', mockEmptyTickets)
-    await gotoTicketPage(page)
-
-    const search = page.getByRole('searchbox', { name: '搜索车票', exact: true })
-    await expect(search).toBeVisible({ timeout: 5_000 })
-    await search.fill('北京')
-    // 客户端 v-model 直接更新 store；这里验证输入后 value 落到 input 上
-    await expect(search).toHaveValue('北京')
+  test('搜索实际筛掉不匹配票据', async ({ page }) => {
+    await mockWallet(page, [summary('train', 'one', '北京 → 上海', 'G1234'), summary('flight', 'two', '上海 → 成都', 'MU1234')])
+    await gotoTicketPage(page); await expect(page.locator('main article')).toHaveCount(2)
+    await page.getByRole('button', { name: '搜索票据', exact: true }).click()
+    await page.getByRole('searchbox', { name: '搜索票据', exact: true }).fill('北京')
+    await expect(page.locator('main article')).toHaveCount(1)
+    await expect(page.locator('main article')).toContainText('G1234')
   })
-
-  test('TicketFilterBar 类型下拉切换 -> store.filterType 更新（emit 验证）', async ({ page }) => {
-    await page.route('**/api/train-ticket**', mockEmptyTickets)
-    await page.route('**/api/flight-ticket**', mockEmptyTickets)
-    await gotoTicketPage(page)
-
-    // TicketFilterBar 中的 <select>，包含 全部 / 飞机票 / 高铁 / 普速
-    const select = page.locator('select').first()
-    await expect(select).toBeVisible({ timeout: 5_000 })
-    await select.selectOption('flight')
-    await expect(select).toHaveValue('flight')
+  test('类型筛选应用后只显示机票', async ({ page }) => {
+    await mockWallet(page, [summary('train', 'one', '北京 → 上海', 'G1234'), summary('flight', 'two', '上海 → 成都', 'MU1234')])
+    await gotoTicketPage(page); await expect(page.locator('main article')).toHaveCount(2)
+    await page.getByRole('button', { name: /^筛选/ }).click()
+    const dialog = page.getByRole('dialog', { name: '筛选与排序', exact: true })
+    await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption('flight')
+    await dialog.getByRole('button', { name: '应用', exact: true }).click()
+    await expect(page.locator('main article')).toHaveCount(1)
+    await expect(page.locator('main article')).toContainText('MU1234')
   })
-
-  test('编辑飞机票会提交 PUT，成功提示建立在真实更新请求上', async ({ page }) => {
-    const flight = {
-      id: 'flight-ux-regression',
-      flight_code: 'MU2393',
-      departure_city: '上海',
-      arrival_city: '成都',
-      date_time: '2026-08-09T10:30:00',
-      price: 680,
-      name: '测试乘客',
-      total_running_time: 180,
-      total_mileage: 1700,
-      comments: '',
-    }
-    await page.route('**/api/train-ticket**', async route => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { items: [], total: 0 } }) })
-    })
-    await page.route('**/api/flight-ticket**', async route => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { items: [flight], total: 1 } }) })
-    })
-    await gotoTicketPage(page)
-
-    const card = page.getByText('MU2393', { exact: true }).locator('xpath=ancestor::div[contains(@class, "group")][1]')
-    await card.hover()
-    await card.locator('button').filter({ has: page.locator('svg.lucide-pencil') }).click()
-    await expect(page.getByRole('heading', { name: '编辑飞机票' })).toBeVisible()
-
+  test('编辑机票提交真实PUT，刷新后的卡片显示新航班号', async ({ page }) => {
+    const flight = { id: 'flight-ux-regression', flight_code: 'MU2393', departure_city: '上海', arrival_city: '成都', date_time: '2026-08-09T10:30:00', price: 680, name: '测试乘客', total_running_time: 180, total_mileage: 1700, comments: '' }
+    const item = summary('flight', flight.id, '上海 → 成都', flight.flight_code)
+    await mockWallet(page, [item]); await gotoTicketPage(page)
+    await page.locator('main article').getByRole('button', { name: /的更多操作$/ }).click()
+    await page.getByRole('button', { name: '编辑', exact: true }).click()
+    const editor = page.getByRole('dialog', { name: '编辑机票', exact: true })
+    await expect(editor).toBeVisible()
     let updatedPayload: Record<string, unknown> | null = null
     await page.route('**/api/flight-ticket/flight-ux-regression', async route => {
+      expect(route.request().method()).toBe('PUT')
       updatedPayload = route.request().postDataJSON()
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { ...flight, ...updatedPayload } }) })
+      item.code = String(updatedPayload!.flight_code)
+      await route.fulfill({ json: { code: 200, msg: 'success', data: { ...flight, ...updatedPayload } } })
     })
-    await page.getByPlaceholder('如：MU2393').fill('MU2393A')
-    await page.getByRole('heading', { name: '编辑飞机票' }).locator('xpath=ancestor::div[contains(@class, "fixed")][1]').getByRole('button', { name: '保存' }).click()
-
+    await editor.getByRole('textbox', { name: '航班号', exact: true }).fill('MU2393A')
+    await editor.getByRole('button', { name: '保存票据', exact: true }).click()
     await expect.poll(() => updatedPayload?.flight_code).toBe('MU2393A')
-    await expect(page.locator('.el-message', { hasText: '更新成功' }).last()).toBeVisible()
+    await expect(editor).toBeHidden()
+    await expect(page.locator('main article')).toContainText('MU2393A')
+    await expect(page.locator('.el-message', { hasText: '票据已保存' }).last()).toBeVisible()
   })
 })

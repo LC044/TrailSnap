@@ -62,6 +62,7 @@
         </template>
       </el-dropdown>
     </template>
+    <template #after-content><TicketContextSection v-if="album && album.ownerId === userStore.userInfo?.id" kind="album" :context-id="albumId" :editable="isUserAlbum" class="mx-[var(--ts-page-gutter)] mt-4 mb-4" /></template>
     <template #extra-modals>
       <!-- Photo Selector Modal -->
       <Transition name="slide-up">
@@ -148,6 +149,8 @@
 </template>
 
 <script setup lang="ts">
+import TicketContextSection from '@/views/ticket/components/TicketContextSection.vue'
+import { useUserStore } from '@/stores/user'
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
@@ -167,6 +170,7 @@ const route = useRoute()
 const router = useRouter()
 const goBack = useAppBack('/album')
 const albumStore = useAlbumStore()
+const userStore = useUserStore()
 const photoStore = usePhotoStore()
 const selectionStore = useSelectionStore()
 const albumId = route.params.id as string

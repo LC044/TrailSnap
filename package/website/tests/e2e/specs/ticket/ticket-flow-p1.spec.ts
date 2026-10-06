@@ -112,7 +112,7 @@ async function deleteFlight(request: APIRequestContext, id: string, token: strin
 async function cleanupMarkerTickets(request: APIRequestContext, token: string): Promise<void> {
   // 火车票
   try {
-    const tRes = await request.get(`${API}/train-ticket?skip=0&limit=10000`, {
+    const tRes = await request.get(`${API}/train-ticket?skip=0&limit=1000`, {
       headers: authHeaders(token),
       timeout: 10_000,
     })
@@ -164,10 +164,10 @@ async function gotoRetry(page: Page, url: string, retries = 2): Promise<void> {
 
 /** 切换到卡片视图（grid），便于按车次号定位单张车票卡片 */
 async function switchToGridView(page: Page): Promise<void> {
-  const gridBtn = page.getByTitle('卡片视图')
-  await expect(gridBtn).toBeVisible({ timeout: 10_000 })
-  // 只有当前不是 grid 时才点（aria-pressed 不可靠，直接点击无副作用——重复点仍是 grid）
-  await gridBtn.click()
+  await page.getByRole('button', { name: '搜索票据', exact: true }).click()
+  await page.getByRole('searchbox', { name: '搜索票据', exact: true }).fill(MARK)
+  await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+  await page.getByRole('button', { name: '切换卡片视图', exact: true }).click()
 }
 
 /**
@@ -175,35 +175,31 @@ async function switchToGridView(page: Page): Promise<void> {
  * 限定到 <section> 主区域，避免命中左侧 TicketStatsSidebar 里的 grid。
  */
 function cardByCode(page: Page, code: string) {
-  return page.locator('section div.grid.grid-cols-1 > div', { hasText: code })
+  return page.locator('main article', { hasText: code })
 }
 
 /** 读取 grid 视图第一张卡片的车次/航班号（.font-mono 元素） */
 async function firstCardCode(page: Page): Promise<string> {
-  const text = await page
-    .locator('section div.grid.grid-cols-1 > div')
-    .first()
-    .locator('.font-mono')
-    .first()
-    .textContent({ timeout: 5_000 })
-  return (text ?? '').trim()
+  const label = await page.locator('main article').first().getByRole('button').first().getAttribute('aria-label')
+  return label?.match(/(?:G_|K_|E2ETK)\S+/)?.[0] || ''
 }
 
 /** 选择类型筛选（全部/飞机票/高铁动车/普速列车） */
 async function selectFilter(page: Page, value: 'all' | 'flight' | 'highspeed' | 'normal'): Promise<void> {
-  // 筛选下拉是页面上唯一含「全部车票」选项的 select
-  const filterSelect = page.locator('select:has(option:has-text("全部车票"))').first()
-  await expect(filterSelect).toBeVisible({ timeout: 10_000 })
-  await filterSelect.selectOption(value)
+  await page.getByRole('button', { name: /^筛选/ }).click()
+  const dialog = page.getByRole('dialog', { name: '筛选与排序', exact: true })
+  await dialog.getByRole('combobox', { name: '类型', exact: true }).selectOption(value)
+  await dialog.getByRole('button', { name: '应用', exact: true }).click()
+  await expect(dialog).toBeHidden()
 }
 
 /** 点击排序按钮（日期/里程/时长/票价） */
 async function clickSort(page: Page, label: '日期' | '里程' | '时长' | '票价'): Promise<void> {
-  const btn = page.getByRole('button', { name: label, exact: true })
-  await expect(btn).toBeVisible({ timeout: 5_000 })
-  await btn.click()
-  // 排序为本地 computed，无网络请求；短暂等待 DOM 重排
-  await page.waitForTimeout(300)
+  await page.getByRole('button', { name: /^筛选/ }).click()
+  const dialog = page.getByRole('dialog', { name: '筛选与排序', exact: true })
+  await dialog.getByRole('combobox', { name: '排序', exact: true }).selectOption({ '日期': 'date', '里程': 'distance', '时长': 'duration', '票价': 'price' }[label])
+  await dialog.getByRole('button', { name: '应用', exact: true }).click()
+  await expect(dialog).toBeHidden()
 }
 
 test.describe.serial('P1 - 车票管理 @ticket', () => {
@@ -390,7 +386,7 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await switchToGridView(page)
 
     // 用搜索框隔离出本标记车票，排除用户真实数据干扰
-    const search = page.getByPlaceholder('搜索车次 / 地点 / 乘车人')
+    const search = page.getByRole('searchbox', { name: '搜索票据', exact: true })
     await expect(search).toBeVisible({ timeout: 10_000 })
     await search.fill(MARK)
     // 搜索为本地过滤（filteredTickets 立即重算），等两张卡都出现
@@ -419,31 +415,31 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await switchToGridView(page)
 
     // 点击头部「新增」→ 弹出类型选择器 → 选「火车票」
-    await page.getByRole('button', { name: '新增车票', exact: true }).click()
-    const trainTypeBtn = page.locator('button', { hasText: '火车票' }).first()
+    await page.getByRole('button', { name: '新增票据', exact: true }).click()
+    const trainTypeBtn = page.getByRole('dialog', { name: '新增票据', exact: true }).getByRole('button', { name: '火车票', exact: true })
     await expect(trainTypeBtn).toBeVisible({ timeout: 5_000 })
     await trainTypeBtn.click()
 
     // 等表单弹窗渲染（车次输入框出现）
-    const codeInput = page.locator('input[placeholder="G101 / Z123"]')
+    const codeInput = page.getByRole('textbox', { name: '车次', exact: true })
     await expect(codeInput).toBeVisible({ timeout: 5_000 })
     await codeInput.fill(code)
-    await page.locator('input[placeholder="如：北京南"]').fill('北京南')
-    await page.locator('input[placeholder="如：上海虹桥"]').fill('上海虹桥')
-    await page.locator('input[placeholder="如：张三"]').fill('E2E测试人')
+    await page.getByRole('textbox', { name: '出发地', exact: true }).fill('北京南')
+    await page.getByRole('textbox', { name: '目的地', exact: true }).fill('上海虹桥')
+    await page.getByRole('textbox', { name: /^(乘车人|乘机人)$/ }).fill('E2E测试人')
     await page.locator('input[type="datetime-local"]').fill('2025-08-15T10:00')
-    await page.locator('input[placeholder="如：03 / 8A"]').fill('03')
-    await page.locator('input[placeholder="如：12A / 05下"]').fill('12F')
-    await page.locator('input[placeholder="198.5"]').fill('199.5')
+    await page.getByRole('textbox', { name: '车厢', exact: true }).fill('03')
+    await page.getByRole('textbox', { name: '座位', exact: true }).fill('12F')
+    await page.getByRole('spinbutton', { name: '票价', exact: true }).fill('199.5')
 
     // 保存
-    const saveBtn = page.locator('div.fixed.z-50 button', { hasText: '保存' }).first()
+    const saveBtn = page.getByRole('button', { name: '保存票据', exact: true })
     await expect(saveBtn).toBeVisible({ timeout: 5_000 })
     await saveBtn.click()
 
     // 成功提示
     await expect(
-      page.locator('.el-message', { hasText: '新增成功' }).last(),
+      page.locator('.el-message', { hasText: '票据已保存' }).last(),
     ).toBeVisible({ timeout: 10_000 })
 
     // 列表中出现刚创建的车票（fetchTickets(true) 强制刷新后）
@@ -462,26 +458,26 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await gotoRetry(page, '/ticket')
     await switchToGridView(page)
 
-    await page.getByRole('button', { name: '新增车票', exact: true }).click()
-    const flightTypeBtn = page.locator('button', { hasText: '飞机票' }).first()
+    await page.getByRole('button', { name: '新增票据', exact: true }).click()
+    const flightTypeBtn = page.getByRole('dialog', { name: '新增票据', exact: true }).getByRole('button', { name: '机票', exact: true })
     await expect(flightTypeBtn).toBeVisible({ timeout: 5_000 })
     await flightTypeBtn.click()
 
-    const codeInput = page.locator('input[placeholder="如：MU2393"]')
+    const codeInput = page.getByRole('textbox', { name: '航班号', exact: true })
     await expect(codeInput).toBeVisible({ timeout: 5_000 })
     await codeInput.fill(code)
-    await page.locator('input[placeholder="如：北京首都"]').fill('北京首都')
-    await page.locator('input[placeholder="如：上海虹桥"]').fill('上海虹桥')
-    await page.locator('input[placeholder="如：张三"]').fill('E2E测试人')
+    await page.getByRole('textbox', { name: '出发地', exact: true }).fill('北京首都')
+    await page.getByRole('textbox', { name: '目的地', exact: true }).fill('上海虹桥')
+    await page.getByRole('textbox', { name: /^(乘车人|乘机人)$/ }).fill('E2E测试人')
     await page.locator('input[type="datetime-local"]').fill('2025-09-01T14:00')
-    await page.locator('input[placeholder="1098"]').fill('1098')
+    await page.getByRole('spinbutton', { name: '票价', exact: true }).fill('1098')
 
-    const saveBtn = page.locator('div.fixed.z-50 button', { hasText: '保存' }).first()
+    const saveBtn = page.getByRole('button', { name: '保存票据', exact: true })
     await expect(saveBtn).toBeVisible({ timeout: 5_000 })
     await saveBtn.click()
 
     await expect(
-      page.locator('.el-message', { hasText: '新增成功' }).last(),
+      page.locator('.el-message', { hasText: '票据已保存' }).last(),
     ).toBeVisible({ timeout: 10_000 })
 
     await expect(cardByCode(page, code).first()).toBeVisible({ timeout: 15_000 })
@@ -531,19 +527,21 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await switchToGridView(page)
 
     // 搜索本标记，隔离出两张待删车票（避免误选用户真实车票）
-    const search = page.getByPlaceholder('搜索车次 / 地点 / 乘车人')
+    const search = page.getByRole('searchbox', { name: '搜索票据', exact: true })
     await expect(search).toBeVisible({ timeout: 10_000 })
     await search.fill(MARK)
     await expect(cardByCode(page, code1).first()).toBeVisible({ timeout: 15_000 })
     await expect(cardByCode(page, code2).first()).toBeVisible({ timeout: 5_000 })
 
     // 全选（仅选当前 filteredTickets = 两张本标记车票）
-    const selectAll = page.locator('.el-checkbox', { hasText: '全选' }).first()
+    await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
+    await page.getByRole('button', { name: '选择票据', exact: true }).click()
+    const selectAll = page.getByRole('button', { name: '全选当前结果 2 张', exact: true })
     await expect(selectAll).toBeVisible({ timeout: 5_000 })
     await selectAll.click()
 
     // 删除选中
-    const batchDelBtn = page.locator('button', { hasText: '删除选中' }).first()
+    const batchDelBtn = page.getByRole('button', { name: '删除 2', exact: true })
     await expect(batchDelBtn).toBeVisible({ timeout: 5_000 })
     await batchDelBtn.click()
 
@@ -554,7 +552,7 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
 
     // 成功提示
     await expect(
-      page.locator('.el-message', { hasText: '批量删除成功' }).last(),
+      page.locator('.el-message', { hasText: '删除成功' }).last(),
     ).toBeVisible({ timeout: 10_000 })
 
     // 两张车票从列表消失

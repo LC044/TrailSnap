@@ -139,6 +139,11 @@
       </div>
     </section>
 
+    <section v-if="!store.hiddenSections.includes('tickets')" :style="{ order: sectionRank('tickets') }">
+      <h2 class="mb-3 flex items-center gap-2"><button class="ts-section-title min-h-11 flex-1 text-left" :aria-expanded="!collapsed.tickets" @click="collapsed.tickets = !collapsed.tickets">票夹</button><RouterLink to="/ticket" class="min-h-11 flex items-center text-xs text-primary-600 dark:text-primary-400">查看全部</RouterLink></h2>
+      <TicketWalletPreview v-if="!collapsed.tickets" />
+    </section>
+
     <section v-for="group in visibleSmartAlbums" :key="group.id" :style="{ order: sectionRank(group.id) }">
       <h2 class="mb-3 flex items-center gap-2">
         <button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed[group.id]" @click="collapsed[group.id] = !collapsed[group.id]">
@@ -374,6 +379,7 @@
 </template>
 
 <script setup lang="ts">
+import TicketWalletPreview from '@/views/ticket/components/TicketWalletPreview.vue'
 import { memoryApi } from '@/api/memory'
 import type { MemoryItem } from '@/types/memory'
 import { thumbnailUrl } from '@/utils/mediaUrl'

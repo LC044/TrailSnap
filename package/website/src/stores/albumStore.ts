@@ -12,11 +12,15 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
 export const useAlbumStore = defineStore('album', () => {
   const sectionDefaults = [
-    { id: 'mine', title: '我的相册' }, { id: 'memories', title: '回忆' },
+    { id: 'mine', title: '我的相册' }, { id: 'memories', title: '回忆' }, { id: 'tickets', title: '票夹' },
     { id: 'people', title: '人物相册' }, { id: 'location', title: '位置相册' },
     { id: 'classification', title: '智能分类' },
   ]
   const sectionOrder = useStorage<string[]>('ts-album-section-order', sectionDefaults.map(section => section.id))
+  if (!sectionOrder.value.includes('tickets')) {
+    const oldDefault = ['mine', 'memories', 'people', 'location', 'classification']
+    sectionOrder.value = sectionOrder.value.join(',') === oldDefault.join(',') ? ['mine', 'memories', 'tickets', 'people', 'location', 'classification'] : [...sectionOrder.value, 'tickets']
+  }
   const hiddenSections = useStorage<string[]>('ts-album-hidden-sections', [])
   const collapsedSections = useStorage<Record<string, boolean>>('ts-album-collapsed', {})
   const sections = computed(() => [...sectionDefaults].sort((a, b) => {
@@ -173,6 +177,7 @@ export const useAlbumStore = defineStore('album', () => {
 
       return {
         id: album.id,
+        ownerId: album.owner_id,
         name: album.name,
         title: album.name,
         type: album.type,

@@ -98,16 +98,7 @@
             </div>
           </section>
 
-          <section v-if="memory.tickets?.length" class="ts-surface p-5 md:p-6">
-            <h2 class="text-lg font-bold text-gray-900 dark:text-white">行程票据</h2>
-            <div class="mt-4 grid gap-3 sm:grid-cols-2">
-              <div v-for="ticket in memory.tickets" :key="`${ticket.type}-${ticket.id}`" class="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-                <div class="flex items-center justify-between"><span class="text-sm font-semibold text-primary-600 dark:text-primary-400">{{ ticket.type === 'train' ? '火车票' : '机票' }}</span><span class="font-mono text-sm text-gray-700 dark:text-gray-200">{{ ticket.code }}</span></div>
-                <div class="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><span>{{ ticket.from }}</span><ArrowRight class="h-4 w-4 text-gray-400 dark:text-gray-400" /><span>{{ ticket.to }}</span></div>
-                <p v-if="ticket.date_time" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ formatDateTime(ticket.date_time) }}</p>
-              </div>
-            </div>
-          </section>
+          <TicketContextSection v-if="memory.status === 'confirmed'" kind="memory" :context-id="memory.id" editable @changed="load" />
         </div>
 
         <aside class="space-y-5">
@@ -182,6 +173,7 @@
 </template>
 
 <script setup lang="ts">
+import TicketContextSection from '@/views/ticket/components/TicketContextSection.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'

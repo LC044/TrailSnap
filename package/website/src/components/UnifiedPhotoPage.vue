@@ -258,6 +258,7 @@
             <slot name="empty"></slot>
         </template>
       </PhotoGallery>
+      <slot name="after-content"></slot>
     </div>
 
     <!-- Lightbox -->

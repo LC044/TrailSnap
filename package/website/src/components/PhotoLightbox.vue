@@ -2,6 +2,7 @@
   <Transition name="fade">
     <div
       v-if="visible"
+      ref="lightboxRoot"
       class="photo-lightbox-shell fixed inset-0 z-[100] flex"
       :class="{
         'details-active': mobileDetailsProgress > 0.01,
@@ -676,6 +677,7 @@ const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
 import ResponsiveDialog from './ui/ResponsiveDialog.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
+import { useModalScrollLock } from '@/composables/useModalScrollLock'
 import { locationService } from '@/api/location'
 import { useRouter } from 'vue-router'
 
@@ -976,6 +978,19 @@ const toggleOriginal = () => {
 }
 
 const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'select', 'add-to-album', 'transfer'])
+const lightboxRoot = ref<HTMLElement | null>(null)
+let lightboxReturnFocus: HTMLElement | null = null
+useModalScrollLock(computed(() => props.visible))
+watch(() => props.visible, async (visible) => {
+    if (visible) {
+        lightboxReturnFocus = document.activeElement as HTMLElement | null
+        await nextTick()
+        lightboxRoot.value?.focus({ preventScroll: true })
+    } else if (lightboxReturnFocus?.isConnected) {
+        lightboxReturnFocus.focus({ preventScroll: true })
+        lightboxReturnFocus = null
+    }
+}, { immediate: true })
 
 // Keep the lightbox in the browser history so the mobile browser/gesture back
 // action closes it before Vue Router navigates away from the current page.
@@ -1205,7 +1220,6 @@ onUnmounted(() => {
     window.removeEventListener('popstate', handleHistoryPopState)
     removeLightboxHistoryEntry()
     disposePlayer()
-    document.body.style.overflow = ''
     stopDrag()
     stopTouch()
     if (shortcutHintTimer) {
@@ -1277,7 +1291,6 @@ watch(() => props.visible, async (newVal) => {
     isLiveVideoVisible.value = false
     if (newVal && props.image) {
         pushLightboxHistoryEntry()
-        document.body.style.overflow = 'hidden'
         resetZoom()
         controlsVisible.value = true
 
@@ -1304,7 +1317,6 @@ watch(() => props.visible, async (newVal) => {
         }
     } else {
         removeLightboxHistoryEntry()
-        document.body.style.overflow = ''
         isEditing.value = false
         disposePlayer()
         isPlayingLive.value = false

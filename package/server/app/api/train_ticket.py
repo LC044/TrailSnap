@@ -35,6 +35,8 @@ from app.core.config_manager import config_manager
 import aiohttp
 from aiohttp import FormData
 
+from app.service.ticket_wallet import owned_ticket, validate_photo
+
 router = APIRouter()
 
 # ------------------- 火车票接口 -------------------
@@ -180,132 +182,9 @@ async def import_tickets(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    导入车票数据（支持JSON和CSV格式）
-    
-    - **文件限制**: 最大10MB
-    - **重复处理**: 根据ID更新现有记录，不存在则创建
-    - **格式要求**: 
-        - CSV需包含表头
-        - JSON需为对象数组
-    """
-    # 1. 验证文件大小
-    MAX_SIZE = 10 * 1024 * 1024  # 10MB
-    contents = await file.read()
-    if len(contents) > MAX_SIZE:
-        raise HTTPException(status_code=413, detail="文件大小超过10MB限制")
-    
-    # 2. 确定文件格式
-    content_type = file.content_type
-    filename = file.filename.lower()
-    
-    data_list = []
-    
-    try:
-        if "json" in content_type or filename.endswith(".json"):
-            data_list = json.loads(contents.decode("utf-8"))
-            if not isinstance(data_list, list):
-                raise HTTPException(status_code=400, detail="JSON文件格式错误：应为对象数组")
-                
-        elif "csv" in content_type or filename.endswith(".csv"):
-            # 处理BOM
-            decoded = contents.decode("utf-8-sig")
-            reader = csv.DictReader(io.StringIO(decoded))
-            data_list = [row for row in reader]
-            
-        else:
-            raise HTTPException(status_code=400, detail="不支持的文件格式：仅支持JSON和CSV")
-            
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="无效的JSON文件")
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="文件编码错误，请使用UTF-8编码")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"文件解析失败: {str(e)}")
-
-    # 3. 处理数据导入
-    success_count = 0
-    failed_count = 0
-    updated_count = 0
-    created_count = 0
-    errors = []
-
-    for idx, item in enumerate(data_list):
-        try:
-            # 尝试获取ID
-            ticket_id = item.get("id")
-            
-            # 数据清洗：移除空值
-            item = {k: v for k, v in item.items() if v is not None and v != ""}
-            
-            # 特殊处理：stop_stations 如果是字符串形式的JSON，可能需要保持原样
-            # TrainTicketCreate defined stop_stations as Optional[str]
-            
-            # 验证并转换数据
-            # 使用Pydantic模型进行验证和类型转换
-            try:
-                # 这里使用TrainTicketUpdate来验证，因为它允许字段缺失（CSV可能缺列）
-                # 但对于创建，我们需要TrainTicketCreate的必填项
-                # 策略：如果ID存在且DB存在，用Update；否则用Create
-                
-                db_ticket = None
-                if ticket_id:
-                    db_ticket = get_train_ticket(db, ticket_id)
-                
-                if db_ticket:
-                    # 更新模式
-                    ticket_update = TrainTicketUpdate(**item)
-                    update_data = ticket_update.model_dump(exclude_unset=True)
-                    
-                    for key, value in update_data.items():
-                        setattr(db_ticket, key, value)
-                    
-                    updated_count += 1
-                else:
-                    # 创建模式
-                    # 如果是CSV导入，可能会缺少ID字段（如果是新数据）
-                    # 如果item中有id但DB无，则是恢复数据/指定ID创建
-                    
-                    # 验证必填字段
-                    ticket_create = TrainTicketCreate(**item)
-                    model_data = ticket_create.model_dump()
-                    
-                    # 如果原数据有ID，强制使用该ID
-                    if ticket_id:
-                        model_data["id"] = ticket_id
-                        
-                    # 处理默认值
-                    if "stop_stations" not in model_data or not model_data["stop_stations"]:
-                        model_data["stop_stations"] = "[]"
-                        
-                    new_ticket = TrainTicket(**model_data, owner_id=current_user.id)
-                    db.add(new_ticket)
-                    created_count += 1
-                
-                # 提交事务
-                db.commit()
-                success_count += 1
-                
-            except Exception as e:
-                db.rollback()
-                raise e
-                
-        except Exception as e:
-            failed_count += 1
-            errors.append(f"第 {idx + 1} 行处理失败: {str(e)}")
-            # 继续处理下一条
-
-    return BaseResponse(code=200, msg="导入完成", data={
-        "message": "导入完成",
-        "total": len(data_list),
-        "success": success_count,
-        "failed": failed_count,
-        "details": {
-            "created": created_count,
-            "updated": updated_count
-        },
-        "errors": errors[:10]  # 仅返回前10个错误以免响应过大
-    })
+    """Read legacy arrays or versioned mixed ticket backups with ownership checks."""
+    from app.api.ticket_wallet import import_wallet
+    return await import_wallet(file, db, current_user)
 
 
 @router.get("/export", summary="导出车票数据")
@@ -386,6 +265,7 @@ def create_ticket(
     """
     创建新的火车票记录
     """
+    validate_photo(db, current_user.id, getattr(ticket, "photo_id", None))
     data = create_train_ticket(db=db, ticket=ticket, owner_id=current_user.id)
     return BaseResponse(code=200, msg="创建成功", data=data)
 
@@ -393,8 +273,10 @@ def create_ticket(
 @router.get("/{ticket_id}", response_model=BaseResponse[TrainTicketResponse], summary="获取单张火车票")
 def read_ticket(
         ticket_id: str = Path(..., description="火车票ID"),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    owned_ticket(db, current_user.id, "train", ticket_id)
     """根据ID获取单张火车票的详细信息"""
     db_ticket = get_train_ticket(db=db, ticket_id=ticket_id)
     if not db_ticket:
@@ -452,8 +334,11 @@ def read_tickets(
 def update_ticket(
         ticket_update: TrainTicketUpdate,
         ticket_id: str = Path(..., description="火车票ID"),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    validate_photo(db, current_user.id, ticket_update.photo_id)
+    owned_ticket(db, current_user.id, "train", ticket_id)
     """根据ID更新火车票信息（只需要提供要更新的字段）"""
     db_ticket = update_train_ticket(db=db, ticket_id=ticket_id, ticket_update=ticket_update)
     if not db_ticket:
@@ -464,8 +349,10 @@ def update_ticket(
 @router.delete("/{ticket_id}", summary="删除火车票记录")
 def delete_ticket(
         ticket_id: str = Path(..., description="火车票ID"),
-        db: Session = Depends(get_db)
+        db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    owned_ticket(db, current_user.id, "train", ticket_id)
     """根据ID删除火车票记录"""
     success = delete_train_ticket(db=db, ticket_id=ticket_id)
     if not success:

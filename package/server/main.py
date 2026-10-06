@@ -328,6 +328,8 @@ app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(agent_token.router, prefix="/tokens", tags=["Tokens"])
 app.include_router(user.router, prefix="/users", tags=["Users"])
 app.include_router(train_ticket.router, prefix="/train-ticket", tags=["train-ticket"])
+from app.api import ticket_wallet
+app.include_router(ticket_wallet.router, prefix="/ticket-wallet", tags=["Ticket wallet"])
 app.include_router(flight_ticket.router, prefix="/flight-ticket", tags=["flight-ticket"])
 app.include_router(railway_router, prefix="/railway", tags=["railway"])
 app.include_router(swipe_filter.router, prefix="/photos/swipe-filter", tags=["SwipeFilter"])
