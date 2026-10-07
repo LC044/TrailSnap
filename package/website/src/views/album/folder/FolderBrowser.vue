@@ -25,9 +25,7 @@
     <section class="flex-1 flex flex-col min-w-0 rounded-2xl bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 overflow-hidden">
       <!-- 工具栏 -->
       <div class="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-        <button @click="goBack" :disabled="breadcrumb.length === 0" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" title="返回上一层">
-          <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-        </button>
+        <BackButton label="返回上一层" @click="goBack" :disabled="breadcrumb.length === 0" />
 
         <!-- 面包屑 -->
         <nav class="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 flex-1 min-w-0 overflow-x-auto no-scrollbar">
@@ -371,13 +369,13 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import {
   Folder, FolderOpen, FolderTree as FolderTree2, HardDrive, ChevronRight, ChevronDown,
-  ArrowLeft, Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, LayoutDashboard, List,
+  Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, LayoutDashboard, List,
   ArrowUpDown, ArrowUp, ArrowDown, Check, X, Download, Trash2, ImagePlusIcon,
-  MoreHorizontal, UserPlus, CheckSquare, Settings2, BookOpen
-} from 'lucide-vue-next'
+  MoreHorizontal, UserPlus, CheckSquare, Settings2, BookOpen } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { albumService } from '@/api/album'
 import { photoApi } from '@/api/photo'

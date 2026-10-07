@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-full bg-gray-50 dark:bg-gray-900 px-[var(--ts-page-gutter)] py-4 md:py-7">
+  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-4 md:py-7">
     <div class="mx-auto max-w-screen-2xl">
       <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
@@ -7,8 +7,8 @@
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
         </div>
         <div class="flex items-center gap-2 sm:hidden" aria-label="记忆操作">
-          <button class="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" :disabled="store.discovering" @click="runDiscovery"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': store.discovering }" />{{ store.discovering ? '发现中…' : '发现记忆' }}</button>
-          <RouterLink to="/memories/new" class="flex h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary-500 px-3 text-sm font-medium text-white"><Plus class="h-4 w-4" />新建记忆</RouterLink>
+          <button class="ts-button ts-button-secondary flex h-11 min-w-0 flex-1 items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" :disabled="store.discovering" @click="runDiscovery"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': store.discovering }" />{{ store.discovering ? '发现中…' : '发现记忆' }}</button>
+          <RouterLink to="/memories/new" class="ts-button ts-button-primary min-w-0 flex-1 px-3"><Plus class="h-4 w-4" />新建记忆</RouterLink>
           <div class="ts-liquid-glass ts-glass-toolbar"><button @click="showActions = true" class="ts-glass-button" aria-label="更多记忆操作"><MoreHorizontal class="h-5 w-5" /></button><ResponsiveDialog v-model="showActions" title="记忆操作" glass>
               <button type="button" class="ts-action-row" @click="showActions = false; router.push('/daily-frame')"><Film class="mr-2 h-4 w-4" />一日一帧</button>
               <button type="button" class="ts-action-row" @click="showActions = false; router.push('/explore/relations')"><Network class="mr-2 h-4 w-4" />关联探索</button>
@@ -24,11 +24,11 @@
             <Network class="h-4 w-4 shrink-0" />关联探索
           </RouterLink>
           <button
-            class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 shadow-sm hover:bg-primary-100 dark:border-primary-900 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
+            class="ts-button ts-button-secondary flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap border border-primary-200 bg-primary-50 text-xs text-primary-700 shadow-sm hover:bg-primary-100 dark:border-primary-900 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
             @click="createWithAgent"
           ><Bot class="h-4 w-4 shrink-0" /><span class="sm:hidden">AI 创建</span><span class="hidden sm:inline">和 AI 创建</span></button>
           <button
-            class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
+            class="ts-button ts-button-secondary flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap border border-gray-200 bg-white text-xs text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
             :disabled="store.discovering"
             @click="runDiscovery"
           >
@@ -49,7 +49,7 @@
           <button
             v-for="tab in tabs"
             :key="tab.status"
-            class="whitespace-nowrap border-b-2 px-1 pb-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:text-sm"
+            class="min-h-11 whitespace-nowrap border-b-2 px-1 pb-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:text-sm"
             :class="store.activeStatus === tab.status ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
             @click="changeTab(tab.status)"
           >{{ tab.label }} <span class="ml-0.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-800 sm:ml-1 sm:px-2">{{ store.counts[tab.status] }}</span></button>
@@ -58,7 +58,7 @@
           <button class="min-h-11 text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400" @click="selectMode = !selectMode">
             {{ selectMode ? '取消选择' : '批量合并' }}
           </button>
-          <button v-if="selectMode" class="min-h-11 rounded-lg bg-primary-500 px-3 text-sm text-white disabled:opacity-50" :disabled="selectedIds.length < 2" @click="openMerge">合并 {{ selectedIds.length }} 段</button>
+          <button v-if="selectMode" class="ts-button ts-button-primary min-h-11 bg-primary-500 text-white disabled:opacity-50" :disabled="selectedIds.length < 2" @click="openMerge">合并 {{ selectedIds.length }} 段</button>
         </div>
       </div>
 
@@ -93,11 +93,11 @@
         />
       </div>
 
-      <div v-else class="mt-12 flex min-h-[340px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-white px-6 text-center dark:border-gray-700 dark:bg-gray-800">
+      <div v-else class="ts-surface mt-12 flex min-h-[340px] flex-col items-center justify-center border-dashed px-6 text-center">
         <BookHeart class="h-12 w-12 text-primary-400" />
         <h2 class="ts-section-title mt-4 text-lg font-semibold text-gray-900 dark:text-white">{{ emptyTitle }}</h2>
         <p class="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">{{ emptyDescription }}</p>
-        <button v-if="store.activeStatus === 'candidate'" class="mt-5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600" @click="runDiscovery">开始发现</button>
+        <button v-if="store.activeStatus === 'candidate'" class="ts-button ts-button-primary mt-5 bg-primary-500 text-white hover:bg-primary-600" @click="runDiscovery">开始发现</button>
         <RouterLink v-else-if="store.activeStatus === 'confirmed'" to="/memories/new" class="mt-5 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600">从照片创建</RouterLink>
       </div>
     </div>

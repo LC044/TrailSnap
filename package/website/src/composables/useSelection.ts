@@ -1,4 +1,5 @@
 import { ref, reactive, computed, watch } from 'vue'
+import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useUiStore } from '@/stores/uiStore'
 
 export function useSelection() {
@@ -18,6 +19,8 @@ export function useSelection() {
     isSelectionMode.value = false
     selectedIds.clear()
   }
+
+  useOverlayStack(isSelectionMode, exitSelectionMode)
 
   const toggleSelectionMode = (val?: boolean) => {
     if (val !== undefined) {

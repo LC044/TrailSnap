@@ -21,7 +21,7 @@
       <!-- 1. Top Section: Overview & Recoverable -->
       <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <!-- Overview Card -->
-        <div class="xl:col-span-1 bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700 relative overflow-hidden flex flex-col items-center">
+        <div class="ts-surface xl:col-span-1 p-4 sm:p-6 relative overflow-hidden flex flex-col items-center">
           <div class="absolute top-0 right-0 w-32 h-32 bg-primary-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
           <div class="absolute bottom-0 left-0 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl -ml-8 -mb-8 pointer-events-none"></div>
           
@@ -45,7 +45,7 @@
         </div>
 
         <!-- Recoverable Space -->
-        <div class="xl:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col">
+        <div class="ts-surface xl:col-span-2 p-4 sm:p-6 flex flex-col">
           <div class="flex items-center justify-between mb-4 sm:mb-6">
             <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
               <i class="mgc_magic_line text-amber-500 text-xl"></i>
@@ -62,7 +62,7 @@
               class="group grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto_auto] items-center gap-3 bg-gray-50/50 px-3 py-3 text-left transition-colors hover:bg-primary-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:bg-gray-800/30 dark:hover:bg-primary-900/20 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto] sm:rounded-xl sm:border sm:border-gray-100 sm:p-4 dark:sm:border-gray-700"
               @click="handleRecoverableClick(key)"
             >
-              <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-primary-500 shadow-sm transition-transform group-hover:scale-105 dark:bg-gray-700 sm:h-11 sm:w-11">
+              <div class="ts-surface flex h-10 w-10 items-center justify-center text-primary-500 transition-transform group-hover:scale-105 sm:h-11 sm:w-11">
                 <component :is="item.icon" class="h-5 w-5" />
               </div>
               <div class="min-w-0">
@@ -81,14 +81,14 @@
       <!-- 2. Distribution Block -->
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- By Type -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="ts-surface p-4 sm:p-6">
           <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
             <i class="mgc_pie_chart_line text-blue-500 text-xl"></i> 文件类型分布
           </h3>
           <div ref="typeChartRef" class="w-full h-[260px] sm:h-[280px]"></div>
         </div>
         <!-- By Device -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="ts-surface p-4 sm:p-6">
           <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
             <i class="mgc_camera_line text-orange-500 text-xl"></i> 拍摄设备分布
           </h3>
@@ -96,7 +96,7 @@
         </div>
       </div>
         <!-- By Time -->
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+        <div class="ts-surface p-4 sm:p-6">
           <div class="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
             <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
               <i class="mgc_chart_bar_line text-indigo-500 text-xl"></i> 历史占用分布
@@ -131,14 +131,14 @@
           </div>
           <div class="relative w-full h-[280px]">
             <div v-if="timeDistributionLoading" class="absolute inset-0 z-10 bg-white/50 dark:bg-gray-800/50 flex items-center justify-center">
-              <i class="mgc_loading_4_line animate-spin text-2xl text-gray-400"></i>
+              <i class="mgc_loading_4_line animate-spin text-2xl text-gray-400 dark:text-gray-400"></i>
             </div>
             <div ref="timeChartRef" class="w-full h-full"></div>
           </div>
         </div>
 
       <!-- Folder Treemap -->
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="ts-surface p-4 sm:p-6">
         <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <i class="mgc_folder_2_line text-emerald-500 text-xl"></i> 文件夹占用比例
         </h3>
@@ -146,7 +146,7 @@
       </div>
 
       <!-- 3. Top Large Files Block -->
-      <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 dark:border-gray-700">
+      <div class="ts-surface p-4 sm:p-6">
         <h3 class="ts-card-title text-base font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
           <i class="mgc_layout_list_line text-rose-500 text-xl"></i> 空间占用 Top 20
         </h3>
@@ -178,7 +178,7 @@
               <button @click="deleteFile(file)" class="flex-1 px-3 py-1.5 text-sm text-red-600 bg-red-50 hover:bg-red-100 dark:text-red-400 dark:bg-red-900/30 dark:hover:bg-red-900/50 rounded-lg transition-colors focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:outline-none">删除</button>
             </div>
           </div>
-          <div v-if="!topLargeFiles.length" class="py-8 text-center text-gray-500">暂无大文件记录</div>
+          <div v-if="!topLargeFiles.length" class="py-8 text-center text-gray-500 dark:text-gray-400">暂无大文件记录</div>
         </div>
 
         <!-- Desktop: table -->
@@ -217,7 +217,7 @@
                 </td>
               </tr>
               <tr v-if="!topLargeFiles.length">
-                <td colspan="4" class="px-4 py-8 text-center text-gray-500">暂无大文件记录</td>
+                <td colspan="4" class="px-4 py-8 text-center text-gray-500 dark:text-gray-400">暂无大文件记录</td>
               </tr>
             </tbody>
           </table>

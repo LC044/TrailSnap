@@ -39,6 +39,8 @@ function matchesKey(def: HotkeyDef, e: KeyboardEvent): boolean {
 function handleGlobalKeydown(e: KeyboardEvent) {
   // Skip when user is typing in an input/textarea/contenteditable
   const target = e.target as HTMLElement
+  // The dialog manages focus and Escape; keep underlying page actions inactive.
+  if (target?.closest('.responsive-dialog-panel')) return
   const tag = target?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) {
     // Only let through keys that are explicitly Escape or modifier combos

@@ -27,6 +27,8 @@ from app.api.deps import get_current_user
 from app.db.models import User
 from app.core.config_manager import config_manager
 
+from app.service.ticket_wallet import owned_ticket, validate_photo
+
 router = APIRouter()
 
 @router.post("/recognize", summary="识别飞机票图片")
@@ -106,6 +108,7 @@ async def create_ticket(
     current_user: User = Depends(get_current_user)
 ):
     """手动创建一张新的飞机票"""
+    validate_photo(db, current_user.id, getattr(ticket, "photo_id", None))
     data = create_flight_ticket(db, ticket, owner_id=current_user.id)
     return BaseResponse(code=200, msg="创建成功", data=data)
 
@@ -135,8 +138,10 @@ async def get_tickets(
 @router.get("/{ticket_id}", response_model=BaseResponse[FlightTicketResponse], summary="获取飞机票详情")
 async def get_ticket(
     ticket_id: str = Path(..., description="飞机票ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    owned_ticket(db, current_user.id, "flight", ticket_id)
     """根据ID获取飞机票详情"""
     ticket = get_flight_ticket(db, ticket_id)
     if not ticket:
@@ -147,8 +152,11 @@ async def get_ticket(
 async def update_ticket(
     ticket_update: FlightTicketUpdate,
     ticket_id: str = Path(..., description="飞机票ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    validate_photo(db, current_user.id, ticket_update.photo_id)
+    owned_ticket(db, current_user.id, "flight", ticket_id)
     """更新飞机票信息"""
     ticket = update_flight_ticket(db, ticket_id, ticket_update)
     if not ticket:
@@ -158,8 +166,10 @@ async def update_ticket(
 @router.delete("/{ticket_id}", summary="删除飞机票")
 async def delete_ticket(
     ticket_id: str = Path(..., description="飞机票ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    owned_ticket(db, current_user.id, "flight", ticket_id)
     """删除飞机票"""
     success = delete_flight_ticket(db, ticket_id)
     if not success:

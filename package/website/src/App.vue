@@ -20,6 +20,8 @@ import { provideNavItems } from '@/composables/useNavItems';
 import { useUserStore } from '@/stores/user';
 import { useNotificationStore } from '@/stores/notificationStore';
 import { useAlbumStore } from '@/stores/albumStore';
+import { useTicketWalletStore } from '@/stores/ticketWalletStore';
+import { useTicketStore } from '@/stores/ticketStore';
 import { usePhotoStore, usePhotosPageStore } from '@/stores/photoStore';
 import { useGalleryBackup } from '@/composables/useGalleryBackup';
 import { isMobileApp } from '@/config/server';
@@ -65,6 +67,9 @@ const albumStore = useAlbumStore();
 const photoStore = usePhotoStore();
 const photosPageStore = usePhotosPageStore();
 const token = computed(() => userStore.token);
+const walletStore = useTicketWalletStore();
+watch(token, () => walletStore.reset());
+watch(() => walletStore.revision, () => { useTicketStore().lastFetchTime = 0; });
 const galleryBackup = useGalleryBackup();
 const sseEnabled = ref(false);
 const PHOTO_DATA_TASKS = new Set([

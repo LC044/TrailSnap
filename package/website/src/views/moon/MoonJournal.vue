@@ -14,14 +14,7 @@
         <div class="flex h-full min-h-[168px] flex-col justify-between p-4 sm:p-5 md:min-h-[190px] md:p-6">
           <div class="flex items-start justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
-              <button
-                type="button"
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950"
-                aria-label="返回"
-                @click="goBack"
-              >
-                <ArrowLeft class="h-5 w-5" />
-              </button>
+              <BackButton label="返回" @click="goBack" />
               <div class="min-w-0">
                 <h1 class="text-xl font-bold tracking-wide sm:text-2xl">月迹</h1>
                 <p class="mt-0.5 truncate text-xs text-gray-300 dark:text-gray-300 sm:text-sm">记录每一次阴晴圆缺</p>
@@ -303,10 +296,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
-import { ArrowLeft, CalendarDays, ImageMinus } from 'lucide-vue-next'
+import { CalendarDays, ImageMinus } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 
 import { classificationService } from '@/api/classification'

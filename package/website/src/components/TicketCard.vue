@@ -1,6 +1,6 @@
 <template>
   <div 
-    class="group bg-white max-w-md dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-300 relative overflow-hidden"
+    class="ts-surface group max-w-md hover:shadow-md hover:border-primary-300 dark:hover:border-primary-700 transition-all duration-300 relative overflow-hidden"
   >
     <div 
       class="h-1.5 w-full opacity-80"
@@ -70,7 +70,7 @@
           <button 
             v-if="ticket.photo_id"
             @click.stop="handleViewPhoto" 
-            class="p-2 text-indigo-600 bg-indigo-50 dark:bg-slate-700 dark:text-indigo-400 rounded-md hover:bg-indigo-500 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white transition-colors"
+            class="ts-icon-button ts-button-ghost text-primary-600 bg-primary-50 dark:bg-slate-700 dark:text-primary-400 hover:bg-primary-500 hover:text-white"
             title="查看车票照片"
           >
             <ImageIcon class="w-4 h-4" />
@@ -78,15 +78,15 @@
           <button 
             v-if="ticket.type === 'train'"
             @click.stop="handleViewPaper" 
-            class="p-2 text-orange-600 bg-orange-50 dark:bg-slate-700 dark:text-orange-400 rounded-md hover:bg-orange-500 hover:text-white dark:hover:bg-orange-600 dark:hover:text-white transition-colors"
+            class="ts-icon-button ts-button-ghost text-orange-600 bg-orange-50 dark:bg-slate-700 dark:text-orange-400 rounded-md hover:bg-orange-500 hover:text-white dark:hover:bg-orange-600 dark:hover:text-white transition-colors"
             title="查看仿真纸质车票"
           >
             <TicketIcon class="w-4 h-4" />
           </button>
-          <button @click.stop="handleEdit" class="p-2 text-primary-600 bg-primary-50 dark:bg-slate-700 dark:text-primary-400 rounded-md hover:bg-primary-500 hover:text-white dark:hover:bg-primary-600 dark:hover:text-white transition-colors">
+          <button @click.stop="handleEdit" class="ts-icon-button ts-button-ghost text-primary-600 bg-primary-50 dark:bg-slate-700 dark:text-primary-400 rounded-md hover:bg-primary-500 hover:text-white dark:hover:bg-primary-600 dark:hover:text-white transition-colors">
             <Pencil class="w-4 h-4" />
           </button>
-          <button @click.stop="handleDelete" class="p-2 text-red-500 bg-red-50 dark:bg-red-900/20 rounded-md hover:bg-red-500 hover:text-white transition-colors">
+          <button @click.stop="handleDelete" class="ts-icon-button ts-button-ghost text-red-500 bg-red-50 dark:bg-red-900/20 rounded-md hover:bg-red-500 hover:text-white transition-colors">
             <Trash2 class="w-4 h-4" />
           </button>
         </div>
@@ -94,7 +94,7 @@
         <!-- Mobile Dropdown -->
         <div class="md:hidden" @click.stop>
           <el-dropdown trigger="click" @command="handleCommand">
-            <button class="p-2 text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 bg-slate-50 dark:bg-slate-700 rounded-md">
+            <button class="ts-icon-button ts-button-ghost text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 bg-slate-50 dark:bg-slate-700 rounded-md">
               <MoreHorizontal class="w-5 h-5" />
             </button>
             <template #dropdown>

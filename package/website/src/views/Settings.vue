@@ -1,13 +1,13 @@
 <template>
-  <div class="h-full bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+  <div class="ts-page-background h-full">
     <div class="mx-auto flex h-full w-full max-w-screen-2xl">
-      <aside class="hidden w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-100 px-5 py-8 dark:border-gray-800 dark:bg-gray-900 md:block">
+      <aside class="ts-settings-nav hidden w-64 lg:w-72 shrink-0 overflow-y-auto border-r px-5 py-6 md:block">
         <h1 class="px-2 text-2xl font-bold">设置</h1>
         <p class="mt-1 px-2 text-sm text-gray-500 dark:text-gray-400">管理账号、图库与系统服务</p>
         <div class="mt-7 space-y-6">
           <section v-for="group in menuGroups" :key="group.label">
             <h2 class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ group.label }}</h2>
-            <div class="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-gray-800">
+            <div class="ts-surface overflow-hidden">
               <button
                 v-for="(item, index) in group.items"
                 :key="item.key"
@@ -32,11 +32,11 @@
       </aside>
 
       <div v-if="!activeTab" class="min-w-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:hidden">
-        <header class="px-1 pb-5"><h1 class="text-[28px] font-bold tracking-tight">设置</h1></header>
+        <header class="px-1 pb-5"><h1 class="ts-page-title">设置</h1></header>
         <button
           type="button"
           data-tab="profile"
-          class="mb-6 flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-800 dark:ring-offset-gray-900"
+          class="mb-6 flex w-full items-center gap-3 ts-surface p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:ring-offset-gray-900"
           @click="selectItem('profile')"
         >
           <img v-if="userStore.userInfo?.avatar" :src="toServerUrl(userStore.userInfo.avatar)" alt="" class="h-14 w-14 rounded-full object-cover" />
@@ -51,7 +51,7 @@
         <div class="space-y-6">
           <section v-for="group in mobileMenuGroups" :key="group.label">
             <h2 class="mb-2 px-3 text-[13px] font-medium text-gray-500 dark:text-gray-400">{{ group.label }}</h2>
-            <div class="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-gray-800">
+            <div class="ts-surface overflow-hidden">
               <button
                 v-for="(item, index) in group.items"
                 :key="item.key"
@@ -73,11 +73,9 @@
         </div>
       </div>
 
-      <main v-else class="min-w-0 flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
-        <div v-if="activeTab !== 'mobile-backup'" class="sticky top-0 z-20 flex h-12 items-center border-b border-gray-200 bg-white/95 px-2 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 md:hidden">
-          <button type="button" class="flex h-10 items-center gap-1 rounded-lg px-2 text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-primary-400" aria-label="返回设置" @click="goBack">
-            <ArrowLeft class="h-5 w-5" /><span class="text-sm">设置</span>
-          </button>
+      <main v-else class="min-w-0 flex-1 overflow-y-auto">
+        <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-2 md:hidden">
+          <BackButton label="返回设置" @click="goBack" />
           <div class="pointer-events-none absolute inset-x-20 truncate text-center text-[15px] font-semibold">{{ activeItem?.label }}</div>
         </div>
         <div ref="contentRef" class="mx-auto w-full max-w-5xl p-4 md:p-8">
@@ -92,9 +90,10 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Activity, ArrowLeft, BrainCircuit, ChevronRight, CloudUpload, Database, FolderOpen, Info, Key, List, MessageSquare, Settings as SettingsIcon, Smartphone, User, UserCircle } from 'lucide-vue-next'
+import { Activity, BrainCircuit, ChevronRight, CloudUpload, Database, FolderOpen, Info, Key, List, MessageSquare, Settings as SettingsIcon, Smartphone, User, UserCircle } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -191,7 +190,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
 </script>
 
 <style scoped>
-.settings-forward-enter-active, .settings-back-enter-active { transition: opacity .2s ease, transform .25s cubic-bezier(.22, 1, .36, 1); }
+.settings-forward-enter-active, .settings-back-enter-active { transition: opacity var(--ts-motion-normal) ease, transform var(--ts-motion-page) var(--ts-ease); }
 .settings-forward-enter-from { opacity: 0; transform: translateX(18px); }
 .settings-back-enter-from { opacity: 0; transform: translateX(-18px); }
 </style>

@@ -2,9 +2,9 @@
   <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] py-4 dark:bg-gray-900 md:py-7">
     <div class="mx-auto max-w-screen-2xl">
       <header class="flex flex-wrap items-center gap-3">
-        <button class="rounded-full p-2 text-gray-600 hover:bg-gray-200 dark:text-gray-300 dark:hover:bg-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" aria-label="返回" @click="router.back()"><ArrowLeft class="h-5 w-5" /></button>
-        <div class="min-w-0 flex-1"><h1 class="text-2xl font-bold text-gray-900 dark:text-white">新建记忆</h1><p class="text-sm text-gray-500 dark:text-gray-400">选择属于同一段经历的照片</p></div>
-        <button class="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAgentCreate"><Bot class="mr-1.5 inline h-4 w-4" />和 AI 对话创建</button>
+        <BackButton label="返回" @click="router.back()" />
+        <div class="min-w-0 flex-1"><h1 class="ts-page-title text-gray-900 dark:text-white">新建记忆</h1><p class="text-sm text-gray-500 dark:text-gray-400">选择属于同一段经历的照片</p></div>
+        <button class="ts-button ts-button-primary bg-primary-500 text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAgentCreate"><Bot class="mr-1.5 inline h-4 w-4" />和 AI 对话创建</button>
       </header>
 
       <div class="mt-5 rounded-2xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900 dark:bg-primary-900/20">
@@ -12,7 +12,7 @@
       </div>
 
       <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <section class="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 md:p-5">
+        <section class="ts-surface p-4 md:p-5">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><h2 class="font-semibold text-gray-900 dark:text-white">最近的照片</h2><p class="text-xs text-gray-500 dark:text-gray-400">已选择 {{ selectedIds.length }} 张</p></div>
             <el-input v-model="search" clearable placeholder="搜索文件名" class="sm:!w-60" />
@@ -60,10 +60,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Bot, Check, LoaderCircle } from 'lucide-vue-next'
+import { Bot, Check, LoaderCircle } from 'lucide-vue-next'
 import { albumService } from '@/api/album'
 import { memoryApi } from '@/api/memory'
 import type { Photo } from '@/types/album'

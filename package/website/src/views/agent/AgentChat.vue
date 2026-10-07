@@ -864,9 +864,18 @@ onMounted(() => {
 }
 
 .agent-chat-container {
-  @apply w-full sm:w-[450px] h-[85vh] sm:h-[600px] max-h-screen bg-white dark:bg-slate-900 sm:rounded-2xl shadow-2xl flex overflow-hidden sm:border border-slate-200 dark:border-slate-800 transition-all duration-300;
-  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  @apply w-full sm:w-[450px] sm:h-[600px] flex overflow-hidden;
+  height: 85dvh;
+  max-height: calc(100dvh - var(--ts-safe-area-top));
+  border: 1px solid var(--ts-glass-border);
+  border-radius: var(--ts-radius-dialog) var(--ts-radius-dialog) 0 0;
+  background: var(--ts-glass-panel);
+  box-shadow: var(--ts-shadow-floating);
+  transition: width var(--ts-motion-page) var(--ts-ease), height var(--ts-motion-page) var(--ts-ease);
+  animation: slideUp var(--ts-motion-page) var(--ts-ease);
 }
+
+@media (min-width: 640px) { .agent-chat-container { height: min(600px, 90dvh); border-radius: var(--ts-radius-dialog); } }
 
 .agent-chat-container.has-sidebar {
   @apply sm:w-[706px];
@@ -894,11 +903,14 @@ onMounted(() => {
 }
 
 .agent-main {
-  @apply flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 h-full;
+  @apply flex-1 flex flex-col min-w-0 min-h-0 h-full;
+  background: var(--ts-color-surface);
 }
 
 .agent-chat-messages {
-  @apply flex-1 overflow-y-auto bg-slate-50 p-4 scroll-smooth sm:p-6 dark:bg-slate-950/40;
+  @apply flex-1 min-h-0 overflow-y-auto p-4 scroll-smooth sm:p-6;
+  background: var(--ts-color-page);
+  overscroll-behavior: contain;
 }
 
 .message-wrapper {

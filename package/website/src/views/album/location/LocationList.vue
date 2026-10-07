@@ -3,10 +3,8 @@
     <!-- Header -->
     <div class="location-toolbar mx-auto w-full max-w-screen-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
-        <div class="location-title-group flex shrink-0 items-center gap-2 rounded-full border border-gray-200/50 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur-md dark:border-gray-700/50 dark:bg-gray-900/80">
-          <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
-            <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          </button>
+        <div class="location-title-group flex shrink-0 items-center gap-2">
+          <BackButton label="返回相册" @click="goBack" />
           <h1 class="ts-page-title whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
         </div>
         <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-full bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
@@ -46,7 +44,7 @@
 
            <div
              v-show="showYearMenu"
-             class="absolute top-full right-0 mt-2 hidden w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden z-[60] max-h-60 overflow-y-auto lg:block"
+             class="ts-surface absolute top-full right-0 mt-2 hidden w-32 overflow-hidden z-[60] max-h-60 overflow-y-auto lg:block"
            >
              <button
                @click="selectYear(null); showYearMenu = false"
@@ -118,7 +116,7 @@
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showLevelMenu"
-            class="location-level-menu absolute left-0 top-full z-[60] mt-2 hidden max-h-[80vh] w-40 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            class="ts-surface location-level-menu absolute left-0 top-full z-[60] mt-2 hidden max-h-[80vh] w-40 flex-col overflow-hidden"
           >
             <!-- Level Options -->
             <div class="py-1">
@@ -286,7 +284,7 @@
           <!-- Mobile Dropdown Menu -->
           <div
             v-show="showViewMenu"
-            class="location-view-menu absolute right-0 top-full z-[60] mt-2 hidden w-36 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            class="ts-surface location-view-menu absolute right-0 top-full z-[60] mt-2 hidden w-36 overflow-hidden"
           >
             <button
               @click="viewMode = 'grid'; showViewMenu = false"
@@ -381,61 +379,44 @@
       </div>
     </div>
 
-    <!-- Mobile filter/action sheets: one task per sheet, shared interaction model. -->
-    <Teleport to="body">
-      <Transition name="mobile-sheet-fade">
-        <div
-          v-if="activeMobileSheet"
-          :class="['location-sheet-layer lg:hidden', { 'location-dark': isDarkMode }]"
-          @click.self="closeMobileSheet"
-        >
-          <section class="location-filter-sheet" role="dialog" aria-modal="true" :aria-label="mobileSheetTitle">
-            <div class="location-filter-sheet__handle" aria-hidden="true" />
-            <header class="location-filter-sheet__header">
-              <h2>{{ mobileSheetTitle }}</h2>
-              <button type="button" aria-label="关闭" @click="closeMobileSheet" class="location-sheet-close focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:outline-none">
-                <X class="h-5 w-5" />
-              </button>
-            </header>
-
-            <div v-if="activeMobileSheet === 'time'" class="location-sheet-options">
-              <button type="button" :class="{ active: !selectedYear && !isCustomRange }" @click="selectYear(null)">
-                <span>全部时间</span><Check v-if="!selectedYear && !isCustomRange" class="h-5 w-5" />
-              </button>
-              <button v-for="year in availableYears" :key="`sheet-${year}`" type="button" :class="{ active: selectedYear === year }" @click="selectYear(year)">
-                <span>{{ year }}年</span><Check v-if="selectedYear === year" class="h-5 w-5" />
-              </button>
-              <button type="button" :class="{ active: isCustomRange }" @click="handleCustomRangeClick">
-                <span class="flex items-center gap-2"><Calendar class="h-4 w-4" />自定义范围</span><Check v-if="isCustomRange" class="h-5 w-5" />
-              </button>
-              <div v-if="isCustomRange" class="location-sheet-dates">
-                <el-date-picker v-model="dateRangeStart" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" class="!w-full" />
-                <el-date-picker v-model="dateRangeEnd" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" class="!w-full" />
-              </div>
-            </div>
-
-            <div v-else-if="activeMobileSheet === 'level'" class="location-sheet-options">
-              <button v-for="opt in levelOptions" :key="`sheet-${opt.value}`" type="button" :class="{ active: level === opt.value }" @click="changeLevel(opt.value as any)">
-                <span>{{ opt.label }}</span><Check v-if="level === opt.value" class="h-5 w-5" />
-              </button>
-              <button v-if="viewMode === 'map'" type="button" :class="{ active: level === 'photo-map' }" @click="level = 'photo-map'; fetchLocations()">
-                <span>地图照片</span><Check v-if="level === 'photo-map'" class="h-5 w-5" />
-              </button>
-            </div>
-
-            <div v-else class="location-view-grid">
-              <button v-for="item in mobileViewOptions" :key="item.value" type="button" :class="{ active: viewMode === item.value }" @click="viewMode = item.value">
-                <component :is="item.icon" class="h-6 w-6" />
-                <span>{{ item.label }}</span>
-                <Check v-if="viewMode === item.value" class="location-view-check h-4 w-4" />
-              </button>
-            </div>
-
-            <button type="button" class="location-sheet-confirm focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" @click="closeMobileSheet">确定</button>
-          </section>
+    <ResponsiveDialog v-model="mobileSheetVisible" :title="mobileSheetTitle" glass max-width="28rem">
+      <div v-if="activeMobileSheet === 'time'" class="location-sheet-options">
+        <button type="button" :class="{ active: !selectedYear && !isCustomRange }" @click="selectYear(null)">
+          <span>全部时间</span><Check v-if="!selectedYear && !isCustomRange" class="h-5 w-5" />
+        </button>
+        <button v-for="year in availableYears" :key="`sheet-${year}`" type="button" :class="{ active: selectedYear === year }" @click="selectYear(year)">
+          <span>{{ year }}年</span><Check v-if="selectedYear === year" class="h-5 w-5" />
+        </button>
+        <button type="button" :class="{ active: isCustomRange }" @click="handleCustomRangeClick">
+          <span class="flex items-center gap-2"><Calendar class="h-4 w-4" />自定义范围</span><Check v-if="isCustomRange" class="h-5 w-5" />
+        </button>
+        <div v-if="isCustomRange" class="location-sheet-dates">
+          <el-date-picker v-model="dateRangeStart" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" class="!w-full" />
+          <el-date-picker v-model="dateRangeEnd" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" class="!w-full" />
         </div>
-      </Transition>
-    </Teleport>
+      </div>
+
+      <div v-else-if="activeMobileSheet === 'level'" class="location-sheet-options">
+        <button v-for="opt in levelOptions" :key="`sheet-${opt.value}`" type="button" :class="{ active: level === opt.value }" @click="changeLevel(opt.value as any)">
+          <span>{{ opt.label }}</span><Check v-if="level === opt.value" class="h-5 w-5" />
+        </button>
+        <button v-if="viewMode === 'map'" type="button" :class="{ active: level === 'photo-map' }" @click="level = 'photo-map'; fetchLocations()">
+          <span>地图照片</span><Check v-if="level === 'photo-map'" class="h-5 w-5" />
+        </button>
+      </div>
+
+      <div v-else class="location-view-grid">
+        <button v-for="item in mobileViewOptions" :key="item.value" type="button" :class="{ active: viewMode === item.value }" @click="viewMode = item.value">
+          <component :is="item.icon" class="h-6 w-6" />
+          <span>{{ item.label }}</span>
+          <Check v-if="viewMode === item.value" class="location-view-check h-4 w-4" />
+        </button>
+      </div>
+
+      <template #footer>
+        <button type="button" class="ts-button ts-button-primary w-full" @click="closeMobileSheet">确定</button>
+      </template>
+    </ResponsiveDialog>
 
     <!-- Map View -->
     <LocationMapView
@@ -509,7 +490,9 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, watch, computed } from 'vue'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { injectTheme } from '@/composables/useTheme'
@@ -518,7 +501,7 @@ import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
-import { ArrowLeft, LayoutGrid, Map, MapPin, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X, Globe2 } from 'lucide-vue-next'
+import { LayoutGrid, Map, MapPin, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X, Globe2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import LocationMap from './LocationMap.vue'
@@ -554,19 +537,21 @@ const isCustomRange = ref(false)
 const parentRegion = ref<string | undefined>(undefined)
 const isImmersiveMap = computed(() => viewMode.value === 'map' || viewMode.value === 'trajectory')
 type MobileSheet = 'time' | 'level' | 'view'
-const activeMobileSheet = ref<MobileSheet | null>(null)
+const activeMobileSheet = ref<MobileSheet>('time')
+const mobileSheetVisible = ref(false)
 
 const mobileSheetTitle = computed(() => ({
   time: '选择时间范围',
   level: '选择地图层级',
   view: '选择视图模式'
-}[activeMobileSheet.value || 'time']))
+}[activeMobileSheet.value]))
 
-const closeMobileSheet = () => { activeMobileSheet.value = null }
+const closeMobileSheet = () => { mobileSheetVisible.value = false }
 
 const openMobileSheet = (sheet: MobileSheet) => {
   if (window.innerWidth < 1024) {
     activeMobileSheet.value = sheet
+    mobileSheetVisible.value = true
     return
   }
   if (sheet === 'time') showYearMenu.value = !showYearMenu.value
@@ -976,13 +961,13 @@ onMounted(() => {
   backdrop-filter: blur(18px);
 }
 
-.location-immersive .location-toolbar button {
+.location-immersive .location-toolbar button:not(.ts-back-button) {
   background-color: var(--location-control) !important;
   border-color: rgba(var(--theme-rgb), 0.18) !important;
 }
 
 .location-immersive .location-toolbar h1,
-.location-immersive .location-toolbar button:not(.text-primary-500) {
+.location-immersive .location-toolbar button:not(.text-primary-500):not(.ts-back-button) {
   color: var(--location-text);
 }
 
@@ -1019,7 +1004,7 @@ onMounted(() => {
   box-shadow: none !important;
   backdrop-filter: none;
 }
-.location-title-group button { padding: 8px; background: transparent !important; }
+
 
 @media (max-width: 767px) {
   .location-list:not(.location-immersive) {
@@ -1074,7 +1059,7 @@ onMounted(() => {
   }
   .location-toolbar-actions > :deep(a),
   .location-toolbar-actions button {
-    min-height: 40px;
+    min-height: var(--ts-control-md);
   }
   .location-year-control,
   .location-level-control,
@@ -1137,51 +1122,6 @@ onMounted(() => {
   }
 }
 
-.location-sheet-layer {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0 12px calc(var(--ts-tabbar-h, 0px) + var(--ts-safe-area-bottom) + 12px);
-  background: rgba(15, 23, 42, 0.34);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-.location-filter-sheet {
-  width: 100%;
-  max-width: 440px;
-  max-height: min(76vh, 640px);
-  overflow-y: auto;
-  padding: 8px 16px 16px;
-  border: 1px solid rgba(var(--theme-rgb), 0.16);
-  border-radius: 24px;
-  color: var(--location-text);
-  background: var(--location-panel);
-  box-shadow: 0 20px 56px rgba(15, 23, 42, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  scrollbar-width: thin;
-}
-
-.location-filter-sheet__handle {
-  width: 40px;
-  height: 5px;
-  margin: 0 auto 8px;
-  border-radius: 999px;
-  background: #cbd5e1;
-}
-
-.location-filter-sheet__header {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(var(--theme-rgb), 0.12);
-}
-.location-filter-sheet__header h2 { font-size: 17px; font-weight: 700; }
-.location-sheet-close { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; color: var(--location-muted); }
-
 .location-sheet-options { padding: 8px 0; }
 .location-sheet-options > button {
   display: flex;
@@ -1192,7 +1132,7 @@ onMounted(() => {
   padding: 0 10px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.14);
   border-radius: 8px;
-  color: var(--location-text);
+  color: var(--ts-color-text);
   font-size: 15px;
 }
 .location-sheet-options > button.active { color: var(--theme-primary); background: rgba(var(--theme-rgb), 0.08); }
@@ -1207,36 +1147,13 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: 13px;
-  color: var(--location-text);
-  background: var(--location-control);
+  border: 1px solid var(--ts-color-border);
+  border-radius: var(--ts-radius-control);
+  color: var(--ts-color-text);
+  background: var(--ts-color-surface);
 }
 .location-view-grid button.active { border-color: var(--theme-primary); color: var(--theme-primary); background: rgba(var(--theme-rgb), 0.08); }
 .location-view-check { position: absolute; top: 8px; right: 8px; }
-.location-sheet-confirm {
-  width: 100%;
-  min-height: 46px;
-  border-radius: 13px;
-  color: white;
-  background: var(--theme-primary);
-  font-size: 15px;
-  font-weight: 600;
-}
-.mobile-sheet-fade-enter-active, .mobile-sheet-fade-leave-active { transition: opacity 180ms ease; }
-.mobile-sheet-fade-enter-active .location-filter-sheet, .mobile-sheet-fade-leave-active .location-filter-sheet { transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
-.mobile-sheet-fade-enter-from, .mobile-sheet-fade-leave-to { opacity: 0; }
-.mobile-sheet-fade-enter-from .location-filter-sheet, .mobile-sheet-fade-leave-to .location-filter-sheet { transform: translateY(28px) scale(0.98); opacity: 0; }
-
-@media (max-width: 374px) {
-  .location-sheet-layer {
-    padding-inline: 8px;
-  }
-  .location-filter-sheet {
-    padding-inline: 12px;
-    border-radius: 20px;
-  }
-}
 </style>
 
 <style>

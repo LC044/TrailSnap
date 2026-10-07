@@ -131,7 +131,7 @@ test.describe.serial('P0 - 位置相册', () => {
     await expect(page.locator('.location-list button[title="轨迹视图"]').first()).toBeVisible()
     await expect(page.locator('.location-list button[title="统计视图"]').first()).toBeVisible()
     // 返回按钮（lucide-arrow-left）始终存在
-    await expect(page.locator('.location-list svg.lucide-arrow-left').first()).toBeVisible()
+    await expect(page.getByRole('button', { name: '返回相册', exact: true })).toBeVisible()
   })
 
   test('2.4.2 切换 level - 点击"省份"后 API 调用 level=province @p0', async ({ page }, testInfo) => {
@@ -268,8 +268,7 @@ test.describe.serial('P0 - 位置相册', () => {
     const qs = new URLSearchParams({ level: probe.location.level }).toString()
     await gotoRetry(page, `/album/location/${encodeURIComponent(probe.location.name)}?${qs}`)
 
-    // UnifiedPhotoPage 顶部返回按钮：圆形 hover bg，children 包含 ArrowLeft svg
-    const backBtn = page.locator('.unified-photo-page button:has(svg.lucide-arrow-left)').first()
+    const backBtn = page.getByRole('button', { name: '返回位置相册', exact: true })
     await expect(backBtn).toBeVisible({ timeout: 10_000 })
     await backBtn.click()
 

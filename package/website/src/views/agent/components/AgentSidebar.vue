@@ -3,11 +3,11 @@
     <div class="sidebar-header">
       <span class="font-semibold text-slate-800 dark:text-white text-sm">历史会话</span>
       <div class="flex items-center gap-1">
-        <button @click="emit('create')" class="text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 dark:bg-slate-800 p-1 rounded-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="新建会话">
+        <button @click="emit('create')" class="ts-icon-button ts-button-ghost text-primary-600 dark:text-primary-400" title="新建会话">
           <Plus class="w-5 h-5" />
         </button>
         <!-- 移动端关闭按钮：抽屉模式下侧边栏会遮住 Header 的菜单按钮，提供一个显式关闭入口 -->
-        <button @click="emit('close')" class="sm:hidden text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 dark:bg-slate-800 p-1 rounded-md focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="关闭侧边栏" aria-label="关闭侧边栏">
+        <button @click="emit('close')" class="ts-icon-button ts-button-ghost sm:hidden" title="关闭侧边栏" aria-label="关闭侧边栏">
           <X class="w-5 h-5" />
         </button>
       </div>
@@ -100,6 +100,6 @@ const sortedSessions = computed(() => {
 }
 
 .session-item.active {
-  @apply bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400;
+  @apply bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400;
 }
 </style>

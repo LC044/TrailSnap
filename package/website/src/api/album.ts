@@ -48,8 +48,8 @@ export const albumService = {
     await request.delete(`/api/albums/${id}`);
   },
 
-  async getSmartAlbumOverview() {
-    const data = await request.get<SmartAlbumOverview>('/api/albums/smart-overview');
+  async getSmartAlbumOverview(skip = 0, limit = 12) {
+    const data = await request.get<SmartAlbumOverview>('/api/albums/smart-overview', { params: { skip, limit } });
     return data.data;
   },
 

@@ -262,7 +262,7 @@ async def test_get_ticket_returns_404_when_missing():
     db = MagicMock()
     with patch.object(flight_api, "get_flight_ticket", return_value=None):
         with pytest.raises(HTTPException) as exc_info:
-            await flight_api.get_ticket(ticket_id=str(uuid4()), db=db)
+            await flight_api.get_ticket(ticket_id=str(uuid4()), db=db, current_user=_user())
 
     assert exc_info.value.status_code == 404
 
@@ -272,7 +272,7 @@ async def test_get_ticket_returns_ticket():
     db = MagicMock()
     ticket = _ticket()
     with patch.object(flight_api, "get_flight_ticket", return_value=ticket):
-        response = await flight_api.get_ticket(ticket_id=ticket.id, db=db)
+        response = await flight_api.get_ticket(ticket_id=ticket.id, db=db, current_user=_user())
 
     assert response.code == 200
     assert response.data is ticket
@@ -289,7 +289,7 @@ async def test_update_ticket_returns_404_when_missing():
         with pytest.raises(HTTPException) as exc_info:
             await flight_api.update_ticket(
                 ticket_update=payload, ticket_id=str(uuid4()), db=db
-            )
+            , current_user=_user())
 
     assert exc_info.value.status_code == 404
 
@@ -302,7 +302,7 @@ async def test_update_ticket_returns_ticket():
     with patch.object(flight_api, "update_flight_ticket", return_value=updated) as crud_call:
         response = await flight_api.update_ticket(
             ticket_update=payload, ticket_id=str(uuid4()), db=db
-        )
+        , current_user=_user())
 
     crud_call.assert_called_once()
     assert response.code == 200
@@ -317,7 +317,7 @@ async def test_delete_ticket_returns_404_when_missing():
     db = MagicMock()
     with patch.object(flight_api, "delete_flight_ticket", return_value=False):
         with pytest.raises(HTTPException) as exc_info:
-            await flight_api.delete_ticket(ticket_id=str(uuid4()), db=db)
+            await flight_api.delete_ticket(ticket_id=str(uuid4()), db=db, current_user=_user())
 
     assert exc_info.value.status_code == 404
 
@@ -326,7 +326,7 @@ async def test_delete_ticket_returns_404_when_missing():
 async def test_delete_ticket_succeeds():
     db = MagicMock()
     with patch.object(flight_api, "delete_flight_ticket", return_value=True):
-        response = await flight_api.delete_ticket(ticket_id=str(uuid4()), db=db)
+        response = await flight_api.delete_ticket(ticket_id=str(uuid4()), db=db, current_user=_user())
 
     assert response.code == 200
     assert response.data == {"msg": "\u5220\u9664\u6210\u529f"}

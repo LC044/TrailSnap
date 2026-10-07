@@ -29,6 +29,7 @@ from app.db.models.memory import (
 from app.db.models.photo import ImageType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.trip import FlightTicket, TrainTicket
+from app.db.models.ticket_wallet import TicketDismissal
 from app.db.models.user import User
 from app.schemas.memory import MemoryCreate, MemorySplitRequest, MemoryUpdate
 
@@ -96,10 +97,12 @@ def _photo_dict(photo: Photo) -> dict:
 
 
 def _ticket_dict(db: Session, link: MemoryTicket) -> dict:
+    if link.ticket_type not in {"train", "flight"}:
+        return {"type": link.ticket_type, "id": link.ticket_id, "unavailable": True, "confirmed": link.is_confirmed}
     if link.ticket_type == "train":
         row = db.query(TrainTicket).filter(TrainTicket.id == link.ticket_id).first()
         if not row:
-            return {"type": "train", "id": link.ticket_id}
+            return {"type": "train", "id": link.ticket_id, "unavailable": True, "confirmed": link.is_confirmed}
         return {
             "type": "train", "id": row.id, "code": row.train_code,
             "from": row.departure_station, "to": row.arrival_station,
@@ -107,7 +110,7 @@ def _ticket_dict(db: Session, link: MemoryTicket) -> dict:
         }
     row = db.query(FlightTicket).filter(FlightTicket.id == link.ticket_id).first()
     if not row:
-        return {"type": "flight", "id": link.ticket_id}
+        return {"type": "flight", "id": link.ticket_id, "unavailable": True, "confirmed": link.is_confirmed}
     return {
         "type": "flight", "id": row.id, "code": row.flight_code,
         "from": row.departure_city, "to": row.arrival_city,
@@ -417,9 +420,14 @@ def _attach_tickets(db: Session, memory: Memory, owner_id: UUID) -> None:
     flights = db.query(FlightTicket).filter(
         FlightTicket.owner_id == owner_id, FlightTicket.date_time >= start, FlightTicket.date_time <= end,
     ).all()
+    dismissed = {(item.ticket_type, item.ticket_id) for item in db.query(TicketDismissal).filter(TicketDismissal.memory_id == memory.id)}
     for ticket in trains:
+        if ("train", ticket.id) in dismissed:
+            continue
         memory.tickets.append(MemoryTicket(ticket_type="train", ticket_id=ticket.id, source="inferred", confidence=0.75))
     for ticket in flights:
+        if ("flight", ticket.id) in dismissed:
+            continue
         memory.tickets.append(MemoryTicket(ticket_type="flight", ticket_id=ticket.id, source="inferred", confidence=0.75))
     count = len(trains) + len(flights)
     if count:

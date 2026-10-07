@@ -3,6 +3,13 @@ import request from '@/utils/request';
 import type { TicketBackend, TicketQueryParams, FlightTicketBackend } from '@/types/ticket';
 
 export const ticketService = {
+  async recognizeByType(type: 'train' | 'flight', file: File) {
+    const payload = new FormData(); payload.append('file', file);
+    return (await request.post<Record<string, unknown>>(`/api/${type === 'train' ? 'train' : 'flight'}-ticket/recognize`, payload)).data;
+  },
+  async trainSchedules(code: string) {
+    return (await request.get<{ list: Array<{ station_name: string; accumulated_mileage: number; running_time: number; sequence: number }> }>('/api/railway/train-schedules', { params: { train_code: code, page: 1, page_size: 100 } })).data;
+  },
   // 获取列表
   async getTickets(params: TicketQueryParams) {
     const data = await request.get<{ items: TicketBackend[], total: number }>('/api/train-ticket', { params });

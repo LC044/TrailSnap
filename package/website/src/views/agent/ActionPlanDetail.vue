@@ -1,8 +1,6 @@
 <template>
   <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-    <button type="button" class="mb-5 inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/agent/actions')">
-      <ArrowLeft class="h-4 w-4" />操作记录
-    </button>
+    <BackButton label="返回操作记录" class="mb-5" @click="router.push('/agent/actions')" />
 
     <header class="mb-5 rounded-2xl border border-primary-500/20 bg-primary-500/5 p-5">
       <div class="flex items-start gap-3">
@@ -16,21 +14,22 @@
     </header>
 
     <div v-if="loading" class="py-20 text-center text-sm text-gray-500 dark:text-gray-400">正在加载方案…</div>
-    <div v-else-if="plan" class="rounded-2xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+    <div v-else-if="plan" class="ts-surface p-1">
       <AgentActionPlanCard :plan="plan" />
       <p class="px-4 pb-4 text-xs text-gray-400 dark:text-gray-500">方案创建于 {{ formatTime(plan.created_at) }}，有效期至 {{ formatTime(plan.expires_at || undefined) }}</p>
     </div>
     <div v-else class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-16 text-center dark:border-gray-700 dark:bg-gray-900">
       <p class="text-gray-700 dark:text-gray-200">无法加载该方案</p>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">方案可能不存在、已不属于当前账号，或链接无效。</p>
-      <button type="button" class="mt-4 rounded-lg bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="loadPlan">重新加载</button>
+      <button type="button" class="ts-button ts-button-ghost mt-4 bg-primary-600 text-white hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="loadPlan">重新加载</button>
     </div>
   </main>
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { onMounted, ref } from 'vue';
-import { ArrowLeft, ShieldCheck } from 'lucide-vue-next';
+import { ShieldCheck } from 'lucide-vue-next';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import { agentApi, type AgentActionPlan } from '@/api/agent';

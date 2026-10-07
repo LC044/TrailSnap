@@ -5,7 +5,7 @@
       <div class="flex items-center gap-2">
         <button
           @click="handleCancel"
-          class="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          class="w-11 h-11 flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           title="关闭"
         >
           <X class="w-5 h-5" />
@@ -17,7 +17,7 @@
         <button
           @click="editor.undo()"
           :disabled="!editor.canUndo.value"
-          class="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          class="w-11 h-11 flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           title="撤销 (Ctrl+Z)"
         >
           <Undo2 class="w-4 h-4" />
@@ -25,7 +25,7 @@
         <button
           @click="editor.redo()"
           :disabled="!editor.canRedo.value"
-          class="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          class="w-11 h-11 flex items-center justify-center rounded-lg text-white/90 hover:bg-white/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           title="重做 (Ctrl+Shift+Z)"
         >
           <Redo2 class="w-4 h-4" />
@@ -63,7 +63,7 @@
 
         <button
           @click="handleCancel"
-          class="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white/90 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+          class="w-11 h-11 flex items-center justify-center rounded-lg text-white/70 hover:bg-white/10 hover:text-white/90 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
           title="取消"
         >
           <X class="w-5 h-5" />

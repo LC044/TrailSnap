@@ -8,14 +8,7 @@
     <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] border-b border-gray-200/70 bg-gray-50/90 px-[var(--ts-page-gutter)] backdrop-blur-md dark:border-gray-800/70 dark:bg-gray-900/90 md:border-b-0 md:bg-transparent md:dark:bg-transparent">
       <div class="mx-auto flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div class="flex min-w-0 items-center gap-2">
-          <button
-            type="button"
-            aria-label="返回工具箱"
-            @click="onBack"
-            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-gray-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:bg-gray-800 dark:focus-visible:ring-offset-gray-900"
-          >
-            <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          </button>
+          <BackButton label="返回工具箱" @click="onBack" />
           <h1 class="min-w-0 truncate text-lg font-bold text-gray-900 dark:text-gray-100 sm:text-xl">{{ title }}</h1>
         </div>
         <div v-if="canRescan || canBulkAction" class="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
@@ -41,7 +34,7 @@
 
     <!-- Task Progress -->
     <div v-if="isRunning" class="flex-1 flex flex-col items-center justify-center p-8">
-      <div class="w-full max-w-md bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg text-center">
+      <div class="ts-surface w-full max-w-md p-8 text-center">
         <div class="mb-6 relative">
           <div :class="['w-20 h-20 mx-auto rounded-full border-4 flex items-center justify-center', ringBgClass]">
             <div :class="['animate-spin rounded-full h-10 w-10 border-b-2', spinnerClass]"></div>
@@ -57,7 +50,7 @@
             :style="{ width: progressPercentage + '%' }"
           ></div>
         </div>
-        <div class="flex justify-between text-xs text-gray-500 mb-6">
+        <div class="flex justify-between text-xs text-gray-500 mb-6 dark:text-gray-400">
           <span>{{ processedItems }} / {{ totalItems }}</span>
           <span>{{ progressPercentage }}%</span>
         </div>
@@ -116,8 +109,9 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed } from 'vue';
-import { ArrowLeft } from 'lucide-vue-next';
+;
 
 export type TaskColor = 'blue' | 'orange' | 'emerald' | 'rose' | 'violet';
 

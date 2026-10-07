@@ -4,7 +4,7 @@
     :aria-label="label"
     :title="title || label"
     :disabled="disabled"
-    class="inline-flex shrink-0 items-center justify-center rounded-[var(--ts-radius-control)] transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-offset-gray-900"
+    class="ts-icon-button"
     :class="[sizeClass, variantClass]"
   >
     <slot />
@@ -29,14 +29,14 @@ const props = withDefaults(defineProps<{
 })
 
 const sizeClass = computed(() => ({
-  sm: 'h-9 w-9',
-  md: 'h-11 w-11',
-  lg: 'h-12 w-12',
+  sm: 'ts-button-sm',
+  md: '',
+  lg: 'ts-button-lg',
 }[props.size]))
 
 const variantClass = computed(() => ({
-  ghost: 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white',
-  primary: 'bg-primary-500 text-white shadow-sm hover:bg-primary-600',
-  danger: 'text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40',
+  ghost: 'ts-button-ghost',
+  primary: 'ts-button-primary',
+  danger: 'ts-icon-danger',
 }[props.variant]))
 </script>

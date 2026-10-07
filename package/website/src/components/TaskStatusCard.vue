@@ -1,5 +1,5 @@
 <template>
-  <div v-if="task" class="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+  <div v-if="task" class="ts-surface mb-6 p-6">
     <div class="mb-4 flex items-center justify-between">
       <h3 class="flex items-center gap-2 text-lg font-bold">
         <Loader2 v-if="isRunningTask(task)" class="h-5 w-5 animate-spin text-primary-500" />

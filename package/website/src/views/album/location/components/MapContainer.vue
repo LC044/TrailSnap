@@ -4,9 +4,7 @@
     
     <!-- 面包屑导航 -->
     <div v-if="parentRegion" class="map-glass absolute top-20 left-6 z-10 flex items-center gap-2 backdrop-blur-md px-3 py-2 rounded-xl animate-fade-in">
-      <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="map-muted p-1 rounded hover:text-primary-500 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" title="返回上一级">
-        <ArrowLeft class="w-4 h-4" />
-      </button>
+      <BackButton label="返回上一级" @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" />
       <div class="map-divider w-px h-4"></div>
       <button @click="emit('change-level', level === 'city' ? 'province' : 'city', { zoom: 1.2, center: [] })" class="map-muted text-sm font-medium hover:text-primary-500 transition-colors flex items-center gap-1 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none">
         <MapPin class="w-4 h-4" />
@@ -32,12 +30,13 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { echarts } from '@/utils/echarts'
 import { locationService } from '@/api/location'
 import type { FootprintRoute } from '@/types/footprint'
 import { injectTheme } from '@/composables/useTheme'
-import { MapPin, ChevronRight, ZoomIn, ZoomOut, RotateCcw, ArrowLeft } from 'lucide-vue-next'
+import { MapPin, ChevronRight, ZoomIn, ZoomOut, RotateCcw } from 'lucide-vue-next'
 import request from '@/utils/request'
 
 const ADMIN_SUFFIX_REGEX = /(省|市|自治区|特别行政区|回族自治区|壮族自治区|维吾尔自治区|县|区)$/

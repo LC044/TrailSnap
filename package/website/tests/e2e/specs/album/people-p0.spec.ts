@@ -435,14 +435,9 @@ test.describe.serial('P0 - 人物相册', () => {
     // 若直接跳详情，history 里上一条是 about:blank，返回不会落到 /album/people。
     await gotoRetry(page, '/album/people')
     await gotoRetry(page, `/album/people/${probe.identity.id}`)
-    // UnifiedPhotoPage 头部左侧返回按钮：圆形 hover bg，children 包含 ArrowLeft svg
-    const backBtn = page.locator('.unified-photo-page button:has(svg.lucide-arrow-left)').first()
+    const backBtn = page.getByRole('button', { name: '返回人物相册', exact: true })
     await expect(backBtn).toBeVisible({ timeout: 10_000 })
     await backBtn.click()
-    // dev 模式 4 worker 并发 + Vite HMR 偶尔会让 router.back() 慢于 5s；
-    // 先等列表页主要请求完成再断 URL，避免在 history push 过程中判失败。
-    await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
-
     // 路由回到 /album/people（不带 /:id 后缀）
     await page.waitForURL(/\/album\/people$/, { timeout: 10_000 })
     // 列表的 h1 "人物" 应再次可见

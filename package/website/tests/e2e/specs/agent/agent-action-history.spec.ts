@@ -224,7 +224,8 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
 
     await page.goto('/album')
     const chatRequest = page.waitForRequest(request => request.url().endsWith('/api/agent/chat') && request.method() === 'POST')
-    await page.getByRole('button', { name: 'AI 相册体检' }).click()
+    await page.getByRole('button', { name: '更多相册操作' }).click()
+    await page.getByRole('button', { name: '相册体检', exact: true }).click()
     const payload = JSON.parse((await chatRequest).postData() || '{}')
 
     await expect(page.locator('.agent-chat-overlay')).toBeVisible()
@@ -253,6 +254,7 @@ test.describe('P1.1 - Agent 操作审计 @agent-action-history', () => {
 
     await page.goto('/album')
     const chatRequest = page.waitForRequest(request => request.url().endsWith('/api/agent/chat') && request.method() === 'POST')
+    await page.getByRole('button', { name: '更多相册操作' }).click()
     await page.getByRole('button', { name: '回忆侦探' }).click()
     const payload = JSON.parse((await chatRequest).postData() || '{}')
 

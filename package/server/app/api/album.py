@@ -1,9 +1,9 @@
 import logging
 import traceback
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Form, BackgroundTasks
+from fastapi import APIRouter, Query, Depends, HTTPException, UploadFile, File, status, Form, BackgroundTasks
 from sqlalchemy.orm import Session
 import aiohttp
 
@@ -43,9 +43,9 @@ def read_albums(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), 
     return BaseResponse(data=crud.get_albums(db, skip=skip, limit=limit, user_id=current_user.id))
 
 @router.get("/smart-overview", response_model=BaseResponse[schemas.SmartAlbumOverview])
-def read_smart_album_overview(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def read_smart_album_overview(skip: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=100)] = 4, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Return counts and representative covers for built-in smart albums."""
-    return BaseResponse(data=crud.get_smart_album_overview(db, owner_id=current_user.id))
+    return BaseResponse(data=crud.get_smart_album_overview(db, owner_id=current_user.id, representative_limit=limit, representative_skip=skip))
 
 
 @router.get("/{album_id}", response_model=BaseResponse[schemas.Album])

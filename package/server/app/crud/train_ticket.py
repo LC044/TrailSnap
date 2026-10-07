@@ -125,6 +125,10 @@ def delete_train_ticket(db: Session, ticket_id: str) -> bool:
     if not db_ticket:
         return False
 
+    from app.db.models.ticket_wallet import AlbumTicket, TicketDismissal
+    from app.db.models.memory import MemoryTicket
+    for link_model in (AlbumTicket, MemoryTicket, TicketDismissal):
+        db.query(link_model).filter(link_model.ticket_type == "train", link_model.ticket_id == ticket_id).delete(synchronize_session=False)
     db.delete(db_ticket)
     db.commit()
     return True

@@ -150,6 +150,7 @@ export interface ApiAlbum {
 
 export interface Album {
   id: string
+  ownerId?: string
   title: string
   name: string
   type: string

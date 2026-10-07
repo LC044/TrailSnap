@@ -1,7 +1,7 @@
 <template>
   <div class="df-page space-y-5">
     <header class="flex flex-wrap items-center justify-between gap-3">
-      <div><RouterLink to="/daily-frame" class="text-sm text-primary-600 dark:text-primary-400">← 返回日历</RouterLink><h1 class="mt-2 text-2xl font-bold">制作一日一帧影片</h1></div>
+      <div><BackButton to="/daily-frame" label="返回日历" /><h1 class="mt-2 text-2xl font-bold">制作一日一帧影片</h1></div>
       <span class="text-sm text-gray-500 dark:text-gray-400">每天一秒 · 静音 · 按日期播放</span>
     </header>
     <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{{ error }}</p>
@@ -68,6 +68,7 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Film } from 'lucide-vue-next'

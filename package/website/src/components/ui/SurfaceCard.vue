@@ -1,12 +1,11 @@
 <template>
   <component
     :is="as"
-    class="border border-gray-200/80 bg-white text-gray-900 dark:border-gray-800 dark:bg-gray-800 dark:text-gray-100"
+    class="ts-surface"
+    :style="{ borderRadius: `var(--ts-radius-${radius})`, boxShadow: elevated ? undefined : 'none' }"
     :class="[
-      radiusClass,
       paddingClass,
-      elevated && 'shadow-[var(--ts-shadow-card)]',
-      interactive && 'ts-focus-ring cursor-pointer transition duration-200 hover:-translate-y-0.5 hover:shadow-md',
+      interactive && 'ts-focus-ring cursor-pointer transition duration-200 hover:shadow-md',
     ]"
   >
     <slot />
@@ -37,9 +36,4 @@ const paddingClass = computed(() => ({
   lg: 'p-5 md:p-6',
 }[props.padding]))
 
-const radiusClass = computed(() => ({
-  control: 'rounded-[var(--ts-radius-control)]',
-  card: 'rounded-[var(--ts-radius-card)]',
-  dialog: 'rounded-[var(--ts-radius-dialog)]',
-}[props.radius]))
 </script>

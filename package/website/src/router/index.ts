@@ -88,7 +88,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/recycle-bin', name: 'RecycleBin', component: RecycleBinPage, meta: { title: '回收站', navGroup: 'more' } },
       { path: '/photos', name: 'Photos', component: PhotosPage, meta: { title: '所有照片', keepAlive: true, navGroup: 'photos' } },
       { path: '/mobile-search', name: 'MobileSearch', component: MobileSearch, meta: { title: '搜索与助手', navGroup: 'search' } },
-      { path: '/ticket', name: 'Ticket', component: TicketPage, meta: { title: '车票', keepAlive: true, navGroup: 'tickets' } },
+      { path: '/ticket', name: 'Ticket', component: TicketPage, meta: { title: '票夹', keepAlive: true, navGroup: 'tickets' } },
       { path: '/statistics', name: 'Statistics', component: StatisticsPage, meta: { title: '统计', navGroup: 'tickets' } },
       { path: '/settings', name: 'Settings', component: Settings, meta: { title: '设置', navGroup: 'more' } },
       { path: '/game', name: 'GuessCity', component: () => import('@/views/game/GuessCity.vue'), meta: { title: '猜城市', navGroup: 'tools' } },

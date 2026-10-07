@@ -63,7 +63,7 @@
         <div v-if="isLoadingMore" class="flex justify-center py-4">
              <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500"></div>
         </div>
-        <div v-if="!hasMore && groups.length > 0" class="text-center text-gray-400 text-sm py-4">
+        <div v-if="!hasMore && groups.length > 0" class="text-center text-gray-400 text-sm py-4 dark:text-gray-400">
              没有更多了
         </div>
     </div>

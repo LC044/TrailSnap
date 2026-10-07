@@ -25,9 +25,12 @@ export async function closeTopOverlay(): Promise<boolean> {
   const top = overlays.at(-1)
   if (!top) return false
 
-  overlays.pop()
   await top.close()
   return true
+}
+
+export function isTopOverlay(close: OverlayCloser): boolean {
+  return overlays.at(-1)?.close === close
 }
 
 export function useOverlayStack(visible: Ref<boolean>, close: OverlayCloser) {

@@ -3,7 +3,7 @@
   <Transition name="bottom-nav-slide">
     <nav
       v-show="!uiStore.selectionActive"
-      class="liquid-glass-nav fixed inset-x-3 bottom-[calc(20px_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
+      class="ts-liquid-glass liquid-glass-nav fixed inset-x-[var(--ts-space-3)] bottom-[calc(var(--ts-tabbar-offset)_+_var(--ts-safe-area-bottom))] z-40 md:hidden"
       :class="{ 'is-flowing': bubbleMoving, 'is-dark': isDarkMode }"
       aria-label="主导航"
     >
@@ -105,7 +105,7 @@
         </div>
         <button
           type="button"
-          class="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-slate-400 dark:hover:bg-slate-700"
+          class="ts-icon-button ts-button-ghost"
           aria-label="关闭更多导航"
           @click="closeMoreSheet"
         >
@@ -395,8 +395,8 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 <style>
 /* el-drawer teleport 到 body，scoped 样式无法触达面板，用全局样式调整底部 sheet */
 .more-sheet {
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
+  border-top-left-radius: var(--ts-radius-dialog);
+  border-top-right-radius: var(--ts-radius-dialog);
   overflow: hidden;
   max-height: min(85dvh, 720px);
 }
@@ -408,57 +408,9 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 </style>
 
 <style scoped>
-.liquid-glass-nav {
-  isolation: isolate;
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.68);
-  border-radius: 9999px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.4), rgba(248, 250, 252, 0.18));
-  box-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.16),
-    0 3px 10px rgba(15, 23, 42, 0.08),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.92),
-    inset 0 -1px 1px rgba(100, 116, 139, 0.16);
-  -webkit-backdrop-filter: blur(3px) saturate(145%) contrast(103%);
-  backdrop-filter: blur(3px) saturate(145%) contrast(103%);
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms ease;
-}
-
-.liquid-glass-nav.is-flowing {
-  transform: scale(1.006);
-  box-shadow:
-    0 21px 46px rgba(15, 23, 42, 0.19),
-    0 4px 12px rgba(15, 23, 42, 0.1),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.96),
-    inset 0 -1px 1px rgba(100, 116, 139, 0.18);
-}
-
-.liquid-glass-nav::before {
-  position: absolute;
-  z-index: 0;
-  inset: 1px;
-  border-radius: inherit;
-  background:
-    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.72), transparent 24%),
-    radial-gradient(circle at 82% 115%, rgba(var(--theme-rgb), 0.1), transparent 34%);
-  content: '';
-  pointer-events: none;
-}
-
-.liquid-glass-nav::after {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.3) 22%, transparent 38%),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.18), transparent 42%, rgba(15, 23, 42, 0.04));
-  content: '';
-  pointer-events: none;
-}
+/* The bar shares its material with every floating toolbar. */
+.liquid-glass-nav { position: fixed; overflow: hidden; border-radius: var(--ts-radius-pill); transition: transform var(--ts-motion-normal) var(--ts-ease); }
+.liquid-glass-nav.is-flowing { transform: scale(1.006); }
 
 .liquid-bubble-track {
   position: absolute;
@@ -468,7 +420,7 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   z-index: -1;
   width: calc((100% - 8px) / 5);
   padding: 4px;
-  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--ts-motion-page) var(--ts-ease);
   will-change: transform;
 }
 
@@ -476,7 +428,7 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
   display: block;
   width: 100%;
   height: 100%;
-  border: 1px solid rgba(255, 255, 255, 0.64);
+  border: var(--ts-border-unit, 1px) solid rgba(255, 255, 255, 0.64);
   border-radius: 9999px;
   background:
     radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.74), transparent 38%),
@@ -487,7 +439,7 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
     inset 0 -1px 1px rgba(var(--theme-rgb), 0.1);
   -webkit-backdrop-filter: blur(2px) saturate(155%);
   backdrop-filter: blur(2px) saturate(155%);
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform var(--ts-motion-fast) var(--ts-ease);
   will-change: transform;
 }
 
@@ -497,15 +449,17 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 
 .liquid-bubble.is-moving.moves-right {
   transform-origin: right center;
-  animation: liquid-stretch-right 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: liquid-stretch-right var(--ts-motion-page) var(--ts-ease);
 }
 
 .liquid-bubble.is-moving.moves-left {
   transform-origin: left center;
-  animation: liquid-stretch-left 320ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: liquid-stretch-left var(--ts-motion-page) var(--ts-ease);
 }
 
 .liquid-tab-item :deep(svg) {
+  width: var(--ts-mobile-icon-size, 20px);
+  height: var(--ts-mobile-icon-size, 20px);
   transition: transform 100ms ease, filter 200ms ease;
 }
 
@@ -527,27 +481,6 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 .liquid-tab-item.is-active :deep(svg) {
   animation: liquid-icon-pop 260ms cubic-bezier(0.22, 1, 0.36, 1);
   filter: drop-shadow(0 2px 4px rgba(var(--theme-rgb), 0.24));
-}
-
-.liquid-glass-nav.is-dark {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: linear-gradient(145deg, rgba(30, 41, 59, 0.62), rgba(15, 23, 42, 0.38));
-  box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.42),
-    inset 0 1.5px 1px rgba(255, 255, 255, 0.2),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.3);
-}
-
-.liquid-glass-nav.is-dark::before {
-  background:
-    radial-gradient(circle at 12% 0%, rgba(255, 255, 255, 0.2), transparent 25%),
-    radial-gradient(circle at 82% 115%, rgba(var(--theme-rgb), 0.16), transparent 36%);
-}
-
-.liquid-glass-nav.is-dark::after {
-  background:
-    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.11) 22%, transparent 38%),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), transparent 45%, rgba(0, 0, 0, 0.1));
 }
 
 .liquid-glass-nav.is-dark .liquid-bubble {
@@ -583,7 +516,7 @@ watch(() => route.path, () => uiStore.setSelectionActive(false))
 
 .bottom-nav-slide-enter-active,
 .bottom-nav-slide-leave-active {
-  transition: transform 0.3s ease, opacity 0.25s ease;
+  transition: transform var(--ts-motion-page) var(--ts-ease), opacity var(--ts-motion-normal) ease;
 }
 .bottom-nav-slide-enter-from,
 .bottom-nav-slide-leave-to {

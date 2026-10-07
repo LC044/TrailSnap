@@ -1,109 +1,40 @@
 <template>
   <div class="recycle-bin-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] flex flex-col">
-    <MobilePageHeader
-      v-if="isMobileViewport"
-      :title="isSelectionMode ? `已选择 ${effectiveSelectedCount} 项` : '最近删除'"
-      :subtitle="isSelectionMode ? undefined : mobileSubtitle"
-      :show-back="!isSelectionMode"
-      fallback="/photos"
-    >
-      <template v-if="isSelectionMode" #leading>
-        <button
-          type="button"
-          class="rounded-lg px-2 py-1 text-sm font-medium text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-primary-400"
-          @click="toggleSelectAll"
-        >{{ isEverythingSelected ? '取消全选' : '全选' }}</button>
-      </template>
-      <template #actions>
-        <IconButton v-if="!isSelectionMode" label="选择照片" size="sm" @click="handleEnterSelectionMode">
-          <CheckSquare class="h-5 w-5" />
-        </IconButton>
-        <IconButton
-          v-if="!isSelectionMode"
-          label="清空回收站"
-          size="sm"
-          :disabled="totalCount === 0 || isPurging"
-          @click="handleEmptyRecycleBin"
-        >
-          <Trash2 class="h-5 w-5" />
-        </IconButton>
-        <button
-          v-if="isSelectionMode"
-          type="button"
-          class="rounded-lg px-2 py-1 text-sm font-medium text-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:text-primary-400"
-          @click="cancelSelection"
-        >取消</button>
-      </template>
-    </MobilePageHeader>
-    <!-- Header -->
-    <div v-else class="sticky top-0 z-30 mb-6 -mx-[var(--ts-page-gutter)] bg-white/90 backdrop-blur-md border-b border-gray-200 dark:bg-gray-900/90 dark:border-gray-800">
-      <!-- Responsive Header -->
-      <div class="flex items-center justify-between px-[var(--ts-page-gutter)] py-3">
-        <!-- Left Side -->
-        <div class="flex items-center gap-2">
-          <!-- Back button: visible unless we are in mobile selection mode -->
-          <button @click="goBack" class="p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" :class="{ 'hidden md:block': isSelectionMode }">
-            <ArrowLeft class="w-6 h-6 text-gray-800 dark:text-gray-200" />
-          </button>
-          
-          <!-- Mobile Select All -->
-          <button v-if="isSelectionMode" @click="toggleSelectAll" class="md:hidden text-primary-600 dark:text-primary-400 font-medium px-2 py-1">
-            {{ isEverythingSelected ? '取消全选' : '全选' }}
-          </button>
-
-          <!-- Title -->
-          <h1 class="text-lg md:text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <span :class="{ 'hidden md:inline': isSelectionMode }">最近删除</span>
-            <span v-if="!isSelectionMode && totalCount > 0" class="text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full mt-0.5">共 {{ totalCount }} 项</span>
-            <span v-if="isSelectionMode" class="md:hidden">已选择 {{ effectiveSelectedCount }} 项</span>
-            <span v-if="isSelectionMode" class="hidden md:inline text-sm font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full mt-0.5">已选择 {{ effectiveSelectedCount }} 项</span>
-          </h1>
+    <div class="sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[var(--ts-content-safe-area-top)] mb-4">
+      <div class="ts-browse-header flex items-center justify-between gap-2 py-1.5 sm:py-2">
+        <div class="flex min-w-0 items-center gap-2">
+          <BackButton label="返回" @click="goBack" />
+          <div class="min-w-0">
+            <h1 class="ts-page-title truncate text-gray-900 dark:text-white">最近删除</h1>
+            <p class="truncate text-xs text-gray-500 dark:text-gray-400">{{ recycleSubtitle }}</p>
+          </div>
         </div>
-
-        <!-- Right Side -->
-        <div class="flex items-center gap-1">
-          <!-- Normal Actions -->
-          <template v-if="!isSelectionMode">
-            <button @click="handleEnterSelectionMode" class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="选择">
-              <CheckSquare class="w-5 h-5 text-gray-700 dark:text-gray-300" />
+        <div v-if="!isSelectionMode" class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center gap-1 sm:gap-2">
+          <button type="button" class="ts-glass-button disabled:opacity-50 disabled:cursor-not-allowed" title="选择照片" aria-label="选择照片" :disabled="totalCount === 0 || isPurging" @click="handleEnterSelectionMode">
+            <CheckSquare class="h-5 w-5" />
+          </button>
+          <button type="button" class="ts-glass-button disabled:opacity-50 disabled:cursor-not-allowed" title="清空回收站" aria-label="清空回收站" :disabled="totalCount === 0 || isPurging" @click="handleEmptyRecycleBin">
+            <Trash2 class="h-5 w-5" />
+          </button>
+          <div class="relative">
+            <button type="button" class="ts-glass-button" title="更多操作" aria-label="更多操作" :aria-expanded="showMoreMenu" @click="showMoreMenu = !showMoreMenu">
+              <MoreHorizontal class="h-5 w-5" />
             </button>
-            <el-dropdown trigger="click" placement="bottom-end">
-              <button class="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors" title="更多操作">
-                 <MoreVertical class="w-5 h-5 text-gray-700 dark:text-gray-300" />
+            <AdaptiveMenu v-model="showMoreMenu" title="回收站操作" mobile-presentation="popover" close-on-action>
+              <button type="button" class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="totalCount === 0 || isPurging" @click="handleRestoreAll">
+                <RefreshCcw class="h-4 w-4" /><span>全部恢复</span>
               </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item :disabled="totalCount === 0 || isPurging" @click="handleRestoreAll">
-                    <div class="flex items-center gap-2">
-                      <RefreshCcw class="w-4 h-4" />
-                      <span>全部恢复</span>
-                    </div>
-                  </el-dropdown-item>
-                  <el-dropdown-item :disabled="totalCount === 0 || isPurging" divided @click="handleEmptyRecycleBin">
-                    <div class="flex items-center gap-2 text-red-500">
-                      <Trash2 class="w-4 h-4" />
-                      <span>清空回收站</span>
-                    </div>
-                  </el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
-          </template>
-          <!-- Selection Actions -->
-          <template v-else>
-            <!-- PC Select All -->
-            <button @click="toggleSelectAll" class="hidden md:block text-primary-600 dark:text-primary-400 font-medium px-3 py-1.5 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-full transition-colors mr-2">
-              {{ isEverythingSelected ? '取消全选' : '全选' }}
-            </button>
-            <button @click="cancelSelection" class="text-primary-600 dark:text-primary-400 font-medium px-2 py-1 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-full transition-colors">
-              取消
-            </button>
-          </template>
+              <button type="button" class="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="totalCount === 0 || isPurging" @click="handleEmptyRecycleBin">
+                <Trash2 class="h-4 w-4" /><span>清空回收站</span>
+              </button>
+            </AdaptiveMenu>
+          </div>
         </div>
       </div>
-      <!-- Hint Text -->
-      <div class="pb-3 text-xs md:text-sm text-gray-500 dark:text-gray-400">
-        已删除的内容仅保留{{ retentionDays }}天，逾期将永久删除。
+      <div v-if="isSelectionMode" class="ts-liquid-glass mb-2 flex items-center justify-between gap-2 rounded-2xl px-2 py-1 md:hidden" data-testid="recycle-selection-header">
+        <button type="button" class="ts-button ts-button-ghost" @click="toggleSelectAll">{{ isEverythingSelected ? '取消全选' : '全选' }}</button>
+        <span class="text-sm font-semibold text-gray-900 dark:text-white" aria-live="polite">已选 {{ effectiveSelectedCount }} 项</span>
+        <button type="button" class="ts-icon-button ts-button-ghost" aria-label="取消选择" @click="cancelSelection"><X class="h-5 w-5" /></button>
       </div>
     </div>
 
@@ -141,7 +72,7 @@
     <!-- Gallery -->
     <div class="mx-auto w-full" :class="{ 'pb-28': isSelectionMode }">
       <!-- Empty State -->
-      <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500">
+      <div v-if="!loading && photos.length === 0" class="flex flex-col items-center justify-center py-20 text-gray-500 dark:text-gray-400">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
           <Trash2 class="w-12 h-12 opacity-20" />
         </div>
@@ -185,38 +116,27 @@
       </div>
     </div>
 
-    <!-- Floating selection action bar (restore / delete) -->
-    <Transition name="bar-slide">
-      <div
-        v-if="isSelectionMode"
-        class="fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4 pointer-events-none"
-      >
-        <div class="pointer-events-auto flex items-center justify-around w-full max-w-[280px] bg-white/95 dark:bg-gray-800/95 backdrop-blur-md shadow-xl border border-gray-200/50 dark:border-gray-700/50 rounded-[2rem] px-6 py-2.5">
-          <button 
-            @click="handleRestoreSelection" 
-            :disabled="effectiveSelectedCount === 0 || isPurging"
-            class="flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-1"
-            :class="effectiveSelectedCount === 0 ? 'text-gray-400' : 'text-primary-500 hover:text-primary-600'"
-          >
-            <RefreshCcw class="w-5 h-5" />
-            <span class="text-[11px] font-medium">恢复</span>
-          </button>
-
-          <!-- Divider -->
-          <div class="w-px h-8 bg-gray-200 dark:bg-gray-700 mx-2"></div>
-
-          <button 
-            @click="handleDeleteSelection" 
-            :disabled="effectiveSelectedCount === 0 || isPurging"
-            class="flex flex-col items-center justify-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-1"
-            :class="effectiveSelectedCount === 0 ? 'text-gray-400' : 'text-red-500 hover:text-red-600'"
-          >
-            <Trash2 class="w-5 h-5" />
-            <span class="text-[11px] font-medium">删除</span>
-          </button>
-        </div>
-      </div>
-    </Transition>
+    <PhotoBatchActionBar
+      :visible="isSelectionMode"
+      :selected-ids="selectedIdSet"
+      :selected-count="effectiveSelectedCount"
+      :is-all-selected="isEverythingSelected"
+      :is-downloading="false"
+      :action-columns="2"
+      :show-mobile-header="false"
+      delete-label="永久删除"
+      @cancel="cancelSelection"
+      @select-all="toggleSelectAll"
+    >
+      <template #actions>
+        <button type="button" class="ts-icon-button ts-button-ghost text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="effectiveSelectedCount === 0 || isPurging" title="恢复照片" @click="handleRestoreSelection">
+          <RefreshCcw class="h-5 w-5" /><span>恢复</span>
+        </button>
+        <button type="button" class="ts-icon-button ts-icon-danger text-red-500 disabled:opacity-50 disabled:cursor-not-allowed" :disabled="effectiveSelectedCount === 0 || isPurging" title="永久删除" @click="handleDeleteSelection">
+          <Trash2 class="h-5 w-5" /><span>永久删除</span>
+        </button>
+      </template>
+    </PhotoBatchActionBar>
 
     <!-- Lightbox -->
     <PhotoLightbox
@@ -249,11 +169,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
 import { ElMessage } from 'element-plus'
-import { RefreshCcw, ArrowLeft, Trash2, Clock, X, CheckSquare, MoreVertical, Disc, Loader2 } from 'lucide-vue-next'
+import { RefreshCcw, Trash2, CheckSquare, MoreHorizontal, Disc, Loader2, X } from 'lucide-vue-next'
 import FlatPhotoGallery from '@/components/FlatPhotoGallery.vue'
 import { usePhotoViewer } from '@/composables/usePhotoViewer'
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
@@ -261,14 +181,13 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import type { AlbumImage } from '@/types/album'
 import request from '@/utils/request'
 import { mapPhotoToImage } from '@/stores/photoStore'
-import { useMediaQuery, useScroll } from '@vueuse/core'
+import { useScroll } from '@vueuse/core'
 import { useUiStore } from '@/stores/uiStore'
-import MobilePageHeader from '@/components/ui/MobilePageHeader.vue'
-import IconButton from '@/components/ui/IconButton.vue'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
+import PhotoBatchActionBar from '@/components/PhotoBatchActionBar.vue'
 
-const router = useRouter()
 const goBack = useAppBack('/')
-const isMobileViewport = useMediaQuery('(max-width: 767px)')
+const showMoreMenu = ref(false)
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])
 const pendingRemoveIds = ref(new Set<string>())
@@ -286,6 +205,7 @@ const hasStats = ref(false)
 
 const galleryRef = ref<InstanceType<typeof FlatPhotoGallery> | null>(null)
 const selectedIds = ref<string[]>([])
+const selectedIdSet = computed(() => new Set(selectedIds.value))
 const isSelectionMode = ref(false)
 // True when the user asked for "everything in the bin" rather than "the ids
 // currently on screen". Actions then target the server-side set, so the client
@@ -311,7 +231,7 @@ const effectiveSelectedCount = computed(() => {
   return selectedIds.value.length
 })
 
-const mobileSubtitle = computed(() => {
+const recycleSubtitle = computed(() => {
   const retention = `已删除的内容仅保留${retentionDays.value}天`
   return totalCount.value > 0 ? `${retention} · 共 ${totalCount.value} 项` : retention
 })
@@ -694,7 +614,10 @@ onMounted(async () => {
   }
 })
 
-onUnmounted(stopPolling)
+onUnmounted(() => {
+  stopPolling()
+  uiStore.setSelectionActive(false)
+})
 
 watch(windowScrollY, (y) => {
     if (!hasMore.value || loading.value) return

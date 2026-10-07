@@ -26,11 +26,11 @@ test.describe('E2E - 移动端搜索面板', () => {
     await expect(page.locator('body')).toBeVisible();
 
     // 模板硬编码：input placeholder="搜索照片、地点、人物..."
-    const searchInput = page.locator('input[placeholder*="搜索照片"]');
+    const searchInput = page.getByRole('searchbox', { name: '搜索照片' });
     await expect(searchInput).toBeVisible({ timeout: 10_000 });
 
     // 空态：搜索图标 + 「开始搜索您的精彩瞬间」提示
-    await expect(page.getByText('开始搜索您的精彩瞬间')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('heading', { name: '你可以这样搜' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('smoke - 顶部返回按钮可见', async ({ page }) => {
@@ -43,7 +43,7 @@ test.describe('E2E - 移动端搜索面板', () => {
   test('p0 - 输入文字后渲染 AI 语义搜索 CTA 与清除按钮', async ({ page }) => {
     await page.goto('/mobile-search');
 
-    const searchInput = page.locator('input[placeholder*="搜索照片"]');
+    const searchInput = page.getByRole('searchbox', { name: '搜索照片' });
     await expect(searchInput).toBeVisible({ timeout: 10_000 });
     await searchInput.fill('日落');
 
@@ -61,24 +61,24 @@ test.describe('E2E - 移动端搜索面板', () => {
   test('p0 - 点击清除按钮后回到空态', async ({ page }) => {
     await page.goto('/mobile-search');
 
-    const searchInput = page.locator('input[placeholder*="搜索照片"]');
+    const searchInput = page.getByRole('searchbox', { name: '搜索照片' });
     await expect(searchInput).toBeVisible({ timeout: 10_000 });
     await searchInput.fill('北京');
 
     // 出现清除按钮
-    const xButton = page.locator('button:has(.lucide-x)');
+    const xButton = page.getByRole('button', { name: '清空搜索', exact: true });
     await expect(xButton.first()).toBeVisible({ timeout: 5_000 });
     await xButton.first().click();
 
     // 文本清空，空态恢复
     await expect(searchInput).toHaveValue('');
-    await expect(page.getByText('开始搜索您的精彩瞬间')).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: '你可以这样搜' })).toBeVisible({ timeout: 5_000 });
   });
 
   test('p1 - 输入文字后按 Enter 跳转到 /search?q=', async ({ page }) => {
     await page.goto('/mobile-search');
 
-    const searchInput = page.locator('input[placeholder*="搜索照片"]');
+    const searchInput = page.getByRole('searchbox', { name: '搜索照片' });
     await expect(searchInput).toBeVisible({ timeout: 10_000 });
     await searchInput.fill('西湖');
     await searchInput.press('Enter');

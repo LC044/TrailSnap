@@ -53,13 +53,13 @@ export const desktopNavSections: AppNavSection[] = [
       { label: '记忆', href: '/memories', icon: BookHeart, navGroup: 'memories' },
       { label: '月迹', href: '/moon', icon: Moon, navGroup: 'albums', activeMatch: 'path' },
       { label: '地图', href: '/album/location', icon: MapPin, navGroup: 'albums', activeMatch: 'path' },
+      { label: '票夹', href: '/ticket', icon: Ticket, navGroup: 'tickets', activeMatch: 'exact' },
     ],
   },
   {
     label: '更多',
     collapsible: true,
     items: [
-      { label: '车票', href: '/ticket', icon: Ticket, navGroup: 'tickets', activeMatch: 'exact' },
       { label: '工具箱', href: '/toolbox', icon: Wrench, navGroup: 'tools', activeMatch: 'path' },
       { label: '断舍离', href: '/swipe-filter', icon: Layers, navGroup: 'tools', activeMatch: 'path' },
     ],
@@ -80,7 +80,7 @@ export const mobileMoreSections: AppNavSection[] = [
   {
     label: '旅程与管理',
     items: [
-      { label: '车票', href: '/ticket', icon: Ticket, navGroup: 'tickets' },
+      { label: '票夹', href: '/ticket', icon: Ticket, navGroup: 'tickets' },
       { label: '工具箱', href: '/toolbox', icon: Wrench, navGroup: 'tools' },
       { label: '断舍离', href: '/swipe-filter', icon: Layers, navGroup: 'tools' },
       { label: '回收站', href: '/recycle-bin', icon: Trash2, navGroup: 'more' },

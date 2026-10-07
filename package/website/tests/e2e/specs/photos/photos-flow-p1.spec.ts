@@ -199,7 +199,7 @@ test.describe('P1 - 照片流核心功能', () => {
 
     // 进入批量模式后 PhotoGallery 经历一次重渲染，期间 nth(1) 可能短暂未挂载；
     // 先等底部'已选 X 项'工具栏可见再断言图片可见，避免 element(s) not found。
-    const actionBarInBatch = page.locator('text=/已选\\s*\\d+\\s*项/').first()
+    const actionBarInBatch = page.getByTestId('photo-selection-bar')
     await expect(actionBarInBatch).toBeVisible({ timeout: 10_000 })
     const imgs = page.locator('.photo-gallery img')
     await expect(imgs.nth(1)).toBeVisible({ timeout: 10_000 })
@@ -208,8 +208,9 @@ test.describe('P1 - 照片流核心功能', () => {
     await imgs.nth(1).click({ force: true })
 
     // 选择模式进入后，工具栏底部出现（含"已选 X 项"）
-    const actionBar = page.locator('text=/已选\\s*\\d+\\s*项/').first()
+    const actionBar = page.getByTestId('photo-selection-bar')
     await expect(actionBar).toBeVisible({ timeout: 10_000 })
+    await expect(actionBar).toContainText('已选 2 项')
   })
 
   test('2.1.8 筛选面板 - 按年份筛选后 API 调用带 years 参数', async ({ page, request }, testInfo) => {

@@ -17,7 +17,7 @@
         <div class="cover-glow absolute inset-0"></div>
         <div class="relative flex h-full flex-col justify-between p-5 sm:p-7 md:p-10">
           <div class="flex items-start justify-between gap-3">
-            <button class="cover-icon" aria-label="返回上一页" @click="back">←</button>
+            <BackButton label="返回上一页" @click="back" />
             <div class="flex gap-2">
               <button class="cover-tool" :aria-expanded="searchOpen" @click="openSearch">换个起点</button>
               <button class="cover-tool" :aria-pressed="store.comparing" @click="toggleComparing">
@@ -517,6 +517,7 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'

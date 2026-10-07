@@ -202,7 +202,7 @@ def test_read_ticket_returns_404_when_missing():
     db = MagicMock()
     with patch.object(train_api, "get_train_ticket", return_value=None):
         with pytest.raises(HTTPException) as exc_info:
-            train_api.read_ticket(ticket_id=str(uuid4()), db=db)
+            train_api.read_ticket(ticket_id=str(uuid4()), db=db, current_user=_user())
 
     assert exc_info.value.status_code == 404
 
@@ -211,7 +211,7 @@ def test_read_ticket_returns_ticket():
     db = MagicMock()
     ticket = _ticket()
     with patch.object(train_api, "get_train_ticket", return_value=ticket):
-        response = train_api.read_ticket(ticket_id=ticket.id, db=db)
+        response = train_api.read_ticket(ticket_id=ticket.id, db=db, current_user=_user())
 
     assert response.code == 200
     assert response.data is ticket
@@ -227,7 +227,7 @@ def test_update_ticket_returns_404_when_missing():
         with pytest.raises(HTTPException) as exc_info:
             train_api.update_ticket(
                 ticket_update=payload, ticket_id=str(uuid4()), db=db
-            )
+            , current_user=_user())
 
     assert exc_info.value.status_code == 404
 
@@ -239,7 +239,7 @@ def test_update_ticket_returns_ticket():
     with patch.object(train_api, "update_train_ticket", return_value=updated) as crud_call:
         response = train_api.update_ticket(
             ticket_update=payload, ticket_id=str(uuid4()), db=db
-        )
+        , current_user=_user())
 
     crud_call.assert_called_once()
     assert response.code == 200
@@ -253,7 +253,7 @@ def test_delete_ticket_returns_404_when_missing():
     db = MagicMock()
     with patch.object(train_api, "delete_train_ticket", return_value=False):
         with pytest.raises(HTTPException) as exc_info:
-            train_api.delete_ticket(ticket_id=str(uuid4()), db=db)
+            train_api.delete_ticket(ticket_id=str(uuid4()), db=db, current_user=_user())
 
     assert exc_info.value.status_code == 404
 
@@ -261,7 +261,7 @@ def test_delete_ticket_returns_404_when_missing():
 def test_delete_ticket_succeeds():
     db = MagicMock()
     with patch.object(train_api, "delete_train_ticket", return_value=True):
-        response = train_api.delete_ticket(ticket_id=str(uuid4()), db=db)
+        response = train_api.delete_ticket(ticket_id=str(uuid4()), db=db, current_user=_user())
 
     assert response.code == 200
     assert response.data["message"] == "\u706b\u8f66\u7968\u8bb0\u5f55\u5220\u9664\u6210\u529f"

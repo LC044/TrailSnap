@@ -174,7 +174,7 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     const dock = page.getByTestId('photo-lightbox-mobile-actions')
     await expect(dock).toBeVisible()
     await expect(dock.getByRole('button', { name: '下载' })).toBeVisible()
-    await expect(dock.getByRole('button', { name: '信息' })).toBeVisible()
+    await expect(dock.getByRole('button', { name: 'AI 分析' })).toBeVisible()
 
     // 入场动画有 translateY 位移，boundingBox 需等其收敛，故用 poll 重试
     const thumbnail = page.getByTestId('photo-lightbox-thumbnails').locator('button').first()

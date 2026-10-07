@@ -3,110 +3,42 @@
     <!-- Header -->
     <div class="ts-browse-header mb-5 flex items-center justify-between gap-3 sm:mb-8">
       <div class="min-w-0">
-        <h1 class="ts-page-title text-gray-900 dark:text-white">我的相册</h1>
+        <h1 class="ts-page-title text-gray-900 dark:text-white">相册</h1>
 
       </div>
-      <div class="hidden flex-wrap justify-end gap-2 md:flex">
-        <button type="button" class="flex items-center gap-2 rounded-lg border border-primary-500 px-3 py-2 text-sm text-primary-600 transition-colors hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="startTravelAlbum">
-          <WandSparkles class="h-4 w-4" /><span>AI 整理旅行</span>
-        </button>
-        <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="startAlbumDoctor">
-          <Stethoscope class="h-4 w-4" /><span>AI 相册体检</span>
-        </button>
-        <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="startMemoryDetective">
-          <SearchCheck class="h-4 w-4" /><span>回忆侦探</span>
-        </button>
-        <button type="button" class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800" @click="router.push('/agent/actions')">
-          <History class="h-4 w-4" /><span>操作记录</span>
-        </button>
-      </div>
-      <div class="hidden sm:block"><el-dropdown trigger="click" @command="openCreateModal">
-        <button 
-          type="button"
-          class="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-500 px-3 py-2.5 text-sm font-medium text-white shadow-lg shadow-primary-500/20 transition-colors hover:bg-primary-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:px-4"
-        >
-          <Plus class="h-4 w-4 sm:h-5 sm:w-5" />
-          <span class="hidden sm:inline">新建相册</span>
-          <span class="sm:hidden">新建</span>
-        </button>
-        <template #dropdown>
-          <el-dropdown-menu>
-            <el-dropdown-item command="user">普通相册</el-dropdown-item>
-            <el-dropdown-item command="conditional">条件相册</el-dropdown-item>
-            <el-dropdown-item command="smart">智能相册</el-dropdown-item>
-          </el-dropdown-menu>
-        </template>
-      </el-dropdown></div>
-      <div class="ts-liquid-glass ts-glass-toolbar flex sm:hidden" aria-label="相册工具栏">
+      <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0" aria-label="相册工具栏">
         <button class="ts-glass-button" aria-label="搜索相册" :aria-expanded="showAlbumSearch" @click="showAlbumSearch = !showAlbumSearch"><Search class="h-5 w-5" /></button>
-        <button class="ts-glass-button" aria-label="新建相册" @click="showCreateActions = true"><Plus class="h-5 w-5" /></button>
-        <button class="ts-glass-button" aria-label="更多相册操作" @click="showAlbumActions = true"><MoreHorizontal class="h-5 w-5" /></button>
-      </div>
-    </div>
-
-    <div v-if="showAlbumSearch" class="mb-5 sm:hidden">
-      <input v-model="albumSearch" aria-label="相册名称" placeholder="搜索相册名称" type="search" class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
-    </div>
-    <ResponsiveDialog v-model="showCreateActions" title="新建相册" glass>
-      <button v-for="kind in createKinds" :key="kind.value" class="ts-action-row" @click="showCreateActions = false; openCreateModal(kind.value)"><component :is="kind.icon" /><span>{{ kind.label }}</span></button>
-    </ResponsiveDialog>
-    <ResponsiveDialog v-model="showAlbumActions" title="相册整理" glass>
+        <div class="relative">
+          <button class="ts-glass-button" aria-label="新建相册" :aria-expanded="showCreateActions" aria-haspopup="menu" @click="showAlbumActions = false; showCreateActions = !showCreateActions"><Plus class="h-5 w-5" /></button>
+          <AdaptiveMenu v-model="showCreateActions" title="新建相册" mobile-presentation="popover" glass>
+            <button v-for="kind in createKinds" :key="kind.value" class="ts-action-row" @click="showCreateActions = false; openCreateModal(kind.value)"><component :is="kind.icon" /><span>{{ kind.label }}</span></button>
+          </AdaptiveMenu>
+        </div>
+        <button class="ts-glass-button" aria-label="更多相册操作" :aria-expanded="showAlbumActions" aria-haspopup="menu" @click="showAlbumActions = !showAlbumActions"><MoreHorizontal class="h-5 w-5" /></button>
+    <AdaptiveMenu mobile-presentation="popover" v-model="showAlbumActions" title="相册整理" glass>
+      <button class="ts-action-row" @click="showAlbumActions = false; showSectionSettings = true"><SlidersHorizontal />分组排序与显示</button>
       <button class="ts-action-row" @click="showAlbumActions = false; startTravelAlbum()"><WandSparkles />AI 整理旅行</button>
       <button class="ts-action-row" @click="showAlbumActions = false; startAlbumDoctor()"><Stethoscope />相册体检</button>
       <button class="ts-action-row" @click="showAlbumActions = false; startMemoryDetective()"><SearchCheck />回忆侦探</button>
       <button class="ts-action-row" @click="showAlbumActions = false; router.push('/agent/actions')"><History />操作记录</button>
-    </ResponsiveDialog>
-
-    <!-- Smart Albums Section -->
-    <section class="hidden sm:block mb-8 sm:mb-10">
-      <h2 class="mb-3 sm:mb-4"><button class="ts-section-title flex min-h-11 w-full items-center gap-2 text-gray-800 dark:text-gray-100" :aria-expanded="!collapsed.smart" @click="collapsed.smart = !collapsed.smart">
-        <Sparkles class="w-5 h-5 text-yellow-500" />
-        智能相册<ChevronDown class="ml-auto h-4 w-4" :class="{ '-rotate-90': collapsed.smart }" />
-      </button></h2>
-      <div v-show="!collapsed.smart">
-      <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-6 lg:gap-6">
-        <div 
-          v-for="album in smartAlbums" 
-          :key="album.id"
-          class="group relative flex cursor-pointer items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm transition-all duration-300 hover:border-gray-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700 sm:block sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:dark:bg-transparent"
-          role="button"
-          tabindex="0"
-          :aria-label="`打开${album.title}`"
-          @click="navigateToSmartAlbum(album)"
-          @keydown.enter="navigateToSmartAlbum(album)"
-          @keydown.space.prevent="navigateToSmartAlbum(album)"
-        >
-          <!-- Cover -->
-          <div class="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-xl border border-gray-100 shadow-sm transition-all duration-300 group-hover:shadow-md dark:border-gray-800 sm:mb-3 sm:aspect-square sm:h-auto sm:w-full">
-            <SmartAlbumCover
-              :type="album.id"
-              :icon="album.icon"
-              :data="album.data"
-              :loading="smartOverviewLoading"
-              :alt-prefix="`${album.title}封面`"
-            />
-            <div class="absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/5"></div>
-          </div>
-          <!-- Info -->
-          <div class="min-w-0 flex-1 sm:mt-2">
-            <h3 class="ts-card-title truncate font-semibold text-gray-900 dark:text-white sm:font-bold">{{ album.title }}</h3>
-            <p class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">{{ smartAlbumDescription(album) }}</p>
-          </div>
-          <ChevronRight class="h-5 w-5 shrink-0 text-gray-300 dark:text-gray-600 sm:hidden" />
-        </div>
+    </AdaptiveMenu>
       </div>
-      </div>
-    </section>
+    </div>
 
+    <div v-if="showAlbumSearch" class="mb-5">
+      <input v-model="albumSearch" aria-label="相册名称" placeholder="搜索相册名称" type="search" class="ts-input w-full" />
+    </div>
+
+
+    <div class="album-sections flex flex-col gap-8">
     <!-- Custom Albums Section -->
-    <section>
+    <section v-if="!store.hiddenSections.includes('mine')" :style="{ order: sectionRank('mine') }">
       <h2 class="mb-3 sm:mb-4"><button class="ts-section-title flex min-h-11 w-full items-center gap-2 text-gray-800 dark:text-gray-100" :aria-expanded="!collapsed.mine" @click="collapsed.mine = !collapsed.mine">
-        <FolderHeart class="w-5 h-5 text-primary-500" />
-        我的相册<ChevronDown class="ml-auto h-4 w-4" :class="{ '-rotate-90': collapsed.mine }" />
+        <ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.mine }" />我的相册
       </button></h2>
       <div v-show="!collapsed.mine">
       
-      <div v-if="visibleAlbums.length > 0" class="album-cover-strip sm:grid sm:grid-cols-4 sm:gap-5 lg:grid-cols-6 lg:gap-6 xl:grid-cols-8">
+      <div v-if="visibleAlbums.length > 0" class="album-cover-strip">
         <div
           v-for="album in visibleAlbums"
           :key="album.id"
@@ -166,7 +98,7 @@
             <h3 class="ts-card-title truncate text-sm font-semibold text-gray-900 dark:text-white sm:text-base sm:font-bold">{{ album.title }}</h3>
             <div class="flex justify-between items-center mt-1">
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ album.count }} 个项目</p>
-              <!-- <p class="text-xs text-gray-400">{{ formatDate(album.createdAt) }}</p> -->
+              <!-- <p class="text-xs text-gray-400 dark:text-gray-400">{{ formatDate(album.createdAt) }}</p> -->
             </div>
           </div>
         </div>
@@ -178,18 +110,18 @@
           <FolderOpen class="w-8 h-8 text-gray-300 dark:text-gray-600" />
         </div>
         <p>{{ albumSearch ? '没有匹配的相册' : '暂无自定义相册' }}</p>
-        <button type="button" @click="openCreateModal('user')" class="mt-4 rounded-lg px-3 py-2 text-primary-600 hover:bg-primary-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2">创建第一个相册</button>
+        <button type="button" @click="openCreateModal('user')" class="ts-button ts-button-ghost mt-4 text-primary-600 dark:text-primary-400">创建第一个相册</button>
       </div>
       </div>
     </section>
 
-    <section class="mt-8">
+    <section v-if="!store.hiddenSections.includes('memories')" :style="{ order: sectionRank('memories') }">
       <h2 class="mb-3 flex items-center gap-2">
-        <button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed.memories" @click="collapsed.memories = !collapsed.memories"><BookHeart class="h-5 w-5 text-primary-500" />回忆<ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.memories }" /></button>
+        <button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed.memories" @click="collapsed.memories = !collapsed.memories"><ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.memories }" />回忆</button>
         <button class="min-h-11 text-xs text-gray-500 dark:text-gray-400" aria-label="查看全部回忆" @click="router.push('/memories')">{{ memoryTotal }} <ChevronRight class="inline h-4 w-4" /></button>
       </h2>
       <div v-show="!collapsed.memories">
-        <div v-if="memoryPreviews.length" class="album-cover-strip sm:grid sm:grid-cols-4 lg:grid-cols-6 sm:gap-4">
+        <div v-if="memoryPreviews.length" class="album-cover-strip" @scroll.passive="onMemoryScroll">
           <RouterLink v-for="memory in memoryPreviews" :key="memory.id" :to="`/memories/${memory.id}`" class="album-cover-card text-left">
             <div class="relative aspect-square overflow-hidden rounded-[22px] bg-gray-100 dark:bg-gray-800">
               <img v-if="memory.cover_photo_id" :src="thumbnailUrl(memory.cover_photo_id, 'small')" :alt="memory.title" class="h-full w-full object-cover" loading="lazy" />
@@ -198,23 +130,29 @@
             <p class="ts-card-title mt-2 truncate text-gray-900 dark:text-white">{{ memory.title }}</p>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ memory.photo_count }} 张照片</p>
           </RouterLink>
+          <button v-if="memoryPreviews.length < memoryTotal" class="album-cover-card text-sm text-primary-500" :disabled="memoryLoading" @click="loadMemoryPreviews(true)">{{ memoryLoading ? '加载中…' : memoryLoadError ? '加载失败，点击重试' : '加载更多' }}</button>
         </div>
-        <div v-else class="flex min-h-20 items-center gap-3 rounded-2xl bg-white px-4 dark:bg-gray-900">
+        <div v-else class="ts-surface flex min-h-20 items-center gap-3 px-4">
           <BookHeart class="h-7 w-7 text-primary-500" /><p class="text-sm text-gray-500 dark:text-gray-400">{{ memoryLoading ? '正在加载回忆…' : memoryLoadError ? '回忆加载失败' : '确认后的记忆会显示在这里' }}</p>
-          <button v-if="memoryLoadError" class="ml-auto min-h-11 text-sm text-primary-500" @click="loadMemoryPreviews">重试</button>
+          <button v-if="memoryLoadError" class="ml-auto min-h-11 text-sm text-primary-500" @click="loadMemoryPreviews()">重试</button>
         </div>
       </div>
     </section>
 
-    <section v-for="group in smartAlbums" :key="group.id" class="mt-8 sm:hidden">
+    <section v-if="!store.hiddenSections.includes('tickets')" :style="{ order: sectionRank('tickets') }">
+      <h2 class="mb-3 flex items-center gap-2"><button class="ts-section-title min-h-11 flex-1 text-left" :aria-expanded="!collapsed.tickets" @click="collapsed.tickets = !collapsed.tickets">票夹</button><RouterLink to="/ticket" class="min-h-11 flex items-center text-xs text-primary-600 dark:text-primary-400">查看全部</RouterLink></h2>
+      <TicketWalletPreview v-if="!collapsed.tickets" />
+    </section>
+
+    <section v-for="group in visibleSmartAlbums" :key="group.id" :style="{ order: sectionRank(group.id) }">
       <h2 class="mb-3 flex items-center gap-2">
         <button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed[group.id]" @click="collapsed[group.id] = !collapsed[group.id]">
-          <component :is="group.icon" class="h-5 w-5 text-primary-500" />{{ group.title }}<ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed[group.id] }" />
+          <ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed[group.id] }" />{{ group.title }}
         </button>
         <button class="min-h-11 text-xs text-gray-500 dark:text-gray-400" :aria-label="`查看全部${group.title}`" @click="navigateToSmartAlbum(group)">{{ smartOverviewLoading ? '加载中' : formatSmartCount(group.data?.item_count) }} <ChevronRight class="inline h-4 w-4" /></button>
       </h2>
       <div v-show="!collapsed[group.id]">
-      <div v-if="group.data?.representatives?.length" class="album-cover-strip">
+      <div v-if="group.data?.representatives?.length" class="album-cover-strip" @scroll.passive="onGroupScroll(group.id, $event)">
         <button v-for="item in group.data.representatives" :key="item.entity_id" class="album-cover-card text-left" @click="openRepresentative(group, item)">
           <div class="relative aspect-square overflow-hidden rounded-[22px]">
             <SmartAlbumCover :type="group.id" :icon="group.icon" :data="{ item_count: 1, photo_count: item.photo_count, representatives: [item] }" :alt-prefix="item.name" />
@@ -223,52 +161,72 @@
             </div>
           </div>
         </button>
+        <button v-if="group.data.representatives.length < group.data.item_count" class="album-cover-card flex items-center justify-center text-sm text-primary-500" :disabled="store.sectionLoading[group.id]" @click="store.loadMoreSection(group.id)">{{ store.sectionLoading[group.id] ? '加载中…' : store.sectionErrors[group.id] ? '加载失败，点击重试' : '加载更多' }}</button>
       </div>
       <button v-else class="flex min-h-20 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left dark:bg-gray-900" @click="navigateToSmartAlbum(group)">
-        <component :is="group.icon" class="h-7 w-7 text-primary-500" /><span class="text-sm text-gray-500 dark:text-gray-400">{{ smartOverviewLoading ? '正在加载封面…' : group.emptyDescription }}</span><ChevronRight class="ml-auto h-4 w-4 text-gray-500 dark:text-gray-400" />
+        <span class="text-sm text-gray-500 dark:text-gray-400">{{ smartOverviewLoading ? '正在加载封面…' : group.emptyDescription }}</span><ChevronRight class="ml-auto h-4 w-4 text-gray-500 dark:text-gray-400" />
       </button>
       </div>
     </section>
+    </div>
+    <ResponsiveDialog v-model="showSectionSettings" title="相册分组设置" glass>
+      <p class="mb-3 text-sm text-gray-500 dark:text-gray-400">调整分组顺序，选择相册页显示的分组。</p>
+      <div v-for="(section, index) in store.sections" :key="section.id" class="flex min-h-14 items-center gap-2 border-b border-gray-100 dark:border-gray-800">
+        <label class="flex min-h-11 flex-1 items-center gap-3"><input type="checkbox" :checked="!store.hiddenSections.includes(section.id)" class="h-4 w-4 accent-primary-500" @change="store.toggleSection(section.id)" />{{ section.title }}</label>
+        <button class="ts-icon-button" :aria-label="`上移${section.title}`" :disabled="index === 0" @click="store.moveSection(section.id, -1)"><ArrowUp class="h-4 w-4" /></button>
+        <button class="ts-icon-button" :aria-label="`下移${section.title}`" :disabled="index === store.sections.length - 1" @click="store.moveSection(section.id, 1)"><ArrowDown class="h-4 w-4" /></button>
+      </div>
+    </ResponsiveDialog>
     <ResponsiveDialog v-model="showContextMenu" :title="contextMenuAlbum?.title || '相册操作'" glass @close="closeContextMenu">
       <button class="ts-action-row" @click="editFromContextMenu"><Edit2 />编辑相册</button>
       <button class="ts-action-row danger" @click="deleteFromContextMenu"><Trash2 />删除相册</button>
     </ResponsiveDialog>
 
     <!-- Create/Edit Modal -->
-    <el-dialog
+    <ResponsiveDialog
       v-model="showModal"
-      :title="isEditing ? '编辑相册' : '新建相册'"
-      :width="dialogWidth"
-      class="rounded-xl"
-      destroy-on-close
+      :title="`${isEditing ? '编辑' : '新建'}${albumTypeLabel}`"
+      :description="albumFormDescription"
+      max-width="34rem"
+      :mobile-mode="isMobile ? 'fullscreen' : 'sheet'"
+      mobile-back
+      :close-on-backdrop="!loading"
+      :close-on-escape="!loading"
     >
-      <div class="space-y-4">
+      <form id="album-details-form" class="album-details-form space-y-6" @submit.prevent="submitForm">
         <!-- Name -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">相册名称</label>
+          <label for="album-name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">相册名称<span class="ml-1 text-primary-500">*</span></label>
           <input 
+            id="album-name"
             v-model="form.name"
-            type="text" 
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+            type="text"
+            required
+            enterkeyhint="next"
+            autocomplete="off"
+            class="w-full min-h-12 px-4 py-3 text-base border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
             placeholder="请输入相册名称"
           />
         </div>
 
         <!-- Description (Smart Album or User Album or Conditional Album) -->
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          <label for="album-description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             {{ form.type === 'smart' ? '智能描述 (AI 自动匹配)' : '描述 (可选)' }}
           </label>
           <textarea 
+            id="album-description"
             v-model="form.description"
-            rows="3"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all resize-none"
+            rows="4"
+            class="w-full min-h-12 px-4 py-3 text-base border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all resize-none"
             :placeholder="form.type === 'smart' ? '例如：去年夏天的海边旅行，有沙滩和大海...' : '相册描述...'"
           ></textarea>
         </div>
 
         <!-- Smart Album Threshold -->
-        <div v-if="form.type === 'smart'">
+        <details v-if="form.type === 'smart'" class="rounded-2xl border border-gray-200 p-4 dark:border-gray-700">
+          <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">高级设置 · 匹配严格程度</summary>
+          <div class="pt-4">
           <div class="flex justify-between items-center mb-1">
              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">匹配阈值</label>
              <span class="text-xs text-gray-500 dark:text-gray-400">{{ (form.threshold * 100).toFixed(0) }}%</span>
@@ -280,8 +238,9 @@
             :step="0.01"
             :format-tooltip="(val: number) => (val * 100).toFixed(0) + '%'"
           />
-          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">阈值越高匹配越严格，建议值 0.25</p>
-        </div>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">数值越高匹配越严格，默认 25%，通常无需调整</p>
+          </div>
+        </details>
 
         <!-- Conditional Album Fields -->
         <div v-if="form.type === 'conditional'" class="space-y-4 border-t border-gray-100 dark:border-gray-800 pt-4">
@@ -292,6 +251,7 @@
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">文件夹</label>
                 <el-tree-select
                     v-model="form.folders"
+                    size="large"
                     :props="folderTreeProps"
                     :load="loadFolderOptions"
                     :cache-data="selectedFolderCache"
@@ -326,22 +286,15 @@
                     style="width: 100%"
                 />
                 <!-- Mobile Date Range -->
-                <div v-else class="flex items-center gap-2">
-                    <el-date-picker
-                        v-model="timeRangeStart"
-                        type="date"
-                        placeholder="开始日期"
-                        value-format="YYYY-MM-DDTHH:mm:ss"
-                        class="flex-1 !w-full"
-                    />
-                    <span class="text-gray-500 dark:text-gray-400 text-xs">至</span>
-                    <el-date-picker
-                        v-model="timeRangeEnd"
-                        type="date"
-                        placeholder="结束日期"
-                        value-format="YYYY-MM-DDTHH:mm:ss"
-                        class="flex-1 !w-full"
-                    />
+                <div v-else class="grid min-w-0 grid-cols-1 gap-3">
+                  <div class="min-w-0">
+                    <label for="album-start-date" class="mb-1 block text-xs text-gray-500 dark:text-gray-400">开始日期</label>
+                    <input id="album-start-date" v-model="mobileStartDate" type="date" :max="mobileEndDate || undefined" class="album-date-input" />
+                  </div>
+                  <div class="min-w-0">
+                    <label for="album-end-date" class="mb-1 block text-xs text-gray-500 dark:text-gray-400">结束日期</label>
+                    <input id="album-end-date" v-model="mobileEndDate" type="date" :min="mobileStartDate || undefined" class="album-date-input" />
+                  </div>
                 </div>
             </div>
             
@@ -350,6 +303,9 @@
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">地点</label>
                 <el-select
                     v-model="form.locations"
+                    size="large"
+                    collapse-tags
+                    collapse-tags-tooltip
                     multiple
                     filterable
                     remote
@@ -375,6 +331,9 @@
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">人物</label>
                 <el-select
                     v-model="form.people"
+                    size="large"
+                    collapse-tags
+                    collapse-tags-tooltip
                     multiple
                     placeholder="选择人物"
                     class="w-full"
@@ -393,45 +352,50 @@
             </div>
         </div>
 
-      </div>
+      </form>
       <template #footer>
-        <div class="flex justify-end gap-3">
+        <div class="flex gap-3 sm:justify-end">
           <button 
-            @click="closeModal" 
-            class="px-4 py-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+            type="button"
+            @click="closeModal"
+            :disabled="loading"
+            class="ts-button ts-button-secondary min-h-12 flex-1 sm:flex-none disabled:opacity-50"
           >
             取消
           </button>
           <button 
-            @click="submitForm" 
-            class="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg shadow-lg shadow-primary-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            type="submit"
+            form="album-details-form"
+            class="ts-button ts-button-primary min-h-12 flex-[2] sm:flex-none disabled:opacity-50 disabled:cursor-not-allowed"
             :disabled="!form.name.trim() || loading"
           >
-            {{ loading ? '保存中...' : '保存' }}
+            {{ loading ? '保存中…' : isEditing ? '保存修改' : '创建相册' }}
           </button>
         </div>
       </template>
-    </el-dialog>
+    </ResponsiveDialog>
 
   </div>
 </template>
 
 <script setup lang="ts">
+import TicketWalletPreview from '@/views/ticket/components/TicketWalletPreview.vue'
 import { memoryApi } from '@/api/memory'
 import type { MemoryItem } from '@/types/memory'
 import { thumbnailUrl } from '@/utils/mediaUrl'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue';
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { ref, reactive, onMounted, computed, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import type { Album, FaceIdentity, CreateAlbumDto } from '@/types/album'
-import { Search, MoreHorizontal, BookHeart, ChevronDown, Plus, Sparkles, Edit2, Trash2, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles, ChevronRight } from 'lucide-vue-next'
+import { ArrowUp, ArrowDown, SlidersHorizontal, Search, MoreHorizontal, BookHeart, ChevronDown, Plus, Sparkles, Edit2, Trash2, Users, MapPin, FolderHeart, FolderOpen, Tag, Filter, History, SearchCheck, Stethoscope, WandSparkles, ChevronRight } from 'lucide-vue-next'
 import { albumService, type SmartAlbumRepresentative, type SmartAlbumSection } from '@/api/album'
 import { locationService } from '@/api/location'
 import { faceApi } from '@/api/face'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { format } from 'date-fns'
-import { useStorage, useWindowSize } from '@vueuse/core'
+import { useWindowSize } from '@vueuse/core'
 import { useUiStore } from '@/stores/uiStore'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useLongPress } from '@/composables/useLongPress'
@@ -454,8 +418,7 @@ const startMemoryDetective = () => {
 }
 
 const { width } = useWindowSize()
-const dialogWidth = computed(() => width.value < 640 ? 'calc(100% - 24px)' : '500px')
-const isMobile = computed(() => width.value < 640)
+const isMobile = computed(() => width.value < 768)
 
 const formatDate = (timestamp: number) => {
   return format(new Date(timestamp), 'yyyy-MM-dd')
@@ -479,17 +442,29 @@ const memoryPreviews = ref<MemoryItem[]>([])
 const memoryTotal = ref(0)
 const memoryLoading = ref(false)
 const memoryLoadError = ref(false)
-const loadMemoryPreviews = async () => {
+const loadMemoryPreviews = async (append = false) => {
+  if (memoryLoading.value) return
   memoryLoading.value = true
   memoryLoadError.value = false
   try {
-    const data = await memoryApi.list('confirmed', 0, 6)
-    memoryPreviews.value = data.items
+    const data = await memoryApi.list('confirmed', append ? memoryPreviews.value.length : 0, 12)
+    memoryPreviews.value = append ? [...memoryPreviews.value, ...data.items] : data.items
     memoryTotal.value = data.total
   } catch { memoryLoadError.value = true }
   finally { memoryLoading.value = false }
 }
-const collapsed = useStorage<Record<string, boolean>>('ts-album-collapsed', {})
+const collapsed = computed(() => store.collapsedSections)
+const showSectionSettings = ref(false)
+const sectionRank = (id: string) => store.sections.findIndex(section => section.id === id)
+const visibleSmartAlbums = computed(() => smartAlbums.value.filter(group => !store.hiddenSections.includes(group.id)))
+const onGroupScroll = (id: SmartAlbumKind, event: Event) => {
+  const element = event.target as HTMLElement
+  if (element.scrollWidth - element.scrollLeft - element.clientWidth < 180) void store.loadMoreSection(id)
+}
+const onMemoryScroll = (event: Event) => {
+  const element = event.target as HTMLElement
+  if (element.scrollWidth - element.scrollLeft - element.clientWidth < 180 && memoryPreviews.value.length < memoryTotal.value && !memoryLoading.value) void loadMemoryPreviews(true)
+}
 const showAlbumSearch = ref(false)
 const albumSearch = ref('')
 const showCreateActions = ref(false)
@@ -542,15 +517,6 @@ const smartAlbums = computed<SmartAlbumCard[]>(() => [
 ])
 
 const formatSmartCount = (value: number | undefined) => (value ?? 0).toLocaleString('zh-CN')
-
-const smartAlbumDescription = (album: SmartAlbumCard) => {
-  if (smartOverviewLoading.value) return album.description
-  const section = album.data
-  if (!section || section.item_count <= 0) {
-    return album.emptyDescription
-  }
-  return `${formatSmartCount(section.item_count)} ${album.itemUnit} · ${formatSmartCount(section.photo_count)} 张照片`
-}
 
 const loadSmartOverview = async () => {
   if (store.hasFreshSmartAlbumOverview()) return
@@ -677,19 +643,24 @@ const selectedFolderCache = computed(() => form.folders.map(path => ({
   isLeaf: false
 })))
 
-const timeRangeStart = computed({
-  get: () => form.timeRange[0] || '',
-  set: (val) => {
-    form.timeRange[0] = val || ''
+const albumTypeLabel = computed(() => createKinds.find(kind => kind.value === form.type)?.label || '相册')
+const albumFormDescriptions: Record<string, string> = {
+  user: '先给相册起个名字，创建后再添加照片',
+  smart: '描述想收集的画面，AI 会自动匹配照片',
+  conditional: '设置日期、地点或人物条件，自动收集符合条件的照片',
+}
+const albumFormDescription = computed(() => albumFormDescriptions[form.type] || '')
+const mobileStartDate = computed({
+  get: () => (form.timeRange[0] || '').slice(0, 10),
+  set: (value: string) => {
+    form.timeRange[0] = value ? `${value}T00:00:00` : ''
     if (!form.timeRange[0] && !form.timeRange[1]) form.timeRange = []
   }
 })
-
-const timeRangeEnd = computed({
-  get: () => form.timeRange[1] || '',
-  set: (val) => {
-    if (!form.timeRange[0]) form.timeRange[0] = ''
-    form.timeRange[1] = val || ''
+const mobileEndDate = computed({
+  get: () => (form.timeRange[1] || '').slice(0, 10),
+  set: (value: string) => {
+    form.timeRange[1] = value ? `${value}T23:59:59` : ''
     if (!form.timeRange[0] && !form.timeRange[1]) form.timeRange = []
   }
 })
@@ -781,7 +752,11 @@ const closeModal = () => {
 }
 
 const submitForm = async () => {
-  if (!form.name.trim()) return
+  if (!form.name.trim() || loading.value) return
+  if (form.type === 'conditional' && form.timeRange[0] && form.timeRange[1] && form.timeRange[0] > form.timeRange[1]) {
+    ElMessage.warning('结束日期不能早于开始日期')
+    return
+  }
   loading.value = true
   try {
     const payload: CreateAlbumDto = {
@@ -910,9 +885,15 @@ const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
 </script>
 
 <style scoped>
+.album-date-input { display: block; box-sizing: border-box; width: 100%; min-width: 0; min-height: 48px; padding: 12px 16px; border: 1px solid var(--ts-color-divider); border-radius: 16px; background: var(--ts-color-surface); color: var(--ts-color-text); font-size: 16px; color-scheme: light dark; }
+.album-date-input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
+.album-details-form :deep(.el-select), .album-details-form :deep(.el-tree-select) { min-width: 0; }
+
+.album-cover-strip { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
+  .album-cover-strip::-webkit-scrollbar { display: none; }
+  .album-cover-card { flex: 0 0 clamp(140px, 18vw, 220px); min-width: 0; scroll-snap-align: start; }
 @media (max-width: 639px) {
-  .album-cover-strip { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
-  .album-cover-card { flex: 0 0 38%; min-width: 128px; scroll-snap-align: start; }
+  .album-cover-card { flex-basis: 38%; }
   .album-cover-card:active { transform: scale(.98); }
 }
 

@@ -1,13 +1,13 @@
 <template>
   <AppPage size="wide" bottom-safe class="py-5 md:py-8">
-    <header class="relative overflow-hidden rounded-2xl border border-gray-200/80 bg-white px-5 py-5 shadow-sm dark:border-gray-800 dark:bg-gray-800 md:px-7 md:py-7">
+    <header class="ts-surface relative overflow-hidden px-5 py-5 md:px-7 md:py-7">
       <div class="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-primary-500/10 blur-3xl" aria-hidden="true" />
       <div class="relative flex items-start justify-between gap-4">
         <div class="min-w-0">
           <div class="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 md:h-12 md:w-12">
             <Wrench class="h-5 w-5 md:h-6 md:w-6" />
           </div>
-          <h1 class="text-2xl font-bold tracking-tight text-gray-950 dark:text-white md:text-3xl">工具箱</h1>
+          <h1 class="ts-page-title text-gray-950 dark:text-white md:text-3xl">工具箱</h1>
           <p class="mt-1.5 max-w-xl text-sm leading-6 text-gray-500 dark:text-gray-400 md:text-base">批量整理、清理与修复你的照片库</p>
         </div>
         <span class="shrink-0 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-500 dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400">6 项工具</span>
@@ -28,7 +28,7 @@
           v-for="(tool, index) in cleanupTools"
           :key="tool.path"
           :to="tool.path"
-          class="group relative flex min-h-40 flex-col overflow-hidden rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-primary-500/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-800 dark:bg-gray-800 dark:hover:border-primary-500/40 dark:focus-visible:ring-offset-gray-900 md:min-h-48 md:p-5"
+          class="ts-surface group relative flex min-h-40 flex-col overflow-hidden p-4 transition duration-200 hover:border-primary-500/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:hover:border-primary-500/40 dark:focus-visible:ring-offset-gray-900 md:min-h-48 md:p-5"
           :class="index === 2 ? 'col-span-2 md:col-span-1' : ''"
         >
           <div class="flex items-start justify-between gap-3">
@@ -51,7 +51,7 @@
         <h2 id="manage-heading" class="text-lg font-bold text-gray-950 dark:text-white md:text-xl">照片管理</h2>
       </div>
 
-      <div class="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-800 md:grid md:grid-cols-3 md:gap-5 md:overflow-visible md:border-0 md:bg-transparent md:shadow-none md:dark:bg-transparent">
+      <div class="ts-surface overflow-hidden md:grid md:grid-cols-3 md:gap-5 md:overflow-visible md:border-0 md:bg-transparent md:shadow-none md:dark:bg-transparent">
         <RouterLink
           v-for="tool in managementTools"
           :key="tool.path"

@@ -1,7 +1,7 @@
 <template>
   <aside
     :class="[
-      'flex flex-col transition-all duration-300 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shrink-0 z-40',
+      'ts-sidebar ts-glass flex flex-col border-r shrink-0 z-40',
       isCollapsed ? 'w-16' : 'w-60'
     ]"
   >
@@ -19,7 +19,7 @@
         @click="toggleCollapse"
         :title="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
         :aria-label="isCollapsed ? '展开侧边栏' : '折叠侧边栏'"
-        class="bg-transparent p-1 rounded-md text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+        class="ts-icon-button ts-button-sm ts-button-ghost hidden md:inline-flex"
       >
         <Menu v-if="isCollapsed" class="w-5 h-5" />
         <ChevronLeft v-else class="w-5 h-5" />
@@ -41,7 +41,7 @@
             @focus="handleFocus"
             type="text"
             placeholder="搜索或描述画面..."
-            class="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-9 pr-8 text-sm text-slate-700 shadow-sm transition-all placeholder:text-slate-400 focus:border-primary-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:focus:bg-slate-900"
+            class="ts-input w-full pl-9 pr-8"
           />
           <button
             v-if="searchText"
@@ -671,9 +671,9 @@ const getIcon = (type: string) => {
   position: relative;
   display: flex;
   width: 100%;
-  height: 2.5rem;
+  height: var(--ts-control-md);
   align-items: center;
-  border-radius: 0.75rem;
+  border-radius: var(--ts-radius-control);
   padding-inline: 0.625rem;
   font-size: 0.875rem;
   transition:
@@ -716,10 +716,10 @@ const getIcon = (type: string) => {
 
 .sidebar-quick-button {
   display: flex;
-  min-height: 2.5rem;
+  min-height: var(--ts-control-md);
   cursor: pointer;
   align-items: center;
-  border-radius: 0.75rem;
+  border-radius: var(--ts-radius-control);
   padding: 0.375rem 0.5rem;
   transition:
     color 160ms ease,

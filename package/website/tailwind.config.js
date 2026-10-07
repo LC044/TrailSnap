@@ -1,5 +1,23 @@
 /** @type {import('tailwindcss').Config} */
 const { addDynamicIconSelectors } = require('@iconify/tailwind')
+const defaultTheme = require('tailwindcss/defaultTheme')
+
+// Scale spacing without changing width/height utilities or control hit areas.
+const scaleRemValues = (values) => Object.fromEntries(
+  Object.entries(values).map(([key, value]) => [key,
+    typeof value === 'string' && value.endsWith('rem')
+      ? `calc(var(--ts-spacing-unit, 1rem) * ${parseFloat(value)})`
+      : value,
+  ]),
+)
+const scaledSpacing = scaleRemValues(defaultTheme.spacing)
+
+// Existing gray/slate/neutral utilities share one neutral scale during migration.
+const neutral = {
+  50: '#f5f6f8', 100: '#eef0f3', 200: '#dfe3e9', 300: '#c8cfd9',
+  400: '#8d98a8', 500: '#647184', 600: '#4d596b', 700: '#303947',
+  800: '#1b2028', 900: '#101318', 950: '#090b0f',
+}
 
 // 无 /N 透明度修饰符时，Tailwind 传入 'var(--tw-bg-opacity, 1)' 这类占位串，
 // Number() 后为 NaN；此时直接用档位固有的强度值，有修饰符时才与数值相乘。
@@ -16,7 +34,21 @@ export default {
   content: ["./index.html", "./src/**/*.{vue,js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: { sans: ['var(--ts-font-sans)'] },
+      padding: scaledSpacing,
+      margin: scaledSpacing,
+      gap: scaledSpacing,
+      space: scaledSpacing,
+      borderRadius: scaleRemValues(defaultTheme.borderRadius),
+      borderWidth: Object.fromEntries(Object.entries(defaultTheme.borderWidth).map(([key, value]) => [
+        key, parseFloat(value) ? `calc(var(--ts-border-unit, 1px) * ${parseFloat(value)})` : value,
+      ])),
+      fontSize: {
+        sm: ['var(--ts-font-sm, 0.875rem)', { lineHeight: '1.25rem' }],
+        xs: ['var(--ts-font-xs, 0.75rem)', { lineHeight: '1rem' }],
+      },
       colors: {
+        gray: neutral, slate: neutral, neutral,
         // Runtime theme palette. Lower steps are translucent surfaces; higher
         // steps keep the selected theme hue for text, borders and controls.
         primary: {

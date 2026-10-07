@@ -24,11 +24,16 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
   });
 
   test('进入选择模式 - 「恢复」与「永久删除」按钮初始 disabled', async ({ page }) => {
+    await page.route('**/api/photos/recycle-bin?**', route => route.fulfill({
+      json: { code: 0, msg: 'success', data: [{ id: 'selection-photo', filename: 'selection.jpg', file_type: 'image' }] },
+    }));
+    await page.route('**/api/photos/recycle-bin/stats**', route => route.fulfill({
+      json: { code: 0, msg: 'success', data: { total: 1, retention_days: 7 } },
+    }));
     await page.goto('/recycle-bin');
     await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
-    // Header 中带 title="选择" 的按钮，hover 文本即触发进入选择模式
-    const enterBtn = page.locator('button[title="选择"]');
+    const enterBtn = page.getByRole('button', { name: '选择照片', exact: true });
     await expect(enterBtn).toBeVisible({ timeout: 8_000 });
     await enterBtn.click();
 
@@ -44,6 +49,54 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
     // 取消按钮可见
     const cancelBtn = page.getByRole('button', { name: '取消' }).first();
     await expect(cancelBtn).toBeVisible();
+  });
+
+  test('移动端长按选择保留标题，安全区只计算一次 @p0', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route('**/api/photos/recycle-bin?**', route => route.fulfill({
+      json: { code: 0, msg: 'success', data: [{ id: 'longpress-photo', filename: 'longpress.jpg', file_type: 'image' }] },
+    }));
+    await page.route('**/api/photos/recycle-bin/stats**', route => route.fulfill({
+      json: { code: 0, msg: 'success', data: { total: 1, retention_days: 7 } },
+    }));
+    await page.goto('/recycle-bin');
+    const photo = page.locator('.photo-gallery img[alt="longpress.jpg"]');
+    await expect(photo).toBeVisible();
+    await page.evaluate(() => {
+      document.documentElement.classList.add('capacitor-native', 'capacitor-android');
+      document.documentElement.style.setProperty('--safe-area-inset-top', '32px');
+    });
+    const title = page.getByRole('heading', { name: '最近删除' });
+    const initialTitleBox = await title.boundingBox();
+    expect(initialTitleBox!.y).toBeGreaterThanOrEqual(32);
+    expect(initialTitleBox!.y).toBeLessThan(64);
+
+    await photo.evaluate(async image => {
+      const card = image.parentElement!;
+      const touch = new Touch({ identifier: 1, target: card, clientX: 40, clientY: 180 });
+      card.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [touch] }));
+      await new Promise(resolve => setTimeout(resolve, 550));
+      card.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [], changedTouches: [touch] }));
+      card.click();
+    });
+    const selection = page.getByTestId('recycle-selection-header');
+    await expect(selection).toContainText('已选 1 项');
+    await expect(title).toBeVisible();
+    expect((await title.boundingBox())!.y).toBe(initialTitleBox!.y);
+    await expect(page.getByTestId('photo-selection-header')).toHaveCount(0);
+    await selection.getByRole('button', { name: '取消选择' }).click();
+    await expect(selection).toHaveCount(0);
+
+    await photo.evaluate(async image => {
+      const card = image.parentElement!;
+      const start = new Touch({ identifier: 1, target: card, clientX: 40, clientY: 180 });
+      card.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [start] }));
+      const moved = new Touch({ identifier: 1, target: card, clientX: 40, clientY: 220 });
+      card.dispatchEvent(new TouchEvent('touchmove', { bubbles: true, touches: [moved] }));
+      await new Promise(resolve => setTimeout(resolve, 550));
+      card.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [] }));
+    });
+    await expect(selection).toHaveCount(0);
   });
 
   test('空列表 API 返回 - 页面渲染「回收站为空」空态', async ({ page }) => {

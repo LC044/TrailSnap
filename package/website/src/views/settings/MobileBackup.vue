@@ -3,9 +3,7 @@
     <Transition :name="innerTransition" mode="out-in">
       <div v-if="screen === 'overview'" key="overview" class="space-y-5">
         <div v-if="hosted" class="-mx-4 -mt-4 flex h-12 items-center border-b border-gray-200 bg-white/95 px-2 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 md:hidden">
-          <button type="button" class="flex h-10 items-center gap-1 rounded-lg px-2 text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-primary-400" aria-label="返回设置" @click="emit('requestSettingsBack')">
-            <ArrowLeft class="h-5 w-5" /><span class="text-sm">设置</span>
-          </button>
+          <BackButton label="返回设置" @click="emit('requestSettingsBack')" />
           <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">手机备份</div>
         </div>
         <header class="flex items-start justify-between gap-4 px-1">
@@ -122,7 +120,7 @@
 
       <div v-else key="settings">
         <header class="mb-5 flex h-11 items-center border-b border-gray-200 dark:border-gray-800">
-          <button type="button" class="flex h-9 items-center gap-1 rounded-lg pr-3 text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-primary-400" aria-label="返回手机备份" @click="closeSettings"><ArrowLeft class="h-5 w-5" /><span class="text-sm">手机备份</span></button>
+          <BackButton label="返回手机备份" @click="closeSettings" />
           <div class="absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">备份设置</div>
         </header>
         <MobileBackupSettings embedded @saved="closeSettings" />
@@ -132,10 +130,11 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Check, ChevronRight, Cloud, CloudOff, Image as ImageIcon, LoaderCircle, Settings, Smartphone, TriangleAlert } from 'lucide-vue-next'
+import { Check, ChevronRight, Cloud, CloudOff, Image as ImageIcon, LoaderCircle, Settings, Smartphone, TriangleAlert } from 'lucide-vue-next'
 import { useGalleryBackup, type BackupQueueStatus } from '@/composables/useGalleryBackup'
 import MobileBackupSettings from './MobileBackupSettings.vue'
 

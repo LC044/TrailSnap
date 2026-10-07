@@ -20,7 +20,7 @@
     <div class="metadata-sheet-header p-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur z-10">
         <span class="metadata-drag-handle md:hidden absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-gray-300 dark:bg-gray-600"></span>
         <h3 class="font-bold text-gray-900 dark:text-white">照片信息</h3>
-        <button @click="$emit('close')" aria-label="关闭照片信息" class="p-1.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-200">
+        <button @click="$emit('close')" aria-label="关闭照片信息" class="ts-icon-button ts-button-ghost rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-200">
             <X class="w-4 h-4 md:hidden" />
             <PanelRightClose v-if="visible" class="hidden md:block w-4 h-4" />
             <PanelRightOpen v-else class="w-4 h-4" />
@@ -804,6 +804,9 @@ const saveLocationEdit = async () => {
 </script>
 
 <style>
+.photo-metadata-panel { background: var(--ts-glass-panel); border-color: var(--ts-color-border); }
+.metadata-sheet-header { background: var(--ts-glass-panel); }
+
 @media (max-width: 767px) {
   .photo-metadata-panel {
     position: fixed;

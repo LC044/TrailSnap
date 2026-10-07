@@ -6,18 +6,18 @@
         <h1 class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">Agent 任务中心</h1>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">查看待确认操作、后台进度、失败重试、安全清理与撤销记录。</p>
       </div>
-      <button type="button" class="self-start rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800" @click="loadPlans">
+      <button type="button" class="ts-button ts-button-secondary self-start border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800" @click="loadPlans">
         <RefreshCw class="mr-1 inline h-4 w-4" />刷新
       </button>
     </header>
 
     <div class="mb-5 flex gap-2 overflow-x-auto pb-1">
-      <button v-for="item in filters" :key="item.value" type="button" class="shrink-0 rounded-full px-3 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" :class="status === item.value ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'" @click="status = item.value; loadPlans()">{{ item.label }}</button>
+      <button v-for="item in filters" :key="item.value" type="button" class="ts-button ts-button-ghost shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500" :class="status === item.value ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'" @click="status = item.value; loadPlans()">{{ item.label }}</button>
     </div>
 
     <div v-if="loading" class="py-16 text-center text-sm text-gray-500 dark:text-gray-400">正在加载操作记录…</div>
     <div v-else-if="plans.length" class="grid gap-4 lg:grid-cols-2">
-      <article v-for="plan in plans" :key="plan.id" class="rounded-2xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <article v-for="plan in plans" :key="plan.id" class="ts-surface p-1">
         <AgentActionPlanCard :plan="plan" />
         <p class="px-3 pb-3 text-xs text-gray-400 dark:text-gray-500">创建于 {{ formatTime(plan.created_at) }} · 尝试 {{ plan.attempt_count || 0 }} 次</p>
       </article>

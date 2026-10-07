@@ -8,7 +8,7 @@
       :aria-expanded="isExpanded"
     >
       <span class="text-base text-gray-800 dark:text-gray-100">内容细分</span>
-      <span class="text-gray-500 transition-transform duration-300" :class="{ 'rotate-180': isExpanded }">
+      <span class="text-gray-500 transition-transform duration-300 dark:text-gray-400" :class="{ 'rotate-180': isExpanded }">
         ↓
       </span>
     </button>
@@ -24,7 +24,7 @@
           <span class="text-lg">📷</span>
           <span class="font-bold">照片：{{ data.photos.total }}</span>
         </div>
-        <div class="pl-7 text-gray-500">
+        <div class="pl-7 text-gray-500 dark:text-gray-400">
           {{ data.photos.sub_1_label }}: {{ data.photos.sub_1_count }} / {{ data.photos.sub_2_label }}: {{ data.photos.sub_2_count }}
         </div>
       </RouterLink>
@@ -35,7 +35,7 @@
           <span class="text-lg">🎬</span>
           <span class="font-bold">视频：{{ data.videos.total }}</span>
         </div>
-        <div class="pl-7 text-gray-500">
+        <div class="pl-7 text-gray-500 dark:text-gray-400">
           {{ data.videos.sub_1_label }}: {{ data.videos.sub_1_count }} / {{ data.videos.sub_2_label }}: {{ data.videos.sub_2_count }}
         </div>
       </RouterLink>

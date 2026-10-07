@@ -6,9 +6,7 @@
     >
       <div class="people-toolbar-leading flex items-center gap-3 flex-wrap">
         <div class="people-title-group flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <button @click="goBack" class="rounded-full bg-white p-1.5 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:bg-gray-900 dark:hover:bg-gray-800">
-            <ArrowLeft class="w-5 h-5 text-gray-600 dark:text-gray-300" />
-          </button>
+          <BackButton label="返回相册" @click="goBack" />
           <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
             {{ isMergeMode ? `已选择 ${selectedIds.length} 项` : '人物' }}
           </h1>
@@ -26,7 +24,7 @@
             :key="opt.value"
             role="tab"
             :aria-selected="viewMode === opt.value"
-            class="px-4 py-1 rounded-full text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+            class="ts-button ts-button-sm"
             :class="viewMode === opt.value
               ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
@@ -48,7 +46,7 @@
             <button
               type="button"
               aria-label="筛选人物"
-              class="people-filter-btn p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300 dark:bg-gray-800 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+              class="people-filter-btn ts-icon-button ts-button-ghost"
             >
               <FilterIcon class="w-5 h-5" />
             </button>
@@ -134,7 +132,7 @@
         </div>
       </div>
 
-    <div v-else-if="identities.length === 0" class="flex flex-col items-center justify-center h-[60vh] text-gray-500">
+    <div v-else-if="identities.length === 0" class="flex flex-col items-center justify-center h-[60vh] text-gray-500 dark:text-gray-400">
       <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
         <UserIcon class="w-12 h-12 opacity-20" />
       </div>
@@ -185,7 +183,7 @@
               class="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors cursor-pointer" 
               @click.stop="openMenu($event, person)"
             >
-              <MoreVerticalIcon class="w-3.5 h-3.5 text-gray-400 group-hover/name:text-gray-600" />
+              <MoreVerticalIcon class="w-3.5 h-3.5 text-gray-400 group-hover/name:text-gray-600 dark:text-gray-400" />
             </div>
           </div>
           <p class="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
@@ -205,7 +203,7 @@
         </div>
       </div>
 
-      <div v-else-if="groupAlbums.length === 0" class="flex flex-col items-center justify-center h-[60vh] text-gray-500">
+      <div v-else-if="groupAlbums.length === 0" class="flex flex-col items-center justify-center h-[60vh] text-gray-500 dark:text-gray-400">
         <div class="p-6 rounded-full bg-gray-100 dark:bg-gray-900 mb-4">
           <UsersIcon class="w-12 h-12 opacity-20" />
         </div>
@@ -301,6 +299,7 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
@@ -314,12 +313,10 @@ import {
   CheckSquare as CheckSquareIcon,
   Check as CheckIcon,
   Merge as MergeIcon,
-  ArrowLeft,
   Eye as EyeIcon,
   EyeOff as EyeOffIcon,
   Filter as FilterIcon,
-  Trash2 as TrashIcon
-} from 'lucide-vue-next'
+  Trash2 as TrashIcon } from 'lucide-vue-next'
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
 import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
 import PersonAvatar from '@/components/PersonAvatar.vue'
@@ -678,7 +675,7 @@ onMounted(() => {
 .people-title-group {
   width: auto;
   min-width: 0;
-  min-height: 40px;
+  min-height: var(--ts-control-md);
   flex-shrink: 0;
   gap: 2px;
   padding: 0;
@@ -731,8 +728,8 @@ onMounted(() => {
 
   .people-back-btn {
     display: inline-flex;
-    width: 40px;
-    height: 40px;
+    width: var(--ts-control-md);
+    height: var(--ts-control-md);
     align-items: center;
     justify-content: center;
     margin-left: -6px;
@@ -747,17 +744,17 @@ onMounted(() => {
 
   .people-view-toggle button {
     min-width: 48px;
-    min-height: 34px;
+    min-height: var(--ts-control-md);
     padding: 0 10px;
   }
 
   .people-filter-btn,
   .people-mode-btn {
-    min-height: 40px;
+    min-height: var(--ts-control-md);
   }
 
   .people-filter-btn {
-    width: 40px;
+    width: var(--ts-control-md);
     border-radius: 9999px;
     background: transparent;
   }
@@ -826,7 +823,7 @@ onMounted(() => {
 
   @media (max-width: 359px) {
     .people-mode-btn {
-      width: 40px;
+      width: var(--ts-control-md);
       justify-content: center;
       padding: 0;
     }

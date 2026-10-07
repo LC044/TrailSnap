@@ -1,6 +1,6 @@
 <template>
   <article
-    class="group overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800"
+    class="ts-surface group overflow-hidden transition hover:shadow-lg"
   >
     <button
       class="relative block aspect-[16/9] w-full overflow-hidden bg-gray-100 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset"
@@ -34,7 +34,7 @@
 
     <div class="p-4">
       <button
-        class="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+        class="min-h-11 w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         @click="$emit('open', memory)"
       >
         <h2 class="line-clamp-1 text-lg font-bold text-gray-900 dark:text-gray-100">{{ memory.title }}</h2>
