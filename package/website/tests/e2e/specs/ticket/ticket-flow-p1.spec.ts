@@ -427,7 +427,11 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await page.getByLabel('出发地', { exact: true }).fill('北京南')
     await page.getByLabel('目的地', { exact: true }).fill('上海虹桥')
     await page.getByRole('textbox', { name: /^(乘车人|乘机人)$/ }).fill('E2E测试人')
-    await page.locator('input[type="datetime-local"]').fill('2025-08-15T10:00')
+    // UnifiedDatePicker 桌面端渲染 el-date-picker 的输入框（带 aria-label），
+    // 直接写可被解析的本地时间并回车触发 change（同 views-deeper-p8 令牌用例）
+    const datetimeInput = page.getByLabel('出发时间', { exact: true })
+    await datetimeInput.fill('2025-08-15 10:00')
+    await datetimeInput.press('Enter')
     await page.getByRole('textbox', { name: '车厢', exact: true }).fill('03')
     await page.getByRole('textbox', { name: '座位', exact: true }).fill('12F')
     await page.getByRole('spinbutton', { name: '票价', exact: true }).fill('199.5')
@@ -469,7 +473,9 @@ test.describe.serial('P1 - 车票管理 @ticket', () => {
     await page.getByLabel('出发地', { exact: true }).fill('北京首都')
     await page.getByLabel('目的地', { exact: true }).fill('上海虹桥')
     await page.getByRole('textbox', { name: /^(乘车人|乘机人)$/ }).fill('E2E测试人')
-    await page.locator('input[type="datetime-local"]').fill('2025-09-01T14:00')
+    const datetimeInput = page.getByLabel('出发时间', { exact: true })
+    await datetimeInput.fill('2025-09-01 14:00')
+    await datetimeInput.press('Enter')
     await page.getByRole('spinbutton', { name: '票价', exact: true }).fill('1098')
 
     const saveBtn = page.getByRole('button', { name: '保存票据', exact: true })

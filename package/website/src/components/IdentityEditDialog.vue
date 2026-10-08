@@ -101,7 +101,7 @@
         </div>
       </el-form-item>
       <el-form-item label="姓名">
-        <el-input v-model="form.identity_name" placeholder="输入姓名..." />
+        <el-input ref="nameInputRef" v-model="form.identity_name" placeholder="输入姓名..." />
       </el-form-item>
       <el-form-item label="描述">
         <el-input v-model="form.description" type="textarea" :rows="3" placeholder="输入描述..." />
@@ -130,8 +130,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
+import type { InputInstance } from 'element-plus'
 import type { FaceIdentity } from '@/types/album'
 import { faceApi } from '@/api/face'
 import { ElMessage } from 'element-plus'
@@ -157,6 +158,10 @@ const form = ref({
   tags: [] as string[]
 })
 const saving = ref(false)
+
+// 弹窗打开后聚焦姓名输入框（桌面端快捷改名；移动端会唤起输入法，行为与
+// 迁移 ResponsiveDialog 前的 @opened="focusNameInput" 保持一致）
+const nameInputRef = ref<InputInstance | null>(null)
 
 
 // 更换封面：候选来自该人物自己的照片（后端一定能从中找到对应人脸）
@@ -198,6 +203,8 @@ watch(() => props.visible, (v) => {
   if (v && props.identity) {
     lastFormIdentityId = props.identity.id
     fillForm(props.identity)
+    // 弹层动画结束后再聚焦，避免与面板自身的 focus 抢时机
+    void nextTick(() => setTimeout(() => nameInputRef.value?.focus(), 200))
   }
 })
 

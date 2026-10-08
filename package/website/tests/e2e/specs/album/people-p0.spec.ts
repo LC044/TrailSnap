@@ -298,12 +298,13 @@ test.describe.serial('P0 - 人物相册', () => {
     await menu.getByText('编辑人物信息').click()
 
     // IdentityEditDialog 标题
-    await expect(page.getByRole('dialog').filter({ hasText: '编辑人物信息' })).toBeVisible({ timeout: 5_000 })
-    // el-input placeholder
-    const nameInput = page.locator('.el-dialog input[placeholder="输入姓名..."]')
+    const dialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
+    await expect(dialog).toBeVisible({ timeout: 5_000 })
+    // el-input placeholder（ResponsiveDialog 内，不再有 .el-dialog 容器）
+    const nameInput = dialog.locator('input[placeholder="输入姓名..."]')
     await expect(nameInput).toBeVisible({ timeout: 5_000 })
     await nameInput.fill(UNIQUE_NAME)
-    await page.locator('.el-dialog button:has-text("保存")').click()
+    await dialog.getByRole('button', { name: '保存' }).click()
 
     // 关闭后 ElMessage "保存成功" + 列表重新拉取后含新名字
     await expect(page.getByText(UNIQUE_NAME).first()).toBeVisible({ timeout: 15_000 })
@@ -468,12 +469,12 @@ test.describe.serial('P0 - 人物相册', () => {
     // 对话框出现
     const dialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
     await expect(dialog).toBeVisible({ timeout: 5_000 })
-    // 改成临时姓名
-    const nameInput = page.locator('.el-dialog input[placeholder="输入姓名..."]')
+    // 改成临时姓名（ResponsiveDialog 内，不再有 .el-dialog 容器）
+    const nameInput = dialog.locator('input[placeholder="输入姓名..."]')
     await expect(nameInput).toBeVisible({ timeout: 5_000 })
     await nameInput.fill(draftName)
     // 点取消
-    await page.locator('.el-dialog button:has-text("取消")').click()
+    await dialog.getByRole('button', { name: '取消' }).click()
     // 对话框关闭
     await expect(dialog).toBeHidden({ timeout: 5_000 })
 

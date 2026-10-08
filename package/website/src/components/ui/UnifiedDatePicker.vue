@@ -16,6 +16,7 @@
       :disabled="disabled"
       :disabled-date="disabledDesktopDate"
       :shortcuts="shortcuts"
+      :aria-label="String($attrs['aria-label'] || placeholder)"
       size="large"
       class="!w-full"
       @update:model-value="publish"
