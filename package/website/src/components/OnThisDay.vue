@@ -57,17 +57,22 @@
 
     <div :class="isFullScreen ? 'w-full h-full' : ''">
       <el-carousel
+        ref="carousel"
         :key="isFullScreen ? 'fullscreen' : 'normal'"
         :interval="5000"
         :type="isFullScreen ? '' : carouselType"
         :height="isFullScreen ? '100vh' : carouselHeight"
         indicator-position="none"
-        :autoplay="true"
-        :arrow="isFullScreen ? 'never' : 'always'"
+        :autoplay="!swiping"
+        :arrow="isFullScreen || isMobile ? 'never' : 'always'"
         :initial-index="currentIndex"
         class="overflow-hidden"
         :class="{ 'rounded-xl': !isFullScreen }"
         @change="handleCarouselChange"
+        @touchstart="startSwipe"
+        @touchmove="moveSwipe"
+        @touchend="endSwipe"
+        @touchcancel="cancelSwipe"
       >
         <el-carousel-item
           v-for="(photo, index) in photos"
@@ -184,6 +189,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { CalendarCheck, EllipsisVertical, Info, LogOut, MapPin } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
+import type { CarouselInstance } from 'element-plus'
+import { useMediaQuery } from '@vueuse/core'
 import { format } from 'date-fns'
 import { photoApi } from '@/api/photo'
 import { albumService } from '@/api/album'
@@ -205,6 +212,35 @@ const memoryMenuOpen = ref(false)
 const organizeActions = ref<InstanceType<typeof PhotoOrganizeActions> | null>(null)
 const carouselHeight = ref('480px')
 const carouselType = ref<'' | 'card'>('card')
+const carousel = ref<CarouselInstance | null>(null)
+const isMobile = useMediaQuery('(max-width: 767px)')
+const swiping = ref(false)
+let swipeStart: { x: number; y: number } | null = null
+let suppressClickUntil = 0
+function startSwipe(event: TouchEvent) {
+  swipeStart = isMobile.value && event.touches.length === 1 ? { x: event.touches[0]!.clientX, y: event.touches[0]!.clientY } : null
+}
+function moveSwipe(event: TouchEvent) {
+  if (!swipeStart || event.touches.length !== 1) return
+  const dx = event.touches[0]!.clientX - swipeStart.x, dy = event.touches[0]!.clientY - swipeStart.y
+  if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12) { swipeStart = null; return }
+  if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy)) {
+    swiping.value = true
+    if (event.cancelable) event.preventDefault()
+  }
+}
+function endSwipe(event: TouchEvent) {
+  const end = event.changedTouches[0]
+  if (swipeStart && end) {
+    const dx = end.clientX - swipeStart.x, dy = end.clientY - swipeStart.y
+    if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      dx < 0 ? carousel.value?.next() : carousel.value?.prev()
+      suppressClickUntil = Date.now() + 400
+    } else if (swiping.value) suppressClickUntil = Date.now() + 400
+  }
+  swipeStart = null; swiping.value = false
+}
+function cancelSwipe() { swipeStart = null; swiping.value = false }
 
 const selectedImage = computed(() => {
   if (selectedIndex.value === null) return null
@@ -281,6 +317,7 @@ useOverlayStack(isFullScreen, () => {
 })
 
 const handleMemoryCardClick = (index: number) => {
+  if (Date.now() < suppressClickUntil) return
   if (isFullScreen.value) {
     memoryMenuOpen.value = false
     return

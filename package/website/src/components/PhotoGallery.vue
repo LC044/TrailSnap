@@ -438,6 +438,7 @@ import { useUserStore } from '@/stores/user'
 import { toServerUrl } from '@/config/server'
 import type { TimelineStats, AlbumImage } from '@/types/album'
 import { useVirtualLayout, type MonthBlock, type DayBlock } from '@/composables/useVirtualLayout'
+import { getMomentPhotos as selectMomentPhotos, getMomentSinglePhotoSize } from '@/utils/momentLayout'
 import { useSelection } from '@/composables/useSelection'
 import { useWindowScroll, useScroll, useDebounceFn } from '@vueuse/core'
 import PersonSelector from './PersonSelector.vue'
@@ -624,25 +625,10 @@ const getGridColumns = (dayKey: string, isExpanded: boolean) => {
     return 'repeat(3, minmax(0, 1fr))'
 }
 
-// 朋友圈单图：按照片真实比例在 240×250 边界框内计算盒子尺寸，
-// 使容器与图片同比例，object-contain 不再留出灰色 letterbox。
-const SINGLE_MAX_W = 240
-const SINGLE_MAX_H = 250
+// 单图渲染和虚拟列表预留高度共用同一尺寸计算。
 const singlePhotoBoxStyle = (img: { width?: number; height?: number }) => {
-  const w = img?.width
-  const h = img?.height
-  if (w && h) {
-    const ratio = w / h
-    let dw = SINGLE_MAX_W
-    let dh = SINGLE_MAX_W / ratio
-    if (dh > SINGLE_MAX_H) {
-      dh = SINGLE_MAX_H
-      dw = SINGLE_MAX_H * ratio
-    }
-    return { width: `${Math.round(dw)}px`, height: `${Math.round(dh)}px` }
-  }
-  // 无尺寸元数据时退化为固定边界框（object-contain 保比例）
-  return { width: `${SINGLE_MAX_W}px`, maxHeight: `${SINGLE_MAX_H}px` }
+  const { width, height } = getMomentSinglePhotoSize(img)
+  return { width: `${width}px`, height: `${height}px` }
 }
 
 const getGridMaxWidth = (dayKey: string, isExpanded: boolean) => {
@@ -949,7 +935,8 @@ const layoutOptions = {
     dateHeaderMode: mobileDateHeaderMode,
     photos: toRef(props, 'photos'),
     expandedDays,
-    dayCaptions: toRef(props, 'dayCaptions')
+    dayCaptions: toRef(props, 'dayCaptions'),
+    dayHighlights: toRef(props, 'dayHighlights')
 }
 
 const { monthBlocks, totalHeight, getVisibleBlocks, recalculateLayout, colCount, rowHeight, gap } = useVirtualLayout(layoutOptions)
@@ -1174,19 +1161,7 @@ const getPhotos = (dayKey: string) => {
  * 有 dayHighlights 则按后端顺序返回；否则回退为当天前 9 张。
  */
 const getMomentPhotos = (dayKey: string) => {
-    const ids = props.dayHighlights?.[dayKey]?.photoIds
-    if (ids && ids.length > 0) {
-        const all = getPhotos(dayKey)
-        const idSet = new Set(ids)
-        const byId = new Map(all.filter(p => idSet.has(p.id)).map(p => [p.id, p]))
-        const ordered: AlbumImage[] = []
-        ids.forEach(id => {
-            const p = byId.get(id)
-            if (p) ordered.push(p)
-        })
-        return ordered
-    }
-    return getPhotos(dayKey).slice(0, 9)
+    return selectMomentPhotos(getPhotos(dayKey), props.dayHighlights?.[dayKey]?.photoIds)
 }
 
 // --- Interaction Helpers ---

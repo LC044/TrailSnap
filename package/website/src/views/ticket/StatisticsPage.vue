@@ -49,7 +49,7 @@
         </div>
 
         <div v-if="isCustomRange" class="bg-white dark:bg-slate-800 rounded-lg relative">
-          <el-date-picker
+          <UnifiedDatePicker
             v-model="dateRange"
             type="daterange"
             range-separator="至"
@@ -173,6 +173,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, watch, onUnmounted, computed } from 'vue';
 import { echarts } from '@/utils/echarts';

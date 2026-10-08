@@ -21,8 +21,8 @@
             </template>
           </div>
           <div class="grid gap-3 sm:grid-cols-2">
-            <label for="chapter-start-date" class="block min-w-0 text-sm text-gray-800 dark:text-gray-200">开始日期<el-date-picker id="chapter-start-date" v-model="form.start_date" type="date" format="YYYY年MM月DD日" value-format="YYYY-MM-DD" placeholder="选择开始日期" :clearable="false" size="large" class="mt-2 !w-full" /></label>
-            <label for="chapter-end-date" class="block min-w-0 text-sm text-gray-800 dark:text-gray-200">结束日期<el-date-picker id="chapter-end-date" v-model="form.end_date" :disabled="ongoing" type="date" format="YYYY年MM月DD日" value-format="YYYY-MM-DD" placeholder="选择结束日期" :clearable="false" size="large" class="mt-2 !w-full" /></label>
+            <label for="chapter-start-date" class="block min-w-0 text-sm text-gray-800 dark:text-gray-200">开始日期<UnifiedDatePicker id="chapter-start-date" v-model="form.start_date" type="date" format="YYYY年MM月DD日" value-format="YYYY-MM-DD" placeholder="选择开始日期" :clearable="false" size="large" class="mt-2 !w-full" /></label>
+            <label for="chapter-end-date" class="block min-w-0 text-sm text-gray-800 dark:text-gray-200">结束日期<UnifiedDatePicker id="chapter-end-date" v-model="form.end_date" :disabled="ongoing" type="date" format="YYYY年MM月DD日" value-format="YYYY-MM-DD" placeholder="选择结束日期" :clearable="false" size="large" class="mt-2 !w-full" /></label>
           </div>
           <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input v-model="ongoing" type="checkbox" />持续中</label>
           <div v-if="previewing" class="text-sm text-gray-500 dark:text-gray-400" role="status">正在更新照片分布…</div>
@@ -74,6 +74,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'

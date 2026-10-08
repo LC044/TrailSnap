@@ -5,7 +5,7 @@
         v-if="modelValue"
         class="fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-6"
         role="presentation"
-        :style="{ visibility: navigationDismissed ? 'hidden' : undefined, height: `${viewportHeight}px`, top: `${viewportTop}px`, '--dialog-viewport-height': `${viewportHeight}px` }"
+        :style="{ zIndex: layerZIndex, visibility: navigationDismissed ? 'hidden' : undefined, height: `${viewportHeight}px`, top: `${viewportTop}px`, '--dialog-viewport-height': `${viewportHeight}px` }"
         @wheel.self.prevent
         :class="{ 'responsive-dialog-right': placement === 'right' }"
       >
@@ -55,6 +55,8 @@
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, nextTick, onBeforeUnmount, onDeactivated, ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
+import { useZIndex } from 'element-plus'
+import { nextDialogZIndex } from '@/utils/pickerDate'
 import IconButton from '@/components/ui/IconButton.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useSheetGesture } from '@/composables/useSheetGesture'
@@ -92,6 +94,8 @@ const emit = defineEmits<{
 }>()
 
 const panelRef = ref<HTMLElement | null>(null)
+const { nextZIndex } = useZIndex()
+const layerZIndex = ref(2000)
 const viewportHeight = ref(window.visualViewport?.height ?? window.innerHeight)
 const viewportTop = ref(window.visualViewport?.offsetTop ?? 0)
 const updateViewport = () => { viewportHeight.value = window.visualViewport?.height ?? window.innerHeight; viewportTop.value = window.visualViewport?.offsetTop ?? 0 }
@@ -134,6 +138,7 @@ const onKeydown = (event: KeyboardEvent) => {
 
 watch(visible, (isVisible) => {
   if (isVisible) {
+    layerZIndex.value = nextDialogZIndex(nextZIndex)
     navigationDismissed.value = false
     returnFocus = document.activeElement as HTMLElement
     window.addEventListener('keydown', onKeydown)

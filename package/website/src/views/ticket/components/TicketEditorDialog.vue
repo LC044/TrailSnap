@@ -36,7 +36,7 @@
       class="grid grid-cols-1 gap-4 md:grid-cols-2"
       @submit.prevent="submit"
     >
-      <label class="text-sm md:col-span-2"
+      <label class="min-w-0 text-sm md:col-span-2"
         >{{ type === "train" ? "车次" : "航班号"
         }}<input
           v-model="form.code"
@@ -46,7 +46,7 @@
           :aria-label="type === 'train' ? '车次' : '航班号'"
           placeholder="例如 G1920 / MU1234"
       /></label>
-      <label class="text-sm"
+      <label class="min-w-0 text-sm"
         >{{ type === "train" ? "出发站" : "出发地"
         }}<input
           v-model="form.from"
@@ -56,7 +56,7 @@
           aria-label="出发地"
           :list="type === 'train' ? stationListId : undefined"
       /></label>
-      <label class="text-sm"
+      <label class="min-w-0 text-sm"
         >{{ type === "train" ? "到达站" : "目的地"
         }}<input
           v-model="form.to"
@@ -89,15 +89,17 @@
           />
         </datalist>
       </div>
-      <label class="text-sm"
-        >出发时间<input
+      <label class="min-w-0 text-sm"
+        >出发时间<UnifiedDatePicker
           v-model="form.dateTime"
           required
           type="datetime-local"
-          class="ts-input w-full mt-2 min-w-0"
+          class="w-full mt-2 min-w-0"
           aria-label="出发时间"
-      /></label>
-      <label class="text-sm"
+          value-format="YYYY-MM-DDTHH:mm"
+          :clearable="false"
+        /></label>
+      <label class="min-w-0 text-sm"
         >{{ type === "train" ? "乘车人" : "乘机人"
         }}<input
           v-model="form.name"
@@ -106,7 +108,7 @@
           class="ts-input w-full mt-2"
           :aria-label="type === 'train' ? '乘车人' : '乘机人'"
       /></label>
-      <label class="text-sm"
+      <label class="min-w-0 text-sm"
         >票价（元）<input
           v-model.number="form.price"
           required
@@ -117,13 +119,14 @@
           aria-label="票价"
       /></label>
       <template v-if="type === 'train'">
-        <label class="text-sm"
-          >席别<select
+        <label class="min-w-0 text-sm"
+          >席别<el-select
             v-model="form.seatType"
-            class="ts-input w-full mt-2"
+            class="w-full mt-2"
+            size="large"
             aria-label="席别"
           >
-            <option
+            <el-option
               v-for="seat in [
                 '二等座',
                 '一等座',
@@ -135,18 +138,18 @@
                 '无座',
               ]"
               :key="seat"
-            >
-              {{ seat }}
-            </option>
-          </select></label
+              :label="seat"
+              :value="seat"
+            />
+          </el-select></label
         >
-        <label class="text-sm"
+        <label class="min-w-0 text-sm"
           >车厢<input
             v-model="form.carriage"
             maxlength="10"
             class="ts-input w-full mt-2"
             aria-label="车厢" /></label
-        ><label class="text-sm"
+        ><label class="min-w-0 text-sm"
           >座位<input
             v-model="form.seatNumber"
             maxlength="10"
@@ -154,22 +157,20 @@
             class="ts-input w-full mt-2"
             aria-label="座位"
         /></label>
-        <label class="text-sm"
-          >铺位<select v-model="form.berthType" class="ts-input w-full mt-2">
-            <option v-for="berth in ['无', '上', '中', '下']" :key="berth">
-              {{ berth }}
-            </option>
-          </select></label
+        <label class="min-w-0 text-sm"
+          >铺位<el-select v-model="form.berthType" class="w-full mt-2" size="large" aria-label="铺位" :disabled="form.seatType === '无座'">
+            <el-option v-for="berth in ['无', '上', '中', '下']" :key="berth" :label="berth === '无' ? '无铺位' : `${berth}铺`" :value="berth" />
+          </el-select></label
         >
-        <label class="text-sm"
-          >票种<select v-model="form.discountType" class="ts-input w-full mt-2">
-            <option
+        <label class="min-w-0 text-sm"
+          >票种<el-select v-model="form.discountType" class="w-full mt-2" size="large" aria-label="票种">
+            <el-option
               v-for="discount in ['全价票', '学生票', '儿童票', '优惠票']"
               :key="discount"
-            >
-              {{ discount }}
-            </option>
-          </select></label
+              :label="discount"
+              :value="discount"
+            />
+          </el-select></label
         >
       </template>
       <details class="md:col-span-2 ts-surface p-3">
@@ -177,14 +178,14 @@
           补充交通数据
         </summary>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-          <label class="text-sm"
+          <label class="min-w-0 text-sm"
             >里程（km）<input
               v-model.number="form.distance"
               type="number"
               min="0"
               step="1"
               class="ts-input w-full mt-2" /></label
-          ><label class="text-sm"
+          ><label class="min-w-0 text-sm"
             >时长（分钟）<input
               v-model.number="form.totalRunningTime"
               type="number"
@@ -225,6 +226,7 @@
   </ResponsiveDialog>
 </template>
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, watch } from "vue";
 import { onBeforeRouteLeave, onBeforeRouteUpdate, type RouteLocationNormalized } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";

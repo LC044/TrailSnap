@@ -73,7 +73,7 @@
 
         <!-- Date Range Filter -->
         <div v-if="isCustomRange" class="relative hidden rounded-lg bg-white dark:bg-gray-800 lg:flex">
-          <el-date-picker
+          <UnifiedDatePicker
             v-model="dateRange"
             type="daterange"
             range-separator="至"
@@ -165,19 +165,19 @@
             <div class="h-px bg-gray-200 dark:bg-gray-700 mx-2"></div>
             <!-- Mobile Date Range Picker -->
             <div v-if="isCustomRange" class="p-2 flex flex-col items-center gap-2">
-              <el-date-picker
+              <UnifiedDatePicker
                 v-model="dateRangeStart"
                 type="date"
                 placeholder="开始日期"
-                value-format="YYYY-MM-DD"
+                 value-format="YYYY-MM-DD"
                 size="small"
                 class="flex-1 !w-full"
               />
-              <el-date-picker
+              <UnifiedDatePicker
                 v-model="dateRangeEnd"
                 type="date"
                 placeholder="结束日期"
-                value-format="YYYY-MM-DD"
+               value-format="YYYY-MM-DD"
                 size="small"
                 class="flex-1 !w-full"
               />
@@ -391,8 +391,8 @@
           <span class="flex items-center gap-2"><Calendar class="h-4 w-4" />自定义范围</span><Check v-if="isCustomRange" class="h-5 w-5" />
         </button>
         <div v-if="isCustomRange" class="location-sheet-dates">
-          <el-date-picker v-model="dateRangeStart" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" class="!w-full" />
-          <el-date-picker v-model="dateRangeEnd" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" class="!w-full" />
+          <UnifiedDatePicker v-model="dateRangeStart" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" class="!w-full" />
+          <UnifiedDatePicker v-model="dateRangeEnd" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" class="!w-full" />
         </div>
       </div>
 
@@ -490,6 +490,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, watch, computed } from 'vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'

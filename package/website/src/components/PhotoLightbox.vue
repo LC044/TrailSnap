@@ -8,7 +8,7 @@
         'details-active': mobileDetailsProgress > 0.01,
         'details-settling': isMobileDetailsSettling,
       }"
-      :style="mobileDetailsRootStyle"
+      :style="{ ...mobileDetailsRootStyle, zIndex: layerZIndex }"
       @click="close"
       tabindex="0"
     >
@@ -668,7 +668,8 @@ import { ocrApi, type OCRRecord } from '@/api/ocr'
 import { faceApi } from '@/api/face'
 import { tasksApi, type PhotoProcessingOperation } from '@/api/tasks'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo } from '@/types/album'
-import { ElMessageBox, ElMessage } from 'element-plus'
+import { ElMessageBox, ElMessage, useZIndex } from 'element-plus'
+import { nextDialogZIndex } from '@/utils/pickerDate'
 import PhotoMetadataSidebar from './PhotoMetadataSidebar.vue'
 import PhotoOCRPanel from './PhotoOCRPanel.vue'
 import PersonSelector from './PersonSelector.vue'
@@ -979,10 +980,13 @@ const toggleOriginal = () => {
 
 const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'select', 'add-to-album', 'transfer'])
 const lightboxRoot = ref<HTMLElement | null>(null)
+const { nextZIndex } = useZIndex()
+const layerZIndex = ref(2000)
 let lightboxReturnFocus: HTMLElement | null = null
 useModalScrollLock(computed(() => props.visible))
 watch(() => props.visible, async (visible) => {
     if (visible) {
+        layerZIndex.value = nextDialogZIndex(nextZIndex)
         lightboxReturnFocus = document.activeElement as HTMLElement | null
         await nextTick()
         lightboxRoot.value?.focus({ preventScroll: true })

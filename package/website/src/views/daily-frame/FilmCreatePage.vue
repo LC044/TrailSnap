@@ -42,8 +42,8 @@
       <aside class="df-panel space-y-4 lg:self-start">
         <h2 class="font-semibold">影片设置</h2>
         <div class="flex flex-wrap gap-2"><button type="button" class="df-button" @click="useMonth">这个月</button><button type="button" class="df-button" @click="useYear">这一年</button></div>
-        <label class="block text-sm">开始日期<input v-model="form.start_date" type="date" min="1900-01-01" :max="today" class="df-input mt-1" /></label>
-        <label class="block text-sm">结束日期<input v-model="form.end_date" type="date" :min="form.start_date" :max="today" class="df-input mt-1" /></label>
+        <label class="block text-sm">开始日期<UnifiedDatePicker v-model="form.start_date" type="date" min="1900-01-01" :max="today" class="mt-1" value-format="YYYY-MM-DD" /></label>
+        <label class="block text-sm">结束日期<UnifiedDatePicker v-model="form.end_date" type="date" :min="form.start_date" :max="today" class="mt-1" value-format="YYYY-MM-DD" /></label>
         <p class="text-xs text-gray-500 dark:text-gray-400">包含首尾日期，最多 366 天；空缺日期自然跳过。</p>
         <label class="block text-sm">标题<input v-model="form.title" maxlength="40" class="df-input mt-1" /></label>
         <label class="block text-sm">画幅<select v-model="form.orientation" class="df-input mt-1"><option value="portrait">竖屏 9:16</option><option value="landscape">横屏 16:9</option></select></label>
@@ -68,6 +68,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'

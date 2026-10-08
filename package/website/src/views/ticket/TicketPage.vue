@@ -313,16 +313,16 @@
         >
         <div class="grid grid-cols-2 gap-3">
           <label class="text-sm"
-            >开始日期<input
+            >开始日期<UnifiedDatePicker
               v-model="draft.start"
-              class="ts-input mt-2 w-full min-w-0"
-              type="date" /></label
+              class="mt-2 w-full min-w-0"
+              type="date" value-format="YYYY-MM-DD" /></label
           ><label class="text-sm"
-            >结束日期<input
+            >结束日期<UnifiedDatePicker
               v-model="draft.end"
-              class="ts-input mt-2 w-full min-w-0"
+              class="mt-2 w-full min-w-0"
               type="date"
-          /></label>
+          value-format="YYYY-MM-DD" /></label>
         </div>
         <label class="block text-sm"
           >关联状态<select v-model="draft.linked" class="ts-input mt-2 w-full">
@@ -521,7 +521,6 @@
       />
     </div>
     <PhotoLightbox
-      class="wallet-photo-viewer"
       :visible="photoOpen"
       :image="photo"
       @close="photoOpen = false"
@@ -529,6 +528,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import {
   computed,
   ref,
@@ -883,29 +883,29 @@ watch(
   { deep: true },
 );
 watch(selecting, (value) => ui.setSelectionActive(value));
-watch(detailOpen, (value) => {
-  if (!value && route.query.ticket_id) {
-    const query = { ...route.query };
-    delete query.ticket_id;
-    delete query.ticket_type;
-    void router.replace({ query });
-  }
-});
 let routeTimer: ReturnType<typeof setTimeout>;
 watch(
   () => route.fullPath,
   () => {
     clearTimeout(routeTimer);
-    routeTimer = setTimeout(() => {
+    routeTimer = setTimeout(async () => {
       if (route.path !== "/ticket") return;
       if (
         route.query.ticket_id &&
         ["train", "flight"].includes(String(route.query.ticket_type))
       ) {
-        detailRef.value = {
+        const reference: TicketRef = {
           type: String(route.query.ticket_type) as SupportedTicketType,
           id: String(route.query.ticket_id),
         };
+        // Consume the deep link before creating the dialog history entry.
+        // Otherwise Back restores the query and opens the detail again.
+        const query = { ...route.query };
+        delete query.ticket_id;
+        delete query.ticket_type;
+        const failure = await router.replace({ query });
+        if (failure || route.path !== "/ticket") return;
+        detailRef.value = reference;
         detailOpen.value = true;
       }
       if (route.query.add === "true") {
@@ -1293,8 +1293,5 @@ async function importFile(event: Event) {
 <style>
 .ticket-wallet .ts-glass-button {
   height: 44px;
-}
-.wallet-photo-viewer {
-  z-index: 130 !important;
 }
 </style>

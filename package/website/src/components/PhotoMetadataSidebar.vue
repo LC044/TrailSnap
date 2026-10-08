@@ -279,7 +279,7 @@
       </div>
       <div class="space-y-2">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">拍摄时间</label>
-        <el-date-picker
+        <UnifiedDatePicker
           v-model="basicEditForm.photoTime"
           type="datetime"
           placeholder="选择拍摄时间"
@@ -365,6 +365,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import {
     X, CalendarDays, MapPin, Tags, PanelRightClose, PanelRightOpen,

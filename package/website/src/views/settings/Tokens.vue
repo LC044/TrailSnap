@@ -206,7 +206,7 @@
           <el-input v-model="formData.name" placeholder="例如：Claude Code、OpenClaw" />
         </el-form-item>
         <el-form-item label="过期时间" prop="expires_at">
-          <el-date-picker
+          <UnifiedDatePicker
             v-model="formData.expires_at"
             type="datetime"
             placeholder="选择过期时间"
@@ -269,6 +269,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, onMounted, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'

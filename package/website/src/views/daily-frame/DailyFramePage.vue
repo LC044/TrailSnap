@@ -10,7 +10,7 @@
       <div v-if="store.firstUse" class="df-panel border-primary-200 dark:border-primary-900">
         <h2 class="font-semibold">用已有照片开始，也可以慢慢记录</h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">一天挑一个瞬间，每个瞬间一秒。空缺日期会自然跳过。</p>
-        <div class="mt-3 flex flex-wrap gap-2"><button class="df-primary" type="button" @click="startToday">从今天开始</button><button class="df-button" type="button" @click="store.firstUse = false; monthInput?.focus()">挑选过去的月份</button></div>
+        <div class="mt-3 flex flex-wrap gap-2"><button class="df-primary" type="button" @click="startToday">从今天开始</button><button class="df-button" type="button" @click="store.firstUse = false; monthInput?.open()">挑选过去的月份</button></div>
       </div>
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
@@ -23,7 +23,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <button class="df-button !px-2" type="button" aria-label="上一月或上一年" @click="move(-1)"><ChevronLeft class="h-5 w-5" /></button>
-            <input ref="monthInput" :value="store.month" type="month" min="1900-01" max="2200-12" class="df-input !w-auto" aria-label="选择年份月份" @change="setMonth(($event.target as HTMLInputElement).value)" />
+            <UnifiedDatePicker ref="monthInput" :model-value="store.month" type="month" :clearable="false" min="1900-01" max="2200-12" class="!w-auto" aria-label="选择年份月份" @change="setMonth" value-format="YYYY-MM" />
             <button class="df-button !px-2" type="button" aria-label="下一月或下一年" @click="move(1)"><ChevronRight class="h-5 w-5" /></button>
             <button class="df-button hidden sm:inline-flex" type="button" @click="setMonth(store.settings.today!.slice(0, 7))">回到本月</button>
           </div>
@@ -63,6 +63,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
@@ -79,7 +80,7 @@ import './daily-frame.css'
 
 const store = useDailyFrameStore(), route = useRoute(), router = useRouter()
 const selectedDay = ref(''), editorVisible = ref(false), fillVisible = ref(false), preferredPhoto = ref('')
-const loading = ref(false), error = ref(''), monthInput = ref<HTMLInputElement | null>(null)
+const loading = ref(false), error = ref(''), monthInput = ref<InstanceType<typeof UnifiedDatePicker> | null>(null)
 const weekdays = ['一', '二', '三', '四', '五', '六', '日']
 const tabs = [{ value: 'month' as const, label: '月历' }, { value: 'year' as const, label: '年度' }, { value: 'works' as const, label: '我的作品' }]
 const year = computed(() => Number(store.month.slice(0, 4)))
