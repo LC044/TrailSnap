@@ -30,9 +30,16 @@ from railway.crud import (
     get_schedule_by_train_code_and_date,
 )
 from railway.db.models.models import Train, TrainSchedule, TrainOperationPlan
-from railway.db.dependencies import get_db
+from railway.db.dependencies import get_ready_db as get_db
+from app.dependencies import BaseResponse as ApiResponse
 
 router = APIRouter()
+
+
+@router.get("/status", response_model=ApiResponse[Dict[str, str]])
+def railway_initialization_status() -> ApiResponse[Dict[str, str]]:
+    from railway.initialization import get_initialization_state
+    return ApiResponse.success(data={"state": get_initialization_state()})
 
 # ------------------------------ 车站接口 ------------------------------
 @router.post(

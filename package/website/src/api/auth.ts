@@ -145,10 +145,12 @@ export const authService = {
     return res as unknown as BaseResponseData;
   },
 
-  async getAuthStatus() {
+  async getAuthStatus(options: { silentError?: boolean; signal?: AbortSignal } = {}) {
     const res = await request<{has_users: boolean; allow_registration: boolean; demo_mode: boolean}>({
       url: '/api/auth/status',
-      method: 'get'
+      method: 'get',
+      timeout: 5000,
+      ...options,
     });
     return res.data;
   },

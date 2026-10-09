@@ -19,6 +19,10 @@
         class="auth-form"
         @submit.prevent="handleRegister"
       >
+        <div v-if="authState !== 'ready'" class="auth-notice" role="status" aria-live="polite">
+          {{ authState === 'checking' ? '正在检查注册状态…' : '暂时无法连接服务，首次启动可能需要一些时间。正在自动重试。' }}
+          <el-button v-if="authState === 'unavailable'" link type="primary" @click="checkAuthStatus">立即重试</el-button>
+        </div>
         <el-form-item label="用户名" prop="username">
           <el-input 
             v-model="form.username" 
@@ -98,7 +102,7 @@
           />
         </el-form-item>
 
-        <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading">注册</el-button>
+        <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading" :disabled="authState !== 'ready' || registrationBlocked">注册</el-button>
 
         <p class="auth-switch">已有账号？<router-link to="/login" class="auth-link">立即登录</router-link></p>
       </el-form>
@@ -112,24 +116,22 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { authService } from '@/api/auth';
+import { useAuthStatus } from '@/composables/useAuthStatus';
 import './auth.css';
 
 const router = useRouter();
 const formRef = ref<FormInstance>();
 const loading = ref(false);
 
-onMounted(async () => {
-  try {
-    const status = await authService.getAuthStatus();
-    // Block registration only when there are already users AND registration is disabled
-    if (status.has_users && !status.allow_registration) {
-      ElMessage.warning('注册已关闭，请联系管理员添加账号。');
-      router.push('/login');
-    }
-  } catch (error) {
-    console.error('Failed to get auth status:', error);
+const registrationBlocked = ref(false);
+const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status) => {
+  registrationBlocked.value = status.has_users && !status.allow_registration;
+  if (registrationBlocked.value) {
+    ElMessage.warning('注册已关闭，请联系管理员添加账号。');
+    await router.replace('/login');
   }
 });
+onMounted(checkAuthStatus);
 
 const form = reactive({
   username: '',
@@ -188,7 +190,7 @@ const rules = reactive<FormRules>({
 });
 
 const handleRegister = async () => {
-  if (!formRef.value) return;
+  if (!formRef.value || loading.value || authState.value !== 'ready' || registrationBlocked.value) return;
   
   await formRef.value.validate(async (valid) => {
     if (valid) {

@@ -128,6 +128,8 @@ async def lifespan(app: FastAPI):
     # Mounted ASGI applications do not receive lifespan events from FastAPI.
     # Run the MCP session manager inside the host lifespan explicitly.
     async with mcp.session_manager.run():
+        from railway.initialization import start_background_initialization
+        start_background_initialization()
         yield
 
     discovery_service.stop()

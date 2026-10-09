@@ -19,6 +19,10 @@
         </header>
         <el-form ref="loginFormRef" :model="loginForm" :rules="rules" label-position="top" size="large" class="auth-form" @submit.prevent="handleLogin">
           <div v-if="demoMode" class="auth-notice">演示账号已填写，点击「登录」即可体验</div>
+          <div v-if="!isTauriApp() && authState !== 'ready'" class="auth-notice" role="status" aria-live="polite">
+            {{ authState === 'checking' ? '正在连接服务…' : '暂时无法连接服务，首次启动可能需要一些时间。正在自动重试。' }}
+            <el-button v-if="authState === 'unavailable'" link type="primary" @click="retryAuthStatus">立即重试</el-button>
+          </div>
           <el-form-item v-if="showServerAddress" label="TrailSnap 地址" prop="serverUrl">
             <el-autocomplete
               v-model="loginForm.serverUrl"
@@ -58,11 +62,11 @@
             <el-checkbox v-model="rememberMe">记住用户名</el-checkbox>
             <router-link to="/forgot-password" class="auth-link">忘记密码？</router-link>
           </div>
-          <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading">登录</el-button>
+          <el-button type="primary" native-type="submit" class="auth-submit" :loading="loading" :disabled="!isTauriApp() && authState !== 'ready'">登录</el-button>
           <p v-if="allowRegistration" class="auth-switch">
             还没有账号？<router-link to="/register" class="auth-link">立即注册</router-link>
           </p>
-          <p v-else-if="hasUsers" class="auth-switch">没有账号？请联系管理员添加</p>
+          <p v-else-if="authState === 'ready' && hasUsers" class="auth-switch">没有账号？请联系管理员添加</p>
         </el-form>
       </div>
     </section>
@@ -75,7 +79,7 @@ import { useRouter, useRoute } from 'vue-router';
 import { useUserStore } from '@/stores/user';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock } from '@element-plus/icons-vue';
-import { authService } from '@/api/auth';
+import { useAuthStatus } from '@/composables/useAuthStatus';
 import { getServerHistory, getServerUrl, isMobileApp, isTauriApp, saveServerUrl } from '@/config/server';
 import LoginCharacters from './components/LoginCharacters.vue';
 import './auth.css';
@@ -94,6 +98,32 @@ const serverHistory = ref<string[]>([]);
 const focusTarget = ref<'username' | 'password' | null>(null);
 const isCelebrating = ref(false);
 const isMocking = ref(false);
+
+const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status) => {
+  hasUsers.value = status.has_users;
+  allowRegistration.value = !status.has_users || status.allow_registration;
+  if (!status.has_users) {
+    await router.replace('/register');
+    return;
+  }
+  if (status.demo_mode) {
+    loginForm.username = 'trailsnap';
+    loginForm.password = 'trailsnap';
+    demoMode.value = true;
+  }
+});
+
+const retryAuthStatus = async () => {
+  if (showServerAddress) {
+    try {
+      loginForm.serverUrl = await saveServerUrl(loginForm.serverUrl);
+    } catch (error: any) {
+      ElMessage.error(error.message || '请输入有效的 TrailSnap 地址');
+      return;
+    }
+  }
+  await checkAuthStatus();
+};
 
 const suggestServerAddresses = (
   _query: string,
@@ -145,26 +175,11 @@ onMounted(async () => {
     if (!loginForm.serverUrl) return;
   }
 
-  try {
-    const status = await authService.getAuthStatus();
-    hasUsers.value = status.has_users;
-    allowRegistration.value = !status.has_users || status.allow_registration;
-    if (!status.has_users) {
-      router.replace('/register');
-      return;
-    }
-    if (status.demo_mode) {
-      loginForm.username = 'trailsnap';
-      loginForm.password = 'trailsnap';
-      demoMode.value = true;
-    }
-  } catch (error) {
-    console.error('Failed to get auth status:', error);
-  }
+  await checkAuthStatus();
 });
 
 const handleLogin = async () => {
-  if (!loginFormRef.value || loading.value) return;
+  if (!loginFormRef.value || loading.value || (!isTauriApp() && authState.value !== 'ready')) return;
   await loginFormRef.value.validate(async (valid) => {
     if (!valid) return;
     loading.value = true;
