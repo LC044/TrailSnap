@@ -37,19 +37,62 @@ const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() 
 const photo = id => ({ id, filename: `${id}.jpg`, url: `/${id}`, thumbnail: `/${id}`, timestamp: 0 })
 const task = (id, status = 'processing') => ({ id, status, type: 'BATCH_RENAME', total_items: 10, processed_items: 2 })
 
-test('viewer keeps the current ID through inserts and selects a neighbor on removal', () => {
+test('viewer keeps the current ID through inserts and selects a neighbor on removal', async () => {
   const { usePhotoViewer } = loadSource('composables/usePhotoViewer.ts')
   const scope = vue.effectScope()
   const photos = vue.ref(['a', 'b', 'c'].map(photo))
   const viewer = scope.run(() => usePhotoViewer(photos))
   viewer.open(1)
   photos.value.unshift(photo('first'))
+  await vue.nextTick()
   assert.equal(viewer.currentPhoto.value.id, 'b')
   photos.value = photos.value.filter(item => item.id !== 'b')
+  await vue.nextTick()
   assert.equal(viewer.currentPhoto.value.id, 'c')
   photos.value = []
+  await vue.nextTick()
   assert.equal(viewer.visible.value, false)
   assert.equal(viewer.hasNext.value, false)
+  scope.stop()
+})
+
+test('sorting a large photo list batches viewer scans with the preview open or closed', async () => {
+  const { usePhotoViewer } = loadSource('composables/usePhotoViewer.ts')
+  for (const previewOpen of [false, true]) {
+    let idReads = 0
+    const size = 3000
+    const scope = vue.effectScope()
+    const photos = vue.ref(Array.from({ length: size }, (_, timestamp) => ({
+      ...photo(String(timestamp)), timestamp,
+      get id() { idReads++; return String(timestamp) },
+    })))
+    const viewer = scope.run(() => usePhotoViewer(photos))
+    if (previewOpen) viewer.open(100)
+    await vue.nextTick()
+    idReads = 0
+    photos.value.sort((a, b) => b.timestamp - a.timestamp)
+    await vue.nextTick()
+    assert.ok(idReads <= size * 2, `sort scanned too many IDs: ${idReads}`)
+    assert.equal(viewer.visible.value, previewOpen)
+    if (previewOpen) assert.equal(viewer.currentPhoto.value.id, '100')
+    scope.stop()
+  }
+})
+
+test('viewer chooses the last neighbor when the last photo is removed, and stays closed on list changes', async () => {
+  const { usePhotoViewer } = loadSource('composables/usePhotoViewer.ts')
+  const scope = vue.effectScope()
+  const photos = vue.ref(['a', 'b', 'c'].map(photo))
+  const viewer = scope.run(() => usePhotoViewer(photos))
+  viewer.open(2)
+  photos.value.pop()
+  await vue.nextTick()
+  assert.equal(viewer.currentPhoto.value.id, 'b')
+  viewer.close()
+  photos.value.push(photo('d'))
+  await vue.nextTick()
+  assert.equal(viewer.visible.value, false)
+  assert.equal(viewer.currentPhoto.value, null)
   scope.stop()
 })
 

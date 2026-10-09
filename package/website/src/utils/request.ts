@@ -11,7 +11,44 @@ import { useUserStore } from '@/stores/user';
 import { getServerUrl, hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
 
 declare module 'axios' {
-  interface AxiosRequestConfig { silentError?: boolean }
+  interface AxiosRequestConfig {
+    silentError?: boolean;
+    /** Set false for requests that must fail immediately. Only GET/HEAD are retried. */
+    retry?: false;
+    _networkRetryCount?: number;
+  }
+}
+
+const MAX_NETWORK_RETRIES = 2;
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const TRANSIENT_CODES = new Set(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT']);
+let lastConnectionMessage = '';
+let lastConnectionMessageAt = -Infinity;
+
+function isTransientError(error: AxiosError): boolean {
+  return error.response
+    ? TRANSIENT_STATUSES.has(error.response.status)
+    : TRANSIENT_CODES.has(error.code || '');
+}
+
+/** Abort during backoff as well as during the actual HTTP request. */
+function waitForRetry(config: InternalAxiosRequestConfig, delay: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const signal = config.signal;
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+      config.cancelToken?.unsubscribe(onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(new axios.CanceledError('Request canceled', config));
+    };
+    const timer = setTimeout(() => { cleanup(); resolve(); }, delay);
+    signal?.addEventListener?.('abort', onAbort);
+    config.cancelToken?.subscribe(onAbort);
+    if (signal?.aborted) onAbort();
+  });
 }
 
 // 创建 Axios 实例（类型不变）
@@ -83,6 +120,20 @@ service.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
+    if (axios.isCancel(error) || error.code === 'ERR_CANCELED' || error.config?.signal?.aborted) {
+      return Promise.reject(error);
+    }
+
+    const config = error.config;
+    const retryCount = config?._networkRetryCount || 0;
+    if (config && config.retry !== false
+      && ['get', 'head'].includes((config.method || 'get').toLowerCase())
+      && isTransientError(error) && retryCount < MAX_NETWORK_RETRIES) {
+      config._networkRetryCount = retryCount + 1;
+      await waitForRetry(config, 500 * 2 ** retryCount);
+      return service.request(config);
+    }
+
     let errorMsg = '网络异常，请重试';
     if (error.response) {
       // When a request used responseType: 'blob' (e.g. file downloads), the
@@ -147,6 +198,11 @@ service.interceptors.response.use(
         case 500:
           errorMsg = '服务器内部错误';
           break;
+        case 502:
+        case 503:
+        case 504:
+          errorMsg = '服务器暂时不可用，请稍后重试';
+          break;
         default: {
           const raw = (error.response?.data as any)?.detail;
           let detailStr: string | undefined;
@@ -164,6 +220,8 @@ service.interceptors.response.use(
           break;
         }
       }
+    } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      errorMsg = '请求超时，请稍后重试（登录状态已保留）';
     } else if (error.request) {
       // No HTTP response means the server or network is temporarily
       // unavailable; it says nothing about whether the token is valid.  In
@@ -172,7 +230,18 @@ service.interceptors.response.use(
       // when connectivity returns.  A real HTTP 401 above still logs out.
       errorMsg = '无法连接服务器，请检查网络后重试（登录状态已保留）';
     }
-    if (!error.config?.silentError || error.response?.status === 401) ElMessage.error(errorMsg);
+    if (!error.config?.silentError || error.response?.status === 401) {
+      // Concurrent page requests can all fail during the same brief outage.
+      const connectionError = isTransientError(error) || (!error.response && !!error.request);
+      const now = Date.now();
+      if (!connectionError || errorMsg !== lastConnectionMessage || now - lastConnectionMessageAt >= 5000) {
+        ElMessage.error(errorMsg);
+        if (connectionError) {
+          lastConnectionMessage = errorMsg;
+          lastConnectionMessageAt = now;
+        }
+      }
+    }
     return Promise.reject(error);
   }
 );

@@ -198,6 +198,7 @@ def _img_with_exif(width, height, exif_dict, exif_ifd=None):
     img = MagicMock()
     img.width = width
     img.height = height
+    img.size = (width, height)
     top_level = _FakeExif({36867: b"placeholder"})
     top_level.get_ifd = MagicMock(return_value=exif_ifd or {})
     img.getexif.return_value = top_level

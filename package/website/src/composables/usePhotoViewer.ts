@@ -28,6 +28,8 @@ export function usePhotoViewer(photos: MaybeRefOrGetter<AlbumImage[]>, options: 
     if (currentId.value === null || ids.includes(currentId.value)) return
     const previousIndex = previousIds.indexOf(currentId.value)
     currentId.value = ids[Math.min(Math.max(0, previousIndex), ids.length - 1)] ?? null
-  }, { flush: 'sync' })
+  // Sorting a reactive array writes each index separately. Batch these changes
+  // so a month load scans the IDs once, after the final order is available.
+  })
   return { currentPhoto, currentIndex, index, visible, hasPrev, hasNext, open, close, prev, next }
 }
