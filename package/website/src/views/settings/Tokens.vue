@@ -23,8 +23,8 @@
           <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">令牌用于授权外部 AI 工具通过 API 访问你的相册数据，无需登录账号。</p>
 
           <div class="mb-4 rounded-lg border border-primary-200/60 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
-            <p class="mb-1 text-sm font-semibold text-gray-700 dark:text-gray-300">MCP Server（推荐）</p>
-            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">在支持远程 MCP 的客户端中添加 Streamable HTTP 服务。Pi 不内置 MCP，可安装 TrailSnap Pi Package 自动桥接。</p>
+            <p class="mb-1 text-sm font-semibold text-gray-700 dark:text-gray-300">MCP Server</p>
+            <p class="mb-2 text-xs text-gray-500 dark:text-gray-400">在支持远程 MCP 的客户端中添加 Streamable HTTP 服务。</p>
             <div class="overflow-x-auto rounded-lg bg-gray-900 px-3 py-2 font-mono text-xs leading-relaxed text-green-400 dark:bg-gray-950">
               URL: &lt;TrailSnap 地址&gt;/api/mcp/<br>
               Authorization: Bearer <span class="text-amber-400">&lt;token&gt;</span>
@@ -206,7 +206,7 @@
           <el-input v-model="formData.name" placeholder="例如：Claude Code、OpenClaw" />
         </el-form-item>
         <el-form-item label="过期时间" prop="expires_at">
-          <el-date-picker
+          <UnifiedDatePicker
             v-model="formData.expires_at"
             type="datetime"
             placeholder="选择过期时间"
@@ -235,24 +235,24 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showConnectionDialog" title="接入 AI Agent" width="680px" style="max-width: 94%" :close-on-click-modal="false">
+    <el-dialog v-model="showConnectionDialog" title="接入 AI Agent（二选一）" width="680px" style="max-width: 94%" :close-on-click-modal="false">
       <div v-if="selectedToken" class="space-y-5">
         <div>
           <div class="mb-2 flex items-center justify-between gap-3">
             <div>
-              <p class="text-sm font-semibold text-gray-800 dark:text-white">Pi Agent（推荐）</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">先保存 TrailSnap 配置，再安装包含 MCP Bridge 与 Skill 的 Pi Package。</p>
+              <p class="text-sm font-semibold text-gray-800 dark:text-white">1. SKILL</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">先保存 TrailSnap 配置，再安装 SKILL。</p>
             </div>
-            <el-button type="primary" plain size="small" @click="copyText(piSetupCommands, 'Pi 接入命令')"><Copy class="mr-1 h-4 w-4" />复制</el-button>
+            <el-button type="primary" plain size="small" @click="copyText(piSetupCommands, 'SKILL安装命令')"><Copy class="mr-1 h-4 w-4" />复制</el-button>
           </div>
           <pre class="max-h-44 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-gray-900 p-3 text-xs leading-relaxed text-green-400 dark:bg-gray-950">{{ piSetupCommands }}</pre>
-          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">安装后在 Pi 中运行 <code>/trailsnap-status</code> 检查连接。</p>
+          <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">把以上命令复制到你的Agent中运行。</p>
         </div>
 
         <div>
           <div class="mb-2 flex items-center justify-between gap-3">
             <div>
-              <p class="text-sm font-semibold text-gray-800 dark:text-white">通用 Streamable HTTP MCP</p>
+              <p class="text-sm font-semibold text-gray-800 dark:text-white">2. 通用 Streamable HTTP MCP</p>
               <p class="text-xs text-gray-500 dark:text-gray-400">适用于支持远程 HTTP MCP 配置的客户端。</p>
             </div>
             <el-button type="primary" plain size="small" @click="copyText(genericMcpConfig, 'MCP 配置')"><Copy class="mr-1 h-4 w-4" />复制</el-button>
@@ -261,7 +261,7 @@
         </div>
 
         <p class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300">
-          配置中包含完整令牌。只复制到可信客户端，不要提交到 Git 或分享给其他人。
+          配置中包含完整令牌。只复制到可信客户端，不要分享给其他人。
         </p>
       </div>
     </el-dialog>
@@ -269,6 +269,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, onMounted, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -303,9 +304,9 @@ const scopeLabel = (scope: AgentTokenScope) => scopeOptions.find(option => optio
 
 const publicTrailSnapUrl = computed(() => window.location.origin.replace(/\/$/, ''))
 const piSetupCommands = computed(() => selectedToken.value ? [
-  'npm install -g trailsnap-cli',
-  `trailsnap config set --url "${publicTrailSnapUrl.value}" --token "${selectedToken.value.token}"`,
-  'pi install git:github.com/LC044/TrailSnap',
+  '帮我安装 trailsnap-cli 和 skill：https://trailsnap.cn/install.md',
+`我的 TrailSnap 地址是 ${publicTrailSnapUrl.value}`,
+`我的token 是 ${selectedToken.value.token}`,
 ].join('\n') : '')
 const genericMcpConfig = computed(() => selectedToken.value ? JSON.stringify({
   mcpServers: {

@@ -17,6 +17,8 @@ import { ref, nextTick, computed, onMounted, onBeforeUnmount, onDeactivated, onA
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useMediaQuery } from '@vueuse/core'
 import ResponsiveDialog from './ResponsiveDialog.vue'
+import { useZIndex } from 'element-plus'
+import { nextDialogZIndex } from '@/utils/pickerDate'
 import { reducedMotion } from '@/utils/motion'
 import { liquidFrames } from '@/utils/liquidMorph'
 import { useRouteDismiss } from '@/composables/useRouteDismiss'
@@ -26,6 +28,8 @@ const mobile = useMediaQuery('(max-width: 767px)')
 const menuRef = ref<HTMLElement | null>(null)
 const anchorRef = ref<HTMLElement | null>(null)
 const menuStyle = ref<Record<string, string>>({ position: 'fixed', zIndex: '3000', marginTop: '0' })
+const { nextZIndex } = useZIndex()
+let layerZIndex = 3000
 const popoverVisible = computed(() => props.modelValue && !(mobile.value && props.mobilePresentation === 'sheet'))
 useOverlayStack(popoverVisible, () => emit('update:modelValue', false))
 const trigger = () => {
@@ -45,7 +49,7 @@ const positionMenu = async () => {
   const menuWidth = menu.getBoundingClientRect().width
   const top = Math.max(viewportTop + 8, Math.min(anchor.bottom + 10, viewportTop + viewportHeight - menu.offsetHeight - 8))
   const left = Math.max(8, Math.min(anchor.left + anchor.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - 8))
-  menuStyle.value = { position: 'fixed', zIndex: '3000', marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${viewportHeight - 16}px`, overflowY: 'auto' }
+  menuStyle.value = { position: 'fixed', zIndex: String(layerZIndex), marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${viewportHeight - 16}px`, overflowY: 'auto' }
 }
 let animations: Animation[] = []
 let animatedPanel: HTMLElement | null = null
@@ -118,6 +122,7 @@ const morph = (element: Element, opening: boolean, done: () => void) => {
   shape.onfinish = cancelMorph
 }
 const morphEnter = async (element: Element, done: () => void) => {
+  layerZIndex = nextDialogZIndex(nextZIndex)
   await positionMenu()
   await nextTick()
   if (!props.modelValue || !element.isConnected) { done(); return }

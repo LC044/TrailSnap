@@ -145,8 +145,8 @@
         <el-form-item label="标题"><el-input v-model="form.title" maxlength="255" show-word-limit /></el-form-item>
         <el-form-item label="故事"><el-input v-model="form.story" type="textarea" :rows="5" maxlength="50000" /></el-form-item>
         <div class="grid gap-3 sm:grid-cols-2">
-          <el-form-item label="开始时间"><el-date-picker v-model="form.start_time" type="datetime" class="!w-full" /></el-form-item>
-          <el-form-item label="结束时间"><el-date-picker v-model="form.end_time" type="datetime" class="!w-full" /></el-form-item>
+          <el-form-item label="开始时间"><UnifiedDatePicker v-model="form.start_time" type="datetime" class="!w-full" /></el-form-item>
+          <el-form-item label="结束时间"><UnifiedDatePicker v-model="form.end_time" type="datetime" class="!w-full" /></el-form-item>
         </div>
         <el-form-item label="地点（用顿号分隔）"><el-input v-model="form.places" placeholder="杭州、西湖" /></el-form-item>
         <el-form-item label="封面">
@@ -173,6 +173,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import TicketContextSection from '@/views/ticket/components/TicketContextSection.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'

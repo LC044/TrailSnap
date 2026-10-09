@@ -90,13 +90,12 @@
                 </div>
                 <div class="form-group">
                   <label class="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">日期时间</label>
-                  <input
+                  <UnifiedDatePicker
                     v-model="form.dateTime"
                     type="datetime-local"
-                    class="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    @change="formatDateTime"
+                    class="w-full"
                     required
-                  >
+                  value-format="YYYY-MM-DDTHH:mm" />
                   <p class="text-xs text-gray-500 dark:text-gray-400 mt-1"></p>
                 </div>
                 <div class="form-group">

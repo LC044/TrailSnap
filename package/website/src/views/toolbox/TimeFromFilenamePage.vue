@@ -59,7 +59,7 @@
             <el-radio value="auto" class="!mr-0 !ml-0">自动识别</el-radio>
             <div class="flex items-center gap-2">
               <el-radio value="custom" class="!mr-0 !ml-0">指定时间</el-radio>
-              <el-date-picker
+              <UnifiedDatePicker
                 v-if="timeMode === 'custom'"
                 v-model="customTime"
                 type="datetime"
@@ -109,6 +109,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed } from 'vue'
 import TaskStatusCard from '@/components/TaskStatusCard.vue'

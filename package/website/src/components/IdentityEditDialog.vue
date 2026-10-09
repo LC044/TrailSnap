@@ -1,18 +1,18 @@
 <template>
-  <el-dialog
+  <ResponsiveDialog
+    history
     :model-value="visible"
     title="编辑人物信息"
-    :width="dialogWidth"
-    :fullscreen="isMobile"
-    top="5vh"
-    class="identity-edit-dialog rounded-xl"
+    max-width="35rem"
+    mobile-mode="fullscreen"
+    mobile-back
+    :before-close="() => !saving && !settingCoverId"
     @update:model-value="$emit('update:visible', $event)"
-    @opened="focusNameInput"
   >
     <el-form label-position="top">
       <el-form-item label="封面">
         <div class="w-full">
-          <div class="flex items-center justify-between gap-4 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
+          <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-800/70">
             <div class="flex min-w-0 items-center gap-3">
               <div class="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800">
                 <img
@@ -121,21 +121,21 @@
       </el-form-item>
     </el-form>
     <template #footer>
-      <div class="flex gap-2 justify-end">
-        <el-button @click="$emit('update:visible', false)">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submit">保存</el-button>
+      <div class="flex gap-3">
+        <button type="button" class="ts-button ts-button-secondary flex-1" :disabled="saving || !!settingCoverId" @click="$emit('update:visible', false)">取消</button>
+        <button type="button" class="ts-button ts-button-primary flex-1" :disabled="saving || !!settingCoverId" @click="submit">{{ saving ? '保存中…' : '保存' }}</button>
       </div>
     </template>
-  </el-dialog>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, nextTick } from 'vue'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import type { InputInstance } from 'element-plus'
 import type { FaceIdentity } from '@/types/album'
 import { faceApi } from '@/api/face'
 import { ElMessage } from 'element-plus'
-import { useWindowSize } from '@vueuse/core'
 import { getFaceCropStyle } from '@/utils/faceCrop'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import { Camera as CameraIcon, Check as CheckIcon, User as UserIcon } from 'lucide-vue-next'
@@ -151,9 +151,6 @@ const emit = defineEmits<{
   (e: 'cover-changed', identity: FaceIdentity): void
 }>()
 
-const { width } = useWindowSize()
-const isMobile = computed(() => width.value < 640)
-const dialogWidth = computed(() => isMobile.value ? '100%' : '560px')
 
 const form = ref({
   identity_name: '',
@@ -162,12 +159,10 @@ const form = ref({
 })
 const saving = ref(false)
 
-// 弹窗动画结束后聚焦姓名输入框；此时仍在移动端点击的瞬时激活窗口内，
-// focus() 会直接唤起输入法
+// 弹窗打开后聚焦姓名输入框（桌面端快捷改名；移动端会唤起输入法，行为与
+// 迁移 ResponsiveDialog 前的 @opened="focusNameInput" 保持一致）
 const nameInputRef = ref<InputInstance | null>(null)
-const focusNameInput = () => {
-  nameInputRef.value?.focus()
-}
+
 
 // 更换封面：候选来自该人物自己的照片（后端一定能从中找到对应人脸）
 const currentIdentity = ref<FaceIdentity | null>(null)
@@ -208,6 +203,8 @@ watch(() => props.visible, (v) => {
   if (v && props.identity) {
     lastFormIdentityId = props.identity.id
     fillForm(props.identity)
+    // 弹层动画结束后再聚焦，避免与面板自身的 focus 抢时机
+    void nextTick(() => setTimeout(() => nameInputRef.value?.focus(), 200))
   }
 })
 
@@ -276,7 +273,7 @@ const applyCover = async () => {
 }
 
 const submit = async () => {
-  if (!props.identity) return
+  if (!props.identity || saving.value || settingCoverId.value) return
   saving.value = true
   try {
     const updated = await faceApi.updateIdentity(props.identity.id, form.value)
@@ -290,22 +287,3 @@ const submit = async () => {
   }
 }
 </script>
-
-<style>
-.identity-edit-dialog {
-  display: flex;
-  max-height: 90vh;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.identity-edit-dialog .el-dialog__body {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-}
-
-.identity-edit-dialog.is-fullscreen {
-  max-height: 100vh;
-}
-</style>

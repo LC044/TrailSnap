@@ -21,7 +21,7 @@
       <p class="mb-4 text-sm text-gray-500 dark:text-gray-400">选择分界日。当天归入后一章，原照片和记忆不会被修改。</p>
       <div class="space-y-4">
         <div v-if="splitMonths.length"><p class="mb-2 text-xs text-gray-500 dark:text-gray-400">按月份定位分界</p><div class="flex h-20 items-end gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700"><button v-for="month in splitMonths" :key="month.month" type="button" class="flex h-full min-w-3 flex-1 items-end disabled:opacity-30" :title="`${month.month}：${month.count} 张，点击从这个月开始拆分`" :aria-label="`从 ${month.month} 开始拆分`" :disabled="`${month.month}-01` < splitMinDate || `${month.month}-01` > splitMaxDate" @click="splitForm.split_date = `${month.month}-01`"><span class="w-full rounded-t" :class="month.month === splitForm.split_date.slice(0, 7) ? 'bg-primary-600' : 'bg-primary-300 dark:bg-primary-700'" :style="{ height: `${Math.max(8, month.count / splitMaxMonthCount * 100)}%` }" /></button></div><p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ splitMonths[0]?.month }} — {{ splitMonths[splitMonths.length - 1]?.month }}</p></div>
-        <label class="block text-sm text-gray-700 dark:text-gray-200">分界日<input v-model="splitForm.split_date" type="date" :min="splitMinDate" :max="splitMaxDate" class="mt-1 w-full rounded-lg border border-gray-300 bg-white p-2.5 dark:border-gray-600 dark:bg-gray-800" /></label>
+        <label class="block text-sm text-gray-700 dark:text-gray-200">分界日<UnifiedDatePicker v-model="splitForm.split_date" type="date" :min="splitMinDate" :max="splitMaxDate" class="mt-1 w-full" value-format="YYYY-MM-DD" /></label>
         <div v-if="splitPreviewing" class="text-sm text-gray-500 dark:text-gray-400">正在计算两章影像…</div>
         <div v-if="splitPreview" class="grid gap-3 sm:grid-cols-2">
           <div class="rounded-xl bg-gray-50 p-4 dark:bg-gray-800"><p class="text-xs text-gray-500 dark:text-gray-400">前一章 · {{ chapter?.start_date }} — {{ splitBeforeDate }}</p><p class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ splitPreview.first.photo_count }} 张影像</p><div class="mt-3 flex gap-1"><img v-for="id in splitPreview.first.preview_photo_ids.slice(0, 3)" :key="id" :src="thumbnailUrl(id, 'small')" alt="前一章照片样例" class="aspect-square w-16 rounded object-cover" /></div></div>
@@ -48,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'

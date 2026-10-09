@@ -1,4 +1,5 @@
 import { ref, computed, watch, type Ref } from 'vue'
+import { getMomentPhotos, getMomentSinglePhotoSize } from '@/utils/momentLayout'
 import type { TimelineStats, TimelineItem, AlbumImage } from '@/types/album'
 import {
   getMobileDateHeaderHeight,
@@ -42,6 +43,7 @@ interface UseVirtualLayoutOptions {
   expandedDays?: Ref<Set<string>>
   // 朋友圈布局下，用于按 caption 字数动态计算 day 卡片头部高度
   dayCaptions?: Ref<Record<string, { caption: string }>>
+  dayHighlights?: Ref<Record<string, { photoIds: string[] }>>
 }
 
 export function useVirtualLayout(options: UseVirtualLayoutOptions) {
@@ -123,7 +125,7 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
     
     // Group photos by day for Waterfall calculation
     const photosByDay = new Map<string, AlbumImage[]>()
-    if (mode === 'waterfall') {
+    if (mode === 'waterfall' || mode === 'moments') {
         photos.value.forEach(p => {
              const d = new Date(p.timestamp)
              const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
@@ -131,6 +133,8 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
              photosByDay.get(key)!.push(p)
         })
     }
+
+    photosByDay.set('all', photos.value)
 
     // Group Timeline by Month
     const months = new Map<string, { year: number, month: number, days: TimelineItem[] }>()
@@ -181,13 +185,16 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
             } else if (mode === 'moments') {
                 const dayKey = (dayItem.year === 0) ? 'all' : `${dayItem.year}-${dayItem.month}-${dayItem.day}`
                 const isExpanded = options.expandedDays?.value.has(dayKey)
-                const displayCount = isExpanded ? dayItem.count : Math.min(dayItem.count, 9)
+                const dayPhotos = photosByDay.get(dayKey) ?? []
+                const displayPhotos = isExpanded ? dayPhotos : getMomentPhotos(dayPhotos, options.dayHighlights?.value?.[dayKey]?.photoIds)
+                // 未加载日期仍需占位；已加载日期按实际精选数量和顺序计算。
+                const displayCount = dayPhotos.length ? displayPhotos.length : (isExpanded ? dayItem.count : Math.min(dayItem.count, 9))
                 
                 const isMobile = width < 640
                 const actualGap = isMobile ? 6 : 8 // gap-1.5 (6px) or gap-2 (8px)
                 const fullContentWidth = width - 32 - 40 - 12
 
-                if (isExpanded && dayItem.count > 9) {
+                if (isExpanded && displayCount > 9) {
                     const contentWidth = fullContentWidth
                     const minItemWidth = isMobile ? 80 : 120
                     const expandedCols = Math.floor((contentWidth + actualGap) / (minItemWidth + actualGap)) || 1
@@ -199,20 +206,10 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
                     const baseItemWidth = (Math.min(contentWidth, 360) - 2 * actualGap) / 3
                     if (displayCount === 1) {
                         rows = 1
-                        // 与 PhotoGallery 的 singlePhotoBoxStyle 口径一致：
-                        // 按照片真实比例在 240×250 边界框内取高度，避免预留高度小于实际
-                        // 渲染高度导致下一天块压上来、间距变小。
-                        const p = photos.value[globalIndex]
-                        if (p?.width && p?.height) {
-                            let dh = 240 / (p.width / p.height)
-                            if (dh > 250) dh = 250
-                            contentHeight = dh
-                        } else {
-                            contentHeight = 200 // 无尺寸元数据时的退化估值
-                        }
+                        contentHeight = getMomentSinglePhotoSize(displayPhotos[0]).height
                     } else if (displayCount === 4) {
                         rows = 2
-                        contentHeight = rows * baseItemWidth + actualGap
+                        contentHeight = rows * ((Math.min(contentWidth, 240) - actualGap) / 2) + actualGap
                     } else {
                         rows = Math.ceil(displayCount / 3)
                         contentHeight = rows * baseItemWidth + Math.max(0, rows - 1) * actualGap
@@ -316,7 +313,9 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
       () => options.columnCount?.value,
       () => options.gridGap?.value,
       () => options.dateHeaderMode?.value,
+      () => photos.value,
       () => photos.value.length,
+      () => JSON.stringify(options.dayHighlights?.value),
       () => options.expandedDays?.value.size,
       () => {
           const map = options.dayCaptions?.value

@@ -33,7 +33,7 @@
                 </el-checkbox-group>
               </el-form-item>
               <el-form-item label="执行时间">
-                <el-time-select
+                <UnifiedDatePicker type="time"
                   v-model="momentCaptionScheduleForm.time"
                   start="00:00"
                   step="00:30"
@@ -58,6 +58,7 @@
 </SettingsSection>
 </template>
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import SettingsSection from '@/components/ui/SettingsSection.vue'
 import { useBasicSettingsContext } from '@/composables/settings/useBasicSettings'
 const { activeNames, momentCaptionScheduleForm, saveMomentCaptionScheduleSettings } = useBasicSettingsContext()

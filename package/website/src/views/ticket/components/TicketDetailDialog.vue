@@ -160,7 +160,7 @@
           </div>
         </div>
       </section>
-      <details class="group mt-7 border-t border-gray-100 dark:border-gray-800">
+      <details open class="group mt-7 border-t border-gray-100 dark:border-gray-800">
         <summary
           class="flex min-h-14 cursor-pointer list-none items-center justify-between text-sm font-medium text-gray-900 dark:text-white"
         >

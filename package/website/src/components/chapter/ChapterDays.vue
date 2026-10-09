@@ -2,7 +2,7 @@
   <section class="mt-6 outline-none" tabindex="0" aria-label="每日日记本，支持左右方向键翻页" @keydown="onKeydown">
     <template v-if="!isMobile">
     <header class="mb-4 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-      <div><h1 class="flex items-center gap-2 font-serif text-xl text-gray-900 dark:text-gray-100"><BookOpen :size="20" />{{ chapter.title }} · 每日日记</h1><p class="mt-2 text-xs text-gray-500 dark:text-gray-400">一天一页，照片与文字留在一起。AI 文案由你点击后生成。</p></div>
+      <div><h1 class="flex items-center gap-2 font-serif text-xl text-gray-900 dark:text-gray-100"><BookOpen :size="20" />{{ chapter.title }} · 每日日记</h1><p class="mt-2 text-xs text-gray-500 dark:text-gray-400">一天一页，照片与文字留在一起。</p></div>
     <nav class="ml-auto flex flex-wrap items-center justify-end gap-2" aria-label="日记日期筛选">
       <label class="text-xs text-gray-600 dark:text-gray-300">年份<select :disabled="!!editing || turning" v-model="year" class="ml-2 min-h-11 rounded-lg border border-gray-200 bg-white px-2 dark:border-gray-700 dark:bg-gray-800"><option value="">全部年份</option><option v-for="item in chapter.years" :key="item" :value="String(item)">{{ item }} 年</option></select></label>
       <label class="text-xs text-gray-600 dark:text-gray-300">月份<select :disabled="!!editing || turning" v-model="month" class="ml-2 min-h-11 rounded-lg border border-gray-200 bg-white px-2 dark:border-gray-700 dark:bg-gray-800"><option value="">全部月份</option><option v-for="item in 12" :key="item" :value="String(item)">{{ item }} 月</option></select></label>

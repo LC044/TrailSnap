@@ -47,7 +47,7 @@
         </el-form-item>
 
         <el-form-item v-if="strategy === 'time'" label="时间范围">
-          <el-date-picker
+          <UnifiedDatePicker
             v-model="timeRange"
             type="daterange"
             range-separator="至"
@@ -183,6 +183,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch } from 'vue'
 import TaskStatusCard from '@/components/TaskStatusCard.vue'

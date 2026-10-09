@@ -140,8 +140,8 @@
     </section>
 
     <section v-if="!store.hiddenSections.includes('tickets')" :style="{ order: sectionRank('tickets') }">
-      <h2 class="mb-3 flex items-center gap-2"><button class="ts-section-title min-h-11 flex-1 text-left" :aria-expanded="!collapsed.tickets" @click="collapsed.tickets = !collapsed.tickets">票夹</button><RouterLink to="/ticket" class="min-h-11 flex items-center text-xs text-primary-600 dark:text-primary-400">查看全部</RouterLink></h2>
-      <TicketWalletPreview v-if="!collapsed.tickets" />
+      <h2 class="mb-3 flex items-center gap-2"><button class="ts-section-title flex min-h-11 flex-1 items-center gap-2 text-left text-gray-900 dark:text-white" :aria-expanded="!collapsed.tickets" @click="collapsed.tickets = !collapsed.tickets"><ChevronDown class="h-4 w-4" :class="{ '-rotate-90': collapsed.tickets }" />票夹</button><RouterLink to="/ticket" class="min-h-11 flex items-center text-xs text-primary-600 dark:text-primary-400">查看全部</RouterLink></h2>
+      <div v-show="!collapsed.tickets"><TicketWalletPreview /></div>
     </section>
 
     <section v-for="group in visibleSmartAlbums" :key="group.id" :style="{ order: sectionRank(group.id) }">
@@ -274,7 +274,7 @@
             <div>
                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">时间范围</label>
                 <!-- Desktop Date Range -->
-                <el-date-picker
+                <UnifiedDatePicker
                     v-if="!isMobile"
                     v-model="form.timeRange"
                     type="daterange"
@@ -289,11 +289,11 @@
                 <div v-else class="grid min-w-0 grid-cols-1 gap-3">
                   <div class="min-w-0">
                     <label for="album-start-date" class="mb-1 block text-xs text-gray-500 dark:text-gray-400">开始日期</label>
-                    <input id="album-start-date" v-model="mobileStartDate" type="date" :max="mobileEndDate || undefined" class="album-date-input" />
+                    <UnifiedDatePicker id="album-start-date" v-model="mobileStartDate" type="date" :max="mobileEndDate || undefined" class="mt-1 w-full" value-format="YYYY-MM-DD" />
                   </div>
                   <div class="min-w-0">
                     <label for="album-end-date" class="mb-1 block text-xs text-gray-500 dark:text-gray-400">结束日期</label>
-                    <input id="album-end-date" v-model="mobileEndDate" type="date" :min="mobileStartDate || undefined" class="album-date-input" />
+                    <UnifiedDatePicker id="album-end-date" v-model="mobileEndDate" type="date" :min="mobileStartDate || undefined" class="mt-1 w-full" value-format="YYYY-MM-DD" />
                   </div>
                 </div>
             </div>
@@ -379,6 +379,7 @@
 </template>
 
 <script setup lang="ts">
+import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import TicketWalletPreview from '@/views/ticket/components/TicketWalletPreview.vue'
 import { memoryApi } from '@/api/memory'
 import type { MemoryItem } from '@/types/memory'
@@ -651,15 +652,17 @@ const albumFormDescriptions: Record<string, string> = {
 }
 const albumFormDescription = computed(() => albumFormDescriptions[form.type] || '')
 const mobileStartDate = computed({
-  get: () => (form.timeRange[0] || '').slice(0, 10),
+  get: () => (form.timeRange?.[0] || '').slice(0, 10),
   set: (value: string) => {
+    form.timeRange ||= []
     form.timeRange[0] = value ? `${value}T00:00:00` : ''
     if (!form.timeRange[0] && !form.timeRange[1]) form.timeRange = []
   }
 })
 const mobileEndDate = computed({
-  get: () => (form.timeRange[1] || '').slice(0, 10),
+  get: () => (form.timeRange?.[1] || '').slice(0, 10),
   set: (value: string) => {
+    form.timeRange ||= []
     form.timeRange[1] = value ? `${value}T23:59:59` : ''
     if (!form.timeRange[0] && !form.timeRange[1]) form.timeRange = []
   }
@@ -753,7 +756,7 @@ const closeModal = () => {
 
 const submitForm = async () => {
   if (!form.name.trim() || loading.value) return
-  if (form.type === 'conditional' && form.timeRange[0] && form.timeRange[1] && form.timeRange[0] > form.timeRange[1]) {
+  if (form.type === 'conditional' && form.timeRange?.[0] && form.timeRange[1] && form.timeRange[0] > form.timeRange[1]) {
     ElMessage.warning('结束日期不能早于开始日期')
     return
   }
@@ -885,8 +888,6 @@ const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
 </script>
 
 <style scoped>
-.album-date-input { display: block; box-sizing: border-box; width: 100%; min-width: 0; min-height: 48px; padding: 12px 16px; border: 1px solid var(--ts-color-divider); border-radius: 16px; background: var(--ts-color-surface); color: var(--ts-color-text); font-size: 16px; color-scheme: light dark; }
-.album-date-input:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .album-details-form :deep(.el-select), .album-details-form :deep(.el-tree-select) { min-width: 0; }
 
 .album-cover-strip { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
