@@ -1,5 +1,4 @@
 import os
-import sys
 
 from sqlalchemy import text, make_url, create_engine
 
@@ -15,9 +14,8 @@ def create_database():
     if not database_url:
         print("Error: RAILWAY_DB_URL environment variable is not set.")
         print("Please set RAILWAY_DB_URL (e.g., postgresql://user:password@host:5432/dbname)")
-        sys.exit(1)
+        raise RuntimeError("RAILWAY_DB_URL environment variable is not set")
 
-    is_db_exists = False
     # 2. Check connection and create DB if needed
     try:
         url = make_url(database_url)
@@ -26,14 +24,11 @@ def create_database():
         if url.get_backend_name() == 'sqlite':
             if db_name and db_name != ':memory:':
                 os.makedirs(os.path.dirname(os.path.abspath(db_name)), exist_ok=True)
-                is_db_exists = os.path.exists(db_name)
             from railway.db.dependencies import init_db
             init_db()
             print("Railway SQLite tables are ready")
-            if not is_db_exists:
-                from railway import build_database
-                with build_database.SessionLocal() as db:
-                    build_database.build_database(db)
+            from railway.initialization import ensure_seed_data
+            ensure_seed_data()
             return
 
         if url.get_backend_name() != 'postgresql':
@@ -62,12 +57,10 @@ def create_database():
                 conn.execute(text(f'CREATE DATABASE "{db_name}"'))
                 print(f"Database '{db_name}' created successfully.")
             else:
-                is_db_exists = True
                 print(f"Database '{db_name}' already exists.")
         
         engine.dispose()
         
-        # 3. Connect to the target database to enable vector extension
         print(f"Connecting to target database '{db_name}'...")
         target_engine = create_engine(database_url, isolation_level="AUTOCOMMIT")
         with target_engine.connect() as conn:
@@ -78,8 +71,9 @@ def create_database():
     except Exception as e:
         print(f"Error during database initialization: {e}")
         print("Ensure the database server is running and reachable.")
-        sys.exit(1)
+        raise
     print("数据库表已创建")
-    if not is_db_exists:
-        from railway import build_database
-        build_database.rebuild_database()
+    from railway.db.dependencies import init_db
+    from railway.initialization import ensure_seed_data
+    init_db()
+    ensure_seed_data()

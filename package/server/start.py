@@ -155,16 +155,8 @@ def main():
     # 4.1 导入景区数据
     import_scenes(database_url)
 
-    # 6. from railway import start start.create_database() railway模块的功能先不修改，保持不变
-    # Note: Placed here to ensure main DB is ready first, though railway might use its own DB.
-    # User requested this be present.
-    try:
-        from railway import start
-        start.create_database()
-    except Exception as e:
-        print(f"Warning: Railway database initialization failed: {e}")
-        # Not exiting here as user said "railway模块的功能先不修改", assuming it's secondary or independent.
-        # But if it's critical, we might want to exit. Given the prompt, I'll just log it.
+    # Railway reference data is initialized by the API lifespan in the background.
+    # Authentication must be available before the potentially lengthy CSV import.
 
     # 5. Start application (implied, though not explicitly numbered in the list as a separate step to modify, 
     # but usually part of a start script)

@@ -9,11 +9,19 @@
 @Description : 
 """
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
 from railway import api
 
 # 初始化 FastAPI 应用
-app = FastAPI(title="12306 车次信息 API", description="基于 FastAPI+PostgreSQL+SQLAlchemy 的铁路车次信息管理接口", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from railway.initialization import start_background_initialization
+    start_background_initialization()
+    yield
+
+
+app = FastAPI(title="12306 车次信息 API", description="基于 FastAPI+PostgreSQL+SQLAlchemy 的铁路车次信息管理接口", version="1.0.0", lifespan=lifespan)
 
 # 示例接口
 @app.get("/")

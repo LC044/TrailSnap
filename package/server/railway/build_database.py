@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from railway.db.models.models import (
     Base, Station, Train, TrainOperationPlan, TrainSchedule
 )
-from railway.db.dependencies import get_db, init_db
+from railway.db.dependencies import init_db
 from railway.db.session import SessionLocal, engine
 
 # 配置：表名到模型类的映射（关键映射，确保字段匹配）
@@ -34,7 +34,7 @@ TABLE_MODEL_MAPPING: Dict[str, Type[Base]] = {
 
 # CSV文件路径配置
 tables = ['station', 'train_operation_plan', 'train', 'train_schedule']
-source_dir = 'railway/source'
+source_dir = os.path.join(os.path.dirname(__file__), 'source')
 
 def convert_value(value: str, field_type: Optional[type] = None) -> Optional[any]:
     """
@@ -120,8 +120,7 @@ def read_csv_to_db(db: Session, table_name: str, model_class: Type[Base]):
 
     # 检查文件是否存在
     if not os.path.exists(csv_file):
-        print(f"错误：找不到文件 {csv_file}")
-        return
+        raise FileNotFoundError(csv_file)
 
     try:
         # 读取CSV文件（使用DictReader按列名读取）
@@ -139,8 +138,7 @@ def read_csv_to_db(db: Session, table_name: str, model_class: Type[Base]):
             common_fields = [col for col in csv_columns if col in model_fields]
 
             if not common_fields:
-                print(f"警告：CSV文件与模型 {model_class.__name__} 没有匹配的字段，跳过")
-                return
+                raise ValueError(f"CSV has no matching fields: {csv_file}")
 
             # 读取并转换数据
             model_instances: List[Base] = []
@@ -180,6 +178,11 @@ def read_csv_to_db(db: Session, table_name: str, model_class: Type[Base]):
 
             for i in range(0, total, batch_size):
                 batch = model_instances[i:i + batch_size]
+                primary_key = list(model_class.__table__.primary_key.columns)[0]
+                existing = {row[0] for row in db.query(primary_key).filter(
+                    primary_key.in_([getattr(item, primary_key.key) for item in batch])
+                ).all()}
+                batch = [item for item in batch if getattr(item, primary_key.key) not in existing]
                 db.add_all(batch)
                 db.flush()  # 刷新到数据库，但不提交事务
                 inserted += len(batch)
@@ -192,18 +195,23 @@ def read_csv_to_db(db: Session, table_name: str, model_class: Type[Base]):
     except UnicodeDecodeError:
         print(f"错误：文件 {csv_file} 编码错误，请检查编码格式（当前使用utf-8-sig）")
         db.rollback()
+        raise
     except SQLAlchemyError as e:
         print(f"❌ 数据库错误：插入表 {table_name} 失败 - {str(e)}")
         db.rollback()
+        raise
     except Exception as e:
         print(f"❌ 未知错误：处理表 {table_name} 失败 - {str(e)}")
         db.rollback()
+        raise
 # ------------------------------ 核心：按表名同步序列（失败跳过） ------------------------------
 def sync_table_sequence(db: Session, table_name: str) -> None:
     """
     按单个表名同步序列（PostgreSQL默认规则）
     逻辑：表名 → 找模型主键列 → 生成序列名（表名_主键列名_seq）→ 同步序列 → 失败跳过
     """
+    if db.get_bind().dialect.name != 'postgresql':
+        return
     print(f"\n📌 开始同步表 [{table_name}] 的序列...")
 
     try:
@@ -240,12 +248,15 @@ def sync_table_sequence(db: Session, table_name: str) -> None:
         except SQLAlchemyError as e:
             db.rollback()
             print(f"❌ 表 [{table_name}] 同步失败（数据库错误）：{str(e)} → 跳过")
+            raise
         except Exception as e:
             db.rollback()
             print(f"❌ 表 [{table_name}] 同步失败（未知错误）：{str(e)} → 跳过")
+            raise
 
     except Exception as e:
         print(f"❌ 表 [{table_name}] 处理异常：{str(e)} → 跳过")
+        raise
 def build_database(db:Session):
     """主函数：批量处理所有CSV文件"""
     try:
@@ -302,7 +313,7 @@ def drop_tables_by_order():
         print(f"❌ 删除失败：{str(e)}")
 
 def rebuild_database():
-    db = next(get_db())
+    db = SessionLocal()
     drop_tables_by_order()
     init_db()
     build_database(db)
