@@ -24,6 +24,7 @@ import numpy as np
 from PIL import Image
 
 from app.service import storage
+from app.core.config_manager import ImageSettings
 from app.service.storage import (
     _ensure_unique_path,
     _score_video_thumbnail_frame,
@@ -109,6 +110,62 @@ def test_get_image_dimensions_uses_provided_image_obj(tmp_path):
 def test_get_image_dimensions_returns_none_tuple_for_missing_file(tmp_path):
     width, height, meta = get_image_dimensions(str(tmp_path / "absent.png"))
     assert width is None and height is None and meta is None
+
+
+@pytest.mark.parametrize("orientation", range(1, 9))
+@pytest.mark.parametrize("reuse_image", [False, True])
+def test_thumbnails_apply_exif_orientation(isolated_storage, orientation, reuse_image):
+    # Distinct quadrants detect mirroring and 180-degree rotation as well as
+    # portrait/landscape swaps. PNG keeps the source colors lossless.
+    source = Image.new("RGB", (120, 80))
+    for box, color in [
+        ((0, 0, 60, 40), (255, 0, 0)),
+        ((60, 0, 120, 40), (0, 255, 0)),
+        ((0, 40, 60, 80), (0, 0, 255)),
+        ((60, 40, 120, 80), (255, 255, 0)),
+    ]:
+        source.paste(color, box)
+    exif = source.getexif()
+    exif[274] = orientation
+    original = isolated_storage / "oriented.png"
+    source.save(original, exif=exif)
+    original_bytes = original.read_bytes()
+    transforms = {
+        2: Image.Transpose.FLIP_LEFT_RIGHT,
+        3: Image.Transpose.ROTATE_180,
+        4: Image.Transpose.FLIP_TOP_BOTTOM,
+        5: Image.Transpose.TRANSPOSE,
+        6: Image.Transpose.ROTATE_270,
+        7: Image.Transpose.TRANSVERSE,
+        8: Image.Transpose.ROTATE_90,
+    }
+    expected = source.transpose(transforms[orientation]) if orientation != 1 else source
+    config = ImageSettings(preview_size=96, thumbnail_size=48)
+    with Image.open(original) as shared_image:
+        result = storage.generate_thumbnail(
+            uuid.uuid4(), str(original), uuid.uuid4(),
+            image_obj=shared_image if reuse_image else None, config=config,
+        )
+        assert result is not None
+        for path, limit in [(Path(result), 96), (Path(result).with_stem(Path(result).stem + "-thumb"), 48)]:
+            reference = expected.copy()
+            reference.thumbnail((limit, limit))
+            with Image.open(path) as thumbnail:
+                assert thumbnail.size == reference.size
+                assert thumbnail.getexif().get(274, 1) == 1
+                for x, y in [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)]:
+                    point = (int(x * thumbnail.width), int(y * thumbnail.height))
+                    assert np.max(np.abs(np.array(thumbnail.getpixel(point), dtype=int) - reference.getpixel(point))) < 25
+        # Thumbnailing must not mutate the image reused for metadata extraction.
+        assert shared_image.size == (120, 80)
+        assert shared_image.getexif()[274] == orientation
+        assert storage.get_image_dimensions(str(original), shared_image)[:2] == expected.size
+        from app.utils.exif import extract_metadata
+        metadata = extract_metadata(str(original), original.name, image_obj=shared_image, extract_location_details=False)
+        assert (metadata["width"], metadata["height"]) == expected.size
+        assert metadata["exif_info"]["Orientation"] == orientation
+    assert storage.get_image_dimensions(str(original))[:2] == expected.size
+    assert original.read_bytes() == original_bytes
 
 
 # ----------------------- get_preview_path -----------------------

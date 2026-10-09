@@ -25,6 +25,7 @@ import json
 import reverse_geocoder as rg
 
 from app.utils.filename import extract_datetime_from_filename
+from app.utils.image_orientation import display_image_size
 from app.utils import video_meta
 from app.core.paths import RG_DATA_DIR as RG_DIR
 
@@ -240,8 +241,7 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
                 should_close = True
             
             try:
-                metadata["width"] = img.width
-                metadata["height"] = img.height
+                metadata["width"], metadata["height"] = display_image_size(img)
                 exif_dict = get_exif_data(img)
             finally:
                 if should_close:

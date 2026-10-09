@@ -4,7 +4,7 @@ import shutil
 from uuid import UUID
 from typing import Optional
 from fastapi import UploadFile
-from PIL import Image
+from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
 register_heif_opener()
@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.config_manager import config_manager, ImageSettings
 from app.service import user_storage
 from app.utils.path_validation import validate_target_path
+from app.utils.image_orientation import display_image_size
 from app.utils.video_tools import probe_video, extract_video_frame
 import numpy as np
 try:
@@ -225,6 +226,9 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
     return None
 
 def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None) -> str:
+    # Bake EXIF rotation/mirroring into both variants before dropping metadata.
+    # Keep the caller's image intact: basic processing reuses it for EXIF.
+    img = ImageOps.exif_transpose(img)
     if img.mode not in ('RGB', 'L'):
         img = img.convert('RGB')
     compact = str(file_id).replace('-', '')
@@ -314,10 +318,10 @@ def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None
         ext = os.path.splitext(file_path)[1].lower()
         if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
             if image_obj:
-                return image_obj.width, image_obj.height, None
+                return (*display_image_size(image_obj), None)
             else:
                 with Image.open(file_path) as img:
-                    return img.width, img.height, None
+                    return (*display_image_size(img), None)
         elif ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm'):
             if cv2 is None:
                 return probe_video(file_path)

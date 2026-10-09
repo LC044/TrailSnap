@@ -330,8 +330,9 @@ export const photoStoreSetup = () => {
         const toAdd = newImages.filter(i => !existingIds.has(i.id));
 
         if (toAdd.length > 0) {
-            images.value.push(...toAdd);
-            images.value.sort((a, b) => b.timestamp - a.timestamp);
+            // Publish the merged, sorted list once. Watchers must not observe
+            // each intermediate array index while sorting a large photo cache.
+            images.value = [...images.value, ...toAdd].sort((a, b) => b.timestamp - a.timestamp);
         }
         // Prune cache around the loaded area
         pruneCache(offsetInfo.start + offsetInfo.count / 2);

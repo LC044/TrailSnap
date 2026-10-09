@@ -13,10 +13,10 @@ Targets the EXIF/GPS/filename metadata helpers (app/utils/exif.py
 from __future__ import annotations
 
 from datetime import datetime
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
@@ -57,7 +57,7 @@ def test_get_gps_info_returns_none_when_keys_missing():
 
 def test_extract_metadata_falls_back_to_filename_when_exif_invalid():
     from app.utils.exif import extract_metadata
-    fake_image = SimpleNamespace(width=100, height=80, close=lambda: None)
+    fake_image = Image.new("RGB", (100, 80))
     fake_exif = {"DateTimeOriginal": "not-a-valid-date"}
     with patch("app.utils.exif.get_exif_data", return_value=fake_exif), patch("app.utils.exif.get_gps_info", return_value=None), patch("app.utils.exif.extract_datetime_from_filename", return_value=datetime(2024, 6, 1, 12, 0, 0)):
         result = extract_metadata(
@@ -75,7 +75,7 @@ def test_extract_metadata_falls_back_to_filename_when_exif_invalid():
 
 def test_extract_metadata_swallows_reverse_geocode_failure():
     from app.utils.exif import extract_metadata
-    fake_image = SimpleNamespace(width=10, height=10, close=lambda: None)
+    fake_image = Image.new("RGB", (10, 10))
     exif_with_gps = {
         "DateTimeOriginal": "2025:01:02 03:04:05",
         "GPSInfo": {"GPSLatitude": (1.0, 0.0, 0.0), "GPSLatitudeRef": "N",
@@ -95,7 +95,7 @@ def test_extract_metadata_swallows_reverse_geocode_failure():
 
 def test_extract_metadata_returns_now_when_all_sources_fail():
     from app.utils.exif import extract_metadata
-    fake_image = SimpleNamespace(width=1, height=1, close=lambda: None)
+    fake_image = Image.new("RGB", (1, 1))
     with patch("app.utils.exif.get_exif_data", return_value={}), patch("app.utils.exif.get_gps_info", return_value=None), patch("app.utils.exif.extract_datetime_from_filename", return_value=None), patch("app.utils.exif.get_file_time_form_system", side_effect=OSError("missing")):
         before = datetime.now()
         result = extract_metadata(
