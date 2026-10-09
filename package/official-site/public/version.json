@@ -183,5 +183,10 @@
         "version": "0.17.1",
         "update_info": "- 手机照片日记支持单页阅读、文字分页和手势翻页<br>- 统一液体玻璃工具栏与底部操作菜单，优化首页、相册和记忆布局<br>- 修复 Android 系统栏安全区与键盘布局<br>- Server 镜像压缩层本地实测减少约 59%–61%，保留常见视频与影片生成能力<br>- 改进多架构镜像构建和国内镜像同步",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.1"
+    },
+    {
+        "version": "0.17.2",
+        "update_info": "- 票据夹全新升级：车票机票统一浏览，票据可关联相册和照片<br>- 统一移动端日期时间选择器<br>- 优化移动端相册、回收站长按选择与回忆布局<br>- 修复照片时间轴卡顿与 EXIF 方向尺寸错误<br>- 修复首次安装注册被阻塞、偶发请求失败自动重试",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.2"
     }
 ]

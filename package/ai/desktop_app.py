@@ -43,7 +43,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="TrailSnap Desktop AI Extension",
-    version="0.17.1",
+    version="0.17.2",
     description="Optional CPU extension providing the complete TrailSnap AI service.",
     lifespan=lifespan,
 )

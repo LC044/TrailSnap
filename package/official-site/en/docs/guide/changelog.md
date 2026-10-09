@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-10-09 (0.17.2)
+
+### New
+
+- Ticket wallet redesign: train and flight tickets in one place, link tickets to albums and photos, and open a ticket to see its related memories
+
+### Improvements
+
+- Unified mobile date and time pickers covering date, time, month, and range modes
+- Smoother mobile albums and recycle bin with long-press multi-select; overlays now close automatically when navigating
+- Refined moments-style layout heights for highlighted photos
+- On This Day now supports swipe navigation on mobile with accidental taps suppressed
+- Unified dialog layering so new dialogs always stay above open panels
+
+### Bug Fixes
+
+- Fixed timeline sorting lag and incorrect photo dimensions caused by EXIF orientation
+- Fixed first-install registration being blocked by railway data initialization
+- Transient read requests now retry automatically, and duplicate connection errors are no longer shown repeatedly
+
 ## 2026-10-04 (0.17.1)
 
 ### New
