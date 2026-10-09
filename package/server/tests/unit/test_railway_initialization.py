@@ -13,6 +13,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 @pytest.fixture
 def seed_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("RAILWAY_DB_URL", "sqlite:///:memory:")
     from app.core import paths
     from railway import build_database
     from railway.db import session
@@ -25,7 +26,6 @@ def seed_environment(tmp_path, monkeypatch):
     monkeypatch.setattr(paths, "DATA_DIR", str(tmp_path))
     monkeypatch.setattr(build_database, "source_dir", str(tmp_path))
     monkeypatch.setattr(build_database, "TABLE_MODEL_MAPPING", {"station": Station})
-    monkeypatch.setenv("RAILWAY_DB_URL", "sqlite:///:memory:")
     csv = tmp_path / "station.csv"
     csv.write_text(
         "station_id,telecode,station_name,station_pinyin,station_py,city\n"
@@ -109,6 +109,7 @@ def test_failed_background_import_explains_retry(tmp_path, monkeypatch):
 
 
 def test_railway_api_waits_without_opening_database(monkeypatch):
+    monkeypatch.setenv("RAILWAY_DB_URL", "sqlite:///:memory:")
     from railway.db import dependencies
     monkeypatch.setattr(initialization, "_state", "pending")
     monkeypatch.setattr(dependencies, "SessionLocal", lambda: pytest.fail("database opened before readiness"))
