@@ -124,7 +124,10 @@ impl AIGateway {
         };
         fs::create_dir_all(&log_dir).map_err(|error| error.to_string())?;
         fs::create_dir_all(&model_dir).map_err(|error| error.to_string())?;
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .map_err(|error| error.to_string())?;
         let mut last_exit = None;
         for attempt in 1..=2 {
             let port = reserve_port()?;
@@ -257,14 +260,17 @@ async fn proxy_inner(
     let bytes = to_bytes(body, 128 * 1024 * 1024)
         .await
         .map_err(|error| format!("读取 AI 请求失败：{error}"))?;
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .map_err(|error| error.to_string())?;
     let mut request = client.request(
         reqwest::Method::from_bytes(method.as_str().as_bytes())
             .map_err(|error| error.to_string())?,
         url,
     );
     for (name, value) in headers.iter() {
-        if !matches!(name.as_str(), "host" | "content-length" | "connection") {
+        if name != "host" && !is_hop_by_hop(name.as_str(), &headers) {
             request = request.header(name, value);
         }
     }
@@ -273,20 +279,46 @@ async fn proxy_inner(
         .send()
         .await
         .map_err(|error| format!("AI Sidecar 请求失败：{error}"))?;
+    forward_response(upstream)
+}
+
+fn is_hop_by_hop(name: &str, headers: &HeaderMap) -> bool {
+    matches!(
+        name,
+        "connection"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+            | "content-length"
+    ) || headers.get_all("connection").iter().any(|value| {
+        value
+            .to_str()
+            .map(|value| {
+                value
+                    .split(',')
+                    .any(|token| token.trim().eq_ignore_ascii_case(name))
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn forward_response(upstream: reqwest::Response) -> Result<Response, String> {
     let status = upstream.status();
     let upstream_headers = upstream.headers().clone();
-    let payload = upstream
-        .bytes()
-        .await
-        .map_err(|error| format!("读取 AI Sidecar 响应失败：{error}"))?;
     let mut response = Response::builder().status(status.as_u16());
     for (name, value) in upstream_headers.iter() {
-        if !matches!(name.as_str(), "content-length" | "connection") {
+        if !is_hop_by_hop(name.as_str(), &upstream_headers) {
             response = response.header(name, value);
         }
     }
     response
-        .body(Body::from(payload))
+        // SSE must reach the caller as it arrives. Hyper generates framing for
+        // this connection; forwarding upstream Transfer-Encoding breaks it.
+        .body(Body::from_stream(upstream.bytes_stream()))
         .map_err(|error| error.to_string())
 }
 
@@ -356,6 +388,89 @@ use std::os::windows::process::CommandExt;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::StreamExt;
+
+    #[tokio::test]
+    async fn forwards_sse_before_upstream_finishes_without_hop_headers() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new().fallback(any(|| async {
+            let stream =
+                futures_util::stream::once(async { Ok::<_, std::io::Error>("data: first\n\n") })
+                    .chain(futures_util::stream::pending());
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .header("connection", "keep-alive, x-private")
+                .header("x-private", "internal")
+                .body(Body::from_stream(stream))
+                .unwrap()
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let upstream = client
+            .get(format!("http://{address}/v1/chat/completions"))
+            .send()
+            .await
+            .unwrap();
+        assert!(upstream.headers().contains_key("transfer-encoding"));
+        let response = forward_response(upstream).unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["content-type"], "text/event-stream");
+        for name in [
+            "transfer-encoding",
+            "connection",
+            "x-private",
+            "content-length",
+        ] {
+            assert!(!response.headers().contains_key(name));
+        }
+        let mut body = response.into_body().into_data_stream();
+        let first = tokio::time::timeout(Duration::from_secs(2), body.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(&first[..], b"data: first\n\n");
+
+        // Also serialize through Hyper: stale upstream framing used to close
+        // this connection without any HTTP response, reported as 502 by callers.
+        let proxy_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let proxy_address = proxy_listener.local_addr().unwrap();
+        let proxy = Router::new().fallback(any(move || async move {
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
+            let upstream = client
+                .get(format!("http://{address}/v1/chat/completions"))
+                .send()
+                .await
+                .unwrap();
+            forward_response(upstream).unwrap()
+        }));
+        let proxy_server =
+            tokio::spawn(async move { axum::serve(proxy_listener, proxy).await.unwrap() });
+        let reply = tokio::time::timeout(
+            Duration::from_secs(2),
+            client
+                .get(format!("http://{proxy_address}/v1/chat/completions"))
+                .send(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(reply.status(), StatusCode::OK);
+        let mut stream = reply.bytes_stream();
+        let first = tokio::time::timeout(Duration::from_secs(2), stream.next())
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(&first[..], b"data: first\n\n");
+        proxy_server.abort();
+        server.abort();
+    }
 
     #[tokio::test]
     #[ignore = "requires TS_TEST_AI_EXTENSION_ARCHIVE"]
