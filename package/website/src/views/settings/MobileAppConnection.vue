@@ -97,7 +97,7 @@
 
         <div class="rounded-xl bg-gray-50 p-4 text-xs leading-5 text-gray-500 dark:bg-gray-900 dark:text-gray-400">
           手机热点、访客 Wi-Fi、AP 隔离或服务器防火墙可能阻止手机访问电脑。
-          <template v-if="isTauriApp() && normalizedAddress">可先在手机浏览器中打开 {{ normalizedAddress }}/api/health-check，确认显示服务状态。</template>
+          <template v-if="isTauriApp() && normalizedAddress">可先在手机浏览器中打开 {{ normalizedAddress }}/health-check，确认显示服务状态。</template>
           <template v-else>连接前可先在手机浏览器中打开上面的地址进行确认。</template>
         </div>
       </div>

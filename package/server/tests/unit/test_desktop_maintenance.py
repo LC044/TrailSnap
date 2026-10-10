@@ -73,3 +73,42 @@ def test_lan_urls_exclude_loopback_link_local_and_down_interfaces(monkeypatch):
         "offline": addresses("10.0.0.2"),
     })
     assert lan_urls(54321) == ["http://192.168.1.20:54321"]
+
+
+def test_lan_urls_prefer_wifi_when_proxy_owns_default_route(monkeypatch):
+    import socket
+    import psutil
+
+    interfaces = {
+        "Wi-Fi": "192.168.1.20",
+        "vEthernet (Default Switch)": "172.30.96.1",
+        "VMware Network Adapter VMnet8": "192.168.142.1",
+        "Proxy": "198.18.0.1",
+    }
+    monkeypatch.setattr(psutil, "net_if_stats", lambda: {
+        name: SimpleNamespace(isup=True) for name in interfaces
+    })
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: {
+        name: [SimpleNamespace(family=socket.AF_INET, address=address)]
+        for name, address in interfaces.items()
+    })
+
+    class ProxyRoute:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def connect(self, *args):
+            pass
+
+        def getsockname(self):
+            return ("198.18.0.1", 12345)
+
+    monkeypatch.setattr(socket, "socket", lambda *args: ProxyRoute())
+    assert lan_urls(54321) == [
+        "http://192.168.1.20:54321",
+        "http://172.30.96.1:54321",
+        "http://192.168.142.1:54321",
+    ]

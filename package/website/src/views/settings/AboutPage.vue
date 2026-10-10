@@ -63,10 +63,10 @@
       <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">服务器</h2>
       <p class="break-all text-slate-600 dark:text-slate-300">{{ serverUrl || '浏览器同源模式' }}</p>
       <router-link
-        :to="nativeApp ? '/server-settings' : '/settings#mobile-app'"
+        :to="mobileApp ? '/server-settings' : '/settings#mobile-app'"
         class="inline-flex rounded-lg bg-primary-600 hover:bg-primary-700 px-4 py-2 text-white focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
       >
-        {{ nativeApp ? '更改服务器' : '连接手机 App' }}
+        {{ mobileApp ? '更改服务器' : '连接手机 App' }}
       </router-link>
     </section>
 
@@ -116,13 +116,13 @@
 import { ref, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { systemApi } from '@/api/system'
-import { getServerUrl, isNativeApp } from '@/config/server'
+import { getServerUrl, isMobileApp } from '@/config/server'
 import { useAppUpdate } from '@/composables/useAppUpdate'
 
 const currentVersion = ref('0.0.0') // Default placeholder
 const checking = ref(false)
 const serverUrl = getServerUrl()
-const nativeApp = isNativeApp()
+const mobileApp = isMobileApp()
 // Android 壳走 App 自更新（自己下载 APK 并唤起安装），Web / 桌面保持原有跳转逻辑。
 const appUpdate = useAppUpdate()
 const appVersion = appUpdate.currentVersion

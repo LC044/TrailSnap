@@ -108,10 +108,10 @@ import DesktopDataDirectory from './settings/DesktopDataDirectory.vue'
 import AIModelManagement from './settings/AIModelManagement.vue'
 import MobileBackup from './settings/MobileBackup.vue'
 import MobileAppConnection from './settings/MobileAppConnection.vue'
-import { isMobileApp, isNativeApp, isTauriApp, toServerUrl } from '@/config/server'
+import { isMobileApp, isTauriApp, toServerUrl } from '@/config/server'
 import { useUserStore } from '@/stores/user'
 
-type MenuItem = { key: string; label: string; description: string; icon: typeof UserCircle; superuserOnly?: boolean; desktopOnly?: boolean; mobileOnly?: boolean; webOnly?: boolean }
+type MenuItem = { key: string; label: string; description: string; icon: typeof UserCircle; superuserOnly?: boolean; desktopOnly?: boolean; mobileOnly?: boolean; hideInMobileApp?: boolean }
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
@@ -127,7 +127,7 @@ const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
     { key: 'tokens', label: '令牌管理', description: '管理 Agent 访问令牌', icon: Key },
   ] },
   { label: '设备与图库', items: [
-    { key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接此服务器', icon: Smartphone, webOnly: true },
+    { key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接此服务器', icon: Smartphone, hideInMobileApp: true },
     { key: 'mobile-backup', label: '手机备份', description: '查看进度并设置自动备份', icon: CloudUpload, mobileOnly: true },
     { key: 'external', label: '外部图库', description: '管理服务器照片目录', icon: FolderOpen },
     { key: 'data-directory', label: '数据目录', description: '迁移桌面数据、缩略图与模型', icon: Database, desktopOnly: true },
@@ -151,7 +151,7 @@ const requestedKey = computed(() => {
 const isAvailable = (item: MenuItem) => (!item.superuserOnly || userStore.userInfo?.is_superuser)
   && (!item.desktopOnly || isTauriApp() || requestedKey.value === item.key)
   && (!item.mobileOnly || isMobileApp() || requestedKey.value === item.key)
-  && (!item.webOnly || !isNativeApp())
+  && (!item.hideInMobileApp || !isMobileApp())
 const menuGroups = computed(() => baseGroups.map(group => ({ ...group, items: group.items.filter(isAvailable) })).filter(group => group.items.length))
 const mobileMenuGroups = computed(() => menuGroups.value.map(group => ({ ...group, items: group.items.filter(item => item.key !== 'profile') })).filter(group => group.items.length))
 const allItems = computed(() => menuGroups.value.flatMap(group => group.items))
