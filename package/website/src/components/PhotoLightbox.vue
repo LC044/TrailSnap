@@ -2157,7 +2157,7 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .sheet-panel { inset-inline: 12px; bottom: calc(12px + var(--ts-safe-area-bottom)); border: 1px solid var(--ts-glass-border); border-radius: 32px; padding: 8px 16px 16px; max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); }
 
 @media (max-width: 767px) {
-  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(64px + var(--ts-safe-area-bottom)); }
+  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(98px + var(--ts-safe-area-bottom)); }
   /* Keep the photo fitted to the full viewport; fixed controls overlay it. */
   .viewer-stage { padding: 0; }
 }
