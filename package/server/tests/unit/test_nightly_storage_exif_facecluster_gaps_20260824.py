@@ -23,6 +23,8 @@ Pattern: MagicMock + tmp_path, no DB / no HTTP. Mirrors the
 2026-08-21 / 2026-08-24 nightly rounds.
 """
 from datetime import datetime
+from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
@@ -43,41 +45,16 @@ def test_save_upload_file_writes_into_year_month_subdir(tmp_path, monkeypatch):
     from app.service import storage
 
     user_id = uuid4()
-    upload = MagicMock()
-    upload.filename = "trip.jpg"
-    upload.file = MagicMock()
-    upload.file.read.side_effect = lambda n=1024: b"binary-content"
-
-    captured = {}
-
-    def _fake_open(target_path, mode):
-        captured["path"] = target_path
-        captured["mode"] = mode
-
-        class _Buf:
-            def __enter__(self_inner):
-                return self_inner
-
-            def __exit__(self_inner, *exc):
-                return False
-
-            def write(self_inner, data):
-                captured.setdefault("bytes", b"")
-                captured["bytes"] += data
-
-        return _Buf()
+    upload = SimpleNamespace(filename="trip.jpg", file=BytesIO(b"binary-content"), size=14)
 
     monkeypatch.setattr(storage, "_get_storage_root", lambda u: str(tmp_path))
-    monkeypatch.setattr(storage.os.path, "exists", lambda p: False)
-    monkeypatch.setattr(storage.os, "makedirs", lambda *a, **k: None)
-    monkeypatch.setattr("builtins.open", _fake_open)
-    monkeypatch.setattr(storage.shutil, "copyfileobj", lambda src, dst: None)
 
     out = storage.save_upload_file(upload, uuid4(), user_id)
 
     assert out.endswith("trip.jpg")
     assert "uploads" in out
-    assert captured["path"].endswith("trip.jpg")
+    assert Path(out).read_bytes() == b"binary-content"
+    assert not list(tmp_path.rglob("*.uploading"))
 
 
 def test_save_upload_file_handles_collision_with_paren_suffix(tmp_path, monkeypatch):
@@ -85,23 +62,21 @@ def test_save_upload_file_handles_collision_with_paren_suffix(tmp_path, monkeypa
     from app.service import storage
 
     user_id = uuid4()
-    upload = MagicMock()
-    upload.filename = "trip.jpg"
-    upload.file = MagicMock()
-
-    # First check sees the collision, second (with the (1) suffix) sees no collision.
-    def _exists(p):
-        return p.endswith("trip.jpg")
+    upload = SimpleNamespace(filename="trip.jpg", file=BytesIO(b"new-content"), size=11)
+    now = datetime.now()
+    directory = tmp_path / 'uploads' / f'{now.year:04d}' / f'{now.month:02d}'
+    directory.mkdir(parents=True)
+    original = directory / 'trip.jpg'
+    original.write_bytes(b"existing-content")
 
     monkeypatch.setattr(storage, "_get_storage_root", lambda u: str(tmp_path))
-    monkeypatch.setattr(storage.os.path, "exists", _exists)
-    monkeypatch.setattr(storage.os, "makedirs", lambda *a, **k: None)
-    monkeypatch.setattr("builtins.open", MagicMock())
-    monkeypatch.setattr(storage.shutil, "copyfileobj", lambda src, dst: None)
 
     out = storage.save_upload_file(upload, uuid4(), user_id)
 
     assert out.endswith("trip(1).jpg")
+    assert Path(out).read_bytes() == b"new-content"
+    assert original.read_bytes() == b"existing-content"
+    assert not list(tmp_path.rglob("*.uploading"))
 
 
 # ---------------------------------------------------------------------------

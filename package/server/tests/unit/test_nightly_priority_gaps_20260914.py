@@ -345,7 +345,7 @@ def _save_photo_with_metadata(db):
     return result, photo_id
 
 
-def test_save_photo_precreates_metadata_and_serializes_bytes():
+def test_save_photo_precreates_empty_metadata_for_background_extraction():
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = None
 
@@ -353,7 +353,7 @@ def test_save_photo_precreates_metadata_and_serializes_bytes():
 
     metadata = db.add.call_args.args[0]
     assert metadata.photo_id == photo_id
-    assert "Nikon" in metadata.exif_info
+    assert metadata.exif_info is None
     db.commit.assert_called_once()
     assert result.file_type == FileType.image
 
