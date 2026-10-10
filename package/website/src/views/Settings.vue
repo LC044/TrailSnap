@@ -104,6 +104,7 @@ import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
 import DesktopAIExtensions from './settings/DesktopAIExtensions.vue'
+import DesktopDataDirectory from './settings/DesktopDataDirectory.vue'
 import AIModelManagement from './settings/AIModelManagement.vue'
 import MobileBackup from './settings/MobileBackup.vue'
 import MobileAppConnection from './settings/MobileAppConnection.vue'
@@ -129,6 +130,7 @@ const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
     { key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接此服务器', icon: Smartphone, webOnly: true },
     { key: 'mobile-backup', label: '手机备份', description: '查看进度并设置自动备份', icon: CloudUpload, mobileOnly: true },
     { key: 'external', label: '外部图库', description: '管理服务器照片目录', icon: FolderOpen },
+    { key: 'data-directory', label: '数据目录', description: '迁移桌面数据、缩略图与模型', icon: Database, desktopOnly: true },
   ] },
   { label: '系统与 AI', items: [
     { key: 'basic', label: '系统设置', description: '安全、地图、扫描与任务选项', icon: SettingsIcon },
@@ -156,7 +158,7 @@ const allItems = computed(() => menuGroups.value.flatMap(group => group.items))
 const activeItem = computed(() => allItems.value.find(item => item.key === activeTab.value))
 const tabComponents: Record<string, typeof ProfileSettings> = {
   profile: ProfileSettings, 'mobile-app': MobileAppConnection, user: UserManagement, tasks: TaskManagement,
-  basic: BasicSettings, 'ai-extensions': DesktopAIExtensions, 'ai-models': AIModelManagement, external: ExternalGallery,
+  basic: BasicSettings, 'data-directory': DesktopDataDirectory, 'ai-extensions': DesktopAIExtensions, 'ai-models': AIModelManagement, external: ExternalGallery,
   'mobile-backup': MobileBackup, performance: PerformanceTest, tokens: Tokens, about: AboutPage, feedback: FeedbackPage,
 }
 const currentComponent = computed(() => tabComponents[activeTab.value || 'profile'] ?? ProfileSettings)

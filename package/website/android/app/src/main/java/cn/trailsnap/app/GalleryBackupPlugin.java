@@ -13,8 +13,8 @@ import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Environment;
 import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
@@ -168,11 +168,11 @@ public class GalleryBackupPlugin extends Plugin {
         }
         int limit = Math.min(Math.max(call.getInt("limit", 40), 1), MAX_PAGE_SIZE);
         boolean includeVideos = call.getBoolean("includeVideos", true);
-        long imageModified = call.getLong("imageModified", 0L);
-        long imageId = call.getLong("imageId", 0L);
-        long videoModified = call.getLong("videoModified", 0L);
-        long videoId = call.getLong("videoId", 0L);
-        long companionVideoId = call.getLong("companionVideoId", 0L);
+        long imageModified = numericCursor(call.getData().opt("imageModified"));
+        long imageId = numericCursor(call.getData().opt("imageId"));
+        long videoModified = numericCursor(call.getData().opt("videoModified"));
+        long videoId = numericCursor(call.getData().opt("videoId"));
+        long companionVideoId = numericCursor(call.getData().opt("companionVideoId"));
         List<String> sourcePaths = readSourcePaths(call);
 
         try {
@@ -249,10 +249,10 @@ public class GalleryBackupPlugin extends Plugin {
             return;
         }
         boolean includeVideos = call.getBoolean("includeVideos", true);
-        long imageModified = call.getLong("imageModified", 0L);
-        long imageId = call.getLong("imageId", 0L);
-        long videoModified = call.getLong("videoModified", 0L);
-        long videoId = call.getLong("videoId", 0L);
+        long imageModified = numericCursor(call.getData().opt("imageModified"));
+        long imageId = numericCursor(call.getData().opt("imageId"));
+        long videoModified = numericCursor(call.getData().opt("videoModified"));
+        long videoId = numericCursor(call.getData().opt("videoId"));
         List<String> sourcePaths = readSourcePaths(call);
         try {
             long[] imageStats = count(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageModified, imageId, sourcePaths);
@@ -313,6 +313,12 @@ public class GalleryBackupPlugin extends Plugin {
 
     static boolean shouldInitializeCompanionCursor(long companionVideoId, long imageModified, long imageId) {
         return companionVideoId == 0L && imageModified == 0L && imageId == 0L;
+    }
+
+    static long numericCursor(Object value) {
+        // JSON represents small MediaStore IDs as Integer and timestamps as
+        // Long. PluginCall.getLong only accepts Long, silently discarding IDs.
+        return value instanceof Number ? Math.max(0L, ((Number) value).longValue()) : 0L;
     }
 
     static long chooseTakenMs(long dateTakenMs, long dateAddedSeconds) {
@@ -507,8 +513,10 @@ public class GalleryBackupPlugin extends Plugin {
             int takenColumn = cursor.getColumnIndex(takenColumnName);
             int addedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED);
             int pathIndex = cursor.getColumnIndexOrThrow(pathColumn);
-            while (cursor.moveToNext()) {
+            while (result.size() < limit && cursor.moveToNext()) {
                 long id = cursor.getLong(idColumn);
+                long modifiedMs = cursor.getLong(modifiedColumn) * 1000L;
+                if (!isAfterCursor(id, modifiedMs, afterId, afterModifiedMs, idOnly)) continue;
                 String rawPath = cursor.getString(pathIndex);
                 String relativePath = modern
                     ? normalizeRelativePath(rawPath)
@@ -520,7 +528,7 @@ public class GalleryBackupPlugin extends Plugin {
                     cursor.getString(nameColumn),
                     cursor.getString(mimeColumn),
                     cursor.getLong(sizeColumn),
-                    cursor.getLong(modifiedColumn) * 1000L,
+                    modifiedMs,
                     chooseTakenMs(takenColumn >= 0 ? cursor.getLong(takenColumn) : 0L, cursor.getLong(addedColumn)),
                     relativePath,
                     mediaDirectory,
@@ -529,6 +537,11 @@ public class GalleryBackupPlugin extends Plugin {
             }
         }
         return result;
+    }
+
+    static boolean isAfterCursor(long id, long modifiedMs, long afterId, long afterModifiedMs, boolean idOnly) {
+        return idOnly ? id > afterId
+            : modifiedMs > afterModifiedMs || (modifiedMs == afterModifiedMs && id > afterId);
     }
 
     private List<String> readSourcePaths(PluginCall call) {

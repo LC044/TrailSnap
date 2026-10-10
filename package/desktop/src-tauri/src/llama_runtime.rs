@@ -18,9 +18,9 @@ const LLAMA_BUILD: &str = "b9354";
 
 #[cfg(windows)]
 fn managed_runtime_root() -> Option<PathBuf> {
-    env::var_os("LOCALAPPDATA")
+    env::var_os("TS_DESKTOP_ROOT")
         .map(PathBuf::from)
-        .map(|path| path.join("TrailSnap").join("runtime").join("llama.cpp"))
+        .map(|path| path.join("runtime").join("llama.cpp"))
 }
 
 pub fn find_llama_server() -> Option<PathBuf> {
@@ -60,16 +60,12 @@ pub fn find_llama_server() -> Option<PathBuf> {
 fn known_locations(executable: &str) -> Vec<PathBuf> {
     let mut locations = Vec::new();
     #[cfg(windows)]
+    if let Some(root) = managed_runtime_root() {
+        locations.push(root.join(LLAMA_BUILD).join(executable));
+    }
+    #[cfg(windows)]
     if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
         let local_app_data = PathBuf::from(local_app_data);
-        locations.push(
-            local_app_data
-                .join("TrailSnap")
-                .join("runtime")
-                .join("llama.cpp")
-                .join(LLAMA_BUILD)
-                .join(executable),
-        );
         let winget = local_app_data.join("Microsoft").join("WinGet");
         locations.push(winget.join("Links").join(executable));
         let packages = winget.join("Packages");
@@ -195,7 +191,7 @@ fn windows_asset() -> Result<(String, &'static str), String> {
 
 #[cfg(windows)]
 async fn install_windows() -> Result<(), String> {
-    let root = managed_runtime_root().ok_or_else(|| "无法读取 LOCALAPPDATA".to_string())?;
+    let root = managed_runtime_root().ok_or_else(|| "无法读取桌面数据目录".to_string())?;
     fs::create_dir_all(&root).map_err(|error| format!("无法创建 llama.cpp 运行时目录：{error}"))?;
     let (asset, expected_sha256) = windows_asset()?;
     let url =

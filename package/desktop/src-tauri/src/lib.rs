@@ -1,6 +1,9 @@
 mod ai_extension;
 mod ai_gateway;
+mod data_directory;
 mod llama_runtime;
+
+use data_directory::{desktop_data_directory, desktop_set_data_directory, DataDirectory};
 
 use ai_extension::AIExtensionManager;
 use ai_gateway::AIGateway;
@@ -155,16 +158,7 @@ fn server_executable(resource_dir: &Path) -> PathBuf {
 }
 
 fn prepare_data_dir(_app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    #[cfg(windows)]
-    let root = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .map(|path| path.join("TrailSnap"))
-        .ok_or_else(|| "无法读取 LOCALAPPDATA".to_string())?;
-    #[cfg(not(windows))]
-    let root = _app
-        .path()
-        .app_local_data_dir()
-        .map_err(|error| format!("无法确定数据目录：{error}"))?;
+    let root = _app.state::<DataDirectory>().root();
     let data_dir = root.join("data");
     fs::create_dir_all(root.join("logs"))
         .and_then(|_| fs::create_dir_all(&data_dir))
@@ -357,6 +351,8 @@ pub fn run() {
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
+            desktop_data_directory,
+            desktop_set_data_directory,
             ai_extension_list,
             ai_extension_refresh,
             ai_extension_install,
@@ -369,11 +365,8 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            let data_dir = prepare_data_dir(&handle).map_err(std::io::Error::other)?;
-            let app_root = data_dir
-                .parent()
-                .expect("desktop data directory has parent")
-                .to_path_buf();
+            let directory = DataDirectory::load(&handle).map_err(std::io::Error::other)?;
+            app.manage(directory);
             let catalog_path = app
                 .path()
                 .resource_dir()
@@ -385,13 +378,59 @@ pub fn run() {
                     env!("CARGO_PKG_VERSION")
                 )
             });
-            let manager = AIExtensionManager::initialize(&app_root, &catalog_path, catalog_url)
-                .map_err(std::io::Error::other)?;
-            let gateway = AIGateway::new(manager.clone(), app_root, std::process::id());
-            app.manage(manager.clone());
-            app.manage(gateway.clone());
             tauri::async_runtime::spawn(async move {
                 let result = async {
+                    if let Some(target) = handle.state::<DataDirectory>().pending() {
+                        update_status(
+                            &handle,
+                            RuntimeStatus {
+                                phase: "migrating".into(),
+                                message: Some("正在迁移数据目录，请勿关闭行影集".into()),
+                                ..Default::default()
+                            },
+                        );
+                        let source = handle.state::<DataDirectory>().root();
+                        let resource_dir = handle
+                            .path()
+                            .resource_dir()
+                            .map_err(|err| err.to_string())?;
+                        let executable = server_executable(&resource_dir);
+                        let migrated = tauri::async_runtime::spawn_blocking(move || {
+                            let mut command = Command::new(executable);
+                            command
+                                .arg("--migrate-data")
+                                .arg(source)
+                                .arg(target)
+                                .arg("--parent-pid")
+                                .arg(std::process::id().to_string())
+                                .env("PYTHONIOENCODING", "utf-8")
+                                .stdin(Stdio::null());
+                            #[cfg(windows)]
+                            command.creation_flags(0x08000000);
+                            let output = command
+                                .output()
+                                .map_err(|err| format!("无法启动数据迁移：{err}"))?;
+                            if output.status.success() {
+                                Ok(())
+                            } else {
+                                Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+                            }
+                        })
+                        .await
+                        .map_err(|err| err.to_string())?;
+                        handle.state::<DataDirectory>().finish_migration(migrated)?;
+                    }
+                    let data_dir = prepare_data_dir(&handle)?;
+                    let app_root = data_dir
+                        .parent()
+                        .expect("data directory has parent")
+                        .to_path_buf();
+                    std::env::set_var("TS_DESKTOP_ROOT", &app_root);
+                    let manager =
+                        AIExtensionManager::initialize(&app_root, &catalog_path, catalog_url)?;
+                    let gateway = AIGateway::new(manager.clone(), app_root, std::process::id());
+                    handle.manage(manager.clone());
+                    handle.manage(gateway.clone());
                     let gateway_port = gateway.listen().await?;
                     let refresh_manager = manager.clone();
                     tauri::async_runtime::spawn(async move {

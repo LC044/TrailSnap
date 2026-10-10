@@ -4,7 +4,8 @@ import shutil
 from uuid import UUID
 from typing import Optional
 from fastapi import UploadFile
-from PIL import Image, ImageOps
+from PIL import ImageOps
+from app.utils.image_loading import Image, LARGE_IMAGE_PIXELS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
 register_heif_opener()
@@ -242,7 +243,21 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
             cap.release()
     return None
 
-def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None) -> str:
+def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None, *, allow_draft: bool = False) -> str:
+    if not config:
+        from app.db.session import SessionLocal
+        db = SessionLocal()
+        try:
+            config = config_manager.get_user_config(user_id, db).image
+        finally:
+            db.close()
+
+    # Decode JPEG previews at reduced resolution before exif_transpose() loads
+    # and copies pixels. Only mutate an image owned by thumbnail generation.
+    if allow_draft and img.format == 'JPEG':
+        edge = max(config.preview_size, config.thumbnail_size)
+        img.draft('RGB', (edge, edge))
+
     # Bake EXIF rotation/mirroring into both variants before dropping metadata.
     # Keep the caller's image intact: basic processing reuses it for EXIF.
     img = ImageOps.exif_transpose(img)
@@ -261,16 +276,6 @@ def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: Ima
         os.remove(js)
     m_path = os.path.join(base, f"{compact}.webp")
     s_path = os.path.join(base, f"{compact}-thumb.webp")
-
-    # Use default config if not provided
-    if not config:
-        # Get settings
-        from app.db.session import SessionLocal
-        db = SessionLocal()
-        try:
-            config = config_manager.get_user_config(user_id, db).image
-        finally:
-            db.close()
 
     t_size = config.thumbnail_size
     p_size = config.preview_size
@@ -315,14 +320,17 @@ def get_available_photo_path(user_id: UUID, file_id: UUID, original_path: Option
 def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: Optional[Image.Image] = None, config: ImageSettings = None):
     try:
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm'):
+        if ext in VIDEO_EXTENSIONS:
             return generate_video_thumbnail(file_path, file_id, user_id, config=config)
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
-            if image_obj:
+        if ext in IMAGE_EXTENSIONS:
+            if image_obj and not (
+                image_obj.format == 'JPEG'
+                and image_obj.width * image_obj.height > LARGE_IMAGE_PIXELS
+            ):
                 return _save_thumbnails(image_obj, file_id, user_id, config=config)
             else:
                 with Image.open(file_path) as img:
-                    return _save_thumbnails(img, file_id, user_id, config=config)
+                    return _save_thumbnails(img, file_id, user_id, config=config, allow_draft=True)
     except Exception as e:
         logging.error(f"Error generating thumbnail for {file_path}: {e}\n{traceback.format_exc()}")
     return None
@@ -333,13 +341,13 @@ def get_file_size(file_path: str) -> int:
 def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None):
     try:
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
+        if ext in IMAGE_EXTENSIONS:
             if image_obj:
                 return (*display_image_size(image_obj), None)
             else:
                 with Image.open(file_path) as img:
                     return (*display_image_size(img), None)
-        elif ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm'):
+        elif ext in VIDEO_EXTENSIONS:
             if cv2 is None:
                 return probe_video(file_path)
             cap = cv2.VideoCapture(file_path)

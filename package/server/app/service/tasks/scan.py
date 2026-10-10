@@ -14,6 +14,7 @@ from app.db.models.index_log import IndexLog
 from app.db.models.user import User
 from app.core.config_manager import config_manager
 from app.service.live_photo import live_photo_service
+from app.utils.image_loading import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 def _compile_folder_patterns(patterns: Optional[List[str]]) -> List[re.Pattern]:
     """Compile valid folder-name exclusion patterns (regex)."""
@@ -116,7 +117,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
         return {'new_files': total_new, 'deleted_files': total_deleted}
 
     async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str]) -> Dict[str, int]:
-        EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.tiff', '.gif', '.mp4', '.mov', '.avi', '.heic'}
+        EXTS = set(IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
         loop = asyncio.get_running_loop()
         logging.info(f"Scanning roots for user {user.id}: {scan_roots}")
 
@@ -237,6 +238,8 @@ class ScanFolderStrategy(BaseTaskStrategy):
 
             if '.heic' in files:
                 image_path = files['.heic']
+            elif '.heif' in files:
+                image_path = files['.heif']
             elif '.jpg' in files:
                 image_path = files['.jpg']
             elif '.jpeg' in files:

@@ -109,10 +109,11 @@ async def test_get_media_file_404_when_file_missing(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_get_media_file_heic_resolves_via_thumbnail(tmp_path):
+@pytest.mark.parametrize('extension', ['heic', 'heif'])
+async def test_get_media_file_heic_resolves_via_thumbnail(tmp_path, extension):
     """For .heic photos, the resolver should call _get_thumbnail_path (regression for tuple bug)."""
     photo_id = uuid4()
-    heic = tmp_path / "sample.heic"
+    heic = tmp_path / f"sample.{extension}"
     heic.write_bytes(b"heic-bytes")
     photo = _photo(file_path=str(heic))
     db = MagicMock()
@@ -130,6 +131,30 @@ async def test_get_media_file_heic_resolves_via_thumbnail(tmp_path):
 
     resolver.assert_called_once_with(photo.owner_id, photo_id, db, "medium")
     file_response.assert_called_once()
+    assert response is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('extension', ['heic', 'heif'])
+async def test_get_media_file_original_flag_serves_raw_heic(tmp_path, extension):
+    """?original=1 must bypass the browser-friendly preview substitution on download."""
+    photo_id = uuid4()
+    heic = tmp_path / f"sample.{extension}"
+    heic.write_bytes(b"raw-heic-bytes")
+    photo = _photo(file_path=str(heic))
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = photo
+
+    with patch.object(media_api, "_get_storage_root", return_value=str(tmp_path)):
+        with patch.object(media_api, "_get_thumbnail_path") as resolver:
+            with patch.object(media_api, "FileResponse") as file_response:
+                response = await media_api.get_media_file(
+                    photo_id, request=MagicMock(), db=db, range=None, original=True
+                )
+
+    resolver.assert_not_called()
+    file_response.assert_called_once()
+    assert file_response.call_args.kwargs.get("media_type") == "application/octet-stream"
     assert response is not None
 
 

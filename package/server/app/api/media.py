@@ -460,21 +460,25 @@ async def get_media_file(
     photo_id: UUID,
     request: Request,
     range: str = Header(None),
+    original: bool = False,
     db: Session = Depends(get_db)
 ):
     photo = await run_in_threadpool(lambda: db.query(Photo).filter(Photo.id == photo_id).first())
     if not photo:
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     exists = await run_in_threadpool(os.path.exists, photo.file_path)
     if not exists:
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     file_path = photo.file_path
     # Determine media type
     ext = os.path.splitext(file_path)[1].lower()
-    if ext == '.heic':
+    # 浏览器普遍无法解码 HEIC/HEIF，默认改发 medium 预览图以便在线查看；
+    # 下载场景传 ?original=1 拿原始字节（内容和文件名保持一致）。
+    if ext in ('.heic', '.heif') and not original:
         file_path = _get_thumbnail_path(photo.owner_id, photo_id, db, 'medium')
+        ext = os.path.splitext(file_path)[1].lower()
     file_size = await run_in_threadpool(os.path.getsize, file_path)
 
     media_type = "application/octet-stream"

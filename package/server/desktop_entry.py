@@ -93,8 +93,9 @@ def _watch_parent(parent_pid: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="TrailSnap desktop API sidecar")
-    parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--port", type=int)
     parser.add_argument("--parent-pid", type=int)
+    parser.add_argument("--migrate-data", nargs=2, metavar=("SOURCE", "TARGET"))
     args = parser.parse_args()
 
     if args.parent_pid:
@@ -104,6 +105,19 @@ def main() -> None:
             name="DesktopParentWatch",
             daemon=True,
         ).start()
+
+    if args.migrate_data:
+        from app.utils.desktop_data_migration import migrate_data_directory
+
+        try:
+            migrate_data_directory(*(Path(path) for path in args.migrate_data))
+        except Exception as exc:
+            import sys
+            print(f"数据迁移失败：{exc}", file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
+    if args.port is None:
+        parser.error("--port is required when starting the server")
 
     _prepare_desktop_database()
 
@@ -118,6 +132,7 @@ def main() -> None:
         log_level=os.environ.get("TS_DESKTOP_LOG_LEVEL", "info"),
         access_log=False,
         timeout_keep_alive=60,
+        timeout_graceful_shutdown=15,
     )
 
 

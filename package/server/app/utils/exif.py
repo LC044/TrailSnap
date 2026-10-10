@@ -15,7 +15,7 @@ import re
 import os
 from typing import Dict, Any, Optional
 
-from PIL import Image
+from app.utils.image_loading import Image, IMAGE_EXTENSIONS
 from PIL.ExifTags import TAGS, GPSTAGS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
@@ -30,7 +30,6 @@ from app.utils import video_meta
 from app.core.paths import RG_DATA_DIR as RG_DIR
 
 # 图片扩展名白名单（Pillow + pillow-heif 可解码的范围）
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.tiff', '.webp', '.png', '.heic', '.heif')
 
 def _convert_to_degrees(value):
     """

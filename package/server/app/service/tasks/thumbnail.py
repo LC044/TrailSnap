@@ -12,6 +12,7 @@ from app.db.models.photo_color import PhotoColor
 from app.service import storage
 from app.core.config_manager import ImageSettings, config_manager
 from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
+from app.utils.image_loading import IMAGE_EXTENSIONS
 
 def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, storage_root: str, config: ImageSettings = None):
     try:
@@ -21,9 +22,9 @@ def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, stora
         # Extract color info from the original image
         color_info = None
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
+        if ext in IMAGE_EXTENSIONS:
             try:
-                from PIL import Image as PILImage
+                from app.utils.image_loading import Image as PILImage
                 with PILImage.open(file_path) as img:
                     color_info = extract_color_info(img)
             except Exception as e:

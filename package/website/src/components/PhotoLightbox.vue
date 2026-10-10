@@ -5,6 +5,7 @@
       ref="lightboxRoot"
       class="photo-lightbox-shell fixed inset-0 z-[100] flex"
       :class="{
+        'viewer-immersive': !controlsVisible && !isEditing,
         'details-active': mobileDetailsProgress > 0.01,
         'details-settling': isMobileDetailsSettling,
       }"
@@ -389,7 +390,7 @@
           class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,var(--ts-safe-area-bottom))] bg-black/85"
           @click.stop
         >
-          <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-stretch justify-around">
+          <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-center">
             <button class="ts-glass-button" aria-label="下载" @click.stop="downloadImage"><Download class="h-5 w-5" /></button>
             <button v-if="allowEdit && isStillImage" class="ts-glass-button" aria-label="编辑" @click.stop="enterEditMode"><Pencil class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="AI 分析" @click.stop="handleCommand('viewDescription')"><Sparkles class="h-5 w-5" /></button>
@@ -680,6 +681,7 @@ import ResponsiveDialog from './ui/ResponsiveDialog.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useModalScrollLock } from '@/composables/useModalScrollLock'
 import { locationService } from '@/api/location'
+import { originalFileUrl } from '@/utils/mediaUrl'
 import { useRouter } from 'vue-router'
 
 
@@ -2029,7 +2031,7 @@ const stopTouch = () => {
 const downloadImage = async () => {
     if (!props.image) return
     try {
-        const response = await fetch(props.image.url)
+        const response = await fetch(originalFileUrl(props.image))
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -2124,6 +2126,7 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
  .analysis-content { overflow-wrap: anywhere; color: var(--ts-color-text); }
 .analysis-tag { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--ts-color-surface-muted); font-size: 12px; line-height: 1.5; }
 .photo-lightbox-shell { background: var(--ts-color-page); color: var(--ts-color-text); }
+.photo-lightbox-shell.viewer-immersive { background: #000; }
 [data-testid="photo-lightbox-toolbar"] { background: none; padding: 12px 16px; }
 [data-testid="photo-lightbox-toolbar"] > button { width: 44px; height: 44px; background: var(--ts-glass-bg); border: 1px solid var(--ts-color-border); box-shadow: var(--ts-shadow-glass); }
 [data-testid="photo-lightbox-toolbar"] button { color: var(--ts-color-text); }
@@ -2132,15 +2135,15 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .viewer-caption { color: var(--ts-color-text); }
 .viewer-caption > div:first-child { font-size: 16px; font-weight: 600; }
 .viewer-caption > div:last-child { color: var(--ts-color-text-secondary); font-size: 12px; margin-top: 4px; }
-.mobile-viewer-toolbar { background: none; padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
+.mobile-viewer-toolbar { background: var(--ts-color-surface); padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
 .mobile-viewer-toolbar > div:first-child { align-items: center; gap: 10px; }
 .viewer-mobile-tools button { width: 44px; height: 40px; color: var(--ts-color-text); background: transparent; }
 .viewer-thumbnail-layer { background: none; }
 .photo-thumbnail-strip button { border-radius: 12px; background: var(--ts-color-surface-muted); }
 .photo-thumbnail-strip button:not(.border-primary-500) { border-color: transparent; }
 .mobile-viewer-dock { background: none; padding-inline: 12px; padding-bottom: calc(12px + var(--ts-safe-area-bottom)); }
-.viewer-action-pill { max-width: 440px; margin-inline: auto; --glass-tint: var(--ts-glass-panel); }
-.viewer-action-pill button { min-width: 44px; min-height: 44px; flex: 1; color: var(--ts-color-text); border-radius: var(--ts-radius-pill); }
+.viewer-action-pill { width: fit-content; max-width: 100%; margin-inline: auto; --glass-tint: var(--ts-glass-panel); }
+.viewer-action-pill button { width: 44px; min-width: 44px; min-height: 44px; flex: 0 0 44px; padding: 0; color: var(--ts-color-text); border-radius: var(--ts-radius-pill); }
 .viewer-action-pill button.viewer-delete { color: var(--ts-color-danger); }
 .sheet-panel { background: var(--ts-glass-panel); color: var(--ts-color-text); border-color: var(--ts-color-border); border-radius: var(--ts-radius-dialog) var(--ts-radius-dialog) 0 0; box-shadow: var(--ts-shadow-floating); max-height: calc(100dvh - var(--ts-safe-area-top) - 16px); overflow-y: auto; backdrop-filter: blur(var(--ts-glass-blur-panel)); }
 .sheet-panel button { color: var(--ts-color-text); }
@@ -2154,8 +2157,9 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .sheet-panel { inset-inline: 12px; bottom: calc(12px + var(--ts-safe-area-bottom)); border: 1px solid var(--ts-glass-border); border-radius: 32px; padding: 8px 16px 16px; max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); }
 
 @media (max-width: 767px) {
-  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(98px + var(--ts-safe-area-bottom)); }
-  .viewer-stage { box-sizing: border-box; padding-top: calc(80px + var(--ts-safe-area-top)); padding-bottom: calc(168px + var(--ts-safe-area-bottom)); }
+  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(64px + var(--ts-safe-area-bottom)); }
+  /* Keep the photo fitted to the full viewport; fixed controls overlay it. */
+  .viewer-stage { padding: 0; }
 }
 
 .photo-thumbnail-strip {

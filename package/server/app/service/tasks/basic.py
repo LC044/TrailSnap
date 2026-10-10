@@ -6,7 +6,7 @@ import logging
 import os
 import json
 from uuid import UUID, uuid4
-from PIL import Image
+from app.utils.image_loading import Image, IMAGE_EXTENSIONS
 from pillow_heif import register_heif_opener
 
 from app.core.config_manager import config_manager
@@ -42,7 +42,7 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
         # Open image once if possible to reduce IO
         image_obj = None
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
+        if ext in IMAGE_EXTENSIONS:
              try:
                  image_obj = Image.open(file_path)
              except Exception:

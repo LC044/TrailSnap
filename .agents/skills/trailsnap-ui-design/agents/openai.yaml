@@ -1,0 +1,4 @@
+interface:
+  display_name: "TrailSnap UI 设计"
+  short_description: "沿用行影集主题与共享组件，设计一致的前端页面并检查明暗模式与移动适配"
+  default_prompt: "使用 $trailsnap-ui-design，基于当前行影集设计系统完成前端 UI 设计与实现。"
