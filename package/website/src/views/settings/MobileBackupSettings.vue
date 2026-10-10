@@ -169,6 +169,8 @@ const rescan = async () => {
     await ElMessageBox.confirm('下次备份会重新扫描当前来源范围，服务端已有文件仍会自动去重。', '重置增量记录', { confirmButtonText: '重置', cancelButtonText: '取消', type: 'warning' })
     await backup.resetCursor()
     ElMessage.success('增量记录已重置')
-  } catch { /* cancelled */ }
+  } catch (error) {
+    if (error instanceof Error) ElMessage.error(error.message)
+  }
 }
 </script>

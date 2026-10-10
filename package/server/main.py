@@ -121,6 +121,7 @@ async def lifespan(app: FastAPI):
             "color_reanalysis", datetime.now() + timedelta(seconds=10), reanalyze_pending_colors,
         )
     job_scheduler.start()
+    app.state.job_scheduler = job_scheduler
 
     discovery_service = DiscoveryService()
     discovery_service.start()
@@ -151,6 +152,10 @@ app = FastAPI(
 )
 # Initialize logging listener
 log_listener = None
+
+if os.environ.get("TS_DESKTOP") == "1":
+    from app.service.desktop_maintenance import DesktopMaintenanceMiddleware
+    app.add_middleware(DesktopMaintenanceMiddleware)
 
 # @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -402,4 +407,4 @@ app.openapi = custom_openapi
 if __name__ == "__main__":
     import uvicorn
     # http://127.0.0.1:8000/docs
-    uvicorn.run(app, host="0.0.0.0", port=8000, timeout_keep_alive=60)
+    uvicorn.run(app, host="0.0.0.0", port=8000, timeout_keep_alive=60, timeout_graceful_shutdown=15)

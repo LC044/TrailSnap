@@ -21,6 +21,13 @@ from app.service import task_strategy
 
 pytestmark = [pytest.mark.smoke]
 
+@pytest.fixture(autouse=True)
+def isolate_strategy_registry(monkeypatch):
+    # Factory tests clear/register strategies. Keep the real task registry
+    # intact for subsequent worker and SQLite integration tests in this process.
+    monkeypatch.setattr(task_strategy.TaskStrategyFactory, '_strategies',
+                        dict(task_strategy.TaskStrategyFactory._strategies))
+
 
 def _user(uid=None):
     return SimpleNamespace(id=uid or uuid4())

@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 import traceback
 from uuid import UUID
 
@@ -25,17 +26,17 @@ _tag_cache: Dict[str, str] = {}
 
 
 def get_tag_id(db: Session, tag_name: str, owner_id: Optional[UUID] = None) -> str:
-    if tag_name in _tag_cache:
-        return _tag_cache[tag_name]
-    else:
+    # Keep pending tags in this session; never cache uncommitted ids globally.
+    key = (str(owner_id), tag_name)
+    cache = db.info.setdefault("classification_tags", {})
+    if key not in cache:
         tag = crud_tag.get_tag_by_name(db, tag_name, owner_id)
         if not tag:
             tag = PhotoTag(tag_name=tag_name, type='yolo', owner_id=owner_id)
             db.add(tag)
-            db.commit()
-            db.refresh(tag)
-        _tag_cache[tag_name] = str(tag.id)
-        return str(tag.id)
+            db.flush()
+        cache[key] = str(tag.id)
+    return cache[key]
 
 
 @TaskStrategyFactory.register(TaskType.CLASSIFY_IMAGE)
@@ -114,7 +115,6 @@ class ClassifyImageStrategy(BaseTaskStrategy):
         results = []
         try:
             photo_ids = [t.payload['photo_id'] for t in tasks]
-            crud_tag.remove_tags_from_photo(db, photo_ids, ai_generated=True)
             photos = db.query(Photo).filter(Photo.id.in_(photo_ids)).all()
             photo_map = {str(p.id): p for p in photos}
 
@@ -136,7 +136,7 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                     continue
 
                 try:
-                    with open(target_path, 'rb') as f_img:
+                    with disk_budget.slot(target_path), open(target_path, 'rb') as f_img:
                         b64_data = base64.b64encode(f_img.read()).decode('utf-8')
                     b64_images.append(b64_data)
                     valid_tasks.append(task)
@@ -161,6 +161,8 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                             results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
 
         except Exception as e:
+            db.rollback()
+            db.info.pop("classification_tags", None)
             logger.error(f"Error in Classification processing batch for owner {owner_id}: {e}")
             logger.error(traceback.format_exc())
             for task in tasks:
@@ -190,6 +192,11 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                 selected_tag = (photo, tag_name, confidence)
                 break
             photo_tag_data.append((task, photo, selected_tag))
+
+        db.query(PhotoTagRelation).filter(
+            PhotoTagRelation.photo_id.in_([p.id for p in valid_photos]),
+            PhotoTagRelation.tag_id.in_(db.query(PhotoTag.id).filter(PhotoTag.type == "yolo")),
+        ).delete(synchronize_session=False)
 
         for task, photo, tag_data in photo_tag_data:
             if tag_data:
@@ -226,6 +233,7 @@ class ClassifyImageStrategy(BaseTaskStrategy):
             db.bulk_save_objects(new_tasks)
 
         db.commit()
+        db.info.pop("classification_tags", None)
         return results
 
     async def handle_completion(self, worker, items: List[Dict], db: Session) -> None:

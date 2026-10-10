@@ -130,10 +130,9 @@ async def test_get_media_file_heic_redirects_to_thumbnail(tmp_path):
         )
     assert isinstance(resp, FileResponse)
     assert resp.path == str(thumb_path)
-    # Original .heic has no explicit media-type mapping, so the endpoint
-    # leaves the Content-Type at application/octet-stream even after the
-    # thumbnail redirect. The important behaviour is the path swap.
-    assert resp.media_type == "application/octet-stream"
+    # Browser previews advertise the substituted WebP content type;
+    # original=1 is covered separately and preserves the raw HEIC bytes.
+    assert resp.media_type == "image/webp"
 
 
 @pytest.mark.asyncio

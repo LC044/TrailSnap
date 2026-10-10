@@ -3,6 +3,7 @@ import cv2
 import logging
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
@@ -28,8 +29,15 @@ def openvino_infer_lock():
     不影响 ONNX Runtime / Torch 的并发吞吐。
     """
     if _ocr_engine_is_openvino:
+        started = time.perf_counter()
         with _ocr_infer_lock:
-            yield
+            acquired = time.perf_counter()
+            try:
+                yield
+            finally:
+                logging.info('OCR inference timing: lock_wait_ms=%.1f infer_ms=%.1f',
+                             (acquired - started) * 1000,
+                             (time.perf_counter() - acquired) * 1000)
     else:
         yield
 

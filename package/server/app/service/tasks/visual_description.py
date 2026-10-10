@@ -1,3 +1,4 @@
+from app.service.disk_budget import media_io
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 import logging
@@ -172,6 +173,7 @@ async def parse_visual_result_with_repair(client, content: Any, photo_id: Any) -
 import io
 from PIL import Image
 
+@media_io('image_path')
 def encode_image(image_path, max_size=672):
     with Image.open(image_path) as img:
         # 缩放：长边缩放到 max_size(896)，保持比例

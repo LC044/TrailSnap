@@ -4,7 +4,8 @@ import shutil
 from uuid import UUID
 from typing import Optional
 from fastapi import UploadFile
-from PIL import Image, ImageOps
+from PIL import ImageOps
+from app.utils.image_loading import Image, LARGE_IMAGE_PIXELS, IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
 register_heif_opener()
@@ -169,7 +170,9 @@ def _score_video_thumbnail_frame(frame) -> float:
     if frame is None or getattr(frame, "size", 0) == 0:
         return float("-inf")
 
-    pixels = frame.astype(np.float32)
+    # Scoring needs a representative sample, not a full-resolution float buffer.
+    stride = max(1, max(frame.shape[:2]) // 256)
+    pixels = frame[::stride, ::stride].astype(np.float32)
     gray = pixels.mean(axis=2) if pixels.ndim == 3 else pixels
     brightness = float(gray.mean())
     dark_ratio = float(np.mean(gray < 16))
@@ -199,6 +202,8 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
                 score = _score_video_thumbnail_frame(np.asarray(frame))
                 if score > best_score:
                     best_frame, best_score = frame, score
+                if score != float('-inf'):
+                    break
             selected = best_frame if best_frame is not None else fallback_frame
             return _save_thumbnails(selected, file_id, user_id, config=config) if selected is not None else None
         except Exception as exc:
@@ -228,6 +233,8 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
             if score > best_score:
                 best_score = score
                 best_frame = frame.copy()
+            if score != float('-inf'):
+                break
 
         selected_frame = best_frame if best_frame is not None else fallback_frame
         if selected_frame is None:
@@ -242,7 +249,21 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
             cap.release()
     return None
 
-def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None) -> str:
+def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None, *, allow_draft: bool = False) -> str:
+    if not config:
+        from app.db.session import SessionLocal
+        db = SessionLocal()
+        try:
+            config = config_manager.get_user_config(user_id, db).image
+        finally:
+            db.close()
+
+    # Decode JPEG previews at reduced resolution before exif_transpose() loads
+    # and copies pixels. Only mutate an image owned by thumbnail generation.
+    if allow_draft and img.format == 'JPEG':
+        edge = max(config.preview_size, config.thumbnail_size)
+        img.draft('RGB', (edge, edge))
+
     # Bake EXIF rotation/mirroring into both variants before dropping metadata.
     # Keep the caller's image intact: basic processing reuses it for EXIF.
     img = ImageOps.exif_transpose(img)
@@ -262,29 +283,21 @@ def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: Ima
     m_path = os.path.join(base, f"{compact}.webp")
     s_path = os.path.join(base, f"{compact}-thumb.webp")
 
-    # Use default config if not provided
-    if not config:
-        # Get settings
-        from app.db.session import SessionLocal
-        db = SessionLocal()
-        try:
-            config = config_manager.get_user_config(user_id, db).image
-        finally:
-            db.close()
-
     t_size = config.thumbnail_size
     p_size = config.preview_size
     t_qual = config.thumbnail_quality
     p_qual = config.preview_quality
 
-    m = img.copy()
-    m.thumbnail((p_size, p_size))
-    m.save(m_path, "WEBP", quality=p_qual)
-
-    s = img.copy()
-    s.thumbnail((t_size, t_size))
-    # s.save(s_path, "JPEG", quality=t_qual)
-    s.save(s_path, "WEBP", quality=t_qual)
+    # exif_transpose already returned an owned image. Resize it in place, and
+    # derive the smaller variant from it instead of copying the original twice.
+    img.thumbnail((max(p_size, t_size), max(p_size, t_size)))
+    method = getattr(config, 'webp_method', 0)
+    with img.copy() as m:
+        m.thumbnail((p_size, p_size))
+        m.save(m_path, "WEBP", quality=p_qual, method=method)
+    img.thumbnail((t_size, t_size))
+    img.save(s_path, "WEBP", quality=t_qual, method=method)
+    img.close()
     return m_path
 
 def get_preview_path(user_id: UUID, file_id: UUID) -> Optional[str]:
@@ -315,14 +328,17 @@ def get_available_photo_path(user_id: UUID, file_id: UUID, original_path: Option
 def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: Optional[Image.Image] = None, config: ImageSettings = None):
     try:
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm'):
+        if ext in VIDEO_EXTENSIONS:
             return generate_video_thumbnail(file_path, file_id, user_id, config=config)
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
-            if image_obj:
+        if ext in IMAGE_EXTENSIONS:
+            if image_obj and not (
+                image_obj.format == 'JPEG'
+                and image_obj.width * image_obj.height > LARGE_IMAGE_PIXELS
+            ):
                 return _save_thumbnails(image_obj, file_id, user_id, config=config)
             else:
                 with Image.open(file_path) as img:
-                    return _save_thumbnails(img, file_id, user_id, config=config)
+                    return _save_thumbnails(img, file_id, user_id, config=config, allow_draft=True)
     except Exception as e:
         logging.error(f"Error generating thumbnail for {file_path}: {e}\n{traceback.format_exc()}")
     return None
@@ -333,13 +349,13 @@ def get_file_size(file_path: str) -> int:
 def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None):
     try:
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
+        if ext in IMAGE_EXTENSIONS:
             if image_obj:
                 return (*display_image_size(image_obj), None)
             else:
                 with Image.open(file_path) as img:
                     return (*display_image_size(img), None)
-        elif ext in ('.mp4', '.mov', '.avi', '.mkv', '.webm'):
+        elif ext in VIDEO_EXTENSIONS:
             if cv2 is None:
                 return probe_video(file_path)
             cap = cv2.VideoCapture(file_path)

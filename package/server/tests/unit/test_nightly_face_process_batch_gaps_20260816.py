@@ -204,7 +204,7 @@ def test_face_process_batch_force_reruns_already_processed(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     _patch_cluster(monkeypatch)
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     t = _task(owner_id=p.owner_id, payload={"photo_id": str(p.id), "force": True})
     s = RecognizeFaceStrategy()
@@ -278,7 +278,7 @@ def test_face_process_batch_ai_result_error_marks_failed(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     _patch_cluster(monkeypatch, assign_face_to_identity=MagicMock(return_value=uuid4()))
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     t1 = _task(owner_id=owner, payload={"photo_id": str(p1.id)})
     t2 = _task(owner_id=owner, payload={"photo_id": str(p2.id)})
@@ -307,7 +307,7 @@ def test_face_process_batch_groups_by_owner(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     _patch_cluster(monkeypatch)
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     ta = _task(owner_id=pa.owner_id, payload={"photo_id": str(pa.id)})
     tb = _task(owner_id=pb.owner_id, payload={"photo_id": str(pb.id)})
@@ -332,7 +332,7 @@ def test_face_process_batch_threshold_filters_face(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     monkeypatch.setattr("app.service.tasks.face.config_manager.get_user_config", lambda *a, **kw: _make_ai_config(threshold=0.4))
     cluster = _patch_cluster(monkeypatch, assign_face_to_identity=MagicMock(return_value=uuid4()))
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     t = _task(owner_id=p.owner_id, payload={"photo_id": str(p.id)})
     s = RecognizeFaceStrategy()
@@ -342,7 +342,7 @@ def test_face_process_batch_threshold_filters_face(monkeypatch):
 
 
 def test_face_process_batch_cluster_exception_swallowed(monkeypatch):
-    """assign_face_to_identity raising does not fail the photo."""
+    """assign_face_to_identity raising rolls back the batch rather than committing partial results."""
     from app.service.tasks.face import RecognizeFaceStrategy
     db = MagicMock()
     p = _photo(processed_tasks={})
@@ -355,13 +355,14 @@ def test_face_process_batch_cluster_exception_swallowed(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     _patch_cluster(monkeypatch, assign_face_to_identity=MagicMock(side_effect=RuntimeError("cluster down")))
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     t = _task(owner_id=p.owner_id, payload={"photo_id": str(p.id)})
     s = RecognizeFaceStrategy()
     res = _run(s.process_batch(MagicMock(), [t], db))
-    assert res[0]["status"] == "completed"
-    assert res[0]["result"]["status"] == "success"
+    assert res[0]["status"] == "failed"
+    assert "cluster down" in res[0]["error"]
+    db.rollback.assert_called()
 
 
 def test_face_process_single_photo_file_not_found(monkeypatch):
@@ -416,7 +417,7 @@ def test_face_process_single_photo_success_with_embedding(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     cluster = _patch_cluster(monkeypatch)
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     s = RecognizeFaceStrategy()
     res = _run(s.process_single_photo(MagicMock(), p, MagicMock()))
@@ -446,7 +447,7 @@ def test_face_process_single_photo_passes_owner_id_to_assignment(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     cluster = _patch_cluster(monkeypatch)
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     s = RecognizeFaceStrategy()
     _run(s.process_single_photo(MagicMock(), p, MagicMock()))
@@ -466,7 +467,7 @@ def test_face_process_single_photo_face_no_embedding(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     cluster = _patch_cluster(monkeypatch)
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     s = RecognizeFaceStrategy()
     res = _run(s.process_single_photo(MagicMock(), p, MagicMock()))
@@ -489,7 +490,7 @@ def test_face_process_single_photo_cluster_exception_swallowed(monkeypatch):
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
     _patch_cluster(monkeypatch, assign_face_to_identity=MagicMock(side_effect=RuntimeError("cluster down")))
-    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid: None)
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", lambda db, pid, **kwargs: None)
     monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", lambda *a, **kw: None)
     s = RecognizeFaceStrategy()
     res = _run(s.process_single_photo(MagicMock(), p, MagicMock()))
@@ -503,7 +504,7 @@ def test_face_handle_completion_enqueues_one_task_per_owner(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "app.service.tasks.face.enqueue_cluster_faces",
-        lambda db, owner_id: calls.append(owner_id),
+        lambda db, owner_id, **kwargs: calls.append(owner_id),
     )
     owner_a = str(uuid4())
     owner_b = str(uuid4())
@@ -519,19 +520,20 @@ def test_face_handle_completion_enqueues_one_task_per_owner(monkeypatch):
     assert calls == [owner_a]
 
 
-def test_face_handle_completion_swallows_enqueue_failure(monkeypatch):
-    """A failed enqueue must not fail the recognition tasks that just finished."""
+def test_face_handle_completion_propagates_enqueue_failure_for_flush_retry(monkeypatch):
+    """The completion writer rolls back and retries the entire acknowledgement."""
     from app.service.tasks.face import RecognizeFaceStrategy
 
-    def _boom(db, owner_id):
+    def _boom(db, owner_id, **kwargs):
         raise RuntimeError("enqueue down")
 
     monkeypatch.setattr("app.service.tasks.face.enqueue_cluster_faces", _boom)
     db = MagicMock()
     items = [{"status": "completed", "result": {"has_unassigned": True, "owner_id": str(uuid4())}}]
     s = RecognizeFaceStrategy()
-    _run(s.handle_completion(MagicMock(), items, db))
-    db.rollback.assert_called_once()
+    with pytest.raises(RuntimeError, match='enqueue down'):
+        _run(s.handle_completion(MagicMock(), items, db))
+    db.rollback.assert_not_called()
 
 
 def test_face_process_single_photo_outer_exception_marks_false_and_reraises(monkeypatch):

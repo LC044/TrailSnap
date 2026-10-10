@@ -40,8 +40,10 @@ class TaskManager:
         self._stopping = False
         self._worker_lock = threading.Lock()
         self._worker_stop_event = None
+        self._worker_wake_event = None
         self._restart_thread = None
         self._restart_requested = False
+        self._migration_draining = False
 
     @classmethod
     def get_instance(cls):
@@ -58,8 +60,12 @@ class TaskManager:
         之前可能有一段延迟）。
         """
         with self._worker_lock:
+            if self._migration_draining:
+                return
             self._stopping = False
             started = self._start_worker_locked()
+            if getattr(self, '_worker_wake_event', None) is not None:
+                self._worker_wake_event.set()
         if started:
             self._publish_active_tasks_snapshot()
 
@@ -86,6 +92,8 @@ class TaskManager:
 
         返回 True 表示本次实际启动了新的 worker 进程；False 表示进程已存活，
         无需启动。"""
+        if self._migration_draining:
+            return False
         # 1. 如果进程存在且活着 → 不处理
         if self.worker_process is not None:
             if self.worker_process.is_alive():
@@ -104,6 +112,7 @@ class TaskManager:
         # 由 API 进程派发到所有 SSE 订阅者。
         self._event_queue = multiprocessing.Queue(maxsize=4096)
         self._worker_stop_event = multiprocessing.Event()
+        self._worker_wake_event = multiprocessing.Event()
         self._reader_thread = threading.Thread(
             target=self._event_queue_reader,
             daemon=True,
@@ -112,7 +121,7 @@ class TaskManager:
         self._reader_thread.start()
         self.worker_process = multiprocessing.Process(
             target=run_worker,
-            args=(self._event_queue, self._worker_stop_event),
+            args=(self._event_queue, self._worker_stop_event, self._worker_wake_event),
             daemon=True,
             name="TaskWorker"
         )
@@ -163,6 +172,26 @@ class TaskManager:
             self.worker_process = None
             self._worker_stop_event = None
 
+    def drain_for_migration(self):
+        """Finish accepted work without killing it or dispatching more tasks."""
+        with self._worker_lock:
+            self._migration_draining = True
+            self._stopping = True
+            self._restart_requested = False
+            process = self.worker_process
+            if self._worker_stop_event is not None:
+                self._worker_stop_event.set()
+        self.stop_watchdog()
+        if process is not None:
+            # Large videos/inference can take minutes. Never force a timeout
+            # while a task may still be writing originals or database rows.
+            process.join()
+            if process.exitcode != 0:
+                raise RuntimeError("后台任务异常退出，已停止迁移；请重启后重试")
+        with self._worker_lock:
+            self.worker_process = None
+            self._worker_stop_event = None
+
     def restart_worker(self, *, graceful: bool = False) -> dict[str, str]:
         """Restart the worker, optionally draining accepted work first."""
         if not graceful:
@@ -199,6 +228,8 @@ class TaskManager:
 
     def _finish_graceful_restart(self, process) -> None:
         process.join(timeout=180)
+        if self._migration_draining:
+            process.join()
         if process.is_alive():
             logging.warning("Worker drain timed out; terminating it to apply settings")
             process.terminate()

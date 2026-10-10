@@ -2,6 +2,30 @@ import os
 import re
 import mmap
 
+
+# HEIF/AVIF images use the same ftyp box as MP4. Phone JPEGs can carry
+# an auxiliary HEIF image, so ftyp alone is not evidence of a motion clip.
+_IMAGE_BRANDS = {
+    b'heic', b'heix', b'hevc', b'hevx', b'heim', b'heis', b'hevm', b'hevs',
+    b'mif1', b'mif2', b'msf1', b'avif', b'avis', b'miaf', b'j2ki',
+}
+_VIDEO_BRANDS = {b'isom', b'mp41', b'mp42', b'avc1', b'qt  ', b'M4V ', b'M4VH', b'M4VP'}
+
+
+def _is_video_ftyp(data, start: int, file_size: int) -> bool:
+    size = int.from_bytes(data[start:start + 4], 'big')
+    if size < 16 or size > 128 or size % 4 or start + size > file_size:
+        return False
+    # Skip minor_version (bytes 12..15); it is not a compatible brand.
+    brands = {data[start + 8:start + 12]}
+    brands.update(data[pos:pos + 4] for pos in range(start + 16, start + size, 4))
+    if brands & _IMAGE_BRANDS:
+        return False
+    return any(
+        brand in _VIDEO_BRANDS or brand.startswith((b'iso', b'3gp', b'3g2'))
+        for brand in brands
+    )
+
 def get_video_offset(file_path: str) -> int | None:
     """
     Detects if a file is a Google Motion Photo and returns the video offset (bytes from end).
@@ -58,7 +82,7 @@ def get_video_offset(file_path: str) -> int | None:
                         size = int.from_bytes(size_bytes, 'big')
                         
                         # Sanity check for ftyp atom size (usually small, e.g. 20-32 bytes)
-                        if 8 <= size <= 128:
+                        if 8 <= size <= 128 and _is_video_ftyp(mm, atom_start, file_size):
                             if atom_start > 0:
                                 return file_size - atom_start
             except ValueError:

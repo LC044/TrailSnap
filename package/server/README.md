@@ -92,8 +92,10 @@ python -m uv run start.py
 
 ```bash
 # 确保先运行一次 start.py 完成数据库初始化
-python -m uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 15
 ```
+
+关闭或热重载时最多等待现有请求 15 秒，随后取消未结束的请求，避免长连接使旧进程一直等待、阻止新进程接收请求。`start.py` 和桌面启动入口也使用此上限。
 
 启动后访问 Swagger 文档: http://localhost:8000/docs
 

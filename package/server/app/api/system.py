@@ -14,9 +14,58 @@ from app.dependencies import get_db
 from app.db.models.user import User
 from app.service.update_checker import fetch_remote_update_info
 import logging
+import asyncio
+import os
+import secrets
+from fastapi import Header
+from app.dependencies import BaseResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _require_desktop_secret(secret: str | None) -> None:
+    expected = os.environ.get("TS_DESKTOP_SESSION_SECRET", "")
+    if (
+        os.environ.get("TS_DESKTOP") != "1" or not expected or not secret
+        or not secrets.compare_digest(secret, expected)
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@router.post("/desktop/prepare-migration", response_model=BaseResponse[dict])
+async def prepare_desktop_migration(
+    request: Request,
+    secret: str | None = Header(default=None, alias="X-TrailSnap-Desktop-Secret"),
+):
+    _require_desktop_secret(secret)
+    from app.service.desktop_maintenance import maintenance
+    from app.service.task_manager import TaskManager
+    if maintenance.draining:
+        return BaseResponse.fail(code=409, msg="已经在等待任务结束，请勿重复重启")
+    try:
+        await maintenance.prepare(request.app.state.job_scheduler, TaskManager.get_instance())
+    except Exception as error:
+        # Keep admission closed after a failed drain. No snapshot is authorized.
+        return BaseResponse.fail(msg=str(error))
+
+    async def shutdown():
+        await asyncio.sleep(0.3)
+        request.app.state.desktop_server.should_exit = True
+    asyncio.create_task(shutdown())
+    return BaseResponse.success(data={"ready": True})
+
+
+@router.get("/desktop/network", response_model=BaseResponse[dict])
+def desktop_network(
+    current_user: User = Depends(get_current_user),
+):
+    if os.environ.get("TS_DESKTOP") != "1":
+        raise HTTPException(status_code=404, detail="Not found")
+    from app.utils.desktop_network import lan_urls
+    port = int(os.environ["TS_DESKTOP_PORT"])
+    return BaseResponse.success(data={"port": port, "urls": lan_urls(port)})
+
 
 _TIANDITU_HOST = re.compile(
     r"^(?:api|location|t[0-7])\.tianditu\.(?:gov\.cn|com)$",

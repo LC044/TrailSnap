@@ -26,10 +26,14 @@
       </div>
 
       <!-- 总体统计 -->
-      <div v-if="testStartTime" class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div v-if="testStartTime" class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
          <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">测试开始时间</div>
-            <div class="font-medium text-gray-800 dark:text-gray-200">{{ new Date(testStartTime).toLocaleTimeString() }}</div>
+            <div class="font-medium text-gray-800 dark:text-gray-200">{{ formatClock(testStartTime) }}</div>
+         </div>
+         <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
+            <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">全部任务完成时间</div>
+            <div class="font-medium text-gray-800 dark:text-gray-200">{{ allFinishedAt ? formatClock(allFinishedAt) : (isTesting ? '统计中' : '—') }}</div>
          </div>
          <div class="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg border border-gray-100 dark:border-gray-600">
             <div class="text-sm text-gray-500 dark:text-gray-400 mb-1">端到端总耗时</div>
@@ -58,15 +62,27 @@
             class="flex-1"
         >
             <el-table-column prop="task_name" label="任务类别" min-width="150" />
-            
+
             <el-table-column label="状态" width="100" align="center">
                 <template #default="{ row }">
-                    <el-tag 
-                        :type="row.statusText === '已完成' ? 'success' : (row.statusText === '进行中' ? 'primary' : 'info')" 
+                    <el-tag
+                        :type="row.statusText === '已完成' ? 'success' : (row.statusText === '进行中' ? 'primary' : 'info')"
                         size="small"
                     >
                         {{ row.statusText }}
                     </el-tag>
+                </template>
+            </el-table-column>
+
+            <el-table-column label="开始时间" width="100" align="center">
+                <template #default="{ row }">
+                    <span class="font-mono">{{ formatClock(row.startTime) }}</span>
+                </template>
+            </el-table-column>
+
+            <el-table-column label="最后完成时间" width="110" align="center">
+                <template #default="{ row }">
+                    <span class="font-mono">{{ formatClock(row.endTime) }}</span>
                 </template>
             </el-table-column>
 
@@ -112,6 +128,10 @@ const testPath = ref('')
 const isTesting = ref(false)
 const testStartTime = ref<number | null>(null)
 const totalElapsed = ref(0)
+// 全部任务归零的时刻（最后一次 pending 全零的轮询时间）。
+// 用于展示「全部任务完成时间」，并在该时刻冻结端到端总耗时，
+// 避免把完成判定所需的稳定期等待计入耗时。
+const allFinishedAt = ref<number | null>(null)
 let pollTimer: number | null = null
 // 完成「稳定期」：所有任务 pending 归零后，持续观察一段时间再判定测试结束，
 // 避免扫描刚结束、下游任务尚未创建的空窗期被误判为完成。
@@ -145,6 +165,11 @@ const statsList = computed(() => {
     return Object.values(statsMap.value)
 })
 
+const formatClock = (ts: number | null) => {
+    if (!ts) return '—'
+    return new Date(ts).toLocaleTimeString(undefined, { hour12: false })
+}
+
 const startTest = async () => {
     if (!testPath.value) {
         ElMessage.warning('请输入测试用的外部文件夹绝对路径')
@@ -169,6 +194,7 @@ const startTest = async () => {
     isTesting.value = true
     testStartTime.value = Date.now()
     totalElapsed.value = 0
+    allFinishedAt.value = null
     statsMap.value = {}
     finishedSince = null
     hasSaved.value = false
@@ -230,11 +256,14 @@ const saveResults = () => {
 
     const results = {
         testStartTime: startDate.toLocaleString(),
+        allFinishedTime: allFinishedAt.value ? new Date(allFinishedAt.value).toLocaleString() : null,
         totalElapsedSeconds: Number((totalElapsed.value / 1000).toFixed(1)),
         tasks: Object.values(statsMap.value).map(s => ({
             task_name: s.task_name,
             category: s.category,
             status: s.statusText,
+            startTime: s.startTime ? new Date(s.startTime).toLocaleTimeString() : null,
+            endTime: s.endTime ? new Date(s.endTime).toLocaleTimeString() : null,
             elapsedSeconds: Number((s.elapsed / 1000).toFixed(1)),
             completed: s.completed,
             pending: s.pending,
@@ -263,8 +292,7 @@ const saveResults = () => {
 const pollStatus = async () => {
     if (!isTesting.value) return
     const now = Date.now()
-    totalElapsed.value = now - testStartTime.value!
-    
+
     try {
         const currentStatus = await tasksApi.getGroupedStatus()
         let allFinished = true
@@ -351,13 +379,21 @@ const pollStatus = async () => {
         // 这里采用「稳定期」策略：所有 pending 归零后持续观察 FINISH_GRACE_MS，
         // 期间若无新任务出现则判定整个测试结束，避免扫描刚结束、下游任务尚未创建的空窗期误判。
         if (hasAnyStarted && allFinished) {
+            // 首次观察到全部归零时记录完成时刻并冻结总耗时；
+            // 稳定期内若新任务出现（allFinished 翻回 false）则解冻继续计时。
+            if (allFinishedAt.value === null) {
+                allFinishedAt.value = now
+                totalElapsed.value = now - testStartTime.value!
+            }
             if (finishedSince === null) finishedSince = now
             if (now - finishedSince >= FINISH_GRACE_MS) {
                 stopTest(true)
                 ElMessage.success('测试完成，所有任务已结束')
             }
         } else {
+            allFinishedAt.value = null
             finishedSince = null
+            totalElapsed.value = now - testStartTime.value!
         }
         
     } catch (e) {

@@ -162,14 +162,17 @@ def _build_album_query(db: Session, album: Album):
 
 import threading
 
-def _update_album_photo_count(db: Session, album_id: UUID):
+def _update_album_photo_count(db: Session, album_id: UUID, *, commit: bool = True):
     album = db.query(Album).filter(Album.id == album_id).first()
     if album:
         query = _build_album_query(db, album)
         count = query.count()
         album.num_photos = count
         db.add(album)
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
 
 def update_album_photo_counts(db: Session, album_ids) -> int:
@@ -197,7 +200,7 @@ def update_album_photo_counts(db: Session, album_ids) -> int:
     db.commit()
     return len(albums)
 
-def trigger_conditional_albums_update(db: Session, user_id: UUID, photo_ids: List[UUID] = None):
+def trigger_conditional_albums_update(db: Session, user_id: UUID, photo_ids: List[UUID] = None, *, commit: bool = True):
     """
     Trigger update for all conditional/smart albums for a given user.
     If photo_ids is provided, only those photos will be checked and updated, 
@@ -249,15 +252,24 @@ def trigger_conditional_albums_update(db: Session, user_id: UUID, photo_ids: Lis
                 ).delete(synchronize_session=False)
                 
             if to_add or to_remove:
-                db.commit()
-                _update_album_photo_count(db, album.id)
+                if commit:
+                    db.commit()
+                else:
+                    db.flush()
+                if commit:
+                    _update_album_photo_count(db, album.id)
+                else:
+                    _update_album_photo_count(db, album.id, commit=False)
                 
                 # Update cover if needed
                 if not album.cover_id or (album.cover_id in to_remove):
                     first_photo = _build_album_query(db, album).order_by(Photo.photo_time.asc()).first()
                     album.cover_id = first_photo.id if first_photo else None
                     db.add(album)
-                    db.commit()
+                    if commit:
+                        db.commit()
+                    else:
+                        db.flush()
     else:
         # Fallback to full async scan if no photo_ids provided
         from app.db.models.task import TaskType

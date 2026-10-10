@@ -31,13 +31,14 @@
         <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
     </div>
 
-    <div v-else-if="metadata" class="p-4 space-y-6">
+    <div v-else-if="metadata" class="metadata-content p-4 space-y-6">
         <div class="metadata-summary-card md:hidden space-y-3 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
             <div class="flex items-start gap-2">
-                <p class="flex-1 text-base font-semibold text-gray-900 dark:text-white break-all">{{ image?.filename || '无文件名' }}</p>
+                <p class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ formatTime(image?.timestamp) }}</p>
                 <button v-if="allowEdit" @click="openBasicEditDialog" class="text-primary-500 p-1" aria-label="编辑基本信息"><Pencil class="w-4 h-4" /></button>
             </div>
-            <p class="text-sm text-gray-600 dark:text-gray-300">{{ formatTime(image?.timestamp) }}</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300 break-all">名称：{{ image?.filename || '无文件名' }}</p>
+            <p class="metadata-file-path text-sm text-gray-600 dark:text-gray-300" data-testid="photo-metadata-file-path">路径：{{ metadata.file_path || image?.file_path || '无路径信息' }}</p>
             <div class="flex flex-wrap gap-2 border-t border-gray-200 dark:border-gray-700 pt-3">
                 <span v-if="image?.width && image?.height" class="metadata-fact">{{ image.width }} × {{ image.height }}</span>
                 <span class="metadata-fact">{{ formatSize(image?.size) }}</span>
@@ -117,7 +118,7 @@
                     metadata.address || '无位置信息'
                 }}
             </p>
-            <div v-if="hasPhotoCoordinates && !previewMapError" class="relative h-44 md:h-36 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+            <div v-if="hasPhotoCoordinates && !previewMapError" class="relative h-32 md:h-36 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
                 <div id="photo-metadata-map" class="w-full h-full"></div>
                 <div v-if="previewMapLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80"><Loader2 class="w-5 h-5 animate-spin text-primary-500" /></div>
             </div>
@@ -829,7 +830,21 @@ const saveLocationEdit = async () => {
 
   .metadata-sheet-header {
     min-height: 56px;
-    padding-top: 18px;
+    padding: 12px 16px 8px;
+    padding-top: 16px;
+    font-size: 14px;
+  }
+
+  .metadata-content { padding: 12px; }
+  .metadata-content > :not([hidden]) ~ :not([hidden]) { margin-top: 12px; }
+  .metadata-content .text-base { font-size: 14px; line-height: 20px; }
+  .metadata-content .text-sm { font-size: 13px; line-height: 18px; }
+  .metadata-summary-card { padding: 12px; }
+  .metadata-summary-card > :not([hidden]) ~ :not([hidden]) { margin-top: 6px; }
+  .metadata-summary-card > .flex.flex-wrap { gap: 6px; padding-top: 8px; }
+  .metadata-file-path {
+    overflow-wrap: anywhere;
+    user-select: text;
   }
 
   .metadata-drag-handle {
@@ -855,13 +870,14 @@ const saveLocationEdit = async () => {
 
   .metadata-section-card {
     border-radius: 16px;
-    padding: 16px;
+    padding: 12px;
   }
+  .metadata-section-card > :not([hidden]) ~ :not([hidden]) { margin-top: 6px; }
 
   .metadata-fact {
     border-radius: 999px;
     background: rgb(226 232 240 / 75%);
-    padding: 4px 9px;
+    padding: 2px 7px;
     font-size: 12px;
     line-height: 16px;
     color: rgb(71 85 105);

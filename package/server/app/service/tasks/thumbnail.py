@@ -12,7 +12,11 @@ from app.db.models.photo_color import PhotoColor
 from app.service import storage
 from app.core.config_manager import ImageSettings, config_manager
 from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
+from app.utils.image_loading import IMAGE_EXTENSIONS
+from app.service.disk_budget import media_io
+from app.service.task_runtime import await_owned
 
+@media_io('file_path', 'storage_root')
 def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, storage_root: str, config: ImageSettings = None):
     try:
         storage.update_storage_root_cache(user_id, storage_root)
@@ -21,9 +25,9 @@ def rebuild_thumbnail_cpu_job(user_id: str, file_path: str, file_id: UUID, stora
         # Extract color info from the original image
         color_info = None
         ext = os.path.splitext(file_path)[1].lower()
-        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.heic'):
+        if ext in IMAGE_EXTENSIONS:
             try:
-                from PIL import Image as PILImage
+                from app.utils.image_loading import Image as PILImage
                 with PILImage.open(file_path) as img:
                     color_info = extract_color_info(img)
             except Exception as e:
@@ -123,12 +127,12 @@ class GenerateThumbnailStrategy(BaseTaskStrategy):
         config = config_manager.get_user_config(photo.owner_id, db).image
         
         loop = asyncio.get_running_loop()
-        batch_results = await loop.run_in_executor(
+        batch_results = await await_owned(loop.run_in_executor(
             worker.thread_pool,
             rebuild_thumbnail_cpu_batch_job,
             batch_jobs_data,
             config
-        )
+        ))
 
         for data, res in zip(batch_jobs_data, batch_results):
             if res['success']:

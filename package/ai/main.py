@@ -106,6 +106,8 @@ app = FastAPI(
     description="Microservice for AI capabilities including Face Recognition, OCR, etc.",
     lifespan=lifespan
 )
+from app.core.model_phase import ModelPhaseMiddleware
+app.add_middleware(ModelPhaseMiddleware)
 
 # Initialize logging listener
 log_listener = None

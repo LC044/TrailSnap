@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 import os
 import shutil
 import uuid
@@ -176,7 +177,8 @@ class OrganizePhotosStrategy(BaseTaskStrategy):
                 if action == 'move':
                     if os.path.abspath(old_path) != os.path.abspath(new_path):
                         try:
-                            shutil.move(old_path, new_path)
+                            with disk_budget.slots(old_path, new_path):
+                                shutil.move(old_path, new_path)
                             photo.file_path = new_path
                             photo.filename = os.path.basename(new_path)
                             # After move, break out of subfolder loop since we can only move once
@@ -187,7 +189,8 @@ class OrganizePhotosStrategy(BaseTaskStrategy):
                 elif action == 'copy':
                     if os.path.abspath(old_path) != os.path.abspath(new_path):
                         try:
-                            shutil.copy2(old_path, new_path)
+                            with disk_budget.slots(old_path, new_path):
+                                shutil.copy2(old_path, new_path)
                             # Create new DB record
                             new_photo_data = {c.name: getattr(photo, c.name) for c in photo.__table__.columns if c.name not in ['id', 'file_path', 'filename', 'created_at', 'updated_at']}
                             new_photo = Photo(
