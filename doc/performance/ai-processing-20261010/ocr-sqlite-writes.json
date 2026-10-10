@@ -1,0 +1,32 @@
+{
+  "before": [
+    {
+      "seconds": 2.332942400011234,
+      "commits": 1020
+    },
+    {
+      "seconds": 2.153621800011024,
+      "commits": 1020
+    },
+    {
+      "seconds": 2.0955229999963194,
+      "commits": 1020
+    }
+  ],
+  "after": [
+    {
+      "seconds": 0.050369400007184595,
+      "commits": 5
+    },
+    {
+      "seconds": 0.06767129999934696,
+      "commits": 5
+    },
+    {
+      "seconds": 0.05404320001252927,
+      "commits": 5
+    }
+  ],
+  "scope": "10 photos x 100 OCR regions, batches of 2 after optimization, SQLite WAL FULL, persistence only",
+  "speedup": 39.85000517200559
+}

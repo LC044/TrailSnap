@@ -36,6 +36,30 @@ Tauri 安装包，产出 NSIS、DMG、AppImage 和 DEB。正式标签构建还�
 `TAURI_SIGNING_PRIVATE_KEY` 为更新包签名并发布 `latest.json`；客户端启动后自动检查、
 后台下载并验签，下载完成后可一键安装。
 
+桌面 CSP 单独通过 `style-src-attr 'unsafe-inline'` 允许元素的内联样式。
+Tauri 会为入口 HTML 的 `<style>` 注入 hash/nonce，此时 `style-src` 中的
+`'unsafe-inline'` 不再允许元素的 `style` 属性。位置相册的天地图照片标记、
+轨迹缩略图和数量/日期标签依赖这些属性；缺少独立指令会导致照片尺寸和叠加布局失效。
+此配置保留 Tauri 对脚本与样式表的 CSP 处理，修改后需要重新构建桌面应用才能生效。
+
+3D 足迹使用 Cesium：`worker-src 'self' blob:` 允许其本地计算 Worker 与
+跨来源 Worker 的 Blob 引导脚本；当前 Cesium 的 Knockout 和 WebAssembly
+依赖需要 `script-src` 中的 `'unsafe-eval'`。`connect-src` 仅额外允许
+`https://elevation3d.arcgis.com`，用于可选的 ArcGIS 三维地形。
+调整 CSP 时需同时验证内置 Natural Earth 底图、天地图影像与地形开关，
+避免只显示城市和连线而不显示地球底图。
+
+天地图 SDK 及其子脚本、样式表由本地 Server 的 `/api/system/map-proxy/`
+代理返回。桌面页面与 Server 不同源，Server 端口还会动态分配，因此
+`script-src` 与 `style-src` 均需允许 `http://127.0.0.1:*`。
+仅在 `connect-src` 中允许本地请求不会放行 `<script>` 或 `<link rel="stylesheet">`，
+缺少对应指令时会出现 `Failed to load map script`。
+
+安装与卸载前，NSIS hook 会按安装目录关闭旧桌面程序并清理残留的 Server、
+AI 与 llama-server 进程。PyInstaller 子进程可能在窗口被强制关闭后继续运行，
+占用 Pillow `.pyd` 等运行库；仅关闭桌面窗口不足以确保可覆盖安装。
+清理仅匹配安装目录内的应用进程，不操作照片库文件或其他目录中的同名进程。
+
 ## 修改数据目录
 
 桌面客户端的 **设置 → 数据目录** 支持选择空文件夹（也可输入绝对路径创建目录），
@@ -60,6 +84,10 @@ AI 运行时作为独立扩展包发布，不增加基础安装包体积。桌�
 主 Server 始终连接 Gateway；OCR、票据识别或图片分类首次请求时才按需启动已安装的 AI
 Sidecar，空闲十分钟后自动退出。日志写入桌面数据目录下的 `logs/ai.log` 和
 `logs/ai.err.log`。
+
+后台 AI 任务按类型分阶段处理，当前阶段完成后再切换到下一优先级类型；同类型
+内部保留批量并行。切换模型类别前会等待推理结束并释放上一类别的模型缓存，
+避免场景识别、人脸识别和特征提取模型共同驻留。CPU、IO 队列保留各自的并发调度。
 
 在线安装依赖对应版本 GitHub Release 中的 `ai-extensions.json` 和平台扩展包。在预发布阶段，
 也可以从 GitHub Actions 下载 `.tar.gz` 扩展包，在设置页选择“离线导入”。

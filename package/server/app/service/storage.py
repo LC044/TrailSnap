@@ -170,7 +170,9 @@ def _score_video_thumbnail_frame(frame) -> float:
     if frame is None or getattr(frame, "size", 0) == 0:
         return float("-inf")
 
-    pixels = frame.astype(np.float32)
+    # Scoring needs a representative sample, not a full-resolution float buffer.
+    stride = max(1, max(frame.shape[:2]) // 256)
+    pixels = frame[::stride, ::stride].astype(np.float32)
     gray = pixels.mean(axis=2) if pixels.ndim == 3 else pixels
     brightness = float(gray.mean())
     dark_ratio = float(np.mean(gray < 16))
@@ -200,6 +202,8 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
                 score = _score_video_thumbnail_frame(np.asarray(frame))
                 if score > best_score:
                     best_frame, best_score = frame, score
+                if score != float('-inf'):
+                    break
             selected = best_frame if best_frame is not None else fallback_frame
             return _save_thumbnails(selected, file_id, user_id, config=config) if selected is not None else None
         except Exception as exc:
@@ -229,6 +233,8 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
             if score > best_score:
                 best_score = score
                 best_frame = frame.copy()
+            if score != float('-inf'):
+                break
 
         selected_frame = best_frame if best_frame is not None else fallback_frame
         if selected_frame is None:
@@ -282,14 +288,16 @@ def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: Ima
     t_qual = config.thumbnail_quality
     p_qual = config.preview_quality
 
-    m = img.copy()
-    m.thumbnail((p_size, p_size))
-    m.save(m_path, "WEBP", quality=p_qual)
-
-    s = img.copy()
-    s.thumbnail((t_size, t_size))
-    # s.save(s_path, "JPEG", quality=t_qual)
-    s.save(s_path, "WEBP", quality=t_qual)
+    # exif_transpose already returned an owned image. Resize it in place, and
+    # derive the smaller variant from it instead of copying the original twice.
+    img.thumbnail((max(p_size, t_size), max(p_size, t_size)))
+    method = getattr(config, 'webp_method', 0)
+    with img.copy() as m:
+        m.thumbnail((p_size, p_size))
+        m.save(m_path, "WEBP", quality=p_qual, method=method)
+    img.thumbnail((t_size, t_size))
+    img.save(s_path, "WEBP", quality=t_qual, method=method)
+    img.close()
     return m_path
 
 def get_preview_path(user_id: UUID, file_id: UUID) -> Optional[str]:

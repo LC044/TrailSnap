@@ -2,11 +2,18 @@
 
 import asyncio
 import os
+import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from app.config import settings
+from app.core.runtime_limits import configure_inference_runtime
+from app.core.model_phase import ModelPhaseMiddleware
+
+# Match service startup: configure native libraries before router imports.
+configure_inference_runtime()
 from app.core.logger import setup_logging
 from app.routers import (
     ai_config,
@@ -47,6 +54,17 @@ app = FastAPI(
     description="Optional CPU extension providing the complete TrailSnap AI service.",
     lifespan=lifespan,
 )
+app.add_middleware(ModelPhaseMiddleware)
+
+
+@app.middleware('http')
+async def log_request_timing(request, call_next):
+    started = time.perf_counter()
+    try:
+        return await call_next(request)
+    finally:
+        logging.info('Desktop AI request timing: path=%s total_ms=%.1f',
+                     request.url.path, (time.perf_counter() - started) * 1000)
 
 app.include_router(face.router, prefix="/face", tags=["Face Recognition"])
 app.include_router(ocr.router, prefix="/ocr", tags=["OCR"])

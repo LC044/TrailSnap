@@ -74,6 +74,7 @@ class SecuritySettings(BaseModel):
     allow_registration: bool = Field(default=False, description="Allow new user self-registration")
 
 class TaskSettings(BaseModel):
+    disk_concurrency: int = Field(default=0, ge=0, le=16, description="Concurrent media jobs per volume; 0 uses low/medium/high defaults of 1/2/4")
     concurrency_level: Literal["auto", "low", "medium", "high"] = Field(
         default="auto",
         description="Task performance mode: auto, low, medium, high",

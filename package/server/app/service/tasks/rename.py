@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 import os
 import logging
 from typing import Dict, Any, List, Optional, Set
@@ -109,7 +110,8 @@ class BatchRenameStrategy(BaseTaskStrategy):
         for p, old_path, new_path, new_basename in planned:
             if new_path is not None:
                 try:
-                    os.rename(old_path, new_path)
+                    with disk_budget.slots(old_path, new_path):
+                        os.rename(old_path, new_path)
                     p.file_path = new_path
                     p.filename = new_basename
                     success_count += 1

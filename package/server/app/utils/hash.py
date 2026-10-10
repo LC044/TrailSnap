@@ -1,14 +1,16 @@
 import hashlib
 import os
 import asyncio
+from app.service.disk_budget import media_io
 
-def calculate_file_md5(file_path: str, chunk_size: int = 8192) -> str:
+@media_io()
+def calculate_file_md5(file_path: str, chunk_size: int = 1024 * 1024) -> str:
     """
     Calculate MD5 hash of a file by reading it in chunks to avoid memory overflow.
     
     Args:
         file_path (str): The path to the file.
-        chunk_size (int): The size of chunks to read. Defaults to 8192.
+        chunk_size (int): The size of chunks to read. Defaults to 1 MiB.
         
     Returns:
         str: The MD5 hash of the file as a hexadecimal string.
@@ -25,7 +27,7 @@ def calculate_file_md5(file_path: str, chunk_size: int = 8192) -> str:
     except Exception as e:
         return ""
 
-async def calculate_file_md5_async(file_path: str, chunk_size: int = 8192) -> str:
+async def calculate_file_md5_async(file_path: str, chunk_size: int = 1024 * 1024) -> str:
     """
     Calculate MD5 hash of a file asynchronously.
     
@@ -34,7 +36,7 @@ async def calculate_file_md5_async(file_path: str, chunk_size: int = 8192) -> st
     
     Args:
         file_path (str): The path to the file.
-        chunk_size (int): The size of chunks to read. Defaults to 8192.
+        chunk_size (int): The size of chunks to read. Defaults to 1 MiB.
         
     Returns:
         str: The MD5 hash of the file as a hexadecimal string.

@@ -198,6 +198,7 @@ class StorageSettings(BaseModel):
     external_directories: List[str] = Field(default=[], description="List of external gallery directories")
 
 class ImageSettings(BaseModel):
+    webp_method: int = Field(default=0, ge=0, le=6, description="WebP encoding effort (0 fastest, 6 smallest)")
     thumbnail_quality: int = Field(default=80, description="Thumbnail quality (1-100)")
     preview_quality: int = Field(default=85, description="Preview image quality (1-100)")
     thumbnail_size: int = Field(default=250, description="Thumbnail long edge size")

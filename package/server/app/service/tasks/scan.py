@@ -15,6 +15,7 @@ from app.db.models.user import User
 from app.core.config_manager import config_manager
 from app.service.live_photo import live_photo_service
 from app.utils.image_loading import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
+from app.service.disk_budget import disk_budget, media_io
 
 def _compile_folder_patterns(patterns: Optional[List[str]]) -> List[re.Pattern]:
     """Compile valid folder-name exclusion patterns (regex)."""
@@ -37,6 +38,7 @@ def _is_folder_excluded(name: str, compiled_patterns: List[re.Pattern]) -> bool:
             return True
     return False
 
+@media_io('path')
 def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None, *, recursive: bool = True) -> Set[str]:
     found = set()
     try:
@@ -150,7 +152,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
                 except OSError:
                     pass
             work_items = list(set(work_items))
-            with concurrent.futures.ThreadPoolExecutor() as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=disk_budget.limit) as executor:
                 futures = {executor.submit(scan_directory_recursive, item, EXTS, filter_config, exclude_folder_patterns): item for item in work_items}
                 for future in concurrent.futures.as_completed(futures):
                     found_files.update(future.result())
@@ -255,6 +257,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
 
             try:
                 if image_path and video_path:
+                     @media_io('img')
                      def check_live_pair(img, vid):
                          cid1 = live_photo_service.get_content_identifier(img)
                          cid2 = live_photo_service.get_content_identifier(vid)

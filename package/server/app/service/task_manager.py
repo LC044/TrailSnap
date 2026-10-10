@@ -40,6 +40,7 @@ class TaskManager:
         self._stopping = False
         self._worker_lock = threading.Lock()
         self._worker_stop_event = None
+        self._worker_wake_event = None
         self._restart_thread = None
         self._restart_requested = False
 
@@ -60,6 +61,8 @@ class TaskManager:
         with self._worker_lock:
             self._stopping = False
             started = self._start_worker_locked()
+            if getattr(self, '_worker_wake_event', None) is not None:
+                self._worker_wake_event.set()
         if started:
             self._publish_active_tasks_snapshot()
 
@@ -104,6 +107,7 @@ class TaskManager:
         # 由 API 进程派发到所有 SSE 订阅者。
         self._event_queue = multiprocessing.Queue(maxsize=4096)
         self._worker_stop_event = multiprocessing.Event()
+        self._worker_wake_event = multiprocessing.Event()
         self._reader_thread = threading.Thread(
             target=self._event_queue_reader,
             daemon=True,
@@ -112,7 +116,7 @@ class TaskManager:
         self._reader_thread.start()
         self.worker_process = multiprocessing.Process(
             target=run_worker,
-            args=(self._event_queue, self._worker_stop_event),
+            args=(self._event_queue, self._worker_stop_event, self._worker_wake_event),
             daemon=True,
             name="TaskWorker"
         )

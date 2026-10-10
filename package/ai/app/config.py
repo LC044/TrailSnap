@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings
 def _default_inference_threads() -> int:
     cpu_count = max(1, os.cpu_count() or 1)
     reserved = max(1, int(os.getenv("AI_RESERVED_CPU_CORES", "1")))
-    return max(1, min(4, cpu_count - reserved))
+    return max(1, min(8, (cpu_count - reserved) // 2))
 
 class Settings(BaseSettings):
     APP_NAME: str = "TrailSnap AI Service"
@@ -23,10 +23,11 @@ class Settings(BaseSettings):
     CHECK_INTERVAL: int = 60  # Check every minute
     AI_ADMISSION_QUEUE: int = int(os.getenv("AI_ADMISSION_QUEUE", "2"))
     AI_ADMISSION_WAIT_SECONDS: float = float(os.getenv("AI_ADMISSION_WAIT_SECONDS", "10"))
+    AI_SINGLE_MODEL_FAMILY: bool = os.getenv("AI_SINGLE_MODEL_FAMILY", "true").lower() in {"1", "true", "yes", "on"}
     AI_OCR_CONCURRENCY: int = int(os.getenv("AI_OCR_CONCURRENCY", "1"))
-    AI_CLASSIFICATION_CONCURRENCY: int = int(os.getenv("AI_CLASSIFICATION_CONCURRENCY", "1"))
+    AI_CLASSIFICATION_CONCURRENCY: int = int(os.getenv("AI_CLASSIFICATION_CONCURRENCY", "2" if (os.cpu_count() or 1) >= 8 else "1"))
     AI_FACE_CONCURRENCY: int = int(os.getenv("AI_FACE_CONCURRENCY", "1"))
-    AI_EMBEDDING_CONCURRENCY: int = int(os.getenv("AI_EMBEDDING_CONCURRENCY", "1"))
+    AI_EMBEDDING_CONCURRENCY: int = int(os.getenv("AI_EMBEDDING_CONCURRENCY", "2" if (os.cpu_count() or 1) >= 8 else "1"))
     AI_TICKETS_CONCURRENCY: int = int(os.getenv("AI_TICKETS_CONCURRENCY", "1"))
     # One native inference call must not consume every CPU core. The same
     # budget is applied to OpenMP/BLAS/ONNX Runtime/OpenVINO.

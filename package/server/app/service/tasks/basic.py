@@ -26,7 +26,10 @@ from app.utils.hash import calculate_file_md5
 from app.schemas import photo as photo_schemas
 from app.utils import motion_photo
 from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
+from app.service.disk_budget import media_io
+from app.service.task_runtime import await_owned
 
+@media_io('file_path', 'storage_root')
 def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str, image_config=None):
     """
     CPU-intensive task running in a separate process.
@@ -35,6 +38,7 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
     image_config: 预取的 ImageSettings，用于 _save_thumbnails 时避免再开 DB
     session（原实现会为批中每张图 SessionLocal() 一次，撑爆连接池）。
     """
+    image_obj = None
     try:
         # Initialize storage root cache in this process
         storage.update_storage_root_cache(user_id, storage_root)
@@ -124,6 +128,9 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             "success": False,
             "error": str(e)
         }
+    finally:
+        if image_obj is not None:
+            image_obj.close()
 
 def process_basic_cpu_batch_job(tasks_data: List[Dict]) -> List[Dict]:
     """
@@ -161,6 +168,20 @@ class BasicTaskStrategy(BaseTaskStrategy):
         # 为批内每张图各开一次 SessionLocal 拉 DB（config_manager 内部有 5s LRU
         # 缓存，同一 user_id 实际只查一次 DB）。
         image_config_cache: Dict[str, Any] = {}
+        filter_config_cache: Dict[str, Any] = {}
+        storage_roots: Dict[str, str] = {}
+        paths_by_owner: Dict[str, set] = {}
+        for task in tasks:
+            owner = task.payload.get('user_id') or (str(task.owner_id) if task.owner_id else None)
+            path = task.payload.get('file_path')
+            if owner and path:
+                paths_by_owner.setdefault(owner, set()).add(path)
+        existing_ids = {}
+        for owner, paths in paths_by_owner.items():
+            rows = db.query(Photo.id, Photo.file_path).filter(
+                Photo.owner_id == owner, Photo.file_path.in_(paths)
+            ).all()
+            existing_ids.update({(owner, path): pid for pid, path in rows})
 
         for task in tasks:
             file_path = task.payload.get('file_path')
@@ -190,25 +211,19 @@ class BasicTaskStrategy(BaseTaskStrategy):
                     pre_created_photo_id = None
 
             if pre_created_photo_id is None and user_id:
-                try:
-                    existing = db.query(Photo.id).filter(
-                        Photo.owner_id == user_id,
-                        Photo.file_path == file_path
-                    ).first()
-                    if existing:
-                        pre_created_photo_id = existing[0]
-                except Exception as e:
-                    logging.getLogger(__name__).warning(
-                        f"BasicTaskStrategy: pre-check existing photo failed for {file_path}: {e}"
-                    )
+                pre_created_photo_id = existing_ids.get((user_id, file_path))
 
             photo_id = pre_created_photo_id if pre_created_photo_id else uuid4()
-            storage_root = storage._get_storage_root(user_id, db)
+            if user_id not in storage_roots:
+                storage_roots[user_id] = storage._get_storage_root(user_id, db)
+            storage_root = storage_roots[user_id]
 
             # 每个 user_id 预取一次 image_config（本批复用），跨线程传纯 pydantic 对象安全
             if user_id not in image_config_cache:
                 try:
-                    image_config_cache[user_id] = config_manager.get_user_config(user_id, db).image
+                    config = config_manager.get_user_config(user_id, db)
+                    image_config_cache[user_id] = config.image
+                    filter_config_cache[user_id] = config.filter
                 except Exception as e:
                     logging.getLogger(__name__).warning(
                         f"BasicTaskStrategy: prefetch image_config failed for user={user_id}: {e}"
@@ -232,12 +247,12 @@ class BasicTaskStrategy(BaseTaskStrategy):
             return results
 
         loop = asyncio.get_running_loop()
-        batch_results = await loop.run_in_executor(
+        batch_results = await await_owned(loop.run_in_executor(
             worker.thread_pool,
             # worker.process_pool,
             process_basic_cpu_batch_job,
             batch_jobs_data
-        )
+        ))
 
         for data, res in zip(batch_jobs_data, batch_results):
             if not res['success']:
@@ -251,7 +266,9 @@ class BasicTaskStrategy(BaseTaskStrategy):
                 
             # Check resolution filter
             user_id = data['user_id']
-            filter_config = config_manager.get_user_config(user_id, db).filter
+            filter_config = filter_config_cache.get(user_id)
+            if filter_config is None:
+                filter_config = config_manager.get_user_config(user_id, db).filter
             if filter_config.enable:
                 # get_image_dimensions 对损坏图片 / 未装 cv2 的视频 / 不支持的扩展名
                 # 会返回 (None, None, None)，且异常被底层裸 except 吞掉。
@@ -352,11 +369,14 @@ class BasicTaskStrategy(BaseTaskStrategy):
         if photos_to_create:
             for uid, photos in photos_to_create.items():
                 inserted_ids.update(
-                    str(pid) for pid in app.crud.photo.batch_create_photos(db, photos, user_id=uid)
+                    str(pid) for pid in app.crud.photo.batch_create_photos(db, photos, user_id=uid, commit=False)
                 )
             db.add_all(index_logs)
 
         # 分支 B：Photo 已存在，走 "先查再插/更新" 幂等补齐 PhotoMetadata。
+        pre_created_ids = [data['photo_id'] for data in pre_created_items]
+        existing_photos = {p.id: p for p in db.query(Photo).filter(Photo.id.in_(pre_created_ids)).all()} if pre_created_ids else {}
+        existing_metadata = {m.photo_id: m for m in db.query(PhotoMetadata).filter(PhotoMetadata.photo_id.in_(pre_created_ids)).all()} if pre_created_ids else {}
         for data in pre_created_items:
             photo_id = str(data['photo_id'])
             photo_schema = data.get('photo')
@@ -365,7 +385,7 @@ class BasicTaskStrategy(BaseTaskStrategy):
             # 的内嵌视频是在这个阶段才被识别和提取，因此必须把检测结果
             # 回写到预创建记录，否则前端永远只会把它当普通图片。
             try:
-                db_photo = db.get(Photo, data['photo_id'])
+                db_photo = existing_photos.get(data['photo_id'])
                 if db_photo is not None and photo_schema is not None:
                     if photo_schema.file_type == FileType.live_photo:
                         db_photo.file_type = FileType.live_photo
@@ -387,14 +407,14 @@ class BasicTaskStrategy(BaseTaskStrategy):
             if not meta_schema:
                 continue
             try:
-                db_meta = db.query(PhotoMetadata).filter(
-                    PhotoMetadata.photo_id == data['photo_id']
-                ).first()
+                db_meta = existing_metadata.get(data['photo_id'])
                 if db_meta is None:
-                    db.add(PhotoMetadata(
+                    db_meta = PhotoMetadata(
                         photo_id=data['photo_id'],
                         exif_info=meta_schema.exif_info,
-                    ))
+                    )
+                    db.add(db_meta)
+                    existing_metadata[data['photo_id']] = db_meta
                 elif not db_meta.exif_info and meta_schema.exif_info:
                     # 仅在原为空时补齐，避免覆盖 EXTRACT_METADATA 精修结果
                     db_meta.exif_info = meta_schema.exif_info
@@ -411,16 +431,18 @@ class BasicTaskStrategy(BaseTaskStrategy):
         if not eligible_ids:
             return
 
+        existing_color_ids = {
+            str(row[0]) for row in db.query(PhotoColor.photo_id).filter(
+                PhotoColor.photo_id.in_([UUID(pid) for pid in eligible_ids])
+            ).all()
+        }
         for photo_id, info in processed_photos.items():
             if photo_id not in eligible_ids:
                 continue
             color_info = info.get('color_info')
             if color_info and color_info.get('dominant_colors'):
                 try:
-                    existing_color = db.query(PhotoColor).filter(
-                        PhotoColor.photo_id == photo_id
-                    ).first()
-                    if existing_color:
+                    if photo_id in existing_color_ids:
                         continue
                     color_record = PhotoColor(
                         photo_id=photo_id,

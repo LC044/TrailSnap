@@ -36,7 +36,7 @@ from app.utils.exif import extract_metadata
 from app.utils.path_validation import validate_target_path
 
 
-def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[UUID] = None) -> List[UUID]:
+def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[UUID] = None, *, commit: bool = True) -> List[UUID]:
     """
     Batch create photos and metadata.
     photos_data: List of dicts containing:
@@ -107,6 +107,7 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
                 width=p_schema.width,
                 height=p_schema.height,
                 duration=p_schema.duration,
+                md5=getattr(p_schema, 'md5', None),
                 owner_id=user_id
             )
             photos.append(photo)
@@ -123,11 +124,17 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
         if metadatas:
             db.bulk_save_objects(metadatas)
 
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
         if user_id:
             from app.crud.album import trigger_conditional_albums_update
-            trigger_conditional_albums_update(db, user_id, [p.id for p in photos])
+            if commit:
+                trigger_conditional_albums_update(db, user_id, [p.id for p in photos])
+            else:
+                trigger_conditional_albums_update(db, user_id, [p.id for p in photos], commit=False)
 
         return [p.id for p in photos]
     except Exception as e:
