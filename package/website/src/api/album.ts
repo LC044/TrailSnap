@@ -2,6 +2,21 @@ import request from '@/utils/request';
 import type { ApiAlbum, Album, CreateAlbumDto, Photo, PhotoMetadata, TimelineStats, PhotoGroup, FilterOptions } from '@/types/album';
 import { thumbnailUrl } from '@/utils/mediaUrl';
 
+export interface UploadIntegrity {
+  size: number
+  chunks: number
+  sha256: string
+}
+
+export interface UploadRequestOptions {
+  signal?: AbortSignal
+  sha256?: string
+  integrity?: UploadIntegrity
+  expectedSize?: number
+  expectedChunks?: number
+  silentError?: boolean
+}
+
 export interface SmartAlbumRepresentative {
   entity_id: string
   name: string
@@ -180,23 +195,26 @@ export const albumService = {
   },
 
   // Chunk Upload
-  async initUpload() {
-      const data = await request.post<{upload_id: string}>('/api/medias/upload/init');
+  async initUpload(options: UploadRequestOptions = {}) {
+      const data = await request.post<{upload_id: string}>('/api/medias/upload/init', undefined, options);
       return data.data.upload_id;
   },
 
-  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob, onProgress?: (loaded: number, total?: number) => void) {
+  async uploadChunk(uploadId: string, chunkIndex: number, chunk: Blob, onProgress?: (loaded: number, total?: number) => void, options: UploadRequestOptions = {}) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('chunk_index', chunkIndex.toString());
       formData.append('file', chunk);
+      if (options.sha256) formData.append('content_sha256', options.sha256);
       await request.post('/api/medias/upload/chunk', formData, {
         timeout: 120000,
+        signal: options.signal,
+        silentError: options.silentError,
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
       });
   },
 
-  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string, replaceExisting = false, sourcePhotoTime?: string, contentMd5?: string) {
+  async finishUpload(uploadId: string, fileName: string, albumId?: string, folder?: string, backupKey?: string, replaceExisting = false, sourcePhotoTime?: string, contentMd5?: string, options: UploadRequestOptions = {}) {
       const formData = new FormData();
       formData.append('upload_id', uploadId);
       formData.append('file_name', fileName);
@@ -208,8 +226,26 @@ export const albumService = {
       if (sourcePhotoTime) formData.append('source_photo_time', sourcePhotoTime);
       if (contentMd5) formData.append('content_md5', contentMd5);
       if (replaceExisting) formData.append('replace_existing', 'true');
-      const data = await request.post<Photo>('/api/medias/upload/finish', formData, { timeout: 120000 });
+      if (options.expectedSize !== undefined) formData.append('expected_size', String(options.expectedSize));
+      if (options.expectedChunks !== undefined) formData.append('expected_chunks', String(options.expectedChunks));
+      if (options.integrity) {
+        formData.append('expected_size', String(options.integrity.size));
+        formData.append('expected_chunks', String(options.integrity.chunks));
+        formData.append('content_sha256', options.integrity.sha256);
+      }
+      const data = await request.post<Photo>('/api/medias/upload/finish', formData, {
+        timeout: 0, signal: options.signal, silentError: options.silentError,
+      });
       return data.data;
+  },
+
+  async discardUpload(uploadId: string) {
+    await request.delete(`/api/medias/upload/${uploadId}`, { silentError: true });
+  },
+
+  async getUploadStatus(uploadId: string) {
+    const response = await request.get<{ chunks: Record<string, number> }>(`/api/medias/upload/${uploadId}`, { silentError: true });
+    return response.data;
   },
 
   async finishLivePhotoUpload(uploadId: string, imageName: string, video: File, folder: string | undefined, imageBackupKey: string, videoBackupKey: string, replaceExisting = false, onProgress?: (loaded: number, total?: number) => void, sourcePhotoTime?: string, contentMd5?: string) {
@@ -228,6 +264,21 @@ export const albumService = {
         onUploadProgress: event => onProgress?.(event.loaded, event.total),
       });
       return data.data;
+  },
+
+  async checkLiveBackupContent(pairs: Array<{ key: string; image_md5: string; video_md5: string }>) {
+    const response = await request.post<Record<string, { image_exists: boolean; video_exists: boolean; complete: boolean }>>(
+      '/api/medias/backup/live/check', { pairs },
+    );
+    return response.data;
+  },
+
+  async uploadMissingLiveContent(form: FormData, onProgress: (loaded: number) => void) {
+    const response = await request.post<Photo>('/api/medias/backup/live', form, {
+      headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000,
+      onUploadProgress: event => onProgress(event.loaded),
+    });
+    return response.data;
   },
 
   async checkBackupKeys(keys: string[], hashes: string[] = [], sourceTimes: Record<string, string> = {}) {

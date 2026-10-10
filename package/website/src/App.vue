@@ -6,6 +6,7 @@
     <PwaInstallPrompt />
     <DesktopUpdatePrompt />
     <MobileUpdatePrompt />
+    <UploadCenter v-if="token" />
   </el-config-provider>
 </template>
 
@@ -30,6 +31,7 @@ import { useNotificationSSE } from '@/composables/useNotificationSSE';
 import PwaInstallPrompt from '@/components/PwaInstallPrompt.vue';
 import DesktopUpdatePrompt from '@/components/DesktopUpdatePrompt.vue';
 import MobileUpdatePrompt from '@/components/MobileUpdatePrompt.vue';
+import UploadCenter from '@/components/UploadCenter.vue';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {
@@ -80,11 +82,7 @@ const PHOTO_DATA_TASKS = new Set([
   'ORGANIZE_PHOTOS',
   'BATCH_RENAME',
   'BATCH_TIME_FROM_FILENAME',
-  'RECOGNIZE_FACE',
-  'OCR',
   'CLASSIFY_IMAGE',
-  'VISUAL_DESCRIPTION',
-  'IMAGE_EMBEDDING',
 ]);
 
 watch(

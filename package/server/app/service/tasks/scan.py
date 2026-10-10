@@ -36,7 +36,7 @@ def _is_folder_excluded(name: str, compiled_patterns: List[re.Pattern]) -> bool:
             return True
     return False
 
-def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None) -> Set[str]:
+def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None, *, recursive: bool = True) -> Set[str]:
     found = set()
     try:
         with os.scandir(path) as it:
@@ -67,7 +67,7 @@ def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optiona
                                 continue
 
                         found.add(entry.path)
-                elif entry.is_dir():
+                elif recursive and entry.is_dir():
                     # Skip excluded folders (e.g. NAS @eaDir / #recycle) regardless of filter enable
                     if _is_folder_excluded(entry.name, exclude_folder_patterns or []):
                         continue
@@ -128,10 +128,16 @@ class ScanFolderStrategy(BaseTaskStrategy):
         def parallel_scan_wrapper():
             found_files = set()
             work_items = []
-            for root in scan_roots:
+            roots = sorted(set(os.path.abspath(root) for root in scan_roots), key=len)
+            unique_roots = []
+            for root in roots:
+                normalized = os.path.normcase(root)
+                if not any(normalized == os.path.normcase(parent) or normalized.startswith(os.path.normcase(parent).rstrip(os.sep) + os.sep) for parent in unique_roots):
+                    unique_roots.append(root)
+            for root in unique_roots:
                 if not os.path.exists(root):
                     continue
-                work_items.append(root)
+                found_files.update(scan_directory_recursive(root, EXTS, filter_config, exclude_folder_patterns, recursive=False))
                 try:
                     with os.scandir(root) as it:
                         for entry in it:

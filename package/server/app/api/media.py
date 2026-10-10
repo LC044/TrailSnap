@@ -5,6 +5,8 @@ import shutil
 import uuid
 import re
 import logging
+import hashlib
+import tempfile
 from datetime import datetime
 from typing import Optional
 from uuid import UUID
@@ -79,6 +81,53 @@ def _existing_content_hashes(db: Session, user_id: UUID, hashes: list[str]) -> l
         Photo.md5.in_(hashes),
     ).all()
     return list(dict.fromkeys(md5 for md5, file_path in rows if file_path and os.path.isfile(file_path)))
+
+
+def _stream_md5(stream) -> str:
+    digest = hashlib.md5()
+    while chunk := stream.read(1024 * 1024):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _live_content_state(db: Session, user_id: UUID, image_md5: str, video_md5: str):
+    image = _existing_content_photo(db, user_id, image_md5)
+    attached = None
+    if image:
+        attached = storage.get_live_photo_vide(image.file_path)
+        if not attached:
+            thumb = _get_thumbnail_path(user_id, image.id, db, 'medium')
+            candidate = os.path.splitext(thumb)[0] + '.mp4'
+            if os.path.isfile(candidate):
+                attached = candidate
+        if attached:
+            with open(attached, 'rb') as stream:
+                if _stream_md5(stream) == video_md5:
+                    return image, attached, True
+    video = _existing_content_photo(db, user_id, video_md5)
+    return image, video.file_path if video else None, False
+
+
+@router.post('/backup/live/check', response_model=BaseResponse[dict])
+def check_live_backup_content(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    pairs = payload.get('pairs')
+    if not isinstance(pairs, list) or len(pairs) > 200:
+        raise HTTPException(status_code=400, detail='pairs must be an array with at most 200 items')
+    result = {}
+    for pair in pairs:
+        if not isinstance(pair, dict) or not isinstance(pair.get('key'), str) or len(pair['key']) > 255:
+            raise HTTPException(status_code=400, detail='Invalid live photo key')
+        image_md5 = _normalized_md5(pair.get('image_md5'))
+        video_md5 = _normalized_md5(pair.get('video_md5'))
+        if not image_md5 or not video_md5:
+            raise HTTPException(status_code=400, detail='Both live photo hashes are required')
+        image, video, complete = _live_content_state(db, current_user.id, image_md5, video_md5)
+        result[pair['key']] = {'image_exists': image is not None, 'video_exists': video is not None, 'complete': complete}
+    return BaseResponse.success(data=result)
 
 
 def _apply_mobile_source_metadata(
@@ -567,12 +616,27 @@ def _finalize_backup_file_replacement(db: Session, photo: Photo, temporary_path:
     return photo
 
 
-def _replace_backup_file(db: Session, photo: Photo, upload: UploadFile, user_id: UUID) -> Photo:
+def _verify_replacement(path: str, expected_size=None, expected_sha256=None, expected_md5=None):
+    if expected_size is not None and os.path.getsize(path) != expected_size:
+        raise HTTPException(status_code=400, detail="Uploaded file size does not match the original")
+    sha = hashlib.sha256() if expected_sha256 else None
+    md5 = hashlib.md5() if expected_md5 else None
+    if sha or md5:
+        with open(path, 'rb') as stream:
+            while block := stream.read(1024 * 1024):
+                if sha: sha.update(block)
+                if md5: md5.update(block)
+    if sha and sha.hexdigest() != expected_sha256 or md5 and md5.hexdigest() != expected_md5:
+        raise HTTPException(status_code=400, detail="Uploaded file hash does not match the original")
+
+
+def _replace_backup_file(db: Session, photo: Photo, upload: UploadFile, user_id: UUID, expected_md5=None) -> Photo:
     temporary_path = photo.file_path + f'.{uuid.uuid4().hex}.original-upload'
     storage.validate_target_path(temporary_path)
     try:
         with open(temporary_path, 'wb') as output:
             shutil.copyfileobj(upload.file, output)
+        _verify_replacement(temporary_path, expected_md5=expected_md5)
         return _finalize_backup_file_replacement(db, photo, temporary_path, user_id)
     finally:
         if os.path.exists(temporary_path):
@@ -580,7 +644,8 @@ def _replace_backup_file(db: Session, photo: Photo, upload: UploadFile, user_id:
 
 
 def _replace_backup_file_from_chunks(
-    db: Session, photo: Photo, chunk_dir: str, chunks: list[int], user_id: UUID
+    db: Session, photo: Photo, chunk_dir: str, chunks: list[int], user_id: UUID,
+    expected_size=None, expected_sha256=None, expected_md5=None,
 ) -> Photo:
     temporary_path = photo.file_path + f'.{uuid.uuid4().hex}.original-upload'
     storage.validate_target_path(temporary_path)
@@ -589,6 +654,7 @@ def _replace_backup_file_from_chunks(
             for chunk_index in chunks:
                 with open(os.path.join(chunk_dir, str(chunk_index)), 'rb') as source:
                     shutil.copyfileobj(source, output)
+        _verify_replacement(temporary_path, expected_size, expected_sha256, expected_md5)
         return _finalize_backup_file_replacement(db, photo, temporary_path, user_id)
     finally:
         if os.path.exists(temporary_path):
@@ -603,13 +669,20 @@ def _finalize_chunk_upload(
     user_id: UUID,
     folder: Optional[str],
     db: Session,
+    expected_size: Optional[int] = None,
+    expected_chunks: Optional[int] = None,
+    expected_sha256: Optional[str] = None,
+    expected_md5: Optional[str] = None,
 ) -> str:
     """Commit uploaded chunks with one destination write and an atomic rename."""
+    _validate_chunk_sequence(chunks, expected_chunks)
     final_path = storage.prepare_upload_path(file_name, user_id, folder, db)
     temporary_path = final_path + f'.{uuid.uuid4().hex}.uploading'
     storage.validate_target_path(temporary_path)
     try:
-        if len(chunks) == 1:
+        digest = hashlib.sha256() if expected_sha256 else None
+        md5_digest = hashlib.md5() if expected_md5 else None
+        if len(chunks) == 1 and digest is None and md5_digest is None:
             source_path = os.path.join(chunk_dir, str(chunks[0]))
             try:
                 os.replace(source_path, temporary_path)
@@ -621,13 +694,39 @@ def _finalize_chunk_upload(
             with open(temporary_path, 'wb') as output:
                 for chunk_index in chunks:
                     with open(os.path.join(chunk_dir, str(chunk_index)), 'rb') as source:
-                        shutil.copyfileobj(source, output, length=1024 * 1024)
+                        while block := source.read(1024 * 1024):
+                            output.write(block)
+                            if digest is not None:
+                                digest.update(block)
+                            if md5_digest is not None:
+                                md5_digest.update(block)
+        if expected_size is not None and os.path.getsize(temporary_path) != expected_size:
+            raise ValueError("Uploaded file size does not match the original")
+        if digest is not None and digest.hexdigest() != expected_sha256:
+            raise ValueError("Uploaded file SHA-256 does not match the original")
+        if md5_digest is not None and md5_digest.hexdigest() != expected_md5:
+            raise ValueError("Uploaded file MD5 does not match the original")
         os.replace(temporary_path, final_path)
         return final_path
     finally:
         if os.path.exists(temporary_path):
             os.remove(temporary_path)
         shutil.rmtree(chunk_dir, ignore_errors=True)
+
+
+def _validate_chunk_sequence(chunks: list[int], expected_chunks: Optional[int] = None) -> None:
+    if not chunks or any(index != value for index, value in enumerate(chunks)):
+        raise ValueError("Upload chunks are missing or out of sequence")
+    if expected_chunks is not None and len(chunks) != expected_chunks:
+        raise ValueError("Upload chunk count does not match the original")
+
+
+def _normalized_sha256(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+        raise HTTPException(status_code=400, detail="Invalid SHA-256")
+    return value.lower()
 
 @router.post("", response_model=schemas.Photo)
 async def upload_photo_generic(
@@ -671,7 +770,7 @@ async def upload_photo_generic(
     existing = await run_in_threadpool(_existing_backup_photo, db, current_user.id, backup_key)
     if existing:
         if replace_existing:
-            existing = await run_in_threadpool(_replace_backup_file, db, existing, file, current_user.id)
+            existing = await run_in_threadpool(_replace_backup_file, db, existing, file, current_user.id, content_md5)
             await run_in_threadpool(_preserve_source_file_time, existing.file_path, source_photo_time)
         if live_photo_video:
             await run_in_threadpool(
@@ -704,7 +803,10 @@ async def upload_photo_generic(
     photo_id = uuid.uuid4()
     # Save file
     try:
-        file_path = await run_in_threadpool(storage.save_upload_file, file, photo_id, current_user.id, folder, db)
+        try:
+            file_path = await run_in_threadpool(storage.save_upload_file, file, photo_id, current_user.id, folder, db, content_md5)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         await run_in_threadpool(_preserve_source_file_time, file_path, source_photo_time)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -732,6 +834,71 @@ async def upload_photo_generic(
 
     return photo
 
+@router.post('/backup/live', response_model=BaseResponse[schemas.Photo])
+async def upload_missing_live_content(
+    image_md5: str = Form(...),
+    video_md5: str = Form(...),
+    video_name: str = Form(...),
+    backup_key: str = Form(...),
+    companion_backup_key: Optional[str] = Form(None),
+    folder: Optional[str] = Form(None),
+    source_photo_time: Optional[datetime] = Form(None),
+    image: Optional[UploadFile] = File(None),
+    video: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    image_md5, video_md5 = _normalized_md5(image_md5), _normalized_md5(video_md5)
+    if not image_md5 or not video_md5 or len(backup_key) > 255:
+        raise HTTPException(status_code=400, detail='Invalid live photo manifest')
+    if os.path.splitext(video_name)[1].lower() not in ('.mp4', '.mov'):
+        raise HTTPException(status_code=400, detail='Invalid live photo video name')
+    image = image if _is_upload_file(image) else None
+    video = video if _is_upload_file(video) else None
+    photo, existing_video, complete = await run_in_threadpool(
+        _live_content_state, db, current_user.id, image_md5, video_md5,
+    )
+    for upload, expected in ((image, image_md5), (video, video_md5)):
+        if upload:
+            digest = await run_in_threadpool(_stream_md5, upload.file)
+            await upload.seek(0)
+            if digest != expected:
+                raise HTTPException(status_code=400, detail='Live photo content hash mismatch')
+    if (not photo and not image) or (not complete and not existing_video and not video):
+        raise HTTPException(status_code=409, detail='A missing live photo part must be uploaded')
+    if not photo:
+        photo = await upload_photo_generic(
+            file=image, album_id=None, folder=folder, backup_key=backup_key,
+            source_photo_time=source_photo_time, content_md5=image_md5,
+            companion_backup_key=None, live_photo_video=None, replace_existing=True,
+            db=db, current_user=current_user,
+        )
+    if not complete:
+        # The stored image may have another filename but identical bytes.
+        stored_name = os.path.splitext(photo.filename)[0] + os.path.splitext(video_name)[1]
+        if video:
+            video.filename = stored_name
+            await run_in_threadpool(_attach_live_photo_video, db, photo, video, companion_backup_key, current_user.id)
+        else:
+            # Spool the existing clip locally, so removing its old standalone
+            # record cannot invalidate an open source file on Windows.
+            with tempfile.TemporaryFile() as spool:
+                with open(existing_video, 'rb') as source:
+                    await run_in_threadpool(shutil.copyfileobj, source, spool)
+                spool.seek(0)
+                if await run_in_threadpool(_stream_md5, spool) != video_md5:
+                    raise HTTPException(status_code=409, detail='Existing live video changed; retry backup')
+                spool.seek(0)
+                reused = StarletteUploadFile(file=spool, filename=stored_name)
+                await run_in_threadpool(_attach_live_photo_video, db, photo, reused, companion_backup_key, current_user.id)
+    elif photo.file_type != FileType.live_photo:
+        photo.file_type = FileType.live_photo
+        await run_in_threadpool(db.commit)
+    photo = await run_in_threadpool(_apply_mobile_source_metadata, db, photo, source_photo_time, image_md5)
+    logging.getLogger(__name__).info('Mobile live backup: photo_id=%s uploaded_image=%s uploaded_video=%s', photo.id, image is not None, video is not None)
+    return BaseResponse.success(data=schemas.Photo.model_validate(photo))
+
+
 # Chunked Upload Endpoints
 
 @router.post("/upload/init")
@@ -752,7 +919,11 @@ async def upload_chunk(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    content_sha256: Optional[str] = Form(None),
 ):
+    if chunk_index < 0:
+        raise HTTPException(status_code=400, detail="Invalid chunk index")
+    content_sha256 = _normalized_sha256(content_sha256 if isinstance(content_sha256, str) else None)
     chunk_dir = _chunk_dir(current_user.id, upload_id, db)
     exists = await run_in_threadpool(os.path.exists, chunk_dir)
     if not exists:
@@ -760,10 +931,47 @@ async def upload_chunk(
 
     chunk_path = os.path.join(chunk_dir, str(chunk_index))
     def save_chunk():
-        with open(chunk_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        temporary_path = chunk_path + f'.{uuid.uuid4().hex}.uploading'
+        digest = hashlib.sha256() if content_sha256 else None
+        try:
+            with open(temporary_path, "wb") as buffer:
+                while block := file.file.read(1024 * 1024):
+                    buffer.write(block)
+                    if digest is not None:
+                        digest.update(block)
+            if digest is not None and digest.hexdigest() != content_sha256:
+                raise HTTPException(status_code=400, detail="Chunk SHA-256 mismatch")
+            os.replace(temporary_path, chunk_path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
     await run_in_threadpool(save_chunk)
     return {"status": "success"}
+
+
+@router.get("/upload/{upload_id}", response_model=BaseResponse[dict])
+async def get_upload_status(
+    upload_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    def read_chunks():
+        directory = _chunk_dir(current_user.id, upload_id, db)
+        if not os.path.isdir(directory):
+            raise HTTPException(status_code=404, detail="Upload session not found")
+        return {int(name): os.path.getsize(os.path.join(directory, name))
+                for name in os.listdir(directory) if name.isdigit()}
+    return BaseResponse.success(data={"chunks": await run_in_threadpool(read_chunks)})
+
+
+@router.delete("/upload/{upload_id}", response_model=BaseResponse[dict])
+async def discard_upload(
+    upload_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    await run_in_threadpool(shutil.rmtree, _chunk_dir(current_user.id, upload_id, db), True)
+    return BaseResponse.success({"discarded": True})
 
 
 @router.post("/upload/finish", response_model=schemas.Photo)
@@ -779,8 +987,18 @@ async def finish_upload_generic(
         live_photo_video: Optional[UploadFile] = File(None),
         replace_existing: bool = Form(False),
         db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+        current_user: User = Depends(get_current_user),
+        expected_size: Optional[int] = Form(None),
+        expected_chunks: Optional[int] = Form(None),
+        content_sha256: Optional[str] = Form(None),
 ):
+    expected_size = expected_size if isinstance(expected_size, int) else None
+    expected_chunks = expected_chunks if isinstance(expected_chunks, int) else None
+    content_sha256 = _normalized_sha256(content_sha256 if isinstance(content_sha256, str) else None)
+    if expected_size is not None and expected_size <= 0:
+        raise HTTPException(status_code=400, detail="Invalid expected file size")
+    if expected_chunks is not None and expected_chunks <= 0:
+        raise HTTPException(status_code=400, detail="Invalid expected chunk count")
     if not _is_upload_file(live_photo_video):
         live_photo_video = None
     if not isinstance(folder, str):
@@ -817,8 +1035,13 @@ async def finish_upload_generic(
             )
             if not chunks:
                 raise HTTPException(status_code=400, detail="No chunks found")
+            try:
+                _validate_chunk_sequence(chunks, expected_chunks)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             existing = await run_in_threadpool(
-                _replace_backup_file_from_chunks, db, existing, chunk_dir, chunks, current_user.id
+                _replace_backup_file_from_chunks, db, existing, chunk_dir, chunks, current_user.id,
+                expected_size, content_sha256, content_md5,
             )
             await run_in_threadpool(_preserve_source_file_time, existing.file_path, source_photo_time)
         if live_photo_video:
@@ -867,7 +1090,8 @@ async def finish_upload_generic(
     photo_id = uuid.uuid4()
     try:
         final_path = await run_in_threadpool(
-            _finalize_chunk_upload, chunk_dir, chunks, file_name, current_user.id, folder, db
+            _finalize_chunk_upload, chunk_dir, chunks, file_name, current_user.id, folder, db,
+            expected_size, expected_chunks, content_sha256, content_md5,
         )
         await run_in_threadpool(_preserve_source_file_time, final_path, source_photo_time)
     except ValueError as exc:

@@ -120,10 +120,27 @@ def prepare_upload_path(filename: str, user_id: UUID, folder: Optional[str] = No
     return target_path
 
 
-def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None) -> str:
+def save_upload_file(upload_file: UploadFile, file_id: UUID, user_id: UUID, folder: Optional[str] = None, db: Session = None, expected_md5: Optional[str] = None) -> str:
     target_path = prepare_upload_path(upload_file.filename, user_id, folder, db)
-    with open(target_path, "wb") as buffer:
-        shutil.copyfileobj(upload_file.file, buffer)
+    temporary_path = target_path + f'.{file_id}.uploading'
+    validate_target_path(temporary_path)
+    try:
+        import hashlib
+        digest = hashlib.md5() if expected_md5 else None
+        with open(temporary_path, "wb") as buffer:
+            while block := upload_file.file.read(1024 * 1024):
+                buffer.write(block)
+                if digest is not None:
+                    digest.update(block)
+        if digest is not None and digest.hexdigest() != expected_md5:
+            raise ValueError('Uploaded file MD5 does not match the original')
+        expected_size = getattr(upload_file, 'size', None)
+        if isinstance(expected_size, int) and os.path.getsize(temporary_path) != expected_size:
+            raise ValueError('Uploaded file size does not match the original')
+        os.replace(temporary_path, target_path)
+    finally:
+        if os.path.exists(temporary_path):
+            os.remove(temporary_path)
     return target_path
 
 def _video_thumbnail_candidate_seconds(duration: float) -> list[float]:

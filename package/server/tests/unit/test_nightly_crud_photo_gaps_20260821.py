@@ -141,11 +141,14 @@ def test_save_and_create_photo_picks_video_for_mp4_extension():
             user_id=user_id,
         )
 
-    gen_thumb.assert_called_once_with(user_id, "/data/clip.mp4", photo_id)
+    gen_thumb.assert_not_called()
     assert db_photo.id == photo_id
     assert db_photo.file_path == "/data/clip.mp4"
     assert db_photo.filename == "clip.mp4"
     assert db_photo.file_type == FileType.video
+    assert db_photo.width is None
+    assert db_photo.height is None
+    assert db_photo.duration is None
     db.add.assert_called_once_with(db_photo)
     # create_photo commits once + save_and_create_photo commits again for
     # PhotoMetadata pre-create, so total commit count is 2.

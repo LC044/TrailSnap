@@ -178,20 +178,14 @@ async def test_upload_chunk_writes_buffer_to_disk(tmp_path):
     user = SimpleNamespace(id=uuid4())
     db = MagicMock()
 
-    fake_open = MagicMock()
-    fake_buffer = MagicMock()
-    fake_open.return_value.__enter__.return_value = fake_buffer
-
-    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path)), \
-         patch.object(media_api.os.path, "exists", return_value=True):
-        with patch("builtins.open", fake_open):
-            with patch.object(media_api.shutil, "copyfileobj") as copy:
-                result = await media_api.upload_chunk(
-                    upload_id=uuid4(), chunk_index=3, file=fake, db=db, current_user=user
-                )
+    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path)):
+        result = await media_api.upload_chunk(
+            upload_id=uuid4(), chunk_index=3, file=fake, db=db, current_user=user
+        )
 
     assert result == {"status": "success"}
-    copy.assert_called_once()
+    assert (tmp_path / '3').read_bytes() == b"hello world"
+    assert sorted(path.name for path in tmp_path.iterdir()) == ['3']
 
 
 @pytest.mark.asyncio

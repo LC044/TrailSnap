@@ -60,19 +60,7 @@
     <!-- Upload Modal -->
     <template #extra-modals>
         <ResponsiveDialog v-if="mobileMenu" v-model="showFilterPanel" title="筛选照片" glass><FilterPanel :store="photoStore" /></ResponsiveDialog>
-        <Transition name="slide-up">
-          <div v-if="showUploadModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div class="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
-              <div class="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                <h3 class="font-bold text-lg text-gray-900 dark:text-white">上传照片</h3>
-                <button @click="showUploadModal = false" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full dark:bg-gray-800"><X class="w-5 h-5" /></button>
-              </div>
-              <div class="p-6 overflow-y-auto">
-                <MultiFileUpload :albumId="undefined" @upload-complete="handleUploadComplete" />
-              </div>
-            </div>
-          </div>
-        </Transition>
+
     </template>
 
     <template #empty>
@@ -115,10 +103,9 @@ import { usePhotosPageStore } from '@/stores/photoStore'
 import { Filter, X, Settings, FolderPlus, UploadCloud } from 'lucide-vue-next'
 import { useMediaQuery, onClickOutside } from '@vueuse/core'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
-import MultiFileUpload from '@/components/MultiFileUpload.vue'
+import { useUploadStore } from '@/stores/uploadCenterStore'
 import FilterPanel from '@/components/FilterPanel.vue'
 import { ElMessage } from 'element-plus'
-import { useOverlayStack } from '@/composables/useOverlayStack'
 
 defineOptions({
   name: 'PhotosPage'
@@ -133,7 +120,7 @@ const pageActive = ref(false)
 let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let autoRefreshRunning = false
 
-const scheduleAutoRefresh = (delay = 400) => {
+const scheduleAutoRefresh = (delay = 3000) => {
   if (!pageActive.value || autoRefreshTimer !== null || autoRefreshRunning || !photoStore.dataStale) return
   autoRefreshTimer = setTimeout(() => {
     autoRefreshTimer = null
@@ -152,7 +139,7 @@ const autoRefreshIfCountChanged = async () => {
   try {
     const changed = await photoStore.hasCurrentContextPhotoCountChanged()
     if (changed && pageActive.value) {
-      shouldRetry = await unifiedPhotoPageRef.value?.refreshDataPreservingPosition() ?? false
+      await unifiedPhotoPageRef.value?.refreshDataPreservingPosition()
     }
   } catch (error) {
     shouldRetry = false
@@ -163,14 +150,13 @@ const autoRefreshIfCountChanged = async () => {
   }
 }
 
-watch(() => photoStore.dataStale, (stale) => {
+watch([() => photoStore.dataStale, () => photoStore.dataRevision], ([stale]) => {
   if (stale) scheduleAutoRefresh()
 })
 
 // State
 const images = computed(() => photoStore.images)
-const showUploadModal = ref(false)
-useOverlayStack(showUploadModal, () => { showUploadModal.value = false })
+const uploadStore = useUploadStore()
 const mobileMenu = useMediaQuery('(max-width: 639px)')
 const showFilterPanel = ref(false)
 const filterButtonRef = ref<HTMLElement | null>(null)
@@ -183,15 +169,7 @@ onClickOutside(filterPanelRef, () => {
 })
 
 // Methods
-const handleUploadComplete = () => {
-  showUploadModal.value = false
-  photoStore.loadPhotos(true)
-  photoStore.fetchTimelineStats()
-}
-
-const triggerUpload = () => {
-  showUploadModal.value = true
-}
+const triggerUpload = () => uploadStore.open()
 
 const handleConfirmDelete = async (ids: string[], callback: (success: boolean) => void) => {
   try {

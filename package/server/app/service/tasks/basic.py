@@ -375,6 +375,10 @@ class BasicTaskStrategy(BaseTaskStrategy):
                         value = getattr(photo_schema, field, None)
                         if value is not None:
                             setattr(db_photo, field, value)
+                    # Uploads are acknowledged before EXIF extraction. Replace
+                    # the provisional upload timestamp with the capture time.
+                    if photo_schema.photo_time and not (db_photo.processed_tasks or {}).get('metadata'):
+                        db_photo.photo_time = photo_schema.photo_time
                     db.add(db_photo)
             except Exception as e:
                 logging.getLogger(__name__).warning(

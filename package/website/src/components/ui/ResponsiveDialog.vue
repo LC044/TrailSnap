@@ -2,7 +2,8 @@
   <Teleport to="body">
     <Transition name="responsive-dialog">
       <div
-        v-if="modelValue"
+        v-if="modelValue || keepMounted"
+        v-show="modelValue"
         class="fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-6"
         role="presentation"
         :style="{ zIndex: layerZIndex, visibility: navigationDismissed ? 'hidden' : undefined, height: `${viewportHeight}px`, top: `${viewportTop}px`, '--dialog-viewport-height': `${viewportHeight}px` }"
@@ -67,6 +68,7 @@ import { useDialogHistory } from '@/composables/useDialogHistory'
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
+  keepMounted?: boolean
   title: string
   description?: string
   maxWidth?: string
