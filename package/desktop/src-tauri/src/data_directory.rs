@@ -160,7 +160,8 @@ impl DataDirectory {
         let temp = self.config_path.with_extension("json.tmp");
         let bytes = serde_json::to_vec_pretty(config).map_err(|err| err.to_string())?;
         fs::write(&temp, bytes).map_err(|err| format!("保存数据目录配置失败：{err}"))?;
-        fs::rename(&temp, &self.config_path).map_err(|err| format!("保存数据目录配置失败：{err}"))
+        replace_config_file(&temp, &self.config_path)
+            .map_err(|err| format!("保存数据目录配置失败：{err}"))
     }
 
     pub fn finish_migration(&self, result: Result<(), String>) -> Result<(), String> {
@@ -179,6 +180,32 @@ impl DataDirectory {
             *config = next;
         }
         Ok(())
+    }
+}
+
+fn replace_config_file(source: &Path, target: &Path) -> std::io::Result<()> {
+    match fs::rename(source, target) {
+        Ok(()) => Ok(()),
+        #[cfg(windows)]
+        Err(err) if err.raw_os_error() == Some(17) => {
+            use std::os::windows::ffi::OsStrExt;
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn MoveFileExW(source: *const u16, target: *const u16, flags: u32) -> i32;
+            }
+            let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+            let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+            // Encrypted AppData can report ERROR_NOT_SAME_DEVICE even for sibling
+            // files. Let Windows copy when needed and flush before removing the
+            // prepared file; other rename errors still fail without a fallback.
+            let moved = unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), 1 | 2 | 8) };
+            if moved == 0 {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(())
+            }
+        }
+        Err(err) => Err(err),
     }
 }
 
