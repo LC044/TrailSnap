@@ -20,6 +20,9 @@
           <div>
             <h3 class="text-sm font-medium">当前目录</h3>
             <p class="ts-muted mt-2 break-all text-sm">{{ store.directory.root }}</p>
+            <button type="button" class="ts-button ts-button-secondary mt-3" :disabled="busy" @click="openCurrentDirectory">
+              <FolderOpen class="h-4 w-4" />打开数据目录
+            </button>
           </div>
           <div>
             <label for="desktop-data-directory" class="text-sm font-medium">新目录</label>
@@ -31,7 +34,7 @@
             </div>
             <p class="ts-muted mt-2 text-sm">请选择空文件夹并预留足够空间。外部图库中的原始照片仍保留在原位置。</p>
           </div>
-          <p class="ts-muted text-sm">保存后重启生效。启动时会复制现有数据并修正文件路径；数据较多时需要等待，请勿中途关闭。原目录保留为备份，确认迁移成功后可自行清理。</p>
+          <p class="ts-muted text-sm">保存后使用“安全重启并迁移”生效。启动时会复制现有数据并修正文件路径；数据较多时需要等待，请勿中途关闭。原目录保留为备份，确认迁移成功后可自行清理。</p>
           <div class="flex flex-wrap gap-3">
             <button type="button" class="ts-button ts-button-primary" :disabled="busy || !path.trim()" @click="save">
               {{ store.saving ? '正在保存…' : '保存迁移设置' }}
@@ -40,12 +43,13 @@
         </div>
         <div v-if="store.directory.pendingRoot" class="ts-surface space-y-4 p-5" role="status">
           <div>
-            <h3 class="font-medium">下次启动时迁移到</h3>
+            <h3 class="font-medium">待迁移目录</h3>
             <p class="ts-muted mt-2 break-all text-sm">{{ store.directory.pendingRoot }}</p>
           </div>
-          <p class="ts-muted text-sm">重启会中断当前任务和下载，建议等待它们完成后再重启。</p>
+          <p class="ts-muted text-sm">安全重启会停止接收新请求，等待已接收的上传、当前后台任务和下载完成，再迁移数据。尚未执行的任务将在重启后继续。等待期间请勿强制关闭应用。</p>
+          <p class="ts-muted text-sm">未完成的分块上传可能提示失败；已保存的分块会随数据迁移，请在重启后重试上传或手机备份。</p>
           <div class="flex flex-wrap gap-3">
-            <button type="button" class="ts-button ts-button-primary" :disabled="busy" @click="restart">立即重启并迁移</button>
+            <button type="button" class="ts-button ts-button-primary" :disabled="busy" @click="restart">{{ restarting ? '正在等待上传、任务和下载结束…' : '安全重启并迁移' }}</button>
             <button type="button" class="ts-button ts-button-secondary" :disabled="busy" @click="cancel">取消迁移</button>
           </div>
         </div>
@@ -65,6 +69,7 @@ import { FolderOpen } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { isTauriApp } from '@/config/server'
 import { useDesktopDataDirectoryStore } from '@/stores/desktopDataDirectory'
+import { openDesktopDataDirectory, prepareDesktopMigration } from '@/api/desktopDataDirectory'
 
 const store = useDesktopDataDirectoryStore()
 const path = ref('')
@@ -89,14 +94,18 @@ async function chooseDirectory() {
   }
 }
 async function save() {
-  if (await store.save(path.value.trim())) ElMessage.success('已保存，下次启动时迁移数据')
+  if (await store.save(path.value.trim())) ElMessage.success('已保存，请使用安全重启并迁移')
+}
+async function openCurrentDirectory() {
+  try { await openDesktopDataDirectory() }
+  catch (cause) { ElMessage.error(String(cause)) }
 }
 async function cancel() {
   if (await store.save(null)) path.value = ''
 }
 async function restart() {
   try {
-    await ElMessageBox.confirm('重启将中断正在运行的任务和下载，并开始迁移数据。是否继续？', '重启并迁移', {
+    await ElMessageBox.confirm('将停止接收新请求，等待已接收的上传、当前任务和下载完成后重启。未执行的任务在迁移后继续，请勿强制关闭应用。', '安全重启并迁移', {
       confirmButtonText: '重启并迁移', cancelButtonText: '稍后重启', type: 'warning',
     })
   } catch {
@@ -104,6 +113,7 @@ async function restart() {
   }
   restarting.value = true
   try {
+    await prepareDesktopMigration()
     const { relaunch } = await import('@tauri-apps/plugin-process')
     await relaunch()
   } catch (cause) {

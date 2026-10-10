@@ -121,19 +121,29 @@ def main() -> None:
 
     _prepare_desktop_database()
 
+    from app.utils.desktop_network import lan_urls
+    os.environ["TS_DESKTOP_PORT"] = str(args.port)
+    urls = lan_urls(args.port)
+    if urls:
+        os.environ.setdefault("TRAILSNAP_PUBLIC_URL", urls[0])
+
     import uvicorn
     from main import app
 
     _apply_desktop_api_prefix(app)
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=args.port,
-        log_level=os.environ.get("TS_DESKTOP_LOG_LEVEL", "info"),
-        access_log=False,
-        timeout_keep_alive=60,
-        timeout_graceful_shutdown=15,
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app,
+            host="0.0.0.0",
+            port=args.port,
+            log_level=os.environ.get("TS_DESKTOP_LOG_LEVEL", "info"),
+            access_log=False,
+            timeout_keep_alive=60,
+            timeout_graceful_shutdown=15,
+        )
     )
+    app.state.desktop_server = server
+    server.run()
 
 
 if __name__ == "__main__":

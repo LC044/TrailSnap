@@ -13,6 +13,8 @@ struct DirectoryConfig {
     pending_root: Option<PathBuf>,
     previous_root: Option<PathBuf>,
     migration_error: Option<String>,
+    #[serde(default)]
+    server_port: Option<u16>,
 }
 
 pub struct DataDirectory {
@@ -106,6 +108,52 @@ impl DataDirectory {
             .expect("data directory poisoned")
             .pending_root
             .clone()
+    }
+
+    pub fn server_port(&self) -> Result<u16, String> {
+        let mut config = self.config.lock().expect("data directory poisoned");
+        if let Some(port) = config.server_port.filter(|port| *port > 0) {
+            std::net::TcpListener::bind(("0.0.0.0", port)).map_err(|err| {
+                format!("手机连接端口 {port} 被占用，请关闭占用程序后重试：{err}")
+            })?;
+            return Ok(port);
+        }
+        let listener =
+            std::net::TcpListener::bind(("0.0.0.0", 0)).map_err(|err| err.to_string())?;
+        let port = listener.local_addr().map_err(|err| err.to_string())?.port();
+        let mut next = config.clone();
+        next.server_port = Some(port);
+        self.save(&next)?;
+        *config = next;
+        Ok(port)
+    }
+
+    pub fn authorize_migration(&self, target: &Path) -> Result<(), String> {
+        let config = self.config.lock().expect("data directory poisoned");
+        if config.pending_root.as_deref() != Some(target) {
+            return Err("迁移目标已改变，请重新准备迁移".into());
+        }
+        fs::write(
+            config.root.join(".desktop-migration-ready"),
+            target.to_string_lossy().as_bytes(),
+        )
+        .map_err(|err| err.to_string())
+    }
+
+    pub fn consume_migration_authorization(&self) -> Result<bool, String> {
+        let config = self.config.lock().expect("data directory poisoned");
+        let marker = config.root.join(".desktop-migration-ready");
+        let expected = config
+            .pending_root
+            .as_ref()
+            .map(|path| path.to_string_lossy());
+        let authorized = expected
+            .as_deref()
+            .is_some_and(|target| fs::read_to_string(&marker).ok().as_deref() == Some(target));
+        if marker.exists() {
+            fs::remove_file(marker).map_err(|err| err.to_string())?;
+        }
+        Ok(authorized)
     }
 
     fn save(&self, config: &DirectoryConfig) -> Result<(), String> {
@@ -283,6 +331,33 @@ mod tests {
         assert_eq!(state.root(), root.join("source"));
         assert_eq!(state.pending(), Some(root.join("target")));
     }
+
+    #[test]
+    fn server_port_is_persisted_and_never_changed_when_occupied() {
+        let (_root, state) = fixture();
+        let port = state.server_port().unwrap();
+        let saved: DirectoryConfig =
+            serde_json::from_slice(&fs::read(&state.config_path).unwrap()).unwrap();
+        assert_eq!(saved.server_port, Some(port));
+        let occupied = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap();
+        assert!(state.server_port().is_err());
+        assert_eq!(state.config.lock().unwrap().server_port, Some(port));
+        drop(occupied);
+        assert_eq!(state.server_port().unwrap(), port);
+    }
+
+    #[test]
+    fn migration_requires_single_use_authorization_for_the_saved_target() {
+        let (root, state) = fixture();
+        assert!(!state.consume_migration_authorization().unwrap());
+        assert!(state.authorize_migration(&root.join("other")).is_err());
+        state.authorize_migration(&root.join("target")).unwrap();
+        assert!(state.consume_migration_authorization().unwrap());
+        assert!(!state.consume_migration_authorization().unwrap());
+        state.authorize_migration(&root.join("target")).unwrap();
+        state.config.lock().unwrap().pending_root = Some(root.join("other"));
+        assert!(!state.consume_migration_authorization().unwrap());
+    }
 }
 
 #[tauri::command]
@@ -302,6 +377,7 @@ pub async fn desktop_set_data_directory(
     path: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    let _activity = crate::begin_activity(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<DataDirectory>();
         let mut config = state.config.lock().expect("data directory poisoned");
@@ -311,6 +387,11 @@ pub async fn desktop_set_data_directory(
             None => None,
         };
         next.migration_error = None;
+        // A changed destination invalidates any previous successful drain.
+        let marker = config.root.join(".desktop-migration-ready");
+        if marker.exists() {
+            fs::remove_file(marker).map_err(|err| err.to_string())?;
+        }
         state.save(&next)?;
         *config = next;
         Ok(())

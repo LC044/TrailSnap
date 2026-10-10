@@ -61,7 +61,19 @@
           />
         </label>
 
-        <button
+        <div v-if="isTauriApp()" class="ts-muted space-y-2 text-sm">
+          <p v-if="networkError" role="alert">{{ networkError }}</p>
+          <label v-if="desktopUrls.length" class="block">
+            选择电脑的局域网地址
+            <select v-model="address" class="ts-surface mt-2 w-full rounded-xl p-3">
+              <option v-for="url in desktopUrls" :key="url" :value="url">{{ url }}</option>
+            </select>
+          </label>
+          <p>连接端口 {{ desktopPort || '正在读取…' }} 会保留，重启后手机继续使用已保存的地址。电脑 IP 改变时请重新扫码，或在路由器中为电脑固定 IP。也可在手机端使用“自动查找 TrailSnap”。</p>
+          <p>请允许行影集通过系统防火墙的专用网络。桌面客户端需保持运行，手机与电脑处于同一局域网。</p>
+          <p>首次在手机登录时，可先在“用户管理”中为 desktop-admin 重置密码，手机使用此账号即可备份到同一照片库。</p>
+        </div>
+        <button v-if="!isTauriApp()"
           type="button"
           class="text-sm text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:text-primary-400"
           @click="address = currentOrigin"
@@ -84,7 +96,9 @@
         </ol>
 
         <div class="rounded-xl bg-gray-50 p-4 text-xs leading-5 text-gray-500 dark:bg-gray-900 dark:text-gray-400">
-          手机热点、访客 Wi-Fi、AP 隔离或服务器防火墙可能阻止手机访问电脑。连接前可先在手机浏览器中打开上面的地址进行确认。
+          手机热点、访客 Wi-Fi、AP 隔离或服务器防火墙可能阻止手机访问电脑。
+          <template v-if="isTauriApp() && normalizedAddress">可先在手机浏览器中打开 {{ normalizedAddress }}/api/health-check，确认显示服务状态。</template>
+          <template v-else>连接前可先在手机浏览器中打开上面的地址进行确认。</template>
         </div>
       </div>
 
@@ -110,15 +124,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import QRCode from 'qrcode'
-import { normalizeServerUrl } from '@/config/server'
+import { isTauriApp, normalizeServerUrl } from '@/config/server'
+import { getDesktopNetwork } from '@/api/desktopDataDirectory'
 import { createConnectionDeepLink } from '@/config/serverConnection'
 import packageMetadata from '../../../package.json'
 
 const currentOrigin = window.location.origin
-const address = ref(currentOrigin)
+const address = ref(isTauriApp() ? '' : currentOrigin)
+const desktopUrls = ref<string[]>([])
+const desktopPort = ref<number>()
+const networkError = ref('')
+onMounted(async () => {
+  if (!isTauriApp()) return
+  try {
+    const network = await getDesktopNetwork()
+    desktopUrls.value = network.urls
+    desktopPort.value = network.port
+    address.value = network.urls[0] || ''
+    if (!network.urls.length) networkError.value = '未找到可用的局域网地址，请检查网络连接。'
+  } catch (error) { networkError.value = String(error) }
+})
 const connectionQrCode = ref('')
 const downloadQrCode = ref('')
 const appVersion = packageMetadata.version

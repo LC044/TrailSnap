@@ -121,6 +121,7 @@ async def lifespan(app: FastAPI):
             "color_reanalysis", datetime.now() + timedelta(seconds=10), reanalyze_pending_colors,
         )
     job_scheduler.start()
+    app.state.job_scheduler = job_scheduler
 
     discovery_service = DiscoveryService()
     discovery_service.start()
@@ -151,6 +152,10 @@ app = FastAPI(
 )
 # Initialize logging listener
 log_listener = None
+
+if os.environ.get("TS_DESKTOP") == "1":
+    from app.service.desktop_maintenance import DesktopMaintenanceMiddleware
+    app.add_middleware(DesktopMaintenanceMiddleware)
 
 # @app.middleware("http")
 async def log_requests(request: Request, call_next):
