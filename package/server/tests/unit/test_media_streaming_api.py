@@ -6,6 +6,7 @@ lifecycle, and the geojson dispatcher. Keeps the existing test file untouched
 per nightly watcher scope rules.
 """
 
+import io
 from types import SimpleNamespace
 from unittest.mock import MagicMock, mock_open, patch
 from uuid import uuid4
@@ -171,30 +172,24 @@ async def test_upload_chunk_404_when_session_missing():
 @pytest.mark.asyncio
 async def test_upload_chunk_runs_save_in_threadpool(tmp_path):
     """upload_chunk persists chunk bytes through run_in_threadpool."""
-    fake_file = MagicMock()
+    fake_file = io.BytesIO(b'chunk bytes')
     user = SimpleNamespace(id=uuid4())
     db = MagicMock()
 
     async def _exec(fn, *args, **kwargs):
         return fn(*args, **kwargs)
 
-    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path)), \
-         patch.object(media_api.os.path, "exists", return_value=True):
+    with patch.object(media_api, "_chunk_dir", return_value=str(tmp_path)):
         with patch.object(media_api, "run_in_threadpool", side_effect=_exec) as runner:
-            with patch("builtins.open", mock_open()) as opener:
-                with patch.object(media_api.shutil, "copyfileobj") as copier:
-                    result = await media_api.upload_chunk(
-                        upload_id=uuid4(),
-                        chunk_index=7,
-                        file=SimpleNamespace(file=fake_file),
-                        db=db,
-                        current_user=user,
-                    )
+            result = await media_api.upload_chunk(
+                upload_id=uuid4(), chunk_index=7,
+                file=SimpleNamespace(file=fake_file), db=db, current_user=user,
+            )
 
     assert result == {"status": "success"}
     assert runner.call_count == 2
-    opener.assert_called_once()
-    copier.assert_called_once_with(fake_file, opener())
+    assert (tmp_path / '7').read_bytes() == b'chunk bytes'
+    assert sorted(path.name for path in tmp_path.iterdir()) == ['7']
 
 
 # ---------------- geojson dispatcher ----------------

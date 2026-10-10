@@ -178,26 +178,22 @@ def save_and_create_photo(
     # Determine file type
     ext = os.path.splitext(file_name)[1]
     file_type = FileType.image
-    if ext.lower() in ['.mp4', '.mov', '.avi']:
+    if ext.lower() in ['.mp4', '.mov', '.avi', '.mkv', '.webm']:
         file_type = FileType.video
 
-    storage.generate_thumbnail(user_id, file_path, photo_id)
-
-    # Get Metadata
+    # Heavy decoding, thumbnails and metadata run once in PROCESS_BASIC.
+    # The upload response acknowledges the durable original, not derived media.
     size = storage.get_file_size(file_path)
-    width, height, duration = storage.get_image_dimensions(file_path)
-
-    extracted_meta = extract_metadata(file_path, file_name, extract_location_details=False)
 
     # Create Schema for DB
     photo_create = photo_schemas.PhotoCreate(
         file_type=file_type,
         size=size,
-        width=width,
-        height=height,
-        duration=duration,
+        width=None,
+        height=None,
+        duration=None,
         filename=file_name,
-        photo_time=extracted_meta["photo_time"] or source_photo_time,
+        photo_time=source_photo_time,
         md5=source_md5,
     )
 
@@ -208,16 +204,7 @@ def save_and_create_photo(
     try:
         existing_meta = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo_id).first()
         if not existing_meta:
-            exif_info = extracted_meta.get("exif_info")
-            exif_info_str = None
-            if exif_info:
-                import json as _json
-                def _default(obj):
-                    if isinstance(obj, (bytes, bytearray)):
-                        return str(obj)
-                    return str(obj)
-                exif_info_str = _json.dumps(exif_info, default=_default, ensure_ascii=False)
-            db.add(PhotoMetadata(photo_id=photo_id, exif_info=exif_info_str))
+            db.add(PhotoMetadata(photo_id=photo_id, exif_info=None))
             db.commit()
     except Exception as e:
         db.rollback()

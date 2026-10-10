@@ -2,6 +2,7 @@ import { computed, readonly, ref } from 'vue'
 import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import { albumService } from '@/api/album'
+import { transferChunks } from '@/utils/uploadTransfer'
 import { getServerUrl } from '@/config/server'
 import { useUserStore } from '@/stores/user'
 import router from '@/router'
@@ -10,10 +11,10 @@ import {
   adaptTransferTuning,
   backupUploadAction,
   initialTransferTuning,
-  mapWithConcurrency,
   shouldUseChunkedUpload,
-  takeTransferBatch,
+  transferPipeline,
   type TransferTuning,
+  type LiveBackupPresence,
 } from '@/utils/backupTransfer'
 
 export interface GalleryBackupSettings {
@@ -50,6 +51,7 @@ interface BackupOperation {
   coveredAssets: GalleryAsset[]
   replaceExisting: boolean
   md5?: string
+  livePresence?: LiveBackupPresence
 }
 
 interface ActiveUpload {
@@ -77,6 +79,7 @@ const currentFile = ref('')
 const currentFileProgress = ref(0)
 const backedUp = ref(0)
 const skipped = ref(0)
+const failedItems = ref(0)
 const totalItems = ref(0)
 const processedItems = ref(0)
 const totalBytes = ref(0)
@@ -221,8 +224,10 @@ async function waitIfPaused() {
   status.value = 'paused'
   pauseReason.value = 'user'
   speedBytesPerSecond.value = 0
+  // Register before notifying: resume can arrive while the native call is pending.
+  const resumed = new Promise<void>(resolve => resumeWaiters.push(resolve))
   await syncNotification(true, 'paused')
-  await new Promise<void>(resolve => resumeWaiters.push(resolve))
+  await resumed
   pauseReason.value = null
   status.value = currentFile.value ? 'uploading' : 'scanning'
   await syncNotification(true, 'running')
@@ -313,8 +318,9 @@ async function retryTransfer<T>(action: () => Promise<T>, config: GalleryBackupS
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       return await action()
-    } catch (error) {
+    } catch (error: any) {
       lastError = error
+      if (error.response?.status && ![408, 429, 500, 502, 503, 504].includes(error.response.status)) throw error
       if (transferTuning) transferTuning = adaptTransferTuning(transferTuning, speedBytesPerSecond.value, true)
       if (attempt >= attempts) break
       const network = await galleryBackupNative.getNetworkStatus().catch(() => ({ connected: true, wifi: false, unmetered: false }))
@@ -334,30 +340,17 @@ async function uploadChunks(
   config: GalleryBackupSettings,
   reportAbsolute: (loaded: number) => void,
   offset = 0,
+  completed: ReadonlySet<number> = new Set(),
 ) {
-  const chunks = Math.ceil(file.size / tuning.chunkSize)
-  const loadedByChunk = new Array<number>(chunks).fill(0)
-  let nextChunk = 0
-  const report = () => reportAbsolute(offset + loadedByChunk.reduce((sum, loaded) => sum + loaded, 0))
-  const worker = async () => {
-    while (true) {
-      const index = nextChunk++
-      if (index >= chunks) return
-      const start = index * tuning.chunkSize
-      const chunk = file.slice(start, Math.min(file.size, start + tuning.chunkSize))
+  return await transferChunks(file, tuning.chunkSize, tuning.chunkConcurrency,
+    async (index, chunk, report) => {
       await waitIfPaused()
+      if (completed.has(index)) { report(chunk.size); return }
       await retryTransfer(
-        () => albumService.uploadChunk(uploadId, index, chunk, loaded => {
-          loadedByChunk[index] = Math.max(loadedByChunk[index], Math.min(chunk.size, loaded))
-          report()
-        }),
+        () => albumService.uploadChunk(uploadId, index, chunk, report),
         config,
       )
-      loadedByChunk[index] = chunk.size
-      report()
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(tuning.chunkConcurrency, chunks) }, worker))
+    }, loaded => reportAbsolute(offset + loaded))
 }
 
 async function uploadAsset(
@@ -369,13 +362,16 @@ async function uploadAsset(
 ) {
   const exported = await galleryBackupNative.exportAsset({ uri: asset.uri, fileName: asset.name })
   let reportedBytes = 0
+  let resumedBytes = 0
+  let reportedNetworkBytes = 0
   if (!speedSamples.length) speedSamples.push({ at: Date.now(), bytes: uploadedBytes.value })
   const reportAbsolute = (loaded: number) => {
     const bounded = Math.min(asset.size, Math.max(reportedBytes, loaded))
-    const delta = bounded - reportedBytes
     reportedBytes = bounded
     onProgress(bounded, asset.size)
-    recordNetworkBytes(delta)
+    const networkBytes = Math.max(0, bounded - resumedBytes)
+    recordNetworkBytes(networkBytes - reportedNetworkBytes)
+    reportedNetworkBytes = Math.max(reportedNetworkBytes, networkBytes)
   }
   try {
     const response = await fetch(Capacitor.convertFileSrc(exported.path))
@@ -383,16 +379,40 @@ async function uploadAsset(
     const blob = await response.blob()
     const file = new File([blob], asset.name, { type: asset.mimeType, lastModified: asset.modifiedMs })
     if (shouldUseChunkedUpload(file.size, tuning)) {
-      const uploadId = await retryTransfer(() => albumService.initUpload(), config)
-      await uploadChunks(uploadId, file, tuning, config, reportAbsolute)
+      const sessionKey = storageKey(`upload_${asset.backupKey}`)
+      const saved = await readJson<{ id: string; size: number; md5?: string; chunkSize: number } | null>(sessionKey, null)
+      let uploadId: string | undefined
+      const completed = new Set<number>()
+      const chunkSize = saved && saved.size === file.size && saved.md5 === asset.contentMd5 ? saved.chunkSize : tuning.chunkSize
+      if (saved && saved.size === file.size && saved.md5 === asset.contentMd5) {
+        try {
+          const result = await albumService.getUploadStatus(saved.id)
+          uploadId = saved.id
+          for (const [index, size] of Object.entries(result.chunks)) {
+            const value = Number(index)
+            if (size === Math.min(chunkSize, file.size - value * chunkSize)) completed.add(value)
+          }
+        } catch (error: any) {
+          if (error.response?.status !== 404) throw error
+        }
+      }
+      if (!uploadId) {
+        if (saved) await albumService.discardUpload(saved.id).catch(() => undefined)
+        uploadId = await retryTransfer(() => albumService.initUpload(), config)
+        await Preferences.set({ key: sessionKey, value: JSON.stringify({ id: uploadId, size: file.size, md5: asset.contentMd5, chunkSize }) })
+      }
+      resumedBytes = [...completed].reduce((sum, index) => sum + Math.min(chunkSize, file.size - index * chunkSize), 0)
+      const chunks = await uploadChunks(uploadId, file, { ...tuning, chunkSize }, config, reportAbsolute, 0, completed)
       await waitIfPaused()
       await retryTransfer(
         () => albumService.finishUpload(
           uploadId, file.name, undefined, destinationFolder(asset, config), asset.backupKey,
           replaceExisting, sourcePhotoTime(asset), asset.contentMd5,
+          { expectedSize: file.size, expectedChunks: chunks },
         ),
         config,
       )
+      await Preferences.remove({ key: sessionKey })
     } else {
       await waitIfPaused()
       await retryTransfer(
@@ -439,10 +459,12 @@ async function uploadLivePhoto(
   replaceExisting: boolean,
   tuning: TransferTuning,
   onProgress: UploadProgress,
+  presence: LiveBackupPresence,
 ) {
-  const imageFile = await exportedFile(image)
+  let imageFile: Awaited<ReturnType<typeof exportedFile>> | null = null
   let videoFile: Awaited<ReturnType<typeof exportedFile>> | null = null
-  const totalSize = Math.max(0, image.size) + Math.max(0, video.size)
+  const totalSize = (presence.image_exists ? 0 : Math.max(0, image.size))
+    + (presence.video_exists ? 0 : Math.max(0, video.size))
   let reportedBytes = 0
   if (!speedSamples.length) speedSamples.push({ at: Date.now(), bytes: uploadedBytes.value })
   const reportAbsolute = (loaded: number) => {
@@ -452,42 +474,40 @@ async function uploadLivePhoto(
     onProgress(bounded, totalSize)
   }
   try {
-    videoFile = await exportedFile(video)
-    const folder = destinationFolder(image, config)
-    if (shouldUseChunkedUpload(imageFile.file.size, tuning)) {
-      const uploadId = await retryTransfer(() => albumService.initUpload(), config)
-      await uploadChunks(uploadId, imageFile.file, tuning, config, reportAbsolute)
-      await waitIfPaused()
-      const saved = await retryTransfer(
-        () => albumService.finishLivePhotoUpload(
-          uploadId, imageFile.file.name, videoFile.file, folder, image.backupKey, video.backupKey,
-          replaceExisting,
-          loaded => reportAbsolute(imageFile.file.size + loaded),
-          sourcePhotoTime(image), image.contentMd5,
-        ),
-        config,
-      )
-      if (saved.file_type !== 'live_photo') {
-        throw new Error('服务端未保存实况照片的视频部分，请确认 App 与服务端已升级到同一版本')
-      }
-    } else {
-      await waitIfPaused()
-      const saved = await retryTransfer(
-        () => albumService.uploadLivePhoto(
-          imageFile.file, videoFile.file, folder, image.backupKey, video.backupKey,
-          replaceExisting,
-          loaded => reportAbsolute(loaded),
-          sourcePhotoTime(image), image.contentMd5,
-        ),
-        config,
-      )
-      if (saved.file_type !== 'live_photo') {
-        throw new Error('服务端未保存实况照片的视频部分，请确认 App 与服务端已升级到同一版本')
+    let imageBytes = 0
+    if (!presence.image_exists) {
+      if (shouldUseChunkedUpload(image.size, tuning)) {
+        // Preserve chunked transfer for large still images, then attach the
+        // video with a metadata-only image reference.
+        await uploadAsset(image, config, replaceExisting, tuning, (loaded) => {
+          imageBytes = loaded
+          reportedBytes = loaded
+          onProgress(loaded, totalSize)
+        })
+      } else {
+        imageFile = await exportedFile(image)
       }
     }
+    if (!presence.video_exists) videoFile = await exportedFile(video)
+    const form = new FormData()
+    form.append('image_md5', image.contentMd5!)
+    form.append('video_md5', video.contentMd5!)
+    form.append('video_name', video.name)
+    form.append('backup_key', image.backupKey)
+    form.append('companion_backup_key', video.backupKey)
+    form.append('folder', destinationFolder(image, config))
+    const photoTime = sourcePhotoTime(image)
+    if (photoTime) form.append('source_photo_time', photoTime)
+    if (imageFile) form.append('image', imageFile.file)
+    if (videoFile) form.append('video', videoFile.file)
+    await waitIfPaused()
+    const saved = await retryTransfer(
+      () => albumService.uploadMissingLiveContent(form, loaded => reportAbsolute(imageBytes + loaded)), config,
+    )
+    if (saved.file_type !== 'live_photo') throw new Error('服务端未保存实况照片的视频部分')
     reportAbsolute(totalSize)
   } finally {
-    await galleryBackupNative.releaseAsset({ path: imageFile.exportedPath }).catch(() => undefined)
+    if (imageFile) await galleryBackupNative.releaseAsset({ path: imageFile.exportedPath }).catch(() => undefined)
     if (videoFile) await galleryBackupNative.releaseAsset({ path: videoFile.exportedPath }).catch(() => undefined)
   }
 }
@@ -526,6 +546,7 @@ function updateQueueStatus(backupKey: string, next: BackupQueueStatus) {
 function resetRunProgress() {
   backedUp.value = 0
   skipped.value = 0
+  failedItems.value = 0
   totalItems.value = 0
   processedItems.value = 0
   totalBytes.value = 0
@@ -546,9 +567,15 @@ async function runBackup(options: { manual?: boolean } = {}) {
   await initialize()
   if (running.value || !supportsGalleryBackup() || !useUserStore().token) return
   if (!options.manual && !settings.value.enabled) return
+  if (!options.manual && status.value === 'error') return
+  const speedTimer = setInterval(() => {
+    const now = Date.now()
+    const first = speedSamples.find(sample => sample.at >= now - 5000)
+    speedBytesPerSecond.value = first && activeUploads.size && now > first.at
+      ? Math.max(0, (uploadedBytes.value - first.bytes) / ((now - first.at) / 1000)) : 0
+  }, 1000)
   // A transfer error requires an explicit retry. App foreground events must
   // not restart the same failed asset indefinitely in the background.
-  if (!options.manual && status.value === 'error') return
   const runSettings: GalleryBackupSettings = { ...settings.value, sourcePaths: [...settings.value.sourcePaths] }
   const runCursorKey = cursorScopeKey(runSettings)
   const startPaused = pauseRequested.value && pauseReason.value === 'user'
@@ -592,17 +619,23 @@ async function runBackup(options: { manual?: boolean } = {}) {
     const completedLivePairs = new Set<string>()
     const seenAssetKeys = new Set<string>()
     const seenContentHashes = new Set<string>()
+    let checkpointBlocked = false
+    const failures: string[] = []
 
     while (true) {
       await waitIfPaused()
       const page = await galleryBackupNative.listAssets({ ...cursor, limit: 40, includeVideos: runSettings.includeVideos, sourcePaths })
+      if (page.hasMore && (Object.keys(EMPTY_CURSOR) as Array<keyof GalleryCursor>)
+        .every(key => page[key] === cursor[key])) {
+        throw new Error('图库扫描未能进入下一批，请重试备份或更新 App')
+      }
       if (!page.assets.length) {
         cursor.imageModified = page.imageModified
         cursor.imageId = page.imageId
         cursor.videoModified = page.videoModified
         cursor.videoId = page.videoId
         cursor.companionVideoId = page.companionVideoId
-        await saveCursor(cursor, runCursorKey)
+        if (!checkpointBlocked) await saveCursor(cursor, runCursorKey)
         if (page.hasMore) continue
         break
       }
@@ -617,7 +650,7 @@ async function runBackup(options: { manual?: boolean } = {}) {
         cursor.videoModified = page.videoModified
         cursor.videoId = page.videoId
         cursor.companionVideoId = page.companionVideoId
-        await saveCursor(cursor, runCursorKey)
+        if (!checkpointBlocked) await saveCursor(cursor, runCursorKey)
         if (page.hasMore) continue
         break
       }
@@ -657,13 +690,13 @@ async function runBackup(options: { manual?: boolean } = {}) {
           replaceExisting: false,
         })
       }
-      queueItems.value = [...operations.values()].map(operation => ({
+      queueItems.value = [...queueItems.value.filter(item => item.status === 'error'), ...[...operations.values()].map(operation => ({
         backupKey: operation.key,
         name: operation.name,
         size: operation.size,
         relativePath: operation.relativePath,
-        status: 'pending',
-      }))
+        status: 'pending' as const,
+      }))]
       const keysToCheck = new Set(freshAssets.map(asset => asset.backupKey))
       freshAssets.forEach(asset => {
         const pair = livePhotoPair(asset)
@@ -684,7 +717,11 @@ async function runBackup(options: { manual?: boolean } = {}) {
       const presence = await albumService.checkBackupKeys([...keysToCheck], [], sourceTimes)
       const remaining: BackupOperation[] = []
       for (const operation of operations.values()) {
-        const action = backupUploadAction(operation.key, Boolean(operation.pair), presence)
+        // A live clip can change independently of its image. Check both hashes
+        // even if this image's stable key already has some companion on server.
+        const action = operation.pair
+          ? (presence.existing.has(operation.key) && !presence.complete.has(operation.key) ? 'replace' : 'upload')
+          : backupUploadAction(operation.key, false, presence)
         operation.replaceExisting = action === 'replace'
         if (action === 'skip') {
           updateQueueStatus(operation.key, 'skipped')
@@ -700,42 +737,53 @@ async function runBackup(options: { manual?: boolean } = {}) {
       // hash the original bytes locally and ask the server before transferring
       // them. This also catches the same file appearing in multiple phone
       // folders or under a changed MediaStore id.
-      const hashes = await mapWithConcurrency(
-        remaining,
-        transferTuning?.hashConcurrency || 1,
-        async operation => {
-          const primary = operation.pair?.image || operation.asset
-          const digest = await galleryBackupNative.calculateAssetMd5({ uri: primary.uri })
-          const md5 = digest.md5.toLowerCase()
-          primary.contentMd5 = md5
-          operation.md5 = md5
-          return md5
-        },
-      )
-      const hashPresence = hashes.length ? await albumService.checkBackupKeys([], hashes) : null
-      for (let index = remaining.length - 1; index >= 0; index--) {
-        const operation = remaining[index]
-        const isDuplicate = !operation.pair && Boolean(operation.md5) && (
-          hashPresence?.hashes.has(operation.md5!) || seenContentHashes.has(operation.md5!)
-        )
-        if (isDuplicate) {
-          remaining.splice(index, 1)
-          updateQueueStatus(operation.key, 'skipped')
-          skipped.value++
-          processedItems.value += operation.coveredAssets.length
-          processedBytes.value += operation.coveredAssets.reduce((sum, asset) => sum + Math.max(0, asset.size), 0)
-        } else if (operation.md5) {
-          seenContentHashes.add(operation.md5)
-        }
+      const failOperation = (operation: BackupOperation, error: unknown) => {
+        checkpointBlocked = true
+        failedItems.value++
+        updateQueueStatus(operation.key, 'error')
+        failures.push(`${operation.name}: ${error instanceof Error ? error.message : String(error)}`)
       }
-      await syncNotification()
-      while (remaining.length) {
-        await waitIfPaused()
-        const tuning = currentTransferTuning()
-        const batch = takeTransferBatch(remaining, tuning)
-        remaining.splice(0, batch.length)
-        status.value = 'uploading'
-        const results = await Promise.allSettled(batch.map(async operation => {
+      const skipOperation = (operation: BackupOperation) => {
+        updateQueueStatus(operation.key, 'skipped')
+        skipped.value++
+        processedItems.value += operation.coveredAssets.length
+        processedBytes.value += operation.coveredAssets.reduce((sum, asset) => sum + Math.max(0, asset.size), 0)
+      }
+      // Preparation workers feed the bounded transfer queue immediately. A slow
+      // hash or large video no longer holds every other file in the page.
+      await transferPipeline(remaining, transferTuning?.hashConcurrency || 1, currentTransferTuning,
+        async operation => {
+          try {
+            await waitIfPaused()
+            const primary = operation.pair?.image || operation.asset
+            const digest = await galleryBackupNative.calculateAssetMd5({ uri: primary.uri })
+            operation.md5 = primary.contentMd5 = digest.md5.toLowerCase()
+            if (operation.pair) {
+              const videoDigest = await galleryBackupNative.calculateAssetMd5({ uri: operation.pair.video.uri })
+              operation.pair.video.contentMd5 = videoDigest.md5.toLowerCase()
+              const presence = await albumService.checkLiveBackupContent([{
+                key: operation.key, image_md5: operation.md5!, video_md5: operation.pair.video.contentMd5!,
+              }])
+              operation.livePresence = presence[operation.key]
+              if (!operation.livePresence) throw new Error('服务端未返回实况照片去重结果，请更新服务端')
+              operation.size = (operation.livePresence.image_exists ? 0 : operation.pair.image.size)
+                + (operation.livePresence.video_exists ? 0 : operation.pair.video.size)
+              if (operation.livePresence.complete) { skipOperation(operation); return null }
+            } else {
+              const presence = await albumService.checkBackupKeys([], [operation.md5!])
+              if (presence.hashes.has(operation.md5!) || seenContentHashes.has(operation.md5!)) {
+                skipOperation(operation); return null
+              }
+            }
+            if (operation.md5) seenContentHashes.add(operation.md5)
+            return operation
+          } catch (error) { failOperation(operation, error); return null }
+        },
+        async operation => {
+          await waitIfPaused()
+          const tuning = currentTransferTuning()
+          status.value = 'uploading'
+          try {
           const { key, pair, coveredAssets } = operation
           if (pair && completedLivePairs.has(key)) {
             updateQueueStatus(key, 'uploaded')
@@ -746,7 +794,7 @@ async function runBackup(options: { manual?: boolean } = {}) {
             try {
               if (pair) {
                 await uploadLivePhoto(
-                  pair.image, pair.video, runSettings, operation.replaceExisting, tuning, report,
+                  pair.image, pair.video, runSettings, operation.replaceExisting, tuning, report, operation.livePresence!,
                 )
                 completedLivePairs.add(key)
               } else {
@@ -780,13 +828,9 @@ async function runBackup(options: { manual?: boolean } = {}) {
           processedItems.value += coveredAssets.length
           processedBytes.value += coveredAssets.reduce((sum, asset) => sum + Math.max(0, asset.size), 0)
           await syncNotification()
-        }))
-        const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
-        if (failed) {
-          if (transferTuning) transferTuning = adaptTransferTuning(transferTuning, speedBytesPerSecond.value, true)
-          throw failed.reason
-        }
-      }
+
+          } catch (error) { failOperation(operation, error) }
+        })
       // Native scanning may consume non-live videos as companion probes without
       // returning them. Persist the page cursors only after every returned asset
       // has completed, so a failed upload is still retried on the next run.
@@ -795,10 +839,11 @@ async function runBackup(options: { manual?: boolean } = {}) {
       cursor.videoModified = page.videoModified
       cursor.videoId = page.videoId
       cursor.companionVideoId = page.companionVideoId
-      await saveCursor(cursor, runCursorKey)
+      if (!checkpointBlocked) await saveCursor(cursor, runCursorKey)
       status.value = 'scanning'
       if (!page.hasMore) break
     }
+    if (failures.length) throw new Error(`${failures.length} 个文件未备份，其余文件已继续处理。${failures.slice(0, 3).join('；')}`)
     lastRunAt.value = Date.now()
     await Preferences.set({ key: storageKey('last_run'), value: String(lastRunAt.value) })
     status.value = 'idle'
@@ -812,6 +857,7 @@ async function runBackup(options: { manual?: boolean } = {}) {
     speedBytesPerSecond.value = 0
     if (notificationShown) await syncNotification(true, 'error')
   } finally {
+    clearInterval(speedTimer)
     currentFile.value = ''
     currentFileProgress.value = 0
     running.value = false
@@ -821,16 +867,21 @@ async function runBackup(options: { manual?: boolean } = {}) {
 }
 
 async function resetCursor() {
-  if (running.value) return
+  if (running.value) throw new Error('备份仍在运行，请等待本轮完成后再重置增量记录')
   await saveCursor({ ...EMPTY_CURSOR })
   lastRunAt.value = null
+  pauseRequested.value = false
+  pauseReason.value = null
+  lastError.value = ''
+  status.value = 'idle'
+  resetRunProgress()
 }
 
 export function useGalleryBackup() {
   return {
     supported: computed(supportsGalleryBackup), settings, running: readonly(running), status: readonly(status),
     pauseReason: readonly(pauseReason), pauseRequested: readonly(pauseRequested), currentFile: readonly(currentFile),
-    currentFileProgress: readonly(currentFileProgress), backedUp: readonly(backedUp), skipped: readonly(skipped),
+    currentFileProgress: readonly(currentFileProgress), failedItems: readonly(failedItems), backedUp: readonly(backedUp), skipped: readonly(skipped),
     totalItems: readonly(totalItems), processedItems: readonly(processedItems), totalBytes: readonly(totalBytes),
     processedBytes: readonly(processedBytes), uploadedBytes: readonly(uploadedBytes),
     speedBytesPerSecond: readonly(speedBytesPerSecond), overallProgress, lastError: readonly(lastError),

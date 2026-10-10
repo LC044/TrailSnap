@@ -22,6 +22,12 @@ export interface BackupPresence {
   hashes?: ReadonlySet<string>
 }
 
+export interface LiveBackupPresence {
+  image_exists: boolean
+  video_exists: boolean
+  complete: boolean
+}
+
 export type BackupUploadAction = 'skip' | 'upload' | 'replace'
 
 export function backupUploadAction(
@@ -63,7 +69,7 @@ export function initialTransferTuning(serverUrl: string, network: BackupNetworkS
     }
   }
   return {
-    isLan, metered, hashConcurrency: metered ? 1 : 2, mediaConcurrency: 1, chunkConcurrency: 1,
+    isLan, metered, hashConcurrency: metered ? 1 : 2, mediaConcurrency: metered ? 1 : 2, chunkConcurrency: metered ? 1 : 2,
     chunkSize: metered ? MB : 2 * MB,
     maxInFlightBytes: metered ? 16 * MB : 32 * MB,
     maxAttempts: 3,
@@ -115,8 +121,8 @@ export function adaptTransferTuning(
   }
   return {
     ...current,
-    mediaConcurrency: 1,
-    chunkConcurrency: 1,
+    mediaConcurrency: current.metered ? 1 : 2,
+    chunkConcurrency: current.metered ? 1 : 2,
     chunkSize: current.metered ? MB : 2 * MB,
     maxInFlightBytes: current.metered ? 16 * MB : 32 * MB,
   }
@@ -161,4 +167,50 @@ export function takeTransferBatch<T extends { size: number }>(items: T[], tuning
     bytes += size
   }
   return batch
+}
+
+/** Bounded preparation overlaps transfer; free slots immediately take ready files. */
+export async function transferPipeline<T, R extends { size: number }>(
+  items: readonly T[], preparationConcurrency: number,
+  tuning: () => Pick<TransferTuning, 'mediaConcurrency' | 'maxInFlightBytes'>,
+  prepare: (item: T) => Promise<R | null>, transfer: (item: R) => Promise<void>,
+) {
+  const ready: R[] = []
+  const active = new Set<Promise<void>>()
+  let next = 0, producers = Math.min(items.length, Math.max(1, preparationConcurrency)), bytes = 0
+  let failure: unknown
+  const waiters = new Set<() => void>()
+  const wait = () => new Promise<void>(resolve => { waiters.add(resolve) })
+  const notify = () => { const pending = [...waiters]; waiters.clear(); pending.forEach(resolve => resolve()) }
+  const producerTasks = Array.from({ length: producers }, async () => {
+    try {
+      while (!failure) {
+        const index = next++
+        if (index >= items.length) break
+        const item = await prepare(items[index]!)
+        if (item && !failure) ready.push(item)
+        notify()
+        while (!failure && ready.length >= Math.max(1, tuning().mediaConcurrency) * 2) {
+          await wait()
+        }
+      }
+    } catch (error) { failure = error }
+    finally { producers--; notify() }
+  })
+  while (producers || ready.length || active.size) {
+    const config = tuning()
+    while (!failure && ready.length && active.size < Math.max(1, config.mediaConcurrency)) {
+      const item = ready[0]!
+      if (active.size && bytes + item.size > config.maxInFlightBytes) break
+      ready.shift(); bytes += item.size; notify()
+      const job = Promise.resolve().then(() => transfer(item))
+        .catch(error => { failure = error })
+        .finally(() => { active.delete(job); bytes -= item.size; notify() })
+      active.add(job)
+    }
+    if (failure) { ready.length = 0; notify(); break }
+    if (producers || ready.length || active.size) await wait()
+  }
+  await Promise.all([...producerTasks, ...active])
+  if (failure) throw failure
 }

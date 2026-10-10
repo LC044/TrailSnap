@@ -334,7 +334,7 @@
 <script setup lang="ts">
 import BackButton from '@/components/ui/BackButton.vue'
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
-import { ref, computed, nextTick, onUnmounted, watch, useSlots } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch, useSlots } from 'vue'
 import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core'
 import { injectTheme } from '@/composables/useTheme'
 import { useMediaQuery, onClickOutside, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
@@ -453,8 +453,20 @@ const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
 const diaryRef = ref<InstanceType<typeof PhotoDiary> | null>(null)
 const refreshingData = ref(false)
 const isMobile = ref(typeof window !== 'undefined' && window.innerWidth < 768)
+const scrolling = ref(false)
+let scrollingTimer: ReturnType<typeof setTimeout> | undefined
+const handleBrowsingScroll = () => {
+  scrolling.value = true
+  clearTimeout(scrollingTimer)
+  scrollingTimer = setTimeout(() => { scrolling.value = false }, 600)
+}
+onMounted(() => document.addEventListener('scroll', handleBrowsingScroll, { capture: true, passive: true }))
+onUnmounted(() => {
+  document.removeEventListener('scroll', handleBrowsingScroll, true)
+  clearTimeout(scrollingTimer)
+})
 const isPhotoInteractionActive = computed(() =>
-  !!lightboxImage.value || !!galleryRef.value?.isSelectionMode || !!diaryRef.value?.isEditing
+  scrolling.value || !!lightboxImage.value || !!galleryRef.value?.isSelectionMode || !!diaryRef.value?.isEditing
 )
 watch(layoutMode, async (mode, previous) => {
   showViewOptions.value = false

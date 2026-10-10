@@ -41,6 +41,32 @@ from app.service.tasks.scan import (
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
 
+@pytest.mark.asyncio
+async def test_overlapping_scan_roots_visit_each_child_once(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from app.service.tasks import scan
+    child = tmp_path / 'child'
+    child.mkdir()
+    (tmp_path / 'root.jpg').write_bytes(b'root')
+    (child / 'child.jpg').write_bytes(b'child')
+    scans = []
+    original = scan.os.scandir
+    def counted(path):
+        scans.append(str(path))
+        return original(path)
+    config = SimpleNamespace(filter=SimpleNamespace(model_dump=lambda: {'enable': False}))
+    strategy = scan.ScanFolderStrategy()
+    with patch.object(scan.os, 'scandir', side_effect=counted), \
+         patch.object(scan.config_manager, 'get_user_config', return_value=config), \
+         patch.object(strategy, '_get_existing_files', return_value=(set(), set())), \
+         patch.object(strategy, '_create_tasks_for_new_files', new=AsyncMock()), \
+         patch.object(strategy, '_handle_deleted_files'):
+        result = await strategy._scan_for_user(SimpleNamespace(scan_status={'total_files': 0}), MagicMock(), SimpleNamespace(id='user'), [str(tmp_path), str(child)])
+    assert result == {'new_files': 2, 'deleted_files': 0}
+    assert scans.count(str(child)) == 1
+
+
 # ---------------------------------------------------------------------------
 # _compile_folder_patterns
 # ---------------------------------------------------------------------------

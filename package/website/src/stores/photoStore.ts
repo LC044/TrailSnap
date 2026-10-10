@@ -72,9 +72,11 @@ const formatDuration = (duration: number | null) => {
 export const mapPhotoToImage = (photo: Photo): AlbumImage => {
     // 新 API 在 url 和 thumbnail_url 字段中返回相对地址
     const url = toServerUrl(`/api/medias/${photo.id}/file`);
-    const thumbnail = thumbnailUrl(photo.id, 'small', photo.owner_id);
+    const ready = Boolean(photo.width && photo.height);
+    const thumbnail = ready ? thumbnailUrl(photo.id, 'small', photo.owner_id)
+        : 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
     // const thumbnail = `https://picsum.photos/seed/${photo.id}/400/600`
-    const preview = thumbnailUrl(photo.id, 'medium', photo.owner_id);
+    const preview = ready ? thumbnailUrl(photo.id, 'medium', photo.owner_id) : thumbnail;
 
     // 优先使用 photo_time，其次 upload_time，最后取当前时间
     let timestamp = Date.now();
@@ -187,7 +189,9 @@ export const photoStoreSetup = () => {
       const albumId = currentContext.value.type === 'album' ? currentContext.value.id : undefined;
       const stats = await albumService.getTimelineStats(albumId, cleanFilters());
       if (getContextKey() !== contextKey) return false;
-      if (stats.total_photos !== previousCount) return true;
+      if (stats.total_photos !== previousCount ||
+          JSON.stringify(stats.timeline) !== JSON.stringify(timelineStats.value?.timeline) ||
+          staleTaskTypes.value.some(type => ['PROCESS_BASIC', 'EXTRACT_METADATA', 'REBUILD_METADATA'].includes(type))) return true;
       acknowledgeContextRevision(contextKey, targetRevision);
       return false;
   }
@@ -243,7 +247,6 @@ export const photoStoreSetup = () => {
     loading.value = true;
     error.value = null;
     try {
-      timelineStats.value = undefined
       const filters = cleanFilters();
       const stats = await albumService.getTimelineStats(albumId, filters)
       if (requestId !== timelineRequestId) return false;
@@ -447,9 +450,8 @@ export const photoStoreSetup = () => {
   }
 
   /**
-   * Invalidate loaded photo months without losing the current view context.
-   * PhotoGallery will repopulate the visible months after the fresh timeline
-   * arrives. This is used by keep-alive activation and background task events.
+   * Refresh loaded months atomically, keeping the current gallery visible
+   * while requests run. Preserve months loaded during the refresh as well.
    */
   const refreshCurrentContext = async () => {
       if (currentContext.value.type === 'search') return;
@@ -458,30 +460,54 @@ export const photoStoreSetup = () => {
       const contextKey = getContextKey();
       const targetRevision = getRequiredRevision();
       const monthsToReload = [...loadedDates];
+      const filters = cleanFilters();
+      const filterKey = JSON.stringify(filters);
       const stats = await albumService.getTimelineStats(
           context.type === 'album' ? context.id : undefined,
-          cleanFilters()
+          filters
       );
-      if (getContextKey() !== contextKey) return;
-      cancelAllPendingLoads();
-      images.value = [];
-      photoOffsetMap.clear();
-      loadedDates.clear();
-      // Update the timeline in the same Vue tick as the image cache. Keeping
-      // its virtual height prevents the browser from clamping scroll to top.
-      timelineStats.value = stats;
-
-      if (currentContext.value.type !== context.type || currentContext.value.id !== context.id) return;
-
-      // Reload months that were already materialized. Merely updating the
-      // timeline is insufficient when its visible month keys stay unchanged.
-      await Promise.all(monthsToReload.map((dateKey) => {
+      const refreshed = await Promise.all(monthsToReload.map(async (dateKey) => {
           const [year, month] = dateKey.split('-').map(Number);
-          const albumId = context.type === 'album'
-              ? context.id
-              : undefined;
-          return loadPhotosByMonth(year, month, albumId, true);
+          const pad = (value: number) => String(value).padStart(2, '0');
+          const endDay = new Date(year, month, 0).getDate();
+          const monthFilters = { ...filters,
+              start_time: `${year}-${pad(month)}-01 00:00:00`,
+              end_time: `${year}-${pad(month)}-${pad(endDay)} 23:59:59`,
+          };
+          const count = stats.timeline.filter(day => day.year === year && day.month === month)
+              .reduce((sum, day) => sum + day.count, 0);
+          const photos = count === 0 ? [] : context.type === 'album' && context.id
+              ? await albumService.getPhotos(context.id, 0, count, monthFilters)
+              : await albumService.getAllPhotos(0, count, monthFilters);
+          return { dateKey, images: photos.map(mapPhotoToImage) };
       }));
+      if (getContextKey() !== contextKey || JSON.stringify(cleanFilters()) !== filterKey) return;
+
+      // Keep the old gallery until every request succeeds. Publish the new
+      // timeline and cache together, without an empty frame or skeleton overlay.
+      cancelAllPendingLoads();
+      const replacements = new Map(refreshed.map(month => [month.dateKey, month.images]));
+      const retained = images.value.filter(image => {
+          const date = new Date(image.timestamp);
+          return !replacements.has(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+      });
+      const merged = [...retained, ...refreshed.flatMap(month => month.images)];
+      images.value = [...new Map(merged.map(image => [image.id, image])).values()].sort((a, b) => b.timestamp - a.timestamp);
+      timelineStats.value = stats;
+      photoOffsetMap.clear();
+      const cachedMonths = new Map<string, AlbumImage[]>();
+      for (const image of images.value) {
+          const date = new Date(image.timestamp);
+          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          const monthImages = cachedMonths.get(dateKey) || [];
+          monthImages.push(image);
+          cachedMonths.set(dateKey, monthImages);
+      }
+      for (const [dateKey, monthImages] of cachedMonths) {
+          const [year, monthNumber] = dateKey.split('-').map(Number);
+          const offset = getOffsetRangeForMonth(year, monthNumber);
+          if (offset) monthImages.forEach((image, index) => photoOffsetMap.set(offset.start + index, image));
+      }
       acknowledgeContextRevision(contextKey, targetRevision);
   }
 
@@ -580,6 +606,7 @@ export const photoStoreSetup = () => {
     photoOffsetMap,
     availableFilters,
     dataStale,
+    dataRevision,
     staleTaskTypes,
     selectedFilters,
     folderPath,

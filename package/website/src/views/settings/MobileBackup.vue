@@ -84,6 +84,8 @@
                 <div class="flex items-center gap-2 text-xs"><ImageIcon class="h-4 w-4 shrink-0 text-gray-400" /><span class="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">{{ currentFile }}</span><span class="tabular-nums text-gray-500 dark:text-gray-400">{{ currentFileProgress }}%</span></div>
                 <div class="mt-2 h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-full rounded-full bg-primary-500 transition-[width] duration-200" :style="{ width: `${currentFileProgress}%` }" /></div>
               </div>
+              <p v-if="running" class="mt-3 text-xs text-gray-500 dark:text-gray-400">原文件保存后，照片预览和信息将在后台继续整理。</p>
+              <p v-if="failedItems" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ failedItems }} 项未完成，其余文件继续备份；再次备份会重试未完成项。</p>
 
               <p v-if="lastError" class="mt-4 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600 dark:bg-red-950/30 dark:text-red-400">{{ lastError }}</p>
             </div>
@@ -98,7 +100,7 @@
           <p v-if="uploadedBytes > 0" class="px-2 text-center text-xs text-gray-500 dark:text-gray-400">本轮已传 {{ formatSize(uploadedBytes) }} · 共 {{ formatSize(totalBytes) }}</p>
 
           <section v-if="queueItems.length" class="overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-gray-800">
-            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3.5 dark:border-gray-700"><div><h2 class="font-semibold">当前批次</h2><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">最多显示 40 项</p></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ queueItems.length }} 项</span></div>
+            <div class="flex items-center justify-between border-b border-gray-100 px-4 py-3.5 dark:border-gray-700"><div><h2 class="font-semibold">备份队列</h2><p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">当前批次和未完成文件</p></div><span class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ queueItems.length }} 项</span></div>
             <ul class="max-h-[22rem] divide-y divide-gray-100 overflow-y-auto dark:divide-gray-700">
               <li v-for="item in queueItems" :key="item.backupKey" class="flex min-h-16 items-center gap-3 px-4 py-2.5">
                 <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-700"><ImageIcon class="h-[18px] w-[18px] text-gray-500 dark:text-gray-400" /></span>
@@ -143,7 +145,7 @@ const emit = defineEmits<{ requestSettingsBack: [] }>()
 const route = useRoute()
 const router = useRouter()
 const backup = useGalleryBackup()
-const { supported, settings, running, status, pauseReason, pauseRequested, currentFile, currentFileProgress, backedUp, skipped, totalItems, processedItems, totalBytes, uploadedBytes, speedBytesPerSecond, overallProgress, lastError, lastRunAt, queueItems } = backup
+const { supported, settings, running, status, pauseReason, pauseRequested, currentFile, currentFileProgress, failedItems, backedUp, skipped, totalItems, processedItems, totalBytes, uploadedBytes, speedBytesPerSecond, overallProgress, lastError, lastRunAt, queueItems } = backup
 const screen = ref<'overview' | 'settings'>(route.hash === '#mobile-backup-settings' ? 'settings' : 'overview')
 const innerTransition = ref('backup-forward')
 let openedSettingsHere = false

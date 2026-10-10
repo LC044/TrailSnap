@@ -34,6 +34,7 @@
     "@capacitor/preferences": "8.0.1",
     "@devioarts/capacitor-mdns": "0.1.0",
     "@element-plus/icons-vue": "^2.3.2",
+    "@noble/hashes": "1.8.0",
     "@tauri-apps/api": "2.11.1",
     "@tauri-apps/plugin-dialog": "2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.4",

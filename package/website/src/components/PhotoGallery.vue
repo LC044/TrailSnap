@@ -537,6 +537,11 @@ const loadImage = (image: AlbumImage) => {
 const cancelImageLoad = (imageId: string) => {
     delete loadedImages[imageId]
 }
+watch(() => props.photos, photos => {
+    for (const photo of photos) {
+        if (loadedImages[photo.id] && loadedImages[photo.id] !== photo.thumbnail) loadImage(photo)
+    }
+})
 
 // Ensure cleanup on component unmount
 onUnmounted(() => {

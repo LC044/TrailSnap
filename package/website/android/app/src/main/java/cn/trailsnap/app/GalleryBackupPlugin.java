@@ -45,6 +45,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @CapacitorPlugin(
     name = "GalleryBackup",
@@ -58,6 +60,16 @@ import java.util.Set;
     }
 )
 public class GalleryBackupPlugin extends Plugin {
+    // Capacitor dispatches plugin calls on its bridge thread. Keep disk work
+    // off that thread so hashing and exporting really overlap across assets.
+    private final ExecutorService mediaIo = Executors.newFixedThreadPool(4);
+
+    @Override
+    protected void handleOnDestroy() {
+        mediaIo.shutdownNow();
+        super.handleOnDestroy();
+    }
+
     private static final int MAX_PAGE_SIZE = 100;
     private static final String NOTIFICATION_CHANNEL_ID = "gallery_backup";
     private static final int NOTIFICATION_ID = 4701;
@@ -720,76 +732,80 @@ public class GalleryBackupPlugin extends Plugin {
 
     @PluginMethod
     public void exportAsset(PluginCall call) {
-        String uriValue = call.getString("uri");
-        String requestedName = call.getString("fileName", "asset");
-        if (uriValue == null) {
-            call.reject("缺少图库资产 URI");
-            return;
-        }
-        String safeName = requestedName.replaceAll("[^a-zA-Z0-9._-]", "_");
-        File directory = new File(getContext().getCacheDir(), "gallery-backup");
-        if (!directory.exists() && !directory.mkdirs()) {
-            call.reject("无法创建临时目录");
-            return;
-        }
-        File output = new File(directory, System.nanoTime() + "-" + safeName);
-        Uri sourceUri = Uri.parse(uriValue);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (!originalMediaPermissionGranted()) {
-                call.reject("未授予照片位置权限，无法读取包含 GPS 的原图", "ORIGINAL_MEDIA_PERMISSION_REQUIRED");
+        mediaIo.execute(() -> {
+            String uriValue = call.getString("uri");
+            String requestedName = call.getString("fileName", "asset");
+            if (uriValue == null) {
+                call.reject("缺少图库资产 URI");
                 return;
             }
-            sourceUri = MediaStore.setRequireOriginal(sourceUri);
-        }
-        try (ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(sourceUri, "r")) {
-            if (descriptor == null) throw new IllegalStateException("无法打开图库原始文件");
-            try (InputStream input = new FileInputStream(descriptor.getFileDescriptor());
-                 FileOutputStream stream = new FileOutputStream(output)) {
-                byte[] buffer = new byte[256 * 1024];
-                int read;
-                while ((read = input.read(buffer)) != -1) stream.write(buffer, 0, read);
+            String safeName = requestedName.replaceAll("[^a-zA-Z0-9._-]", "_");
+            File directory = new File(getContext().getCacheDir(), "gallery-backup");
+            if (!directory.exists() && !directory.mkdirs()) {
+                call.reject("无法创建临时目录");
+                return;
             }
-            JSObject result = new JSObject();
-            result.put("path", output.getAbsolutePath());
-            call.resolve(result);
-        } catch (UnsupportedOperationException | SecurityException error) {
-            output.delete();
-            call.reject("系统无法提供未经裁剪元数据的原始媒体文件", "ORIGINAL_MEDIA_UNAVAILABLE", error);
-        } catch (Exception error) {
-            output.delete();
-            call.reject("导出图库文件失败", error);
-        }
+            File output = new File(directory, System.nanoTime() + "-" + safeName);
+            Uri sourceUri = Uri.parse(uriValue);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (!originalMediaPermissionGranted()) {
+                    call.reject("未授予照片位置权限，无法读取包含 GPS 的原图", "ORIGINAL_MEDIA_PERMISSION_REQUIRED");
+                    return;
+                }
+                sourceUri = MediaStore.setRequireOriginal(sourceUri);
+            }
+            try (ParcelFileDescriptor descriptor = getContext().getContentResolver().openFileDescriptor(sourceUri, "r")) {
+                if (descriptor == null) throw new IllegalStateException("无法打开图库原始文件");
+                try (InputStream input = new FileInputStream(descriptor.getFileDescriptor());
+                     FileOutputStream stream = new FileOutputStream(output)) {
+                    byte[] buffer = new byte[256 * 1024];
+                    int read;
+                    while ((read = input.read(buffer)) != -1) stream.write(buffer, 0, read);
+                }
+                JSObject result = new JSObject();
+                result.put("path", output.getAbsolutePath());
+                call.resolve(result);
+            } catch (UnsupportedOperationException | SecurityException error) {
+                output.delete();
+                call.reject("系统无法提供未经裁剪元数据的原始媒体文件", "ORIGINAL_MEDIA_UNAVAILABLE", error);
+            } catch (Exception error) {
+                output.delete();
+                call.reject("导出图库文件失败", error);
+            }
+        });
     }
 
     @PluginMethod
     public void calculateAssetMd5(PluginCall call) {
-        String uriValue = call.getString("uri");
-        if (uriValue == null) {
-            call.reject("缺少图库资产 URI");
-            return;
-        }
-        Uri sourceUri = Uri.parse(uriValue);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (!originalMediaPermissionGranted()) {
-                call.reject("未授予照片位置权限，无法读取原始媒体文件", "ORIGINAL_MEDIA_PERMISSION_REQUIRED");
+        mediaIo.execute(() -> {
+            String uriValue = call.getString("uri");
+            if (uriValue == null) {
+                call.reject("缺少图库资产 URI");
                 return;
             }
-            sourceUri = MediaStore.setRequireOriginal(sourceUri);
-        }
-        try (InputStream input = getContext().getContentResolver().openInputStream(sourceUri)) {
-            if (input == null) throw new IllegalStateException("无法打开图库原始文件");
-            MessageDigest digest = MessageDigest.getInstance("MD5");
-            byte[] buffer = new byte[256 * 1024];
-            int read;
-            while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
-            StringBuilder hex = new StringBuilder(32);
-            for (byte value : digest.digest()) hex.append(String.format(Locale.ROOT, "%02x", value & 0xff));
-            JSObject result = new JSObject();
-            result.put("md5", hex.toString());
-            call.resolve(result);
-        } catch (Exception error) {
-            call.reject("计算图库文件 MD5 失败", error);
-        }
+            Uri sourceUri = Uri.parse(uriValue);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (!originalMediaPermissionGranted()) {
+                    call.reject("未授予照片位置权限，无法读取原始媒体文件", "ORIGINAL_MEDIA_PERMISSION_REQUIRED");
+                    return;
+                }
+                sourceUri = MediaStore.setRequireOriginal(sourceUri);
+            }
+            try (InputStream input = getContext().getContentResolver().openInputStream(sourceUri)) {
+                if (input == null) throw new IllegalStateException("无法打开图库原始文件");
+                MessageDigest digest = MessageDigest.getInstance("MD5");
+                byte[] buffer = new byte[256 * 1024];
+                int read;
+                while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+                StringBuilder hex = new StringBuilder(32);
+                for (byte value : digest.digest()) hex.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+                JSObject result = new JSObject();
+                result.put("md5", hex.toString());
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject("计算图库文件 MD5 失败", error);
+            }
+        });
     }
 
     @PluginMethod

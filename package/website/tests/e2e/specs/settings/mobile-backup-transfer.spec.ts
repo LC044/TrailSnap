@@ -34,10 +34,10 @@ test.describe('P0 - 手机备份自适应传输 @p0', () => {
       wifi: true,
       unmetered: true,
     })
-    expect(publicWifi).toMatchObject({ isLan: false, mediaConcurrency: 1, chunkConcurrency: 1, chunkSize: 2 * MB })
+    expect(publicWifi).toMatchObject({ isLan: false, mediaConcurrency: 2, chunkConcurrency: 2, chunkSize: 2 * MB })
   })
 
-  test('公网仅在吞吐稳定时有限提速，失败后立即降为单路', () => {
+  test('公网不计费网络用双路探测吞吐，失败后立即降为单路', () => {
     const initial = initialTransferTuning('https://photos.example.com', {
       connected: true,
       wifi: true,
