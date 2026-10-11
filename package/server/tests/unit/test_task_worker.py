@@ -32,7 +32,7 @@ def test_get_chunk_size_honors_level_and_task_type_overrides():
         assert task_worker.get_chunk_size(TaskType.SCAN_FOLDER) == 8
         assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 1
         assert task_worker.get_chunk_size(TaskType.OCR) == 2
-        assert task_worker.get_chunk_size(TaskType.PROCESS_BASIC) == 16
+    assert task_worker.get_chunk_size(TaskType.PROCESS_BASIC) == 4
 
     with patch.object(task_worker.system_config.config.task, "concurrency_level", "low"):
         assert task_worker.get_chunk_size(TaskType.SCAN_FOLDER) == 4

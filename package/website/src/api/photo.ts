@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import type { AlbumImage,Photo, SimilarPhoto } from '@/types/album'
 import type { Task as TaskResponse } from '@/api/tasks'
+import { originalFileUrl } from '@/utils/mediaUrl'
 
 export type SwipeFilterDecision = 'keep' | 'delete'
 
@@ -23,7 +24,7 @@ export const photoApi = {
   },
 
   async downloadPhoto(photo: Pick<AlbumImage, 'id' | 'url' | 'filename'>) {
-    const response = await fetch(photo.url)
+    const response = await fetch(originalFileUrl(photo))
     if (!response.ok) throw new Error('下载失败')
     const url = window.URL.createObjectURL(await response.blob())
     const link = document.createElement('a')

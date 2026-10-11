@@ -1,6 +1,8 @@
 """Small bounded admission gates for expensive local inference endpoints."""
 
 import asyncio
+import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import HTTPException
@@ -16,6 +18,7 @@ class AdmissionGate:
         self._counter_lock = asyncio.Lock()
 
     async def acquire(self) -> None:
+        started = time.perf_counter()
         async with self._counter_lock:
             if self._semaphore.locked() and self._waiting >= settings.AI_ADMISSION_QUEUE:
                 raise HTTPException(
@@ -29,6 +32,8 @@ class AdmissionGate:
                 self._semaphore.acquire(),
                 timeout=settings.AI_ADMISSION_WAIT_SECONDS,
             )
+            logging.info('AI admission timing: model=%s wait_ms=%.1f',
+                         self.name, (time.perf_counter() - started) * 1000)
         except asyncio.TimeoutError as exc:
             raise HTTPException(
                 status_code=429,

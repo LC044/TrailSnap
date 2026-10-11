@@ -29,6 +29,34 @@ from sqlalchemy.orm import sessionmaker
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 
+def test_migration_drains_worker_without_terminating_or_restarting():
+    from app.service.task_manager import TaskManager
+    manager = TaskManager()
+    process = MagicMock(exitcode=0)
+    manager.worker_process = process
+    manager._worker_stop_event = MagicMock()
+    stop_event = manager._worker_stop_event
+    with patch.object(manager, "stop_watchdog") as stop_watchdog:
+        manager.drain_for_migration()
+    stop_watchdog.assert_called_once()
+    stop_event.set.assert_called_once()
+    process.join.assert_called_once_with()
+    process.terminate.assert_not_called()
+    process.kill.assert_not_called()
+    assert manager.worker_process is None
+    with patch.object(manager, "_start_worker_locked") as start:
+        manager.start_worker_if_needed()
+        start.assert_not_called()
+
+
+def test_migration_does_not_authorize_an_abnormal_worker_exit():
+    from app.service.task_manager import TaskManager
+    manager = TaskManager()
+    manager.worker_process = MagicMock(exitcode=1)
+    with pytest.raises(RuntimeError, match="异常退出"):
+        manager.drain_for_migration()
+
+
 @pytest.fixture(autouse=True)
 def _reset_singleton():
     """Force a fresh TaskManager per test so internal state never leaks."""

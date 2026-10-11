@@ -44,6 +44,17 @@ def _run(coro):
         loop.close()
 
 
+def _completion_rows(db, *, photos=(), metadata=(), colors=()):
+    from app.db.models.photo import Photo
+    from app.db.models.photo_metadata import PhotoMetadata
+    def query(model):
+        mocked = MagicMock()
+        rows = photos if model is Photo else metadata if model is PhotoMetadata else colors
+        mocked.filter.return_value.all.return_value = list(rows)
+        return mocked
+    db.query.side_effect = query
+
+
 def _strategy():
     from app.service.tasks.basic import BasicTaskStrategy
     return BasicTaskStrategy()
@@ -392,7 +403,7 @@ def test_process_batch_existing_photo_reuses_id_when_payload_missing(tmp_path):
 
     existing_id = uuid4()
     chain = db.query.return_value
-    chain.filter.return_value.first.return_value = (existing_id,)
+    chain.filter.return_value.all.return_value = [(existing_id, file_path)]
 
     task = _task(
         owner_id=uuid4(),
@@ -495,6 +506,8 @@ def test_handle_completion_marks_pre_created_motion_photo_as_live(monkeypatch):
     worker.scan_status = {"added": 0, "processed_files": 0}
     photo_id = uuid4()
     data = _photo_create_data(photo_id, str(uuid4()), is_pre_created=True)
+    db_photo.id = photo_id
+    _completion_rows(db, photos=[db_photo])
     data["photo"].file_type = FileType.live_photo
     data["photo"].md5 = "f" * 32
     item = {"status": "completed", "task_id": uuid4(), "result": {"photo_create_data": data}}
@@ -540,6 +553,7 @@ def test_handle_completion_pre_existing_metadata_with_exif_is_not_overwritten(mo
     worker.scan_status = {"added": 0, "processed_files": 0}
 
     photo_id = uuid4()
+    _completion_rows(db, metadata=[SimpleNamespace(photo_id=photo_id, exif_info=json.dumps({'existing': True}))])
     user_id = str(uuid4())
     item = {
         "status": "completed",
@@ -573,6 +587,7 @@ def test_handle_completion_color_info_persisted_only_once(monkeypatch):
     worker.scan_status = {"added": 0, "processed_files": 0}
 
     photo_id = uuid4()
+    _completion_rows(db, colors=[(photo_id,)])
     user_id = str(uuid4())
     item = {
         "status": "completed",

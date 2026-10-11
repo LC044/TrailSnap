@@ -5,11 +5,17 @@
 exceptions are swallowed (the cron loop must never re-raise).
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_jobs]
+
+
+@pytest.fixture(autouse=True)
+def no_update_downloads(monkeypatch):
+    # The scheduled job also warms the APK cache. Unit tests must not download it.
+    monkeypatch.setattr('app.service.app_update.prefetch_latest_app_update', AsyncMock())
 
 
 def test_update_check_job_invokes_scheduler_tick():

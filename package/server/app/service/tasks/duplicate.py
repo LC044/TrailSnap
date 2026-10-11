@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -59,7 +60,7 @@ class FindDuplicatePhotosStrategy(BaseTaskStrategy):
             # 2. Process photos in batches concurrently
             processed_count = 0
             updated_count = 0
-            batch_size = 20  # You can adjust concurrency level here
+            batch_size = max(1, disk_budget.limit * 2)  # Bound submitted hash jobs as well as active reads.
 
             for i in range(0, total_photos, batch_size):
                 batch_photos = photos[i:i + batch_size]

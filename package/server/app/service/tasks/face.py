@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -84,6 +85,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                     'error': res.get('error') if res and isinstance(res, dict) else None
                 })
             except Exception as e:
+                db.rollback()
                 logger.error(f"Error processing generator task {task.id}: {e}")
                 results.append({
                     'task_id': task.id,
@@ -136,7 +138,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                         continue
 
                     try:
-                        with open(target_path, 'rb') as f_img:
+                        with disk_budget.slot(target_path), open(target_path, 'rb') as f_img:
                             b64_data = base64.b64encode(f_img.read()).decode('utf-8')
                         b64_images.append(b64_data)
                         valid_tasks.append(task)
@@ -174,7 +176,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     continue
 
                                 faces_data = ai_result.get('faces', [])
-                                crud_face.delete_faces_by_photo(db, photo.id)
+                                crud_face.delete_faces_by_photo(db, photo.id, commit=False)
 
                                 count = 0
                                 has_unassigned = False
@@ -200,29 +202,26 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                             # it the pgvector nearest-neighbour
                                             # query scans every user's faces.
                                             assigned_id = cluster_service.assign_face_to_identity(
-                                                face.id, face.face_feature, owner_id
+                                                face.id, face.face_feature, owner_id, commit=False
                                             )
                                             if not assigned_id:
                                                 has_unassigned = True
                                         except Exception as ce:
                                             logger.error(f"Clustering failed for face {face.id}: {ce}")
+                                            raise
                                 if has_unassigned:
                                     # Commit the faces so the clustering task
                                     # can see them. Clustering itself is now a
                                     # separate CLUSTER_FACES task registered in
                                     # handle_completion.
                                     batch_has_unassigned = True
-                                    db.commit()
 
                                 tasks_status = dict(photo.processed_tasks or {})
                                 tasks_status['face'] = True
                                 photo.processed_tasks = tasks_status
                                 db.add(photo)
-                                db.commit()
+                                db.flush()
                                 
-                                if photo.owner_id:
-                                    from app.crud.album import trigger_conditional_albums_update
-                                    trigger_conditional_albums_update(db, photo.owner_id, [photo.id])
                                     
                                 results.append({
                                     'task_id': task.id,
@@ -236,6 +235,11 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     }
                                 })
 
+                            from app.crud.album import trigger_conditional_albums_update
+                            completed_ids = [p.id for p, item in zip(valid_photos, ai_results) if not item.get("error")]
+                            if owner_id and completed_ids:
+                                trigger_conditional_albums_update(db, owner_id, completed_ids, commit=False)
+                            db.commit()
                             if batch_has_unassigned:
                                 logger.info(
                                     "Owner %s has unassigned faces; clustering deferred to a CLUSTER_FACES task",
@@ -247,6 +251,9 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                 results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
                                 
             except Exception as e:
+                db.rollback()
+                owner_ids = {t.id for t in owner_tasks}
+                results = [r for r in results if r["task_id"] not in owner_ids]
                 logger.error(f"Error in Face Recognition processing batch for owner {owner_id}: {e}")
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
@@ -261,7 +268,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                 return {'status': 'failed', 'error': 'file not found'}
 
             async with aiohttp.ClientSession() as session:
-                with open(target_path, 'rb') as f:
+                with disk_budget.slot(target_path), open(target_path, 'rb') as f:
                     file_data = f.read()
                 width, height, _ = storage.get_image_dimensions(target_path)
 
@@ -369,11 +376,9 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                 owner_ids.add(owner_id)
 
         for owner_id in owner_ids:
-            try:
-                enqueue_cluster_faces(db, owner_id)
-            except Exception as exc:
-                db.rollback()
-                logger.error(f"Failed to enqueue face clustering for owner {owner_id}: {exc}")
+            # Completion cleanup owns the transaction. An enqueue failure must
+            # roll back the whole flush and leave the results available to retry.
+            enqueue_cluster_faces(db, owner_id, commit=False)
 
     def release_resources(self) -> None:
         pass

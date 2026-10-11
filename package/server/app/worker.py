@@ -17,14 +17,17 @@ from app.core.paths import DATA_DIR, ensure_rg_seed
 from app.db.session import dispose_inherited_connections
 from app.service.task_worker import TaskWorker
 
-async def _run(event_queue=None, shutdown_event=None):
+async def _run(event_queue=None, shutdown_event=None, wake_event=None):
     worker = TaskWorker.get_instance()
     worker.set_event_queue(event_queue)
     worker.start()
 
     # Keep the loop alive
     while True:
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1 if wake_event is not None else 0.5)
+        if wake_event is not None and wake_event.is_set():
+            wake_event.clear()
+            worker.wake()
         if shutdown_event is not None and shutdown_event.is_set():
             worker.request_drain()
             if worker.is_drained():
@@ -32,7 +35,7 @@ async def _run(event_queue=None, shutdown_event=None):
                 await asyncio.sleep(1.1)
                 return
 
-def run_worker(event_queue=None, shutdown_event=None):
+def run_worker(event_queue=None, shutdown_event=None, wake_event=None):
     load_dotenv(os.path.join(DATA_DIR, '.env'))
     """Entry point for the worker process"""
     # Linux containers start this process with fork.  Discard the API
@@ -59,7 +62,10 @@ def run_worker(event_queue=None, shutdown_event=None):
             # Register signal handlers
             pass
 
-        coroutine = _run(event_queue) if shutdown_event is None else _run(event_queue, shutdown_event)
+        if wake_event is not None:
+            coroutine = _run(event_queue, shutdown_event, wake_event)
+        else:
+            coroutine = _run(event_queue) if shutdown_event is None else _run(event_queue, shutdown_event)
         asyncio.run(coroutine)
     except (KeyboardInterrupt, SystemExit):
         logging.info("Worker process received stop signal")

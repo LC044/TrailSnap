@@ -94,12 +94,14 @@ class JobScheduler:
         self._started = True
         logger.info("JobScheduler started.")
 
-    def stop(self):
+    def stop(self, *, wait=False):
         if not self._started:
             return
         try:
-            self._scheduler.shutdown(wait=False)
+            self._scheduler.shutdown(wait=wait)
         except Exception as e:
             logger.warning(f"JobScheduler shutdown: {e}")
+            if wait:
+                raise
         self._started = False
         logger.info("JobScheduler stopped.")

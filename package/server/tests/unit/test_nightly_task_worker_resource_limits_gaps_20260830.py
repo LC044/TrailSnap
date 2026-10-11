@@ -264,9 +264,11 @@ def test_on_resource_limit_change_publishes_event_and_persists_dict():
     worker._on_resource_limit_change("face", 3, "downshift")
 
     assert worker.adaptive_limits == {"face": 3}
-    worker._save_system_state.assert_called_once_with(
+    worker._save_system_state.assert_any_call(
         "adaptive_resource_limits", {"face": 3}
     )
+    assert worker._save_system_state.call_count == 2
+    assert worker._save_system_state.call_args.args[0] == 'adaptive_resource_limits_updated_at'
     args, _ = worker._publish.call_args
     assert args[0] == "task.concurrency"
     assert args[1] == {"resource_key": "face", "limit": 3, "reason": "downshift"}
@@ -302,14 +304,16 @@ def test_is_system_overloaded_uses_either_watermark(cpu, memory, expected):
 @pytest.mark.parametrize(
     ("category", "consumer", "expected"),
     [
-        ("CPU", 1, 2),
-        ("IO", 2, 4),
-        ("AI", 5, 10),
+        ("CPU", 1, 6),
+        ("IO", 2, 12),
+        ("AI", 5, 30),
     ],
 )
-def test_prefetch_limit_uses_double_consumer_with_floor_of_two(
-    category, consumer, expected
+def test_prefetch_limit_counts_two_waves_of_photos_per_batch(
+    category, consumer, expected, monkeypatch
 ):
+    from app.service import task_worker
+    monkeypatch.setattr(task_worker, 'get_chunk_size', lambda _: 3)
     worker = _bare_worker()
     worker._get_concurrency_settings = lambda: {
         "cpu_consumer": 1,

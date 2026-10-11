@@ -103,7 +103,7 @@ def test_fetch_tasks_keeps_interactive_work_in_single_item_batches():
 
     worker = task_worker.TaskWorker.__new__(task_worker.TaskWorker)
     worker.paused_categories = set()
-    worker._prefetch_limit = lambda category: 8
+    worker._prefetch_limit = lambda category, task_type=None: 8
 
     task_a = SimpleNamespace(
         id=uuid4(), type=TaskType.PROCESS_BASIC,

@@ -43,7 +43,7 @@ def get_faces(db: Session, skip: int = 0, limit: int = 100, owner_id: Optional[U
         query = query.join(Photo).filter(Photo.owner_id == owner_id, Photo.is_deleted == False)
     return query.offset(skip).limit(limit).all()
 
-def update_face(db: Session, face_id: int, obj_in: schemas.FaceUpdate, owner_id: Optional[UUID] = None) -> Optional[Face]:
+def update_face(db: Session, face_id: int, obj_in: schemas.FaceUpdate, owner_id: Optional[UUID] = None, *, commit: bool = True) -> Optional[Face]:
     db_obj = get_face(db, face_id, owner_id)
     if not db_obj:
         return None
@@ -56,8 +56,11 @@ def update_face(db: Session, face_id: int, obj_in: schemas.FaceUpdate, owner_id:
     identity = db.query(FaceIdentity).get(db_obj.face_identity_id)
     if identity and not identity.default_face_id:
         identity.default_face_id = db_obj.id
-    db.commit()
-    db.refresh(db_obj)
+    if commit:
+        db.commit()
+        db.refresh(db_obj)
+    else:
+        db.flush()
     return db_obj
 
 def delete_face(db: Session, face_id: int, owner_id: Optional[UUID] = None) -> Optional[Face]:
@@ -476,7 +479,7 @@ def remove_photos_from_identity(db: Session, identity_id: UUID, photo_ids: List[
     db.commit()
     return len(faces)
 
-def delete_faces_by_photo(db: Session, photo_id: UUID, confidence_threshold: float = 1.0) -> int:
+def delete_faces_by_photo(db: Session, photo_id: UUID, confidence_threshold: float = 1.0, *, commit: bool = True) -> int:
     faces = db.query(Face).filter(
         Face.photo_id == photo_id,
         Face.face_confidence < confidence_threshold
@@ -485,7 +488,10 @@ def delete_faces_by_photo(db: Session, photo_id: UUID, confidence_threshold: flo
     for face in faces:
         handle_face_deletion_dependency(db, face)
         db.delete(face)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return count
 
 def set_identity_cover(db: Session, identity_id: UUID, photo_id: UUID, owner_id: Optional[UUID] = None) -> bool:

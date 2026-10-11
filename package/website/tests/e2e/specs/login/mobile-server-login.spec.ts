@@ -143,10 +143,21 @@ test.describe('手机 App 天地图瓦片 @p0', () => {
       class MockLngLat {
         constructor(_lng: number, _lat: number) {}
       }
+      class MockMapService {}
 
       Object.assign(window, {
         __tiandituTileTemplates: tileTemplates,
-        T: { Map: MockMap, TileLayer: MockTileLayer, LngLat: MockLngLat },
+        T: {
+          Map: MockMap,
+          TileLayer: MockTileLayer,
+          LngLat: MockLngLat,
+          Marker: MockMapService,
+          Label: MockMapService,
+          Polyline: MockMapService,
+          Point: MockMapService,
+          Geocoder: MockMapService,
+          LocalSearch: MockMapService,
+        },
       })
     })
 

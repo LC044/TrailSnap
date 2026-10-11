@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -98,6 +99,7 @@ class OcrStrategy(BaseTaskStrategy):
                     'error': res.get('error') if res and isinstance(res, dict) else None
                 })
             except Exception as e:
+                db.rollback()
                 logger.error(f"Error processing generator task {task.id}: {e}")
                 results.append({
                     'task_id': task.id,
@@ -155,9 +157,9 @@ class OcrStrategy(BaseTaskStrategy):
                         continue
                         
                     try:
-                        with Image.open(target_path) as img:
+                        with disk_budget.slot(target_path), Image.open(target_path) as img:
                             width, height = img.size
-                        with open(target_path, 'rb') as f_img:
+                        with disk_budget.slot(target_path), open(target_path, 'rb') as f_img:
                             b64_data = base64.b64encode(f_img.read()).decode('utf-8')
                         b64_images.append(b64_data)
                         valid_tasks.append(task)
@@ -200,7 +202,7 @@ class OcrStrategy(BaseTaskStrategy):
                                 rec_scores = pruned_result.get('rec_scores', [])
                                 rec_polys = pruned_result.get('rec_polys', [])
 
-                                crud_ocr.delete_ocr_by_photo_id(db, photo.id)
+                                crud_ocr.delete_ocr_by_photo_id(db, photo.id, commit=False)
                                 count = 0
                                 
                                 for i, text in enumerate(rec_texts):
@@ -223,14 +225,13 @@ class OcrStrategy(BaseTaskStrategy):
                                             text=text,
                                             text_score=score,
                                             polygon=norm_poly
-                                        )
+                                        ), commit=False
                                     )
                                     count += 1
                                 tasks_status = dict(photo.processed_tasks or {})
                                 tasks_status['ocr'] = True
                                 photo.processed_tasks = tasks_status
                                 db.add(photo)
-                                db.commit()
 
                                 results.append({
                                     'task_id': task.id,
@@ -238,12 +239,16 @@ class OcrStrategy(BaseTaskStrategy):
                                     'status': 'completed',
                                     'result': {'status': 'success', 'texts_found': count}
                                 })
+                            db.commit()
                         else:
                             err_msg = f"AI Service error: {resp.status}"
                             for task in valid_tasks:
                                 results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
 
             except Exception as e:
+                db.rollback()
+                owner_ids = {t.id for t in owner_tasks}
+                results = [r for r in results if r["task_id"] not in owner_ids]
                 logger.error(f"Error in OCR processing batch for owner {owner_id}: {e}")
                 # A failed flush leaves the whole Session unusable until it is
                 # rolled back.  Restore it before reading ORM task attributes
@@ -267,12 +272,12 @@ class OcrStrategy(BaseTaskStrategy):
                 return {'status': 'failed', 'error': 'file not found'}
 
             # 读取图片实际宽高
-            with Image.open(target_path) as img:
+            with disk_budget.slot(target_path), Image.open(target_path) as img:
                 width, height = img.size
 
             async with aiohttp.ClientSession() as session:
                 # 1. Read file
-                with open(target_path, 'rb') as f:
+                with disk_budget.slot(target_path), open(target_path, 'rb') as f:
                     file_data = f.read()
 
                 import base64

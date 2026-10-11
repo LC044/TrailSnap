@@ -100,7 +100,7 @@ class FaceClusterService:
             return emb
         return emb / norm
 
-    def assign_face_to_identity(self, face_id: int, embedding: list, owner_id: uuid.UUID = None) -> uuid.UUID | None:
+    def assign_face_to_identity(self, face_id: int, embedding: list, owner_id: uuid.UUID = None, *, commit: bool = True) -> uuid.UUID | None:
         """
         优化版：利用pgvector索引查找最近邻人脸，快速分配Identity
         :param face_id: 人脸ID
@@ -153,7 +153,7 @@ class FaceClusterService:
                     face_identity_id=best_match_id,
                     recognize_confidence=float(1.0 - dist)
                 )
-                crud_face.update_face(self.db, face_id, update_data, owner_id=owner_id)
+                crud_face.update_face(self.db, face_id, update_data, owner_id=owner_id, commit=commit)
 
                 return best_match_id
             else:

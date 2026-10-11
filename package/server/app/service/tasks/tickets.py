@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -231,7 +232,7 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                         continue
 
                     try:
-                        with open(target_path, 'rb') as f_img:
+                        with disk_budget.slot(target_path), open(target_path, 'rb') as f_img:
                             b64_data = base64.b64encode(f_img.read()).decode('utf-8')
                         b64_images.append(b64_data)
                         valid_tasks.append(task)
@@ -374,7 +375,7 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
             crud_flight_tickets.delete_flight_ticket_by_photo_id(db, photo.id)
 
             async with aiohttp.ClientSession() as session:
-                with open(target_path, 'rb') as f:
+                with disk_budget.slot(target_path), open(target_path, 'rb') as f:
                     file_data = f.read()
 
                 import base64

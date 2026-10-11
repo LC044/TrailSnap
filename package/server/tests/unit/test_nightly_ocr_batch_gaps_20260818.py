@@ -110,12 +110,12 @@ def _patch_image_open(width=200, height=100):
 def _patch_ocr_crud():
     created = {"count": 0, "items": []}
 
-    def _create(db, payload):
+    def _create(db, payload, **kwargs):
         created["count"] += 1
         created["items"].append(payload)
         return MagicMock()
 
-    def _delete(db, photo_id):
+    def _delete(db, photo_id, **kwargs):
         return 0
 
     with patch("app.service.tasks.ocr.crud_ocr.create_ocr", side_effect=_create), \

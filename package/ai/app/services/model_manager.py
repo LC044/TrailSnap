@@ -98,6 +98,20 @@ class ModelManager:
             raise ValueError(f"Model {name} not registered")
         return self.models[name].get()
 
+    def release_except(self, family):
+        """Called only after the request coordinator drains the previous family."""
+        def keep(name):
+            if family == 'classification':
+                return name.startswith('yolo_photo_cls_')
+            if family == 'embedding':
+                return name in {'clip_text', 'clip_image'}
+            if family == 'tickets':
+                return name in {'tickets_yolo', 'ocr'}
+            return name == family
+        for name, wrapper in list(self.models.items()):
+            if not keep(name):
+                wrapper.release()
+
     def _monitor_loop(self):
         while self.running:
             time.sleep(10) # Check every minute

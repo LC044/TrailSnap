@@ -1,4 +1,5 @@
 import { toServerUrl } from '@/config/server'
+import type { AlbumImage } from '@/types/album'
 
 export type ThumbnailSize = 'small' | 'medium'
 
@@ -49,6 +50,16 @@ const THUMBNAIL_PATTERN = new RegExp(
 /** Convert either legacy or owner-qualified thumbnail URLs to the file route. */
 export function thumbnailToFileUrl(url: string): string {
   return url.replace(THUMBNAIL_PATTERN, (_match, photoId: string) => `/medias/${photoId}/file`)
+}
+
+/**
+ * Build the download URL for the original file.
+ *
+ * The /file route swaps HEIC/HEIF originals for a browser-decodable preview;
+ * ?original=1 opts out so downloads keep the raw bytes.
+ */
+export function originalFileUrl(photo: Pick<AlbumImage, 'id' | 'url'>): string {
+  return `${photo.url}${photo.url.includes('?') ? '&' : '?'}original=1`
 }
 
 /** Extract the photo id without confusing an owner id for a photo id. */

@@ -1,3 +1,4 @@
+from app.service.disk_budget import media_io
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -103,14 +104,15 @@ def is_point_in_polygon(lat, lng, polygon):
         p1_lat, p1_lng = p2_lat, p2_lng
     return inside
 
-def identify_scene(db: Session, lat: float, lng: float):
+def identify_scene(db: Session, lat: float, lng: float, *, scenes=None):
     # Optimisation: Filter by rough bounding box first?
     # For now, fetch all scenes. If thousands, it's okay-ish for a background task.
     # To optimize, we can select only scenes where lat/lng is within a certain range (e.g. +/- 0.5 deg)
     # But some scenes might be huge.
     
     # Let's try to fetch all scenes with basic info.
-    scenes = db.query(Scene).all()
+    if scenes is None:
+        scenes = db.query(Scene).all()
     
     for scene in scenes:
         # Check polygon first
@@ -130,6 +132,7 @@ def identify_scene(db: Session, lat: float, lng: float):
                 
     return None
 
+@media_io()
 def rebuild_metadata_cpu_job(file_path: str, file_id: UUID):
     try:
         file_name = os.path.basename(file_path)
@@ -140,19 +143,60 @@ def rebuild_metadata_cpu_job(file_path: str, file_id: UUID):
         return {"success": False, "error": str(e)}
 
 async def sync_rebuild_metadata_cpu_job(file_path: str, file_id: UUID):
-    try:
-        file_name = os.path.basename(file_path)
-        # Defaults to extract_location_details=True
-        meta = exif.extract_metadata(file_path, file_name)
-        return {"success": True, "meta": meta}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+    return await asyncio.to_thread(rebuild_metadata_cpu_job, file_path, file_id)
+
+
+def _extract_metadata_batch(bind, task_data):
+    """Own the session in this thread; commit metadata and album changes once."""
+    from app.crud.album import trigger_conditional_albums_update
+    results = []
+    with Session(bind=bind, expire_on_commit=False, autoflush=False) as db:
+        ids = [data['photo_id'] for data in task_data if data.get('photo_id')]
+        photos = {photo.id: photo for photo in db.query(Photo).filter(Photo.id.in_(ids)).all()}
+        metadata = {meta.photo_id: meta for meta in db.query(PhotoMetadata).filter(PhotoMetadata.photo_id.in_(ids)).all()}
+        scenes = db.query(Scene).all()
+        updated_by_owner = {}
+        for data in task_data:
+            result = {'task_id': data['task_id'], 'task_type': data['task_type'], 'status': 'completed'}
+            if data.get('error'):
+                result.update(status='failed', error=data['error'])
+            elif data.get('photo_id') not in photos:
+                result['result'] = {'status': 'skipped', 'reason': 'photo not found' if data.get('photo_id') else 'missing photo_id'}
+            else:
+                photo = photos[data['photo_id']]
+                extracted = rebuild_metadata_cpu_job(data.get('file_path') or photo.file_path, photo.id)
+                if not extracted['success']:
+                    result.update(status='failed', error=extracted.get('error', 'Metadata extraction failed'))
+                else:
+                    update_photo_metadata_from_extract(db, photo, extracted['meta'], commit=False,
+                                                       metadata_cache=metadata, scenes=scenes)
+                    if photo.owner_id:
+                        updated_by_owner.setdefault(photo.owner_id, []).append(photo.id)
+                    result['result'] = {'status': 'success'}
+            results.append(result)
+        db.flush()
+        for owner, photo_ids in updated_by_owner.items():
+            trigger_conditional_albums_update(db, owner, photo_ids, commit=False)
+        db.commit()
+    return results
 
 @TaskStrategyFactory.register(TaskType.EXTRACT_METADATA)
 class ExtractMetadataStrategy(BaseTaskStrategy):
     @property
     def task_category(self) -> str:
         return 'IO'
+
+    async def process_batch(self, worker, tasks: List[Task], db: Session) -> List[Dict]:
+        task_data = []
+        for task in tasks:
+            data = {'task_id': task.id, 'task_type': task.type, 'file_path': task.payload.get('file_path')}
+            value = task.payload.get('photo_id')
+            try:
+                data['photo_id'] = UUID(str(value)) if value else None
+            except (ValueError, TypeError):
+                data['error'] = 'invalid uuid'
+            task_data.append(data)
+        return await asyncio.to_thread(_extract_metadata_batch, db.get_bind(), task_data)
 
     async def process(self, worker, task: Task, db: Session):
         """
@@ -192,12 +236,14 @@ class ExtractMetadataStrategy(BaseTaskStrategy):
         else:
             raise Exception(res.get('error'))
 
-def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict):
+def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict, *, commit=True, metadata_cache=None, scenes=None):
     # Update DB
-    db_meta = db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
+    db_meta = metadata_cache.get(photo.id) if metadata_cache is not None else db.query(PhotoMetadata).filter(PhotoMetadata.photo_id == photo.id).first()
     if not db_meta:
         db_meta = PhotoMetadata(photo_id=photo.id)
         db.add(db_meta)
+        if metadata_cache is not None:
+            metadata_cache[photo.id] = db_meta
 
     # Update fields
     if meta.get("exif_info"):
@@ -251,7 +297,10 @@ def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict):
         # Identify Scene
         if db_meta.latitude is not None and db_meta.longitude is not None:
             try:
-                scene_id = identify_scene(db, float(db_meta.latitude), float(db_meta.longitude))
+                if scenes is None:
+                    scene_id = identify_scene(db, float(db_meta.latitude), float(db_meta.longitude))
+                else:
+                    scene_id = identify_scene(db, float(db_meta.latitude), float(db_meta.longitude), scenes=scenes)
                 if scene_id:
                     db_meta.scene_id = scene_id
             except Exception as e:
@@ -279,9 +328,10 @@ def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict):
     tasks_status['metadata'] = True
     photo.processed_tasks = tasks_status
     db.add(photo)
-    db.commit()
+    if commit:
+        db.commit()
     
-    if photo.owner_id:
+    if commit and photo.owner_id:
         from app.crud.album import trigger_conditional_albums_update
         trigger_conditional_albums_update(db, photo.owner_id, [photo.id])
 

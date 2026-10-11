@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from app.db.models.face import Face
 from app.db.models.photo import Photo
 from app.db.models.system import SystemState
-from app.db.models.task import Task, TaskStatus, TaskType
+from app.db.models.task import Task, TaskStatus, TaskType, DEFAULT_PRIORITIES
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 
 logger = logging.getLogger(__name__)
@@ -144,7 +144,7 @@ def should_cluster(db: Session, owner_id) -> Tuple[bool, str]:
     return False, f"only {new_faces} new unassigned faces since the last pass"
 
 
-def enqueue_cluster_faces(db: Session, owner_id) -> Optional[Task]:
+def enqueue_cluster_faces(db: Session, owner_id, *, commit: bool = True) -> Optional[Task]:
     """Register at most one outstanding clustering task per owner.
 
     Called from ``RecognizeFaceStrategy.handle_completion``. Reusing an
@@ -164,6 +164,13 @@ def enqueue_cluster_faces(db: Session, owner_id) -> Optional[Task]:
     )
     if existing:
         return existing
+
+    if not commit:
+        task = Task(type=TaskType.CLUSTER_FACES, status=TaskStatus.PENDING,
+                    priority=DEFAULT_PRIORITIES[TaskType.CLUSTER_FACES], owner_id=owner_id,
+                    payload={'owner_id': str(owner_id), 'auto': True})
+        db.add(task)
+        return task
 
     return crud_task.add_task(
         db,

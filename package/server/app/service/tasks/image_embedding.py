@@ -1,3 +1,4 @@
+from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -110,6 +111,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                     'error': res.get('error') if res and isinstance(res, dict) else None
                 })
             except Exception as e:
+                db.rollback()
                 logger.error(f"Error processing generator task {task.id}: {e}")
                 results.append({
                     'task_id': task.id,
@@ -153,7 +155,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                         continue
 
                     try:
-                        with open(target_path, 'rb') as f_img:
+                        with disk_budget.slot(target_path), open(target_path, 'rb') as f_img:
                             b64_data = base64.b64encode(f_img.read()).decode('utf-8')
                         b64_images.append(b64_data)
                         valid_tasks.append(task)
@@ -170,22 +172,24 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                         if resp.status == 200:
                             ai_results = await resp.json() # List[List[float]]
                             
+                            vectors = db.query(ImageVector).filter(ImageVector.photo_id.in_([p.id for p in valid_photos])).all()
+                            vector_map = {v.photo_id: v for v in vectors}
                             for idx, task in enumerate(valid_tasks):
                                 photo = valid_photos[idx]
                                 embedding = ai_results[idx] if idx < len(ai_results) else []
                                 
                                 if embedding:
-                                    vector = db.query(ImageVector).filter(ImageVector.photo_id == photo.id).first()
+                                    vector = vector_map.get(photo.id)
                                     if not vector:
                                         vector = ImageVector(photo_id=photo.id)
                                         db.add(vector)
+                                        vector_map[photo.id] = vector
                                     vector.embedding = embedding
                                     
                                     tasks_status = dict(photo.processed_tasks or {})
                                     tasks_status['image_embedding'] = True
                                     photo.processed_tasks = tasks_status
                                     db.add(photo)
-                                    db.commit()
                                     
                                     results.append({
                                         'task_id': task.id,
@@ -200,12 +204,16 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                                         'status': 'failed',
                                         'error': 'No embedding returned'
                                     })
+                            db.commit()
                         else:
                             err_msg = f"AI Service error: {resp.status} {await resp.text()}"
                             for task in valid_tasks:
                                 results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
                                 
             except Exception as e:
+                db.rollback()
+                owner_ids = {t.id for t in owner_tasks}
+                results = [r for r in results if r["task_id"] not in owner_ids]
                 logger.error(f"Error in Image Embedding processing batch for owner {owner_id}: {e}")
                 for task in owner_tasks:
                     if not any(r['task_id'] == task.id for r in results):
@@ -220,7 +228,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                 return {'status': 'failed', 'error': 'file not found'}
 
             async with aiohttp.ClientSession() as session:
-                with open(target_path, 'rb') as f:
+                with disk_budget.slot(target_path), open(target_path, 'rb') as f:
                     file_data = f.read()
 
                 import base64

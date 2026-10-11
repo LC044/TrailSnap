@@ -15,13 +15,14 @@ import re
 import os
 from typing import Dict, Any, Optional
 
-from PIL import Image
+from app.utils.image_loading import Image, IMAGE_EXTENSIONS
 from PIL.ExifTags import TAGS, GPSTAGS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
 register_heif_opener()
 
 import json
+import threading
 # reverse_geocoder 顶层导入 scipy.spatial（~0.3s），且首次 search 才会加载
 # CSV 数据；延迟到真正调用 reverse_geocode 时再导入。
 from app.utils.filename import extract_datetime_from_filename
@@ -30,7 +31,7 @@ from app.utils import video_meta
 from app.core.paths import RG_DATA_DIR as RG_DIR
 
 # 图片扩展名白名单（Pillow + pillow-heif 可解码的范围）
-IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.tiff', '.webp', '.png', '.heic', '.heif')
+_GEOCODER_LOCK = threading.Lock()
 
 def _convert_to_degrees(value):
     """
@@ -170,8 +171,12 @@ def get_file_time_form_system(file_path: str) -> datetime:
 
 def reverse_geocode(lat: float, lng: float) -> dict:
     try:
-        import reverse_geocoder as rg
-        results = rg.search([(lat, lng)], mode=1, data_dir=RG_DIR)
+        # reverse_geocoder 顶层导入会拖慢冷启动，改为调用处导入（见模块头部注释）。
+        # The bundled singleton initializer is not thread-safe. Metadata batches
+        # now run concurrently, so protect initialization and tree access.
+        with _GEOCODER_LOCK:
+            import reverse_geocoder as rg
+            results = rg.search([(lat, lng)], mode=1, data_dir=RG_DIR)
         if results:
             res = results[0]
             district = res.get("admin_3", "")

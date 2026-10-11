@@ -3,6 +3,7 @@ import asyncio
 import logging
 import concurrent.futures
 import json
+import time
 from re import S
 from typing import List, Dict, Set, Any, Tuple
 from uuid import UUID
@@ -25,9 +26,29 @@ from app.crud import task as crud_task
 
 from app.service.task_strategy import TaskStrategyFactory
 from app.service.adaptive_limiter import AdaptiveResourceLimiter
+from app.service.task_runtime import await_owned
+from app.service.disk_budget import disk_budget
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
 from app.service.tasks import daily_frame
+
+class CompletionContext:
+    """Stage callback counters until the completion transaction commits."""
+    def __init__(self, worker):
+        self.worker = worker
+        self.before = dict(worker.scan_status)
+        self.scan_status = dict(self.before)
+
+    def __getattr__(self, name):
+        return getattr(self.worker, name)
+
+    def apply(self):
+        for key, value in self.scan_status.items():
+            previous = self.before.get(key, 0)
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                self.worker.scan_status[key] = self.worker.scan_status.get(key, 0) + value - previous
+            elif value != self.before.get(key):
+                self.worker.scan_status[key] = value
 
 class TaskQueueManager:
     def __init__(self):
@@ -65,6 +86,20 @@ class TaskQueueManager:
             return self.queues[category].qsize()
         return 0
 
+    async def get_available_ai_batch(self, available) -> List[Dict]:
+        queue = self.queues['AI']
+        while True:
+            # Resource saturation must never allow a lower-priority model to
+            # overtake the head. The producer admits only one AI type per phase.
+            if not queue.empty():
+                item = queue.get_nowait()
+                if available(item[2]):
+                    self._item_counts['AI'] -= len(item[2])
+                    return item[2]
+                queue.put_nowait(item)
+                queue.task_done()
+            await asyncio.sleep(0.05)
+
     def item_count(self, category: str) -> int:
         return self._item_counts.get(category, 0)
 
@@ -98,7 +133,9 @@ def get_chunk_size(task_type):
         chunk_size = 1
     elif task_type == TaskType.DISCOVER_CHAPTERS:
         chunk_size = 1
-    elif task_type == TaskType.PROCESS_BASIC or task_type == TaskType.EXTRACT_METADATA:
+    elif task_type == TaskType.PROCESS_BASIC:
+        chunk_size = 4
+    elif task_type == TaskType.EXTRACT_METADATA:
         chunk_size = 16
     elif task_type == TaskType.CLASSIFY_IMAGE:
         chunk_size = 8
@@ -139,7 +176,12 @@ class TaskWorker:
         self.ai_consumer_task = None
         self.process_pool = None
         self.thread_pool = None
-        self.result_queue = asyncio.Queue()
+        self.batch_pool = None
+        self.result_queue = asyncio.Queue(maxsize=256)
+        self._pending_results = []
+        self._flushing_results = False
+        self._wake_event = asyncio.Event()
+        self._loop = None
         self.queue_manager = TaskQueueManager()
         self.scan_status = DEFAULT_SCAN_STATUS.copy()
 
@@ -155,11 +197,26 @@ class TaskWorker:
         # Rows remain PENDING while prefetched. This in-memory reservation set
         # prevents the producer from selecting the same row twice.
         self.reserved_task_ids: Set[UUID] = set()
+        self.ai_phase_type = None
         self.resource_limiters: Dict[str, AdaptiveResourceLimiter] = {}
         self.adaptive_limits: Dict[str, int] = {}
         self.pressure_task = None
         self.system_pressure = {"cpu": 0.0, "memory": 0.0}
         self.accepting_tasks = True
+
+    def wake(self):
+        """Wake the producer from either the worker loop or a batch thread."""
+        loop = getattr(self, '_loop', None)
+        event = getattr(self, '_wake_event', None)
+        if event is None:
+            return
+        if loop is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(event.set)
+            except RuntimeError:
+                pass  # Shutdown can close the loop between the two operations.
+        else:
+            event.set()
 
     def set_event_queue(self, queue):
         self.event_queue = queue
@@ -221,7 +278,7 @@ class TaskWorker:
                 # Keep at least one logical core available to the API process.
                 "process_pool": max(1, cpu_count - 1),
                 "thread_pool": 16,
-                "cpu_consumer": max(1, cpu_count - 1),
+                "cpu_consumer": min(16, max(1, cpu_count - 1)),
                 "io_consumer": 8,
                 "ai_consumer": 8
             }
@@ -229,7 +286,7 @@ class TaskWorker:
             return {
                 "process_pool": max(1, cpu_count // 4),
                 "thread_pool": 4,
-                "cpu_consumer": max(1, cpu_count // 4),
+                "cpu_consumer": min(4, max(1, cpu_count // 4)),
                 "io_consumer": 2,
                 "ai_consumer": 2
             }
@@ -237,7 +294,7 @@ class TaskWorker:
             return {
                 "process_pool": max(1, cpu_count // 2),
                 "thread_pool": 8,
-                "cpu_consumer": max(1, cpu_count // 2),
+                "cpu_consumer": min(8, max(1, cpu_count // 2)),
                 "io_consumer": 4,
                 "ai_consumer": 5
             }
@@ -304,7 +361,17 @@ class TaskWorker:
         self, resource_key: str, limit: int, reason: str
     ) -> None:
         self.adaptive_limits[resource_key] = limit
-        self._save_system_state("adaptive_resource_limits", self.adaptive_limits)
+        self.wake()
+        snapshot = dict(self.adaptive_limits)
+        def persist():
+            self._save_system_state("adaptive_resource_limits", snapshot)
+            self._save_system_state("adaptive_resource_limits_updated_at", time.time())
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            persist()
+        else:
+            loop.create_task(asyncio.to_thread(persist))
         self._publish("task.concurrency", {
             "resource_key": resource_key,
             "limit": limit,
@@ -343,17 +410,28 @@ class TaskWorker:
         except Exception as exc:
             logging.warning("System pressure monitor stopped: %s", exc)
 
-    def _prefetch_limit(self, category: str) -> int:
+    def _prefetch_limit(self, category: str, task_type=None) -> int:
         settings = self._get_concurrency_settings()
         concurrency = settings[f"{category.lower()}_consumer"]
-        # At most two small waves wait in memory. Rows are still PENDING in DB.
-        return max(2, concurrency * 2)
+        if task_type is not None:
+            strategy = TaskStrategyFactory.get_strategy(task_type)
+            if strategy is not None:
+                concurrency = min(concurrency, self._get_resource_limits().get(strategy.resource_key, 1))
+            chunk_size = get_chunk_size(task_type)
+        else:
+            chunk_size = max((get_chunk_size(t) for t in TaskStrategyFactory.get_tasks_by_category(category)), default=1)
+        # Two batches per admission slot, with a hard cap on queued row count.
+        return min(128, max(2, concurrency * chunk_size * 2))
 
     def start(self):
         if self.running:
             return
         self.running = True
         self.accepting_tasks = True
+        self._loop = asyncio.get_running_loop()
+        self._wake_event = asyncio.Event()
+        level = resolve_concurrency_level(system_config.config.task.concurrency_level)
+        disk_budget.configure(system_config.config.task.disk_concurrency or {'low': 1, 'medium': 2, 'high': 4}[level])
         self._recover_unfinished_tasks()
 
         # Load fast_mode state
@@ -361,6 +439,9 @@ class TaskWorker:
         settings = self._get_concurrency_settings()
         persisted_limits = self._load_system_state('adaptive_resource_limits', {})
         if not isinstance(persisted_limits, dict):
+            persisted_limits = {}
+        updated_at = self._load_system_state('adaptive_resource_limits_updated_at', 0)
+        if not isinstance(updated_at, (int, float)) or not 0 <= time.time() - updated_at < 60:
             persisted_limits = {}
         self.adaptive_limits = {}
         self.resource_limiters = {
@@ -375,6 +456,10 @@ class TaskWorker:
         }
         self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
         self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool']) # More threads for IO
+        self.batch_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=sum(settings[f'{cat}_consumer'] for cat in ('cpu', 'io', 'ai')),
+            thread_name_prefix='task-batch',
+        )
 
         self.worker_task = asyncio.create_task(self.worker_loop())
         self.result_task = asyncio.create_task(self.result_loop())
@@ -389,16 +474,21 @@ class TaskWorker:
         if not self.accepting_tasks:
             return
         self.accepting_tasks = False
+        self.wake()
         self._publish("task.worker", {"status": "draining"})
         logging.info("TaskWorker is draining before applying new settings")
 
     def is_drained(self) -> bool:
         active = any(not future.done() for future in self.active_task_map)
         queued = any(self.queue_manager.item_count(category) for category in ("CPU", "IO", "AI"))
-        return not active and not queued and not self.reserved_task_ids and self.result_queue.empty()
+        return (not active and not queued and not self.reserved_task_ids
+                and self.result_queue.empty() and not self._pending_results and not self._flushing_results)
 
     def stop(self):
         self.running = False
+        if getattr(self, 'batch_pool', None):
+            self.batch_pool.shutdown(wait=False)
+            self.batch_pool = None
         if self.worker_task:
             self.worker_task.cancel()
         if self.result_task:
@@ -443,7 +533,8 @@ class TaskWorker:
                 continue
 
             last_run = self.last_active_time[task_type]
-            if (datetime.now() - last_run).total_seconds() > 300:
+            active = task_type in getattr(self, 'active_task_map', {}).values()
+            if not active and (datetime.now() - last_run).total_seconds() > 300:
                 idle_types.append(task_type)
                 
         if idle_types:
@@ -477,7 +568,7 @@ class TaskWorker:
 
         # Check for IO Pool
         active_io_count = sum(1 for t in self.active_task_map.values() if TaskStrategyFactory.get_strategy(t).task_category == 'IO')
-        if active_io_count == 0 and self.thread_pool:
+        if active_io_count == 0 and active_cpu_count == 0 and self.thread_pool:
             io_tasks = [t for t in TaskType if TaskStrategyFactory.get_strategy(t).task_category == 'IO']
             last_io_run = max([self.last_active_time.get(t, datetime.min) for t in io_tasks], default=datetime.min)
             if (datetime.now() - last_io_run).total_seconds() > 300:
@@ -492,7 +583,7 @@ class TaskWorker:
             if active_cpu_count > 0 and self.process_pool is None:
                 logging.info(f"Restarting process pool")
                 self.process_pool = concurrent.futures.ProcessPoolExecutor(max_workers=settings['process_pool'])
-            if self.thread_pool is None and active_io_count > 0:
+            if self.thread_pool is None and (active_io_count > 0 or active_cpu_count > 0):
                 logging.info(f"Restarting thread pool")
                 self.thread_pool = concurrent.futures.ThreadPoolExecutor(max_workers=settings['thread_pool'])
 
@@ -523,7 +614,7 @@ class TaskWorker:
             # 每个 category 的内存队列一次只放入「一种」任务类型的任务。
             # 取最高优先级且尚有 PENDING 任务的类型，把它取完后再取下一优先级，
             # 避免不同类型在同一队列中交替、导致模型/资源反复加载卸载。
-            FETCH_BATCH_SIZE = 48
+            FETCH_BATCH_SIZE = 128
 
             chunked_batches = []
             for cat in ['CPU', 'IO', 'AI']:
@@ -546,12 +637,29 @@ class TaskWorker:
                 if queued_items >= prefetch_limit:
                     continue
                 candidate_types = cat_types
+                if cat == 'AI':
+                    if self.ai_phase_type is not None:
+                        # Include backoff rows and PROCESSING rows awaiting result
+                        # persistence, not just currently runnable PENDING rows.
+                        phase_rows = db.query(Task.id).filter(Task.type == self.ai_phase_type).filter(or_(
+                            Task.status == TaskStatus.PROCESSING,
+                            Task.id.in_(reserved_task_ids),
+                            (Task.status == TaskStatus.PENDING) & or_(
+                                Task.type.notin_(list(self.paused_categories)),
+                                Task.priority >= INTERACTIVE_TASK_PRIORITY,
+                            ),
+                        )).first()
+                        if phase_rows is not None or queued_items:
+                            candidate_types = [self.ai_phase_type]
+                        else:
+                            logging.info('AI phase completed: type=%s', self.ai_phase_type)
+                            self.ai_phase_type = None
 
                 if not candidate_types:
                     continue
 
                 # 选出候选类型中优先级最高、且尚有 PENDING 任务的那一种
-                top = (db.query(Task.type, Task.priority)
+                top_query = (db.query(Task.type, Task.priority)
                          .filter(Task.status == TaskStatus.PENDING)
                          .filter(or_(Task.next_retry_at.is_(None), Task.next_retry_at <= datetime.now()))
                          .filter(Task.type.in_(candidate_types))
@@ -559,12 +667,20 @@ class TaskWorker:
                              Task.type.notin_(list(self.paused_categories)),
                              Task.priority >= INTERACTIVE_TASK_PRIORITY,
                          ))
-                         .order_by(Task.priority.desc(), Task.created_at.asc())
-                         .first())
+                          .order_by(Task.priority.desc(), Task.created_at.asc()))
+                if reserved_task_ids:
+                    top_query = top_query.filter(Task.id.notin_(list(reserved_task_ids)))
+                top = top_query.first()
                 if not top:
                     continue
                 chosen_type = top[0]
                 top_priority = top[1]
+                prefetch_limit = self._prefetch_limit(cat, chosen_type)
+                if queued_items >= prefetch_limit:
+                    continue
+                if cat == 'AI' and self.ai_phase_type is None:
+                    self.ai_phase_type = chosen_type
+                    logging.info('AI phase started: type=%s', chosen_type)
 
                 # 只取这一种类型的任务，按创建时间顺序最多取 FETCH_BATCH_SIZE 条
                 query = (db.query(Task)
@@ -649,7 +765,13 @@ class TaskWorker:
                 # 为了防止被无限期阻塞导致无法响应停止信号（self.running=False）
                 # 我们使用 wait_for，并设置一个较短的超时时间
                 try:
-                    batch = await asyncio.wait_for(self.queue_manager.get_batch(category), timeout=1.0)
+                    if category == 'AI':
+                        def available(batch):
+                            limiter = self._resource_limiter(batch[0].get('resource_key', 'ai'))
+                            return limiter.in_use < limiter.current_limit
+                        batch = await asyncio.wait_for(self.queue_manager.get_available_ai_batch(available), timeout=1.0)
+                    else:
+                        batch = await asyncio.wait_for(self.queue_manager.get_batch(category), timeout=1.0)
                     # logging.error(f'{category} {batch}')
                 except asyncio.TimeoutError:
                     semaphore.release()
@@ -658,6 +780,8 @@ class TaskWorker:
                 if not batch:
                     semaphore.release()
                     continue
+
+                self.wake()
 
                 async def wrapper(b):
                     try:
@@ -669,6 +793,7 @@ class TaskWorker:
                     finally:
                         self.queue_manager.task_done(category)
                         semaphore.release()
+                        self.wake()
 
                 # 放开后台任务执行
                 asyncio.create_task(wrapper(batch))
@@ -687,116 +812,107 @@ class TaskWorker:
     async def execute_batch_task_wrapper(self, task_infos: List[Dict], category: str):
         if not task_infos:
             return
-
         task_type = task_infos[0]['type']
         task_ids = [t['id'] for t in task_infos]
-        resource_key = task_infos[0].get('resource_key', category.lower())
-        resource_limiter = self._resource_limiter(resource_key)
-        await resource_limiter.acquire()
-        db = None
-        batch_outcome = None
+        limiter = self._resource_limiter(task_infos[0].get('resource_key', category.lower()))
+        outcome = None
+        acquired = False
         try:
-            db = SessionLocal()
-            db.expire_on_commit = False  # Prevent lazy loading issues after intermediate commits
-            tasks = crud_task.get_tasks_by_ids(db, task_ids)
-            # Rows may have been cancelled after they were prefetched into an
-            # in-memory queue. Recheck the persisted state immediately before
-            # execution so cancelling a pending Agent task is effective.
-            tasks = [task for task in tasks if task.status in {TaskStatus.PENDING, TaskStatus.PENDING.value}]
+            await limiter.acquire()
+            acquired = True
+            self.last_active_time[task_type] = datetime.now()
+            # The thread creates, uses and closes every ORM session. Shielding
+            # keeps admission occupied through cancellation and executor drain.
+            future = asyncio.get_running_loop().run_in_executor(
+                getattr(self, 'batch_pool', None), self._execute_batch_sync, task_infos
+            )
+            results, outcome = await await_owned(future)
+            for result in results:
+                await self.result_queue.put(result)
+        except Exception as exc:
+            logging.error("Error in task batch wrapper for %s", task_type, exc_info=True)
+            for task_id in task_ids:
+                await self.result_queue.put({'task_id': task_id, 'task_type': task_type,
+                                             'status': TaskStatus.FAILED, 'error': str(exc)})
+        finally:
+            if acquired:
+                await limiter.release()
+            if system_config.config.task.adaptive_concurrency:
+                if outcome == 'overload':
+                    await limiter.record_overload('transient_failure')
+                elif outcome == 'success' and self._is_system_overloaded():
+                    await limiter.record_overload('system_pressure')
+                elif outcome == 'success':
+                    await limiter.record_success()
+            self.last_active_time[task_type] = datetime.now()
+            self.reserved_task_ids.difference_update(task_ids)
+            self.wake()
+
+    def _execute_batch_sync(self, task_infos):
+        """Run claim, strategy and retry writes away from the scheduling loop."""
+        task_type = task_infos[0]['type']
+        task_ids = [t['id'] for t in task_infos]
+        db = SessionLocal()
+        db.expire_on_commit = False
+        try:
+            tasks = [t for t in crud_task.get_tasks_by_ids(db, task_ids)
+                     if t.status in {TaskStatus.PENDING, TaskStatus.PENDING.value}]
             if not tasks:
-                return
+                return [], None
             strategy = TaskStrategyFactory.get_strategy(task_type)
-            if not strategy:
-                raise ValueError(f"Strategy not found for task type: {task_type}")
-            if (
-                task_type in self.paused_categories
-                and not all(t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks)
+            if strategy is None:
+                raise ValueError(f'Strategy not found for task type: {task_type}')
+            if task_type in self.paused_categories and not all(
+                t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):
-                for t in tasks:
-                    t.status = TaskStatus.PENDING
-                db.commit()
-                return
-            # A task becomes PROCESSING only after both category and resource
-            # admission have succeeded. Prefetched rows remain PENDING.
+                return [], None
             for task in tasks:
                 task.status = TaskStatus.PROCESSING
                 task.error = None
                 task.next_retry_at = None
-                self.last_active_time[task.type] = datetime.now()
             db.commit()
             for task in tasks:
                 self._publish_task_row(task)
+            outcome = 'success'
             try:
-                results = await asyncio.wait_for(strategy.process_batch(self, tasks, db), timeout=strategy.timeout)
-                batch_outcome = "success"
-                task_map = {task.id: task for task in tasks}
-                for res in results:
-                    task = task_map.get(res.get('task_id'))
-                    is_failed = res.get('status') == TaskStatus.FAILED
-                    is_retryable = is_failed and self._is_retryable_error(res.get('error'))
-                    if is_retryable:
-                        batch_outcome = (
-                            "waiting_for_model"
-                            if self._is_model_preparing_error(res.get('error'))
-                            else "overload"
-                        )
-                    elif is_failed and batch_outcome != "overload":
-                        batch_outcome = None
-                    if (
-                        task is not None
-                        and is_retryable
-                        and self._schedule_retry(db, task, res.get('error'), strategy.max_attempts)
-                    ):
-                        continue
-                    if task is not None and res.get('status') == TaskStatus.FAILED:
+                if strategy.resource_key in {'classification', 'ocr', 'face', 'embedding'} and isinstance(db, Session):
+                    from app.service.tasks.ai_runtime import run_ai_batch
+                    results = run_ai_batch(db.get_bind(), strategy, self, [t.id for t in tasks])
+                else:
+                    async def run():
+                        return await asyncio.wait_for(strategy.process_batch(self, tasks, db), strategy.timeout)
+                    # asyncio.run drains the default executor before closing the
+                    # session. Explicit pool jobs use await_owned as well.
+                    results = asyncio.run(run())
+            except Exception as exc:
+                db.rollback()
+                results = [{'task_id': task.id, 'task_type': task_type,
+                            'status': TaskStatus.FAILED,
+                            'error': f'Task timeout after {strategy.timeout} seconds' if isinstance(exc, TimeoutError) else str(exc)}
+                           for task in tasks]
+            task_map = {task.id: task for task in tasks}
+            terminal_results = []
+            for result in results:
+                task = task_map.get(result.get('task_id'))
+                if result.get('status') == TaskStatus.FAILED:
+                    error = result.get('error')
+                    retryable = self._is_retryable_error(error)
+                    if retryable:
+                        outcome = 'waiting_for_model' if self._is_model_preparing_error(error) else 'overload'
+                        if task is not None and self._schedule_retry(db, task, error, strategy.max_attempts):
+                            continue
+                    else:
+                        outcome = None
+                    if task is not None and not retryable:
                         task.attempt_count = (task.attempt_count or 0) + 1
                         db.commit()
-                    await self.result_queue.put(res)
-            except asyncio.TimeoutError:
-                batch_outcome = "overload"
-                logging.error(f"Task batch {task_type} timed out after {strategy.timeout} seconds")
-                error = f"AI service timeout after {strategy.timeout} seconds"
-                for task in tasks:
-                    if not self._schedule_retry(db, task, error, strategy.max_attempts):
-                        await self.result_queue.put({
-                            'task_id': task.id,
-                            'task_type': task_type,
-                            'status': TaskStatus.FAILED,
-                            'error': error,
-                        })
-            except Exception as e:
-                if self._is_model_preparing_error(e):
-                    batch_outcome = "waiting_for_model"
-                elif self._is_retryable_error(e):
-                    batch_outcome = "overload"
-                logging.error(f"Task batch {task_type} failed: {e}", exc_info=True)
-                for task in tasks:
-                    if self._is_retryable_error(e) and self._schedule_retry(
-                        db, task, e, strategy.max_attempts
-                    ):
-                        continue
-                    task.attempt_count = (task.attempt_count or 0) + 1
-                    db.commit()
-                    await self.result_queue.put({
-                        'task_id': task.id,
-                        'task_type': task_type,
-                        'status': TaskStatus.FAILED,
-                        'error': str(e),
-                    })
-        except Exception as e:
-            logging.error(f"Error in task batch wrapper for {task_type}: {e}")
+                terminal_results.append(result)
+            return terminal_results, outcome
+        except BaseException:
+            db.rollback()
+            raise
         finally:
-            if db is not None:
-                db.close()
-            await resource_limiter.release()
-            if system_config.config.task.adaptive_concurrency:
-                if batch_outcome == "overload":
-                    await resource_limiter.record_overload("transient_failure")
-                elif batch_outcome == "success" and self._is_system_overloaded():
-                    await resource_limiter.record_overload("system_pressure")
-                elif batch_outcome == "success":
-                    await resource_limiter.record_success()
-            self.reserved_task_ids.difference_update(task_ids)
+            db.close()
 
     def _publish_task_row(self, task: Task) -> None:
         self._publish('task.updated', {
@@ -875,12 +991,13 @@ class TaskWorker:
 
         while self.running:
             try:
+                self._wake_event.clear()
                 done_futures = [f for f in self.active_task_map.keys() if f.done()]
-                active_count = len(self.active_task_map)
                 for f in done_futures:
                     del self.active_task_map[f]
+                active_count = len(self.active_task_map)
 
-                self._sync_system_state_if_needed()
+                await asyncio.to_thread(self._sync_system_state_if_needed)
                 self._manage_pool_lifecycle()
 
                 # logging.info(f"Active task count: {active_count}")
@@ -893,7 +1010,7 @@ class TaskWorker:
                         self._idle_start_time = datetime.now()
                         self.scan_status['running'] = False
                         self.scan_status['message'] = "Idle"
-                        self._save_system_state('scan_status', self.scan_status)
+                        await asyncio.to_thread(self._save_system_state, 'scan_status', dict(self.scan_status))
 
                 allowed_types = self._calculate_allowed_task_types()
 
@@ -927,14 +1044,17 @@ class TaskWorker:
                         dispatched_count += len(chunk)
 
                 if dispatched_count == 0:
-                    if active_count == 0 and self._idle_start_time:
+                    if self.is_drained() and self._idle_start_time:
                         idle_duration = (datetime.now() - self._idle_start_time).total_seconds()
                         if idle_duration > 300: # 5 minutes
                             logging.info("Worker idle for 5 minutes, exiting to release resources...")
                             self.running = False
                             import sys
                             sys.exit(0)
-                    await asyncio.sleep(self._backoff_delay)
+                    try:
+                        await asyncio.wait_for(self._wake_event.wait(), self._backoff_delay)
+                    except asyncio.TimeoutError:
+                        pass
                     self._backoff_delay = min(self._backoff_delay * 1.5, 10.0)
                 else:
                     self._backoff_delay = 1.0
@@ -947,30 +1067,45 @@ class TaskWorker:
 
     async def result_loop(self):
         logging.info("TaskWorker result loop started")
-        pending_items = []
+        pending_items = self._pending_results
         last_flush = datetime.now()
+        retry_delay = 0.1
+        retrying = False
         while self.running:
             try:
                 try:
                     # Collect items with short timeout
-                    item = await asyncio.wait_for(self.result_queue.get(), timeout=0.5)
-                    pending_items.append(item)
+                    if not retrying:
+                        item = await asyncio.wait_for(self.result_queue.get(), timeout=0.5)
+                        pending_items.append(item)
                 except asyncio.TimeoutError:
                     pass
                 now = datetime.now()
-                should_flush = len(pending_items) >= 50 or ((now - last_flush).total_seconds() > 1 and pending_items)
+                should_flush = retrying or len(pending_items) >= 50 or ((now - last_flush).total_seconds() > 1 and pending_items)
                 if should_flush:
-                    # logging.info(f"Flushing {len(pending_items)} results {pending_items}")
-                    await self._flush_results(pending_items)
-                    pending_items = []
+                    self._flushing_results = True
+                    try:
+                        await self._flush_results(pending_items)
+                    finally:
+                        self._flushing_results = False
+                    for _ in pending_items:
+                        self.result_queue.task_done()
+                    pending_items.clear()
                     last_flush = now
+                    retry_delay = 0.1
+                    retrying = False
+                    self.wake()
                     # Update status in DB
-                    self._save_system_state('scan_status', self.scan_status)
+                    await asyncio.to_thread(self._save_system_state, 'scan_status', dict(self.scan_status))
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logging.error(f"Error in result loop: {e}")
-                await asyncio.sleep(1)
+                retrying = bool(pending_items)
+                # Keep this batch and stop consuming new results until its
+                # transaction succeeds. The bounded queue applies backpressure.
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(5.0, retry_delay * 2)
 
     def _recover_unfinished_tasks(self):
         """启动时恢复未完成的任务：重置PROCESSING为PENDING，统计未完成任务数"""
@@ -1017,8 +1152,26 @@ class TaskWorker:
             db.close()
 
     async def _flush_results(self, items: List[Dict]):
+        # Create, use and close the session in the same background thread. The
+        # result loop awaits each flush, preserving a single completion writer.
+        context, events = await await_owned(asyncio.to_thread(lambda: asyncio.run(self._flush_results_db(items))))
+        context.apply()
+        for event, data in events:
+            self._publish(event, data)
+
+    async def _flush_results_db(self, items: List[Dict]):
         db = SessionLocal()
+        context = CompletionContext(self)
+        events = []
         try:
+            # A commit can succeed at the DB while its acknowledgement is lost.
+            # Retrying must not run completion callbacks for already finished
+            # or cancelled rows, or duplicate downstream tasks and counters.
+            live_ids = {row.id for row in db.query(Task.id).filter(
+                Task.id.in_([item['task_id'] for item in items]),
+                Task.status.notin_([TaskStatus.COMPLETED, TaskStatus.CANCELLED]),
+            ).all()}
+            items = [item for item in items if item['task_id'] in live_ids]
             # Group items by task_type
             items_by_type = {}
             for item in items:
@@ -1031,7 +1184,7 @@ class TaskWorker:
             for t_type, type_items in items_by_type.items():
                 strategy = TaskStrategyFactory.get_strategy(t_type)
                 if strategy:
-                    await strategy.handle_completion(self, type_items, db)
+                    await strategy.handle_completion(context, type_items, db)
 
             task_ids_completed = []
             task_ids_failed = []
@@ -1098,7 +1251,7 @@ class TaskWorker:
                     # Re-read to capture updated_at and notify SSE subscribers.
                     failed_rows = db.query(Task).filter(Task.id.in_(task_ids_failed)).all()
                     for row in failed_rows:
-                        self._publish('task.updated', {
+                        events.append(('task.updated', {
                             'id': str(row.id),
                             'type': row.type,
                             'status': row.status,
@@ -1110,9 +1263,8 @@ class TaskWorker:
                             'created_at': row.created_at.isoformat() if row.created_at else None,
                             'updated_at': row.updated_at.isoformat() if row.updated_at else None,
                             'payload': row.payload or {},
-                        })
-            # Publish COMPLETED events BEFORE deletion so subscribers see the
-            # terminal state (the row will be removed from the DB right after).
+                        }))
+            # Build event snapshots before commit; publish only after success.
             for item in items:
                 if item.get('status') == TaskStatus.COMPLETED:
                     event_data = completed_task_events.get(item['task_id'], {
@@ -1128,17 +1280,22 @@ class TaskWorker:
                         'updated_at': datetime.now().isoformat(),
                         'payload': {},
                     })
-                    self._publish('task.updated', event_data)
+                    events.append(('task.updated', event_data))
             db.commit()
+            return context, events
         except Exception as e:
             logging.error(f"Failed to flush results: {e}", exc_info=True)
             db.rollback()
+            raise
         finally:
             db.close()
 
     def add_task(self, db: Session, type: str, payload: dict, priority: int = None, owner_id: UUID = None):
-        return crud_task.add_task(db, type, payload, priority, owner_id)
+        task = crud_task.add_task(db, type, payload, priority, owner_id)
+        self.wake()
+        return task
 
     def add_tasks(self, db: Session, tasks_data: List[Dict], owner_id: UUID = None):
         """Batch add tasks"""
         crud_task.add_tasks(db, tasks_data, owner_id)
+        self.wake()

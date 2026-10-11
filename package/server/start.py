@@ -168,7 +168,7 @@ def main():
     try:
         sys.stdout.flush()
         # Using python -m uvicorn to ensure it uses the same python environment
-        os.execvp("python", ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(args.port)])
+        os.execvp(sys.executable, [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(args.port), "--timeout-graceful-shutdown", "15"])
     except OSError as e:
         print(f"Error starting application: {e}")
         sys.exit(1)

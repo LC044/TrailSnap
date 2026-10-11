@@ -1,0 +1,176 @@
+{
+  "reports": [
+    {
+      "endpoint": "face",
+      "name": "人脸识别",
+      "path": "/face/face-recognition",
+      "base_url": "http://localhost:8001",
+      "concurrency": 1,
+      "items_per_request": 1,
+      "total_requests": 30,
+      "success": 30,
+      "failed": 0,
+      "total_items": 30,
+      "wall_seconds": 22.512,
+      "rps": 1.333,
+      "items_per_sec": 1.333,
+      "latency_ms": {
+        "min": 276.73,
+        "mean": 525.85,
+        "p50": 394.25,
+        "p95": 1017.2,
+        "p99": 2422.22,
+        "max": 2954.48
+      },
+      "errors": {}
+    },
+    {
+      "endpoint": "face",
+      "name": "人脸识别",
+      "path": "/face/face-recognition",
+      "base_url": "http://localhost:8001",
+      "concurrency": 4,
+      "items_per_request": 1,
+      "total_requests": 60,
+      "success": 15,
+      "failed": 45,
+      "total_items": 60,
+      "wall_seconds": 12.814,
+      "rps": 4.682,
+      "items_per_sec": 4.682,
+      "latency_ms": {
+        "min": 363.22,
+        "mean": 957.33,
+        "p50": 778.28,
+        "p95": 1786.36,
+        "p99": 3305.6,
+        "max": 3685.41
+      },
+      "errors": {
+        "429 {\"detail\":\"face recognition service busy; retry later\"}": 45
+      }
+    },
+    {
+      "endpoint": "face",
+      "name": "人脸识别",
+      "path": "/face/face-recognition",
+      "base_url": "http://localhost:8001",
+      "concurrency": 2,
+      "items_per_request": 4,
+      "total_requests": 30,
+      "success": 30,
+      "failed": 0,
+      "total_items": 120,
+      "wall_seconds": 29.083,
+      "rps": 1.032,
+      "items_per_sec": 4.126,
+      "latency_ms": {
+        "min": 422.38,
+        "mean": 1493.83,
+        "p50": 835.54,
+        "p95": 3697.49,
+        "p99": 3846.53,
+        "max": 3850.96
+      },
+      "errors": {}
+    },
+    {
+      "endpoint": "face",
+      "name": "人脸识别",
+      "path": "/face/face-recognition",
+      "base_url": "http://localhost:8001",
+      "concurrency": 1,
+      "items_per_request": 8,
+      "total_requests": 20,
+      "success": 20,
+      "failed": 0,
+      "total_items": 160,
+      "wall_seconds": 33.64,
+      "rps": 0.595,
+      "items_per_sec": 4.756,
+      "latency_ms": {
+        "min": 641.11,
+        "mean": 1405.06,
+        "p50": 1008.53,
+        "p95": 3537.19,
+        "p99": 3557.74,
+        "max": 3562.88
+      },
+      "errors": {}
+    },
+    {
+      "endpoint": "face",
+      "name": "人脸识别",
+      "path": "/face/face-recognition",
+      "base_url": "http://localhost:8001",
+      "concurrency": 2,
+      "items_per_request": 8,
+      "total_requests": 20,
+      "success": 20,
+      "failed": 0,
+      "total_items": 160,
+      "wall_seconds": 30.018,
+      "rps": 0.666,
+      "items_per_sec": 5.33,
+      "latency_ms": {
+        "min": 736.01,
+        "mean": 2405.3,
+        "p50": 2242.14,
+        "p95": 4101.22,
+        "p99": 4210.78,
+        "max": 4238.17
+      },
+      "errors": {}
+    },
+    {
+      "endpoint": "ocr",
+      "name": "OCR 文字识别",
+      "path": "/ocr/predict",
+      "base_url": "http://localhost:8001",
+      "concurrency": 1,
+      "items_per_request": 1,
+      "total_requests": 30,
+      "success": 30,
+      "failed": 0,
+      "total_items": 30,
+      "wall_seconds": 145.139,
+      "rps": 0.207,
+      "items_per_sec": 0.207,
+      "latency_ms": {
+        "min": 856.16,
+        "mean": 4617.38,
+        "p50": 4910.1,
+        "p95": 6104.72,
+        "p99": 6446.71,
+        "max": 6552.65
+      },
+      "errors": {}
+    },
+    {
+      "endpoint": "ocr",
+      "name": "OCR 文字识别",
+      "path": "/ocr/predict",
+      "base_url": "http://localhost:8001",
+      "concurrency": 4,
+      "items_per_request": 1,
+      "total_requests": 40,
+      "success": 3,
+      "failed": 37,
+      "total_items": 40,
+      "wall_seconds": 15.289,
+      "rps": 2.616,
+      "items_per_sec": 2.616,
+      "latency_ms": {
+        "min": 1101.78,
+        "mean": 6116.97,
+        "p50": 5960.97,
+        "p95": 10755.44,
+        "p99": 11181.62,
+        "max": 11288.16
+      },
+      "errors": {
+        "429 {\"detail\":\"OCR service busy; retry later\"}": 37
+      }
+    }
+  ]
+}

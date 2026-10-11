@@ -53,63 +53,32 @@ def _task(payload=None, owner_id=None, task_id=None, task_type="CLASSIFY_IMAGE")
 
 # === get_tag_id ===
 
-def test_get_tag_id_uses_cached_value_without_db(monkeypatch):
-    from app.service.tasks import classification as cls_mod
-
-    cls_mod._tag_cache.clear()
-    # Seed the cache so we never even ask crud_tag.
-    cls_mod._tag_cache["cached"] = "cached-id"
-
+def test_get_tag_id_session_cache_is_owner_scoped():
+    from app.service.tasks import classification as module
     db = MagicMock()
-    assert cls_mod.get_tag_id(db, "cached", uuid4()) == "cached-id"
-    db.assert_not_called()
-
-
-def test_get_tag_id_fetches_existing_tag_then_caches(monkeypatch):
-    from app.service.tasks import classification as cls_mod
-    from app.db.models.tag import PhotoTag
-
-    cls_mod._tag_cache.clear()
-
+    db.info = {}
+    owner = uuid4()
+    other = uuid4()
     existing = SimpleNamespace(id=uuid4())
-    with patch.object(cls_mod.crud_tag, "get_tag_by_name", return_value=existing) as get_by_name:
-        db = MagicMock()
-        first = cls_mod.get_tag_id(db, "sky", uuid4())
-        # Second call should hit the cache, never invoke crud_tag again.
-        second = cls_mod.get_tag_id(db, "sky", uuid4())
-
-    assert first == str(existing.id)
-    assert second == first
-    assert get_by_name.call_count == 1
-    assert cls_mod._tag_cache["sky"] == first
-    db.add.assert_not_called()
+    with patch.object(module.crud_tag, "get_tag_by_name", return_value=existing) as lookup:
+        assert module.get_tag_id(db, "sky", owner) == str(existing.id)
+        assert module.get_tag_id(db, "sky", owner) == str(existing.id)
+        module.get_tag_id(db, "sky", other)
+    assert lookup.call_count == 2
     db.commit.assert_not_called()
 
 
-def test_get_tag_id_creates_tag_when_missing(monkeypatch):
-    from app.service.tasks import classification as cls_mod
-    from app.db.models.tag import PhotoTag
-
-    cls_mod._tag_cache.clear()
-    owner_id = uuid4()
+def test_get_tag_id_flushes_new_tag_without_commit():
+    from app.service.tasks import classification as module
+    db = MagicMock()
+    db.info = {}
     new_id = uuid4()
-
-    def fake_get_tag_by_name(db, name, owner):
-        return None
-
-    def fake_refresh(tag):
-        tag.id = new_id
-
-    with patch.object(cls_mod.crud_tag, "get_tag_by_name", side_effect=fake_get_tag_by_name):
-        with patch.object(cls_mod, "PhotoTag", PhotoTag):
-            db = MagicMock()
-            db.refresh.side_effect = fake_refresh
-            tag_id = cls_mod.get_tag_id(db, "beach", owner_id)
-
-    assert tag_id == str(new_id)
-    assert cls_mod._tag_cache["beach"] == str(new_id)
-    db.add.assert_called_once()
-    db.commit.assert_called_once()
+    db.flush.side_effect = lambda: setattr(db.add.call_args.args[0], "id", new_id)
+    with patch.object(module.crud_tag, "get_tag_by_name", return_value=None):
+        assert module.get_tag_id(db, "sky", uuid4()) == str(new_id)
+    db.flush.assert_called_once()
+    db.commit.assert_not_called()
+    db.refresh.assert_not_called()
 
 
 # === ClassifyImageStrategy.process (generator mode) ===

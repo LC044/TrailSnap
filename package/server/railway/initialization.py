@@ -97,3 +97,11 @@ def start_background_initialization():
         _state = "pending"
         _thread = threading.Thread(target=_initialize, name="railway-initialization", daemon=True)
         _thread.start()
+
+
+def wait_for_initialization():
+    """Finish database writes before the desktop data directory is copied."""
+    with _lock:
+        thread = _thread
+    if thread is not None:
+        thread.join()

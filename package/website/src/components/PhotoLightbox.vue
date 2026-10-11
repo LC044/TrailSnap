@@ -5,6 +5,7 @@
       ref="lightboxRoot"
       class="photo-lightbox-shell fixed inset-0 z-[100] flex"
       :class="{
+        'viewer-immersive': !controlsVisible && !isEditing,
         'details-active': mobileDetailsProgress > 0.01,
         'details-settling': isMobileDetailsSettling,
       }"
@@ -62,6 +63,9 @@
                     </button>
                     <template #dropdown>
                         <el-dropdown-menu class="w-36">
+                            <el-dropdown-item v-if="isTauriApp()" command="revealPhoto" :disabled="!image || revealingPhoto">
+                                <div class="flex items-center gap-2"><FolderOpen class="w-4 h-4" /><span>打开所在文件夹</span></div>
+                            </el-dropdown-item>
                             <el-dropdown-item command="dailyFrame" :disabled="!canSetDailyFrame">
                                 <div class="flex items-center gap-2"><Film class="w-4 h-4" /><span>设为当天一帧</span></div>
                             </el-dropdown-item>
@@ -389,7 +393,7 @@
           class="mobile-viewer-dock md:hidden fixed bottom-0 left-0 right-0 z-[103] px-2 pt-2 pb-[max(0.5rem,var(--ts-safe-area-bottom))] bg-black/85"
           @click.stop
         >
-          <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-stretch justify-around">
+          <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-center">
             <button class="ts-glass-button" aria-label="下载" @click.stop="downloadImage"><Download class="h-5 w-5" /></button>
             <button v-if="allowEdit && isStillImage" class="ts-glass-button" aria-label="编辑" @click.stop="enterEditMode"><Pencil class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="AI 分析" @click.stop="handleCommand('viewDescription')"><Sparkles class="h-5 w-5" /></button>
@@ -639,7 +643,7 @@ import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch, computed, onUnmounted, nextTick, onMounted, defineAsyncComponent } from 'vue'
 import {
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info,
-    ImagePlus,
+    ImagePlus, FolderOpen,
     ScanText,
     MoreHorizontal,
     Image as ImageIcon,
@@ -664,6 +668,8 @@ import {
 // 这里仅保留类型，运行时在 initPlayer 内 await import('xgplayer')。
 import type Player from 'xgplayer'
 import { albumService } from '@/api/album'
+import { isTauriApp } from '@/config/server'
+import { revealDesktopPhoto } from '@/api/desktopDataDirectory'
 import { ocrApi, type OCRRecord } from '@/api/ocr'
 import { faceApi } from '@/api/face'
 import { tasksApi, type PhotoProcessingOperation } from '@/api/tasks'
@@ -680,6 +686,7 @@ import ResponsiveDialog from './ui/ResponsiveDialog.vue'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useModalScrollLock } from '@/composables/useModalScrollLock'
 import { locationService } from '@/api/location'
+import { originalFileUrl } from '@/utils/mediaUrl'
 import { useRouter } from 'vue-router'
 
 
@@ -1423,7 +1430,21 @@ const toggleSidebar = () => {
     else openDetails()
 }
 
+const revealingPhoto = ref(false)
+const revealPhoto = async () => {
+    const photo = props.image
+    if (!photo || revealingPhoto.value) return
+    revealingPhoto.value = true
+    try {
+        const path = photo.file_path || (await albumService.getMetadata(photo.id)).file_path
+        if (!path) throw new Error('无法获取照片原文件路径')
+        await revealDesktopPhoto(path)
+    } catch (error) {
+        ElMessage.error(error instanceof Error ? error.message : String(error))
+    } finally { revealingPhoto.value = false }
+}
 const handleCommand = (command: string) => {
+    if (command === 'revealPhoto') { void revealPhoto(); return }
     if (command === 'dailyFrame') {
         openDailyFrame()
     } else if (command === 'ocr') {
@@ -2029,7 +2050,7 @@ const stopTouch = () => {
 const downloadImage = async () => {
     if (!props.image) return
     try {
-        const response = await fetch(props.image.url)
+        const response = await fetch(originalFileUrl(props.image))
         const blob = await response.blob()
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -2124,6 +2145,7 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
  .analysis-content { overflow-wrap: anywhere; color: var(--ts-color-text); }
 .analysis-tag { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--ts-color-surface-muted); font-size: 12px; line-height: 1.5; }
 .photo-lightbox-shell { background: var(--ts-color-page); color: var(--ts-color-text); }
+.photo-lightbox-shell.viewer-immersive { background: #000; }
 [data-testid="photo-lightbox-toolbar"] { background: none; padding: 12px 16px; }
 [data-testid="photo-lightbox-toolbar"] > button { width: 44px; height: 44px; background: var(--ts-glass-bg); border: 1px solid var(--ts-color-border); box-shadow: var(--ts-shadow-glass); }
 [data-testid="photo-lightbox-toolbar"] button { color: var(--ts-color-text); }
@@ -2132,15 +2154,15 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .viewer-caption { color: var(--ts-color-text); }
 .viewer-caption > div:first-child { font-size: 16px; font-weight: 600; }
 .viewer-caption > div:last-child { color: var(--ts-color-text-secondary); font-size: 12px; margin-top: 4px; }
-.mobile-viewer-toolbar { background: none; padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
+.mobile-viewer-toolbar { background: var(--ts-color-surface); padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
 .mobile-viewer-toolbar > div:first-child { align-items: center; gap: 10px; }
 .viewer-mobile-tools button { width: 44px; height: 40px; color: var(--ts-color-text); background: transparent; }
 .viewer-thumbnail-layer { background: none; }
 .photo-thumbnail-strip button { border-radius: 12px; background: var(--ts-color-surface-muted); }
 .photo-thumbnail-strip button:not(.border-primary-500) { border-color: transparent; }
 .mobile-viewer-dock { background: none; padding-inline: 12px; padding-bottom: calc(12px + var(--ts-safe-area-bottom)); }
-.viewer-action-pill { max-width: 440px; margin-inline: auto; --glass-tint: var(--ts-glass-panel); }
-.viewer-action-pill button { min-width: 44px; min-height: 44px; flex: 1; color: var(--ts-color-text); border-radius: var(--ts-radius-pill); }
+.viewer-action-pill { width: fit-content; max-width: 100%; margin-inline: auto; --glass-tint: var(--ts-glass-panel); }
+.viewer-action-pill button { width: 44px; min-width: 44px; min-height: 44px; flex: 0 0 44px; padding: 0; color: var(--ts-color-text); border-radius: var(--ts-radius-pill); }
 .viewer-action-pill button.viewer-delete { color: var(--ts-color-danger); }
 .sheet-panel { background: var(--ts-glass-panel); color: var(--ts-color-text); border-color: var(--ts-color-border); border-radius: var(--ts-radius-dialog) var(--ts-radius-dialog) 0 0; box-shadow: var(--ts-shadow-floating); max-height: calc(100dvh - var(--ts-safe-area-top) - 16px); overflow-y: auto; backdrop-filter: blur(var(--ts-glass-blur-panel)); }
 .sheet-panel button { color: var(--ts-color-text); }
@@ -2155,7 +2177,8 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 
 @media (max-width: 767px) {
   .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(98px + var(--ts-safe-area-bottom)); }
-  .viewer-stage { box-sizing: border-box; padding-top: calc(80px + var(--ts-safe-area-top)); padding-bottom: calc(168px + var(--ts-safe-area-bottom)); }
+  /* Keep the photo fitted to the full viewport; fixed controls overlay it. */
+  .viewer-stage { padding: 0; }
 }
 
 .photo-thumbnail-strip {

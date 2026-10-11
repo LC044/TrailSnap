@@ -97,7 +97,7 @@ def test_process_batch_persists_embedding_and_marks_photo(monkeypatch):
 
     photo = _make_photo("p-1")
     db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = [photo]
+    db.query.return_value.filter.return_value.all.side_effect = [[photo], []]
     db.query.return_value.filter.return_value.first.return_value = None
 
     resp = _ai_response(200, embeddings=[[0.1, 0.2, 0.3]])
@@ -160,7 +160,7 @@ def test_process_batch_marks_failed_when_storage_returns_none(monkeypatch):
 
     photo = _make_photo("p-x")
     db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = [photo]
+    db.query.return_value.filter.return_value.all.side_effect = [[photo], []]
 
     monkeypatch.setattr(
         "app.service.tasks.image_embedding.storage.get_available_photo_path",
@@ -188,7 +188,7 @@ def test_process_batch_records_read_error(monkeypatch):
 
     photo = _make_photo("p-y")
     db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = [photo]
+    db.query.return_value.filter.return_value.all.side_effect = [[photo], []]
 
     _patch_ai_config(monkeypatch)
     _patch_storage(monkeypatch)
@@ -255,7 +255,7 @@ def test_process_batch_ai_empty_list_reports_no_embedding(monkeypatch):
 
     photo = _make_photo("p-empty")
     db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = [photo]
+    db.query.return_value.filter.return_value.all.side_effect = [[photo], []]
     db.query.return_value.filter.return_value.first.return_value = None
 
     _patch_ai_config(monkeypatch)
@@ -334,7 +334,7 @@ def test_process_batch_generator_exception_recorded_and_continues(monkeypatch):
     strategy = ie_mod.ImageEmbeddingStrategy()
     photo = _make_photo("p-z")
     db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = [photo]
+    db.query.return_value.filter.return_value.all.side_effect = [[photo], []]
     db.query.return_value.filter.return_value.first.return_value = None
 
     _patch_ai_config(monkeypatch)

@@ -262,49 +262,29 @@ def test_release_resources_clears_tag_cache():
     assert classify_tasks._tag_cache == {}
 
 
-def test_get_tag_id_cache_hit():
-    from app.service.tasks import classification as classify_tasks
-    classify_tasks._tag_cache["cache-only"] = "cached-id"
+def test_get_tag_id_session_cache_is_owner_scoped():
+    from app.service.tasks import classification as module
     db = MagicMock()
-    res = classify_tasks.get_tag_id(db, "cache-only", owner_id=uuid4())
-    assert res == "cached-id"
-    db.query.assert_not_called()
-    classify_tasks._tag_cache.clear()
-
-
-def test_get_tag_id_fetches_existing_tag():
-    from app.service.tasks import classification as classify_tasks
-    existing_id = uuid4()
-    existing = MagicMock()
-    existing.id = existing_id
-    db = MagicMock()
-    with patch("app.service.tasks.classification.crud_tag.get_tag_by_name",
-               return_value=existing) as m_get:
-        res = classify_tasks.get_tag_id(db, "fetch-me", owner_id=uuid4())
-    assert res == str(existing_id)
-    m_get.assert_called_once()
-    db.add.assert_not_called()
+    db.info = {}
+    owner = uuid4()
+    other = uuid4()
+    existing = SimpleNamespace(id=uuid4())
+    with patch.object(module.crud_tag, "get_tag_by_name", return_value=existing) as lookup:
+        assert module.get_tag_id(db, "sky", owner) == str(existing.id)
+        assert module.get_tag_id(db, "sky", owner) == str(existing.id)
+        module.get_tag_id(db, "sky", other)
+    assert lookup.call_count == 2
     db.commit.assert_not_called()
-    classify_tasks._tag_cache.clear()
 
 
-def test_get_tag_id_creates_and_caches_new_tag():
-    from app.service.tasks import classification as classify_tasks
+def test_get_tag_id_flushes_new_tag_without_commit():
+    from app.service.tasks import classification as module
     db = MagicMock()
+    db.info = {}
     new_id = uuid4()
-
-    class _StubTag:
-        id = new_id
-
-    with patch("app.service.tasks.classification.crud_tag.get_tag_by_name",
-               return_value=None):
-        def _refresh(_tag):
-            _tag.id = new_id
-        db.refresh.side_effect = _refresh
-        res = classify_tasks.get_tag_id(db, "new-tag", owner_id=uuid4())
-    assert res == str(new_id)
-    db.add.assert_called_once()
-    db.commit.assert_called_once()
-    db.refresh.assert_called_once()
-    assert classify_tasks._tag_cache["new-tag"] == str(new_id)
-    classify_tasks._tag_cache.clear()
+    db.flush.side_effect = lambda: setattr(db.add.call_args.args[0], "id", new_id)
+    with patch.object(module.crud_tag, "get_tag_by_name", return_value=None):
+        assert module.get_tag_id(db, "sky", uuid4()) == str(new_id)
+    db.flush.assert_called_once()
+    db.commit.assert_not_called()
+    db.refresh.assert_not_called()

@@ -13,7 +13,10 @@ use std::{
     fs::{self, OpenOptions},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex as AsyncMutex;
@@ -33,6 +36,7 @@ pub struct AIGateway {
     start_lock: Arc<AsyncMutex<()>>,
     gateway_port: Arc<Mutex<Option<u16>>>,
     last_request_at: Arc<Mutex<Option<u64>>>,
+    migrating: Arc<AtomicBool>,
 }
 
 impl AIGateway {
@@ -45,6 +49,7 @@ impl AIGateway {
             start_lock: Arc::new(AsyncMutex::new(())),
             gateway_port: Arc::new(Mutex::new(None)),
             last_request_at: Arc::new(Mutex::new(None)),
+            migrating: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -68,7 +73,9 @@ impl AIGateway {
             let mut timer = tokio::time::interval(Duration::from_secs(60));
             loop {
                 timer.tick().await;
-                if idle_gateway.is_idle(Duration::from_secs(10 * 60)) {
+                if !idle_gateway.migrating.load(Ordering::SeqCst)
+                    && idle_gateway.is_idle(Duration::from_secs(10 * 60))
+                {
                     idle_gateway.stop_sidecar();
                 }
             }
@@ -99,6 +106,36 @@ impl AIGateway {
             return;
         };
         terminate_process_tree(&mut sidecar.child);
+    }
+
+    pub async fn drain_for_migration(&self) -> Result<(), String> {
+        self.migrating.store(true, Ordering::SeqCst);
+        let client = reqwest::Client::new();
+        while let Some(port) = self.running_port() {
+            let response: Value = client
+                .get(format!("http://127.0.0.1:{port}/ai/models"))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+                .map_err(|err| format!("无法确认 AI 下载状态，停止迁移：{err}"))?
+                .json()
+                .await
+                .map_err(|err| err.to_string())?;
+            let models = response["models"]
+                .as_array()
+                .ok_or("无法确认 AI 模型状态，停止迁移；请更新 AI 扩展后重试")?;
+            if models.iter().any(|model| model["status"] == "downloading") {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+            self.stop_sidecar();
+            break;
+        }
+        Ok(())
+    }
+
+    pub fn prepare_migration(&self) {
+        self.migrating.store(true, Ordering::SeqCst);
     }
 
     async fn ensure_sidecar(&self) -> Result<u16, String> {

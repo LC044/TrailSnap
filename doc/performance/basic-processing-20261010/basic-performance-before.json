@@ -1,0 +1,53 @@
+{
+  "files": 24,
+  "workers": 4,
+  "batch_size": 8,
+  "manifest_sha256": "30631f309e93c8bc3cc1f602a1377585eaedd0c4f27e62bf9c5bbc4f34390d4e",
+  "extensions": {
+    ".jpg": 12,
+    ".mp4": 6,
+    ".png": 6
+  },
+  "rounds": [
+    {
+      "basic_seconds": 6.276465500006452,
+      "metadata_seconds": 3.506608399999095,
+      "pipeline_seconds": 9.783073900005547,
+      "max_event_loop_lag_seconds": 3.499684999997262,
+      "hashes_saved": 0,
+      "preview_bytes": 4134320,
+      "sql": 234,
+      "commits": 31
+    },
+    {
+      "basic_seconds": 6.381683700019494,
+      "metadata_seconds": 0.40542130000540055,
+      "pipeline_seconds": 6.787105000024894,
+      "max_event_loop_lag_seconds": 0.4014684000087436,
+      "hashes_saved": 0,
+      "preview_bytes": 4134320,
+      "sql": 234,
+      "commits": 31
+    },
+    {
+      "basic_seconds": 5.185273700015387,
+      "metadata_seconds": 0.21455710000009276,
+      "pipeline_seconds": 5.399830800015479,
+      "max_event_loop_lag_seconds": 0.20737329999450593,
+      "hashes_saved": 0,
+      "preview_bytes": 4134320,
+      "sql": 234,
+      "commits": 31
+    }
+  ],
+  "median": {
+    "basic_seconds": 6.276465500006452,
+    "metadata_seconds": 0.40542130000540055,
+    "pipeline_seconds": 6.787105000024894,
+    "max_event_loop_lag_seconds": 0.4014684000087436,
+    "hashes_saved": 0,
+    "preview_bytes": 4134320,
+    "sql": 234,
+    "commits": 31
+  }
+}

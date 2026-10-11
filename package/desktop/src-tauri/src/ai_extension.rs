@@ -8,7 +8,10 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Write},
     path::{Component, Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -101,6 +104,14 @@ pub struct AIExtensionManager {
     catalog_url: String,
     platform_key: String,
     data: Arc<Mutex<ManagerData>>,
+    active_installs: Arc<AtomicUsize>,
+}
+
+struct InstallGuard(Arc<AtomicUsize>);
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 
 impl AIExtensionManager {
@@ -124,6 +135,7 @@ impl AIExtensionManager {
             state_path,
             catalog_url,
             platform_key: platform_key(),
+            active_installs: Arc::new(AtomicUsize::new(0)),
             data: Arc::new(Mutex::new(ManagerData {
                 catalog,
                 catalog_error: None,
@@ -257,12 +269,19 @@ impl AIExtensionManager {
         let manager = self.clone();
         let id = id.to_string();
         let task_id = id.clone();
+        self.active_installs.fetch_add(1, Ordering::SeqCst);
+        let install_guard = InstallGuard(self.active_installs.clone());
         tauri::async_runtime::spawn(async move {
+            let _guard = install_guard;
             if let Err(error) = manager.install_remote(&extension, &asset).await {
                 manager.fail_job(&task_id, error);
             }
         });
         Ok(self.job_value(id.as_str()))
+    }
+
+    pub fn has_active_installs(&self) -> bool {
+        self.active_installs.load(Ordering::SeqCst) > 0
     }
 
     pub fn pause(&self, id: &str) -> Result<Value, String> {
