@@ -268,7 +268,7 @@ def test_video_thumbnail_frame_score_rejects_black_frame():
 
 
 def test_ffmpeg_thumbnail_backend_skips_black_first_frame(monkeypatch):
-    monkeypatch.setattr(storage, 'cv2', None)
+    monkeypatch.setattr(storage, '_load_cv2', lambda: None)
     monkeypatch.setattr(storage, 'probe_video', lambda path: (8, 8, 10.0))
     black = Image.fromarray(np.zeros((8, 8, 3), dtype=np.uint8))
     detail = Image.fromarray(np.repeat((np.indices((8, 8)).sum(axis=0) % 2 * 180 + 30)[:, :, None], 3, axis=2).astype(np.uint8))
@@ -331,7 +331,7 @@ def test_generate_video_thumbnail_skips_black_first_frame_and_releases_capture()
     capture = _FakeVideoCapture()
     fake_cv2 = _FakeCV2(capture)
 
-    with patch.object(storage, "cv2", fake_cv2), \
+    with patch.object(storage, "_load_cv2", lambda: fake_cv2), \
          patch.object(storage, "_save_thumbnails", return_value="thumbnail.webp") as save_mock:
         result = generate_video_thumbnail("video.mp4", uuid.uuid4(), uuid.uuid4())
 
@@ -344,7 +344,7 @@ def test_generate_video_thumbnail_skips_black_first_frame_and_releases_capture()
 def test_generate_video_thumbnail_releases_capture_when_video_cannot_open():
     capture = _FakeVideoCapture(opened=False)
 
-    with patch.object(storage, "cv2", _FakeCV2(capture)):
+    with patch.object(storage, "_load_cv2", lambda: _FakeCV2(capture)):
         result = generate_video_thumbnail("broken.mp4", uuid.uuid4(), uuid.uuid4())
 
     assert result is None

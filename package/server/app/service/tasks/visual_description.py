@@ -5,7 +5,7 @@ import json
 import base64
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
-from langchain_openai import ChatOpenAI
+# langchain_openai 的导入链重达数秒，仅在 create_client 真正构建客户端时才加载。
 
 from app.db.models import PhotoMetadata
 from app.db.models.task import Task, TaskType
@@ -235,6 +235,7 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             raise ValueError(f"Visual Model connection has no api_key: {settings.analysis_connection_id}")
 
         # 2. Call OpenAI API
+        from langchain_openai import ChatOpenAI
         client = ChatOpenAI(
             api_key=connection.api_key,
             model= settings.analysis_model_name,

@@ -307,7 +307,7 @@ def test_download_map_data_enqueues_background_task():
     payload = {"code": "CN"}
     background_tasks = BackgroundTasks()
 
-    with patch.object(settings_api, "download_country_data") as dl_call:
+    with patch.object(settings_api, "_download_country_data") as dl_call:
         result = settings_api.download_map_data(
             payload=payload, background_tasks=background_tasks
         )

@@ -50,7 +50,7 @@ def test_chat_creates_session_when_missing_and_returns_reply():
 
     with patch.object(agent_api.agent_crud, "get_session", return_value=None) as get_session:
         with patch.object(agent_api.agent_crud, "create_session", return_value=_session(owner_id=user.id)) as create_session:
-            with patch.object(agent_api, "chat_with_agent", return_value="hello back") as chat:
+            with patch("app.service.agent.service.chat_with_agent", return_value="hello back") as chat:
                 response = agent_api.chat_endpoint(request=request, current_user=user, db=db)
 
     assert get_session.called
@@ -70,7 +70,7 @@ def test_chat_reuses_existing_session_without_creating():
 
     with patch.object(agent_api.agent_crud, "get_session", return_value=session) as get_session:
         with patch.object(agent_api.agent_crud, "create_session") as create_session:
-            with patch.object(agent_api, "chat_with_agent", return_value="reply") as chat:
+            with patch("app.service.agent.service.chat_with_agent", return_value="reply") as chat:
                 response = agent_api.chat_endpoint(request=request, current_user=user, db=db)
 
     get_session.assert_called_once_with(db, str(sid))
@@ -86,7 +86,7 @@ def test_chat_returns_400_on_value_error():
 
     with patch.object(agent_api.agent_crud, "get_session", return_value=None):
         with patch.object(agent_api.agent_crud, "create_session", return_value=_session(owner_id=user.id)):
-            with patch.object(agent_api, "chat_with_agent", side_effect=ValueError("no LLM")):
+            with patch("app.service.agent.service.chat_with_agent", side_effect=ValueError("no LLM")):
                 with pytest.raises(HTTPException) as exc_info:
                     agent_api.chat_endpoint(request=request, current_user=user, db=db)
 
@@ -101,7 +101,7 @@ def test_chat_returns_500_on_unexpected_exception():
 
     with patch.object(agent_api.agent_crud, "get_session", return_value=None):
         with patch.object(agent_api.agent_crud, "create_session", return_value=_session(owner_id=user.id)):
-            with patch.object(agent_api, "chat_with_agent", side_effect=RuntimeError("boom")):
+            with patch("app.service.agent.service.chat_with_agent", side_effect=RuntimeError("boom")):
                 with pytest.raises(HTTPException) as exc_info:
                     agent_api.chat_endpoint(request=request, current_user=user, db=db)
 
@@ -138,7 +138,7 @@ def test_abort_chat_calls_abort_service_for_owner():
     db = MagicMock()
     sid = str(uuid4())
     with patch.object(agent_api.agent_crud, "get_session", return_value=_session(owner_id=user.id)):
-        with patch.object(agent_api, "abort_chat_session") as abort_svc:
+        with patch("app.service.agent.service.abort_chat_session") as abort_svc:
             result = agent_api.abort_chat(session_id=sid, current_user=user, db=db)
 
     abort_svc.assert_called_once_with(sid)

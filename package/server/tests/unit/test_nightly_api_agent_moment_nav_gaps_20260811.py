@@ -56,7 +56,7 @@ def test_agent_chat_streaming_returns_streaming_response():
 
     with patch.object(agent_api.agent_crud, "get_session", return_value=None), \
          patch.object(agent_api.agent_crud, "create_session", return_value=_agent_session(owner_id=user.id)), \
-         patch.object(agent_api, "stream_chat_with_agent", side_effect=fake_stream):
+         patch("app.service.agent.service.stream_chat_with_agent", side_effect=fake_stream):
         response = agent_api.chat_endpoint(request=request, current_user=user, db=db)
 
     assert response.media_type == "text/event-stream"

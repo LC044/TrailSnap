@@ -7,10 +7,16 @@ from pydantic import BaseModel
 
 from app.api.deps import get_current_user
 from app.db.models.user import User
-from app.service.agent.service import chat_with_agent, stream_chat_with_agent, abort_chat_session
 from app.dependencies import get_db, BaseResponse
 from app.crud import agent as agent_crud
 from app.schemas.agent import AgentSession, AgentSessionCreate, AgentSessionUpdate, AgentMessage
+
+
+def _agent_service():
+    """延迟导入 agent.service：其导入链（langchain.agents / langchain_openai）
+    重达数秒，只在真正发起对话时才加载。"""
+    from app.service.agent import service
+    return service
 
 router = APIRouter()
 
@@ -49,10 +55,11 @@ def chat_endpoint(
         agent_crud.create_session(db, obj_in=session_create, user_id=current_user.id)
 
     try:
+        service = _agent_service()
         if request.stream:
             # 返回流式响应
             return StreamingResponse(
-                stream_chat_with_agent(
+                service.stream_chat_with_agent(
                     user_id=str(current_user.id),
                     session_id=session_id,
                     user_input=request.message,
@@ -64,7 +71,7 @@ def chat_endpoint(
                 media_type="text/event-stream"
             )
         else:
-            reply = chat_with_agent(
+            reply = service.chat_with_agent(
                 user_id=str(current_user.id),
                 session_id=session_id,
                 user_input=request.message,
@@ -95,7 +102,7 @@ def abort_chat(
     if str(session.user_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized to access this session")
         
-    abort_chat_session(session_id)
+    _agent_service().abort_chat_session(session_id)
     return {"message": "Chat stream abort signal sent"}
 
 @router.get("/sessions", response_model=List[AgentSession], summary="获取所有会话")

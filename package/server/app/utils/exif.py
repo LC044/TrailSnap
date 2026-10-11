@@ -22,8 +22,8 @@ from pillow_heif import register_heif_opener
 register_heif_opener()
 
 import json
-import reverse_geocoder as rg
-
+# reverse_geocoder 顶层导入 scipy.spatial（~0.3s），且首次 search 才会加载
+# CSV 数据；延迟到真正调用 reverse_geocode 时再导入。
 from app.utils.filename import extract_datetime_from_filename
 from app.utils.image_orientation import display_image_size
 from app.utils import video_meta
@@ -170,6 +170,7 @@ def get_file_time_form_system(file_path: str) -> datetime:
 
 def reverse_geocode(lat: float, lng: float) -> dict:
     try:
+        import reverse_geocoder as rg
         results = rg.search([(lat, lng)], mode=1, data_dir=RG_DIR)
         if results:
             res = results[0]
