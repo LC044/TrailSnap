@@ -35,6 +35,7 @@
 import logging
 import math
 import os
+from app.service.disk_budget import budgeted_open
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, Optional, Tuple
@@ -612,7 +613,7 @@ def extract_video_metadata(file_path: str) -> Dict[str, Any]:
         if file_size <= 8:
             return result
 
-        with open(file_path, 'rb') as f:
+        with budgeted_open(file_path) as f:
             moov = _find_box(f, 0, file_size, (b'moov',))
             if moov is None:
                 return result

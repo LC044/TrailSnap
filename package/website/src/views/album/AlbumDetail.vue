@@ -64,20 +64,12 @@
     </template>
     <template #after-content><TicketContextSection v-if="album && album.ownerId === userStore.userInfo?.id" kind="album" :context-id="albumId" :editable="isUserAlbum" class="mx-[var(--ts-page-gutter)] mt-4 mb-4" /></template>
     <template #extra-modals>
-      <!-- Photo Selector Modal -->
-      <Transition name="slide-up">
-        <div v-if="showPhotoSelector" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm md:p-4" @click.self="showPhotoSelector = false">
-          <div class="bg-white dark:bg-gray-900 md:rounded-2xl shadow-2xl w-full h-full md:max-w-7xl md:h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <PhotoSelector 
-              :is-selector="true" 
-              :store="selectionStore"
-              :title="`添加到 ${album?.title}`"
-              @select="handleAddPhotosToAlbum"
-              @cancel="showPhotoSelector = false"
-            />
-          </div>
-        </div>
-      </Transition>
+      <PhotoSelectorDialog
+        v-model="showPhotoSelector"
+        :store="selectionStore"
+        :title="'添加到 ' + (album?.title || '')"
+        @select="handleAddPhotosToAlbum"
+      />
 
       <!-- Edit Album Modal (简化版:仅支持 name + description,适用于 user/custom 相册) -->
       <el-dialog
@@ -126,24 +118,13 @@
         </template>
       </el-dialog>
 
-      <!-- 更换封面:复用 PhotoSelector 的 is-selector 模式,只显示当前相册内照片 -->
-      <Transition name="slide-up">
-        <div
-          v-if="showCoverSelector"
-          class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm md:p-4"
-          @click.self="showCoverSelector = false"
-        >
-          <div class="bg-white dark:bg-gray-900 md:rounded-2xl shadow-2xl w-full h-full md:max-w-7xl md:h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
-            <PhotoSelector
-              :is-selector="true"
-              :store="selectionStore"
-              :title="`选择 ${album?.title || ''} 的封面`"
-              @select="handleCoverSelected"
-              @cancel="showCoverSelector = false"
-            />
-          </div>
-        </div>
-      </Transition>
+      <PhotoSelectorDialog
+        v-model="showCoverSelector"
+        :store="selectionStore"
+        :title="'选择 ' + (album?.title || '') + ' 的封面'"
+        single-select
+        @select="handleCoverSelected"
+      />
     </template>
   </UnifiedPhotoPage>
 </template>
@@ -162,7 +143,7 @@ import { useSelectionStore } from '@/stores/selectionStore'
 import { albumService } from '@/api/album'
 import { Folder, Loader2, Check, ImagePlus, MoreVertical, Edit2, Trash2, Image as ImageIcon } from 'lucide-vue-next'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
-import PhotoSelector from '@/components/PhotoSelector.vue'
+import PhotoSelectorDialog from '@/components/PhotoSelectorDialog.vue'
 import { format } from 'date-fns'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -183,7 +164,7 @@ const isUserAlbum = computed(() => album.value?.type === 'user' || album.value?.
 
 // UI State
 const showPhotoSelector = ref(false)
-useOverlayStack(showPhotoSelector, () => { showPhotoSelector.value = false })
+
 const pendingRemoveIds = ref(new Set<string>())
 
 // 编辑相册(简化弹窗:仅 name + description)
@@ -194,7 +175,7 @@ useOverlayStack(showEditModal, () => { showEditModal.value = false })
 
 // 更换封面
 const showCoverSelector = ref(false)
-useOverlayStack(showCoverSelector, () => { showCoverSelector.value = false })
+
 
 const { width } = useWindowSize()
 const editDialogWidth = computed(() => width.value < 640 ? 'calc(100% - 24px)' : '480px')

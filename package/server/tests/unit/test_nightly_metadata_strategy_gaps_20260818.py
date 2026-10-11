@@ -266,11 +266,12 @@ def test_extract_strategy_success_uses_payload_file_path_and_updater(monkeypatch
     db.query.return_value.filter.return_value.first.return_value = photo
     captured = {}
 
-    async def fake_sync(file_path, _file_id):
+    def fake_extract(file_path, _file_id):
         captured["file_path"] = file_path
         return {"success": True, "meta": {"photo_time": None, "exif_info": {"Make": "Canon"}}}
 
-    monkeypatch.setattr("app.service.tasks.metadata.sync_rebuild_metadata_cpu_job", fake_sync)
+    monkeypatch.setattr("app.service.tasks.metadata.rebuild_metadata_cpu_job", fake_extract)
+    monkeypatch.setattr("app.service.tasks.metadata.update_photo_color_from_thumbnail", lambda *_: None)
     update_calls = []
 
     def fake_update(target_db, target_photo, meta):
@@ -304,11 +305,11 @@ def test_extract_strategy_falls_back_to_photo_file_path():
     db.query.return_value.filter.return_value.first.return_value = photo
     seen = {}
 
-    async def fake_sync(file_path, _file_id):
+    def fake_extract(file_path, _file_id):
         seen["file_path"] = file_path
         return {"success": False, "error": "downstream failure"}
 
-    with patch("app.service.tasks.metadata.sync_rebuild_metadata_cpu_job", fake_sync):
+    with patch("app.service.tasks.metadata.rebuild_metadata_cpu_job", fake_extract):
         with pytest.raises(Exception, match="downstream failure"):
             _run(strategy.process(worker=MagicMock(), task=_task({"photo_id": str(photo_id)}), db=db))
     assert seen == {"file_path": "/library/file.jpg"}

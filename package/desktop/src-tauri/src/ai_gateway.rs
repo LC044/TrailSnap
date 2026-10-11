@@ -5,9 +5,10 @@ use axum::{
     extract::State,
     http::{HeaderMap, Method, StatusCode, Uri},
     response::Response,
-    routing::any,
+    routing::{any, get},
     Router,
 };
+use futures_util::StreamExt;
 use serde_json::{json, Value};
 use std::{
     fs::{self, OpenOptions},
@@ -20,6 +21,14 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::Mutex as AsyncMutex;
+
+#[derive(Debug)]
+struct RequestGuard(Arc<Mutex<(bool, usize)>>);
+impl Drop for RequestGuard {
+    fn drop(&mut self) {
+        self.0.lock().expect("AI admission poisoned").1 -= 1;
+    }
+}
 
 struct SidecarProcess {
     child: Child,
@@ -37,12 +46,13 @@ pub struct AIGateway {
     gateway_port: Arc<Mutex<Option<u16>>>,
     last_request_at: Arc<Mutex<Option<u64>>>,
     migrating: Arc<AtomicBool>,
+    admission: Arc<Mutex<(bool, usize)>>,
 }
 
 impl AIGateway {
     pub fn new(manager: AIExtensionManager, app_root: PathBuf, parent_pid: u32) -> Self {
         Self {
-            manager,
+            manager: manager.runtime_view(),
             app_root,
             parent_pid,
             sidecar: Arc::new(Mutex::new(None)),
@@ -50,6 +60,7 @@ impl AIGateway {
             gateway_port: Arc::new(Mutex::new(None)),
             last_request_at: Arc::new(Mutex::new(None)),
             migrating: Arc::new(AtomicBool::new(false)),
+            admission: Arc::new(Mutex::new((false, 0))),
         }
     }
 
@@ -62,7 +73,10 @@ impl AIGateway {
             .map_err(|error| format!("无法读取 AI Gateway 端口：{error}"))?
             .port();
         *self.gateway_port.lock().expect("AI gateway port poisoned") = Some(port);
-        let router = Router::new().fallback(any(proxy)).with_state(self.clone());
+        let router = Router::new()
+            .route("/desktop/ai-extension-status", get(extension_status))
+            .fallback(any(proxy))
+            .with_state(self.clone());
         tauri::async_runtime::spawn(async move {
             if let Err(error) = axum::serve(listener, router).await {
                 eprintln!("AI Gateway stopped: {error}");
@@ -74,9 +88,24 @@ impl AIGateway {
             loop {
                 timer.tick().await;
                 if !idle_gateway.migrating.load(Ordering::SeqCst)
+                    && *idle_gateway
+                        .admission
+                        .lock()
+                        .expect("AI admission poisoned")
+                        == (false, 0)
                     && idle_gateway.is_idle(Duration::from_secs(10 * 60))
                 {
-                    idle_gateway.stop_sidecar();
+                    if idle_gateway.wait_for_model_downloads().await.is_ok() {
+                        let admission = idle_gateway
+                            .admission
+                            .lock()
+                            .expect("AI admission poisoned");
+                        if *admission == (false, 0)
+                            && idle_gateway.is_idle(Duration::from_secs(10 * 60))
+                        {
+                            idle_gateway.stop_sidecar();
+                        }
+                    }
                 }
             }
         });
@@ -106,6 +135,64 @@ impl AIGateway {
             return;
         };
         terminate_process_tree(&mut sidecar.child);
+    }
+
+    fn begin_request(&self) -> Result<RequestGuard, String> {
+        let mut admission = self.admission.lock().expect("AI admission poisoned");
+        if admission.0 || self.manager.runtime_state() == "waiting_update" {
+            return Err("ai_extension_wait=maintenance 等待 AI 扩展更新".into());
+        }
+        if self.manager.installed_for_ai().is_none() {
+            return Err("ai_extension_wait=missing 等待安装 AI 扩展".into());
+        }
+        admission.1 += 1;
+        Ok(RequestGuard(self.admission.clone()))
+    }
+
+    pub fn finish_extension_maintenance(&self, blocked: bool) {
+        self.admission.lock().expect("AI admission poisoned").0 = blocked;
+    }
+
+    pub async fn drain_for_extension(&self) -> Result<(), String> {
+        self.finish_extension_maintenance(true);
+        loop {
+            if self.admission.lock().expect("AI admission poisoned").1 == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let _start_guard = self.start_lock.lock().await;
+        self.wait_for_model_downloads().await?;
+        self.stop_sidecar();
+        Ok(())
+    }
+
+    async fn wait_for_model_downloads(&self) -> Result<(), String> {
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .map_err(|e| e.to_string())?;
+        while let Some(port) = self.running_port() {
+            let response: Value = client
+                .get(format!("http://127.0.0.1:{port}/ai/models"))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await
+                .map_err(|e| format!("无法确认 AI 模型下载状态：{e}"))?
+                .error_for_status()
+                .map_err(|e| e.to_string())?
+                .json()
+                .await
+                .map_err(|e| e.to_string())?;
+            let models = response["models"]
+                .as_array()
+                .ok_or("无法确认 AI 模型状态，已停止扩展维护")?;
+            if !models.iter().any(|m| m["status"] == "downloading") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        Ok(())
     }
 
     pub async fn drain_for_migration(&self) -> Result<(), String> {
@@ -145,6 +232,11 @@ impl AIGateway {
         let _guard = self.start_lock.lock().await;
         if let Some(port) = self.running_port() {
             return Ok(port);
+        }
+        if self.admission.lock().expect("AI admission poisoned").0
+            || self.manager.runtime_state() == "waiting_update"
+        {
+            return Err("ai_extension_wait=maintenance 等待 AI 扩展更新".into());
         }
         let (extension, directory) = self
             .manager
@@ -263,6 +355,11 @@ impl AIGateway {
     }
 }
 
+async fn extension_status(State(gateway): State<AIGateway>) -> axum::Json<Value> {
+    axum::Json(json!({ "state": gateway.manager.runtime_state(),
+        "installedVersion": gateway.manager.installed_for_ai().map(|(installed, _)| installed.version) }))
+}
+
 async fn proxy(
     State(gateway): State<AIGateway>,
     method: Method,
@@ -283,6 +380,7 @@ async fn proxy_inner(
     headers: HeaderMap,
     body: Body,
 ) -> Result<Response, String> {
+    let guard = gateway.begin_request()?;
     let port = gateway.ensure_sidecar().await?;
     *gateway
         .last_request_at
@@ -316,7 +414,7 @@ async fn proxy_inner(
         .send()
         .await
         .map_err(|error| format!("AI Sidecar 请求失败：{error}"))?;
-    forward_response(upstream)
+    forward_response_tracked(upstream, Some(guard))
 }
 
 fn is_hop_by_hop(name: &str, headers: &HeaderMap) -> bool {
@@ -343,7 +441,15 @@ fn is_hop_by_hop(name: &str, headers: &HeaderMap) -> bool {
     })
 }
 
+#[cfg(test)]
 fn forward_response(upstream: reqwest::Response) -> Result<Response, String> {
+    forward_response_tracked(upstream, None)
+}
+
+fn forward_response_tracked(
+    upstream: reqwest::Response,
+    guard: Option<RequestGuard>,
+) -> Result<Response, String> {
     let status = upstream.status();
     let upstream_headers = upstream.headers().clone();
     let mut response = Response::builder().status(status.as_u16());
@@ -355,7 +461,12 @@ fn forward_response(upstream: reqwest::Response) -> Result<Response, String> {
     response
         // SSE must reach the caller as it arrives. Hyper generates framing for
         // this connection; forwarding upstream Transfer-Encoding breaks it.
-        .body(Body::from_stream(upstream.bytes_stream()))
+        .body(Body::from_stream(futures_util::stream::unfold(
+            (Box::pin(upstream.bytes_stream()), guard),
+            |(mut stream, guard)| async move {
+                stream.next().await.map(|chunk| (chunk, (stream, guard)))
+            },
+        )))
         .map_err(|error| error.to_string())
 }
 
@@ -452,7 +563,9 @@ mod tests {
             .await
             .unwrap();
         assert!(upstream.headers().contains_key("transfer-encoding"));
-        let response = forward_response(upstream).unwrap();
+        let ownership = Arc::new(Mutex::new((false, 1)));
+        let response =
+            forward_response_tracked(upstream, Some(RequestGuard(ownership.clone()))).unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["content-type"], "text/event-stream");
         for name in [
@@ -470,6 +583,9 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(&first[..], b"data: first\n\n");
+        assert_eq!(ownership.lock().unwrap().1, 1);
+        drop(body);
+        assert_eq!(ownership.lock().unwrap().1, 0);
 
         // Also serialize through Hyper: stale upstream framing used to close
         // this connection without any HTTP response, reported as 502 by callers.
@@ -530,6 +646,85 @@ mod tests {
         assert_eq!(payload["status"], "ok");
         assert!(gateway.status()["running"].as_bool().unwrap());
         gateway.stop_sidecar();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[ignore = "subprocess fixture for drain regression"]
+    fn sidecar_sleep_fixture() {
+        std::thread::sleep(Duration::from_secs(30));
+    }
+
+    #[tokio::test]
+    async fn maintenance_waits_for_response_ownership_and_model_download_before_stopping() {
+        use std::sync::atomic::AtomicUsize;
+        let root = std::env::temp_dir().join(format!("trailsnap-gateway-drain-{}", now_seconds()));
+        fs::create_dir_all(&root).unwrap();
+        let manager =
+            AIExtensionManager::initialize(&root, &root.join("catalog.json"), String::new())
+                .unwrap();
+        let gateway = AIGateway::new(manager, root.clone(), std::process::id());
+        let polls = Arc::new(AtomicUsize::new(0));
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let count = polls.clone();
+        let app = Router::new().route("/ai/models", get(move || {
+            let count = count.clone();
+            async move {
+                let poll = count.fetch_add(1, Ordering::SeqCst);
+                axum::Json(json!({"models":[{"status":if poll == 0 { "downloading" } else { "ready" }}]}))
+            }
+        }));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut command = Command::new(std::env::current_exe().unwrap());
+        command
+            .args([
+                "--exact",
+                "ai_gateway::tests::sidecar_sleep_fixture",
+                "--ignored",
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let child = command.spawn().unwrap();
+        *gateway.sidecar.lock().unwrap() = Some(SidecarProcess {
+            child,
+            port,
+            extension_id: "core-ai".into(),
+        });
+        gateway.admission.lock().unwrap().1 = 1;
+        let request = RequestGuard(gateway.admission.clone());
+        let copy = gateway.clone();
+        let draining = tokio::spawn(async move { copy.drain_for_extension().await });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(gateway.running_port().is_some());
+        assert_eq!(polls.load(Ordering::SeqCst), 0);
+        assert!(gateway
+            .begin_request()
+            .unwrap_err()
+            .contains("等待 AI 扩展更新"));
+        drop(request);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while polls.load(Ordering::SeqCst) == 0 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(gateway.running_port().is_some());
+        tokio::time::timeout(Duration::from_secs(3), draining)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert!(gateway.running_port().is_none());
+        assert!(polls.load(Ordering::SeqCst) >= 2);
+        server.abort();
         fs::remove_dir_all(root).unwrap();
     }
 }

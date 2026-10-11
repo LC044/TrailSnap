@@ -22,6 +22,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--platform-key", required=True)
     parser.add_argument("--version", required=True)
+    parser.add_argument("--release-tag", help="Product release tag; defaults to v<version>")
     parser.add_argument("--output", type=Path, default=Path("extension-dist"))
     args = parser.parse_args()
 
@@ -58,7 +59,7 @@ def main() -> None:
     checksum = sha256(archive)
     asset = {
         "platform": args.platform_key,
-        "url": f"https://github.com/LC044/TrailSnap/releases/download/v{args.version}/{archive.name}",
+        "url": f"https://github.com/LC044/TrailSnap/releases/download/{args.release_tag or 'v' + args.version}/{archive.name}",
         "sha256": checksum,
         "size": archive.stat().st_size,
         "filename": archive.name,

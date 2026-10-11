@@ -28,12 +28,15 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: '1'
-      EXTENSION_VERSION: '0.17.3'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Validate Server and AI release versions
+        shell: bash
+        run: |
+          python package/ai/scripts/validate_extension_release.py --github-env "$GITHUB_ENV" --tag "$GITHUB_REF_NAME"
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true

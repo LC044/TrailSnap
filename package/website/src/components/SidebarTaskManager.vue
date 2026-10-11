@@ -41,6 +41,7 @@
           </span>
         </div>
         <el-progress
+          v-if="!cat.waiting_reason"
           :percentage="100"
           :show-text="false"
           :stroke-width="4"
@@ -48,6 +49,7 @@
           class="!my-0 task-progress-bar"
           :indeterminate="true"
         />
+        <p v-else class="ts-muted text-xs">{{ cat.waiting_reason }}</p>
       </div>
 
       <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
@@ -81,6 +83,7 @@ interface TaskCategoryStatus {
   pending: number
   failed: number
   status: 'active' | 'paused'
+  waiting_reason?: string
 }
 
 const props = defineProps<{

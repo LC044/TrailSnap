@@ -16,6 +16,65 @@ import pytest
 pytestmark = [pytest.mark.smoke]
 
 
+@pytest.mark.parametrize("invalid", [
+    [None] * 512, [float('nan')] * 512, [float('inf')] * 512,
+    [0.0] * 512, [0.1],
+])
+def test_invalid_face_embedding_isolated_before_replacing_faces(monkeypatch, invalid):
+    from app.service.tasks.face import RecognizeFaceStrategy
+
+    db = MagicMock()
+    owner = uuid4()
+    bad = _photo(owner_id=owner)
+    good = _photo(owner_id=owner)
+    db.query.return_value.filter.return_value.all.return_value = [bad, good]
+    monkeypatch.setattr("app.service.tasks.face.storage.get_available_photo_path", lambda *a: "/tmp/x.jpg")
+    _patch_open_ok(monkeypatch)
+    _patch_aiohttp(monkeypatch, _FakeSession([_FakeResp(200, {"results": [
+        {"faces": [{"det_score": 0.9, "embedding": invalid}]},
+        {"faces": [{"det_score": 0.9, "embedding": [0.1] * 512}]},
+    ]})]))
+    _patch_user_config(monkeypatch)
+    _patch_cluster(monkeypatch, assign_face_to_identity=MagicMock(return_value=uuid4()))
+    delete_faces = MagicMock()
+    update_albums = MagicMock()
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", delete_faces)
+    monkeypatch.setattr("app.crud.album.trigger_conditional_albums_update", update_albums)
+    tasks = [_task(owner_id=owner, payload={"photo_id": str(p.id)}) for p in (bad, good)]
+
+    results = _run(RecognizeFaceStrategy().process_batch(MagicMock(), tasks, db))
+    assert results[0]["status"] == "failed"
+    assert "无效的人脸特征" in results[0]["error"]
+    assert results[1]["status"] == "completed"
+    assert bad.processed_tasks == {}
+    assert good.processed_tasks['face'] is True
+    delete_faces.assert_called_once_with(db, good.id, commit=False)
+    update_albums.assert_called_once_with(db, owner, [good.id], commit=False)
+    db.rollback.assert_not_called()
+
+
+def test_single_invalid_face_embedding_keeps_existing_faces(monkeypatch):
+    from app.service.tasks.face import RecognizeFaceStrategy
+
+    db = MagicMock()
+    photo = _photo()
+    monkeypatch.setattr("app.service.tasks.face.storage.get_available_photo_path", lambda *a: "/tmp/x.jpg")
+    monkeypatch.setattr("app.service.tasks.face.storage.get_image_dimensions", lambda *a: (10, 10, None))
+    _patch_open_ok(monkeypatch)
+    _patch_aiohttp(monkeypatch, _FakeSession([_FakeResp(200, {"results": [
+        {"faces": [{"det_score": 0.9, "embedding": [None] * 512}]},
+    ]})]))
+    _patch_user_config(monkeypatch)
+    _patch_cluster(monkeypatch)
+    delete_faces = MagicMock()
+    monkeypatch.setattr("app.service.tasks.face.crud_face.delete_faces_by_photo", delete_faces)
+    result = _run(RecognizeFaceStrategy().process_single_photo(MagicMock(), photo, db))
+    assert result['status'] == 'failed'
+    assert "无效的人脸特征" in result['error']
+    delete_faces.assert_not_called()
+    db.add.assert_not_called()
+
+
 def _task(**kw):
     base = {
         "id": uuid4(),
@@ -273,7 +332,7 @@ def test_face_process_batch_ai_result_error_marks_failed(monkeypatch):
     _patch_open_ok(monkeypatch)
     session = _FakeSession([_FakeResp(200, {"results": [
         {"error": "decode failed"},
-        {"faces": [{"det_score": 0.9, "embedding": [0.1]}]},
+        {"faces": [{"det_score": 0.9, "embedding": [0.1] * 512}]},
     ]})])
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
@@ -326,8 +385,8 @@ def test_face_process_batch_threshold_filters_face(monkeypatch):
     monkeypatch.setattr("app.service.tasks.face.storage.get_available_photo_path", lambda *a, **kw: "/tmp/x.jpg")
     _patch_open_ok(monkeypatch)
     session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
-        {"det_score": 0.1, "embedding": [0.1]},
-        {"det_score": 0.95, "embedding": [0.2]},
+        {"det_score": 0.1, "embedding": [0.1] * 512},
+        {"det_score": 0.95, "embedding": [0.2] * 512},
     ]}]})])
     _patch_aiohttp(monkeypatch, session)
     monkeypatch.setattr("app.service.tasks.face.config_manager.get_user_config", lambda *a, **kw: _make_ai_config(threshold=0.4))
@@ -350,7 +409,7 @@ def test_face_process_batch_cluster_exception_swallowed(monkeypatch):
     monkeypatch.setattr("app.service.tasks.face.storage.get_available_photo_path", lambda *a, **kw: "/tmp/x.jpg")
     _patch_open_ok(monkeypatch)
     session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
-        {"det_score": 0.9, "embedding": [0.1]},
+        {"det_score": 0.9, "embedding": [0.1] * 512},
     ]}]})])
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
@@ -412,7 +471,7 @@ def test_face_process_single_photo_success_with_embedding(monkeypatch):
     _patch_open_ok(monkeypatch)
     monkeypatch.setattr("app.service.tasks.face.storage.get_image_dimensions", lambda *a, **kw: (10, 10, None))
     session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
-        {"det_score": 0.9, "embedding": [0.1, 0.2]},
+        {"det_score": 0.9, "embedding": [0.1, 0.2] * 256},
     ]}]})])
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
@@ -442,7 +501,7 @@ def test_face_process_single_photo_passes_owner_id_to_assignment(monkeypatch):
     _patch_open_ok(monkeypatch)
     monkeypatch.setattr("app.service.tasks.face.storage.get_image_dimensions", lambda *a, **kw: (10, 10, None))
     session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
-        {"det_score": 0.9, "embedding": [0.1, 0.2]},
+        {"det_score": 0.9, "embedding": [0.1, 0.2] * 256},
     ]}]})])
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)
@@ -485,7 +544,7 @@ def test_face_process_single_photo_cluster_exception_swallowed(monkeypatch):
     _patch_open_ok(monkeypatch)
     monkeypatch.setattr("app.service.tasks.face.storage.get_image_dimensions", lambda *a, **kw: (10, 10, None))
     session = _FakeSession([_FakeResp(200, {"results": [{"faces": [
-        {"det_score": 0.9, "embedding": [0.1]},
+        {"det_score": 0.9, "embedding": [0.1] * 512},
     ]}]})])
     _patch_aiohttp(monkeypatch, session)
     _patch_user_config(monkeypatch)

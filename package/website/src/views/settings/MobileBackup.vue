@@ -125,7 +125,7 @@
           <BackButton label="返回手机备份" @click="closeSettings" />
           <div class="absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">备份设置</div>
         </header>
-        <MobileBackupSettings embedded @saved="closeSettings" />
+        <MobileBackupSettings embedded />
       </div>
     </Transition>
   </div>

@@ -1,5 +1,6 @@
 """Process-wide, reentrant admission for media IO on each storage volume."""
 import os
+import io
 import threading
 from contextlib import contextmanager, ExitStack
 from functools import wraps
@@ -65,6 +66,66 @@ class DiskBudget:
 
 
 disk_budget = DiskBudget()
+
+
+class BudgetedFile(io.BufferedIOBase):
+    """Limit individual file operations, leaving decoding/encoding outside admission.
+
+    Do not expose fileno(): Pillow would otherwise bypass read/write using its
+    native codecs or mmap, and keep admission out of those operations entirely.
+    """
+
+    def __init__(self, stream, path):
+        self._stream = stream
+        self.name = os.fspath(path)
+
+    def readable(self):
+        return self._stream.readable()
+
+    def writable(self):
+        return self._stream.writable()
+
+    def seekable(self):
+        return self._stream.seekable()
+
+    def read(self, size=-1):
+        with disk_budget.slot(self.name):
+            return self._stream.read(size)
+
+    def readinto(self, buffer):
+        with disk_budget.slot(self.name):
+            return self._stream.readinto(buffer)
+
+    def write(self, data):
+        with disk_budget.slot(self.name):
+            return self._stream.write(data)
+
+    def seek(self, offset, whence=io.SEEK_SET):
+        with disk_budget.slot(self.name):
+            return self._stream.seek(offset, whence)
+
+    def tell(self):
+        return self._stream.tell()
+
+    def flush(self):
+        if not self._stream.closed:
+            with disk_budget.slot(self.name):
+                self._stream.flush()
+
+    def close(self):
+        if not self.closed:
+            try:
+                super().close()
+            finally:
+                with disk_budget.slot(self.name):
+                    self._stream.close()
+
+
+def budgeted_open(path, mode='rb'):
+    """Open a binary stream whose IO, rather than its lifetime, owns a slot."""
+    with disk_budget.slot(path):
+        stream = open(path, mode)
+    return BudgetedFile(stream, path)
 
 
 def media_io(path_argument='file_path', *other_paths):

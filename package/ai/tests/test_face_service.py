@@ -5,11 +5,70 @@ model_manager so the loader + service path can be exercised without GPU.
 """
 
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+import sys
 
 import numpy as np
 import pytest
 
 pytestmark = [pytest.mark.smoke]
+
+
+@pytest.mark.parametrize("invalid", [
+    None, [None] * 512, [float('nan')] * 512, [float('inf')] * 512,
+    [0.0] * 512, [0.1],
+])
+def test_invalid_features_retried_with_cached_cpu_model(monkeypatch, invalid):
+    from app.services.face_service import FaceRecognitionService
+
+    recognition = SimpleNamespace(
+        session=SimpleNamespace(get_providers=lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"]),
+        model_file="face.onnx",
+    )
+    app = SimpleNamespace(models={"recognition": recognition})
+    fallback = MagicMock()
+    fallback.get.side_effect = lambda img, face: setattr(face, "embedding", np.ones(512))
+    get_model = MagicMock(return_value=fallback)
+    monkeypatch.setitem(sys.modules, "insightface", MagicMock())
+    monkeypatch.setitem(sys.modules, "insightface.model_zoo", SimpleNamespace(get_model=get_model))
+    service = FaceRecognitionService()
+    for _ in range(2):
+        face = SimpleNamespace(embedding=invalid)
+        service._ensure_embedding(app, object(), face)
+        assert np.isfinite(face.embedding).all()
+    get_model.assert_called_once_with("face.onnx", providers=["CPUExecutionProvider"])
+    fallback.prepare.assert_called_once_with(ctx_id=-1)
+    assert fallback.get.call_count == 2
+
+
+def test_invalid_cpu_features_raise_without_recursive_retry():
+    from app.services.face_service import FaceRecognitionService
+
+    recognition = SimpleNamespace(
+        session=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]),
+    )
+    app = SimpleNamespace(models={"recognition": recognition})
+    with pytest.raises(ValueError, match="invalid features on CPU"):
+        FaceRecognitionService()._ensure_embedding(app, object(), SimpleNamespace(embedding=np.full(512, np.nan)))
+
+
+def test_cpu_retry_cannot_return_invalid_features():
+    from app.services.face_service import FaceRecognitionService
+
+    recognition = SimpleNamespace(
+        session=SimpleNamespace(get_providers=lambda: ["CUDAExecutionProvider"]),
+    )
+    app = SimpleNamespace(models={"recognition": recognition}, _trailsnap_cpu_recognition=MagicMock())
+    with pytest.raises(ValueError, match="after CPU retry"):
+        FaceRecognitionService()._ensure_embedding(app, object(), SimpleNamespace(embedding=np.full(512, np.nan)))
+
+
+def test_valid_features_keep_accelerated_result():
+    from app.services.face_service import FaceRecognitionService
+
+    face = SimpleNamespace(embedding=np.ones(512))
+    FaceRecognitionService()._ensure_embedding(SimpleNamespace(), object(), face)
+    assert face.embedding.tolist() == [1.0] * 512
 
 
 def test_load_insightface_model_raises_when_insightface_init_fails(monkeypatch):

@@ -21,7 +21,6 @@ from app.service import person_timeline
 from datetime import datetime, timedelta
 import uuid
 
-import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
@@ -147,6 +146,8 @@ async def add_photos_to_identity(
     
     identity_center = None
     if assigned_faces:
+        import numpy as np
+
         embeddings = [np.array(f.face_feature) for f in assigned_faces]
         if embeddings:
             identity_center = np.mean(embeddings, axis=0)
@@ -186,6 +187,8 @@ async def add_photos_to_identity(
                     if face.face_feature is None:
                         continue
                     # 确保向量维度一致
+                    import numpy as np
+
                     feat = np.array(face.face_feature)
                     norm = np.linalg.norm(feat)
                     if norm > 0:

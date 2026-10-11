@@ -18,11 +18,11 @@
                   accept="image/*"
                   :http-request="handleUploadAvatar"
                 >
-                  <el-button type="primary" plain :loading="uploading">本地上传</el-button>
+                  <el-button type="primary" plain :loading="uploading || savingAvatar" :disabled="saving || uploading || savingAvatar">本地上传</el-button>
                 </el-upload>
-                <el-button @click="showGallerySelector = true">从图库选择</el-button>
+                <el-button :disabled="saving || uploading || savingAvatar" @click="showGallerySelector = true">从图库选择</el-button>
               </div>
-              <span class="text-xs text-gray-500 dark:text-gray-400">支持本地上传或从已上传的照片中选择</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">支持本地上传或从图库选择，确认后自动保存</span>
             </div>
           </div>
         </el-form-item>
@@ -42,31 +42,35 @@
         </el-form-item>
 
         <el-form-item>
-          <el-button type="primary" @click="handleSave" :loading="saving">保存修改</el-button>
+          <el-button type="primary" @click="handleSave" :loading="saving" :disabled="uploading || savingAvatar">保存修改</el-button>
         </el-form-item>
       </el-form>
     </div>
 
-    <!-- Photo Selector Dialog -->
-    <el-dialog v-model="showGallerySelector" title="选择头像" width="80%" top="5vh" class="gallery-selector-dialog">
-      <div class="h-[80vh] -mx-4 -mt-4 -mb-4">
-        <PhotoSelector v-if="showGallerySelector" :is-selector="true" title="头像" @select="handleSelectFromGallery" @cancel="showGallerySelector = false" />
-      </div>
-    </el-dialog>
+    <PhotoSelectorDialog
+      v-model="showGallerySelector"
+      title="选择头像"
+      :store="selectionStore"
+      single-select
+      :busy="savingAvatar"
+      @select="handleSelectFromGallery"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { userService } from '@/api/user'
-import PhotoSelector from '@/components/PhotoSelector.vue'
+import PhotoSelectorDialog from '@/components/PhotoSelectorDialog.vue'
+import { useSelectionStore } from '@/stores/selectionStore'
 import request from '@/utils/request'
 import { toServerUrl } from '@/config/server'
 import { thumbnailPath } from '@/utils/mediaUrl'
 
 const userStore = useUserStore()
+const selectionStore = useSelectionStore()
 const defaultAvatar = new URL('../../assets/default-avatar.svg', import.meta.url).href
 
 const form = reactive({
@@ -78,6 +82,7 @@ const form = reactive({
 
 const saving = ref(false)
 const uploading = ref(false)
+const savingAvatar = ref(false)
 const showGallerySelector = ref(false)
 
 onMounted(async () => {
@@ -93,6 +98,7 @@ onMounted(async () => {
 })
 
 const handleSave = async () => {
+  if (saving.value || uploading.value || savingAvatar.value) return
   saving.value = true
   try {
     await userService.updateCurrentUser({
@@ -110,6 +116,7 @@ const handleSave = async () => {
 
 const handleUploadAvatar = async (options: any) => {
   const { file } = options
+  if (saving.value || uploading.value || savingAvatar.value) return
   uploading.value = true
   try {
     const formData = new FormData()
@@ -123,8 +130,7 @@ const handleUploadAvatar = async (options: any) => {
     })
     
     const photoId = res.data.id
-    form.avatar = thumbnailPath(photoId, 'medium')
-    ElMessage.success('头像上传成功')
+    await persistAvatar(thumbnailPath(photoId, 'medium'))
   } catch (error) {
     ElMessage.error('头像上传失败')
   } finally {
@@ -132,19 +138,26 @@ const handleUploadAvatar = async (options: any) => {
   }
 }
 
-const handleSelectFromGallery = (ids: string[]) => {
-  if (ids.length > 0) {
-    const photoId = ids[0]
-    form.avatar = thumbnailPath(photoId, 'medium')
+// 只保存头像，避免一并提交还未确认的昵称草稿。
+const persistAvatar = async (avatar: string) => {
+  savingAvatar.value = true
+  try {
+    const updated = await userService.updateCurrentUser({ avatar })
+    form.avatar = updated.avatar || avatar
+    userStore.updateUserInfo(updated)
+    ElMessage.success('头像已保存')
+  } finally {
+    savingAvatar.value = false
+  }
+}
+
+const handleSelectFromGallery = async (ids: string[]) => {
+  if (!ids.length || savingAvatar.value || saving.value || uploading.value) return
+  try {
+    await persistAvatar(thumbnailPath(ids[0], 'medium'))
     showGallerySelector.value = false
-    ElMessage.success('已选择头像')
+  } catch {
+    ElMessage.error('头像保存失败，请重试')
   }
 }
 </script>
-
-<style>
-.gallery-selector-dialog .el-dialog__body {
-  padding: 0;
-  overflow: hidden;
-}
-</style>

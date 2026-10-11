@@ -3,7 +3,6 @@ from uuid import UUID
 from sqlalchemy import and_, func, desc, extract, case, or_
 from math import asin, ceil, cos, radians, sin, sqrt
 from datetime import date
-import numpy as np
 from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.image_vector import ImageVector
@@ -78,6 +77,8 @@ def _nearby_time_compare_rows(
 def _cosine_similarity(left, right):
     if left is None or right is None:
         return None
+    import numpy as np
+
     left = np.asarray(left, dtype=float)
     right = np.asarray(right, dtype=float)
     denominator = np.linalg.norm(left) * np.linalg.norm(right)

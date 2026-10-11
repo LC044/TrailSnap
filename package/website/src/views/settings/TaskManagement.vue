@@ -34,6 +34,7 @@
 
               <!-- Status Logic -->
               <el-tag v-if="cat.status === 'paused'" type="warning" size="small">已暂停</el-tag>
+              <el-tag v-else-if="cat.waiting_reason && cat.pending > 0" type="info" size="small">{{ cat.waiting_reason }}</el-tag>
               <el-tag v-else-if="cat.pending === 0" type="success" size="small">已完成</el-tag>
               <el-tag v-else-if="cat.completed === 0 && cat.pending === 0" type="info" size="small">等待中</el-tag>
               <el-tag v-else type="primary" size="small">进行中</el-tag>
@@ -117,6 +118,7 @@ interface GroupedTask {
     status: string
     priority: number
     description: string
+    waiting_reason?: string
 }
 
 const groupedTasks = ref<GroupedTask[]>([])

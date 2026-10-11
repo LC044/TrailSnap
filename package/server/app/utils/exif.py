@@ -16,6 +16,7 @@ import os
 from typing import Dict, Any, Optional
 
 from app.utils.image_loading import Image, IMAGE_EXTENSIONS
+from app.service.disk_budget import budgeted_open
 from PIL.ExifTags import TAGS, GPSTAGS
 from pillow_heif import register_heif_opener
 # Register HEIF opener to enable HEIC/HEIF support in Pillow
@@ -239,11 +240,17 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
             exif_dict = None
             img = None
             should_close = False
+            source = None
             
             if image_obj:
                 img = image_obj
             else:
-                img = Image.open(file_path)
+                source = budgeted_open(file_path)
+                try:
+                    img = Image.open(source)
+                except BaseException:
+                    source.close()
+                    raise
                 should_close = True
             
             try:
@@ -251,7 +258,10 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
                 exif_dict = get_exif_data(img)
             finally:
                 if should_close:
-                    img.close()
+                    try:
+                        img.close()
+                    finally:
+                        source.close()
 
             if exif_dict:
 

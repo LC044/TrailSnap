@@ -1,6 +1,7 @@
 mod ai_extension;
 mod ai_gateway;
 mod data_directory;
+mod extension_lifecycle;
 mod llama_runtime;
 
 use data_directory::{desktop_data_directory, desktop_set_data_directory, DataDirectory};
@@ -31,7 +32,7 @@ struct RuntimeStatus {
 #[derive(Default)]
 struct DesktopState {
     child: Mutex<Option<Child>>,
-    status: Mutex<RuntimeStatus>,
+    status: Arc<Mutex<RuntimeStatus>>,
     activity: Arc<Mutex<(bool, usize)>>,
 }
 
@@ -173,6 +174,7 @@ async fn ai_extension_refresh(
 ) -> Result<Value, String> {
     let _activity = begin_activity(&app)?;
     let _ = manager.refresh_catalog().await;
+    manager.reconcile().await?;
     Ok(extension_snapshot(&manager, &gateway))
 }
 
@@ -181,10 +183,8 @@ fn ai_extension_install(
     app: tauri::AppHandle,
     id: String,
     manager: tauri::State<'_, AIExtensionManager>,
-    gateway: tauri::State<'_, AIGateway>,
 ) -> Result<Value, String> {
     let _activity = begin_activity(&app)?;
-    gateway.stop_sidecar();
     manager.start_install(&id)
 }
 
@@ -213,31 +213,24 @@ async fn ai_extension_import(
     app: tauri::AppHandle,
     path: String,
     manager: tauri::State<'_, AIExtensionManager>,
-    gateway: tauri::State<'_, AIGateway>,
 ) -> Result<Value, String> {
     let _activity = begin_activity(&app)?;
-    gateway.stop_sidecar();
     // A complete AI archive is hundreds of megabytes. Hashing and extracting
     // it in a synchronous Tauri command blocks the desktop UI long enough to
     // look like a crash, while the former lightweight extension did not.
     let manager = manager.inner().clone();
-    let installed =
-        tauri::async_runtime::spawn_blocking(move || manager.import_archive(Path::new(&path)))
-            .await
-            .map_err(|error| format!("AI 扩展导入任务异常：{error}"))??;
+    let installed = manager.import_archive_safely(PathBuf::from(path)).await?;
     Ok(json!({ "canceled": false, "installed": installed }))
 }
 
 #[tauri::command]
-fn ai_extension_uninstall(
+async fn ai_extension_uninstall(
     app: tauri::AppHandle,
     id: String,
     manager: tauri::State<'_, AIExtensionManager>,
-    gateway: tauri::State<'_, AIGateway>,
 ) -> Result<Value, String> {
     let _activity = begin_activity(&app)?;
-    gateway.stop_sidecar();
-    manager.uninstall(&id)?;
+    manager.uninstall_safely(&id).await?;
     Ok(json!({ "removed": true }))
 }
 
@@ -249,14 +242,10 @@ fn llama_runtime_status() -> Value {
 #[tauri::command]
 async fn llama_runtime_install(
     app: tauri::AppHandle,
-    gateway: tauri::State<'_, AIGateway>,
+    manager: tauri::State<'_, AIExtensionManager>,
 ) -> Result<Value, String> {
     let _activity = begin_activity(&app)?;
-    let result = llama_runtime::install().await?;
-    // A running Sidecar inherited the pre-install PATH. Restart it lazily so
-    // the next AI request receives the newly detected LLAMA_SERVER_PATH.
-    gateway.stop_sidecar();
-    Ok(result)
+    manager.install_llama_runtime().await
 }
 
 fn server_executable(resource_dir: &Path) -> PathBuf {
@@ -385,7 +374,13 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
         .expect("desktop child poisoned") = Some(child);
 
     tauri::async_runtime::spawn(async move {
-        let client = reqwest::Client::new();
+        // On Windows a refused localhost connection can take about a second.
+        // Bound connection attempts separately from the health response timeout.
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(Duration::from_millis(100))
+            .build()
+            .expect("desktop health client");
         let health_url = format!("{api_url}/health-check");
         let started = Instant::now();
         loop {
@@ -427,7 +422,7 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                     }
                 }
             }
-            tokio::time::sleep(Duration::from_millis(300)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
     });
     Ok(())
@@ -489,12 +484,8 @@ pub fn run() {
                 .resource_dir()
                 .map_err(|error| std::io::Error::other(format!("无法定位 AI 扩展清单：{error}")))?
                 .join("ai-extensions.json");
-            let catalog_url = std::env::var("TS_AI_EXTENSION_CATALOG_URL").unwrap_or_else(|_| {
-                format!(
-                    "https://github.com/LC044/TrailSnap/releases/download/v{}/ai-extensions.json",
-                    env!("CARGO_PKG_VERSION")
-                )
-            });
+            // Default is the running Server's v{version} Release catalog.
+            let catalog_url = std::env::var("TS_AI_EXTENSION_CATALOG_URL").unwrap_or_default();
             tauri::async_runtime::spawn(async move {
                 let result = async {
                     if let Some(target) = handle.state::<DataDirectory>().pending() {
@@ -551,6 +542,9 @@ pub fn run() {
                     let manager =
                         AIExtensionManager::initialize(&app_root, &catalog_path, catalog_url)?;
                     let gateway = AIGateway::new(manager.clone(), app_root, std::process::id());
+                    manager.configure_lifecycle(extension_lifecycle::ExtensionLifecycle {
+                        server_status: handle.state::<DesktopState>().status.clone(), gateway: gateway.clone(),
+                    });
                     handle.manage(manager.clone());
                     handle.manage(gateway.clone());
                     let gateway_port = gateway.listen().await?;
@@ -558,7 +552,17 @@ pub fn run() {
                     let refresh_handle = handle.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Ok(_activity) = begin_activity(&refresh_handle) {
+                            // Startup refresh can finish before the API sidecar is ready.
+                            loop {
+                                let status = desktop_runtime_status(refresh_handle.state());
+                                if status.ready { break; }
+                                if status.phase == "failed" { return; }
+                                tokio::time::sleep(Duration::from_millis(200)).await;
+                            }
                             let _ = refresh_manager.refresh_catalog().await;
+                            if let Err(error) = refresh_manager.reconcile().await {
+                                eprintln!("AI extension startup reconciliation failed: {error}");
+                            }
                         }
                     });
                     spawn_server(handle.clone(), gateway_port)

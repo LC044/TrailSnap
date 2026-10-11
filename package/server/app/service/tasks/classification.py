@@ -137,7 +137,8 @@ class ClassifyImageStrategy(BaseTaskStrategy):
 
                 try:
                     with disk_budget.slot(target_path), open(target_path, 'rb') as f_img:
-                        b64_data = base64.b64encode(f_img.read()).decode('utf-8')
+                        image_data = f_img.read()
+                    b64_data = base64.b64encode(image_data).decode('utf-8')
                     b64_images.append(b64_data)
                     valid_tasks.append(task)
                     valid_photos.append(photo)

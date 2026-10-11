@@ -614,7 +614,7 @@ def test_handle_completion_color_info_persisted_only_once(monkeypatch):
     assert "PhotoColor" not in added_types
 
 
-def test_handle_completion_color_info_inserted_for_new_color(monkeypatch):
+def test_handle_completion_defers_color_analysis_to_metadata(monkeypatch):
     strategy = _strategy()
     db = MagicMock()
     color_filter = MagicMock()
@@ -648,7 +648,7 @@ def test_handle_completion_color_info_inserted_for_new_color(monkeypatch):
     db.add.side_effect = lambda obj: added_types.append(type(obj).__name__)
 
     _run(strategy.handle_completion(worker, [item], db))
-    assert "PhotoColor" in added_types
+    assert "PhotoColor" not in added_types
 
 
 def test_handle_completion_dispatches_downstream_tasks(monkeypatch):

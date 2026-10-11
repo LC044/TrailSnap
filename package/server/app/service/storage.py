@@ -1,7 +1,8 @@
 import os
 import traceback
 import shutil
-from uuid import UUID
+from uuid import UUID, uuid4
+from io import BytesIO
 from typing import Optional
 from fastapi import UploadFile
 from PIL import ImageOps
@@ -18,6 +19,7 @@ from app.service import user_storage
 from app.utils.path_validation import validate_target_path
 from app.utils.image_orientation import display_image_size
 from app.utils.video_tools import probe_video, extract_video_frame
+from app.service.disk_budget import budgeted_open, disk_budget
 
 # numpy / cv2 的导入各占数百毫秒，且只有视频缩略图路径需要它们；延迟到使用处
 # 再导入，避免拖慢 API 启动。cv2 缺失时 generate_video_thumbnail 自带 ffmpeg
@@ -199,10 +201,12 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
     if cv2 is None:
         try:
             import numpy as np
-            info = probe_video(file_path)
+            with disk_budget.slot(file_path):
+                info = probe_video(file_path)
             best_frame, fallback_frame, best_score = None, None, float('-inf')
             for second in _video_thumbnail_candidate_seconds(info[2] or 0):
-                frame = extract_video_frame(file_path, second)
+                with disk_budget.slot(file_path):
+                    frame = extract_video_frame(file_path, second)
                 if frame is None:
                     continue
                 if fallback_frame is None:
@@ -219,7 +223,8 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
             return None
     cap = None
     try:
-        cap = cv2.VideoCapture(file_path)
+        with disk_budget.slot(file_path):
+            cap = cv2.VideoCapture(file_path)
         if not cap.isOpened():
             return None
 
@@ -231,8 +236,9 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
         fallback_frame = None
         best_score = float("-inf")
         for second in _video_thumbnail_candidate_seconds(duration):
-            cap.set(cv2.CAP_PROP_POS_MSEC, second * 1000)
-            ret, frame = cap.read()
+            with disk_budget.slot(file_path):
+                cap.set(cv2.CAP_PROP_POS_MSEC, second * 1000)
+                ret, frame = cap.read()
             if not ret or frame is None:
                 continue
             if fallback_frame is None:
@@ -256,6 +262,23 @@ def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, confi
         if cap is not None:
             cap.release()
     return None
+
+def _save_webp(img: Image.Image, path: str, *, quality: int, method: int) -> None:
+    # Encoding needs CPU, not a volume slot. Publish only complete previews so
+    # classification can never observe the partially written output.
+    temporary = f'{path}.{uuid4().hex}.tmp'
+    try:
+        with BytesIO() as encoded:
+            img.save(encoded, 'WEBP', quality=quality, method=method)
+            with budgeted_open(temporary, 'xb') as output:
+                output.write(encoded.getbuffer())
+        with disk_budget.slot(path):
+            os.replace(temporary, path)
+    finally:
+        with disk_budget.slot(path):
+            if os.path.exists(temporary):
+                os.remove(temporary)
+
 
 def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: ImageSettings = None, *, allow_draft: bool = False) -> str:
     if not config:
@@ -302,9 +325,9 @@ def _save_thumbnails(img: Image.Image, file_id: UUID, user_id: UUID, config: Ima
     method = getattr(config, 'webp_method', 0)
     with img.copy() as m:
         m.thumbnail((p_size, p_size))
-        m.save(m_path, "WEBP", quality=p_qual, method=method)
+        _save_webp(m, m_path, quality=p_qual, method=method)
     img.thumbnail((t_size, t_size))
-    img.save(s_path, "WEBP", quality=t_qual, method=method)
+    _save_webp(img, s_path, quality=t_qual, method=method)
     img.close()
     return m_path
 
@@ -324,7 +347,7 @@ def get_preview_path(user_id: UUID, file_id: UUID) -> Optional[str]:
 
 
 def get_available_photo_path(user_id: UUID, file_id: UUID, original_path: Optional[str]) -> Optional[str]:
-    """Return an existing preview path, falling back to the original photo."""
+    """Return an existing preview, using the original if generation failed."""
     preview_path = get_preview_path(user_id, file_id)
     if preview_path and os.path.exists(preview_path):
         return preview_path
@@ -333,19 +356,21 @@ def get_available_photo_path(user_id: UUID, file_id: UUID, original_path: Option
     return None
 
 
-def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: Optional[Image.Image] = None, config: ImageSettings = None):
+def generate_thumbnail(user_id: UUID, file_path: str, file_id: UUID, image_obj: Optional[Image.Image] = None, config: ImageSettings = None, *, allow_source_draft: bool = False):
     try:
         ext = os.path.splitext(file_path)[1].lower()
         if ext in VIDEO_EXTENSIONS:
             return generate_video_thumbnail(file_path, file_id, user_id, config=config)
         if ext in IMAGE_EXTENSIONS:
+            if image_obj and allow_source_draft:
+                return _save_thumbnails(image_obj, file_id, user_id, config=config, allow_draft=True)
             if image_obj and not (
                 image_obj.format == 'JPEG'
                 and image_obj.width * image_obj.height > LARGE_IMAGE_PIXELS
             ):
                 return _save_thumbnails(image_obj, file_id, user_id, config=config)
             else:
-                with Image.open(file_path) as img:
+                with budgeted_open(file_path) as source, Image.open(source) as img:
                     return _save_thumbnails(img, file_id, user_id, config=config, allow_draft=True)
     except Exception as e:
         logging.error(f"Error generating thumbnail for {file_path}: {e}\n{traceback.format_exc()}")
@@ -361,7 +386,7 @@ def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None
             if image_obj:
                 return (*display_image_size(image_obj), None)
             else:
-                with Image.open(file_path) as img:
+                with budgeted_open(file_path) as source, Image.open(source) as img:
                     return (*display_image_size(img), None)
         elif ext in VIDEO_EXTENSIONS:
             if cv2 is None:

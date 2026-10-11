@@ -1,6 +1,7 @@
 import os
 import re
 import mmap
+from app.service.disk_budget import budgeted_open, disk_budget
 
 
 # HEIF/AVIF images use the same ftyp box as MP4. Phone JPEGs can carry
@@ -10,6 +11,48 @@ _IMAGE_BRANDS = {
     b'mif1', b'mif2', b'msf1', b'avif', b'avis', b'miaf', b'j2ki',
 }
 _VIDEO_BRANDS = {b'isom', b'mp41', b'mp42', b'avc1', b'qt  ', b'M4V ', b'M4VH', b'M4VP'}
+
+
+def extract_video_from_stream(source, video_path: str) -> str | None:
+    """Extract from the import snapshot without reopening the original JPEG."""
+    if source is None:
+        return None
+    try:
+        source.seek(0, os.SEEK_END)
+        size = source.tell()
+        source.seek(0)
+        header = source.read(64 * 1024)
+        match = re.search(b'MicroVideoOffset=["\']?(\\d+)["\']?', header)
+        if match is None:
+            match = re.search(b'<[\\w:]*MicroVideoOffset>(\\d+)<', header)
+        start = size - int(match.group(1)) if match else None
+        if start is None:
+            source.seek(0)
+            tail = b''
+            position = 0
+            while chunk := source.read(1024 * 1024):
+                data = tail + chunk
+                for candidate in re.finditer(b'ftyp', data):
+                    local_start = candidate.start() - 4
+                    absolute_start = position - len(tail) + local_start
+                    if local_start >= 0 and absolute_start > 0 and _is_video_ftyp(data, local_start, len(data)):
+                        start = absolute_start
+                        break
+                if start is not None:
+                    break
+                position += len(chunk)
+                tail = data[-132:]
+        if start is None or not 0 < start < size:
+            return None
+        if os.path.exists(video_path):
+            return video_path
+        source.seek(start)
+        with budgeted_open(video_path, 'wb') as output:
+            while chunk := source.read(1024 * 1024):
+                output.write(chunk)
+        return video_path
+    except Exception:
+        return None
 
 
 def _is_video_ftyp(data, start: int, file_size: int) -> bool:
@@ -32,7 +75,7 @@ def get_video_offset(file_path: str) -> int | None:
     Returns None if not a Motion Photo.
     """
     try:
-        with open(file_path, 'rb') as f:
+        with budgeted_open(file_path) as f:
             # 1. Check for XMP Metadata (GCamera:MicroVideoOffset)
             # Read the beginning of the file (usually within first 64KB for XMP)
             chunk_size = 64 * 1024
@@ -67,7 +110,7 @@ def get_video_offset(file_path: str) -> int | None:
             
         with open(file_path, 'rb') as f:
             try:
-                with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+                with disk_budget.slot(file_path), mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
                     matches = [m.start() for m in re.finditer(b'ftyp', mm)]
                     
                     for pos in matches:
@@ -119,7 +162,7 @@ def extract_video(file_path: str, offset: int = None, video_path: str = None) ->
         if video_start <= 0 or video_start >= file_size:
             return None
 
-        with open(file_path, 'rb') as f_in:
+        with budgeted_open(file_path) as f_in:
             f_in.seek(video_start)
             video_data = f_in.read(offset)
 
@@ -129,7 +172,7 @@ def extract_video(file_path: str, offset: int = None, video_path: str = None) ->
             # Actually, the offset is usually exact.
 
             # Let's write it.
-            with open(video_path, 'wb') as f_out:
+            with budgeted_open(video_path, 'wb') as f_out:
                 f_out.write(video_data)
 
         return video_path

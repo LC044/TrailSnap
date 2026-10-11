@@ -69,8 +69,16 @@ PowerShell 可按版本对象排序标签：
 - package/desktop/src-tauri/Cargo.lock
 - package/desktop/src-tauri/tauri.conf.json
 - package/desktop/src-tauri/resources/ai-extensions.json
-- package/desktop/src-tauri/src/ai_extension.rs 中的扩展版本
-- .github/workflows/build-desktop-ai-extension.yml 中的 EXTENSION_VERSION
+- 扩展构建版本由 `package/ai/scripts/validate_extension_release.py` 从 Server 项目版本读取；不得留下与 Server 不一致的硬编码 `EXTENSION_VERSION`
+
+### Server 对 AI 扩展的最低依赖
+
+- `package/server/app/service/ai_extension_state.py` 的 `MINIMUM_AI_EXTENSION_VERSION` 是当前 Server 最早支持的 AI 扩展版本。
+- 已安装扩展版本 ≥ 最低版本时继续使用，不自动下载或降级；低于最低版本时只下载与当前 Server 同版本的扩展。
+- 发布前审查本次 Server 调用的 AI API、请求/响应字段和能力是否仍由最低版本提供。新增必需接口或破坏兼容时，将最低版本提高到首次提供该能力的已发布版本；若本次才提供，则设为本次版本。保持兼容时保留原值，不机械随产品版本递增。
+- 最低版本不得高于当前 Server 版本。`ai-extensions.json` 只提供对应版本的平台下载信息和 SHA-256，不维护远端强制更新或客户端兼容范围。
+- 每个正式 `vX.Y.Z` Release 必须提供 `X.Y.Z` 的 AI 扩展和 `ai-extensions.json`，确保低于最低版本的安装可升级到与 Server 同版本的包。不得使用其他版本的包仅改名冒充。
+- 标签创建前运行 `python package/ai/scripts/validate_extension_release.py --tag vX.Y.Z`，检查 Server、AI 源码/运行时、桌面和内置清单版本一致，并校验最低版本。未通过则修复后再发布。
 
 完成后再次搜索旧版本：
 
@@ -178,6 +186,8 @@ releases/ 通常被 git 忽略；确认三个文件存在即可，不强行提�
 3. 确认标签 SHA 与发布提交 SHA 一致。
 4. 确认 Release 不是 draft 或 prerelease，除非用户要求。
 5. 确认全部相关 CI 为 completed/success。
+6. 下载本次 Release 的 `ai-extensions.json`，确认 `core-ai.version == X.Y.Z`，Windows/Linux/macOS 三个平台附件齐全且均指向本次 `vX.Y.Z` 的真实资产，文件名、大小和 SHA-256 与附件一致。
+7. 对 AI 压缩包核对 `manifest.json`：版本为 `X.Y.Z`、平台与附件相符；确认 Server 返回的 `serverVersion` 和 `minimumAIExtensionVersion` 与发布源码一致。旧扩展 ≥ 最低版本时不更新，旧扩展 < 最低版本时目标必须为 `X.Y.Z`。检查失败不得宣称 AI 依赖验收成功。
 
 ## 10. 生成安装包下载区并验证 Release 正文
 

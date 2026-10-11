@@ -7,8 +7,10 @@ import logging
 import os
 import socket
 from urllib.parse import urlparse
+from typing import TYPE_CHECKING
 
-from zeroconf import IPVersion, ServiceInfo, Zeroconf
+if TYPE_CHECKING:
+    from zeroconf import ServiceInfo, Zeroconf
 
 from app.core.config_manager import VERSION
 
@@ -39,6 +41,8 @@ def build_service_info(public_url: str, instance_name: str = "TrailSnap") -> Ser
     addresses = _resolve_addresses(parsed.hostname)
     if not addresses:
         raise ValueError(f"Unable to resolve public TrailSnap host: {parsed.hostname}")
+
+    from zeroconf import ServiceInfo
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     safe_name = instance_name.strip() or "TrailSnap"
@@ -73,6 +77,8 @@ class DiscoveryService:
             return
 
         try:
+            from zeroconf import IPVersion, Zeroconf
+
             info = build_service_info(
                 public_url,
                 os.getenv("TRAILSNAP_INSTANCE_NAME", "TrailSnap"),

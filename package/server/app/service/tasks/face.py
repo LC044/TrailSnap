@@ -3,6 +3,7 @@ from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
 import logging
+import math
 import aiohttp
 from aiohttp import FormData
 from sqlalchemy.orm import Session
@@ -17,6 +18,24 @@ from app.service import storage
 from app.service.tasks.photo_generator import generate_photo_tasks
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_face_embeddings(faces, threshold):
+    """Validate accepted detections before replacing any existing faces."""
+    for face in faces:
+        if face.get('det_score') < threshold:
+            continue
+        embedding = face.get('embedding')
+        if embedding is None:
+            continue
+        try:
+            valid = (len(embedding) == 512
+                     and all(math.isfinite(float(value)) for value in embedding)
+                     and any(float(value) != 0 for value in embedding))
+        except (TypeError, ValueError, OverflowError):
+            valid = False
+        if not valid:
+            raise ValueError('AI 返回了无效的人脸特征，请检查人脸模型或推理后端后重试')
 
 @TaskStrategyFactory.register(TaskType.RECOGNIZE_FACE)
 class RecognizeFaceStrategy(BaseTaskStrategy):
@@ -160,6 +179,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                             cluster_service = FaceClusterService(db, owner_id)
                             threshold = config_manager.get_user_config(owner_id, db).ai.face_recognition_threshold
                             batch_has_unassigned = False
+                            completed_ids = []
 
                             for idx, task in enumerate(valid_tasks):
                                 photo = valid_photos[idx]
@@ -176,6 +196,14 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     continue
 
                                 faces_data = ai_result.get('faces', [])
+                                try:
+                                    _validate_face_embeddings(faces_data, threshold)
+                                except ValueError as error:
+                                    results.append({
+                                        'task_id': task.id, 'task_type': task.type,
+                                        'status': 'failed', 'error': str(error),
+                                    })
+                                    continue
                                 crud_face.delete_faces_by_photo(db, photo.id, commit=False)
 
                                 count = 0
@@ -221,6 +249,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                 photo.processed_tasks = tasks_status
                                 db.add(photo)
                                 db.flush()
+                                completed_ids.append(photo.id)
                                 
                                     
                                 results.append({
@@ -236,7 +265,6 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                 })
 
                             from app.crud.album import trigger_conditional_albums_update
-                            completed_ids = [p.id for p, item in zip(valid_photos, ai_results) if not item.get("error")]
                             if owner_id and completed_ids:
                                 trigger_conditional_albums_update(db, owner_id, completed_ids, commit=False)
                             db.commit()
@@ -288,6 +316,12 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                             return {'status': 'failed', 'error': ai_result.get('error')}
 
                         faces = ai_result.get('faces', [])
+                        try:
+                            _validate_face_embeddings(
+                                faces, config_manager.get_user_config(photo.owner_id, db).ai.face_recognition_threshold,
+                            )
+                        except ValueError as error:
+                            return {'status': 'failed', 'error': str(error)}
 
                         # Clean up old faces
                         crud_face.delete_faces_by_photo(db, photo.id)

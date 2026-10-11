@@ -29,9 +29,7 @@ try:
 except ImportError:  # pragma: no cover - Python < 3.9
     ZoneInfo = None  # type: ignore
 
-# langchain_openai 与 agent.service 的导入链重达数秒，仅在构建 LLM 客户端时
-# 才加载；langchain_core.messages 很轻，保留顶层导入。
-from langchain_core.messages import HumanMessage, SystemMessage
+# LLM dependencies are loaded only when generating captions, not listing them.
 
 from app.core.config_manager import config_manager
 from app.db.models.face import Face, FaceIdentity
@@ -505,6 +503,8 @@ async def generate_caption_sync(
             return {"caption": cached, "cached": True, "source": "existing"}
 
         llm = _build_llm(materials["_connection"], materials["_model_name"], streaming=False)
+        from langchain_core.messages import HumanMessage, SystemMessage
+
         messages = [
             SystemMessage(content=materials["_system_prompt"]),
             HumanMessage(content=materials["_user_prompt"]),
@@ -569,6 +569,8 @@ async def generate_caption_stream(
             return
 
         llm = _build_llm(materials["_connection"], materials["_model_name"], streaming=True)
+        from langchain_core.messages import HumanMessage, SystemMessage
+
         messages = [
             SystemMessage(content=materials["_system_prompt"]),
             HumanMessage(content=materials["_user_prompt"]),

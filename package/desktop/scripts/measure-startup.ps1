@@ -1,64 +1,39 @@
-# Measure TrailSnap desktop end-to-end startup time.
-# Timeline: desktop.exe launch -> server.exe spawn -> health-check 200 -> desktop-session OK
+# Measure the actual desktop home screen through WebView2, using an isolated
+# library. Requires Node.js 22+. Run 0 is warmup (excluded from comparisons).
 param(
     [string]$ExePath = "$env:LOCALAPPDATA\TrailSnap\trailsnap-desktop.exe",
-    [string]$LogDir = "$env:LOCALAPPDATA\TrailSnap\logs"
+    [string]$DataRoot = (Join-Path ([System.IO.Path]::GetTempPath()) "trailsnap-startup-$([guid]::NewGuid())"),
+    [ValidateRange(1, 20)]
+    [int]$Runs = 5,
+    [string]$OutputPath = (Join-Path $PSScriptRoot '..\..\..\output\performance\startup.json'),
+    [string]$ServerBinary
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+    throw "Desktop exe not found: $ExePath"
+}
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+    throw 'Node.js 22+ is required for the desktop startup benchmark.'
+}
 
-Write-Host "Target: $ExePath"
-if (-not (Test-Path $ExePath)) { throw "Desktop exe not found: $ExePath" }
+$benchmarkArguments = @(
+    (Join-Path $PSScriptRoot 'measure-startup.cjs'),
+    $ExePath, $OutputPath, $DataRoot, [string]$Runs
+)
+if ($ServerBinary) { $benchmarkArguments += $ServerBinary }
+& node @benchmarkArguments
+if ($LASTEXITCODE -ne 0) { throw "Desktop benchmark failed (exit $LASTEXITCODE)." }
 
-# Clean previous logs so timestamps are unambiguous.
-Remove-Item (Join-Path $LogDir 'server.log'), (Join-Path $LogDir 'server.err.log') -ErrorAction SilentlyContinue
-
-$t0 = [System.Diagnostics.Stopwatch]::StartNew()
-$launchWall = Get-Date
-Write-Host ("[+{0:N3}s] launching desktop.exe" -f $t0.Elapsed.TotalSeconds)
-
-Start-Process -FilePath $ExePath
-
-# Wait for the server sidecar process to appear.
-$serverProc = $null
-while ($t0.Elapsed.TotalSeconds -lt 60) {
-    $serverProc = Get-Process trailsnap-server -ErrorAction SilentlyContinue |
-        Where-Object { $_.StartTime -gt $launchWall.AddSeconds(-2) } |
-        Sort-Object StartTime | Select-Object -First 1
-    if ($serverProc) {
-        Write-Host ("[+{0:N3}s] trailsnap-server.exe spawned (pid {1})" -f $t0.Elapsed.TotalSeconds, $serverProc.Id)
-        break
+$report = Get-Content -LiteralPath $OutputPath -Raw | ConvertFrom-Json
+$measured = @($report.results | Where-Object run -gt 0)
+foreach ($metric in @('backendReadyMs', 'runtimeReadyMs', 'homeShellMs', 'homeDataMs')) {
+    $values = @($measured | ForEach-Object { $_.$metric } | Sort-Object)
+    $median = $values[[int][math]::Floor($values.Count / 2)]
+    if ($values.Count % 2 -eq 0) {
+        $median = ($values[$values.Count / 2 - 1] + $values[$values.Count / 2]) / 2
     }
-    Start-Sleep -Milliseconds 50
+    Write-Host ("{0}: median {1:N3}s, range {2:N3}-{3:N3}s" -f $metric, ($median / 1000), ($values[0] / 1000), ($values[-1] / 1000))
 }
-if (-not $serverProc) { throw "trailsnap-server.exe never started within 60s" }
-
-# Poll the desktop-ai log / server log for readiness markers.
-$desktopProc = Get-Process trailsnap-desktop -ErrorAction SilentlyContinue |
-    Where-Object { $_.StartTime -gt $launchWall.AddSeconds(-5) } |
-    Select-Object -First 1
-
-$ready = $false
-$sessionOk = $false
-while ($t0.Elapsed.TotalSeconds -lt 90) {
-    if (Test-Path (Join-Path $LogDir 'server.log')) {
-        $log = Get-Content (Join-Path $LogDir 'server.log') -Raw -ErrorAction SilentlyContinue
-        if (-not $ready -and $log -match 'Uvicorn running') {
-            Write-Host ("[+{0:N3}s] uvicorn accepting connections" -f $t0.Elapsed.TotalSeconds)
-            $ready = $true
-        }
-        if ($log -match 'POST /api/auth/desktop-session') {
-            Write-Host ("[+{0:N3}s] desktop-session handshake done (UI unlocked)" -f $t0.Elapsed.TotalSeconds)
-            $sessionOk = $true
-            break
-        }
-    }
-    Start-Sleep -Milliseconds 50
-}
-
-$total = $t0.Elapsed.TotalSeconds
-Write-Host ""
-Write-Host ("TOTAL desktop launch -> UI ready: {0:N2}s" -f $total)
-if (-not $sessionOk) {
-    Write-Warning "desktop-session marker not found within timeout; check logs"
-}
+Write-Host "Results: $OutputPath"
+Write-Host "Isolated library retained at: $DataRoot"

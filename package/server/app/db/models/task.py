@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, JSON, DateTime, Text, ForeignKey, Index
 from app.db.types import UUID
 from sqlalchemy.sql import func
+from sqlalchemy.orm import validates
 import enum
 import uuid
 from app.db.base import Base
@@ -127,6 +128,7 @@ class Task(Base):
     result = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)
+    photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
     
@@ -137,9 +139,18 @@ class Task(Base):
     next_retry_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     __table_args__ = (
-        Index('ix_tasks_status_priority_created', 'status', 'priority', 'created_at'),
+        Index('ix_tasks_status_priority_created', status, priority.desc(), created_at.asc()),
         Index('ix_tasks_type_status', 'type', 'status'),
+        Index('ix_tasks_type_status_priority_created', type, status, priority.desc(), created_at.asc()),
     )
+
+    @validates("payload")
+    def _associate_photo(self, _key, payload):
+        # Also runs for bulk_save_objects, which bypasses ORM insert events.
+        # Scans/global jobs have no single photo yet and keep a nullable link.
+        value = payload.get("photo_id") if isinstance(payload, dict) else None
+        self.photo_id = uuid.UUID(str(value)) if value else None
+        return payload
 
     def __str__(self):
         return f"Task(id: {self.id}, type: {self.type}, status: {self.status}, priority: {self.priority})"

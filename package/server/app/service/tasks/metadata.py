@@ -1,4 +1,3 @@
-from app.service.disk_budget import media_io
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
 from typing import List, Dict
@@ -7,6 +6,7 @@ import asyncio
 import logging
 import os
 import json
+from datetime import datetime
 from uuid import UUID
 from sqlalchemy.orm import Session
 from app.db.models.task import Task, TaskStatus, TaskType
@@ -14,6 +14,11 @@ from app.db.models.photo import Photo, ImageType, FileType
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.utils import exif
+from app.service import storage
+from app.db.models.photo_color import PhotoColor
+from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
+from app.utils.image_loading import Image
+from app.service.disk_budget import budgeted_open
 
 def determine_image_type(filename: str, width: int, height: int, exif_data: dict,
                          file_type: 'FileType | None' = None) -> ImageType:
@@ -132,7 +137,6 @@ def identify_scene(db: Session, lat: float, lng: float, *, scenes=None):
                 
     return None
 
-@media_io()
 def rebuild_metadata_cpu_job(file_path: str, file_id: UUID):
     try:
         file_name = os.path.basename(file_path)
@@ -146,6 +150,55 @@ async def sync_rebuild_metadata_cpu_job(file_path: str, file_id: UUID):
     return await asyncio.to_thread(rebuild_metadata_cpu_job, file_path, file_id)
 
 
+def extract_task_metadata(data: dict, photo: Photo) -> dict:
+    """Reuse the durable basic extraction; legacy/rebuild tasks read the source."""
+    raw = data.get('raw_metadata')
+    if data.get('raw_metadata_version') != 1 or not isinstance(raw, dict):
+        return rebuild_metadata_cpu_job(data.get('file_path') or photo.file_path, photo.id)
+    try:
+        meta = dict(raw)
+        if isinstance(meta.get('exif_info'), str):
+            meta['exif_info'] = json.loads(meta['exif_info'])
+        if isinstance(meta.get('photo_time'), str):
+            meta['photo_time'] = datetime.fromisoformat(meta['photo_time'])
+        exif._attach_location_details(meta, meta.get('location'), True)
+        return {'success': True, 'meta': meta}
+    except (ValueError, TypeError):
+        # Incompatible cached values must not make existing tasks unusable.
+        return rebuild_metadata_cpu_job(data.get('file_path') or photo.file_path, photo.id)
+
+
+def update_photo_color_from_thumbnail(db: Session, photo: Photo, *, colors=None) -> None:
+    """Prefer the small thumbnail, then preview, then source if generation failed."""
+    if photo.file_type == FileType.video or not photo.owner_id:
+        return
+    record = colors.get(photo.id) if colors is not None else db.query(PhotoColor).filter(PhotoColor.photo_id == photo.id).first()
+    if record is not None and record.analysis_version == CURRENT_COLOR_ANALYSIS_VERSION:
+        return
+    try:
+        preview = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
+        if preview is None:
+            return
+        base, ext = os.path.splitext(preview)
+        thumbnail = base + '-thumb' + ext
+        if not os.path.exists(thumbnail):
+            thumbnail = preview
+        with budgeted_open(thumbnail) as source, Image.open(source) as image:
+            info = extract_color_info(image)
+        if not info.get('dominant_colors'):
+            return
+        if record is None:
+            record = PhotoColor(photo_id=photo.id)
+            db.add(record)
+            if colors is not None:
+                colors[photo.id] = record
+        for field in ('dominant_colors', 'brightness', 'saturation', 'emotion_hint'):
+            setattr(record, field, info.get(field))
+        record.analysis_version = CURRENT_COLOR_ANALYSIS_VERSION
+    except Exception:
+        logging.getLogger(__name__).warning('Thumbnail color analysis failed for %s', photo.id, exc_info=True)
+
+
 def _extract_metadata_batch(bind, task_data):
     """Own the session in this thread; commit metadata and album changes once."""
     from app.crud.album import trigger_conditional_albums_update
@@ -154,6 +207,7 @@ def _extract_metadata_batch(bind, task_data):
         ids = [data['photo_id'] for data in task_data if data.get('photo_id')]
         photos = {photo.id: photo for photo in db.query(Photo).filter(Photo.id.in_(ids)).all()}
         metadata = {meta.photo_id: meta for meta in db.query(PhotoMetadata).filter(PhotoMetadata.photo_id.in_(ids)).all()}
+        colors = {color.photo_id: color for color in db.query(PhotoColor).filter(PhotoColor.photo_id.in_(ids)).all()}
         scenes = db.query(Scene).all()
         updated_by_owner = {}
         for data in task_data:
@@ -164,12 +218,13 @@ def _extract_metadata_batch(bind, task_data):
                 result['result'] = {'status': 'skipped', 'reason': 'photo not found' if data.get('photo_id') else 'missing photo_id'}
             else:
                 photo = photos[data['photo_id']]
-                extracted = rebuild_metadata_cpu_job(data.get('file_path') or photo.file_path, photo.id)
+                extracted = extract_task_metadata(data, photo)
                 if not extracted['success']:
                     result.update(status='failed', error=extracted.get('error', 'Metadata extraction failed'))
                 else:
                     update_photo_metadata_from_extract(db, photo, extracted['meta'], commit=False,
                                                        metadata_cache=metadata, scenes=scenes)
+                    update_photo_color_from_thumbnail(db, photo, colors=colors)
                     if photo.owner_id:
                         updated_by_owner.setdefault(photo.owner_id, []).append(photo.id)
                     result['result'] = {'status': 'success'}
@@ -189,7 +244,9 @@ class ExtractMetadataStrategy(BaseTaskStrategy):
     async def process_batch(self, worker, tasks: List[Task], db: Session) -> List[Dict]:
         task_data = []
         for task in tasks:
-            data = {'task_id': task.id, 'task_type': task.type, 'file_path': task.payload.get('file_path')}
+            data = {'task_id': task.id, 'task_type': task.type, 'file_path': task.payload.get('file_path'),
+                    'raw_metadata_version': task.payload.get('raw_metadata_version'),
+                    'raw_metadata': task.payload.get('raw_metadata')}
             value = task.payload.get('photo_id')
             try:
                 data['photo_id'] = UUID(str(value)) if value else None
@@ -228,9 +285,10 @@ class ExtractMetadataStrategy(BaseTaskStrategy):
         #     photo_id
         # )
         # res = rebuild_metadata_cpu_job(file_path,photo_id)
-        res = await sync_rebuild_metadata_cpu_job(file_path, photo_id)
+        res = await asyncio.to_thread(extract_task_metadata, dict(task.payload, file_path=file_path), photo)
         if res['success']:
             meta = res['meta']
+            update_photo_color_from_thumbnail(db, photo)
             update_photo_metadata_from_extract(db, photo, meta)
             return {'status': 'success'}
         else:

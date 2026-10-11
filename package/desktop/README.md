@@ -103,8 +103,40 @@ Sidecar，空闲十分钟后自动退出。日志写入桌面数据目录下的 
 内部保留批量并行。切换模型类别前会等待推理结束并释放上一类别的模型缓存，
 避免场景识别、人脸识别和特征提取模型共同驻留。CPU、IO 队列保留各自的并发调度。
 
-在线安装依赖对应版本 GitHub Release 中的 `ai-extensions.json` 和平台扩展包。在预发布阶段，
-也可以从 GitHub Actions 下载 `.tar.gz` 扩展包，在设置页选择“离线导入”。
+启动时读取当前 Server 的版本和最低支持的 AI 扩展版本，再获取该 Server 的
+`v{serverVersion}` Release 中已有的 `ai-extensions.json`；也可点击“检查更新”。
+已安装版本 ≥ Server 最低支持版本时继续使用，不自动下载、重装或降级。
+低于最低支持版本时，只下载与 Server 同版本、匹配当前平台且带 SHA-256 的扩展。
+未安装时仍由用户选择安装。如果清单或同版本附件不可用，低于最低版本的任务保持等待更新；
+满足最低版本的已安装扩展不受清单失败影响。可通过 `TS_AI_EXTENSION_CATALOG_URL` 覆盖清单地址。
+
+替换或卸载先停止新任务派发，等待推理、结果提交、Gateway 响应流与模型下载结束，再停止 Sidecar。
+缺失或维护期间任务待执行，不消耗失败重试次数；安装完成后自动继续，用户主动暂停保持不变。
+失败回滚旧安装，低于最低支持版本的旧运行时仍保持等待；替换事务日志在异常退出后恢复。
+扩展操作互斥，照片、独立 `models` 目录与分析结果保留。
+
+设置页显示客户端、Server、最低扩展版本、系统与架构，提供官方下载页和同版本平台附件的手动下载直链。
+下载 `.tar.gz` 后无需解压，点击“离线导入”。没有附件时仍保留官方下载页。
+
+### Server 最低版本与扩展发布
+
+唯一的兼容性配置在 `package/server/app/service/ai_extension_state.py`：
+
+```python
+MINIMUM_AI_EXTENSION_VERSION = "0.17.3"
+```
+
+它表示当前 Server 最早支持的 AI 扩展版本，只在 Server 需要旧扩展没有的 API 或能力时提高，
+不随每次产品版本机械递增。扩展的升级目标始终与当前 Server 同版本。
+清单只保存扩展版本、平台附件 URL、SHA-256、文件名与大小，不再使用远端强制规则或客户端版本范围。
+既有 Schema 1 清单可直接使用，无需为兼容判断更新历史 Release 的 JSON。
+
+`Build Desktop AI Extension` 对正式 `v*.*.*` 标签、相关 PR 或手动运行构建。
+工作流先运行 `package/ai/scripts/validate_extension_release.py`，确认 Server、AI 源码/运行时、
+桌面和内置清单的版本一致，并校验最低版本不高于 Server；之后从 Server 版本生成扩展版本。
+同版本压缩包与清单一起上传到本次正式 Release，不创建额外的 `ai-extensions` 或 `ai-v*` Release。
+生成清单时检查三平台附件齐全、版本与链接正确且带 SHA-256；断点文件按扩展、平台与 SHA-256 隔离。
+
 Windows 下 llama.cpp 运行时由桌面壳直接从官方 GitHub Release 下载并做 SHA-256 校验，
 不依赖 winget。
 

@@ -28,6 +28,10 @@ from app.service.task_strategy import TaskStrategyFactory
 from app.service.adaptive_limiter import AdaptiveResourceLimiter
 from app.service.task_runtime import await_owned
 from app.service.disk_budget import disk_budget
+from app.service.ai_extension_state import (
+    STATE_KEY as EXTENSION_STATE_KEY, LOCAL_TYPES, WAIT_INSTALL, WAIT_UPDATE,
+    apply_wait_state, requires_extension, wait_reason,
+)
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
 from app.service.tasks import daily_frame
@@ -551,6 +555,12 @@ class TaskWorker:
             paused_list = self._load_system_state('paused_categories', [])
             self.paused_categories = set(paused_list)
             self.fast_mode = self._load_system_state('fast_mode', False)
+            if os.environ.get("TS_DESKTOP") == "1":
+                db = SessionLocal()
+                try:
+                    apply_wait_state(db, self._load_system_state(EXTENSION_STATE_KEY, "missing"))
+                finally:
+                    db.close()
             self._last_sync = now
 
     def _manage_pool_lifecycle(self):
@@ -617,6 +627,7 @@ class TaskWorker:
             FETCH_BATCH_SIZE = 128
 
             chunked_batches = []
+            extension_wait = self._extension_wait_reason()
             for cat in ['CPU', 'IO', 'AI']:
                 cat_types = [t for t in allowed_types if TaskStrategyFactory.get_strategy(t) and TaskStrategyFactory.get_strategy(t).task_category == cat]
                 # A category pause disables automatic pipeline work, not an
@@ -629,6 +640,9 @@ class TaskWorker:
                     and TaskStrategyFactory.get_strategy(t)
                     and TaskStrategyFactory.get_strategy(t).task_category == cat
                 ])
+                if extension_wait:
+                    # Maintenance also gates interactive-priority work.
+                    cat_types = [t for t in cat_types if t not in LOCAL_TYPES]
                 if not cat_types:
                     continue
 
@@ -659,10 +673,9 @@ class TaskWorker:
                     continue
 
                 # 选出候选类型中优先级最高、且尚有 PENDING 任务的那一种
-                top_query = (db.query(Task.type, Task.priority)
+                top_query = (db.query(Task.type, Task.priority, Task.created_at)
                          .filter(Task.status == TaskStatus.PENDING)
                          .filter(or_(Task.next_retry_at.is_(None), Task.next_retry_at <= datetime.now()))
-                         .filter(Task.type.in_(candidate_types))
                          .filter(or_(
                              Task.type.notin_(list(self.paused_categories)),
                              Task.priority >= INTERACTIVE_TASK_PRIORITY,
@@ -670,7 +683,14 @@ class TaskWorker:
                           .order_by(Task.priority.desc(), Task.created_at.asc()))
                 if reserved_task_ids:
                     top_query = top_query.filter(Task.id.notin_(list(reserved_task_ids)))
-                top = top_query.first()
+                if extension_wait:
+                    top_query = top_query.filter(or_(Task.error.is_(None), ~Task.error.in_([WAIT_INSTALL, WAIT_UPDATE])))
+                # Equality on each type lets the dispatch index supply the
+                # mixed-direction ordering without sorting an entire category.
+                heads = [top_query.filter(Task.type == task_type).first()
+                         for task_type in dict.fromkeys(candidate_types)]
+                top = min((head for head in heads if head is not None),
+                          key=lambda head: (-head[1], head[2]), default=None)
                 if not top:
                     continue
                 chosen_type = top[0]
@@ -693,6 +713,8 @@ class TaskWorker:
                            )))
                 if reserved_task_ids:
                     query = query.filter(Task.id.notin_(list(reserved_task_ids)))
+                if extension_wait:
+                    query = query.filter(or_(Task.error.is_(None), ~Task.error.in_([WAIT_INSTALL, WAIT_UPDATE])))
                 fetch_limit = min(FETCH_BATCH_SIZE, prefetch_limit - queued_items)
                 tasks = (query.order_by(Task.priority.desc(), Task.created_at.asc())
                               .limit(fetch_limit)
@@ -862,6 +884,14 @@ class TaskWorker:
             strategy = TaskStrategyFactory.get_strategy(task_type)
             if strategy is None:
                 raise ValueError(f'Strategy not found for task type: {task_type}')
+            reason = self._extension_wait_reason()
+            if reason:
+                waiting = [t for t in tasks if requires_extension(t.type, t.owner_id, db)]
+                for task in waiting:
+                    self._defer_extension_task(db, task, reason)
+                tasks = [t for t in tasks if t not in waiting]
+                if not tasks:
+                    return [], None
             if task_type in self.paused_categories and not all(
                 t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):
@@ -896,6 +926,14 @@ class TaskWorker:
                 task = task_map.get(result.get('task_id'))
                 if result.get('status') == TaskStatus.FAILED:
                     error = result.get('error')
+                    reason = self._extension_wait_reason()
+                    if task is not None and requires_extension(task.type, task.owner_id, db) and (
+                        reason or 'ai_extension_wait=' in str(error)
+                    ):
+                        self._defer_extension_task(db, task, reason or (
+                            WAIT_INSTALL if 'ai_extension_wait=missing' in str(error) else WAIT_UPDATE
+                        ))
+                        continue
                     retryable = self._is_retryable_error(error)
                     if retryable:
                         outcome = 'waiting_for_model' if self._is_model_preparing_error(error) else 'overload'
@@ -940,6 +978,18 @@ class TaskWorker:
             '服务繁忙', 'try again later',
         )
         return any(marker in text for marker in markers)
+
+    def _extension_wait_reason(self):
+        if os.environ.get("TS_DESKTOP") != "1":
+            return None
+        return wait_reason(self._load_system_state(EXTENSION_STATE_KEY, "missing"))
+
+    def _defer_extension_task(self, db, task, reason):
+        task.status = TaskStatus.PENDING
+        task.error = reason
+        task.next_retry_at = None
+        db.commit()
+        self._publish_task_row(task)
 
     @staticmethod
     def _is_model_preparing_error(error: Any) -> bool:

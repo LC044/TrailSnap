@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen w-full bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex flex-col overflow-hidden relative select-none">
+  <div class="swipe-filter-page h-full min-h-0 w-full bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 flex flex-col overflow-hidden relative select-none">
     <!-- 顶部状态栏 -->
     <header class="flex-none h-14 flex items-center justify-between px-4 z-20 bg-gradient-to-b from-slate-50/80 dark:from-slate-900/80 to-transparent">
       <BackButton label="返回工具箱" @click="handleBack" />
@@ -12,6 +12,10 @@
           {{ syncError ? '等待网络同步' : '同步中' }}
         </span>
       </div>
+      <div class="flex items-center gap-1">
+        <button type="button" aria-label="玩法说明" title="玩法说明" class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800" @click="showGuide = true">
+          <Hand class="w-5 h-5" />
+        </button>
       <button
         @click="undo"
         :disabled="actionHistory.length === 0"
@@ -20,10 +24,11 @@
       >
         <Undo class="w-5 h-5" />
       </button>
+      </div>
     </header>
 
     <!-- 居中图片卡片区 -->
-    <main class="flex-1 relative flex items-center justify-center p-4 overflow-hidden">
+    <main class="min-h-0 flex-1 relative flex items-center justify-center p-4 overflow-hidden">
       <div v-if="loading && photos.length === 0" class="flex flex-col items-center gap-4 text-slate-500 dark:text-slate-400">
         <div class="w-8 h-8 border-4 border-slate-300 dark:border-slate-600 border-t-primary-500 rounded-full animate-spin"></div>
         <span class="text-sm">加载中...</span>
@@ -69,7 +74,7 @@
           :key="photo.id"
           data-testid="swipe-card"
           :data-photo-id="photo.id"
-          class="absolute inset-0 m-auto w-[85vw] max-w-[360px] h-[68vh] max-h-[600px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden transform-gpu will-change-transform touch-none"
+          class="absolute inset-0 m-auto w-[85vw] max-w-[360px] h-full max-h-[600px] bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col overflow-hidden transform-gpu will-change-transform touch-none"
           :class="index === 0
             ? 'cursor-grab active:cursor-grabbing'
             : 'pointer-events-none'"
@@ -252,7 +257,7 @@
         class="absolute inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
         @click.self="dismissGuide"
       >
-        <div class="relative w-full max-w-md bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+        <div class="relative w-full max-w-md max-h-full overflow-y-auto bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700">
           <!-- 头部 -->
           <div class="bg-gradient-to-br from-primary-500 to-primary-600 px-6 py-5 text-white">
             <div class="flex items-center gap-2">
@@ -656,8 +661,10 @@ watch(currentPhoto, (photo) => {
 })
 
 // 首次使用引导
-const GUIDE_STORAGE_KEY = 'trailsnap:swipe-filter:guide-seen'
-const showGuide = ref(false)
+const GUIDE_STORAGE_KEY = 'trailsnap:swipe-filter:guide-seen:v2'
+const showGuide = ref((() => {
+  try { return !localStorage.getItem(GUIDE_STORAGE_KEY) } catch { return true }
+})())
 
 const dismissGuide = () => {
   showGuide.value = false
@@ -1092,14 +1099,7 @@ onMounted(async () => {
   await fetchPhotos()
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('beforeunload', handleBeforeUnload)
-  // 首次打开时展示引导
-  try {
-    if (!localStorage.getItem(GUIDE_STORAGE_KEY)) {
-      showGuide.value = true
-    }
-  } catch (e) {
-    // localStorage 不可用时忽略
-  }
+
 })
 
 onUnmounted(() => {

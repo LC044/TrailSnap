@@ -3,7 +3,6 @@ from app.db.models.image_vector import ImageVector
 from app.db.models.photo import Photo
 from typing import List, Optional, Any
 from uuid import UUID
-import numpy as np
 
 def create_or_update_vector(db: Session, photo_id: UUID, embedding: List[float], model_name: str = "clip-ViT-B-32"):
     """
@@ -33,6 +32,8 @@ def search_similar_vectors(db: Session, embedding: List[float], limit: int = 10,
     However, pgvector's cosine distance operator <=> returns 1 - cosine_similarity.
     """
     if db.bind.dialect.name == "sqlite":
+        import numpy as np
+
         query = db.query(ImageVector)
         if user_id:
             query = query.join(Photo, ImageVector.photo_id == Photo.id).filter(

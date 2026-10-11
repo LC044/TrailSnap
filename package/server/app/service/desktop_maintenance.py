@@ -8,11 +8,20 @@ class DesktopMaintenance:
     def __init__(self):
         self.draining = False
         self.active = 0
+        self.ai_draining = False
+        self.ai_active = 0
 
     async def middleware(self, scope, receive, send, app):
         path = scope.get("path", "").removeprefix("/api")
-        if scope["type"] != "http" or path == "/system/desktop/prepare-migration":
+        if scope["type"] != "http" or path in {"/system/desktop/prepare-migration", "/system/desktop/ai-extension"}:
             return await app(scope, receive, send)
+        ai_request = path.startswith(("/faces", "/search", "/train-ticket", "/flight-ticket", "/settings/ai-models", "/settings/verify-ai-service"))
+        if ai_request and self.ai_draining:
+            response = JSONResponse(
+                {"code": 503, "msg": "ai_extension_wait=maintenance 等待 AI 扩展更新", "data": None},
+                status_code=503,
+            )
+            return await response(scope, receive, send)
         if self.draining:
             response = JSONResponse(
                 {"code": 503, "msg": "数据目录迁移准备中，请在重启完成后重试", "data": None},
@@ -23,11 +32,15 @@ class DesktopMaintenance:
         tracked = path not in {"/tasks/events", "/notifications/events"}
         if tracked:
             self.active += 1
+        if ai_request:
+            self.ai_active += 1
         try:
             await app(scope, receive, send)
         finally:
             if tracked:
                 self.active -= 1
+            if ai_request:
+                self.ai_active -= 1
 
     async def prepare(self, scheduler, manager):
         # Set this synchronously on the ASGI loop before accepting another request.
