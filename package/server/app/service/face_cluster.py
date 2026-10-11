@@ -172,6 +172,21 @@ class FaceClusterService:
             logger.error(f"分配Identity异常：{str(e)}", exc_info=True)
             raise
 
+    def _assigned_face_query(self, owner_id: uuid.UUID | None):
+        query = self.db.query(Face.id, Face.face_identity_id).filter(
+            Face.face_identity_id.isnot(None),
+            Face.is_deleted.is_(False),
+        )
+        if owner_id:
+            # Drive candidate verification from faces, not all of the owner's
+            # photos. SQLite can otherwise nest every candidate id lookup
+            # inside a scan of the entire photo library.
+            query = query.filter(select(Photo.id).where(
+                Photo.id == Face.photo_id,
+                Photo.owner_id == owner_id,
+            ).exists())
+        return query
+
     def _resolve_assigned_candidates(
         self,
         candidate_ids: np.ndarray,
@@ -180,13 +195,9 @@ class FaceClusterService:
         """Map a small id window to its identity, keeping only eligible faces."""
         if candidate_ids.size == 0:
             return {}
-        query = self.db.query(Face.id, Face.face_identity_id).filter(
+        query = self._assigned_face_query(owner_id).filter(
             Face.id.in_([int(value) for value in candidate_ids]),
-            Face.face_identity_id.isnot(None),
-            Face.is_deleted.is_(False),
         )
-        if owner_id:
-            query = query.join(Photo).filter(Photo.owner_id == owner_id)
         return {int(row[0]): row[1] for row in query.all()}
 
     def _sqlite_nearest_assigned_face(
@@ -202,6 +213,12 @@ class FaceClusterService:
         library face on every call, which dominated the runtime and defeated
         the point of the matmul.
         """
+        # No assigned reference means every widening window would be empty.
+        # Check live database state on each lookup rather than caching a negative
+        # result: an identity may be assigned later in this session or elsewhere.
+        if self._assigned_face_query(owner_id).filter(Face.id != face_id).first() is None:
+            return None
+
         queries = np.ascontiguousarray(target_emb, dtype=np.float32).reshape(1, -1)
         id_blocks = []
         score_blocks = []
