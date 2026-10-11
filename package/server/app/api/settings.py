@@ -26,18 +26,12 @@ from app.service.task_manager import TaskManager
 from app.service import gallery_service
 from app.db.session import SessionLocal
 from app.core.paths import RG_DATA_DIR, COUNTRIES_JSON_FILE
-# Import reverse_geocoder from the local package
-# Assuming package/server is in sys.path or accessible
-try:
+
+# reverse_geocoder 顶层导入 scipy.spatial（~0.3s），只有下载国家数据的接口
+# 需要它；延迟导入避免拖慢 API 启动。
+def _download_country_data(code: str, data_dir: str):
     from reverse_geocoder import download_country_data
-except ImportError:
-    import sys
-    # Add package/server to path if not present (heuristic)
-    # Go up 2 levels: api -> app -> server
-    server_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
-    if server_path not in sys.path:
-        sys.path.insert(0, server_path)
-    from reverse_geocoder import download_country_data
+    download_country_data(code, data_dir)
 
 router = APIRouter()
 
@@ -852,7 +846,7 @@ def download_map_data(payload: dict, background_tasks: BackgroundTasks):
          raise HTTPException(status_code=400, detail='Country code required')
 
     # We can run this in background
-    background_tasks.add_task(download_country_data, code, RG_DATA_DIR)
+    background_tasks.add_task(_download_country_data, code, RG_DATA_DIR)
     return {"status": "downloading", "country_code": code}
 
 @router.post('/map/upload')

@@ -268,6 +268,7 @@ def test_extract_metadata_falls_back_to_now(tmp_path):
 
 
 def test_reverse_geocode_returns_address_dict():
+    import reverse_geocoder
     fake_row = {
         "admin_1": "上海市",
         "admin_2": "市辖区",
@@ -276,7 +277,7 @@ def test_reverse_geocode_returns_address_dict():
         "name": "外滩",
         "country": "中国",
     }
-    with patch.object(exif.rg, "search", return_value=[fake_row]):
+    with patch.object(reverse_geocoder, "search", return_value=[fake_row]):
         result = reverse_geocode(31.23, 121.47)
     assert result["province"] == "上海市"
     assert result["city"] == "市辖区"
@@ -285,5 +286,6 @@ def test_reverse_geocode_returns_address_dict():
 
 
 def test_reverse_geocode_returns_empty_on_exception():
-    with patch.object(exif.rg, "search", side_effect=RuntimeError("rg broken")):
+    import reverse_geocoder
+    with patch.object(reverse_geocoder, "search", side_effect=RuntimeError("rg broken")):
         assert reverse_geocode(0, 0) == {}

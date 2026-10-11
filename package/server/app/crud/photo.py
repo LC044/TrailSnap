@@ -9,7 +9,6 @@
 @Description : 
 """
 import os
-import numpy as np
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
@@ -251,6 +250,8 @@ def get_photos(db: Session, album_id: UUID, skip: int = 0, limit: int = 100, sta
         query = query.options(joinedload(Photo.albums))
 
     if sqlite_smart_sort:
+        # numpy 只在这条 SQLite 智能相册排序路径需要；延迟导入避免拖慢启动。
+        import numpy as np
         rows = query.with_entities(Photo, ImageVector.embedding).all()
         target = np.asarray(album.query_embedding, dtype=float)
         target_norm = np.linalg.norm(target)

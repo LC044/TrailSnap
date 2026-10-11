@@ -170,7 +170,7 @@ def test_rescan_identity_calls_face_cluster_service():
     identity = SimpleNamespace(id=uuid4())
     expected = {"added": 3, "removed": 1, "affected_photo_ids": []}
     with patch.object(face_api.crud_face, "get_identity", return_value=identity):
-        with patch("app.api.face.FaceClusterService") as service_cls:
+        with patch("app.service.face_cluster.FaceClusterService") as service_cls:
             service_cls.return_value.rescan_identity.return_value = expected
             with patch("app.crud.album.trigger_conditional_albums_update"):
                 response = face_api.rescan_identity(

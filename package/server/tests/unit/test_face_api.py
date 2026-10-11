@@ -180,7 +180,7 @@ def test_rescan_identity_uses_user_config_and_returns_two_phase_counts():
     }
 
     with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
-         patch.object(face_api, "FaceClusterService") as service_class:
+         patch("app.service.face_cluster.FaceClusterService") as service_class:
         service_class.return_value.rescan_identity.return_value = result
         response = face_api.rescan_identity(id=identity_id, db=db, current_user=user)
 
@@ -198,7 +198,7 @@ def test_rescan_identity_exposes_execution_failure_as_http_500():
     identity_id = uuid4()
 
     with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
-         patch.object(face_api, "FaceClusterService") as service_class:
+         patch("app.service.face_cluster.FaceClusterService") as service_class:
         service_class.return_value.rescan_identity.side_effect = FaceRescanError("failed")
         with pytest.raises(HTTPException) as exc_info:
             face_api.rescan_identity(id=identity_id, db=db, current_user=user)
@@ -219,7 +219,7 @@ def test_preview_identity_rescan_returns_candidates_without_applying():
     }
 
     with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
-         patch.object(face_api, "FaceClusterService") as service_class:
+         patch("app.service.face_cluster.FaceClusterService") as service_class:
         service_class.return_value.preview_identity_rescan.return_value = preview
         response = face_api.preview_identity_rescan(id=identity_id, db=db, current_user=user)
 
@@ -242,7 +242,7 @@ def test_apply_identity_rescan_passes_selection_and_updates_affected_photos():
     }
 
     with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
-         patch.object(face_api, "FaceClusterService") as service_class, \
+         patch("app.service.face_cluster.FaceClusterService") as service_class, \
          patch("app.crud.album.trigger_conditional_albums_update") as trigger:
         service_class.return_value.apply_identity_rescan.return_value = result
         response = face_api.apply_identity_rescan(payload=payload, id=identity_id, db=db, current_user=user)
@@ -267,7 +267,7 @@ def test_apply_identity_rescan_exposes_stale_preview_as_http_409():
     payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[])
 
     with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
-         patch.object(face_api, "FaceClusterService") as service_class:
+         patch("app.service.face_cluster.FaceClusterService") as service_class:
         service_class.return_value.apply_identity_rescan.side_effect = FaceRescanConflictError("stale")
         with pytest.raises(HTTPException) as exc_info:
             face_api.apply_identity_rescan(payload=payload, id=identity_id, db=db, current_user=user)

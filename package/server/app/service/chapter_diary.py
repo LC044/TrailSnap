@@ -16,7 +16,6 @@ from app.db.models.image_description import ImageDescription
 from app.db.models.memory import Memory
 from app.schemas.chapter import ChapterDiaryGenerate
 from app.service import chapter
-from app.service.agent.service import FixedChatOpenAI
 
 
 class DiaryText(BaseModel):
@@ -60,6 +59,9 @@ def configured_model(db: Session, owner_id: UUID):
     connection = next((item for item in settings.connections if item.id == connection_id), None)
     if not model_name or not connection or not connection.enable or not connection.api_key:
         raise HTTPException(400, "请先在系统设置中配置可用的 AI 对话模型")
+    # 延迟导入：agent.service 的导入链（langchain_openai）重达数秒，
+    # 仅在真正构建客户端时才加载。
+    from app.service.agent.service import FixedChatOpenAI
     return FixedChatOpenAI(model=model_name, api_key=connection.api_key,
                           base_url=connection.api_base or None, temperature=0.4,
                           timeout=90, max_completion_tokens=8192)

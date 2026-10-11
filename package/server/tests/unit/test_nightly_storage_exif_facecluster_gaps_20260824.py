@@ -238,7 +238,8 @@ def test_reverse_geocode_uses_admin_levels_when_present(monkeypatch):
             "country": "CN",
         }]
 
-    monkeypatch.setattr(exif.rg, "search", _fake_search)
+    import reverse_geocoder
+    monkeypatch.setattr(reverse_geocoder, "search", _fake_search)
     out = exif.reverse_geocode(30.5, 114.3)
     assert captured["coords"] == [(30.5, 114.3)]
     assert captured["mode"] == 1
@@ -255,7 +256,8 @@ def test_reverse_geocode_returns_empty_when_search_raises(monkeypatch):
     def _boom(*a, **k):
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(exif.rg, "search", _boom)
+    import reverse_geocoder
+    monkeypatch.setattr(reverse_geocoder, "search", _boom)
     assert exif.reverse_geocode(0.0, 0.0) == {}
 
 
@@ -272,7 +274,8 @@ def test_reverse_geocode_falls_back_to_name_when_admin4_empty(monkeypatch):
             "country": "JP",
         }]
 
-    monkeypatch.setattr(exif.rg, "search", _fake_search)
+    import reverse_geocoder
+    monkeypatch.setattr(reverse_geocoder, "search", _fake_search)
     out = exif.reverse_geocode(43.06, 141.35)
     assert out["city"] == "Sapporo"
     assert out["address"].endswith("Odori Park")

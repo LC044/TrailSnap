@@ -16,7 +16,6 @@ from app.db.models.task import TaskType, TaskStatus, Task
 from app.service.task_manager import TaskManager
 from app.crud import task as crud_task
 from app.schemas.photo import Photo as PhotoSchema
-from app.service.similar_photo import SimilarPhotoService
 from app.db.models.task import Task, TaskType, TaskStatus
 from app.schemas import photo as schemas
 from app.crud import task as crud_task
@@ -359,6 +358,9 @@ def get_similar_photos(
     current_user: User = Depends(get_current_user)
 ):
     print(f"Getting similar photos with threshold {threshold} for user {current_user.id}")
+    # 延迟导入：similar_photo 顶层拉入 sklearn.cluster（~0.8s），只有这条
+    # deprecated 路由需要它。
+    from app.service.similar_photo import SimilarPhotoService
     service = SimilarPhotoService(db, str(current_user.id))
     return BaseResponse(data=service.get_similar_groups(threshold))
 
