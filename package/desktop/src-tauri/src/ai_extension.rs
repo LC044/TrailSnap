@@ -698,7 +698,7 @@ mod tests {
             serde_json::to_vec(&json!({
                 "schemaVersion": 1,
                 "id": "core-ai",
-                "version": "0.17.2",
+                "version": "0.17.3",
                 "platform": platform_key(),
                 "capabilities": ["ocr", "tickets", "classification"],
                 "entrypoint": entrypoint,
@@ -714,7 +714,7 @@ mod tests {
                 "extensions": [{
                     "id": "core-ai",
                     "name": "TrailSnap AI 基础扩展",
-                    "version": "0.17.2",
+                    "version": "0.17.3",
                     "description": "test",
                     "capabilities": ["ocr", "tickets", "classification"],
                     "requirements": {},

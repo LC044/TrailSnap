@@ -188,5 +188,10 @@
         "version": "0.17.2",
         "update_info": "- 票据夹全新升级：车票机票统一浏览，票据可关联相册和照片<br>- 统一移动端日期时间选择器<br>- 优化移动端相册、回收站长按选择与回忆布局<br>- 修复照片时间轴卡顿与 EXIF 方向尺寸错误<br>- 修复首次安装注册被阻塞、偶发请求失败自动重试",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.2"
+    },
+    {
+        "version": "0.17.3",
+        "update_info": "- 桌面端冷启动约 18 秒缩短至 4 秒左右<br>- 新增数据目录设置：照片库可整体安全迁移到其他磁盘<br>- 新增连接手机 App：扫码即可备份照片到同一图库<br>- 手机备份与上传大幅提速，支持断点续传<br>- 修复照片页刷新闪屏、AI 对话流式中断等问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.3"
     }
 ]

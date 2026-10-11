@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-10-11 (0.17.3)
+
+### New
+
+- Desktop "Data Directory" setting: move your entire photo library to another drive; migration waits for running tasks and uploads to finish, rolls back on failure, and keeps the original folder as a backup
+- Desktop "Connect Mobile App": shows a LAN address and QR code so your phone can back up photos to the same library; the port stays stable across restarts
+- Photo viewer gains "Reveal original file" in the file manager
+
+### Improvements
+
+- Desktop cold start is dramatically faster: about 18 seconds from launch to usable down to around 4 seconds
+- Much faster mobile backup and uploads: original-file save confirmation is about 88% quicker; thumbnails and metadata move to background processing; chunked uploads resume after interruption and failed files no longer block the rest
+- More reliable background task scheduling: AI tasks run in type-based batches with fewer model switches, and disk I/O is throttled per volume for a smoother UI during scans
+- HEIC/HEIF photos now display as previews directly in the browser
+- Upload queue survives minimizing the window or switching pages
+
+### Bug Fixes
+
+- Fixed the photo page flickering with a full refresh after background tasks finished
+- Fixed desktop AI chat streaming responses breaking (502) and a black console window flashing on Windows
+- Fixed desktop settings failing to save when AppData is encrypted
+- Fixed mobile photo viewer thumbnails being covered by the action bar
+- The Windows installer now closes a running TrailSnap automatically, so you no longer need to quit it before upgrading
+
 ## 2026-10-09 (0.17.2)
 
 ### New
