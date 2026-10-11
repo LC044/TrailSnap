@@ -99,7 +99,11 @@ def restore_person_timeline_segment(id: UUID, rule_id: UUID, with_id: Optional[U
     db.commit()
     return BaseResponse.success({"restored": True})
 
-from app.service.face_cluster import FaceClusterService, FaceRescanConflictError, FaceRescanError
+def _face_cluster_service():
+    """延迟导入 FaceClusterService：face_cluster 顶层导入 sklearn.cluster
+    （~0.8s），只在真正需要重扫人物时才加载。"""
+    from app.service.face_cluster import FaceClusterService
+    return FaceClusterService
 
 @router.post("/identities", response_model=BaseResponse[FaceIdentitySchema], summary="创建新人物", description="创建一个新的人物记录")
 def create_identity(
@@ -413,7 +417,8 @@ def rescan_identity(
         raise HTTPException(status_code=404, detail="Identity not found")
         
     try:
-        service = FaceClusterService(db, user_id=current_user.id)
+        from app.service.face_cluster import FaceRescanError
+        service = _face_cluster_service()(db, user_id=current_user.id)
         result = service.rescan_identity(id, owner_id=current_user.id)
     except FaceRescanError as exc:
         raise HTTPException(status_code=500, detail="Face identity rescan failed") from exc
@@ -435,7 +440,8 @@ def preview_identity_rescan(
         raise HTTPException(status_code=404, detail="Identity not found")
 
     try:
-        service = FaceClusterService(db, user_id=current_user.id)
+        from app.service.face_cluster import FaceRescanError
+        service = _face_cluster_service()(db, user_id=current_user.id)
         result = service.preview_identity_rescan(id, owner_id=current_user.id)
     except FaceRescanError as exc:
         raise HTTPException(status_code=500, detail="Face identity rescan preview failed") from exc
@@ -453,7 +459,8 @@ def apply_identity_rescan(
         raise HTTPException(status_code=404, detail="Identity not found")
 
     try:
-        service = FaceClusterService(db, user_id=current_user.id)
+        from app.service.face_cluster import FaceRescanConflictError, FaceRescanError
+        service = _face_cluster_service()(db, user_id=current_user.id)
         result = service.apply_identity_rescan(
             id,
             owner_id=current_user.id,

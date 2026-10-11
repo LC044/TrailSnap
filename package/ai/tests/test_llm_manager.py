@@ -175,6 +175,27 @@ def test_ensure_running_no_op_when_subprocess_alive(monkeypatch, tmp_path):
     popen.assert_not_called()
 
 
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_start_llama_without_console_or_interactive_stdin(monkeypatch, tmp_path, platform):
+    from app.services import llm_manager as lm
+
+    manager = _make_manager(monkeypatch, _make_settings(str(tmp_path)))
+    manager._get_resolved_model_path = lambda: (str(tmp_path / "model.gguf"), "")
+    manager._llama_server_executable = lambda: "llama-server"
+    manager._wait_for_ready = AsyncMock()
+    monkeypatch.setattr(lm.sys, "platform", platform)
+    monkeypatch.setattr(lm.subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    with patch.object(lm.subprocess, "Popen") as popen:
+        asyncio.run(manager.ensure_running())
+    options = popen.call_args.kwargs
+    assert options["stdin"] == lm.subprocess.DEVNULL
+    if platform == "win32":
+        assert options["creationflags"] == 0x08000000
+    else:
+        assert "creationflags" not in options
+    manager._wait_for_ready.assert_awaited_once()
+
+
 def test_wait_for_ready_terminates_and_raises(monkeypatch, tmp_path):
     """The readiness loop must kill the subprocess and surface ``RuntimeError``."""
     from app.services import llm_manager as lm

@@ -130,8 +130,10 @@ class LLMProcessManager:
             ])
             self.process = subprocess.Popen(
                 command,
+                stdin=subprocess.DEVNULL,
                 stdout=sys.stdout,
-                stderr=sys.stderr
+                stderr=sys.stderr,
+                **({"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}),
             )
             self.active_model_id = selected_model_id
             await self._wait_for_ready()

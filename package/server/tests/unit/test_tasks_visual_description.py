@@ -143,7 +143,7 @@ def test_create_client_uses_visual_timeout_without_nested_retries():
         connections=[connection],
     )
 
-    with patch.object(vd_mod, "ChatOpenAI") as chat_openai:
+    with patch("langchain_openai.ChatOpenAI") as chat_openai:
         strategy.create_client(settings)
 
     kwargs = chat_openai.call_args.kwargs

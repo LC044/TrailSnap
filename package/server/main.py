@@ -11,10 +11,11 @@
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware, GZipResponder
 from fastapi import FastAPI, Request
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 import asyncio
 import os
 import logging
+import threading
 import time
 from dotenv import load_dotenv
 from starlette.datastructures import Headers
@@ -40,7 +41,69 @@ from app.core.config_manager import VERSION
 from app.dependencies import BaseResponse
 from app.service.task_manager import TaskManager
 from app.service.discovery import DiscoveryService
-from app.service.mcp_server import mcp, mcp_http_app
+
+# MCP endpoint. mcp_server 的导入链（mcp 包 + 全部工具模型）重达秒级；改为
+# 惰性 ASGI 包装：首次命中 /mcp 才构建，冷启动完全跳过。桌面端同样受益。
+# lifespan 创建的 _McpSessionHolder 会被 LazyMcpApp 在首次解析时读取，
+# 负责在应用退出时停掉 MCP session manager。
+
+
+class LazyMcpApp:
+    """首次请求时才导入 mcp_server 并委托给真正的 Streamable HTTP app。
+
+    ASGI ``__call__`` 始终在事件循环线程上被调用，因此用 ``asyncio.Lock``
+    串行化首次构建，并直接 await session manager 启动完成，避免首个请求
+    在会话管理器就绪前被委托。
+    """
+
+    def __init__(self) -> None:
+        self._app = None
+        self._lock = asyncio.Lock()
+
+    async def _resolve(self):
+        async with self._lock:
+            if self._app is None:
+                from app.service.mcp_server import mcp, mcp_http_app
+                self._app = mcp_http_app
+                # The FastAPI lifespan cannot pre-mount into a not-yet-created
+                # MCP app, so start the session manager here on first use.
+                holder = _app_state.get("mcp_session_holder")
+                if holder is not None:
+                    await holder.enter(mcp)
+            return self._app
+
+    async def __call__(self, scope, receive, send):
+        await (await self._resolve())(scope, receive, send)
+
+
+class _McpSessionHolder:
+    """Owns the MCP session manager lifecycle across requests and shutdown.
+
+    ``session_manager.run()`` 是异步上下文管理器，而 LazyMcpApp 在事件循环
+    线程上被调用，所以这里用 ``AsyncExitStack``；shutdown 同样在循环线程上
+    由 lifespan 收尾时调用。
+    """
+
+    def __init__(self) -> None:
+        self._stack = None
+        self._lock = asyncio.Lock()
+
+    async def enter(self, mcp):
+        async with self._lock:
+            if self._stack is None:
+                self._stack = AsyncExitStack()
+                await self._stack.enter_async_context(mcp.session_manager.run())
+
+    async def shutdown(self):
+        async with self._lock:
+            if self._stack is not None:
+                await self._stack.aclose()
+                self._stack = None
+
+
+# Lifespan 会在启动时写入 mcp_session_holder；LazyMcpApp 首次请求时读取。
+_app_state = {}
+mcp_http_app_lazy = LazyMcpApp()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,15 +186,39 @@ async def lifespan(app: FastAPI):
     job_scheduler.start()
     app.state.job_scheduler = job_scheduler
 
+    # mDNS registration must never delay API readiness. zeroconf's
+    # register_service blocks up to ~10s (EventLoopBlocked) when its internal
+    # loop is starved — exactly what happens during startup while heavy
+    # imports and DB warmup compete for the GIL. Run it in a background
+    # thread and wait for the app to settle first; the service still gets
+    # advertised so mobile Apps can auto-discover the instance on the LAN.
     discovery_service = DiscoveryService()
-    discovery_service.start()
+
+    def _start_discovery_later():
+        # Give uvicorn a moment to accept traffic before registering mDNS;
+        # zeroconf needs a healthy GIL to finish within its own timeouts.
+        time.sleep(1.0)
+        discovery_service.start()
+
+    discovery_thread = threading.Thread(
+        target=_start_discovery_later,
+        name="LanDiscovery",
+        daemon=True,
+    )
+    discovery_thread.start()
 
     # Mounted ASGI applications do not receive lifespan events from FastAPI.
-    # Run the MCP session manager inside the host lifespan explicitly.
-    async with mcp.session_manager.run():
-        from railway.initialization import start_background_initialization
-        start_background_initialization()
+    # MCP 的会话管理器推迟到首个 /mcp 请求（LazyMcpApp → _McpSessionHolder）
+    # 才启动，冷启动路径完全不触碰 mcp 导入链；应用退出时在 lifespan 收尾。
+    mcp_holder = _McpSessionHolder()
+    app.extra["mcp_session_holder"] = mcp_holder
+    _app_state.update(app.extra)
+    from railway.initialization import start_background_initialization
+    start_background_initialization()
+    try:
         yield
+    finally:
+        await mcp_holder.shutdown()
 
     discovery_service.stop()
     job_scheduler.stop()
@@ -371,8 +458,9 @@ app.include_router(chapter.router, prefix="/chapters", tags=["Life Chapters"])
 app.include_router(daily_frame.router, prefix="/daily-frame", tags=["Daily Frame"])
 
 # Streamable HTTP MCP endpoint. It intentionally sits outside OpenAPI because
-# MCP has its own discovery and tool schemas.
-app.mount("/mcp", mcp_http_app, name="mcp")
+# MCP has its own discovery and tool schemas. mcp_server（含 mcp 包）在首次
+# 请求 /mcp 时才导入，冷启动不为其付出导入时间。
+app.mount("/mcp", mcp_http_app_lazy, name="mcp")
 
 from fastapi.openapi.utils import get_openapi
 

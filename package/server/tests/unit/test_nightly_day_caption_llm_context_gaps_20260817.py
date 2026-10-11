@@ -305,7 +305,7 @@ class TestBuildLlm:
 
         conn = SimpleNamespace(api_key="k", api_base="http://example.com")
 
-        with patch.object(svc, "FixedChatOpenAI") as fake_cls:
+        with patch("app.service.agent.service.FixedChatOpenAI") as fake_cls:
             fake_instance = MagicMock()
             fake_cls.return_value = fake_instance
 
@@ -324,7 +324,7 @@ class TestBuildLlm:
 
         conn = SimpleNamespace(api_key="k", api_base="")
 
-        with patch.object(svc, "FixedChatOpenAI") as fake_cls:
+        with patch("app.service.agent.service.FixedChatOpenAI") as fake_cls:
             svc._build_llm(conn, "m", streaming=False)
 
         kwargs = fake_cls.call_args.kwargs

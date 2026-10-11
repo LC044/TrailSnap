@@ -13,7 +13,6 @@ from app.db.session import SessionLocal
 from app.db.models.task import Task, TaskType, TaskStatus
 from app.db.models.system import SystemState
 from app.crud import task as crud_task
-from app.worker import run_worker
 
 class TaskManager:
     """
@@ -108,6 +107,11 @@ class TaskManager:
 
         # 2. 启动新进程
         logging.info("Starting background task worker process...")
+        # Deferred import: app.worker drags in every task strategy (and their
+        # heavy ML/LLM deps). Importing it here keeps it off the API process'
+        # startup path; the module is only needed when a worker is actually
+        # being spawned.
+        from app.worker import run_worker
         # 用 multiprocessing.Queue 把 worker 的状态变更事件回传给 API 进程，
         # 由 API 进程派发到所有 SSE 订阅者。
         self._event_queue = multiprocessing.Queue(maxsize=4096)

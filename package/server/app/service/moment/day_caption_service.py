@@ -29,7 +29,8 @@ try:
 except ImportError:  # pragma: no cover - Python < 3.9
     ZoneInfo = None  # type: ignore
 
-from langchain_openai import ChatOpenAI
+# langchain_openai 与 agent.service 的导入链重达数秒，仅在构建 LLM 客户端时
+# 才加载；langchain_core.messages 很轻，保留顶层导入。
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.core.config_manager import config_manager
@@ -39,7 +40,6 @@ from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.scene import Scene
 from app.crud import moment as moment_crud
-from app.service.agent.service import FixedChatOpenAI
 from app.service.moment.day_highlight_service import dedup_day_photo_ids
 
 
@@ -417,7 +417,9 @@ def _resolve_connection_and_model(
     return connection, m_name, ai_settings.moment_day_caption_prompt
 
 
-def _build_llm(connection, model_name: str, streaming: bool) -> ChatOpenAI:
+def _build_llm(connection, model_name: str, streaming: bool):
+    # 延迟导入：仅在真正构建客户端时才加载 langchain_openai / agent.service。
+    from app.service.agent.service import FixedChatOpenAI
     # 与 app.service.agent.service.get_agent_executor 对齐：使用 FixedChatOpenAI
     # 把 OpenRouter 兼容格式下 delta.reasoning 从 content 里剥离到 additional_kwargs；
     # 不再往请求体里注入任何 "关闭思考" 兼容字段（严格网关会 400 Unknown parameter）。

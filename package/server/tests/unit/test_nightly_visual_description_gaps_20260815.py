@@ -309,7 +309,7 @@ async def test_process_single_photo_returns_failed_when_file_missing():
     client = _mock_chat_client("unused")
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value=None):
                 result = await vd_mod.VisualDescriptionStrategy().process_single_photo(
                     worker=None, photo=photo, db=db, settings=MagicMock()
@@ -339,7 +339,7 @@ async def test_process_single_photo_persists_description_from_clean_json():
     row = _description_row(description="nice shot", memory_score=88, quality_score=77, tags=["\u65c5\u884c"], reason="ok", narrative="\u6587\u6848")
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
                 with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
                     with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "x.jpg")):
@@ -381,7 +381,7 @@ async def test_process_single_photo_strips_json_code_fence_before_parsing():
     row = _description_row(description="stripped", memory_score=50, quality_score=60)
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
                 with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
                     with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "")):
@@ -420,7 +420,7 @@ async def test_process_single_photo_repairs_malformed_json_without_resending_ima
     row = _description_row(description="fixed", memory_score=50, quality_score=60)
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
                 with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
                     with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "")):
@@ -456,7 +456,7 @@ async def test_process_single_photo_raises_after_json_repair_exhausted():
     db.query.return_value.filter.return_value.first.return_value = None
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
                 with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
                     with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "")):
@@ -490,7 +490,7 @@ async def test_process_single_photo_overwrites_existing_description():
     row = _description_row(description="new", memory_score=80, quality_score=70)
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
                 with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
                     with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "")):
@@ -740,7 +740,7 @@ async def test_process_single_photo_includes_metadata_address_when_present():
     row = _description_row(description="x", memory_score=1, quality_score=1)
 
     with patch("app.service.tasks.visual_description.config_manager.get_user_config", return_value=user_cfg):
-        with patch("app.service.tasks.visual_description.ChatOpenAI", return_value=client):
+        with patch("langchain_openai.ChatOpenAI", return_value=client):
             with patch("app.service.tasks.visual_description.storage.get_available_photo_path", return_value="/tmp/p-1.jpg"):
                 with patch("app.service.tasks.visual_description.get_user_roots", return_value=[]):
                     with patch("app.service.tasks.visual_description.compute_browse_path", return_value=("", "")):

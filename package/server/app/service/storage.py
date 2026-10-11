@@ -18,11 +18,16 @@ from app.service import user_storage
 from app.utils.path_validation import validate_target_path
 from app.utils.image_orientation import display_image_size
 from app.utils.video_tools import probe_video, extract_video_frame
-import numpy as np
-try:
-    import cv2
-except ImportError:
-    cv2 = None
+
+# numpy / cv2 的导入各占数百毫秒，且只有视频缩略图路径需要它们；延迟到使用处
+# 再导入，避免拖慢 API 启动。cv2 缺失时 generate_video_thumbnail 自带 ffmpeg
+# 兜底，行为不变。
+def _load_cv2():
+    try:
+        import cv2
+        return cv2
+    except ImportError:
+        return None
 
 # Global cache for storage root (User ID -> Root Path)
 _STORAGE_ROOT_CACHE = {}
@@ -170,6 +175,7 @@ def _score_video_thumbnail_frame(frame) -> float:
     if frame is None or getattr(frame, "size", 0) == 0:
         return float("-inf")
 
+    import numpy as np
     # Scoring needs a representative sample, not a full-resolution float buffer.
     stride = max(1, max(frame.shape[:2]) // 256)
     pixels = frame[::stride, ::stride].astype(np.float32)
@@ -189,8 +195,10 @@ def _score_video_thumbnail_frame(frame) -> float:
 
 
 def generate_video_thumbnail(file_path: str, file_id: UUID, user_id: UUID, config: ImageSettings = None):
+    cv2 = _load_cv2()
     if cv2 is None:
         try:
+            import numpy as np
             info = probe_video(file_path)
             best_frame, fallback_frame, best_score = None, None, float('-inf')
             for second in _video_thumbnail_candidate_seconds(info[2] or 0):
