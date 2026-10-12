@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     AI_ADMISSION_QUEUE: int = int(os.getenv("AI_ADMISSION_QUEUE", "2"))
     AI_ADMISSION_WAIT_SECONDS: float = float(os.getenv("AI_ADMISSION_WAIT_SECONDS", "10"))
     AI_SINGLE_MODEL_FAMILY: bool = os.getenv("AI_SINGLE_MODEL_FAMILY", "true").lower() in {"1", "true", "yes", "on"}
-    AI_OCR_CONCURRENCY: int = int(os.getenv("AI_OCR_CONCURRENCY", "1"))
+    AI_OCR_CONCURRENCY: int = int(os.getenv("AI_OCR_CONCURRENCY", "2" if (os.cpu_count() or 1) >= 8 else "1"))
     AI_CLASSIFICATION_CONCURRENCY: int = int(os.getenv("AI_CLASSIFICATION_CONCURRENCY", "2" if (os.cpu_count() or 1) >= 8 else "1"))
-    AI_FACE_CONCURRENCY: int = int(os.getenv("AI_FACE_CONCURRENCY", "1"))
+    AI_FACE_CONCURRENCY: int = int(os.getenv("AI_FACE_CONCURRENCY", "2" if (os.cpu_count() or 1) >= 8 else "1"))
     AI_EMBEDDING_CONCURRENCY: int = int(os.getenv("AI_EMBEDDING_CONCURRENCY", "2" if (os.cpu_count() or 1) >= 8 else "1"))
     AI_TICKETS_CONCURRENCY: int = int(os.getenv("AI_TICKETS_CONCURRENCY", "1"))
     # One native inference call must not consume every CPU core. The same

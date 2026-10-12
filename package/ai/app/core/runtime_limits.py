@@ -14,12 +14,17 @@ THREAD_ENV_VARS = (
     "NUMEXPR_NUM_THREADS",
     "VECLIB_MAXIMUM_THREADS",
     "BLIS_NUM_THREADS",
-    "ORT_INTRA_OP_THREADS",
 )
 
 
 def configure_inference_runtime() -> int:
-    """Apply one authoritative thread budget to common native runtimes."""
+    """Apply one authoritative thread budget to common native runtimes.
+
+    ONNX Runtime is deliberately excluded: pinning ORT_INTRA_OP_THREADS to a
+    small pool measured several times slower than ORT's own default sizing on
+    hybrid CPUs (worker threads parked on E-cores). ``get_session_options``
+    still honours an explicit ORT_INTRA_OP_THREADS set by the operator.
+    """
     budget = max(1, settings.AI_INFERENCE_THREADS)
     for name in THREAD_ENV_VARS:
         os.environ[name] = str(budget)

@@ -141,7 +141,9 @@ def get_chunk_size(task_type):
     elif task_type == TaskType.OCR or task_type == TaskType.RECOGNIZE_TICKET:
         chunk_size = 2 if level == 'high' else 1
     elif task_type == TaskType.RECOGNIZE_FACE:
-        chunk_size = 4 if level == 'high' else 2
+        # AI 侧每张图独立线程推理（ONNX 默认线程池吃满物理核），
+        # 批内并发是吞吐主通道；小批会闲置 CPU（4 张实测只有 8 张的 ~1/3）。
+        chunk_size = 8 if level == 'high' else 4
     elif task_type == TaskType.CLUSTER_FACES:
         # One whole-library pass per batch. Batching several owners together
         # would serialise their clustering inside a single timeout window.
