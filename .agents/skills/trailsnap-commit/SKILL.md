@@ -25,7 +25,7 @@ description: TrailSnap 仓库提交、推送、需求平台与 PR 工作流规�
 
 - 所有开发事项统一通过已配置的 `trailsnap-feedback` MCP 管理。不要使用 GitHub CLI、GitHub API 或网页直接创建、编辑、关闭 GitHub Issue；GitHub Issue 由需求平台在后台创建和同步。
 - 如果未配置、无法连接或找不到 `trailsnap-feedback` MCP，先引导用户在[需求平台](https://feedback.trailsnap.cn/)的“集成设置”创建 Agent MCP 令牌，并采用平台提供的 MCP 配置完成连接后再继续。不要自行创建令牌、要求用户在对话中粘贴令牌，或回退为直接操作 GitHub Issue。
-- MCP 返回未认证、无权限或缺少 scope 时，说明当前操作所需的最小权限，并请用户联系需求平台管理员开通或调整令牌权限。未经授权不得绕过权限或改用 GitHub Issue。
+- MCP 返回未认证、无权限或缺少 scope 时，说明当前操作所需的最小权限，并请用户联系需求平台管理员开通或调整令牌权限。
 - 开始需要提交或创建 PR 的工作前，先用 MCP 查询是否已有对应需求。存在则复用；不存在则用 `create_requirement` 创建内容完整的需求，记录其 `REQ-*` 编号，并将需求状态设置为`developing`。
 - 需求描述应说明问题、目标、范围和验收标准。范围变化时更新平台需求，不直接更新其关联的 GitHub Issue。
 - GitHub Issue 编号或链接只能作为平台返回的只读关联信息使用，不能作为状态管理入口。
