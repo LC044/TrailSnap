@@ -24,7 +24,7 @@
         <div class="relative w-64 h-64 md:w-72 md:h-72 mb-6 group">
             <div class="absolute inset-0 bg-primary-amber rounded-2xl rotate-3 opacity-20 group-hover:rotate-6 transition-transform"></div>
             <img 
-                :src="data.bestPhotoUrl" 
+                :src="toServerUrl(data.bestPhotoUrl)"
                 class="relative w-full h-full object-cover rounded-2xl shadow-xl border-4 border-white dark:border-gray-700 transform transition-transform group-hover:-rotate-1"
                 alt="Best Photo"
             />
@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import ReportPage from './ReportPage.vue';
+import { toServerUrl } from '@/config/server';
 import type { EasterEgg } from '@/types/annualReport';
 import { Quote } from 'lucide-vue-next';
 
