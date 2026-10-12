@@ -24,7 +24,7 @@
           aria-modal="true"
           :aria-labelledby="titleId"
           class="responsive-dialog-panel relative z-10 flex w-full flex-col overflow-hidden bg-[var(--ts-color-surface)] shadow-[var(--ts-shadow-floating)] md:max-h-[90dvh] md:rounded-[var(--ts-radius-dialog)]"
-          :class="[glass ? 'ts-liquid-glass ts-glass-sheet' : '', mobileMode === 'fullscreen' ? 'mobile-fullscreen h-[100dvh] rounded-none' : 'max-h-[92dvh] rounded-t-[var(--ts-radius-dialog)]']"
+          :class="[panelClass, glass ? 'ts-liquid-glass ts-glass-sheet' : '', mobileMode === 'fullscreen' ? 'mobile-fullscreen h-[100dvh] rounded-none' : 'max-h-[92dvh] rounded-t-[var(--ts-radius-dialog)]']"
           :style="{ '--responsive-dialog-max-width': maxWidth, ...sheet.style.value }"
         >
           <div v-if="mobileMode === 'sheet'" class="sheet-drag-zone flex h-7 shrink-0 items-center justify-center md:hidden" @pointerdown="sheet.start" @pointermove="sheet.move" @pointerup="sheet.finish" @pointercancel="sheet.finish" @lostpointercapture="sheet.finish">
@@ -70,6 +70,7 @@ const props = withDefaults(defineProps<{
   modelValue: boolean
   keepMounted?: boolean
   title: string
+  panelClass?: string
   description?: string
   maxWidth?: string
   mobileMode?: 'sheet' | 'fullscreen'

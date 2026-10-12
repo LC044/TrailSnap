@@ -11,6 +11,8 @@
     </section>
 
     <template v-else>
+      <p role="status" class="px-1 text-xs" :class="autoSaveNoticeClass">{{ autoSaveNotice }}</p>
+
       <section class="space-y-4 overflow-hidden rounded-2xl bg-white px-4 py-1 shadow-sm dark:bg-gray-800">
         <div v-for="(item, index) in switchOptions" :key="item.key" class="flex items-center justify-between gap-4" :class="index > 0 && 'border-t border-gray-100 pt-5 dark:border-gray-700'">
           <div>
@@ -81,22 +83,22 @@
         </div>
       </section>
 
-      <div class="flex flex-wrap items-center justify-between gap-3 pb-2">
+      <div class="pb-2">
         <button type="button" class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" :disabled="running" @click="rescan">重置当前范围的增量记录</button>
-        <button type="button" class="rounded-lg bg-primary-600 px-4 py-2 text-sm text-white shadow-primary-500/20 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="save">保存设置</button>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { galleryBackupNative, type GallerySourceFolder } from '@/native/galleryBackup'
 import { useGalleryBackup, type BackupOrganizeMode, type GalleryBackupSettings } from '@/composables/useGalleryBackup'
 
 withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
-const emit = defineEmits<{ saved: [] }>()
+
+const AUTO_SAVE_DELAY_MS = 800
 
 const backup = useGalleryBackup()
 const { supported, settings, running } = backup
@@ -105,6 +107,9 @@ const sourceMode = ref<'all' | 'selected'>(form.sourcePaths.length ? 'selected' 
 const folders = ref<GallerySourceFolder[]>([])
 const folderSearch = ref('')
 const loadingFolders = ref(false)
+const saveState = ref<'idle' | 'pending' | 'saved'>('idle')
+let saveTimer: number | undefined
+let savedSignature = ''
 const switchOptions: Array<{ key: 'enabled' | 'wifiOnly' | 'includeVideos'; title: string; description: string }> = [
   { key: 'enabled', title: '启用自动备份', description: '启动 APP、回到前台时自动检查新增或修改过的媒体。' },
   { key: 'wifiOnly', title: '仅在 Wi-Fi / 不计费网络上传', description: '避免自动备份消耗移动流量。' },
@@ -122,12 +127,82 @@ const filteredFolders = computed(() => {
 })
 const visibleFolders = computed(() => filteredFolders.value.slice(0, 100))
 
+// 自动保存以「与最近一次落盘快照的签名比对」判定变更，程序化回填（初始化、settings 外部更新）不会再次触发保存。
+const candidateSettings = computed<GalleryBackupSettings>(() => ({
+  ...form,
+  sourcePaths: sourceMode.value === 'all' ? [] : [...form.sourcePaths],
+}))
+const signatureOf = (value: GalleryBackupSettings) => JSON.stringify([
+  value.enabled, value.wifiOnly, value.includeVideos, value.folder.trim(), value.organizeMode, [...value.sourcePaths].sort(),
+])
+const folderValid = computed(() => form.folder.trim() !== '' && !form.folder.split(/[\\/]/).some(part => part === '..'))
+const sourceValid = computed(() => sourceMode.value === 'all' || form.sourcePaths.length > 0)
+const autoSaveNotice = computed(() => {
+  if (saveState.value === 'saved') return '已自动保存'
+  if (saveState.value === 'pending') return '正在保存…'
+  if (!folderValid.value) return '未保存：请输入有效的服务器相对路径'
+  if (!sourceValid.value) return '未保存：请至少选择一个备份源相册'
+  return '更改会自动保存'
+})
+const autoSaveNoticeClass = computed(() => {
+  if (saveState.value === 'saved') return 'text-green-600 dark:text-green-400'
+  if (!folderValid.value || !sourceValid.value) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-400 dark:text-gray-500'
+})
+
+const flushPendingSave = () => {
+  if (saveTimer === undefined) return
+  window.clearTimeout(saveTimer)
+  saveTimer = undefined
+  void saveNow()
+}
+const saveNow = async () => {
+  const candidate = candidateSettings.value
+  if (!candidate.folder.trim() || candidate.folder.split(/[\\/]/).some(part => part === '..')) {
+    saveState.value = 'idle'
+    return
+  }
+  if (sourceMode.value === 'selected' && !candidate.sourcePaths.length) {
+    saveState.value = 'idle'
+    return
+  }
+  const scopeBefore = JSON.stringify([settings.value.enabled, settings.value.includeVideos, [...settings.value.sourcePaths].sort()])
+  saveState.value = 'pending'
+  try {
+    await backup.saveSettings(candidate)
+    savedSignature = signatureOf(candidate)
+    saveState.value = 'saved'
+    const scopeAfter = JSON.stringify([candidate.enabled, candidate.includeVideos, [...candidate.sourcePaths].sort()])
+    if (candidate.enabled && scopeBefore !== scopeAfter) void backup.runBackup()
+  } catch {
+    saveState.value = 'idle'
+    ElMessage.error('备份设置保存失败')
+  }
+}
+const onVisibilityChange = () => { if (document.visibilityState === 'hidden') flushPendingSave() }
+
 onMounted(async () => {
+  document.addEventListener('visibilitychange', onVisibilityChange)
   await backup.initialize()
   Object.assign(form, settings.value, { sourcePaths: [...settings.value.sourcePaths] })
   sourceMode.value = form.sourcePaths.length ? 'selected' : 'all'
+  savedSignature = signatureOf(settings.value)
 })
-watch(settings, value => Object.assign(form, value, { sourcePaths: [...value.sourcePaths] }))
+watch(settings, value => {
+  Object.assign(form, value, { sourcePaths: [...value.sourcePaths] })
+  sourceMode.value = form.sourcePaths.length ? 'selected' : 'all'
+  savedSignature = signatureOf(value)
+})
+watch(candidateSettings, candidate => {
+  if (signatureOf(candidate) === savedSignature) return
+  saveState.value = 'pending'
+  window.clearTimeout(saveTimer)
+  saveTimer = window.setTimeout(() => { saveTimer = undefined; void saveNow() }, AUTO_SAVE_DELAY_MS)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  flushPendingSave()
+})
 
 const loadFolders = async () => {
   loadingFolders.value = true
@@ -149,20 +224,6 @@ const loadFolders = async () => {
 const selectSpecific = () => {
   sourceMode.value = 'selected'
   if (!folders.value.length) void loadFolders()
-}
-const save = async () => {
-  if (!form.folder.trim() || form.folder.split(/[\\/]/).some(part => part === '..')) {
-    ElMessage.warning('请输入有效的服务器相对路径')
-    return
-  }
-  if (sourceMode.value === 'selected' && !form.sourcePaths.length) {
-    ElMessage.warning('请至少选择一个备份源相册')
-    return
-  }
-  await backup.saveSettings({ ...form, sourcePaths: sourceMode.value === 'all' ? [] : [...form.sourcePaths] })
-  ElMessage.success('备份设置已保存')
-  if (form.enabled) void backup.runBackup()
-  emit('saved')
 }
 const rescan = async () => {
   try {

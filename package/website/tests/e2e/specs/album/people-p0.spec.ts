@@ -520,14 +520,14 @@ test.describe.serial('P0 - 人物相册', () => {
     const dialog = page.getByRole('dialog').filter({ hasText: '编辑人物信息' })
     await expect(dialog).toBeVisible({ timeout: 5_000 })
 
-    // 点"选择照片"展开候选照片网格（候选来自 /identities/{id}/photos）
-    const changeCoverBtn = dialog.getByRole('button', { name: '选择照片' })
+    // 打开共享照片选择弹窗，候选仍来自该人物自己的照片。
+    const changeCoverBtn = dialog.getByRole('button', { name: '从图库选择' })
     await expect(changeCoverBtn).toBeVisible({ timeout: 5_000 })
     await changeCoverBtn.click()
 
-    const coverGrid = dialog.locator('.cover-photo-grid')
-    await expect(coverGrid).toBeVisible({ timeout: 10_000 })
-    const candidates = coverGrid.locator('button')
+    const coverPicker = page.getByRole('dialog', { name: '选择人物封面', exact: true })
+    await expect(coverPicker).toBeVisible({ timeout: 10_000 })
+    const candidates = coverPicker.locator('[data-photo-id]')
     await expect
       .poll(() => candidates.count(), { timeout: 15_000, message: 'wait for cover candidates to render' })
       .toBeGreaterThan(0)
@@ -539,9 +539,11 @@ test.describe.serial('P0 - 人物相册', () => {
     // 选一张非当前封面的照片（data-photo-id 标记了每张候选；仅选中，不发请求）
     const currentPhotoId = probe.identity.cover_photo?.photo_id
     const target = currentPhotoId
-      ? coverGrid.locator(`button:not([data-photo-id="${currentPhotoId}"])`).first()
+      ? coverPicker.locator(`[data-photo-id]:not([data-photo-id="${currentPhotoId}"])`).first()
       : candidates.first()
 
+    const targetPhotoId = await target.getAttribute('data-photo-id')
+    expect(targetPhotoId).toBeTruthy()
     await target.click()
 
     // 确认更换流程：点"使用此照片"才触发 PUT /cover
@@ -552,18 +554,18 @@ test.describe.serial('P0 - 人物相册', () => {
         res.status() === 200,
       { timeout: 15_000 },
     )
-    await dialog.getByRole('button', { name: '使用此照片' }).click()
+    await coverPicker.getByRole('button', { name: '使用此照片' }).click()
     await coverReq
 
-    // 确认后收起网格，头像图保持可见
-    await expect(coverGrid).toBeHidden({ timeout: 10_000 })
+    // 确认后关闭选择弹窗，编辑表单与头像保持可见。
+    await expect(coverPicker).toBeHidden({ timeout: 10_000 })
     await expect(dialog.locator('img[alt="当前人物封面"]')).toBeVisible()
 
     // 后端确认封面已换
     const after = await listIdentities(request, authToken)
     const me = after.find((i) => i.id === probe.identity.id)
     expect(me, 'identity should still exist after cover change').toBeTruthy()
-    expect(me?.cover_photo?.photo_id).not.toBe(currentPhotoId)
+    expect(me?.cover_photo?.photo_id).toBe(targetPhotoId)
   })
 })
 

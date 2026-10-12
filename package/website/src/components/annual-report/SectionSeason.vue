@@ -45,7 +45,7 @@
               <!-- Photo Area -->
               <div class="flex-1 relative rounded-lg overflow-hidden mb-2 bg-white/50">
                  <img
-                   :src="season.representativePhoto"
+                   :src="toServerUrl(season.representativePhoto)"
                    class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                    alt="Season Photo"
                  />
@@ -95,7 +95,7 @@
                </div>
 
                <div class="aspect-video rounded-xl overflow-hidden relative">
-                  <img :src="selectedSeason.representativePhoto" class="w-full h-full object-cover" />
+                  <img :src="toServerUrl(selectedSeason.representativePhoto)" class="w-full h-full object-cover" />
                   <div class="absolute bottom-2 right-2 text-xs text-white bg-black/40 px-2 py-1 rounded backdrop-blur-md">
                      {{ selectedSeason.shootMonth }}
                   </div>
@@ -122,6 +122,7 @@
 <script setup lang="ts">
 import { ref, computed,watch } from 'vue';
 import ReportPage from './ReportPage.vue';
+import { toServerUrl } from '@/config/server';
 import type { SeasonMetrics, SeasonData } from '@/types/annualReport';
 import { Sprout, Sun, Leaf, Snowflake } from 'lucide-vue-next';
 import { useIntersectionObserver } from '@vueuse/core';

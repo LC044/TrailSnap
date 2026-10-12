@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import uuid
+import math
 from typing import Any
 
-from pgvector.sqlalchemy import Vector as PostgreSQLVector
 from sqlalchemy import CHAR, JSON, Float
-from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.types import TypeDecorator
 
 
@@ -19,6 +18,8 @@ class GUID(TypeDecorator[uuid.UUID]):
 
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
+
             return dialect.type_descriptor(PostgreSQLUUID(as_uuid=True))
         return dialect.type_descriptor(CHAR(36))
 
@@ -48,6 +49,9 @@ class DatabaseVector(TypeDecorator[list[float]]):
 
     impl = JSON
     cache_ok = True
+    # ORM queries mixing an entity and a vector column deduplicate result rows.
+    # SQLite returns lists (PostgreSQL returns arrays), which cannot be hashed.
+    hashable = False
     comparator_factory = _VectorComparator
 
     def __init__(self, dimensions: int):
@@ -56,6 +60,9 @@ class DatabaseVector(TypeDecorator[list[float]]):
 
     def load_dialect_impl(self, dialect):
         if dialect.name == "postgresql":
+            # SQLite stores JSON vectors and must not load pgvector/NumPy.
+            from pgvector.sqlalchemy import Vector as PostgreSQLVector
+
             return dialect.type_descriptor(PostgreSQLVector(self.dimensions))
         return dialect.type_descriptor(JSON())
 
@@ -64,11 +71,16 @@ class DatabaseVector(TypeDecorator[list[float]]):
             return None
         if hasattr(value, "tolist"):
             value = value.tolist()
-        result = [float(item) for item in value]
+        try:
+            result = [float(item) for item in value]
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError("Vector values must be finite numbers") from error
         if len(result) != self.dimensions:
             raise ValueError(
                 f"Expected a {self.dimensions}-dimensional vector, got {len(result)}"
             )
+        if not all(math.isfinite(item) for item in result):
+            raise ValueError("Vector values must be finite numbers")
         return result
 
 

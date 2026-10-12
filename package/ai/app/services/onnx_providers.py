@@ -101,9 +101,12 @@ def _detect_apple_perf_cores() -> int:
 def get_session_options():
     """Bound ONNX Runtime threads on every platform.
 
-    Apple Silicon still falls back to its performance-core count when no
-    explicit runtime budget was configured. TrailSnap startup always exports
-    ORT_INTRA_OP_THREADS, so normal service runs use the shared CPU budget.
+    The default leaves ``intra_op_num_threads`` unset so ORT sizes its thread
+    pool itself (all physical cores). Pinning a smaller pool measured slower on
+    hybrid CPUs (i7-14700KF: 8 threads was ~4x slower than the default on
+    w600k_r50), because worker threads get parked on E-cores and spin-wait.
+    ORT_INTRA_OP_THREADS remains the explicit override, and Apple Silicon
+    still bounds itself to its performance cores.
     """
 
     import onnxruntime as ort
@@ -114,18 +117,21 @@ def get_session_options():
     override = os.getenv("ORT_INTRA_OP_THREADS", "").strip()
     if override.isdigit() and int(override) > 0:
         intra = int(override)
+        so.intra_op_num_threads = intra
     elif _is_apple_silicon():
         intra = _detect_apple_perf_cores()
+        so.intra_op_num_threads = intra
     else:
-        intra = max(1, min(4, (os.cpu_count() or 1) - 1))
+        # 0 = ORT default (one thread per physical core).
+        intra = 0
 
-    so.intra_op_num_threads = intra
     so.inter_op_num_threads = 1
     so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
 
     logger.info(
         f"ONNX Runtime SessionOptions: graph_opt=ORT_ENABLE_ALL, "
-        f"intra_op_threads={intra}, inter_op_threads=1, mode=SEQUENTIAL"
+        f"intra_op_threads={'default' if intra == 0 else intra}, "
+        f"inter_op_threads=1, mode=SEQUENTIAL"
     )
     return so
 

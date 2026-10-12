@@ -629,7 +629,11 @@ export const photoStoreSetup = () => {
     resetAll,
     error,
     isSearchMode,
-    searchPhotos
+    searchPhotos,
+    getPickerSearchFilters: () => ({
+      ...cleanFilters(),
+      ...(currentContext.value.type === 'album' ? { album_id: currentContext.value.id } : {}),
+    })
   }
 }
 

@@ -190,7 +190,7 @@ def test_add_task_honors_explicit_priority_override():
     created = crud_task.add_task(
         db,
         type=TaskType.OCR,
-        payload={"photo_id": "photo-1"},
+        payload={"photo_id": str(uuid4())},
         priority=10_000,
         owner_id=uuid4(),
     )

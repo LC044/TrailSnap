@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 
-DESKTOP_SCHEMA_REVISION = "sqlite_0005"
+DESKTOP_SCHEMA_REVISION = "b0b9b9a3a2c0"
 
 # The desktop UI talks to the sidecar exactly like the production web UI talks
 # to nginx: all API calls start with /api. The bundled server has no reverse

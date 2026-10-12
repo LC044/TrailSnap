@@ -418,3 +418,11 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 @media (max-width: 767px) {
   .ts-glass-sheet.responsive-dialog-panel:not(.mobile-fullscreen) { width: calc(100% - 24px); max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); margin: 0 12px calc(12px + var(--ts-safe-area-bottom)); border-radius: 32px; }
 }
+
+
+/* 卡片筛选页使用空白布局扣除安全区后的可用高度。 */
+html .ts-blank-layout:has(.swipe-filter-page) {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}

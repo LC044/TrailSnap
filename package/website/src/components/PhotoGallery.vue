@@ -455,6 +455,7 @@ import {
 
 // Props
 interface Props {
+  singleSelect?: boolean
   photos: AlbumImage[]
   timelineStats?: TimelineStats
   loading?: boolean
@@ -514,7 +515,7 @@ const {
 } = useSelection()
 
 // Sync selection with parent if needed
-watch(() => localSelectedIds.size, () => {
+watch(() => Array.from(localSelectedIds), () => {
   emit('selection-change', Array.from(localSelectedIds))
 })
 
@@ -776,6 +777,7 @@ const dateHeaderContentClass = computed(() => {
 })
 
 const shouldShowDateHeader = (day: DayBlock, dayIndex: number) => {
+  if (day.year === 0) return false
   if (mobileDateHeaderMode.value === 'day') return true
   if (dayIndex !== 0) return false
   if (mobileDateHeaderMode.value === 'month') return true
@@ -1213,6 +1215,7 @@ const exitSelectionMode = () => {
 */
 
 const toggleSelection = (photo: AlbumImage) => {
+  if (props.singleSelect && !localSelectedIds.has(photo.id)) localSelectedIds.clear()
   toggleSelectionId(photo.id)
   if (localSelectedIds.size > 0) {
       if (!isSelectionMode.value) enterSelectionMode()

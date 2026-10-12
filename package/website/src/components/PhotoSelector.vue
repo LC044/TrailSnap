@@ -1,14 +1,18 @@
 <template>
-  <div class="photo-selector-container h-full flex flex-col bg-white dark:bg-gray-950">
+  <div class="photo-selector-container min-h-0 h-full flex flex-col bg-white dark:bg-gray-950">
     <!-- Header -->
-    <div class="p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center sticky top-0 z-[60] bg-white/80 dark:bg-gray-950/80 backdrop-blur-md">
-      <div class="flex items-center gap-3">
+    <div class="shrink-0 p-4 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center sticky top-0 z-[60] bg-white/80 dark:bg-gray-950/80 backdrop-blur-md">
+      <div v-if="!embedded" class="flex min-w-0 items-center gap-3">
         <button v-if="isSelector" @click="$emit('cancel')" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors">
           <X class="w-5 h-5 text-gray-500" />
         </button>
         <h3 class="font-bold text-lg text-gray-900 dark:text-white">{{ title || '选择照片' }}</h3>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="ml-auto flex items-center gap-2">
+        <button type="button" aria-label="搜索照片" title="搜索照片" :disabled="busy"
+          class="ts-button ts-button-secondary ts-button-sm" @click="showSearchDialog = true">
+          <Search class="h-4 w-4" /><span>搜索</span>
+        </button>
         <button
           @click="showViewOptions = !showViewOptions"
           class="p-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-all"
@@ -20,11 +24,11 @@
         <button
           v-if="isSelector"
           @click="confirmSelection"
-          :disabled="selectedIds.length === 0"
+          :disabled="selectedIds.length === 0 || busy"
           class="bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-full shadow-lg shadow-primary-500/30 flex items-center gap-2 text-sm font-medium transition-all active:scale-95"
         >
           <Check class="w-4 h-4" />
-          <span>确认选择 ({{ selectedIds.length }})</span>
+          <span>{{ busy ? '保存中…' : singleSelect ? '使用此照片' : '确认选择 (' + selectedIds.length + ')' }}</span>
         </button>
       </div>
 
@@ -85,46 +89,68 @@
       </Transition>
     </div>
 
+    <div v-if="searchStore.query" class="shrink-0 flex items-center gap-2 border-b border-gray-100 px-4 py-2 dark:border-gray-800">
+      <p class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-200">搜索：{{ searchStore.query }}</p>
+      <button type="button" class="ts-button ts-button-ghost ts-button-sm" :disabled="busy" @click="clearSearch">返回图库</button>
+    </div>
+
     <!-- Main Content -->
-    <div ref="scrollContainer" class="flex-1 overflow-y-auto relative custom-scrollbar">
-      <!-- Loading Overlay for initial data -->
-      <div v-if="initialLoading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-gray-950/50 backdrop-blur-sm">
-        <div class="flex flex-col items-center gap-3">
-          <Loader2 class="w-8 h-8 animate-spin text-primary-500" />
-          <p class="text-sm text-gray-500">加载中...</p>
+    <div class="relative min-h-0 flex-1">
+      <div ref="scrollContainer" class="h-full overflow-y-auto relative custom-scrollbar">
+        <!-- Loading Overlay for initial data -->
+        <div v-if="initialLoading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/50 dark:bg-gray-950/50 backdrop-blur-sm">
+          <div class="flex flex-col items-center gap-3">
+            <Loader2 class="w-8 h-8 animate-spin text-primary-500" />
+            <p class="text-sm text-gray-500">加载中...</p>
+          </div>
+        </div>
+
+        <div ref="contentContainer" class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] py-6 pr-14 md:pr-[var(--ts-page-gutter)]">
+          <PhotoGallery
+            class="!min-h-0"
+            ref="galleryRef"
+            :store="displayStore"
+            :photos="images"
+            :timeline-stats="displayStore.timelineStats"
+            :loading="displayStore.loading"
+            :has-more="displayStore.hasMore"
+            :error="displayStore.error"
+            :layout-mode="layoutMode"
+            :view-size="viewSize"
+            :scroll-container="scrollContainer"
+            :show-action-bar="false"
+            :single-select="singleSelect"
+            v-model:active-date="activeDate"
+            @load-more="loadMore"
+            @click-photo="openLightbox"
+            @batch-delete="handleBatchDelete"
+            @add-to-album="handleBatchAddToAlbum"
+            @retry="retryLoad"
+            @selection-change="handleSelectionChange"
+          />
+          <div v-if="!displayStore.timelineStats && displayStore.hasMore" class="mt-4 flex justify-center">
+            <button type="button" class="ts-button ts-button-secondary" :disabled="displayStore.loading" @click="loadMore">
+              {{ displayStore.loading ? '加载中…' : '加载更多照片' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeline Sidebar -->
+        <div class="hidden md:block">
+          <AlbumTimeline
+            :items="displayStore.timelineStats?.timeline || []"
+            :active-date="activeDate"
+            @select="scrollToDate"
+          />
         </div>
       </div>
-
-      <div class="mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] py-6">
-        <PhotoGallery
-          ref="galleryRef"
-          :store="store"
-          :photos="images"
-          :timeline-stats="store.timelineStats"
-          :loading="store.loading"
-          :has-more="store.hasMore"
-          :error="store.error"
-          :layout-mode="layoutMode"
-          :view-size="viewSize"
-          :scroll-container="scrollContainer"
-          :show-action-bar="false"
-          v-model:active-date="activeDate"
-          @load-more="store.loadPhotos"
-          @click-photo="openLightbox"
-          @batch-delete="handleBatchDelete"
-          @add-to-album="handleBatchAddToAlbum"
-          @retry="store.loadPhotos(true)"
-          @selection-change="handleSelectionChange"
-        />
-      </div>
-
-      <!-- Timeline Sidebar -->
-      <AlbumTimeline
-        :items="store.timelineStats?.timeline || []"
-        :active-date="activeDate"
-        @select="scrollToDate"
-      />
+      <PhotoPickerScrollbar v-if="images.length || displayStore.timelineStats?.timeline?.length" :container="scrollContainer" :content="contentContainer" />
     </div>
+
+    <ResponsiveDialog v-model="showSearchDialog" title="搜索照片" max-width="48rem"
+      mobile-mode="fullscreen" mobile-back panel-class="photo-picker-search-dialog">
+      <MobileSearch v-if="showSearchDialog" embedded @search="submitSearch" />
+    </ResponsiveDialog>
 
     <!-- Lightbox -->
     <PhotoLightbox
@@ -136,13 +162,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
+import { useUiStore } from '@/stores/uiStore'
+import { usePhotoPickerSearchStore } from '@/stores/photoPickerSearchStore'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
+import MobileSearch from '@/views/search/MobileSearch.vue'
+import PhotoPickerScrollbar from '@/components/PhotoPickerScrollbar.vue'
 import type { AlbumImage } from '@/types/album'
 import {
   X, Maximize, Grid3x3, Grid2x2, LayoutDashboard, LayoutGrid,
-  Check, Settings2, Loader2, Folder, ImagePlus
+  Check, Settings2, Loader2, Search
 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import AlbumTimeline from '@/components/AlbumTimeline.vue'
@@ -156,6 +187,9 @@ const props = defineProps<{
   isSelector?: boolean
   title?: string
   store?: any
+  embedded?: boolean
+  singleSelect?: boolean
+  busy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -165,10 +199,28 @@ const emit = defineEmits<{
 
 const albumStore = useAlbumStore()
 const defaultStore = usePhotoStore()
+const uiStore = useUiStore()
 const store = computed(() => props.store || defaultStore)
+const searchStore = usePhotoPickerSearchStore()
+searchStore.resetAll()
+const showSearchDialog = ref(false)
+const displayStore = computed(() => searchStore.query ? searchStore : store.value)
+const contentContainer = ref<HTMLElement | null>(null)
+const clearSearch = () => {
+  searchStore.resetAll()
+  if (scrollContainer.value) scrollContainer.value.scrollTop = 0
+}
+const submitSearch = async (criteria: { query: string; type?: string }) => {
+  if (props.busy) return
+  if (scrollContainer.value) scrollContainer.value.scrollTop = 0
+  showSearchDialog.value = false
+  await searchStore.search(criteria.query, criteria.type || '', store.value.getPickerSearchFilters?.() ?? {})
+}
+const loadMore = () => displayStore.value.loadPhotos()
+const retryLoad = () => searchStore.query ? searchStore.loadPhotos() : store.value.loadPhotos(true)
 
 // UI State
-const images = computed(() => store.value.images)
+const images = computed(() => displayStore.value.images)
 const albums = computed(() => albumStore.allAlbums)
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
 const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall'>('grid')
@@ -195,7 +247,7 @@ onClickOutside(viewOptionsRef, () => {
 
 // Methods
 const confirmSelection = () => {
-  emit('select', selectedIds.value)
+  if (!props.busy) emit('select', selectedIds.value)
 }
 
 const scrollToDate = (date: string) => {
@@ -249,6 +301,14 @@ onMounted(async () => {
   }
 })
 
+onBeforeUnmount(() => {
+  searchStore.resetAll()
+  if (props.isSelector) {
+    galleryRef.value?.exitSelectionMode()
+    uiStore.setSelectionActive(false)
+  }
+})
+
 onUnmounted(() => {
   if (props.isSelector) {
     store.value.resetAll()
@@ -280,5 +340,18 @@ onUnmounted(() => {
   20%, 80% { transform: translate3d(2px, 0, 0); }
   30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
   40%, 60% { transform: translate3d(4px, 0, 0); }
+}
+</style>
+
+
+<style>
+.photo-picker-search-dialog.responsive-dialog-panel .responsive-dialog-body,
+.photo-picker-search-dialog.responsive-dialog-panel.mobile-fullscreen .responsive-dialog-body {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+}
+@media (min-width: 768px) {
+  .photo-picker-search-dialog.responsive-dialog-panel { height: 90dvh; }
 }
 </style>

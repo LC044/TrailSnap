@@ -184,12 +184,11 @@ async def process_batch(self, worker, tasks, db):
 任务优先级通过 `Task` 表中的 `priority` 字段（整数）实现，数值越大优先级越高。
 
 - **默认优先级**: 系统定义了 `DEFAULT_PRIORITIES` 字典，自动为不同类型的任务分配优先级。
-  - `SCAN_FOLDER` (10): 最高优先级，用户感知的扫描操作。
-  - `PROCESS_BASIC` (9): 基础处理，影响后续所有 AI 任务。
-  - `GENERATE_THUMBNAIL` (8): 缩略图生成，影响前端展示。
-  - `EXTRACT_METADATA` (5): 元数据提取。
-  - `RECOGNIZE_FACE` / `OCR` (1): 后台 AI 分析，低优先级。
+  - `SCAN_FOLDER` (100)、`PROCESS_BASIC` (99)、`GENERATE_THUMBNAIL` (98)、`EXTRACT_METADATA` (97): 扫描与基础媒体处理。
+  - AI 任务：`CLASSIFY_IMAGE` (10)、`RECOGNIZE_FACE` (9)、`IMAGE_EMBEDDING` (8)、`OCR` (7)、`RECOGNIZE_TICKET` (4)、`VISUAL_DESCRIPTION` (1)。
+  - 用户主动触发的交互任务使用优先级 10000，即使该类型的自动任务已暂停也可执行。
 - **调度逻辑**: 消费者从内存队列取任务时，PriorityQueue 自动保证高优先级 Batch 优先被消费。
+- **AI 阶段切换**: 同类型连续处理以减少模型切换。新增可执行的更高优先级类型时，停止补充当前类型并撤回尚未执行的预取批次，等待在途批次和结果提交完成后切换。剩余任务保留为 PENDING，之后自动恢复；同级或低级任务不打断阶段。暂停、扩展维护或未到重试时间的任务不触发切换。
 
 ## 6. 任务状态管理
 

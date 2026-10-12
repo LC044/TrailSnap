@@ -35,6 +35,7 @@
 import logging
 import math
 import os
+from app.service.disk_budget import budgeted_open
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterator, Optional, Tuple
@@ -56,6 +57,11 @@ _MAX_YEAR = 2045
 
 # 单个 box payload 读入内存的上限，避免畸形文件把 size 写成天文数字
 _MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+
+# Metadata values are small scalars; cover images and vendor binary atoms must
+# never become JSON strings in photo_metadata.exif_info.
+_MAX_TEXT_BYTES = 16 * 1024
+_BINARY_METADATA_KEYS = frozenset({'mcvr', 'snal', 'tnal', 'covr'})
 
 # 原子键名 -> 归一化后的字段名。归一化成 EXIF 风格的键，
 # 使下游 update_photo_metadata_from_extract 的 Make/Model 映射可直接复用。
@@ -255,11 +261,16 @@ def parse_iso6709(value: Any) -> Optional[Dict[str, float]]:
 
 
 def _decode_text(raw: bytes) -> str:
+    if len(raw) > _MAX_TEXT_BYTES:
+        return ''
     for encoding in ('utf-8', 'utf-16-be', 'latin-1'):
         try:
-            return raw.decode(encoding).strip().replace('\x00', '')
+            text = raw.decode(encoding).strip().replace('\x00', '')
         except UnicodeDecodeError:
             continue
+        if any(not ch.isprintable() and ch not in '\t\r\n' for ch in text):
+            return ''
+        return text
     return ''
 
 
@@ -293,6 +304,12 @@ def _parse_udta(payload: bytes) -> Dict[str, Any]:
             tags.update(_parse_meta(body))
             continue
 
+        # udta has no value type indicator. Only known text atoms can safely
+        # be decoded; unknown atoms may contain megabytes of binary data.
+        name = _atom_type_to_key(atom_type)
+        if name not in _KEY_ALIASES:
+            continue
+
         if len(body) >= 4:
             declared = int.from_bytes(body[0:2], 'big')
             if declared == len(body) - 4:
@@ -300,7 +317,7 @@ def _parse_udta(payload: bytes) -> Dict[str, Any]:
 
         text = _decode_text(body)
         if text:
-            tags[_atom_type_to_key(atom_type)] = text
+            tags[name] = text
     return tags
 
 
@@ -341,11 +358,16 @@ def _parse_data_box(body: bytes) -> Any:
         if type_indicator == 1:  # UTF-8
             return _decode_text(value_bytes)
         if type_indicator == 2:  # UTF-16
+            if len(value_bytes) > _MAX_TEXT_BYTES:
+                return None
             try:
-                return value_bytes.decode('utf-16-be').strip().replace('\x00', '')
+                text = value_bytes.decode('utf-16-be').strip().replace('\x00', '')
             except UnicodeDecodeError:
-                return _decode_text(value_bytes)
-        if type_indicator in (21, 22) and value_bytes:  # 有/无符号整数
+                return None
+            if any(not ch.isprintable() and ch not in '\t\r\n' for ch in text):
+                return None
+            return text
+        if type_indicator in (21, 22) and 0 < len(value_bytes) <= 8:  # 有/无符号整数
             return int.from_bytes(value_bytes, 'big', signed=(type_indicator == 21))
         if type_indicator == 23 and len(value_bytes) >= 4:  # float32
             import struct
@@ -353,8 +375,8 @@ def _parse_data_box(body: bytes) -> Any:
         if type_indicator == 24 and len(value_bytes) >= 8:  # float64
             import struct
             return struct.unpack('>d', value_bytes[:8])[0]
-        text = _decode_text(value_bytes)
-        return text or None
+        # JPEG/PNG cover art, opaque data and unknown types are not text.
+        return None
     return None
 
 
@@ -380,7 +402,7 @@ def _parse_ilst(payload: bytes, keys: list) -> Dict[str, Any]:
             name = keys[index - 1]
         else:
             name = _atom_type_to_key(raw_key)
-        if not name:
+        if not name or name.lower() in _BINARY_METADATA_KEYS:
             continue
 
         value = _parse_data_box(body)
@@ -612,7 +634,7 @@ def extract_video_metadata(file_path: str) -> Dict[str, Any]:
         if file_size <= 8:
             return result
 
-        with open(file_path, 'rb') as f:
+        with budgeted_open(file_path) as f:
             moov = _find_box(f, 0, file_size, (b'moov',))
             if moov is None:
                 return result

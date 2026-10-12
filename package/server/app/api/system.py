@@ -17,11 +17,55 @@ import logging
 import asyncio
 import os
 import secrets
+from typing import Literal
+from pydantic import BaseModel
 from fastapi import Header
 from app.dependencies import BaseResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_extension_state_lock = asyncio.Lock()
+
+
+class AIExtensionStateRequest(BaseModel):
+    state: Literal["ready", "missing", "waiting_update", "maintenance"]
+
+
+@router.get("/desktop/ai-extension", response_model=BaseResponse[dict])
+def desktop_ai_extension_requirements(
+    secret: str | None = Header(default=None, alias="X-TrailSnap-Desktop-Secret"),
+):
+    _require_desktop_secret(secret)
+    from app.core.config_manager import VERSION
+    from app.service.ai_extension_state import MINIMUM_AI_EXTENSION_VERSION
+    return BaseResponse.success(data={
+        "serverVersion": VERSION,
+        "minimumAIExtensionVersion": MINIMUM_AI_EXTENSION_VERSION,
+    })
+
+
+@router.post("/desktop/ai-extension", response_model=BaseResponse[dict])
+async def set_desktop_ai_extension_state(
+    body: AIExtensionStateRequest,
+    secret: str | None = Header(default=None, alias="X-TrailSnap-Desktop-Secret"),
+):
+    _require_desktop_secret(secret)
+    from app.service.task_manager import TaskManager
+    from app.service.desktop_maintenance import maintenance
+    async with _extension_state_lock:
+        if body.state == "maintenance":
+            maintenance.ai_draining = True
+        try:
+            await asyncio.to_thread(TaskManager.get_instance().set_ai_extension_state, body.state)
+            if body.state == "maintenance":
+                # Includes direct API inference followed by database result commits.
+                while maintenance.ai_active:
+                    await asyncio.sleep(0.1)
+            else:
+                maintenance.ai_draining = False
+        except Exception as error:
+            return BaseResponse.fail(msg=str(error))
+    return BaseResponse.success(data={"state": body.state, "ready": True})
 
 
 def _require_desktop_secret(secret: str | None) -> None:

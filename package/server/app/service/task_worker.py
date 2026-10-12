@@ -28,6 +28,10 @@ from app.service.task_strategy import TaskStrategyFactory
 from app.service.adaptive_limiter import AdaptiveResourceLimiter
 from app.service.task_runtime import await_owned
 from app.service.disk_budget import disk_budget
+from app.service.ai_extension_state import (
+    STATE_KEY as EXTENSION_STATE_KEY, LOCAL_TYPES, WAIT_INSTALL, WAIT_UPDATE,
+    apply_wait_state, requires_extension, wait_reason,
+)
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
 from app.service.tasks import daily_frame
@@ -117,6 +121,17 @@ class TaskQueueManager:
         if category in self.queues:
             self.queues[category].task_done()
 
+    def drain_queued(self, category: str) -> List[Dict]:
+        """Withdraw only queued batches, on the owning event loop."""
+        queue = self.queues[category]
+        tasks = []
+        while not queue.empty():
+            _, _, batch = queue.get_nowait()
+            tasks.extend(batch)
+            self._item_counts[category] -= len(batch)
+            queue.task_done()
+        return tasks
+
 
 def get_chunk_size(task_type):
     level = resolve_concurrency_level(system_config.config.task.concurrency_level)
@@ -126,7 +141,9 @@ def get_chunk_size(task_type):
     elif task_type == TaskType.OCR or task_type == TaskType.RECOGNIZE_TICKET:
         chunk_size = 2 if level == 'high' else 1
     elif task_type == TaskType.RECOGNIZE_FACE:
-        chunk_size = 4 if level == 'high' else 2
+        # AI 侧每张图独立线程推理（ONNX 默认线程池吃满物理核），
+        # 批内并发是吞吐主通道；小批会闲置 CPU（4 张实测只有 8 张的 ~1/3）。
+        chunk_size = 8 if level == 'high' else 4
     elif task_type == TaskType.CLUSTER_FACES:
         # One whole-library pass per batch. Batching several owners together
         # would serialise their clustering inside a single timeout window.
@@ -198,6 +215,7 @@ class TaskWorker:
         # prevents the producer from selecting the same row twice.
         self.reserved_task_ids: Set[UUID] = set()
         self.ai_phase_type = None
+        self.ai_phase_yield_requested = False
         self.resource_limiters: Dict[str, AdaptiveResourceLimiter] = {}
         self.adaptive_limits: Dict[str, int] = {}
         self.pressure_task = None
@@ -551,6 +569,12 @@ class TaskWorker:
             paused_list = self._load_system_state('paused_categories', [])
             self.paused_categories = set(paused_list)
             self.fast_mode = self._load_system_state('fast_mode', False)
+            if os.environ.get("TS_DESKTOP") == "1":
+                db = SessionLocal()
+                try:
+                    apply_wait_state(db, self._load_system_state(EXTENSION_STATE_KEY, "missing"))
+                finally:
+                    db.close()
             self._last_sync = now
 
     def _manage_pool_lifecycle(self):
@@ -612,11 +636,12 @@ class TaskWorker:
         reserved_task_ids = reserved_task_ids or set()
         try:
             # 每个 category 的内存队列一次只放入「一种」任务类型的任务。
-            # 取最高优先级且尚有 PENDING 任务的类型，把它取完后再取下一优先级，
-            # 避免不同类型在同一队列中交替、导致模型/资源反复加载卸载。
+            # 同类型连续处理以减少模型切换；AI 遇到更高优先级任务时，
+            # 停止预取并等待在途批次及结果提交结束后让出阶段。
             FETCH_BATCH_SIZE = 128
 
             chunked_batches = []
+            extension_wait = self._extension_wait_reason()
             for cat in ['CPU', 'IO', 'AI']:
                 cat_types = [t for t in allowed_types if TaskStrategyFactory.get_strategy(t) and TaskStrategyFactory.get_strategy(t).task_category == cat]
                 # A category pause disables automatic pipeline work, not an
@@ -629,40 +654,25 @@ class TaskWorker:
                     and TaskStrategyFactory.get_strategy(t)
                     and TaskStrategyFactory.get_strategy(t).task_category == cat
                 ])
+                if extension_wait:
+                    # Maintenance also gates interactive-priority work.
+                    cat_types = [t for t in cat_types if t not in LOCAL_TYPES]
                 if not cat_types:
                     continue
 
                 queued_items = current_item_counts.get(cat, 0)
                 prefetch_limit = self._prefetch_limit(cat)
-                if queued_items >= prefetch_limit:
+                if cat != 'AI' and queued_items >= prefetch_limit:
                     continue
                 candidate_types = cat_types
-                if cat == 'AI':
-                    if self.ai_phase_type is not None:
-                        # Include backoff rows and PROCESSING rows awaiting result
-                        # persistence, not just currently runnable PENDING rows.
-                        phase_rows = db.query(Task.id).filter(Task.type == self.ai_phase_type).filter(or_(
-                            Task.status == TaskStatus.PROCESSING,
-                            Task.id.in_(reserved_task_ids),
-                            (Task.status == TaskStatus.PENDING) & or_(
-                                Task.type.notin_(list(self.paused_categories)),
-                                Task.priority >= INTERACTIVE_TASK_PRIORITY,
-                            ),
-                        )).first()
-                        if phase_rows is not None or queued_items:
-                            candidate_types = [self.ai_phase_type]
-                        else:
-                            logging.info('AI phase completed: type=%s', self.ai_phase_type)
-                            self.ai_phase_type = None
 
                 if not candidate_types:
                     continue
 
                 # 选出候选类型中优先级最高、且尚有 PENDING 任务的那一种
-                top_query = (db.query(Task.type, Task.priority)
+                top_query = (db.query(Task.type, Task.priority, Task.created_at)
                          .filter(Task.status == TaskStatus.PENDING)
                          .filter(or_(Task.next_retry_at.is_(None), Task.next_retry_at <= datetime.now()))
-                         .filter(Task.type.in_(candidate_types))
                          .filter(or_(
                              Task.type.notin_(list(self.paused_categories)),
                              Task.priority >= INTERACTIVE_TASK_PRIORITY,
@@ -670,7 +680,47 @@ class TaskWorker:
                           .order_by(Task.priority.desc(), Task.created_at.asc()))
                 if reserved_task_ids:
                     top_query = top_query.filter(Task.id.notin_(list(reserved_task_ids)))
-                top = top_query.first()
+                if extension_wait:
+                    top_query = top_query.filter(or_(Task.error.is_(None), ~Task.error.in_([WAIT_INSTALL, WAIT_UPDATE])))
+                # Equality on each type lets the dispatch index supply the
+                # mixed-direction ordering without sorting an entire category.
+                heads = [top_query.filter(Task.type == task_type).first()
+                         for task_type in dict.fromkeys(candidate_types)]
+                top = min((head for head in heads if head is not None),
+                          key=lambda head: (-head[1], head[2]), default=None)
+                if cat == 'AI' and self.ai_phase_type is not None:
+                    phase_query = db.query(Task.priority).filter(Task.type == self.ai_phase_type)
+                    # Retry backoff keeps the phase ahead of equal/lower priority
+                    # work, but must not hold up a newly arrived urgent type.
+                    phase_head = phase_query.filter(or_(
+                        Task.status == TaskStatus.PROCESSING,
+                        Task.id.in_(reserved_task_ids),
+                        (Task.status == TaskStatus.PENDING) & or_(
+                            Task.type.notin_(list(self.paused_categories)),
+                            Task.priority >= INTERACTIVE_TASK_PRIORITY,
+                        ),
+                    )).order_by(Task.priority.desc(), Task.created_at.asc()).first()
+                    higher_priority = (
+                        top is not None and top[0] != self.ai_phase_type
+                        and (phase_head is None or top[1] > phase_head.priority)
+                    )
+                    self.ai_phase_yield_requested = bool(higher_priority)
+                    if higher_priority:
+                        # Reservations cover dequeued batches not yet claimed;
+                        # PROCESSING also covers results awaiting persistence.
+                        in_flight = phase_query.filter(or_(
+                            Task.status == TaskStatus.PROCESSING,
+                            Task.id.in_(reserved_task_ids),
+                        )).first()
+                        if queued_items or in_flight is not None:
+                            continue
+                        logging.info('AI phase yielding: type=%s next=%s', self.ai_phase_type, top[0])
+                        self.ai_phase_type = None
+                    elif phase_head is not None or queued_items:
+                        top = top_query.filter(Task.type == self.ai_phase_type).first()
+                    else:
+                        logging.info('AI phase completed: type=%s', self.ai_phase_type)
+                        self.ai_phase_type = None
                 if not top:
                     continue
                 chosen_type = top[0]
@@ -680,6 +730,7 @@ class TaskWorker:
                     continue
                 if cat == 'AI' and self.ai_phase_type is None:
                     self.ai_phase_type = chosen_type
+                    self.ai_phase_yield_requested = False
                     logging.info('AI phase started: type=%s', chosen_type)
 
                 # 只取这一种类型的任务，按创建时间顺序最多取 FETCH_BATCH_SIZE 条
@@ -693,6 +744,8 @@ class TaskWorker:
                            )))
                 if reserved_task_ids:
                     query = query.filter(Task.id.notin_(list(reserved_task_ids)))
+                if extension_wait:
+                    query = query.filter(or_(Task.error.is_(None), ~Task.error.in_([WAIT_INSTALL, WAIT_UPDATE])))
                 fetch_limit = min(FETCH_BATCH_SIZE, prefetch_limit - queued_items)
                 tasks = (query.order_by(Task.priority.desc(), Task.created_at.asc())
                               .limit(fetch_limit)
@@ -741,6 +794,13 @@ class TaskWorker:
         finally:
             db.close()
 
+    def _withdraw_ai_prefetch(self) -> None:
+        """Release queued reservations without changing persisted task state."""
+        tasks = self.queue_manager.drain_queued('AI')
+        self.reserved_task_ids.difference_update(task['id'] for task in tasks)
+        if tasks:
+            self.wake()
+
     async def consumer_loop(self, category: str):
         logging.info(f"TaskWorker {category} consumer loop started")
 
@@ -767,6 +827,8 @@ class TaskWorker:
                 try:
                     if category == 'AI':
                         def available(batch):
+                            if self.ai_phase_yield_requested:
+                                return False
                             limiter = self._resource_limiter(batch[0].get('resource_key', 'ai'))
                             return limiter.in_use < limiter.current_limit
                         batch = await asyncio.wait_for(self.queue_manager.get_available_ai_batch(available), timeout=1.0)
@@ -862,6 +924,14 @@ class TaskWorker:
             strategy = TaskStrategyFactory.get_strategy(task_type)
             if strategy is None:
                 raise ValueError(f'Strategy not found for task type: {task_type}')
+            reason = self._extension_wait_reason()
+            if reason:
+                waiting = [t for t in tasks if requires_extension(t.type, t.owner_id, db)]
+                for task in waiting:
+                    self._defer_extension_task(db, task, reason)
+                tasks = [t for t in tasks if t not in waiting]
+                if not tasks:
+                    return [], None
             if task_type in self.paused_categories and not all(
                 t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):
@@ -896,6 +966,14 @@ class TaskWorker:
                 task = task_map.get(result.get('task_id'))
                 if result.get('status') == TaskStatus.FAILED:
                     error = result.get('error')
+                    reason = self._extension_wait_reason()
+                    if task is not None and requires_extension(task.type, task.owner_id, db) and (
+                        reason or 'ai_extension_wait=' in str(error)
+                    ):
+                        self._defer_extension_task(db, task, reason or (
+                            WAIT_INSTALL if 'ai_extension_wait=missing' in str(error) else WAIT_UPDATE
+                        ))
+                        continue
                     retryable = self._is_retryable_error(error)
                     if retryable:
                         outcome = 'waiting_for_model' if self._is_model_preparing_error(error) else 'overload'
@@ -940,6 +1018,18 @@ class TaskWorker:
             '服务繁忙', 'try again later',
         )
         return any(marker in text for marker in markers)
+
+    def _extension_wait_reason(self):
+        if os.environ.get("TS_DESKTOP") != "1":
+            return None
+        return wait_reason(self._load_system_state(EXTENSION_STATE_KEY, "missing"))
+
+    def _defer_extension_task(self, db, task, reason):
+        task.status = TaskStatus.PENDING
+        task.error = reason
+        task.next_retry_at = None
+        db.commit()
+        self._publish_task_row(task)
 
     @staticmethod
     def _is_model_preparing_error(error: Any) -> bool:
@@ -1034,6 +1124,8 @@ class TaskWorker:
                         lowest_priorities,
                         set(self.reserved_task_ids),
                     )
+                if self.ai_phase_yield_requested:
+                    self._withdraw_ai_prefetch()
                 dispatched_count = 0
 
                 for cat, chunk in chunked_batches:

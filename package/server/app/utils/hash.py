@@ -1,9 +1,8 @@
 import hashlib
 import os
 import asyncio
-from app.service.disk_budget import media_io
+from app.service.disk_budget import budgeted_open
 
-@media_io()
 def calculate_file_md5(file_path: str, chunk_size: int = 1024 * 1024) -> str:
     """
     Calculate MD5 hash of a file by reading it in chunks to avoid memory overflow.
@@ -20,7 +19,7 @@ def calculate_file_md5(file_path: str, chunk_size: int = 1024 * 1024) -> str:
         
     md5_hash = hashlib.md5()
     try:
-        with open(file_path, "rb") as f:
+        with budgeted_open(file_path, "rb") as f:
             for chunk in iter(lambda: f.read(chunk_size), b""):
                 md5_hash.update(chunk)
         return md5_hash.hexdigest()

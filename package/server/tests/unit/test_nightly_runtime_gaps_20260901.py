@@ -21,7 +21,7 @@ pytestmark = pytest.mark.smoke
 def test_discovery_build_service_info_normalizes_url(monkeypatch):
     service_info = MagicMock()
     service_info_factory = MagicMock(return_value=service_info)
-    monkeypatch.setattr(discovery, "ServiceInfo", service_info_factory)
+    monkeypatch.setattr("zeroconf.ServiceInfo", service_info_factory)
 
     monkeypatch.setattr(discovery, "_resolve_addresses", lambda hostname: [__import__("ipaddress").ip_address("127.0.0.1").packed])
     result = discovery.build_service_info("https://TRAILSNAP.example:8443///", "  Family Album ")
@@ -38,7 +38,7 @@ def test_discovery_service_rejects_invalid_public_url(monkeypatch):
     monkeypatch.setenv("TRAILSNAP_PUBLIC_URL", "https://trailsnap.example/path")
     zeroconf = MagicMock()
     monkeypatch.setattr(discovery, "build_service_info", MagicMock(side_effect=ValueError("invalid URL")))
-    monkeypatch.setattr(discovery, "Zeroconf", MagicMock(return_value=zeroconf))
+    monkeypatch.setattr("zeroconf.Zeroconf", MagicMock(return_value=zeroconf))
 
     discovery.DiscoveryService().start()
 
@@ -50,7 +50,7 @@ def test_discovery_service_registers_and_releases_service(monkeypatch):
     zeroconf = MagicMock()
     monkeypatch.setenv("TRAILSNAP_PUBLIC_URL", "https://trailsnap.example")
     monkeypatch.setattr(discovery, "build_service_info", MagicMock(return_value=info))
-    monkeypatch.setattr(discovery, "Zeroconf", MagicMock(return_value=zeroconf))
+    monkeypatch.setattr("zeroconf.Zeroconf", MagicMock(return_value=zeroconf))
 
     service = discovery.DiscoveryService()
     service.start()

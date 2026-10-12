@@ -12,7 +12,7 @@ def test_high_concurrency_chunk_sizes(monkeypatch):
     assert task_worker.get_chunk_size(TaskType.VISUAL_DESCRIPTION) == 1
     assert task_worker.get_chunk_size(TaskType.OCR) == 2
     assert task_worker.get_chunk_size(TaskType.RECOGNIZE_TICKET) == 2
-    assert task_worker.get_chunk_size(TaskType.RECOGNIZE_FACE) == 4
+    assert task_worker.get_chunk_size(TaskType.RECOGNIZE_FACE) == 8
     assert task_worker.get_chunk_size(TaskType.PROCESS_BASIC) == 4
     assert task_worker.get_chunk_size(TaskType.EXTRACT_METADATA) == 16
     assert task_worker.get_chunk_size(TaskType.CLASSIFY_IMAGE) == 8
@@ -24,6 +24,6 @@ def test_low_concurrency_chunk_sizes(monkeypatch):
 
     assert task_worker.get_chunk_size(TaskType.PROCESS_BASIC) == 4
     assert task_worker.get_chunk_size(TaskType.OCR) == 1
-    assert task_worker.get_chunk_size(TaskType.RECOGNIZE_FACE) == 2
+    assert task_worker.get_chunk_size(TaskType.RECOGNIZE_FACE) == 4
     assert task_worker.get_chunk_size(TaskType.CLUSTER_FACES) == 1
     assert task_worker.get_chunk_size(TaskType.IMAGE_EMBEDDING) == 8

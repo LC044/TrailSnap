@@ -263,6 +263,65 @@ def test_extract_tolerates_udta_atoms_without_language_prefix(tmp_path):
     assert extract_video_metadata(path)['video_info']['Make'] == 'Xiaomi'
 
 
+def test_extract_skips_vendor_binary_atoms_and_keeps_video_metadata(tmp_path):
+    from app.utils.video_meta import extract_video_metadata
+
+    udta = box(b'udta', b''.join(
+        box(name, b'X' * 1024 * 1024)
+        for name in (b'mcvr', b'snal', b'tnal', b'covr', b'priv')
+    ) + udta_text(b'\xa9day', '2024-05-01T18:30:00+0800')
+        + udta_text(b'\xa9xyz', '+30.5+114.3/'))
+    path = write_mp4(tmp_path, 'binary.mp4', udta, video_trak())
+    result = extract_video_metadata(path)
+
+    assert result['video_time'] == datetime(2024, 5, 1, 18, 30)
+    assert result['location'] == {'latitude': 30.5, 'longitude': 114.3}
+    assert result['width'] == 1920 and result['fps'] == 30.0
+    assert not {'mcvr', 'snal', 'tnal', 'covr', 'priv'} & result['video_info'].keys()
+
+
+@pytest.mark.parametrize('type_indicator', [0, 13, 14, 27, 255])
+def test_extract_skips_binary_and_unknown_ilst_types(tmp_path, type_indicator):
+    from app.utils.video_meta import extract_video_metadata
+
+    ilst = ilst_indexed([
+        (1, data_box(b'looks like text', type_indicator)),
+        (2, data_box('16')),
+        (3, data_box('private data')),
+    ])
+    meta = box(b'meta', b'\x00' * 4 + hdlr_box(b'mdta')
+               + keys_box(['custom.binary', 'com.android.version', 'mcvr']) + ilst)
+    result = extract_video_metadata(write_mp4(tmp_path, 'typed.mp4', meta))
+
+    assert result['video_info']['AndroidVersion'] == '16'
+    assert 'custom.binary' not in result['video_info']
+    assert 'mcvr' not in result['video_info']
+
+
+def test_extract_drops_oversized_text_but_preserves_unicode_and_numeric_values(tmp_path):
+    from app.utils.video_meta import extract_video_metadata
+
+    ilst = ilst_indexed([
+        (1, data_box('X' * 65536)),
+        (2, data_box('中文标题'.encode('utf-16-be'), 2)),
+        (3, data_box(60, 21)),
+        (4, data_box(29.97, 23)),
+        (5, data_box(('文' * 32768).encode('utf-16-be'), 2)),
+        (6, box(b'data', struct.pack('>II', 21, 0) + b'\x01' * 65536)),
+    ])
+    meta = box(b'meta', b'\x00' * 4 + hdlr_box(b'mdta') + keys_box([
+        'com.apple.quicktime.description', 'com.apple.quicktime.title',
+        'custom.count', 'com.android.capture.fps', 'custom.huge', 'custom.integer',
+    ]) + ilst)
+    info = extract_video_metadata(write_mp4(tmp_path, 'bounded.mp4', meta))['video_info']
+
+    assert 'Description' not in info and 'custom.huge' not in info
+    assert 'custom.integer' not in info
+    assert info['Title'] == '中文标题'
+    assert info['custom.count'] == 60
+    assert info['CaptureFrameRate'] == pytest.approx(29.97)
+
+
 # --------------------------------------------------------------------------- #
 # meta(keys + ilst) 分支
 # --------------------------------------------------------------------------- #

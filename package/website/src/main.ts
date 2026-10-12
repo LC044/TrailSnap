@@ -30,6 +30,11 @@ import { registerButtonMotion } from '@/composables/useButtonMotion'
 async function bootstrap() {
   document.documentElement.classList.toggle('capacitor-android', Capacitor.getPlatform() === 'android')
   document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
+  // Load the initial route while the sidecar starts, rather than after login.
+  // Keep errors handled here; Vue Router still owns navigation error reporting.
+  if (isTauriApp()) {
+    void import('@/views/HomePage.vue').catch(error => console.warn('Home preload failed', error))
+  }
   await initializeServerConfig()
   installNativeNetworkPolicy(getServerUrl)
   document.documentElement.classList.toggle('capacitor-native', isNativeApp())

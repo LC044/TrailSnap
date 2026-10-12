@@ -5,6 +5,8 @@ import asyncio
 import logging
 import os
 import json
+import hashlib
+import tempfile
 from uuid import UUID, uuid4
 from app.utils.image_loading import Image, IMAGE_EXTENSIONS
 from pillow_heif import register_heif_opener
@@ -25,11 +27,10 @@ from app.utils import exif
 from app.utils.hash import calculate_file_md5
 from app.schemas import photo as photo_schemas
 from app.utils import motion_photo
-from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
-from app.service.disk_budget import media_io
+from app.service.disk_budget import budgeted_open
+from contextlib import ExitStack
 from app.service.task_runtime import await_owned
 
-@media_io('file_path', 'storage_root')
 def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str, image_config=None):
     """
     CPU-intensive task running in a separate process.
@@ -39,6 +40,9 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
     session（原实现会为批中每张图 SessionLocal() 一次，撑爆连接池）。
     """
     image_obj = None
+    image_files = ExitStack()
+    image_source = None
+    md5_hash = None
     try:
         # Initialize storage root cache in this process
         storage.update_storage_root_cache(user_id, storage_root)
@@ -47,13 +51,21 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
         image_obj = None
         ext = os.path.splitext(file_path)[1].lower()
         if ext in IMAGE_EXTENSIONS:
+             # Read the original once, hashing as it is copied. Large images
+             # spill to local temporary storage instead of growing RAM unbounded.
+             image_source = image_files.enter_context(tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024))
+             digest = hashlib.md5()
+             with budgeted_open(file_path) as source:
+                 for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                     digest.update(chunk)
+                     image_source.write(chunk)
+             md5_hash = digest.hexdigest()
+             image_source.seek(0)
              try:
-                 image_obj = Image.open(file_path)
+                 image_obj = Image.open(image_source)
              except Exception:
-                 pass
-
-        # 1. Generate thumbnail（透传 image_config，避免 hot path 上开 DB session）
-        thumb_path = storage.generate_thumbnail(user_id, file_path, file_id, image_obj=image_obj, config=image_config)
+                 # Do not reopen an unsupported/corrupt image repeatedly.
+                 raise
 
         # 2. Extract metadata (BASIC ONLY)
         file_name = os.path.basename(file_path)
@@ -82,26 +94,20 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             height = height or meta_height
             duration = duration or meta_duration
 
-        # 4. Extract color/emotion info (while image_obj is still open)
-        color_info = None
-        if image_obj:
-            try:
-                color_info = extract_color_info(image_obj)
-            except Exception as e:
-                logging.getLogger(__name__).warning(f"Color extraction failed for {file_path}: {e}")
-
-        if image_obj:
-            image_obj.close()
+        # Metadata and dimensions are captured before JPEG draft mutates size.
+        thumb_path = storage.generate_thumbnail(user_id, file_path, file_id, image_obj=image_obj,
+                                                config=image_config, allow_source_draft=True)
 
         # 5. Calculate MD5
-        md5_hash = calculate_file_md5(file_path)
+        if md5_hash is None:
+            md5_hash = calculate_file_md5(file_path)
 
         # Check for Google Motion Photo and extract video
         # 注意：generate_thumbnail 失败会返回 None，此时不能拿 thumb_path 拼 .mp4 路径
         # （os.path.splitext(None) 会抛 "expected str, bytes or os.PathLike"）。
         is_motion_photo = False
         if ext in ('.jpg', '.jpeg') and thumb_path:
-            video_path = motion_photo.extract_video(file_path, video_path=os.path.splitext(thumb_path)[0] + '.mp4')
+            video_path = motion_photo.extract_video_from_stream(image_source, os.path.splitext(thumb_path)[0] + '.mp4')
             if video_path:
                 is_motion_photo = True
 
@@ -117,7 +123,7 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             "photo_create_data": None, # Placeholder
             "is_motion_photo": is_motion_photo,
             "md5_hash": md5_hash,
-            "color_info": color_info
+            "raw_metadata": json.loads(json.dumps(meta, default=str, ensure_ascii=False))
         }
     except Exception as e:
         import traceback
@@ -129,8 +135,11 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             "error": str(e)
         }
     finally:
-        if image_obj is not None:
-            image_obj.close()
+        try:
+            if image_obj is not None:
+                image_obj.close()
+        finally:
+            image_files.close()
 
 def process_basic_cpu_batch_job(tasks_data: List[Dict]) -> List[Dict]:
     """
@@ -321,7 +330,7 @@ class BasicTaskStrategy(BaseTaskStrategy):
                         'photo_id': data['file_id'],
                         'file_path': data['file_path'],
                         'user_id': user_id,
-                        'color_info': res.get('color_info'),
+                        'raw_metadata': res.get('raw_metadata'),
                         'is_pre_created': data.get('is_pre_created', False),
                     }
                 }
@@ -330,7 +339,6 @@ class BasicTaskStrategy(BaseTaskStrategy):
         return results
 
     async def handle_completion(self, worker, items: List[Dict], db: Session) -> None:
-        from app.db.models.photo_color import PhotoColor
         from app.db.models.photo_metadata import PhotoMetadata
 
         photos_to_create = {}
@@ -357,7 +365,7 @@ class BasicTaskStrategy(BaseTaskStrategy):
                     processed_photos[str(data['photo_id'])] = {
                         'path': data['file_path'],
                         'owner_id': user_id,
-                        'color_info': data.get('color_info'),
+                        'raw_metadata': data.get('raw_metadata'),
                         'metadata': data.get('metadata'),
                         'is_pre_created': data.get('is_pre_created', False),
                     }
@@ -431,31 +439,6 @@ class BasicTaskStrategy(BaseTaskStrategy):
         if not eligible_ids:
             return
 
-        existing_color_ids = {
-            str(row[0]) for row in db.query(PhotoColor.photo_id).filter(
-                PhotoColor.photo_id.in_([UUID(pid) for pid in eligible_ids])
-            ).all()
-        }
-        for photo_id, info in processed_photos.items():
-            if photo_id not in eligible_ids:
-                continue
-            color_info = info.get('color_info')
-            if color_info and color_info.get('dominant_colors'):
-                try:
-                    if photo_id in existing_color_ids:
-                        continue
-                    color_record = PhotoColor(
-                        photo_id=photo_id,
-                        dominant_colors=color_info.get('dominant_colors'),
-                        brightness=color_info.get('brightness'),
-                        saturation=color_info.get('saturation'),
-                        emotion_hint=color_info.get('emotion_hint'),
-                        analysis_version=CURRENT_COLOR_ANALYSIS_VERSION,
-                    )
-                    db.add(color_record)
-                except Exception as e:
-                    logging.getLogger(__name__).warning(f"Failed to save color info for photo {photo_id}: {e}")
-
         for photo_id, info in processed_photos.items():
             if photo_id not in eligible_ids:
                 continue
@@ -463,7 +446,12 @@ class BasicTaskStrategy(BaseTaskStrategy):
             owner_id = info['owner_id']
 
             # 1. Metadata Task
-            db.add(Task(type=TaskType.EXTRACT_METADATA, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.EXTRACT_METADATA], status=TaskStatus.PENDING, owner_id=owner_id))
+            payload = {'file_path': file_path, 'photo_id': photo_id}
+            if info.get('raw_metadata') is not None:
+                # Persist the complete extraction across restarts and retries.
+                payload['raw_metadata_version'] = 1
+                payload['raw_metadata'] = info['raw_metadata']
+            db.add(Task(type=TaskType.EXTRACT_METADATA, payload=payload, priority=DEFAULT_PRIORITIES[TaskType.EXTRACT_METADATA], status=TaskStatus.PENDING, owner_id=owner_id))
             # 2. Face Recognition Task
             db.add(Task(type=TaskType.RECOGNIZE_FACE, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.RECOGNIZE_FACE], status=TaskStatus.PENDING, owner_id=owner_id))
             # 3. OCR Task

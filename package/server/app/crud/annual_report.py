@@ -2,7 +2,6 @@ from typing import List, Optional, Dict
 from datetime import datetime
 import math
 import logging
-import numpy as np
 from uuid import UUID
 
 from fastapi import Depends, Query, HTTPException
@@ -264,6 +263,8 @@ def find_best_match_photo(
          
     # Order by cosine distance (lower is better/more similar)
     if db.bind.dialect.name == "sqlite":
+        import numpy as np
+
         target = np.asarray(embedding, dtype=float)
         target_norm = np.linalg.norm(target)
         rows = query.with_entities(Photo, ImageVector.embedding).all()

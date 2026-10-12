@@ -1,13 +1,13 @@
 <template>
   <div class="ts-page-background search-page h-full min-h-0 flex flex-col">
     <header class="ts-page-header shrink-0 px-[var(--ts-page-gutter)] py-2">
-      <div class="mb-5 flex items-center gap-3">
+      <div v-if="!embedded" class="mb-5 flex items-center gap-3">
         <BackButton label="返回" @click="goBack" />
         <h1 class="ts-page-title flex-1 text-gray-900 dark:text-white">搜索</h1>
         <button class="search-agent-button ts-liquid-glass flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-primary-600 dark:text-primary-400" aria-label="AI 助手" @click="uiStore.openAgent()"><Bot class="h-6 w-6" /></button>
       </div>
       <div class="relative min-w-0">
-        <input ref="searchInputRef" v-model="searchText" type="search" aria-label="搜索照片" placeholder="搜索时间、地点、人物、类别…" class="ts-input search-input w-full rounded-full pl-10 pr-11" @input="onInput" @keydown.enter="handleSearch" />
+        <input ref="searchInputRef" v-model="searchText" type="search" aria-label="搜索照片" placeholder="搜索时间、地点、人物、类别…" class="ts-input search-input w-full rounded-full pl-10 pr-11" @input="onInput" @keydown.enter.prevent.stop="handleSearch" />
         <Search class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
         <button v-if="searchText" class="ts-icon-button ts-button-ghost absolute right-0 top-1/2 -translate-y-1/2" aria-label="清空搜索" @click="clearSearch"><X class="h-4 w-4" /></button>
       </div>
@@ -67,7 +67,7 @@
           <p v-else class="text-sm text-gray-500 dark:text-gray-400">还没有搜索记录</p>
         </section>
         <section v-for="group in browseGroups" :key="group.id">
-          <div class="mb-3 flex items-center justify-between"><h2 class="ts-section-title text-gray-900 dark:text-white">{{ group.title }}</h2><button class="flex min-h-11 items-center text-sm text-gray-500 dark:text-gray-400" :aria-label="`查看更多${group.title}`" @click="router.push(group.route)">更多<ChevronRight class="h-4 w-4" /></button></div>
+          <div class="mb-3 flex items-center justify-between"><h2 class="ts-section-title text-gray-900 dark:text-white">{{ group.title }}</h2><button v-if="!embedded" class="flex min-h-11 items-center text-sm text-gray-500 dark:text-gray-400" :aria-label="`查看更多${group.title}`" @click="router.push(group.route)">更多<ChevronRight class="h-4 w-4" /></button></div>
           <div v-if="group.data?.representatives.length" class="search-cover-strip" @scroll.passive="onGroupScroll(group.id, $event)">
             <button v-for="item in group.data.representatives" :key="item.entity_id" class="search-cover-card text-left" @click="openRepresentative(group.id, group.route, item)">
               <div class="relative aspect-square overflow-hidden rounded-3xl bg-gray-100 dark:bg-gray-800">
@@ -116,7 +116,18 @@ import type { SmartAlbumOverview, SmartAlbumRepresentative } from '@/api/album'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import SmartAlbumCover from '@/components/SmartAlbumCover.vue'
 
+const props = defineProps<{ embedded?: boolean }>()
+const emit = defineEmits<{ search: [criteria: { query: string; type?: string }] }>()
 const router = useRouter()
+const navigateToSearch = (query: string, type?: string, replace = false) => {
+  if (props.embedded) {
+    emit('search', { query, type })
+    return
+  }
+  const destination = { path: '/search', query: { q: query, ...(type ? { type } : {}) } }
+  if (replace) router.replace(destination)
+  else router.push(destination)
+}
 const searchText = ref('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const suggestions = ref<SearchSuggestion[]>([])
@@ -146,6 +157,10 @@ const onGroupScroll = (id: keyof SmartAlbumOverview, event: Event) => {
   if (element.scrollWidth - element.scrollLeft - element.clientWidth < 180) void albumStore.loadMoreSection(id)
 }
 const openRepresentative = (id: keyof SmartAlbumOverview, route: string, item: SmartAlbumRepresentative) => {
+  if (props.embedded) {
+    selectSuggestion({ type: id === 'people' ? 'person' : id === 'location' ? 'location' : 'tag', value: item.name, label: item.name })
+    return
+  }
   router.push(`${route}/${encodeURIComponent(id === 'classification' ? item.name : item.entity_id)}`)
 }
 const runExample = (value: string) => { searchText.value = value; handleSearch() }
@@ -208,22 +223,16 @@ const handleSearch = () => {
     searchStore.remember(searchText.value)
     const dateRange = parseDateRange(searchText.value)
     if (dateRange) {
-      router.push({ path: '/search', query: { q: searchText.value, type: 'date' } })
+      navigateToSearch(searchText.value, 'date')
     } else {
-      router.push({ path: '/search', query: { q: searchText.value } })
+      navigateToSearch(searchText.value)
     }
   }
 }
 
 const selectSuggestion = (item: SearchSuggestion) => {
   searchStore.remember(searchText.value)
-  router.replace({ 
-    path: '/search', 
-    query: { 
-      q: item.value, 
-      type: item.type 
-    } 
-  });
+  navigateToSearch(item.value, item.type, true)
 }
 
 const getLabel = (type: string) => {
@@ -259,7 +268,7 @@ const getIcon = (type: string) => {
 
 <style scoped>
 .search-page input { padding-left: 40px; padding-right: 44px; }
-.search-page { max-width: 720px; margin-inline: auto; }
+.search-page { width: 100%; max-width: 720px; margin-inline: auto; }
 .search-input { min-height: 52px; border-radius: 999px; }
 .search-cover-strip { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; padding-bottom: 4px; }
 .search-cover-strip::-webkit-scrollbar { display: none; }

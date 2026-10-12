@@ -12,7 +12,6 @@ import hashlib
 import json
 from uuid import UUID
 
-import numpy as np
 from fastapi import HTTPException
 from sqlalchemy import String, and_, case, cast, func, literal, or_, select, union
 from sqlalchemy.orm import Session
@@ -38,6 +37,8 @@ PHOTO_SIMILARITY_THRESHOLD = 0.88
 
 def diversify_photos(keys: list[str], embeddings: dict[str, object]) -> list[str]:
     """Keep the existing rank, but postpone near-duplicates until other views appear."""
+    import numpy as np
+
     vectors = {}
     for key in keys:
         embedding = embeddings.get(key)

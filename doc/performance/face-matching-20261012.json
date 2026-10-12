@@ -1,0 +1,65 @@
+{
+  "measured_at": "2026-10-12T00:56:11.684336+08:00",
+  "baseline_sha": "eb00dae13b22c81d7984043ef8c6df2e91b558d8",
+  "rounds": 3,
+  "scope": "SQLite nearest assigned face lookup; excludes image IO, AI, writes and scheduler",
+  "source_opened_read_only": true,
+  "scenarios": [
+    {
+      "name": "no_assigned_references",
+      "batch_size": 8,
+      "assigned_references": 0,
+      "implementations": {
+        "before": {
+          "batch_ms": [
+            43695.9285999983,
+            27387.268999998923,
+            32563.72399999964
+          ],
+          "median_batch_ms": 32563.72399999964,
+          "vector_cache_rows": 1078
+        },
+        "after": {
+          "batch_ms": [
+            142.3815000016475,
+            145.59900000313064,
+            133.6070999968797
+          ],
+          "median_batch_ms": 142.3815000016475,
+          "vector_cache_rows": 0
+        }
+      },
+      "results_equal": true,
+      "speedup": 228.70754978436693
+    },
+    {
+      "name": "assigned_references",
+      "batch_size": 8,
+      "assigned_references": 67,
+      "implementations": {
+        "before": {
+          "batch_ms": [
+            2436.9691999963834,
+            1771.174699999392,
+            1807.4877000035485
+          ],
+          "median_batch_ms": 1807.4877000035485,
+          "vector_cache_rows": 1078
+        },
+        "after": {
+          "batch_ms": [
+            1120.3591999947093,
+            550.351399993815,
+            585.1361000022735
+          ],
+          "median_batch_ms": 585.1361000022735,
+          "vector_cache_rows": 1078
+        }
+      },
+      "results_equal": true,
+      "speedup": 3.0890039086573635
+    }
+  ],
+  "photos": 21763,
+  "faces": 1078
+}

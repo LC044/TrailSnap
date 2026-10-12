@@ -123,6 +123,7 @@ export function useTaskSSE(opts: UseTaskSSEOptions): UseTaskSSEReturn {
     es.addEventListener('task.updated', handle as EventListener)
     es.addEventListener('task.created', handle as EventListener)
     es.addEventListener('task.retry', handle as EventListener)
+    es.addEventListener('task.extension', handle as EventListener)
   }
 
   // React to token / enabled changes

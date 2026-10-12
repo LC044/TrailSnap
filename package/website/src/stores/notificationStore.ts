@@ -160,7 +160,7 @@ export const useNotificationStore = defineStore('notification', () => {
   };
 
   const handleEvent = (event: string, data: any) => {
-    if (event === 'task.category') {
+    if (event === 'task.category' || event === 'task.extension') {
       lastEventAt.value = new Date().toISOString();
     } else if (event.startsWith('task.')) {
       handleTaskEvent(event, data as Task);

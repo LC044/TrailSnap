@@ -8,7 +8,7 @@ pytest's temporary directory only.
 """
 import json
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -117,7 +117,7 @@ def test_fetch_tasks_keeps_interactive_work_in_single_item_batches():
     top_query = MagicMock()
     top_query.filter.return_value = top_query
     top_query.order_by.return_value = top_query
-    top_query.first.return_value = (TaskType.PROCESS_BASIC, task_b.priority)
+    top_query.first.return_value = (TaskType.PROCESS_BASIC, task_b.priority, datetime.now())
 
     task_query = MagicMock()
     task_query.filter.return_value = task_query

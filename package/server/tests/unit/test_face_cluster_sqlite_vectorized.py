@@ -209,6 +209,94 @@ def test_assign_face_to_identity_picks_closest_of_many(face_sqlite_session):
     assert result == close.id
 
 
+def test_no_assigned_reference_skips_vectors_and_candidate_windows(face_sqlite_session):
+    user = _make_user(face_sqlite_session, "unassigned-user")
+    target = _add_face(face_sqlite_session, user, _vec(1.0, 0.0))
+    for _ in range(70):
+        _add_face(face_sqlite_session, user, _vec(1.0, 0.0))
+    face_sqlite_session.commit()
+    svc = FaceClusterService(face_sqlite_session)
+
+    with patch.object(face_vector_cache, "similarities") as vectors, patch.object(
+        svc, "_resolve_assigned_candidates"
+    ) as resolve:
+        assert svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id) is None
+
+    vectors.assert_not_called()
+    resolve.assert_not_called()
+
+
+def test_negative_reference_check_sees_later_assignment(face_sqlite_session):
+    user = _make_user(face_sqlite_session, "later-assignment")
+    reference = _add_face(face_sqlite_session, user, _vec(1.0, 0.0))
+    target = _add_face(face_sqlite_session, user, _vec(1.0, 0.0))
+    face_sqlite_session.commit()
+    svc = FaceClusterService(face_sqlite_session)
+    assert svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id) is None
+
+    identity = FaceIdentity(identity_name="New", owner_id=user.id)
+    face_sqlite_session.add(identity)
+    face_sqlite_session.flush()
+    reference.face_identity_id = identity.id
+    face_sqlite_session.flush()
+    with patch("app.service.face_cluster.config_manager.get_user_config",
+               return_value=_threshold_config(0.4)):
+        assert svc.assign_face_to_identity(
+            target.id, _vec(1.0, 0.0), user.id, commit=False
+        ) == identity.id
+    assert target.face_identity_id == identity.id
+    face_sqlite_session.rollback()
+
+    with patch.object(face_vector_cache, "similarities") as vectors:
+        assert svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id) is None
+    vectors.assert_not_called()
+
+
+def test_candidate_verification_preserves_eligibility_and_uses_face_primary_key(face_sqlite_session):
+    from sqlalchemy import text
+
+    mine = _make_user(face_sqlite_session, "candidate-mine")
+    theirs = _make_user(face_sqlite_session, "candidate-theirs")
+    identity = FaceIdentity(identity_name="Mine", owner_id=mine.id)
+    other_identity = FaceIdentity(identity_name="Other", owner_id=theirs.id)
+    face_sqlite_session.add_all([identity, other_identity])
+    face_sqlite_session.flush()
+    eligible = _add_face(face_sqlite_session, mine, _vec(1.0), identity_id=identity.id)
+    deleted = _add_face(face_sqlite_session, mine, _vec(1.0), identity_id=identity.id, deleted=True)
+    unassigned = _add_face(face_sqlite_session, mine, _vec(1.0))
+    other = _add_face(face_sqlite_session, theirs, _vec(1.0), identity_id=other_identity.id)
+    face_sqlite_session.commit()
+    svc = FaceClusterService(face_sqlite_session)
+    ids = np.array([eligible.id, deleted.id, unassigned.id, other.id])
+
+    assert svc._resolve_assigned_candidates(ids, mine.id) == {eligible.id: identity.id}
+    assert svc._resolve_assigned_candidates(ids, None) == {
+        eligible.id: identity.id, other.id: other_identity.id,
+    }
+    query = svc._assigned_face_query(mine.id).filter(Face.id.in_(ids.tolist()))
+    sql = str(query.statement.compile(
+        dialect=face_sqlite_session.bind.dialect, compile_kwargs={"literal_binds": True},
+    ))
+    plan = [row[3] for row in face_sqlite_session.execute(text("EXPLAIN QUERY PLAN " + sql))]
+    assert any("SEARCH faces USING INTEGER PRIMARY KEY" in row for row in plan), plan
+    assert not any("ix_photos_owner_id" in row for row in plan), plan
+
+
+def test_deleted_reference_does_not_trigger_vector_scan(face_sqlite_session):
+    user = _make_user(face_sqlite_session, "deleted-reference")
+    identity = FaceIdentity(identity_name="Deleted", owner_id=user.id)
+    face_sqlite_session.add(identity)
+    face_sqlite_session.flush()
+    _add_face(face_sqlite_session, user, _vec(1.0), identity_id=identity.id, deleted=True)
+    target = _add_face(face_sqlite_session, user, _vec(1.0))
+    face_sqlite_session.commit()
+    with patch.object(face_vector_cache, "similarities") as vectors:
+        assert FaceClusterService(face_sqlite_session).assign_face_to_identity(
+            target.id, _vec(1.0), user.id
+        ) is None
+    vectors.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Complexity guard: the fix must not reload embeddings per face
 # ---------------------------------------------------------------------------

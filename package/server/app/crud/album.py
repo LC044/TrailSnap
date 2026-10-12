@@ -16,7 +16,6 @@ from app.db.models.image_vector import ImageVector
 from app.db.models.user import User
 from app.crud.photo_paths import under_browse_folder
 from app.schemas import album as album_schemas
-import numpy as np
 
 logger = logging.getLogger("app.album")
 
@@ -141,6 +140,8 @@ def _build_album_query(db: Session, album: Album):
         dist_threshold = max(0.0, min(1.0, dist_threshold))
 
         if db.bind.dialect.name == "sqlite":
+            import numpy as np
+
             target = np.asarray(album.query_embedding, dtype=float)
             target_norm = np.linalg.norm(target)
             matching_ids = []

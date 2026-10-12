@@ -11,7 +11,6 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID
 
-import numpy as np
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -124,6 +123,7 @@ def _cluster_segment(segment: List[dict]) -> List[List[dict]]:
 
     # 局部导入以避免模块加载时就 import sklearn
     from sklearn.cluster import AgglomerativeClustering
+    import numpy as np
 
     vecs = []
     for item in segment:
@@ -270,6 +270,7 @@ def _cluster_ids_by_embedding(
     （不去重是永远安全的状态，只是池里多一些重复）。
     """
     from sklearn.cluster import AgglomerativeClustering
+    import numpy as np
 
     X = np.stack([np.asarray(emb, dtype=np.float32) for _, emb in items])
     # 归一化到单位球，与 _cluster_segment 保持一致；零向量兜底避免除零

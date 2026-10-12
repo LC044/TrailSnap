@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import gc
+import threading
 from pathlib import Path
 import numpy as np
 import cv2
@@ -53,6 +54,8 @@ def release_model(model):
     """深度清理InsightFace的FaceAnalysis实例"""
     app = model
     try:
+        if hasattr(app, "_trailsnap_cpu_recognition"):
+            del app._trailsnap_cpu_recognition
         # 1. 清理FaceAnalysis内部的模型和会话（关键！）
         if hasattr(app, 'models'):
             for model_name, model in app.models.items():
@@ -110,6 +113,44 @@ def release_model(model):
 model_manager.register_model("face", load_insightface_model, release_model)
 
 class FaceRecognitionService:
+    def __init__(self):
+        self._fallback_lock = threading.Lock()
+
+    @staticmethod
+    def _valid_embedding(embedding):
+        try:
+            vector = np.asarray(embedding, dtype=float)
+            return (vector.shape == (512,) and np.isfinite(vector).all()
+                    and np.any(vector != 0))
+        except (TypeError, ValueError):
+            return False
+
+    def _ensure_embedding(self, app, img, face):
+        if self._valid_embedding(face.embedding):
+            return
+        recognition = app.models.get("recognition")
+        if recognition is None:
+            raise ValueError("Face recognition model is missing")
+        if recognition.session.get_providers() == ["CPUExecutionProvider"]:
+            raise ValueError("Face recognition returned invalid features on CPU")
+        # Keep the shared accelerated session intact while batch threads run.
+        # Cache the fallback on this model instance so switching/unloading the
+        # model also discards its CPU session.
+        with self._fallback_lock:
+            fallback = getattr(app, "_trailsnap_cpu_recognition", None)
+            if fallback is None:
+                from insightface.model_zoo import get_model
+
+                fallback = get_model(
+                    recognition.model_file, providers=["CPUExecutionProvider"],
+                )
+                fallback.prepare(ctx_id=-1)
+                app._trailsnap_cpu_recognition = fallback
+        logging.warning("Invalid face features from inference provider; retrying on CPU")
+        fallback.get(img, face)
+        if not self._valid_embedding(face.embedding):
+            raise ValueError("Face recognition returned invalid features after CPU retry")
+
     def process_image(self, image_bytes: bytes):
         """
         Process image bytes and return face analysis results
@@ -134,6 +175,7 @@ class FaceRecognitionService:
 
         results = []
         for face in faces:
+            self._ensure_embedding(app, img, face)
             # Extract relevant data
             # face.bbox is [x1, y1, x2, y2]
             # face.kps is 5 keypoints (eyes, nose, mouth corners)
