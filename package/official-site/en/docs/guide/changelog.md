@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-10-12 (0.17.4)
+
+### New
+
+- Reworked the desktop AI extension update experience: the settings page can check for updates and show compatibility with your Server and platform, with manual download and offline import; installed extensions at or above the minimum supported version keep working without re-downloading
+- The shared photo picker is rebuilt: search to locate photos, reused everywhere from people covers to album covers and avatars; on mobile an alphabet scrollbar enables fast jumping
+- People editing now supports picking multiple library photos as cover candidates
+
+### Improvements
+
+- Big face recognition performance gains: faster desktop face-matching queries and batch concurrency, plus an automatic CPU retry when an inference provider returns invalid results
+- Smarter background task scheduling: AI tasks yield to higher-priority work such as scans and thumbnails, switching once in-flight batches finish, so organizing photos is no longer blocked by AI analysis
+- The task queue gains scheduling indexes and photo links; deleting a photo cleans up its related tasks, and upgrading an older library backfills links and reclaims SQLite space
+- Metadata extraction reuses cached results and color analysis reads thumbnails instead of originals, making scans faster
+- Disk I/O is throttled per operation, so media processing like video metadata and motion photo extraction no longer holds the disk for long stretches
+
+### Bug Fixes
+
+- Fixed desktop annual report photos and avatars failing to load
+- Fixed video metadata bloating EXIF with cover images and other binary data, with a SQLite cleanup tool
+- Fixed the vector type import failing on fresh PostgreSQL deployments
+- Fixed photo picker entry points and interactions when changing people covers, album covers, and avatars
+
 ## 2026-10-11 (0.17.3)
 
 ### New

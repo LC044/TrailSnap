@@ -120,7 +120,7 @@ releases/ 通常被 git 忽略；确认三个文件存在即可，不强行提�
 
 1. 在 package/official-site 下解析 public/version.json。
 2. 在 package/official-site 下运行 pnpm docs:build。
-3. 在仓库根目录运行完整 E2E：
+3. 检查master上次提交触发的ci测试是否通过，如果通过则无需操作，如果未通过则先进行修复，确保ci全绿之后再进行下一步，可以在仓库根目录运行完整 E2E进行自测：
 
     pwsh .\tests\scripts\run-tests.ps1 -Layer e2e -Level full
 
