@@ -121,6 +121,17 @@ class TaskQueueManager:
         if category in self.queues:
             self.queues[category].task_done()
 
+    def drain_queued(self, category: str) -> List[Dict]:
+        """Withdraw only queued batches, on the owning event loop."""
+        queue = self.queues[category]
+        tasks = []
+        while not queue.empty():
+            _, _, batch = queue.get_nowait()
+            tasks.extend(batch)
+            self._item_counts[category] -= len(batch)
+            queue.task_done()
+        return tasks
+
 
 def get_chunk_size(task_type):
     level = resolve_concurrency_level(system_config.config.task.concurrency_level)
@@ -202,6 +213,7 @@ class TaskWorker:
         # prevents the producer from selecting the same row twice.
         self.reserved_task_ids: Set[UUID] = set()
         self.ai_phase_type = None
+        self.ai_phase_yield_requested = False
         self.resource_limiters: Dict[str, AdaptiveResourceLimiter] = {}
         self.adaptive_limits: Dict[str, int] = {}
         self.pressure_task = None
@@ -622,8 +634,8 @@ class TaskWorker:
         reserved_task_ids = reserved_task_ids or set()
         try:
             # 每个 category 的内存队列一次只放入「一种」任务类型的任务。
-            # 取最高优先级且尚有 PENDING 任务的类型，把它取完后再取下一优先级，
-            # 避免不同类型在同一队列中交替、导致模型/资源反复加载卸载。
+            # 同类型连续处理以减少模型切换；AI 遇到更高优先级任务时，
+            # 停止预取并等待在途批次及结果提交结束后让出阶段。
             FETCH_BATCH_SIZE = 128
 
             chunked_batches = []
@@ -648,26 +660,9 @@ class TaskWorker:
 
                 queued_items = current_item_counts.get(cat, 0)
                 prefetch_limit = self._prefetch_limit(cat)
-                if queued_items >= prefetch_limit:
+                if cat != 'AI' and queued_items >= prefetch_limit:
                     continue
                 candidate_types = cat_types
-                if cat == 'AI':
-                    if self.ai_phase_type is not None:
-                        # Include backoff rows and PROCESSING rows awaiting result
-                        # persistence, not just currently runnable PENDING rows.
-                        phase_rows = db.query(Task.id).filter(Task.type == self.ai_phase_type).filter(or_(
-                            Task.status == TaskStatus.PROCESSING,
-                            Task.id.in_(reserved_task_ids),
-                            (Task.status == TaskStatus.PENDING) & or_(
-                                Task.type.notin_(list(self.paused_categories)),
-                                Task.priority >= INTERACTIVE_TASK_PRIORITY,
-                            ),
-                        )).first()
-                        if phase_rows is not None or queued_items:
-                            candidate_types = [self.ai_phase_type]
-                        else:
-                            logging.info('AI phase completed: type=%s', self.ai_phase_type)
-                            self.ai_phase_type = None
 
                 if not candidate_types:
                     continue
@@ -691,6 +686,39 @@ class TaskWorker:
                          for task_type in dict.fromkeys(candidate_types)]
                 top = min((head for head in heads if head is not None),
                           key=lambda head: (-head[1], head[2]), default=None)
+                if cat == 'AI' and self.ai_phase_type is not None:
+                    phase_query = db.query(Task.priority).filter(Task.type == self.ai_phase_type)
+                    # Retry backoff keeps the phase ahead of equal/lower priority
+                    # work, but must not hold up a newly arrived urgent type.
+                    phase_head = phase_query.filter(or_(
+                        Task.status == TaskStatus.PROCESSING,
+                        Task.id.in_(reserved_task_ids),
+                        (Task.status == TaskStatus.PENDING) & or_(
+                            Task.type.notin_(list(self.paused_categories)),
+                            Task.priority >= INTERACTIVE_TASK_PRIORITY,
+                        ),
+                    )).order_by(Task.priority.desc(), Task.created_at.asc()).first()
+                    higher_priority = (
+                        top is not None and top[0] != self.ai_phase_type
+                        and (phase_head is None or top[1] > phase_head.priority)
+                    )
+                    self.ai_phase_yield_requested = bool(higher_priority)
+                    if higher_priority:
+                        # Reservations cover dequeued batches not yet claimed;
+                        # PROCESSING also covers results awaiting persistence.
+                        in_flight = phase_query.filter(or_(
+                            Task.status == TaskStatus.PROCESSING,
+                            Task.id.in_(reserved_task_ids),
+                        )).first()
+                        if queued_items or in_flight is not None:
+                            continue
+                        logging.info('AI phase yielding: type=%s next=%s', self.ai_phase_type, top[0])
+                        self.ai_phase_type = None
+                    elif phase_head is not None or queued_items:
+                        top = top_query.filter(Task.type == self.ai_phase_type).first()
+                    else:
+                        logging.info('AI phase completed: type=%s', self.ai_phase_type)
+                        self.ai_phase_type = None
                 if not top:
                     continue
                 chosen_type = top[0]
@@ -700,6 +728,7 @@ class TaskWorker:
                     continue
                 if cat == 'AI' and self.ai_phase_type is None:
                     self.ai_phase_type = chosen_type
+                    self.ai_phase_yield_requested = False
                     logging.info('AI phase started: type=%s', chosen_type)
 
                 # 只取这一种类型的任务，按创建时间顺序最多取 FETCH_BATCH_SIZE 条
@@ -763,6 +792,13 @@ class TaskWorker:
         finally:
             db.close()
 
+    def _withdraw_ai_prefetch(self) -> None:
+        """Release queued reservations without changing persisted task state."""
+        tasks = self.queue_manager.drain_queued('AI')
+        self.reserved_task_ids.difference_update(task['id'] for task in tasks)
+        if tasks:
+            self.wake()
+
     async def consumer_loop(self, category: str):
         logging.info(f"TaskWorker {category} consumer loop started")
 
@@ -789,6 +825,8 @@ class TaskWorker:
                 try:
                     if category == 'AI':
                         def available(batch):
+                            if self.ai_phase_yield_requested:
+                                return False
                             limiter = self._resource_limiter(batch[0].get('resource_key', 'ai'))
                             return limiter.in_use < limiter.current_limit
                         batch = await asyncio.wait_for(self.queue_manager.get_available_ai_batch(available), timeout=1.0)
@@ -1084,6 +1122,8 @@ class TaskWorker:
                         lowest_priorities,
                         set(self.reserved_task_ids),
                     )
+                if self.ai_phase_yield_requested:
+                    self._withdraw_ai_prefetch()
                 dispatched_count = 0
 
                 for cat, chunk in chunked_batches:

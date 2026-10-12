@@ -185,12 +185,11 @@ This reduces 8 network round-trips to 1, significantly mitigating the impact of 
 Task priority is implemented via the `priority` field (integer) in the `Task` table, where larger values indicate higher priority.
 
 - **Default priorities**: The system defines a `DEFAULT_PRIORITIES` dictionary to automatically assign priorities to different task types.
-  - `SCAN_FOLDER` (10): Highest priority — user-perceived scanning operation.
-  - `PROCESS_BASIC` (9): Basic processing — affects all downstream AI tasks.
-  - `GENERATE_THUMBNAIL` (8): Thumbnail generation — affects frontend display.
-  - `EXTRACT_METADATA` (5): Metadata extraction.
-  - `RECOGNIZE_FACE` / `OCR` (1): Background AI analysis — low priority.
+  - `SCAN_FOLDER` (100), `PROCESS_BASIC` (99), `GENERATE_THUMBNAIL` (98), `EXTRACT_METADATA` (97): Scanning and basic media processing.
+  - AI tasks: `CLASSIFY_IMAGE` (10), `RECOGNIZE_FACE` (9), `IMAGE_EMBEDDING` (8), `OCR` (7), `RECOGNIZE_TICKET` (4), `VISUAL_DESCRIPTION` (1).
+  - User-initiated interactive tasks use priority 10000 and can run while automatic work of that type is paused.
 - **Scheduling logic**: When consumers take tasks from in-memory queues, `PriorityQueue` automatically ensures higher-priority batches are consumed first.
+- **AI phase switching**: Tasks of the same type run consecutively to reduce model switching. When a runnable higher-priority type arrives, the producer stops replenishing the current type and withdraws queued batches. It switches after in-flight batches and result persistence finish. Remaining tasks stay PENDING and resume later; equal or lower priorities do not interrupt a phase. Paused tasks, extension maintenance and future retry deadlines do not trigger a switch.
 
 ## 6. Task Status Management
 
