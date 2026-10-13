@@ -25,12 +25,11 @@ type FilterLabel = '全部' | '已打卡' | '未打卡'
  * 隐藏），里面的 GlobalOverviewPanel 也有 `.grid`（子项是 `bg-primary-50` 统计卡），
  * 且它在 DOM 中排在 LocationListView 之前，`.first()` 会命中这些隐藏的统计卡。
  *
- * LocationListView 的内容卡 class 含 `group`（用于 group-hover），用
- * `.grid:has(> div.group)` 锁定「直接子项是 group 卡片」的那个网格——隐藏的统计网格
- * 子项是 `bg-primary-50`，被排除。返回所有卡片，调用方按需 .first()/.count()。
+ * 使用内容网格的稳定 data-testid，避免样式类调整影响定位；
+ * 不匹配加载骨架和隐藏的统计卡。返回所有卡片，调用方按需 .first()/.count()。
  */
 export function locationGridCard(page: Page) {
-  return page.locator('.location-list .grid:has(> div.group) > div.group')
+  return page.getByTestId('location-album-grid').locator(':scope > div.group')
 }
 
 /** 桌面端 level 切换按钮（区县/城市/省份/景区）。 */

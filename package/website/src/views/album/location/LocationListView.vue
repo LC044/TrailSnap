@@ -18,7 +18,7 @@
     </div>
 
     <!-- Content Grid -->
-    <div v-else class="ts-album-grid">
+    <div v-else class="ts-album-grid" data-testid="location-album-grid">
       <div
         v-for="loc in locations"
         :key="loc.id || loc.name"

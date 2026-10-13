@@ -140,7 +140,7 @@
       <p class="text-sm opacity-60">上传包含人脸的照片后会自动显示在此处</p>
     </div>
 
-    <div v-else class="ts-album-grid">
+    <div v-else class="ts-album-grid" data-testid="people-album-grid">
       <div
         v-for="person in identities"
         :key="person.id"

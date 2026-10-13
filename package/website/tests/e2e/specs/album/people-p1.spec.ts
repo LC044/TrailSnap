@@ -219,7 +219,7 @@ test.describe.serial('P1 - 人物相册', () => {
 
   test('2.5.10 筛选 named - 关闭 unnamed 后 API 调用只带 types=named', async ({ page, request }, testInfo) => {
     // 本用例会把筛选切到 types=named 并断言列表渲染，必须有「已命名」身份；
-    // requireAnyIdentity 接受 unnamed，named 列表为空时 .flow-grid 不渲染会误报。
+    // requireAnyIdentity 接受 unnamed，named 列表为空时 [data-testid="people-album-grid"] 不渲染会误报。
     const probe = await requireNamedIdentity(request, testInfo)
     if (!probe.ok) return
 
@@ -242,7 +242,7 @@ test.describe.serial('P1 - 人物相册', () => {
     await identitiesReq
 
     // 列表依然能渲染
-    await expect(page.locator('.flow-grid').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('[data-testid="people-album-grid"]').first()).toBeVisible({ timeout: 10_000 })
   })
 
   test('2.5.11 隐藏/显示 - 上下文菜单触发后 is_hidden 切换落库', async ({ page, request }, testInfo) => {
@@ -250,7 +250,7 @@ test.describe.serial('P1 - 人物相册', () => {
     if (!probe.ok) return
 
     await gotoRetry(page, '/album/people')
-    const card = page.locator('.flow-grid > div').first()
+    const card = page.locator('[data-testid="people-album-grid"] > div').first()
     await expect(card).toBeVisible({ timeout: 15_000 })
 
     await dispatchContextMenuOnFirstMatch(card)
@@ -331,8 +331,8 @@ test.describe.serial('P1 - 人物相册', () => {
       await page.getByRole('button', { name: '批量' }).click()
 
       // 找到两张对应卡片并点击（合并模式下 click = toggle 选中）
-      const card1 = page.locator('.flow-grid > div').filter({ hasText: t1.identity_name ?? '' }).first()
-      const card2 = page.locator('.flow-grid > div').filter({ hasText: t2.identity_name ?? '' }).first()
+      const card1 = page.locator('[data-testid="people-album-grid"] > div').filter({ hasText: t1.identity_name ?? '' }).first()
+      const card2 = page.locator('[data-testid="people-album-grid"] > div').filter({ hasText: t2.identity_name ?? '' }).first()
       await card1.click()
       await card2.click()
 
@@ -460,7 +460,7 @@ test.describe.serial('P1 - 人物相册', () => {
     if (!probe.ok) return
 
     await gotoRetry(page, '/album/people')
-    const card = page.locator('.flow-grid > div').first()
+    const card = page.locator('[data-testid="people-album-grid"] > div').first()
     await expect(card).toBeVisible({ timeout: 15_000 })
 
     await dispatchContextMenuOnFirstMatch(card)
@@ -515,7 +515,7 @@ test.describe.serial('P1 - 人物相册', () => {
 
       // 找到刚创建的卡片
       const card = page
-        .locator('.flow-grid > div')
+        .locator('[data-testid="people-album-grid"] > div')
         .filter({ hasText: t.identity_name ?? '' })
         .first()
       await expect(card).toBeVisible({ timeout: 15_000 })
@@ -572,7 +572,7 @@ test.describe.serial('P1 - 人物相册', () => {
       // 处理，等待两张卡片都出现再继续。并行用例若再次还原 min_photos，空身份会被
       // 过滤——poll 失败时重新 lower + reload 再试一轮。
       const waitCards = async (): Promise<Locator> => {
-        const cards = page.locator('.flow-grid > div').filter({ hasText: /P1-BatchHS-/ })
+        const cards = page.locator('[data-testid="people-album-grid"] > div').filter({ hasText: /P1-BatchHS-/ })
         await expect
           .poll(() => cards.count(), { timeout: 15_000, message: 'wait for both batch-hs identities to render' })
           .toBeGreaterThanOrEqual(2)
@@ -616,7 +616,7 @@ test.describe.serial('P1 - 人物相册', () => {
       // hidden，故隐藏落库 + 重拉后卡片必然从 DOM 消失；用 expect.poll 等到 0。
       for (const name of ids.map((_, i) => `P1-BatchHS-${i}-`)) {
         // 用 regex 而不是精确字符串（Date.now() 部分动态）
-        const hiddenCard = page.locator('.flow-grid > div').filter({ hasText: new RegExp(name) })
+        const hiddenCard = page.locator('[data-testid="people-album-grid"] > div').filter({ hasText: new RegExp(name) })
         await expect
           .poll(async () => hiddenCard.count(), { timeout: 15_000, message: `identity ${name} should be hidden after batch hide` })
           .toBe(0)
