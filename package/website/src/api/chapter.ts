@@ -3,6 +3,10 @@ import type { ChapterDay } from '@/types/chapter'
 import type { ChapterDefinition, ChapterDetail, ChapterDiaryDraft, ChapterDiscoveryTask, ChapterEvent, ChapterItem, ChapterPage, ChapterPhoto, ChapterStatus } from '@/types/chapter'
 
 export const chapterApi = {
+  async count(status: ChapterStatus = 'candidate') {
+    const response = await request.get<ChapterPage<ChapterItem>>('/api/chapters', { params: { status, counts_only: true } })
+    return response.data.total
+  },
   async days(id: string, skip = 0, year?: number, month?: number) {
     const response = await request.get<ChapterPage<ChapterDay>>(`/api/chapters/${id}/diary/days`, { params: { skip, limit: 6, year, month } })
     return response.data

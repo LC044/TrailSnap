@@ -12,6 +12,25 @@
   box-shadow: var(--ts-shadow-card);
 }
 .ts-muted { color: var(--ts-color-text-secondary); }
+/* Classification, location and person covers share the same responsive size. */
+.ts-album-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--ts-space-5);
+}
+.ts-album-grid > * { min-width: 0; }
+@media (min-width: 640px) {
+  .ts-album-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .ts-album-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--ts-space-6);
+  }
+}
+@media (min-width: 1280px) {
+  .ts-album-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+}
 /* Translucent primary steps are background tints; text needs an opaque color. */
 .dark [class~="dark:text-primary-200"] { color: color-mix(in srgb, var(--theme-primary), white 45%); filter: none; }
 .dark [class~="dark:text-primary-300"] { color: color-mix(in srgb, var(--theme-primary), white 35%); filter: none; }

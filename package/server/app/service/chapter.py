@@ -92,18 +92,22 @@ def serialize(db: Session, row: LifeChapter, *, count: bool = True) -> dict:
         "version": row.version, "source_ids": row.source_ids or [],
     }
     if count:
-        result["photo_count"] = _photo_query(db, row.owner_id, row.start_date, row.end_date).count()
-        result["event_count"] = _events_query(db, row).count()
+        result["photo_count"] = _photo_query(
+            db, row.owner_id, row.start_date, row.end_date
+        ).with_entities(func.count(Photo.id)).scalar()
+        result["event_count"] = _events_query(db, row).with_entities(Memory.id).count()
     return result
 
 
 def list_owned(db: Session, owner_id: UUID, *, status: str = "confirmed", hidden: bool = False,
-               reveal: bool = False, skip: int = 0, limit: int = 20) -> dict:
+               reveal: bool = False, skip: int = 0, limit: int = 20, counts_only: bool = False) -> dict:
     if status not in {"confirmed", "candidate", "ignored"}:
         raise HTTPException(400, "无效的章节状态")
     query = db.query(LifeChapter).filter(LifeChapter.owner_id == owner_id, LifeChapter.status == status)
     query = query.filter(LifeChapter.is_hidden.is_(hidden if status == "confirmed" else False))
-    total = query.count()
+    total = query.with_entities(func.count(LifeChapter.id)).scalar()
+    if counts_only:
+        return {"items": [], "total": total, "skip": skip, "limit": limit}
     rows = query.order_by(LifeChapter.start_date.asc(), LifeChapter.id.asc()).offset(skip).limit(limit).all()
     if hidden and not reveal:
         items = [{"id": str(row.id), "status": row.status, "origin": row.origin,

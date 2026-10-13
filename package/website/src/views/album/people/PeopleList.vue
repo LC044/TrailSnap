@@ -125,7 +125,7 @@
 
     <!-- 个人：头像网格 -->
     <template v-if="viewMode === 'solo'">
-      <div v-if="loading" class="flow-grid">
+      <div v-if="loading" class="ts-album-grid">
         <div v-for="i in 15" :key="i" class="flex flex-col items-center">
           <div class="w-full aspect-square bg-gray-200 dark:bg-gray-800 rounded-full animate-pulse"></div>
           <div class="mt-3 w-16 h-3 bg-gray-200 dark:bg-gray-800 rounded animate-pulse"></div>
@@ -140,7 +140,7 @@
       <p class="text-sm opacity-60">上传包含人脸的照片后会自动显示在此处</p>
     </div>
 
-    <div v-else class="flow-grid">
+    <div v-else class="ts-album-grid">
       <div
         v-for="person in identities"
         :key="person.id"
@@ -690,7 +690,7 @@ onMounted(() => {
 @media (max-width: 767px) {
   .people-list:not(.people-immersive) {
     padding-top: 0px;
-    padding-inline: 16px;
+    padding-inline: var(--ts-page-gutter);
   }
 
   .people-toolbar {
@@ -700,7 +700,7 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin: 0 -1rem 1.5rem;
+    margin: 0 calc(-1 * var(--ts-page-gutter)) 1.5rem;
     padding: max(8px, var(--ts-content-safe-area-top)) 12px 8px;
     border-bottom-width: 1px;
     box-shadow: 0 8px 24px rgb(15 23 42 / 0.04);
@@ -831,30 +831,6 @@ onMounted(() => {
     .people-mode-btn span {
       display: none;
     }
-  }
-}
-
-/* 流式布局核心 CSS */
-.flow-grid {
-  display: grid;
-  /* 关键点：自动填充，每个项最小 80px (手机)，最大 140px (PC) */
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 1.5rem; /* 对应 gap-6 */
-}
-
-/* 针对平板及以上屏幕优化尺寸 */
-@media (min-width: 640px) {
-  .flow-grid {
-    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-    gap: 1.5rem;
-  }
-}
-
-/* 针对大屏幕进一步增加尺寸 */
-@media (min-width: 1280px) {
-  .flow-grid {
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 2rem;
   }
 }
 
