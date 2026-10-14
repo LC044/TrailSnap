@@ -221,11 +221,16 @@ jobs:
       - name: Package and sign Windows portable artifacts
         if: runner.os == 'Windows'
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           pwsh package/desktop/scripts/build-portable.ps1 -SkipBuild -OutputDirectory package/desktop/dist/portable
           if ($LASTEXITCODE -ne 0) { throw 'Portable packaging failed' }
           $update = Get-ChildItem package/desktop/dist/portable/*-portable-update.zip
-          pnpm --dir package/desktop exec tauri signer sign $update.FullName
+          # An explicit empty password also disables the signer's interactive
+          # prompt for the unencrypted key generated in PR builds.
+          $signingPassword = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD')
+          pnpm --dir package/desktop exec tauri signer sign "--password=$signingPassword" $update.FullName
           if ($LASTEXITCODE -ne 0) { throw 'Portable signing failed' }
           $metadata = Get-Content package/desktop/dist/portable/portable-metadata.json -Raw | ConvertFrom-Json
           $metadata | Add-Member -NotePropertyName signature -NotePropertyValue ((Get-Content "$($update.FullName).sig" -Raw).Trim())
