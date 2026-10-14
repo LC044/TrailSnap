@@ -29,12 +29,18 @@ const shelf = ref<HTMLElement | null>(null)
 function rememberPosition() { if (shelf.value) sessionStorage.setItem('chapter-shelf-scroll', String(shelf.value.scrollLeft)) }
 function scrollShelf(direction: number) { shelf.value?.scrollBy({ left: direction * (shelf.value.clientWidth * .8), behavior: 'smooth' }) }
 onMounted(async () => {
-  try { items.value = (await chapterApi.list('confirmed', false, 0, 8)).items }
-  catch { items.value = [] }
-  try { candidateCount.value = (await chapterApi.list('candidate', false, 0, 1)).total }
-  catch { candidateCount.value = 0 }
-  finally { loading.value = false }
-  await nextTick()
-  if (shelf.value) shelf.value.scrollLeft = Number(sessionStorage.getItem('chapter-shelf-scroll') || 0)
+  await Promise.all([
+    (async () => {
+      try { items.value = (await chapterApi.list('confirmed', false, 0, 8)).items }
+      catch { items.value = [] }
+      finally { loading.value = false }
+      await nextTick()
+      if (shelf.value) shelf.value.scrollLeft = Number(sessionStorage.getItem('chapter-shelf-scroll') || 0)
+    })(),
+    (async () => {
+      try { candidateCount.value = await chapterApi.count('candidate') }
+      catch { candidateCount.value = 0 }
+    })(),
+  ])
 })
 </script>

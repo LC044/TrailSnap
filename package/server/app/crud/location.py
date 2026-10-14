@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload, contains_eager
 from uuid import UUID
-from sqlalchemy import and_, func, desc, extract, case, or_
+from sqlalchemy import and_, func, desc, extract, case, or_, select
 from math import asin, ceil, cos, radians, sin, sqrt
 from datetime import date
 from app.db.models.photo import FileType, Photo
@@ -522,37 +522,39 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
     if not results:
         return []
 
-    # Get list of location names from current page results
-    names = [r[0] for r in results]
-
-    # Batch fetch cover photos using DISTINCT ON to avoid N+1 queries
-    # Optimized for PostgreSQL
-    cover_query = db.query(
-        Photo,
-        group_col
-    ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False).join(
+    # Rank only IDs, then load one Photo per group. DISTINCT ON is PostgreSQL
+    # specific: on SQLite it previously loaded every matching photo instead.
+    # Scene IDs also keep covers separate when multiple scenes share a name.
+    cover_group = PhotoMetadata.scene_id if is_scene else group_col
+    group_keys = [r[1] if is_scene else r[0] for r in results]
+    ranked_query = select(
+        Photo.id.label('photo_id'),
+        cover_group.label('location_key'),
+        func.row_number().over(
+            partition_by=cover_group,
+            order_by=(Photo.photo_time.desc().nullslast(), Photo.id.desc()),
+        ).label('rank'),
+    ).select_from(Photo).join(
         PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+    ).where(
+        Photo.owner_id == owner_id,
+        Photo.is_deleted == False,
+        cover_group.in_(group_keys),
     )
 
-    if is_scene:
-        cover_query = cover_query.join(Scene, PhotoMetadata.scene_id == Scene.id)
-
     if start_date:
-        cover_query = cover_query.filter(Photo.photo_time >= start_date)
+        ranked_query = ranked_query.where(Photo.photo_time >= start_date)
     if end_date:
-        cover_query = cover_query.filter(Photo.photo_time <= f"{end_date} 23:59:59")
+        ranked_query = ranked_query.where(Photo.photo_time <= f"{end_date} 23:59:59")
 
-    covers = cover_query.filter(
-        group_col.in_(names)
-    ).distinct(
-        group_col
-    ).order_by(
-        group_col,
-        desc(Photo.photo_time)
+    ranked_covers = ranked_query.subquery()
+    covers = db.query(Photo, ranked_covers.c.location_key).join(
+        ranked_covers, Photo.id == ranked_covers.c.photo_id
+    ).filter(
+        ranked_covers.c.rank == 1
     ).all()
 
-    # Map location name to cover photo
-    cover_map = {loc_name: photo for photo, loc_name in covers}
+    cover_map = {location_key: photo for photo, location_key in covers}
 
     locations = []
     if is_scene:
@@ -563,7 +565,7 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
                 "is_custom": is_custom,
                 "level": level,
                 "count": count,
-                "cover": cover_map.get(name)
+                "cover": cover_map.get(sid)
             })
     else:
         for name, count in results:

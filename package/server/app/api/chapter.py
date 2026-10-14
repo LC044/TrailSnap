@@ -25,10 +25,11 @@ def _discovery_task(task: Task) -> dict:
 
 @router.get("")
 def list_chapters(status: str = Query("confirmed"), hidden: bool = Query(False), reveal: bool = Query(False),
+                  counts_only: bool = Query(False),
                   skip: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=50),
                   user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return BaseResponse.success(data=service.list_owned(db, user.id, status=status, hidden=hidden, reveal=reveal,
-                                                        skip=skip, limit=limit))
+                                                        skip=skip, limit=limit, counts_only=counts_only))
 
 
 @router.get("/year-links")

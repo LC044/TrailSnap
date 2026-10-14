@@ -30,9 +30,9 @@ def list_memories(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    rows, total = memory_service.list_owned(db, current_user.id, status, skip, limit)
+    items, total = memory_service.list_items(db, current_user.id, status, skip, limit)
     return BaseResponse.success(data={
-        "items": [memory_service.serialize(db, row) for row in rows],
+        "items": items,
         "total": total,
         "skip": skip,
         "limit": limit,
@@ -44,11 +44,7 @@ def memory_counts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    counts = {}
-    for status in (MemoryStatus.CANDIDATE, MemoryStatus.CONFIRMED, MemoryStatus.IGNORED):
-        _, total = memory_service.list_owned(db, current_user.id, status, 0, 1)
-        counts[status.value] = total
-    return BaseResponse.success(data=counts)
+    return BaseResponse.success(data=memory_service.count_owned(db, current_user.id))
 
 
 @router.post("/discover", summary="从照片中发现候选记忆")
