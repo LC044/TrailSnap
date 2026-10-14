@@ -57,6 +57,26 @@ else:
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 
+@event.listens_for(SessionLocal, "before_flush")
+def _encode_portable_photo_paths(session, _context, _instances):
+    from app.service.storage_paths import portable_enabled, apply_photo_reference
+    if not portable_enabled():
+        return
+    from app.db.models.photo import Photo
+    for item in session.new.union(session.dirty):
+        if isinstance(item, Photo) and item._file_path and item.storage_root_id is None:
+            apply_photo_reference(item, session)
+
+
+@event.listens_for(SessionLocal, "after_rollback")
+def _clear_rolled_back_storage_roots(_session):
+    # Root registration shares the photo transaction. Do not reuse a cached FK
+    # after a failed upload rolled back the corresponding storage_roots insert.
+    from app.service.storage_paths import portable_enabled, _roots
+    if portable_enabled():
+        _roots.clear()
+
+
 def dispose_inherited_connections() -> None:
     """Replace the current process' pool without touching parent connections.
 

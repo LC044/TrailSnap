@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getDesktopDataDirectory, setDesktopDataDirectory, type DesktopDataDirectory } from '@/api/desktopDataDirectory'
+import { getDesktopDataDirectory, setDesktopDataDirectory, previewPortableMigration, convertPortableInstance, safeExitDesktop, type DesktopDataDirectory, type PortablePreview } from '@/api/desktopDataDirectory'
 
 export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory', () => {
   const directory = ref<DesktopDataDirectory | null>(null)
   const loading = ref(false)
   const saving = ref(false)
   const error = ref('')
+  const preview = ref<PortablePreview | null>(null)
+  const converting = ref(false)
 
   async function load() {
     loading.value = true
@@ -35,5 +37,24 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
     }
   }
 
-  return { directory, loading, saving, error, load, save }
+  async function inspectPortable(sourcePath?: string) {
+    loading.value = true
+    error.value = ''
+    preview.value = null
+    try { preview.value = await previewPortableMigration(sourcePath) }
+    catch (cause) { error.value = String(cause) }
+    finally { loading.value = false }
+  }
+  async function convert(path: string, copyExternal: boolean, sourcePath?: string) {
+    converting.value = true
+    error.value = ''
+    try { await convertPortableInstance(path, copyExternal, sourcePath) }
+    catch (cause) { error.value = `${String(cause)}。请重新启动后重试，原图库仍保留。`; converting.value = false }
+  }
+  async function safeExit() {
+    converting.value = true
+    try { await safeExitDesktop() }
+    catch (cause) { error.value = String(cause); converting.value = false }
+  }
+  return { directory, loading, saving, error, preview, converting, load, save, inspectPortable, convert, safeExit }
 })

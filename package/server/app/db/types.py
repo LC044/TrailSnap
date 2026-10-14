@@ -10,6 +10,24 @@ from sqlalchemy import CHAR, JSON, Float
 from sqlalchemy.types import TypeDecorator
 
 
+class PortableJSON(TypeDecorator):
+    """JSON with explicit portable path fields; servers retain identical JSON."""
+    impl = JSON
+    cache_ok = True
+    hashable = False
+
+    def coerce_compared_value(self, op, value):
+        return self.impl.coerce_compared_value(op, value)
+
+    def process_bind_param(self, value, dialect):
+        from app.utils.portable_config import transform_paths
+        return transform_paths(value, encode=True)
+
+    def process_result_value(self, value, dialect):
+        from app.utils.portable_config import transform_paths
+        return transform_paths(value, encode=False)
+
+
 class GUID(TypeDecorator[uuid.UUID]):
     """Store UUID values natively on PostgreSQL and as text on SQLite."""
 

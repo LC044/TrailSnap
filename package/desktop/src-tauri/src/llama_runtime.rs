@@ -30,6 +30,11 @@ pub fn find_llama_server() -> Option<PathBuf> {
         }
     }
 
+    #[cfg(windows)]
+    if env::var_os("TS_INSTANCE_ROOT").is_some() {
+        return managed_runtime_root().and_then(|root| find_file_named(&root, "llama-server.exe"));
+    }
+
     let executable = if cfg!(windows) {
         "llama-server.exe"
     } else {

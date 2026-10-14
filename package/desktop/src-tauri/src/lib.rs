@@ -3,6 +3,9 @@ mod ai_gateway;
 mod data_directory;
 mod extension_lifecycle;
 mod llama_runtime;
+mod portable;
+mod update_manager;
+mod update_transaction;
 
 use data_directory::{desktop_data_directory, desktop_set_data_directory, DataDirectory};
 
@@ -64,6 +67,147 @@ fn desktop_open_data_directory(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn desktop_open_instance_directory(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let state = app.state::<DataDirectory>();
+    let root = state.instance_root.clone().unwrap_or_else(|| state.root());
+    app.opener()
+        .open_path(root.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn desktop_migration_preview(
+    app: tauri::AppHandle,
+    source_path: Option<String>,
+) -> Result<Value, String> {
+    let root = source_path
+        .map(PathBuf::from)
+        .unwrap_or_else(|| app.state::<DataDirectory>().root());
+    let executable = server_executable(&app.path().resource_dir().map_err(|e| e.to_string())?);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut command = Command::new(executable);
+        command
+            .arg("--preview-portable")
+            .arg(root)
+            .env("PYTHONIOENCODING", "utf-8")
+            .stdin(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let output = command.output().map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+        }
+        serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn desktop_convert_portable(
+    app: tauri::AppHandle,
+    path: String,
+    copy_external: bool,
+    source_path: Option<String>,
+) -> Result<Value, String> {
+    let current_source = app.state::<DataDirectory>().root();
+    let source = source_path
+        .map(PathBuf::from)
+        .unwrap_or_else(|| current_source.clone())
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    let source = portable::clean_path(source);
+    let _source_lock = if source != current_source {
+        Some(portable::lock_directory(&source)?)
+    } else {
+        None
+    };
+    let target = data_directory::validate_target(&source, Path::new(&path))?;
+    data_directory::validate_target(&current_source, &target)?;
+    if let Some(root) = &app.state::<DataDirectory>().instance_root {
+        data_directory::validate_target(root, &target)?;
+    }
+    if !target.is_absolute() || target.starts_with(&source) || source.starts_with(&target) {
+        return Err("请选择与原数据目录分开的空文件夹".into());
+    }
+    let resource = app.path().resource_dir().map_err(|e| e.to_string())?;
+    let launcher = resource.join("portable-launcher.exe");
+    if !launcher.is_file() {
+        return Err("当前发行包缺少便携启动器，请安装包含启动器的新版本".into());
+    }
+    drain_desktop(&app).await?;
+    let moved_source = source.clone();
+    let moved_target = target.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let mut command = Command::new(server_executable(&resource));
+        command
+            .arg("--parent-pid")
+            .arg(std::process::id().to_string())
+            .arg("--convert-portable")
+            .arg(&moved_source)
+            .arg(&moved_target)
+            .arg(&resource)
+            .arg(&launcher)
+            .env("PYTHONIOENCODING", "utf-8")
+            .stdin(Stdio::null());
+        if copy_external {
+            command.arg("--copy-external");
+        }
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let output = command.output().map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+        }
+        // Alembic's diagnostics go to stderr; conversion's single result is stdout.
+        let text = String::from_utf8_lossy(&output.stdout);
+        let line = text
+            .lines()
+            .rev()
+            .find(|line| line.starts_with('{'))
+            .ok_or("转换结果缺失")?;
+        serde_json::from_str::<Value>(line).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    // Validate a real candidate before handing off. The source stays usable;
+    // a copy never writes a transfer marker which could lock the user out.
+    let verify_target = target.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut command = Command::new(verify_target.join("TrailSnap.exe"));
+        command.arg("--validate-only").stdin(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let output = command.output().map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(format!(
+                "副本启动验证失败，原图库未变更。请重启原实例；副本位于 {}。{}",
+                verify_target.display(),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    if let Some(root) = &app.state::<DataDirectory>().instance_root {
+        // The supervising launcher starts the target AFTER terminating this Job.
+        portable::write_json(
+            &root.join("maintenance/handoff.json"),
+            &json!({"target":target}),
+        )?;
+    } else {
+        let mut command = Command::new(target.join("TrailSnap.exe"));
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        command.spawn().map_err(|e| e.to_string())?;
+    }
+    app.exit(0);
+    Ok(result)
+}
+
+#[tauri::command]
 fn desktop_reveal_photo(path: String) -> Result<(), String> {
     let file = Path::new(&path);
     if !file.is_absolute() || !file.is_file() {
@@ -78,6 +222,15 @@ async fn desktop_prepare_migration(app: tauri::AppHandle) -> Result<(), String> 
         .state::<DataDirectory>()
         .pending()
         .ok_or("请先保存迁移设置")?;
+    drain_desktop(&app).await?;
+    app.state::<DataDirectory>().authorize_migration(&target)?;
+    Ok(())
+}
+
+async fn drain_desktop(app: &tauri::AppHandle) -> Result<(), String> {
+    if !desktop_runtime_status(app.state()).ready {
+        return Err("本地服务尚未就绪，请稍后重试".into());
+    }
     {
         let state = app.state::<DesktopState>();
         let mut activity = state.activity.lock().expect("activity poisoned");
@@ -138,8 +291,54 @@ async fn desktop_prepare_migration(app: tauri::AppHandle) -> Result<(), String> 
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
     app.state::<AIGateway>().drain_for_migration().await?;
-    // Authorize only this destination after every writer has exited.
-    app.state::<DataDirectory>().authorize_migration(&target)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn desktop_safe_exit(app: tauri::AppHandle) -> Result<(), String> {
+    drain_desktop(&app).await?;
+    app.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
+async fn desktop_prepare_update(app: tauri::AppHandle) -> Result<(), String> {
+    drain_desktop(&app).await?;
+    let root = app.state::<DataDirectory>().root();
+    let executable = server_executable(&app.path().resource_dir().map_err(|e| e.to_string())?);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut command = Command::new(executable);
+        command
+            .arg("--snapshot-data")
+            .arg(&root)
+            .arg(
+                root.join("backups")
+                    .join(format!("installer-{}", uuid::Uuid::new_v4())),
+            )
+            .stdin(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        let output = command.output().map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn desktop_restart(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(root) = &app.state::<DataDirectory>().instance_root {
+        portable::write_json(
+            &root.join("maintenance/restart.json"),
+            &json!({"restart":true}),
+        )?;
+        app.exit(0);
+    } else {
+        app.restart();
+    }
     Ok(())
 }
 
@@ -289,6 +488,14 @@ fn log_file(path: PathBuf) -> Result<std::fs::File, String> {
 }
 
 fn update_status(app: &tauri::AppHandle, next: RuntimeStatus) {
+    if next.phase == "failed" && std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
+        if let Some(root) = &app.state::<DataDirectory>().instance_root {
+            let _ = portable::write_json(
+                &root.join("maintenance/validation-error.json"),
+                &json!({"nonce":std::env::var("TS_UPDATE_NONCE").unwrap_or_default(), "error":next.message}),
+            );
+        }
+    }
     let state = app.state::<DesktopState>();
     *state.status.lock().expect("desktop status poisoned") = next.clone();
     let _ = app.emit("desktop-runtime-status", next);
@@ -339,6 +546,13 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
     );
 
     let mut command = Command::new(&executable);
+    let startup_error = app
+        .state::<DataDirectory>()
+        .root()
+        .join("startup-error.json");
+    let _ = fs::remove_file(&startup_error);
+    let nonce =
+        std::env::var("TS_UPDATE_NONCE").unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
     command
         .args([
             "--port",
@@ -349,6 +563,8 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
         .current_dir(&data_dir)
         .env("TS_DATA_DIR", &data_dir)
         .env("TS_DESKTOP", "1")
+        .env("LOG_DIR", &log_dir)
+        .env("TS_DESKTOP_START_NONCE", &nonce)
         .env("TS_DB_URL", database_url)
         .env("RAILWAY_DB_URL", railway_database_url)
         .env(
@@ -384,7 +600,36 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
         let health_url = format!("{api_url}/health-check");
         let started = Instant::now();
         loop {
-            if started.elapsed() > Duration::from_secs(60) {
+            let exited = {
+                let state = app.state::<DesktopState>();
+                let mut child = state.child.lock().expect("desktop child poisoned");
+                child
+                    .as_mut()
+                    .and_then(|child| child.try_wait().ok().flatten())
+            };
+            if let Some(exit) = exited {
+                let details: Option<Value> = portable::read_json(&startup_error).ok();
+                let message = details.as_ref().and_then(|v|v["message"].as_str()).map(str::to_string)
+                    .unwrap_or_else(||format!("本地服务已退出（{exit}）。请检查磁盘空间、写入权限和日志：{}。数据目录不会自动切换。", log_dir.display()));
+                update_status(
+                    &app,
+                    RuntimeStatus {
+                        api_url,
+                        session_secret: String::new(),
+                        phase: "failed".into(),
+                        message: Some(message),
+                        ready: false,
+                    },
+                );
+                break;
+            }
+            if started.elapsed()
+                > Duration::from_secs(if std::env::var_os("TS_INSTANCE_ROOT").is_some() {
+                    30 * 60
+                } else {
+                    60
+                })
+            {
                 update_status(
                     &app,
                     RuntimeStatus {
@@ -407,6 +652,33 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                     let secret_path = data_dir.join("desktop_session.secret");
                     let session_secret = fs::read_to_string(&secret_path).unwrap_or_default();
                     if !session_secret.is_empty() {
+                        let identity = client
+                            .get(format!("{api_url}/api/system/desktop/runtime"))
+                            .timeout(Duration::from_secs(30))
+                            .header("X-TrailSnap-Desktop-Secret", &session_secret)
+                            .send()
+                            .await;
+                        let valid = if let Ok(response) = identity {
+                            response.json::<Value>().await.ok().is_some_and(|v| {
+                                v["code"] == 0
+                                    && v["data"]["nonce"] == nonce
+                                    && v["data"]["verified"] == true
+                            })
+                        } else {
+                            false
+                        };
+                        if !valid {
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                            continue;
+                        }
+                        if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
+                            if let Some(root) = &app.state::<DataDirectory>().instance_root {
+                                let _ = portable::write_json(
+                                    &root.join("maintenance/validated.json"),
+                                    &json!({"nonce":nonce,"verified":true}),
+                                );
+                            }
+                        }
                         let _ = fs::remove_file(secret_path);
                         update_status(
                             &app,
@@ -452,18 +724,50 @@ use std::os::windows::process::CommandExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::var("TS_DESKTOP_TEST_READONLY").as_deref() == Ok("1") {
+        std::env::set_var("TS_DESKTOP_VERIFY", "1");
+    }
+    // Derive the installation from the actual binary, never TS_INSTANCE_ROOT.
+    if let Ok(executable) = std::env::current_exe() {
+        if let Ok(root) = portable::instance_root_for_executable(&executable) {
+            if root.join("TrailSnap.exe").is_file() {
+                if std::env::var_os("TS_LAUNCHER_LEASE_TOKEN").is_none() {
+                    let mut command = Command::new(root.join("TrailSnap.exe"));
+                    #[cfg(windows)]
+                    command.creation_flags(0x08000000);
+                    let _ = command.spawn();
+                    return;
+                }
+                std::env::set_var("TS_INSTANCE_ROOT", &root);
+            } else {
+                std::env::remove_var("TS_INSTANCE_ROOT");
+                std::env::remove_var("TS_DESKTOP_PORTABLE");
+            }
+        }
+    }
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(DesktopState::default())
+        .manage(update_manager::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
             desktop_data_directory,
             desktop_set_data_directory,
             desktop_open_data_directory,
+            desktop_open_instance_directory,
+            desktop_migration_preview,
+            desktop_convert_portable,
             desktop_prepare_migration,
+            desktop_safe_exit,
+            desktop_prepare_update,
+            desktop_restart,
+            update_manager::desktop_update_check,
+            update_manager::desktop_update_download,
+            update_manager::desktop_update_status,
+            update_manager::desktop_update_apply,
             desktop_reveal_photo,
             ai_extension_list,
             ai_extension_refresh,
@@ -479,6 +783,23 @@ pub fn run() {
             let handle = app.handle().clone();
             let directory = DataDirectory::load(&handle).map_err(std::io::Error::other)?;
             app.manage(directory);
+            if let Some(root) = &app.state::<DataDirectory>().instance_root {
+                let instance = portable::load_instance(root).map_err(std::io::Error::other)?;
+                std::env::set_var("TS_DESKTOP_PORTABLE", "1");
+                std::env::set_var("TS_DESKTOP_INSTANCE_ID", &instance.instance_id);
+                std::env::set_var("TRAILSNAP_INSTANCE_NAME", &instance.display_name);
+            }
+            let directory_root = app.state::<DataDirectory>().root();
+            #[cfg(windows)] {
+                let runtime = app.path().resource_dir()?.join("webview-runtime");
+                if runtime.join("msedgewebview2.exe").is_file() {
+                    std::env::set_var("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", runtime);
+                }
+            }
+            let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?;
+            #[cfg(windows)] { window = window.data_directory(portable::webview_directory(&directory_root).map_err(std::io::Error::other)?); }
+            if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") || std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() == Ok("1") { window = window.visible(false); }
+            window.build()?;
             let catalog_path = app
                 .path()
                 .resource_dir()
@@ -539,6 +860,9 @@ pub fn run() {
                         .expect("data directory has parent")
                         .to_path_buf();
                     std::env::set_var("TS_DESKTOP_ROOT", &app_root);
+                    if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
+                        return spawn_server(handle.clone(), 0);
+                    }
                     let manager =
                         AIExtensionManager::initialize(&app_root, &catalog_path, catalog_url)?;
                     let gateway = AIGateway::new(manager.clone(), app_root, std::process::id());
@@ -583,8 +907,32 @@ pub fn run() {
             });
             Ok(())
         })
-        .build(tauri::generate_context!())
-        .expect("error while building TrailSnap desktop application");
+        .build(tauri::generate_context!());
+    let app = match app {
+        Ok(app) => app,
+        Err(error) => {
+            eprintln!("行影集启动失败：{error}");
+            #[cfg(windows)]
+            unsafe {
+                #[link(name = "user32")]
+                unsafe extern "system" {
+                    fn MessageBoxW(
+                        h: *mut std::ffi::c_void,
+                        text: *const u16,
+                        title: *const u16,
+                        flags: u32,
+                    ) -> i32;
+                }
+                let text: Vec<u16> = format!("行影集启动失败：{error}")
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
+                let title: Vec<u16> = "行影集".encode_utf16().chain(Some(0)).collect();
+                MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), 0x10);
+            }
+            return;
+        }
+    };
 
     app.run(|app, event| {
         if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {

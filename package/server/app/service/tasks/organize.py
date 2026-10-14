@@ -192,7 +192,7 @@ class OrganizePhotosStrategy(BaseTaskStrategy):
                             with disk_budget.slots(old_path, new_path):
                                 shutil.copy2(old_path, new_path)
                             # Create new DB record
-                            new_photo_data = {c.name: getattr(photo, c.name) for c in photo.__table__.columns if c.name not in ['id', 'file_path', 'filename', 'created_at', 'updated_at']}
+                            new_photo_data = {c.name: getattr(photo, c.name) for c in photo.__table__.columns if c.name not in ['id', 'file_path', 'storage_root_id', 'storage_relative_path', 'filename', 'created_at', 'updated_at']}
                             new_photo = Photo(
                                 id=uuid.uuid4(),
                                 file_path=new_path,

@@ -77,6 +77,42 @@ def _require_desktop_secret(secret: str | None) -> None:
         raise HTTPException(status_code=404, detail="Not found")
 
 
+@router.get("/desktop/runtime", response_model=BaseResponse[dict])
+def desktop_runtime_identity(secret: str | None = Header(default=None, alias="X-TrailSnap-Desktop-Secret")):
+    _require_desktop_secret(secret)
+    import json
+    from pathlib import Path
+    from app.db.session import SessionLocal
+    from app.db.models import Photo
+    root = Path(os.environ["TS_DATA_DIR"]).parent
+    metadata_path = root / "library.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.is_file() else {}
+    baseline = os.getenv('TS_UPDATE_BASELINE')
+    if os.getenv('TS_DESKTOP_VERIFY') == '1' and baseline:
+        from app.utils.desktop_verification import verify_media
+        try:
+            expected = json.loads(Path(baseline).read_text(encoding='utf-8'))
+            verify_media(root.resolve(), expected.get('media', []))
+        except (ValueError, OSError) as error:
+            from app.utils.portable_library import write_json
+            instance = Path(os.environ['TS_INSTANCE_ROOT'])
+            write_json(instance / 'maintenance/validation-error.json', {
+                'nonce': os.getenv('TS_DESKTOP_START_NONCE'), 'error': str(error),
+            })
+            return BaseResponse.fail(code=500, msg=str(error))
+    with SessionLocal() as db:
+        available = 0
+        for photo in db.query(Photo).limit(8).all():
+            path = Path(photo.file_path)
+            if path.is_file():
+                with path.open("rb") as stream:
+                    stream.read(1)
+                available += 1
+    return BaseResponse.success(data={"nonce": os.getenv("TS_DESKTOP_START_NONCE", ""),
+        "libraryId": metadata.get("libraryId"), "pathFormat": metadata.get("pathFormat", 0),
+        "verified": True, "sampleAvailable": available})
+
+
 @router.post("/desktop/prepare-migration", response_model=BaseResponse[dict])
 async def prepare_desktop_migration(
     request: Request,

@@ -29,6 +29,7 @@ export interface DiscoveredTrailSnap {
   name: string
   version: string
   source: 'mdns' | 'lan'
+  instanceId?: string
 }
 
 export function createConnectionDeepLink(serverUrl: string): string {
@@ -93,6 +94,7 @@ export async function discoverTrailSnapServers(): Promise<DiscoveredTrailSnap[]>
       url,
       name: service.name || 'TrailSnap',
       version: service.txt?.version || '',
+      instanceId: service.txt?.instance_id || undefined,
       source: 'mdns' as const,
     })))
     const verified = await verifyCandidates(candidates)

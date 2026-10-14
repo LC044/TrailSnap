@@ -153,8 +153,10 @@ async def sync_rebuild_metadata_cpu_job(file_path: str, file_id: UUID):
 def extract_task_metadata(data: dict, photo: Photo) -> dict:
     """Reuse the durable basic extraction; legacy/rebuild tasks read the source."""
     raw = data.get('raw_metadata')
+    from app.service.storage_paths import portable_enabled
+    source = photo.file_path if portable_enabled() else (data.get('file_path') or photo.file_path)
     if data.get('raw_metadata_version') != 1 or not isinstance(raw, dict):
-        return rebuild_metadata_cpu_job(data.get('file_path') or photo.file_path, photo.id)
+        return rebuild_metadata_cpu_job(source, photo.id)
     try:
         meta = dict(raw)
         if isinstance(meta.get('exif_info'), str):
@@ -165,7 +167,7 @@ def extract_task_metadata(data: dict, photo: Photo) -> dict:
         return {'success': True, 'meta': meta}
     except (ValueError, TypeError):
         # Incompatible cached values must not make existing tasks unusable.
-        return rebuild_metadata_cpu_job(data.get('file_path') or photo.file_path, photo.id)
+        return rebuild_metadata_cpu_job(source, photo.id)
 
 
 def update_photo_color_from_thumbnail(db: Session, photo: Photo, *, colors=None) -> None:

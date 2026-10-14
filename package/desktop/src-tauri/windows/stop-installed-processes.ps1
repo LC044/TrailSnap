@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$InstallDirectory
+    [string]$InstallDirectory,
+    [switch]$IdentityOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,12 @@ $installRoot = (Get-LongPath $InstallDirectory).TrimEnd('\') + '\'
 if ($installRoot -eq [IO.Path]::GetPathRoot($installRoot)) {
     throw 'Refusing to stop processes for a drive root.'
 }
+if ($IdentityOnly) {
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { [BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($installRoot.ToLowerInvariant()))).Replace('-', '').ToLowerInvariant() }
+    finally { $hash.Dispose() }
+    exit 0
+}
 
 # PyInstaller's bootloader and Python runtime are separate processes. An
 # installer can kill the desktop window before its exit handler stops either
@@ -32,7 +39,7 @@ function Get-InstalledProcesses {
     @(Get-CimInstance Win32_Process | Where-Object {
         $_.ExecutablePath -and
         (Get-LongPath $_.ExecutablePath).StartsWith($installRoot, [StringComparison]::OrdinalIgnoreCase) -and
-        $_.Name -in @('trailsnap-desktop.exe', 'trailsnap-server.exe', 'trailsnap-ai.exe', 'llama-server.exe')
+        $_.Name -in @('TrailSnap.exe', 'portable-launcher.exe', 'trailsnap-desktop.exe', 'trailsnap-server.exe', 'trailsnap-ai.exe', 'llama-server.exe')
     })
 }
 

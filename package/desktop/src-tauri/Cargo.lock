@@ -4624,8 +4624,10 @@ name = "trailsnap-desktop"
 version = "0.17.4"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "flate2",
  "futures-util",
+ "minisign-verify",
  "reqwest 0.12.28",
  "semver",
  "serde",
@@ -4639,6 +4641,8 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tokio",
+ "uuid",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
