@@ -16,6 +16,7 @@
 | 前端 E2E | `package/website/tests/e2e`、`package/website/e2e-system` | Playwright | `run-tests.ps1 -Layer e2e` | 慢，需 server+ai+web 全起 |
 | 前端单元 | `package/website/tests/unit` | Node test runner + Vue | `run-tests.ps1 -Layer unit -Component website` | 秒级，无外部服务 |
 | 桌面单元 | `package/desktop/src-tauri` | Rust | `run-tests.ps1 -Layer unit -Component desktop` | 需要 Rust 和桌面构建资源，显式选择 |
+| 需求平台 | `package/requirement-platform/server/tests` | pytest | `run-tests.ps1 -Layer unit -Component requirement-platform -Level all` | 独立临时 SQLite，验证 API、MCP 和 Agent 交付；显式选择，不启动主应用服务 |
 
 **统一入口**：`tests/scripts/run-tests.ps1`（CI 与本地共用）。它按 `.env` 文件委托 `services-up.ps1` 拉起服务（dev 本地进程 或 docker compose 栈）、注入环境变量、调度对应测试运行器（uv/pytest、pnpm/playwright），测后委托 `services-down.ps1` 关闭服务。
 
@@ -97,7 +98,7 @@ pwsh .\tests\scripts\run-tests.ps1 -StopServices
 | `EnvFile`（位置参数） | 路径 | 默认 `tests\.env.test` |
 | `-Layer` | unit/integration/e2e/all | 测哪一层 |
 | `-Level` | dev/scan/smoke/p0/p1/all/light/full | 深度/套件；默认读 `TS_E2E_SUITE` |
-| `-Component` | server/ai/website/cli/desktop/all | 测哪个组件；desktop 仅支持 unit，需显式选择，不包含在 all 中 |
+| `-Component` | server/ai/website/cli/desktop/requirement-platform/all | 测哪个组件；desktop、requirement-platform 需显式选择，不包含在 all 中；需求平台使用 unit 层运行完整独立协议测试 |
 | `-Mode` | dev/docker | 服务载体；默认按 `TS_TEST_ENV` |
 | `-Scope` | all/photo/album/... | 业务域（unit/integration） |
 | `-TestFiles` | 前端 spec 路径数组（相对 `package/website`） | 缩小 E2E 文件范围，仍应用 `-Level` 的标签过滤 |
