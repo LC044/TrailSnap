@@ -14,6 +14,7 @@ export interface DesktopDataDirectory {
 
 export interface PortablePreview {
   source: string
+  source: string
   bytes: number
   counts: Record<string, number>
   externalRoots: Array<{ ownerId: string; path: string; available: boolean }>

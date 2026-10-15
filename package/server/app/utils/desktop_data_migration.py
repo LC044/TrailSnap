@@ -97,7 +97,8 @@ def _wait_for_sidecars(source: Path) -> None:
         time.sleep(0.2)
 
 
-def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bool = False) -> None:
+def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bool = False,
+                           excluded_entries: frozenset[str] = frozenset()) -> None:
     logical_source = source.absolute()
     source, target = source.resolve(strict=True), target.resolve()
     if source == target or source in target.parents or target in source.parents:
@@ -118,6 +119,8 @@ def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bo
     io_source = Path(filesystem_path(source))
     for current, dirs, names in os.walk(io_source, onerror=raise_walk_error):
         current = source / Path(current).relative_to(io_source)
+        dirs[:] = [name for name in dirs if (current / name).relative_to(source).as_posix() not in excluded_entries]
+        names[:] = [name for name in names if (current / name).relative_to(source).as_posix() not in excluded_entries]
         if skip_browser_state and current == source:
             # The current UI still owns its WebView profile while the native
             # command copies the library. The new instance authenticates afresh.

@@ -153,11 +153,18 @@ def main() -> None:
 
     if args.preview_portable or args.convert_portable:
         import json
+        import sqlite3
+        import sys
         from app.utils.portable_conversion import preview_conversion, convert_to_portable
-        if args.preview_portable:
-            result = preview_conversion(Path(args.preview_portable))
-        else:
-            result = convert_to_portable(*(Path(item) for item in args.convert_portable), copy_external=args.copy_external)
+        try:
+            if args.preview_portable:
+                result = preview_conversion(Path(args.preview_portable))
+            else:
+                result = convert_to_portable(*(Path(item) for item in args.convert_portable), copy_external=args.copy_external)
+        except (ValueError, OSError, sqlite3.Error) as error:
+            operation = '检查旧图库失败' if args.preview_portable else '复制图库失败'
+            print(f'{operation}：{error}', file=sys.stderr)
+            raise SystemExit(1) from None
         print(json.dumps(result,ensure_ascii=False))
         return
 

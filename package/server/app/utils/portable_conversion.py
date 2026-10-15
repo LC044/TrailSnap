@@ -14,8 +14,66 @@ from app.utils.portable_config import transform_paths, remap_path_fields
 from app.utils.desktop_verification import photo_paths, media_baseline, verify_media
 
 
+def validate_library_source(source: Path) -> Path:
+    """Validate the explicitly selected library root without choosing another library."""
+    # Folder pickers may return a Win32 extended path; its file:// URI has an
+    # invalid authority for SQLite. Keep ordinary drive/UNC semantics here.
+    raw = str(source)
+    if os.name == 'nt':
+        if raw.startswith('\\\\?\\UNC\\'):
+            raw = '\\\\' + raw[8:]
+        elif raw.startswith('\\\\?\\'):
+            raw = raw[4:]
+    source = Path(raw)
+    if not source.is_absolute():
+        raise ValueError('请输入旧数据目录的完整路径，或使用“选择旧数据目录”。')
+    try:
+        source = source.resolve(strict=True)
+    except OSError as error:
+        raise ValueError(f'旧数据目录不存在或无法访问：{source}。请检查路径和磁盘连接。') from error
+    if not source.is_dir():
+        raise ValueError(f'请选择文件夹，不要选择数据库文件：{source}。应选择包含 data 文件夹的旧数据目录。')
+    database = source / 'data/trailsnap.sqlite'
+    if not database.is_file():
+        if (source / 'trailsnap.sqlite').is_file() and source.name.lower() == 'data':
+            raise ValueError(f'选中了 data 子文件夹，请改选它的上一级目录：{source.parent}。系统会自动读取 data/trailsnap.sqlite。')
+        if (source / 'userdata/data/trailsnap.sqlite').is_file():
+            raise ValueError(f'这里是新版本的实例目录。要复制其中的图库，请选择：{source / "userdata"}；要导入旧版本，请选择包含 data 文件夹的旧数据目录。')
+        raise ValueError(f'所选目录中未找到旧图库数据库：{database}。请选择包含 data 文件夹的旧数据目录，不要选择 data 子文件夹。')
+    return source
+
+
+def conversion_exclusions(source: Path) -> frozenset[str]:
+    """An overwritten legacy installation can also contain the NEW live library."""
+    excluded = {'server', 'trailsnap-desktop.exe', 'uninstall.exe'}
+    descriptor = source / 'instance.json'
+    if descriptor.is_file():
+        config = json.loads(descriptor.read_text(encoding='utf-8'))
+        data_root = config.get('dataRoot') or {}
+        if data_root.get('kind') == 'relative':
+            from app.service.storage_paths import validate_relative
+            nested = source / validate_relative(data_root.get('path'))
+        elif data_root.get('kind') == 'absolute':
+            nested = Path(data_root.get('path', ''))
+        else:
+            raise ValueError('所选目录中的 instance.json 数据位置无效，请保留原目录并检查该配置。')
+        nested = nested.resolve()
+        database = source / 'data/trailsnap.sqlite'
+        if nested != source and nested.is_relative_to(source) and not database.is_relative_to(nested):
+            excluded.add(nested.relative_to(source).as_posix())
+        excluded.update({'app', 'maintenance', 'TrailSnap.exe', 'portable-launcher.exe', 'instance.json', 'portable.json'})
+    return frozenset(excluded)
+
+
 def preview_conversion(source: Path) -> dict:
-    source = source.resolve(strict=True)
+    source = validate_library_source(source)
+    try:
+        return _preview_conversion(source)
+    except sqlite3.Error as error:
+        raise ValueError(f'无法读取旧图库数据库：{source / "data/trailsnap.sqlite"}。请确认磁盘在线、具有读取权限，并完全退出旧版本后重试。数据库格式不正确或损坏时，请保留原目录并从备份恢复。') from error
+
+
+def _preview_conversion(source: Path) -> dict:
     with closing(sqlite3.connect((source / "data/trailsnap.sqlite").as_uri() + "?mode=ro", uri=True)) as db:
         users = db.execute("SELECT id,settings FROM users").fetchall()
         registered = {}
@@ -42,12 +100,23 @@ def preview_conversion(source: Path) -> dict:
         for _, owner, path in photo_paths(db, source):
             if _matches(path,source) is None and not any(item["ownerId"]==owner and (_matches(path,Path(item["path"])) is not None) for item in external):
                 unregistered += 1
-    size = sum(path.stat().st_size for path in source.rglob("*") if path.is_file() and not path.is_symlink())
+    excluded = conversion_exclusions(source)
+    size = 0
+    def walk_error(error):
+        raise error
+    for current, dirs, names in os.walk(source, onerror=walk_error):
+        current = Path(current)
+        dirs[:] = [name for name in dirs if (current / name).relative_to(source).as_posix() not in excluded
+                   and not (current == source and (name == 'webview' or name.startswith('webview-backup-')))]
+        for name in names:
+            path = current / name
+            if path.relative_to(source).as_posix() not in excluded and path.is_file() and not path.is_symlink():
+                size += path.stat().st_size
     return {"source": str(source), "bytes": size, "counts": counts, "externalRoots": external, "unregisteredPhotos":unregistered}
 
 
 def convert_to_portable(source: Path, target: Path, program: Path, launcher: Path, *, copy_external: bool = False) -> dict:
-    source, target, program, launcher = source.resolve(strict=True), target.resolve(), program.resolve(strict=True), launcher.resolve(strict=True)
+    source, target, program, launcher = validate_library_source(source), target.resolve(), program.resolve(strict=True), launcher.resolve(strict=True)
     if target == source or target.is_relative_to(source) or source.is_relative_to(target):
         raise ValueError("新旧目录不能相同或互相包含")
     if target.exists() and (not target.is_dir() or any(target.iterdir())):
@@ -71,7 +140,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
     try:
         from app.utils.desktop_data_migration import migrate_data_directory, rebase_value
         data = stage / "userdata"
-        migrate_data_directory(source, data, skip_browser_state=True)
+        migrate_data_directory(source, data, skip_browser_state=True, excluded_entries=conversion_exclusions(source))
         # Resolve the authoritative references against the SOURCE before cloning.
         # Rebuild references in the target even for an already-portable library.
         with closing(sqlite3.connect((source / 'data/trailsnap.sqlite').as_uri() + '?mode=ro', uri=True)) as original:

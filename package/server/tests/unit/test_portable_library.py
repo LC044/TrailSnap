@@ -24,6 +24,69 @@ def portable_env(monkeypatch, root):
     monkeypatch.setattr(storage_paths, "_roots", {})
 
 
+def test_preview_wrong_data_level_identifies_correct_parent_without_creating_database(tmp_path):
+    from app.utils.portable_conversion import preview_conversion
+    data = tmp_path / 'old-library/data'
+    data.mkdir(parents=True)
+    (data / 'trailsnap.sqlite').write_bytes(b'not opened during path validation')
+    with pytest.raises(ValueError, match='选中了 data 子文件夹') as error:
+        preview_conversion(data)
+    assert str(data.parent) in str(error.value)
+    assert not (data / 'data').exists()
+
+
+def test_preview_missing_directory_is_actionable(tmp_path):
+    from app.utils.portable_conversion import preview_conversion
+    missing = tmp_path / 'missing'
+    with pytest.raises(ValueError, match='旧数据目录不存在或无法访问'):
+        preview_conversion(missing)
+    assert not missing.exists()
+
+
+def test_preview_instance_root_does_not_silently_choose_userdata(tmp_path):
+    from app.utils.portable_conversion import preview_conversion
+    data = tmp_path / 'userdata/data'
+    data.mkdir(parents=True)
+    (data / 'trailsnap.sqlite').write_bytes(b'not opened')
+    with pytest.raises(ValueError, match='这里是新版本的实例目录') as error:
+        preview_conversion(tmp_path)
+    assert str(tmp_path / 'userdata') in str(error.value)
+
+
+def test_preview_invalid_database_reports_readable_error(tmp_path):
+    from app.utils.portable_conversion import preview_conversion
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data/trailsnap.sqlite').write_bytes(b'not a database')
+    with pytest.raises(ValueError, match='无法读取旧图库数据库'):
+        preview_conversion(tmp_path)
+
+
+def test_preview_cli_returns_help_instead_of_a_python_traceback(tmp_path):
+    import subprocess
+    import sys
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / 'trailsnap.sqlite').write_bytes(b'not opened')
+    result = subprocess.run([sys.executable, 'desktop_entry.py', '--preview-portable', str(data)],
+                            cwd=Path(__file__).resolve().parents[2], capture_output=True,
+                            env={**os.environ, 'PYTHONIOENCODING':'utf-8'}, timeout=30)
+    error = result.stderr.decode('utf-8')
+    assert result.returncode == 1
+    assert '选中了 data 子文件夹' in error
+    assert str(tmp_path) in error
+    assert 'Traceback' not in error
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows folder-picker paths')
+def test_preview_accepts_windows_extended_folder_picker_paths(tmp_path):
+    from app.utils.portable_conversion import validate_library_source
+    (tmp_path / 'data').mkdir()
+    (tmp_path / 'data/trailsnap.sqlite').write_bytes(b'not opened')
+    root = validate_library_source(Path('\\\\?\\' + str(tmp_path.resolve())))
+    assert root == tmp_path.resolve()
+    assert not root.as_uri().startswith('file://%3F')
+
+
 def test_path_references_relocate_for_files_and_sql_queries(tmp_path, monkeypatch):
     import app.db.models
     from app.db.base import Base
@@ -241,12 +304,24 @@ def test_conversion_closes_database_pool_before_publishing_directory(tmp_path, m
                    (str(uuid.uuid4()), "desktop-admin", "desktop@trailsnap.app", "hash", "{}"))
     for path in (program / "trailsnap-desktop.exe", program / "server/trailsnap-server.exe", program / "launcher.exe"):
         path.write_bytes(b"program-fixture")
+    # Cover an installer placed over its former data root: the new instance's
+    # userdata and programs must not become nested copies inside the old library.
+    (source / 'userdata/webview').mkdir(parents=True)
+    (source / 'userdata/.instance.lock').write_bytes(b'live lock')
+    (source / 'userdata/webview/browser-state').write_bytes(b'live browser')
+    (source / 'app/build').mkdir(parents=True)
+    (source / 'app/build/program').write_bytes(b'unrelated new build')
+    (source / 'instance.json').write_text(json.dumps({'dataRoot':{'kind':'relative','path':'userdata'}}))
     target = tmp_path / "converted"
     result = subprocess.run([sys.executable, "desktop_entry.py", "--convert-portable", str(source), str(target),
                              str(program), str(program / "launcher.exe")],
                             cwd=Path(__file__).resolve().parents[2], capture_output=True, timeout=90)
     assert result.returncode == 0, result.stderr.decode(errors="replace")
     assert (target / "userdata/data/trailsnap.sqlite").is_file()
+    assert not (target / 'userdata/userdata').exists()
+    assert not (target / 'userdata/app').exists()
+    assert not (target / 'userdata/instance.json').exists()
+    assert (source / 'userdata/.instance.lock').read_bytes() == b'live lock'
     assert next((target / "app").glob("*/portable-launcher.exe")).read_bytes() == b"program-fixture"
     moved = target.with_name("moved")
     target.rename(moved)
