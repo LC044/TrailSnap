@@ -10,7 +10,7 @@ import tempfile
 import uuid
 from app.utils.portable_library import file_hash, write_json
 from app.utils.windows_paths import filesystem_path, publish_directory
-from app.utils.portable_config import transform_paths
+from app.utils.portable_config import transform_paths, remap_path_fields
 from app.utils.desktop_verification import photo_paths, media_baseline, verify_media
 
 
@@ -18,11 +18,16 @@ def preview_conversion(source: Path) -> dict:
     source = source.resolve(strict=True)
     with closing(sqlite3.connect((source / "data/trailsnap.sqlite").as_uri() + "?mode=ro", uri=True)) as db:
         users = db.execute("SELECT id,settings FROM users").fetchall()
+        registered = {}
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='storage_roots'").fetchone():
+            for owner, location in db.execute("SELECT owner_id,location FROM storage_roots WHERE kind='external'"):
+                registered.setdefault(owner, []).append(location)
         external = []
         for owner, raw in users:
             settings = transform_paths(json.loads(raw or "{}"), encode=False, root=source)
             storage = settings.get("storage") or {}
             roots = list(storage.get("external_directories", []))
+            roots.extend(registered.get(owner, []))
             base = storage.get("photo_storage_path")
             if base and Path(base).is_absolute() and not Path(base).resolve().is_relative_to(source):
                 roots.append(str(Path(base) / "users" / owner))
@@ -79,6 +84,12 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
                     db.execute('DELETE FROM storage_roots')
                 for owner, raw in db.execute('SELECT id,settings FROM users').fetchall():
                     settings = transform_paths(json.loads(raw or '{}'), encode=False, root=data)
+                    # Explicit organize roots may exist only in storage_roots.
+                    # Preserve them when rebuilding references in the copy.
+                    external = settings.setdefault('storage', {}).setdefault('external_directories', [])
+                    for item in preview['externalRoots']:
+                        if item['ownerId'] == owner and item['path'] not in external:
+                            external.append(item['path'])
                     db.execute('UPDATE users SET settings=? WHERE id=?', (json.dumps(settings,ensure_ascii=False),owner))
         # A deliberate copy is a new independent library. Moving an existing
         # folder keeps its IDs; this explicit operation rotates identity/session.
@@ -102,6 +113,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
             elif copied.is_file(): copied.unlink()
         if copy_external:
             with closing(sqlite3.connect(data / "data/trailsnap.sqlite")) as db, db:
+                mappings = {}
                 for item in preview["externalRoots"]:
                     old = Path(item["path"])
                     new = data / "data/imported" / item["ownerId"] / uuid.uuid5(uuid.NAMESPACE_URL, str(old)).hex
@@ -113,6 +125,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
                         if path.is_file() and file_hash(path) != file_hash(new / path.relative_to(old)):
                             raise ValueError("外部照片复制校验失败")
                     owner = item["ownerId"]
+                    mappings.setdefault(owner, []).append((old, new))
                     rows = db.execute("SELECT id,file_path FROM photos WHERE owner_id=?", (owner,)).fetchall()
                     db.executemany("UPDATE photos SET file_path=? WHERE id=?", [(rebase_value(path,old,new),photo_id) for photo_id,path in rows])
                     raw = db.execute("SELECT settings FROM users WHERE id=?", (owner,)).fetchone()[0]
@@ -124,6 +137,20 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
                     base = storage.get("photo_storage_path")
                     if base and not Path(base).resolve().is_relative_to(data): storage["photo_storage_path"] = str(data / "data")
                     db.execute("UPDATE users SET settings=? WHERE id=?", (json.dumps(settings,ensure_ascii=False),owner))
+                for task_id, owner, raw in db.execute("SELECT id,owner_id,payload FROM tasks WHERE payload IS NOT NULL").fetchall():
+                    payload = transform_paths(json.loads(raw), encode=False, root=data)
+                    task_owner = owner or (payload.get("user_id") if isinstance(payload, dict) else None)
+                    if task_owner:
+                        rewritten = remap_path_fields(payload, mappings.get(str(task_owner), []))
+                    else:
+                        # Older global tasks may lack an owner. Only remap them
+                        # when all matching owners agree on the destination.
+                        variants = [remap_path_fields(payload, paths) for paths in mappings.values()]
+                        changed = [value for value in variants if value != payload]
+                        if changed and any(value != changed[0] for value in changed):
+                            raise ValueError("待执行任务引用共享外部图库但缺少用户身份，请在原客户端取消该任务后重试")
+                        rewritten = changed[0] if changed else payload
+                    db.execute("UPDATE tasks SET payload=? WHERE id=?", (json.dumps(rewritten, ensure_ascii=False), task_id))
         os.environ.update(TS_DESKTOP="1", TS_DESKTOP_PORTABLE="1", TS_DESKTOP_ROOT=str(data), TS_DATA_DIR=str(data / "data"))
         from desktop_entry import _prepare_desktop_database
         try:

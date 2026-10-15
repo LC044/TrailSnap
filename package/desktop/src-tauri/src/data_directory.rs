@@ -29,12 +29,21 @@ pub struct DataDirectory {
 
 impl DataDirectory {
     pub fn load(app: &tauri::AppHandle) -> Result<Self, String> {
-        let _ = app;
+        #[cfg(windows)]
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        #[cfg(windows)]
         let installation = crate::portable::instance_root_for_executable(&executable)?;
-        let instance_root = installation
-            .join("instance.json")
-            .is_file()
+        #[cfg(not(windows))]
+        let installation = app
+            .path()
+            .app_local_data_dir()
+            .map_err(|e| e.to_string())?;
+        let _ = app;
+        Self::load_from_directory(installation, cfg!(windows))
+    }
+
+    fn load_from_directory(installation: PathBuf, windows_layout: bool) -> Result<Self, String> {
+        let instance_root = (windows_layout && installation.join("instance.json").is_file())
             .then_some(installation.clone());
         let (config_path, default_root, config) = if let Some(root) = &instance_root {
             let instance = crate::portable::load_instance(root)?;
@@ -49,15 +58,24 @@ impl DataDirectory {
                 },
             )
         } else {
-            if installation.join("portable.json").exists()
-                || installation.join("maintenance/initialized.json").exists()
+            if windows_layout
+                && (installation.join("portable.json").exists()
+                    || installation.join("maintenance/initialized.json").exists())
             {
                 return Err("当前安装目录缺少 instance.json，请恢复该配置文件后通过 TrailSnap.exe 启动，避免打开空图库".into());
             }
-            // Development/non-Windows compatibility: ONLY a pointer adjacent to
-            // this executable is eligible. Never discover the old AppData file.
-            let pointer = installation.join("TrailSnap-desktop.json");
-            let default = installation.join("userdata");
+            // Only Windows uses the program-local layout. macOS/Linux retain
+            // their existing OS user-data directory and sibling pointer.
+            let pointer = if windows_layout {
+                installation.join("TrailSnap-desktop.json")
+            } else {
+                installation.with_file_name("TrailSnap-desktop.json")
+            };
+            let default = if windows_layout {
+                installation.join("userdata")
+            } else {
+                installation.clone()
+            };
             let config = if pointer.exists() {
                 let mut value: DirectoryConfig = crate::portable::read_json(&pointer)?;
                 if value.root.is_relative() {
@@ -311,6 +329,33 @@ pub(crate) fn validate_target(source: &Path, target: &Path) -> Result<PathBuf, S
 mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn non_windows_keeps_user_data_and_existing_custom_pointer() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let local_data = root.join("com.trailsnap.desktop");
+        let state = DataDirectory::load_from_directory(local_data.clone(), false).unwrap();
+        assert_eq!(state.root(), local_data);
+        assert_eq!(state.config_path, root.join("TrailSnap-desktop.json"));
+        assert!(state.instance_root.is_none());
+        assert!(!local_data.join("userdata").exists());
+        drop(state);
+        let custom = root.join("custom-library");
+        fs::create_dir_all(&custom).unwrap();
+        crate::portable::write_json(
+            &root.join("TrailSnap-desktop.json"),
+            &DirectoryConfig {
+                root: custom.clone(),
+                server_port: Some(18900),
+                ..Default::default()
+            },
+        ).unwrap();
+        let state = DataDirectory::load_from_directory(local_data, false).unwrap();
+        assert_eq!(state.root(), custom);
+        assert_eq!(state.config.lock().unwrap().server_port, Some(18900));
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     fn fixture() -> (PathBuf, DataDirectory) {
         let root = std::env::temp_dir().join(format!(

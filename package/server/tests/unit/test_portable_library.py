@@ -350,7 +350,9 @@ def test_clone_of_moved_portable_library_carries_external_photos(tmp_path, monke
     (program / 'server').mkdir(parents=True)
     external.mkdir()
     (external / 'outside.jpg').write_bytes(b'external photo')
+    (external / 'outside.mov').write_bytes(b'live photo companion')
     owner, photo = str(uuid.uuid4()), str(uuid.uuid4())
+    task_id = str(uuid.uuid4())
     url = f"sqlite:///{(source / 'data/trailsnap.sqlite').as_posix()}"
     monkeypatch.setenv('TS_DB_URL', url)
     config = Config()
@@ -362,6 +364,12 @@ def test_clone_of_moved_portable_library_carries_external_photos(tmp_path, monke
                    (owner,'desktop-admin','desktop@trailsnap.app','hash',json.dumps({'storage':{'external_directories':[str(external)]}})))
         db.execute("INSERT INTO photos(id,owner_id,file_path,file_type,is_deleted) VALUES (?,?,?,'image',0)",
                    (photo,owner,str(external / 'outside.jpg')))
+        # Pending work must follow the copy even if it predates task.owner_id.
+        db.execute("INSERT INTO tasks(id,type,status,payload) VALUES (?,'PROCESS_BASIC','pending',?)",
+                   (task_id,json.dumps({'user_id':owner,'file_path':str(external / 'outside.jpg'),
+                                        'live_photo_video_path':str(external / 'outside.mov'),
+                                        'target_root_path':str(external), 'scan_roots':[str(external)],
+                                        'prompt':str(external / 'outside.jpg')})))
     for path in (program / 'trailsnap-desktop.exe',program / 'server/trailsnap-server.exe',program / 'launcher.exe'):
         path.write_bytes(b'fixture')
     def convert(original, target, copy_external=False):
@@ -382,4 +390,51 @@ def test_clone_of_moved_portable_library_carries_external_photos(tmp_path, monke
         copied = Path(paths[0][2])
         assert copied.is_relative_to(second / 'userdata')
         assert copied.read_bytes() == b'external photo'
+        payload = transform_paths(json.loads(db.execute('SELECT payload FROM tasks WHERE id=?', (task_id,)).fetchone()[0]),
+                                  encode=False, root=second / 'userdata')
+        assert Path(payload['file_path']) == copied
+        assert Path(payload['live_photo_video_path']).read_bytes() == b'live photo companion'
+        assert Path(payload['target_root_path']) == copied.parent
+        assert Path(payload['scan_roots'][0]) == copied.parent
+        assert payload['prompt'] == str(external / 'outside.jpg')
     assert preview_conversion(second / 'userdata')['externalRoots'] == []
+
+
+def test_relocated_library_keeps_rendered_films_and_posters_accessible(tmp_path, monkeypatch):
+    from app.db.base import Base
+    from app.db.models import User, DailyFrameWork
+    from app.api.daily_frame import work_file, poster
+    from app.service import daily_frame_render
+
+    old = tmp_path / 'old'
+    (old / 'data').mkdir(parents=True)
+    owner, work_id = uuid.uuid4(), uuid.uuid4()
+    movie = old / f'data/users/{owner}/daily-frame/film.mp4'
+    movie.parent.mkdir(parents=True)
+    movie.write_bytes(b'rendered film')
+    movie.with_suffix('.jpg').write_bytes(b'film poster')
+    engine = create_engine(f"sqlite:///{(old / 'data/trailsnap.sqlite').as_posix()}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        db.add(User(id=owner, username='film', email='film@example.com', hashed_password='unused'))
+        db.add(DailyFrameWork(id=work_id, owner_id=owner, fingerprint='film', status='ready',
+                             output_path=str(movie), snapshot={'settings': {'title':'Film','start_date':'2024-05-07'}, 'frames':[{}]}))
+        db.commit()
+    engine.dispose()
+    write_metadata = {'schemaVersion':1,'pathFormat':1,'libraryId':str(uuid.uuid4()),
+                      'lastRoot':str(old),'initialized':True}
+    (old / 'library.json').write_text(json.dumps(write_metadata))
+    moved = tmp_path / 'moved'
+    old.rename(moved)
+    portable_env(monkeypatch, moved)
+    prepare_portable_library(moved)
+    # A second startup must be idempotent as well.
+    prepare_portable_library(moved)
+    monkeypatch.setattr(daily_frame_render, 'DATA_DIR', str(moved / 'data'))
+    engine = create_engine(f"sqlite:///{(moved / 'data/trailsnap.sqlite').as_posix()}")
+    with Session(engine) as db:
+        user = db.get(User, owner)
+        response = work_file(work_id, download=False, user=user, db=db)
+        assert Path(response.path).read_bytes() == b'rendered film'
+        assert Path(poster(work_id, user=user, db=db).path).read_bytes() == b'film poster'
+    engine.dispose()

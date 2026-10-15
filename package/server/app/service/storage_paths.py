@@ -109,34 +109,37 @@ def apply_photo_reference(photo, db=None) -> None:
     photo.storage_root_id, photo.storage_relative_path = reference
 
 
-def register_user_roots(db, owner_id) -> None:
+def register_storage_root(db, owner_id, anchor: Path, name: str = "外部图库") -> None:
+    """Register an explicitly selected destination before any file is moved there."""
     import json
     import uuid
     from sqlalchemy import insert
-    from app.db.models.user import User
     from app.db.models.storage_root import StorageRoot
+    root = instance_root()
+    namespace = uuid.UUID(json.loads((root / "library.json").read_text(encoding="utf-8"))["libraryId"])
+    anchor = anchor.resolve()
+    kind = "managed" if anchor.is_relative_to(root) and anchor != root else "external"
+    location = anchor.relative_to(root).as_posix() if kind == "managed" else str(anchor)
+    root_id = uuid.uuid5(namespace, f"{owner_id}:{kind}:{location}")
+    record = db.get(StorageRoot, root_id)
+    if record is None:
+        # Also called from before_flush, which cannot recursively flush.
+        db.execute(insert(StorageRoot).values(id=root_id, owner_id=owner_id, name=name, kind=kind, location=location))
+        record = StorageRoot(id=root_id, owner_id=owner_id, name=name, kind=kind, location=location)
+    cache_root(record)
+
+
+def register_user_roots(db, owner_id) -> None:
+    from app.db.models.user import User
     from app.service.user_storage import configured_storage_base
     user = db.get(User, UUID(str(owner_id)))
     if user is None:
         raise ValueError("Storage owner does not exist")
-    root = instance_root()
-    namespace = uuid.UUID(json.loads((root / "library.json").read_text(encoding="utf-8"))["libraryId"])
     settings = user.settings or {}
     anchors = [(Path(configured_storage_base(settings)) / "users" / str(owner_id), "用户文件")]
     anchors.extend((Path(path), "外部图库") for path in (settings.get("storage") or {}).get("external_directories", []) if path)
     for anchor, name in anchors:
-        anchor = anchor.resolve()
-        kind = "managed" if anchor.is_relative_to(root) and anchor != root else "external"
-        location = anchor.relative_to(root).as_posix() if kind == "managed" else str(anchor)
-        root_id = uuid.uuid5(namespace, f"{owner_id}:{kind}:{location}")
-        if str(root_id) in _roots:
-            continue
-        record = db.get(StorageRoot, root_id)
-        if record is None:
-            # before_flush must not recursively call flush. Insert on its connection.
-            db.execute(insert(StorageRoot).values(id=root_id, owner_id=owner_id, name=name, kind=kind, location=location))
-            record = StorageRoot(id=root_id, owner_id=owner_id, name=name, kind=kind, location=location)
-        cache_root(record)
+        register_storage_root(db, owner_id, anchor, name)
 
 
 def photo_path_expression(photo):

@@ -185,6 +185,13 @@ def prepare_portable_library(root: Path) -> dict:
             value = json.loads(payload)
             value = transform_paths(rebase_value(value, old_root, root), encode=True)
             db.execute("UPDATE tasks SET payload=? WHERE id=?", (json.dumps(value, ensure_ascii=False), task_id))
+        # Rendered films and their sibling posters move with userdata too.
+        # Keep external outputs unchanged, including records from older schemas.
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='daily_frame_works'").fetchone():
+            for work_id, output in db.execute("SELECT rowid,output_path FROM daily_frame_works WHERE output_path IS NOT NULL").fetchall():
+                rewritten = rebase_value(output, old_root, root)
+                if rewritten != output:
+                    db.execute("UPDATE daily_frame_works SET output_path=? WHERE rowid=?", (rewritten, work_id))
         if db.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
             raise ValueError("Portable database check failed")
         if db.execute("PRAGMA foreign_key_check").fetchone():

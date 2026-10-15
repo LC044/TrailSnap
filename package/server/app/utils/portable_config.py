@@ -7,7 +7,24 @@ from app.service.storage_paths import portable_enabled, instance_root, validate_
 PREFIX = "ts-instance:/"
 PATH_FIELDS = {"path", "file_path", "photo_storage_path", "storage_root", "model_path",
                "mmproj_path", "model_dir", "model_directory", "scan_roots", "external_directories",
-               "target_dir", "target_path", "output_path", "source_path", "folder_path", "directory"}
+               "target_dir", "target_path", "target_root_path", "live_photo_video_path",
+               "output_path", "source_path", "folder_path", "directory"}
+
+
+def remap_path_fields(value, mappings, *, key: str = ""):
+    """Apply the longest copied-root mapping only to declared path fields."""
+    if isinstance(value, dict):
+        return {name: remap_path_fields(item, mappings, key=name) for name, item in value.items()}
+    if isinstance(value, list):
+        return [remap_path_fields(item, mappings, key=key) for item in value]
+    if not isinstance(value, str) or key not in PATH_FIELDS:
+        return value
+    from app.utils.desktop_data_migration import rebase_value
+    for source, target in sorted(mappings, key=lambda pair: len(str(pair[0])), reverse=True):
+        rewritten = rebase_value(value, source, target)
+        if rewritten != value:
+            return rewritten
+    return value
 
 
 def transform_paths(value, *, encode: bool, key: str = "", root: Path | None = None):

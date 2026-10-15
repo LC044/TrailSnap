@@ -3,6 +3,7 @@ import os
 import shutil
 import uuid
 import logging
+from pathlib import Path
 from typing import Dict, Any
 from sqlalchemy.orm import Session, joinedload
 from app.db.models.task import Task, TaskType
@@ -11,6 +12,41 @@ from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.tag import PhotoTag
 from app.db.models.face import Face
+
+
+def _commit_transfer(db: Session, photo, old_path: str, new_path: str, *, move: bool) -> None:
+    """Validate the DB change first and compensate file IO if commit fails."""
+    transferred = False
+    try:
+        from app.service.storage_paths import apply_photo_reference
+        photo.file_path = new_path
+        photo.filename = os.path.basename(new_path)
+        apply_photo_reference(photo, db)
+        db.flush()
+        with disk_budget.slots(old_path, new_path):
+            if move:
+                shutil.move(old_path, new_path)
+            else:
+                shutil.copy2(old_path, new_path)
+        transferred = True
+        db.commit()
+    except Exception:
+        db.rollback()
+        if transferred:
+            try:
+                with disk_budget.slots(old_path, new_path):
+                    if move:
+                        if os.path.exists(old_path):
+                            raise FileExistsError(old_path)
+                        shutil.move(new_path, old_path)
+                    else:
+                        os.remove(new_path)
+            except Exception as recovery_error:
+                raise RuntimeError(
+                    f"整理失败且文件恢复未完成，请保留文件 {new_path}，原数据库位置为 {old_path}：{recovery_error}"
+                ) from recovery_error
+        raise
+
 
 @TaskStrategyFactory.register(TaskType.ORGANIZE_PHOTOS)
 class OrganizePhotosStrategy(BaseTaskStrategy):
@@ -38,6 +74,11 @@ class OrganizePhotosStrategy(BaseTaskStrategy):
             
         abs_target = os.path.abspath(target_root_path)
         os.makedirs(abs_target, exist_ok=True)
+        from app.service.storage_paths import portable_enabled, register_storage_root
+        if portable_enabled():
+            # An explicit organize destination is an owned root, even when it
+            # is outside both the managed uploads and configured scan folders.
+            register_storage_root(db, task.owner_id, Path(abs_target), "整理目录")
         
         # Load photos with relations based on strategy
         query = db.query(Photo).filter(Photo.owner_id == task.owner_id, Photo.is_deleted.is_(False))
@@ -176,34 +217,20 @@ class OrganizePhotosStrategy(BaseTaskStrategy):
                     
                 if action == 'move':
                     if os.path.abspath(old_path) != os.path.abspath(new_path):
-                        try:
-                            with disk_budget.slots(old_path, new_path):
-                                shutil.move(old_path, new_path)
-                            photo.file_path = new_path
-                            photo.filename = os.path.basename(new_path)
-                            # After move, break out of subfolder loop since we can only move once
-                            success_count += 1
-                            break
-                        except Exception as e:
-                            logging.error(f"Failed to move {old_path} to {new_path}: {e}")
+                        _commit_transfer(db, photo, old_path, new_path, move=True)
+                        success_count += 1
+                        break
                 elif action == 'copy':
                     if os.path.abspath(old_path) != os.path.abspath(new_path):
-                        try:
-                            with disk_budget.slots(old_path, new_path):
-                                shutil.copy2(old_path, new_path)
-                            # Create new DB record
-                            new_photo_data = {c.name: getattr(photo, c.name) for c in photo.__table__.columns if c.name not in ['id', 'file_path', 'storage_root_id', 'storage_relative_path', 'filename', 'created_at', 'updated_at']}
-                            new_photo = Photo(
-                                id=uuid.uuid4(),
-                                file_path=new_path,
-                                filename=os.path.basename(new_path),
-                                **new_photo_data
-                            )
-                            db.add(new_photo)
-                            worker.get_instance().add_task(db, TaskType.GENERATE_THUMBNAIL, {'photo_id': str(new_photo.id)})
-                            success_count += 1
-                        except Exception as e:
-                            logging.error(f"Failed to copy {old_path} to {new_path}: {e}")
+                        new_photo_data = {c.name: getattr(photo, c.name) for c in photo.__table__.columns if c.name not in ['id', 'file_path', 'storage_root_id', 'storage_relative_path', 'filename', 'created_at', 'updated_at']}
+                        new_photo = Photo(id=uuid.uuid4(), file_path=new_path,
+                                          filename=os.path.basename(new_path), **new_photo_data)
+                        db.add(new_photo)
+                        _commit_transfer(db, new_photo, old_path, new_path, move=False)
+                        # add_task commits internally: enqueue only once the
+                        # photo's own file/DB transaction has completed.
+                        worker.get_instance().add_task(db, TaskType.GENERATE_THUMBNAIL, {'photo_id': str(new_photo.id)})
+                        success_count += 1
                             
             task.processed_items = i + 1
             if i % 50 == 0:
