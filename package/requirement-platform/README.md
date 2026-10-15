@@ -147,7 +147,7 @@ MCP 作用域与能力：
 2. 调用 `list_requirement_specs` 查询修订，由 Agent 根据需求编写结构化规格和编号 AC，通过 `create_requirement_spec` / `update_requirement_spec` 保存。创建使用需求的 `expected_requirement_state_version`；编辑使用规格的 `expected_state_version`。两者沿用 `requirements:write`。
 3. 有 `requirements:review` 的 Agent 调用 `approve_requirement_spec`，不需要人工打开页面；平台从 `LC044/TrailSnap` 的 `master` 解析并冻结 SHA。阻塞问题必须先解决；手工 SHA 兜底仍仅允许 Owner。
 4. 调用 `start_requirement_delivery`，传入需求编号、runner/provider 和实现计划。该工具要求 `runs:write`，在一个事务中创建/复用任务、指定领取并提交计划，失败全部回滚。`acceptance_plan` 形如 `{"AC-01": "实现筛选切换清理，并验证选择归零"}`，必须覆盖全部必需 AC，不允许空白内容和未知编号。
-5. 保存返回的 `id`（run_id）、`attempt_id`、`lease_token` 和 `state_version` 后编码。每约 20 秒调用 `heartbeat_run` 维护 90 秒租约。心跳仅更新租约时间，不改变状态版本；计划、结果等业务写入仍推进版本。可以用 `request_clarification` 提问，并由具备审核权限的 Agent 按已确认答案调用 `answer_run_clarification`；范围变化必须修订规格。
+5. 保存返回的 `id`（run_id）、`attempt_id`、`lease_token` 和 `state_version` 后编码。默认租约为 30 分钟，每次调用 `heartbeat_run` 将到期时间延长到当前时间之后 30 分钟；自动续租助手仍每约 20 秒发送心跳。心跳仅更新租约时间，不改变状态版本；计划、结果等业务写入仍推进版本。可以用 `request_clarification` 提问，并由具备审核权限的 Agent 按已确认答案调用 `answer_run_clarification`；范围变化必须修订规格。
 6. 完成后登记必要证据并调用 `submit_run_result`，如实上报每项 AC 的验证结果；成功结果绑定完整 head SHA。创建 PR 后通过 `list_delivery_tasks` 获取最新任务版本，再调用 `link_pull_request`，平台回查仓库、目标分支及 head/base SHA。
 
 仍支持逐步执行 `create_delivery_task` → `claim_delivery_task(task_id=... 或 requirement_id="REQ-123")` → `submit_implementation_plan`；不传筛选时才从队列领取最早满足依赖的任务。任务绑定令牌不能跨任务领取。平台提供完整工具和仓库技能，但不在后台自动启动编码模型；由当前 Codex/Claude 会话执行上述流程。

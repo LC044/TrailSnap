@@ -25,7 +25,7 @@ from .services import GitHubClient
 from .domain.common import audit, enqueue
 
 
-LEASE_SECONDS = 90
+LEASE_SECONDS = 30 * 60
 FINAL_RUN_STATES = {"succeeded", "failed", "cancelled", "timed_out"}
 
 

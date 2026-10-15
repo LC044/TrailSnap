@@ -995,7 +995,7 @@ def _run_for_token(db, run_id: str, token: AgentToken) -> AgentRun:
 @mcp.tool()
 def heartbeat_run(run_id: str, attempt_id: str, lease_token: str, expected_state_version: int,
                   idempotency_key: str, session_reference: str | None = None) -> dict[str, Any]:
-    """续租当前执行；默认租约为 90 秒。"""
+    """续租当前执行；默认租约为 30 分钟。"""
     token, _ = _identity("runs:write")
     request = {"run_id": run_id, "attempt_id": attempt_id, "expected_state_version": expected_state_version,
                "session_reference": session_reference}
