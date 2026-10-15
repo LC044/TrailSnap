@@ -1,16 +1,15 @@
 ---
 name: trailsnap-commit
-description: TrailSnap 仓库提交、推送、需求平台与 PR 工作流规则。Use when preparing commits, pushing branches, managing the corresponding platform requirement, creating or merging pull requests, or monitoring PR CI in this repository; do not use for ordinary code changes that do not involve submission.
+description: TrailSnap 需求规格、Agent 编码交付、提交与 PR 工作流。Use when implementing TrailSnap requirements, managing platform requirements and acceptance criteria, preparing commits, pushing branches, creating pull requests, or monitoring PR CI in this repository.
 ---
 
-# TrailSnap 提交与推送规则
+# TrailSnap Agent 交付与提交规则
 
 仅在用户明确要求提交、推送或创建 PR 时执行相应 Git 操作。先保护并核对用户已有改动，不要覆盖或擅自丢弃工作区内容。
 
 ## 提交原则
 
-- 不要求为了提交而在本地运行测试；测试由 GitHub Actions 负责。
-- 只有用户明确要求本地验证时才运行本地测试。
+- 按根目录 AGENTS.md 和 tests/README.md 选择验证范围，统一通过 tests/scripts/run-tests.ps1 执行；需求平台使用 `-Layer unit -Component requirement-platform -Level all`。
 
 ## 提交信息
 
@@ -26,7 +25,13 @@ description: TrailSnap 仓库提交、推送、需求平台与 PR 工作流规�
 - 所有开发事项统一通过已配置的 `trailsnap-feedback` MCP 管理。不要使用 GitHub CLI、GitHub API 或网页直接创建、编辑、关闭 GitHub Issue；GitHub Issue 由需求平台在后台创建和同步。
 - 如果未配置、无法连接或找不到 `trailsnap-feedback` MCP，先引导用户在[需求平台](https://feedback.trailsnap.cn/)的“集成设置”创建 Agent MCP 令牌，并采用平台提供的 MCP 配置完成连接后再继续。不要自行创建令牌、要求用户在对话中粘贴令牌，或回退为直接操作 GitHub Issue。
 - MCP 返回未认证、无权限或缺少 scope 时，说明当前操作所需的最小权限，并请用户联系需求平台管理员开通或调整令牌权限。
-- 开始需要提交或创建 PR 的工作前，先用 MCP 查询是否已有对应需求。存在则复用；不存在则用 `create_requirement` 创建内容完整的需求，记录其 `REQ-*` 编号，并将需求状态设置为`developing`。
+- 开始平台需求的编码交付前调用 `get_agent_capabilities`，检查现有令牌权限和任务绑定；不创建或调整令牌，不通过其他接口绕过 scope。任务创建、领取、取消仍沿用现有鉴权规则；完整编码交付需要 `runs:write`，规格编写需要 `requirements:write`，批准规格和答复执行澄清需要 `requirements:review`。
+- 查询并复用对应需求；不存在则调用 `create_requirement`，记录 `REQ-*` 编号。调用 `list_requirement_specs` 读取规格修订，由 Agent 根据用户需求编写 `problem`、`user_scenario`、`goal`、`in_scope` 和 Given/When/Then 验收标准 `acceptance`（例如 `AC-01`），通过 `create_requirement_spec` 或 `update_requirement_spec` 保存。不要机械地将原需求正文复制成验收标准。
+- 现有令牌有审核权限时，Agent 可调用 `approve_requirement_spec` 自动批准无阻塞问题的规格，不要求用户到页面点击。只根据用户已授权范围和已确认事实编写规格；产品歧义通过澄清解决，不编造答案。GitHub 基线解析失败时报告原因；不要自行伪造 SHA。
+- 计划形成后优先调用 `start_requirement_delivery(requirement_id=REQ编号, ...)`，原子创建/复用任务、指定领取并提交计划。`acceptance_plan` 的键覆盖每个必需 AC，值说明如何实现及验证；不使用空白内容或不存在的 AC。保存返回的 `id`（run_id）、`attempt_id`、`lease_token` 和 `state_version`。也可以依次调用 `create_delivery_task`、`claim_delivery_task(task_id=... 或 requirement_id=...)` 和 `submit_implementation_plan`。指定需求时禁止不带筛选领取其他队列任务。
+- 计划提交成功后编码。每约 20 秒续租，所有执行写入携带当前 attempt、lease、状态版本和幂等键；同一请求重试复用幂等键，新动作使用新键。心跳不改变状态版本，其他写入使用返回的新版本。长时间的编码/测试命令可用需求平台的 `requirement_platform.agent_runner` 包装自动续租，使用已有令牌的环境变量，凭证文件放在仓库外，不输出凭证或提交凭证文件。
+- 遇到阻塞问题调用 `request_clarification`，收到用户答案后可用 `answer_run_clarification` 回填；涉及范围变化时修订并重新批准规格。失去租约或被取消后停止旧 attempt，不继续上报；重新读取状态后再决定领取。
+- 实现完成后如实填写 `acceptance_coverage`、`self_test_results`、改动文件和限制，通过 `submit_run_result` 上报；需要证据产物时使用 `submit_run_artifact`（`artifacts:write`）。成功结果需完整提交 SHA，未获提交授权时保留工作区改动并说明尚未提交，不冒充已有交付提交。创建 PR 后用 `list_delivery_tasks` 读取最新 task 版本，再 `link_pull_request`。不使用 `update_requirement_status(developing)` 代替规格、计划和交付门禁。
 - 需求描述应说明问题、目标、范围和验收标准。范围变化时更新平台需求，不直接更新其关联的 GitHub Issue。
 - GitHub Issue 编号或链接只能作为平台返回的只读关联信息使用，不能作为状态管理入口。
 - PR 合并后，确认 GitHub Webhook 已自动关闭对应需求；若自动同步失败，再通过需求平台关闭，并在理由中写明 PR 编号、合并结果和 CI 状态。

@@ -59,7 +59,7 @@ param(
     [ValidateSet('dev', 'scan', 'smoke', 'p0', 'p1', 'all', 'light', 'full')]
     [string]$Level,
 
-    [ValidateSet('server', 'ai', 'website', 'cli', 'desktop', 'all')]
+    [ValidateSet('server', 'ai', 'website', 'cli', 'desktop', 'requirement-platform', 'all')]
     [string]$Component = 'all',
 
     [ValidateSet('dev', 'docker')]
@@ -83,6 +83,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
 if ($Component -eq 'desktop' -and $Layer -ne 'unit') { throw 'desktop 目前仅支持 unit 测试层' }
+if ($Component -eq 'requirement-platform' -and $Layer -ne 'unit') { throw 'requirement-platform 使用 unit 层运行独立 API 与交付协议测试' }
 if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests' '.env.test' }
 if (-not [System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile = Join-Path $RepoRoot $EnvFile }
 if (-not (Test-Path $EnvFile)) {
@@ -223,6 +224,9 @@ try {
     }
 
     # ---------- frontend unit (Node test runner, no services) ----------
+    if ($Component -eq 'requirement-platform') {
+        Invoke-Pytest -PackageDir (Join-Path 'package' 'requirement-platform' 'server') -TestPath 'tests' -ExtraArgs @()
+    }
     if ($Component -eq 'desktop') {
         Push-Location (Join-Path $RepoRoot 'package' 'desktop' 'src-tauri')
         try {

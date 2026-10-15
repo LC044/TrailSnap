@@ -277,12 +277,20 @@ def test_manager_github_soft_delete_agent_token_and_mcp(monkeypatch):
         assert tools.status_code == 200, tools.text
         tool_names = {item["name"] for item in tools.json()["result"]["tools"]}
         assert {"list_requirements", "update_requirement_status", "create_version", "upload_requirement_attachment", "get_requirement_records",
-                "sync_github_issues", "sync_github_milestone"} <= tool_names
+                "sync_github_issues", "sync_github_milestone", "get_agent_capabilities", "create_requirement_spec",
+                "update_requirement_spec", "approve_requirement_spec", "start_requirement_delivery",
+                "list_delivery_tasks", "answer_run_clarification"} <= tool_names
         claim_schema = next(item["inputSchema"] for item in tools.json()["result"]["tools"]
                             if item["name"] == "claim_delivery_task")
         assert {"runner_name", "provider", "idempotency_key"} <= set(claim_schema["required"])
         for name, arguments, scope in [
             ("review_requirement", {"requirement_id": created["id"], "action": "candidate", "reason": "测试权限"}, "requirements:review"),
+            ("approve_requirement_spec", {"spec_id": "missing", "expected_state_version": 1, "idempotency_key": "denied-approve"}, "requirements:review"),
+            ("create_requirement_spec", {"requirement_id": created["id"], "content": _spec_content(),
+                "expected_requirement_state_version": 1, "idempotency_key": "denied-spec"}, "requirements:write"),
+            ("start_requirement_delivery", {"requirement_id": created["id"], "runner_name": "test", "provider": "codex",
+                "goal_summary": "自动化编码目标", "scope_summary": "自动化编码范围", "acceptance_plan": {"AC-01": "实现并验证"},
+                "idempotency_key": "denied-start"}, "runs:write"),
         ]:
             denied = mcp_client.post("/", headers=headers, json={
                 "jsonrpc": "2.0", "id": 4, "method": "tools/call",
@@ -1068,6 +1076,115 @@ def _spec_content():
         "release_requirements": [], "rollback_requirements": [], "blocking_questions": [],
         "assumptions": [], "repository": "LC044/TrailSnap", "target_branch": "master",
     }
+
+
+def test_mcp_automated_delivery_uses_existing_scopes(monkeypatch):
+    """Exercise the public MCP protocol without any browser approval steps."""
+    with TestClient(app) as client:
+        owner = client.post("/api/auth/login", json={"identifier": "owner@example.com", "password": "password123"}).json()["data"]
+        scopes = ["requirements:read", "requirements:write", "requirements:review", "runs:write"]
+        token = client.post("/api/admin/agent-tokens", headers=auth(owner["token"]), json={
+            "name": "automated-delivery-existing-scopes", "scopes": scopes, "agent_role": "coding",
+        }).json()["data"]["token"]
+    monkeypatch.setattr("requirement_platform.delivery.GitHubClient.get_branch_sha", lambda *_: "d" * 40)
+    transport = mcp_server.mcp.streamable_http_app(streamable_http_path="/", stateless_http=True,
+        json_response=True, transport_security=mcp_server._transport_security_settings())
+    with TestClient(transport) as client:
+        headers = {"Authorization": f"Bearer {token}", "Accept": "application/json, text/event-stream",
+                   "Host": "feedback.trailsnap.cn", "Origin": "https://feedback.trailsnap.cn"}
+
+        def call(name, arguments=None, error=None):
+            response = client.post("/", headers=headers, json={"jsonrpc": "2.0", "id": 1,
+                "method": "tools/call", "params": {"name": name, "arguments": arguments or {}}})
+            assert response.status_code == 200, response.text
+            result = response.json()["result"]
+            if error:
+                assert result["isError"] is True
+                assert error in result["content"][0]["text"]
+                return
+            assert not result.get("isError"), result
+            return result["structuredContent"]
+
+        caps = call("get_agent_capabilities")
+        assert caps["missing_workflow_scopes"] == []
+        assert caps["scopes"] == sorted(scopes)
+        created = call("create_requirement", {"type": "improvement", "title": "MCP 全自动交付测试",
+            "description": "验证从需求提交到实现结果均可通过 Agent 工具执行。"})
+        ref = created["reference"]
+        content = _spec_content()
+        content["acceptance"].append({"id": "AC-02", "given": "没有选中照片", "when": "检查批量操作",
+            "then": "按钮保持禁用", "required": True, "verification": "unit"})
+        spec_args = {"requirement_id": ref, "content": content,
+            "expected_requirement_state_version": created["state_version"], "idempotency_key": "auto-spec"}
+        spec = call("create_requirement_spec", spec_args)
+        assert call("create_requirement_spec", spec_args)["id"] == spec["id"]
+        content["goal"] = "自动清理过期选择状态并完成验证。"
+        spec = call("update_requirement_spec", {"spec_id": spec["id"], "content": content,
+            "expected_state_version": spec["state_version"], "idempotency_key": "auto-spec-update"})
+        spec = call("approve_requirement_spec", {"spec_id": spec["id"],
+            "expected_state_version": spec["state_version"], "idempotency_key": "auto-spec-approve"})
+        assert spec["content"]["base_sha"] == "d" * 40
+        start = {"requirement_id": ref, "runner_name": "auto-test", "provider": "codex",
+            "goal_summary": "清理过期选择状态", "scope_summary": "修改照片筛选与选择状态",
+            "acceptance_plan": {"AC-unknown": "实现并验证"}, "idempotency_key": "auto-invalid-start"}
+        call("start_requirement_delivery", start, error="不存在的验收标准")
+        with SessionLocal() as db:
+            assert db.query(DeliveryTask).filter(DeliveryTask.spec_id == spec["id"]).count() == 0
+        start.update(acceptance_plan={}, idempotency_key="auto-missing-start")
+        call("start_requirement_delivery", start, error="validation error")
+        start.update(acceptance_plan={"AC-01": "实现并验证选择归零"}, idempotency_key="auto-incomplete-start")
+        call("start_requirement_delivery", start, error="AC-02")
+        start.update(acceptance_plan={"AC-01": " "}, idempotency_key="auto-blank-start")
+        call("start_requirement_delivery", start, error="实现和验证计划")
+        start.update(acceptance_plan={"AC-01": "修改切换处理函数，并验证选择数量归零",
+            "AC-02": "由选择数量控制按钮，单元测试验证禁用"}, idempotency_key="auto-start")
+        run = call("start_requirement_delivery", start)
+        assert run["task"]["state"] == "implementing"
+        repeated = call("start_requirement_delivery", start)
+        assert repeated["id"] == run["id"] and repeated["lease_token"] == run["lease_token"]
+        with SessionLocal() as db:
+            record = db.query(IdempotencyRecord).filter(IdempotencyRecord.idempotency_key == "auto-start").one()
+            assert "lease_token" not in record.response
+        credentials = {"run_id": run["id"], "attempt_id": run["attempt_id"], "lease_token": run["lease_token"],
+                       "expected_state_version": run["state_version"]}
+        renewed = call("heartbeat_run", {**credentials, "idempotency_key": "auto-heartbeat"})
+        assert renewed["state_version"] == run["state_version"]
+        question = call("request_clarification", {**credentials, "question": "是否保持批量删除语义？",
+            "blocking": True, "idempotency_key": "auto-question"})
+        answered = call("answer_run_clarification", {"run_id": run["id"], "question_id": question["question_id"],
+            "answer": "保持现有批量删除语义。", "expected_run_state_version": question["run"]["state_version"],
+            "idempotency_key": "auto-answer"})
+        assert answered["status"] == "running"
+        result = call("submit_run_result", {**credentials, "expected_state_version": answered["state_version"],
+            "status": "succeeded", "summary": "实现并验证完成", "acceptance_coverage": {"AC-01": "passed", "AC-02": "passed"},
+            "changed_files": ["package/website/src/example.ts"], "head_sha": "e" * 40,
+            "self_test_results": [{"name": "selection", "passed": True}], "idempotency_key": "auto-result"})
+        assert result["status"] == "succeeded"
+        # A new specification revokes the old task; targeted claiming must not
+        # accidentally consume unrelated queued work left by other tests.
+        requirement = call("get_requirement", {"requirement_id": ref})
+        replacement = call("create_requirement_spec", {"requirement_id": ref, "content": content,
+            "expected_requirement_state_version": requirement["state_version"], "idempotency_key": "auto-revision"})
+        call("approve_requirement_spec", {"spec_id": replacement["id"],
+            "expected_state_version": replacement["state_version"], "idempotency_key": "auto-revision-approve"})
+        with SessionLocal() as db:
+            assert db.query(DeliveryTask).filter(DeliveryTask.id == run["task_id"]).one().state == "cancelled"
+        task = call("create_delivery_task", {"spec_id": replacement["id"], "idempotency_key": "auto-target-task"})
+        targeted = call("claim_delivery_task", {"requirement_id": ref, "runner_name": "target-test",
+            "provider": "codex", "idempotency_key": "auto-target-claim"})
+        assert targeted["task_id"] == task["id"]
+        assert call("claim_delivery_task", {"requirement_id": ref, "runner_name": "target-test",
+            "provider": "codex", "idempotency_key": "auto-target-claim"})["id"] == targeted["id"]
+        with TestClient(app) as api:
+            bound_token = api.post("/api/admin/agent-tokens", headers=auth(owner["token"]), json={
+                "name": "automated-delivery-task-bound", "scopes": scopes, "agent_role": "coding", "task_id": task["id"],
+            }).json()["data"]["token"]
+        headers["Authorization"] = f"Bearer {bound_token}"
+        call("claim_delivery_task", {"task_id": run["task_id"], "runner_name": "bound-test", "provider": "codex",
+            "idempotency_key": "auto-cross-task"}, error="不属于此令牌")
+        call("create_requirement_spec", {"requirement_id": ref, "content": content,
+            "expected_requirement_state_version": requirement["state_version"], "idempotency_key": "auto-bound-spec"},
+            error="任务绑定令牌不能创建")
 
 
 def test_phase_a_spec_approval_and_phase_b_manual_agent_protocol(monkeypatch):

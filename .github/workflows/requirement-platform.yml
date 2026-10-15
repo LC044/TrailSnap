@@ -41,10 +41,11 @@ jobs:
           RP_JWT_SECRET: ci-only-secret-not-used-in-production
         run: uv run alembic upgrade head
       - name: Run API and workflow tests
+        shell: pwsh
         env:
           RP_JWT_SECRET: ci-only-secret-not-used-in-production
           RP_GITHUB_TOKEN: ""
-        run: uv run pytest
+        run: ../../../tests/scripts/run-tests.ps1 tests/.env.test.ci -Layer unit -Component requirement-platform -Level all
 
   web-build:
     runs-on: ubuntu-latest
