@@ -104,6 +104,15 @@ fn manifest(root: &Path, build: &str) -> Result<BuildManifest, String> {
     Ok(value)
 }
 
+fn should_apply_distribution(current: &BuildManifest, offered: &BuildManifest) -> Result<bool, String> {
+    let current_version = semver::Version::parse(&current.version).map_err(|e| e.to_string())?;
+    let offered_version = semver::Version::parse(&offered.version).map_err(|e| e.to_string())?;
+    // Installing a refreshed preview may keep the product version but publish
+    // different immutable program files. Validate it like any other upgrade.
+    Ok(offered_version > current_version
+        || (offered_version == current_version && offered.build_id != current.build_id))
+}
+
 fn helper(
     root: &Path,
     build: &str,
@@ -393,10 +402,7 @@ fn run() -> Result<(), String> {
         let already_failed = previous
             .as_ref()
             .is_some_and(|tx| tx.phase == "rolled_back" && tx.new_build == build);
-        if semver::Version::parse(&offered.version).map_err(|e| e.to_string())?
-            > semver::Version::parse(&current.version).map_err(|e| e.to_string())?
-            && !already_failed
-        {
+        if should_apply_distribution(&current, &offered)? && !already_failed {
             let mut tx = UpdateTransaction {
                 schema_version: 1,
                 id: uuid::Uuid::new_v4().to_string(),
@@ -491,5 +497,30 @@ fn main() {
         }
         eprintln!("{error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(version: &str, id: &str) -> BuildManifest {
+        BuildManifest {
+            schema_version: 1,
+            version: version.into(),
+            build_id: id.into(),
+            platform: update_transaction::platform(),
+            min_launcher_version: 1,
+            executable: "trailsnap-desktop.exe".into(),
+        }
+    }
+
+    #[test]
+    fn overwritten_preview_applies_new_build_without_downgrading() {
+        let current = build("0.17.4", "old");
+        assert!(should_apply_distribution(&current, &build("0.17.4", "fixed")).unwrap());
+        assert!(!should_apply_distribution(&current, &build("0.17.4", "old")).unwrap());
+        assert!(!should_apply_distribution(&current, &build("0.17.3", "different")).unwrap());
+        assert!(should_apply_distribution(&current, &build("0.17.5", "next")).unwrap());
     }
 }
