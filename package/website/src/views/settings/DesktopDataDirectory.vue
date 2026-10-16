@@ -2,14 +2,15 @@
   <section class="max-w-3xl space-y-6" :aria-busy="working">
     <header>
       <h2 class="text-xl font-semibold md:text-2xl">照片与数据位置</h2>
-      <p class="ts-muted mt-2 text-sm">查看保存位置、找回旧版本照片，或备份整个图库。</p>
+      <p class="ts-muted mt-2 text-sm">查看保存位置、备份图库，或找回旧版本的照片。</p>
     </header>
     <p v-if="!isTauriApp()" class="ts-surface p-5">请在行影集桌面客户端中管理本机照片位置。</p>
     <template v-else>
       <div v-if="store.error" role="alert" class="ts-surface space-y-3 p-5">
         <p class="break-words text-[var(--ts-color-danger)]">{{ store.error }}</p>
         <div class="flex flex-wrap gap-3">
-          <button v-if="store.needsRestart" class="ts-button ts-button-primary" @click="restartNow">重启并恢复使用</button>
+          <button v-if="store.waitingForTasks" class="ts-button ts-button-primary" :disabled="working" @click="store.waitAndRestart()">继续等待，结束后重启恢复</button>
+          <button v-else-if="store.needsRestart" class="ts-button ts-button-primary" :disabled="working" @click="restartNow">重启并恢复使用</button>
           <button v-else-if="!store.directory" class="ts-button ts-button-secondary" :disabled="working" @click="load">重新读取</button>
           <button class="ts-button ts-button-secondary" @click="openData">打开数据与日志</button>
         </div>
@@ -20,11 +21,12 @@
           <h3 class="font-medium">图库数据文件夹</h3>
           <p class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
           <p class="ts-muted text-sm">这里保存相册、照片记录和设置。引用其他文件夹中的原照片时，仍需保留那些文件夹。</p>
+          <p v-if="store.discovery?.externalReferencesRetained" role="status" class="text-sm text-[var(--ts-color-danger)]">导入时保留了外部原照片的位置引用。请保留原照片和原磁盘；如需可独立恢复的备份，请备份当前图库并勾选同时复制原照片。</p>
           <button class="ts-button ts-button-secondary" :disabled="busy" @click="openData"><FolderOpen class="h-4 w-4" />打开文件夹</button>
           <details class="text-sm">
             <summary class="cursor-pointer font-medium">搬到其他磁盘</summary>
             <div class="ts-muted mt-3 space-y-3">
-              <p v-if="portable">先安全退出，再将整个行影集文件夹移动到新位置，从新位置打开 TrailSnap.exe。只移动程序或单独移动照片文件夹会导致找不到数据；保留原位置引用的外部照片也需要一起保留。</p>
+              <p v-if="portable">先安全退出，再将整个行影集文件夹移动到新位置，从新位置打开 TrailSnap.exe。不要单独移动 userdata。原快捷方式找不到图库时，可按提示选择搬迁后的行影集文件夹，恢复原入口。引用其他位置的原照片时，仍需保留那些文件夹。</p>
               <template v-else>
                 <label for="migration-target" class="block">新的空文件夹</label>
                 <el-input id="migration-target" v-model="migrationPath" :disabled="busy" placeholder="输入完整目录路径" />
@@ -50,6 +52,7 @@
           <div v-if="operation" class="ts-surface space-y-3 p-5" role="status">
             <h3 class="font-medium">{{ operation.phase === 'completed' ? (operation.activate ? '旧照片已导入以下位置' : '上次备份已完成') : '上次复制尚未完成' }}</h3>
             <p class="ts-muted break-all text-sm">副本位置：{{ operation.target }}</p>
+            <p v-if="operation.phase === 'completed' && !operation.activate" class="ts-muted text-sm">{{ operation.copyExternal ? '已包含已登记的外部原照片。建议打开副本核对后再清理原位置。' : '未额外复制外部原照片，副本可能仍依赖原磁盘，请勿将它当作那些原照片的备份。' }}</p>
             <template v-if="operation.phase === 'completed' && operation.activate">
               <p class="ts-muted text-sm">当前是导入前保留的图库，日常快捷方式默认打开导入后的图库。</p>
               <button class="ts-button ts-button-secondary" :disabled="busy" @click="switchImported">返回导入后的图库</button>
@@ -63,54 +66,60 @@
               </div>
             </template>
           </div>
-          <div class="ts-surface space-y-5 p-5 md:p-6">
+          <div v-if="!unfinished" class="ts-surface space-y-5 p-5 md:p-6">
             <div class="flex flex-wrap gap-3" role="group" aria-label="管理图库">
-              <button class="ts-button" :class="importing ? 'ts-button-primary' : 'ts-button-secondary'" :aria-pressed="importing" :disabled="busy" @click="sourceMode = 'legacy'">找回旧版本照片</button>
-              <button class="ts-button" :class="!importing ? 'ts-button-primary' : 'ts-button-secondary'" :aria-pressed="!importing" :disabled="busy" @click="sourceMode = 'current'">备份当前图库</button>
+              <button class="ts-button" :class="!importing ? 'ts-button-primary' : 'ts-button-secondary'" :aria-pressed="showCopyForm && !importing" :disabled="busy" @click="selectMode('current')">备份当前图库</button>
+              <button class="ts-button" :class="importing ? 'ts-button-primary' : 'ts-button-secondary'" :aria-pressed="showCopyForm && importing" :disabled="busy" @click="selectMode('legacy')">找回旧版本照片</button>
             </div>
-            <p class="ts-muted text-sm">{{ importing ? '将旧照片和数据复制到新位置，确认可用后开始使用。原数据保留。' : '将程序和图库保存为独立副本。完成后仍使用当前图库，副本以后不会自动同步。' }}</p>
-            <p v-if="importing && store.discovery?.currentPhotos" role="status" class="text-sm">当前图库已有 {{ store.discovery.currentPhotos }} 张照片。导入后将打开旧照片的副本，当前照片仍在原处，两边不会自动合并。</p>
-            <p v-if="store.discoveryError" role="alert" class="ts-muted break-words text-sm">旧位置自动检查失败：{{ store.discoveryError }}。可以手动选择旧目录。</p>
-            <p v-for="notice in (importing ? store.discovery?.notices : [])" :key="notice" class="ts-muted break-words text-sm">{{ notice }}</p>
-            <div class="space-y-3">
-              <label for="legacy-library-source" class="block text-sm font-medium">1. {{ importing ? '旧照片在哪里' : '要备份的图库' }}</label>
-              <template v-if="importing">
-                <div v-if="store.discovery?.candidates.length" class="flex flex-wrap gap-2">
-                  <button v-for="candidate in store.discovery.candidates" :key="candidate.path" class="ts-button ts-button-secondary max-w-full text-left" :disabled="busy" @click="legacySource = candidate.path"><span class="min-w-0 break-all">{{ candidate.path }}{{ candidate.photos === null ? '（需检查）' : `（${candidate.photos} 张）` }}</span></button>
-                </div>
-                <div class="flex flex-col gap-3 sm:flex-row">
-                  <el-input id="legacy-library-source" v-model="legacySource" :disabled="busy" placeholder="选择旧版本的数据文件夹" />
-                  <button class="ts-button ts-button-secondary" :disabled="busy" @click="choose('source')">选择文件夹</button>
-                </div>
-                <details class="ts-muted text-sm"><summary class="cursor-pointer">不知道选哪个文件夹？</summary><p class="mt-2">先退出旧版本。选择包含 data 文件夹的那一级，不要进入 data。通常在 C:\Users\你的用户名\AppData\Local\TrailSnap；以前改过保存位置时，请选择改后的目录。</p></details>
-              </template>
-              <p v-else class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
-              <button class="ts-button ts-button-secondary" :disabled="busy || (importing && !legacySource.trim())" @click="store.inspectPortable(importing ? legacySource.trim() : undefined)">检查照片</button>
-            </div>
-            <template v-if="store.preview">
-              <p role="status" class="text-sm">找到 {{ store.preview.counts.photos }} 张照片。已检查，尚未复制。</p>
-              <p class="ts-muted break-all text-sm">来源：{{ store.preview.source }}</p>
-              <div v-if="store.preview.externalRoots.length" class="space-y-2">
-                <el-checkbox v-model="copyExternal" :disabled="busy">同时备份其他文件夹中的原照片</el-checkbox>
-                <p class="ts-muted text-sm">不勾选会继续读取原位置，原磁盘必须保持可用。</p>
-                <details class="ts-muted text-sm"><summary class="cursor-pointer">查看这些文件夹</summary><ul class="mt-2 space-y-2"><li v-for="root in store.preview.externalRoots" :key="`${root.ownerId}:${root.path}`" class="break-all">{{ root.path }}{{ root.available ? '' : '（磁盘未连接）' }}</li></ul></details>
-              </div>
-              <p v-if="store.preview.unregisteredPhotos" class="ts-muted text-sm">{{ store.preview.unregisteredPhotos }} 张照片的位置尚未登记，只能保留原位置引用；如需完整备份，请先在旧版中添加对应的外部照片目录。</p>
-              <p v-if="externalBlocked" role="alert" class="text-sm text-[var(--ts-color-danger)]">部分原照片位置不可用或尚未登记。请连接磁盘后重新检查，或取消同时备份原照片。</p>
+            <p v-if="!showCopyForm" class="ts-muted text-sm">照片和设置会保存在上方位置。建议定期将图库备份到另一块磁盘。</p>
+            <template v-if="showCopyForm">
+              <p class="ts-muted text-sm">{{ importing ? '将旧图库复制到新位置，确认可用后开始使用。原数据保留。' : '创建程序、照片记录和设置的副本，默认一并复制外部原照片。完成后继续使用当前图库，副本不会自动同步。' }}</p>
+              <p v-if="importing && store.discovery?.currentPhotos" role="status" class="text-sm">当前图库已有 {{ store.discovery.currentPhotos }} 张照片。导入后将打开旧照片的副本，当前照片仍在原处，两边不会自动合并。</p>
+              <p v-if="store.discoveryError" role="alert" class="ts-muted break-words text-sm">旧位置自动检查失败：{{ store.discoveryError }}。可以手动选择旧目录。</p>
+              <p v-for="notice in (importing ? store.discovery?.notices : [])" :key="notice" class="ts-muted break-words text-sm">{{ notice }}</p>
               <div class="space-y-3">
-                <label for="portable-instance-target" class="block text-sm font-medium">2. {{ importing ? '将找回的照片保存到哪里' : '备份保存到哪里' }}</label>
-                <div class="flex flex-col gap-3 sm:flex-row">
-                  <el-input id="portable-instance-target" v-model="target" :disabled="busy" placeholder="例如 D:\行影集-照片（新的空文件夹）" />
-                  <button class="ts-button ts-button-secondary" :disabled="busy" @click="choose('target')">选择空文件夹</button>
-                </div>
-                <p class="ts-muted text-sm">请选择新的空文件夹，不要选择当前安装目录、旧数据目录或它们内部的文件夹。</p>
-                <button class="ts-button ts-button-secondary" :disabled="busy || !target.trim() || externalBlocked" @click="store.inspectSpace(target.trim(), copyExternal)">{{ store.checkingSpace ? '正在统计所需空间…' : '检查可用空间' }}</button>
-                <p v-if="store.space" role="status" class="text-sm">需要约 {{ size(store.space.requiredBytes) }}（含程序、所选原照片与备份余量），可用 {{ size(store.space.freeBytes) }}。{{ store.space.enough ? '空间充足。' : '空间不足，请换一个磁盘。' }}</p>
-                <p v-else class="ts-muted text-sm">选择保存位置并检查空间后，即可开始。</p>
+                <label for="legacy-library-source" class="block text-sm font-medium">1. {{ importing ? '选择旧版行影集的数据文件夹' : '要备份的图库' }}</label>
+                <template v-if="importing">
+                  <div v-if="store.discovery?.candidates.length" class="flex flex-wrap gap-2">
+                    <button v-for="candidate in store.discovery.candidates" :key="candidate.path" class="ts-button ts-button-secondary max-w-full text-left" :disabled="busy" @click="legacySource = candidate.path"><span class="min-w-0 break-all">{{ candidate.path }}{{ candidate.photos === null ? '（需检查）' : `（${candidate.photos} 张）` }}</span></button>
+                  </div>
+                  <div class="flex flex-col gap-3 sm:flex-row">
+                    <el-input id="legacy-library-source" v-model="legacySource" :disabled="busy" placeholder="选择旧版本的数据文件夹" />
+                    <button class="ts-button ts-button-secondary" :disabled="busy" @click="choose('source')">选择文件夹</button>
+                  </div>
+                  <details class="ts-muted text-sm"><summary class="cursor-pointer">不知道选哪个文件夹？</summary><p class="mt-2">先退出旧版本。选择包含 data 文件夹的那一级，不要进入 data。通常在 C:\Users\你的用户名\AppData\Local\TrailSnap；以前改过保存位置时，请选择改后的目录。</p></details>
+                </template>
+                <p v-else class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
+                <p v-if="importing" class="ts-muted text-sm">选择旧版保存数据的文件夹（里面有 data 文件夹），不是存放原照片的文件夹。选择后会自动检查。</p>
+                <button v-if="!store.preview && !store.inspecting" class="ts-button ts-button-secondary" :disabled="busy || (importing && !legacySource.trim())" @click="inspectSource">重新检查图库</button>
               </div>
-              <button class="ts-button ts-button-primary" :disabled="busy || !store.space?.enough || externalBlocked || !!store.directory.pendingRoot || !!unfinished" @click="convert">{{ importing ? '导入并使用这些照片' : '开始备份' }}</button>
-              <p v-if="importing" class="ts-muted text-sm">完成后原快捷方式也会打开导入后的图库；手机需要重新连接、登录。当前图库和旧图库均保留。</p>
-            </template>
+              <template v-if="store.preview">
+                <p role="status" class="text-sm">找到 {{ store.preview.counts.photos }} 张照片。已检查，尚未复制。</p>
+                <p class="ts-muted break-all text-sm">来源：{{ store.preview.source }}</p>
+                <div v-if="store.preview.externalRoots.length || store.preview.unregisteredPhotos" class="space-y-2">
+                  <el-checkbox v-model="copyExternal" :disabled="busy">同时备份其他文件夹中的原照片</el-checkbox>
+                  <p class="ts-muted text-sm">建议保留勾选。取消后仅复制图库数据和库内文件，外部原照片仍依赖原磁盘，不能用于恢复那些原照片。</p>
+                  <details class="ts-muted text-sm"><summary class="cursor-pointer">查看这些文件夹</summary><ul class="mt-2 space-y-2"><li v-for="root in store.preview.externalRoots" :key="`${root.ownerId}:${root.path}`" class="break-all">{{ root.path }}{{ root.available ? '' : '（磁盘未连接）' }}</li></ul></details>
+                </div>
+                <p v-if="store.preview.unregisteredPhotos" class="ts-muted text-sm">{{ store.preview.unregisteredPhotos }} 张照片的位置尚未登记，只能保留原位置引用；如需完整备份，请先在旧版中添加对应的外部照片目录。</p>
+                <p v-if="externalBlocked" role="alert" class="text-sm text-[var(--ts-color-danger)]">部分原照片位置不可用或尚未登记。请连接磁盘后重新检查，或取消同时备份原照片。</p>
+                <div class="space-y-3">
+                  <label for="portable-instance-target" class="block text-sm font-medium">2. {{ importing ? '将找回的照片保存到哪里' : '备份保存到哪里' }}</label>
+                  <div class="flex flex-col gap-3 sm:flex-row">
+                    <el-input id="portable-instance-target" v-model="target" :disabled="busy" placeholder="例如 D:\行影集-照片（新的空文件夹）" />
+                    <button class="ts-button ts-button-secondary" :disabled="busy" @click="choose('target')">选择空文件夹</button>
+                  </div>
+                  <p class="ts-muted text-sm">请选择新的空文件夹，不要选择当前安装目录、旧数据目录或它们内部的文件夹。</p>
+                  <p v-if="store.checkingSpace" role="status" class="ts-muted text-sm">正在自动检查保存位置和可用空间…</p>
+                  <button v-else-if="target.trim() && !store.space" class="ts-button ts-button-secondary" :disabled="busy || externalBlocked" @click="store.inspectSpace(target.trim(), copyExternal)">重新检查保存位置</button>
+                  <p v-if="store.space" role="status" class="text-sm">需要约 {{ size(store.space.requiredBytes) }}（含程序、所选原照片与备份余量），可用 {{ size(store.space.freeBytes) }}。{{ store.space.enough ? '空间充足。' : '空间不足，请换一个磁盘。' }}</p>
+                  <p v-else class="ts-muted text-sm">选择保存位置后会自动检查空间。</p>
+                </div>
+                <p role="status" class="text-sm" :class="copyExternal ? '' : 'text-[var(--ts-color-danger)]'">{{ copyExternal ? '将复制图库及已登记的原照片；完成后仍请核对照片再清理原位置。' : '此副本仍可能依赖原照片所在磁盘，请勿删除原照片。' }}</p>
+                <button class="ts-button ts-button-primary" :disabled="busy || !store.space?.enough || externalBlocked || !!store.directory.pendingRoot || !!unfinished" @click="convert">{{ importing ? '导入并使用这些照片' : '开始备份' }}</button>
+                <p v-if="importing" class="ts-muted text-sm">完成后原快捷方式也会打开导入后的图库；手机需要重新连接、登录。当前图库和旧图库均保留。</p>
+              </template>
+              </template>
           </div>
         </template>
         <div v-if="store.converting" class="ts-surface space-y-3 p-5" role="status" aria-live="polite">
@@ -138,37 +147,56 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, ref, watch } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FolderOpen } from 'lucide-vue-next'
 import { ElMessageBox } from 'element-plus'
 import { isTauriApp } from '@/config/server'
 import { useDesktopDataDirectoryStore } from '@/stores/desktopDataDirectory'
 import { openDesktopDataDirectory, openDesktopInstanceDirectory, prepareDesktopMigration, restartDesktop, openPreviousDesktopLibrary, openLinkedDesktopLibrary } from '@/api/desktopDataDirectory'
 const store = useDesktopDataDirectoryStore()
-const sourceMode = ref<'legacy' | 'current'>('legacy')
+const sourceMode = ref<'legacy' | 'current'>('current')
+const showCopyForm = ref(false)
 const importing = computed(() => sourceMode.value === 'legacy')
 const legacySource = ref('')
 const target = ref('')
-const copyExternal = ref(false)
+const copyExternal = ref(true)
 const choosing = ref(false)
 const restarting = ref(false)
 const migrationPath = ref('')
 const portable = computed(() => store.directory?.mode === 'portable')
 const working = computed(() => store.loading || store.saving || store.converting || store.checkingSpace || choosing.value || restarting.value)
-const busy = computed(() => working.value || store.needsRestart)
+const busy = computed(() => working.value || store.needsRestart || store.waitingForTasks)
 const operation = computed(() => store.discovery?.operation)
 const unfinished = computed(() => operation.value && operation.value.phase !== 'completed')
 const externalBlocked = computed(() => copyExternal.value && (!!store.preview?.unregisteredPhotos || !!store.preview?.externalRoots.some(root => !root.available)))
 const progressLabels: Record<string, string> = { waiting: '等待上传与后台任务结束…', checking: '正在检查磁盘空间…', copying: '正在复制并校验图库…', external: '正在复制其他位置的原照片…', database: '正在转换图库数据…', program: '正在准备程序…', verifying: '正在核对照片…', launching: '正在验证新图库能否正常打开…' }
 const progressLabel = computed(() => progressLabels[store.progress?.stage || 'waiting'] || '正在处理…')
-watch([legacySource, sourceMode], () => store.clearPreview())
-watch([target, copyExternal], () => store.clearSpace())
+let previewTimer: ReturnType<typeof setTimeout> | undefined
+let spaceTimer: ReturnType<typeof setTimeout> | undefined
+function inspectSource() { return store.inspectPortable(importing.value ? legacySource.value.trim() : undefined) }
+function selectMode(mode: 'legacy' | 'current') { sourceMode.value = mode; showCopyForm.value = true }
+watch([legacySource, sourceMode, showCopyForm], () => {
+  clearTimeout(previewTimer)
+  store.clearPreview()
+  if (showCopyForm.value && !unfinished.value && !store.needsRestart && !store.waitingForTasks && (!importing.value || legacySource.value.trim())) {
+    previewTimer = setTimeout(() => { void inspectSource() }, 400)
+  }
+})
+watch([target, copyExternal, () => store.preview], () => {
+  clearTimeout(spaceTimer)
+  store.clearSpace()
+  if (store.preview && target.value.trim() && !externalBlocked.value && !store.needsRestart && !store.waitingForTasks) {
+    spaceTimer = setTimeout(() => { void store.inspectSpace(target.value.trim(), copyExternal.value) }, 400)
+  }
+})
+onBeforeUnmount(() => { clearTimeout(previewTimer); clearTimeout(spaceTimer); store.clearPreview() })
 function size(bytes: number) { return bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(2)} GB` : `${Math.ceil(bytes / 1024 ** 2)} MB` }
 async function load() {
   await store.load()
   await store.loadDiscovery()
   migrationPath.value = store.directory?.pendingRoot || ''
   if (!legacySource.value) legacySource.value = store.discovery?.candidates[0]?.path || ''
+  if (!store.discovery?.completed && !store.discovery?.dismissed && (store.discovery?.candidates.length || store.discovery?.notices.length)) selectMode('legacy')
 }
 async function choose(kind: 'source' | 'target') {
   choosing.value = true
@@ -191,20 +219,20 @@ async function cleanInterrupted() {
   catch { return }
   await store.recover(false)
 }
-async function restartNow() { try { await restartDesktop() } catch (cause) { store.error = String(cause) } }
+async function restartNow() { try { await restartDesktop() } catch (cause) { store.handleStoppedOperation(cause) } }
 async function openData() { try { await openDesktopDataDirectory() } catch (cause) { store.error = String(cause) } }
 async function openProgram() { try { await openDesktopInstanceDirectory() } catch (cause) { store.error = String(cause) } }
 async function switchImported() {
   restarting.value = true
   try { await openLinkedDesktopLibrary() }
-  catch (cause) { store.needsRestart = true; store.error = `${String(cause)}。请重启当前程序恢复服务。`; restarting.value = false }
+  catch (cause) { store.handleStoppedOperation(cause); restarting.value = false }
 }
 async function openPrevious() {
   try { await ElMessageBox.confirm('将安全退出当前图库，打开导入前的照片。以后原快捷方式仍默认打开导入后的图库，两边不会自动同步。', '切换图库', { confirmButtonText: '切换图库', cancelButtonText: '取消' }) }
   catch { return }
   restarting.value = true
   try { await openPreviousDesktopLibrary() }
-  catch (cause) { store.needsRestart = true; store.error = `${String(cause)}。请重启当前程序恢复服务。`; restarting.value = false }
+  catch (cause) { store.handleStoppedOperation(cause); restarting.value = false }
 }
 async function saveMigration() { await store.save(migrationPath.value.trim()) }
 async function migrate() {
@@ -212,7 +240,7 @@ async function migrate() {
   catch { return }
   restarting.value = true
   try { await prepareDesktopMigration(); await restartDesktop() }
-  catch (cause) { store.needsRestart = true; store.error = `${String(cause)}。请重启当前程序恢复服务。`; restarting.value = false }
+  catch (cause) { store.handleStoppedOperation(cause); restarting.value = false }
 }
 onMounted(() => { if (isTauriApp()) void load() })
 </script>

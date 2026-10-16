@@ -128,6 +128,7 @@ def test_custom_storage_copy_keeps_originals_thumbnails_and_chunks_after_origina
     assert proof['operationId'] == operation
     assert proof['previousEntry'] == str(program)
     assert proof['previousInstanceId'] == 'before-import'
+    assert proof['externalReferencesRetained'] is False
     external.rename(tmp_path / 'offline')
     # Candidate startup must also rebase copied user configuration and snapshot it.
     prepared = subprocess.run([sys.executable, 'desktop_entry.py', '--prepare-portable', str(target / 'userdata')],

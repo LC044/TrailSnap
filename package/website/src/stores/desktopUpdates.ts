@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { getDesktopDataDirectory } from '@/api/desktopDataDirectory'
+import { getDesktopDataDirectory, isDesktopDrainPending, waitForDesktopDrain, restartDesktop } from '@/api/desktopDataDirectory'
 import { applyPortableUpdate, checkPortableUpdate, downloadPortableUpdate, prepareInstalledUpdate, checkInstalledUpdate, getDesktopUpdateStatus, type PortableUpdate } from '@/api/desktopUpdates'
 
 export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
@@ -11,6 +11,7 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
   const message = ref('正在检查更新…')
   const progress = ref(0)
   const needsRestart = ref(false)
+  const waitingForTasks = ref(false)
   let portable = false
   let installedUpdate: Awaited<ReturnType<typeof checkInstalledUpdate>> = null
   let unlisten: UnlistenFn | null = null
@@ -65,19 +66,21 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
     phase.value = 'installing'
     message.value = '正在等待上传和任务结束、备份数据库，请勿拔出磁盘…'
     try {
+      if (waitingForTasks.value) await waitForDesktopDrain()
+      waitingForTasks.value = false
       if (portable) await applyPortableUpdate()
       else if (installedUpdate) {
         await prepareInstalledUpdate()
         await installedUpdate.install()
-        const { restartDesktop } = await import('@/api/desktopDataDirectory')
         await restartDesktop()
       }
     } catch (error) {
-      needsRestart.value = true
+      waitingForTasks.value = isDesktopDrainPending(error)
+      needsRestart.value = !waitingForTasks.value
       phase.value = 'error'
-      message.value = `更新失败，请重新启动后重试：${String(error)}`
+      message.value = waitingForTasks.value ? String(error) : `更新失败，请重新启动后重试：${String(error)}`
     }
   }
   function dispose() { unlisten?.(); unlisten = null }
-  return { visible, version, phase, message, progress, needsRestart, check, install, dispose }
+  return { visible, version, phase, message, progress, needsRestart, waitingForTasks, check, install, dispose }
 })

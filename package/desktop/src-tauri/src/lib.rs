@@ -3,6 +3,7 @@ mod ai_gateway;
 mod data_directory;
 mod library_link;
 mod import_flow;
+mod maintenance_wait;
 mod extension_lifecycle;
 mod llama_runtime;
 mod portable;
@@ -39,6 +40,7 @@ struct DesktopState {
     child: Mutex<Option<Child>>,
     status: Arc<Mutex<RuntimeStatus>>,
     activity: Arc<Mutex<(bool, usize)>>,
+    drain: Mutex<Option<tokio::sync::watch::Receiver<Option<Result<(), String>>>>>,
 }
 
 struct ActivityGuard(Arc<Mutex<(bool, usize)>>);
@@ -146,6 +148,33 @@ async fn desktop_prepare_migration(app: tauri::AppHandle) -> Result<(), String> 
 }
 
 async fn drain_desktop(app: &tauri::AppHandle) -> Result<(), String> {
+    let receiver = {
+        let state = app.state::<DesktopState>();
+        let mut drain = state.drain.lock().expect("drain poisoned");
+        if let Some(receiver) = &*drain {
+            receiver.clone()
+        } else {
+            let (sender, receiver) = tokio::sync::watch::channel(None);
+            *drain = Some(receiver.clone());
+            let handle = app.clone();
+            // The task outlives the UI wait. Dropping a timed-out request must
+            // never cancel shutdown halfway through or authorize an offline copy.
+            tauri::async_runtime::spawn(async move {
+                let result = drain_desktop_inner(&handle).await;
+                let _ = sender.send(Some(result));
+            });
+            receiver
+        }
+    };
+    maintenance_wait::wait(receiver, Duration::from_secs(30)).await
+}
+
+#[tauri::command]
+async fn desktop_wait_for_drain(app: tauri::AppHandle) -> Result<(), String> {
+    drain_desktop(&app).await
+}
+
+async fn drain_desktop_inner(app: &tauri::AppHandle) -> Result<(), String> {
     if !desktop_runtime_status(app.state()).ready {
         return Err("本地服务尚未就绪，请稍后重试".into());
     }
@@ -248,6 +277,10 @@ async fn desktop_prepare_update(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn desktop_restart(app: tauri::AppHandle) -> Result<(), String> {
+    if app.state::<DesktopState>().drain.lock().expect("drain poisoned")
+        .as_ref().is_some_and(|receiver| receiver.borrow().is_none()) {
+        return Err(maintenance_wait::PENDING.into());
+    }
     if let Some(root) = &app.state::<DataDirectory>().instance_root {
         portable::write_json(
             &root.join("maintenance/restart.json"),
@@ -687,6 +720,7 @@ pub fn run() {
             desktop_convert_portable,
             desktop_prepare_migration,
             desktop_safe_exit,
+            desktop_wait_for_drain,
             desktop_prepare_update,
             desktop_restart,
             update_manager::desktop_update_check,

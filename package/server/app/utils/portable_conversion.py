@@ -318,7 +318,8 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         from app.utils.desktop_import import photo_count
         previous_data = os.getenv('TS_IMPORT_PREVIOUS_DATA')
         previous_entry = os.getenv('TS_IMPORT_ORIGIN') if previous_data and photo_count(Path(previous_data)) else None
-        write_json(stage / "conversion.json", {"source":str(source),"counts":preview["counts"],"externalCopied":copy_external,"verified":True,"operationId":operation,
+        write_json(stage / "conversion.json", {"source":str(source),"counts":preview["counts"],"externalCopied":copy_external,
+                                               "externalReferencesRetained":not copy_external and bool(preview['externalRoots'] or preview['unregisteredPhotos']),"verified":True,"operationId":operation,
                                                "previousEntry":previous_entry,"previousInstanceId":os.getenv('TS_IMPORT_ORIGIN_ID')})
         report_progress("verifying")
         verify_media(data, baseline)

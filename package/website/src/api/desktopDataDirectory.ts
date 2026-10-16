@@ -29,6 +29,8 @@ export const openDesktopInstanceDirectory = () => invoke<void>('desktop_open_ins
 export const previewPortableMigration = (sourcePath?: string) => invoke<PortablePreview>('desktop_migration_preview', { sourcePath: sourcePath || null })
 export const convertPortableInstance = (path: string, copyExternal: boolean, sourcePath?: string, activate = true) => invoke<void>('desktop_convert_portable', { path, copyExternal, sourcePath: sourcePath || null, activate })
 export const safeExitDesktop = () => invoke<void>('desktop_safe_exit')
+export const waitForDesktopDrain = () => invoke<void>('desktop_wait_for_drain')
+export const isDesktopDrainPending = (cause: unknown) => String(cause).startsWith('后台任务仍在结束')
 export const restartDesktop = () => invoke<void>('desktop_restart')
 export const revealDesktopPhoto = (path: string) => invoke<void>('desktop_reveal_photo', { path })
 export async function getDesktopNetwork() {
@@ -36,7 +38,7 @@ export async function getDesktopNetwork() {
   return data
 }
 
-export interface ImportOperation { id: string; source: string; target: string; activate: boolean; phase: string; error: string | null }
+export interface ImportOperation { id: string; source: string; target: string; activate: boolean; copyExternal: boolean; phase: string; error: string | null }
 export interface LegacyDiscovery {
   candidates: Array<{ path: string; photos: number | null; error: string | null }>
   notices: string[]
@@ -44,6 +46,7 @@ export interface LegacyDiscovery {
   completed: boolean
   dismissed: boolean
   previousEntry: string | null
+  externalReferencesRetained: boolean | null
   canResume: boolean
   operation: ImportOperation | null
 }

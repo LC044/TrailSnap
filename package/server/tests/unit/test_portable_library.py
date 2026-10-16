@@ -454,10 +454,12 @@ def test_clone_of_moved_portable_library_carries_external_photos(tmp_path, monke
         assert result.returncode == 0, result.stderr.decode(errors='replace')
     first = tmp_path / 'first'
     convert(source,first)
+    assert json.loads((first / 'conversion.json').read_text())['externalReferencesRetained'] is True
     moved = tmp_path / 'moved'
     first.rename(moved)
     second = tmp_path / 'second'
     convert(moved / 'userdata',second,True)
+    assert json.loads((second / 'conversion.json').read_text())['externalReferencesRetained'] is False
     external.rename(tmp_path / 'disconnected')
     with closing(sqlite3.connect(second / 'userdata/data/trailsnap.sqlite')) as db:
         paths = list(photo_paths(db,second / 'userdata'))

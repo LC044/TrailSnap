@@ -118,6 +118,8 @@ pub async fn desktop_legacy_discovery(app: tauri::AppHandle) -> Result<Value, St
     )
     .await?;
     let conversion: Option<Value> = portable::read_json(&root.join("conversion.json")).ok();
+    result["externalReferencesRetained"] = conversion.as_ref()
+        .and_then(|value| value.get("externalReferencesRetained")).cloned().unwrap_or(Value::Null);
     result["previousEntry"] = conversion
         .as_ref()
         .and_then(|v| v.get("previousEntry"))

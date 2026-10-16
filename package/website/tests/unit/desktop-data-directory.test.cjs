@@ -11,6 +11,10 @@ function harness(options = {}) {
   const calls = []
   const module = { exports: {} }
   const api = {
+    getDesktopDataDirectory: async () => ({ root: 'C:/Current/userdata', mode: 'portable' }),
+    isDesktopDrainPending: cause => String(cause).startsWith('后台任务仍在结束'),
+    waitForDesktopDrain: options.waitForDrain || (async () => {}),
+    restartDesktop: options.restart || (async () => { calls.push('restart') }),
     previewPortableMigration: options.preview || (async input => ({ source: input || 'C:/Current/userdata', counts: { photos: 23424 } })),
     convertPortableInstance: options.convert || (async (...args) => calls.push(args)),
     safeExitDesktop: options.safeExit || (async () => {}),
@@ -99,4 +103,51 @@ test('backup explicitly keeps the original active library', async () => {
   await store.inspectPortable()
   await store.convert('D:/Backup', false, undefined, false)
   assert.deepEqual(calls, [['D:/Backup', false, 'C:/Current/userdata', false]])
+})
+
+test('a long drain exposes continued waiting without offering an unsafe restart', async () => {
+  const pending = '后台任务仍在结束，尚未开始复制。'
+  const { store, calls } = harness({ safeExit: async () => { throw pending }, waitForDrain: async () => { throw pending } })
+  await store.safeExit()
+  assert.equal(store.waitingForTasks.value, true)
+  assert.equal(store.needsRestart.value, false)
+  await store.waitAndRestart()
+  assert.equal(store.converting.value, false)
+  assert.equal(store.waitingForTasks.value, true)
+  assert.equal(calls.length, 0)
+  await store.inspectPortable()
+  assert.match(store.error.value, /继续等待/)
+})
+
+test('after the drain completes the explicit recovery action restarts once', async () => {
+  const { store, calls } = harness()
+  store.waitingForTasks.value = true
+  await store.waitAndRestart()
+  assert.equal(store.waitingForTasks.value, false)
+  assert.deepEqual(calls, ['restart'])
+})
+
+test('reopening settings preserves the pending drain recovery action and message', async () => {
+  const { store } = harness({ safeExit: async () => { throw '后台任务仍在结束，请继续等待' } })
+  await store.safeExit()
+  await store.load()
+  assert.equal(store.waitingForTasks.value, true)
+  assert.match(store.error.value, /继续等待/)
+  assert.equal(store.directory.value.mode, 'portable')
+})
+
+test('an obsolete space check cannot clear the newer pending indicator', async () => {
+  const finish = []
+  const { store } = harness({ space: () => new Promise(resolve => finish.push(resolve)) })
+  await store.inspectPortable()
+  const first = store.inspectSpace('D:/One', true)
+  const second = store.inspectSpace('D:/Two', true)
+  finish[0]({ enough: true })
+  await first
+  assert.equal(store.checkingSpace.value, true)
+  assert.equal(store.space.value, null)
+  finish[1]({ enough: false })
+  await second
+  assert.equal(store.checkingSpace.value, false)
+  assert.equal(store.space.value.enough, false)
 })

@@ -32,8 +32,8 @@
             v-else-if="phase === 'error'"
             type="button"
             class="rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-            @click="needsRestart ? restartAfterError() : store.check(true)"
-          >{{ needsRestart ? '重启当前实例' : '重试更新' }}</button>
+            @click="waitingForTasks ? store.install() : needsRestart ? restartAfterError() : store.check(true)"
+          >{{ waitingForTasks ? '继续等待并更新' : needsRestart ? '重启当前实例' : '重试更新' }}</button>
         </div>
       </div>
     </div>
@@ -49,7 +49,7 @@ import { restartDesktop } from '@/api/desktopDataDirectory'
 
 import { useDesktopUpdatesStore } from '@/stores/desktopUpdates'
 const store = useDesktopUpdatesStore()
-const { visible, version, phase, message, progress, needsRestart } = storeToRefs(store)
+const { visible, version, phase, message, progress, needsRestart, waitingForTasks } = storeToRefs(store)
 let checkTimer = 0
 const checkForUpdate = () => store.check()
 const installUpdate = () => store.install()

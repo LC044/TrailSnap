@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { waitForDesktopDrain, restartDesktop, isDesktopDrainPending } from '@/api/desktopDataDirectory'
 import { getDesktopDataDirectory, setDesktopDataDirectory, previewPortableMigration, convertPortableInstance, safeExitDesktop, type DesktopDataDirectory, type PortablePreview, discoverLegacyLibraries, checkImportSpace, resumeDesktopImport, cleanupDesktopImport, type LegacyDiscovery, type ImportSpace, type ImportProgress } from '@/api/desktopDataDirectory'
 
 export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory', () => {
@@ -11,13 +12,14 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
   const converting = ref(false)
   const inspecting = ref(false)
   const needsRestart = ref(false)
+  const waitingForTasks = ref(false)
   const discovery = ref<LegacyDiscovery | null>(null)
   const discoveryError = ref('')
   const space = ref<ImportSpace | null>(null)
   const progress = ref<ImportProgress | null>(null)
   const checkingSpace = ref(false)
   let spaceGeneration = 0
-  function clearSpace() { spaceGeneration += 1; space.value = null }
+  function clearSpace() { spaceGeneration += 1; space.value = null; checkingSpace.value = false }
   async function loadDiscovery() {
     try { discovery.value = await discoverLegacyLibraries(); discoveryError.value = '' }
     catch (cause) { discoveryError.value = String(cause) }
@@ -32,7 +34,18 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
       const result = await checkImportSpace(preview.value.source, target, copyExternal)
       if (generation === spaceGeneration) space.value = result
     } catch (cause) { if (generation === spaceGeneration) error.value = String(cause) }
-    finally { checkingSpace.value = false }
+    finally { if (generation === spaceGeneration) checkingSpace.value = false }
+  }
+  function handleStoppedOperation(cause: unknown) {
+    waitingForTasks.value = isDesktopDrainPending(cause)
+    needsRestart.value = !waitingForTasks.value
+    error.value = waitingForTasks.value ? String(cause) : `${String(cause)}。原图库仍保留；请重启当前程序恢复服务。`
+  }
+  async function waitAndRestart() {
+    converting.value = true
+    error.value = ''
+    try { await waitForDesktopDrain(); waitingForTasks.value = false; needsRestart.value = true; await restartDesktop() }
+    catch (cause) { handleStoppedOperation(cause); converting.value = false }
   }
   async function recover(resume: boolean) {
     converting.value = true
@@ -41,8 +54,8 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
       if (resume) await resumeDesktopImport()
       else { await cleanupDesktopImport(); await loadDiscovery(); converting.value = false }
     } catch (cause) {
-      needsRestart.value = resume
-      error.value = `${String(cause)}。已保留原图库；请重启当前程序恢复服务。`
+      if (resume) handleStoppedOperation(cause)
+      else error.value = String(cause)
       converting.value = false
     }
   }
@@ -54,11 +67,14 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
     previewGeneration += 1
     preview.value = null
     inspectedSource = null
+    if (inspecting.value) { inspecting.value = false; loading.value = false }
   }
 
   async function load() {
     loading.value = true
-    error.value = ''
+    // Settings can be unmounted while the native drain continues. Keep its
+    // recovery action visible when the user returns to this page.
+    if (!needsRestart.value && !waitingForTasks.value) error.value = ''
     try {
       directory.value = await getDesktopDataDirectory()
     } catch (cause) {
@@ -84,7 +100,7 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
   }
 
   async function inspectPortable(sourcePath?: string) {
-    if (needsRestart.value) { error.value = '请先重启当前程序恢复服务。'; return }
+    if (needsRestart.value || waitingForTasks.value) { error.value = waitingForTasks.value ? '请先继续等待后台任务结束。' : '请先重启当前程序恢复服务。'; return }
     clearPreview()
     const generation = previewGeneration
     const selectedSource = sourcePath?.trim() || ''
@@ -100,7 +116,7 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
       }
     }
     catch (cause) { if (generation === previewGeneration) error.value = String(cause) }
-    finally { loading.value = false; inspecting.value = false }
+    finally { if (generation === previewGeneration) { loading.value = false; inspecting.value = false } }
   }
   async function convert(path: string, copyExternal: boolean, sourcePath?: string, activate?: boolean) {
     if (!preview.value || inspectedSource !== (sourcePath?.trim() || '')) {
@@ -116,8 +132,7 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
       else await convertPortableInstance(path.trim(), copyExternal, preview.value.source, activate)
     }
     catch (cause) {
-      needsRestart.value = true
-      error.value = `${String(cause)}。原图库仍保留；若当前服务已停止，请重启当前实例后重试。`
+      handleStoppedOperation(cause)
       converting.value = false
       await loadDiscovery()
     }
@@ -125,7 +140,7 @@ export const useDesktopDataDirectoryStore = defineStore('desktop-data-directory'
   async function safeExit() {
     converting.value = true
     try { await safeExitDesktop() }
-    catch (cause) { needsRestart.value = true; error.value = `安全退出未完成：${String(cause)}。请重启当前程序恢复服务。`; converting.value = false }
+    catch (cause) { handleStoppedOperation(cause); converting.value = false }
   }
-  return { discovery, discoveryError, space, progress, checkingSpace, clearSpace, loadDiscovery, inspectSpace, recover, directory, loading, saving, error, preview, converting, inspecting, needsRestart, clearPreview, load, save, inspectPortable, convert, safeExit }
+  return { waitingForTasks, waitAndRestart, handleStoppedOperation, discovery, discoveryError, space, progress, checkingSpace, clearSpace, loadDiscovery, inspectSpace, recover, directory, loading, saving, error, preview, converting, inspecting, needsRestart, clearPreview, load, save, inspectPortable, convert, safeExit }
 })

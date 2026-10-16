@@ -10,12 +10,16 @@ function harness(mode, options = {}) {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/stores/desktopUpdates.ts'), 'utf8')
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   const module = { exports: {} }
-  const directory = { getDesktopDataDirectory: async () => ({ mode }), restartDesktop: async () => calls.push('restart') }
+  const directory = {
+    getDesktopDataDirectory: async () => ({ mode }), restartDesktop: async () => calls.push('restart'),
+    isDesktopDrainPending: cause => String(cause).startsWith('后台任务仍在结束'),
+    waitForDesktopDrain: async () => { calls.push('wait'); if (options.pending) throw '后台任务仍在结束，请继续等待' },
+  }
   const api = {
     getDesktopUpdateStatus: async () => ({ transaction: options.rolledBack ? { phase: 'rolled_back', version: '1.0.1', error: '照片校验失败' } : null, backupPath: 'D:/Library/userdata/backups/test' }),
     checkPortableUpdate: async () => ({ phase: options.ready ? 'ready' : 'available', version: options.latestVersion || '1.0.1', size: 10 }),
     downloadPortableUpdate: async () => calls.push('portable-download'),
-    applyPortableUpdate: async () => calls.push('portable-apply'),
+    applyPortableUpdate: async () => { calls.push('portable-apply'); if (options.pending) throw '后台任务仍在结束，请继续等待' },
     checkInstalledUpdate: async () => ({ version: '1.0.1', download: async () => calls.push('installer-download'), install: async () => calls.push('installer-install') }),
     prepareInstalledUpdate: async () => { calls.push('drain-backup'); if (options.failDrain) throw Error('backup failed') },
   }
@@ -49,6 +53,16 @@ test('failed backup never runs the installer', async () => {
   const { store, calls } = harness('legacy-installed', { failDrain: true })
   await store.check(); await store.install()
   assert.deepEqual(calls, ['installer-download', 'drain-backup'])
+  assert.equal(store.phase.value, 'error')
+})
+
+test('an update waiting for writers offers continued waiting and does not restart or redownload', async () => {
+  const { store, calls } = harness('portable', { pending: true })
+  await store.check(); await store.install()
+  assert.equal(store.waitingForTasks.value, true)
+  assert.equal(store.needsRestart.value, false)
+  await store.install()
+  assert.deepEqual(calls, ['portable-download', 'portable-apply', 'wait'])
   assert.equal(store.phase.value, 'error')
 })
 

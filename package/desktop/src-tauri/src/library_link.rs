@@ -54,9 +54,73 @@ pub fn activate(root: &Path, target: &Path) -> Result<(), String> {
     portable::write_json(&root.join("maintenance/library-link.json"), &link)
 }
 
+/// Repair a moved library, never replace it with an unrelated instance.
+pub fn relink(root: &Path, selected: &Path) -> Result<PathBuf, String> {
+    let root = portable::clean_path(root.canonicalize().map_err(|e| e.to_string())?);
+    let target = portable::clean_path(selected.canonicalize().map_err(|e| e.to_string())?);
+    let marker = root.join("maintenance/library-link.json");
+    let mut link: LibraryLink = portable::read_json(&marker)?;
+    let config = portable::load_instance(&target)?;
+    if config.instance_id != link.instance_id {
+        return Err("这不是之前导入的图库，请选择搬迁后的原行影集文件夹。未更改启动位置。".into());
+    }
+    let data = portable::data_root(&target, &config)?;
+    if target == root || !target.join("TrailSnap.exe").is_file()
+        || !target.join("app").join(&config.active_build).join("manifest.json").is_file()
+        || !data.join("data/trailsnap.sqlite").is_file()
+        || !data.join("library.json").is_file() {
+        return Err("所选图库不完整，请选择同时包含 TrailSnap.exe、instance.json 和 userdata 的文件夹，保留原文件。".into());
+    }
+    // Validate the complete chain before touching the only known startup link.
+    let final_target = resolve(&target)?.unwrap_or_else(|| target.clone());
+    if final_target == root {
+        return Err("所选位置会形成循环，未更改启动位置。".into());
+    }
+    link.target = target.clone();
+    portable::write_json(&marker, &link)?;
+    Ok(target)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn moved_library_can_be_relinked_but_replacement_incomplete_and_cyclic_libraries_cannot() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let source = root.join("installed");
+        let target = root.join("original");
+        let moved = root.join("moved");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::create_dir_all(target.join("userdata/data")).unwrap();
+        std::fs::create_dir_all(target.join("app/build")).unwrap();
+        std::fs::write(target.join("TrailSnap.exe"), b"fixture").unwrap();
+        std::fs::write(target.join("userdata/data/trailsnap.sqlite"), b"fixture").unwrap();
+        std::fs::write(target.join("userdata/library.json"), b"{}").unwrap();
+        std::fs::write(target.join("app/build/manifest.json"), b"{}").unwrap();
+        let mut config = serde_json::json!({"schemaVersion":1,"mode":"portable","instanceId":"original-id",
+            "displayName":"fixture","activeBuild":"build","previousBuild":null,
+            "dataRoot":{"kind":"relative","path":"userdata"},"serverPort":null,"fixedPort":false});
+        portable::write_json(&target.join("instance.json"), &config).unwrap();
+        activate(&source, &target).unwrap();
+        std::fs::rename(&target, &moved).unwrap();
+        assert!(resolve(&source).is_err());
+        let before = std::fs::read(source.join("maintenance/library-link.json")).unwrap();
+        config["instanceId"] = serde_json::json!("replacement");
+        portable::write_json(&moved.join("instance.json"), &config).unwrap();
+        assert!(relink(&source, &moved).is_err());
+        assert_eq!(std::fs::read(source.join("maintenance/library-link.json")).unwrap(), before);
+        config["instanceId"] = serde_json::json!("original-id");
+        portable::write_json(&moved.join("instance.json"), &config).unwrap();
+        std::fs::remove_file(moved.join("userdata/library.json")).unwrap();
+        assert!(relink(&source, &moved).is_err());
+        std::fs::write(moved.join("userdata/library.json"), b"{}").unwrap();
+        portable::write_json(&moved.join("maintenance/library-link.json"), &serde_json::json!({"target":source,"instanceId":"source"})).unwrap();
+        assert!(relink(&source, &moved).is_err());
+        std::fs::remove_file(moved.join("maintenance/library-link.json")).unwrap();
+        relink(&source, &moved).unwrap();
+        assert_eq!(resolve(&source).unwrap().unwrap(), portable::clean_path(moved.canonicalize().unwrap()));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn confirmed_link_is_persistent_and_rejects_missing_or_replaced_targets() {
         let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());

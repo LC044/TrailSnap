@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #[path = "../../src-tauri/src/library_link.rs"]
 mod library_link;
+mod link_recovery;
 #[path = "../../src-tauri/src/portable.rs"]
 mod portable;
 #[path = "../../src-tauri/src/update_transaction.rs"]
@@ -379,7 +380,27 @@ fn run() -> Result<(), String> {
     if let Some(target) = if original_library {
         None
     } else {
-        library_link::resolve(&root)?
+        match library_link::resolve(&root) {
+            Ok(target) => target,
+            Err(error) => {
+                #[cfg(windows)]
+                if std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() != Ok("1")
+                    && !std::env::args().any(|arg| arg == "--validate-only") {
+                    let mut failure = error;
+                    loop {
+                        let Some(selected) = link_recovery::choose_moved_library(&failure) else {
+                            return Ok(());
+                        };
+                        match library_link::relink(&root, &selected) {
+                            Ok(_) => break,
+                            Err(error) => failure = error,
+                        }
+                    }
+                    return run();
+                }
+                return Err(error);
+            }
+        }
     } {
         sync_linked_distribution(&root, &target)?;
         let mut command = Command::new(target.join("TrailSnap.exe"));

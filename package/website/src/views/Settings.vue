@@ -130,7 +130,7 @@ const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
     { key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接此服务器', icon: Smartphone, hideInMobileApp: true },
     { key: 'mobile-backup', label: '手机备份', description: '查看进度并设置自动备份', icon: CloudUpload, mobileOnly: true },
     { key: 'external', label: '外部图库', description: '管理服务器照片目录', icon: FolderOpen },
-    { key: 'data-directory', label: '数据目录', description: '迁移桌面数据、缩略图与模型', icon: Database, desktopOnly: true },
+    { key: 'data-directory', label: '照片与数据位置', description: '查看保存位置、备份或找回旧照片', icon: Database, desktopOnly: true },
   ] },
   { label: '系统与 AI', items: [
     { key: 'basic', label: '系统设置', description: '安全、地图、扫描与任务选项', icon: SettingsIcon },
