@@ -238,7 +238,7 @@ async fn execute(app: tauri::AppHandle, mut op: Operation, resume: bool) -> Resu
                 return Err("所选副本不属于上次复制操作，已停止验证".into());
             }
         }
-        crate::drain_desktop(&app).await?;
+        crate::drain_desktop(&app, &format!("import:{}", op.id)).await?;
         if !resume {
             let resource = app.path().resource_dir().map_err(|e| e.to_string())?;
             let mut args = vec![
@@ -361,7 +361,7 @@ pub async fn desktop_open_previous_library(app: tauri::AppHandle) -> Result<(), 
         return Err("导入前的图库入口或身份已改变，请检查原目录".into());
     }
     portable::data_root(target, &config)?;
-    crate::drain_desktop(&app).await?;
+    crate::drain_desktop(&app, "previous-library").await?;
     portable::write_json(
         &root.join("maintenance/handoff.json"),
         &json!({"target": target, "original": true}),
@@ -378,7 +378,7 @@ pub async fn desktop_open_linked_library(app: tauri::AppHandle) -> Result<(), St
         .clone()
         .ok_or("未找到当前程序目录")?;
     let target = crate::library_link::resolve(&root)?.ok_or("没有已导入的目标图库")?;
-    crate::drain_desktop(&app).await?;
+    crate::drain_desktop(&app, "linked-library").await?;
     portable::write_json(
         &root.join("maintenance/handoff.json"),
         &json!({"target": target}),

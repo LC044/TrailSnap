@@ -206,7 +206,7 @@ pub async fn desktop_update_apply(app: tauri::AppHandle) -> Result<(), String> {
     if tx.phase != "verified" {
         return Err("请先下载并校验更新".into());
     }
-    crate::drain_desktop(&app).await?;
+    crate::drain_desktop(&app, "portable-update").await?;
     tx.phase = "apply_requested".into();
     update_transaction::publish(&instance_root, &tx)?;
     app.exit(0);

@@ -4,6 +4,24 @@ use tokio::sync::watch;
 
 pub const PENDING: &str = "后台任务仍在结束，尚未开始复制。请保持窗口和磁盘连接，稍后点击“继续等待”；不会强制结束正在写入的任务。";
 
+pub struct Drain {
+    purpose: String,
+    pub receiver: watch::Receiver<Option<Result<(), String>>>,
+}
+
+impl Drain {
+    pub fn new(purpose: &str, receiver: watch::Receiver<Option<Result<(), String>>>) -> Self {
+        Self { purpose: purpose.into(), receiver }
+    }
+
+    pub fn for_operation(&self, purpose: &str) -> Result<watch::Receiver<Option<Result<(), String>>>, String> {
+        if self.purpose != purpose {
+            return Err("正在处理另一个图库操作，请等待其结束并重启后重试。".into());
+        }
+        Ok(self.receiver.clone())
+    }
+}
+
 pub async fn wait(
     mut receiver: watch::Receiver<Option<Result<(), String>>>,
     timeout: Duration,
@@ -21,6 +39,18 @@ pub async fn wait(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn another_operation_cannot_reuse_pending_or_completed_shutdown_permission() {
+        let (sender, receiver) = watch::channel(None);
+        let drain = Drain::new("import:one", receiver);
+        assert!(drain.for_operation("import:one").is_ok());
+        assert!(drain.for_operation("update").is_err());
+        assert!(drain.for_operation("import:two").is_err());
+        sender.send(Some(Ok(()))).unwrap();
+        assert!(drain.for_operation("import:one").is_ok());
+        assert!(drain.for_operation("update").is_err());
+    }
 
     #[tokio::test]
     async fn timeout_does_not_cancel_writer_and_a_later_wait_can_finish() {

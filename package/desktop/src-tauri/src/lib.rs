@@ -40,7 +40,7 @@ struct DesktopState {
     child: Mutex<Option<Child>>,
     status: Arc<Mutex<RuntimeStatus>>,
     activity: Arc<Mutex<(bool, usize)>>,
-    drain: Mutex<Option<tokio::sync::watch::Receiver<Option<Result<(), String>>>>>,
+    drain: Mutex<Option<maintenance_wait::Drain>>,
 }
 
 struct ActivityGuard(Arc<Mutex<(bool, usize)>>);
@@ -142,20 +142,20 @@ async fn desktop_prepare_migration(app: tauri::AppHandle) -> Result<(), String> 
         .state::<DataDirectory>()
         .pending()
         .ok_or("请先保存迁移设置")?;
-    drain_desktop(&app).await?;
+    drain_desktop(&app, "migration").await?;
     app.state::<DataDirectory>().authorize_migration(&target)?;
     Ok(())
 }
 
-async fn drain_desktop(app: &tauri::AppHandle) -> Result<(), String> {
+async fn drain_desktop(app: &tauri::AppHandle, purpose: &str) -> Result<(), String> {
     let receiver = {
         let state = app.state::<DesktopState>();
         let mut drain = state.drain.lock().expect("drain poisoned");
-        if let Some(receiver) = &*drain {
-            receiver.clone()
+        if let Some(drain) = &*drain {
+            drain.for_operation(purpose)?
         } else {
             let (sender, receiver) = tokio::sync::watch::channel(None);
-            *drain = Some(receiver.clone());
+            *drain = Some(maintenance_wait::Drain::new(purpose, receiver.clone()));
             let handle = app.clone();
             // The task outlives the UI wait. Dropping a timed-out request must
             // never cancel shutdown halfway through or authorize an offline copy.
@@ -171,7 +171,9 @@ async fn drain_desktop(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn desktop_wait_for_drain(app: tauri::AppHandle) -> Result<(), String> {
-    drain_desktop(&app).await
+    let receiver = app.state::<DesktopState>().drain.lock().expect("drain poisoned")
+        .as_ref().ok_or("没有正在等待的图库操作")?.receiver.clone();
+    maintenance_wait::wait(receiver, Duration::from_secs(30)).await
 }
 
 async fn drain_desktop_inner(app: &tauri::AppHandle) -> Result<(), String> {
@@ -243,14 +245,14 @@ async fn drain_desktop_inner(app: &tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn desktop_safe_exit(app: tauri::AppHandle) -> Result<(), String> {
-    drain_desktop(&app).await?;
+    drain_desktop(&app, "exit").await?;
     app.exit(0);
     Ok(())
 }
 
 #[tauri::command]
 async fn desktop_prepare_update(app: tauri::AppHandle) -> Result<(), String> {
-    drain_desktop(&app).await?;
+    drain_desktop(&app, "installed-update").await?;
     let root = app.state::<DataDirectory>().root();
     let executable = server_executable(&app.path().resource_dir().map_err(|e| e.to_string())?);
     tauri::async_runtime::spawn_blocking(move || {
@@ -278,7 +280,7 @@ async fn desktop_prepare_update(app: tauri::AppHandle) -> Result<(), String> {
 #[tauri::command]
 fn desktop_restart(app: tauri::AppHandle) -> Result<(), String> {
     if app.state::<DesktopState>().drain.lock().expect("drain poisoned")
-        .as_ref().is_some_and(|receiver| receiver.borrow().is_none()) {
+        .as_ref().is_some_and(|drain| drain.receiver.borrow().is_none()) {
         return Err(maintenance_wait::PENDING.into());
     }
     if let Some(root) = &app.state::<DataDirectory>().instance_root {
