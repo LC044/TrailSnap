@@ -129,6 +129,15 @@ def _preview_conversion(source: Path) -> dict:
     return {"source": str(source), "bytes": size, "counts": counts, "externalRoots": external, "unregisteredPhotos":unregistered}
 
 
+def validate_external_target(preview: dict, target: Path) -> None:
+    """Keep the new instance outside every scanned/copied original folder."""
+    target = target.resolve()
+    for item in preview['externalRoots']:
+        external = Path(item['path']).resolve()
+        if target == external or target.is_relative_to(external) or external.is_relative_to(target):
+            raise ValueError(f'新位置不能与外部照片文件夹相同或互相包含：{external}。请在磁盘上选择另外的空文件夹，例如它的同级文件夹。')
+
+
 def convert_to_portable(source: Path, target: Path, program: Path, launcher: Path, *, copy_external: bool = False) -> dict:
     source, target, program, launcher = validate_library_source(source), target.resolve(), program.resolve(strict=True), launcher.resolve(strict=True)
     if target == source or target.is_relative_to(source) or source.is_relative_to(target):
@@ -138,6 +147,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
     if not launcher.is_file() or not (program / "trailsnap-desktop.exe").is_file() or not (program / "server/trailsnap-server.exe").is_file():
         raise ValueError("转换需要完整的新桌面程序、后端与启动器")
     preview = preview_conversion(source)
+    validate_external_target(preview, target)
     baseline = media_baseline(source)
     if copy_external and any(not item["available"] for item in preview["externalRoots"]):
         raise ValueError("外部图库磁盘不可用，不能创建完整便携副本")

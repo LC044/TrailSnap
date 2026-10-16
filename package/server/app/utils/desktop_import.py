@@ -49,8 +49,9 @@ def discover_libraries(installation: Path, current: Path, local_data: Path | Non
 
 
 def conversion_space(source: Path, target: Path, program: Path, copy_external: bool) -> dict:
-    from app.utils.portable_conversion import preview_conversion
+    from app.utils.portable_conversion import preview_conversion, validate_external_target
     preview = preview_conversion(source)
+    validate_external_target(preview, target)
     required = preview['bytes'] + sum(p.stat().st_size for p in program.rglob('*') if p.is_file())
     # Migration and candidate validation each retain a database snapshot.
     required += 3 * sum(p.stat().st_size for p in (source / 'data').glob('*.sqlite')) + 128 * 1024 * 1024

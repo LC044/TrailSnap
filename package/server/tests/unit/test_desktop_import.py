@@ -113,6 +113,10 @@ def test_custom_storage_copy_keeps_originals_thumbnails_and_chunks_after_origina
     for path in (program / 'trailsnap-desktop.exe', program / 'server/trailsnap-server.exe', program / 'launcher.exe'):
         path.write_bytes(b'program-fixture')
     # Full external sizes and database snapshots must be included before stopping services.
+    # Do not stop services or start copying into a folder being copied/scanned.
+    for copy_external in (False, True):
+        with pytest.raises(ValueError, match='外部照片文件夹'):
+            conversion_space(source, user / 'backup', program, copy_external)
     space = conversion_space(source, target, program, True)
     assert space['externalBytes'] == len(b'photo') + len(b'thumbnail') + len(b'chunk') + mirror.stat().st_size
     assert space['requiredBytes'] > space['externalBytes'] + database.stat().st_size
