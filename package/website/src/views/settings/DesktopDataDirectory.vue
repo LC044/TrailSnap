@@ -17,8 +17,9 @@
       <p v-if="store.loading" role="status" class="ts-muted">{{ store.inspecting ? '正在检查照片和文件，大图库需要多等一会儿…' : '正在读取保存位置…' }}</p>
       <template v-if="store.directory">
         <div class="ts-surface space-y-4 p-5 md:p-6">
-          <h3 class="font-medium">当前照片保存位置</h3>
+          <h3 class="font-medium">图库数据文件夹</h3>
           <p class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
+          <p class="ts-muted text-sm">这里保存相册、照片记录和设置。引用其他文件夹中的原照片时，仍需保留那些文件夹。</p>
           <button class="ts-button ts-button-secondary" :disabled="busy" @click="openData"><FolderOpen class="h-4 w-4" />打开文件夹</button>
           <details class="text-sm">
             <summary class="cursor-pointer font-medium">搬到其他磁盘</summary>
@@ -121,7 +122,8 @@
           <summary class="cursor-pointer font-medium">高级信息</summary>
           <div class="ts-muted mt-3 space-y-3">
             <p v-if="portable" class="break-all">程序和数据文件夹：{{ store.directory.instanceRoot }}</p>
-            <p>安装包和 ZIP 都在程序旁保存配置与数据。instance.json 为配置，userdata 为图库；请保留它们。</p>
+            <p v-if="portable">Windows 安装包和 ZIP 都在程序旁保存配置与数据。instance.json 为配置，userdata 为图库；请保留它们。</p>
+            <p v-else>当前图库保存在系统用户的数据目录。需要搬迁时，请使用上方“搬到其他磁盘”。</p>
             <button v-if="portable" class="ts-button ts-button-secondary" :disabled="busy" @click="openProgram">打开程序文件夹</button>
             <template v-if="store.discovery?.previousEntry">
               <p class="break-all">导入前的图库：{{ store.discovery.previousEntry }}。其中的照片未与当前图库合并。</p>
