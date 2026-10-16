@@ -356,6 +356,7 @@ def _build_photo_filter_query(
     makes: Optional[List[str]] = None,
     model: Optional[str] = None,
     models: Optional[List[str]] = None,
+    is_panorama: Optional[bool] = None,
     image_type: Optional[str] = None,
     image_types: Optional[List[str]] = None,
     file_type: Optional[str] = None,
@@ -442,6 +443,9 @@ def _build_photo_filter_query(
         photo_query = photo_query.filter(func.extract('year', Photo.photo_time).in_(years))
 
     # Image Types Filter
+    if is_panorama is not None:
+        photo_query = photo_query.filter(Photo.panorama_projection.isnot(None) if is_panorama else Photo.panorama_projection.is_(None))
+
     if image_types:
         photo_query = photo_query.filter(Photo.image_type.in_(image_types))
     elif image_type:
@@ -603,6 +607,7 @@ def get_all_photos(
     makes: Optional[List[str]] = None,
     model: Optional[str] = None,
     models: Optional[List[str]] = None,
+    is_panorama: Optional[bool] = None,
     image_type: Optional[str] = None,
     image_types: Optional[List[str]] = None,
     file_type: Optional[str] = None,
@@ -648,6 +653,7 @@ def get_all_photos(
         makes=makes,
         model=model,
         models=models,
+        is_panorama=is_panorama,
         image_type=image_type,
         image_types=image_types,
         file_type=file_type,
@@ -713,6 +719,7 @@ def get_timeline_stats(
     makes: Optional[List[str]] = None,
     model: Optional[str] = None,
     models: Optional[List[str]] = None,
+    is_panorama: Optional[bool] = None,
     image_type: Optional[str] = None,
     image_types: Optional[List[str]] = None,
     file_type: Optional[str] = None,
@@ -756,6 +763,7 @@ def get_timeline_stats(
         makes=makes,
         model=model,
         models=models,
+        is_panorama=is_panorama,
         image_type=image_type,
         image_types=image_types,
         file_type=file_type,
@@ -944,6 +952,12 @@ def replace_photo_file(db: Session, db_photo: Photo, new_file_path: str, user_id
     new_filename = os.path.basename(new_file_path)
     db_photo.file_path = new_file_path
     db_photo.filename = new_filename
+
+    # Edited pixels no longer share the original spherical coordinate system.
+    db_photo.panorama_projection = None
+    db_photo.panorama_metadata = None
+    db_photo.panorama_detected = None
+    db_photo.panorama_override = None
 
     # Delete old thumbnails and regenerate
     storage.delete_thumbnails(user_id, db_photo.id)

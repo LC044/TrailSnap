@@ -47,6 +47,10 @@ class Photo(Base):
     height = Column(Integer)
     duration = Column(Float, default=0)
     image_type = Column(Enum(ImageType))  # Screenshot, Camera, Other
+    panorama_projection = Column(String(32), nullable=True, index=True)
+    panorama_metadata = Column(JSON, nullable=True)
+    panorama_detected = Column(JSON, nullable=True)
+    panorama_override = Column(String(16), nullable=True)
     md5 = Column(String(32), nullable=True, index=True)
     backup_key = Column(String(255), nullable=True)
     # Task Status Tracking: {"thumbnail": true, "metadata": true, "face": false}

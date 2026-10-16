@@ -49,6 +49,8 @@ export interface ImageDescription {
 
 // 从后端返回的照片数据
 export interface Photo {
+  panorama_projection?: string | null;
+  panorama_override?: string | null;
   id: string;
   owner_id?: string;
   album_ids?: string[];
@@ -92,6 +94,8 @@ export interface TimelineStats {
 
 // 前端使用的照片数据，包含了更多信息
 export interface AlbumImage {
+  panorama_projection?: string | null
+  panorama_override?: string | null
   id: string
   ownerId?: string
   url: string
@@ -223,6 +227,7 @@ export interface SimilarPhoto {
 }
 
 export interface FilterState {
+  is_panorama?: boolean;
   years: number[];
   cities: string[];
   makes: string[];

@@ -256,6 +256,8 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
             try:
                 metadata["width"], metadata["height"] = display_image_size(img)
                 exif_dict = get_exif_data(img)
+                from app.utils.panorama import parse_gpano
+                metadata["panorama"] = parse_gpano(img.info.get("xmp") or img.info.get("XML:com.adobe.xmp"), img.width, img.height, img.getexif().get(274, 1))
             finally:
                 if should_close:
                     try:
