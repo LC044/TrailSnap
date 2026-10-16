@@ -16,19 +16,19 @@ from app.utils.windows_paths import filesystem_path
 
 
 def write_json(path: Path, value) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    Path(filesystem_path(path.parent)).mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
-    with temporary.open("w", encoding="utf-8") as stream:
+    with open(filesystem_path(temporary), "w", encoding="utf-8") as stream:
         json.dump(value, stream, ensure_ascii=False, indent=2)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    os.replace(filesystem_path(temporary), filesystem_path(path))
 
 
 def configuration_files(root: Path):
     return sorted({root / "library.json", root / "ai-config.json",
                    *root.glob("data/*config*.json"), *root.glob("data/data/*config*.json"),
-                   *root.glob("data/users/*/config/*.json")})
+                   *root.glob("data/users/*/config/*.json"), *root.glob("s/*/users/*/config/*.json")})
 
 
 def _library_id(root: Path):
@@ -54,16 +54,16 @@ def snapshot_library(root: Path, destination: Path) -> None:
         if not _snapshot_matches(root, json.loads(complete.read_text(encoding="utf-8"))):
             raise ValueError("Snapshot belongs to another library")
         return
-    destination.mkdir(parents=True, exist_ok=True)
+    Path(filesystem_path(destination)).mkdir(parents=True, exist_ok=True)
     records = []
     for source in sorted({root / "data/trailsnap.sqlite", root / "data/railway.sqlite", *root.glob("data/*.sqlite"), *configuration_files(root)}):
         relative = source.relative_to(root).as_posix()
         target = destination / relative
-        exists = source.is_file()
+        exists = os.path.isfile(filesystem_path(source))
         if exists:
             if source.is_symlink():
                 raise ValueError("Linked configuration cannot be snapshotted")
-            target.parent.mkdir(parents=True, exist_ok=True)
+            Path(filesystem_path(target.parent)).mkdir(parents=True, exist_ok=True)
             if source.suffix == ".sqlite":
                 with closing(sqlite3.connect(source.as_uri() + "?mode=ro", uri=True)) as db:
                     with closing(sqlite3.connect(target)) as backup:
@@ -72,7 +72,7 @@ def snapshot_library(root: Path, destination: Path) -> None:
                             raise ValueError(f"Invalid database: {source.name}")
             else:
                 shutil.copy2(filesystem_path(source), filesystem_path(target))
-            with target.open("r+b") as stream:
+            with open(filesystem_path(target), "r+b") as stream:
                 os.fsync(stream.fileno())
         records.append({"path": relative, "existed": exists,
                         "sha256": file_hash(target) if exists else None})
@@ -103,7 +103,7 @@ def restore_library(root: Path, snapshot: Path) -> None:
             raise ValueError("Snapshot checksum mismatch")
         targets.append((record, source, target))
     for record, source, target in targets:
-        target.parent.mkdir(parents=True, exist_ok=True)
+        Path(filesystem_path(target.parent)).mkdir(parents=True, exist_ok=True)
         if target.suffix == ".sqlite":
             # No writer may be alive when calling this helper.
             for suffix in ("-wal", "-shm"):
@@ -111,7 +111,7 @@ def restore_library(root: Path, snapshot: Path) -> None:
         if record["existed"]:
             temporary = target.with_name(target.name + ".restore")
             shutil.copy2(filesystem_path(source), filesystem_path(temporary))
-            os.replace(temporary, target)
+            os.replace(filesystem_path(temporary), filesystem_path(target))
         else:
             target.unlink(missing_ok=True)
 
@@ -201,7 +201,7 @@ def prepare_portable_library(root: Path) -> dict:
     for config in configuration_files(root):
         if config == metadata_path or not config.is_file():
             continue
-        original = json.loads(config.read_text(encoding="utf-8"))
+        original = json.loads(Path(filesystem_path(config)).read_text(encoding="utf-8"))
         rewritten = rebase_value(original, old_root, root)
         if rewritten != original:
             write_json(config, rewritten)

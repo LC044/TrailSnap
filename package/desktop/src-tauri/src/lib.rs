@@ -1,6 +1,8 @@
 mod ai_extension;
 mod ai_gateway;
 mod data_directory;
+mod library_link;
+mod import_flow;
 mod extension_lifecycle;
 mod llama_runtime;
 mod portable;
@@ -110,101 +112,17 @@ async fn desktop_convert_portable(
     path: String,
     copy_external: bool,
     source_path: Option<String>,
+    activate: Option<bool>,
 ) -> Result<Value, String> {
-    let current_source = app.state::<DataDirectory>().root();
-    let source = source_path
-        .map(PathBuf::from)
-        .unwrap_or_else(|| current_source.clone())
-        .canonicalize()
-        .map_err(|e| e.to_string())?;
-    let source = portable::clean_path(source);
-    let _source_lock = if source != current_source {
-        Some(portable::lock_directory(&source)?)
-    } else {
-        None
-    };
+    let current = app.state::<DataDirectory>().root();
+    let source = portable::clean_path(source_path.map(PathBuf::from).unwrap_or_else(|| current.clone()).canonicalize().map_err(|e| e.to_string())?);
+    let _source_lock = if source != current { Some(portable::lock_directory(&source)?) } else { None };
     let target = data_directory::validate_target(&source, Path::new(&path))?;
-    data_directory::validate_target(&current_source, &target)?;
-    if let Some(root) = &app.state::<DataDirectory>().instance_root {
-        data_directory::validate_target(root, &target)?;
-    }
-    if !target.is_absolute() || target.starts_with(&source) || source.starts_with(&target) {
-        return Err("请选择与原数据目录分开的空文件夹".into());
-    }
+    data_directory::validate_target(&current, &target)?;
+    if let Some(root) = &app.state::<DataDirectory>().instance_root { data_directory::validate_target(root, &target)?; }
     let resource = app.path().resource_dir().map_err(|e| e.to_string())?;
-    let launcher = resource.join("portable-launcher.exe");
-    if !launcher.is_file() {
-        return Err("当前发行包缺少便携启动器，请安装包含启动器的新版本".into());
-    }
-    drain_desktop(&app).await?;
-    let moved_source = source.clone();
-    let moved_target = target.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let mut command = Command::new(server_executable(&resource));
-        command
-            .arg("--parent-pid")
-            .arg(std::process::id().to_string())
-            .arg("--convert-portable")
-            .arg(&moved_source)
-            .arg(&moved_target)
-            .arg(&resource)
-            .arg(&launcher)
-            .env("PYTHONIOENCODING", "utf-8")
-            .stdin(Stdio::null());
-        if copy_external {
-            command.arg("--copy-external");
-        }
-        #[cfg(windows)]
-        command.creation_flags(0x08000000);
-        let output = command.output().map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).into_owned());
-        }
-        // Alembic's diagnostics go to stderr; conversion's single result is stdout.
-        let text = String::from_utf8_lossy(&output.stdout);
-        let line = text
-            .lines()
-            .rev()
-            .find(|line| line.starts_with('{'))
-            .ok_or("转换结果缺失")?;
-        serde_json::from_str::<Value>(line).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    // Validate a real candidate before handing off. The source stays usable;
-    // a copy never writes a transfer marker which could lock the user out.
-    let verify_target = target.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut command = Command::new(verify_target.join("TrailSnap.exe"));
-        command.arg("--validate-only").stdin(Stdio::null());
-        #[cfg(windows)]
-        command.creation_flags(0x08000000);
-        let output = command.output().map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            return Err(format!(
-                "副本启动验证失败，原图库未变更。请重启原实例；副本位于 {}。{}",
-                verify_target.display(),
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    if let Some(root) = &app.state::<DataDirectory>().instance_root {
-        // The supervising launcher starts the target AFTER terminating this Job.
-        portable::write_json(
-            &root.join("maintenance/handoff.json"),
-            &json!({"target":target}),
-        )?;
-    } else {
-        let mut command = Command::new(target.join("TrailSnap.exe"));
-        #[cfg(windows)]
-        command.creation_flags(0x08000000);
-        command.spawn().map_err(|e| e.to_string())?;
-    }
-    app.exit(0);
-    Ok(result)
+    if !resource.join("portable-launcher.exe").is_file() { return Err("当前发行包缺少启动器，请安装完整新版程序".into()); }
+    import_flow::start(app, source, target, copy_external, activate.unwrap_or(true)).await
 }
 
 #[tauri::command]
@@ -759,6 +677,13 @@ pub fn run() {
             desktop_open_data_directory,
             desktop_open_instance_directory,
             desktop_migration_preview,
+            import_flow::desktop_legacy_discovery,
+            import_flow::desktop_dismiss_legacy,
+            import_flow::desktop_import_space,
+            import_flow::desktop_resume_import,
+            import_flow::desktop_cleanup_import,
+            import_flow::desktop_open_previous_library,
+            import_flow::desktop_open_linked_library,
             desktop_convert_portable,
             desktop_prepare_migration,
             desktop_safe_exit,

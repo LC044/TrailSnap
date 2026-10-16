@@ -98,7 +98,7 @@ def _wait_for_sidecars(source: Path) -> None:
 
 
 def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bool = False,
-                           excluded_entries: frozenset[str] = frozenset()) -> None:
+                           excluded_entries: frozenset[str] = frozenset(), progress=None) -> None:
     logical_source = source.absolute()
     source, target = source.resolve(strict=True), target.resolve()
     if source == target or source in target.parents or target in source.parents:
@@ -140,13 +140,15 @@ def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bo
     try:
         for directory in directories:
             Path(filesystem_path(staging / directory.relative_to(source))).mkdir(parents=True, exist_ok=True)
-        for path in files:
+        for index, path in enumerate(files, 1):
             copied = staging / path.relative_to(source)
             Path(filesystem_path(copied.parent)).mkdir(parents=True, exist_ok=True)
             shutil.copy2(filesystem_path(path), filesystem_path(copied))
             with open(filesystem_path(path), 'rb') as source_file, open(filesystem_path(copied), 'rb') as target_file:
                 if hashlib.file_digest(source_file, 'sha256').digest() != hashlib.file_digest(target_file, 'sha256').digest():
                     raise ValueError(f"复制文件校验失败：{path}")
+            if progress:
+                progress(index, len(files))
         for database in staging.glob("data/*.sqlite"):
             _rewrite_database(database, logical_source, target)
             if source != logical_source:

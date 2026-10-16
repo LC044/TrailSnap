@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[path = "../../src-tauri/src/library_link.rs"]
+mod library_link;
 #[path = "../../src-tauri/src/portable.rs"]
 mod portable;
 #[path = "../../src-tauri/src/update_transaction.rs"]
@@ -104,7 +106,10 @@ fn manifest(root: &Path, build: &str) -> Result<BuildManifest, String> {
     Ok(value)
 }
 
-fn should_apply_distribution(current: &BuildManifest, offered: &BuildManifest) -> Result<bool, String> {
+fn should_apply_distribution(
+    current: &BuildManifest,
+    offered: &BuildManifest,
+) -> Result<bool, String> {
     let current_version = semver::Version::parse(&current.version).map_err(|e| e.to_string())?;
     let offered_version = semver::Version::parse(&offered.version).map_err(|e| e.to_string())?;
     // Installing a refreshed preview may keep the product version but publish
@@ -300,6 +305,67 @@ fn validate(
     validation
 }
 
+// Installing over the original shortcut location must also update the active
+// imported library, via its own normal backup/validation transaction.
+fn sync_linked_distribution(source: &Path, target: &Path) -> Result<(), String> {
+    let descriptor: serde_json::Value = match portable::read_json(&source.join("portable.json")) {
+        Ok(value) => value,
+        Err(_) => return Ok(()),
+    };
+    let offered = descriptor["activeBuild"]
+        .as_str()
+        .ok_or("安装包程序版本缺失")?;
+    let marker = source.join("maintenance/library-link.json");
+    let mut link: library_link::LibraryLink = portable::read_json(&marker)?;
+    if link.source_build.as_deref() == Some(offered) {
+        return Ok(());
+    }
+    let offered_manifest = manifest(source, offered)?;
+    let current = portable::load_instance(target)?;
+    let current_manifest = manifest(target, &current.active_build)?;
+    if should_apply_distribution(&current_manifest, &offered_manifest)? {
+        let destination = target.join("app").join(offered);
+        if !destination.exists() {
+            let stage = target
+                .join("maintenance")
+                .join(format!("installer-{}", uuid::Uuid::new_v4()));
+            fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
+                let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+                #[cfg(windows)]
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    if metadata.file_attributes() & 0x400 != 0 {
+                        return Err("程序资源包含链接，已停止复制".into());
+                    }
+                }
+                if metadata.file_type().is_symlink() {
+                    return Err("程序资源包含链接，已停止复制".into());
+                }
+                if metadata.is_dir() {
+                    fs::create_dir_all(target).map_err(|e| e.to_string())?;
+                    for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+                        let entry = entry.map_err(|e| e.to_string())?;
+                        copy_tree(&entry.path(), &target.join(entry.file_name()))?;
+                    }
+                } else {
+                    fs::copy(source, target).map_err(|e| e.to_string())?;
+                }
+                Ok(())
+            }
+            let copy = copy_tree(&source.join("app").join(offered), &stage)
+                .and_then(|_| fs::rename(&stage, &destination).map_err(|e| e.to_string()));
+            if stage.exists() {
+                let _ = fs::remove_dir_all(&stage);
+            }
+            copy.map_err(|e| format!("无法将已安装的新程序复制到图库目录 {}：{e}。数据未更改，请检查空间和权限后重试。", target.display()))?;
+        }
+        manifest(target, offered)?;
+        portable::write_json(&target.join("portable.json"), &descriptor)?;
+    }
+    link.source_build = Some(offered.into());
+    portable::write_json(&marker, &link)
+}
+
 fn run() -> Result<(), String> {
     let root = portable::clean_path(
         std::env::current_exe()
@@ -309,6 +375,21 @@ fn run() -> Result<(), String> {
             .canonicalize()
             .map_err(|e| e.to_string())?,
     );
+    let original_library = std::env::args().any(|arg| arg == "--original-library");
+    if let Some(target) = if original_library {
+        None
+    } else {
+        library_link::resolve(&root)?
+    } {
+        sync_linked_distribution(&root, &target)?;
+        let mut command = Command::new(target.join("TrailSnap.exe"));
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        command
+            .spawn()
+            .map_err(|e| format!("无法打开导入后的图库 {}：{e}", target.display()))?;
+        return Ok(());
+    }
     if !root.join("instance.json").exists() {
         fs::create_dir_all(root.join("maintenance")).map_err(|e| e.to_string())?;
         let _initialization_lock = portable::lock_directory(&root.join("maintenance"))?;
@@ -432,6 +513,9 @@ fn run() -> Result<(), String> {
             manifest(&target, &target_config.active_build)?;
             fs::remove_file(&handoff).map_err(|e| e.to_string())?;
             let mut command = Command::new(target.join("TrailSnap.exe"));
+            if value["original"] == true {
+                command.arg("--original-library");
+            }
             #[cfg(windows)]
             command.creation_flags(0x08000000);
             command.spawn().map_err(|e| {
@@ -513,6 +597,77 @@ mod tests {
             min_launcher_version: 1,
             executable: "trailsnap-desktop.exe".into(),
         }
+    }
+
+    #[test]
+    fn installer_refresh_reaches_imported_library_once_without_downgrading() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let source = root.join("installed");
+        let target = root.join("imported");
+        for folder in [&source, &target] {
+            fs::create_dir_all(folder.join("userdata")).unwrap();
+            fs::create_dir_all(folder.join("app/old")).unwrap();
+            portable::write_json(
+                &folder.join("app/old/manifest.json"),
+                &build("1.0.0", "old"),
+            )
+            .unwrap();
+            fs::write(folder.join("TrailSnap.exe"), b"launcher").unwrap();
+            portable::write_json(
+                &folder.join("portable.json"),
+                &serde_json::json!({"activeBuild":"old"}),
+            )
+            .unwrap();
+        }
+        let mut config = InstanceConfig {
+            schema_version: 1,
+            mode: "portable".into(),
+            instance_id: "imported".into(),
+            display_name: "test".into(),
+            active_build: "old".into(),
+            previous_build: None,
+            data_root: portable::DataRoot {
+                kind: "relative".into(),
+                path: "userdata".into(),
+            },
+            server_port: None,
+            fixed_port: false,
+        };
+        portable::write_json(&target.join("instance.json"), &config).unwrap();
+        library_link::activate(&source, &target).unwrap();
+        fs::create_dir_all(source.join("app/refreshed/server")).unwrap();
+        portable::write_json(
+            &source.join("app/refreshed/manifest.json"),
+            &build("1.0.1", "refreshed"),
+        )
+        .unwrap();
+        fs::write(source.join("app/refreshed/server/test"), b"new program").unwrap();
+        portable::write_json(
+            &source.join("portable.json"),
+            &serde_json::json!({"activeBuild":"refreshed"}),
+        )
+        .unwrap();
+        sync_linked_distribution(&source, &target).unwrap();
+        assert_eq!(
+            fs::read(target.join("app/refreshed/server/test")).unwrap(),
+            b"new program"
+        );
+        let descriptor: serde_json::Value =
+            portable::read_json(&target.join("portable.json")).unwrap();
+        assert_eq!(descriptor["activeBuild"], "refreshed");
+        sync_linked_distribution(&source, &target).unwrap();
+        config.active_build = "refreshed".into();
+        portable::write_json(&target.join("instance.json"), &config).unwrap();
+        portable::write_json(
+            &source.join("portable.json"),
+            &serde_json::json!({"activeBuild":"old"}),
+        )
+        .unwrap();
+        sync_linked_distribution(&source, &target).unwrap();
+        let descriptor: serde_json::Value =
+            portable::read_json(&target.join("portable.json")).unwrap();
+        assert_eq!(descriptor["activeBuild"], "refreshed");
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

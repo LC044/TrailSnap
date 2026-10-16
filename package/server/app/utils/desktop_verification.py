@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from app.service.storage_paths import validate_relative
+from app.utils.windows_paths import filesystem_path
 
 
 def photo_paths(db, root: Path):
@@ -38,7 +39,7 @@ def photo_paths(db, root: Path):
 
 
 def _sample(path):
-    with open(path, 'rb') as stream:
+    with open(filesystem_path(Path(path)), 'rb') as stream:
         return hashlib.sha256(stream.read(65536)).hexdigest()
 
 

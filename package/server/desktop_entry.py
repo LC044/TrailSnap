@@ -136,7 +136,29 @@ def main() -> None:
     parser.add_argument("--preview-portable", metavar="ROOT")
     parser.add_argument("--copy-external", action="store_true")
     parser.add_argument('--install-layout', nargs=2, metavar=('DIRECTORY', 'VERSION'))
+    parser.add_argument('--discover-old-data', nargs=2)
+    parser.add_argument('--import-space', nargs=4)
+    parser.add_argument('--cleanup-import', nargs=2)
     args = parser.parse_args()
+    if args.discover_old_data or args.import_space or args.cleanup_import:
+        import json
+        import sys
+        from app.utils.desktop_import import discover_libraries, conversion_space, cleanup_staging
+        try:
+            if args.discover_old_data:
+                local = os.getenv('LOCALAPPDATA')
+                result = discover_libraries(*(Path(p) for p in args.discover_old_data), Path(local) if local else None)
+            elif args.import_space:
+                source, target, program, copy = args.import_space
+                result = conversion_space(Path(source), Path(target), Path(program), copy == '1')
+            else:
+                cleanup_staging(Path(args.cleanup_import[0]), args.cleanup_import[1])
+                result = {'cleaned': True}
+        except (ValueError, OSError, __import__('sqlite3').Error) as error:
+            print(f'检查或清理失败：{error}', file=sys.stderr)
+            raise SystemExit(1) from None
+        print(json.dumps(result, ensure_ascii=False))
+        return
 
     if args.install_layout:
         from app.utils.desktop_layout import finalize_install
@@ -161,7 +183,7 @@ def main() -> None:
                 result = preview_conversion(Path(args.preview_portable))
             else:
                 result = convert_to_portable(*(Path(item) for item in args.convert_portable), copy_external=args.copy_external)
-        except (ValueError, OSError, sqlite3.Error) as error:
+        except Exception as error:
             operation = '检查旧图库失败' if args.preview_portable else '复制图库失败'
             print(f'{operation}：{error}', file=sys.stderr)
             raise SystemExit(1) from None
