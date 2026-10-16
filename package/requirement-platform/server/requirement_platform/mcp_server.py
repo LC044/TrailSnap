@@ -20,17 +20,19 @@ from sqlalchemy import func
 from .config import settings
 from .db import SessionLocal
 from .models import (
-    AgentRun, AgentToken, AuditEvent, BackgroundJob, ClarificationQuestion, DeliveryTask, DomainEvent, ReleaseBatch, ReleaseBatchItem, Requirement,
+    AgentRun, AgentRunQuestion, AgentToken, AuditEvent, BackgroundJob, ClarificationQuestion, DeliveryTask, DomainEvent, ReleaseBatch, ReleaseBatchItem, Requirement,
     RequirementAttachment, RequirementFollower, RequirementRevision, RequirementSpec, ReviewDecision,
     TriageReport, User, utcnow,
 )
 from .security import resolve_agent_token
+from .schemas import RequirementSpecContent, SpecApproveInput, ImplementationPlanInput
 from .services import (
     GitHubClient, sync_batch_milestone,
 )
 from .domain.common import audit, enqueue, requirement_snapshot
 from .integrations.github import STATUS_LABELS, requirement_status_from_github
 from .delivery import (
+    approve_spec, create_spec, update_spec, answer_run_question,
     cancel_run as cancel_run_service, claim_task, create_delivery_task as create_delivery_task_service,
     heartbeat, idempotent_result, invalidate_delivery_authorizations, lease_token_for, register_artifact,
     link_pull_request as link_pr_service, requirement_transition, run_dict, spec_dict,
@@ -81,7 +83,11 @@ mcp = RequirementMCPServer(
     instructions=(
         "用于查询和管理 TrailSnap 需求与版本。任务创建、领取和取消仅需有效管理员令牌；"
         "其余写入、审核、删除和 GitHub 操作仍必须遵循令牌作用域；"
-        "删除为可恢复的软删除。编码任务必须先领取并提交覆盖全部必需 AC 的 ImplementationPlan；"
+        "删除为可恢复的软删除。先调用 get_agent_capabilities 检查现有权限；"
+        "使用 create_requirement 提交需求，通过 create_requirement_spec/update_requirement_spec 维护规格与 AC，"
+        "有 requirements:review 权限时可 approve_requirement_spec，无需人工页面操作。"
+        "规格批准后可 start_requirement_delivery 按需求编号创建并领取任务、提交覆盖全部必需 AC 的实现计划；"
+        "也可逐步创建、指定领取任务和提交计划。编码前必须完成上述计划；"
         "所有运行写入必须携带 attempt、lease、state version 和幂等键。Agent 无合并或发布权限。"
     ),
     token_verifier=DatabaseTokenVerifier(),
@@ -711,13 +717,102 @@ def sync_github_milestone(batch_id: str) -> dict[str, Any]:
 
 
 @mcp.tool()
+def get_agent_capabilities() -> dict[str, Any]:
+    """只读检查当前令牌的执行能力与缺失权限；不创建任务或修改令牌。"""
+    token, _ = _identity()
+    required = {"requirements:read", "requirements:write", "requirements:review", "runs:write"}
+    scopes = set(token.scopes)
+    return {"scopes": sorted(scopes), "agent_role": token.agent_role, "task_id": token.task_id,
+            "missing_workflow_scopes": sorted(required - scopes),
+            "can_start_delivery": "runs:write" in scopes and token.agent_role in {None, "coding"},
+            "can_merge": False, "can_release": False,
+            "workflow": ["create_requirement", "create_requirement_spec", "approve_requirement_spec",
+                         "start_requirement_delivery", "heartbeat_run", "submit_run_result", "link_pull_request"]}
+
+
+def _spec_for_token(db, spec_id: str, token: AgentToken) -> RequirementSpec:
+    spec = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
+    if not spec:
+        raise ValueError("规格不存在")
+    _requirement_or_error(db, spec.requirement_id)
+    if token.task_id:
+        task = db.query(DeliveryTask).filter(DeliveryTask.id == token.task_id).first()
+        if not task or task.spec_id != spec.id:
+            raise PermissionError("规格不属于此令牌绑定的任务")
+    return spec
+
+
+@mcp.tool()
+def list_requirement_specs(requirement_id: str) -> list[dict[str, Any]]:
+    """按 UUID 或 REQ 编号读取规格修订，供 Agent 复用草稿或已批准规格。"""
+    token, _ = _identity("requirements:read")
+    with SessionLocal() as db:
+        requirement = _requirement_or_error(db, requirement_id)
+        query = db.query(RequirementSpec).filter(RequirementSpec.requirement_id == requirement.id)
+        if token.task_id:
+            query = query.join(DeliveryTask, DeliveryTask.spec_id == RequirementSpec.id).filter(DeliveryTask.id == token.task_id)
+        rows = query.order_by(RequirementSpec.revision.desc()).all()
+        return [spec_dict(db, _spec_for_token(db, row.id, token)) for row in rows]
+
+
+@mcp.tool()
+def create_requirement_spec(requirement_id: str, content: RequirementSpecContent,
+                            expected_requirement_state_version: int, idempotency_key: str) -> dict[str, Any]:
+    """Agent 根据需求生成结构化规格和编号 AC；沿用 requirements:write 权限。"""
+    token, actor = _identity("requirements:write")
+    if token.task_id:
+        raise PermissionError("任务绑定令牌不能创建新执行规格")
+    model = RequirementSpecContent.model_validate(content)
+    request = {"requirement_id": requirement_id, "content": model.model_dump(mode="json"),
+               "expected_requirement_state_version": expected_requirement_state_version}
+    with SessionLocal() as db:
+        requirement = _requirement_or_error(db, requirement_id)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="create_spec",
+            key=idempotency_key, request=request, action=lambda: spec_dict(db, create_spec(
+                db, requirement, model, actor.id, expected_requirement_state_version, source="mcp")))
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def update_requirement_spec(spec_id: str, content: RequirementSpecContent, expected_state_version: int,
+                            idempotency_key: str) -> dict[str, Any]:
+    """编辑规格草稿及 AC；批准后的规格必须创建新修订，不能原地修改。"""
+    token, actor = _identity("requirements:write")
+    model = RequirementSpecContent.model_validate(content)
+    request = {"spec_id": spec_id, "content": model.model_dump(mode="json"), "expected_state_version": expected_state_version}
+    with SessionLocal() as db:
+        spec = _spec_for_token(db, spec_id, token)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="update_spec",
+            key=idempotency_key, request=request, action=lambda: spec_dict(db, update_spec(
+                db, spec, model, actor.id, expected_state_version, source="mcp")))
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def approve_requirement_spec(spec_id: str, expected_state_version: int, idempotency_key: str,
+                             manual_base_sha: str | None = None) -> dict[str, Any]:
+    """有 requirements:review 的管理员 Agent 批准规格；冻结 GitHub 基线，手工 SHA 仅限 Owner。"""
+    token, actor = _identity("requirements:review")
+    payload = SpecApproveInput(expected_state_version=expected_state_version, manual_base_sha=manual_base_sha)
+    request = {"spec_id": spec_id, **payload.model_dump(mode="json")}
+    with SessionLocal() as db:
+        spec = _spec_for_token(db, spec_id, token)
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="approve_spec",
+            key=idempotency_key, request=request, action=lambda: spec_dict(db, approve_spec(
+                db, spec, actor.id, expected_state_version, manual_base_sha=manual_base_sha,
+                allow_manual_sha=actor.role == "owner", source="mcp")))
+        db.commit()
+        return response
+
+
+@mcp.tool()
 def get_requirement_spec(spec_id: str) -> dict[str, Any]:
     """读取已批准或历史需求规格；编码前必须以此规格为准。"""
-    _identity("specs:read")
+    token, _ = _identity("specs:read")
     with SessionLocal() as db:
-        row = db.query(RequirementSpec).filter(RequirementSpec.id == spec_id).first()
-        if not row:
-            raise ValueError("规格不存在")
+        row = _spec_for_token(db, spec_id, token)
         return spec_dict(db, row)
 
 
@@ -786,20 +881,101 @@ def create_delivery_task(spec_id: str, idempotency_key: str, risk_level: str = "
 
 
 @mcp.tool()
+def list_delivery_tasks(requirement_id: str | None = None, state: str | None = None,
+                        limit: int = 50) -> list[dict[str, Any]]:
+    """查询可领取任务及执行状态；任务绑定令牌只能看到自己的任务。"""
+    token, _ = _identity("runs:write")
+    with SessionLocal() as db:
+        query = db.query(DeliveryTask).join(Requirement, DeliveryTask.requirement_id == Requirement.id).filter(Requirement.deleted_at.is_(None))
+        if token.task_id:
+            query = query.filter(DeliveryTask.id == token.task_id)
+        if requirement_id:
+            query = query.filter(DeliveryTask.requirement_id == _requirement_or_error(db, requirement_id).id)
+        if state:
+            query = query.filter(DeliveryTask.state == state)
+        return [task_dict(db, row, include_context=True) for row in query.order_by(DeliveryTask.created_at.desc()).limit(min(max(limit, 1), 100)).all()]
+
+
+def _claim_response(db, token: AgentToken, runner_name: str, provider: str, model: str | None,
+                    task_id: str | None = None) -> dict[str, Any]:
+    if provider not in {"codex", "claude"} or token.agent_role not in {None, "coding"}:
+        raise ValueError("令牌角色或 provider 不允许领取编码任务")
+    if task_id and token.task_id and task_id != token.task_id:
+        raise PermissionError("交付任务不属于此令牌")
+    run, lease, task = claim_task(db, runner_name=runner_name, provider=provider, model=model,
+                                role="coding", restricted_task_id=task_id or token.task_id)
+    result = run_dict(db, run, include_lease=True, lease_token=lease)
+    result["task"] = task_dict(db, task, include_context=True)
+    return result
+
+
+@mcp.tool()
+def start_requirement_delivery(requirement_id: str, runner_name: str, provider: str,
+                                goal_summary: str, scope_summary: str, acceptance_plan: dict[str, str],
+                                idempotency_key: str, model: str | None = None,
+                                affected_modules: list[str] | None = None,
+                                migrations: list[str] | None = None,
+                                out_of_scope: list[str] | None = None) -> dict[str, Any]:
+    """按需求编号原子完成已批准规格的建任务、指定领取和提交计划；失败全部回滚。需 runs:write。"""
+    token, actor = _identity("runs:write")
+    # Validate the plan before claiming; the generated run supplies the execution credentials.
+    plan = ImplementationPlanInput(attempt_id="pending", lease_token="pending", expected_state_version=1,
+        goal_summary=goal_summary, scope_summary=scope_summary, acceptance_plan=acceptance_plan,
+        affected_modules=affected_modules or [], migrations=migrations or [], out_of_scope=out_of_scope or [])
+    plan_data = plan.model_dump(exclude={"attempt_id", "lease_token", "expected_state_version"})
+    request = {"requirement_id": requirement_id, "runner_name": runner_name, "provider": provider,
+               "model": model, "plan": plan_data}
+    with SessionLocal() as db:
+        requirement = _requirement_or_error(db, requirement_id)
+        def action():
+            spec = db.query(RequirementSpec).filter(RequirementSpec.requirement_id == requirement.id,
+                RequirementSpec.status == "approved").order_by(RequirementSpec.revision.desc()).first()
+            if not spec:
+                raise ValueError("需求没有已批准规格，请先创建并批准规格及 AC")
+            _spec_for_token(db, spec.id, token)
+            task = db.query(DeliveryTask).filter(DeliveryTask.spec_id == spec.id).first()
+            if not task:
+                task = create_delivery_task_service(db, spec, actor.id, risk_level=requirement.risk_level,
+                                                    budget={}, dependency_ids=[])
+            claimed = _claim_response(db, token, runner_name, provider, model, task.id)
+            run = _run_for_token(db, claimed["id"], token)
+            submit_plan_service(db, run, attempt_id=run.attempt_id, lease_token=claimed["lease_token"],
+                                expected_state_version=run.state_version, plan=plan_data)
+            response = run_dict(db, run, include_lease=True, lease_token=claimed["lease_token"])
+            response["task"] = task_dict(db, task, include_context=True)
+            return response
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="start_requirement_delivery",
+                                        key=idempotency_key, request=request, action=action)
+        response = dict(response)
+        if "lease_token" not in response:
+            response["lease_token"] = lease_token_for(_run_for_token(db, response["id"], token))
+        db.commit()
+        return response
+
+
+@mcp.tool()
 def claim_delivery_task(runner_name: str, provider: str, idempotency_key: str,
-                        model: str | None = None) -> dict[str, Any]:
+                        model: str | None = None, task_id: str | None = None,
+                        requirement_id: str | None = None) -> dict[str, Any]:
     """原子领取一个已批准的编码任务，返回租约、attempt 和完整 Context Bundle。"""
     token, _ = _identity()
     if provider not in {"codex", "claude"} or token.agent_role not in {None, "coding"}:
         raise ValueError("令牌角色或 provider 不允许领取编码任务")
-    request = {"runner_name": runner_name, "provider": provider, "model": model}
+    request = {"runner_name": runner_name, "provider": provider, "model": model,
+               "task_id": task_id, "requirement_id": requirement_id}
     with SessionLocal() as db:
+        if requirement_id:
+            requirement = _requirement_or_error(db, requirement_id)
+            query = db.query(DeliveryTask).join(RequirementSpec, DeliveryTask.spec_id == RequirementSpec.id).filter(
+                DeliveryTask.requirement_id == requirement.id, RequirementSpec.status == "approved")
+            if task_id or token.task_id:
+                query = query.filter(DeliveryTask.id == (task_id or token.task_id))
+            selected = query.order_by(DeliveryTask.created_at.desc()).first()
+            if not selected:
+                raise ValueError("需求没有匹配的交付任务")
+            task_id = selected.id
         def action():
-            run, lease, task = claim_task(db, runner_name=runner_name, provider=provider, model=model,
-                                          role="coding", restricted_task_id=token.task_id)
-            result = run_dict(db, run, include_lease=True, lease_token=lease)
-            result["task"] = task_dict(db, task, include_context=True)
-            return result
+            return _claim_response(db, token, runner_name, provider, model, task_id)
         response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="claim_task",
                                         key=idempotency_key, request=request, action=action)
         response = dict(response)
@@ -819,7 +995,7 @@ def _run_for_token(db, run_id: str, token: AgentToken) -> AgentRun:
 @mcp.tool()
 def heartbeat_run(run_id: str, attempt_id: str, lease_token: str, expected_state_version: int,
                   idempotency_key: str, session_reference: str | None = None) -> dict[str, Any]:
-    """续租当前执行；默认租约为 90 秒。"""
+    """续租当前执行；默认租约为 30 分钟。"""
     token, _ = _identity("runs:write")
     request = {"run_id": run_id, "attempt_id": attempt_id, "expected_state_version": expected_state_version,
                "session_reference": session_reference}
@@ -949,6 +1125,29 @@ def link_pull_request(task_id: str, pull_request_number: int, url: str, head_sha
             return {"link_id": row.id, "task": task_dict(db, task)}
         response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="link_pull_request",
                                         key=idempotency_key, request=request, action=action)
+        db.commit()
+        return response
+
+
+@mcp.tool()
+def answer_run_clarification(run_id: str, question_id: str, answer: str, expected_run_state_version: int,
+                             idempotency_key: str, requires_spec_revision: bool = False) -> dict[str, Any]:
+    """受信任管理员 Agent 按用户提供的信息答复执行澄清；范围变化须修订规格。需 requirements:review。"""
+    token, actor = _identity("requirements:review")
+    if not answer.strip():
+        raise ValueError("澄清答案不能为空")
+    request = {"run_id": run_id, "question_id": question_id, "answer": answer,
+               "expected_run_state_version": expected_run_state_version, "requires_spec_revision": requires_spec_revision}
+    with SessionLocal() as db:
+        run = _run_for_token(db, run_id, token)
+        question = db.query(AgentRunQuestion).filter(AgentRunQuestion.id == question_id,
+                                                    AgentRunQuestion.run_id == run.id).first()
+        if not question:
+            raise ValueError("执行澄清问题不存在")
+        response, _ = idempotent_result(db, actor_key=f"agent:{token.id}", operation="answer_run_clarification",
+            key=idempotency_key, request=request, action=lambda: run_dict(db, answer_run_question(
+                db, question, actor_id=actor.id, answer=answer,
+                expected_run_state_version=expected_run_state_version, requires_spec_revision=requires_spec_revision, source="mcp")))
         db.commit()
         return response
 

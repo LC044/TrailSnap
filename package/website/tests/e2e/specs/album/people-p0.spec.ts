@@ -23,7 +23,7 @@ import { e2eEnv } from '../../../../playwright/e2e-env'
  * 关键 UI 约定（src/views/album/people/PeopleList.vue）：
  *   - 标题"人物"位于顶部 h1
  *   - 头部有返回按钮、"批量"/"取消" 切换按钮、筛选 popover
- *   - 卡片网格使用 .flow-grid（grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)))
+ *   - 卡片网格使用 [data-testid="people-album-grid"]（共用响应式相册网格）
  *   - 卡片左上角为 PersonAvatar（封面裁切后的人脸），下方"X 个项目"文案
  *   - 合并模式下"合并 (N)"按钮：disabled when selectedIds.length < 2
  *   - 卡片右上角的 ... 触发 context menu（Teleport 到 body）
@@ -138,12 +138,12 @@ test.describe.serial('P0 - 人物相册', () => {
 
     // 等待首次加载完成：有 identity → 网格渲染；无 identity → 出现"暂无识别到的人物"文案。
     // 用 or 断言：网格可能在 identities 为空时根本不渲染（PeopleList 用 v-else-if 切到空态）。
-    const grid = page.locator('.flow-grid').first()
+    const grid = page.locator('[data-testid="people-album-grid"]').first()
     const emptyHint = page.getByText('暂无识别到的人物')
     await expect(grid.or(emptyHint)).toBeVisible({ timeout: 15_000 })
     if (await grid.count()) {
       const hasGridChildren = (await grid.locator(':scope > *').count()) > 0
-      expect(hasGridChildren, 'flow-grid should contain at least one card').toBe(true)
+      expect(hasGridChildren, 'people grid should contain at least one card').toBe(true)
     }
   })
 
@@ -153,11 +153,11 @@ test.describe.serial('P0 - 人物相册', () => {
 
     await gotoRetry(page, '/album/people')
     // 等至少一张卡片渲染（卡片点击触发 router.push）
-    const card = page.locator('.flow-grid > div').first()
+    const card = page.locator('[data-testid="people-album-grid"] > div').first()
     await expect(card).toBeVisible({ timeout: 15_000 })
 
     // 记下当前点击的卡片对应 identity 名称，断言详情页 h1 = 该名称
-    const expectedName = await page.locator('.flow-grid > div span').first().textContent({ timeout: 5_000 })
+    const expectedName = await page.locator('[data-testid="people-album-grid"] > div span').first().textContent({ timeout: 5_000 })
     await card.click()
 
     await page.waitForURL(/\/album\/people\/[0-9a-f-]{36}/i, { timeout: 10_000 })
@@ -285,7 +285,7 @@ test.describe.serial('P0 - 人物相册', () => {
     // PeopleList 用的是 @click.stop 在子元素上，但因为 Playwright 直接 click 子元素
     // 会经过外层卡片 onClick，进而被捕获转发到 detail，所以这里用 evaluate 来
     // 直接派发 click 事件到子元素：
-    const card = page.locator('.flow-grid > div').first()
+    const card = page.locator('[data-testid="people-album-grid"] > div').first()
     await card.locator('svg.lucide-ellipsis-vertical').first().evaluate((svg: HTMLElement) => {
       const trigger = svg.parentElement
       if (!trigger) throw new Error('context menu trigger parent not found')
@@ -389,7 +389,7 @@ test.describe.serial('P0 - 人物相册', () => {
 
       // 用 evaluate 派发 click 到子元素（避免外层卡片 onClick 转发到 detail）
       const card = page
-        .locator('.flow-grid > div')
+        .locator('[data-testid="people-album-grid"] > div')
         .filter({ hasText: created.identity_name ?? '' })
         .first()
       await expect(card).toBeVisible({ timeout: 10_000 })
@@ -453,7 +453,7 @@ test.describe.serial('P0 - 人物相册', () => {
     const draftName = `SHOULD-NOT-PERSIST-${Date.now().toString(36)}`
 
     await gotoRetry(page, '/album/people')
-    const card = page.locator('.flow-grid > div').first()
+    const card = page.locator('[data-testid="people-album-grid"] > div').first()
     await expect(card).toBeVisible({ timeout: 15_000 })
 
     // 触发 ... 菜单（同 2.5.7 的派发点击方式，避免被外层卡片 onClick 吞掉）

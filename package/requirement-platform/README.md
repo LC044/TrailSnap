@@ -1,6 +1,6 @@
 # TrailSnap 需求管理平台
 
-这是与 TrailSnap 主应用同仓库、独立部署的需求管理子系统。当前版本覆盖用户提交与查看、规格闭环、人工审核、版本批次，以及手动 Agent 交付协议。平台不会启动 Agent、自动合并代码或发布版本。
+这是与 TrailSnap 主应用同仓库、独立部署的需求管理子系统。当前版本覆盖用户提交与查看、规格闭环、管理员或受信任 Agent 审核、版本批次，以及 Agent 编码交付协议。已启动的 Agent 可通过 MCP 完成从提交需求到上报实现结果的全流程；平台不负责启动 Agent 进程、自动合并代码或发布版本。
 
 ## 已实现范围
 
@@ -132,24 +132,35 @@ MCP 作用域与能力：
 
 - `requirements:read`：查询需求、附件、历史/编辑/审核记录、分诊报告和后台任务。
 - `requirements:write`：创建和完整编辑需求、通过 Base64 上传附件、关注/取消关注及撤回需求。
-- `requirements:review`：审核、维护兼容需求状态、标记重复、行政关闭、软删除和恢复；存在新交付任务时不能绕过规格和执行门禁推进交付状态。
+- `requirements:review`：审核、批准规格、答复执行澄清、维护兼容需求状态、标记重复、行政关闭、软删除和恢复；存在新交付任务时不能绕过规格和执行门禁推进交付状态。
 - `versions:read`：查询版本批次、范围快照、单项交付状态和 GitHub Milestone。
 - `versions:write`：创建版本、增删范围条目、锁定范围、流转版本状态及更新交付状态。
 - `github:write`：创建、关联、解除关联和关闭 Issue，导入/同步 Issue，以及同步版本 Milestone。
 - `specs:read`：读取批准规格。
-- `tasks:write`：受信任管理客户端创建交付任务、取消执行。
-- `tasks:claim`：编码 Agent 原子领取任务。
+- `tasks:write` / `tasks:claim`：保留的 scope 名称；当前创建、领取和取消任务仅检查有效管理员所属令牌，领取仍检查角色与任务绑定，不要求这些 scope。
 - `runs:write`：心跳续租、提交 ImplementationPlan、申请澄清、上报结果和关联 PR。
 - `artifacts:write`：登记日志、截图、测试报告等产物元数据与 SHA-256。
 
-### 手动 Agent 工作流
+### Agent 自动化工作流
 
-1. 管理员在需求详情创建规格草稿，补齐 AC 和阻塞问题后批准；平台从 `LC044/TrailSnap` 的 `master` 自动解析并冻结 SHA。
-2. 管理员创建交付任务，并创建限制为 `coding`（建议再限制到具体 task ID）的 Agent Token。
-3. 本地 Codex/Claude 调用 `claim_delivery_task`，保存返回的 `run_id`、`attempt_id`、`lease_token` 和 `state_version`。
-4. Agent 复用同一个 `idempotency_key` 重试同一次写入，并通过 `heartbeat_run` 维持默认 90 秒租约。
-5. 编码前调用 `submit_implementation_plan`，其中 `acceptance_plan` 必须覆盖全部必需 AC；发现产品歧义时调用 `request_clarification`。
-6. 完成后登记必要证据并调用 `submit_run_result`；创建 PR 后调用 `link_pull_request`，平台会回查仓库、目标分支以及 head/base SHA。
+1. Agent 使用现有令牌调用 `get_agent_capabilities` 检查权限，再查询/创建需求。无需新增 scope 或调整已有令牌。完整流程使用已有 `requirements:read`、`requirements:write`、`requirements:review` 和 `runs:write` 权限；权限不足会明确返回缺失项，不自动提权。
+2. 调用 `list_requirement_specs` 查询修订，由 Agent 根据需求编写结构化规格和编号 AC，通过 `create_requirement_spec` / `update_requirement_spec` 保存。创建使用需求的 `expected_requirement_state_version`；编辑使用规格的 `expected_state_version`。两者沿用 `requirements:write`。
+3. 有 `requirements:review` 的 Agent 调用 `approve_requirement_spec`，不需要人工打开页面；平台从 `LC044/TrailSnap` 的 `master` 解析并冻结 SHA。阻塞问题必须先解决；手工 SHA 兜底仍仅允许 Owner。
+4. 调用 `start_requirement_delivery`，传入需求编号、runner/provider 和实现计划。该工具要求 `runs:write`，在一个事务中创建/复用任务、指定领取并提交计划，失败全部回滚。`acceptance_plan` 形如 `{"AC-01": "实现筛选切换清理，并验证选择归零"}`，必须覆盖全部必需 AC，不允许空白内容和未知编号。
+5. 保存返回的 `id`（run_id）、`attempt_id`、`lease_token` 和 `state_version` 后编码。默认租约为 30 分钟，每次调用 `heartbeat_run` 将到期时间延长到当前时间之后 30 分钟；自动续租助手仍每约 20 秒发送心跳。心跳仅更新租约时间，不改变状态版本；计划、结果等业务写入仍推进版本。可以用 `request_clarification` 提问，并由具备审核权限的 Agent 按已确认答案调用 `answer_run_clarification`；范围变化必须修订规格。
+6. 完成后登记必要证据并调用 `submit_run_result`，如实上报每项 AC 的验证结果；成功结果绑定完整 head SHA。创建 PR 后通过 `list_delivery_tasks` 获取最新任务版本，再调用 `link_pull_request`，平台回查仓库、目标分支及 head/base SHA。
+
+仍支持逐步执行 `create_delivery_task` → `claim_delivery_task(task_id=... 或 requirement_id="REQ-123")` → `submit_implementation_plan`；不传筛选时才从队列领取最早满足依赖的任务。任务绑定令牌不能跨任务领取。平台提供完整工具和仓库技能，但不在后台自动启动编码模型；由当前 Codex/Claude 会话执行上述流程。
+
+长时间命令可使用自动续租助手（在 `server` 目录执行）：
+
+```powershell
+# RP_AGENT_API_URL 为平台根 URL；RP_AGENT_TOKEN 从已有安全环境配置注入。
+# run.json 为领取/启动返回的 JSON，包含租约凭证，保存在仓库外。
+uv run python -m requirement_platform.agent_runner --run-file C:/private/run.json -- <编码或测试命令及参数>
+```
+
+助手运行命令期间自动续租并读取最新版本；租约失效、取消或阻塞时停止命令。它不会自动宣称编码成功，结果与 AC 证据仍由 Agent 上报。
 
 新的逻辑动作必须使用新的幂等键；过期 attempt 或 lease 的写入会被拒绝。产物内容应存放在受 ACL 保护的位置，平台数据库只保存元数据和 hash。
 
@@ -158,10 +169,9 @@ MCP 作用域与能力：
 ## 验证
 
 ```powershell
-cd package/requirement-platform/server
-uv run pytest
+pwsh ./tests/scripts/run-tests.ps1 -Layer unit -Component requirement-platform -Level all
 
-cd ../web
+cd package/requirement-platform/web
 npm run build
 ```
 

@@ -188,9 +188,7 @@ def test_get_scenes_returns_count_and_cover_for_each_scene():
         (scene_obj, 3)
     ]
     cover_join = db.query.return_value.join.return_value
-    cover_filter1 = cover_join.filter.return_value
-    cover_filter2 = cover_filter1.filter.return_value
-    cover_filter2.distinct.return_value.order_by.return_value.all.return_value = [
+    cover_join.filter.return_value.all.return_value = [
         (cover_photo, scene_obj.id)
     ]
 

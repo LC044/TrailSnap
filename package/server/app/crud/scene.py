@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, extract
+from sqlalchemy import func, desc, extract, select
 from app.db.models.scene import Scene
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.photo import Photo
@@ -114,36 +114,35 @@ def get_scenes(db: Session, skip: int = 0, limit: int = 100, start_date: str = N
     
     # Batch fetch cover photos
     scene_ids = [s[0].id for s in results]
+    if not scene_ids:
+        return []
     
     # Get covers for these scenes
-    cover_query = db.query(
-        Photo,
-        PhotoMetadata.scene_id
-    ).join(
+    # Rank narrow rows before loading full photos; DISTINCT ON otherwise loads
+    # every matching photo on SQLite instead of one cover per scene.
+    ranked_query = select(
+        Photo.id.label('photo_id'),
+        PhotoMetadata.scene_id,
+        func.row_number().over(
+            partition_by=PhotoMetadata.scene_id,
+            order_by=(Photo.photo_time.desc().nullslast(), Photo.id.desc()),
+        ).label('rank'),
+    ).select_from(Photo).join(
         PhotoMetadata, Photo.id == PhotoMetadata.photo_id
     ).filter(
         Photo.owner_id == owner_id,
         PhotoMetadata.scene_id.in_(scene_ids)
     )
 
-    # Filter cover photos by visibility
-    if owner_id:
-        # Filter photos that are owned by the user or are system photos (owner_id is None)
-        cover_query = cover_query.filter((Photo.owner_id == owner_id) | (Photo.owner_id == None))
-
     if start_date:
-        cover_query = cover_query.filter(Photo.photo_time >= start_date)
+        ranked_query = ranked_query.filter(Photo.photo_time >= start_date)
     if end_date:
-        cover_query = cover_query.filter(Photo.photo_time <= f"{end_date} 23:59:59")
+        ranked_query = ranked_query.filter(Photo.photo_time <= f"{end_date} 23:59:59")
 
-    cover_query = cover_query.distinct(
-        PhotoMetadata.scene_id
-    ).order_by(
-        PhotoMetadata.scene_id,
-        desc(Photo.photo_time)
-    )
-    
-    covers = cover_query.all()
+    ranked_covers = ranked_query.subquery()
+    covers = db.query(Photo, ranked_covers.c.scene_id).join(
+        ranked_covers, Photo.id == ranked_covers.c.photo_id
+    ).filter(ranked_covers.c.rank == 1).all()
     cover_map = {sid: photo for photo, sid in covers}
     
     scenes = []

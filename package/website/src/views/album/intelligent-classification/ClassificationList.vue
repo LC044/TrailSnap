@@ -11,7 +11,7 @@
     <!-- Grid View -->
     <div class="flex-1 overflow-y-auto">
       <!-- Loading State -->
-      <div v-if="loading" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5 lg:gap-6">
+      <div v-if="loading" class="ts-album-grid">
         <div v-for="i in 10" :key="i" class="flex flex-col">
           <div class="w-full aspect-square bg-gray-200 dark:bg-gray-800 rounded-xl animate-pulse"></div>
           <div class="mt-3 h-4 bg-gray-200 dark:bg-gray-800 rounded w-2/3 animate-pulse"></div>
@@ -28,7 +28,7 @@
       </div>
 
       <!-- Content Grid -->
-      <div v-else class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-5 lg:gap-6">
+      <div v-else class="ts-album-grid">
         <div
           v-for="tag in tags"
           :key="tag.id"

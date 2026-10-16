@@ -256,6 +256,10 @@ jobs:
           uv sync
           uv run alembic upgrade head
 
+      - name: Run PostgreSQL memory query regression
+        working-directory: package/server
+        run: uv run python -m pytest tests/unit/test_memory_list_queries.py -m postgres -v --tb=short
+
       - name: Run integration tests (uvicorn in same step)
         working-directory: package/server
         run: |

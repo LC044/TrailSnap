@@ -11,7 +11,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.db.models.face import Face, FaceIdentity
 from app.db.models.image_description import ImageDescription
@@ -118,8 +118,9 @@ def _ticket_dict(db: Session, link: MemoryTicket) -> dict:
     }
 
 
-def serialize(db: Session, memory: Memory, *, detail: bool = False) -> dict:
-    photo_links = sorted(
+def serialize(db: Session, memory: Memory, *, detail: bool = False,
+              photo_summary: tuple[int, list[str]] | None = None) -> dict:
+    photo_links = [] if photo_summary is not None else sorted(
         memory.photo_links,
         key=lambda link: (link.photo.photo_time or datetime.min, link.sort_order),
     )
@@ -139,10 +140,10 @@ def serialize(db: Session, memory: Memory, *, detail: bool = False) -> dict:
         "end_time": memory.end_time.isoformat() if memory.end_time else None,
         "time_source": memory.time_source,
         "confidence_level": "strong" if (memory.confidence or 0) >= 0.75 else "review",
-        "photo_count": len(photo_links),
+        "photo_count": photo_summary[0] if photo_summary is not None else len(photo_links),
         "places": [
             {"id": place.id, "name": place.name, "level": place.level, "confirmed": place.is_confirmed}
-            for place in memory.places
+            for place in sorted(memory.places, key=lambda item: item.id)
         ],
         "people": [
             {
@@ -151,11 +152,11 @@ def serialize(db: Session, memory: Memory, *, detail: bool = False) -> dict:
                 "default_face_id": person.identity.default_face_id,
                 "confirmed": person.is_confirmed,
             }
-            for person in memory.people
+            for person in sorted(memory.people, key=lambda item: item.id)
         ],
         "evidence": [
             {"id": item.id, "type": item.evidence_type, "summary": item.summary, "score": item.score}
-            for item in memory.evidence
+            for item in sorted(memory.evidence, key=lambda item: item.id)
         ],
         "created_at": memory.created_at.isoformat(),
         "updated_at": memory.updated_at.isoformat(),
@@ -167,7 +168,10 @@ def serialize(db: Session, memory: Memory, *, detail: bool = False) -> dict:
         data["photos"] = [_photo_dict(link.photo) for link in photo_links]
         data["tickets"] = [_ticket_dict(db, ticket) for ticket in memory.tickets]
     else:
-        data["preview_photo_ids"] = [str(link.photo_id) for link in photo_links[:4]]
+        data["preview_photo_ids"] = (
+            photo_summary[1] if photo_summary is not None
+            else [str(link.photo_id) for link in photo_links[:4]]
+        )
     return data
 
 
@@ -179,17 +183,50 @@ def list_owned(
     limit: int = 20,
 ) -> tuple[list[Memory], int]:
     query = db.query(Memory).filter(Memory.owner_id == owner_id, Memory.status == status)
-    total = query.count()
+    total = query.with_entities(func.count(Memory.id)).scalar()
     rows = (
         query.options(
-            joinedload(Memory.photo_links).joinedload(MemoryPhoto.photo).joinedload(Photo.metadata_info),
-            joinedload(Memory.people).joinedload(MemoryPerson.identity),
-            joinedload(Memory.places), joinedload(Memory.evidence),
+            selectinload(Memory.people).joinedload(MemoryPerson.identity),
+            selectinload(Memory.places), selectinload(Memory.evidence),
         )
-        .order_by(Memory.start_time.desc().nullslast(), Memory.updated_at.desc())
+        .order_by(Memory.start_time.desc().nullslast(), Memory.updated_at.desc(), Memory.id.asc())
         .offset(skip).limit(limit).all()
     )
     return rows, total
+
+
+def count_owned(db: Session, owner_id: UUID | str) -> dict[str, int]:
+    statuses = (MemoryStatus.CANDIDATE, MemoryStatus.CONFIRMED, MemoryStatus.IGNORED)
+    counts = {status.value: 0 for status in statuses}
+    counts.update({status.value: total for status, total in db.query(
+        Memory.status, func.count(Memory.id)
+    ).filter(Memory.owner_id == owner_id, Memory.status.in_(statuses)).group_by(Memory.status).all()})
+    return counts
+
+
+def list_items(db: Session, owner_id: UUID | str, status: MemoryStatus,
+               skip: int = 0, limit: int = 20) -> tuple[list[dict], int]:
+    rows, total = list_owned(db, owner_id, status, skip, limit)
+    if not rows:
+        return [], total
+    # Window functions work on both SQLite and PostgreSQL. Only four IDs and
+    # the count per memory cross the DB boundary; no Photo/metadata ORM objects.
+    ranked = db.query(
+        MemoryPhoto.memory_id, MemoryPhoto.photo_id,
+        func.count().over(partition_by=MemoryPhoto.memory_id).label("photo_count"),
+        func.row_number().over(
+            partition_by=MemoryPhoto.memory_id,
+            order_by=(Photo.photo_time.asc().nullsfirst(), MemoryPhoto.sort_order.asc(), MemoryPhoto.id.asc()),
+        ).label("position"),
+    ).join(Photo, Photo.id == MemoryPhoto.photo_id).filter(
+        MemoryPhoto.memory_id.in_([row.id for row in rows])
+    ).subquery()
+    summaries = {row.id: (0, []) for row in rows}
+    for memory_id, photo_id, count in db.query(
+        ranked.c.memory_id, ranked.c.photo_id, ranked.c.photo_count
+    ).filter(ranked.c.position <= 4).order_by(ranked.c.memory_id, ranked.c.position).all():
+        summaries[memory_id] = (count, summaries[memory_id][1] + [str(photo_id)])
+    return [serialize(db, row, photo_summary=summaries[row.id]) for row in rows], total
 
 
 def get_detail(db: Session, memory_id: UUID | str, owner_id: UUID | str) -> Memory:

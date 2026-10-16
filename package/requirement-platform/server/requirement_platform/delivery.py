@@ -25,7 +25,7 @@ from .services import GitHubClient
 from .domain.common import audit, enqueue
 
 
-LEASE_SECONDS = 90
+LEASE_SECONDS = 30 * 60
 FINAL_RUN_STATES = {"succeeded", "failed", "cancelled", "timed_out"}
 
 
@@ -114,7 +114,7 @@ def _replace_criteria(db: Session, spec: RequirementSpec, content: dict[str, Any
 
 
 def create_spec(db: Session, requirement: Requirement, content_model: RequirementSpecContent,
-                actor_id: str, expected_requirement_state_version: int) -> RequirementSpec:
+                actor_id: str, expected_requirement_state_version: int, *, source: str = "rest") -> RequirementSpec:
     if requirement.state_version != expected_requirement_state_version:
         raise DomainConflict("需求状态已变化，请刷新后重试", current_version=requirement.state_version)
     if requirement.status in {"rejected", "duplicate", "withdrawn", "closed", "released"}:
@@ -131,7 +131,7 @@ def create_spec(db: Session, requirement: Requirement, content_model: Requiremen
     db.add(spec)
     db.flush()
     _replace_criteria(db, spec, content)
-    _event(db, "spec.created", "spec", spec.id, spec.state_version, source="rest",
+    _event(db, "spec.created", "spec", spec.id, spec.state_version, source=source,
            payload={"requirement_id": requirement.id, "revision": spec.revision})
     audit(db, actor_id, "spec.created", "requirement_spec", spec.id,
           requirement_id=requirement.id, revision=spec.revision, content_hash=spec.content_hash)
@@ -139,7 +139,7 @@ def create_spec(db: Session, requirement: Requirement, content_model: Requiremen
 
 
 def update_spec(db: Session, spec: RequirementSpec, content_model: RequirementSpecContent,
-                actor_id: str, expected_state_version: int) -> RequirementSpec:
+                actor_id: str, expected_state_version: int, *, source: str = "rest") -> RequirementSpec:
     if spec.status != "draft":
         raise DomainConflict("只有草稿规格可以编辑", current_version=spec.state_version, allowed_actions=["create_revision"])
     if spec.state_version != expected_state_version:
@@ -148,13 +148,13 @@ def update_spec(db: Session, spec: RequirementSpec, content_model: RequirementSp
     spec.content, spec.content_hash = content, canonical_hash(content)
     spec.state_version += 1
     _replace_criteria(db, spec, content)
-    _event(db, "spec.updated", "spec", spec.id, spec.state_version, source="rest")
+    _event(db, "spec.updated", "spec", spec.id, spec.state_version, source=source)
     audit(db, actor_id, "spec.updated", "requirement_spec", spec.id, state_version=spec.state_version)
     return spec
 
 
 def approve_spec(db: Session, spec: RequirementSpec, actor_id: str, expected_state_version: int,
-                 *, manual_base_sha: str | None = None, allow_manual_sha: bool = False) -> RequirementSpec:
+                 *, manual_base_sha: str | None = None, allow_manual_sha: bool = False, source: str = "rest") -> RequirementSpec:
     if spec.status != "draft" or spec.state_version != expected_state_version:
         raise DomainConflict("规格不是可批准的当前草稿", current_version=spec.state_version)
     content = RequirementSpecContent.model_validate(spec.content)
@@ -175,17 +175,14 @@ def approve_spec(db: Session, spec: RequirementSpec, actor_id: str, expected_sta
     content_data["repository"], content_data["target_branch"], content_data["base_sha"] = "LC044/TrailSnap", "master", base_sha
     spec.content, spec.content_hash = content_data, canonical_hash(content_data)
     now = utcnow()
-    previous = db.query(RequirementSpec).filter(RequirementSpec.requirement_id == spec.requirement_id,
-                                                RequirementSpec.status == "approved", RequirementSpec.id != spec.id).all()
-    for item in previous:
-        item.status, item.superseded_at, item.state_version = "superseded", now, item.state_version + 1
-        _event(db, "spec.superseded", "spec", item.id, item.state_version, source="rest")
+    invalidate_delivery_authorizations(db, requirement, actor_id=actor_id,
+        reason=f"规格 v{spec.revision} 批准，旧规格执行授权已失效", source="spec_approval")
     spec.status, spec.approved_by, spec.approved_at = "approved", actor_id, now
     spec.state_version += 1
     requirement_transition(db, requirement, "accepted", actor_id=actor_id, reason=f"规格 v{spec.revision} 已批准", source="spec_approval")
     if requirement.github_issue_number:
         enqueue(db, "github_issue", requirement.id, f"github_issue:{requirement.id}:spec-approved:{spec.id}")
-    _event(db, "spec.approved", "spec", spec.id, spec.state_version, source="rest",
+    _event(db, "spec.approved", "spec", spec.id, spec.state_version, source=source,
            payload={"base_sha": base_sha, "sha_source": sha_source, "content_hash": spec.content_hash})
     audit(db, actor_id, "spec.approved", "requirement_spec", spec.id,
           base_sha=base_sha, sha_source=sha_source, content_hash=spec.content_hash)
@@ -312,7 +309,9 @@ def claim_task(db: Session, *, runner_name: str, provider: str, model: str | Non
             old_task = db.query(DeliveryTask).filter(DeliveryTask.id == old.task_id).one()
             if old_task.state not in {"pr_open", "merged", "cancelled"}:
                 old_task.state, old_task.state_version = "queued", old_task.state_version + 1
-    query = db.query(DeliveryTask).filter(DeliveryTask.state == "queued")
+    query = db.query(DeliveryTask).join(RequirementSpec, DeliveryTask.spec_id == RequirementSpec.id).join(
+        Requirement, DeliveryTask.requirement_id == Requirement.id).filter(
+        DeliveryTask.state == "queued", RequirementSpec.status == "approved", Requirement.deleted_at.is_(None))
     if restricted_task_id:
         query = query.filter(DeliveryTask.id == restricted_task_id)
     task = None
@@ -363,7 +362,8 @@ def heartbeat(db: Session, run: AgentRun, *, attempt_id: str, lease_token: str,
     now = utcnow()
     run.last_heartbeat_at, run.lease_expires_at = now, now + timedelta(seconds=LEASE_SECONDS)
     run.session_reference = session_reference or run.session_reference
-    run.state_version += 1
+    # A lease renewal does not change lifecycle state. Keep the version stable so
+    # a background heartbeat cannot invalidate an Agent's plan/result write.
     return run
 
 
@@ -388,7 +388,14 @@ def submit_implementation_plan(db: Session, run: AgentRun, *, attempt_id: str, l
     task = db.query(DeliveryTask).filter(DeliveryTask.id == run.task_id).one()
     required_ids = {row.criterion_id for row in db.query(AcceptanceCriterion).filter(
         AcceptanceCriterion.spec_id == task.spec_id, AcceptanceCriterion.required.is_(True)).all()}
-    missing = required_ids - set(plan.get("acceptance_plan", {}))
+    acceptance_plan = plan.get("acceptance_plan", {})
+    valid_ids = {row.criterion_id for row in db.query(AcceptanceCriterion).filter(
+        AcceptanceCriterion.spec_id == task.spec_id).all()}
+    if set(acceptance_plan) - valid_ids:
+        raise DomainConflict("实现计划包含规格中不存在的验收标准", current_version=run.state_version)
+    if any(not isinstance(value, str) or not value.strip() for value in acceptance_plan.values()):
+        raise DomainConflict("每项验收标准必须填写实现和验证计划", current_version=run.state_version)
+    missing = required_ids - set(acceptance_plan)
     if missing:
         raise DomainConflict(f"实现计划未覆盖必需验收标准：{', '.join(sorted(missing))}", current_version=run.state_version)
     run.implementation_plan, run.plan_submitted_at = plan, utcnow()
@@ -408,11 +415,14 @@ def submit_implementation_plan(db: Session, run: AgentRun, *, attempt_id: str, l
 
 
 def answer_run_question(db: Session, question: AgentRunQuestion, *, actor_id: str, answer: str,
-                        expected_run_state_version: int, requires_spec_revision: bool) -> AgentRun:
+                        expected_run_state_version: int, requires_spec_revision: bool, source: str = "rest") -> AgentRun:
     run = db.query(AgentRun).filter(AgentRun.id == question.run_id).one()
+    if run.status in FINAL_RUN_STATES or _expired(run.lease_expires_at, utcnow()):
+        raise DomainConflict("执行租约已失效，不能恢复旧执行", current_version=run.state_version)
     if question.status != "open" or run.state_version != expected_run_state_version:
         raise DomainConflict("澄清问题或执行状态已变化", current_version=run.state_version)
     question.answer, question.answered_at, question.status = answer, utcnow(), "answered"
+    db.flush()
     task = db.query(DeliveryTask).filter(DeliveryTask.id == run.task_id).one()
     if requires_spec_revision:
         run.status, run.finished_at, run.exit_reason = "cancelled", utcnow(), "spec revision required"
@@ -423,9 +433,11 @@ def answer_run_question(db: Session, question: AgentRunQuestion, *, actor_id: st
                                                       AgentRunQuestion.blocking.is_(True)).count()
         if remaining == 0:
             run.status, task.blocked_reason = "running", None
+            if run.implementation_plan:
+                task.state = "implementing"
     run.state_version += 1
     task.state_version += 1
-    _event(db, "agent_run.clarification_answered", "agent_run", run.id, run.state_version, source="rest",
+    _event(db, "agent_run.clarification_answered", "agent_run", run.id, run.state_version, source=source,
            payload={"question_id": question.id, "requires_spec_revision": requires_spec_revision})
     audit(db, actor_id, "agent_run.clarification_answered", "agent_run_question", question.id,
           run_id=run.id, requires_spec_revision=requires_spec_revision)
@@ -538,7 +550,7 @@ def idempotent_result(db: Session, *, actor_key: str, operation: str, key: str,
     response = action()
     db.flush()
     stored_response = dict(response)
-    if operation == "claim_task":
+    if operation in {"claim_task", "start_requirement_delivery"}:
         stored_response.pop("lease_token", None)
     db.add(IdempotencyRecord(actor_key=actor_key, operation=operation, idempotency_key=key,
                              request_hash=request_hash, response=stored_response))
