@@ -2,14 +2,12 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
 import { ElMessageBox } from 'element-plus';
 import { hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
+import { installNavigationFeedback } from './navigationFeedback';
+import { HomePage, PhotosPage, AlbumList, TicketPage } from './commonPages';
 
 // 路由懒加载（优化首屏性能，TS 自动推断类型）
-const HomePage = () => import('@/views/HomePage.vue');
 // const AlbumPage = () => import('@/views/AlbumPage.vue');
-const AlbumList = () => import('@/views/album/AlbumList.vue');
 const AlbumDetail = () => import('@/views/album/AlbumDetail.vue');
-const PhotosPage = () => import('@/views/PhotosPage.vue');
-const TicketPage = () => import('@/views/ticket/TicketPage.vue');
 const StatisticsPage = () => import('@/views/ticket/StatisticsPage.vue');
 const Settings = () => import('@/views/Settings.vue');
 const PeopleList = () => import('@/views/album/people/PeopleList.vue');
@@ -169,6 +167,8 @@ const router = createRouter({
 });
 
 import { useUserStore } from '@/stores/user';
+
+installNavigationFeedback(router);
 
 // 可选：路由守卫 - 动态设置页面标题
 router.beforeEach((to, from, next) => {
