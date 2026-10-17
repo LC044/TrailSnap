@@ -193,6 +193,11 @@ jobs:
           done
           echo "Ensured \$ORIGIN in RPATH of .libs/ ELF files"
 
+      - name: Build stable Windows portable launcher
+        if: runner.os == 'Windows'
+        working-directory: package/desktop/src-tauri
+        run: cargo build --release --locked --manifest-path ../launcher/Cargo.toml --target-dir target
+
       - name: Build Tauri 2 installer
         # Invoke `tauri` directly via `pnpm exec` so `--bundles` is consumed by
         # the Tauri CLI. Using `pnpm build -- --bundles ...` forwards the `--`
@@ -212,6 +217,24 @@ jobs:
           TAURI_BUNDLER_VERBOSE: '1'
           LINUXDEPLOY_DEBUG: ${{ runner.os == 'Linux' && '1' || '' }}
         run: pnpm --dir package/desktop exec tauri build --verbose --bundles ${{ matrix.bundles }}
+
+      - name: Package and sign Windows portable artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          pwsh package/desktop/scripts/build-portable.ps1 -SkipBuild -OutputDirectory package/desktop/dist/portable
+          if ($LASTEXITCODE -ne 0) { throw 'Portable packaging failed' }
+          $update = Get-ChildItem package/desktop/dist/portable/*-portable-update.zip
+          # An explicit empty password also disables the signer's interactive
+          # prompt for the unencrypted key generated in PR builds.
+          $signingPassword = [Environment]::GetEnvironmentVariable('TAURI_SIGNING_PRIVATE_KEY_PASSWORD')
+          pnpm --dir package/desktop exec tauri signer sign "--password=$signingPassword" $update.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Portable signing failed' }
+          $metadata = Get-Content package/desktop/dist/portable/portable-metadata.json -Raw | ConvertFrom-Json
+          $metadata | Add-Member -NotePropertyName signature -NotePropertyValue ((Get-Content "$($update.FullName).sig" -Raw).Trim())
+          $metadata | ConvertTo-Json -Depth 10 | Set-Content package/desktop/dist/portable/portable-metadata.json -Encoding utf8NoBOM
 
       - name: Describe updater artifact
         shell: bash
@@ -250,6 +273,9 @@ jobs:
             package/desktop/src-tauri/target/release/bundle/appimage/*.AppImage.sig
             package/desktop/src-tauri/target/release/bundle/deb/*.deb
             package/desktop/updater-*.tsv
+            package/desktop/dist/portable/*.zip
+            package/desktop/dist/portable/*.zip.sig
+            package/desktop/dist/portable/portable-metadata.json
           if-no-files-found: error
           retention-days: 14
 
@@ -275,6 +301,10 @@ jobs:
           mapfile -d '' files < <(find artifacts -type f -print0)
           ((${#files[@]} > 0)) || { echo "::error::No desktop installers were downloaded"; exit 1; }
           for file in "${files[@]}"; do
+            if [[ "${file##*/}" == portable-metadata.json ]]; then
+              mv "$file" "update-metadata/portable-metadata.json"
+              continue
+            fi
             if [[ "$file" == *.tsv ]]; then
               mv "$file" "update-metadata/${file##*/}"
               continue
@@ -298,6 +328,9 @@ jobs:
             mv release-assets/latest.tmp release-assets/latest.json
           done < <(cat update-metadata/*.tsv)
           jq -e '.platforms | length > 0' release-assets/latest.json
+          jq --arg base "https://github.com/${{ github.repository }}/releases/download/$tag/" \
+            '{schemaVersion: 1, platforms: {(.platform): {version: .version, url: ($base + .filename), signature: .signature, sha256: .sha256, size: .size}}}' \
+            update-metadata/portable-metadata.json > release-assets/portable-latest.json
 
       - name: Create or update GitHub release
         uses: softprops/action-gh-release@v2
@@ -316,6 +349,10 @@ jobs:
             release-assets/*.AppImage.sig
             release-assets/*.deb
             release-assets/latest.json
+            release-assets/*-portable.zip
+            release-assets/*-portable-update.zip
+            release-assets/*-portable-update.zip.sig
+            release-assets/portable-latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

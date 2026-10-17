@@ -61,5 +61,26 @@ async function bootstrap() {
   registerPwa()
 }
 
-void bootstrap()
+void bootstrap().catch(async error => {
+  console.error('Application startup failed', error)
+  const container = document.querySelector<HTMLElement>('.boot-splash__content')
+  if (!container) return
+  container.replaceChildren()
+  const title = document.createElement('h1')
+  title.textContent = '行影集未能启动'
+  const detail = document.createElement('p')
+  detail.className = 'ts-muted my-4 max-w-xl break-words'
+  detail.textContent = String(error)
+  container.append(title, detail)
+  if (isTauriApp()) {
+    const { invoke } = await import('@tauri-apps/api/core')
+    for (const [label, command] of [['打开数据与日志目录', 'desktop_open_data_directory'], ['重新启动', 'desktop_restart']]) {
+      const button = document.createElement('button')
+      button.className = 'ts-button ts-button-secondary mt-3'
+      button.textContent = label
+      button.onclick = () => { void invoke(command).catch(cause => { detail.textContent = String(cause) }) }
+      container.append(button)
+    }
+  }
+})
 

@@ -119,6 +119,9 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
                 )
                 metadatas.append(meta)
 
+        from app.service.storage_paths import apply_photo_reference
+        for photo in photos:
+            apply_photo_reference(photo, db)
         db.bulk_save_objects(photos)
         if metadatas:
             db.bulk_save_objects(metadatas)

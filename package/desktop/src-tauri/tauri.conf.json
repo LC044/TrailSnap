@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "TrailSnap 行影集",
         "width": 1440,
         "height": 900,
@@ -42,6 +43,7 @@
         "language": "zh-CN"
       },
       "nsis": {
+        "template": "./windows/installer.nsi",
         "installMode": "currentUser",
         "installerHooks": "./windows/installer-hooks.nsh",
         "installerIcon": "icons/icon.ico",

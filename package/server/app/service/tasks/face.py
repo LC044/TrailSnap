@@ -1,3 +1,4 @@
+from app.service.ai_model_state import ai_response_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
@@ -274,7 +275,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                                     owner_id,
                                 )
                         else:
-                            err_msg = f"AI Service error: {resp.status}"
+                            err_msg = await ai_response_error(resp)
                             for task in valid_tasks:
                                 results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
                                 
@@ -381,7 +382,7 @@ class RecognizeFaceStrategy(BaseTaskStrategy):
                             'owner_id': str(photo.owner_id) if photo.owner_id else None,
                         }
                     else:
-                        return {'status': 'failed', 'error': f"AI Service error: {resp.status}"}
+                        return {'status': 'failed', 'error': await ai_response_error(resp)}
         except Exception as e:
             logger.error(f"Error processing Face for photo {photo.id}: {e}")
             tasks_status = dict(photo.processed_tasks or {})

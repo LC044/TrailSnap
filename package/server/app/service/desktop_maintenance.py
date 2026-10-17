@@ -1,5 +1,6 @@
 """Quiesce the desktop sidecar before an offline directory migration."""
 import asyncio
+import os
 
 from starlette.responses import JSONResponse
 
@@ -13,6 +14,9 @@ class DesktopMaintenance:
 
     async def middleware(self, scope, receive, send, app):
         path = scope.get("path", "").removeprefix("/api")
+        if scope["type"] == "http" and os.getenv("TS_DESKTOP_VERIFY") == "1" and path not in {"/health-check", "/system/desktop/runtime"}:
+            response = JSONResponse({"code": 503, "msg": "正在验证更新，暂未开放图库", "data": None}, status_code=503)
+            return await response(scope, receive, send)
         if scope["type"] != "http" or path in {"/system/desktop/prepare-migration", "/system/desktop/ai-extension"}:
             return await app(scope, receive, send)
         ai_request = path.startswith(("/faces", "/search", "/train-ticket", "/flight-ticket", "/settings/ai-models", "/settings/verify-ai-service"))

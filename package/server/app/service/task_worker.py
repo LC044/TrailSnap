@@ -698,6 +698,11 @@ class TaskWorker:
                         (Task.status == TaskStatus.PENDING) & or_(
                             Task.type.notin_(list(self.paused_categories)),
                             Task.priority >= INTERACTIVE_TASK_PRIORITY,
+                        ) & or_(
+                            Task.error.is_(None),
+                            ~Task.error.startswith('等待 AI 模型：'),
+                            Task.next_retry_at.is_(None),
+                            Task.next_retry_at <= datetime.now(),
                         ),
                     )).order_by(Task.priority.desc(), Task.created_at.asc()).first()
                     higher_priority = (
@@ -936,6 +941,40 @@ class TaskWorker:
                 t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):
                 return [], None
+            from app.service.ai_model_state import DEPENDENCIES, get_model_wait_reason
+            if task_type in DEPENDENCIES:
+                from app.core.config_manager import config_manager
+                available = []
+                owner_reasons = {}
+                for task in tasks:
+                    if task.owner_id not in owner_reasons:
+                        config = config_manager.get_user_config(task.owner_id, db)
+                        owner_reasons[task.owner_id] = get_model_wait_reason(config.ai.ai_api_url, task.type)
+                        if owner_reasons[task.owner_id]:
+                            # Defer this owner's backlog as one operation, so a
+                            # large import does not repeatedly occupy AI dispatch.
+                            db.query(Task).filter(
+                                Task.owner_id == task.owner_id,
+                                Task.type == task.type,
+                                Task.status == TaskStatus.PENDING,
+                            ).update({
+                                Task.error: owner_reasons[task.owner_id],
+                                Task.next_retry_at: datetime.now() + timedelta(seconds=30),
+                            }, synchronize_session=False)
+                    model_reason = owner_reasons[task.owner_id]
+                    if model_reason:
+                        task.error = model_reason
+                        task.next_retry_at = datetime.now() + timedelta(seconds=30)
+                    else:
+                        available.append(task)
+                if len(available) != len(tasks):
+                    db.commit()
+                for task in tasks:
+                    if task not in available:
+                        self._publish_task_row(task)
+                tasks = available
+                if not tasks:
+                    return [], 'waiting_for_model'
             for task in tasks:
                 task.status = TaskStatus.PROCESSING
                 task.error = None
@@ -1017,7 +1056,7 @@ class TaskWorker:
             'temporarily unavailable', 'server disconnected', 'service busy',
             '服务繁忙', 'try again later',
         )
-        return any(marker in text for marker in markers)
+        return TaskWorker._is_model_preparing_error(error) or any(marker in text for marker in markers)
 
     def _extension_wait_reason(self):
         if os.environ.get("TS_DESKTOP") != "1":
@@ -1037,6 +1076,7 @@ class TaskWorker:
         return (
             'model_status=downloading' in text
             or 'model_status=pending' in text
+            or ('model' in text and ('not ready' in text or '尚未就绪' in text))
         )
 
     def _schedule_retry(self, db: Session, task: Task, error: Any, max_attempts: int) -> bool:
@@ -1046,7 +1086,9 @@ class TaskWorker:
             # Model downloads can take many minutes. Waiting for readiness is
             # not an inference attempt and must not exhaust max_attempts.
             task.next_retry_at = datetime.now() + timedelta(seconds=delay)
-            task.error = "AI 大模型正在下载，下载完成后将自动继续"
+            task.error = ("AI 大模型正在下载，下载完成后将自动继续"
+                          if 'model_status=' in str(error) else
+                          "等待 AI 模型：模型尚未就绪，就绪后自动继续；请在设置 → AI 模型管理查看下载状态")
             db.commit()
             self._publish_task_row(task)
             logging.info(

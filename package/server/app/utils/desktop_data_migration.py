@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from contextlib import closing
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import sqlite3
 import tempfile
 import time
 from typing import Any
+from app.utils.windows_paths import filesystem_path, publish_directory
 
 MARKER = ".trailsnap-migration.json"
 
@@ -95,7 +97,8 @@ def _wait_for_sidecars(source: Path) -> None:
         time.sleep(0.2)
 
 
-def migrate_data_directory(source: Path, target: Path) -> None:
+def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bool = False,
+                           excluded_entries: frozenset[str] = frozenset(), progress=None) -> None:
     logical_source = source.absolute()
     source, target = source.resolve(strict=True), target.resolve()
     if source == target or source in target.parents or target in source.parents:
@@ -113,26 +116,39 @@ def migrate_data_directory(source: Path, target: Path) -> None:
     def raise_walk_error(error: OSError) -> None:
         raise error
 
-    for current, dirs, names in os.walk(source, onerror=raise_walk_error):
-        current = Path(current)
+    io_source = Path(filesystem_path(source))
+    for current, dirs, names in os.walk(io_source, onerror=raise_walk_error):
+        current = source / Path(current).relative_to(io_source)
+        dirs[:] = [name for name in dirs if (current / name).relative_to(source).as_posix() not in excluded_entries]
+        names[:] = [name for name in names if (current / name).relative_to(source).as_posix() not in excluded_entries]
+        if skip_browser_state and current == source:
+            # The current UI still owns its WebView profile while the native
+            # command copies the library. The new instance authenticates afresh.
+            dirs[:] = [name for name in dirs if name != "webview" and not name.startswith("webview-backup-")]
+            names[:] = [name for name in names if name != "webview-context.json"]
         for name in dirs + names:
-            path = current / name
+            path = Path(filesystem_path(current / name))
             if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
                 raise ValueError(f"数据目录中含有链接，请先处理后再迁移：{path}")
         directories.extend(current / name for name in dirs)
-        files.extend(current / name for name in names if current != source or name != MARKER)
+        files.extend(current / name for name in names if current != source or name not in {MARKER, ".instance.lock", ".desktop-migration-ready"})
     target.parent.mkdir(parents=True, exist_ok=True)
-    required = sum(path.stat().st_size for path in files)
+    required = sum(os.stat(filesystem_path(path)).st_size for path in files)
     if shutil.disk_usage(target.parent).free < required + 64 * 1024 * 1024:
         raise ValueError("目标磁盘可用空间不足（需额外保留 64 MB）")
     staging = Path(tempfile.mkdtemp(prefix=".trailsnap-migration-", dir=target.parent))
     try:
         for directory in directories:
-            (staging / directory.relative_to(source)).mkdir(parents=True, exist_ok=True)
-        for path in files:
+            Path(filesystem_path(staging / directory.relative_to(source))).mkdir(parents=True, exist_ok=True)
+        for index, path in enumerate(files, 1):
             copied = staging / path.relative_to(source)
-            copied.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, copied)
+            Path(filesystem_path(copied.parent)).mkdir(parents=True, exist_ok=True)
+            shutil.copy2(filesystem_path(path), filesystem_path(copied))
+            with open(filesystem_path(path), 'rb') as source_file, open(filesystem_path(copied), 'rb') as target_file:
+                if hashlib.file_digest(source_file, 'sha256').digest() != hashlib.file_digest(target_file, 'sha256').digest():
+                    raise ValueError(f"复制文件校验失败：{path}")
+            if progress:
+                progress(index, len(files))
         for database in staging.glob("data/*.sqlite"):
             _rewrite_database(database, logical_source, target)
             if source != logical_source:
@@ -149,7 +165,7 @@ def migrate_data_directory(source: Path, target: Path) -> None:
         (staging / MARKER).write_text(json.dumps(completed, ensure_ascii=False), encoding="utf-8")
         if target.exists():
             target.rmdir()  # Fails safely if another process put files here.
-        staging.rename(target)
+        publish_directory(staging, target)
     finally:
         if staging.exists():
-            shutil.rmtree(staging)
+            shutil.rmtree(filesystem_path(staging))

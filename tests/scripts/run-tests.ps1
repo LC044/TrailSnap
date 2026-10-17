@@ -82,7 +82,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..' '..')).Path
-if ($Component -eq 'desktop' -and $Layer -ne 'unit') { throw 'desktop 目前仅支持 unit 测试层' }
+if ($Component -eq 'desktop' -and $Layer -notin 'unit','integration') { throw 'desktop 支持 unit 和 integration 测试层' }
 if ($Component -eq 'requirement-platform' -and $Layer -ne 'unit') { throw 'requirement-platform 使用 unit 层运行独立 API 与交付协议测试' }
 if (-not $EnvFile) { $EnvFile = Join-Path $RepoRoot 'tests' '.env.test' }
 if (-not [System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile = Join-Path $RepoRoot $EnvFile }
@@ -177,7 +177,7 @@ function Invoke-Pytest {
 }
 
 $exitCode = 0
-$needServices = $Layer -in 'e2e', 'integration', 'all'
+$needServices = $Layer -in 'e2e', 'integration', 'all' -and $Component -ne 'desktop'
 
 try {
     # ---------- 启动服务 ----------
@@ -227,13 +227,22 @@ try {
     if ($Component -eq 'requirement-platform') {
         Invoke-Pytest -PackageDir (Join-Path 'package' 'requirement-platform' 'server') -TestPath 'tests' -ExtraArgs @()
     }
-    if ($Component -eq 'desktop') {
+    if ($Component -eq 'desktop' -and $Layer -eq 'unit') {
         Push-Location (Join-Path $RepoRoot 'package' 'desktop' 'src-tauri')
         try {
-            & cargo test --lib
+            if ($IsWindows) {
+                & cargo build --release --manifest-path ../launcher/Cargo.toml --target-dir target
+                if ($LASTEXITCODE -ne 0) { throw 'portable launcher build failed' }
+            }
+            & cargo test --manifest-path ../launcher/Cargo.toml --target-dir target
+            if ($LASTEXITCODE -ne 0) { throw 'portable launcher tests failed' }
+            & cargo test --lib --bins
             if ($LASTEXITCODE -ne 0) { throw "desktop unit 失败，退出码 $LASTEXITCODE" }
         }
         finally { Pop-Location }
+    }
+    if ($Component -eq 'desktop' -and $Layer -eq 'integration') {
+        Invoke-Pytest -PackageDir (Join-Path 'package' 'server') -TestPath 'tests/desktop' -ExtraArgs (Get-MarkerArg -Lvl $Level -Scp $Scope)
     }
 
     if ($Layer -in 'unit', 'all' -and $Component -in 'website', 'all') {

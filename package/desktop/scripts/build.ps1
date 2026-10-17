@@ -65,8 +65,10 @@ New-Item -ItemType Directory -Path (Split-Path $sidecarTarget) -Force | Out-Null
 Copy-Item -LiteralPath $sidecarSource -Destination $sidecarTarget -Recurse
 
 if ($Bundles -eq 'all') {
+    if ($IsWindows) { Invoke-NativeCommand cargo @('build','--release','--manifest-path','../launcher/Cargo.toml','--target-dir','target') (Join-Path $desktopDir 'src-tauri') }
     Invoke-NativeCommand pnpm @('--dir', $desktopDir, 'build')
 }
 else {
+    if ($IsWindows) { Invoke-NativeCommand cargo @('build','--release','--manifest-path','../launcher/Cargo.toml','--target-dir','target') (Join-Path $desktopDir 'src-tauri') }
     Invoke-NativeCommand pnpm @('--dir', $desktopDir, 'exec', 'tauri', 'build', '--bundles', $Bundles)
 }

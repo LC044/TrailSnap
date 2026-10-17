@@ -6,6 +6,7 @@
     <NavigationFeedback />
     <PwaInstallPrompt />
     <DesktopUpdatePrompt />
+    <DesktopLegacyPrompt />
     <MobileUpdatePrompt />
     <UploadCenter v-if="token" />
   </el-config-provider>
@@ -31,6 +32,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { useNotificationSSE } from '@/composables/useNotificationSSE';
 import PwaInstallPrompt from '@/components/PwaInstallPrompt.vue';
 import DesktopUpdatePrompt from '@/components/DesktopUpdatePrompt.vue';
+import DesktopLegacyPrompt from '@/components/DesktopLegacyPrompt.vue';
 import MobileUpdatePrompt from '@/components/MobileUpdatePrompt.vue';
 import UploadCenter from '@/components/UploadCenter.vue';
 import NavigationFeedback from '@/components/NavigationFeedback.vue';

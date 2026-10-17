@@ -7,6 +7,17 @@ export interface DesktopDataDirectory {
   pendingRoot: string | null
   previousRoot: string | null
   migrationError: string | null
+  mode: 'portable' | 'legacy-installed'
+  instanceRoot: string | null
+  portableSupported: boolean
+}
+
+export interface PortablePreview {
+  source: string
+  bytes: number
+  counts: Record<string, number>
+  externalRoots: Array<{ ownerId: string; path: string; available: boolean }>
+  unregisteredPhotos: number
 }
 
 export const getDesktopDataDirectory = () => invoke<DesktopDataDirectory>('desktop_data_directory')
@@ -14,8 +25,42 @@ export const setDesktopDataDirectory = (path: string | null) =>
   invoke<void>('desktop_set_data_directory', { path })
 export const openDesktopDataDirectory = () => invoke<void>('desktop_open_data_directory')
 export const prepareDesktopMigration = () => invoke<void>('desktop_prepare_migration')
+export const openDesktopInstanceDirectory = () => invoke<void>('desktop_open_instance_directory')
+export const previewPortableMigration = (sourcePath?: string) => invoke<PortablePreview>('desktop_migration_preview', { sourcePath: sourcePath || null })
+export const convertPortableInstance = (path: string, copyExternal: boolean, sourcePath?: string, activate = true) => invoke<void>('desktop_convert_portable', { path, copyExternal, sourcePath: sourcePath || null, activate })
+export const safeExitDesktop = () => invoke<void>('desktop_safe_exit')
+export const waitForDesktopDrain = () => invoke<void>('desktop_wait_for_drain')
+export const isDesktopDrainPending = (cause: unknown) => String(cause).startsWith('后台任务仍在结束')
+export const restartDesktop = () => invoke<void>('desktop_restart')
 export const revealDesktopPhoto = (path: string) => invoke<void>('desktop_reveal_photo', { path })
 export async function getDesktopNetwork() {
   const { data } = await request.get<{ port: number; urls: string[] }>('/api/system/desktop/network')
   return data
 }
+
+export interface ImportOperation { id: string; source: string; target: string; activate: boolean; copyExternal: boolean; phase: string; error: string | null }
+export interface LegacyDiscovery {
+  candidates: Array<{ path: string; photos: number | null; error: string | null }>
+  notices: string[]
+  currentPhotos: number
+  completed: boolean
+  dismissed: boolean
+  previousEntry: string | null
+  externalReferencesRetained: boolean | null
+  canResume: boolean
+  operation: ImportOperation | null
+}
+export interface ImportSpace { requiredBytes: number; freeBytes: number; externalBytes: number; enough: boolean }
+export interface ImportProgress { stage: string; completed: number; total: number }
+export const discoverLegacyLibraries = () => invoke<LegacyDiscovery>('desktop_legacy_discovery')
+export const dismissLegacyDiscovery = () => invoke<void>('desktop_dismiss_legacy')
+export const checkImportSpace = (sourcePath: string, path: string, copyExternal: boolean) => invoke<ImportSpace>('desktop_import_space', { sourcePath, path, copyExternal })
+export const resumeDesktopImport = () => invoke<void>('desktop_resume_import')
+export const cleanupDesktopImport = () => invoke<void>('desktop_cleanup_import')
+export async function subscribeImportProgress(callback: (progress: ImportProgress) => void) {
+  const { listen } = await import('@tauri-apps/api/event')
+  return listen<ImportProgress>('desktop-import-progress', event => callback(event.payload))
+}
+
+export const openPreviousDesktopLibrary = () => invoke<void>('desktop_open_previous_library')
+export const openLinkedDesktopLibrary = () => invoke<void>('desktop_open_linked_library')

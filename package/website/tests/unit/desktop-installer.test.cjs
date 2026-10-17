@@ -5,7 +5,7 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
-test('installer releases an orphaned runtime file lock and leaves other installations running', {
+test('installer refuses a runtime file lock without stopping either installation', {
   skip: process.platform !== 'win32', timeout: 45000,
 }, () => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'trailsnap-installer-test-'))
@@ -49,12 +49,16 @@ try {
     catch [IO.IOException] { $locked = $true }
     if (!$locked) { throw 'Fixture did not reproduce the file lock' }
     & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Helper -InstallDirectory $inside
-    if ($LASTEXITCODE -ne 0) { throw 'Installer cleanup failed' }
-    if (Get-Process -Id $first.Id -ErrorAction SilentlyContinue) { throw 'Orphaned server survived' }
+    if ($LASTEXITCODE -eq 0) { throw 'Installer accepted a running server' }
+    if (!(Get-Process -Id $first.Id -ErrorAction SilentlyContinue)) { throw 'Writing server was stopped' }
     if (!(Get-Process -Id $second.Id -ErrorAction SilentlyContinue)) { throw 'Other installation was stopped' }
+    Stop-Process -Id $first.Id -Force
+    $first.WaitForExit()
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $Helper -InstallDirectory $inside
+    if ($LASTEXITCODE -ne 0) { throw 'Installer rejected a stopped installation' }
     $handle = [IO.File]::Open($lock, 'Open', 'ReadWrite', 'None')
     $handle.Dispose()
-    Write-Output 'Runtime lock released; sibling installation preserved'
+    Write-Output 'Running installation refused; sibling installation preserved'
 } finally {
     foreach ($fixture in @($first,$second)) {
         if ($fixture) { Stop-Process -Id $fixture.Id -Force -ErrorAction SilentlyContinue }
@@ -65,7 +69,7 @@ try {
     const result = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', runner,
       '-Root', temporaryRoot, '-Helper', helper], { encoding: 'utf8', timeout: 40000, windowsHide: true })
     assert.equal(result.status, 0, `${result.error || ''}\n${result.stdout}\n${result.stderr}`)
-    assert.match(result.stdout, /Runtime lock released; sibling installation preserved/)
+    assert.match(result.stdout, /Running installation refused; sibling installation preserved/)
   } finally {
     fs.rmSync(temporaryRoot, { recursive: true, force: true })
   }

@@ -76,6 +76,9 @@ def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optiona
                         continue
                     found.update(scan_directory_recursive(entry.path, exts, filter_settings, exclude_folder_patterns))
     except OSError:
+        from app.service.storage_paths import portable_enabled
+        if portable_enabled():
+            raise
         pass
     return found
 
@@ -119,6 +122,14 @@ class ScanFolderStrategy(BaseTaskStrategy):
         return {'new_files': total_new, 'deleted_files': total_deleted}
 
     async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str]) -> Dict[str, int]:
+        from app.service.storage_paths import portable_enabled
+        if portable_enabled():
+            online = [root for root in scan_roots if os.path.isdir(root)]
+            if len(online) != len(scan_roots):
+                logging.warning("Offline gallery roots skipped; their photo records are preserved")
+            scan_roots = online
+            if not scan_roots:
+                return {"new_files": 0, "deleted_files": 0}
         EXTS = set(IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
         loop = asyncio.get_running_loop()
         logging.info(f"Scanning roots for user {user.id}: {scan_roots}")

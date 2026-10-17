@@ -46,17 +46,20 @@ def build_service_info(public_url: str, instance_name: str = "TrailSnap") -> Ser
 
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
     safe_name = instance_name.strip() or "TrailSnap"
+    instance_id = os.getenv("TS_DESKTOP_INSTANCE_ID", "") if os.getenv("TS_DESKTOP") == "1" else ""
+    suffix = instance_id[:12] if instance_id else ""
     return ServiceInfo(
         SERVICE_TYPE,
-        f"{safe_name}.{SERVICE_TYPE}",
+        f"{safe_name}{('-' + suffix) if suffix else ''}.{SERVICE_TYPE}",
         addresses=addresses,
         port=port,
         properties={
             "url": public_url.strip().rstrip("/"),
             "version": VERSION,
             "api_path": "/api",
+            **({"instance_id": instance_id} if instance_id else {}),
         },
-        server="trailsnap.local.",
+        server=f"trailsnap-{suffix}.local." if suffix else "trailsnap.local.",
     )
 
 
