@@ -100,6 +100,8 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
     return {
       id: photo.id,
       ownerId: photo.owner_id,
+      panorama_projection: photo.panorama_projection,
+      panorama_override: photo.panorama_override,
       url,
       thumbnail,
       preview,
@@ -148,7 +150,8 @@ export const photoStoreSetup = () => {
       makes: [],
       models: [],
       image_types: [],
-      file_types: []
+      file_types: [],
+      is_panorama: undefined
   });
 
   const getContextKey = () => {

@@ -34,7 +34,7 @@ from app.service.ai_extension_state import (
 )
 # Import tasks to register strategies
 from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
-from app.service.tasks import daily_frame
+from app.service.tasks import daily_frame, panorama
 
 class CompletionContext:
     """Stage callback counters until the completion transaction commits."""

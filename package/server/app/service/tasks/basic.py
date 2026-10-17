@@ -445,6 +445,12 @@ class BasicTaskStrategy(BaseTaskStrategy):
             file_path = info['path']
             owner_id = info['owner_id']
 
+            if info.get("raw_metadata") is not None and "panorama" in info["raw_metadata"]:
+                from app.utils.panorama import apply_detection
+                db_photo = db.get(Photo, UUID(photo_id))
+                if db_photo is not None:
+                    apply_detection(db_photo, info["raw_metadata"]["panorama"])
+
             # 1. Metadata Task
             payload = {'file_path': file_path, 'photo_id': photo_id}
             if info.get('raw_metadata') is not None:
