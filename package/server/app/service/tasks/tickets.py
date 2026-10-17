@@ -1,3 +1,4 @@
+from app.service.ai_model_state import ai_response_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType
@@ -354,7 +355,7 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                                     'result': {'status': 'success', 'tickets_added': added_count}
                                 })
                         else:
-                            err_msg = f"AI Service error: {response.status}"
+                            err_msg = await ai_response_error(response)
                             for task in valid_tasks:
                                 results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
                                 
@@ -499,7 +500,7 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                     else:
                         text = await response.text()
                         logger.error(f"AI Service error: {response.status} {text}")
-                        return {'status': 'failed', 'error': f"AI Service error: {response.status}"}
+                        return {'status': 'failed', 'error': await ai_response_error(response)}
 
         except Exception as e:
             logger.error(f"Error processing Tickets for photo {photo.id}: {e}")

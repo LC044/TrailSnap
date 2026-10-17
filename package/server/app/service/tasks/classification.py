@@ -1,3 +1,4 @@
+from app.service.ai_model_state import ai_response_error
 from app.service.disk_budget import disk_budget
 import traceback
 from uuid import UUID
@@ -157,7 +158,7 @@ class ClassifyImageStrategy(BaseTaskStrategy):
                         ai_batch_results = await self._process_ai_results(valid_tasks, valid_photos, ai_results, photo_ids, db)
                         results.extend(ai_batch_results)
                     else:
-                        err_msg = f"AI Service error: {resp.status}"
+                        err_msg = await ai_response_error(resp)
                         for task in valid_tasks:
                             results.append({'task_id': task.id, 'task_type': task.type, 'status': 'failed', 'error': err_msg})
 

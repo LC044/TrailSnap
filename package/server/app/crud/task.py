@@ -91,6 +91,7 @@ def delete_task(db: Session, task: Task) -> None:
 
 def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, Any]]:
     from sqlalchemy import func
+    from app.service.ai_model_state import WAIT_PREFIX
     stats = []
     categories = [
         TaskType.PROCESS_BASIC, TaskType.EXTRACT_METADATA,
@@ -117,6 +118,12 @@ def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, An
             Task.type.in_(categories)
         ).group_by(Task.type).all()
         failed_map = {row[0]: row[1] for row in failed_counts}
+        waiting_rows = db.query(Task.type, func.min(Task.error)).filter(
+            Task.status == TaskStatus.PENDING,
+            Task.error.startswith(WAIT_PREFIX),
+            Task.type.in_(categories),
+        ).group_by(Task.type).all()
+        waiting_map = {row[0]: row[1] for row in waiting_rows}
     except Exception as e:
         # If session was closed (e.g. by cancelled request), return empty to avoid ResourceClosedError crash
         return []
@@ -136,6 +143,8 @@ def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, An
             'priority': DEFAULT_PRIORITIES.get(cat, 0),
             'description': CATEGORY_DESCRIPTION_MAP.get(cat, '')
         })
+        if cat in waiting_map:
+            stats[-1]['waiting_reason'] = waiting_map[cat]
 
     stats.sort(key=lambda x: x['priority'], reverse=True)
     return stats
