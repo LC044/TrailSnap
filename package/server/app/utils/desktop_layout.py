@@ -25,6 +25,20 @@ def stage_program(root: Path, program: Path, server: Path, launcher: Path, catal
     digest = hashlib.sha256()
     for path, relative in inputs:
         digest.update(relative.encode('utf-8'))
+        if relative == 'trailsnap-desktop.exe':
+            # Tauri patches this three-byte distribution marker while building
+            # NSIS, then restores UNK in target/release. It is format metadata,
+            # not another program build. Never modify the copied executable
+            # itself (which may carry a platform code signature).
+            with open(filesystem_path(path), 'rb') as stream:
+                contents = stream.read()
+            marker = b'__TAURI_BUNDLE_TYPE_VAR_'
+            if contents.count(marker) == 1:
+                offset = contents.index(marker) + len(marker)
+                if contents[offset:offset + 3] in {b'UNK', b'NSS', b'WIX'}:
+                    contents = contents[:offset] + b'UNK' + contents[offset + 3:]
+            digest.update(contents)
+            continue
         with open(filesystem_path(path), 'rb') as stream:
             while chunk := stream.read(1024 * 1024):
                 digest.update(chunk)

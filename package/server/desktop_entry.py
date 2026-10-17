@@ -125,6 +125,12 @@ def _watch_parent(parent_pid: int) -> None:
 
 
 def main() -> None:
+    import sys
+    # The frozen bootloader ignores PYTHONIOENCODING. Native commands decode
+    # JSON and progress as UTF-8, including Chinese paths and error messages.
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='backslashreplace')
     parser = argparse.ArgumentParser(description="TrailSnap desktop API sidecar")
     parser.add_argument("--port", type=int)
     parser.add_argument("--parent-pid", type=int)

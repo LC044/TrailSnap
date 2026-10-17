@@ -60,9 +60,9 @@
             <template v-if="operation.phase !== 'completed'">
               <p class="ts-muted text-sm">原图库仍保留。若已复制完成，可重新验证并继续；否则清理本次临时文件后重新选择。已保存的完整副本不会被删除。</p>
               <p v-if="operation.error" class="ts-muted break-words text-sm">{{ operation.error }}</p>
-              <div class="flex flex-wrap gap-3">
+              <div v-if="!store.needsRestart && !store.waitingForTasks" class="flex flex-wrap gap-3">
                 <button v-if="store.discovery?.canResume" class="ts-button ts-button-primary" :disabled="busy" @click="store.recover(true)">重新验证并继续</button>
-                <button class="ts-button ts-button-secondary" :disabled="busy" @click="cleanInterrupted">清理临时文件并重新选择</button>
+                <button class="ts-button" :class="store.discovery?.canResume ? 'ts-button-secondary' : 'ts-button-primary'" :disabled="busy" @click="cleanInterrupted">清理临时文件并重新选择</button>
               </div>
             </template>
           </div>
@@ -73,36 +73,43 @@
             </div>
             <p v-if="!showCopyForm" class="ts-muted text-sm">照片和设置会保存在上方位置。建议定期将图库备份到另一块磁盘。</p>
             <template v-if="showCopyForm">
-              <p class="ts-muted text-sm">{{ importing ? '将旧图库复制到新位置，确认可用后开始使用。原数据保留。' : '创建程序、照片记录和设置的副本，默认一并复制外部原照片。完成后继续使用当前图库，副本不会自动同步。' }}</p>
+              <p class="ts-muted text-sm">{{ importing ? '将旧图库复制到新位置，确认可用后开始使用。原数据保留。当前图库的照片、票夹和设置不会合并，可在导入后切换回来。' : '创建程序、照片记录和设置的副本，默认一并复制外部原照片。完成后继续使用当前图库，副本不会自动同步。' }}</p>
               <p v-if="importing && store.discovery?.currentPhotos" role="status" class="text-sm">当前图库已有 {{ store.discovery.currentPhotos }} 张照片。导入后将打开旧照片的副本，当前照片仍在原处，两边不会自动合并。</p>
               <p v-if="store.discoveryError" role="alert" class="ts-muted break-words text-sm">旧位置自动检查失败：{{ store.discoveryError }}。可以手动选择旧目录。</p>
               <p v-for="notice in (importing ? store.discovery?.notices : [])" :key="notice" class="ts-muted break-words text-sm">{{ notice }}</p>
               <div class="space-y-3">
-                <label for="legacy-library-source" class="block text-sm font-medium">1. {{ importing ? '选择旧版行影集的数据文件夹' : '要备份的图库' }}</label>
+                <p class="text-sm font-medium">1. {{ importing ? '要找回的旧图库' : '要备份的图库' }}</p>
                 <template v-if="importing">
+                  <p v-if="legacySource" class="ts-muted break-all text-sm">{{ legacySource }}</p>
+                  <details :open="!store.discovery?.candidates.length" class="text-sm">
+                    <summary class="cursor-pointer font-medium">{{ store.discovery?.candidates.length ? '选择其他旧图库' : '选择旧图库的位置' }}</summary>
+                    <div class="mt-3 space-y-3">
                   <div v-if="store.discovery?.candidates.length" class="flex flex-wrap gap-2">
                     <button v-for="candidate in store.discovery.candidates" :key="candidate.path" class="ts-button ts-button-secondary max-w-full text-left" :disabled="busy" @click="legacySource = candidate.path"><span class="min-w-0 break-all">{{ candidate.path }}{{ candidate.photos === null ? '（需检查）' : `（${candidate.photos} 张）` }}</span></button>
                   </div>
+                  <label for="legacy-library-source" class="block ts-muted">包含 data 文件夹的旧数据目录</label>
                   <div class="flex flex-col gap-3 sm:flex-row">
                     <el-input id="legacy-library-source" v-model="legacySource" :disabled="busy" placeholder="选择旧版本的数据文件夹" />
                     <button class="ts-button ts-button-secondary" :disabled="busy" @click="choose('source')">选择文件夹</button>
                   </div>
                   <details class="ts-muted text-sm"><summary class="cursor-pointer">不知道选哪个文件夹？</summary><p class="mt-2">先退出旧版本。选择包含 data 文件夹的那一级，不要进入 data。通常在 C:\Users\你的用户名\AppData\Local\TrailSnap；以前改过保存位置时，请选择改后的目录。</p></details>
+                    </div>
+                  </details>
                 </template>
                 <p v-else class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
-                <p v-if="importing" class="ts-muted text-sm">选择旧版保存数据的文件夹（里面有 data 文件夹），不是存放原照片的文件夹。选择后会自动检查。</p>
                 <button v-if="!store.preview && !store.inspecting" class="ts-button ts-button-secondary" :disabled="busy || (importing && !legacySource.trim())" @click="inspectSource">重新检查图库</button>
               </div>
               <template v-if="store.preview">
                 <p role="status" class="text-sm">找到 {{ store.preview.counts.photos }} 张照片。已检查，尚未复制。</p>
-                <p class="ts-muted break-all text-sm">来源：{{ store.preview.source }}</p>
-                <div v-if="store.preview.externalRoots.length || store.preview.unregisteredPhotos" class="space-y-2">
+                <p v-if="store.preview.source !== (importing ? legacySource.trim() : store.directory.root)" class="ts-muted break-all text-sm">实际读取位置：{{ store.preview.source }}</p>
+                <details v-if="store.preview.externalRoots.length || store.preview.unregisteredPhotos" class="space-y-2 text-sm">
+                  <summary class="cursor-pointer font-medium">备份范围：{{ copyExternal ? '包含其他位置的原照片' : '不复制其他位置的原照片' }}</summary>
                   <el-checkbox v-model="copyExternal" :disabled="busy">同时备份其他文件夹中的原照片</el-checkbox>
                   <p class="ts-muted text-sm">建议保留勾选。取消后仅复制图库数据和库内文件，外部原照片仍依赖原磁盘，不能用于恢复那些原照片。</p>
                   <details class="ts-muted text-sm"><summary class="cursor-pointer">查看这些文件夹</summary><ul class="mt-2 space-y-2"><li v-for="root in store.preview.externalRoots" :key="`${root.ownerId}:${root.path}`" class="break-all">{{ root.path }}{{ root.available ? '' : '（磁盘未连接）' }}</li></ul></details>
-                </div>
+                </details>
                 <p v-if="store.preview.unregisteredPhotos" class="ts-muted text-sm">{{ store.preview.unregisteredPhotos }} 张照片的位置尚未登记，只能保留原位置引用；如需完整备份，请先在旧版中添加对应的外部照片目录。</p>
-                <p v-if="externalBlocked" role="alert" class="text-sm text-[var(--ts-color-danger)]">部分原照片位置不可用或尚未登记。请连接磁盘后重新检查，或取消同时备份原照片。</p>
+                <p v-if="externalBlocked" role="alert" class="text-sm text-[var(--ts-color-danger)]">部分原照片位置不可用或尚未登记。请连接磁盘后重新检查；如需仅保留原位置，请展开“备份范围”调整。</p>
                 <div class="space-y-3">
                   <label for="portable-instance-target" class="block text-sm font-medium">2. {{ importing ? '将找回的照片保存到哪里' : '备份保存到哪里' }}</label>
                   <div class="flex flex-col gap-3 sm:flex-row">
@@ -135,7 +142,7 @@
             <p v-else>当前图库保存在系统用户的数据目录。需要搬迁时，请使用上方“搬到其他磁盘”。</p>
             <button v-if="portable" class="ts-button ts-button-secondary" :disabled="busy" @click="openProgram">打开程序文件夹</button>
             <template v-if="store.discovery?.previousEntry">
-              <p class="break-all">导入前的图库：{{ store.discovery.previousEntry }}。其中的照片未与当前图库合并。</p>
+              <p class="break-all">导入前的图库：{{ store.discovery.previousEntry }}。其中的照片、票夹和设置均保留，未与当前图库合并。</p>
               <button class="ts-button ts-button-secondary" :disabled="busy" @click="openPrevious">切换到导入前的图库</button>
             </template>
             <p v-if="store.directory.previousRoot" class="break-all">上次搬迁保留的目录：{{ store.directory.previousRoot }}。核对照片、缩略图和模型后再清理。</p>

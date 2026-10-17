@@ -17,7 +17,7 @@ function harness(mode, options = {}) {
   }
   const api = {
     getDesktopUpdateStatus: async () => ({ transaction: options.rolledBack ? { phase: 'rolled_back', version: '1.0.1', error: '照片校验失败' } : null, backupPath: 'D:/Library/userdata/backups/test' }),
-    checkPortableUpdate: async () => ({ phase: options.ready ? 'ready' : 'available', version: options.latestVersion || '1.0.1', size: 10 }),
+    checkPortableUpdate: async () => { if (options.checkError) throw Error('catalog 404'); return { phase: options.ready ? 'ready' : 'available', version: options.latestVersion || '1.0.1', size: 10 } },
     downloadPortableUpdate: async () => calls.push('portable-download'),
     applyPortableUpdate: async () => { calls.push('portable-apply'); if (options.pending) throw '后台任务仍在结束，请继续等待' },
     checkInstalledUpdate: async () => ({ version: '1.0.1', download: async () => calls.push('installer-download'), install: async () => calls.push('installer-install') }),
@@ -83,4 +83,22 @@ test('a newer fixed release can download automatically after an earlier rollback
   await store.check()
   assert.deepEqual(calls, ['portable-download'])
   assert.equal(store.phase.value, 'ready')
+})
+
+test('an unavailable automatic update catalog does not look like a failed installation', async () => {
+  const { store, calls } = harness('portable', { checkError: true })
+  await store.check()
+  assert.equal(store.visible.value, false)
+  assert.deepEqual(calls, [])
+  await store.check(true)
+  assert.equal(store.visible.value, true)
+  assert.match(store.message.value, /暂时无法检查更新/)
+})
+
+test('an offline catalog never hides the persisted rollback explanation', async () => {
+  const { store } = harness('portable', { rolledBack: true, checkError: true })
+  await store.check()
+  assert.equal(store.visible.value, true)
+  assert.match(store.message.value, /已恢复升级前/)
+  assert.match(store.message.value, /backups/)
 })

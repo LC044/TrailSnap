@@ -29,6 +29,8 @@ PostgreSQL 用例从 `TS_DB_URL` 所指的测试服务器创建独立随机数�
 
 同时设置 `TS_TEST_DESKTOP_INSTALLER` 和 `TS_TEST_DESKTOP_PORTABLE_TEMPLATE` 可验收安装包与 ZIP 的版本布局一致性、多个独立安装项、覆盖安装与卸载保留数据。所有安装目标均为工作区测试缓存，测试后卸载自己的程序，不修改用户安装。
 
+额外设置 `TS_TEST_DESKTOP_PREVIOUS_INSTALLER`（使用旧版的按目录隔离安装包，不使用会自动卸载用户安装的历史全局安装器），可运行完整安装生命周期：首次安装、运行中覆盖拒绝、旧构建更新、历史 SQLite 发现与冻结导入、来源媒体验证、搬迁、失败候选回滚、卸载后重装和重装中断恢复。此组只使用测试缓存及模拟图库；不等同于真实断电或人工点选安装向导。
+
 设置 `TS_TEST_DESKTOP_PORTABLE_TEMPLATE` 可验收最终 Windows ZIP 的多实例、异常恢复、更新提交、目录搬移与冻结后端复制实例。设置 `TS_TEST_DESKTOP_CONVERTED_INSTANCE` 可复用已转换的测试副本验证最终二进制启动；该目录必须位于仓库 `tests/.cache/desktop-portable/`，不会允许指向用户原库。
 
 ### 脚本结构（`tests/scripts/`）

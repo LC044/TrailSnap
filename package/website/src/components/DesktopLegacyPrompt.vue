@@ -5,7 +5,8 @@
         <p>上次导入或备份被中断，原图库仍保留。可以继续验证已保存的副本，或清理本次临时文件后重试。</p>
         <p class="ts-muted break-all text-sm">副本位置：{{ store.discovery?.operation?.target }}</p>
       </template>
-      <p v-else>发现旧版本的数据记录。原照片仍保留在原位置，可以检查并复制到新版中使用。</p>
+      <p v-else>发现旧版本的图库，可以复制到新版继续使用。原照片和数据都会保留。</p>
+      <p v-if="!recovering" class="ts-muted text-sm">暂不导入也可以，以后可在“设置 → 照片与数据位置”中找回。导入会打开另一个图库，两边的照片、票夹和设置不会自动合并。</p>
       <p v-if="store.discovery?.currentPhotos" class="ts-muted">当前图库已有 {{ store.discovery.currentPhotos }} 张照片。导入会打开另一个图库，两边的照片不会自动合并。</p>
       <ul v-if="!recovering" class="ts-muted space-y-2 break-all text-sm">
         <li v-for="candidate in store.discovery?.candidates" :key="candidate.path">{{ candidate.path }}<br>{{ candidate.photos === null ? candidate.error : `${candidate.photos} 张照片` }}</li>
@@ -15,7 +16,7 @@
     <template #footer>
       <div class="flex flex-wrap justify-end gap-3">
         <button class="ts-button ts-button-secondary" @click="visible = false">稍后提醒</button>
-        <button v-if="!recovering" class="ts-button ts-button-secondary" @click="dismiss">使用新图库</button>
+        <button v-if="!recovering" class="ts-button ts-button-secondary" @click="dismiss">暂不导入，使用新图库</button>
         <button class="ts-button ts-button-primary" @click="openImport">{{ recovering ? '继续处理' : '检查旧照片' }}</button>
       </div>
       <p v-if="dismissError" role="alert" class="mt-3 text-sm text-[var(--ts-color-danger)]">{{ dismissError }}</p>

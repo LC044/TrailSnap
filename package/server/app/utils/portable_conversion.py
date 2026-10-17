@@ -179,8 +179,11 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
                 for photo, _, path in photo_paths(original, source):
                     db.execute('UPDATE photos SET file_path=? WHERE id=?', (rebase_value(path, source, data), photo))
                 if has_refs:
-                    db.execute('UPDATE photos SET storage_root_id=NULL, storage_relative_path=NULL')
-                    db.execute('DELETE FROM storage_roots')
+                    # Managed roots already use paths relative to userdata.
+                    # Keep organize destinations which are not scan folders;
+                    # only external roots need rebuilding after copying them.
+                    db.execute("UPDATE photos SET storage_root_id=NULL, storage_relative_path=NULL WHERE storage_root_id IN (SELECT id FROM storage_roots WHERE kind='external')")
+                    db.execute("DELETE FROM storage_roots WHERE kind='external'")
                 for owner, raw in db.execute('SELECT id,settings FROM users').fetchall():
                     settings = transform_paths(json.loads(raw or '{}'), encode=False, root=data)
                     # Explicit organize roots may exist only in storage_roots.
@@ -315,16 +318,23 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
             for table,count in preview["counts"].items():
                 if db.execute(f'SELECT count(*) FROM "{table}"').fetchone()[0] != count:
                     raise ValueError(f"转换后 {table} 记录数量不一致")
-        from app.utils.desktop_import import photo_count
         previous_data = os.getenv('TS_IMPORT_PREVIOUS_DATA')
-        previous_entry = os.getenv('TS_IMPORT_ORIGIN') if previous_data and photo_count(Path(previous_data)) else None
+        previous_entry = os.getenv('TS_IMPORT_ORIGIN') if previous_data else None
         write_json(stage / "conversion.json", {"source":str(source),"counts":preview["counts"],"externalCopied":copy_external,
-                                               "externalReferencesRetained":not copy_external and bool(preview['externalRoots'] or preview['unregisteredPhotos']),"verified":True,"operationId":operation,
+                                               "externalReferencesRetained":not copy_external and bool(preview['externalRoots'] or preview['unregisteredPhotos']),"verified":False,"operationId":operation,"media":baseline,
                                                "previousEntry":previous_entry,"previousInstanceId":os.getenv('TS_IMPORT_ORIGIN_ID')})
         report_progress("verifying")
         verify_media(data, baseline)
         if target.exists(): target.rmdir()
         publish_directory(stage, target)
+        # Renaming the staging directory changes absolute legacy/config paths.
+        # Rebase and validate against the SOURCE baseline at the final location.
+        from app.utils.portable_library import prepare_portable_library
+        prepare_portable_library(target / 'userdata')
+        verify_media(target / 'userdata', baseline)
+        proof = json.loads((target / 'conversion.json').read_text(encoding='utf-8'))
+        proof['verified'] = True
+        write_json(target / 'conversion.json', proof)
         return {"target":str(target),"counts":preview["counts"],"externalCopied":copy_external}
     finally:
         if stage.exists(): shutil.rmtree(filesystem_path(stage))

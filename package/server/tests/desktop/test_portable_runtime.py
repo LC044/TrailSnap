@@ -20,8 +20,9 @@ def test_final_portable_binaries_isolate_and_recover_interrupted_update():
     repo = Path(__file__).resolve().parents[4]
     cache = repo / "tests/.cache/desktop-portable" / ("runtime-" + uuid.uuid4().hex[:10])
     instances = [cache / "家庭图库", cache / "工作图库"]
+    from app.utils.windows_paths import filesystem_path
     for root in instances:
-        shutil.copytree(template,root)
+        shutil.copytree(filesystem_path(template), filesystem_path(root))
     env = {**os.environ,"TS_DESKTOP_TEST_HEADLESS":"1","TS_DESKTOP_TEST_READONLY":"1",
            "TS_INSTANCE_ROOT":str(cache / "wrong-instance"), "TS_DATA_DIR":str(cache / "wrong-data")}
     processes = []

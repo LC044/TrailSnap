@@ -178,6 +178,17 @@ def prepare_portable_library(root: Path) -> dict:
                         if relative is not None:
                             updates.append((root_id, relative, path, photo_id))
                             break
+                    else:
+                        # Historical photos may live outside the standard user
+                        # uploads folder, without an explicitly registered root.
+                        relative = _matches(path, root)
+                        if relative is not None:
+                            root_id = str(uuid.uuid5(namespace, f'{owner}:instance-relative:.'))
+                            db.execute("INSERT OR IGNORE INTO storage_roots(id,owner_id,name,kind,location) VALUES (?,?,?,?,?)",
+                                       (root_id, owner, '图库内文件', 'instance-relative', '.'))
+                            updates.append((root_id, relative, path, photo_id))
+                        else:
+                            updates.append((None, None, path, photo_id))
                 db.executemany("UPDATE photos SET storage_root_id=?,storage_relative_path=?,file_path=? WHERE id=?", updates)
             encoded = transform_paths(settings, encode=True)
             db.execute("UPDATE users SET settings=? WHERE id=?", (json.dumps(encoded, ensure_ascii=False), owner))

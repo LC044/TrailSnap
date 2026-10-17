@@ -22,10 +22,12 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
     phase.value = 'downloading'
     message.value = '正在检查并下载更新…'
     progress.value = 0
+    let checking = true
+    let status: Awaited<ReturnType<typeof getDesktopUpdateStatus>> | null = null
     try {
       portable = (await getDesktopDataDirectory()).mode === 'portable'
       if (portable) {
-        const status = retry ? null : await getDesktopUpdateStatus()
+        status = retry ? null : await getDesktopUpdateStatus()
         const update = await checkPortableUpdate()
         if (status?.transaction?.phase === 'rolled_back'
           && (update.phase === 'current' || update.version === status.transaction.version)) {
@@ -39,12 +41,14 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
         if (update.phase === 'current') { visible.value = false; return }
         version.value = `v${update.version}`
         visible.value = true
+        checking = false
         if (update.phase !== 'ready') await downloadPortableUpdate()
       } else {
         installedUpdate = await checkInstalledUpdate()
         if (!installedUpdate) { visible.value = false; return }
         version.value = `v${installedUpdate.version.replace(/^v/i, '')}`
         visible.value = true
+        checking = false
         let downloaded = 0
         let total = 0
         await installedUpdate.download(event => {
@@ -57,9 +61,22 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
       phase.value = 'ready'
       message.value = '新版已通过签名校验。更新前会安全结束任务并备份数据库。'
     } catch (error) {
+      if (checking && status?.transaction?.phase === 'rolled_back') {
+        visible.value = true
+        version.value = `v${status.transaction.version}`
+        phase.value = 'error'
+        message.value = `上次更新失败，已恢复升级前的程序与数据。${status.transaction.error || ''} 备份：${status.backupPath || '数据目录/backups'}。暂时无法检查新版本，可继续使用当前版本。`
+        return
+      }
+      if (checking && !retry) {
+        // An unavailable update catalog is not an installation/startup failure.
+        // Explicit retries and actual download failures still explain errors.
+        visible.value = false
+        return
+      }
       visible.value = true
       phase.value = 'error'
-      message.value = `更新下载失败：${String(error)}`
+      message.value = `${checking ? '暂时无法检查更新，可继续使用当前版本' : '更新下载失败'}：${String(error)}`
     }
   }
   async function install() {

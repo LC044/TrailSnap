@@ -150,8 +150,12 @@ def photo_path_expression(photo):
         return photo._file_path
     base = str(instance_root()) + os.sep
     location = func.replace(StorageRoot.location, "/", os.sep)
+    managed_location = case(
+        (StorageRoot.location == ".", literal(str(instance_root()))),
+        else_=literal(base) + location,
+    )
     root_location = case(
-        (StorageRoot.kind.in_(["managed", "instance-relative"]), literal(base) + location),
+        (StorageRoot.kind.in_(["managed", "instance-relative"]), managed_location),
         else_=location,
     )
     resolved = select(root_location + os.sep + func.replace(photo.storage_relative_path, "/", os.sep)).where(

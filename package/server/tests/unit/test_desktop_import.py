@@ -18,6 +18,172 @@ from app.utils.desktop_verification import photo_paths
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 
+def test_native_helper_outputs_utf8_even_when_interpreter_starts_with_gbk(tmp_path):
+    old, current = tmp_path / '旧版目录', tmp_path / 'current'
+    small_library(old, 1)
+    small_library(current, 0)
+    code = "import sys; sys.stdout.reconfigure(encoding='gbk'); sys.stderr.reconfigure(encoding='gbk'); import desktop_entry; sys.argv=['desktop_entry.py','--discover-old-data',*sys.argv[1:]]; desktop_entry.main()"
+    result = subprocess.run([sys.executable, '-c', code, str(old), str(current)], capture_output=True,
+                            env={**os.environ, 'LOCALAPPDATA': str(tmp_path / 'empty-local')}, timeout=30)
+    assert result.returncode == 0, result.stderr.decode('utf-8')
+    discovery = json.loads(result.stdout.decode('utf-8'))
+    assert discovery['candidates'][0]['path'] == str(old.resolve())
+
+
+def test_legacy_photo_without_upload_time_can_be_listed():
+    from app.schemas.photo import Photo
+    from app.db.models.photo import FileType
+    photo_id = uuid.uuid4()
+    photo = Photo(id=photo_id, file_type=FileType.image, size=1,
+                  file_path='C:/legacy/a.jpg', upload_time=None)
+    result = photo.model_dump(mode='json')
+    assert result['id'] == str(photo_id)
+    assert 'upload_time' not in result
+
+
+@pytest.mark.parametrize('layout', ['managed-organize', 'legacy-internal', 'zero-photos'])
+def test_copy_final_paths_and_retained_entry_survive_move(tmp_path, monkeypatch, layout):
+    source, program, target = [tmp_path / name for name in ('source', 'program', 'copy')]
+    (source / 'data/organized').mkdir(parents=True)
+    (program / 'server').mkdir(parents=True)
+    owner, photo, ref = [str(uuid.uuid4()) for _ in range(3)]
+    database = source / 'data/trailsnap.sqlite'
+    url = f'sqlite:///{database.as_posix()}'
+    monkeypatch.setenv('TS_DB_URL', url)
+    config = Config()
+    config.set_main_option('script_location', str(Path(__file__).resolve().parents[2] / 'alembic_sqlite'))
+    config.set_main_option('sqlalchemy.url', url)
+    command.upgrade(config, 'head')
+    original = source / 'data/organized/a.jpg'
+    original.write_bytes(b'photo in a custom internal folder')
+    with closing(sqlite3.connect(database)) as db, db:
+        db.execute('INSERT INTO users(id,username,email,hashed_password,settings) VALUES (?,?,?,?,?)',
+                   (owner, 'desktop-admin', 'desktop@trailsnap.app', 'hash', '{}'))
+        if layout != 'zero-photos':
+            db.execute("INSERT INTO photos(id,owner_id,file_path,file_type,is_deleted) VALUES (?,?,?,'image',0)",
+                       (photo, owner, str(original)))
+        if layout == 'managed-organize':
+            db.execute('INSERT INTO storage_roots(id,owner_id,name,kind,location) VALUES (?,?,?,?,?)',
+                       (ref, owner, '整理目录', 'managed', 'data/organized'))
+            db.execute('UPDATE photos SET storage_root_id=?,storage_relative_path=?', (ref, 'a.jpg'))
+    (source / 'library.json').write_text(json.dumps({'schemaVersion': 1, 'pathFormat': 1,
+        'libraryId': str(uuid.uuid4()), 'lastRoot': str(source), 'initialized': True}), encoding='utf-8')
+    for relative in ('trailsnap-desktop.exe', 'server/trailsnap-server.exe', 'launcher.exe'):
+        (program / relative).write_bytes(b'program fixture')
+    environment = {**os.environ, 'PYTHONIOENCODING': 'utf-8', 'TS_IMPORT_PREVIOUS_DATA': str(source),
+                   'TS_IMPORT_ORIGIN': str(program), 'TS_IMPORT_ORIGIN_ID': 'original-instance'}
+    result = subprocess.run([sys.executable, 'desktop_entry.py', '--convert-portable', str(source), str(target),
+                             str(program), str(program / 'launcher.exe'), '--copy-external'],
+                            capture_output=True, env=environment, timeout=90)
+    assert result.returncode == 0, result.stderr.decode('utf-8')
+    proof = json.loads((target / 'conversion.json').read_text(encoding='utf-8'))
+    assert proof['previousEntry'] == str(program)  # Also preserve accounts/settings without photos.
+    assert proof['verified'] is True
+    from app.utils.desktop_verification import verify_media
+    verify_media(target / 'userdata', proof['media'])
+    moved = tmp_path / '搬迁后的图库'
+    target.rename(moved)
+    result = subprocess.run([sys.executable, 'desktop_entry.py', '--prepare-portable', str(moved / 'userdata')],
+                            capture_output=True, env=environment, timeout=90)
+    assert result.returncode == 0, result.stderr.decode('utf-8')
+    verify_media(moved / 'userdata', proof['media'])
+    if layout != 'zero-photos':
+        with closing(sqlite3.connect(moved / 'userdata/data/trailsnap.sqlite')) as db:
+            copied = Path(list(photo_paths(db, moved / 'userdata'))[0][2])
+        assert copied.read_bytes() == original.read_bytes()
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import Session
+        from app.db.models import Photo
+        monkeypatch.setenv('TS_DESKTOP', '1')
+        monkeypatch.setenv('TS_DESKTOP_PORTABLE', '1')
+        monkeypatch.setenv('TS_DESKTOP_ROOT', str(moved / 'userdata'))
+        engine = create_engine(f'sqlite:///{(moved / "userdata/data/trailsnap.sqlite").as_posix()}')
+        try:
+            with Session(engine) as session:
+                assert session.scalar(select(Photo.id).where(Photo.file_path == str(copied))) == uuid.UUID(photo)
+        finally:
+            engine.dispose()
+        copied.unlink()
+        with pytest.raises(ValueError, match='升级前可读取'):
+            verify_media(moved / 'userdata', proof['media'])
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows installer process protection')
+def test_installer_refuses_running_sidecar_without_terminating_it(tmp_path):
+    import shutil
+    executable = tmp_path / 'trailsnap-server.exe'
+    shutil.copy2(Path(os.environ['SystemRoot']) / 'System32/cmd.exe', executable)
+    child = subprocess.Popen([str(executable), '/d', '/c', 'set /p waiting='], stdin=subprocess.PIPE,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+    script = Path(__file__).resolve().parents[3] / 'desktop/src-tauri/windows/stop-installed-processes.ps1'
+    try:
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                                 '-File', str(script), '-InstallDirectory', str(tmp_path)], capture_output=True, timeout=30)
+        assert result.returncode != 0
+        assert b'TrailSnap is still running' in result.stderr
+        assert child.poll() is None
+    finally:
+        child.communicate(b'finished\r\n', timeout=10)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows resource staging')
+@pytest.mark.parametrize('layout', ['program-only', 'configured-library', 'unconfigured-library'])
+def test_installer_cleans_only_obsolete_program_resources(tmp_path, layout):
+    server = tmp_path / 'server'
+    server.mkdir()
+    (server / 'obsolete.dll').write_bytes(b'old runtime')
+    (tmp_path / 'userdata').mkdir()
+    (tmp_path / 'userdata/keep').write_bytes(b'user data')
+    (tmp_path / 'instance.json').write_text(json.dumps({'dataRoot': {
+        'kind': 'relative', 'path': 'server/library' if layout == 'configured-library' else 'userdata'}}))
+    if layout == 'unconfigured-library':
+        (server / 'trailsnap.sqlite').write_bytes(b'preserve historical data')
+    script = Path(__file__).resolve().parents[3] / 'desktop/src-tauri/windows/stop-installed-processes.ps1'
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                             '-File', str(script), '-InstallDirectory', str(tmp_path), '-PrepareInstall'],
+                            capture_output=True, timeout=30)
+    if layout == 'program-only':
+        assert result.returncode == 0, result.stderr.decode(errors='replace')
+        assert not server.exists()
+    else:
+        assert result.returncode != 0
+        assert (server / 'obsolete.dll').is_file()
+    assert (tmp_path / 'userdata/keep').read_bytes() == b'user data'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows uninstall registry migration')
+@pytest.mark.parametrize('same_installation', [True, False])
+def test_installer_migrates_only_its_own_legacy_uninstall_entry(tmp_path, same_installation):
+    import winreg
+    product = 'TrailSnap-fixture-' + uuid.uuid4().hex
+    prefix = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\'
+    old_key, new_key = prefix + product, prefix + product + '-new-instance'
+    script = Path(__file__).resolve().parents[3] / 'desktop/src-tauri/windows/migrate-installed-identity.ps1'
+    try:
+        for name, location in ((old_key, tmp_path if same_installation else tmp_path / 'another-installation'), (new_key, tmp_path)):
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, name) as key:
+                winreg.SetValueEx(key, 'InstallLocation', 0, winreg.REG_SZ, f'"{location}"')
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                                 '-File', str(script), '-InstallDirectory', str(tmp_path), '-InstanceTag', 'new-instance',
+                                 '-ProductName', product], capture_output=True, timeout=30)
+        assert result.returncode == 0, result.stderr.decode(errors='replace')
+        if same_installation:
+            with pytest.raises(FileNotFoundError):
+                winreg.OpenKey(winreg.HKEY_CURRENT_USER, old_key)
+        else:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, old_key):
+                pass
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, new_key):
+            pass
+    finally:
+        for name in (old_key, new_key):
+            try:
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, name)
+            except FileNotFoundError:
+                pass
+
+
 def small_library(path, count=1):
     (path / 'data').mkdir(parents=True)
     with closing(sqlite3.connect(path / 'data/trailsnap.sqlite')) as db, db:

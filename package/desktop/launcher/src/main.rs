@@ -376,6 +376,22 @@ fn run() -> Result<(), String> {
             .canonicalize()
             .map_err(|e| e.to_string())?,
     );
+    // Only an explicit installer invocation can authorize replacing a removed
+    // program build. A normal launch with missing files still fails closed.
+    if std::env::args().any(|arg| arg == "--prepare-reinstall") {
+        if root.join("instance.json").is_file() {
+            let config = portable::load_instance(&root)?;
+            if !root.join("app").join(&config.active_build).join("manifest.json").is_file() {
+                portable::data_root(&root, &config)?;
+                let distribution: serde_json::Value = portable::read_json(&root.join("portable.json"))?;
+                let build = distribution["activeBuild"].as_str().ok_or("重装程序版本缺失")?;
+                manifest(&root, build)?;
+                portable::write_json(&root.join("maintenance/reinstall.json"),
+                    &serde_json::json!({"originalConfig": config, "newBuild": build}))?;
+            }
+        }
+        return Ok(());
+    }
     let original_library = std::env::args().any(|arg| arg == "--original-library");
     if let Some(target) = if original_library {
         None
@@ -459,6 +475,40 @@ fn run() -> Result<(), String> {
     let _lock = portable::lock_directory(&data)?;
     let lease = lease_server(data.clone())?;
     let journal = update_transaction::journal_path(&root);
+    let reinstall = root.join("maintenance/reinstall.json");
+    if reinstall.is_file() {
+        let recovery: serde_json::Value = portable::read_json(&reinstall)?;
+        let original: InstanceConfig = serde_json::from_value(recovery["originalConfig"].clone())
+            .map_err(|e| e.to_string())?;
+        if original.instance_id != config.instance_id {
+            return Err("重装记录不属于当前图库，请保留配置与数据".into());
+        }
+        let build = recovery["newBuild"].as_str().ok_or("重装程序版本缺失")?;
+        let offered = manifest(&root, build)?;
+        let previous: Option<UpdateTransaction> = portable::read_json(&journal).ok();
+        let committed = previous.as_ref().is_some_and(|tx| tx.phase == "committed" && tx.new_build == build);
+        if !committed {
+            if let Some(mut tx) = previous.filter(|tx| !["verified", "committed", "rolled_back"].contains(&tx.phase.as_str())) {
+                rollback(&root, &data, &mut config, &mut tx)?;
+            }
+            // There is no previous executable after uninstall. Keep its original
+            // configuration, snapshot the library, and stop if verification fails.
+            config.active_build = build.into();
+            let mut tx = UpdateTransaction {
+                schema_version: 1, id: uuid::Uuid::new_v4().to_string(),
+                old_build: build.into(), new_build: build.into(), version: offered.version,
+                phase: "apply_requested".into(), nonce: uuid::Uuid::new_v4().to_string(), error: None,
+            };
+            update_transaction::publish(&root, &tx)?;
+            if let Err(error) = apply(&root, &data, &mut config, &mut tx, &lease) {
+                tx.error = Some(error.clone());
+                rollback(&root, &data, &mut config, &mut tx)?;
+                portable::write_json(&root.join("instance.json"), &original)?;
+                return Err(format!("重新安装后的程序验证失败，已恢复图库数据。请保留当前目录与 backups，并重新安装兼容版本：{error}"));
+            }
+        }
+        fs::remove_file(reinstall).map_err(|e| e.to_string())?;
+    }
     if std::env::args().any(|arg| arg == "--validate-only") {
         let tx = UpdateTransaction {
             schema_version: 1,
@@ -484,6 +534,21 @@ fn run() -> Result<(), String> {
             root.join("maintenance/validation-baseline.json"),
         )
         .map_err(|e| e.to_string())?;
+        // A broken copied path must not disappear from the verification set
+        // just because the target can no longer read it while snapshotting.
+        let conversion = root.join("conversion.json");
+        if conversion.is_file() {
+            let proof: serde_json::Value = portable::read_json(&conversion)?;
+            if let Some(media) = proof.get("media") {
+                if !media.is_array() {
+                    return Err("导入照片校验记录无效，请保留副本与原图库".into());
+                }
+                let path = root.join("maintenance/validation-baseline.json");
+                let mut baseline: serde_json::Value = portable::read_json(&path)?;
+                baseline["media"] = media.clone();
+                portable::write_json(&path, &baseline)?;
+            }
+        }
         return validate(&root, &config, &tx, &lease);
     }
     if journal.exists() {
@@ -582,7 +647,7 @@ fn main() {
             }
         }
         #[cfg(windows)]
-        if !std::env::args().any(|arg| arg == "--validate-only")
+        if !std::env::args().any(|arg| arg == "--validate-only" || arg == "--prepare-reinstall")
             && std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() != Ok("1")
         {
             unsafe {

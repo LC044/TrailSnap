@@ -53,7 +53,10 @@ def test_installer_instances_match_zip_and_uninstall_preserves_data():
                 assert str(root) in winreg.QueryValueEx(key, 'DisplayName')[0]
             (root / 'userdata').mkdir(exist_ok=True)
             (root / 'userdata/sentinel').write_bytes(b'user photos must survive')
-            (root / 'instance.json').write_text(json.dumps({'dataRoot': {'kind':'relative','path':'userdata'}}))
+            (root / 'instance.json').write_text(json.dumps({'schemaVersion': 1, 'mode': 'portable',
+                'instanceId': str(uuid.uuid4()), 'displayName': 'fixture', 'activeBuild': expected,
+                'previousBuild': None, 'dataRoot': {'kind':'relative','path':'userdata'},
+                'serverPort': None, 'fixedPort': False}))
         original = (roots[0] / 'instance.json').read_bytes()
         install(roots[0])
         assert (roots[0] / 'instance.json').read_bytes() == original

@@ -375,7 +375,7 @@ def test_installer_and_zip_share_layout_without_overwriting_instance_data(tmp_pa
     from app.utils.desktop_layout import stage_program, finalize_install
     source = tmp_path / 'installer'
     (source / 'server').mkdir(parents=True)
-    (source / 'trailsnap-desktop.exe').write_bytes(b'shell')
+    (source / 'trailsnap-desktop.exe').write_bytes(b'shell__TAURI_BUNDLE_TYPE_VAR_UNK')
     (source / 'server/trailsnap-server.exe').write_bytes(b'server')
     (source / 'portable-launcher.exe').write_bytes(b'launcher')
     (source / 'ai-extensions.json').write_text('{}')
@@ -386,13 +386,18 @@ def test_installer_and_zip_share_layout_without_overwriting_instance_data(tmp_pa
     arch = 'aarch64' if platform.machine().lower() in {'arm64','aarch64'} else 'x86_64'
     zip_root = tmp_path / 'zip'
     expected = stage_program(zip_root,source,source / 'server',source / 'portable-launcher.exe',source / 'ai-extensions.json','1.0.0',arch)
+    (source / 'trailsnap-desktop.exe').write_bytes(b'shell__TAURI_BUNDLE_TYPE_VAR_NSS')
     assert finalize_install(source,'1.0.0') == expected
+    assert (zip_root / 'app' / expected / 'trailsnap-desktop.exe').read_bytes().endswith(b'_UNK')
+    assert (source / 'app' / expected / 'trailsnap-desktop.exe').read_bytes().endswith(b'_NSS')
     assert (source / 'portable.json').read_bytes() == (zip_root / 'portable.json').read_bytes()
     assert (source / 'instance.json').read_bytes() == b'keep user config'
     assert (source / 'userdata/keep').read_bytes() == b'photos'
     assert (source / 'app' / expected / 'server/trailsnap-server.exe').read_bytes() == b'server'
     (source / 'trailsnap_desktop_lib.dll').write_bytes(b'unused Cargo artifact')
     assert finalize_install(source,'1.0.0') == expected
+    (source / 'trailsnap-desktop.exe').write_bytes(b'changed shell__TAURI_BUNDLE_TYPE_VAR_NSS')
+    assert finalize_install(source,'1.0.0') != expected
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows installer cleanup')
