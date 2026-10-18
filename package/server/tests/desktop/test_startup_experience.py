@@ -123,6 +123,7 @@ def test_native_progress_three_aliases_pause_and_resume_without_recopying_anothe
         assert user.SendMessageTimeoutW(hwnd, 0, 0, 0, 2, 1000, ctypes.byref(response)), 'native UI hung while helper worked'
         for alias in ('TrailSnap.exe', 'trailsnap-desktop.exe', 'portable-launcher.exe'):
             user.ShowWindow(hwnd, 6)
+            wait(lambda: user.IsIconic(hwnd), 'startup window did not minimize', 5)
             duplicate = subprocess.run([str(root / alias)], env=env, capture_output=True, timeout=12,
                                        creationflags=subprocess.CREATE_NO_WINDOW)
             assert duplicate.returncode == 0, duplicate.stderr.decode(errors='replace')
@@ -136,6 +137,8 @@ def test_native_progress_three_aliases_pause_and_resume_without_recopying_anothe
             user.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
             previous = user.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
             try:
+                wait(lambda: not user.IsIconic(hwnd), 'startup window minimized before capture', 5)
+                time.sleep(.3)
                 rectangle = wintypes.RECT(); user.GetWindowRect(hwnd, ctypes.byref(rectangle))
                 ImageGrab.grab(bbox=(rectangle.left, rectangle.top, rectangle.right, rectangle.bottom), all_screens=True).save(cache / 'progress.png')
             finally:
@@ -163,6 +166,7 @@ def test_native_progress_three_aliases_pause_and_resume_without_recopying_anothe
         wait(lambda: not user.IsWindowVisible(hwnd), 'startup window did not hide after readiness', 10)
         client = wait(lambda: window(ready['pid'], client=True), 'normal client window missing', 10)
         user.ShowWindow(client, 6)
+        wait(lambda: user.IsIconic(client), 'normal client did not minimize', 5)
         duplicate = subprocess.run([str(root / 'TrailSnap.exe')], env=env, capture_output=True,
                                    timeout=12, creationflags=subprocess.CREATE_NO_WINDOW)
         assert duplicate.returncode == 0
