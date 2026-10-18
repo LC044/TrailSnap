@@ -1124,7 +1124,7 @@ def test_mcp_automated_delivery_uses_existing_scopes(monkeypatch):
         spec = call("approve_requirement_spec", {"spec_id": spec["id"],
             "expected_state_version": spec["state_version"], "idempotency_key": "auto-spec-approve"})
         assert spec["content"]["base_sha"] == "d" * 40
-        start = {"requirement_id": ref, "runner_name": "auto-test", "provider": "codex",
+        start = {"requirement_id": ref, "runner_name": "auto-test", "provider": "openai",
             "goal_summary": "清理过期选择状态", "scope_summary": "修改照片筛选与选择状态",
             "acceptance_plan": {"AC-unknown": "实现并验证"}, "idempotency_key": "auto-invalid-start"}
         call("start_requirement_delivery", start, error="不存在的验收标准")
