@@ -1,6 +1,7 @@
 <template>
   <div class="absolute inset-0 pointer-events-none" data-testid="panorama-photo">
-    <div v-if="active" class="absolute inset-0 pointer-events-auto bg-black" @click.stop @mousedown.stop @touchstart.stop @touchmove.stop @touchend.stop @wheel.stop>
+    <!-- Isolate gesture starts from the lightbox; the viewer tracks movement/end on window. -->
+    <div v-if="active" class="absolute inset-0 pointer-events-auto touch-none bg-black" @click.stop @mousedown.stop @touchstart.stop @wheel.stop>
       <div ref="container" class="h-full w-full" />
     </div>
     <div v-if="busy" class="absolute inset-0 flex items-center justify-center" role="status">
@@ -23,8 +24,10 @@ import { LoaderCircle, RotateCcw } from 'lucide-vue-next'
 import type { Viewer } from '@photo-sphere-viewer/core'
 import { panoramaApi, type PanoramaInfo } from '@/api/panorama'
 import { textureGeometry, canUseHighResolution } from '@/utils/panorama'
+import { usePhotoViewingStore } from '@/stores/photoViewing'
 
 const props = defineProps<{ photoId: string }>()
+const photoViewing = usePhotoViewingStore()
 const emit = defineEmits<{
   active: [value: boolean]
   state: [value: { available: boolean; busy: boolean; high: boolean; allowHigh: boolean }]
@@ -122,6 +125,9 @@ async function loadInfo() {
     info.value = result
     clearDeadline()
     active.value = !!result.projection && maxTexture.value >= 4096
+    // Select the initial texture before requesting it; unsupported originals
+    // keep the existing standard-resolution fallback and device budgets.
+    high.value = active.value && photoViewing.autoViewOriginal && allowHigh.value
     emit('active', active.value)
     busy.value = false
     if (active.value) await renderPanorama()

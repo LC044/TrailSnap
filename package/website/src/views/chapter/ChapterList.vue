@@ -1,6 +1,6 @@
 <template>
-  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-6">
-    <div class="mx-auto max-w-7xl">
+  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-4 md:py-6">
+    <div class="mx-auto max-w-screen-2xl">
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div><RouterLink to="/memories" class="text-sm text-primary-600 dark:text-primary-400">← 记忆中心</RouterLink><h1 class="ts-page-title mt-4">人生章节</h1><p class="mt-2 text-sm text-gray-500 dark:text-gray-400">把数年的照片装订成日记，按天自动整理，慢慢翻阅。</p></div>
         <div class="ts-form-actions"><button class="ts-button ts-button-secondary border border-primary-200 text-primary-600 disabled:opacity-50 dark:border-primary-800 dark:text-primary-400" :disabled="discovering" @click="discover">{{ discovering ? '正在寻找线索' : '发现章节建议' }}</button><RouterLink to="/chapters/new" class="ts-button ts-button-primary">新建章节</RouterLink></div>

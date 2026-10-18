@@ -9,7 +9,7 @@
         'details-active': mobileDetailsProgress > 0.01,
         'details-settling': isMobileDetailsSettling,
       }"
-      :style="{ ...mobileDetailsRootStyle, zIndex: layerZIndex }"
+      :style="{ ...mobileDetailsRootStyle, zIndex: layerZIndex, '--viewer-mobile-toolbar-height': `${mobileToolbarHeight}px` }"
       @click="close"
       tabindex="0"
     >
@@ -25,42 +25,44 @@
             <X class="w-6 h-6" />
         </button>
 
-        <div class="viewer-desktop-actions ts-liquid-glass ts-glass-toolbar flex items-center gap-1 pointer-events-auto">
-            <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': panoramaActive }" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" :title="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
+        <div class="viewer-desktop-actions ts-liquid-glass ts-glass-toolbar flex items-center pointer-events-auto" role="group" aria-label="照片工具栏">
+            <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" :title="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <!-- Zoom Controls -->
-            <button @click.stop="zoomOut" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="缩小 (-)">
-                <ZoomOut class="w-6 h-6" />
+            <button @click.stop="zoomOut" class="ts-glass-button" aria-label="缩小" title="缩小 (-)">
+                <ZoomOut class="h-5 w-5" />
             </button>
-            <button @click.stop="zoomIn" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="放大 (+)">
-                <ZoomIn class="w-6 h-6" />
+            <button @click.stop="zoomIn" class="ts-glass-button" aria-label="放大" title="放大 (+)">
+                <ZoomIn class="h-5 w-5" />
             </button>
 
             <!-- Actions -->
-            <button @click.stop="downloadImage" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="下载图片 (D)">
-                <Download class="w-6 h-6" />
+            <button @click.stop="downloadImage" class="ts-glass-button" aria-label="下载图片" title="下载图片 (D)">
+                <Download class="h-5 w-5" />
             </button>
-             <button v-if="allowEdit && image && image.file_type === 'image'" @click.stop="enterEditMode" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="编辑图片 (E)">
-                <Pencil class="w-6 h-6" />
+             <button v-if="allowEdit && image && image.file_type === 'image'" @click.stop="enterEditMode" class="ts-glass-button" aria-label="编辑图片" title="编辑图片 (E)">
+                <Pencil class="h-5 w-5" />
             </button>
-             <button v-if="allowDelete" @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片 (Del)">
-                <Trash2 class="w-6 h-6" />
+             <button v-if="allowDelete" @click.stop="handleDelete" class="ts-glass-button viewer-delete" aria-label="删除图片" title="删除图片 (Del)">
+                <Trash2 class="h-5 w-5" />
             </button>
-            <button v-if="!panoramaActive" @click.stop="toggleOriginal" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'text-primary-400': showOriginal }" title="查看原图 (Shift+O)">
-                <Focus class="w-6 h-6" />
+            <button v-if="!panoramaActive" @click.stop="toggleOriginal" class="ts-glass-button" :title="showOriginal ? '查看预览图 (Shift+O)' : '查看原图 (Shift+O)'" :aria-label="showOriginal ? '查看预览图' : '查看原图'" :aria-pressed="showOriginal">
+                <Focus class="h-5 w-5" />
             </button>
-            <button @click.stop="toggleSidebar" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'bg-white/20 text-white': showSidebar }" title="查看元数据 (I)">
-                <Info class="w-6 h-6" />
+            <button @click.stop="toggleSidebar" class="ts-glass-button" aria-label="查看元数据" :aria-expanded="showSidebar" title="查看元数据 (I)">
+                <Info class="h-5 w-5" />
             </button>
 
             <div @click.stop @mousedown.stop class="flex items-center">
-                <el-dropdown trigger="click" @command="handleCommand">
+                <el-dropdown trigger="click" @command="handleCommand" @visible-change="desktopMoreVisible = $event">
                     <button
-                        class="w-12 h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        :class="{ 'bg-white/20 text-white': showOCR }"
+                        class="ts-glass-button"
+                        :aria-expanded="desktopMoreVisible"
+                        :aria-pressed="showOCR"
+                        aria-haspopup="menu"
                         aria-label="更多"
                         title="更多"
                     >
-                        <MoreHorizontal class="w-6 h-6" />
+                        <MoreHorizontal class="h-5 w-5" />
                     </button>
                     <template #dropdown>
                         <el-dropdown-menu class="w-36">
@@ -214,6 +216,7 @@
           data-testid="photo-lightbox-media"
           class="photo-lightbox-media relative w-full h-full flex items-center justify-center overflow-hidden touch-none"
           @click.stop="handleMediaTap"
+          @dblclick.stop.prevent="handleMediaDoubleClick"
           @wheel.prevent="handleWheel"
           @touchstart="startTouch"
         >
@@ -226,6 +229,7 @@
             <div class="h-full flex items-center justify-center" style="width: 33.333333%">
               <img
                 v-if="previousImage"
+                :key="previousImage.id + ':' + adjacentPreviewSrc(previousImage)"
                 :src="adjacentPreviewSrc(previousImage)"
                 class="block w-full h-full object-contain pointer-events-none select-none"
                 draggable="false"
@@ -238,16 +242,30 @@
               <PanoramaViewer ref="panoramaViewerRef" v-if="visible && image && isPanoramaPhoto && !isEditing" :key="image.id + image.url" :photo-id="image.id" class="z-20" @active="panoramaActive = $event" @state="panoramaState = $event" @tap="handleMediaTap" />
               <div
                 v-if="image && (!image.file_type || image.file_type === 'image' || image.file_type === 'live_photo')"
-                class="relative w-full h-full transition-transform duration-200 ease-out origin-center select-none flex items-center justify-center"
-                :style="{ transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)` }"
+                :key="image.id"
+                class="relative w-full h-full origin-center select-none flex items-center justify-center"
+                :class="{ 'transition-transform duration-200 ease-out': !isDragging && !isPinching }"
+                :style="{ transform: `translate(${translateX}px, ${translateY}px) scale(${scale})` }"
                 @mousedown="startDrag"
               >
+                <!-- Keep the target photo visible while its original loads. -->
+                <img
+                  v-if="!currentImageLoaded && displayImageSrc !== adjacentPreviewSrc(image)"
+                  :key="image.id + ':preview:' + adjacentPreviewSrc(image)"
+                  data-testid="photo-lightbox-preview"
+                  :src="adjacentPreviewSrc(image)"
+                  class="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+                  draggable="false"
+                  alt=""
+                />
                 <!-- Image Wrapper for Correct Overlay Positioning -->
                 <div class="relative flex justify-center items-center h-full">
                     <img
+                        :key="image.id + ':' + displayImageSrc"
                         ref="imageRef"
                         data-testid="photo-lightbox-current-image"
                         :src="displayImageSrc"
+                        @load="onCurrentImageLoad"
                         class="block w-full h-full object-contain pointer-events-none"
                         draggable="false"
                     />
@@ -309,7 +327,7 @@
               <div
                 v-else-if="image && image.file_type === 'video'"
                 data-testid="photo-lightbox-video"
-                class="relative w-full h-full flex items-center justify-center bg-black"
+                class="viewer-video relative w-full h-full flex items-center justify-center bg-black"
                 @click.stop
               >
                 <div ref="videoPlayer" class="w-full h-full"></div>
@@ -319,6 +337,7 @@
             <div class="h-full flex items-center justify-center" style="width: 33.333333%">
               <img
                 v-if="nextImage"
+                :key="nextImage.id + ':' + adjacentPreviewSrc(nextImage)"
                 :src="adjacentPreviewSrc(nextImage)"
                 class="block w-full h-full object-contain pointer-events-none select-none"
                 draggable="false"
@@ -330,7 +349,8 @@
 
           <div
             v-if="image && image.file_type === 'live_photo' && controlsVisible"
-            class="absolute top-16 left-4 md:top-24 md:left-8 z-[101] cursor-pointer"
+            data-testid="photo-lightbox-live-badge"
+            class="viewer-live-badge absolute left-4 md:left-8 z-[101] cursor-pointer"
             @click.stop="toggleLivePlayback"
           >
             <div class="flex items-center gap-1 bg-gray-900/60 backdrop-blur-md rounded-full px-2 py-1 text-white/90 hover:bg-gray-800/80 transition-colors">
@@ -346,6 +366,7 @@
         <div
           v-if="!isEditing && controlsVisible"
           data-testid="photo-lightbox-mobile-toolbar"
+          ref="mobileToolbar"
           class="mobile-viewer-toolbar md:hidden fixed top-0 left-0 right-0 z-[102] flex items-start justify-between gap-2 px-2 pb-4 pt-[max(0.5rem,var(--ts-safe-area-top))] bg-gradient-to-b from-black/75 via-black/35 to-transparent pointer-events-none"
         >
           <div class="flex items-start gap-1 min-w-0">
@@ -373,8 +394,7 @@
         <div
           v-if="!isEditing && !isCurrentVideo && controlsVisible && thumbnailWindow.length > 0 && (!showSidebar || isMobileDetailsDragging || isMobileDetailsSettling)"
           data-testid="photo-lightbox-thumbnails"
-          class="viewer-thumbnail-layer fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
-          :class="thumbnailStripPaddingClass"
+          class="viewer-thumbnail-layer fixed inset-x-0 bottom-0 z-[102] flex justify-center px-3 pt-8 pb-[calc(0.75rem+var(--ts-safe-area-bottom))] bg-gradient-to-t from-black/85 via-black/55 to-transparent pointer-events-none"
           @click.stop
         >
           <div ref="thumbnailStrip" class="photo-thumbnail-strip flex max-w-full items-center gap-2 overflow-x-auto px-1 py-1 pointer-events-auto">
@@ -717,6 +737,9 @@ import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useModalScrollLock } from '@/composables/useModalScrollLock'
 import { locationService } from '@/api/location'
 import { originalFileUrl } from '@/utils/mediaUrl'
+import { useOriginalPhoto } from '@/composables/useOriginalPhoto'
+import { useResizeObserver } from '@vueuse/core'
+import { constrainPhotoPan, zoomPhotoAt } from '@/utils/photoZoom'
 import { useRouter } from 'vue-router'
 
 
@@ -752,10 +775,20 @@ const props = withDefaults(defineProps<Props>(), {
 const router = useRouter()
 const canSetDailyFrame = computed(() => !!props.image && props.image.hasPhotoTime !== false)
 
-const showOriginal = ref(false)
+const { showOriginal, displayImageSrc, toggleOriginal } = useOriginalPhoto(props)
+const currentImageLoaded = ref(false)
+watch([() => props.image?.id, displayImageSrc], () => {
+    currentImageLoaded.value = false
+}, { flush: 'sync' })
 const isEditing = ref(false)
 const controlsVisible = ref(true)
+const desktopMoreVisible = ref(false)
 const mediaViewport = ref<HTMLElement | null>(null)
+const mobileToolbar = ref<HTMLElement | null>(null)
+const mobileToolbarHeight = ref(76)
+useResizeObserver(mobileToolbar, () => {
+    if (mobileToolbar.value) mobileToolbarHeight.value = mobileToolbar.value.getBoundingClientRect().height
+}, { box: 'border-box' })
 const thumbnailStrip = ref<HTMLElement | null>(null)
 const swipeOffset = ref(0)
 const isSwipeAnimating = ref(false)
@@ -830,12 +863,6 @@ useHotkeys([
   { key: 'h', handler: () => toggleShortcutHelp() },
   { key: 'H', handler: () => toggleShortcutHelp() },
 ], { priority: 100, enabled: () => props.visible && !isEditing.value })
-
-const displayImageSrc = computed(() => {
-    if (!props.image) return ''
-    if (showOriginal.value) return props.image.url
-    return props.image.preview || props.image.url
-})
 
 const resolvedCurrentIndex = computed(() => {
     if (props.currentIndex >= 0) return props.currentIndex
@@ -925,15 +952,8 @@ const mobileDockVisible = computed(() =>
     && (!showSidebar.value || isMobileDetailsDragging.value || isMobileDetailsSettling.value)
 )
 
-// 缩略图条与底部操作栏都贴底，移动端要为操作栏让出高度，否则两者重叠。
-// 操作栏约 4.25rem（图标 + 文字 + 内边距），再加安全区。
-// 必须用类而不是内联 style：操作栏是 md:hidden，让位只能发生在移动端，
-// 内联 style 无法按断点区分，会把桌面端的缩略图条一起顶高。
-const thumbnailStripPaddingClass = computed(() =>
-    mobileDockVisible.value
-        ? 'pb-[calc(0.75rem+4.25rem+var(--ts-safe-area-bottom))] md:pb-[calc(0.75rem+var(--ts-safe-area-bottom))]'
-        : 'pb-[calc(0.75rem+var(--ts-safe-area-bottom))]',
-)
+// 缩略图条与底部操作栏的垂直间距统一在 <style> 的移动端媒体查询里管理
+//（操作栏本身是 md:hidden，让位只应发生在移动端，故不能放进无断点的内联类）。
 
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
@@ -1009,10 +1029,6 @@ const onLiveEnded = () => {
 const onLiveError = () => {
     isLiveVideoVisible.value = false
     isPlayingLive.value = false
-}
-
-const toggleOriginal = () => {
-    showOriginal.value = !showOriginal.value
 }
 
 const emit = defineEmits(['close', 'delete', 'update', 'prev', 'next', 'select', 'add-to-album', 'transfer'])
@@ -1108,6 +1124,12 @@ const ocrLoading = ref(false)
 const ocrRecords = ref<OCRRecord[]>([])
 const highlightedOCR = ref<OCRRecord | null>(null)
 const imageRef = ref<HTMLImageElement | null>(null)
+const onCurrentImageLoad = async (event: Event) => {
+    const image = event.target as HTMLImageElement
+    try { await image.decode() } catch { return }
+    // A decode for a photo that has since been left must not hide the new preview.
+    if (imageRef.value === image) currentImageLoaded.value = true
+}
 
 interface PhotoProcessingTracker {
     taskId: string
@@ -1165,6 +1187,12 @@ const translateY = ref(0)
 const startX = ref(0)
 const startY = ref(0)
 const initialDistance = ref(0)
+const isPinching = ref(false)
+let gestureStartedZoomed = false
+let multiTouchGesture = false
+let lastTouchTap: { time: number; x: number; y: number } | null = null
+let lastTouchZoomAt = -Infinity
+let mediaTapTimer: ReturnType<typeof setTimeout> | null = null
 const touchStartX = ref(0)
 const touchStartY = ref(0)
 const touchStartTime = ref(0)
@@ -1226,7 +1254,9 @@ const initPlayer = async () => {
             },
             cssFullscreen: false, // 使用原生全屏
             controls: {
-                mode: 'flex'
+                // Keep progress in its own full-width row, including on mobile.
+                mode: 'normal',
+                height: 80,
             },
             screenShot: {
                 saveImg: true,
@@ -1268,6 +1298,7 @@ onUnmounted(() => {
         shortcutHintTimer = null
     }
     if (suppressTapTimer) clearTimeout(suppressTapTimer)
+    if (mediaTapTimer) clearTimeout(mediaTapTimer)
     if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
     if (mobileDetailsSettleTimer) clearTimeout(mobileDetailsSettleTimer)
     if (photoProcessingPollTimer) {
@@ -1278,6 +1309,8 @@ onUnmounted(() => {
 
 const isDragging = ref(false)
 watch(() => props.image, async (newImg, oldImg) => {
+    if (mediaTapTimer) clearTimeout(mediaTapTimer)
+    lastTouchTap = null
     // 1. Reset State
     if (newImg?.id !== oldImg?.id) {
         panoramaActive.value = false
@@ -1285,7 +1318,6 @@ watch(() => props.image, async (newImg, oldImg) => {
     }
     metadata.value = null
     loading.value = !!newImg
-    showOriginal.value = false
     isEditing.value = false
     scale.value = 1
     translateX.value = 0
@@ -1296,6 +1328,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     videoStyle.value = {}
     isLiveVideoVisible.value = false
     isDragging.value = false // Ensure dragging is reset
+    isPinching.value = false
     processingMenuVisible.value = false
     closeMobileMenu()
 
@@ -1403,9 +1436,25 @@ const handleMediaTap = () => {
         suppressNextTap.value = false
         return
     }
-    if (scale.value === 1 && !showSidebar.value && !showOCR.value) {
-        controlsVisible.value = !controlsVisible.value
-    }
+    if (mediaTapTimer) clearTimeout(mediaTapTimer)
+    mediaTapTimer = setTimeout(() => {
+        mediaTapTimer = null
+        if (props.visible && scale.value === 1 && !showSidebar.value && !showOCR.value) controlsVisible.value = !controlsVisible.value
+    }, 320)
+}
+
+const toggleZoomAt = (clientX: number, clientY: number) => {
+    if (isCurrentVideo.value || panoramaActive.value || isEditing.value) return
+    if (mediaTapTimer) clearTimeout(mediaTapTimer)
+    mediaTapTimer = null
+    if (scale.value > 1) resetZoom()
+    else setPhotoZoom(2.5, clientX, clientY)
+}
+
+const handleMediaDoubleClick = (event: MouseEvent) => {
+    // Touch double-taps are handled on touchend; ignore the following synthetic dblclick.
+    if (performance.now() - lastTouchZoomAt < 400) return
+    toggleZoomAt(event.clientX, event.clientY)
 }
 
 useOverlayStack(computed(() => props.visible), close)
@@ -1802,6 +1851,28 @@ const handleSidebarUpdate = (updates: any) => {
 }
 
 // Zoom & Pan Methods
+const panPhotoTo = (x: number, y: number, nextScale = scale.value) => {
+    const viewport = mediaViewport.value
+    if (!viewport) return
+    const position = constrainPhotoPan({ x, y }, nextScale,
+        { width: viewport.clientWidth, height: viewport.clientHeight },
+        { width: imageRef.value?.naturalWidth || props.image?.width || viewport.clientWidth,
+          height: imageRef.value?.naturalHeight || props.image?.height || viewport.clientHeight })
+    translateX.value = position.x
+    translateY.value = position.y
+}
+
+const setPhotoZoom = (requestedScale: number, clientX?: number, clientY?: number) => {
+    if (isCurrentVideo.value || panoramaActive.value) return
+    const nextScale = Math.max(1, Math.min(5, requestedScale))
+    const bounds = mediaViewport.value?.getBoundingClientRect()
+    const point = bounds ? { x: (clientX ?? bounds.left + bounds.width / 2) - bounds.left - bounds.width / 2,
+        y: (clientY ?? bounds.top + bounds.height / 2) - bounds.top - bounds.height / 2 } : { x: 0, y: 0 }
+    const pan = zoomPhotoAt({ x: translateX.value, y: translateY.value }, scale.value, nextScale, point)
+    scale.value = nextScale
+    panPhotoTo(pan.x, pan.y, nextScale)
+}
+
 const resetZoom = () => {
     if (panoramaActive.value) { panoramaViewerRef.value?.resetView(); return }
     scale.value = 1
@@ -1812,26 +1883,17 @@ const resetZoom = () => {
 
 const zoomIn = () => {
     if (panoramaActive.value) { panoramaViewerRef.value?.zoomIn(); return }
-    scale.value = Math.min(scale.value + 0.5, 5)
+    setPhotoZoom(scale.value + 0.5)
 }
 
 const zoomOut = () => {
     if (panoramaActive.value) { panoramaViewerRef.value?.zoomOut(); return }
-    scale.value = Math.max(scale.value - 0.5, 1)
-    if (scale.value === 1) {
-        translateX.value = 0
-        translateY.value = 0
-    }
+    setPhotoZoom(scale.value - 0.5)
 }
 
 const handleWheel = (e: WheelEvent) => {
     const delta = e.deltaY > 0 ? -0.1 : 0.1
-    const newScale = Math.max(1, Math.min(5, scale.value + delta))
-    scale.value = newScale
-    if (scale.value === 1) {
-        translateX.value = 0
-        translateY.value = 0
-    }
+    setPhotoZoom(scale.value + delta, e.clientX, e.clientY)
 }
 
 const startDrag = (e: MouseEvent) => {
@@ -1847,8 +1909,7 @@ const startDrag = (e: MouseEvent) => {
 const onDrag = (e: MouseEvent) => {
     if (isDragging.value) {
         e.preventDefault()
-        translateX.value = e.clientX - startX.value
-        translateY.value = e.clientY - startY.value
+        panPhotoTo(e.clientX - startX.value, e.clientY - startY.value)
     }
 }
 
@@ -1917,8 +1978,22 @@ const startTouch = (e: TouchEvent) => {
     // Keep the player's progress, volume and option menus interactive while
     // allowing horizontal swipes that begin on the video surface.
     if (e.target instanceof Element && e.target.closest('xg-controls')) return
+    if (e.touches.length === 1) {
+        touchStartX.value = e.touches[0].clientX
+        touchStartY.value = e.touches[0].clientY
+        touchStartTime.value = performance.now()
+        touchDeltaX.value = 0
+        touchDeltaY.value = 0
+        touchGestureAxis.value = 'pending'
+        gestureStartedZoomed = scale.value > 1
+        multiTouchGesture = false
+    }
     // Only handle pinch or drag if needed
     if (e.touches.length === 2) {
+        isPinching.value = true
+        multiTouchGesture = true
+        lastTouchTap = null
+        if (mediaTapTimer) clearTimeout(mediaTapTimer)
         // Pinch start
         const touch1 = e.touches[0]
         const touch2 = e.touches[1]
@@ -1950,6 +2025,15 @@ const startTouch = (e: TouchEvent) => {
 }
 
 const onTouchMove = (e: TouchEvent) => {
+    if (e.touches.length === 1) {
+        touchDeltaX.value = e.touches[0].clientX - touchStartX.value
+        touchDeltaY.value = e.touches[0].clientY - touchStartY.value
+        if (Math.hypot(touchDeltaX.value, touchDeltaY.value) >= 10) {
+            lastTouchTap = null
+            if (mediaTapTimer) clearTimeout(mediaTapTimer)
+            mediaTapTimer = null
+        }
+    }
     if (e.touches.length === 2) {
         // Pinch move
         e.preventDefault()
@@ -1960,14 +2044,13 @@ const onTouchMove = (e: TouchEvent) => {
             const delta = currentDistance / initialDistance.value
             // Smooth zoom adjustment
             const newScale = scale.value * delta
-            scale.value = Math.max(1, Math.min(5, newScale))
+            setPhotoZoom(newScale, (touch1.clientX + touch2.clientX) / 2, (touch1.clientY + touch2.clientY) / 2)
             initialDistance.value = currentDistance // Reset for continuous zoom
         }
     } else if (e.touches.length === 1 && isDragging.value) {
         // Drag move
         e.preventDefault()
-        translateX.value = e.touches[0].clientX - startX.value
-        translateY.value = e.touches[0].clientY - startY.value
+        panPhotoTo(e.touches[0].clientX - startX.value, e.touches[0].clientY - startY.value)
     } else if (e.touches.length === 1 && scale.value === 1 && touchStartTime.value > 0) {
         const touch = e.touches[0]
         touchDeltaX.value = touch.clientX - touchStartX.value
@@ -2001,18 +2084,18 @@ const finishSwipeAnimation = (callback?: () => void) => {
     if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
     const duration = prefersReducedMotion() ? 0 : 240
     if (duration === 0) {
-        callback?.()
         swipeOffset.value = 0
         isSwipeAnimating.value = false
+        callback?.()
         return
     }
     swipeAnimationTimer = setTimeout(() => {
+        // Recenter and change the photo in one Vue update. Keeping the old
+        // offset for another tick briefly exposes the newly shifted neighbor.
+        isSwipeAnimating.value = false
+        swipeOffset.value = 0
+        swipeAnimationTimer = null
         callback?.()
-        nextTick(() => {
-            isSwipeAnimating.value = false
-            swipeOffset.value = 0
-            swipeAnimationTimer = null
-        })
     }, duration)
 }
 
@@ -2037,7 +2120,15 @@ const animateNavigation = (direction: 'prev' | 'next', callback: () => void) => 
     finishSwipeAnimation(callback)
 }
 
-const stopTouch = () => {
+const stopTouch = (event?: TouchEvent) => {
+    if (event?.touches.length === 1 && multiTouchGesture) {
+        isPinching.value = false
+        initialDistance.value = 0
+        isDragging.value = scale.value > 1
+        startX.value = event.touches[0].clientX - translateX.value
+        startY.value = event.touches[0].clientY - translateY.value
+        return
+    }
     if (isMobileDetailsDragging.value && touchGestureAxis.value === 'vertical') {
         const moved = Math.abs(touchDeltaY.value) > 10
         finishMobileDetailsDrag()
@@ -2062,7 +2153,7 @@ const stopTouch = () => {
     const velocity = elapsed > 0 ? distance / elapsed : 0
     // 固定 50px 阈值在大屏上偏短、小屏上偏长，改成按屏宽取比例；
     // 另外补一条速度通道，让快速轻扫（甩）也能翻页，贴近系统相册手感。
-    const isHorizontalSwipe = scale.value === 1
+    const isHorizontalSwipe = !gestureStartedZoomed && !multiTouchGesture && scale.value === 1
         && Math.abs(touchDeltaX.value) > Math.abs(touchDeltaY.value) * 1.25
         && (distance >= Math.min(80, width * 0.18) || (velocity >= 0.5 && distance >= 30))
 
@@ -2075,8 +2166,30 @@ const stopTouch = () => {
             suppressNextTap.value = false
             suppressTapTimer = null
         }, 350)
-    } else animateSwipeBack()
+    } else {
+        animateSwipeBack()
+        const moved = Math.hypot(touchDeltaX.value, touchDeltaY.value) >= 10
+        const tap = event?.type !== 'touchcancel' && !multiTouchGesture && !moved && elapsed > 0 && elapsed < 300
+        if (tap && event?.changedTouches[0]) {
+            const point = event.changedTouches[0]
+            const now = performance.now()
+            if (lastTouchTap && now - lastTouchTap.time < 320 && Math.hypot(point.clientX - lastTouchTap.x, point.clientY - lastTouchTap.y) < 32) {
+                toggleZoomAt(point.clientX, point.clientY)
+                lastTouchZoomAt = now
+                lastTouchTap = null
+                suppressNextTap.value = true
+            } else lastTouchTap = { time: now, x: point.clientX, y: point.clientY }
+        } else {
+            lastTouchTap = null
+            if (moved || multiTouchGesture) suppressNextTap.value = true
+        }
+    }
+    if (suppressNextTap.value) {
+        if (suppressTapTimer) clearTimeout(suppressTapTimer)
+        suppressTapTimer = setTimeout(() => { suppressNextTap.value = false }, 400)
+    }
     isDragging.value = false
+    isPinching.value = false
     initialDistance.value = 0
     touchStartTime.value = 0
     touchDeltaX.value = 0
@@ -2187,17 +2300,18 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .photo-lightbox-shell { background: var(--ts-color-page); color: var(--ts-color-text); }
 .photo-lightbox-shell.viewer-immersive { background: #000; }
 [data-testid="photo-lightbox-toolbar"] { background: none; padding: 12px 16px; }
-[data-testid="photo-lightbox-toolbar"] > button { width: 44px; height: 44px; background: var(--ts-glass-bg); border: 1px solid var(--ts-color-border); box-shadow: var(--ts-shadow-glass); }
-[data-testid="photo-lightbox-toolbar"] button { color: var(--ts-color-text); }
-[data-testid="photo-lightbox-toolbar"] button[class*="text-red-"] { color: var(--ts-color-danger); }
+[data-testid="photo-lightbox-toolbar"] > button { width: 44px; height: 44px; color: var(--ts-color-text); background: var(--ts-glass-bg); border: 1px solid var(--ts-color-border); box-shadow: var(--ts-shadow-glass); }
+.viewer-desktop-actions .ts-glass-button[aria-pressed='true'] { color: var(--accent-color); }
+.viewer-desktop-actions .viewer-delete { color: var(--ts-color-danger); }
+.viewer-desktop-actions .ts-glass-button:disabled { opacity: .45; cursor: not-allowed; }
 .viewer-stage > button { background: var(--ts-glass-bg); color: var(--ts-color-text); border: 1px solid var(--ts-color-border); }
 .viewer-caption { color: var(--ts-color-text); }
 .viewer-caption > div:first-child { font-size: 16px; font-weight: 600; }
 .viewer-caption > div:last-child { color: var(--ts-color-text-secondary); font-size: 12px; margin-top: 4px; }
 .mobile-viewer-toolbar { background: var(--ts-color-surface); padding-inline: 12px; padding-top: calc(12px + var(--ts-safe-area-top)); align-items: center; }
 .mobile-viewer-toolbar > div:first-child { align-items: center; gap: 10px; }
-.viewer-mobile-tools button { width: 44px; height: 40px; color: var(--ts-color-text); background: transparent; }
 .viewer-thumbnail-layer { background: none; }
+.viewer-live-badge { top: 96px; }
 .photo-thumbnail-strip button { border-radius: 12px; background: var(--ts-color-surface-muted); }
 .photo-thumbnail-strip button:not(.border-primary-500) { border-color: transparent; }
 .mobile-viewer-dock { background: none; padding-inline: 12px; padding-bottom: calc(12px + var(--ts-safe-area-bottom)); }
@@ -2216,7 +2330,14 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 .sheet-panel { inset-inline: 12px; bottom: calc(12px + var(--ts-safe-area-bottom)); border: 1px solid var(--ts-glass-border); border-radius: 32px; padding: 8px 16px 16px; max-height: calc(100dvh - var(--ts-safe-area-top) - var(--ts-safe-area-bottom) - 32px); }
 
 @media (max-width: 767px) {
-  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(98px + var(--ts-safe-area-bottom)); }
+  .viewer-live-badge { top: calc(var(--viewer-mobile-toolbar-height, 76px) + 12px); }
+  .viewer-video :deep(.xgplayer-controls) { bottom: var(--ts-safe-area-bottom); }
+  .viewer-video :deep(.xg-center-grid) { top: -32px; padding: 0 8px; }
+  .viewer-video :deep(.xgplayer-progress) { height: 32px; }
+  .viewer-video :deep(.xgplayer-progress-outer) { height: 4px; }
+  /* 为底部操作栏让位：胶囊 ~49px + 底部留白 12px ≈ 61px，72px 留出紧凑的呼吸间距。
+     注意 tailwind 的 pb-[calc(...)] 内联类无法按断点区分，移动端让位只能写在这里。 */
+  .viewer-thumbnail-layer { padding-top: 16px; padding-bottom: calc(72px + var(--ts-safe-area-bottom)); }
   /* Keep the photo fitted to the full viewport; fixed controls overlay it. */
   .viewer-stage { padding: 0; }
 }

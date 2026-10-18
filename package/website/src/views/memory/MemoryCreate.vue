@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] py-4 dark:bg-gray-900 md:py-7">
+  <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] py-4 dark:bg-gray-900 md:py-6">
     <div class="mx-auto max-w-screen-2xl">
       <header class="flex flex-wrap items-center gap-3">
         <BackButton label="返回" @click="router.back()" />

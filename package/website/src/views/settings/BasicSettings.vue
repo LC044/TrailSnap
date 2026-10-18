@@ -30,6 +30,8 @@
     <!-- Image Settings -->
     <ImageSettingsSection />
 
+    <PhotoViewingSettingsSection />
+
     <!-- Scheduled Scan Settings -->
     <ScanScheduleSection />
 
@@ -54,6 +56,7 @@ import TaskSettingsSection from './sections/TaskSettingsSection.vue'
 import MapSettingsSection from './sections/MapSettingsSection.vue'
 import AIServiceSettingsSection from './sections/AIServiceSettingsSection.vue'
 import ImageSettingsSection from './sections/ImageSettingsSection.vue'
+import PhotoViewingSettingsSection from './sections/PhotoViewingSettingsSection.vue'
 import ScanScheduleSection from './sections/ScanScheduleSection.vue'
 import MomentCaptionScheduleSection from './sections/MomentCaptionScheduleSection.vue'
 import RecycleBinSettingsSection from './sections/RecycleBinSettingsSection.vue'
