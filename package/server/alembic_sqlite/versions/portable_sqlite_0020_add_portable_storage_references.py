@@ -1,7 +1,7 @@
 """add portable storage references
 
 Revision ID: portable_sqlite_0020
-Revises: b0b9b9a3a2c0
+Revises: 9c9beecb6d91
 Create Date: 2026-10-13 12:32:21.611091
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = 'portable_sqlite_0020'
-down_revision: Union[str, Sequence[str], None] = 'b0b9b9a3a2c0'
+down_revision: Union[str, Sequence[str], None] = '9c9beecb6d91'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

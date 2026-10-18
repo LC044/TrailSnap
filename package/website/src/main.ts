@@ -26,6 +26,9 @@ import { useUserStore } from '@/stores/user'
 import { registerConnectionDeepLinks } from '@/config/serverConnection'
 import { installNativeNetworkPolicy } from '@/config/nativeNetworkPolicy'
 import { registerButtonMotion } from '@/composables/useButtonMotion'
+import { useNavigationStore } from '@/stores/navigation'
+import { commonPageLoaders } from '@/router/commonPages'
+import { schedulePagePreloads } from '@/router/preload'
 
 async function bootstrap() {
   document.documentElement.classList.toggle('capacitor-android', Capacitor.getPlatform() === 'android')
@@ -52,6 +55,7 @@ async function bootstrap() {
   registerButtonMotion()
 
   await router.isReady()
+  schedulePagePreloads(commonPageLoaders, () => !!useUserStore().token && !useNavigationStore().pending)
   await registerConnectionDeepLinks(router)
   await registerNativeBackButton(router)
   registerPwa()

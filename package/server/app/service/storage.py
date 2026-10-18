@@ -411,6 +411,9 @@ def delete_thumbnails(user_id: UUID, file_id: UUID):
         p1, p2 = compact[:2], compact[2:4]
         root = _get_storage_root(user_id)
         base = os.path.join(root, 'thumbnails', p1, p2)
+        from pathlib import Path
+        for panorama_file in Path(base).glob(f"{compact}-pano-*.jpg"):
+            panorama_file.unlink(missing_ok=True)
         # 判断webp格式的图片是否存在
         wm = os.path.join(base, f"{compact}.webp")
         ws = os.path.join(base, f"{compact}-thumb.webp")

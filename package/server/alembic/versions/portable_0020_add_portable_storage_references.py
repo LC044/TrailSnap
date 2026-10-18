@@ -1,7 +1,7 @@
 """add portable storage references
 
 Revision ID: portable_0020
-Revises: 4c8b8ca1eaac
+Revises: bbc00427d4d5
 Create Date: 2026-10-13 12:32:20.660936
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'portable_0020'
-down_revision: Union[str, None] = '4c8b8ca1eaac'
+down_revision: Union[str, None] = 'bbc00427d4d5'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

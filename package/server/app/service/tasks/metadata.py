@@ -305,6 +305,13 @@ def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict, *,
         if metadata_cache is not None:
             metadata_cache[photo.id] = db_meta
 
+    if "panorama" in meta:
+        from app.utils.panorama import apply_detection
+        # Metadata processing is the supported way to refresh panorama detection.
+        # Discard legacy manual overrides from the removed viewer controls.
+        photo.panorama_override = None
+        apply_detection(photo, meta["panorama"])
+
     # Update fields
     if meta.get("exif_info"):
         exif_dict = meta["exif_info"]

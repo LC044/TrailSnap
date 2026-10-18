@@ -6,6 +6,7 @@ import { createRequire } from 'node:module'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
 import { visualizer } from 'rollup-plugin-visualizer'
+import { collectShellAssets } from './scripts/pwa-precache.mjs'
 
 // Ship the globe's workers, textures and widget resources with TrailSnap. The
 // map must not depend on a third-party script CDN or a Cesium ion account.
@@ -40,13 +41,10 @@ function pwaPlugin() {
     name: 'trailsnap-pwa',
     apply: 'build',
     generateBundle(_, bundle) {
-      const precache = Object.keys(bundle)
-        .filter((fileName) => /\.(?:js|css|woff2?|ttf|svg|png|jpe?g|webp)$/i.test(fileName))
-        .filter((fileName) => !/(?:cesiumRuntime|Cesium)-/.test(fileName))
-        .map((fileName) => `/${fileName}`)
+      const precache = collectShellAssets(bundle)
 
       const source = `
-const CACHE_NAME = 'trailsnap-app-shell-v2';
+const CACHE_NAME = 'trailsnap-app-shell-v3';
 const PRECACHE_URLS = ${JSON.stringify(['/', '/index.html', '/offline.html', '/manifest.webmanifest', '/logo.svg', '/favicon.ico', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', ...precache])};
 self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))));
 self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))).then(() => self.clients.claim())));

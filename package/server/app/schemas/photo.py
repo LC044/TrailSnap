@@ -31,6 +31,9 @@ class PhotoUpdate(BaseModel):
     modify_original_file: Optional[bool] = False
 
 class Photo(PhotoBase):
+    panorama_projection: Optional[str] = None
+    panorama_metadata: Optional[Dict[str, Any]] = None
+    panorama_override: Optional[str] = None
     id: UUID
     owner_id: Optional[UUID] = None
     file_path: str = Field(exclude=True)

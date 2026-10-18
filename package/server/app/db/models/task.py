@@ -14,6 +14,7 @@ class TaskStatus(str, enum.Enum):
     CANCELLED = "cancelled"
 
 class TaskType(str, enum.Enum):
+    SCAN_PANORAMA = "SCAN_PANORAMA"
     SCAN_FOLDER = "SCAN_FOLDER"
     PROCESS_BASIC = "PROCESS_BASIC"  # Basic info, thumbnail, preview
     # PROCESS_IMAGE = "PROCESS_IMAGE"  # Deprecated or Full Legacy
@@ -45,6 +46,7 @@ class TaskType(str, enum.Enum):
 INTERACTIVE_TASK_PRIORITY = 10_000
 
 DEFAULT_PRIORITIES = {
+    TaskType.SCAN_PANORAMA: 96,
     TaskType.SCAN_ALBUM: 100,
     TaskType.SCAN_FOLDER: 100,
     TaskType.PROCESS_BASIC: 99,
@@ -73,6 +75,7 @@ DEFAULT_PRIORITIES = {
 }
 
 CATEGORY_DESCRIPTION_MAP = {
+    TaskType.SCAN_PANORAMA: "识别已拼接全景照片",
     TaskType.SCAN_FOLDER: '用于扫描文件夹中的文件',
     TaskType.PROCESS_BASIC: '用于基本文件处理',
     TaskType.GENERATE_THUMBNAIL: '用于生成缩略图',
@@ -96,6 +99,7 @@ CATEGORY_DESCRIPTION_MAP = {
 }
 
 CATEGORY_NAME_MAP = {
+    TaskType.SCAN_PANORAMA: "全景补识别",
     TaskType.SCAN_ALBUM: '扫描文件夹',
     TaskType.GENERATE_THUMBNAIL: '生成缩略图',
     TaskType.PROCESS_BASIC: '基本处理',

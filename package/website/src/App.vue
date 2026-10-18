@@ -3,6 +3,7 @@
   <el-config-provider :locale="zhCn">
     <!-- 动态渲染当前路由对应的布局 -->
     <component :is="currentLayout" />
+    <NavigationFeedback />
     <PwaInstallPrompt />
     <DesktopUpdatePrompt />
     <DesktopLegacyPrompt />
@@ -34,6 +35,7 @@ import DesktopUpdatePrompt from '@/components/DesktopUpdatePrompt.vue';
 import DesktopLegacyPrompt from '@/components/DesktopLegacyPrompt.vue';
 import MobileUpdatePrompt from '@/components/MobileUpdatePrompt.vue';
 import UploadCenter from '@/components/UploadCenter.vue';
+import NavigationFeedback from '@/components/NavigationFeedback.vue';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 // 🚨 关键：确保调用了 provideTheme()
 const {

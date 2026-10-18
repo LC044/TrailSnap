@@ -438,6 +438,8 @@ app.include_router(ticket_wallet.router, prefix="/ticket-wallet", tags=["Ticket 
 app.include_router(flight_ticket.router, prefix="/flight-ticket", tags=["flight-ticket"])
 app.include_router(railway_router, prefix="/railway", tags=["railway"])
 app.include_router(swipe_filter.router, prefix="/photos/swipe-filter", tags=["SwipeFilter"])
+from app.api import panorama
+app.include_router(panorama.router, prefix="/photos", tags=["Panorama"])
 app.include_router(photo.router, prefix="/photos", tags=["Photos"])
 app.include_router(metadata.router, prefix="/metadata", tags=["Metadata"])
 app.include_router(album.router,prefix="/albums", tags=["Albums"])

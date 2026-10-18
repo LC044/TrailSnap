@@ -78,6 +78,16 @@
         >
           {{ formatFileType(type) }}
         </button>
+        <button
+          type="button"
+          data-testid="filter-type-panorama"
+          @click="togglePanorama"
+          :aria-pressed="selectedFilters.is_panorama === true"
+          class="px-3 py-1.5 rounded-full text-sm transition-all border"
+          :class="selectedFilters.is_panorama
+            ? 'bg-primary-500 text-white border-primary-500'
+            : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-primary-300'"
+        >360° 全景</button>
       </div>
     </div>
 
@@ -136,6 +146,11 @@ const props = defineProps<{
 const store = props.store || usePhotoStore();
 const availableFilters = computed(() => store.availableFilters);
 const selectedFilters = store.selectedFilters;
+
+const togglePanorama = () => {
+  selectedFilters.is_panorama = selectedFilters.is_panorama ? undefined : true;
+  store.loadPhotos(true);
+};
 
 const collapsed = reactive({
     source: false,

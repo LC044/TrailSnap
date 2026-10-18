@@ -9,6 +9,7 @@
 @Description : 
 """
 import shutil
+import math
 import traceback
 from datetime import datetime
 import re
@@ -81,9 +82,21 @@ def get_gps_info(exif_data: Dict[str, Any]) -> Optional[Dict[str, float]]:
         if gps_info['GPSLongitudeRef'] != 'E':
             lng = -lng
 
-    if lat is not None and lng is not None:
-        return {"latitude": lat, "longitude": lng}
-    return None
+    return valid_gps_location({"latitude": lat, "longitude": lng})
+
+
+def valid_gps_location(gps: Optional[Dict[str, float]]) -> Optional[Dict[str, float]]:
+    """Ignore unusable GPS pairs from either EXIF or video metadata."""
+    if not gps:
+        return None
+    try:
+        lat, lng = float(gps["latitude"]), float(gps["longitude"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if not (math.isfinite(lat) and math.isfinite(lng)
+            and -90 <= lat <= 90 and -180 <= lng <= 180):
+        return None
+    return gps
 
 
 def get_exif_data(image: Image.Image) -> Dict[str, Any]:
@@ -202,6 +215,7 @@ def _attach_location_details(metadata: Dict[str, Any], gps: Optional[Dict[str, f
 
     图片与视频两条分支共用，保证视频的位置信息也能进入 city/province/scene 链路。
     """
+    gps = valid_gps_location(gps)
     metadata["location"] = gps
     if not (gps and extract_location_details):
         return
@@ -256,6 +270,8 @@ def extract_metadata(file_path: str, filename: str, image_obj: Optional[Image.Im
             try:
                 metadata["width"], metadata["height"] = display_image_size(img)
                 exif_dict = get_exif_data(img)
+                from app.utils.panorama import parse_gpano
+                metadata["panorama"] = parse_gpano(img.info.get("xmp") or img.info.get("XML:com.adobe.xmp"), img.width, img.height, img.getexif().get(274, 1))
             finally:
                 if should_close:
                     try:

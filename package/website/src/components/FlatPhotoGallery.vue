@@ -72,6 +72,7 @@
                     class="absolute inset-0 bg-black/10 z-10 pointer-events-none"
                 ></div>
                 <!-- Video Indicator -->
+                <span v-if="img.panorama_projection" class="absolute top-2 left-10 z-10 rounded bg-black/70 px-2 py-1 text-xs text-white pointer-events-none">360°</span>
                 <div v-if="img.file_type === 'video'" class="flex mb-1 absolute top-1 right-2 justify-center pointer-events-none z-10 items-center">
                   <div class="text-white text-sm">
                     {{ img.duration}}

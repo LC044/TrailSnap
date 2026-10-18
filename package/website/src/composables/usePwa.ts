@@ -31,7 +31,7 @@ export function registerPwa() {
   if (isNativeApp()) return
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return
 
-  window.addEventListener('load', async () => {
+  const register = async () => {
     registration = await navigator.serviceWorker.register('/sw.js')
     if (registration.waiting) updateAvailable.value = true
     registration.addEventListener('updatefound', () => {
@@ -40,7 +40,9 @@ export function registerPwa() {
         if (worker.state === 'installed' && navigator.serviceWorker.controller) updateAvailable.value = true
       })
     })
-  }, { once: true })
+  }
+  if (document.readyState === 'complete') void register().catch(error => console.warn('PWA registration failed', error))
+  else window.addEventListener('load', () => { void register().catch(error => console.warn('PWA registration failed', error)) }, { once: true })
 
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (updateRequested) window.location.reload()
