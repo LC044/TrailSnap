@@ -26,6 +26,7 @@
         </button>
 
         <div class="viewer-desktop-actions ts-liquid-glass ts-glass-toolbar flex items-center gap-1 pointer-events-auto">
+            <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': panoramaActive }" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" :title="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <!-- Zoom Controls -->
             <button @click.stop="zoomOut" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" title="缩小 (-)">
                 <ZoomOut class="w-6 h-6" />
@@ -44,7 +45,7 @@
              <button v-if="allowDelete" @click.stop="handleDelete" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors text-red-400 hover:text-red-300 bg-transparent p-0" title="删除图片 (Del)">
                 <Trash2 class="w-6 h-6" />
             </button>
-            <button @click.stop="toggleOriginal" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'text-primary-400': showOriginal }" title="查看原图 (Shift+O)">
+            <button v-if="!panoramaActive" @click.stop="toggleOriginal" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'text-primary-400': showOriginal }" title="查看原图 (Shift+O)">
                 <Focus class="w-6 h-6" />
             </button>
             <button @click.stop="toggleSidebar" class="w-8 h-8 md:w-12 md:h-12 flex items-center justify-center rounded-full text-white/90 hover:bg-white/10 transition-colors bg-transparent p-0" :class="{ 'bg-white/20 text-white': showSidebar }" title="查看元数据 (I)">
@@ -63,6 +64,9 @@
                     </button>
                     <template #dropdown>
                         <el-dropdown-menu class="w-36">
+                            <el-dropdown-item v-if="panoramaActive" command="panoramaReset" :disabled="panoramaState.busy"><div class="flex items-center gap-2"><RotateCcw class="h-4 w-4" /><span>重置全景视角</span></div></el-dropdown-item>
+                            <el-dropdown-item v-if="panoramaActive" command="panoramaFullscreen" :disabled="panoramaState.busy"><div class="flex items-center gap-2"><Maximize2 class="h-4 w-4" /><span>全景全屏</span></div></el-dropdown-item>
+                            <el-dropdown-item v-if="panoramaActive && panoramaState.allowHigh" command="panoramaHigh" :disabled="panoramaState.busy"><div class="flex items-center gap-2"><Focus class="h-4 w-4" /><span>{{ panoramaState.high ? '标准全景画质' : '高清全景画质' }}</span></div></el-dropdown-item>
                             <el-dropdown-item v-if="isTauriApp()" command="revealPhoto" :disabled="!image || revealingPhoto">
                                 <div class="flex items-center gap-2"><FolderOpen class="w-4 h-4" /><span>打开所在文件夹</span></div>
                             </el-dropdown-item>
@@ -188,14 +192,18 @@
         <button
             v-if="hasPrev && controlsVisible"
             @click.stop="prev"
-            class="absolute left-4 z-[101] hidden md:flex w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
+            aria-label="上一张照片"
+            :class="panoramaActive ? 'flex' : 'hidden md:flex'"
+            class="absolute left-4 z-[101] w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
             <ChevronLeft class="w-8 h-8" />
         </button>
         <button
             v-if="hasNext && controlsVisible"
             @click.stop="next"
-            class="absolute right-4 z-[101] hidden md:flex w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
+            aria-label="下一张照片"
+            :class="panoramaActive ? 'flex' : 'hidden md:flex'"
+            class="absolute right-4 z-[101] w-12 h-12 items-center justify-center rounded-full hover:bg-black/40 text-white/90 transition-all p-0 bg-transparent"
         >
             <ChevronRight class="w-8 h-8" />
         </button>
@@ -227,6 +235,7 @@
             </div>
 
             <div class="relative h-full flex items-center justify-center overflow-hidden" style="width: 33.333333%">
+              <PanoramaViewer ref="panoramaViewerRef" v-if="visible && image && isPanoramaPhoto && !isEditing" :key="image.id + image.url" :photo-id="image.id" class="z-20" @active="panoramaActive = $event" @state="panoramaState = $event" @tap="handleMediaTap" />
               <div
                 v-if="image && (!image.file_type || image.file_type === 'image' || image.file_type === 'live_photo')"
                 class="relative w-full h-full transition-transform duration-200 ease-out origin-center select-none flex items-center justify-center"
@@ -394,6 +403,7 @@
           @click.stop
         >
           <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-center">
+            <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': panoramaActive }" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="下载" @click.stop="downloadImage"><Download class="h-5 w-5" /></button>
             <button v-if="allowEdit && isStillImage" class="ts-glass-button" aria-label="编辑" @click.stop="enterEditMode"><Pencil class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="AI 分析" @click.stop="handleCommand('viewDescription')"><Sparkles class="h-5 w-5" /></button>
@@ -414,11 +424,23 @@
             <div class="viewer-menu-header"><h2>更多</h2><button class="ts-icon-button ts-button-ghost" aria-label="关闭更多功能" @click.stop="closeMobileMenu"><X class="h-5 w-5" /></button></div>
 
             <div class="viewer-menu-grid grid grid-cols-4 gap-y-4">
+              <button v-if="panoramaActive" type="button" :disabled="panoramaState.busy" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => panoramaViewerRef?.resetView())">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><RotateCcw class="h-5 w-5" /></span>
+                <span class="text-[11px]">重置全景视角</span>
+              </button>
+              <button v-if="panoramaActive" type="button" :disabled="panoramaState.busy" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => panoramaViewerRef?.toggleFullscreen())">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><Maximize2 class="h-5 w-5" /></span>
+                <span class="text-[11px]">全景全屏</span>
+              </button>
+              <button v-if="panoramaActive && panoramaState.allowHigh" type="button" :disabled="panoramaState.busy" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => panoramaViewerRef?.toggleHigh())">
+                <span class="w-11 h-11 flex items-center justify-center rounded-full"><Focus class="h-5 w-5" /></span>
+                <span class="text-[11px]">{{ panoramaState.high ? '标准全景画质' : '高清全景画质' }}</span>
+              </button>
               <button :disabled="!canSetDailyFrame" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0 disabled:opacity-40" @click.stop="runMobileAction(() => handleCommand('dailyFrame'))">
                 <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20"><Film class="w-5 h-5" /></span>
                 <span class="text-[11px]">设为当天一帧</span>
               </button>
-              <button class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(toggleOriginal)">
+              <button v-if="!panoramaActive" class="flex flex-col items-center gap-1.5 text-white/90 bg-transparent p-0" @click.stop="runMobileAction(toggleOriginal)">
                 <span class="w-11 h-11 flex items-center justify-center rounded-full bg-white/10 active:bg-white/20" :class="{ 'text-primary-400': showOriginal }"><Focus class="w-5 h-5" /></span>
                 <span class="text-[11px]">{{ showOriginal ? '预览图' : '查看原图' }}</span>
               </button>
@@ -642,7 +664,7 @@
 import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch, computed, onUnmounted, nextTick, onMounted, defineAsyncComponent } from 'vue'
 import {
-    X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info,
+    X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info, Globe2, RotateCcw,
     ImagePlus, FolderOpen,
     ScanText,
     MoreHorizontal,
@@ -680,6 +702,14 @@ import PhotoMetadataSidebar from './PhotoMetadataSidebar.vue'
 import PhotoOCRPanel from './PhotoOCRPanel.vue'
 import PersonSelector from './PersonSelector.vue'
 // PhotoEditor 依赖 fabric（~数百 KB），只在用户点击编辑时才需要，异步化以延迟加载。
+const PanoramaViewer = defineAsyncComponent(() => import('./PanoramaViewer.vue'))
+const panoramaActive = ref(false)
+const panoramaViewerRef = ref<{
+    zoomIn: () => void; zoomOut: () => void; resetView: () => void
+    toggleMode: () => void; toggleHigh: () => void; toggleFullscreen: () => void
+} | null>(null)
+const panoramaState = ref({ available: false, busy: false, high: false, allowHigh: false })
+const isPanoramaPhoto = computed(() => props.image?.file_type === 'image' && !!props.image.panorama_projection)
 const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
 import ResponsiveDialog from './ui/ResponsiveDialog.vue'
@@ -1249,6 +1279,10 @@ onUnmounted(() => {
 const isDragging = ref(false)
 watch(() => props.image, async (newImg, oldImg) => {
     // 1. Reset State
+    if (newImg?.id !== oldImg?.id) {
+        panoramaActive.value = false
+        panoramaState.value = { available: false, busy: false, high: false, allowHigh: false }
+    }
     metadata.value = null
     loading.value = !!newImg
     showOriginal.value = false
@@ -1444,6 +1478,9 @@ const revealPhoto = async () => {
     } finally { revealingPhoto.value = false }
 }
 const handleCommand = (command: string) => {
+    if (command === 'panoramaReset') { panoramaViewerRef.value?.resetView(); return }
+    if (command === 'panoramaHigh') { panoramaViewerRef.value?.toggleHigh(); return }
+    if (command === 'panoramaFullscreen') { panoramaViewerRef.value?.toggleFullscreen(); return }
     if (command === 'revealPhoto') { void revealPhoto(); return }
     if (command === 'dailyFrame') {
         openDailyFrame()
@@ -1766,6 +1803,7 @@ const handleSidebarUpdate = (updates: any) => {
 
 // Zoom & Pan Methods
 const resetZoom = () => {
+    if (panoramaActive.value) { panoramaViewerRef.value?.resetView(); return }
     scale.value = 1
     translateX.value = 0
     translateY.value = 0
@@ -1773,10 +1811,12 @@ const resetZoom = () => {
 }
 
 const zoomIn = () => {
+    if (panoramaActive.value) { panoramaViewerRef.value?.zoomIn(); return }
     scale.value = Math.min(scale.value + 0.5, 5)
 }
 
 const zoomOut = () => {
+    if (panoramaActive.value) { panoramaViewerRef.value?.zoomOut(); return }
     scale.value = Math.max(scale.value - 0.5, 1)
     if (scale.value === 1) {
         translateX.value = 0
