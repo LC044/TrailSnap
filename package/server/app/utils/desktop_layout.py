@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import uuid
 
 from app.utils.portable_library import write_json
 from app.utils.windows_paths import filesystem_path, publish_directory
@@ -48,20 +49,55 @@ def stage_program(root: Path, program: Path, server: Path, launcher: Path, catal
     app = root / 'app'
     app.mkdir(parents=True, exist_ok=True)
     target = app / build
-    if not target.exists():
+    def intact():
+        if not target.is_dir() or target.is_symlink():
+            return False
+        try:
+            if json.loads((target / 'manifest.json').read_text(encoding='utf-8')) != manifest:
+                return False
+            from app.utils.portable_library import file_hash
+            expected = {relative for _, relative in inputs} | {'manifest.json', 'archive.sha256'}
+            if any(p.is_file() and p.relative_to(target).as_posix() not in expected for p in target.rglob('*')):
+                return False
+            return all((target / relative).is_file() and file_hash(path) == file_hash(target / relative)
+                       for path, relative in inputs)
+        except (OSError, ValueError):
+            return False
+    if not intact():
         staging = Path(tempfile.mkdtemp(prefix='.install-', dir=app))
+        retired = app / ('.repair-' + uuid.uuid4().hex)
         try:
             for path, relative in inputs:
                 destination = Path(filesystem_path(staging / relative))
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(filesystem_path(path), destination)
             write_json(staging / 'manifest.json', manifest)
-            publish_directory(staging, target)
+            if target.exists():
+                # Program-only directories may be repaired; never traverse links.
+                descriptor = root / 'instance.json'
+                if descriptor.is_file():
+                    data_root = json.loads(descriptor.read_text(encoding='utf-8')).get('dataRoot')
+                    if data_root:
+                        data = root / data_root['path'] if data_root['kind'] == 'relative' else Path(data_root['path'])
+                        if data.resolve().is_relative_to(target.resolve()):
+                            raise ValueError('图库位于程序目录内，已停止修复，请先迁移图库')
+                if any(p.name == 'library.json' or p.suffix == '.sqlite' for p in target.rglob('*')):
+                    raise ValueError('程序目录含图库数据，已停止修复')
+                if target.is_symlink() or (hasattr(target, 'is_junction') and target.is_junction()) or any(
+                    p.is_symlink() or (hasattr(p, 'is_junction') and p.is_junction()) for p in target.rglob('*')):
+                    raise ValueError('已有程序目录含链接，已停止修复')
+                target.rename(retired)
+            try:
+                publish_directory(staging, target)
+            except BaseException:
+                if retired.exists() and not target.exists():
+                    retired.rename(target)
+                raise
+            if retired.exists():
+                shutil.rmtree(filesystem_path(retired))
         finally:
             if staging.exists():
                 shutil.rmtree(filesystem_path(staging))
-    elif json.loads((target / 'manifest.json').read_text(encoding='utf-8')) != manifest:
-        raise ValueError('已有程序版本目录不完整，请重新安装到空文件夹')
     shutil.copy2(launcher, root / 'TrailSnap.exe')
     # Distribution descriptor only. Never overwrite instance.json or userdata.
     write_json(root / 'portable.json', {'schemaVersion': 1, 'activeBuild': build})

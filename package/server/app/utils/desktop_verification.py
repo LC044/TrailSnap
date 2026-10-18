@@ -38,12 +38,14 @@ def photo_paths(db, root: Path):
         yield photo, owner, str(path)
 
 
-def _sample(path):
+def _sample(path, full=False):
     with open(filesystem_path(Path(path)), 'rb') as stream:
+        if full:
+            return hashlib.file_digest(stream, 'sha256').hexdigest()
         return hashlib.sha256(stream.read(65536)).hexdigest()
 
 
-def media_baseline(root: Path, limit=32):
+def media_baseline(root: Path, limit=32, full=False):
     database = root / 'data/trailsnap.sqlite'
     if not database.is_file():
         return []
@@ -53,14 +55,14 @@ def media_baseline(root: Path, limit=32):
             return []
         for photo, _, path in photo_paths(db, root):
             if Path(path).is_file():
-                result.append({'id': photo, 'sha256Prefix': _sample(path)})
-                if len(result) >= limit:
+                result.append({'id': photo, 'sha256' if full else 'sha256Prefix': _sample(path, full)})
+                if limit is not None and len(result) >= limit:
                     break
     return result
 
 
 def verify_media(root: Path, baseline):
-    expected = {item['id']: item['sha256Prefix'] for item in baseline}
+    expected = {item['id']: (item.get('sha256', item.get('sha256Prefix')), 'sha256' in item) for item in baseline}
     if not expected:
         return 0  # Empty libraries and already-offline external disks are valid.
     verified = 0
@@ -69,7 +71,8 @@ def verify_media(root: Path, baseline):
             if photo not in expected:
                 continue
             try:
-                if _sample(path) != expected.pop(photo):
+                digest, full = expected.pop(photo)
+                if _sample(path, full) != digest:
                     raise ValueError('文件内容与升级前不一致')
             except (OSError, ValueError) as error:
                 raise ValueError(f'升级前可读取的照片现在无法验证：{path}。已停止切换，请查看日志。') from error

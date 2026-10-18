@@ -25,6 +25,7 @@ ManifestDPIAwareness PerMonitorV2
 
 !include MUI2.nsh
 !include FileFunc.nsh
+!include TextFunc.nsh
 !include x64.nsh
 !include WordFunc.nsh
 !include "utils.nsh"
@@ -287,7 +288,33 @@ Function .onInit
       StrCpy $INSTDIR "$LOCALAPPDATA\${PRODUCTNAME}"
     !endif
 
-    ; The directory picker or /D is authoritative.
+    ; An explicit /D is authoritative. Otherwise upgrade the one known install.
+    InitPluginsDir
+    File /oname=$PLUGINSDIR\trailsnap-find-install.ps1 "${TRAILSNAP_HOOK_DIR}\find-installed-directory.ps1"
+    nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\trailsnap-find-install.ps1" -ProductName "${PRODUCTNAME}" -OutputFile "$PLUGINSDIR\trailsnap-install-path.txt"'
+    Pop $0
+    Pop $1
+    StrCpy $1 ""
+    FileOpen $2 "$PLUGINSDIR\trailsnap-install-path.txt" r
+    FileReadUTF16LE $2 $1
+    FileClose $2
+    ${If} $0 == 0
+      ${TrimNewLines} $1 $1
+      ${If} $1 != ""
+        StrCpy $INSTDIR $1
+      ${EndIf}
+    ${ElseIf} $0 == 2
+      ${If} ${Silent}
+      ${OrIf} $PassiveMode = 1
+        SetErrorLevel 1
+        Abort
+      ${EndIf}
+      MessageBox MB_OK|MB_ICONINFORMATION "发现多个行影集安装，请在下一页选择要升级的原安装目录。$\r$\n$1"
+    ${Else}
+      MessageBox MB_OK|MB_ICONSTOP "无法检查原安装位置。请选择明确的安装目录后重试。" /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
   ${EndIf}
 
 

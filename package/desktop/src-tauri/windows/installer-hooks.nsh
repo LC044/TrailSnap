@@ -70,7 +70,7 @@ Var TrailSnapShortTag
   ; launcher alias; the actual shell now lives in app/<build-id>.
   CopyFiles /SILENT "$INSTDIR\portable-launcher.exe" "$INSTDIR\trailsnap-desktop.exe"
   File /oname=$PLUGINSDIR\trailsnap-migrate-identity.ps1 "${TRAILSNAP_HOOK_DIR}\migrate-installed-identity.ps1"
-  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\trailsnap-migrate-identity.ps1" -InstallDirectory "$INSTDIR" -InstanceTag "$TrailSnapInstanceTag"'
+  nsExec::ExecToStack '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PLUGINSDIR\trailsnap-migrate-identity.ps1" -InstallDirectory "$INSTDIR" -InstanceTag "$TrailSnapInstanceTag" -ProductName "${PRODUCTNAME}"'
   Pop $0
   Pop $1
   ${If} $0 != 0

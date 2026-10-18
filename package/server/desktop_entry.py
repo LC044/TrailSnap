@@ -145,7 +145,18 @@ def main() -> None:
     parser.add_argument('--discover-old-data', nargs=2)
     parser.add_argument('--import-space', nargs=4)
     parser.add_argument('--cleanup-import', nargs=2)
+    parser.add_argument('--automatic-upgrade', nargs=2, metavar=('ROOT', 'ACTION'))
     args = parser.parse_args()
+    if args.automatic_upgrade:
+        import json
+        from app.utils.automatic_upgrade import automatic_upgrade
+        try:
+            result = automatic_upgrade(*args.automatic_upgrade)
+        except Exception as error:
+            print(f'自动迁移未完成：{error}。原数据保留，请检查日志后重试。', file=sys.stderr)
+            raise SystemExit(1) from None
+        print(json.dumps({'phase': result['phase']}, ensure_ascii=False))
+        return
     if args.discover_old_data or args.import_space or args.cleanup_import:
         import json
         import sys

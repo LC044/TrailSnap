@@ -633,6 +633,12 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                             }
                         }
                         let _ = fs::remove_file(secret_path);
+                        if std::env::var("TS_DESKTOP_VERIFY").as_deref() != Ok("1") {
+                            if let Some(root) = &app.state::<DataDirectory>().instance_root {
+                                let _ = portable::write_json(&root.join("maintenance/runtime-ready.json"),
+                                    &json!({"pid": std::process::id(), "verified": true}));
+                            }
+                        }
                         update_status(
                             &app,
                             RuntimeStatus {

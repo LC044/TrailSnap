@@ -60,6 +60,10 @@ def validate_library_source(source: Path) -> Path:
 def conversion_exclusions(source: Path) -> frozenset[str]:
     """An overwritten legacy installation can also contain the NEW live library."""
     excluded = {'server', 'trailsnap-desktop.exe', 'uninstall.exe'}
+    if (source / 'portable.json').is_file():
+        excluded.update({'app', 'maintenance', 'userdata', 'TrailSnap.exe', 'portable-launcher.exe', 'portable.json',
+                         'ai-extensions.json', 'resources', 'webview-runtime'})
+        excluded.update(path.name for path in source.glob('*.dll'))
     descriptor = source / 'instance.json'
     if descriptor.is_file():
         config = json.loads(descriptor.read_text(encoding='utf-8'))

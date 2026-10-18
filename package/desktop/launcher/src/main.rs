@@ -367,6 +367,24 @@ fn sync_linked_distribution(source: &Path, target: &Path) -> Result<(), String> 
     portable::write_json(&marker, &link)
 }
 
+fn automatic_upgrade(root: &Path, action: &str) -> Result<(), String> {
+    let descriptor: serde_json::Value = portable::read_json(&root.join("portable.json"))?;
+    let build = descriptor["activeBuild"].as_str().ok_or("程序版本缺失")?;
+    manifest(root, build)?;
+    let mut command = Command::new(root.join("app").join(build).join("server/trailsnap-server.exe"));
+    command.arg("--automatic-upgrade").arg(root).arg(action)
+        .env("PYTHONIOENCODING", "utf-8").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    let child = command.spawn().map_err(|e| e.to_string())?;
+    let _job = ProcessJob::attach(&child)?;
+    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    Ok(())
+}
+
 fn run() -> Result<(), String> {
     let root = portable::clean_path(
         std::env::current_exe()
@@ -431,6 +449,20 @@ fn run() -> Result<(), String> {
         fs::create_dir_all(root.join("maintenance")).map_err(|e| e.to_string())?;
         let _initialization_lock = portable::lock_directory(&root.join("maintenance"))?;
         if !root.join("instance.json").exists() {
+            let mut migration = automatic_upgrade(&root, "prepare");
+            #[cfg(windows)]
+            while let Err(ref error) = migration {
+                if root.join("maintenance/automatic-upgrade.json").exists()
+                    || std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() == Ok("1")
+                    || std::env::args().any(|arg| arg == "--validate-only") { break; }
+                let Some(source) = link_recovery::choose_legacy_library(error) else { return Ok(()); };
+                portable::write_json(&root.join("maintenance/automatic-upgrade-source.json"),
+                    &serde_json::json!({"source": source}))?;
+                migration = automatic_upgrade(&root, "prepare");
+            }
+            migration?;
+        }
+        if !root.join("instance.json").exists() {
             if root.join("userdata/library.json").exists()
                 || root.join("userdata/data/trailsnap.sqlite").exists()
                 || root.join("maintenance/initialized.json").exists()
@@ -475,6 +507,14 @@ fn run() -> Result<(), String> {
     let _lock = portable::lock_directory(&data)?;
     let lease = lease_server(data.clone())?;
     let journal = update_transaction::journal_path(&root);
+    let automatic_journal = root.join("maintenance/automatic-upgrade.json");
+    let automatic: Option<serde_json::Value> = if automatic_journal.exists() {
+        Some(portable::read_json(&automatic_journal)?)
+    } else { None };
+    let automatic_pending = automatic.as_ref().is_some_and(|job|
+        job["phase"] == "published" || job["phase"] == "validated");
+    let automatic_cleanup = automatic.as_ref().is_some_and(|job|
+        job["phase"] == "published" || job["phase"] == "validated" || job["phase"] == "committed");
     let reinstall = root.join("maintenance/reinstall.json");
     if reinstall.is_file() {
         let recovery: serde_json::Value = portable::read_json(&reinstall)?;
@@ -509,7 +549,8 @@ fn run() -> Result<(), String> {
         }
         fs::remove_file(reinstall).map_err(|e| e.to_string())?;
     }
-    if std::env::args().any(|arg| arg == "--validate-only") {
+    let validate_only = std::env::args().any(|arg| arg == "--validate-only");
+    if validate_only || automatic_pending {
         let tx = UpdateTransaction {
             schema_version: 1,
             id: uuid::Uuid::new_v4().to_string(),
@@ -549,7 +590,9 @@ fn run() -> Result<(), String> {
                 portable::write_json(&path, &baseline)?;
             }
         }
-        return validate(&root, &config, &tx, &lease);
+        validate(&root, &config, &tx, &lease)?;
+        if validate_only { return Ok(()); }
+        automatic_upgrade(&root, "validated")?;
     }
     if journal.exists() {
         let mut tx: UpdateTransaction = portable::read_json(&journal)?;
@@ -588,7 +631,26 @@ fn run() -> Result<(), String> {
         }
     }
     loop {
+        let ready = root.join("maintenance/runtime-ready.json");
+        if ready.exists() { fs::remove_file(&ready).map_err(|e| e.to_string())?; }
         let (mut child, job) = spawn(&root, &config, &lease, None)?;
+        // Cleanup is authorized only by this normal shell's backend readiness,
+        // never by the candidate or a stale marker from an earlier launch.
+        if automatic_cleanup {
+            let deadline = Instant::now() + Duration::from_secs(30 * 60);
+            while Instant::now() < deadline {
+                if child.try_wait().map_err(|e| e.to_string())?.is_some() { break; }
+                if portable::read_json::<serde_json::Value>(&ready).ok().is_some_and(|v|
+                    v["pid"] == child.id() && v["verified"] == true) {
+                    if let Err(error) = automatic_upgrade(&root, "cleanup") {
+                        portable::write_json(&root.join("maintenance/automatic-upgrade-cleanup-error.json"),
+                            &serde_json::json!({"error": error}))?;
+                    }
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
         child.wait().map_err(|e| e.to_string())?;
         drop(job);
         let handoff = root.join("maintenance/handoff.json");

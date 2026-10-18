@@ -1,6 +1,16 @@
 //! The launcher must offer recovery before the web UI can be started.
 #[cfg(windows)]
 pub fn choose_moved_library(error: &str) -> Option<std::path::PathBuf> {
+    choose_directory("找回搬迁后的图库", &format!("{error}\n\n如果只是磁盘未连接，请连接后重新打开。\n如果移动了整个行影集文件夹，是否选择搬迁后的文件夹来恢复原快捷方式？\n取消会保留原设置，不会新建空图库。"))
+}
+
+#[cfg(windows)]
+pub fn choose_legacy_library(error: &str) -> Option<std::path::PathBuf> {
+    choose_directory("确认旧版图库", &format!("{error}\n\n是否手动选择旧数据目录（包含 data 文件夹的那一级）？\n成功验证并启动后，会将已迁移的旧数据清理；外部原照片保留。\n取消不会改动旧数据，也不会创建空图库。"))
+}
+
+#[cfg(windows)]
+fn choose_directory(title: &str, message: &str) -> Option<std::path::PathBuf> {
     use std::ffi::c_void;
     #[repr(C)]
     struct BrowseInfo {
@@ -28,8 +38,8 @@ pub fn choose_moved_library(error: &str) -> Option<std::path::PathBuf> {
         fn SHBrowseForFolderW(info: *const BrowseInfo) -> *mut c_void;
         fn SHGetPathFromIDListEx(item: *const c_void, path: *mut u16, size: u32, flags: u32) -> i32;
     }
-    let message: Vec<u16> = format!("{error}\n\n如果只是磁盘未连接，请连接后重新打开。\n如果移动了整个行影集文件夹，是否选择搬迁后的文件夹来恢复原快捷方式？\n取消会保留原设置，不会新建空图库。").encode_utf16().chain(Some(0)).collect();
-    let title: Vec<u16> = "找回搬迁后的图库".encode_utf16().chain(Some(0)).collect();
+    let message: Vec<u16> = message.encode_utf16().chain(Some(0)).collect();
+    let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
     unsafe {
         if MessageBoxW(std::ptr::null_mut(), message.as_ptr(), title.as_ptr(), 0x24) != 6 {
             return None;
