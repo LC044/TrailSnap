@@ -3,6 +3,10 @@ name: Cleanup PR Preview Assets
 on:
   pull_request:
     types: [closed]
+  schedule:
+    # 北京时间每天 13:00（UTC 05:00）兜底清扫，删除已关闭 PR 遗留的预览资产
+    - cron: '0 5 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: pr-preview-release-assets
@@ -11,16 +15,18 @@ concurrency:
 jobs:
   cleanup:
     name: Remove closed PR assets
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
-      - name: Delete this PR's assets from the shared preview release
+      - name: Delete closed PR assets from the shared preview release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.number }}
+          EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
           release_id=$(gh api "repos/$GH_REPO/releases/tags/pr-preview" --jq '.id' 2>/dev/null || true)
@@ -29,9 +35,36 @@ jobs:
             exit 0
           fi
 
-          gh api --paginate "repos/$GH_REPO/releases/$release_id/assets?per_page=100" \
-            --jq ".[] | select(.name | contains(\"pr-$PR_NUMBER-\")) | .id" |
-          while read -r asset_id; do
+          # 预览资产命名约定：pr-<PR号>-* 或 TrailSnap-AI-pr-<PR号>-*
+          extract_pr_number() {
+            if [[ "$1" =~ (^|-)pr-([0-9]+)- ]]; then
+              echo "${BASH_REMATCH[2]}"
+            fi
+          }
+
+          open_numbers=""
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "Cleaning assets for closed PR #$PR_NUMBER."
+          else
+            echo "Scheduled/manual sweep: removing assets of all non-open PRs."
+            open_numbers=$(gh pr list --repo "$GH_REPO" --state open --limit 1000 --json number --jq '.[].number')
+          fi
+
+          deleted=0
+          while IFS=$'\t' read -r asset_id asset_name; do
             [ -n "$asset_id" ] || continue
-            gh api --method DELETE "repos/$GH_REPO/releases/assets/$asset_id"
-          done
+            asset_pr=$(extract_pr_number "$asset_name")
+            [ -n "$asset_pr" ] || continue
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              [ "$asset_pr" = "$PR_NUMBER" ] || continue
+            elif printf '%s\n' "$open_numbers" | grep -qx "$asset_pr"; then
+              continue
+            fi
+            echo "Deleting $asset_name (PR #$asset_pr is not open)."
+            if gh api --method DELETE "repos/$GH_REPO/releases/assets/$asset_id"; then
+              deleted=$((deleted + 1))
+            fi
+          done < <(gh api --paginate "repos/$GH_REPO/releases/$release_id/assets?per_page=100" \
+            --jq '.[] | [.id, .name] | @tsv')
+
+          echo "Deleted $deleted asset(s)."

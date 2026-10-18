@@ -1,5 +1,6 @@
 from .user import User
 from .system import SystemState
+from .storage_root import StorageRoot
 from .photo import Photo
 from .album import Album, AlbumPhoto
 from .tag import PhotoTag, PhotoTagRelation

@@ -48,6 +48,9 @@ def _is_legacy_default_path(value: Optional[str]) -> bool:
 def configured_storage_base(settings: Optional[dict[str, Any]]) -> str:
     """Return the parent containing ``users/`` for the current layout."""
     value = _configured_path(settings)
+    from app.service.storage_paths import portable_enabled, instance_root
+    if portable_enabled() and (not value or _is_legacy_default_path(value)):
+        return str(instance_root() / "data")
     if _is_legacy_default_path(value):
         value = DEFAULT_STORAGE_BASE
     return os.path.abspath(os.path.expanduser(value or DEFAULT_STORAGE_BASE))
@@ -138,6 +141,9 @@ def _is_below(path: str, parent: str) -> bool:
 
 
 def _move_file(source: str, target: str, preserve_conflict: bool = False) -> Optional[str]:
+    # Candidate startup must leave originals available to the previous schema
+    # if validation fails and the launcher restores its database snapshot.
+    validating = os.getenv("TS_DESKTOP") == "1" and os.getenv("TS_DESKTOP_VERIFY") == "1"
     if os.path.abspath(source) == os.path.abspath(target):
         return target if os.path.exists(target) else None
     if not os.path.exists(source):
@@ -145,7 +151,8 @@ def _move_file(source: str, target: str, preserve_conflict: bool = False) -> Opt
     os.makedirs(os.path.dirname(target), exist_ok=True)
     if os.path.exists(target):
         if os.path.getsize(source) == os.path.getsize(target):
-            os.remove(source)
+            if not validating:
+                os.remove(source)
         elif preserve_conflict:
             stem, extension = os.path.splitext(target)
             index = 1
@@ -153,13 +160,14 @@ def _move_file(source: str, target: str, preserve_conflict: bool = False) -> Opt
             while os.path.exists(migrated_target):
                 index += 1
                 migrated_target = f"{stem}-migrated-{index}{extension}"
-            shutil.move(source, migrated_target)
+            (shutil.copy2 if validating else shutil.move)(source, migrated_target)
             return migrated_target
         else:
             logger.warning("Storage migration discarded an obsolete thumbnail because its target already exists: %s", source)
-            os.remove(source)
+            if not validating:
+                os.remove(source)
     else:
-        shutil.move(source, target)
+        (shutil.copy2 if validating else shutil.move)(source, target)
     return target
 
 
@@ -220,7 +228,7 @@ def migrate_legacy_user_storage(db) -> dict[str, int]:
 
         photos = (
             db.query(Photo)
-            .options(load_only(Photo.id, Photo.owner_id, Photo.file_path))
+            .options(load_only(Photo.id, Photo.owner_id, Photo._file_path))
             .filter(Photo.owner_id == user.id)
             .all()
         )

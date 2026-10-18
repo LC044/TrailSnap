@@ -110,6 +110,15 @@ async def lifespan(app: FastAPI):
     global log_listener
     log_listener = setup_logging('api')
 
+    if os.getenv("TS_DESKTOP") == "1" and os.getenv("TS_DESKTOP_VERIFY") == "1":
+        # No scheduler, worker, discovery or seed job may write before commit.
+        try:
+            yield
+        finally:
+            if log_listener:
+                log_listener.stop()
+        return
+
     # Thumbnail URLs contain the owner id, so requests can resolve files from
     # this startup cache without holding a DB connection while FileResponse is
     # streamed. This is especially important during rapid virtual-list scrolls.
@@ -415,6 +424,7 @@ def discovery_info():
     return BaseResponse.success(data={
         "service": "trailsnap",
         "instance_name": os.getenv("TRAILSNAP_INSTANCE_NAME", "TrailSnap").strip() or "TrailSnap",
+        **({"instance_id": os.getenv("TS_DESKTOP_INSTANCE_ID")} if os.getenv("TS_DESKTOP_INSTANCE_ID") else {}),
         "version": VERSION,
         "api_path": "/api",
     })

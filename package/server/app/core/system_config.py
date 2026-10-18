@@ -176,7 +176,8 @@ class SystemSettings(BaseModel):
 class SystemConfigManager:
     _instance = None
     _lock = threading.RLock()
-    _config_path = './data/system_config.json'
+    # Legacy local/Docker path remains unchanged; desktop supplies its data root.
+    _config_path = str(Path(os.environ["TS_DATA_DIR"]) / "system_config.json") if os.getenv("TS_DESKTOP") == "1" else './data/system_config.json'
 
     def __new__(cls):
         if cls._instance is None:

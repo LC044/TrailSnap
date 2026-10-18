@@ -44,7 +44,7 @@ export async function initializeServerConfig(): Promise<void> {
     while (Date.now() < deadline) {
       const status = await invoke<{ apiUrl: string; sessionSecret: string; ready: boolean; phase: string; message?: string }>('desktop_runtime_status')
       // Moving a large library can take longer than the normal service timeout.
-      if (status.phase === 'migrating') deadline = Date.now() + 60_000
+      if (status.phase === 'migrating' || status.phase === 'starting') deadline = Date.now() + 60_000
       if (status.message) {
         const startupMessage = document.querySelector<HTMLElement>('[data-startup-message]')
         if (startupMessage) startupMessage.textContent = status.message

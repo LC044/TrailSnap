@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "resources": {
+      "target/release/trailsnap-launcher.exe": "portable-launcher.exe"
+    }
+  }
+}

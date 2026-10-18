@@ -19,7 +19,9 @@ struct DirectoryConfig {
 
 pub struct DataDirectory {
     #[cfg(windows)]
-    _lock: fs::File,
+    _lock: Option<fs::File>,
+    data_lock: Mutex<Option<fs::File>>,
+    pub instance_root: Option<PathBuf>,
     config_path: PathBuf,
     default_root: PathBuf,
     config: Mutex<DirectoryConfig>,
@@ -28,66 +30,82 @@ pub struct DataDirectory {
 impl DataDirectory {
     pub fn load(app: &tauri::AppHandle) -> Result<Self, String> {
         #[cfg(windows)]
-        let default_root = std::env::var_os("LOCALAPPDATA")
-            .map(|path| PathBuf::from(path).join("TrailSnap"))
-            .ok_or_else(|| "无法读取 LOCALAPPDATA".to_string())?;
+        let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+        #[cfg(windows)]
+        let installation = crate::portable::instance_root_for_executable(&executable)?;
         #[cfg(not(windows))]
-        let default_root = app
+        let installation = app
             .path()
             .app_local_data_dir()
-            .map_err(|err| err.to_string())?;
+            .map_err(|e| e.to_string())?;
         let _ = app;
-        // This small pointer stays outside the directory being migrated.
-        let config_path = default_root.with_file_name("TrailSnap-desktop.json");
-        #[cfg(windows)]
-        let directory_lock = {
-            use std::os::windows::fs::OpenOptionsExt;
-            let parent = config_path.parent().ok_or("无法确定配置目录")?;
-            fs::create_dir_all(parent).map_err(|err| err.to_string())?;
-            let mut attempts = 0;
-            loop {
-                match fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .share_mode(0)
-                    .open(config_path.with_extension("lock"))
-                {
-                    Ok(file) => break file,
-                    // Relaunch spawns the replacement just before the old process exits.
-                    Err(err) if err.raw_os_error() == Some(32) && attempts < 20 => {
-                        attempts += 1;
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                    }
-                    Err(err) => {
-                        return Err(format!(
-                            "无法锁定桌面数据目录，请确认其他行影集窗口已关闭：{err}"
-                        ))
-                    }
-                }
-            }
-        };
-        let config = if config_path.exists() {
-            let config: DirectoryConfig =
-                serde_json::from_slice(&fs::read(&config_path).map_err(|err| err.to_string())?)
-                    .map_err(|err| format!("数据目录配置损坏：{err}"))?;
-            if !config.root.is_absolute() || !config.root.is_dir() {
-                return Err(format!(
-                    "数据目录不可用，请检查磁盘：{}",
-                    config.root.display()
-                ));
-            }
-            config
+        Self::load_from_directory(installation, cfg!(windows))
+    }
+
+    fn load_from_directory(installation: PathBuf, windows_layout: bool) -> Result<Self, String> {
+        let instance_root = (windows_layout && installation.join("instance.json").is_file())
+            .then_some(installation.clone());
+        let (config_path, default_root, config) = if let Some(root) = &instance_root {
+            let instance = crate::portable::load_instance(root)?;
+            let data = crate::portable::data_root(root, &instance)?;
+            (
+                root.join("instance.json"),
+                data.clone(),
+                DirectoryConfig {
+                    root: data,
+                    server_port: instance.server_port,
+                    ..Default::default()
+                },
+            )
         } else {
-            DirectoryConfig {
-                root: default_root.clone(),
-                ..Default::default()
+            if windows_layout
+                && (installation.join("portable.json").exists()
+                    || installation.join("maintenance/initialized.json").exists())
+            {
+                return Err("当前安装目录缺少 instance.json，请恢复该配置文件后通过 TrailSnap.exe 启动，避免打开空图库".into());
             }
+            // Only Windows uses the program-local layout. macOS/Linux retain
+            // their existing OS user-data directory and sibling pointer.
+            let pointer = if windows_layout {
+                installation.join("TrailSnap-desktop.json")
+            } else {
+                installation.with_file_name("TrailSnap-desktop.json")
+            };
+            let default = if windows_layout {
+                installation.join("userdata")
+            } else {
+                installation.clone()
+            };
+            let config = if pointer.exists() {
+                let mut value: DirectoryConfig = crate::portable::read_json(&pointer)?;
+                if value.root.is_relative() {
+                    value.root = installation.join(&value.root);
+                }
+                if !value.root.is_dir() {
+                    return Err("配置中的数据目录不可用，请检查磁盘".into());
+                }
+                value
+            } else {
+                fs::create_dir_all(&default)
+                    .map_err(|e| format!("安装目录不可写，请移动到可写文件夹：{e}"))?;
+                DirectoryConfig {
+                    root: default.clone(),
+                    ..Default::default()
+                }
+            };
+            (pointer, default, config)
         };
+        let data_lock =
+            if instance_root.is_some() && crate::portable::verify_launcher(&config.root)? {
+                None
+            } else {
+                Some(crate::portable::lock_directory(&config.root)?)
+            };
         Ok(Self {
             #[cfg(windows)]
-            _lock: directory_lock,
+            _lock: None,
+            data_lock: Mutex::new(data_lock),
+            instance_root,
             config_path,
             default_root,
             config: Mutex::new(config),
@@ -113,10 +131,21 @@ impl DataDirectory {
     pub fn server_port(&self) -> Result<u16, String> {
         let mut config = self.config.lock().expect("data directory poisoned");
         if let Some(port) = config.server_port.filter(|port| *port > 0) {
-            std::net::TcpListener::bind(("0.0.0.0", port)).map_err(|err| {
-                format!("手机连接端口 {port} 被占用，请关闭占用程序后重试：{err}")
-            })?;
-            return Ok(port);
+            let available = std::net::TcpListener::bind(("0.0.0.0", port));
+            let fixed = self
+                .instance_root
+                .as_ref()
+                .map(|root| crate::portable::load_instance(root).map(|v| v.fixed_port))
+                .transpose()?
+                .unwrap_or(true);
+            if available.is_ok() {
+                return Ok(port);
+            }
+            if fixed {
+                available.map_err(|err| {
+                    format!("手机连接端口 {port} 被占用，请关闭占用程序后重试：{err}")
+                })?;
+            }
         }
         let listener =
             std::net::TcpListener::bind(("0.0.0.0", 0)).map_err(|err| err.to_string())?;
@@ -157,6 +186,23 @@ impl DataDirectory {
     }
 
     fn save(&self, config: &DirectoryConfig) -> Result<(), String> {
+        if let Some(root) = &self.instance_root {
+            let mut instance = crate::portable::load_instance(root)?;
+            instance.server_port = config.server_port;
+            instance.data_root = if let Ok(relative) = config.root.strip_prefix(root) {
+                crate::portable::DataRoot {
+                    kind: "relative".into(),
+                    path: relative.to_path_buf(),
+                }
+            } else {
+                crate::portable::DataRoot {
+                    kind: "absolute".into(),
+                    path: config.root.clone(),
+                }
+            };
+            crate::portable::write_json(&root.join("instance.json"), &instance)?;
+            return Ok(());
+        }
         let temp = self.config_path.with_extension("json.tmp");
         let bytes = serde_json::to_vec_pretty(config).map_err(|err| err.to_string())?;
         fs::write(&temp, bytes).map_err(|err| format!("保存数据目录配置失败：{err}"))?;
@@ -167,9 +213,13 @@ impl DataDirectory {
     pub fn finish_migration(&self, result: Result<(), String>) -> Result<(), String> {
         let mut config = self.config.lock().expect("data directory poisoned");
         let mut next = config.clone();
+        let mut next_lock = None;
         if let Some(target) = next.pending_root.take() {
             match result {
                 Ok(()) => {
+                    // Acquire the new library before publishing its pointer.
+                    let lock = crate::portable::lock_directory(&target)?;
+                    next_lock = Some(lock);
                     next.previous_root = Some(next.root.clone());
                     next.root = target;
                     next.migration_error = None;
@@ -177,6 +227,9 @@ impl DataDirectory {
                 Err(err) => next.migration_error = Some(err),
             }
             self.save(&next)?;
+            if let Some(lock) = next_lock {
+                *self.data_lock.lock().expect("data lock poisoned") = Some(lock);
+            }
             *config = next;
         }
         Ok(())
@@ -225,7 +278,7 @@ fn canonical_directory(path: &Path) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn validate_target(source: &Path, target: &Path) -> Result<PathBuf, String> {
+pub(crate) fn validate_target(source: &Path, target: &Path) -> Result<PathBuf, String> {
     if !target.is_absolute()
         || target
             .components()
@@ -277,6 +330,33 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[test]
+    fn non_windows_keeps_user_data_and_existing_custom_pointer() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let local_data = root.join("com.trailsnap.desktop");
+        let state = DataDirectory::load_from_directory(local_data.clone(), false).unwrap();
+        assert_eq!(state.root(), local_data);
+        assert_eq!(state.config_path, root.join("TrailSnap-desktop.json"));
+        assert!(state.instance_root.is_none());
+        assert!(!local_data.join("userdata").exists());
+        drop(state);
+        let custom = root.join("custom-library");
+        fs::create_dir_all(&custom).unwrap();
+        crate::portable::write_json(
+            &root.join("TrailSnap-desktop.json"),
+            &DirectoryConfig {
+                root: custom.clone(),
+                server_port: Some(18900),
+                ..Default::default()
+            },
+        ).unwrap();
+        let state = DataDirectory::load_from_directory(local_data, false).unwrap();
+        assert_eq!(state.root(), custom);
+        assert_eq!(state.config.lock().unwrap().server_port, Some(18900));
+        drop(state);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     fn fixture() -> (PathBuf, DataDirectory) {
         let root = std::env::temp_dir().join(format!(
             "trailsnap-data-directory-{}",
@@ -287,9 +367,12 @@ mod tests {
         ));
         let source = root.join("source");
         fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(root.join("target")).unwrap();
         let state = DataDirectory {
             #[cfg(windows)]
-            _lock: fs::File::create(root.join("config.lock")).unwrap(),
+            _lock: Some(fs::File::create(root.join("config.lock")).unwrap()),
+            data_lock: Mutex::new(None),
+            instance_root: None,
             config_path: root.join("config.json"),
             default_root: source.clone(),
             config: Mutex::new(DirectoryConfig {
@@ -396,6 +479,9 @@ pub fn desktop_data_directory(state: tauri::State<'_, DataDirectory>) -> serde_j
         "pendingRoot": config.pending_root,
         "previousRoot": config.previous_root,
         "migrationError": config.migration_error,
+        "mode": if state.instance_root.is_some() { "portable" } else { "legacy-installed" },
+        "instanceRoot": state.instance_root,
+        "portableSupported": cfg!(windows),
     })
 }
 
@@ -405,6 +491,9 @@ pub async fn desktop_set_data_directory(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let _activity = crate::begin_activity(&app)?;
+    if app.state::<DataDirectory>().instance_root.is_some() && path.is_some() {
+        return Err("便携实例请安全退出后移动整个文件夹；数据位置将随文件夹自动更新".into());
+    }
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<DataDirectory>();
         let mut config = state.config.lock().expect("data directory poisoned");

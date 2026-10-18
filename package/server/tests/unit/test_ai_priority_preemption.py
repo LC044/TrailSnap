@@ -207,3 +207,20 @@ def test_consumer_stops_admitting_old_batches_during_yield(monkeypatch):
             await asyncio.gather(consumer, return_exceptions=True)
 
     asyncio.run(run())
+
+
+def test_model_wait_yields_to_ready_lower_priority_type(scheduler):
+    db, worker, add, fetch = scheduler
+    waiting = add(TaskType.CLASSIFY_IMAGE, 10,
+                  error="等待 AI 模型：分类模型正在下载，完成后自动继续",
+                  next_retry_at=datetime.now() + timedelta(minutes=1))
+    ready = add(TaskType.RECOGNIZE_FACE, 9)
+    worker.ai_phase_type = TaskType.CLASSIFY_IMAGE
+    batches = fetch()
+    assert [t['id'] for _, batch in batches for t in batch] == [ready.id]
+    assert worker.ai_phase_type == TaskType.RECOGNIZE_FACE
+    # After the wait expires, the higher priority type becomes eligible again.
+    db.delete(ready)
+    waiting.next_retry_at = datetime.now() - timedelta(seconds=1)
+    db.commit()
+    assert [t['id'] for _, batch in fetch() for t in batch] == [waiting.id]

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, JSON, DateTime, Text, ForeignKey, Index
-from app.db.types import UUID
+from app.db.types import UUID, PortableJSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import validates
 import enum
@@ -128,7 +128,7 @@ class Task(Base):
     type = Column(String(50), nullable=False)
     status = Column(String(20), default=TaskStatus.PENDING.value)
     priority = Column(Integer, default=0) # Higher number = Higher priority
-    payload = Column(JSON, nullable=True)
+    payload = Column(PortableJSON, nullable=True)
     result = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=True)

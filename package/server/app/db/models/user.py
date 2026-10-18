@@ -10,7 +10,7 @@
 """
 
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, JSON
-from app.db.types import UUID
+from app.db.types import UUID, PortableJSON
 import uuid
 from app.db.base import Base
 
@@ -34,4 +34,4 @@ class User(Base):
     security_answer_hash = Column(String, nullable=True)
 
     # User Settings
-    settings = Column(JSON, default={})
+    settings = Column(PortableJSON, default={})

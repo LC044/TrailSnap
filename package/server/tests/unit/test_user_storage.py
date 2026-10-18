@@ -15,6 +15,18 @@ from app.service import storage, user_storage
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
 
+def test_candidate_schema_validation_preserves_legacy_originals(tmp_path, monkeypatch):
+    monkeypatch.setenv("TS_DESKTOP", "1")
+    monkeypatch.setenv("TS_DESKTOP_VERIFY", "1")
+    source, target = tmp_path / "old.jpg", tmp_path / "new.jpg"
+    source.write_bytes(b"original")
+    assert user_storage._move_file(str(source), str(target)) == str(target)
+    assert source.read_bytes() == target.read_bytes() == b"original"
+    # A second migration attempt must also keep the rollback source.
+    user_storage._move_file(str(source), str(target))
+    assert source.is_file()
+
+
 def test_warm_storage_base_cache_loads_each_user_root(tmp_path):
     first = uuid4()
     second = uuid4()

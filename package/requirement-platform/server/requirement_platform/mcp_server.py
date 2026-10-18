@@ -898,7 +898,7 @@ def list_delivery_tasks(requirement_id: str | None = None, state: str | None = N
 
 def _claim_response(db, token: AgentToken, runner_name: str, provider: str, model: str | None,
                     task_id: str | None = None) -> dict[str, Any]:
-    if provider not in {"codex", "claude"} or token.agent_role not in {None, "coding"}:
+    if provider not in {"codex", "claude", "openai"} or token.agent_role not in {None, "coding"}:
         raise ValueError("令牌角色或 provider 不允许领取编码任务")
     if task_id and token.task_id and task_id != token.task_id:
         raise PermissionError("交付任务不属于此令牌")
@@ -957,9 +957,9 @@ def start_requirement_delivery(requirement_id: str, runner_name: str, provider: 
 def claim_delivery_task(runner_name: str, provider: str, idempotency_key: str,
                         model: str | None = None, task_id: str | None = None,
                         requirement_id: str | None = None) -> dict[str, Any]:
-    """原子领取一个已批准的编码任务，返回租约、attempt 和完整 Context Bundle。"""
+    """原子领取一个已批准的编码任务，返回租约、attempt 和完整 Context Bundle。provider 只能是codex、claude或者openai。"""
     token, _ = _identity()
-    if provider not in {"codex", "claude"} or token.agent_role not in {None, "coding"}:
+    if provider not in {"codex", "claude", "openai"} or token.agent_role not in {None, "coding"}:
         raise ValueError("令牌角色或 provider 不允许领取编码任务")
     request = {"runner_name": runner_name, "provider": provider, "model": model,
                "task_id": task_id, "requirement_id": requirement_id}
