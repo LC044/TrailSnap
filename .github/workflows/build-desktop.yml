@@ -366,14 +366,30 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
+      pull-requests: read
     steps:
+      - name: Skip upload if the PR is already closed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+        shell: bash
+        run: |
+          state=$(gh pr view "$PR_NUMBER" --json state --jq '.state' 2>/dev/null || echo MISSING)
+          if [ "$state" != "OPEN" ]; then
+            echo "PR #$PR_NUMBER is $state; skipping preview upload to avoid orphaned assets."
+            echo "skip_upload=true" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/download-artifact@v4
+        if: env.skip_upload != 'true'
         with:
           pattern: TrailSnap-*
           path: artifacts
           merge-multiple: true
 
       - name: Collect and prefix desktop installers
+        if: env.skip_upload != 'true'
         shell: bash
         run: |
           mkdir -p release-assets
@@ -386,6 +402,7 @@ jobs:
           done
 
       - name: Update shared PR preview release
+        if: env.skip_upload != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: pr-preview
