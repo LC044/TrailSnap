@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 import json
+import math
 import hashlib
 import tempfile
 from uuid import UUID, uuid4
@@ -30,6 +31,24 @@ from app.utils import motion_photo
 from app.service.disk_budget import budgeted_open
 from contextlib import ExitStack
 from app.service.task_runtime import await_owned
+
+
+def _json_safe_metadata(metadata):
+    """Keep metadata JSON portable to PostgreSQL, including nested floats."""
+    def clean(value):
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [clean(item) for item in value]
+        return value
+
+    result = clean(metadata)
+    if "location" in result:
+        result["location"] = exif.valid_gps_location(result["location"])
+    return json.loads(json.dumps(result, default=str, ensure_ascii=False, allow_nan=False))
+
 
 def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user_id: str, image_config=None):
     """
@@ -123,7 +142,7 @@ def process_basic_cpu_job(file_path: str, file_id: UUID, storage_root: str, user
             "photo_create_data": None, # Placeholder
             "is_motion_photo": is_motion_photo,
             "md5_hash": md5_hash,
-            "raw_metadata": json.loads(json.dumps(meta, default=str, ensure_ascii=False))
+            "raw_metadata": _json_safe_metadata(meta)
         }
     except Exception as e:
         import traceback
@@ -450,7 +469,7 @@ class BasicTaskStrategy(BaseTaskStrategy):
             if info.get('raw_metadata') is not None:
                 # Persist the complete extraction across restarts and retries.
                 payload['raw_metadata_version'] = 1
-                payload['raw_metadata'] = info['raw_metadata']
+                payload['raw_metadata'] = _json_safe_metadata(info['raw_metadata'])
             db.add(Task(type=TaskType.EXTRACT_METADATA, payload=payload, priority=DEFAULT_PRIORITIES[TaskType.EXTRACT_METADATA], status=TaskStatus.PENDING, owner_id=owner_id))
             # 2. Face Recognition Task
             db.add(Task(type=TaskType.RECOGNIZE_FACE, payload={'file_path': file_path, 'photo_id': photo_id}, priority=DEFAULT_PRIORITIES[TaskType.RECOGNIZE_FACE], status=TaskStatus.PENDING, owner_id=owner_id))
