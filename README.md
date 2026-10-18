@@ -232,8 +232,8 @@ docker-compose up -d
 
 ### 微信交流群
 
-<a href="https://blog.siyuan.ink/static/img/62e0893d58c9d3a13e0c9add3bff7f79.clipboard-2026-09-11.webp" target="_blank">
-  <img src="https://blog.siyuan.ink/static/img/62e0893d58c9d3a13e0c9add3bff7f79.clipboard-2026-09-11.webp" alt="微信交流群" width="200px">
+<a href="https://blog.siyuan.ink/static/img/46f6ef1506ec8bdc019a796c0aba368b.clipboard-2026-10-18.webp" target="_blank">
+  <img src="https://blog.siyuan.ink/static/img/46f6ef1506ec8bdc019a796c0aba368b.clipboard-2026-10-18.webp" alt="微信交流群" width="200px">
 </a>
 
 ### 致谢

@@ -912,7 +912,7 @@ const navClass = (id: 'home' | 'core-features') => {
   return 'text-primary font-medium border-b-2 border-primary'
 }
 
-const wechatGroupQrCode = '/qrcodes/wechat_group_qr.webp'
+const wechatGroupQrCode = 'https://blog.siyuan.ink/static/img/46f6ef1506ec8bdc019a796c0aba368b.clipboard-2026-10-18.webp'
 const wechatOfficialAccountQrCode = '/qrcodes/wechat_official_account_qr.webp'
 
 const socialLinks = [
