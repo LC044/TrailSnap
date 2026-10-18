@@ -4,6 +4,7 @@ mod library_link;
 mod link_recovery;
 #[path = "../../src-tauri/src/portable.rs"]
 mod portable;
+mod startup;
 #[path = "../../src-tauri/src/update_transaction.rs"]
 mod update_transaction;
 use portable::{BuildManifest, InstanceConfig};
@@ -275,6 +276,7 @@ fn validate(
     if marker.exists() {
         fs::remove_file(&marker).map_err(|e| e.to_string())?;
     }
+    startup::stage("validating");
     let (mut candidate, job) = spawn(root, config, lease, Some(tx))?;
     let start = Instant::now();
     let validation = (|| loop {
@@ -371,9 +373,22 @@ fn automatic_upgrade(root: &Path, action: &str) -> Result<(), String> {
     let descriptor: serde_json::Value = portable::read_json(&root.join("portable.json"))?;
     let build = descriptor["activeBuild"].as_str().ok_or("程序版本缺失")?;
     manifest(root, build)?;
-    let mut command = Command::new(root.join("app").join(build).join("server/trailsnap-server.exe"));
-    command.arg("--automatic-upgrade").arg(root).arg(action)
-        .env("PYTHONIOENCODING", "utf-8").stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
+    let mut command = Command::new(
+        root.join("app")
+            .join(build)
+            .join("server/trailsnap-server.exe"),
+    );
+    command
+        .arg("--automatic-upgrade")
+        .arg(root)
+        .arg(action)
+        .env("PYTHONIOENCODING", "utf-8")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    if let Some(session) = startup::session() {
+        command.env("TS_AUTOMATIC_UPGRADE_SESSION", session);
+    }
     #[cfg(windows)]
     command.creation_flags(0x08000000);
     let child = command.spawn().map_err(|e| e.to_string())?;
@@ -399,13 +414,23 @@ fn run() -> Result<(), String> {
     if std::env::args().any(|arg| arg == "--prepare-reinstall") {
         if root.join("instance.json").is_file() {
             let config = portable::load_instance(&root)?;
-            if !root.join("app").join(&config.active_build).join("manifest.json").is_file() {
+            if !root
+                .join("app")
+                .join(&config.active_build)
+                .join("manifest.json")
+                .is_file()
+            {
                 portable::data_root(&root, &config)?;
-                let distribution: serde_json::Value = portable::read_json(&root.join("portable.json"))?;
-                let build = distribution["activeBuild"].as_str().ok_or("重装程序版本缺失")?;
+                let distribution: serde_json::Value =
+                    portable::read_json(&root.join("portable.json"))?;
+                let build = distribution["activeBuild"]
+                    .as_str()
+                    .ok_or("重装程序版本缺失")?;
                 manifest(&root, build)?;
-                portable::write_json(&root.join("maintenance/reinstall.json"),
-                    &serde_json::json!({"originalConfig": config, "newBuild": build}))?;
+                portable::write_json(
+                    &root.join("maintenance/reinstall.json"),
+                    &serde_json::json!({"originalConfig": config, "newBuild": build}),
+                )?;
             }
         }
         return Ok(());
@@ -419,7 +444,8 @@ fn run() -> Result<(), String> {
             Err(error) => {
                 #[cfg(windows)]
                 if std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() != Ok("1")
-                    && !std::env::args().any(|arg| arg == "--validate-only") {
+                    && !std::env::args().any(|arg| arg == "--validate-only")
+                {
                     let mut failure = error;
                     loop {
                         let Some(selected) = link_recovery::choose_moved_library(&failure) else {
@@ -449,15 +475,24 @@ fn run() -> Result<(), String> {
         fs::create_dir_all(root.join("maintenance")).map_err(|e| e.to_string())?;
         let _initialization_lock = portable::lock_directory(&root.join("maintenance"))?;
         if !root.join("instance.json").exists() {
+            startup::stage("checking");
             let mut migration = automatic_upgrade(&root, "prepare");
             #[cfg(windows)]
             while let Err(ref error) = migration {
-                if root.join("maintenance/automatic-upgrade.json").exists()
+                if error.contains("TRAILSNAP_UPGRADE_PAUSED:")
+                    || root.join("maintenance/automatic-upgrade.json").exists()
                     || std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() == Ok("1")
-                    || std::env::args().any(|arg| arg == "--validate-only") { break; }
-                let Some(source) = link_recovery::choose_legacy_library(error) else { return Ok(()); };
-                portable::write_json(&root.join("maintenance/automatic-upgrade-source.json"),
-                    &serde_json::json!({"source": source}))?;
+                    || std::env::args().any(|arg| arg == "--validate-only")
+                {
+                    break;
+                }
+                let Some(source) = link_recovery::choose_legacy_library(error) else {
+                    return Ok(());
+                };
+                portable::write_json(
+                    &root.join("maintenance/automatic-upgrade-source.json"),
+                    &serde_json::json!({"source": source}),
+                )?;
                 migration = automatic_upgrade(&root, "prepare");
             }
             migration?;
@@ -510,11 +545,15 @@ fn run() -> Result<(), String> {
     let automatic_journal = root.join("maintenance/automatic-upgrade.json");
     let automatic: Option<serde_json::Value> = if automatic_journal.exists() {
         Some(portable::read_json(&automatic_journal)?)
-    } else { None };
-    let automatic_pending = automatic.as_ref().is_some_and(|job|
-        job["phase"] == "published" || job["phase"] == "validated");
-    let automatic_cleanup = automatic.as_ref().is_some_and(|job|
-        job["phase"] == "published" || job["phase"] == "validated" || job["phase"] == "committed");
+    } else {
+        None
+    };
+    let automatic_pending = automatic
+        .as_ref()
+        .is_some_and(|job| job["phase"] == "published" || job["phase"] == "validated");
+    let automatic_cleanup = automatic.as_ref().is_some_and(|job| {
+        job["phase"] == "published" || job["phase"] == "validated" || job["phase"] == "committed"
+    });
     let reinstall = root.join("maintenance/reinstall.json");
     if reinstall.is_file() {
         let recovery: serde_json::Value = portable::read_json(&reinstall)?;
@@ -526,18 +565,27 @@ fn run() -> Result<(), String> {
         let build = recovery["newBuild"].as_str().ok_or("重装程序版本缺失")?;
         let offered = manifest(&root, build)?;
         let previous: Option<UpdateTransaction> = portable::read_json(&journal).ok();
-        let committed = previous.as_ref().is_some_and(|tx| tx.phase == "committed" && tx.new_build == build);
+        let committed = previous
+            .as_ref()
+            .is_some_and(|tx| tx.phase == "committed" && tx.new_build == build);
         if !committed {
-            if let Some(mut tx) = previous.filter(|tx| !["verified", "committed", "rolled_back"].contains(&tx.phase.as_str())) {
+            if let Some(mut tx) = previous
+                .filter(|tx| !["verified", "committed", "rolled_back"].contains(&tx.phase.as_str()))
+            {
                 rollback(&root, &data, &mut config, &mut tx)?;
             }
             // There is no previous executable after uninstall. Keep its original
             // configuration, snapshot the library, and stop if verification fails.
             config.active_build = build.into();
             let mut tx = UpdateTransaction {
-                schema_version: 1, id: uuid::Uuid::new_v4().to_string(),
-                old_build: build.into(), new_build: build.into(), version: offered.version,
-                phase: "apply_requested".into(), nonce: uuid::Uuid::new_v4().to_string(), error: None,
+                schema_version: 1,
+                id: uuid::Uuid::new_v4().to_string(),
+                old_build: build.into(),
+                new_build: build.into(),
+                version: offered.version,
+                phase: "apply_requested".into(),
+                nonce: uuid::Uuid::new_v4().to_string(),
+                error: None,
             };
             update_transaction::publish(&root, &tx)?;
             if let Err(error) = apply(&root, &data, &mut config, &mut tx, &lease) {
@@ -591,7 +639,9 @@ fn run() -> Result<(), String> {
             }
         }
         validate(&root, &config, &tx, &lease)?;
-        if validate_only { return Ok(()); }
+        if validate_only {
+            return Ok(());
+        }
         automatic_upgrade(&root, "validated")?;
     }
     if journal.exists() {
@@ -632,23 +682,46 @@ fn run() -> Result<(), String> {
     }
     loop {
         let ready = root.join("maintenance/runtime-ready.json");
-        if ready.exists() { fs::remove_file(&ready).map_err(|e| e.to_string())?; }
+        if ready.exists() {
+            fs::remove_file(&ready).map_err(|e| e.to_string())?;
+        }
+        startup::stage("launching");
         let (mut child, job) = spawn(&root, &config, &lease, None)?;
+        startup::child(child.id());
         // Cleanup is authorized only by this normal shell's backend readiness,
         // never by the candidate or a stale marker from an earlier launch.
-        if automatic_cleanup {
+        {
             let deadline = Instant::now() + Duration::from_secs(30 * 60);
+            let mut backend_ready = false;
             while Instant::now() < deadline {
-                if child.try_wait().map_err(|e| e.to_string())?.is_some() { break; }
-                if portable::read_json::<serde_json::Value>(&ready).ok().is_some_and(|v|
-                    v["pid"] == child.id() && v["verified"] == true) {
-                    if let Err(error) = automatic_upgrade(&root, "cleanup") {
-                        portable::write_json(&root.join("maintenance/automatic-upgrade-cleanup-error.json"),
-                            &serde_json::json!({"error": error}))?;
+                if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+                    // Closing the actual client during startup is a user exit,
+                    // not a migration failure. Do not clean the old source.
+                    if status.success() {
+                        return Ok(());
+                    }
+                    return Err("行影集在启动完成前退出，请查看日志后重试。".into());
+                }
+                if portable::read_json::<serde_json::Value>(&ready)
+                    .ok()
+                    .is_some_and(|v| v["pid"] == child.id() && v["verified"] == true)
+                {
+                    backend_ready = true;
+                    startup::ready();
+                    if automatic_cleanup {
+                        if let Err(error) = automatic_upgrade(&root, "cleanup") {
+                            portable::write_json(
+                                &root.join("maintenance/automatic-upgrade-cleanup-error.json"),
+                                &serde_json::json!({"error": error}),
+                            )?;
+                        }
                     }
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(200));
+            }
+            if !backend_ready {
+                return Err("行影集启动超时，请检查日志与磁盘后重试。".into());
             }
         }
         child.wait().map_err(|e| e.to_string())?;
@@ -699,7 +772,7 @@ fn run() -> Result<(), String> {
 }
 
 fn main() {
-    if let Err(error) = run() {
+    if let Err(error) = startup::coordinate(run) {
         if let Ok(executable) = std::env::current_exe() {
             if let Some(root) = executable.parent() {
                 let _ = portable::write_json(

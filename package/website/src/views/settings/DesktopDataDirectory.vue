@@ -12,21 +12,27 @@
           <button v-if="store.waitingForTasks" class="ts-button ts-button-primary" :disabled="working" @click="store.waitAndRestart()">继续等待，结束后重启恢复</button>
           <button v-else-if="store.needsRestart" class="ts-button ts-button-primary" :disabled="working" @click="restartNow">重启并恢复使用</button>
           <button v-else-if="!store.directory" class="ts-button ts-button-secondary" :disabled="working" @click="load">重新读取</button>
-          <button class="ts-button ts-button-secondary" @click="openData">打开数据与日志</button>
+          <button class="ts-button ts-button-secondary" @click="openData">打开行影集文件夹</button>
         </div>
       </div>
       <p v-if="store.loading" role="status" class="ts-muted">{{ store.inspecting ? '正在检查照片和文件，大图库需要多等一会儿…' : '正在读取保存位置…' }}</p>
       <template v-if="store.directory">
         <div class="ts-surface space-y-4 p-5 md:p-6">
-          <h3 class="font-medium">图库数据文件夹</h3>
-          <p class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
-          <p class="ts-muted text-sm">这里保存相册、照片记录和设置。引用其他文件夹中的原照片时，仍需保留那些文件夹。</p>
+          <h3 class="font-medium">行影集文件夹</h3>
+          <p class="ts-muted break-all text-sm" data-testid="desktop-location">{{ locationRoot }}</p>
+          <p class="ts-muted text-sm">{{ portable && !detachedData ? '程序、相册、照片记录和设置保存在这个文件夹中。' : portable ? '这里是行影集的程序文件夹。' : '这里保存相册、照片记录和设置。' }}引用其他文件夹中的原照片时，仍需保留那些文件夹。</p>
+          <p v-if="detachedData" role="status" class="ts-muted text-sm">此实例配置了独立的资料保存位置。移动上方文件夹不会搬走那些资料，请保持原磁盘和保存位置可用。</p>
           <p v-if="store.discovery?.externalReferencesRetained" role="status" class="text-sm text-[var(--ts-color-danger)]">导入时保留了外部原照片的位置引用。请保留原照片和原磁盘；如需可独立恢复的备份，请备份当前图库并勾选同时复制原照片。</p>
           <button class="ts-button ts-button-secondary" :disabled="busy" @click="openData"><FolderOpen class="h-4 w-4" />打开文件夹</button>
           <details class="text-sm">
             <summary class="cursor-pointer font-medium">搬到其他磁盘</summary>
             <div class="ts-muted mt-3 space-y-3">
-              <p v-if="portable">先安全退出，再将整个行影集文件夹移动到新位置，从新位置打开 TrailSnap.exe。不要单独移动 userdata。原快捷方式找不到图库时，可按提示选择搬迁后的行影集文件夹，恢复原入口。引用其他位置的原照片时，仍需保留那些文件夹。</p>
+              <ol v-if="portable" class="list-decimal space-y-2 pl-5">
+                <li>点击下方“安全退出行影集”，等待窗口关闭。</li>
+                <li>将上方整个行影集文件夹移动到新位置，请保留里面的所有文件。</li>
+                <li>从新位置打开 TrailSnap.exe，确认照片正常后更新桌面快捷方式。原入口找不到图库时，按提示选择搬迁后的整个行影集文件夹。</li>
+              </ol>
+              <p v-if="portable">引用其他位置的原照片时，仍需保留那些文件夹和磁盘。</p>
               <template v-else>
                 <label for="migration-target" class="block">新的空文件夹</label>
                 <el-input id="migration-target" v-model="migrationPath" :disabled="busy" placeholder="输入完整目录路径" />
@@ -96,12 +102,11 @@
                     </div>
                   </details>
                 </template>
-                <p v-else class="ts-muted break-all text-sm">{{ store.directory.root }}</p>
+                <p v-else class="ts-muted text-sm">当前行影集文件夹</p>
                 <button v-if="!store.preview && !store.inspecting" class="ts-button ts-button-secondary" :disabled="busy || (importing && !legacySource.trim())" @click="inspectSource">重新检查图库</button>
               </div>
               <template v-if="store.preview">
                 <p role="status" class="text-sm">找到 {{ store.preview.counts.photos }} 张照片。已检查，尚未复制。</p>
-                <p v-if="store.preview.source !== (importing ? legacySource.trim() : store.directory.root)" class="ts-muted break-all text-sm">实际读取位置：{{ store.preview.source }}</p>
                 <details v-if="store.preview.externalRoots.length || store.preview.unregisteredPhotos" class="space-y-2 text-sm">
                   <summary class="cursor-pointer font-medium">备份范围：{{ copyExternal ? '包含其他位置的原照片' : '不复制其他位置的原照片' }}</summary>
                   <el-checkbox v-model="copyExternal" :disabled="busy">同时备份其他文件夹中的原照片</el-checkbox>
@@ -137,10 +142,8 @@
         <details class="ts-surface p-5 text-sm">
           <summary class="cursor-pointer font-medium">高级信息</summary>
           <div class="ts-muted mt-3 space-y-3">
-            <p v-if="portable" class="break-all">程序和数据文件夹：{{ store.directory.instanceRoot }}</p>
-            <p v-if="portable">Windows 安装包和 ZIP 都在程序旁保存配置与数据。instance.json 为配置，userdata 为图库；请保留它们。</p>
+            <p v-if="portable">搬迁上方的行影集文件夹时，请保留其中全部内容。</p>
             <p v-else>当前图库保存在系统用户的数据目录。需要搬迁时，请使用上方“搬到其他磁盘”。</p>
-            <button v-if="portable" class="ts-button ts-button-secondary" :disabled="busy" @click="openProgram">打开程序文件夹</button>
             <template v-if="store.discovery?.previousEntry">
               <p class="break-all">导入前的图库：{{ store.discovery.previousEntry }}。其中的照片、票夹和设置均保留，未与当前图库合并。</p>
               <button class="ts-button ts-button-secondary" :disabled="busy" @click="openPrevious">切换到导入前的图库</button>
@@ -171,6 +174,14 @@ const choosing = ref(false)
 const restarting = ref(false)
 const migrationPath = ref('')
 const portable = computed(() => store.directory?.mode === 'portable')
+const locationRoot = computed(() => portable.value ? store.directory?.instanceRoot : store.directory?.root)
+const detachedData = computed(() => {
+  if (!portable.value || !store.directory?.instanceRoot) return false
+  const normalize = (value: string) => value.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  const root = normalize(store.directory.instanceRoot)
+  const data = normalize(store.directory.root)
+  return data !== root && !data.startsWith(`${root}/`)
+})
 const working = computed(() => store.loading || store.saving || store.converting || store.checkingSpace || choosing.value || restarting.value)
 const busy = computed(() => working.value || store.needsRestart || store.waitingForTasks)
 const operation = computed(() => store.discovery?.operation)
@@ -227,8 +238,7 @@ async function cleanInterrupted() {
   await store.recover(false)
 }
 async function restartNow() { try { await restartDesktop() } catch (cause) { store.handleStoppedOperation(cause) } }
-async function openData() { try { await openDesktopDataDirectory() } catch (cause) { store.error = String(cause) } }
-async function openProgram() { try { await openDesktopInstanceDirectory() } catch (cause) { store.error = String(cause) } }
+async function openData() { try { await (portable.value ? openDesktopInstanceDirectory() : openDesktopDataDirectory()) } catch (cause) { store.error = String(cause) } }
 async function switchImported() {
   restarting.value = true
   try { await openLinkedDesktopLibrary() }

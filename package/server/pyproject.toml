@@ -72,6 +72,7 @@ markers = [
     "module_toolbox: 工具箱域",
     "module_system: 系统域 (config/version/update-check)",
     "module_automatic_upgrade: Windows 首次自动迁移与安全清理",
+    "module_startup_experience: 原生迁移进度、重复启动与安全暂停恢复",
     "module_classification: 智能分类域",
 ]
 

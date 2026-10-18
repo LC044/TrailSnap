@@ -7,13 +7,13 @@ from contextlib import closing, contextmanager
 import json
 import os
 from pathlib import Path
-import shutil
 import sqlite3
 import uuid
+import hashlib
 
 from app.utils.portable_library import file_hash, write_json
 from app.utils.desktop_import import discover_libraries
-from app.utils.desktop_data_migration import migrate_data_directory, _wait_for_sidecars
+from app.utils.desktop_data_migration import migrate_data_directory, remove_staging_directory, _wait_for_sidecars
 from app.utils.desktop_verification import media_baseline, verify_media
 from app.utils.windows_paths import filesystem_path
 
@@ -56,7 +56,7 @@ def _legacy_lock(source):
             kernel.CloseHandle(handle)
 
 
-def _inventory(source):
+def _inventory(source, progress=None):
     from app.utils.portable_conversion import conversion_exclusions
     excluded = conversion_exclusions(source) | {'.instance.lock', '.desktop-migration-ready',
                                                '.trailsnap-migration.json', 'webview-context.json'}
@@ -66,6 +66,8 @@ def _inventory(source):
         dirs[:] = [name for name in dirs if (current / name).relative_to(source).as_posix() not in excluded
                    and not (current == source and (name == 'webview' or name.startswith('webview-backup-')))]
         for name in dirs + names:
+            if progress:
+                progress(len(records), 0)
             path = current / name
             relative = path.relative_to(source).as_posix()
             if relative in excluded:
@@ -74,7 +76,16 @@ def _inventory(source):
                 raise ValueError('旧数据目录含链接，已停止自动迁移，请保留原目录。')
             if path.is_file():
                 managed = Path(relative).parts[0] in {'data', 'logs', 'models', 'runtime', 'extensions', 'ai-extensions', 'ai-config.json'}
-                records.append({'path': relative, 'sha256': file_hash(path), 'cleanup': managed})
+                if progress:
+                    digest = hashlib.sha256()
+                    with open(filesystem_path(path), 'rb') as stream:
+                        while chunk := stream.read(1024 * 1024):
+                            progress(len(records), 0)
+                            digest.update(chunk)
+                    sha256 = digest.hexdigest()
+                else:
+                    sha256 = file_hash(path)
+                records.append({'path': relative, 'sha256': sha256, 'cleanup': managed})
     return sorted(records, key=lambda row: row['path'])
 
 
@@ -112,6 +123,9 @@ def _check_journal(root, job):
 
 def prepare(root):
     root = root.resolve(strict=True)
+    from app.utils.upgrade_progress import UpgradeProgress
+    progress = UpgradeProgress(root)
+    progress.report('checking')
     journal = root / 'maintenance/automatic-upgrade.json'
     if journal.is_file():
         job = _read(journal)
@@ -168,6 +182,7 @@ def prepare(root):
     data = root / 'userdata'
     with _legacy_lock(source):
         if job['phase'] == 'prepared':
+            progress.report('publishing', cancellable=False)
             # Publishing userdata and instance.json is recovered after either rename.
             if not data.exists():
                 os.replace(filesystem_path(staged_data), filesystem_path(data))
@@ -182,22 +197,27 @@ def prepare(root):
                     raise ValueError('迁移临时目录含链接')
                 marker = stage / 'automatic-upgrade-owner.json'
                 if marker.is_file() and _read(marker) == {'operationId': job['id']}:
-                    shutil.rmtree(filesystem_path(stage))
+                    remove_staging_directory(stage)
                 else:
                     raise ValueError('迁移临时目录需检查，未删除任何文件。')
-            job['files'] = _inventory(source)
-            job['media'] = media_baseline(source, limit=None, full=True)
+            job['files'] = _inventory(source, lambda done, total: progress.report('inventory', done, total))
+            job['media'] = media_baseline(source, limit=None, full=True,
+                                         progress=lambda done, total: progress.report('baseline', done, total, unit='photos'))
             write_json(stage / 'automatic-upgrade-owner.json', {'operationId': job['id']})
             from app.utils.portable_conversion import conversion_exclusions
             migrate_data_directory(source, staged_data, skip_browser_state=True,
-                                   excluded_entries=conversion_exclusions(source) | {'automatic-upgrade-owner.json'})
+                                   excluded_entries=conversion_exclusions(source) | {'automatic-upgrade-owner.json'},
+                                   checkpoint=progress.checkpoint,
+                                   byte_progress=lambda done, total: progress.report('copying', done, total, unit='bytes'))
             write_json(staged_data / 'automatic-upgrade-owner.json', {'operationId': job['id']})
             # Compare all source files again, so a legacy writer cannot silently
             # change the source while the migration helper copies it.
-            if _inventory(source) != job['files']:
+            if _inventory(source, lambda done, total: progress.report('checking_source', done, total)) != job['files']:
                 raise ValueError('旧图库在复制过程中发生变化，已停止切换，原数据保留。')
+            progress.report('database', cancellable=False)
             _prepare(staged_data)
-            verify_media(staged_data, job['media'])
+            verify_media(staged_data, job['media'], progress=lambda done, total: progress.report('verifying', done, total, unit='photos'))
+            progress.report('publishing', cancellable=False)
             job['phase'] = 'prepared'
             write_json(journal, job)
             if data.exists():
@@ -206,13 +226,14 @@ def prepare(root):
         os.environ['TS_DESKTOP_ROOT'] = str(data)
         from app.utils.portable_library import prepare_portable_library
         prepare_portable_library(data)
-        verify_media(data, job['media'])
+        verify_media(data, job['media'], progress=lambda done, total: progress.report('verifying', done, total, unit='photos', cancellable=False))
         write_json(root / 'instance.json', job['instance'])
         # Suppress the manual legacy prompt; this library was upgraded in place.
         write_json(root / 'conversion.json', {'source': str(source), 'verified': True,
                                             'automatic': True, 'media': job['media']})
         job['phase'] = 'published'
         write_json(journal, job)
+        progress.report('launching', cancellable=False)
     return job
 
 

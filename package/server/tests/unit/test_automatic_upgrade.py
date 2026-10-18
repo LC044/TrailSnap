@@ -131,6 +131,74 @@ def test_copy_failure_can_restart_without_deleting_source(setup, monkeypatch):
     assert invoke(root, 'prepare') == {'phase': 'published'}
 
 
+def test_progress_pause_during_streaming_copy_preserves_source_and_can_retry(setup, monkeypatch):
+    from app.utils.upgrade_progress import UpgradeProgress
+    root, _ = setup
+    database, image = library(root, monkeypatch)
+    (root / 'data/large-cache.bin').write_bytes(b'large cache' * (256 * 1024))
+    original = file_hash(database), file_hash(image)
+    monkeypatch.setenv('TS_AUTOMATIC_UPGRADE_SESSION', 'test-pause-session')
+    report = UpgradeProgress.report
+    seen = []
+
+    def pause_during_copy(self, stage=None, completed=0, total=0, **kwargs):
+        report(self, stage, completed, total, **kwargs)
+        seen.append((stage, completed, total, kwargs.get('unit')))
+        if stage == 'copying' and completed > 0:
+            write_json(root / 'maintenance/automatic-upgrade-cancel.json', {'session': self.session})
+
+    with monkeypatch.context() as patch:
+        patch.setattr(UpgradeProgress, 'report', pause_during_copy)
+        with pytest.raises(ValueError, match='TRAILSNAP_UPGRADE_PAUSED'):
+            upgrade.prepare(root)
+    assert (file_hash(database), file_hash(image)) == original
+    assert not (root / 'instance.json').exists()
+    assert not (root / 'userdata').exists()
+    assert any(stage == 'copying' and 0 < done <= total and unit == 'bytes' for stage, done, total, unit in seen)
+    assert not list(root.parent.glob('.trailsnap-auto-*/.trailsnap-migration-*'))
+    (root / 'maintenance/automatic-upgrade-cancel.json').unlink()
+    assert invoke(root, 'prepare') == {'phase': 'published'}
+    status = json.loads((root / 'maintenance/automatic-upgrade-progress.json').read_text(encoding='utf-8'))
+    assert status['session'] == 'test-pause-session' and status['stage'] == 'launching'
+    assert status['cancellable'] is False
+    assert database.is_file() and image.is_file()
+
+
+def test_pause_is_session_bound_and_does_not_interrupt_critical_phase(tmp_path, monkeypatch):
+    from app.utils.upgrade_progress import UpgradeProgress
+    monkeypatch.setenv('TS_AUTOMATIC_UPGRADE_SESSION', 'current')
+    progress = UpgradeProgress(tmp_path)
+    write_json(tmp_path / 'maintenance/automatic-upgrade-cancel.json', {'session': 'stale'})
+    progress.report('copying', 1, 4, unit='bytes')
+    progress.report('database', cancellable=False)
+    write_json(tmp_path / 'maintenance/automatic-upgrade-cancel.json', {'session': 'current'})
+    progress.checkpoint()
+    progress.report('verifying', 0, 3, unit='photos')
+    with pytest.raises(ValueError, match='TRAILSNAP_UPGRADE_PAUSED'):
+        progress.checkpoint()
+
+
+def test_pause_removes_readonly_scratch_copy_without_changing_source_permissions(tmp_path):
+    import stat
+    from app.utils.desktop_data_migration import migrate_data_directory
+    source = tmp_path / 'source'; source.mkdir()
+    original = source / 'readonly.bin'; original.write_bytes(b'original bytes')
+    original.chmod(stat.S_IREAD)
+    target = tmp_path / 'new-library'
+    def pause(done, total):
+        raise ValueError('safe pause after copied file')
+    try:
+        before = original.stat().st_mode
+        with pytest.raises(ValueError, match='safe pause'):
+            migrate_data_directory(source, target, checkpoint=lambda: None, progress=pause)
+        assert original.read_bytes() == b'original bytes'
+        assert original.stat().st_mode == before
+        assert not target.exists()
+        assert not list(tmp_path.glob('.trailsnap-migration-*'))
+    finally:
+        original.chmod(stat.S_IREAD | stat.S_IWRITE)
+
+
 def test_interruption_after_userdata_rename_recovers_configuration(setup, monkeypatch):
     root, _ = setup
     database, _ = library(root, monkeypatch)
@@ -221,6 +289,24 @@ def test_installation_detection_preserves_chinese_path_and_reports_multiple(tmp_
     finally:
         for key in keys:
             winreg.DeleteKey(winreg.HKEY_CURRENT_USER, key)
+
+
+def test_progress_sharing_violation_does_not_abort_migration_or_disable_pause(tmp_path, monkeypatch):
+    from app.utils import upgrade_progress
+    monkeypatch.setenv('TS_AUTOMATIC_UPGRADE_SESSION', 'active-session')
+    progress = upgrade_progress.UpgradeProgress(tmp_path)
+    original = upgrade_progress.write_json
+    def busy(*args, **kwargs):
+        raise PermissionError('progress reader temporarily denies replacement')
+    monkeypatch.setattr(upgrade_progress, 'write_json', busy)
+    progress.report('copying', 1, 10)
+    monkeypatch.setattr(upgrade_progress, 'write_json', original)
+    progress.report('copying', 10, 10)
+    path = tmp_path / 'maintenance/automatic-upgrade-progress.json'
+    assert json.loads(path.read_text(encoding='utf-8'))['completed'] == 10
+    original(tmp_path / 'maintenance/automatic-upgrade-cancel.json', {'session': 'active-session'})
+    with pytest.raises(ValueError, match='TRAILSNAP_UPGRADE_PAUSED'):
+        progress.checkpoint()
 
 
 def test_same_version_reinstallation_repairs_program_without_replacing_data(tmp_path):

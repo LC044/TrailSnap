@@ -38,14 +38,20 @@ def photo_paths(db, root: Path):
         yield photo, owner, str(path)
 
 
-def _sample(path, full=False):
+def _sample(path, full=False, checkpoint=None):
     with open(filesystem_path(Path(path)), 'rb') as stream:
+        if full and checkpoint:
+            digest = hashlib.sha256()
+            while chunk := stream.read(1024 * 1024):
+                checkpoint()
+                digest.update(chunk)
+            return digest.hexdigest()
         if full:
             return hashlib.file_digest(stream, 'sha256').hexdigest()
         return hashlib.sha256(stream.read(65536)).hexdigest()
 
 
-def media_baseline(root: Path, limit=32, full=False):
+def media_baseline(root: Path, limit=32, full=False, progress=None):
     database = root / 'data/trailsnap.sqlite'
     if not database.is_file():
         return []
@@ -54,14 +60,16 @@ def media_baseline(root: Path, limit=32, full=False):
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='photos'").fetchone():
             return []
         for photo, _, path in photo_paths(db, root):
+            if progress:
+                progress(len(result), 0)
             if Path(path).is_file():
-                result.append({'id': photo, 'sha256' if full else 'sha256Prefix': _sample(path, full)})
+                result.append({'id': photo, 'sha256' if full else 'sha256Prefix': _sample(path, full, (lambda: progress(len(result), 0)) if progress else None)})
                 if limit is not None and len(result) >= limit:
                     break
     return result
 
 
-def verify_media(root: Path, baseline):
+def verify_media(root: Path, baseline, progress=None):
     expected = {item['id']: (item.get('sha256', item.get('sha256Prefix')), 'sha256' in item) for item in baseline}
     if not expected:
         return 0  # Empty libraries and already-offline external disks are valid.
@@ -72,11 +80,15 @@ def verify_media(root: Path, baseline):
                 continue
             try:
                 digest, full = expected.pop(photo)
-                if _sample(path, full) != digest:
+                if progress:
+                    progress(verified, len(baseline))
+                if _sample(path, full, (lambda: progress(verified, len(baseline))) if progress else None) != digest:
                     raise ValueError('文件内容与升级前不一致')
             except (OSError, ValueError) as error:
                 raise ValueError(f'升级前可读取的照片现在无法验证：{path}。已停止切换，请查看日志。') from error
             verified += 1
+            if progress:
+                progress(verified, len(baseline))
     if expected:
         raise ValueError('升级后的图库缺少原有照片记录，已停止切换')
     return verified

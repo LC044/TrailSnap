@@ -65,7 +65,12 @@ fn normal_shortcut_opens_imported_library_and_explicit_switch_opens_retained_lib
     let source_code = root.join("child.rs");
     fs::write(
         &source_code,
-        "fn main() { std::fs::write(\"opened.txt\", b\"ready\").unwrap(); }",
+        r#"fn main() {
+            std::fs::create_dir_all("maintenance").unwrap();
+            std::fs::write("maintenance/runtime-ready.json", format!("{{\"pid\":{},\"verified\":true}}", std::process::id())).unwrap();
+            std::fs::write("opened.txt", b"ready").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }"#,
     )
     .unwrap();
     let stub = root.join("child.exe");

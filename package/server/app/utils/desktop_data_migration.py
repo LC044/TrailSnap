@@ -8,6 +8,7 @@ from contextlib import closing
 import os
 from pathlib import Path
 import shutil
+import stat
 import sqlite3
 import tempfile
 import time
@@ -97,8 +98,24 @@ def _wait_for_sidecars(source: Path) -> None:
         time.sleep(0.2)
 
 
+def remove_staging_directory(path: Path) -> None:
+    """Remove only an owned scratch tree, including read-only copied files."""
+    if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+        raise ValueError('迁移临时目录含链接，未清理')
+    root = Path(filesystem_path(path)).resolve(strict=True)
+    def retry_readonly(function, filename, error):
+        target = Path(filename).resolve()
+        if (not isinstance(error[1], PermissionError) or function not in {os.unlink, os.remove, os.rmdir}
+                or not target.is_relative_to(root)):
+            raise error[1]
+        os.chmod(filename, stat.S_IREAD | stat.S_IWRITE)
+        function(filename)
+    shutil.rmtree(filesystem_path(path), onerror=retry_readonly)
+
+
 def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bool = False,
-                           excluded_entries: frozenset[str] = frozenset(), progress=None) -> None:
+                           excluded_entries: frozenset[str] = frozenset(), progress=None,
+                           checkpoint=None, byte_progress=None) -> None:
     logical_source = source.absolute()
     source, target = source.resolve(strict=True), target.resolve()
     if source == target or source in target.parents or target in source.parents:
@@ -118,6 +135,8 @@ def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bo
 
     io_source = Path(filesystem_path(source))
     for current, dirs, names in os.walk(io_source, onerror=raise_walk_error):
+        if checkpoint:
+            checkpoint()
         current = source / Path(current).relative_to(io_source)
         dirs[:] = [name for name in dirs if (current / name).relative_to(source).as_posix() not in excluded_entries]
         names[:] = [name for name in names if (current / name).relative_to(source).as_posix() not in excluded_entries]
@@ -137,15 +156,39 @@ def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bo
     if shutil.disk_usage(target.parent).free < required + 64 * 1024 * 1024:
         raise ValueError("目标磁盘可用空间不足（需额外保留 64 MB）")
     staging = Path(tempfile.mkdtemp(prefix=".trailsnap-migration-", dir=target.parent))
+    processed = 0
+    def copied_chunk(size):
+        nonlocal processed
+        if checkpoint:
+            checkpoint()
+        processed += size
+        if byte_progress:
+            byte_progress(processed, required * 3)
+
+    def digest_checked(stream):
+        digest = hashlib.sha256()
+        while chunk := stream.read(1024 * 1024):
+            copied_chunk(len(chunk))
+            digest.update(chunk)
+        return digest.digest()
+
     try:
         for directory in directories:
             Path(filesystem_path(staging / directory.relative_to(source))).mkdir(parents=True, exist_ok=True)
         for index, path in enumerate(files, 1):
             copied = staging / path.relative_to(source)
             Path(filesystem_path(copied.parent)).mkdir(parents=True, exist_ok=True)
-            shutil.copy2(filesystem_path(path), filesystem_path(copied))
+            if checkpoint or byte_progress:
+                with open(filesystem_path(path), 'rb') as source_file, open(filesystem_path(copied), 'wb') as target_file:
+                    while chunk := source_file.read(1024 * 1024):
+                        copied_chunk(len(chunk))
+                        target_file.write(chunk)
+                shutil.copystat(filesystem_path(path), filesystem_path(copied))
+            else:
+                shutil.copy2(filesystem_path(path), filesystem_path(copied))
             with open(filesystem_path(path), 'rb') as source_file, open(filesystem_path(copied), 'rb') as target_file:
-                if hashlib.file_digest(source_file, 'sha256').digest() != hashlib.file_digest(target_file, 'sha256').digest():
+                digest = digest_checked if checkpoint or byte_progress else lambda stream: hashlib.file_digest(stream, 'sha256').digest()
+                if digest(source_file) != digest(target_file):
                     raise ValueError(f"复制文件校验失败：{path}")
             if progress:
                 progress(index, len(files))
@@ -168,4 +211,4 @@ def migrate_data_directory(source: Path, target: Path, *, skip_browser_state: bo
         publish_directory(staging, target)
     finally:
         if staging.exists():
-            shutil.rmtree(filesystem_path(staging))
+            remove_staging_directory(staging)
