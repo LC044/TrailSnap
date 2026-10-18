@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-10-18 (0.18.0)
+
+### New
+
+- Browse 360° panorama photos with valid GPano metadata, including drag-to-look, zoom, fullscreen, quality switching and a panorama library filter.
+- Unified Windows installed and portable instances, with separate libraries per folder, portable ZIP packages, in-app updates and automatic migration of legacy libraries.
+- Added an “Automatically view originals” preference for both regular and panorama photos.
+
+### Improvements
+
+- Windows legacy upgrades now show checking, copying, verification and startup progress, with safe pause and retry. Settings show the actual TrailSnap folder.
+- Improved library recovery, independent backups, relocation and failure recovery. Reinstalling the same version can repair program files.
+- Refined cursor-centered zoom, pan boundaries, original-image loading transitions, desktop and mobile toolbars, and menu motion.
+- Added navigation loading feedback and network-aware preloading; optimized memory and location queries and album grids.
+- Photo analysis tasks explain which AI models are pending and resume automatically when ready.
+- Improved Agent specifications and coding delivery in the feedback platform, including OpenAI delivery provider support.
+
+### Bug Fixes
+
+- Fixed inconsistent paths and recovery issues during desktop upgrades, imports and photo organization; improved library preservation during installation and uninstallation.
+- Fixed processing failures caused by non-finite GPS values and invalid cached task metadata.
+- Fixed photo display while originals load, panorama browsing and mobile menu interactions.
+
 ## 2026-10-12 (0.17.4)
 
 ### New

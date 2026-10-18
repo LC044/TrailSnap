@@ -198,5 +198,10 @@
         "version": "0.17.4",
         "update_info": "- 人脸识别性能大幅提升，CPU 利用率与识别吞吐明显改善<br>- 桌面端 AI 扩展支持检查更新、手动下载与离线导入<br>- 照片选择弹窗全新升级：支持搜索定位，人物/相册封面与头像统一复用<br>- 后台 AI 任务主动给扫描等高优先级任务让位，整理照片不再被卡住<br>- 修复桌面年度报告照片和头像加载失败、视频元数据膨胀等问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.17.4"
+    },
+    {
+        "version": "0.18.0",
+        "update_info": "- 新增 360° 全景照片识别与交互浏览<br>- Windows 安装版与便携版统一，支持应用内更新和旧图库自动迁移<br>- 新增自动查看原图，优化缩放、工具栏与加载过渡<br>- 完善图库备份、找回、搬迁与失败恢复<br>- AI 模型未就绪时显示等待原因，就绪后自动继续",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.18.0"
     }
 ]
