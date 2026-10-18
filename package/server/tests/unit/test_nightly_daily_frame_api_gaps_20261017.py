@@ -97,7 +97,10 @@ def test_asset_metadata_unknown_returns_404_and_known_returns_shape(face_sqlite_
     assert data["available"] is True
 
 
-def test_works_list_isolated_and_crud_returns_404(face_sqlite_session, tmp_path):
+def test_works_list_isolated_and_crud_returns_404(face_sqlite_session, tmp_path, monkeypatch):
+    from app.service import daily_frame_render as render
+
+    monkeypatch.setattr(render, "capabilities", lambda: {"available": False, "reason": "test export unavailable"})
     db = face_sqlite_session
     owner, _ = _seed_owner_and_photo(db, tmp_path)
     client = _build_client(db, owner)
@@ -111,6 +114,8 @@ def test_works_list_isolated_and_crud_returns_404(face_sqlite_session, tmp_path)
                                                       "end_date": "2026-01-02",
                                                       "fingerprint": "x" * 64})
     assert create.status_code == 503
+    assert create.json()["code"] == 503
+    assert create.json()["msg"] == "test export unavailable"
     cancel = client.post("/daily-frame/works/" + str(uuid4()) + "/cancel")
     assert cancel.status_code == 404
     delete = client.delete("/daily-frame/works/" + str(uuid4()))
