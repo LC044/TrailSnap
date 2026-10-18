@@ -1,5 +1,5 @@
 <template>
-  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-4 md:py-7">
+  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-4 md:py-6">
     <div class="mx-auto max-w-screen-2xl">
       <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>

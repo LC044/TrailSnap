@@ -1,6 +1,7 @@
 import { test as base, expect, type Page } from '@playwright/test'
 import { createServer } from 'vite'
 import path from 'node:path'
+import os from 'node:os'
 
 // CI serves the production image, which intentionally has no /src modules.
 // Exercise the actual Vue components on a separate, worker-owned Vite server.
@@ -8,7 +9,8 @@ const test = base.extend<{}, { motionServer: string }>({
   motionServer: [async ({}, use, workerInfo) => {
     const server = await createServer({
       configFile: path.resolve('vite.config.js'),
-      cacheDir: path.resolve('.playwright-system/motion-cache', String(workerInfo.workerIndex)),
+      cacheDir: path.join(os.tmpdir(), 'trailsnap-motion-cache', String(process.pid), String(workerInfo.workerIndex)),
+      optimizeDeps: { entries: ['tests/e2e/fixtures/motion-harness.js'] },
       server: { host: '127.0.0.1', port: 0, strictPort: false, open: false },
     })
     await server.listen()
@@ -48,29 +50,48 @@ test.describe('Shared motion @p0', () => {
     await expect(page.locator('#disabled')).not.toHaveClass(/ts-is-pressed/)
   })
 
-  test('menu morphs from its own trigger, reverses on close and survives rapid toggles', async ({ page, motionServer }) => {
+  test('menu uses compositor motion anchored to its trigger and survives rapid toggles', async ({ page, motionServer }) => {
     await fixture(page, motionServer)
+    // Capture real keyframes when the animation starts. The 200 ms animation
+    // may already finish before a Playwright round trip on a busy build host.
+    await page.evaluate(() => {
+      const frames = new WeakMap<Element, Keyframe[]>()
+      ;(window as any).__motionFrames = frames
+      const animate = Element.prototype.animate
+      Element.prototype.animate = function (...args) {
+        const animation = animate.apply(this, args)
+        frames.set(this, (animation.effect as KeyframeEffect).getKeyframes())
+        return animation
+      }
+    })
     const trigger = page.locator('#menu-trigger')
     await trigger.click()
     const menu = page.getByRole('menu')
     await expect(menu).toBeVisible()
-    const origin = await menu.evaluate(el => el.getAnimations().flatMap(animation => (animation.effect as KeyframeEffect).getKeyframes()).find(frame => frame.width))
+    const origin = await menu.evaluate(el => ((window as any).__motionFrames.get(el) as Keyframe[] | undefined)?.find(frame => frame.transform))
     expect(origin).toBeTruthy()
-    const capsuleBox = (await page.locator('#capsule').boundingBox())!
-    expect(Math.abs(parseFloat(String(origin!.width)) - capsuleBox.width)).toBeLessThan(10)
-    expect(origin!.backgroundColor).toBe('transparent')
-    expect(origin!.backdropFilter).toBe('none')
+    expect(origin!.transform).toContain('scale(0.96)')
+    for (const property of ['width', 'height', 'left', 'top', 'padding', 'backdropFilter', 'boxShadow']) {
+      expect(origin).not.toHaveProperty(property)
+    }
     await expect.poll(() => menu.evaluate(el => el.getAnimations().length)).toBe(0)
     const triggerBox = (await trigger.boundingBox())!
     const menuBox = (await menu.boundingBox())!
     expect(menuBox.width).toBeGreaterThan(triggerBox.width)
     expect(menuBox.y).toBeGreaterThan(triggerBox.y)
+    const originX = await menu.evaluate(el => parseFloat(getComputedStyle(el).transformOrigin))
+    expect(Math.abs(menuBox.x + originX - triggerBox.x - triggerBox.width / 2)).toBeLessThan(2)
+    await expect(menu).toHaveCSS('will-change', 'auto')
     await trigger.click()
     await expect(menu).toHaveCount(0)
     await trigger.evaluate(el => { (el as HTMLElement).click(); setTimeout(() => (el as HTMLElement).click(), 60) })
     await expect(menu).toHaveCount(0)
     await expect(trigger).toHaveCSS('opacity', '1')
     await trigger.click(); await expect(menu).toBeVisible()
+    await trigger.evaluate(el => { (el as HTMLElement).click(); setTimeout(() => (el as HTMLElement).click(), 30) })
+    await expect(menu).toBeVisible()
+    await expect.poll(() => menu.evaluate(el => el.getAnimations().length)).toBe(0)
+    await expect(menu).toHaveCSS('opacity', '1')
     await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0)
   })
 
@@ -150,33 +171,44 @@ test.describe('Shared motion @p0', () => {
     await expect(page.locator('.ts-desktop-menu')).toHaveCount(0)
   })
 
-  test('liquid morph gathers into a small round bead before expanding', async ({ page, motionServer }) => {
+  test('mobile menu keeps layout and glass static throughout the opening animation', async ({ page, motionServer }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
     await fixture(page, motionServer)
+    await page.evaluate(() => {
+      const animate = Element.prototype.animate
+      let paused = false
+      Element.prototype.animate = function (...args) {
+        const animation = animate.apply(this, args)
+        if (!paused && this.matches('[role="menu"]')) {
+          paused = true
+          animation.pause()
+          animation.currentTime = 100
+        }
+        return animation
+      }
+    })
     await page.locator('#menu-trigger').click()
     const menu = page.getByRole('menu', { name: '菜单', exact: true })
     await expect(menu).toBeVisible()
-    const bead = await menu.evaluate(el => {
-      const animation = el.getAnimations().find(item => (item.effect as KeyframeEffect).getKeyframes().some(frame => frame.width))!
-      const frames = (animation.effect as KeyframeEffect).getKeyframes()
-      const beadFrame = frames.find(frame => frame.offset === .32)!
-      const time = Number(animation.effect!.getTiming().duration) * .32
-      document.getAnimations().forEach(item => { item.pause(); item.currentTime = time })
-      const origin = frames[0]!
-      const gathering = frames.find(frame => frame.offset === .16)!
-      return { width: parseFloat(String(beadFrame.width)), height: parseFloat(String(beadFrame.height)), originWidth: parseFloat(String(origin.width)), gatheringWidth: parseFloat(String(gathering.width)) }
+    const motion = await menu.evaluate(el => {
+      const animation = el.getAnimations()[0]!
+      const effect = animation.effect as KeyframeEffect
+      const sample = (time: number) => {
+        animation.currentTime = time
+        const style = getComputedStyle(el)
+        return { width: style.width, height: style.height, filter: style.backdropFilter, padding: style.padding }
+      }
+      return { duration: effect.getTiming().duration, frames: effect.getKeyframes(), early: sample(20), late: sample(180),
+        contentAnimations: el.firstElementChild!.getAnimations().length }
     })
-    expect(bead.width).toBeLessThanOrEqual(24)
-    expect(bead.height).toBe(bead.width)
-    expect(bead.originWidth).toBeGreaterThan(bead.gatheringWidth)
-    expect(bead.gatheringWidth).toBeGreaterThan(bead.width)
-    await expect(menu).toHaveCSS('width', `${bead.width}px`)
+    expect(motion.duration).toBe(200)
+    expect(motion.early).toEqual(motion.late)
+    expect(motion.contentAnimations).toBe(0)
+    expect(motion.frames.every(frame => !('width' in frame) && !('backdropFilter' in frame))).toBe(true)
     await expect(page.locator('#capsule')).toHaveCSS('opacity', '1')
-    const capsuleBox = (await page.locator('#capsule').boundingBox())!
-    const beadBox = (await menu.boundingBox())!
-    expect(Math.abs(beadBox.x + beadBox.width / 2 - capsuleBox.x - capsuleBox.width / 2)).toBeLessThan(2)
-    expect(Math.abs(beadBox.y + beadBox.height / 2 - capsuleBox.y - capsuleBox.height / 2)).toBeLessThan(2)
-    expect(await page.locator('svg[aria-hidden="true"] path').count()).toBe(0)
-    await page.screenshot({ path: '../../tests/artifacts/liquid-bead.png' })
+    const menuBox = (await menu.boundingBox())!
+    expect(menuBox.x).toBeGreaterThanOrEqual(0)
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(390)
     await page.evaluate(() => document.getAnimations().forEach(animation => animation.play()))
     await expect.poll(() => menu.evaluate(el => el.getAnimations().length)).toBe(0)
     await page.keyboard.press('Escape'); await expect(menu).toHaveCount(0)

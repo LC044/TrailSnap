@@ -137,9 +137,10 @@ test.describe('P1 - 移动端照片查看器、网格密度与更多导航', () 
     await expect.poll(() => image.getAttribute('src')).not.toBe(firstSrc)
 
     // 切到中间位置后上一张/当前/下一张都应在轨道内，且全部已解码
-    await expect.poll(() => track.locator('img').count()).toBe(3)
+    const primaryImages = track.locator('img:not([data-testid="photo-lightbox-preview"])')
+    await expect.poll(() => primaryImages.count()).toBe(3)
     await expect.poll(
-      () => track.locator('img').evaluateAll(images =>
+      () => primaryImages.evaluateAll(images =>
         images.every(img => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0),
       ),
       { timeout: 15_000 },

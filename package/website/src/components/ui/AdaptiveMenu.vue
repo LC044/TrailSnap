@@ -20,7 +20,6 @@ import ResponsiveDialog from './ResponsiveDialog.vue'
 import { useZIndex } from 'element-plus'
 import { nextDialogZIndex } from '@/utils/pickerDate'
 import { reducedMotion } from '@/utils/motion'
-import { liquidFrames } from '@/utils/liquidMorph'
 import { useRouteDismiss } from '@/composables/useRouteDismiss'
 const props = withDefaults(defineProps<{ modelValue: boolean; title: string; glass?: boolean; closeOnAction?: boolean; mobilePresentation?: 'sheet' | 'popover' }>(), { closeOnAction: false, mobilePresentation: 'sheet' })
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
@@ -46,86 +45,67 @@ const positionMenu = async () => {
   const viewport = window.visualViewport
   const viewportTop = viewport?.offsetTop ?? 0
   const viewportHeight = viewport?.height ?? window.innerHeight
-  const menuWidth = menu.getBoundingClientRect().width
+  // Measure layout size, not the temporarily scaled animation bounds.
+  const menuWidth = menu.offsetWidth
   const top = Math.max(viewportTop + 8, Math.min(anchor.bottom + 10, viewportTop + viewportHeight - menu.offsetHeight - 8))
   const left = Math.max(8, Math.min(anchor.left + anchor.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - 8))
-  menuStyle.value = { position: 'fixed', zIndex: String(layerZIndex), marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${viewportHeight - 16}px`, overflowY: 'auto' }
+  const controlRect = control?.getBoundingClientRect() ?? anchor
+  const originX = Math.max(0, Math.min(controlRect.left + controlRect.width / 2 - left, menuWidth))
+  const originY = controlRect.bottom <= top ? '0%' : '100%'
+  menuStyle.value = { position: 'fixed', zIndex: String(layerZIndex), marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${viewportHeight - 16}px`, overflowY: 'auto', transformOrigin: `${originX}px ${originY}` }
 }
 let animations: Animation[] = []
 let animatedPanel: HTMLElement | null = null
-let panelOverflow = ''
-let panelOverflowX = ''
+let panelWillChange = ''
 let frozenShape: Keyframe | null = null
-let frozenContentOpacity: string | null = null
-let contentWidth = ''
 let finishMorph: (() => void) | null = null
 let suppressMotion = false
+let enterSequence = 0
 const cancelMorph = () => {
   const finish = finishMorph
   finishMorph = null
   animations.forEach(animation => animation.cancel())
   animations = []
-  if (animatedPanel) {
-    animatedPanel.style.overflowY = panelOverflow
-    animatedPanel.style.overflowX = panelOverflowX
-    const content = animatedPanel.firstElementChild as HTMLElement
-    content.style.minWidth = contentWidth
-  }
+  if (animatedPanel) animatedPanel.style.willChange = panelWillChange
   animatedPanel = null
   finish?.()
 }
 const interruptMorph = () => {
+  enterSequence++
   if (animatedPanel) {
-    const rect = animatedPanel.getBoundingClientRect()
-    frozenShape = { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, borderRadius: getComputedStyle(animatedPanel).borderRadius }
-    frozenContentOpacity = getComputedStyle(animatedPanel.firstElementChild as HTMLElement).opacity
+    const style = getComputedStyle(animatedPanel)
+    frozenShape = { transform: style.transform, opacity: style.opacity }
   }
   cancelMorph()
 }
 const morph = (element: Element, opening: boolean, done: () => void) => {
   const panel = element as HTMLElement
   const control = trigger()
-  const button = control?.closest<HTMLElement>('.ts-glass-toolbar') ?? control
-  const interrupted = animations.length > 0 || frozenShape !== null
-  const current = panel.getBoundingClientRect()
-  const currentRadius = getComputedStyle(panel).borderRadius
-  const currentContentOpacity = frozenContentOpacity ?? getComputedStyle(panel.firstElementChild as HTMLElement).opacity
-  cancelMorph()
-  if (suppressMotion || !button?.isConnected || reducedMotion()) { frozenShape = null; frozenContentOpacity = null; done(); return }
-  const from = button.getBoundingClientRect()
-  const to = panel.getBoundingClientRect()
-  const expanded = { left: `${to.left}px`, top: `${to.top}px`, width: `${to.width}px`, height: `${to.height}px`, borderRadius: getComputedStyle(panel).borderRadius, padding: getComputedStyle(panel).padding, opacity: 1 }
-  const content = panel.firstElementChild as HTMLElement
-  const naturalContentWidth = content.getBoundingClientRect().width
-  animatedPanel = panel
-  panelOverflow = panel.style.overflowY
-  panelOverflowX = panel.style.overflowX
-  panel.style.overflowY = 'hidden'
-  panel.style.overflowX = 'hidden'
-  const start = frozenShape ?? (interrupted ? { left: `${current.left}px`, top: `${current.top}px`, width: `${current.width}px`, height: `${current.height}px`, borderRadius: currentRadius, opacity: getComputedStyle(panel).opacity } : null)
+  const start = frozenShape
   frozenShape = null
-  frozenContentOpacity = null
-  const duration = opening ? 560 : 460
-  const panelStyle = getComputedStyle(panel)
-  const frames = liquidFrames(opening ? from : to, opening ? to : from, expanded.borderRadius, opening, {
-    backgroundColor: panelStyle.backgroundColor, backdropFilter: panelStyle.backdropFilter, boxShadow: panelStyle.boxShadow,
-  })
-  if (start) frames[0] = { ...frames[0], ...start, offset: 0 }
-  frames.forEach(frame => { frame.padding = '0px' })
-  frames[opening ? frames.length - 1 : 0]!.padding = expanded.padding
-  const shape = panel.animate(frames, { duration, fill: 'both' })
-  contentWidth = content.style.minWidth
-  content.style.minWidth = `${naturalContentWidth}px`
-  const fade = content.animate([{ opacity: interrupted ? currentContentOpacity : opening ? 0 : 1 }, { opacity: opening ? 1 : 0 }], { duration: opening ? 180 : 100, delay: opening && !interrupted ? 260 : 0, fill: 'both' })
-  animations = [shape, fade]
+  cancelMorph()
+  if (suppressMotion || !control?.isConnected || reducedMotion()) { done(); return }
+  animatedPanel = panel
+  panelWillChange = panel.style.willChange
+  panel.style.willChange = 'transform, opacity'
+  const direction = panel.style.transformOrigin.endsWith('100%') ? 1 : -1
+  const collapsed = { transform: `translateY(${direction * 8}px) scale(.96)`, opacity: 0 }
+  const expanded = { transform: 'translateY(0px) scale(1)', opacity: 1 }
+  // Keep geometry and glass filters static so menu contents never reflow per frame.
+  const shape = panel.animate([
+    start ?? (opening ? collapsed : expanded),
+    opening ? expanded : collapsed,
+  ], { duration: opening ? 200 : 140, easing: opening ? 'cubic-bezier(.22, 1, .36, 1)' : 'cubic-bezier(.4, 0, 1, 1)', fill: 'both' })
+  animations = [shape]
   finishMorph = done
   shape.onfinish = cancelMorph
 }
 const morphEnter = async (element: Element, done: () => void) => {
+  const sequence = ++enterSequence
   layerZIndex = nextDialogZIndex(nextZIndex)
   await positionMenu()
   await nextTick()
-  if (!props.modelValue || !element.isConnected) { done(); return }
+  if (sequence !== enterSequence || !props.modelValue || !element.isConnected) { done(); return }
   morph(element, true, done)
 }
 const morphLeave = (element: Element, done: () => void) => morph(element, false, done)
@@ -139,11 +119,11 @@ const dismiss = (event: PointerEvent | KeyboardEvent) => {
 }
 const reposition = () => { if (popoverVisible.value) void positionMenu() }
 const dismissImmediately = () => {
+  enterSequence++
   suppressMotion = true
   if (animatedPanel) animatedPanel.hidden = true
   cancelMorph()
   frozenShape = null
-  frozenContentOpacity = null
   if (props.modelValue) emit('update:modelValue', false)
   // The leave hook runs in the next render; later openings may animate again.
   void nextTick(() => { if (anchorRef.value?.isConnected) suppressMotion = false })

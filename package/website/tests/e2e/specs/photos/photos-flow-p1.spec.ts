@@ -69,6 +69,8 @@ test.describe('P1 - 照片流核心功能', () => {
   })
 
   test('2.1.3 原图加载 - 在 PhotoLightbox 中可请求高分辨率原图', async ({ page, request }, testInfo) => {
+    // This case verifies manual loading; automatic originals are enabled by default.
+    await page.addInitScript(() => localStorage.setItem('trailsnap_auto_view_original', 'false'))
     const probe = await requirePhotos(request, testInfo, 1, 50)
     if (!probe.ok) return
     await page.goto('/photos')
@@ -289,6 +291,7 @@ test.describe('P1 - 照片流核心功能', () => {
   })
 
   test('2.1.6 实况图识别 - 实况图加载缩略图/原图/对应视频', async ({ page, request }, testInfo) => {
+    await page.addInitScript(() => localStorage.setItem('trailsnap_auto_view_original', 'false'))
     // 数据前置：探测至少一张 file_type=live_photo 的照片。缺失时跳过。
     const probe = await requirePhotoOfType(request, testInfo, 'live_photo')
     if (!probe.ok) return

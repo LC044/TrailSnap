@@ -5,7 +5,7 @@ const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
 const vue = require('vue')
-const { parse, compileScript } = require('vue/compiler-sfc')
+const { parse, compileScript, compileTemplate } = require('vue/compiler-sfc')
 
 function load(source, dependencies = {}) {
   const module = { exports: {} }
@@ -23,6 +23,26 @@ function load(source, dependencies = {}) {
 const read = file => fs.readFileSync(path.resolve(__dirname, '../../src', file), 'utf8')
 const helpers = load(read('utils/panorama.ts'))
 const full = { fullWidth: 8192, fullHeight: 4096, croppedWidth: 8192, croppedHeight: 4096, croppedX: 0, croppedY: 0 }
+
+test('panorama isolates gesture starts but lets touch movement and release reach window', () => {
+  const { descriptor } = parse(read('components/PanoramaViewer.vue'))
+  const template = compileTemplate({ source: descriptor.template.content, filename: 'PanoramaViewer.vue', id: 'panorama-touch' })
+  assert.deepEqual(template.errors, [])
+  const { render } = load(template.code)
+  const root = render({ active: true, busy: false, message: '' }, [])
+  const surface = root.children.find(child => child.type === 'div' && child.props?.onTouchstart)
+  assert.ok(surface)
+  assert.match(surface.props.class, /\btouch-none\b/)
+  for (const name of ['onTouchstart', 'onMousedown', 'onClick', 'onWheel']) {
+    let stopped = false
+    surface.props[name]({ stopPropagation() { stopped = true } })
+    assert.equal(stopped, true, `${name} must not start a lightbox gesture`)
+  }
+  // Photo Sphere Viewer listens on window, beyond the lightbox's media surface.
+  for (const name of ['onTouchmove', 'onTouchend', 'onMousemove', 'onMouseup']) {
+    assert.equal(surface.props[name], undefined, `${name} must reach the viewer's window listener`)
+  }
+})
 
 test('panorama texture coordinates preserve complete and partial spherical canvases', () => {
   const result = helpers.textureGeometry(full, 8192, 4096)
@@ -46,10 +66,11 @@ test('high resolution obeys texture dimensions, pixel budget, and device memory'
 
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 const flush = async () => { for (let i = 0; i < 15; i++) await Promise.resolve(); await vue.nextTick() }
-function mount(api) {
+function mount(api, autoViewOriginal = true) {
   const { descriptor } = parse(read('components/PanoramaViewer.vue'))
   const script = compileScript(descriptor, { id: 'panorama-unit' })
-  const component = load(script.content, { '@/api/panorama': { panoramaApi: api }, '@/utils/panorama': helpers, 'lucide-vue-next': { LoaderCircle: {}, RotateCcw: {} },
+  const component = load(script.content, { '@/api/panorama': { panoramaApi: api }, '@/utils/panorama': helpers,
+    '@/stores/photoViewing': { usePhotoViewingStore: () => ({ autoViewOriginal }) }, 'lucide-vue-next': { LoaderCircle: {}, RotateCcw: {} },
     '@photo-sphere-viewer/core': { Viewer: class {}, EquirectangularAdapter: {} }, '@photo-sphere-viewer/core/index.css': {} }).default
   component.render = () => null
   const renderer = vue.createRenderer({ createElement: () => ({}), insert() {}, remove() {}, patchProp() {},
@@ -60,6 +81,47 @@ function mount(api) {
   const instance = app.mount({})
   return { state: instance.$.setupState, app, updates, active }
 }
+
+test('first panorama texture follows automatic originals without an extra standard request', async () => {
+  for (const autoViewOriginal of [true, false]) {
+    const requests = []
+    const mounted = mount({
+      info: async () => ({ projection: 'equirectangular', geometry: full, width: 8192, height: 4096 }),
+      image: (_id, high) => { requests.push(high); return new Promise(() => {}) },
+    }, autoViewOriginal)
+    await flush()
+    assert.deepEqual(requests, [autoViewOriginal])
+    assert.equal(mounted.state.high, autoViewOriginal)
+    mounted.app.unmount()
+  }
+})
+
+test('default original preference still respects the device texture limit', async () => {
+  const requests = []
+  const mounted = mount({
+    info: async () => ({ projection: 'equirectangular', geometry: full, width: 8192, height: 4096 }),
+    image: (_id, high) => { requests.push(high); return new Promise(() => {}) },
+  })
+  mounted.state.maxTexture = 4096
+  await flush()
+  assert.equal(mounted.state.allowHigh, false)
+  assert.deepEqual(requests, [false])
+  mounted.app.unmount()
+})
+
+test('manual panorama quality switching remains available when automatic originals are disabled', async () => {
+  const requests = []
+  const mounted = mount({
+    info: async () => ({ projection: 'equirectangular', geometry: full, width: 8192, height: 4096 }),
+    image: (_id, high) => { requests.push(high); return new Promise(() => {}) },
+  }, false)
+  await flush()
+  mounted.state.busy = false
+  mounted.state.toggleHigh()
+  await flush()
+  assert.deepEqual(requests, [false, true])
+  mounted.app.unmount()
+})
 test('unmounted viewer ignores late metadata and aborts its request', async () => {
   const pending = deferred(); let signal
   const mounted = mount({ info: (_id, s) => { signal = s; return pending.promise } })
