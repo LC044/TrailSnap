@@ -941,11 +941,13 @@ class TaskWorker:
                 t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):
                 return [], None
-            from app.service.ai_model_state import DEPENDENCIES, get_model_wait_reason
+            from app.service.ai_model_state import DEPENDENCIES, WAIT_PREFIX, get_model_wait_reason
             if task_type in DEPENDENCIES:
                 from app.core.config_manager import config_manager
                 available = []
                 owner_reasons = {}
+                waiting_owners = {t.owner_id for t in tasks
+                                  if str(t.error or '').startswith(WAIT_PREFIX)}
                 for task in tasks:
                     if task.owner_id not in owner_reasons:
                         config = config_manager.get_user_config(task.owner_id, db)
@@ -961,6 +963,18 @@ class TaskWorker:
                                 Task.error: owner_reasons[task.owner_id],
                                 Task.next_retry_at: datetime.now() + timedelta(seconds=30),
                             }, synchronize_session=False)
+                        elif task.owner_id in waiting_owners:
+                            # Waiting was recorded for the entire backlog. Clear
+                            # it at the same scope when the model becomes ready,
+                            # otherwise grouped status keeps showing old errors
+                            # until the very last small batch has been claimed.
+                            db.query(Task).filter(
+                                Task.owner_id == task.owner_id,
+                                Task.type == task.type,
+                                Task.status == TaskStatus.PENDING,
+                                Task.error.startswith(WAIT_PREFIX),
+                            ).update({Task.error: None, Task.next_retry_at: None},
+                                     synchronize_session=False)
                     model_reason = owner_reasons[task.owner_id]
                     if model_reason:
                         task.error = model_reason
