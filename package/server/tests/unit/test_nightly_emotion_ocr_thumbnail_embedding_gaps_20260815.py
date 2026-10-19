@@ -583,7 +583,9 @@ async def test_thumbnail_process_scan_generates_one_task_per_pending_photo(tmp_p
         SimpleNamespace(id=uuid4(), owner_id="u1", file_path="/z.jpg", processed_tasks={"thumbnail": True}),
     ]
     query_chain = MagicMock()
-    query_chain.filter.return_value.offset.return_value.limit.return_value.all.side_effect = [
+    query_chain.filter.return_value = query_chain
+    query_chain.order_by.return_value = query_chain
+    query_chain.limit.return_value.all.side_effect = [
         photos_pending,
         photos_done,
         [],
@@ -609,7 +611,7 @@ async def test_thumbnail_process_scan_generates_one_task_per_pending_photo(tmp_p
     assert len(added) == 2
     for entry in added:
         assert entry["type"] == TaskType.GENERATE_THUMBNAIL
-        assert entry["priority"] == 8
+        assert entry["priority"] == 98
         assert entry["owner_id"] == "u1"
 
 
@@ -623,7 +625,9 @@ async def test_thumbnail_process_scan_force_includes_already_done_photos(tmp_pat
         SimpleNamespace(id=uuid4(), owner_id="u1", file_path="/y.jpg", processed_tasks=None),
     ]
     query_chain = MagicMock()
-    query_chain.filter.return_value.offset.return_value.limit.return_value.all.side_effect = [
+    query_chain.filter.return_value = query_chain
+    query_chain.order_by.return_value = query_chain
+    query_chain.limit.return_value.all.side_effect = [
         photos,
         [],
     ]
@@ -650,7 +654,9 @@ async def test_thumbnail_process_scan_returns_zero_when_db_empty(tmp_path):
 
     db = MagicMock()
     query_chain = MagicMock()
-    query_chain.filter.return_value.offset.return_value.limit.return_value.all.return_value = []
+    query_chain.filter.return_value = query_chain
+    query_chain.order_by.return_value = query_chain
+    query_chain.limit.return_value.all.return_value = []
     db.query.return_value = query_chain
     worker = MagicMock()
     worker.add_tasks = MagicMock()

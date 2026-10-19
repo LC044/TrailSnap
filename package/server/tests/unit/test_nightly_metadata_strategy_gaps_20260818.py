@@ -271,7 +271,7 @@ def test_extract_strategy_success_uses_payload_file_path_and_updater(monkeypatch
         return {"success": True, "meta": {"photo_time": None, "exif_info": {"Make": "Canon"}}}
 
     monkeypatch.setattr("app.service.tasks.metadata.rebuild_metadata_cpu_job", fake_extract)
-    monkeypatch.setattr("app.service.tasks.metadata.update_photo_color_from_thumbnail", lambda *_: None)
+    monkeypatch.setattr("app.service.tasks.metadata.update_photo_color_from_thumbnail", lambda *_, **kw: None)
     update_calls = []
 
     def fake_update(target_db, target_photo, meta):

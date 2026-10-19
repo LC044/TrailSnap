@@ -22,6 +22,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from app.db.models.photo import FileType
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
@@ -43,7 +44,8 @@ def _build_task(payload):
 def _make_photo(pid, file_type="image", marker=False, owner_id="user-1"):
     return SimpleNamespace(
         id=pid,
-        file_type=file_type,
+        file_type=FileType(file_type),
+        file_path=f"/photos/{pid}.jpg",
         processed_tasks={"image_embedding": True} if marker else {},
         owner_id=owner_id,
     )
@@ -109,25 +111,16 @@ def test_generator_mode_skips_videos_and_processed_photos():
     """Generator mode only queues tasks for photos that still need embedding."""
     from app.service.tasks import image_embedding as ie_mod
 
-    class _ImageType:
-        pass
-
-    class _FileType:
-        video = "video"
-        image = "image"
-
-    # Patch the FileType the strategy module imported so we can label videos.
-    ie_mod.FileType = _FileType()
-
     pending = _make_photo("p-a", file_type="image", marker=False)
     already = _make_photo("p-b", file_type="image", marker=True)
     video = _make_photo("p-c", file_type="video", marker=False)
 
     db = MagicMock()
-    # Generator loops ``while True`` with offset / limit pagination, so we
+    # Generator loops with cursor pagination, so we
     # simulate two pages: page 1 has the three candidates; page 2 is empty.
     query = MagicMock()
-    query.offset.return_value = query
+    query.filter.return_value = query
+    query.order_by.return_value = query
     query.limit.return_value = query
     query.all.side_effect = [[pending, already, video], []]
     db.query.return_value = query

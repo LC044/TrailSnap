@@ -51,7 +51,8 @@ def _task(**kw):
 
 def _chain_db_query(db, batches):
     chain = db.query.return_value
-    chain.offset.return_value = chain
+    chain.filter.return_value = chain
+    chain.order_by.return_value = chain
     chain.limit.return_value = chain
     calls = {"i": 0}
 

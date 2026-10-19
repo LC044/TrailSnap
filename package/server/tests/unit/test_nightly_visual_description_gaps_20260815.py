@@ -10,14 +10,7 @@ is uncovered. This file fills that gap with mocked LLM and DB so the
 strategy's logic (single-photo vs. generator, JSON code-block stripping,
 screenshot skip, file-not-found) is observable.
 
-Note on CI budget enforcement (test_process_generator_respects_remaining_budget):
-the strategy reads ``ci_remaining_budget`` and is *supposed* to stop
-queueing once ``generated_count >= remaining``, but ``generated_count``
-is incremented **after** the inner loop completes -- never inside it --
-so the early-break check always sees 0 and the loop runs to the end of
-the batch. The test below pins the current (buggy) behaviour so a future
-fix is visible. See ``tests/artifacts/nightly/2026-08-15-run2/`` for the
-repro and the cross-check against ``ocr.py`` which has the same pattern.
+Generator coverage includes owner filtering, cursor pagination, and CI budget enforcement.
 """
 
 from types import SimpleNamespace
@@ -283,11 +276,8 @@ async def test_process_single_photo_skips_screenshot():
     """Screenshots never reach the LLM."""
     from app.service.tasks import visual_description as vd_mod
 
-    class _ImageType:
-        SCREENSHOT = "screenshot"
-
-    vd_mod.ImageType = _ImageType()
-    photo = _make_photo("p-1", image_type="screenshot")
+    from app.db.models.photo import ImageType
+    photo = _make_photo("p-1", image_type=ImageType.SCREENSHOT)
     db = MagicMock()
 
     result = await vd_mod.VisualDescriptionStrategy().process_single_photo(
@@ -525,7 +515,7 @@ async def test_process_generator_returns_zero_when_no_photos():
     db = MagicMock()
     query = MagicMock()
     query.filter.return_value = query
-    query.offset.return_value = query
+    query.order_by.return_value = query
     query.limit.return_value = query
     query.all.return_value = []
     db.query.return_value = query
@@ -557,7 +547,7 @@ async def test_process_generator_queues_only_unmarked_photos():
     db = MagicMock()
     query = MagicMock()
     query.filter.return_value = query
-    query.offset.return_value = query
+    query.order_by.return_value = query
     query.limit.return_value = query
     query.all.side_effect = [[pending, already], []]
     db.query.return_value = query
@@ -591,7 +581,7 @@ async def test_process_generator_force_queues_already_marked_photo():
     db = MagicMock()
     query = MagicMock()
     query.filter.return_value = query
-    query.offset.return_value = query
+    query.order_by.return_value = query
     query.limit.return_value = query
     query.all.side_effect = [[already], []]
     db.query.return_value = query
@@ -621,7 +611,7 @@ async def test_process_generator_scopes_query_to_owner():
     db = MagicMock()
     chain = MagicMock()
     chain.filter.return_value = chain
-    chain.offset.return_value = chain
+    chain.order_by.return_value = chain
     chain.limit.return_value = chain
     chain.all.return_value = []
     db.query.return_value = chain
@@ -650,7 +640,7 @@ async def test_process_generator_propagates_worker_exception():
     db = MagicMock()
     chain = MagicMock()
     chain.filter.return_value = chain
-    chain.offset.return_value = chain
+    chain.order_by.return_value = chain
     chain.limit.return_value = chain
     chain.all.side_effect = RuntimeError("db gone")
     db.query.return_value = chain
@@ -665,21 +655,12 @@ async def test_process_generator_propagates_worker_exception():
                 )
 
 
-# --- CI budget behavior (documents a known off-by-one) ----------------------
+# --- CI budget enforcement ----------------------
 
 
 @pytest.mark.asyncio
 async def test_process_generator_respects_remaining_budget():
-    """The CI budget is supposed to cap ``generated_tasks`` at ``remaining``.
-
-    TODO(2026-08-15): the inner ``for p in batch`` loop never increments
-    ``generated_count`` (it is incremented once *after* the loop), so the
-    ``if remaining is not None and generated_count >= remaining: break``
-    guard always sees 0 and queues the entire batch. ``ocr.py`` has the
-    same pattern. The assertion below pins the current (buggy) behaviour
-    so that a future fix becomes visible -- if you change the strategy
-    to honour the budget inside the loop, update this test to expect 2.
-    """
+    """The generator must stop at the remaining CI budget within a batch."""
     from app.service.tasks import visual_description as vd_mod
 
     pending = [_make_photo(f"p-{i}", marker=False) for i in range(5)]
@@ -690,7 +671,7 @@ async def test_process_generator_respects_remaining_budget():
     db = MagicMock()
     query = MagicMock()
     query.filter.return_value = query
-    query.offset.return_value = query
+    query.order_by.return_value = query
     query.limit.return_value = query
     query.all.side_effect = [pending, []]
     db.query.return_value = query
@@ -704,9 +685,8 @@ async def test_process_generator_respects_remaining_budget():
                 worker=worker, task=_build_task({}), db=db
             )
 
-    # The whole batch is queued in one go; ``generated_count`` only updates
-    # *after* the loop, so the early-break never fires.
-    assert result["generated_tasks"] == 5
+    assert result["generated_tasks"] == 2
+    assert len(worker.add_tasks.call_args.args[1]) == 2
 
 
 # --- additional coverage: metadata injection --------------------------------
