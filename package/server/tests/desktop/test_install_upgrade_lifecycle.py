@@ -180,6 +180,10 @@ def test_install_upgrade_import_move_and_failed_candidate(monkeypatch):
         assert updated_config['activeBuild'] != old_config['activeBuild']
         assert json.loads((upgrading / 'maintenance/update.json').read_text(encoding='utf-8'))['phase'] == 'committed'
         assert (upgrading / 'userdata/keep.txt').read_bytes() == b'preserve existing library files'
+        cleanup_deadline = time.monotonic() + 30
+        while len(list((upgrading / 'app').iterdir())) > 1 and time.monotonic() < cleanup_deadline:
+            time.sleep(.2)
+        assert [path.name for path in (upgrading / 'app').iterdir()] == [updated_config['activeBuild']]
         stop(updated)
         report['previousBuildUpgradeBackedUpValidatedAndCommitted'] = True
 

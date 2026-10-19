@@ -31,6 +31,63 @@ def seed(db, count=6):
     return uid, photos
 
 
+def test_concurrent_metadata_prepares_without_writer_lock_and_commits_current_rows(face_sqlite_session, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy.orm import Session
+    db = face_sqlite_session
+    _, photos = seed(db, 2)
+    ids = [p.id for p in photos]
+    bind = db.get_bind()
+    db.rollback()
+    barrier = threading.Barrier(2)
+    def extract(data, photo):
+        barrier.wait(timeout=5)  # Preparation must not hold the shared writer.
+        with Session(bind=bind) as other:
+            row = other.get(Photo, photo.id)
+            row.processed_tasks = {'basic': True, 'independent': True}
+            other.commit()
+        return {'success': True, 'meta': {'exif_info': {'Make': 'Camera'}}}
+    monkeypatch.setattr(metadata, 'extract_task_metadata', extract)
+    monkeypatch.setattr(metadata, 'update_photo_color_from_thumbnail', lambda *a, **kw: None)
+    def run(pid):
+        return metadata._extract_metadata_batch(bind, [{'photo_id': pid, 'task_id': uuid4(),
+                                                       'task_type': TaskType.EXTRACT_METADATA}])
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(run, ids))
+    assert all(batch[0]['status'] == 'completed' for batch in results)
+    db.expire_all()
+    for pid in ids:
+        assert db.get(Photo, pid).processed_tasks == {'basic': True, 'independent': True, 'metadata': True}
+    assert db.query(PhotoMetadata).count() == 2
+
+
+def test_failed_metadata_write_rolls_back_and_releases_writer(face_sqlite_session, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from app.crud import album
+    db = face_sqlite_session
+    _, photos = seed(db, 1)
+    pid, bind = photos[0].id, db.get_bind()
+    db.rollback()
+    monkeypatch.setattr(metadata, 'extract_task_metadata', lambda *_: {
+        'success': True, 'meta': {'exif_info': {'Make': 'Camera'}}})
+    monkeypatch.setattr(metadata, 'update_photo_color_from_thumbnail', lambda *a, **kw: None)
+    original = album.trigger_conditional_albums_update
+    def broken(*a, **kw):
+        raise RuntimeError('album update failed')
+    monkeypatch.setattr(album, 'trigger_conditional_albums_update', broken)
+    data = [{'photo_id': pid, 'task_id': uuid4(), 'task_type': TaskType.EXTRACT_METADATA}]
+    with pytest.raises(RuntimeError, match='album update failed'):
+        metadata._extract_metadata_batch(bind, data)
+    db.expire_all()
+    assert db.get(Photo, pid).processed_tasks == {}
+    assert db.query(PhotoMetadata).count() == 0
+    db.rollback()
+    monkeypatch.setattr(album, 'trigger_conditional_albums_update', original)
+    # A different thread must be able to acquire the writer after failure.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        assert pool.submit(metadata._extract_metadata_batch, bind, data).result(timeout=5)[0]['status'] == 'completed'
+
+
 def test_metadata_batch_owns_thread_session_and_commits_once(face_sqlite_session, monkeypatch):
     db = face_sqlite_session
     uid, photos = seed(db)

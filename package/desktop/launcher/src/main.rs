@@ -2,6 +2,7 @@
 #[path = "../../src-tauri/src/library_link.rs"]
 mod library_link;
 mod link_recovery;
+mod program_cleanup;
 #[path = "../../src-tauri/src/portable.rs"]
 mod portable;
 mod startup;
@@ -708,6 +709,16 @@ fn run() -> Result<(), String> {
                 {
                     backend_ready = true;
                     startup::ready();
+                    // Both installer and in-app updates converge here. Keep the
+                    // rollback build until the normal client is actually ready.
+                    if let Err(error) = program_cleanup::after_ready(&root, &mut config) {
+                        let _ = portable::write_json(
+                            &root.join("maintenance/program-cleanup-error.json"),
+                            &serde_json::json!({"error": error}),
+                        );
+                    } else {
+                        let _ = fs::remove_file(root.join("maintenance/program-cleanup-error.json"));
+                    }
                     if automatic_cleanup {
                         if let Err(error) = automatic_upgrade(&root, "cleanup") {
                             portable::write_json(
