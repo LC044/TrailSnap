@@ -44,6 +44,7 @@ class TaskCreate(BaseModel):
 
 
 PHOTO_PROCESSING_TYPES = {
+    TaskType.EXTRACT_METADATA,
     TaskType.VISUAL_DESCRIPTION,
     TaskType.RECOGNIZE_FACE,
     TaskType.OCR,
@@ -230,7 +231,7 @@ def create_photo_processing_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Queue one user-triggered AI operation for a photo.
+    """Queue one user-triggered processing operation for a photo.
 
     Completed task rows are intentionally short-lived in this project, so this
     endpoint only deduplicates active PENDING/PROCESSING rows. The completion
@@ -257,6 +258,16 @@ def create_photo_processing_task(
     for active_task in active_tasks:
         payload = active_task.payload or {}
         if str(payload.get("photo_id")) == str(photo.id):
+            if task_in.operation == TaskType.EXTRACT_METADATA and task_in.force and not payload.get('force'):
+                # Import jobs may carry cached EXIF. A running job has already
+                # loaded its payload, so queue a fresh forced pass after it.
+                if active_task.status == TaskStatus.PROCESSING:
+                    continue
+                active_task.payload = dict(payload, force=True)
+                active_task.priority = INTERACTIVE_TASK_PRIORITY
+                db.commit()
+                db.refresh(active_task)
+                TaskManager.get_instance().start_worker_if_needed()
             return BaseResponse.success(data={"task": active_task, "reused": True})
 
     payload = {

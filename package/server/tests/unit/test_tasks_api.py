@@ -174,7 +174,8 @@ def _query_returning(first=None, all_rows=None):
     return query
 
 
-def test_create_photo_processing_task_queues_owned_photo_at_interactive_priority():
+@pytest.mark.parametrize('operation', [TaskType.OCR, TaskType.EXTRACT_METADATA])
+def test_create_photo_processing_task_queues_owned_photo_at_interactive_priority(operation):
     user_id = uuid4()
     photo_id = uuid4()
     photo = SimpleNamespace(
@@ -197,7 +198,7 @@ def test_create_photo_processing_task_queues_owned_photo_at_interactive_priority
         tasks_api.create_photo_processing_task(
             tasks_api.PhotoProcessingCreate(
                 photo_id=photo_id,
-                operation=TaskType.OCR,
+                operation=operation,
                 force=True,
             ),
             db=db,
@@ -207,7 +208,7 @@ def test_create_photo_processing_task_queues_owned_photo_at_interactive_priority
     manager.add_task.assert_called_once()
     args, kwargs = manager.add_task.call_args
     assert args[0] is db
-    assert args[1] == TaskType.OCR
+    assert args[1] == operation
     assert args[2]["photo_id"] == str(photo_id)
     assert args[2]["force"] is True
     assert args[2]["source"] == "lightbox"
@@ -264,12 +265,41 @@ def test_create_photo_processing_task_rejects_missing_or_foreign_photo():
     assert exc.value.status_code == 404
 
 
-def test_create_photo_processing_task_rejects_non_ai_operation():
+def test_create_photo_processing_task_rejects_unsupported_operation():
     with pytest.raises(HTTPException) as exc:
         tasks_api.create_photo_processing_task(
-            tasks_api.PhotoProcessingCreate(photo_id=uuid4(), operation=TaskType.EXTRACT_METADATA),
+            tasks_api.PhotoProcessingCreate(photo_id=uuid4(), operation=TaskType.PROCESS_BASIC),
             db=MagicMock(),
             current_user=SimpleNamespace(id=uuid4()),
         )
 
     assert exc.value.status_code == 400
+
+
+@pytest.mark.parametrize('status', [TaskStatus.PENDING, TaskStatus.PROCESSING])
+def test_forced_metadata_does_not_reuse_stale_import_extraction(status):
+    user_id, photo_id = uuid4(), uuid4()
+    photo = SimpleNamespace(id=photo_id, owner_id=user_id, file_type=FileType.image, file_path='/photo.jpg')
+    active = SimpleNamespace(
+        id=uuid4(), status=status, priority=97,
+        payload={'photo_id': str(photo_id), 'raw_metadata_version': 1, 'raw_metadata': {'panorama': None}},
+    )
+    db = MagicMock()
+    db.query.side_effect = [_query_returning(first=photo), _query_returning(all_rows=[active])]
+    manager = MagicMock()
+    with (
+        patch('app.api.tasks.TaskManager.get_instance', return_value=manager),
+        patch('app.api.tasks.BaseResponse.success') as success,
+    ):
+        tasks_api.create_photo_processing_task(
+            tasks_api.PhotoProcessingCreate(photo_id=photo_id, operation=TaskType.EXTRACT_METADATA),
+            db=db, current_user=SimpleNamespace(id=user_id),
+        )
+    if status == TaskStatus.PENDING:
+        assert active.payload['force'] is True
+        assert active.priority == tasks_api.INTERACTIVE_TASK_PRIORITY
+        manager.add_task.assert_not_called()
+        success.assert_called_once_with(data={'task': active, 'reused': True})
+    else:
+        assert manager.add_task.call_args.args[2]['force'] is True
+        assert success.call_args.kwargs['data']['reused'] is False

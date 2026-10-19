@@ -1,5 +1,6 @@
+from app.service.tasks.photo_generator import generate_photo_tasks
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
-from app.db.models.task import TaskType
+from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 from typing import List, Dict, Any
 import asyncio
 import logging
@@ -184,45 +185,10 @@ class GenerateThumbnailStrategy(BaseTaskStrategy):
         return results
 
     async def _process_scan(self, worker, task: Task, db: Session) -> Dict:
-        scope = task.payload.get('scope', 'all')
-        force = task.payload.get('force', False)
-        
-        batch_size = 1000
-        offset = 0
-        generated_count = 0
-    
-        while True:
-            query = db.query(Photo)
-            if task.owner_id:
-                query = query.filter(Photo.owner_id == task.owner_id)
-                
-            batch = query.offset(offset).limit(batch_size).all()
-            if not batch:
-                break
-        
-            tasks_to_create = []
-            for p in batch:
-                should_process = False
-                if force:
-                    should_process = True
-                else:
-                    tasks_status = p.processed_tasks or {}
-                    if not tasks_status.get('thumbnail'):
-                        should_process = True
-
-                if should_process:
-                    tasks_to_create.append({
-                        'type': TaskType.GENERATE_THUMBNAIL,
-                        'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
-                        'priority': 8,
-                        'owner_id': p.owner_id
-                    })
-
-            if tasks_to_create:
-                worker.add_tasks(db, tasks_to_create)
-                generated_count += len(tasks_to_create)
-
-            offset += batch_size
+        generated_count = generate_photo_tasks(
+            db, worker, task, task_type=TaskType.GENERATE_THUMBNAIL,
+            status_key='thumbnail', priority=DEFAULT_PRIORITIES[TaskType.GENERATE_THUMBNAIL], include_videos=True,
+        )
 
         return {
             'processed': 0,

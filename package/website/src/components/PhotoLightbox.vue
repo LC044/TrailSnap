@@ -239,7 +239,7 @@
             </div>
 
             <div class="relative h-full flex items-center justify-center overflow-hidden" style="width: 33.333333%">
-              <PanoramaViewer ref="panoramaViewerRef" v-if="visible && image && isPanoramaPhoto && !isEditing" :key="image.id + image.url" :photo-id="image.id" class="z-20" @active="panoramaActive = $event" @state="panoramaState = $event" @tap="handleMediaTap" />
+              <PanoramaViewer ref="panoramaViewerRef" v-if="visible && image && isPanoramaPhoto && !isEditing" :key="image.id + image.url + panoramaRevision" :photo-id="image.id" class="z-20" @active="panoramaActive = $event" @state="panoramaState = $event" @tap="handleMediaTap" />
               <div
                 v-if="image && (!image.file_type || image.file_type === 'image' || image.file_type === 'live_photo')"
                 :key="image.id"
@@ -729,7 +729,13 @@ const panoramaViewerRef = ref<{
     toggleMode: () => void; toggleHigh: () => void; toggleFullscreen: () => void
 } | null>(null)
 const panoramaState = ref({ available: false, busy: false, high: false, allowHigh: false })
-const isPanoramaPhoto = computed(() => props.image?.file_type === 'image' && !!props.image.panorama_projection)
+const refreshedPanorama = ref<{ photoId: string; projection: string | null } | null>(null)
+const panoramaRevision = ref(0)
+const isPanoramaPhoto = computed(() => props.image?.file_type === 'image' && !!(
+    refreshedPanorama.value?.photoId === props.image.id
+        ? refreshedPanorama.value.projection
+        : props.image.panorama_projection
+))
 const PhotoEditor = defineAsyncComponent(() => import('./PhotoEditor.vue'))
 import { useHotkeys, type HotkeyDef } from '@/composables/useHotkeys'
 import ResponsiveDialog from './ui/ResponsiveDialog.vue'
@@ -1143,6 +1149,7 @@ const photoProcessingTrackers = ref<Record<string, PhotoProcessingTracker>>({})
 let photoProcessingPollTimer: ReturnType<typeof setInterval> | null = null
 
 const photoProcessingOperations = [
+    { operation: 'EXTRACT_METADATA' as const, label: '元数据识别', icon: FileText },
     { operation: 'VISUAL_DESCRIPTION' as const, label: 'AI 智能分析', icon: Sparkles },
     { operation: 'RECOGNIZE_FACE' as const, label: '人脸识别', icon: ScanFace },
     { operation: 'OCR' as const, label: '文字识别 OCR', icon: ScanText },
@@ -1313,6 +1320,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     lastTouchTap = null
     // 1. Reset State
     if (newImg?.id !== oldImg?.id) {
+        refreshedPanorama.value = null
         panoramaActive.value = false
         panoramaState.value = { available: false, busy: false, high: false, allowHigh: false }
     }
@@ -1592,6 +1600,18 @@ const refreshPhotoProcessingResult = async (tracker: PhotoProcessingTracker) => 
         await fetchOCR(tracker.photoId)
     } else if (tracker.operation === 'VISUAL_DESCRIPTION') {
         await fetchDescription(tracker.photoId)
+    } else if (tracker.operation === 'EXTRACT_METADATA') {
+        const [, photos] = await Promise.all([
+            fetchMetadata(tracker.photoId),
+            albumService.getPhotosByIds([tracker.photoId]),
+        ])
+        if (props.image?.id !== tracker.photoId) return
+        const photo = photos.find(item => item.id === tracker.photoId)
+        if (photo) {
+            refreshedPanorama.value = { photoId: photo.id, projection: photo.panorama_projection ?? null }
+            panoramaRevision.value += 1
+            emit('update', { ...photo, photoId: photo.id, taskType: tracker.operation })
+        }
     } else if (tracker.operation === 'RECOGNIZE_FACE' || tracker.operation === 'CLASSIFY_IMAGE') {
         await fetchMetadata(tracker.photoId)
         emit('update', {
