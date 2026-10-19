@@ -25,8 +25,9 @@ if (!platform) {
 }
 
 const ext = platform === 'windows' ? '.exe' : '';
-const binaryName = `trailsnap-cli-${platform}-${arch}${ext}`;
+const binaryName = `TrailSnap-${version}-cli-${platform}-${arch}${ext}`;
 const downloadUrl = `https://github.com/LC044/TrailSnap/releases/download/v${version}/${binaryName}`;
+const legacyUrl = `https://github.com/LC044/TrailSnap/releases/download/v${version}/trailsnap-cli-${platform}-${arch}${ext}`;
 
 const binDir = path.join(__dirname, '..', 'bin');
 const binPath = path.join(binDir, `trailsnap${ext}`);
@@ -35,7 +36,7 @@ if (!fs.existsSync(binDir)) {
   fs.mkdirSync(binDir, { recursive: true });
 }
 
-function downloadBinary(url, dest) {
+function downloadBinary(url, dest, fallbackUrl) {
   return new Promise((resolve, reject) => {
     console.log(`Downloading ${binaryName} from ${url}...`);
     
@@ -43,9 +44,14 @@ function downloadBinary(url, dest) {
       if (response.statusCode === 301 || response.statusCode === 302) {
         // Handle redirect
         console.log(`Redirected to ${response.headers.location}`);
-        return downloadBinary(response.headers.location, dest).then(resolve).catch(reject);
+        return downloadBinary(response.headers.location, dest, fallbackUrl).then(resolve).catch(reject);
       }
       
+      // Older releases keep their original asset names.
+      if (response.statusCode === 404 && fallbackUrl) {
+        response.resume();
+        return downloadBinary(fallbackUrl, dest).then(resolve).catch(reject);
+      }
       if (response.statusCode !== 200) {
         reject(new Error(`Failed to download binary: HTTP ${response.statusCode} - ${response.statusMessage}`));
         return;
@@ -71,7 +77,7 @@ function downloadBinary(url, dest) {
   });
 }
 
-downloadBinary(downloadUrl, binPath).catch(err => {
+downloadBinary(downloadUrl, binPath, legacyUrl).catch(err => {
   console.error('Error installing trailsnap:', err.message);
   process.exit(1);
 });

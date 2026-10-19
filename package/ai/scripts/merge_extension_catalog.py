@@ -4,6 +4,10 @@ import copy
 import json
 import re
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from release_assets import ai_asset_name
 
 PLATFORMS = {"win32-x64", "linux-x64", "darwin-arm64"}
 
@@ -12,7 +16,7 @@ def merge_catalog(metadata, assets, version):
     if set(assets) != PLATFORMS:
         raise ValueError("Every release requires Windows, Linux and macOS AI assets")
     for platform, asset in assets.items():
-        filename = f"TrailSnap-AI-core-{platform}-{version}.tar.gz"
+        filename = ai_asset_name(version, platform)
         expected = f"https://github.com/LC044/TrailSnap/releases/download/v{version}/{filename}"
         if asset["url"] != expected or asset.get("filename") != filename:
             raise ValueError("AI asset version must match the Server release version")

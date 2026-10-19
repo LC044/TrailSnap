@@ -8,6 +8,10 @@ import json
 import shutil
 import tarfile
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from release_assets import ai_asset_name
 
 
 def sha256(path: Path) -> str:
@@ -52,7 +56,7 @@ def main() -> None:
     }
     (staging / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    archive = args.output / f"TrailSnap-AI-core-{args.platform_key}-{args.version}.tar.gz"
+    archive = args.output / ai_asset_name(args.version, args.platform_key)
     with tarfile.open(archive, "w:gz") as bundle:
         for child in staging.iterdir():
             bundle.add(child, arcname=child.name)

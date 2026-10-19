@@ -8,6 +8,7 @@ on:
     paths:
       - 'package/ai/**'
       - 'package/desktop/src-tauri/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-desktop-ai-extension.yml'
   push:
     tags: ["v*.*.*"]
@@ -138,7 +139,7 @@ jobs:
         run: |
           for file in artifacts/**/*.tar.gz; do
             [ -f "$file" ] || continue
-            mv "$file" "artifacts/TrailSnap-AI-pr-${{ github.event.number }}-${file##*/}"
+            mv "$file" "artifacts/pr-${{ github.event.number }}-${file##*/}"
           done
       - name: Update shared PR preview release
         if: env.skip_upload != 'true'

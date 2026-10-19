@@ -6,12 +6,14 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'package/trailsnap-cli/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-publish-cli.yml'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
     paths:
       - 'package/trailsnap-cli/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-publish-cli.yml'
   workflow_dispatch:
 
@@ -60,24 +62,29 @@ jobs:
         run: |
           pyinstaller --onefile --name trailsnap --paths trailsnap trailsnap/cli.py
 
-      - name: Rename and Prepare Asset (Unix)
-        if: runner.os != 'Windows'
+      - name: Rename release binary
+        id: asset
+        shell: bash
         working-directory: package/trailsnap-cli/dist
         run: |
-          mv ${{ matrix.executable_name }} ${{ matrix.asset_name }}
-          chmod +x ${{ matrix.asset_name }}
-
-      - name: Rename and Prepare Asset (Windows)
-        if: runner.os == 'Windows'
-        working-directory: package/trailsnap-cli/dist
-        run: |
-          Rename-Item -Path ${{ matrix.executable_name }} -NewName ${{ matrix.asset_name }}
+          version=$(python -c "import json; print(json.load(open('../package.json'))['version'])")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          case "$RUNNER_OS" in
+            Windows) platform=windows; arch=x64; suffix=.exe ;;
+            macOS) platform=macos; arch=arm64; suffix= ;;
+            Linux) platform=linux; arch=x64; suffix= ;;
+          esac
+          filename=$(python ../../../scripts/release_assets.py --version "$version" --component cli \
+            --platform "$platform" --arch "$arch" --suffix="$suffix")
+          mv '${{ matrix.executable_name }}' "$filename"
+          if [[ "$RUNNER_OS" != Windows ]]; then chmod +x "$filename"; fi
+          echo "filename=$filename" >> "$GITHUB_OUTPUT"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: package/trailsnap-cli/dist/${{ matrix.asset_name }}
+          path: package/trailsnap-cli/dist/${{ steps.asset.outputs.filename }}
 
   create-release:
     needs: build-binaries

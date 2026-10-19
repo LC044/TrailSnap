@@ -22,8 +22,8 @@ validator = load("validate_extension_release")
 
 def assets(version):
     return {platform: {
-        "url": f"https://github.com/LC044/TrailSnap/releases/download/v{version}/TrailSnap-AI-core-{platform}-{version}.tar.gz",
-        "filename": f"TrailSnap-AI-core-{platform}-{version}.tar.gz", "sha256": "a" * 64, "size": 100,
+        "url": f"https://github.com/LC044/TrailSnap/releases/download/v{version}/{module.ai_asset_name(version, platform)}",
+        "filename": module.ai_asset_name(version, platform), "sha256": "a" * 64, "size": 100,
     } for platform in module.PLATFORMS}
 
 

@@ -6,6 +6,10 @@ import json
 from pathlib import Path
 import shutil
 import zipfile
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+from release_assets import asset_name
 
 
 def package(program: Path, server: Path, launcher: Path, catalog: Path, output: Path, version: str, arch: str, webview_runtime: Path | None = None):
@@ -19,8 +23,8 @@ def package(program: Path, server: Path, launcher: Path, catalog: Path, output: 
     build = stage_program(layout, program, server, launcher, catalog, version, arch, webview_runtime)
     app = layout / "app" / build
     output.mkdir(parents=True,exist_ok=True)
-    full = output / f"TrailSnap-{version}-windows-{arch}-portable.zip"
-    update = output / f"TrailSnap-{version}-windows-{arch}-portable-update.zip"
+    full = output / asset_name(version, "desktop", "windows", arch, "-portable.zip")
+    update = output / asset_name(version, "desktop", "windows", arch, "-portable-update.zip")
     for base, target in ((layout,full),(app,update)):
         with zipfile.ZipFile(target,"w",zipfile.ZIP_DEFLATED,compresslevel=6) as archive:
             for path in sorted(base.rglob("*")):

@@ -9,6 +9,7 @@ on:
       - 'package/desktop/**'
       - 'package/website/**'
       - 'package/server/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-desktop.yml'
   push:
     branches: [ "master" ]
@@ -17,6 +18,7 @@ on:
       - 'package/desktop/**'
       - 'package/website/**'
       - 'package/server/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-desktop.yml'
 
 concurrency:
@@ -239,6 +241,11 @@ jobs:
       - name: Describe updater artifact
         shell: bash
         run: |
+          version=$(python -c "import json; print(json.load(open('package/desktop/src-tauri/tauri.conf.json'))['version'])")
+          host=$(rustc -vV | sed -n 's/^host: //p')
+          arch=${host%%-*}
+          python scripts/release_assets.py --bundle-root package/desktop/src-tauri/target/release/bundle \
+            --version "$version" --platform '${{ matrix.artifact }}' --arch "$arch"
           case "$RUNNER_OS" in
             Windows) target=windows; pattern='package/desktop/src-tauri/target/release/bundle/nsis/*.exe' ;;
             macOS) target=darwin; pattern='package/desktop/src-tauri/target/release/bundle/macos/*.app.tar.gz' ;;
