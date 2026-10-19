@@ -76,9 +76,12 @@ class RequirementCreate(BaseModel):
     submitter_name: str | None = Field(default=None, max_length=50)
     submitter_contact: str | None = Field(default=None, max_length=255)
     ai_clarification_answers: dict[str, str] = Field(default_factory=dict)
+    client_edit_token: str | None = Field(default=None, min_length=43, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class RequirementUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_state_version: int | None = Field(default=None, ge=1)
     type: Literal["bug", "improvement", "feature"] | None = None
     title: str | None = Field(default=None, min_length=4, max_length=160)
     description: str | None = Field(default=None, min_length=10, max_length=8000)
@@ -90,6 +93,11 @@ class RequirementUpdate(BaseModel):
     product_version: str | None = Field(default=None, max_length=50)
     visibility: Literal["public", "private"] | None = None
     environment: dict[str, Any] | None = None
+
+
+class RequirementSupplementCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    body: str = Field(min_length=4, max_length=4000)
 
 
 class TriageQuestion(BaseModel):
