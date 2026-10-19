@@ -36,6 +36,9 @@ async def _run(event_queue=None, shutdown_event=None, wake_event=None):
                 return
 
 def run_worker(event_queue=None, shutdown_event=None, wake_event=None):
+    from app.utils.process_lifecycle import watch_worker_parent
+
+    watch_worker_parent()
     load_dotenv(os.path.join(DATA_DIR, '.env'))
     """Entry point for the worker process"""
     # Linux containers start this process with fork.  Discard the API

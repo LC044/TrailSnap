@@ -183,6 +183,9 @@ def main() -> None:
         return
 
     if args.parent_pid:
+        from app.utils.process_lifecycle import bind_desktop_process_tree
+
+        bind_desktop_process_tree()
         threading.Thread(
             target=_watch_parent,
             args=(args.parent_pid,),

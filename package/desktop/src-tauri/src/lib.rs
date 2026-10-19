@@ -664,18 +664,46 @@ fn stop_server(app: &tauri::AppHandle) {
     let Some(mut child) = state.child.lock().expect("desktop child poisoned").take() else {
         return;
     };
+    stop_child_process_tree(&mut child);
+}
+
+fn stop_child_process_tree(child: &mut Child) {
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let result = Command::new("taskkill")
             .args(["/pid", &child.id().to_string(), "/t", "/f"])
             .creation_flags(0x08000000)
-            .status();
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {}
+            result => {
+                match result {
+                    Ok(output) => eprintln!(
+                        "Failed to stop child process tree (PID {}): {} {}",
+                        child.id(), output.status, String::from_utf8_lossy(&output.stderr)
+                    ),
+                    Err(error) => eprintln!(
+                        "Failed to run taskkill for child PID {}: {error}", child.id()
+                    ),
+                }
+                // For the backend, its Job Object also reaps descendants.
+                if let Err(error) = child.kill() {
+                    eprintln!("Failed to kill child PID {}: {error}", child.id());
+                    return;
+                }
+            }
+        }
     }
     #[cfg(not(windows))]
     {
-        let _ = child.kill();
+        if let Err(error) = child.kill() {
+            eprintln!("Failed to kill child PID {}: {error}", child.id());
+            return;
+        }
     }
-    let _ = child.wait();
+    if let Err(error) = child.wait() {
+        eprintln!("Failed to reap child PID {}: {error}", child.id());
+    }
 }
 
 #[cfg(windows)]

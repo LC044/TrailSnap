@@ -509,18 +509,7 @@ fn reserve_port() -> Result<u16, String> {
 }
 
 fn terminate_process_tree(child: &mut Child) {
-    #[cfg(windows)]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/pid", &child.id().to_string(), "/t", "/f"])
-            .creation_flags(0x08000000)
-            .status();
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = child.kill();
-    }
-    let _ = child.wait();
+    crate::stop_child_process_tree(child);
 }
 
 fn now_seconds() -> u64 {
