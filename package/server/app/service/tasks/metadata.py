@@ -1,5 +1,5 @@
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
-from app.db.models.task import TaskType
+from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 from typing import List, Dict
 import math
 import asyncio
@@ -19,6 +19,7 @@ from app.db.models.photo_color import PhotoColor
 from app.utils.color import extract_color_info, CURRENT_COLOR_ANALYSIS_VERSION
 from app.utils.image_loading import Image
 from app.service.disk_budget import budgeted_open
+from app.service.tasks.photo_generator import generate_photo_tasks
 
 def determine_image_type(filename: str, width: int, height: int, exif_data: dict,
                          file_type: 'FileType | None' = None) -> ImageType:
@@ -155,7 +156,7 @@ def extract_task_metadata(data: dict, photo: Photo) -> dict:
     raw = data.get('raw_metadata')
     from app.service.storage_paths import portable_enabled
     source = photo.file_path if portable_enabled() else (data.get('file_path') or photo.file_path)
-    if data.get('raw_metadata_version') != 1 or not isinstance(raw, dict):
+    if data.get('force') or data.get('raw_metadata_version') != 1 or not isinstance(raw, dict):
         return rebuild_metadata_cpu_job(source, photo.id)
     try:
         meta = dict(raw)
@@ -170,12 +171,12 @@ def extract_task_metadata(data: dict, photo: Photo) -> dict:
         return rebuild_metadata_cpu_job(source, photo.id)
 
 
-def update_photo_color_from_thumbnail(db: Session, photo: Photo, *, colors=None) -> None:
+def update_photo_color_from_thumbnail(db: Session, photo: Photo, *, colors=None, force=False) -> None:
     """Prefer the small thumbnail, then preview, then source if generation failed."""
     if photo.file_type == FileType.video or not photo.owner_id:
         return
     record = colors.get(photo.id) if colors is not None else db.query(PhotoColor).filter(PhotoColor.photo_id == photo.id).first()
-    if record is not None and record.analysis_version == CURRENT_COLOR_ANALYSIS_VERSION:
+    if not force and record is not None and record.analysis_version == CURRENT_COLOR_ANALYSIS_VERSION:
         return
     try:
         preview = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
@@ -226,7 +227,7 @@ def _extract_metadata_batch(bind, task_data):
                 else:
                     update_photo_metadata_from_extract(db, photo, extracted['meta'], commit=False,
                                                        metadata_cache=metadata, scenes=scenes)
-                    update_photo_color_from_thumbnail(db, photo, colors=colors)
+                    update_photo_color_from_thumbnail(db, photo, colors=colors, force=data.get('force', False))
                     if photo.owner_id:
                         updated_by_owner.setdefault(photo.owner_id, []).append(photo.id)
                     result['result'] = {'status': 'success'}
@@ -245,8 +246,15 @@ class ExtractMetadataStrategy(BaseTaskStrategy):
 
     async def process_batch(self, worker, tasks: List[Task], db: Session) -> List[Dict]:
         task_data = []
+        results = []
         for task in tasks:
+            if (task.payload or {}).get('scope') == 'all' and not task.payload.get('photo_id'):
+                result = await RebuildMetadataStrategy().process(worker, task, db)
+                results.append({'task_id': task.id, 'task_type': task.type,
+                                'status': 'completed', 'result': result})
+                continue
             data = {'task_id': task.id, 'task_type': task.type, 'file_path': task.payload.get('file_path'),
+                    'force': task.payload.get('force', False),
                     'raw_metadata_version': task.payload.get('raw_metadata_version'),
                     'raw_metadata': task.payload.get('raw_metadata')}
             value = task.payload.get('photo_id')
@@ -255,12 +263,16 @@ class ExtractMetadataStrategy(BaseTaskStrategy):
             except (ValueError, TypeError):
                 data['error'] = 'invalid uuid'
             task_data.append(data)
-        return await asyncio.to_thread(_extract_metadata_batch, db.get_bind(), task_data)
+        if task_data:
+            results.extend(await asyncio.to_thread(_extract_metadata_batch, db.get_bind(), task_data))
+        return results
 
     async def process(self, worker, task: Task, db: Session):
         """
         Handle single file metadata extraction (Heavy task: Geolocation etc.)
         """
+        if (task.payload or {}).get('scope') == 'all' and not task.payload.get('photo_id'):
+            return await RebuildMetadataStrategy().process(worker, task, db)
         photo_id_str = task.payload.get('photo_id')
         if not photo_id_str:
             return {'status': 'skipped', 'reason': 'missing photo_id'}
@@ -290,7 +302,7 @@ class ExtractMetadataStrategy(BaseTaskStrategy):
         res = await asyncio.to_thread(extract_task_metadata, dict(task.payload, file_path=file_path), photo)
         if res['success']:
             meta = res['meta']
-            update_photo_color_from_thumbnail(db, photo)
+            update_photo_color_from_thumbnail(db, photo, force=task.payload.get('force', False))
             update_photo_metadata_from_extract(db, photo, meta)
             return {'status': 'success'}
         else:
@@ -409,42 +421,10 @@ class RebuildMetadataStrategy(BaseTaskStrategy):
         return 'IO'
 
     async def process(self, worker, task: Task, db: Session):
-        scope = task.payload.get('scope', 'all')
-        force = task.payload.get('force', False)
-
-        # Generator Mode: Create EXTRACT_METADATA tasks for each photo
-        batch_size = 1000
-        offset = 0
-        generated_count = 0
-
-        while True:
-            batch = db.query(Photo).offset(offset).limit(batch_size).all()
-            if not batch:
-                break
-
-            tasks_to_create = []
-            for p in batch:
-                should_process = False
-                if force:
-                    should_process = True
-                else:
-                    tasks_status = p.processed_tasks or {}
-                    if not tasks_status.get('metadata'):
-                        should_process = True
-
-                if should_process:
-                    tasks_to_create.append({
-                        'type': TaskType.EXTRACT_METADATA,
-                        'payload': {'photo_id': str(p.id), 'file_path': p.file_path}, # Pass file_path for optimization
-                        'priority': 5,
-                        'owner_id': p.owner_id
-                    })
-
-            if tasks_to_create:
-                worker.add_tasks(db, tasks_to_create)
-                generated_count += len(tasks_to_create)
-
-            offset += batch_size
+        generated_count = generate_photo_tasks(
+            db, worker, task, task_type=TaskType.EXTRACT_METADATA,
+            status_key='metadata', priority=DEFAULT_PRIORITIES[TaskType.EXTRACT_METADATA], include_videos=True,
+        )
 
         return {
             'processed': 0,

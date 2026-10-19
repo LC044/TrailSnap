@@ -499,6 +499,7 @@ def test_handle_completion_marks_pre_created_motion_photo_as_live(monkeypatch):
     db = MagicMock()
     db_photo = SimpleNamespace(
         file_type=FileType.image, md5=None, size=1, width=None, height=None, duration=None,
+        processed_tasks={},
     )
     db.get.return_value = db_photo
     db.query.return_value.filter.return_value.first.return_value = None
@@ -516,6 +517,7 @@ def test_handle_completion_marks_pre_created_motion_photo_as_live(monkeypatch):
 
     assert db_photo.file_type == FileType.live_photo
     assert db_photo.md5 == "f" * 32
+    assert db_photo.processed_tasks['basic'] is True
 
 
 def test_handle_completion_skips_metadata_when_no_metadata_schema():

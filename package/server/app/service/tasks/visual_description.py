@@ -1,3 +1,4 @@
+from app.service.tasks.photo_generator import generate_photo_tasks
 from app.service.disk_budget import media_io
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
@@ -307,52 +308,12 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
 
                 return await self.process_single_photo(worker, photo, db, settings)
 
-            # 2. Generator Mode (Scan all)
-            photos_to_process = []
-            batch_size = 1000
-            offset = 0
-
-            generated_count = 0
-            # CI 限速：只生成到上限为止的子任务
             remaining = ci_remaining_budget(db, ImageDescription)
-
-            while True:
-                query = db.query(Photo).filter(Photo.file_type != FileType.video, Photo.image_type != ImageType.SCREENSHOT)
-                if task.owner_id:
-                    query = query.filter(Photo.owner_id == task.owner_id)
-
-                batch = query.offset(offset).limit(batch_size).all()
-                if not batch:
-                    break
-
-                tasks_to_create = []
-                for p in batch:
-                    should_process = False
-                    if force:
-                        should_process = True
-                    else:
-                        tasks_status = p.processed_tasks or {}
-                        if not tasks_status.get('visual_description'):
-                            should_process = True
-
-                    if should_process:
-                        if remaining is not None and generated_count >= remaining:
-                            break
-                        tasks_to_create.append({
-                            'type': TaskType.VISUAL_DESCRIPTION,
-                            'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
-                            'priority': DEFAULT_PRIORITIES[TaskType.VISUAL_DESCRIPTION],
-                            'owner_id': p.owner_id
-                        })
-
-                if tasks_to_create:
-                    worker.add_tasks(db, tasks_to_create)
-                    generated_count += len(tasks_to_create)
-
-                offset += batch_size
-
-                if remaining is not None and generated_count >= remaining:
-                    break
+            generated_count = generate_photo_tasks(
+                db, worker, task, task_type=TaskType.VISUAL_DESCRIPTION,
+                status_key='visual_description', priority=DEFAULT_PRIORITIES[TaskType.VISUAL_DESCRIPTION],
+                budget=remaining, eligible=lambda photo: photo.image_type != ImageType.SCREENSHOT,
+            )
 
             return {
                 'processed': 0,

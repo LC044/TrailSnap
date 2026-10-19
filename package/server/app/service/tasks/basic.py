@@ -31,6 +31,7 @@ from app.utils import motion_photo
 from app.service.disk_budget import budgeted_open
 from contextlib import ExitStack
 from app.service.task_runtime import await_owned
+from app.service.tasks.photo_generator import generate_photo_tasks
 
 
 def _json_safe_metadata(metadata):
@@ -185,12 +186,29 @@ class BasicTaskStrategy(BaseTaskStrategy):
         return 'CPU'
 
     async def process(self, worker, task: Task, db: Session) -> Any:
-        pass
+        generated = generate_photo_tasks(
+            db, worker, task, task_type=TaskType.PROCESS_BASIC,
+            status_key='basic', priority=DEFAULT_PRIORITIES[TaskType.PROCESS_BASIC],
+            include_videos=True,
+            payload_for_photo=lambda photo: {'is_live_photo': photo.file_type == FileType.live_photo},
+        )
+        return {'generated_tasks': generated}
 
     async def process_batch(self, worker, tasks: List[Task], db: Session) -> List[Dict]:
         from app.db.models.photo import Photo
 
         results = []
+        photo_tasks = []
+        for task in tasks:
+            if (task.payload or {}).get('scope') == 'all' and not task.payload.get('file_path') and not task.payload.get('photo_id'):
+                result = await self.process(worker, task, db)
+                results.append({'task_id': task.id, 'task_type': task.type,
+                                'status': 'completed', 'result': result})
+            else:
+                photo_tasks.append(task)
+        tasks = photo_tasks
+        if not tasks:
+            return results
         batch_jobs_data = []
         # 按 user_id 预取一次 image_config，避免 _save_thumbnails 在 CPU worker 中
         # 为批内每张图各开一次 SessionLocal 拉 DB（config_manager 内部有 5s LRU
@@ -464,9 +482,11 @@ class BasicTaskStrategy(BaseTaskStrategy):
             file_path = info['path']
             owner_id = info['owner_id']
 
+            db_photo = db.get(Photo, UUID(photo_id))
+            if db_photo is not None:
+                db_photo.processed_tasks = dict(db_photo.processed_tasks or {}, basic=True)
             if info.get("raw_metadata") is not None and "panorama" in info["raw_metadata"]:
                 from app.utils.panorama import apply_detection
-                db_photo = db.get(Photo, UUID(photo_id))
                 if db_photo is not None:
                     apply_detection(db_photo, info["raw_metadata"]["panorama"])
 

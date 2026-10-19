@@ -19,6 +19,7 @@ export interface Task {
 }
 
 export type PhotoProcessingOperation =
+  | 'EXTRACT_METADATA'
   | 'VISUAL_DESCRIPTION'
   | 'RECOGNIZE_FACE'
   | 'OCR'

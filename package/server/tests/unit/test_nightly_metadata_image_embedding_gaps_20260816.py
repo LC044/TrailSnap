@@ -347,7 +347,9 @@ def test_image_embedding_process_generator_mode_creates_tasks():
     p3 = _photo(processed_tasks={}, file_type=FileType.video)  # videos skipped
 
     db = MagicMock()
-    db.query.return_value.offset.return_value.limit.return_value.all.side_effect = [
+    db.query.return_value.filter.return_value = db.query.return_value
+    db.query.return_value.order_by.return_value = db.query.return_value
+    db.query.return_value.limit.return_value.all.side_effect = [
         [p1, p2, p3],
         [],
     ]
@@ -373,7 +375,9 @@ def test_image_embedding_process_generator_mode_force_includes_all():
     p2 = _photo(processed_tasks={}, file_type=FileType.video)  # still skipped (video)
 
     db = MagicMock()
-    db.query.return_value.offset.return_value.limit.return_value.all.side_effect = [
+    db.query.return_value.filter.return_value = db.query.return_value
+    db.query.return_value.order_by.return_value = db.query.return_value
+    db.query.return_value.limit.return_value.all.side_effect = [
         [p1, p2],
         [],
     ]

@@ -1,7 +1,8 @@
+from app.service.tasks.photo_generator import generate_photo_tasks
 from app.service.ai_model_state import ai_response_error
 from app.service.disk_budget import disk_budget
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
-from app.db.models.task import TaskType
+from app.db.models.task import TaskType, DEFAULT_PRIORITIES
 from typing import List, Dict
 import logging
 import json
@@ -122,40 +123,10 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
 
                 return await self.process_single_photo(worker, photo, db)
 
-            # Generator Mode
-            batch_size = 1000
-            offset = 0
-            generated_count = 0
-
-            while True:
-                batch = db.query(Photo).offset(offset).limit(batch_size).all()
-                if not batch:
-                    break
-
-                tasks_to_create = []
-                for p in batch:
-                    if p.file_type == FileType.video:
-                        continue
-                    should_process = False
-                    if force:
-                        should_process = True
-                    else:
-                        tasks_status = p.processed_tasks or {}
-                        if not tasks_status.get('tickets'):
-                            should_process = True
-                    if should_process:
-                        tasks_to_create.append({
-                            'type': TaskType.RECOGNIZE_TICKET,
-                            'payload': {'photo_id': str(p.id), 'force': force, 'file_path': p.file_path},
-                            'priority': 2,
-                            'owner_id': p.owner_id
-                        })
-
-                if tasks_to_create:
-                    worker.add_tasks(db, tasks_to_create)
-                    generated_count += len(tasks_to_create)
-
-                offset += batch_size
+            generated_count = generate_photo_tasks(
+                db, worker, task, task_type=TaskType.RECOGNIZE_TICKET,
+                status_key='tickets', priority=DEFAULT_PRIORITIES[TaskType.RECOGNIZE_TICKET],
+            )
 
             return {
                 'processed': 0,
