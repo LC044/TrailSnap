@@ -122,6 +122,46 @@ def patched_env(tmp_path, monkeypatch):
 # ----------------------- tests -----------------------
 
 
+@pytest.mark.parametrize('count', [1, 2])
+def test_req159_missing_code_supplement_is_single_crop_only(patched_env, monkeypatch, tmp_path, count):
+    module = patched_env['module']
+    monkeypatch.setattr(module, 'cv2', _install_fake_cv2(monkeypatch))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(module.cv2.dnn, 'NMSBoxes', lambda *args: list(range(count)))
+    texts = ['西安东>', '汉口>', '10月5日 16:41']
+    polys = [[[x, y], [x + 50, y], [x + 50, y + 20], [x, y + 20]]
+             for x, y in [(20, 100), (300, 100), (20, 50)]]
+    crop = list(zip(polys, texts))
+    full = [([], 'G3927/G3926'), ([], '西安东起车次变更为 G3926')]
+    ocr = MagicMock(side_effect=[crop, full] if count == 1 else [crop, crop])
+    session = _build_fake_session(0, 'label')
+    patched_env['manager'].get_model.side_effect = lambda name: ocr if name == 'ocr' else session
+    result = module.TicketService().detect(b'image')
+    assert result['count'] == count
+    assert ocr.call_count == 2
+    assert [ticket['train_code'] for ticket in result['tickets']] == (['G3926'] if count == 1 else ['', ''])
+    assert all(ticket['name'] == '' for ticket in result['tickets'])
+
+
+def test_req159_label1_train_uses_train_parser(patched_env, monkeypatch, tmp_path):
+    module = patched_env['module']
+    monkeypatch.setattr(module, 'cv2', _install_fake_cv2(monkeypatch))
+    monkeypatch.chdir(tmp_path)
+    texts = ['G3915', '汉口', '西安东', '07車15D號二等座', '乘车人：林小明']
+    polys = [[[x, y], [x + 50, y], [x + 50, y + 20], [x, y + 20]]
+             for x, y in [(150, 50), (20, 100), (300, 100), (20, 150), (20, 200)]]
+    ocr = MagicMock(return_value=list(zip(polys, texts)))
+    session = _build_fake_session(1, 'label1')
+    patched_env['manager'].get_model.side_effect = lambda name: ocr if name == 'ocr' else session
+    result = module.TicketService().detect(b'image')['tickets'][0]
+    assert result['type'] == 'train'
+    assert result['train_code'] == 'G3915'
+    assert result['name'] == '林小明'
+    assert result['departure_station'] == '汉口'
+    assert result['seat_num'] == '15D'
+    assert ocr.call_count == 1
+
+
 def test_detect_raises_when_model_not_ready(patched_env, monkeypatch):
     """If the model is not yet downloaded, detect() must surface an error."""
     patched_env["downloader"].is_ready = MagicMock(return_value=False)

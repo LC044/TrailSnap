@@ -4,10 +4,11 @@ import numpy as np
 import cv2
 import logging
 import os
+import re
 from app.config import settings
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
-from app.services.ticket_parser import parse_ticket_info, extract_text
+from app.services.ticket_parser import parse_ticket_info, extract_text, resolve_train_code
 from app.services.fly_ticket_parser import extract_flight_info
 from app.services.onnx_providers import create_inference_session
 from app.services.ocr_service import openvino_infer_lock
@@ -58,6 +59,34 @@ def release_onnx_model(model):
 
 # 注册 ONNX 模型
 model_manager.register_model("tickets_yolo", load_onnx_model, release_onnx_model)
+
+def has_railway_evidence(texts):
+    text = ' '.join(texts).translate(str.maketrans({'車': '车', '號': '号'}))
+    # Airline numbers (e.g. G3915 as an airline designator) alone are insufficient.
+    code = re.search(r'(?<![A-Za-z0-9])[GDCKTZ]\d{1,4}(?![A-Za-z0-9])', text)
+    railway = re.search(r'\d{1,2}\s*车\s*\d{1,3}\s*[A-Fa-f]?\s*号|二等座|一等座|复兴号|中国铁路|12306', text)
+    aviation = re.search(r'登机口|航班|航空|机场|经济舱', text)
+    return bool(code and railway and not aviation)
+
+
+def supplement_train_code(info, image, ocr):
+    """At most one full-image OCR; never copy other fields across crop boundaries."""
+    try:
+        with openvino_infer_lock():
+            result = ocr(image)
+        result = result[0] if isinstance(result, tuple) else result
+        if hasattr(result, 'txts'):
+            texts = list(result.txts) if result.txts is not None else []
+            polys = result.boxes.tolist() if hasattr(result.boxes, 'tolist') else result.boxes
+        else:
+            texts = [str(item[1]) for item in (result or []) if len(item) >= 2]
+            polys = [item[0] for item in (result or []) if len(item) >= 2]
+        code = resolve_train_code(texts, info.get('departure_station', ''), polys)
+        if code:
+            info['train_code'] = code
+    except Exception:
+        logging.warning('Full-image train-code OCR failed; retaining crop result')
+
 
 class TicketService:
     def detect(self, image_bytes: bytes):
@@ -257,7 +286,7 @@ class TicketService:
                 # 5. 解析车票信息
                 cls_name = yolo_session.names.get(cls_id, str(cls_id))
                 
-                if cls_name == "label1":
+                if cls_name == "label1" and not has_railway_evidence(texts):
                     # 飞机票
                     info = extract_flight_info(texts)
                     info["type"] = "flight"
@@ -265,6 +294,8 @@ class TicketService:
                     # 火车票 (label)
                     info = parse_ticket_info(texts, polys)
                     info["type"] = "train"
+                    if not info.get('train_code') and len(filtered_boxes) == 1:
+                        supplement_train_code(info, img, ocr)
                 
                 logging.info(f"Ticket detection {i} ({cls_name}): parsed info: {info}")
                 if info:

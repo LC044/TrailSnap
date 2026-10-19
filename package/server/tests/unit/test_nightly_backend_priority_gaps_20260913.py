@@ -389,6 +389,7 @@ async def test_recognize_ticket_selects_best_candidate_and_normalizes_payload():
         "seat_type": "二等座", "berth_type": "无",
         "name": "测试", "carriage": "07",
         "datetime": f"{expected_year}-09-10T08:05", "price": 123.5,
+        "year_source": "inferred_current_year",
         "discount_type": "全价票",
     }
 
