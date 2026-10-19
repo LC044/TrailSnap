@@ -60,7 +60,8 @@ test.describe('Nightly view coverage — chapter & memory @views-coverage', () =
     })
     await page.goto('/chapters')
     await expect(page.getByRole('heading', { name: '人生章节', level: 1 })).toBeVisible()
-    await page.getByRole('button', { name: '章节建议' }).click()
+    // "章节建议" 同时是 tabs 文本 + "发现章节建议" CTA 子串，需要精确匹配 tab
+    await page.getByRole('button', { name: '章节建议', exact: true }).click()
     await expect(page.getByRole('heading', { name: '这里暂时没有章节' })).toBeVisible({ timeout: 5_000 })
     expect(listUrl).toContain('status=candidate')
   })
