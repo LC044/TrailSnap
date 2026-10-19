@@ -77,6 +77,65 @@ def test_cache_expires_and_is_scoped_to_service(monkeypatch):
         assert state.get_model_wait_reason("http://two", TaskType.RECOGNIZE_FACE)
 
 
+@pytest.mark.parametrize("other_error", ["设备繁忙", state.WAIT_PREFIX + "other model"])
+def test_ready_clears_waiting_backlog_without_touching_other_retries(face_sqlite_session, monkeypatch, other_error):
+    from datetime import timedelta
+    from uuid import uuid4
+    from app.core.config_manager import config_manager
+    from app.crud.task import get_grouped_status
+    from app.db.models.task import Task
+    from app.db.models.user import User
+
+    db = face_sqlite_session
+    owner, other_owner = uuid4(), uuid4()
+    db.add_all([User(id=value, username=str(value), settings={})
+                for value in (owner, other_owner)])
+    reason = state.WAIT_PREFIX + "Buffalo L 正在下载，完成后自动继续"
+    retry_at = datetime.now() + timedelta(seconds=30)
+    rows = [Task(type=kind, owner_id=user, payload={}, priority=10,
+                 status=status, attempt_count=2, error=error, next_retry_at=retry_at)
+            for user, kind, status, error in [
+                (owner, TaskType.RECOGNIZE_FACE, TaskStatus.PENDING, reason),
+                (owner, TaskType.RECOGNIZE_FACE, TaskStatus.PENDING, reason),
+                (other_owner, TaskType.RECOGNIZE_FACE, TaskStatus.PENDING, other_error),
+                (owner, TaskType.OCR, TaskStatus.PENDING, reason),
+                (owner, TaskType.RECOGNIZE_FACE, TaskStatus.PENDING, "设备繁忙"),
+                (owner, TaskType.RECOGNIZE_FACE, TaskStatus.FAILED, reason),
+            ]]
+    db.add_all(rows)
+    db.commit()
+    monkeypatch.setattr(task_worker, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    monkeypatch.setattr(config_manager, "get_user_config", lambda *_: SimpleNamespace(ai=SimpleNamespace(ai_api_url="http://ai")))
+    monkeypatch.setattr(state, "get_model_wait_reason", lambda *_: None)
+    strategy = SimpleNamespace(process_batch=AsyncMock(return_value=[]), timeout=10, resource_key="test")
+    monkeypatch.setattr(task_worker.TaskStrategyFactory, "get_strategy", lambda *_: strategy)
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    monkeypatch.setattr(worker, "_extension_wait_reason", lambda: None)
+    infos = [{"id": rows[0].id, "type": rows[0].type}]
+
+    worker.paused_categories = {TaskType.RECOGNIZE_FACE}
+    assert worker._execute_batch_sync(infos) == ([], None)
+    db.expire_all()
+    assert rows[1].error == reason
+    worker.paused_categories = set()
+    assert worker._execute_batch_sync(infos) == ([], "success")
+    db.expire_all()
+    assert rows[0].status == TaskStatus.PROCESSING
+    assert rows[1].status == TaskStatus.PENDING
+    assert all(row.error is None and row.next_retry_at is None for row in rows[:2])
+    assert [row.error for row in rows[2:]] == [other_error, reason, "设备繁忙", reason]
+    assert all(row.next_retry_at == retry_at for row in rows[2:])
+    assert all(row.attempt_count == 2 for row in rows)
+    groups = get_grouped_status(db, set())
+    face = next(group for group in groups if group["category"] == TaskType.RECOGNIZE_FACE)
+    if other_error.startswith(state.WAIT_PREFIX):
+        assert face["waiting_reason"] == other_error
+    else:
+        assert "waiting_reason" not in face
+
+
 @pytest.mark.asyncio
 async def test_http_detail_and_legacy_not_ready_are_preserved():
     response = SimpleNamespace(status=500, text=AsyncMock(return_value='{"detail":"Face model is not ready yet. Please try again later."}'))

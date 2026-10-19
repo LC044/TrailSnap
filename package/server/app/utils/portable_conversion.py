@@ -152,7 +152,8 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         raise ValueError("转换需要完整的新桌面程序、后端与启动器")
     preview = preview_conversion(source)
     validate_external_target(preview, target)
-    baseline = media_baseline(source)
+    baseline = media_baseline(source, copy_external=copy_external,
+                              excluded_entries=conversion_exclusions(source))
     if copy_external and any(not item["available"] for item in preview["externalRoots"]):
         raise ValueError("外部图库磁盘不可用，不能创建完整便携副本")
     if copy_external and preview["unregisteredPhotos"]:
