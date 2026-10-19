@@ -632,7 +632,14 @@ fn spawn_server_attempt(app: tauri::AppHandle, ai_gateway_port: u16, attempt: us
                     if !session_secret.is_empty() {
                         let identity = client
                             .get(format!("{api_url}/api/system/desktop/runtime"))
-                            .timeout(Duration::from_secs(30))
+                            // A migration proof can hash copied media for much
+                            // longer than 30s. Keep this request alive instead of
+                            // repeatedly starting verification after disconnects.
+                            .timeout(Duration::from_secs(if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
+                                30 * 60
+                            } else {
+                                30
+                            }))
                             .header("X-TrailSnap-Desktop-Secret", &session_secret)
                             .send()
                             .await;

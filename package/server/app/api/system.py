@@ -89,10 +89,9 @@ def desktop_runtime_identity(secret: str | None = Header(default=None, alias="X-
     metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.is_file() else {}
     baseline = os.getenv('TS_UPDATE_BASELINE')
     if os.getenv('TS_DESKTOP_VERIFY') == '1' and baseline:
-        from app.utils.desktop_verification import verify_media
+        from app.utils.desktop_verification import verify_runtime_media
         try:
-            expected = json.loads(Path(baseline).read_text(encoding='utf-8'))
-            verify_media(root.resolve(), expected.get('media', []))
+            verify_runtime_media(root.resolve(), Path(baseline), os.getenv('TS_DESKTOP_START_NONCE', ''))
         except (ValueError, OSError) as error:
             from app.utils.portable_library import write_json
             instance = Path(os.environ['TS_INSTANCE_ROOT'])
@@ -104,6 +103,8 @@ def desktop_runtime_identity(secret: str | None = Header(default=None, alias="X-
         available = 0
         for photo in db.query(Photo).limit(8).all():
             path = Path(photo.file_path)
+            if not path.resolve().is_relative_to(root.resolve()):
+                continue
             if path.is_file():
                 with path.open("rb") as stream:
                     stream.read(1)

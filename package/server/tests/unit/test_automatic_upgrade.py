@@ -233,6 +233,46 @@ def test_target_damage_past_sample_prefix_prevents_source_cleanup(setup, monkeyp
     assert database.is_file() and image.is_file()
 
 
+def test_external_original_is_not_in_upgrade_proof_and_old_journal_can_finish(setup, monkeypatch, tmp_path):
+    root, _ = setup
+    database, image = library(root, monkeypatch)
+    external = tmp_path / 'external.jpg'
+    external.write_bytes(b'external original')
+    with closing(sqlite3.connect(database)) as db, db:
+        owner = db.execute('SELECT id FROM users').fetchone()[0]
+        db.execute("INSERT INTO photos(id,owner_id,file_path,file_type,is_deleted) VALUES (?,?,?,'image',0)",
+                   ('external', owner, str(external)))
+    invoke(root, 'prepare')
+    journal = root / 'maintenance/automatic-upgrade.json'
+    job = json.loads(journal.read_text(encoding='utf-8'))
+    assert len(job['media']) == 1
+    # A published journal from the original 0.18.0 included external media.
+    job['media'].append({'id': 'external', 'sha256': file_hash(external)})
+    write_json(journal, job)
+    external.write_bytes(b'legitimate edit in another application')
+    invoke(root, 'validated')
+    invoke(root, 'cleanup')
+    assert external.read_bytes() == b'legitimate edit in another application'
+    assert not database.exists() and not image.exists()
+    assert (root / 'userdata/data/trailsnap.sqlite').is_file()
+
+
+def test_legacy_copied_record_redirected_outside_target_never_allows_source_cleanup(setup, monkeypatch):
+    root, _ = setup
+    database, image = library(root, monkeypatch)
+    invoke(root, 'prepare')
+    journal = root / 'maintenance/automatic-upgrade.json'
+    job = json.loads(journal.read_text(encoding='utf-8'))
+    for item in job['media']:
+        item.pop('copied')
+    write_json(journal, job)
+    with closing(sqlite3.connect(root / 'userdata/data/trailsnap.sqlite')) as db, db:
+        db.execute('UPDATE photos SET file_path=?,storage_root_id=NULL,storage_relative_path=NULL', (str(image),))
+    invoke(root, 'validated')
+    assert '路径超出新图库' in invoke(root, 'cleanup', success=False)
+    assert database.is_file() and image.is_file()
+
+
 def test_source_lock_prevents_copy_while_legacy_app_is_running(setup, monkeypatch):
     if os.name != 'nt':
         pytest.skip('legacy Windows lock')
