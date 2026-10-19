@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+import errno
 from contextlib import closing
 import multiprocessing
 import os
 import signal
 import secrets
+import socket
 import threading
 import time
 from pathlib import Path
@@ -20,6 +22,30 @@ DESKTOP_SCHEMA_REVISION = "portable_sqlite_0020"
 # to nginx: all API calls start with /api. The bundled server has no reverse
 # proxy to strip that prefix, so expose the FastAPI app under its public path.
 DESKTOP_API_ROOT_PATH = "/api"
+
+
+def _bind_desktop_listener(port: int):
+    """Keep the checked socket until uvicorn takes it; report bind failures separately."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        if os.name == "nt":
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        else:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("0.0.0.0", port))
+        listener.listen(128)
+        listener.setblocking(False)
+        return listener
+    except OSError as error:
+        listener.close()
+        from app.utils.portable_library import write_json
+        reason = ("被系统拒绝访问，可能属于保留端口或受到权限限制" if isinstance(error, PermissionError)
+                  else "已被其他程序占用" if error.errno == errno.EADDRINUSE else "无法监听")
+        write_json(Path(os.environ['TS_DATA_DIR']) / 'startup-error.json', {
+            'code': 'port_bind_failed' if error.errno in (errno.EACCES, errno.EADDRINUSE) else 'port_listener_failed', 'port': port,
+            'message': f'手机连接端口 {port} {reason}：{error}。请修改端口或切换为自动选择。',
+        })
+        raise
 
 
 def _apply_desktop_api_prefix(app) -> None:
@@ -238,7 +264,7 @@ def main() -> None:
         _prepare_desktop_database()
     except Exception as error:
         from app.utils.portable_library import write_json
-        write_json(Path(os.environ['TS_DATA_DIR']).parent / 'startup-error.json', {
+        write_json(Path(os.environ['TS_DATA_DIR']) / 'startup-error.json', {
             'message': f'图库初始化失败：{error}。请检查磁盘和写入权限；升级前备份保存在数据目录的 backups 中。',
             'detail': repr(error),
         })
@@ -266,7 +292,8 @@ def main() -> None:
         )
     )
     app.state.desktop_server = server
-    server.run()
+    with _bind_desktop_listener(args.port) as listener:
+        server.run(sockets=[listener])
 
 
 if __name__ == "__main__":

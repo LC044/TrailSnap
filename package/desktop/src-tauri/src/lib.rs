@@ -278,6 +278,17 @@ async fn desktop_prepare_update(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn desktop_restart_for_port(app: tauri::AppHandle) -> Result<(), String> {
+    let status = desktop_runtime_status(app.state());
+    if status.ready {
+        drain_desktop(&app, "port-change").await?;
+    } else if status.phase != "failed" {
+        return Err("本地服务仍在启动，请稍后重试".into());
+    }
+    desktop_restart(app)
+}
+
+#[tauri::command]
 fn desktop_restart(app: tauri::AppHandle) -> Result<(), String> {
     if app.state::<DesktopState>().drain.lock().expect("drain poisoned")
         .as_ref().is_some_and(|drain| drain.receiver.borrow().is_none()) {
@@ -455,7 +466,11 @@ fn update_status(app: &tauri::AppHandle, next: RuntimeStatus) {
 }
 
 fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), String> {
-    let port = app.state::<DataDirectory>().server_port()?;
+    spawn_server_attempt(app, ai_gateway_port, 0)
+}
+
+fn spawn_server_attempt(app: tauri::AppHandle, ai_gateway_port: u16, attempt: usize) -> Result<(), String> {
+    let port = app.state::<DataDirectory>().server_port(attempt > 0)?;
     let api_url = format!("http://127.0.0.1:{port}");
     update_status(
         &app,
@@ -562,8 +577,18 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
             };
             if let Some(exit) = exited {
                 let details: Option<Value> = portable::read_json(&startup_error).ok();
+                let code = details.as_ref().and_then(|v| v["code"].as_str());
+                if data_directory::retry_port_start(app.state::<DataDirectory>().fixed_port(), attempt, code) {
+                    if let Err(message) = spawn_server_attempt(app.clone(), ai_gateway_port, attempt + 1) {
+                        update_status(&app, RuntimeStatus { phase: "failed".into(), message: Some(message), ..Default::default() });
+                    }
+                    break;
+                }
                 let message = details.as_ref().and_then(|v|v["message"].as_str()).map(str::to_string)
                     .unwrap_or_else(||format!("本地服务已退出（{exit}）。请检查磁盘空间、写入权限和日志：{}。数据目录不会自动切换。", log_dir.display()));
+                if matches!(code, Some("port_bind_failed" | "port_listener_failed")) {
+                    app.state::<DataDirectory>().mark_port_error(message.clone());
+                }
                 update_status(
                     &app,
                     RuntimeStatus {
@@ -623,6 +648,10 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                         if !valid {
                             tokio::time::sleep(Duration::from_millis(100)).await;
                             continue;
+                        }
+                        if let Err(message) = app.state::<DataDirectory>().commit_server_port(port) {
+                            update_status(&app, RuntimeStatus { phase: "failed".into(), message: Some(message), ..Default::default() });
+                            break;
                         }
                         if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
                             if let Some(root) = &app.state::<DataDirectory>().instance_root {
@@ -741,6 +770,9 @@ pub fn run() {
         .manage(update_manager::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
+            data_directory::desktop_port_config,
+            data_directory::desktop_set_port,
+            desktop_restart_for_port,
             desktop_data_directory,
             desktop_set_data_directory,
             desktop_open_data_directory,

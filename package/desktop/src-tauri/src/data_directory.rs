@@ -15,6 +15,29 @@ struct DirectoryConfig {
     migration_error: Option<String>,
     #[serde(default)]
     server_port: Option<u16>,
+    #[serde(default)]
+    fixed_port: bool,
+}
+
+#[derive(Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PortRuntime {
+    active_port: Option<u16>,
+    error: Option<String>,
+    notice: Option<String>,
+}
+
+pub fn port_error(port: u16, error: &std::io::Error) -> String {
+    let reason = match error.kind() {
+        std::io::ErrorKind::AddrInUse => "已被其他程序占用",
+        std::io::ErrorKind::PermissionDenied => "被系统拒绝访问，可能属于保留端口或受到权限限制",
+        _ => "无法监听",
+    };
+    format!("手机连接端口 {port} {reason}：{error}。请修改端口或切换为自动选择。")
+}
+
+pub fn retry_port_start(fixed: bool, attempt: usize, code: Option<&str>) -> bool {
+    !fixed && attempt < 2 && code == Some("port_bind_failed")
 }
 
 pub struct DataDirectory {
@@ -25,6 +48,7 @@ pub struct DataDirectory {
     config_path: PathBuf,
     default_root: PathBuf,
     config: Mutex<DirectoryConfig>,
+    port_runtime: Mutex<PortRuntime>,
 }
 
 impl DataDirectory {
@@ -54,6 +78,7 @@ impl DataDirectory {
                 DirectoryConfig {
                     root: data,
                     server_port: instance.server_port,
+                    fixed_port: instance.fixed_port,
                     ..Default::default()
                 },
             )
@@ -109,6 +134,7 @@ impl DataDirectory {
             config_path,
             default_root,
             config: Mutex::new(config),
+            port_runtime: Mutex::new(PortRuntime::default()),
         })
     }
 
@@ -128,33 +154,66 @@ impl DataDirectory {
             .clone()
     }
 
-    pub fn server_port(&self) -> Result<u16, String> {
-        let mut config = self.config.lock().expect("data directory poisoned");
+    pub fn server_port(&self, fresh: bool) -> Result<u16, String> {
+        let result = self.select_server_port(fresh);
+        self.port_runtime.lock().unwrap().error = result.as_ref().err().cloned();
+        result
+    }
+
+    fn select_server_port(&self, fresh: bool) -> Result<u16, String> {
+        let config = self.config.lock().expect("data directory poisoned");
         if let Some(port) = config.server_port.filter(|port| *port > 0) {
-            let available = std::net::TcpListener::bind(("0.0.0.0", port));
-            let fixed = self
-                .instance_root
-                .as_ref()
-                .map(|root| crate::portable::load_instance(root).map(|v| v.fixed_port))
-                .transpose()?
-                .unwrap_or(true);
-            if available.is_ok() {
-                return Ok(port);
-            }
-            if fixed {
-                available.map_err(|err| {
-                    format!("手机连接端口 {port} 被占用，请关闭占用程序后重试：{err}")
-                })?;
+            if !fresh || config.fixed_port {
+                match std::net::TcpListener::bind(("0.0.0.0", port)) {
+                    Ok(_) => return Ok(port),
+                    Err(error) if config.fixed_port => return Err(port_error(port, &error)),
+                    Err(error) if matches!(error.kind(), std::io::ErrorKind::AddrInUse | std::io::ErrorKind::PermissionDenied) => {},
+                    Err(error) => return Err(port_error(port, &error)),
+                }
             }
         }
         let listener =
-            std::net::TcpListener::bind(("0.0.0.0", 0)).map_err(|err| err.to_string())?;
+            std::net::TcpListener::bind(("0.0.0.0", 0)).map_err(|err| port_error(0, &err))?;
         let port = listener.local_addr().map_err(|err| err.to_string())?.port();
+        Ok(port)
+    }
+
+    pub fn fixed_port(&self) -> bool {
+        self.config.lock().unwrap().fixed_port
+    }
+
+    pub fn mark_port_error(&self, message: String) {
+        self.port_runtime.lock().unwrap().error = Some(message);
+    }
+
+    pub fn commit_server_port(&self, port: u16) -> Result<(), String> {
+        let mut config = self.config.lock().unwrap();
         let mut next = config.clone();
         next.server_port = Some(port);
         self.save(&next)?;
+        let mut runtime = self.port_runtime.lock().unwrap();
+        runtime.notice = config.server_port.filter(|old| *old != port).map(|old|
+            format!("原连接端口 {old} 不可用，已切换为 {port}，手机请重新扫码连接。"));
+        runtime.active_port = Some(port);
+        runtime.error = None;
         *config = next;
-        Ok(port)
+        Ok(())
+    }
+
+    fn configure_port(&self, port: Option<u16>) -> Result<(), String> {
+        if port == Some(0) { return Err("端口必须是 1–65535 的整数".into()); }
+        let mut config = self.config.lock().unwrap();
+        if let Some(port) = port {
+            if self.port_runtime.lock().unwrap().active_port != Some(port) {
+                std::net::TcpListener::bind(("0.0.0.0", port)).map_err(|e| port_error(port, &e))?;
+            }
+        }
+        let mut next = config.clone();
+        next.fixed_port = port.is_some();
+        if port.is_some() { next.server_port = port; }
+        self.save(&next)?;
+        *config = next;
+        Ok(())
     }
 
     pub fn authorize_migration(&self, target: &Path) -> Result<(), String> {
@@ -189,6 +248,7 @@ impl DataDirectory {
         if let Some(root) = &self.instance_root {
             let mut instance = crate::portable::load_instance(root)?;
             instance.server_port = config.server_port;
+            instance.fixed_port = config.fixed_port;
             instance.data_root = if let Ok(relative) = config.root.strip_prefix(root) {
                 crate::portable::DataRoot {
                     kind: "relative".into(),
@@ -380,6 +440,7 @@ mod tests {
                 pending_root: Some(root.join("target")),
                 ..Default::default()
             }),
+            port_runtime: Mutex::new(PortRuntime::default()),
         };
         (root, state)
     }
@@ -443,17 +504,77 @@ mod tests {
     }
 
     #[test]
-    fn server_port_is_persisted_and_never_changed_when_occupied() {
+    fn automatic_port_is_committed_only_after_health_check_and_recovers_conflicts() {
         let (_root, state) = fixture();
-        let port = state.server_port().unwrap();
+        let port = state.server_port(false).unwrap();
+        assert!(!state.config_path.exists());
+        assert_eq!(state.config.lock().unwrap().server_port, None);
+        state.commit_server_port(port).unwrap();
         let saved: DirectoryConfig =
             serde_json::from_slice(&fs::read(&state.config_path).unwrap()).unwrap();
         assert_eq!(saved.server_port, Some(port));
         let occupied = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap();
-        assert!(state.server_port().is_err());
+        let replacement = state.server_port(false).unwrap();
+        assert_ne!(replacement, port);
         assert_eq!(state.config.lock().unwrap().server_port, Some(port));
+        state.commit_server_port(replacement).unwrap();
+        assert!(state.port_runtime.lock().unwrap().notice.is_some());
         drop(occupied);
-        assert_eq!(state.server_port().unwrap(), port);
+        assert_eq!(state.server_port(false).unwrap(), replacement);
+    }
+
+    #[test]
+    fn fixed_port_conflict_can_be_recovered_without_server() {
+        let (_root, state) = fixture();
+        let port = state.server_port(false).unwrap();
+        state.configure_port(Some(port)).unwrap();
+        let occupied = std::net::TcpListener::bind(("0.0.0.0", port)).unwrap();
+        assert!(state.server_port(false).unwrap_err().contains("占用"));
+        assert!(state.port_runtime.lock().unwrap().error.is_some());
+        assert!(state.configure_port(Some(0)).is_err());
+        state.configure_port(None).unwrap();
+        assert_ne!(state.server_port(false).unwrap(), port);
+        let saved: DirectoryConfig = crate::portable::read_json(&state.config_path).unwrap();
+        assert!(!saved.fixed_port);
+        drop(occupied);
+    }
+
+    #[test]
+    fn portable_port_preferences_survive_reload_without_changing_library_identity() {
+        let (root, mut state) = fixture();
+        crate::portable::write_json(&root.join("instance.json"), &serde_json::json!({
+            "schemaVersion":1,"mode":"portable","instanceId":"port-test","displayName":"test",
+            "activeBuild":"original","previousBuild":null,
+            "dataRoot":{"kind":"relative","path":"source"},"serverPort":null,"fixedPort":false
+        })).unwrap();
+        state.instance_root = Some(root.clone());
+        let port = state.server_port(false).unwrap();
+        state.configure_port(Some(port)).unwrap();
+        let saved = crate::portable::load_instance(&root).unwrap();
+        assert!(saved.fixed_port);
+        assert_eq!(saved.server_port, Some(port));
+        assert_eq!(saved.instance_id, "port-test");
+        assert_eq!(saved.active_build, "original");
+        drop(state);
+        let reloaded = DataDirectory::load_from_directory(root.clone(), true).unwrap();
+        assert!(reloaded.fixed_port());
+        assert_eq!(reloaded.server_port(false).unwrap(), port);
+        reloaded.configure_port(None).unwrap();
+        assert!(!crate::portable::load_instance(&root).unwrap().fixed_port);
+        drop(reloaded);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn port_error_and_retry_policy_distinguish_permission_and_non_port_failures() {
+        assert!(port_error(2688, &std::io::Error::from(std::io::ErrorKind::PermissionDenied)).contains("保留端口"));
+        assert!(port_error(2688, &std::io::Error::from(std::io::ErrorKind::AddrInUse)).contains("占用"));
+        assert!(retry_port_start(false, 0, Some("port_bind_failed")));
+        assert!(retry_port_start(false, 1, Some("port_bind_failed")));
+        assert!(!retry_port_start(false, 2, Some("port_bind_failed")));
+        assert!(!retry_port_start(true, 0, Some("port_bind_failed")));
+        assert!(!retry_port_start(false, 0, None));
+        assert!(!retry_port_start(false, 0, Some("database_failed")));
     }
 
     #[test]
@@ -468,6 +589,20 @@ mod tests {
         state.config.lock().unwrap().pending_root = Some(root.join("other"));
         assert!(!state.consume_migration_authorization().unwrap());
     }
+}
+
+#[tauri::command]
+pub fn desktop_port_config(state: tauri::State<'_, DataDirectory>) -> serde_json::Value {
+    let config = state.config.lock().unwrap();
+    let runtime = state.port_runtime.lock().unwrap();
+    serde_json::json!({"port":config.server_port,"fixed":config.fixed_port,
+        "activePort":runtime.active_port,"error":runtime.error,"notice":runtime.notice})
+}
+
+#[tauri::command]
+pub fn desktop_set_port(port: Option<u16>, app: tauri::AppHandle) -> Result<(), String> {
+    let _activity = crate::begin_activity(&app)?;
+    app.state::<DataDirectory>().configure_port(port)
 }
 
 #[tauri::command]
