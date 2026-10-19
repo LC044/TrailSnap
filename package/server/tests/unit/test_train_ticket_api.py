@@ -103,6 +103,32 @@ def _fake_client_session_class(post_status=200, post_json=None):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('tickets,expected', [
+    ([{'type': 'flight', 'flight_code': 'CA123', 'name': '林小明', 'datetime': '2026-10-07 18:12'}], None),
+    ([{'type': 'flight', 'train_code': 'G999', 'name': '错误姓名'},
+      {'type': 'train', 'train_code': 'G3915', 'datetime': '10月07日 18:12'}], 'G3915'),
+    ([{'train_code': 'G3926', 'datetime': '2027/10/05 16:41'}], 'G3926'),
+])
+async def test_req159_type_boundary_and_year_provenance(tickets, expected):
+    config_mock = MagicMock()
+    config_mock.get_user_config.return_value = _ai_config()
+    payload = {'results': [{'tickets': tickets}]}
+    with patch.object(train_api, 'config_manager', config_mock), patch(
+        'aiohttp.ClientSession', new=_fake_client_session_class(200, payload)
+    ):
+        if expected is None:
+            with pytest.raises(HTTPException) as exc:
+                await train_api.recognize_ticket(file=_upload_file(), db=MagicMock(), current_user=_user())
+            assert exc.value.status_code == 400
+        else:
+            response = await train_api.recognize_ticket(file=_upload_file(), db=MagicMock(), current_user=_user())
+            assert response.code == 200
+            assert response.data['train_code'] == expected
+            assert 'name' not in response.data
+            assert response.data['year_source'] == ('explicit' if expected == 'G3926' else 'inferred_current_year')
+
+
+@pytest.mark.asyncio
 async def test_recognize_returns_highest_scoring_train_ticket():
     user = _user()
     db = MagicMock()

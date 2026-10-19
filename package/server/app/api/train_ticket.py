@@ -75,6 +75,10 @@ async def recognize_ticket(
                     raise HTTPException(status_code=400, detail="未能识别出车票信息")
                     
                 tickets = ai_results[0].get('tickets', [])
+                # Older AI versions omitted type; only accept those with railway fields.
+                tickets = [t for t in tickets if t.get('type') == 'train' or
+                           (not t.get('type') and not t.get('flight_code') and
+                            any(t.get(k) for k in ('train_code', 'departure_station', 'arrival_station')))]
                 if not tickets:
                     raise HTTPException(status_code=400, detail="未能识别出车票信息")
                 
@@ -129,6 +133,7 @@ async def recognize_ticket(
                             dt = datetime.strptime(dt_str, fmt)
                             # 转换为前端友好的 ISO 格式 (YYYY-MM-DDTHH:mm)
                             processed_data['datetime'] = dt.strftime("%Y-%m-%dT%H:%M")
+                            processed_data['year_source'] = 'explicit'
                             break
                         except ValueError:
                             continue
@@ -145,6 +150,7 @@ async def recognize_ticket(
                             try:
                                 dt = datetime(year=y, month=mm, day=dd, hour=hh, minute=mi)
                                 processed_data['datetime'] = dt.strftime("%Y-%m-%dT%H:%M")
+                                processed_data['year_source'] = 'inferred_current_year'
                             except Exception:
                                 pass
                 
