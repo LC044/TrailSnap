@@ -172,7 +172,8 @@ def get_identities_with_details(
     min_photos: int = 0,
     photo_id: Optional[UUID] = None,
     visibility_types: Optional[List[str]] = None,
-    owner_id: Optional[UUID] = None
+    owner_id: Optional[UUID] = None,
+    include_named_below_threshold: bool = False,
 ) -> List[FaceIdentitySchema]:
     # 1. 子查询：统计每个人脸身份的人脸数（按photo_id筛选并去重）
     face_counts_subq = db.query(
@@ -192,6 +193,12 @@ def get_identities_with_details(
     face_counts_subq = face_counts_subq.group_by(Face.face_identity_id).subquery()
 
     # 2. 主查询：关联FaceIdentity + 统计数 + 默认人脸 + 照片
+    count_condition = func.coalesce(face_counts_subq.c.count, 0) >= min_photos
+    if include_named_below_threshold:
+        count_condition = sa.or_(count_condition, sa.and_(
+            func.length(func.trim(FaceIdentity.identity_name)) > 0,
+            FaceIdentity.identity_name != '未命名',
+        ))
     query = db.query(
         FaceIdentity,
         func.coalesce(face_counts_subq.c.count, 0).label("count"),  # 空值转0
@@ -204,8 +211,7 @@ def get_identities_with_details(
     ).outerjoin(
         Photo, Face.photo_id == Photo.id
     ).filter(
-        # 核心修正：筛选「统计数>= min_photos」（SQL层过滤，提升性能）
-        func.coalesce(face_counts_subq.c.count, 0) >= min_photos  # min_photos=0 must include 0-photo identities
+        count_condition
     )
 
     # NEW: Filter by owner_id in main query

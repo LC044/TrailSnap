@@ -28,6 +28,7 @@
         <div class="viewer-desktop-actions ts-liquid-glass ts-glass-toolbar flex items-center pointer-events-auto" role="group" aria-label="照片工具栏">
             <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" :title="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <!-- Zoom Controls -->
+            <button v-if="canShowFaces" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': showFaces }" :aria-pressed="showFaces" :aria-label="showFaces ? '隐藏人物' : '显示人物'" :title="showFaces ? '隐藏人物' : '显示人物'" @click.stop="toggleFaces"><ScanFace class="h-5 w-5" /></button>
             <button @click.stop="zoomOut" class="ts-glass-button" aria-label="缩小" title="缩小 (-)">
                 <ZoomOut class="h-5 w-5" />
             </button>
@@ -177,6 +178,25 @@
       <!-- Feature pages can add compact contextual information without forking the lightbox. -->
       <slot name="context-overlay"></slot>
 
+      <section v-if="(showFaces || selectedPhotoFace) && canShowFaces && !isEditing && !showOCR && controlsVisible"
+        class="viewer-people-panel ts-surface fixed left-1/2 z-[103] -translate-x-1/2 p-3 shadow-lg"
+        aria-label="人物标记" @click.stop @mousedown.stop @touchstart.stop>
+        <template v-if="selectedPhotoFace">
+          <div class="flex items-center gap-3">
+            <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">{{ selectedPhotoFace.identity_name || '未标记的人脸' }}</p><p class="ts-muted mt-1 text-xs">只修改选中的这张脸</p></div>
+            <button class="ts-icon-button ts-button-ghost" aria-label="取消选择人脸" @click="selectedPhotoFace = null"><X class="h-4 w-4" /></button>
+          </div>
+          <div v-if="allowAddToPerson" class="mt-3 flex gap-2">
+            <button class="ts-button ts-button-primary flex-1" :disabled="isAddingPerson" @click="showPersonSelector = true">{{ selectedPhotoFace.identity_id ? '更正人物' : '标记人物' }}</button>
+            <button v-if="selectedPhotoFace.identity_id" class="ts-button ts-button-secondary" :disabled="isAddingPerson" @click="saveFaceIdentity(null)">移除标记</button>
+          </div>
+        </template>
+        <p v-else-if="facesLoading" class="ts-muted text-sm" role="status">正在读取人脸…</p>
+        <div v-else-if="facesError" class="flex items-center gap-3"><p class="ts-muted flex-1 text-sm">人脸信息加载失败</p><button class="ts-button ts-button-secondary" @click="loadPhotoFaces">重试</button></div>
+        <div v-else-if="!photoFaces.some(face => face.face_rect?.length === 4)"><p class="text-sm">还没有检测到可标记的人脸</p><button v-if="canProcessCurrentPhoto" class="ts-button ts-button-secondary mt-2 w-full" :disabled="isPhotoProcessingActive('RECOGNIZE_FACE')" @click="startPhotoProcessing('RECOGNIZE_FACE')">{{ isPhotoProcessingActive('RECOGNIZE_FACE') ? '正在识别人脸…' : '识别当前照片的人脸' }}</button></div>
+        <p v-else class="ts-muted text-xs leading-5"><span class="font-medium">点击脸框查看或修改人物</span></p>
+      </section>
+
       <!-- Photo Editor (replaces viewer when editing) -->
       <PhotoEditor
         v-if="isEditing && image"
@@ -270,10 +290,14 @@
                         draggable="false"
                     />
                     
+                    <PhotoFaceOverlay v-if="canShowFaces && !showOCR && !isPlayingLive"
+                      :faces="photoFaces" :image-element="imageRef" :loaded="currentImageLoaded"
+                      :selected-id="selectedPhotoFace?.id ?? null" :zoom="scale" :reveal-all="showFaces" />
+
                     <!-- Face Highlight Overlay -->
                     <div 
-                        v-if="highlightedFace && faceBoxStyle"
-                        class="absolute border-2 border-yellow-400 z-20 shadow-[0_0_10px_rgba(255,215,0,0.5)] pointer-events-none"
+                        v-if="!showFaces && highlightedFace && faceBoxStyle"
+                        class="absolute rounded-full border-2 border-primary-400 z-20 pointer-events-none"
                         :style="faceBoxStyle"
                     >
                          <div class="absolute -top-8 left-0 bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded whitespace-nowrap flex items-center gap-1">
@@ -425,6 +449,7 @@
           <div class="viewer-action-pill ts-liquid-glass ts-glass-toolbar flex items-center">
             <button v-if="isPanoramaPhoto" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': panoramaActive }" :disabled="panoramaState.busy" :aria-pressed="panoramaActive" :aria-label="panoramaActive ? '切换平面查看' : '切换360°全景查看'" @click.stop="panoramaViewerRef?.toggleMode()"><Globe2 class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="下载" @click.stop="downloadImage"><Download class="h-5 w-5" /></button>
+            <button v-if="canShowFaces" type="button" class="ts-glass-button" :class="{ 'ts-is-pressed': showFaces }" :aria-pressed="showFaces" :aria-label="showFaces ? '隐藏人物' : '显示人物'" @click.stop="toggleFaces"><ScanFace class="h-5 w-5" /></button>
             <button v-if="allowEdit && isStillImage" class="ts-glass-button" aria-label="编辑" @click.stop="enterEditMode"><Pencil class="h-5 w-5" /></button>
             <button class="ts-glass-button" aria-label="AI 分析" @click.stop="handleCommand('viewDescription')"><Sparkles class="h-5 w-5" /></button>
             <button v-if="allowDelete" class="ts-glass-button viewer-delete" aria-label="删除" @click.stop="handleDelete"><Trash2 class="h-5 w-5" /></button>
@@ -654,6 +679,7 @@
       <PersonSelector
         v-if="!isEditing"
         v-model:visible="showPersonSelector"
+        :title="selectedPhotoFace ? '标记选中的人脸' : '添加到人物相册'"
         :submitting="isAddingPerson"
         @select="handlePersonSelected"
       />
@@ -713,7 +739,9 @@ import { albumService } from '@/api/album'
 import { isTauriApp } from '@/config/server'
 import { revealDesktopPhoto } from '@/api/desktopDataDirectory'
 import { ocrApi, type OCRRecord } from '@/api/ocr'
-import { faceApi } from '@/api/face'
+import { faceApi, type PhotoFace } from '@/api/face'
+import PhotoFaceOverlay from './PhotoFaceOverlay.vue'
+import { containFaceCircle } from '@/utils/photoFaces'
 import { tasksApi, type PhotoProcessingOperation } from '@/api/tasks'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo } from '@/types/album'
 import { ElMessageBox, ElMessage, useZIndex } from 'element-plus'
@@ -788,6 +816,13 @@ watch([() => props.image?.id, displayImageSrc], () => {
 }, { flush: 'sync' })
 const isEditing = ref(false)
 const controlsVisible = ref(true)
+const showFaces = ref(false)
+const photoFaces = ref<PhotoFace[]>([])
+const selectedPhotoFace = ref<PhotoFace | null>(null)
+const facesLoading = ref(false)
+const facesError = ref(false)
+let facesRequest = 0
+let facesLoadTimer: ReturnType<typeof setTimeout> | null = null
 const desktopMoreVisible = ref(false)
 const mediaViewport = ref<HTMLElement | null>(null)
 const mobileToolbar = ref<HTMLElement | null>(null)
@@ -839,7 +874,11 @@ useHotkeys([
   { key: 'Escape', handler: handleEscKey },
   { key: 'ArrowLeft', handler: () => prev(), when: () => !!props.hasPrev },
   { key: 'ArrowRight', handler: () => next(), when: () => !!props.hasNext },
-  { key: ' ', handler: () => next(), when: () => !!props.hasNext },
+  { key: ' ', handler: (event) => {
+      if (event.target instanceof Element && event.target.closest('[data-face-id]')) handleMediaTap(event)
+      else if (event.target instanceof HTMLElement && event.target.closest('.viewer-people-panel button')) event.target.closest<HTMLButtonElement>('button')?.click()
+      else next()
+    }, when: () => !!props.hasNext },
   { key: '+', handler: () => zoomIn() },
   { key: '=', handler: () => zoomIn() },
   { key: '-', handler: () => zoomOut() },
@@ -948,6 +987,7 @@ const runMobileAction = (action: () => void) => {
 }
 
 const isStillImage = computed(() => !props.image?.file_type || props.image.file_type === 'image')
+const canShowFaces = computed(() => !!props.image && (isStillImage.value || props.image.file_type === 'live_photo') && !panoramaActive.value)
 const isCurrentVideo = computed(() => props.image?.file_type === 'video')
 
 const mobileDockVisible = computed(() =>
@@ -1017,6 +1057,8 @@ const toggleLivePlayback = () => {
         isPlayingLive.value = false
     } else {
         // Play
+        showFaces.value = false
+        selectedPhotoFace.value = null
         isPlayingLive.value = true
     }
 }
@@ -1306,6 +1348,8 @@ onUnmounted(() => {
     }
     if (suppressTapTimer) clearTimeout(suppressTapTimer)
     if (mediaTapTimer) clearTimeout(mediaTapTimer)
+    if (facesLoadTimer) clearTimeout(facesLoadTimer)
+    ++facesRequest
     if (swipeAnimationTimer) clearTimeout(swipeAnimationTimer)
     if (mobileDetailsSettleTimer) clearTimeout(mobileDetailsSettleTimer)
     if (photoProcessingPollTimer) {
@@ -1348,7 +1392,7 @@ watch(() => props.image, async (newImg, oldImg) => {
     if (newImg && props.visible) {
         // Auto play if live photo
         if (newImg.file_type === 'live_photo') {
-            isPlayingLive.value = true
+            isPlayingLive.value = !showFaces.value
         } else {
             isPlayingLive.value = false
         }
@@ -1381,7 +1425,7 @@ watch(() => props.visible, async (newVal) => {
         controlsVisible.value = true
 
         if (props.image.file_type === 'live_photo') {
-             isPlayingLive.value = true
+             isPlayingLive.value = !showFaces.value
         }
 
         if (props.image.file_type === 'video') {
@@ -1439,14 +1483,22 @@ const close = () => {
     emit('close')
 }
 
-const handleMediaTap = () => {
+const handleMediaTap = (event?: Event) => {
     if (suppressNextTap.value) {
         suppressNextTap.value = false
         return
     }
     if (mediaTapTimer) clearTimeout(mediaTapTimer)
+    const target = event?.target instanceof Element ? event.target.closest<HTMLElement>('[data-face-id]') : null
+    const faceId = target ? Number(target.dataset.faceId) : null
     mediaTapTimer = setTimeout(() => {
         mediaTapTimer = null
+        if (faceId !== null) {
+            selectedPhotoFace.value = photoFaces.value.find(face => face.id === faceId) || null
+            controlsVisible.value = true
+            return
+        }
+        selectedPhotoFace.value = null
         if (props.visible && scale.value === 1 && !showSidebar.value && !showOCR.value) controlsVisible.value = !controlsVisible.value
     }, 320)
 }
@@ -1614,6 +1666,7 @@ const refreshPhotoProcessingResult = async (tracker: PhotoProcessingTracker) => 
         }
     } else if (tracker.operation === 'RECOGNIZE_FACE' || tracker.operation === 'CLASSIFY_IMAGE') {
         await fetchMetadata(tracker.photoId)
+        if (tracker.operation === 'RECOGNIZE_FACE') await loadPhotoFaces()
         emit('update', {
             photoId: tracker.photoId,
             taskType: tracker.operation,
@@ -1739,7 +1792,84 @@ const fetchDescription = async (photoId: string) => {
 const showPersonSelector = ref(false)
 const isAddingPerson = ref(false)
 
+const loadPhotoFaces = async () => {
+    const photoId = props.image?.id
+    const request = ++facesRequest
+    photoFaces.value = []
+    selectedPhotoFace.value = null
+    facesLoading.value = false
+    if (!photoId || !props.visible || !canShowFaces.value) return
+    facesLoading.value = true
+    facesError.value = false
+    try {
+        const faces = await faceApi.getPhotoFaces(photoId)
+        if (request === facesRequest && props.image?.id === photoId) photoFaces.value = faces
+    } catch {
+        if (request === facesRequest) facesError.value = true
+    } finally {
+        if (request === facesRequest) facesLoading.value = false
+    }
+}
+
+const toggleFaces = () => {
+    showFaces.value = !showFaces.value
+    if (showFaces.value) {
+        showOCR.value = false
+        finishMobileDetailsSettle(false)
+        liveVideoRef.value?.pause()
+        isPlayingLive.value = false
+        isLiveVideoVisible.value = false
+    }
+    selectedPhotoFace.value = null
+    if (showFaces.value && facesError.value) void loadPhotoFaces()
+    controlsVisible.value = true
+}
+
+watch([() => props.image?.id, () => props.visible, canShowFaces], () => {
+    if (facesLoadTimer) clearTimeout(facesLoadTimer)
+    ++facesRequest
+    photoFaces.value = []
+    selectedPhotoFace.value = null
+    facesLoading.value = false
+    facesError.value = false
+    showPersonSelector.value = false
+    if (props.visible && canShowFaces.value) {
+        facesLoading.value = true
+        facesLoadTimer = setTimeout(() => {
+            facesLoadTimer = null
+            void loadPhotoFaces()
+        }, 150)
+    }
+}, { immediate: true })
+
+const saveFaceIdentity = async (identityId: string | null) => {
+    const face = selectedPhotoFace.value
+    const photoId = props.image?.id
+    if (!face || !photoId || !props.allowAddToPerson || isAddingPerson.value) return
+    isAddingPerson.value = true
+    try {
+        await faceApi.assignPhotoFace(photoId, face.id, identityId)
+        if (props.image?.id !== photoId || !props.visible) return
+        showPersonSelector.value = false
+        ElMessage.success(identityId ? '已标记此人脸' : '已移除此人脸的标记')
+        await loadPhotoFaces()
+        if (props.image?.id === photoId) {
+            selectedPhotoFace.value = photoFaces.value.find(item => item.id === face.id) || null
+            void fetchMetadata(photoId)
+            emit('update', { id: photoId })
+        }
+    } catch {
+        ElMessage.error('标记未保存，请重试')
+    } finally {
+        isAddingPerson.value = false
+    }
+}
+
 const handlePersonSelected = async (person: any) => {
+  if (selectedPhotoFace.value) {
+    await saveFaceIdentity(person.id)
+    return
+  }
   if (!props.image) return
   try {
     isAddingPerson.value = true
@@ -1782,6 +1912,7 @@ const fetchMetadata = async (photoId: string) => {
 
 // OCR Methods
 const toggleOCR = async () => {
+    showFaces.value = false
     showOCR.value = !showOCR.value
     if (showOCR.value) {
         finishMobileDetailsSettle(false)
@@ -1844,20 +1975,12 @@ const handleHighlightFace = (payload: { face: CoverPhotoInfo | null, name: strin
 
 const faceBoxStyle = computed(() => {
     const face = highlightedFace.value
-    if (!face || !face.face_rect) return null
-
-    // face_rect is [x1, y1, x2, y2]
-    const [x1, y1, x2, y2] = face.face_rect
-
-    const left = x1 * 100
-    const top = y1 * 100
-    const width = (x2 - x1) * 100
-    const height = (y2 - y1) * 100
+    const image = imageRef.value
+    if (!face || !image) return null
+    const circle = containFaceCircle(face.face_rect || null, image.clientWidth, image.clientHeight, image.naturalWidth, image.naturalHeight)
+    if (!circle) return null
     return {
-        left: `${left}%`,
-        top: `${top}%`,
-        width: `${width}%`,
-        height: `${height}%`
+        left: `${circle.x}px`, top: `${circle.y}px`, width: `${circle.width}px`, height: `${circle.height}px`
     }
 })
 
@@ -1916,7 +2039,10 @@ const handleWheel = (e: WheelEvent) => {
     setPhotoZoom(scale.value + delta, e.clientX, e.clientY)
 }
 
+let mouseDragOrigin: { x: number, y: number } | null = null
 const startDrag = (e: MouseEvent) => {
+    if (e.button !== 0) return
+    mouseDragOrigin = { x: e.clientX, y: e.clientY }
     if (scale.value > 1) {
         isDragging.value = true
         startX.value = e.clientX - translateX.value
@@ -1928,12 +2054,22 @@ const startDrag = (e: MouseEvent) => {
 
 const onDrag = (e: MouseEvent) => {
     if (isDragging.value) {
+        if (mouseDragOrigin && Math.hypot(e.clientX - mouseDragOrigin.x, e.clientY - mouseDragOrigin.y) > 6) {
+            suppressNextTap.value = true
+            if (mediaTapTimer) clearTimeout(mediaTapTimer)
+            mediaTapTimer = null
+        }
         e.preventDefault()
         panPhotoTo(e.clientX - startX.value, e.clientY - startY.value)
     }
 }
 
 const stopDrag = () => {
+    mouseDragOrigin = null
+    if (suppressNextTap.value) {
+        if (suppressTapTimer) clearTimeout(suppressTapTimer)
+        suppressTapTimer = setTimeout(() => { suppressNextTap.value = false }, 400)
+    }
     isDragging.value = false
     window.removeEventListener('mousemove', onDrag)
     window.removeEventListener('mouseup', stopDrag)
@@ -2315,6 +2451,8 @@ const handleEditorSave = async (blob: Blob, filename: string, mode: 'replace' | 
 </script>
 
 <style scoped>
+.viewer-people-panel { bottom: 6rem; width: min(22rem, calc(100vw - 2rem)); }
+@media (max-width: 767px) { .viewer-people-panel { bottom: calc(10rem + var(--ts-safe-area-bottom)); } }
  .analysis-content { overflow-wrap: anywhere; color: var(--ts-color-text); }
 .analysis-tag { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--ts-color-surface-muted); font-size: 12px; line-height: 1.5; }
 .photo-lightbox-shell { background: var(--ts-color-page); color: var(--ts-color-text); }
