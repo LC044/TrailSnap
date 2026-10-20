@@ -10,18 +10,26 @@
       <button
         :disabled="loading"
         class="shrink-0 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-        @click="loadModels"
+        @click="loadModels()"
       >{{ loading ? '刷新中…' : '刷新状态' }}</button>
     </div>
 
     <LLMSettings />
+
+    <div v-if="maintenance" role="status" aria-live="polite" class="rounded-xl border border-primary-500/30 bg-primary-500/5 p-5">
+      <p class="font-medium text-primary-600 dark:text-primary-500">AI 扩展正在维护</p>
+      <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
+        {{ preparingModels.length ? '正在等待模型下载完成，再继续维护。模型按顺序下载，较大的模型可能需要较长时间。' : '正在等待当前任务结束或切换运行环境，请稍候。' }}
+        照片分析暂时等待，维护完成后自动继续。此页面会自动刷新。
+      </p>
+    </div>
 
     <div v-if="errorMessage" class="rounded-xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
       <p class="font-medium text-amber-800 dark:text-amber-300">暂时无法连接 AI 模型服务</p>
       <p class="mt-1 break-words text-sm text-amber-700 dark:text-amber-400">{{ errorMessage }}</p>
       <button
         class="mt-4 rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-        @click="loadModels"
+        @click="loadModels()"
       >重新检测</button>
     </div>
 
@@ -35,7 +43,7 @@
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold text-gray-800 dark:text-gray-100">{{ card.info.name || taskLabels[card.task] || card.task }}</h3>
             <span class="shrink-0 rounded-full px-2 py-0.5 text-xs" :class="statusClasses[card.model.status] || statusClasses.pending">
-              {{ statusLabels[card.model.status] || card.model.status }}
+              {{ card.model.downloadState === 'queued' ? '排队等待下载' : statusLabels[card.model.status] || card.model.status }}
             </span>
           </div>
 
@@ -73,7 +81,7 @@
               <button
                 v-for="model in card.options"
                 :key="model.id"
-                :disabled="switchingTask === card.task || model.id === card.info.selected || (model.id === card.info.pending && model.status !== 'failed')"
+                :disabled="maintenance || switchingTask === card.task || model.id === card.info.selected || (model.id === card.info.pending && model.status !== 'failed')"
                 class="rounded-lg border p-3 text-left transition disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
                 :class="model.id === card.info.selected
                   ? 'border-primary-500 bg-primary-500/5'
@@ -100,6 +108,7 @@
             </div>
             <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 dark:text-gray-500">
               <span>大小 {{ formatBytes(card.model.downloadSize) }}</span>
+              <span v-if="card.model.status === 'downloading' && card.model.downloadedBytes > 0">已下载 {{ formatBytes(card.model.downloadedBytes) }}（总大小为估算值）</span>
               <span>建议内存 {{ card.model.requirements?.memoryMB || '—' }} MB</span>
             </div>
             <p v-if="card.model.error" class="mt-3 break-words text-xs text-red-600 dark:text-red-400">{{ card.model.error }}</p>
@@ -108,13 +117,13 @@
           <div class="mt-4 flex flex-wrap gap-2">
             <button
               v-if="card.model.status !== 'ready'"
-              :disabled="card.model.status === 'downloading' || activeModel === card.model.id"
+              :disabled="maintenance || card.model.status === 'downloading' || activeModel === card.model.id"
               class="rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               @click="downloadModel(card.model.id)"
-            >{{ card.model.status === 'downloading' ? '下载中…' : card.model.status === 'failed' ? '重试下载' : '下载' }}</button>
+            >{{ card.model.downloadState === 'queued' ? '排队等待下载' : card.model.status === 'downloading' ? '下载中…' : card.model.status === 'failed' ? '重试下载' : '下载' }}</button>
             <button
               v-if="card.model.status === 'ready' && card.model.canDelete"
-              :disabled="activeModel === card.model.id"
+              :disabled="maintenance || activeModel === card.model.id"
               class="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               @click="deleteModel(card.model.id)"
             >删除模型</button>
@@ -122,7 +131,7 @@
         </article>
       </div>
 
-      <div v-if="!taskCards.length && !loading" class="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+      <div v-if="!taskCards.length && !loading && !maintenance" class="rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
         暂无可用模型
       </div>
     </template>
@@ -141,10 +150,14 @@ const models = ref<any[]>([])
 const tasks = ref<Record<string, TaskSelection>>({})
 const loading = ref(false)
 const errorMessage = ref('')
+const maintenance = ref(false)
+const preparingModels = computed(() => models.value.filter(model => model.status === 'downloading'))
 const activeModel = ref('')
 const switchingTask = ref('')
 const expandedTasks = ref(new Set<string>())
 let pollTimer: number | undefined
+let requestPending = false
+let disposed = false
 
 const taskLabels: Record<string, string> = {
   ocr: '文字识别',
@@ -193,7 +206,7 @@ function toggleChoices(task: string) {
 }
 
 function updatePolling() {
-  const downloading = models.value.some(model => model.status === 'downloading')
+  const downloading = maintenance.value || models.value.some(model => model.status === 'downloading')
   if (downloading && !pollTimer) pollTimer = window.setInterval(() => void loadModels(true), 1500)
   if (!downloading && pollTimer) {
     window.clearInterval(pollTimer)
@@ -202,9 +215,13 @@ function updatePolling() {
 }
 
 async function loadModels(silent = false) {
+  if (requestPending || disposed) return
+  requestPending = true
   if (!silent) loading.value = true
   try {
     const result: any = await settingsApi.getAIModels()
+    if (disposed) return
+    maintenance.value = result.maintenance === true
     models.value = (result.models || []).filter((model: any) => model.available !== false)
     const visibleIds = new Set(models.value.map(model => model.id))
     tasks.value = Object.fromEntries(
@@ -216,12 +233,17 @@ async function loadModels(silent = false) {
     errorMessage.value = ''
     updatePolling()
   } catch (error: any) {
-    errorMessage.value = error.message || 'AI 模型服务不可用'
-    if (pollTimer) {
+    if (disposed) return
+    const detail = error.response?.data?.msg || error.response?.data?.detail || error.message || 'AI 模型服务不可用'
+    maintenance.value = String(detail).includes('ai_extension_wait=maintenance')
+    errorMessage.value = maintenance.value ? '' : detail
+    if (maintenance.value) updatePolling()
+    else if (pollTimer) {
       window.clearInterval(pollTimer)
       pollTimer = undefined
     }
   } finally {
+    requestPending = false
     if (!silent) loading.value = false
   }
 }
@@ -281,6 +303,7 @@ async function selectModel(task: string, model: string) {
 
 onMounted(() => void loadModels())
 onUnmounted(() => {
+  disposed = true
   if (pollTimer) window.clearInterval(pollTimer)
 })
 </script>

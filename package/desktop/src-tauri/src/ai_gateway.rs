@@ -380,6 +380,37 @@ async fn proxy_inner(
     headers: HeaderMap,
     body: Body,
 ) -> Result<Response, String> {
+    // Observing maintenance must not start a sidecar or join the requests being
+    // drained. Only this exact read-only endpoint may bypass admission.
+    let maintenance = gateway.admission.lock().expect("AI admission poisoned").0
+        || gateway.manager.runtime_state() == "waiting_update";
+    if method == Method::GET && uri.path() == "/ai/models" && maintenance {
+        let mut snapshot = json!({ "models": [], "tasks": {} });
+        if let Some(port) = gateway.running_port() {
+            let response = reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .map_err(|e| e.to_string())?
+                .get(format!("http://127.0.0.1:{port}/ai/models"))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await;
+            if let Ok(response) = response {
+                if response.status().is_success() {
+                    if let Ok(value) = response.json::<Value>().await {
+                        if value.is_object() {
+                            snapshot = value;
+                        }
+                    }
+                }
+            }
+        }
+        snapshot["maintenance"] = json!(true);
+        return Ok(Response::builder()
+            .header("content-type", "application/json")
+            .body(Body::from(snapshot.to_string()))
+            .expect("valid model status response"));
+    }
     let guard = gateway.begin_request()?;
     let port = gateway.ensure_sidecar().await?;
     *gateway
@@ -697,6 +728,31 @@ mod tests {
             .begin_request()
             .unwrap_err()
             .contains("等待 AI 扩展更新"));
+        let observed = proxy_inner(
+            &gateway,
+            Method::GET,
+            "/ai/models".parse().unwrap(),
+            HeaderMap::new(),
+            Body::empty(),
+        )
+        .await
+        .unwrap();
+        let observed: Value =
+            serde_json::from_slice(&to_bytes(observed.into_body(), 1024 * 1024).await.unwrap())
+                .unwrap();
+        assert_eq!(observed["maintenance"], true);
+        assert_eq!(observed["models"][0]["status"], "downloading");
+        assert_eq!(gateway.admission.lock().unwrap().1, 1);
+        assert!(proxy_inner(
+            &gateway,
+            Method::POST,
+            "/ai/models/llm/download".parse().unwrap(),
+            HeaderMap::new(),
+            Body::empty()
+        )
+        .await
+        .is_err());
+        polls.store(0, Ordering::SeqCst);
         drop(request);
         tokio::time::timeout(Duration::from_secs(2), async {
             while polls.load(Ordering::SeqCst) == 0 {
@@ -713,6 +769,17 @@ mod tests {
             .unwrap();
         assert!(gateway.running_port().is_none());
         assert!(polls.load(Ordering::SeqCst) >= 2);
+        let observed = proxy_inner(
+            &gateway,
+            Method::GET,
+            "/ai/models".parse().unwrap(),
+            HeaderMap::new(),
+            Body::empty(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(observed.status(), StatusCode::OK);
+        assert!(gateway.running_port().is_none());
         server.abort();
         fs::remove_dir_all(root).unwrap();
     }

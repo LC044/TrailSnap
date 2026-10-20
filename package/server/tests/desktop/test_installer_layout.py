@@ -32,6 +32,7 @@ def test_installer_instances_match_zip_and_uninstall_preserves_data():
         assert result.returncode == 0
         assert json.loads((root / 'portable.json').read_text())['activeBuild'] == expected
         assert (root / 'app' / expected / 'server/trailsnap-server.exe').is_file()
+        assert not (root / 'server').exists()
         assert (root / 'TrailSnap.exe').read_bytes() == (root / 'trailsnap-desktop.exe').read_bytes()
     def registry_key(root):
         tag = hashlib.sha256((str(root).rstrip('\\') + '\\').lower().encode('utf-8')).hexdigest()
