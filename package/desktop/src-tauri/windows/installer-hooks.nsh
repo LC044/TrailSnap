@@ -76,6 +76,9 @@ Var TrailSnapShortTag
   ${If} $0 != 0
     DetailPrint "$1"
   ${EndIf}
+  ; The helper has exited and the immutable build is ready. Remove its temporary
+  ; backend payload rather than retaining a second complete Python runtime.
+  !insertmacro TRAILSNAP_STOP_INSTALLED_PROCESSES "-CleanupInstallResources"
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL

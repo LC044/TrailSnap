@@ -27,6 +27,39 @@ def test_ready_and_legacy_catalog_do_not_block():
     assert state.model_wait_reason({}, TaskType.RECOGNIZE_FACE) is None
 
 
+@pytest.mark.parametrize('connection', ['builtin', 'external'])
+def test_visual_analysis_waits_only_for_builtin_llm(monkeypatch, connection):
+    worker = task_worker.TaskWorker()
+    worker._publish = MagicMock()
+    db = MagicMock()
+    task = SimpleNamespace(id='visual', type=TaskType.VISUAL_DESCRIPTION, owner_id='owner',
+                           status=TaskStatus.PENDING, attempt_count=2, priority=1, error=None,
+                           next_retry_at=None, created_at=None, updated_at=None, payload={},
+                           total_items=0, processed_items=0)
+    strategy = SimpleNamespace(process_batch=AsyncMock(return_value=[]), timeout=10, resource_key='llm')
+    monkeypatch.setattr(task_worker, 'SessionLocal', lambda: db)
+    monkeypatch.setattr(task_worker.crud_task, 'get_tasks_by_ids', lambda *_: [task])
+    monkeypatch.setattr(task_worker.TaskStrategyFactory, 'get_strategy', lambda *_: strategy)
+    monkeypatch.setattr(worker, '_extension_wait_reason', lambda: None)
+    from app.core.config_manager import config_manager
+    monkeypatch.setattr(config_manager, 'get_user_config', lambda *_: SimpleNamespace(
+        ai=SimpleNamespace(ai_api_url='http://local-ai', analysis_connection_id=connection)))
+    data = {'models': [{'id': 'llm', 'name': 'MiniCPM', 'status': 'downloading', 'downloadState': 'queued'}],
+            'tasks': {'llm': {'selected': 'llm'}}}
+    reason = state.model_wait_reason(data, TaskType.VISUAL_DESCRIPTION)
+    assert '排队等待下载' in reason
+    with patch.object(state, 'get_model_wait_reason', side_effect=[reason, None]) as probe:
+        infos = [{'id': task.id, 'type': task.type}]
+        if connection == 'builtin':
+            assert worker._execute_batch_sync(infos) == ([], 'waiting_for_model')
+            assert task.status == TaskStatus.PENDING and task.attempt_count == 2
+            strategy.process_batch.assert_not_awaited()
+        assert worker._execute_batch_sync(infos) == ([], 'success')
+        strategy.process_batch.assert_awaited_once()
+        if connection == 'external':
+            probe.assert_not_called()
+
+
 def test_ticket_also_requires_ocr():
     data = snapshot("downloading")
     data["tasks"] = {"ocr": {"selected": "face"}}

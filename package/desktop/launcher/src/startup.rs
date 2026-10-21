@@ -68,6 +68,20 @@ pub fn label(stage: &str) -> &'static str {
     }
 }
 
+pub fn is_migration_stage(stage: &str) -> bool {
+    matches!(
+        stage,
+        "inventory"
+            | "baseline"
+            | "copying"
+            | "checking_source"
+            | "database"
+            | "verifying"
+            | "publishing"
+            | "validating"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

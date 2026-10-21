@@ -19,7 +19,8 @@ class DesktopMaintenance:
             return await response(scope, receive, send)
         if scope["type"] != "http" or path in {"/system/desktop/prepare-migration", "/system/desktop/ai-extension"}:
             return await app(scope, receive, send)
-        ai_request = path.startswith(("/faces", "/search", "/train-ticket", "/flight-ticket", "/settings/ai-models", "/settings/verify-ai-service"))
+        model_status = scope.get("method") == "GET" and path == "/settings/ai-models"
+        ai_request = not model_status and path.startswith(("/faces", "/search", "/train-ticket", "/flight-ticket", "/settings/ai-models", "/settings/verify-ai-service"))
         if ai_request and self.ai_draining:
             response = JSONResponse(
                 {"code": 503, "msg": "ai_extension_wait=maintenance 等待 AI 扩展更新", "data": None},

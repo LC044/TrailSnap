@@ -951,7 +951,11 @@ class TaskWorker:
                 for task in tasks:
                     if task.owner_id not in owner_reasons:
                         config = config_manager.get_user_config(task.owner_id, db)
-                        owner_reasons[task.owner_id] = get_model_wait_reason(config.ai.ai_api_url, task.type)
+                        local_model = (task_type != TaskType.VISUAL_DESCRIPTION
+                                       or config.ai.analysis_connection_id == 'builtin')
+                        owner_reasons[task.owner_id] = (
+                            get_model_wait_reason(config.ai.ai_api_url, task.type) if local_model else None
+                        )
                         if owner_reasons[task.owner_id]:
                             # Defer this owner's backlog as one operation, so a
                             # large import does not repeatedly occupy AI dispatch.

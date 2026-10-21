@@ -33,6 +33,7 @@ class UnifiedModelManager:
         self.model_root.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._download_lock = threading.Lock()
+        self._active_download: str | None = None
         self._status: dict[str, str] = {}
         self._errors: dict[str, str | None] = {}
         self._pending_selections: dict[str, str] = {}
@@ -243,6 +244,20 @@ class UnifiedModelManager:
                     source="ModelScope",
                     canDelete=self.is_ready(model_id),
                 )
+                if item["status"] == "downloading":
+                    item["downloadState"] = "active" if self._active_download == model_id else "queued"
+                    # File sizes are observed, not a fabricated percentage: the
+                    # catalog's downloadSize is only an estimate.
+                    downloaded = 0
+                    for relative in spec.get("requiredFiles", []):
+                        path = self.get_model_dir(model_id) / relative
+                        for candidate in (path, path.with_name(path.name + ".incomplete")):
+                            try:
+                                downloaded += candidate.stat().st_size
+                                break
+                            except OSError:
+                                pass
+                    item["downloadedBytes"] = downloaded
                 items.append(item)
             task_items = {}
             for task, meta in self._catalog.get("tasks", {}).items():
@@ -294,6 +309,8 @@ class UnifiedModelManager:
         base = self.get_model_dir(model_id)
         with self._download_lock:
             try:
+                with self._lock:
+                    self._active_download = model_id
                 if self.is_ready(model_id):
                     with self._lock:
                         self._status[model_id] = "ready"
@@ -325,6 +342,9 @@ class UnifiedModelManager:
                 with self._lock:
                     self._status[model_id] = "failed"
                     self._errors[model_id] = str(error)
+            finally:
+                with self._lock:
+                    self._active_download = None
 
     def trigger_download(self, model_id: str) -> None:
         spec = self.get_spec(model_id)

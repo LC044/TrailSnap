@@ -44,6 +44,18 @@ fn fixture(root: &Path, stub: &Path, id: &str) {
         &root.join("portable.json"),
         json!({"schemaVersion":1,"activeBuild":"build"}),
     );
+    // A prior installer/update left a complete older build beside the current one.
+    fs::create_dir_all(root.join("app/old/server")).unwrap();
+    fs::copy(stub, root.join("app/old/child.exe")).unwrap();
+    fs::write(root.join("app/old/server/trailsnap-server.exe"), b"backend").unwrap();
+    write_json(
+        &root.join("app/old/manifest.json"),
+        json!({
+            "schemaVersion":1,"buildId":"old","version":"0.9.0",
+            "platform":format!("windows-{}",std::env::consts::ARCH),
+            "minLauncherVersion":1,"executable":"child.exe"
+        }),
+    );
 }
 
 fn wait_for(path: &Path) {
@@ -101,6 +113,19 @@ fn normal_shortcut_opens_imported_library_and_explicit_switch_opens_retained_lib
         String::from_utf8_lossy(&output.stderr)
     );
     wait_for(&target.join("opened.txt"));
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while target.join("app/old").exists() {
+        assert!(
+            Instant::now() < deadline,
+            "ready client did not retire old program"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(target.join("app/build/child.exe").is_file());
+    assert!(
+        source.join("app/old/child.exe").is_file(),
+        "other instance must be untouched"
+    );
     assert!(!source.join("opened.txt").exists());
     fs::remove_file(target.join("opened.txt")).unwrap();
 
@@ -115,6 +140,7 @@ fn normal_shortcut_opens_imported_library_and_explicit_switch_opens_retained_lib
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(source.join("opened.txt").is_file());
+    assert!(!source.join("app/old").exists());
     assert!(!target.join("opened.txt").exists());
     fs::remove_file(source.join("opened.txt")).unwrap();
 

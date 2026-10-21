@@ -128,20 +128,26 @@ def test_installer_refuses_running_sidecar_without_terminating_it(tmp_path):
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows resource staging')
+@pytest.mark.parametrize('action', ['-PrepareInstall', '-CleanupInstallResources'])
 @pytest.mark.parametrize('layout', ['program-only', 'configured-library', 'unconfigured-library'])
-def test_installer_cleans_only_obsolete_program_resources(tmp_path, layout):
+def test_installer_cleans_only_obsolete_program_resources(tmp_path, layout, action):
     server = tmp_path / 'server'
     server.mkdir()
     (server / 'obsolete.dll').write_bytes(b'old runtime')
     (tmp_path / 'userdata').mkdir()
     (tmp_path / 'userdata/keep').write_bytes(b'user data')
+    program = tmp_path / 'app/fixture'
+    (program / 'server').mkdir(parents=True)
+    for name in ('manifest.json', 'trailsnap-desktop.exe', 'server/trailsnap-server.exe'):
+        (program / name).write_bytes(b'installed program')
+    (tmp_path / 'portable.json').write_text(json.dumps({'activeBuild': 'fixture'}))
     (tmp_path / 'instance.json').write_text(json.dumps({'dataRoot': {
         'kind': 'relative', 'path': 'server/library' if layout == 'configured-library' else 'userdata'}}))
     if layout == 'unconfigured-library':
         (server / 'trailsnap.sqlite').write_bytes(b'preserve historical data')
     script = Path(__file__).resolve().parents[3] / 'desktop/src-tauri/windows/stop-installed-processes.ps1'
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-                             '-File', str(script), '-InstallDirectory', str(tmp_path), '-PrepareInstall'],
+                             '-File', str(script), '-InstallDirectory', str(tmp_path), action],
                             capture_output=True, timeout=30)
     if layout == 'program-only':
         assert result.returncode == 0, result.stderr.decode(errors='replace')
@@ -150,6 +156,22 @@ def test_installer_cleans_only_obsolete_program_resources(tmp_path, layout):
         assert result.returncode != 0
         assert (server / 'obsolete.dll').is_file()
     assert (tmp_path / 'userdata/keep').read_bytes() == b'user data'
+    assert (program / 'server/trailsnap-server.exe').read_bytes() == b'installed program'
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows resource cleanup')
+@pytest.mark.parametrize('build', ['missing', '../outside', ''])
+def test_installer_preserves_temporary_runtime_until_build_is_ready(tmp_path, build):
+    (tmp_path / 'server').mkdir()
+    backend = tmp_path / 'server/trailsnap-server.exe'
+    backend.write_bytes(b'installer helper')
+    (tmp_path / 'portable.json').write_text(json.dumps({'activeBuild': build}))
+    script = Path(__file__).resolve().parents[3] / 'desktop/src-tauri/windows/stop-installed-processes.ps1'
+    result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                             '-File', str(script), '-InstallDirectory', str(tmp_path), '-CleanupInstallResources'],
+                            capture_output=True, timeout=30)
+    assert result.returncode != 0
+    assert backend.read_bytes() == b'installer helper'
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows uninstall registry migration')

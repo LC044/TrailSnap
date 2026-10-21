@@ -205,9 +205,19 @@ def update_photo_color_from_thumbnail(db: Session, photo: Photo, *, colors=None,
 def _extract_metadata_batch(bind, task_data):
     """Own the session in this thread; commit metadata and album changes once."""
     from app.crud.album import trigger_conditional_albums_update
-    results = []
+    from app.service.tasks.ai_runtime import AIBatchSession
+    # Source reads/geolocation may be slow. Finish them before reserving the
+    # writer, and reload current ORM rows in a separate write transaction.
+    prepared = {}
+    ids = [data['photo_id'] for data in task_data if data.get('photo_id')]
     with Session(bind=bind, expire_on_commit=False, autoflush=False) as db:
-        ids = [data['photo_id'] for data in task_data if data.get('photo_id')]
+        photos = {photo.id: photo for photo in db.query(Photo).filter(Photo.id.in_(ids)).all()}
+        for data in task_data:
+            if not data.get('error') and data.get('photo_id') in photos:
+                prepared[data['task_id']] = extract_task_metadata(data, photos[data['photo_id']])
+    results = []
+    with AIBatchSession(bind=bind, expire_on_commit=False, autoflush=False) as db:
+        db.begin_write()
         photos = {photo.id: photo for photo in db.query(Photo).filter(Photo.id.in_(ids)).all()}
         metadata = {meta.photo_id: meta for meta in db.query(PhotoMetadata).filter(PhotoMetadata.photo_id.in_(ids)).all()}
         colors = {color.photo_id: color for color in db.query(PhotoColor).filter(PhotoColor.photo_id.in_(ids)).all()}
@@ -221,7 +231,11 @@ def _extract_metadata_batch(bind, task_data):
                 result['result'] = {'status': 'skipped', 'reason': 'photo not found' if data.get('photo_id') else 'missing photo_id'}
             else:
                 photo = photos[data['photo_id']]
-                extracted = extract_task_metadata(data, photo)
+                extracted = prepared.get(data['task_id'])
+                if extracted is None:
+                    result['result'] = {'status': 'skipped', 'reason': 'photo not found during preparation'}
+                    results.append(result)
+                    continue
                 if not extracted['success']:
                     result.update(status='failed', error=extracted.get('error', 'Metadata extraction failed'))
                 else:

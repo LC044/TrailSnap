@@ -136,7 +136,7 @@ export const settingsApi = {
     return data
   },
   async getAIModels() {
-    const { data } = await request.get('/api/settings/ai-models')
+    const { data } = await request.get('/api/settings/ai-models', { silentError: true })
     return data
   },
   async downloadAIModel(modelId: string) {

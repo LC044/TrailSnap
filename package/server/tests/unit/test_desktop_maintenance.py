@@ -10,6 +10,31 @@ from app.utils.desktop_network import lan_urls
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 
+def test_model_observation_is_available_during_ai_maintenance_but_writes_are_blocked():
+    async def scenario():
+        maintenance = DesktopMaintenance()
+        maintenance.ai_draining = True
+        calls, responses = [], []
+        async def app(scope, receive, send):
+            assert maintenance.ai_active == 0
+            calls.append(scope['method'])
+        async def send(message):
+            responses.append(message)
+        for method, path in [('GET', '/api/settings/ai-models'),
+                             ('POST', '/api/settings/ai-models/llm/download'),
+                             ('DELETE', '/api/settings/ai-models/llm'),
+                             ('PUT', '/api/settings/ai-models/selection')]:
+            await maintenance.middleware({'type': 'http', 'method': method, 'path': path}, None, send, app)
+        assert calls == ['GET']
+        assert [r['status'] for r in responses if r['type'] == 'http.response.start'] == [503] * 3
+        # A directory migration still blocks even read-only model observation.
+        maintenance.draining = True
+        await maintenance.middleware({'type': 'http', 'method': 'GET', 'path': '/api/settings/ai-models'}, None, send, app)
+        assert calls == ['GET']
+        assert maintenance.active == maintenance.ai_active == 0
+    asyncio.run(scenario())
+
+
 def test_migration_waits_for_streamed_upload_and_rejects_new_requests(monkeypatch):
     calls = []
     monkeypatch.setitem(sys.modules, "railway.initialization", SimpleNamespace(
