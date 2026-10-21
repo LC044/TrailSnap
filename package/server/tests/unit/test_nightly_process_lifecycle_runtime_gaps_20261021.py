@@ -12,6 +12,7 @@ reap-on-parent-exit path are asserted everywhere, not just on Windows.
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import sys
 import types
 from types import SimpleNamespace
@@ -54,11 +55,37 @@ def _fake_kernel(handle=99, create=True, set_information=True, assign=True):
     return kernel
 
 
+@pytest.fixture
+def win32(monkeypatch):
+    """Expose the Win32-only half of ``ctypes`` so the Job-Object path can be
+    exercised on Linux CI runners too.
+
+    ``ctypes.WinDLL``, ``ctypes.WinError``, ``ctypes.get_last_error`` and
+    ``ctypes.wintypes`` exist only on Windows, so a plain ``mock.patch`` of
+    them raises ``AttributeError`` on Linux. Binding them here keeps the test
+    platform-independent instead of silently skipping off Windows.
+    """
+    wintypes = types.ModuleType("ctypes.wintypes")
+    wintypes.DWORD = ctypes.c_uint32
+    wintypes.HANDLE = ctypes.c_void_p
+    wintypes.LPCWSTR = ctypes.c_wchar_p
+    wintypes.LPVOID = ctypes.c_void_p
+    wintypes.BOOL = ctypes.c_int
+    monkeypatch.setitem(sys.modules, "ctypes.wintypes", wintypes)
+    monkeypatch.setattr(ctypes, "wintypes", wintypes, raising=False)
+    monkeypatch.setattr(ctypes, "WinDLL", MagicMock(), raising=False)
+    monkeypatch.setattr(
+        ctypes, "WinError", MagicMock(side_effect=OSError("win32 error")), raising=False
+    )
+    monkeypatch.setattr(ctypes, "get_last_error", MagicMock(return_value=5), raising=False)
+    return ctypes
+
+
 class TestBindDesktopProcessTree:
     def test_noop_off_windows(self, monkeypatch):
         """The Job Object is a Win32 concept; other platforms must not load ctypes."""
         monkeypatch.setattr(process_lifecycle.sys, "platform", "linux")
-        with patch("ctypes.WinDLL") as win_dll:
+        with patch.object(ctypes, "WinDLL", create=True) as win_dll:
             process_lifecycle.bind_desktop_process_tree()
         win_dll.assert_not_called()
         assert process_lifecycle._desktop_job is None
@@ -67,18 +94,19 @@ class TestBindDesktopProcessTree:
         """The handle is owned by exactly one process, so a repeat call is a no-op."""
         monkeypatch.setattr(process_lifecycle.sys, "platform", "win32")
         process_lifecycle._desktop_job = 4242
-        with patch("ctypes.WinDLL") as win_dll:
+        with patch.object(ctypes, "WinDLL", create=True) as win_dll:
             process_lifecycle.bind_desktop_process_tree()
         win_dll.assert_not_called()
         assert process_lifecycle._desktop_job == 4242
 
-    def test_binds_and_keeps_handle_open(self, monkeypatch):
+    def test_binds_and_keeps_handle_open(self, monkeypatch, win32):
         monkeypatch.setattr(process_lifecycle.sys, "platform", "win32")
         kernel = _fake_kernel()
-        with patch("ctypes.WinDLL", return_value=kernel), patch(
+        win32.WinDLL = MagicMock(return_value=kernel)
+        with patch.object(win32, "WinDLL", return_value=kernel), patch(
             "ctypes.byref", side_effect=lambda value: value
         ), patch("ctypes.sizeof", return_value=64), patch(
-            "ctypes.WinError", side_effect=OSError("win32 error")
+            "ctypes.WinError", side_effect=OSError("win32 error"), create=True
         ) as win_error:
             process_lifecycle.bind_desktop_process_tree()
 
@@ -92,11 +120,11 @@ class TestBindDesktopProcessTree:
         kernel.CloseHandle.assert_not_called()
         win_error.assert_not_called()
 
-    def test_missing_job_handle_raises(self, monkeypatch):
+    def test_missing_job_handle_raises(self, monkeypatch, win32):
         monkeypatch.setattr(process_lifecycle.sys, "platform", "win32")
         kernel = _fake_kernel(create=False)
-        with patch("ctypes.WinDLL", return_value=kernel), patch(
-            "ctypes.WinError", side_effect=OSError("CreateJobObjectW failed")
+        with patch.object(win32, "WinDLL", return_value=kernel), patch(
+            "ctypes.WinError", side_effect=OSError("CreateJobObjectW failed"), create=True
         ) as win_error, patch("ctypes.get_last_error", return_value=5):
             with pytest.raises(OSError, match="CreateJobObjectW failed"):
                 process_lifecycle.bind_desktop_process_tree()
@@ -110,16 +138,18 @@ class TestBindDesktopProcessTree:
             ("assign", "AssignProcessToJobObject"),
         ],
     )
-    def test_setup_failure_closes_handle_and_reraises(self, monkeypatch, failing, expected):
+    def test_setup_failure_closes_handle_and_reraises(
+        self, monkeypatch, win32, failing, expected
+    ):
         """A half-built Job must not leak its handle -- Windows would then keep
         the workers alive after the owner is gone."""
         monkeypatch.setattr(process_lifecycle.sys, "platform", "win32")
         kernel = _fake_kernel(**{failing: False})
-        with patch("ctypes.WinDLL", return_value=kernel), patch(
+        with patch.object(win32, "WinDLL", return_value=kernel), patch(
             "ctypes.byref", side_effect=lambda value: value
         ), patch("ctypes.sizeof", return_value=64), patch(
-            "ctypes.WinError", side_effect=OSError(expected + " failed")
-        ) as win_error, patch("ctypes.get_last_error", return_value=1):
+            "ctypes.WinError", side_effect=OSError(expected + " failed"), create=True
+        ) as win_error, patch("ctypes.get_last_error", return_value=1, create=True):
             with pytest.raises(OSError, match=expected + " failed"):
                 process_lifecycle.bind_desktop_process_tree()
         kernel.CloseHandle.assert_called_once_with(99)
