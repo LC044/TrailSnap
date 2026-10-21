@@ -6,8 +6,10 @@ export const client = axios.create({
 })
 
 client.interceptors.request.use(config => {
-  const token = localStorage.getItem('rp_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  try {
+    const token = localStorage.getItem('rp_token')
+    if (token) config.headers.Authorization = `Bearer ${token}`
+  } catch { /* Anonymous feedback works without browser storage. */ }
   return config
 })
 

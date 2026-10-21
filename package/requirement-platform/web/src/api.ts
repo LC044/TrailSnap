@@ -17,7 +17,7 @@ export type Requirement = {
   visibility: string; status: string; priority: string; risk_level: string; review_reason?: string
   duplicate_of_id?: string; github_issue_number?: number; github_issue_url?: string; github_state?: string
   github_pull_requests: GitHubPullRequest[]
-  created_by?: string; created_by_name?: string; assignee_name?: string; submitter_name?: string; submitter_contact?: string; upload_token?: string
+  created_by?: string; created_by_name?: string; assignee_name?: string; submitter_name?: string; submitter_contact?: string; upload_token?: string; edit_token?: string
   created_at: string; updated_at: string; follower_count: number; triage?: Record<string, any>; triage_provider?: string; triage_model?: string
   content_revision: number; state_version: number; confirmed_summary?: string; clarifications?: Clarification[]
   specs?: RequirementSpec[]; delivery_tasks?: DeliveryTask[]
@@ -34,6 +34,7 @@ export type BatchInput = {
   target_date: string | null; max_risk_level: string
 }
 export type RequirementHistory = { id: string; action: string; actor_name: string; before?: string; after?: string; reason?: string; created_at: string }
+export type RequirementSupplement = { id: string; body: string; created_at: string; author_name: string }
 export type Dashboard = {
   total: number; new_last_7_days: number; pending_review: number; in_progress: number
   github_linked: number; anonymous: number
@@ -93,10 +94,10 @@ export const api = {
   preflightTriage: (data: unknown) => call<{ available: boolean; questions: Array<{ question_id: string; target_field?: string; question: string; rationale: string; suggested_options: string[] }>; analysis?: Record<string, any>; model?: string; reason?: string }>('post', '/requirements/preflight-triage', data),
   streamPreflightTriage,
   createRequirement: (data: unknown) => call<Requirement>('post', '/requirements', data),
-  uploadAttachment: (id: string, file: File, uploadToken?: string) => {
+  uploadAttachment: (id: string, file: File, uploadToken?: string, editToken = false) => {
     const data = new FormData(); data.append('file', file)
     return client.post(`/requirements/${id}/attachments`, data, {
-      headers: uploadToken ? { 'X-Requirement-Upload-Token': uploadToken } : undefined,
+      headers: uploadToken ? { [editToken ? 'X-Requirement-Edit-Token' : 'X-Requirement-Upload-Token']: uploadToken } : undefined,
     }).then(response => response.data.data as { id: string; name: string })
   },
   requirementByNumber: (number: number) => call<Requirement>('get', `/requirements/number/${number}`),
@@ -107,7 +108,13 @@ export const api = {
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click()
     URL.revokeObjectURL(url)
   },
-  updateRequirement: (id: string, data: unknown) => call<Requirement>('patch', `/requirements/${id}`, data),
+  supplements: (id: string) => call<RequirementSupplement[]>('get', `/requirements/${id}/supplements`),
+  addSupplement: (id: string, body: string, token?: string) => call<{ id: string }>('post', `/requirements/${id}/supplements`, { body },
+    token ? { 'X-Requirement-Edit-Token': token } : undefined),
+  editCapability: (id: string, token?: string) => call<{ can_edit: boolean; can_supplement: boolean; state_version: number; reason: string }>(
+    'get', `/requirements/${id}/edit-capability`, undefined, token ? { 'X-Requirement-Edit-Token': token } : undefined),
+  updateRequirement: (id: string, data: unknown, token?: string) => call<Requirement>('patch', `/requirements/${id}`, data,
+    token ? { 'X-Requirement-Edit-Token': token } : undefined),
   updateRequirementStatus: (id: string, status: string, reason: string) => call<Requirement>('patch', `/requirements/${id}/status`, { status, reason }),
   withdrawRequirement: (id: string) => call<Requirement>('post', `/requirements/${id}/withdraw`),
   followRequirement: (id: string) => call<{ following: boolean }>('post', `/requirements/${id}/follow`),

@@ -1529,3 +1529,181 @@ def test_triage_ai_retries_after_invalid_output(monkeypatch):
     assert len(calls) == 2
     assert "未通过结构校验" in calls[1][-1]["content"]
     assert "所有面向用户的文字必须使用简体中文" in calls[0][0]["content"]
+
+
+def test_anonymous_edit_receipt_is_scoped_private_and_retryable(monkeypatch):
+    import secrets
+    import hashlib
+    from dataclasses import replace
+    from requirement_platform.api import requirements as routes
+    monkeypatch.setattr(routes, "settings", replace(routes.settings, non_admin_hourly_submission_limit=10000))
+    token = secrets.token_urlsafe(32)
+    payload = {"type": "feature", "title": "普通用户匿名编辑测试",
+               "description": "让用户无需设置即可继续完善自己提交的需求。",
+               "log_text": "private-log", "submitter_contact": "private@example.com",
+               "client_edit_token": token}
+    with TestClient(app) as client:
+        response = client.post("/api/requirements", json=payload)
+        assert response.status_code == 200, response.text
+        row = response.json()["data"]
+        headers = {"X-Requirement-Edit-Token": token}
+        assert response.headers["cache-control"] == "no-store"
+        assert row["edit_token"] == token
+        assert token not in client.get(f"/api/requirements/{row['id']}").text
+        assert token not in client.get("/api/requirements").text
+        repeated = client.post("/api/requirements", json=payload).json()["data"]
+        assert repeated["id"] == row["id"]
+        assert client.post("/api/requirements", json={**payload, "title": "不同内容不能重用回执"}).status_code == 409
+        with SessionLocal() as db:
+            stored = db.query(Requirement).filter_by(id=row["id"]).one()
+            assert stored.anonymous_edit_token_hash == hashlib.sha256(token.encode()).hexdigest()
+            assert token not in json.dumps(stored.environment)
+        update = {"title": "完善后的匿名需求", "expected_state_version": row["state_version"]}
+        assert client.patch(f"/api/requirements/{row['id']}", json=update).status_code == 403
+        assert client.patch(f"/api/requirements/{row['id']}", json=update,
+                            headers={"X-Requirement-Edit-Token": row["upload_token"]}).status_code == 403
+        assert client.patch(f"/api/requirements/{row['id']}", headers=headers, json={"title": "缺少版本字段"}).status_code == 422
+        for forbidden in ({"status": "released"}, {"visibility": "private"}, {"environment": {"internal": True}}):
+            assert client.patch(f"/api/requirements/{row['id']}", headers=headers, json={**update, **forbidden}).status_code == 422
+        edited = client.patch(f"/api/requirements/{row['id']}", headers=headers, json=update)
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["data"]["state_version"] > row["state_version"]
+        assert edited.json()["data"]["log_text"] is None
+        assert edited.json()["data"]["submitter_contact"] is None
+        assert client.patch(f"/api/requirements/{row['id']}", headers=headers, json=update).status_code == 409
+        other = client.post("/api/requirements", json={**payload, "client_edit_token": secrets.token_urlsafe(32)}).json()["data"]
+        assert client.patch(f"/api/requirements/{other['id']}", headers=headers, json=update).status_code == 403
+        with SessionLocal() as db:
+            stored = db.query(Requirement).filter_by(id=row["id"]).one()
+            assert stored.log_text == "private-log"
+            stored.status = "candidate"
+            db.commit()
+        for credential in ({"X-Requirement-Upload-Token": row["upload_token"]}, headers):
+            assert client.post(f"/api/requirements/{row['id']}/attachments", headers=credential,
+                               files={"file": ("locked.txt", b"cannot change locked content", "text/plain")}).status_code == 409
+        assert not client.get(f"/api/requirements/{row['id']}/edit-capability", headers=headers).json()["data"]["can_edit"]
+        assert client.patch(f"/api/requirements/{row['id']}", headers=headers,
+                            json={**update, "expected_state_version": edited.json()["data"]["state_version"]}).status_code == 409
+        rotated = client.post(f"/api/requirements/{row['id']}/edit-token/rotate", headers=headers)
+        assert rotated.status_code == 200
+        assert client.get(f"/api/requirements/{row['id']}/edit-capability", headers=headers).status_code == 403
+        assert client.post("/api/requirements", json=payload).status_code == 409
+        assert client.get(f"/api/requirements/{row['id']}/edit-capability",
+                          headers={"X-Requirement-Edit-Token": rotated.json()["data"]["edit_token"]}).status_code == 200
+        with SessionLocal() as db:
+            stored = db.query(Requirement).filter_by(id=row["id"]).one()
+            stored.status = "pending_review"
+            db.commit()
+        assert client.post(f"/api/requirements/{row['id']}/attachments",
+                           headers={"X-Requirement-Upload-Token": row["upload_token"]},
+                           files={"file": ("revoked.txt", b"old receipt is revoked", "text/plain")}).status_code == 403
+        assert client.post(f"/api/requirements/{row['id']}/attachments",
+                           headers={"X-Requirement-Edit-Token": rotated.json()["data"]["edit_token"]},
+                           files={"file": ("current.txt", b"current receipt works", "text/plain")}).status_code == 200
+        assert client.get("/api/agent-guide").status_code == 200
+        assert "无需平台账号" in client.get("/api/agent-guide").text
+
+
+def test_validation_errors_do_not_echo_edit_credentials():
+    secret = "invalid-private-edit-token!"
+    with TestClient(app) as client:
+        response = client.post("/api/requirements", json={
+            "type": "feature", "title": "校验错误脱敏测试",
+            "description": "无效的编辑凭证不得出现在校验响应中。",
+            "client_edit_token": secret,
+        })
+        assert response.status_code == 422
+        assert secret not in response.text
+        assert all("input" not in error for error in response.json()["data"]["errors"])
+
+
+def test_supplements_allow_owner_followup_without_revising_locked_requirement(monkeypatch):
+    import secrets
+    from dataclasses import replace
+    from requirement_platform.api import requirements as routes
+    from requirement_platform.models import RequirementSupplement, RequirementRevision
+    monkeypatch.setattr(routes, "settings", replace(routes.settings, non_admin_hourly_submission_limit=10000))
+    with TestClient(app) as client:
+        created = client.post("/api/requirements", json={
+            "type": "bug", "title": "进入开发后补充复现条件", "description": "需求进入开发后依然需要提交新的复现条件。",
+            "client_edit_token": secrets.token_urlsafe(32),
+        }).json()["data"]
+        rid = created["id"]
+        headers = {"X-Requirement-Edit-Token": created["edit_token"]}
+        with SessionLocal() as db:
+            row = db.get(Requirement, rid)
+            row.status = "developing"
+            db.commit()
+            original = (row.description, row.content_revision, row.version, row.state_version)
+            revisions = db.query(RequirementRevision).filter_by(requirement_id=rid).count()
+        endpoint = f"/api/requirements/{rid}/supplements"
+        assert client.get(endpoint).json()["data"] == []
+        assert client.post(endpoint, json={"body": "没有权限不能追加"}).status_code == 403
+        assert client.post(endpoint, headers={"X-Requirement-Edit-Token": created["upload_token"]}, json={"body": "上传凭证不能追加"}).status_code == 403
+        assert client.post(endpoint, headers=headers, json={"body": "    "}).status_code == 422
+        assert client.post(endpoint, headers=headers, json={"body": "有效补充", "status": "released"}).status_code == 422
+        response = client.post(endpoint, headers=headers, json={"body": "补充：仅在同时打开两个窗口时复现。"})
+        assert response.status_code == 200, response.text
+        public = client.get(endpoint).json()["data"]
+        assert len(public) == 1 and public[0]["author_name"] == "提交者"
+        assert created["edit_token"] not in json.dumps(public)
+        with SessionLocal() as db:
+            row = db.get(Requirement, rid)
+            assert (row.description, row.content_revision, row.version, row.state_version) == original
+            assert db.query(RequirementRevision).filter_by(requirement_id=rid).count() == revisions
+            assert db.query(RequirementSupplement).filter_by(requirement_id=rid).count() == 1
+        assert client.get(f"/api/requirements/{rid}/edit-capability", headers=headers).json()["data"]["can_supplement"]
+        rotated = client.post(f"/api/requirements/{rid}/edit-token/rotate", headers=headers).json()["data"]
+        assert client.post(endpoint, headers=headers, json={"body": "旧凭证不再允许追加"}).status_code == 403
+        new_headers = {"X-Requirement-Edit-Token": rotated["edit_token"]}
+        assert client.post(endpoint, headers=new_headers, json={"body": "换设备后使用新入口补充"}).status_code == 200
+        with SessionLocal() as db:
+            row = db.get(Requirement, rid)
+            row.visibility = "private"
+            db.commit()
+        assert client.get(endpoint).status_code == 404
+
+        viewer = register(client, "supplement_author", "supplement_author@example.com")
+        stranger = register(client, "supplement_stranger", "supplement_stranger@example.com")
+        private = client.post("/api/requirements", headers=auth(viewer["token"]), json={
+            "type": "feature", "title": "自己的私有需求补充", "description": "只有自己和管理员能读取此需求及其补充信息。", "visibility": "private",
+        }).json()["data"]
+        private_endpoint = f"/api/requirements/{private['id']}/supplements"
+        assert client.post(private_endpoint, headers=auth(stranger["token"]), json={"body": "其他登录用户不能追加"}).status_code == 403
+        assert client.post(private_endpoint, headers=new_headers, json={"body": "另一条需求的凭证不能追加"}).status_code == 403
+        assert client.post(private_endpoint, headers=auth(viewer["token"]), json={"body": "本人追加私有场景说明"}).status_code == 200
+        assert client.get(private_endpoint).status_code == 404
+        assert client.get(private_endpoint, headers=auth(stranger["token"])).status_code == 404
+        assert len(client.get(private_endpoint, headers=auth(viewer["token"])).json()["data"]) == 1
+
+
+def test_anonymous_edit_migration_preserves_existing_data():
+    import importlib.util
+    import sqlalchemy as sa
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    path = Path(__file__).parents[1] / "migrations/versions/c8d4a7e2f610_anonymous_requirement_editing.py"
+    spec = importlib.util.spec_from_file_location("anonymous_edit_migration", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    isolated = sa.create_engine("sqlite://")
+    with isolated.begin() as connection:
+        connection.execute(sa.text("CREATE TABLE requirements (id VARCHAR(36) PRIMARY KEY, title VARCHAR(200) NOT NULL)"))
+        connection.execute(sa.text("CREATE TABLE requirement_revisions (id VARCHAR(36) PRIMARY KEY, editor_id VARCHAR(36) NOT NULL)"))
+        connection.execute(sa.text("INSERT INTO requirements VALUES ('existing', 'preserved')"))
+        with Operations.context(MigrationContext.configure(connection)):
+            migration.upgrade()
+            columns = {column["name"] for column in sa.inspect(connection).get_columns("requirements")}
+            assert "anonymous_edit_token_hash" in columns
+            assert connection.execute(sa.text("SELECT title FROM requirements")).scalar() == "preserved"
+            connection.execute(sa.text("INSERT INTO requirement_revisions VALUES ('anonymous', NULL)"))
+            with pytest.raises(RuntimeError, match="anonymous revision history"):
+                migration.downgrade()
+            assert connection.execute(sa.text("SELECT COUNT(*) FROM requirement_revisions")).scalar() == 1
+            connection.execute(sa.text("DELETE FROM requirement_revisions WHERE id = 'anonymous'"))
+            migration.downgrade()
+            columns = {column["name"] for column in sa.inspect(connection).get_columns("requirements")}
+            assert "anonymous_edit_token_hash" not in columns
+            assert connection.execute(sa.text("SELECT title FROM requirements")).scalar() == "preserved"
+    isolated.dispose()
