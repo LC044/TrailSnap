@@ -11,9 +11,19 @@ from app.utils.windows_paths import filesystem_path, publish_directory
 
 
 def stage_program(root: Path, program: Path, server: Path, launcher: Path, catalog: Path,
-                  version: str, arch: str, webview_runtime: Path | None = None):
+                  version: str, arch: str, webview_runtime: Path | None = None, ai: Path | None = None):
     inputs = [(program / 'trailsnap-desktop.exe', 'trailsnap-desktop.exe'),
-              (launcher, 'portable-launcher.exe'), (catalog, 'ai-extensions.json')]
+              (launcher, 'portable-launcher.exe')]
+    if ai is None and catalog is not None:
+        inputs.append((catalog, 'ai-extensions.json'))
+    if ai is not None:
+        if not (ai / 'trailsnap-ai.exe').is_file():
+            raise ValueError('安装包缺少完整 AI 程序')
+        for component in (server, ai):
+            metadata = json.loads((component / 'runtime-version.json').read_text(encoding='utf-8'))
+            if metadata['version'] != version:
+                raise ValueError('Server、AI 与桌面版本不一致')
+        inputs.extend((p, 'ai/' + p.relative_to(ai).as_posix()) for p in sorted(ai.rglob('*')) if p.is_file())
     inputs.extend((p, 'server/' + p.relative_to(server).as_posix()) for p in sorted(server.rglob('*')) if p.is_file())
     # Tauri links the shell statically. Cargo's sibling cdylib is a build
     # artifact, not a runtime dependency, and is absent from NSIS resources.
@@ -45,7 +55,7 @@ def stage_program(root: Path, program: Path, server: Path, launcher: Path, catal
                 digest.update(chunk)
     build = f'{version}-{digest.hexdigest()[:16]}'
     manifest = {'schemaVersion': 1, 'version': version, 'buildId': build,
-                'platform': f'windows-{arch}', 'minLauncherVersion': 1, 'executable': 'trailsnap-desktop.exe'}
+                'bundledAI': ai is not None, 'platform': f'windows-{arch}', 'minLauncherVersion': 1, 'executable': 'trailsnap-desktop.exe'}
     app = root / 'app'
     app.mkdir(parents=True, exist_ok=True)
     target = app / build
@@ -108,5 +118,5 @@ def finalize_install(root: Path, version: str):
     import platform
     root = root.resolve(strict=True)
     return stage_program(root, root, root / 'server', root / 'portable-launcher.exe',
-                         root / 'ai-extensions.json', version,
-                         'aarch64' if platform.machine().lower() in {'arm64', 'aarch64'} else 'x86_64')
+                         None, version,
+                         'aarch64' if platform.machine().lower() in {'arm64', 'aarch64'} else 'x86_64', ai=root / 'ai')

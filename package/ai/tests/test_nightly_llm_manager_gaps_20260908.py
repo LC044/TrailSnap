@@ -31,5 +31,5 @@ def test_llama_executable_raises_actionable_error_when_missing(monkeypatch):
     monkeypatch.delenv("LLAMA_SERVER_PATH", raising=False)
     monkeypatch.setattr(llm_manager.shutil, "which", lambda _: None)
 
-    with pytest.raises(RuntimeError, match="llama-server 未安装"):
+    with pytest.raises(RuntimeError, match="本地推理环境尚未准备完成"):
         llm_manager.LLMProcessManager._llama_server_executable()

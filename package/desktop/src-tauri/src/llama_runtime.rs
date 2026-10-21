@@ -1,22 +1,17 @@
-#[cfg(windows)]
 use futures_util::StreamExt;
 use serde_json::{json, Value};
-#[cfg(windows)]
 use sha2::{Digest, Sha256};
 #[cfg(not(windows))]
 use std::process::Command;
 use std::{env, path::PathBuf};
-#[cfg(windows)]
 use std::{
     fs,
     io::{self, Write},
     path::Path,
 };
 
-#[cfg(windows)]
 const LLAMA_BUILD: &str = "b9354";
 
-#[cfg(windows)]
 fn managed_runtime_root() -> Option<PathBuf> {
     env::var_os("TS_DESKTOP_ROOT")
         .map(PathBuf::from)
@@ -30,9 +25,8 @@ pub fn find_llama_server() -> Option<PathBuf> {
         }
     }
 
-    #[cfg(windows)]
-    if env::var_os("TS_INSTANCE_ROOT").is_some() {
-        return managed_runtime_root().and_then(|root| find_file_named(&root, "llama-server.exe"));
+    if let Some(root) = managed_runtime_root() {
+        return find_file_named(&root.join(LLAMA_BUILD), if cfg!(windows) { "llama-server.exe" } else { "llama-server" });
     }
 
     let executable = if cfg!(windows) {
@@ -112,7 +106,7 @@ pub fn status() -> Value {
         "installed": installed,
         "path": path.map(|value| value.to_string_lossy().to_string()),
         "version": Value::Null,
-        "installSupported": cfg!(windows) || cfg!(target_os = "macos"),
+        "installSupported": true,
         "installCommand": if cfg!(windows) {
             "由 TrailSnap 从 llama.cpp 官方 GitHub Release 直接下载安装，不依赖 winget"
         } else if cfg!(target_os = "macos") {
@@ -128,9 +122,7 @@ pub async fn install() -> Result<Value, String> {
         #[cfg(windows)]
         install_windows().await?;
         #[cfg(not(windows))]
-        tauri::async_runtime::spawn_blocking(install_blocking)
-            .await
-            .map_err(|error| format!("llama.cpp 安装任务异常：{error}"))??;
+        install_unix().await?;
     }
     let result = status();
     if result["installed"].as_bool() != Some(true) {
@@ -140,35 +132,59 @@ pub async fn install() -> Result<Value, String> {
 }
 
 #[cfg(not(windows))]
-fn install_blocking() -> Result<(), String> {
-    if find_llama_server().is_some() {
-        return Ok(());
-    }
-
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut command = Command::new("brew");
-        command.args(["install", "llama.cpp"]);
-        command
+async fn install_unix() -> Result<(), String> {
+    let (suffix, expected) = match (env::consts::OS, env::consts::ARCH) {
+        ("macos", "aarch64") => ("macos-arm64", "fc86d461ad07b997ea8b9cdcc4458cf24943edd2f8ea06bdea7ffefc1d1176c3"),
+        ("macos", "x86_64") => ("macos-x64", "589bb21149ff8a85d48fdfdabfaf08bc81ae27dd2852feac1d77a7a120b8b46f"),
+        ("linux", "aarch64") => ("ubuntu-arm64", "edd18beb62f8798a7f6d0021a293be53c460a6a67c86cfdf72d1ab568c1c2968"),
+        ("linux", "x86_64") => ("ubuntu-x64", "aa6195414b139b28591a8b207f2db9fcde2bb5791e8c694bdf450cff7ef87d02"),
+        _ => return Err("当前系统暂不支持自动准备本地推理环境".into()),
     };
-    #[cfg(not(target_os = "macos"))]
-    return Err("Linux 暂不支持一键安装，请按照 package/ai/README.md 编译 llama.cpp".into());
-
-    #[cfg(target_os = "macos")]
-    {
-        let output = command
-            .output()
-            .map_err(|error| format!("无法启动 llama.cpp 安装程序：{error}"))?;
-        if output.status.success() {
-            return Ok(());
+    let root = managed_runtime_root().ok_or("无法读取行影集数据目录")?;
+    fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let token = uuid::Uuid::new_v4();
+    let archive = root.join(format!(".{token}.download"));
+    let staging = root.join(format!(".{token}.staging"));
+    let target = root.join(LLAMA_BUILD);
+    let result = async {
+        let url = format!("https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_BUILD}/llama-{LLAMA_BUILD}-bin-{suffix}.tar.gz");
+        let response = reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(20))
+            .timeout(std::time::Duration::from_secs(900)).build().map_err(|e| e.to_string())?
+            .get(url).header("User-Agent", "TrailSnap Desktop").send().await.map_err(|e| e.to_string())?
+            .error_for_status().map_err(|e| e.to_string())?;
+        let mut file = fs::File::create(&archive).map_err(|e| e.to_string())?;
+        let mut digest = Sha256::new();
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| e.to_string())?;
+            digest.update(&chunk);
+            file.write_all(&chunk).map_err(|e| e.to_string())?;
         }
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Err(format!(
-            "llama.cpp 安装失败：{}",
-            if stderr.is_empty() { stdout } else { stderr }
-        ))
-    }
+        file.sync_all().map_err(|e| e.to_string())?;
+        drop(file);
+        if format!("{:x}",digest.finalize()) != expected { return Err("本地推理环境校验失败，请重试".into()); }
+        let input = archive.clone();
+        let destination = staging.clone();
+        tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+            let file = fs::File::open(input).map_err(|e| e.to_string())?;
+            let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+            for entry in tar.entries().map_err(|e| e.to_string())? {
+                if !entry.map_err(|e| e.to_string())?.unpack_in(&destination).map_err(|e| e.to_string())? {
+                    return Err("本地推理环境文件路径无效".into());
+                }
+            }
+            Ok(())
+        }).await.map_err(|e| e.to_string())??;
+        let executable = find_file_named(&staging, "llama-server").ok_or("本地推理环境文件不完整")?;
+        let output = Command::new(executable).arg("--version").output().map_err(|e| e.to_string())?;
+        if !output.status.success() { return Err("本地推理环境与当前系统不兼容".into()); }
+        if target.exists() { fs::rename(&target, root.join(format!(".{token}.previous"))).map_err(|e| e.to_string())?; }
+        fs::rename(&staging,&target).map_err(|e| e.to_string())?;
+        Ok(())
+    }.await;
+    let _ = fs::remove_file(&archive);
+    if staging.exists() { let _ = fs::remove_dir_all(&staging); }
+    result
 }
 
 #[cfg(windows)]
@@ -295,7 +311,6 @@ fn extract_zip(archive_path: &Path, destination: &Path) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(windows)]
 fn find_file_named(root: &Path, name: &str) -> Option<PathBuf> {
     let entries = fs::read_dir(root).ok()?;
     for entry in entries.flatten() {

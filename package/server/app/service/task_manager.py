@@ -43,7 +43,6 @@ class TaskManager:
         self._restart_thread = None
         self._restart_requested = False
         self._migration_draining = False
-        self._ai_extension_draining = False
 
     @classmethod
     def get_instance(cls):
@@ -60,7 +59,7 @@ class TaskManager:
         之前可能有一段延迟）。
         """
         with self._worker_lock:
-            if self._migration_draining or self._ai_extension_draining:
+            if self._migration_draining:
                 return
             self._stopping = False
             started = self._start_worker_locked()
@@ -92,7 +91,7 @@ class TaskManager:
 
         返回 True 表示本次实际启动了新的 worker 进程；False 表示进程已存活，
         无需启动。"""
-        if self._migration_draining or self._ai_extension_draining:
+        if self._migration_draining:
             return False
         # 1. 如果进程存在且活着 → 不处理
         if self.worker_process is not None:
@@ -197,57 +196,14 @@ class TaskManager:
             self.worker_process = None
             self._worker_stop_event = None
 
-    def set_ai_extension_state(self, state: str) -> None:
-        from app.service.ai_extension_state import STATE_KEY, apply_wait_state
-        with self._worker_lock:
-            self._ai_extension_draining = state == "maintenance"
-            self._save_system_state(STATE_KEY, state, strict=True)
-            process = self.worker_process
-            if state == "maintenance" and self._worker_stop_event is not None:
-                self._worker_stop_event.set()
-        db = SessionLocal()
-        try:
-            apply_wait_state(db, state)
-        finally:
-            db.close()
-        if state == "maintenance" and process is not None:
-            # The existing drain handshake includes queued batches and result flushes.
-            process.join()
-            with self._worker_lock:
-                if self.worker_process is process:
-                    self.worker_process = None
-                    self._worker_stop_event = None
-            if process.exitcode != 0:
-                raise RuntimeError("后台任务异常退出，已停止 AI 扩展替换")
-        self.publish_event("task.extension", {"state": state})
-        if state != "maintenance":
-            self.start_worker_for_pending_tasks()
-
-    def recover_ai_extension_state(self) -> None:
-        """Rebuild availability from the live Gateway after a shell restart."""
+    def recover_bundled_ai_tasks(self) -> None:
+        """One-time cleanup of legacy extension waits, never change user pauses."""
         import os
-        if os.environ.get("TS_DESKTOP") != "1":
+        if os.environ.get("TS_DESKTOP_BUNDLED_AI") != "1":
             return
-        import urllib.request
-        from app.service.ai_extension_state import STATE_KEY, apply_wait_state, meets_server_minimum
-        state = "missing"
-        try:
-            url = os.environ["TS_DESKTOP_AI_GATEWAY"].rstrip('/')
-            with urllib.request.urlopen(f"{url}/desktop/ai-extension-status", timeout=5) as response:
-                snapshot = json.load(response)
-                state = snapshot["state"]
-            if state == "ready" and meets_server_minimum(snapshot.get("installedVersion")) is False:
-                state = "waiting_update"
-            if state not in {"ready", "missing", "waiting_update"}:
-                state = "waiting_update"
-        except Exception:
-            logging.warning("Unable to confirm desktop AI availability; tasks will wait")
-        self._save_system_state(STATE_KEY, state, strict=True)
-        db = SessionLocal()
-        try:
-            apply_wait_state(db, state)
-        finally:
-            db.close()
+        from app.service.desktop_ai import recover_legacy_extension_waits
+        with SessionLocal() as db:
+            recover_legacy_extension_waits(db)
 
     def restart_worker(self, *, graceful: bool = False) -> dict[str, str]:
         """Restart the worker, optionally draining accepted work first."""
@@ -285,7 +241,7 @@ class TaskManager:
 
     def _finish_graceful_restart(self, process) -> None:
         process.join(timeout=180)
-        if self._migration_draining or self._ai_extension_draining:
+        if self._migration_draining:
             process.join()
         if process.is_alive():
             logging.warning("Worker drain timed out; terminating it to apply settings")
@@ -366,16 +322,7 @@ class TaskManager:
                 logging.error(f"Watchdog error: {e}")
 
     def _count_dispatchable(self, db, paused_types):
-        import os
-        from app.service.ai_extension_state import STATE_KEY, WAIT_INSTALL, WAIT_UPDATE, wait_reason
-        if os.environ.get("TS_DESKTOP") != "1" or not wait_reason(self._load_system_state(STATE_KEY, "missing")):
-            return crud_task.count_dispatchable_tasks(db, paused_types)
-        from app.db.models.task import INTERACTIVE_TASK_PRIORITY
-        query = db.query(Task).filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]))
-        query = query.filter(or_(Task.error.is_(None), ~Task.error.in_([WAIT_INSTALL, WAIT_UPDATE])))
-        if paused_types:
-            query = query.filter(or_(Task.type.notin_(list(paused_types)), Task.priority >= INTERACTIVE_TASK_PRIORITY))
-        return query.count()
+        return crud_task.count_dispatchable_tasks(db, paused_types)
 
     def _save_system_state(self, key: str, value: Any, *, strict: bool = False):
         db = SessionLocal()
@@ -426,12 +373,6 @@ class TaskManager:
         self.paused_categories = set(paused_list)
 
         groups = crud_task.get_grouped_status(db, self.paused_categories)
-        from app.service.ai_extension_state import STATE_KEY, LOCAL_TYPES, wait_reason
-        reason = wait_reason(self._load_system_state(STATE_KEY, "ready"))
-        if reason:
-            for group in groups:
-                if group.get('type', group.get('category')) in LOCAL_TYPES:
-                    group['waiting_reason'] = reason
         return groups
 
     def pause_category(self, category: str):

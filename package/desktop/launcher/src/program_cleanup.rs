@@ -1,5 +1,6 @@
 //! Retire old immutable builds only after a normal client reports readiness.
 use crate::{portable, update_transaction};
+use crate::legacy_ai::cleanup_legacy_ai;
 use portable::{BuildManifest, InstanceConfig};
 use std::{fs, path::Path};
 
@@ -33,6 +34,25 @@ fn plain_tree(path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn legacy_ai_cleanup_preserves_models_and_unknown_files() {
+        let data = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        let legacy = data.join("ai-extensions/core-ai");
+        fs::create_dir_all(legacy.join("runtime")).unwrap();
+        fs::create_dir_all(data.join("models")).unwrap();
+        fs::write(data.join("models/keep"), b"model").unwrap();
+        fs::write(legacy.join("runtime/ai.exe"), b"old").unwrap();
+        portable::write_json(&legacy.join("manifest.json"), &json!({"id":"core-ai"})).unwrap();
+        fs::write(legacy.join("unknown"), b"preserve").unwrap();
+        cleanup_legacy_ai(&data).unwrap();
+        assert!(legacy.join("unknown").exists());
+        fs::remove_file(legacy.join("unknown")).unwrap();
+        cleanup_legacy_ai(&data).unwrap();
+        assert!(!legacy.exists());
+        assert_eq!(fs::read(data.join("models/keep")).unwrap(), b"model");
+        fs::remove_dir_all(data).unwrap();
+    }
     use std::path::PathBuf;
 
     struct Fixture(PathBuf);
@@ -400,5 +420,8 @@ pub fn after_ready(root: &Path, config: &mut InstanceConfig) -> Result<(), Strin
             .map_err(|e| format!("旧程序清理未完成 {}：{e}", path.display()))?;
     }
     fs::remove_file(pending_path).map_err(|e| e.to_string())?;
+    if current.bundled_ai {
+        cleanup_legacy_ai(&data)?;
+    }
     Ok(())
 }

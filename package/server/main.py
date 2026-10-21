@@ -132,7 +132,7 @@ async def lifespan(app: FastAPI):
     # onto the loop thread via call_soon_threadsafe (asyncio.Queue is not
     # thread-safe).
     mgr.attach_loop(asyncio.get_running_loop())
-    await asyncio.to_thread(mgr.recover_ai_extension_state)
+    await asyncio.to_thread(mgr.recover_bundled_ai_tasks)
     # The worker is a second full Python process. Start it only when a task
     # survived a previous shutdown; normal task creation starts it lazily.
     mgr.start_worker_for_pending_tasks()

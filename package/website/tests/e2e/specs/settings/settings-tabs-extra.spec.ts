@@ -73,53 +73,13 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page.locator('h2', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
-  test('切换到「AI 扩展包」- 展示桌面扩展状态和能力', async ({ page }) => {
-    await page.route('**/desktop-api/ai/extensions', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        platform: 'win32-x64',
-        catalogError: null,
-        gateway: { running: false },
-        extensions: [{
-          id: 'core-ai',
-          name: 'TrailSnap AI 基础扩展',
-          version: '0.10.0',
-          description: '提供 OCR、票据识别和图片分类',
-          capabilities: ['ocr', 'tickets', 'classification'],
-          requirements: { memoryMB: 2048, diskMB: 500 },
-          available: true,
-          downloadSize: 200 * 1024 * 1024,
-          installed: null,
-          job: null,
-        }],
-      }),
-    }));
-    await page.goto('/settings?tab=ai-extensions');
-    await clickSettingTab(page, 'ai-extensions');
-
-    await expect(page.locator('h2', { hasText: 'AI 扩展包' })).toBeVisible();
-    await expect(page.getByText('TrailSnap AI 基础扩展')).toBeVisible();
-    // SidebarTaskManager 也会渲染运行中的 OCR 任务名 '文字识别'，因此把断言限定在主内容区。
-    await expect(page.locator('#main-content-wrapper').getByText('文字识别')).toBeVisible();
-    // 'exact: true'：llama.cpp 区在 web 模式下也渲染「一键安装」按钮，子串匹配会同时命中两者。
-    await expect(page.getByRole('button', { name: '安装', exact: true })).toBeEnabled();
+  test('设置提供模型管理并移除独立扩展入口', async ({ page }) => {
+    await page.goto('/settings');
+    await expect(page.locator('[data-tab="ai-extensions"]')).toHaveCount(0);
+    await expect(page.locator('[data-tab="ai-models"]').first()).toBeVisible();
   });
 
-  test('AI 扩展已安装后通过 Server 展示模型管理', async ({ page }) => {
-    await page.route('**/desktop-api/ai/extensions', route => route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        platform: 'win32-x64', catalogError: null, gateway: { running: false },
-        extensions: [{
-          id: 'core-ai', name: 'TrailSnap AI 基础扩展', version: '0.10.0',
-          description: '仅包含运行时', capabilities: ['ocr', 'tickets', 'classification'],
-          requirements: { memoryMB: 2048, diskMB: 500 }, available: true,
-          installed: { version: '0.10.0' }, job: null,
-        }],
-      }),
-    }));
+  test('通过应用直接展示模型管理', async ({ page }) => {
     await page.route('**/api/settings/ai-models', route => route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -135,8 +95,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
         },
       } }),
     }));
-    await page.goto('/settings?tab=ai-extensions');
-    await clickSettingTab(page, 'ai-extensions');
+    await page.goto('/settings');
     await clickSettingTab(page, 'ai-models');
 
     // 'heading' 角色：侧边栏菜单项「AI 模型管理」是 <a> 锚点而非标题，用 heading 精确命中内容区 <h2>。

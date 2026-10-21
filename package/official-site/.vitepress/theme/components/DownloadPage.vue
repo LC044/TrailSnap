@@ -111,8 +111,8 @@ const translations = {
     desktopPromptDescription: '复制专用提示词，跟着 AI 完成安装与初始设置。',
     copyPrompt: '复制提示词', promptCopied: '已复制，粘贴给 AI 助手', copyFailed: '复制失败，请展开提示词后选中文字手动复制。',
     aiTitle: '装好后，再按需开启 AI 功能',
-    aiDescription: '需要人脸识别、文字识别或语义搜索时，再到桌面版设置中安装 AI 扩展。不需要这些功能，也可以直接开始管理照片。',
-    aiGuide: '了解 AI 扩展与安装方式'
+    aiDescription: '安装包已包含 AI 运行环境，随应用统一更新。人脸识别、文字识别和语义搜索所需模型按需下载。',
+    aiGuide: '了解内置 AI 与模型准备'
   },
   en: {
     edition: '', installer: 'installer', chooseInstaller: 'Choose installer', dockerLabel: 'Docker deployment', releaseHint: 'See the latest release for available files', changelog: 'Changelog', showPrompt: 'View prompt', hidePrompt: 'Hide prompt', footer: 'Your photos and memories, always yours.',
@@ -135,8 +135,8 @@ const translations = {
     desktopPromptDescription: 'Copy the prompt for help with installation and initial setup.',
     copyPrompt: 'Copy AI prompt', promptCopied: 'Copied, paste into your AI assistant', copyFailed: 'Copy failed. Expand the prompt and select the text to copy manually.',
     aiTitle: 'Add AI features after installation',
-    aiDescription: 'For face recognition, OCR, or semantic search, install the AI extension from the desktop app Settings. You can start managing photos without it.',
-    aiGuide: 'About AI extensions and installation'
+    aiDescription: 'AI is included and updated with the app. Models for face recognition, OCR and semantic search are downloaded as needed.',
+    aiGuide: 'About built-in AI and model preparation'
   }
 }
 const copy = computed(() => isEnglish.value ? translations.en : translations.zh)
@@ -193,18 +193,18 @@ const desktopPrompt = computed(() => isEnglish.value
   ? `Please help me install the TrailSnap desktop app (https://trailsnap.cn). Detected platform: ${platformName.value}. First confirm my actual operating system and processor architecture.
 
 1. Read https://trailsnap.cn/llms.txt and use only the current official documentation.
-2. Read the installation and desktop AI extension guides linked there as Markdown.
+2. Read the installation and built-in desktop AI guides linked there as Markdown.
 3. Select the matching installer from https://github.com/LC044/TrailSnap/releases/latest and guide me through installation and initial setup in plain language.
 4. Do not delete or overwrite existing photos. Ask for my approval before installing software or changing settings.
-5. Ask whether I need face recognition, OCR, or semantic search. If so, help me install the matching AI extension from Settings.
+5. Ask whether I need face recognition, OCR, or semantic search. If so, help me prepare the required models in Settings. The AI runtime is already included.
 6. Verify the app launches and explain how to add my photo folder and start using it.`
   : `请帮我在我的电脑上安装 TrailSnap（行影集）桌面版（当前识别平台：${platformName.value}）。请先确认我实际使用的电脑系统和处理器架构。
 
 1. 先读取 https://trailsnap.cn/llms.txt ，找到相关文档入口，仅以最新官方文档为依据。
-2. 以 Markdown 原文阅读其中的安装指南和 AI 扩展说明。
+2. 以 Markdown 原文阅读其中的安装指南和内置 AI 说明。
 3. 从 https://github.com/LC044/TrailSnap/releases/latest 选择与我平台和架构匹配的安装包，用普通用户能理解的语言指导我完成安装和初次设置。
 4. 不要删除或覆盖已有照片。若能直接操作电脑，请在安装软件或修改设置前征求我的确认。
-5. 基础客户端装好后，询问我是否需要 AI 能力（人脸识别、OCR、图片分类、语义检索）；需要的话帮我在应用设置中安装对应的 AI 扩展。
+5. 客户端装好后，询问我需要哪些 AI 能力，并在模型管理中准备对应模型；AI 运行环境已随应用安装。
 6. 最后确认应用能正常启动，告诉我如何添加照片文件夹并开始使用。`)
 
 function docLink(path: string) {

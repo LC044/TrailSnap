@@ -258,7 +258,7 @@ def _ai_model_request(method: str, path: str, current_user: User, db: Session, j
         return BaseResponse.fail(code=504, msg="AI 模型服务响应超时")
     except requests.RequestException:
         logging.exception("Failed to access AI model service at %s", api_url)
-        return BaseResponse.fail(code=503, msg="AI 模型服务不可用，请先安装 AI 扩展包")
+        return BaseResponse.fail(code=503, msg="暂时无法准备 AI 模型，请稍后重试或重启行影集")
 
 
 @router.get('/ai-models', response_model=BaseResponse)
@@ -614,7 +614,9 @@ def get_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return config_manager.get_user_config(current_user.id, db).model_dump()
+    settings = config_manager.get_user_config(current_user.id, db).model_dump()
+    settings["runtime"] = {"managedAI": os.getenv("TS_DESKTOP_BUNDLED_AI") == "1"}
+    return settings
 
 @router.put('/')
 def update_settings(
@@ -622,6 +624,8 @@ def update_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    if os.getenv("TS_DESKTOP_BUNDLED_AI") == "1" and isinstance(payload.get("ai"), dict):
+        payload["ai"].pop("ai_api_url", None)
     for connection in payload.get("ai", {}).get("connections", []):
         models = connection.get("models") or []
         model_names = connection.get("model_names") or []

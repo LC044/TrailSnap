@@ -1,7 +1,7 @@
 # AI / LLM Settings
 
 ::: tip Desktop users
-This page configures model connections for chat and image understanding. Local face recognition, OCR, classification, and semantic search require the [desktop AI extension](/en/docs/guide/desktop-ai-extension) first. Docker deployments do not use the desktop extension.
+This page configures model connections for chat and image understanding. Desktop AI is included in the application; models are downloaded as needed. See [built-in desktop AI](/en/docs/guide/desktop-ai-extension).
 :::
 
 ## Built-in Connection

@@ -18,7 +18,16 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
   function updateProgress(value: PortableUpdate) {
     progress.value = value.size ? Math.min(100, Math.round(value.downloaded / value.size * 100)) : 0
   }
+  let checkingUpdate: Promise<void> | null = null
+  let explicitCheckRequested = false
   async function check(retry = false) {
+    explicitCheckRequested ||= retry
+    if (checkingUpdate) return checkingUpdate
+    checkingUpdate = checkInner(retry)
+    try { await checkingUpdate }
+    finally { checkingUpdate = null; explicitCheckRequested = false }
+  }
+  async function checkInner(retry = false) {
     phase.value = 'downloading'
     message.value = '正在检查并下载更新…'
     progress.value = 0
@@ -68,7 +77,7 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
         message.value = `上次更新失败，已恢复升级前的程序与数据。${status.transaction.error || ''} 备份：${status.backupPath || '数据目录/backups'}。暂时无法检查新版本，可继续使用当前版本。`
         return
       }
-      if (checking && !retry) {
+      if (checking && !retry && !explicitCheckRequested) {
         // An unavailable update catalog is not an installation/startup failure.
         // Explicit retries and actual download failures still explain errors.
         visible.value = false

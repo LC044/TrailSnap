@@ -12,15 +12,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 from release_assets import asset_name
 
 
-def package(program: Path, server: Path, launcher: Path, catalog: Path, output: Path, version: str, arch: str, webview_runtime: Path | None = None):
-    for required in (program / "trailsnap-desktop.exe", server / "trailsnap-server.exe", launcher, catalog):
+def package(program: Path, server: Path, launcher: Path, ai: Path, output: Path, version: str, arch: str, webview_runtime: Path | None = None):
+    for required in (program / "trailsnap-desktop.exe", server / "trailsnap-server.exe", launcher, ai / "trailsnap-ai.exe"):
         if not required.is_file(): raise ValueError(f"Missing release input: {required}")
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "server"))
     from app.utils.desktop_layout import stage_program
     layout = output / "layout" / f"TrailSnap-{version}-{arch}"
     if layout.exists(): raise ValueError("Output layout already exists; use a new output directory")
-    build = stage_program(layout, program, server, launcher, catalog, version, arch, webview_runtime)
+    build = stage_program(layout, program, server, launcher, None, version, arch, webview_runtime, ai=ai)
     app = layout / "app" / build
     output.mkdir(parents=True,exist_ok=True)
     full = output / asset_name(version, "desktop", "windows", arch, "-portable.zip")
@@ -40,7 +40,7 @@ def main():
     parser.add_argument("--program",type=Path,required=True)
     parser.add_argument("--server",type=Path,required=True)
     parser.add_argument("--launcher",type=Path,required=True)
-    parser.add_argument("--catalog",type=Path,required=True)
+    parser.add_argument("--ai",type=Path,required=True)
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--version",required=True)
     parser.add_argument("--arch",choices=["x86_64","aarch64"],default="x86_64")

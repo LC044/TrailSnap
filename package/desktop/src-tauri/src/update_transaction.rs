@@ -161,8 +161,10 @@ pub fn unpack_program(
     }
     if !destination.join(&manifest.executable).is_file()
         || !destination.join("server/trailsnap-server.exe").is_file()
+        || !manifest.bundled_ai
+        || !destination.join("ai/trailsnap-ai.exe").is_file()
     {
-        return Err("更新包缺少完整桌面程序或后端".into());
+        return Err("更新包缺少完整桌面程序、后端或内置 AI".into());
     }
     Ok(manifest)
 }
@@ -223,6 +225,31 @@ pub fn stage_update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn complete_update_requires_ai_and_an_explicit_complete_manifest() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&root).unwrap();
+        for (index, bundled, include_ai, valid) in [(0, true, false, false), (1, false, true, false), (2, true, true, true)] {
+            let archive = root.join(format!("{index}.zip"));
+            let mut zip = zip::ZipWriter::new(fs::File::create(&archive).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("manifest.json", options).unwrap();
+            zip.write_all(serde_json::json!({"schemaVersion":1,"version":"1.0.0", "buildId":"complete",
+                "platform":platform(),"minLauncherVersion":1,"executable":"trailsnap-desktop.exe","bundledAI":bundled}).to_string().as_bytes()).unwrap();
+            for name in ["trailsnap-desktop.exe", "server/trailsnap-server.exe"] {
+                zip.start_file(name, options).unwrap();
+                zip.write_all(b"program").unwrap();
+            }
+            if include_ai {
+                zip.start_file("ai/trailsnap-ai.exe", options).unwrap();
+                zip.write_all(b"ai").unwrap();
+            }
+            zip.finish().unwrap();
+            assert_eq!(unpack_program(&archive, &root.join(format!("unpacked-{index}")), "1.0.0").is_ok(), valid);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn rejects_untrusted_signature_before_opening_archive() {
         assert!(verify_archive(Path::new("missing.zip"), "not a signature", "00").is_err());

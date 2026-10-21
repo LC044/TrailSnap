@@ -1,140 +1,29 @@
-"""Coverage for desktop-only endpoints in app/api/system.py left untested.
-
-Targets the following branches that show as missed in the per-module coverage
-report for app/api/system.py (60% -> higher):
-  - desktop_ai_extension_requirements GET (lines 34-46) + _require_desktop_secret
-    falsy short-circuits (lines 71-77): missing/empty/TS_DESKTOP != 1.
-  - set_desktop_ai_extension_state POST (lines 47-69): happy path, the
-    "maintenance" drain loop, and exception fallback.
-  - prepare_desktop_migration POST (lines 117-138): ready path, already draining
-    409, exception fallback.
-  - desktop_network GET (lines 140-149): TS_DESKTOP != 1 -> 404, happy LAN urls.
-  - download_cached_app_update GET (lines 478-489): invalid version 404, no
-    cache 404, cached FileResponse with Cache-Control + nosniff headers.
-
-Mirrors the test_system_api.py style (MagicMock + AsyncMock + monkeypatch via
-patch.object / patch), no FastAPI TestClient needed since the module-level
-helpers expose the endpoint functions directly.
-"""
-
+"""Desktop secret, safe migration, network and cached update endpoint coverage."""
 import asyncio
-import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-
 from app.api import system as system_api
-from app.core.config_manager import VERSION
-from app.service.ai_extension_state import MINIMUM_AI_EXTENSION_VERSION
-
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 
-# --------------------------- desktop_ai_extension GET ---------------------
+@pytest.mark.parametrize('desktop,expected,provided', [
+    ('0', 's', 's'), ('1', '', 's'), ('1', 's', None), ('1', 's', 'wrong'),
+])
+def test_desktop_secret_rejects_unauthorized_calls(monkeypatch, desktop, expected, provided):
+    monkeypatch.setenv('TS_DESKTOP', desktop)
+    monkeypatch.setenv('TS_DESKTOP_SESSION_SECRET', expected)
+    with pytest.raises(HTTPException) as error:
+        system_api._require_desktop_secret(provided)
+    assert error.value.status_code == 404
 
 
-def test_desktop_ai_extension_requirements_returns_payload(monkeypatch):
-    """Happy path: the endpoint echoes server version + minimum AI ext version."""
-    monkeypatch.setenv("TS_DESKTOP", "1")
-    monkeypatch.setenv("TS_DESKTOP_SESSION_SECRET", "s3cr3t")
-    response = system_api.desktop_ai_extension_requirements(secret="s3cr3t")
-    assert response.code == 0
-    assert response.code == 0
-    data = response.data
-    assert data["serverVersion"] == VERSION
-    assert data["minimumAIExtensionVersion"] == MINIMUM_AI_EXTENSION_VERSION
-
-
-@pytest.mark.parametrize(
-    "env_patch,secret_value",
-    [
-        ({"TS_DESKTOP": "0", "TS_DESKTOP_SESSION_SECRET": "s"}, "s"),
-        ({"TS_DESKTOP": "1", "TS_DESKTOP_SESSION_SECRET": ""}, "s"),
-        ({"TS_DESKTOP": "1", "TS_DESKTOP_SESSION_SECRET": "s"}, None),
-        ({"TS_DESKTOP": "1", "TS_DESKTOP_SESSION_SECRET": "s"}, "wrong"),
-    ],
-)
-def test_desktop_ai_extension_requirements_requires_secret(monkeypatch, env_patch, secret_value):
-    """All four falsy branches of _require_desktop_secret must surface 404."""
-    monkeypatch.delenv("TS_DESKTOP", raising=False)
-    monkeypatch.delenv("TS_DESKTOP_SESSION_SECRET", raising=False)
-    for key, value in env_patch.items():
-        monkeypatch.setenv(key, value)
-    with pytest.raises(HTTPException) as exc:
-        system_api.desktop_ai_extension_requirements(secret=secret_value)
-    assert exc.value.status_code == 404
-
-
-# --------------------- set_desktop_ai_extension_state POST -----------------
-
-
-def _post_extension_state(state, secret="s3cr3t"):
-    from app.api.system import AIExtensionStateRequest
-    return asyncio.run(
-        system_api.set_desktop_ai_extension_state(
-            body=AIExtensionStateRequest(state=state),
-            secret=secret,
-        )
-    )
-
-
-def test_set_desktop_ai_extension_state_happy(monkeypatch):
-    monkeypatch.setenv("TS_DESKTOP", "1")
-    monkeypatch.setenv("TS_DESKTOP_SESSION_SECRET", "s3cr3t")
-    task_manager = MagicMock()
-    maintenance = SimpleNamespace(ai_draining=False, ai_active=0)
-    with patch("app.service.task_manager.TaskManager.get_instance", return_value=task_manager), \
-         patch("app.service.desktop_maintenance.maintenance", maintenance):
-        response = _post_extension_state("ready")
-    assert response.code == 0
-    assert response.data["state"] == "ready"
-    assert response.data["ready"] is True
-    task_manager.set_ai_extension_state.assert_called_once_with("ready")
-    # Non-maintenance state should clear the drain flag.
-    assert maintenance.ai_draining is False
-
-
-def test_set_desktop_ai_extension_state_maintenance_waits_for_ai_idle(monkeypatch):
-    monkeypatch.setenv("TS_DESKTOP", "1")
-    monkeypatch.setenv("TS_DESKTOP_SESSION_SECRET", "s3cr3t")
-    task_manager = MagicMock()
-    maintenance = SimpleNamespace(ai_draining=False, ai_active=1)
-
-    sleep_calls = []
-
-    async def fake_sleep(seconds):
-        sleep_calls.append(seconds)
-        if len(sleep_calls) >= 1:
-            maintenance.ai_active = 0  # break the while loop
-
-    with patch("app.service.task_manager.TaskManager.get_instance", return_value=task_manager), \
-         patch("app.service.desktop_maintenance.maintenance", maintenance), \
-         patch("app.api.system.asyncio.sleep", new=fake_sleep):
-        response = _post_extension_state("maintenance")
-
-    assert response.code == 0
-    assert response.data["state"] == "maintenance"
-    # Set the drain flag before delegating to TaskManager.
-    assert maintenance.ai_draining is True
-    task_manager.set_ai_extension_state.assert_called_once_with("maintenance")
-    # Loop yielded once to wait for the AI queue to drain.
-    assert sleep_calls == [0.1]
-
-
-def test_set_desktop_ai_extension_state_returns_fail_on_exception(monkeypatch):
-    monkeypatch.setenv("TS_DESKTOP", "1")
-    monkeypatch.setenv("TS_DESKTOP_SESSION_SECRET", "s3cr3t")
-    task_manager = MagicMock()
-    task_manager.set_ai_extension_state.side_effect = RuntimeError("boom")
-    maintenance = SimpleNamespace(ai_draining=False, ai_active=0)
-    with patch("app.service.task_manager.TaskManager.get_instance", return_value=task_manager), \
-         patch("app.service.desktop_maintenance.maintenance", maintenance):
-        response = _post_extension_state("ready")
-    assert response.code != 0
-    assert "boom" in response.msg
+def test_independent_extension_endpoints_are_removed():
+    paths = {route.path for route in system_api.router.routes}
+    assert not any('ai-extension' in path for path in paths)
 
 
 # -------------------------- prepare_desktop_migration ---------------------

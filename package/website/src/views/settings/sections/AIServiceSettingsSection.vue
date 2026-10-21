@@ -1,8 +1,8 @@
 <template>
-<SettingsSection v-model="activeNames" name="ai" title="AI 服务与人脸设置">
+<SettingsSection v-model="activeNames" name="ai" title="人脸与识别设置">
 <div class="px-6 pb-6">
           <el-form label-position="top" class="max-w-3xl">
-        <el-form-item label="AI API 地址（人脸识别、OCR等AI微服务地址）">
+        <el-form-item v-if="!managedAI" label="AI API 地址（人脸识别、OCR等AI微服务地址）">
           <div class="w-full">
             <div class="flex flex-col gap-2 sm:flex-row">
               <el-input
@@ -82,5 +82,5 @@
 import SettingsSection from '@/components/ui/SettingsSection.vue'
 import { useBasicSettingsContext } from '@/composables/settings/useBasicSettings'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-vue-next'
-const { activeNames, aiActiveNames, aiForm, aiServiceTest, resetAIServiceTest, saveAISettings, testAIServiceConnection } = useBasicSettingsContext()
+const { managedAI, activeNames, aiActiveNames, aiForm, aiServiceTest, resetAIServiceTest, saveAISettings, testAIServiceConnection } = useBasicSettingsContext()
 </script>
