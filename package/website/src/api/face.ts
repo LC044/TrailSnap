@@ -1,6 +1,14 @@
 import request from '@/utils/request';
 import type { FaceIdentity, GroupAlbumItem } from '@/types/album';
 
+export interface PhotoFace {
+  id: number;
+  photo_id: string;
+  face_rect: number[] | null;
+  identity_id: string | null;
+  identity_name: string | null;
+}
+
 export interface FaceRescanCandidate {
   face_id: number;
   photo_id: string;
@@ -26,6 +34,15 @@ export interface FaceRescanPreview {
 }
 
 export const faceApi = {
+  async getPhotoFaces(photoId: string) {
+    const res = await request.get<PhotoFace[]>(`/api/faces/photos/${photoId}`);
+    return res.data;
+  },
+
+  async assignPhotoFace(photoId: string, faceId: number, identityId: string | null) {
+    const res = await request.put(`/api/faces/photos/${photoId}/${faceId}/identity`, { identity_id: identityId });
+    return res.data;
+  },
   async listIdentities(page = 1, limit = 20, types?: string[], minPhotos?: number) {
     const data = await request.get<FaceIdentity[]>('/api/faces/identities', {
       params: { skip: (page - 1) * limit, limit, types, min_photos: minPhotos }

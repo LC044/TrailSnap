@@ -28,6 +28,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/photos/{photo_id}", response_model=BaseResponse[List[schemas.PhotoFace]])
+def get_photo_faces(photo_id: UUID, db: Session = Depends(get_db),
+                    current_user: User = Depends(deps.get_current_user)):
+    from app.service.photo_faces import list_photo_faces
+    return BaseResponse.success(list_photo_faces(db, photo_id, current_user.id))
+
+
+@router.put("/photos/{photo_id}/{face_id}/identity", response_model=BaseResponse[dict])
+def assign_photo_face(photo_id: UUID, face_id: int, payload: schemas.AssignPhotoFace,
+                      db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    from app.service.photo_faces import assign_photo_face as assign
+    assign(db, photo_id, face_id, payload.identity_id, current_user.id)
+    return BaseResponse.success({"face_id": face_id})
+
+
 class TimelineHideInput(BaseModel):
     start_at: datetime
     end_at: datetime
@@ -263,7 +278,7 @@ def list_identities(
     skip: int = Query(0, ge=0, description="跳过的记录数"),
     limit: int = Query(20, ge=1, le=10000, description="每页数量"),
     types: List[str] = Query(["named", "unnamed"], alias="types" , description="人物类型筛选：named, unnamed, hidden"),
-    min_photos: Optional[int] = Query(None, ge=0, description="最低照片数过滤阈值；不传时取用户配置 ai.face_recognition_min_photos"),
+    min_photos: Optional[int] = Query(None, ge=0, description="显式指定时按数量筛选；不传时已命名人物全部显示，未命名人物使用聚类最低照片数配置"),
     db: Session = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -271,6 +286,7 @@ def list_identities(
     获取人物列表，包含每个人的封面照片和照片总数。
     """
     # 显式传入的 min_photos 优先（供测试/管理端绕过用户配置），否则回退到用户配置
+    include_named_below_threshold = min_photos is None
     if min_photos is None:
         min_photos = config_manager.get_user_config(current_user.id, db).ai.face_recognition_min_photos
     data = crud_face.get_identities_with_details(
@@ -279,7 +295,8 @@ def list_identities(
         limit=limit,
         min_photos=min_photos,
         visibility_types=types,
-        owner_id=current_user.id
+        owner_id=current_user.id,
+        include_named_below_threshold=include_named_below_threshold,
     )
     return BaseResponse(code=200, msg="获取成功", data=data)
 
