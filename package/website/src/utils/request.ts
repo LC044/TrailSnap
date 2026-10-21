@@ -9,6 +9,7 @@ import { ElMessage } from 'element-plus';
 import router from '@/router';
 import { useUserStore } from '@/stores/user';
 import { getServerUrl, hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
+import { invalidateLocationMetadata, observeLocationTasks } from '@/utils/locationMetadataCache';
 
 declare module 'axios' {
   interface AxiosRequestConfig {
@@ -107,6 +108,14 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response: AxiosResponse) => {
     const res = response.data;
+    const succeeded = !(res && typeof res === 'object' && 'code' in res) || res.code === 0 || res.code === 200;
+    if (succeeded) {
+      if (!['get', 'head', 'options'].includes((response.config.method || 'get').toLowerCase())) {
+        invalidateLocationMetadata();
+      } else if (response.config.url?.split('?')[0] === '/api/tasks/grouped-status') {
+        observeLocationTasks(`${getServerUrl()}:${useUserStore().token}`, Array.isArray(res) ? res : res?.data);
+      }
+    }
     // 兼容后端直接返回数据（无 code 字段）或标准结构（有 code 字段）
     // 如果是标准结构 { code, message, data }
     if (res && typeof res === 'object' && 'code' in res) {

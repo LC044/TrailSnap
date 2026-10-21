@@ -28,6 +28,7 @@ class Photo(Base):
     __table_args__ = (
         Index("ix_photos_file_path", "file_path", postgresql_using="hash"),
         Index("ix_photos_storage_reference", "owner_id", "storage_root_id"),
+        Index("ix_photos_owner_deleted_time_id", "owner_id", "is_deleted", "photo_time", "id"),
         Index("uq_photos_owner_backup_key", "owner_id", "backup_key", unique=True),
         Index(
             "ix_photos_owner_alive",

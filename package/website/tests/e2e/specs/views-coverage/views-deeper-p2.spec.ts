@@ -71,21 +71,43 @@ test.describe('LocationTrajectoryView 轨迹视图 @views-coverage', () => {
   })
 
   test('切换轨迹视图 -> 请求时间轴数据并显示空态', async ({ page }) => {
+    // The trajectory's own request starts after the SDK is ready. Previously
+    // this assertion could pass on a hidden map's unrelated timeline request.
+    await page.addInitScript(() => {
+      localStorage.setItem('trailsnap-location-view-mode', 'grid')
+      localStorage.setItem('trailsnap-location-level', 'city')
+      class MapStub {
+        centerAndZoom() {}
+        enableScrollWheelZoom() {}
+        clearOverLays() {}
+      }
+      class OverlayStub {}
+      ;(window as any).T = {
+        Map: MapStub, TileLayer: OverlayStub, Marker: OverlayStub,
+        Label: OverlayStub, Polyline: OverlayStub, LngLat: OverlayStub,
+        Point: OverlayStub, Geocoder: OverlayStub, LocalSearch: OverlayStub,
+      }
+    })
+    await page.route('**/api/settings/map/runtime**', route => route.fulfill({
+      json: ok({ provider: 'tianditu', access_token: 'test-map-token' }),
+    }))
     const timelineCalls: string[] = []
-    await page.route('**/api/locations/**', async (route: Route) => {
+    await page.route('**/api/locations**', async (route: Route) => {
       const url = route.request().url()
       if (url.includes('/timeline')) timelineCalls.push(url)
       const path = new URL(url).pathname
       const data = path.endsWith('/years')
         ? []
         : path.endsWith('/statistics')
-          ? { province_count: 0, city_count: 0, scene_count: 0, photo_count: 0 }
+          ? { province_count: 1, city_count: 1, district_count: 1, country_count: 1 }
           : path.endsWith('/timeline')
             ? { nodes: [] }
-            : []
+            : [{ name: '测试城市', level: 'city', count: 1, cover: null }]
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok(data)) })
     })
     await page.goto('/album/location')
+    await expect(page.locator('[data-testid="location-album-grid"]')).toBeVisible()
+    expect(timelineCalls).toHaveLength(0)
     await page.locator('button[title="轨迹视图"]').click()
     await expect(page.locator('#trajectory-map')).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('暂无轨迹数据')).toBeVisible({ timeout: 10_000 })

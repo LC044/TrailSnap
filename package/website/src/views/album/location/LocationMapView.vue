@@ -174,6 +174,7 @@ const props = defineProps<{
   parentRegion?: string
   selectedYear?: number | null
   availableYears?: number[]
+  statistics?: LocationStatistics | null
 }>()
 
 const emit = defineEmits<{
@@ -193,7 +194,7 @@ const regionPhotos = ref<AlbumImage[]>([])
 const regionTimeSpan = ref<string>('')
 const regionFirstVisit = ref<string>('')
 const regionTags = ref<{name: string, count: number}[]>([])
-const globalStats = ref<LocationStatistics | null>(null)
+const globalStats = computed(() => props.statistics ?? null)
 const topRegions = ref<{name: string, count: number}[]>([])
 const recentTrips = ref<TimelineNode[]>([])
 const rawTimelineData = ref<any[]>([])
@@ -251,16 +252,16 @@ const regionRecentVisits = ref<TimelineNode[]>([])
 // 获取全局统计数据
 const fetchGlobalData = async () => {
   try {
-    globalStats.value = await locationService.getStatistics()
-    
     // 获取最近足迹
-    const trips = await locationService.getTimelineNodes(0, 3)
+    const [trips, timelineData] = await Promise.all([
+      locationService.getTimelineNodes(0, 3),
+      albumService.getTimelineStats(),
+    ])
     if (trips && trips.nodes) {
       recentTrips.value = trips.nodes
     }
 
     // 获取时间轴数据
-    const timelineData = await albumService.getTimelineStats()
     if (timelineData && timelineData.timeline) {
       rawTimelineData.value = timelineData.timeline
     }

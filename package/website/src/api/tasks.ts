@@ -44,6 +44,10 @@ export function buildTaskEventsUrl(token: string | null | undefined): string {
 }
 
 export const tasksApi = {
+  async recoverTicketRecognition() {
+    const response = await request.post<{ count: number }>('/api/tasks/recover-ticket-recognition')
+    return response.data
+  },
   async listTasks(status?: string, type?: string, limit = 50) {
     const params: any = { status, type, limit }
     const data = await request.get<Task[]>('/api/tasks/', { params })

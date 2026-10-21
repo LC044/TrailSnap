@@ -40,13 +40,14 @@ def get_flight_tickets(
     items = query.order_by(FlightTicket.date_time.desc()).offset(skip).limit(limit).all()
     return total, items
 
-def create_flight_ticket(db: Session, ticket: FlightTicketCreate, owner_id: uuid.UUID = None) -> FlightTicket:
+def create_flight_ticket(db: Session, ticket: FlightTicketCreate, owner_id: uuid.UUID = None, *, commit: bool = True) -> FlightTicket:
     """创建新的飞机票"""
     # Check duplicate
     existing = db.query(FlightTicket).filter(
         FlightTicket.flight_code == ticket.flight_code,
         FlightTicket.date_time == ticket.date_time,
-        FlightTicket.name == ticket.name
+        FlightTicket.name == ticket.name,
+        FlightTicket.owner_id == owner_id,
     ).first()
     if existing:
         logging.info(f"Duplicate flight ticket found: {ticket.flight_code} {ticket.date_time} {ticket.name}")
@@ -65,8 +66,11 @@ def create_flight_ticket(db: Session, ticket: FlightTicketCreate, owner_id: uuid
         owner_id=owner_id
     )
     db.add(db_ticket)
-    db.commit()
-    db.refresh(db_ticket)
+    if commit:
+        db.commit()
+        db.refresh(db_ticket)
+    else:
+        db.flush()
     return db_ticket
 
 def update_flight_ticket(

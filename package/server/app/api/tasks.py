@@ -288,6 +288,19 @@ def create_photo_processing_task(
     return BaseResponse.success(data={"task": task, "reused": False})
 
 
+@router.post("/recover-ticket-recognition", response_model=BaseResponse[Dict[str, int]], summary="恢复旧版无票据的识别任务")
+def recover_ticket_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.service.ticket_recovery import recover_ticket_recognition
+    from app.service.tasks.ai_runtime import AIBatchSession
+    # Use a fresh transaction to reserve SQLite's writer before selecting targets.
+    with AIBatchSession(bind=db.get_bind(), expire_on_commit=False) as recovery_db:
+        count = recover_ticket_recognition(recovery_db, TaskManager.get_instance(), current_user.id)
+    return BaseResponse.success(data={'count': count})
+
+
 @router.get("/{task_id}", response_model=BaseResponse[TaskSchema], summary="根据 ID 获取任务详情")
 def get_task(task_id: UUID, db: Session = Depends(get_db)):
     """
