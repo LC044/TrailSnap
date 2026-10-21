@@ -471,24 +471,36 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
     else:
         return []
 
+    # Freeze the narrow, owner-filtered photo set before joining geography.
+    # SQLite otherwise favors a city index and repeatedly reads full Photo rows
+    # by primary key. The existing pagination index covers this entire CTE.
+    visible_query = select(Photo.id, Photo.photo_time).where(
+        Photo.owner_id == owner_id, Photo.is_deleted == False,
+    )
+    if start_date:
+        visible_query = visible_query.where(Photo.photo_time >= start_date)
+    if end_date:
+        visible_query = visible_query.where(Photo.photo_time <= f"{end_date} 23:59:59")
+    visible = visible_query.cte('visible_location_photos').prefix_with('MATERIALIZED', dialect='sqlite')
+
     # Group by location and count
     if is_scene:
         query = db.query(
             Scene.name,
             Scene.id,
             Scene.is_custom,
-            func.count(Photo.id).label('count')
-        ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False).outerjoin(
-            PhotoMetadata, Scene.id == PhotoMetadata.scene_id
-        ).outerjoin(
-            Photo, Photo.id == PhotoMetadata.photo_id
+            func.count(visible.c.id).label('count')
+        ).select_from(visible).join(
+            PhotoMetadata, visible.c.id == PhotoMetadata.photo_id
+        ).join(
+            Scene, Scene.id == PhotoMetadata.scene_id
         )
     else:
         query = db.query(
             group_col,
-            func.count(Photo.id).label('count')
-        ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False).join(
-            PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+            func.count(visible.c.id).label('count')
+        ).select_from(visible).join(
+            PhotoMetadata, visible.c.id == PhotoMetadata.photo_id
         )
 
     # if is_scene:
@@ -502,11 +514,6 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
             group_col.is_not(None),
             group_col != ''
         )
-
-    if start_date:
-        query = query.filter(Photo.photo_time >= start_date)
-    if end_date:
-        query = query.filter(Photo.photo_time <= f"{end_date} 23:59:59")
 
     if is_scene:
         query = query.group_by(Scene.name, Scene.id, Scene.is_custom)
@@ -528,24 +535,17 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
     cover_group = PhotoMetadata.scene_id if is_scene else group_col
     group_keys = [r[1] if is_scene else r[0] for r in results]
     ranked_query = select(
-        Photo.id.label('photo_id'),
+        visible.c.id.label('photo_id'),
         cover_group.label('location_key'),
         func.row_number().over(
             partition_by=cover_group,
-            order_by=(Photo.photo_time.desc().nullslast(), Photo.id.desc()),
+            order_by=(visible.c.photo_time.desc().nullslast(), visible.c.id.desc()),
         ).label('rank'),
-    ).select_from(Photo).join(
-        PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+    ).select_from(visible).join(
+        PhotoMetadata, visible.c.id == PhotoMetadata.photo_id
     ).where(
-        Photo.owner_id == owner_id,
-        Photo.is_deleted == False,
         cover_group.in_(group_keys),
     )
-
-    if start_date:
-        ranked_query = ranked_query.where(Photo.photo_time >= start_date)
-    if end_date:
-        ranked_query = ranked_query.where(Photo.photo_time <= f"{end_date} 23:59:59")
 
     ranked_covers = ranked_query.subquery()
     covers = db.query(Photo, ranked_covers.c.location_key).join(

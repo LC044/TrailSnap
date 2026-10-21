@@ -18,7 +18,7 @@ from uuid import uuid4
 import pytest
 
 
-pytestmark = [pytest.mark.smoke]
+pytestmark = [pytest.mark.smoke, pytest.mark.module_ticket]
 
 
 def _run(coro):
@@ -168,22 +168,16 @@ def test_process_skips_already_processed_when_not_force():
 
 
 @pytest.mark.asyncio
-async def test_get_schedule_info_returns_none_on_non_200():
+async def test_get_schedule_info_uses_internal_reference_database(monkeypatch):
+    monkeypatch.setenv('RAILWAY_DB_URL', 'sqlite://')
     from app.service.tasks import tickets
 
-    fake_session = MagicMock()
-    fake_response = MagicMock()
-    fake_response.status = 500
-    fake_response.__aenter__ = AsyncMock(return_value=fake_response)
-    fake_response.__aexit__ = AsyncMock(return_value=False)
-
-    fake_session.get = MagicMock(return_value=fake_response)
-    fake_session.__aenter__ = AsyncMock(return_value=fake_session)
-    fake_session.__aexit__ = AsyncMock(return_value=False)
-
-    with patch("app.service.tasks.tickets.aiohttp.ClientSession", return_value=fake_session):
+    with patch("railway.db.session.SessionLocal") as factory, \
+         patch("railway.crud.get_train_schedule_list", return_value=(404, 'not found', None)) as query:
         result = await tickets.get_schedule_info("G100")
-    assert result is None
+    assert result['code'] == 404
+    assert query.call_args.args[1].train_code == 'G100'
+    assert query.call_args.args[1].page_size == 100
 
 
 # --- calculate_ticket_mileage_and_time edge cases ---------------------------
@@ -237,7 +231,7 @@ async def test_process_single_photo_happy_path_creates_train_ticket():
     photo = _photo()
     captured = {}
 
-    def fake_create(db, payload, owner_id):
+    def fake_create(db, payload, owner_id, *, commit=True):
         captured["payload"] = payload
         captured["owner_id"] = owner_id
         return SimpleNamespace(id=uuid4())
@@ -341,7 +335,13 @@ async def test_process_single_photo_ai_service_error_returns_failed():
 
 
 @pytest.mark.asyncio
-async def test_process_batch_groups_photos_by_owner_and_calls_ai():
+@pytest.mark.parametrize('ai_body, expected', [
+    ({'results': [{'tickets': []}]}, 'completed'),
+    ({'results': []}, 'failed'),
+    ({'results': [{}]}, 'failed'),
+    ({'results': [{'tickets': [{}]}]}, 'failed'),
+])
+async def test_process_batch_groups_photos_by_owner_and_calls_ai(ai_body, expected):
     from app.service.tasks.tickets import RecognizeTicketStrategy
 
     owner_id = uuid4()
@@ -357,7 +357,7 @@ async def test_process_batch_groups_photos_by_owner_and_calls_ai():
     ai_response.__aexit__ = AsyncMock(return_value=False)
 
     async def _fake_json():
-        return {"results": [{"tickets": []}]}
+        return ai_body
 
     ai_response.json = _fake_json
 
@@ -381,7 +381,10 @@ async def test_process_batch_groups_photos_by_owner_and_calls_ai():
         results = await RecognizeTicketStrategy().process_batch(MagicMock(), tasks, db)
 
     assert len(results) == 1
-    assert results[0]["status"] == "completed"
+    assert results[0]["status"] == expected
+    if expected == 'failed':
+        assert results[0]['error']
+        assert photo.processed_tasks['tickets'] is False
 
 
 @pytest.mark.asyncio

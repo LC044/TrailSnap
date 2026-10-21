@@ -63,13 +63,14 @@ def get_all_train_tickets(db: Session, owner_id: uuid.UUID = None) -> List[Train
 
 
 
-def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.UUID = None) -> TrainTicket:
+def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.UUID = None, *, commit: bool = True) -> TrainTicket:
     """创建新的火车票"""
     # Check duplicate
     existing = db.query(TrainTicket).filter(
         TrainTicket.train_code == ticket.train_code,
         TrainTicket.date_time == ticket.date_time,
-        TrainTicket.seat_num == (ticket.seat_num or '无座')
+        TrainTicket.seat_num == (ticket.seat_num or '无座'),
+        TrainTicket.owner_id == owner_id,
     ).first()
     if existing:
         logging.info(f"Duplicate train ticket found: {ticket.train_code} {ticket.date_time}")
@@ -94,8 +95,11 @@ def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.U
         owner_id=owner_id
     )
     db.add(db_ticket)
-    db.commit()
-    db.refresh(db_ticket)  # 刷新获取数据库生成的字段（如id、created_at）
+    if commit:
+        db.commit()
+        db.refresh(db_ticket)
+    else:
+        db.flush()
     return db_ticket
 
 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, JSON, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, JSON, DateTime, Text, ForeignKey, Index, text
 from app.db.types import UUID, PortableJSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import validates
@@ -145,6 +145,11 @@ class Task(Base):
     __table_args__ = (
         Index('ix_tasks_status_priority_created', status, priority.desc(), created_at.asc()),
         Index('ix_tasks_type_status', 'type', 'status'),
+        Index(
+            'ix_tasks_pending_error_type', 'type', 'status',
+            sqlite_where=text("status = 'pending' AND error IS NOT NULL"),
+            postgresql_where=text("status = 'pending' AND error IS NOT NULL"),
+        ),
         Index('ix_tasks_type_status_priority_created', type, status, priority.desc(), created_at.asc()),
     )
 

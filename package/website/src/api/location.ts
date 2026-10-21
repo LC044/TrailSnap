@@ -1,6 +1,8 @@
 import request from '@/utils/request';
 import type { Location, Scene, SceneCreate, SceneUpdate, LocationStatistics, TimelineResponse, TrajectoryResponse, TimeCompareSummary } from '@/types/location';
 import type { Photo } from '@/types/album';
+import { getServerUrl } from '@/config/server';
+import { cachedLocationMetadata } from '@/utils/locationMetadataCache';
 import type { FootprintRoute } from '@/types/footprint';
 
 export interface OverviewStats {
@@ -54,8 +56,10 @@ export interface HeatmapRangeResponse {
 
 export const locationService = {
   async getYears() {
-    const data = await request.get<number[]>('/api/locations/years');
-    return data.data;
+    return cachedLocationMetadata(`${getServerUrl()}:${localStorage.getItem('user_token')}:years`, async () => {
+      const data = await request.get<number[]>('/api/locations/years');
+      return data.data;
+    });
   },
 
   async searchLocations(q: string) {
@@ -73,8 +77,10 @@ export const locationService = {
   },
 
   async getStatistics() {
-    const data = await request.get<LocationStatistics>('/api/locations/statistics');
-    return data.data;
+    return cachedLocationMetadata(`${getServerUrl()}:${localStorage.getItem('user_token')}:statistics`, async () => {
+      const data = await request.get<LocationStatistics>('/api/locations/statistics');
+      return data.data;
+    });
   },
 
   async getDistribution(level: 'city' | 'province' | 'district' | 'scene' = 'city', startDate?: string, endDate?: string) {

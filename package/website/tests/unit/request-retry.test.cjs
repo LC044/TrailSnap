@@ -8,7 +8,7 @@ const axios = require('axios');
 
 // Execute the real interceptor and Axios pipeline with only HTTP/UI boundaries replaced.
 function harness(outcomes, { holdBackoff = false } = {}) {
-  const messages = [], requests = [], delays = [], timers = new Map();
+  const messages = [], requests = [], delays = [], timers = new Map(), metadataEvents = [];
   let timerId = 0, resetCount = 0;
   const user = { token: 'saved-token', resetState() { resetCount++; } };
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/utils/request.ts'), 'utf8')
@@ -22,6 +22,10 @@ function harness(outcomes, { holdBackoff = false } = {}) {
     'element-plus': { ElMessage: { error: message => messages.push(message) } },
     '@/router': {},
     '@/stores/user': { useUserStore: () => user },
+    '@/utils/locationMetadataCache': {
+      invalidateLocationMetadata: () => metadataEvents.push('invalidate'),
+      observeLocationTasks: (scope, groups) => metadataEvents.push({scope, groups}),
+    },
     '@/config/server': {
       getServerUrl: () => '', hasConfiguredServer: () => false,
       isNativeApp: () => false, isTauriApp: () => false,
@@ -53,8 +57,20 @@ function harness(outcomes, { holdBackoff = false } = {}) {
       ? { config, status: outcome, data: {}, headers: {} } : undefined;
     throw new axios.AxiosError('failed', response ? 'ERR_BAD_RESPONSE' : outcome, config, {}, response);
   };
-  return { service, messages, requests, delays, timers, user, resets: () => resetCount };
+  return { service, messages, requests, delays, timers, user, metadataEvents, resets: () => resetCount };
 }
+
+test('only successful mutations invalidate location metadata; task reads notify the cache', async () => {
+  const h = harness(['ok','ok','ok',422]);
+  await h.service.get('/api/locations');
+  assert.equal(h.metadataEvents.length,0);
+  await h.service.post('/api/photos');
+  assert.equal(h.metadataEvents[0],'invalidate');
+  await h.service.get('/api/tasks/grouped-status');
+  assert.equal(h.metadataEvents[1].scope,':saved-token');
+  await assert.rejects(h.service.delete('/api/photos/bad'));
+  assert.equal(h.metadataEvents.length,2);
+});
 
 test('transient read failures recover silently and preserve request options and session', async () => {
   for (const outcome of ['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT', 502, 503, 504]) {

@@ -6,6 +6,7 @@ from sqlalchemy import engine_from_config, pool
 
 import app.db.models  # noqa: F401
 from app.db.base import Base
+from app.db.migration_compat import normalize_local_index_revision
 
 config = context.config
 database_url = os.environ.get("TS_DB_URL") or os.environ.get("DB_URL")
@@ -33,6 +34,8 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
+        with connection.begin():
+            normalize_local_index_revision(connection, 'd82e5a031b42', 'portable_sqlite_0020')
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from app.crud.location import get_locations
+from app.crud.location import get_locations, get_location_statistics, get_location_years
 from app.crud.scene import get_scenes
 from app.db.base import Base
 from app.db.models.photo import FileType, Photo
@@ -16,6 +16,34 @@ from app.db.models.scene import Scene
 from app.schemas.location import Location
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_location]
+
+
+def test_location_summary_uses_covering_index_without_reading_exif(location_db):
+    db = location_db
+    owner = uuid4()
+    for _ in range(300):
+        add_photo(db, owner)
+    add_photo(db, owner, city=None, province='', district=None)
+    add_photo(db, uuid4(), city='其他用户', province='其他省', district='其他区')
+    add_photo(db, owner, deleted=True, city='已删除', province='已删除', district='已删除')
+    db.commit()
+    db.connection().exec_driver_sql('ANALYZE ix_photo_metadata_location_summary')
+    db.connection().exec_driver_sql('ANALYZE ix_photos_owner_deleted_time_id')
+    statements = []
+    def capture(conn, cursor, statement, args, context, many):
+        statements.append((statement, args))
+    event.listen(db.bind, 'before_cursor_execute', capture)
+    try:
+        assert get_location_statistics(db, owner) == dict(province_count=1, city_count=1, district_count=1, country_count=0)
+        assert get_location_years(db, owner) == [2024]
+        rows = get_locations(db, owner)
+        assert len(rows) == 1 and rows[0]['count'] == 300
+    finally:
+        event.remove(db.bind, 'before_cursor_execute', capture)
+    plans = [' '.join(row[3] for row in db.connection().exec_driver_sql('EXPLAIN QUERY PLAN '+sql, args)) for sql, args in statements]
+    # Statistics, years, city count and cover ranking all stay in the narrow index.
+    assert len(plans) == 4
+    assert all('COVERING INDEX ix_photo_metadata_location_summary' in plan for plan in plans), plans
 
 
 @pytest.fixture

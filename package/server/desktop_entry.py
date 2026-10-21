@@ -16,7 +16,8 @@ import time
 from pathlib import Path
 
 
-DESKTOP_SCHEMA_REVISION = "portable_sqlite_0020"
+# Keep this fast startup check in sync with the SQLite Alembic head.
+DESKTOP_SCHEMA_REVISION = "b54833411649"
 
 # The desktop UI talks to the sidecar exactly like the production web UI talks
 # to nginx: all API calls start with /api. The bundled server has no reverse

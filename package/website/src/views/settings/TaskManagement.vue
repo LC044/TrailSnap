@@ -35,6 +35,7 @@
               <!-- Status Logic -->
               <el-tag v-if="cat.status === 'paused'" type="warning" size="small">已暂停</el-tag>
               <el-tag v-else-if="cat.waiting_reason && cat.pending > 0" type="info" size="small">{{ cat.waiting_reason }}</el-tag>
+              <el-tag v-else-if="cat.failed > 0" type="danger" size="small">有失败任务</el-tag>
               <el-tag v-else-if="cat.pending === 0" type="success" size="small">已完成</el-tag>
               <el-tag v-else-if="cat.completed === 0 && cat.pending === 0" type="info" size="small">等待中</el-tag>
               <el-tag v-else type="primary" size="small">进行中</el-tag>
@@ -50,6 +51,7 @@
                             <el-dropdown-item v-else command="pause">暂停任务</el-dropdown-item>
                             <el-dropdown-item command="scan_missing" divided>执行缺失任务</el-dropdown-item>
                             <el-dropdown-item command="retry" :disabled="cat.failed === 0">重试失败任务</el-dropdown-item>
+                            <el-dropdown-item v-if="cat.category === 'RECOGNIZE_TICKET'" command="recover_tickets" :disabled="recoveringTickets">恢复旧版未保存的票据</el-dropdown-item>
                             <el-dropdown-item command="delete_failed" :disabled="cat.failed === 0">删除失败任务</el-dropdown-item>
                             <el-dropdown-item command="rebuild">强制重做此项</el-dropdown-item>
                         </el-dropdown-menu>
@@ -153,7 +155,9 @@ const handleFastModeChange = async (val: boolean) => {
 }
 
 const handleCategoryCommand = async (category: string, command: string) => {
-    if (command === 'pause') {
+    if (command === 'recover_tickets') {
+        await recoverTickets()
+    } else if (command === 'pause') {
         await pauseCategory(category)
     } else if (command === 'resume') {
         await resumeCategory(category)
@@ -166,6 +170,21 @@ const handleCategoryCommand = async (category: string, command: string) => {
     } else if (command === 'delete_failed') {
         confirmDeleteFailed(category)
     }
+}
+
+const recoveringTickets = ref(false)
+const recoverTickets = async () => {
+    try {
+        await ElMessageBox.confirm('重新识别旧版标记完成但没有保存票据的照片（也可能包含未识别出票据的照片），保留已有票据。是否继续？', '恢复票据识别', { type: 'info' })
+    } catch { return }
+    if (recoveringTickets.value) return
+    recoveringTickets.value = true
+    try {
+        const result = await tasksApi.recoverTicketRecognition()
+        ElMessage.info(result.count ? `已加入 ${result.count} 张照片的恢复识别任务，请关注处理结果` : '没有需要恢复的照片，已有任务可在失败列表重试')
+        await fetchTasks()
+    } catch { ElMessage.error('恢复任务创建失败，请重试') }
+    finally { recoveringTickets.value = false }
 }
 
 const retryCategoryFailed = async (category: string) => {

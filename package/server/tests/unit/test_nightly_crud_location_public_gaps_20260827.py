@@ -36,6 +36,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_location]
 def _chained(*, terminal=None, all_rows=None):
     q = MagicMock(name="query")
     q.filter.return_value = q
+    q.select_from.return_value = q
     q.join.return_value = q
     q.outerjoin.return_value = q
     q.group_by.return_value = q

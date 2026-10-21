@@ -31,6 +31,16 @@ class AIBatchSession(Session):
             self._writer_owned = False
             _sqlite_writer.release()
 
+    def begin_write(self):
+        """Reserve SQLite's writer before selecting rows to update.
+
+        Use a fresh session. BEGIN IMMEDIATE coordinates with other processes;
+        the in-process lock also keeps simultaneous recovery requests ordered.
+        """
+        if self.get_bind().dialect.name == 'sqlite':
+            self._admit_writer()
+            self.connection().exec_driver_sql('BEGIN IMMEDIATE')
+
     def execute(self, statement, *args, **kwargs):
         if any(getattr(statement, name, False) for name in ('is_insert', 'is_update', 'is_delete')):
             self._admit_writer()
