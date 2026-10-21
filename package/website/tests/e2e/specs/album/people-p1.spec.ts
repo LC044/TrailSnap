@@ -393,10 +393,12 @@ test.describe.serial('P1 - 人物相册', () => {
     await expect(batchBtn).toBeVisible({ timeout: 10_000 })
     await batchBtn.click()
 
+    // 进入批量模式后 PhotoGallery 会重渲染一次；只等 img 存在不够，
+    // force click 会打在重渲染前的旧位置上，导致选中数一直停在 0。
+    // 先等底部批量工具栏挂载，再等第一张缩略图可见（与 photos-flow-p1 一致）。
+    await expect(page.getByTestId('photo-selection-bar')).toBeVisible({ timeout: 10_000 })
     const imgs = gallery.locator('img')
-    await expect
-      .poll(() => imgs.count(), { timeout: 15_000 })
-      .toBeGreaterThan(0)
+    await expect(imgs.first()).toBeVisible({ timeout: 15_000 })
     await imgs.first().click({ force: true })
 
     // PhotoGallery 的 trash 按钮 title = deleteLabel prop = "从人物中移除"
