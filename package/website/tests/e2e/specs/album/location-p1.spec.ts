@@ -1,7 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
 
 import { ensureAuthSession, authHeaders } from '../../helpers/auth'
-import { requireAnyScene, type BaseResponse, type SceneSummary } from '../../helpers/location-probe'
+import { requireAnyLocation, requireAnyScene, type BaseResponse, type SceneSummary } from '../../helpers/location-probe'
 import { desktopLevelButton, desktopFilterButton, locationGridCard } from '../../helpers/location-ui'
 import { acquireMutex } from '../../helpers/mutex'
 import { e2eEnv } from '../../../../playwright/e2e-env'
@@ -324,7 +324,12 @@ test.describe.serial('P1 - 位置相册', () => {
     }
   })
 
-  test('2.4.13 统计视图 - 切换后 StatsOverviewCard 显示"足迹概览"', async ({ page }, testInfo) => {
+  test('2.4.13 统计视图 - 切换后 StatsOverviewCard 显示"足迹概览"', async ({ page, request }, testInfo) => {
+    // 统计视图渲染在位置列表之上；没有带 GPS 坐标的照片时位置相册只有空态，
+    // StatsOverviewCard 永远不会挂载。同文件的 2.4.11 / 2.4.12 / 2.4.16 都用探针守卫。
+    const probe = await requireAnyLocation(request, testInfo)
+    if (!probe.ok) return
+
     await gotoRetry(page, '/album/location')
     // auth 失败时页面会被弹到 /login 或 /register；这种情况下统计视图无法打开，
     // 改用 skip 保持后续 P1 用例仍可继续。
