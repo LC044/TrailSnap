@@ -113,7 +113,7 @@
                     <div class="text-xs text-green-500 flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500 block"></span>{{ t.hero.chat.online }}</div>
                   </div>
                 </div>
-                
+
                 <!-- Chat Body -->
                 <div class="p-4 md:p-6 space-y-6 max-h-[680px] overflow-y-auto font-sans text-sm md:text-base custom-scrollbar">
                   <!-- User Message -->
@@ -122,13 +122,13 @@
                       {{ t.hero.chat.userMsg }}
                     </div>
                   </div>
-                  
+
                   <!-- AI Message -->
                   <div class="flex justify-start animate-fade-in-up" style="animation-delay: 0.5s; animation-fill-mode: both;">
                     <div class="bg-white dark:bg-[#1a1a1a] text-neutral-dark dark:text-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%] shadow-sm border border-gray-100 dark:border-slate-600 leading-relaxed">
                       <div class="typing-container">
                         <p class="mb-3">{{ t.hero.chat.aiMsg1 }}</p>
-                        
+
                         <div class="mb-3">
                           <p class="font-bold text-neutral-dark dark:text-white mb-1.5 flex items-center gap-1.5"><span class="text-lg">📍</span> {{ t.hero.chat.itineraryTitle }}</p>
                           <ul class="space-y-1.5 text-[13px] md:text-sm text-neutral-gray dark:text-gray-300 ml-1">
@@ -138,7 +138,7 @@
                             </li>
                           </ul>
                         </div>
-                        
+
                         <div class="mb-3">
                           <p class="font-bold text-neutral-dark dark:text-white mb-2 flex items-center gap-1.5"><span class="text-lg">📸</span> {{ t.hero.chat.photoTitle }}</p>
                           <div class="grid grid-cols-3 gap-2 thumbnails-container">
@@ -172,7 +172,7 @@
                   </div>
                 </div>
               </div>
-              
+
               <!-- Decorative Elements -->
               <div class="absolute -top-6 -right-6 text-4xl opacity-20 text-green-500 animate-pulse z-0">✨</div>
               <div class="absolute -bottom-6 -left-6 w-24 h-24 bg-green-400/20 dark:bg-green-500/20 rounded-full blur-2xl z-0"></div>
@@ -194,12 +194,12 @@
         <div class="relative max-w-5xl mx-auto">
           <!-- Main Image Display -->
           <div class="relative aspect-video rounded-xl overflow-hidden shadow-2xl group bg-gray-100 dark:bg-[#141414]">
-             <div v-for="(shot, index) in featureScreenshots" :key="index" 
+             <div v-for="(shot, index) in featureScreenshots" :key="index"
                  class="absolute inset-0 transition-opacity duration-500 ease-in-out"
                  :class="index === activeScreenshotIndex ? 'opacity-100 z-10' : 'opacity-0 z-0'">
               <img v-if="shot.image" :src="shot.image" :alt="shot.title" class="w-full h-full object-cover" loading="lazy">
               <div v-else class="w-full h-full flex items-center justify-center text-gray-400 text-xl bg-gray-900">Image Placeholder: {{ shot.title }}</div>
-              
+
               <!-- Caption Overlay -->
               <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 md:p-8 text-white">
                 <h3 class="text-md md:text-2xl font-bold mb-2">{{ shot.title }}</h3>
@@ -232,7 +232,7 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <div v-for="(feature, index) in features" :key="index" 
+          <div v-for="(feature, index) in features" :key="index"
                class="bg-white dark:bg-[#141414] rounded-xl p-8 shadow-soft hover:shadow-hover hover:-translate-y-2 transition-all duration-300 border border-transparent hover:border-blue-50 dark:hover:border-blue-900 group">
             <div class="text-5xl mb-6 group-hover:scale-110 transition-transform duration-300">{{ feature.icon }}</div>
             <h3 class="text-2xl font-bold text-neutral-dark dark:text-white mb-4 flex items-center gap-2">
@@ -258,7 +258,7 @@
               {{ t.overview.title }}
             </h2>
             <div class="space-y-4">
-              <div v-for="(item, index) in overviewFeatures" :key="index" 
+              <div v-for="(item, index) in overviewFeatures" :key="index"
                    class="bg-white dark:bg-[#141414] rounded-lg p-4 border-l-4 border-primary cursor-pointer transition-all hover:shadow-md"
                    @click="activeFeatureIndex = index">
                 <div class="flex justify-between items-center mb-2">
@@ -284,14 +284,14 @@
               <div class="text-center">
                 <img id="overview-img" :src="overviewFeatures[activeFeatureIndex].image" alt="Feature Image" class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110" loading="eager">
               </div>
-              
+
               <!-- Hover Arrows (Mock) -->
               <div class="absolute left-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/30 rounded-full flex items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" @click="activeFeatureIndex = (activeFeatureIndex - 1 + overviewFeatures.length) % overviewFeatures.length">←</div>
               <div class="absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 bg-black/30 rounded-full flex items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity" @click="activeFeatureIndex = (activeFeatureIndex + 1) % overviewFeatures.length">→</div>
-              
+
               <!-- Dots -->
               <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                <div v-for="(_, i) in overviewFeatures" :key="i" 
+                <div v-for="(_, i) in overviewFeatures" :key="i"
                      class="w-2 h-2 rounded-full transition-colors"
                      :class="i === activeFeatureIndex ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'"></div>
               </div>
@@ -346,7 +346,7 @@
     <section class="py-20 bg-secondary/30 dark:bg-[#141414]/30">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <h2 class="text-[28px] font-bold text-neutral-dark dark:text-white text-center mb-12">{{ t.testimonials.title }}</h2>
-        
+
         <div class="max-w-3xl mx-auto bg-white dark:bg-[#141414] rounded-xl p-10 shadow-soft relative">
           <!-- Arrows -->
           <button @click="prevTestimonial" class="absolute left-[-20px] md:left-[-50px] top-1/2 -translate-y-1/2 w-10 h-10 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 rounded-full flex items-center justify-center text-neutral-dark dark:text-white transition-colors">←</button>
@@ -367,7 +367,7 @@
 
           <!-- Dots -->
           <div class="flex justify-center gap-2 mt-8">
-            <div v-for="(_, i) in testimonials" :key="i" 
+            <div v-for="(_, i) in testimonials" :key="i"
                  class="w-2 h-2 rounded-full transition-colors cursor-pointer"
                  :class="i === testimonialIndex ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'"
                  @click="testimonialIndex = i"></div>
@@ -463,7 +463,7 @@
                 <div class="w-10 h-10 flex items-center justify-center transition-colors overflow-hidden">
                    <img :src="link.icon" :alt="link.alt" class="w-full h-full object-cover p-1.5 opacity-80 group-hover:opacity-100" />
                 </div>
-                
+
                 <!-- QR Code Popup -->
                 <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-white p-2 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 text-neutral-dark">
                   <img :src="link.qrCode" :alt="link.alt + ' QR'" class="w-full h-auto rounded" />

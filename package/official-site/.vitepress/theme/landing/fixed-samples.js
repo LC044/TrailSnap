@@ -48,4 +48,3 @@ export function initFixedSamples(root) {
   function renderTickets(){wallet.querySelectorAll('[data-fixed-ticket]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.fixedTicket===ticketType)));document.getElementById('nt-list').innerHTML=tickets.filter(ticket=>ticketType==='all'||ticket.type===ticketType).map(ticket=>`<article class="nt-ticket"><div class="nt-ticket-head"><span>${ticket.kind} / ${ticket.type==='train'?'RAIL':'AIR'}</span><span>${ticket.date}　${ticket.time}</span></div><div class="nt-route"><strong>${ticket.from}</strong><div><b>${ticket.code}</b><span>${ticket.type==='train'?'────────→':'──── ✈ ────'}</span></div><strong>${ticket.to}</strong></div><div class="nt-ticket-foot"><span>${ticket.seat}</span><span>${ticket.note}</span></div></article>`).join('');}
   wallet.querySelectorAll('[data-fixed-ticket]').forEach(button=>button.onclick=()=>{ticketType=button.dataset.fixedTicket;renderTickets();});renderTickets();
 }
-

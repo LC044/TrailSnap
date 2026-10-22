@@ -116,4 +116,3 @@
 .trailsnap-home .map-expand{position:absolute;right:0;font-size:10px;background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 10px;color:var(--muted)}
 .trailsnap-home .map-window.expanded{padding-top:76px}
 @media(max-width:700px){.trailsnap-home .map-window{padding-top:64px}.trailsnap-home .map-switcher{left:8px;right:8px;top:8px}.trailsnap-home .map-window .map-view-tabs{padding:3px;gap:2px}.trailsnap-home .map-window .map-view-tabs button{font-size:11px;min-height:44px;padding:7px 13px}.trailsnap-home .map-expand{display:none}}
-

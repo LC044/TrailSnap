@@ -46,4 +46,3 @@ function renderSwipe(data){
 }
 
 try{const data=await getData();const handlers={city:renderCity,swipe:renderSwipe};await handlers[kind](data);}catch(error){root.innerHTML='<p class="error" role="alert">展示内容暂时无法打开，请刷新重试，或通过上方链接访问演示站。</p>';console.error('Showcase load failed:',error);}
-
