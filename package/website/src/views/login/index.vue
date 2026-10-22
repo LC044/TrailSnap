@@ -81,6 +81,7 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock } from '@element-plus/icons-vue';
 import { useAuthStatus } from '@/composables/useAuthStatus';
 import { createDemoEntry } from '@/composables/demoEntry';
+import { safeAuthRedirect } from '@/router/authRedirect';
 import { getServerHistory, getServerUrl, isMobileApp, isTauriApp, saveServerUrl } from '@/config/server';
 import LoginCharacters from './components/LoginCharacters.vue';
 import './auth.css';
@@ -105,7 +106,7 @@ const enterDemo = createDemoEntry(
     const entered = await userStore.login({ username: 'trailsnap', password: 'trailsnap' });
     if (!entered) throw new Error('Demo session was not created');
   },
-  () => router.replace((route.query.redirect as string) || '/'),
+  () => router.replace(safeAuthRedirect(route.query.redirect)),
 );
 
 const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status) => {
@@ -121,7 +122,7 @@ const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status
     demoMode.value = true;
     loading.value = true;
     try {
-      await enterDemo(status);
+      if (route.query.demo_failed !== '1') await enterDemo(status);
     } catch {
       // Keep the prefilled form available; do not repeatedly retry a failed login.
       ElMessage.warning('暂时无法自动进入演示相册，请重试');
@@ -173,7 +174,7 @@ onMounted(async () => {
     loading.value = true;
     try {
       await userStore.initializeDesktopSession();
-      await router.replace((route.query.redirect as string) || '/');
+      await router.replace(safeAuthRedirect(route.query.redirect));
     } catch (error: any) {
       ElMessage.error(error?.message || '本地会话恢复失败，请重启 TrailSnap');
     } finally {
@@ -207,21 +208,22 @@ const handleLogin = async () => {
         loginForm.serverUrl = await saveServerUrl(loginForm.serverUrl);
         serverHistory.value = await getServerHistory();
       }
-      await userStore.login({
+      const entered = await userStore.login({
         username: loginForm.username,
         password: loginForm.password,
       });
+      if (!entered) throw new Error('登录未成功，请重试');
       if (rememberMe.value) {
         localStorage.setItem('remember_username', loginForm.username);
       } else {
         localStorage.removeItem('remember_username');
       }
       ElMessage.success('登录成功');
-      if (window.matchMedia('(min-width: 768px)').matches) {
+      if (!demoMode.value && window.matchMedia('(min-width: 768px)').matches) {
         isCelebrating.value = true;
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
-      await router.push((route.query.redirect as string) || '/');
+      await router.replace(safeAuthRedirect(route.query.redirect));
     } catch (error: any) {
       console.error(error);
       const msg = error.response?.data?.detail || error.message || '登录失败，请检查用户名和密码';

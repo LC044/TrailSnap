@@ -781,8 +781,8 @@ const features = computed(() => featuresList[lang.value as keyof typeof features
 const overviewFeaturesList = {
   'zh-CN': [
     { title: '智能相册', icon: '📸', items: ['精准人脸识别归类', '场景/物体智能标签', '自定义条件（智能）相册'], image: 'https://blog.siyuan.ink/static/img/8082f0451f051b1ad848b9c4261359e7.classification.webp' },
-    { title: 'AI能力', icon: '🤖', items: ['一句话生成游记', 'Vlog智能剪辑', '照片智能精修'], image: '/images/ScreenShot_2026-05-09_005142_617.png' },
-    { title: '行程票据', icon: '🎫', items: ['票据自动识别录入', '国内5A景区位置识别', '多票据统一管理'], image: '/images/火车票_郑州东_天津西_G1710_2026-12-12.png' },
+    { title: 'AI能力', icon: '🤖', items: ['一句话生成游记', 'Vlog智能剪辑', '照片智能精修'], image: '/images/ScreenShot_2026-05-09_005142_617.webp' },
+    { title: '行程票据', icon: '🎫', items: ['票据自动识别录入', '国内5A景区位置识别', '多票据统一管理'], image: '/images/火车票_郑州东_天津西_G1710_2026-12-12.webp' },
     { title: '数据可视化', icon: '📊', items: ['足迹地图点亮', '出行里程统计', '城市打卡记录'], image: 'https://blog.siyuan.ink/static/img/fc209e02f7046645cb38bd6dead5d088.map-province.webp' },
     { title: '年度报告', icon: '📅', items: ['年度出行总结', '专属回忆生成', '分享朋友圈'], image: 'https://blog.siyuan.ink/static/img/720c50509ca349f40b1e8038371b7bcf.å¹´åº¦æ¥å.webp' },
     { title: '工具箱', icon: '🧰', items: ['照片一键整理', '照片元数据修复', '低质量清理'], image: '/images/toolbox.jpg' }
@@ -919,7 +919,7 @@ const socialLinks = [
   {
     name: 'Douyin',
     icon: '/icons/douyin.svg',
-    qrCode: '/qrcodes/douyin_qr.png',
+    qrCode: '/qrcodes/douyin_qr.webp',
     alt: '抖音'
   },
   {
@@ -937,7 +937,7 @@ const socialLinks = [
   {
     name: 'Bilibili',
     icon: '/icons/bilibili.svg',
-    qrCode: '/qrcodes/bilibili_qr.png',
+    qrCode: '/qrcodes/bilibili_qr.webp',
     alt: 'B站'
   }
 ]

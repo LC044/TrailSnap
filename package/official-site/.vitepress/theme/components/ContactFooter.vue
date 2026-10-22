@@ -9,10 +9,10 @@ const channels = [
   { name: 'QQ 交流群', image: 'https://blog.siyuan.ink/static/img/51b2cc72642406a33b42b572203a173c.qq_group.webp' },
 ]
 const socialLinks = [
-  { key: 'douyin', name: '抖音', icon: '/icons/douyin.svg', image: '/qrcodes/douyin_qr.png' },
+  { key: 'douyin', name: '抖音', icon: '/icons/douyin.svg', image: '/qrcodes/douyin_qr.webp' },
   { key: 'wechat', name: '微信公众号 · 忆墨痕', icon: '/icons/wechat.svg', image: '/qrcodes/wechat_official_account_qr.webp' },
   { key: 'xiaohongshu', name: '小红书', icon: '/icons/xiaohongshu.svg', image: '/qrcodes/xiaohongshu_qr.jpg' },
-  { key: 'bilibili', name: '哔哩哔哩', icon: '/icons/bilibili.svg', image: '/qrcodes/bilibili_qr.png' },
+  { key: 'bilibili', name: '哔哩哔哩', icon: '/icons/bilibili.svg', image: '/qrcodes/bilibili_qr.webp' },
 ]
 function open(channel: typeof channels[number], event: Event) {
   active.value = channel

@@ -21,7 +21,7 @@ Go to **Settings → General → AI Configuration → LLM Connection** to add a 
 - Fill in the model name (optional — if left empty, all models available with that API key can be used), e.g. `gpt-3.5-turbo`, `qwen3.5:4b`, etc.
 - Click the verify button; a success message will appear if the connection works.
 
-![alt text](/images/aisettings.png)
+![alt text](/images/aisettings.webp)
 
 ## AI Chat Configuration
 
