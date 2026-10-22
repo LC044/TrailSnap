@@ -138,11 +138,13 @@ def test_installer_cleans_only_obsolete_program_resources(tmp_path, layout, acti
     (tmp_path / 'userdata/keep').write_bytes(b'user data')
     program = tmp_path / 'app/fixture'
     (program / 'server').mkdir(parents=True)
-    for name in ('manifest.json', 'trailsnap-desktop.exe', 'server/trailsnap-server.exe'):
+    (program / 'ai').mkdir()
+    for name in ('manifest.json', 'trailsnap-desktop.exe', 'server/trailsnap-server.exe', 'ai/trailsnap-ai.exe'):
         (program / name).write_bytes(b'installed program')
     (tmp_path / 'portable.json').write_text(json.dumps({'activeBuild': 'fixture'}))
-    (tmp_path / 'instance.json').write_text(json.dumps({'dataRoot': {
-        'kind': 'relative', 'path': 'server/library' if layout == 'configured-library' else 'userdata'}}))
+    (tmp_path / 'instance.json').write_text(json.dumps({'displayName': '行影集安装测试', 'dataRoot': {
+        'kind': 'relative', 'path': 'server/library' if layout == 'configured-library' else 'userdata'}},
+        ensure_ascii=False), encoding='utf-8')
     if layout == 'unconfigured-library':
         (server / 'trailsnap.sqlite').write_bytes(b'preserve historical data')
     script = Path(__file__).resolve().parents[3] / 'desktop/src-tauri/windows/stop-installed-processes.ps1'

@@ -7,7 +7,7 @@ $prefix = $root + '\'
 $app = [IO.Path]::GetFullPath((Join-Path $root 'app'))
 if (-not $app.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Program directory escaped installation.' }
 if (Test-Path -LiteralPath (Join-Path $root 'instance.json')) {
-    $config = Get-Content -LiteralPath (Join-Path $root 'instance.json') -Raw | ConvertFrom-Json
+    $config = Get-Content -LiteralPath (Join-Path $root 'instance.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $data = if ($config.dataRoot.kind -eq 'relative') { Join-Path $root $config.dataRoot.path } else { $config.dataRoot.path }
     $data = [IO.Path]::GetFullPath($data).TrimEnd('\')
     if ($data -eq $app -or $data.StartsWith($app + '\', [StringComparison]::OrdinalIgnoreCase)) {

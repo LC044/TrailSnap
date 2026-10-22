@@ -27,14 +27,11 @@ async function clickTab(page: Page, key: string) {
 test.describe('AI desktop view contracts @views-coverage', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
 
-  test('DesktopAIExtensions renders the unavailable desktop state', async ({ page }) => {
+  test('settings exposes model management without an extension installation entry', async ({ page }) => {
     await useFakeSession(page)
-    await page.goto('/settings?tab=ai-extensions')
-    await clickTab(page, 'ai-extensions')
-
-    await expect(page.getByRole('heading', { name: 'AI 扩展包' })).toBeVisible()
-    await expect(page.getByText('仅 TrailSnap 桌面版支持扩展包管理')).toBeVisible()
-    await expect(page.getByText('当前页面未连接到桌面扩展管理接口。')).toBeVisible()
+    await page.goto('/settings')
+    await expect(page.locator('[data-tab="ai-extensions"]')).toHaveCount(0)
+    await expect(page.locator('[data-tab="ai-models"]').first()).toBeVisible()
   })
 
   test('AIModelManagement renders models and the download action', async ({ page }) => {

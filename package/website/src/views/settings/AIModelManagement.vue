@@ -4,7 +4,7 @@
       <div class="min-w-0 flex-1">
         <h2 class="text-xl font-semibold text-gray-800 dark:text-white md:text-2xl">AI 模型管理</h2>
         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          管理大模型 API 连接、对话与分析模型，以及本地 AI 扩展模型。
+          管理大模型 API 连接、对话与分析模型，以及本地识别模型。
         </p>
       </div>
       <button
@@ -17,7 +17,7 @@
     <LLMSettings />
 
     <div v-if="maintenance" role="status" aria-live="polite" class="rounded-xl border border-primary-500/30 bg-primary-500/5 p-5">
-      <p class="font-medium text-primary-600 dark:text-primary-500">AI 扩展正在维护</p>
+      <p class="font-medium text-primary-600 dark:text-primary-500">行影集正在准备更新</p>
       <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
         {{ preparingModels.length ? '正在等待模型下载完成，再继续维护。模型按顺序下载，较大的模型可能需要较长时间。' : '正在等待当前任务结束或切换运行环境，请稍候。' }}
         照片分析暂时等待，维护完成后自动继续。此页面会自动刷新。
@@ -30,7 +30,7 @@
       <button
         class="mt-4 rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         @click="loadModels()"
-      >重新检测</button>
+      >重试</button>
     </div>
 
     <template v-else>
@@ -235,7 +235,7 @@ async function loadModels(silent = false) {
   } catch (error: any) {
     if (disposed) return
     const detail = error.response?.data?.msg || error.response?.data?.detail || error.message || 'AI 模型服务不可用'
-    maintenance.value = String(detail).includes('ai_extension_wait=maintenance')
+    maintenance.value = String(detail).includes('正在准备更新')
     errorMessage.value = maintenance.value ? '' : detail
     if (maintenance.value) updatePolling()
     else if (pollTimer) {

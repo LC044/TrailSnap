@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#[path = "../../src-tauri/src/legacy_ai.rs"]
+mod legacy_ai;
 #[path = "../../src-tauri/src/library_link.rs"]
 mod library_link;
 mod link_recovery;
@@ -106,6 +108,9 @@ fn manifest(root: &Path, build: &str) -> Result<BuildManifest, String> {
     {
         return Err("程序清单不兼容".into());
     }
+    if value.bundled_ai && !program.join("ai/trailsnap-ai.exe").is_file() {
+        return Err("行影集程序缺少内置 AI，请重新安装当前版本".into());
+    }
     Ok(value)
 }
 
@@ -187,6 +192,7 @@ fn spawn(
     command
         .current_dir(root)
         .env("TS_INSTANCE_ROOT", root)
+        .env("TS_LAUNCHER_BUNDLED_AI", "1")
         .env("TS_LAUNCHER_LEASE_PORT", lease.0.to_string())
         .env("TS_LAUNCHER_LEASE_TOKEN", &lease.1);
     if let Some(tx) = verify {
@@ -828,6 +834,7 @@ mod tests {
             platform: update_transaction::platform(),
             min_launcher_version: 1,
             executable: "trailsnap-desktop.exe".into(),
+            bundled_ai: false,
         }
     }
 

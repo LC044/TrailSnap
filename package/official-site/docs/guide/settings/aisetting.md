@@ -1,7 +1,7 @@
 # AI 大模型设置
 
 ::: tip 桌面版用户
-本页配置的是对话与图片理解所使用的“大模型连接”。人脸识别、OCR、分类、语义检索等本地能力需要先安装[桌面版 AI 扩展](/docs/guide/desktop-ai-extension)；Docker 部署无需额外安装桌面扩展。
+本页配置对话与图片理解使用的大模型连接。桌面版已内置 AI 运行环境，识别模型按需下载，参见[桌面版内置 AI](/docs/guide/desktop-ai-extension)。
 :::
 
 ## 内置连接

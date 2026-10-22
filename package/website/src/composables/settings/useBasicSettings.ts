@@ -9,6 +9,7 @@ export function useBasicSettings() {
   const indexMaintenance = useIndexMaintenance();
   const { currentMode, currentTheme, themeColors, setMode, setTheme } = injectTheme();
   const activeNames = ref<string[]>([]);
+  const managedAI = ref(true);
   const aiActiveNames = ref<string[]>([]);
   const storageForm = ref({
     photo_storage_path: '',
@@ -173,6 +174,7 @@ export function useBasicSettings() {
     try {
       const settings = await settingsApi.getSettings();
       if (settings) {
+        managedAI.value = settings.runtime?.managedAI === true;
         // Map nested settings to forms
         if (settings.storage) {
           storageForm.value = { ...settings.storage };
@@ -319,7 +321,7 @@ export function useBasicSettings() {
   onMounted(() => {
     loadData();
   });
-  return { activeNames, aiActiveNames, storageForm, aiForm, aiServiceTest, resetAIServiceTest, testAIServiceConnection, imageForm, scanScheduleForm, momentCaptionScheduleForm, recycleBinForm, securityForm, taskForm, taskPerformanceModes, savingTaskSettings, taskApplyMessage, saveScanScheduleSettings, saveMomentCaptionScheduleSettings, saveRecycleBinSettings, saveSecuritySettings, saveTaskSettings, pathValid, pathStatusText, pathStatusClass, loadData, saveAISettings, saveImageSettings, validatePath, handleExport, handleImportFile, currentMode, currentTheme, themeColors, setMode, setTheme, ...mapSettings, ...indexMaintenance };
+  return { managedAI, activeNames, aiActiveNames, storageForm, aiForm, aiServiceTest, resetAIServiceTest, testAIServiceConnection, imageForm, scanScheduleForm, momentCaptionScheduleForm, recycleBinForm, securityForm, taskForm, taskPerformanceModes, savingTaskSettings, taskApplyMessage, saveScanScheduleSettings, saveMomentCaptionScheduleSettings, saveRecycleBinSettings, saveSecuritySettings, saveTaskSettings, pathValid, pathStatusText, pathStatusClass, loadData, saveAISettings, saveImageSettings, validatePath, handleExport, handleImportFile, currentMode, currentTheme, themeColors, setMode, setTheme, ...mapSettings, ...indexMaintenance };
 }
 export type BasicSettingsContext = ReturnType<typeof useBasicSettings>;
 const settingsKey: InjectionKey<BasicSettingsContext> = Symbol('basic-settings');

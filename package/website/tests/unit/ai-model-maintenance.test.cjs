@@ -35,8 +35,8 @@ test('maintenance keeps model status visible and polls until service resumes', a
   assert.equal(page.timers.size, 0)
 })
 
-test('legacy maintenance 503 preserves automatic recovery and unmount clears timers', async () => {
-  const page = harness(async () => { throw { response: { data: { msg: 'ai_extension_wait=maintenance 等待 AI 扩展更新' } } } })
+test('application maintenance 503 preserves automatic recovery and unmount clears timers', async () => {
+  const page = harness(async () => { throw { response: { data: { msg: '正在准备更新' } } } })
   await page.loadModels()
   assert.equal(page.maintenance.value, true)
   assert.equal(page.errorMessage.value, '')

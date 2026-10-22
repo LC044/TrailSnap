@@ -40,7 +40,6 @@ def test_visual_analysis_waits_only_for_builtin_llm(monkeypatch, connection):
     monkeypatch.setattr(task_worker, 'SessionLocal', lambda: db)
     monkeypatch.setattr(task_worker.crud_task, 'get_tasks_by_ids', lambda *_: [task])
     monkeypatch.setattr(task_worker.TaskStrategyFactory, 'get_strategy', lambda *_: strategy)
-    monkeypatch.setattr(worker, '_extension_wait_reason', lambda: None)
     from app.core.config_manager import config_manager
     monkeypatch.setattr(config_manager, 'get_user_config', lambda *_: SimpleNamespace(
         ai=SimpleNamespace(ai_api_url='http://local-ai', analysis_connection_id=connection)))
@@ -78,7 +77,6 @@ def test_wait_then_ready_executes_without_consuming_attempts(monkeypatch):
     monkeypatch.setattr(task_worker, "SessionLocal", lambda: db)
     monkeypatch.setattr(task_worker.crud_task, "get_tasks_by_ids", lambda *_: [task])
     monkeypatch.setattr(task_worker.TaskStrategyFactory, "get_strategy", lambda *_: strategy)
-    monkeypatch.setattr(worker, "_extension_wait_reason", lambda: None)
     from app.core.config_manager import config_manager
     monkeypatch.setattr(config_manager, "get_user_config", lambda *_: SimpleNamespace(ai=SimpleNamespace(ai_api_url="http://ai")))
     reason = state.model_wait_reason(snapshot("downloading"), task.type)
@@ -145,7 +143,6 @@ def test_ready_clears_waiting_backlog_without_touching_other_retries(face_sqlite
     monkeypatch.setattr(task_worker.TaskStrategyFactory, "get_strategy", lambda *_: strategy)
     worker = task_worker.TaskWorker()
     worker._publish = MagicMock()
-    monkeypatch.setattr(worker, "_extension_wait_reason", lambda: None)
     infos = [{"id": rows[0].id, "type": rows[0].type}]
 
     worker.paused_categories = {TaskType.RECOGNIZE_FACE}
@@ -210,7 +207,6 @@ def test_real_backlog_wait_is_scoped_and_visible(face_sqlite_session, monkeypatc
     monkeypatch.setattr(state, "get_model_wait_reason", lambda *_: state.model_wait_reason(snapshot("downloading"), TaskType.RECOGNIZE_FACE))
     worker = task_worker.TaskWorker()
     worker._publish = MagicMock()
-    monkeypatch.setattr(worker, "_extension_wait_reason", lambda: None)
     assert worker._execute_batch_sync([{"id": rows[0].id, "type": rows[0].type}]) == ([], "waiting_for_model")
     db.expire_all()
     assert all(row.status == TaskStatus.PENDING and row.attempt_count == 2 for row in rows)

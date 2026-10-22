@@ -350,7 +350,7 @@ def test_ai_model_request_returns_503_on_connection_error():
         result = settings_api._ai_model_request("GET", "/ai/models", user, db)
 
     assert result.code == 503
-    assert "AI 模型服务不可用" in result.msg
+    assert "暂时无法准备 AI 模型" in result.msg
 
 
 def test_ai_model_request_falls_back_to_text_on_invalid_json():

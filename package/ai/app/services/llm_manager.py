@@ -143,12 +143,20 @@ class LLMProcessManager:
         configured = os.getenv("LLAMA_SERVER_PATH")
         if configured and os.path.isfile(configured):
             return configured
+        # The desktop may prepare its private runtime after this AI process has
+        # started. Resolve it on each inference instead of requiring a restart.
+        desktop_root = os.getenv("TS_DESKTOP_ROOT")
+        if desktop_root:
+            runtime = Path(desktop_root) / "runtime" / "llama.cpp"
+            executable = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+            for candidate in sorted(runtime.glob(f"*/**/{executable}"), reverse=True):
+                if candidate.is_file():
+                    return str(candidate)
         discovered = shutil.which("llama-server")
         if discovered:
             return discovered
         raise RuntimeError(
-            "llama-server 未安装。请在桌面端 AI 扩展设置中安装 llama.cpp，"
-            "或按照 package/ai/README.md 完成安装。"
+            "本地推理环境尚未准备完成，请重试；独立部署请按照 AI 服务文档安装 llama.cpp。"
         )
 
     async def _wait_for_ready(self):

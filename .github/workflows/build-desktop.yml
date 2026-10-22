@@ -9,6 +9,7 @@ on:
       - 'package/desktop/**'
       - 'package/website/**'
       - 'package/server/**'
+      - 'package/ai/**'
       - 'scripts/release_assets.py'
       - '.github/workflows/build-desktop.yml'
   push:
@@ -18,6 +19,7 @@ on:
       - 'package/desktop/**'
       - 'package/website/**'
       - 'package/server/**'
+      - 'package/ai/**'
       - 'scripts/release_assets.py'
       - '.github/workflows/build-desktop.yml'
 
@@ -90,7 +92,9 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-          cache-dependency-glob: package/server/uv.lock
+          cache-dependency-glob: |
+            package/server/uv.lock
+            package/ai/uv.lock
 
       - name: Install frontend and desktop dependencies
         run: |
@@ -129,11 +133,29 @@ jobs:
           uv sync --frozen --group dev
           uv run python scripts/build_desktop_runtime.py
 
+      - name: Compile bundled CPU AI runtime
+        shell: bash
+        working-directory: package/ai
+        run: |
+          uv sync --frozen --extra cpu --group desktop
+          uv run python -c "from app.services.unified_model_manager import ai_model_manager; ai_model_manager.prepare_model('ocr'); from app.services.ocr_service import load_paddleocr_model; load_paddleocr_model()"
+          uv run python scripts/build_desktop_runtime.py
+          uv run python - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          executable = Path("dist/trailsnap-ai") / ("trailsnap-ai.exe" if os.name == "nt" else "trailsnap-ai")
+          for check in ("--self-check", "--startup-check"):
+              subprocess.run([str(executable), check], check=True)
+          PY
+
       - name: Stage sidecar for Tauri
         shell: bash
         run: |
+          mkdir -p package/desktop/ai-dist
+          cp -R package/ai/dist/trailsnap-ai package/desktop/ai-dist/trailsnap-ai
           mkdir -p package/desktop/server-dist
           cp -R package/server/dist/trailsnap-server package/desktop/server-dist/trailsnap-server
+          python package/desktop/scripts/validate_components.py
 
       - name: Diagnose sidecar native libs (Linux only)
         if: runner.os == 'Linux'
@@ -183,7 +205,7 @@ jobs:
           # only --exclude-library is supported, no env var). The only lever
           # that works inside ldd is the ELF's own RPATH, so prefix $ORIGIN
           # (preserving any existing RPATH) onto every .so inside *.libs/ dirs.
-          find package/desktop/server-dist/trailsnap-server/_internal -type d -name '*.libs' | while read -r d; do
+          find package/desktop/server-dist/trailsnap-server/_internal package/desktop/ai-dist/trailsnap-ai/_internal -type d -name '*.libs' | while read -r d; do
             for f in "$d"/*.so*; do
               [ -f "$f" ] || continue
               cur=$(patchelf --print-rpath "$f" 2>/dev/null || true)

@@ -9,7 +9,7 @@ TrailSnap is available as a desktop app and as a self-hosted Docker stack.
 
 | Option | Best for | Platforms | AI features |
 | --- | --- | --- | --- |
-| Desktop | One personal computer and the quickest setup | Windows, macOS, Linux | Install the base app first, then add the AI extension on demand |
+| Desktop | One personal computer and the quickest setup | Windows, macOS, Linux | AI runtime included; models downloaded as needed |
 | Docker | NAS, home server, and access from multiple devices | Any Docker Compose host | AI service is deployed with the stack; CPU, GPU, and OpenVINO modes are available |
 
 ::: tip Which should I choose?
@@ -24,14 +24,14 @@ Open the [download page](/en/download) and choose the installer for your system:
 - macOS (Apple Silicon): download the `.dmg` and drag TrailSnap into Applications. If macOS blocks the first launch, allow it under Privacy & Security.
 - Linux (x64): use `.deb` on Debian/Ubuntu, or make the `.AppImage` executable on other distributions.
 
-The base app includes photo management and the local service without forcing a large AI runtime download. For face recognition, OCR, classification, semantic search, or a local LLM, follow the [desktop AI extension guide](/en/docs/guide/desktop-ai-extension).
+The desktop installer includes AI and updates it with the application. Models for faces, OCR, classification, semantic search and local LLMs are downloaded as needed. See the [built-in desktop AI guide](/en/docs/guide/desktop-ai-extension).
 
 After installation:
 
 1. Start TrailSnap.
 2. Add a photo directory in Settings.
 3. Scan a small folder first to verify permissions and runtime behavior.
-4. Install the AI extension only if you need its capabilities.
+4. Check the required models in AI Models and start an analysis task.
 
 ## Docker deployment
 
@@ -107,7 +107,7 @@ For manual configuration, GPU setup, and NAS-specific steps, see the [Docker dep
 
 ## Next steps
 
-- [Desktop AI extension](/en/docs/guide/desktop-ai-extension)
+- [Built-in desktop AI](/en/docs/guide/desktop-ai-extension)
 - [AI model connections](/en/docs/guide/settings/aisetting)
 - [Data, privacy, and backups](/en/docs/guide/data-safety)
 - [User manual](/en/docs/guide/user)

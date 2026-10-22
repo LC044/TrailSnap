@@ -60,6 +60,8 @@ pub struct BuildManifest {
     pub platform: String,
     pub min_launcher_version: u32,
     pub executable: String,
+    #[serde(default, rename = "bundledAI")]
+    pub bundled_ai: bool,
 }
 
 pub fn relative_path(value: &Path) -> Result<(), String> {

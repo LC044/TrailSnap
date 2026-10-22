@@ -84,7 +84,7 @@ Docker 用户无需修改挂载、环境变量或目录。新的存储引用字�
 pwsh .\scripts\build-windows-installer.ps1
 ```
 
-构建脚本会检查必要工具，并依次完成依赖安装、Vue 构建、PyInstaller Server 打包、
+构建脚本会检查必要工具，并依次完成依赖安装、Vue 构建、PyInstaller Server 与 AI 分别打包、
 Sidecar 暂存和 Tauri NSIS 打包。重复构建时可以用 `-SkipInstall` 跳过依赖安装，
 用 `-OpenOutput` 在成功后打开产物目录：
 
@@ -150,54 +150,26 @@ Tauri 会为入口 HTML 的 `<style>` 注入 hash/nonce，此时 `style-src` 中
 `desktop-admin` 重置密码，手机使用此账号即可备份到同一照片库。
 照片查看器“更多”菜单支持在文件管理器中定位原文件。
 
-## AI 扩展包
+## 内置 AI 与整体更新
 
-AI 运行时作为独立扩展包发布，不增加基础安装包体积。桌面设置页支持在线安装、断点续传、
-暂停/重试、SHA-256 校验、离线导入和卸载。Tauri 在本地启动固定生命周期的 AI Gateway，
-主 Server 始终连接 Gateway；OCR、票据识别或图片分类首次请求时才按需启动已安装的 AI
-Sidecar，空闲十分钟后自动退出。日志写入桌面数据目录下的 `logs/ai.log` 和
-`logs/ai.err.log`。
+桌面安装包和便携包均包含 Server 与 CPU AI。两者分别用 PyInstaller 构建，
+各自保留完整依赖，不共享 Python 模块；用户只安装和更新行影集。
 
-后台 AI 任务按类型分阶段处理，当前阶段完成后再切换到下一优先级类型；同类型
-内部保留批量并行。切换模型类别前会等待推理结束并释放上一类别的模型缓存，
-避免场景识别、人脸识别和特征提取模型共同驻留。CPU、IO 队列保留各自的并发调度。
+AI Gateway 从当前版本的 `ai/` 启动内置程序，首次调用时按需启动，空闲十分钟后退出。
+运行日志保存在数据目录的 `logs/ai.log` 和 `logs/ai.err.log`。
+模型仍按需下载，在“设置 → AI 模型管理”查看；模型位于持久数据目录，更新不重复下载。
+本地大模型所需 llama.cpp 由应用在使用时自动准备并校验，无需服务地址或手动连通性检测。
 
-启动时读取当前 Server 的版本和最低支持的 AI 扩展版本，再获取该 Server 的
-`v{serverVersion}` Release 中已有的 `ai-extensions.json`；也可点击“检查更新”。
-已安装版本 ≥ Server 最低支持版本时继续使用，不自动下载、重装或降级。
-低于最低支持版本时，只下载与 Server 同版本、匹配当前平台且带 SHA-256 的扩展。
-未安装时仍由用户选择安装。如果清单或同版本附件不可用，低于最低版本的任务保持等待更新；
-满足最低版本的已安装扩展不受清单失败影响。可通过 `TS_AI_EXTENSION_CATALOG_URL` 覆盖清单地址。
+构建顺序为前端、独立 Server/AI、完整应用打包和签名。`validate_components.py`
+在打包前检查两组件入口与版本。Windows 安装器使用 LZMA；安装版和 ZIP 均把 AI 放入
+`app/<build-id>/ai/`，完整更新 ZIP 包含两组件。macOS/Linux 同样包含完整内置 AI。
 
-替换或卸载先停止新任务派发，等待推理、结果提交、Gateway 响应流与模型下载结束，再停止 Sidecar。
-缺失或维护期间任务待执行，不消耗失败重试次数；安装完成后自动继续，用户主动暂停保持不变。
-失败回滚旧安装，低于最低支持版本的旧运行时仍保持等待；替换事务日志在异常退出后恢复。
-扩展操作互斥，照片、独立 `models` 目录与分析结果保留。
+更新先验证签名与完整文件，再安全排空任务、响应和模型下载。候选阶段实际验证内置 AI
+及 Server，任一失败整体回滚。成功启动后清理旧构建，保留照片、模型、配置和备份。
+升级会清除历史“等待安装/更新 AI 扩展”状态，不改变用户暂停；旧扩展只在新版成功后
+按受管理目录清理，含模型、图库、链接或未知内容的目录保留。历史 Release 附件保留。
 
-设置页显示客户端、Server、最低扩展版本、系统与架构，提供官方下载页和同版本平台附件的手动下载直链。
-下载 `.tar.gz` 后无需解压，点击“离线导入”。没有附件时仍保留官方下载页。
-
-### Server 最低版本与扩展发布
-
-唯一的兼容性配置在 `package/server/app/service/ai_extension_state.py`：
-
-```python
-MINIMUM_AI_EXTENSION_VERSION = "0.17.3"
-```
-
-它表示当前 Server 最早支持的 AI 扩展版本，只在 Server 需要旧扩展没有的 API 或能力时提高，
-不随每次产品版本机械递增。扩展的升级目标始终与当前 Server 同版本。
-清单只保存扩展版本、平台附件 URL、SHA-256、文件名与大小，不再使用远端强制规则或客户端版本范围。
-既有 Schema 1 清单可直接使用，无需为兼容判断更新历史 Release 的 JSON。
-
-`Build Desktop AI Extension` 对正式 `v*.*.*` 标签、相关 PR 或手动运行构建。
-工作流先运行 `package/ai/scripts/validate_extension_release.py`，确认 Server、AI 源码/运行时、
-桌面和内置清单的版本一致，并校验最低版本不高于 Server；之后从 Server 版本生成扩展版本。
-同版本压缩包与清单一起上传到本次正式 Release，不创建额外的 `ai-extensions` 或 `ai-v*` Release。
-生成清单时检查三平台附件齐全、版本与链接正确且带 SHA-256；断点文件按扩展、平台与 SHA-256 隔离。
-
-Windows 下 llama.cpp 运行时由桌面壳直接从官方 GitHub Release 下载并做 SHA-256 校验，
-不依赖 winget。
+独立 Docker 部署仍通过原有 AI 服务配置连接，不受桌面打包调整影响。
 
 ## 当前 SQLite 边界
 

@@ -75,7 +75,7 @@ export default defineConfig({
             { text: '概览', link: '/docs/guide/overview' },
             { text: '部署前检查', link: '/docs/guide/preflight' },
             { text: '安装指南', link: '/docs/guide/install' },
-            { text: '桌面版 AI 扩展', link: '/docs/guide/desktop-ai-extension' },
+            { text: '桌面版内置 AI', link: '/docs/guide/desktop-ai-extension' },
             { text: '移动 App', link: '/docs/guide/mobile-app' },
             {
               text: 'Docker 部署',
@@ -206,7 +206,7 @@ export default defineConfig({
                 { text: 'Overview', link: '/en/docs/guide/overview' },
                 { text: 'Pre-deployment Checklist', link: '/en/docs/guide/preflight' },
                 { text: 'Installation', link: '/en/docs/guide/install' },
-                { text: 'Desktop AI Extension', link: '/en/docs/guide/desktop-ai-extension' },
+                { text: 'Built-in Desktop AI', link: '/en/docs/guide/desktop-ai-extension' },
                 { text: 'Mobile App', link: '/en/docs/guide/mobile-app' },
                 {
                   text: 'Docker Deployment',

@@ -27,7 +27,6 @@ def scheduler(face_sqlite_session, monkeypatch):
     monkeypatch.setattr(config_manager, 'get_user_config', lambda *_: SimpleNamespace(
         ai=SimpleNamespace(analysis_connection_id='builtin')))
     worker = task_worker.TaskWorker()
-    monkeypatch.setattr(worker, '_extension_wait_reason', lambda: None)
 
     def add(kind, priority, **kwargs):
         row = Task(type=kind, priority=priority, owner_id=owner, payload={},
@@ -95,7 +94,7 @@ def test_new_classification_withdraws_prefetch_waits_for_results_then_resumes(sc
     asyncio.run(run())
 
 
-@pytest.mark.parametrize('blocked', ['equal', 'lower', 'paused', 'backoff', 'maintenance'])
+@pytest.mark.parametrize('blocked', ['equal', 'lower', 'paused', 'backoff'])
 def test_ineligible_or_nonurgent_work_does_not_preempt(scheduler, blocked):
     db, worker, add, fetch = scheduler
     current = add(TaskType.VISUAL_DESCRIPTION, 10)
@@ -108,8 +107,6 @@ def test_ineligible_or_nonurgent_work_does_not_preempt(scheduler, blocked):
     elif blocked == 'backoff':
         urgent.next_retry_at = datetime.now() + timedelta(minutes=1)
         db.commit()
-    elif blocked == 'maintenance':
-        worker._extension_wait_reason = lambda: 'maintenance'
     assert fetch() == []
     assert worker.ai_phase_type == TaskType.VISUAL_DESCRIPTION
     assert not worker.ai_phase_yield_requested
