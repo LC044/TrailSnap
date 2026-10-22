@@ -16,7 +16,7 @@ const fitDesktopPreviews=()=>{
     const frame=viewport.querySelector('iframe');
     const expanded=Boolean(viewport.closest('.expanded'));
     const width=viewport.clientWidth;
-    if(!width)return;
+    if(!width || !frame)return;
     // Expanded phone windows use the product's native mobile layout for readable interaction.
     const nativeMobile=(expanded || Boolean(viewport.closest('.memory-panel'))) && window.innerWidth<768;
     const logicalWidth=nativeMobile?width:Math.max(1440,expanded?width:0);
@@ -90,8 +90,11 @@ function updateScrollScene(){
   heroCopy.style.transform=`translate3d(${-copyExit*85}px,${-copyExit*30}px,0)`;
   heroCopy.inert=copyExit>.97;
   if(sceneGeometry)heroLive.style.transform=`translate3d(${sceneGeometry.x*zoom}px,${sceneGeometry.y*zoom}px,0) scale(${1+(sceneGeometry.scale-1)*zoom})`;
-  sceneCaption.style.opacity=String(ease(clamp01((progress-.69)/.16)));
-  sceneCaption.style.transform=`translateY(${(1-ease(clamp01((progress-.69)/.16)))*18}px)`;
+  // The caption is optional; its absence must not stop the other scroll scenes.
+  if(sceneCaption){
+    sceneCaption.style.opacity=String(ease(clamp01((progress-.69)/.16)));
+    sceneCaption.style.transform=`translateY(${(1-ease(clamp01((progress-.69)/.16)))*18}px)`;
+  }
   sceneProgress.style.transform=`scaleX(${progress})`;
   revealElements.forEach(el=>{
     const rect=el.getBoundingClientRect();

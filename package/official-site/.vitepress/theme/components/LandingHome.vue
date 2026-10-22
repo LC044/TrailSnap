@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useData } from 'vitepress'
+import { UsersRound, Mountain, Sun } from 'lucide-vue-next'
 import ContactFooter from './ContactFooter.vue'
 import FootprintPuzzle from './FootprintPuzzle.vue'
 import DemoEmbed from './DemoEmbed.vue'
 import { initHome } from '../landing/home-motion.js'
 import { initFixedSamples } from '../landing/fixed-samples.js'
 import '../landing/home.css'
+import '../landing/capabilities.css'
+import '../landing/memory-showcase.css'
 const { isDark } = useData()
 const root = ref<HTMLElement>()
 const mapView = ref<'3d' | 'city' | 'puzzle'>('3d')
@@ -29,38 +32,69 @@ onBeforeUnmount(() => cleanup?.())
                 <p class="hosting-note">安装在自己的电脑或服务器上，照片由自己保存。</p>
                 <div class="actions">
                     <a class="btn" href="https://demo.siyuan.ink" target="_blank" rel="noopener">在线体验相册 <span>↗</span></a>
-                    <a class="btn secondary" href="/download">下载安装 <span>↓</span></a></div><div class="fine"><a href="#product">了解安装与使用 →</a>
-                    </div>
+                    <a class="btn secondary" href="/download">下载安装 <span>↓</span></a>
                 </div>
-                <div class="hero-live">
-                    <div class="live-shell hero-window" id="live-home-shell">
-                        <div class="desktop-viewport"><DemoEmbed id="live-home" path="/" title="行影集在线演示" eager /></div>
-                    </div>
+                <div class="fine"><a href="#product">了解安装与使用 →</a></div>
+            </div>
+            <div class="hero-live">
+                <div class="live-shell hero-window" id="live-home-shell">
+                    <div class="desktop-viewport"><DemoEmbed id="live-home" path="/" title="行影集在线演示" eager /></div>
                 </div>
-                <div class="scene-caption" aria-hidden="true"><span>从散落的照片，到自己的智能相册。</span>
-                </div>
-                <div class="scene-controls"><span class="scroll-cue">向下滚动，探索行影集 <i>↓</i></span></div>
-                <div class="scene-progress" aria-hidden="true"><span></span>
-                </div>
-            </section>
+            </div>
+            <div class="scene-controls"><span class="scroll-cue">向下滚动，探索行影集 <i>↓</i></span></div>
+            <div class="scene-progress" aria-hidden="true"><span></span></div>
+        </section>
     </div>
     <div class="wrap hero-bottom"><span>整理日常照片，也珍藏每一段旅行。</span><div><span>智能相册 / 足迹地图 / 旅行日记</span><a href="#capabilities">了解它能做什么 ↓</a></div></div>
     <section class="wrap capabilities" id="capabilities">
         <div class="cap-heading">
             <div>
                 <div class="eyebrow">从照片文件夹，到自己的智能相册</div>
-                <h2 class="section-title">照片太多？先把这三件事交给行影集。</h2>
+                <h2 class="section-title">整理、查找、回顾，让照片不止于存放。</h2>
             </div>
         </div>
         <div class="cap-grid">
-            <article><span class="cap-icon">▦</span><span class="cap-label">01 / 整理</span><h3>不用一张张建文件夹。</h3><p>识别照片中的人物和场景，按时间、标签与条件浏览，把散落的照片整理成相册。</p>
-                <div class="cap-tags"><span>人物识别</span><span>场景分类</span><span>时间轴</span></div>
+            <article>
+                <span class="cap-icon" aria-hidden="true">▦</span><span class="cap-label">01 / 整理</span>
+                <h3>智能分类</h3>
+                <p>按人物、场景和时间归类，浏览照片，不必反复翻文件夹。</p>
+                <div class="cap-preview cap-organize">
+                    <span class="cap-preview-label">分类效果示例</span>
+                    <div class="cap-albums">
+                        <div class="cap-album"><UsersRound class="cap-album-icon" aria-hidden="true" /><span>家人<small>按人物浏览</small></span></div>
+                        <div class="cap-album"><Mountain class="cap-album-icon" aria-hidden="true" /><span>风景<small>按场景浏览</small></span></div>
+                    </div>
+                    <div class="cap-preview-foot">也可以按时间，回看某一天。</div>
+                </div>
+                <a class="cap-link" href="https://demo.siyuan.ink" target="_blank" rel="noopener">体验智能相册 <span aria-hidden="true">↗</span></a>
             </article>
-            <article><span class="cap-icon">⌕</span><span class="cap-label">02 / 查找</span><h3>记得画面，就能开始找。</h3><p>用自然语言描述照片，结合人物、时间、地点或照片里的文字，缩小查找范围。</p>
-                <div class="query-example">“找找我在海边拍的照片” <span>↗</span></div>
+            <article>
+                <span class="cap-icon" aria-hidden="true">⌕</span><span class="cap-label">02 / 查找</span>
+                <h3>以文搜图</h3>
+                <p>试着说“海边看日落的照片”，用记得的画面找回回忆。</p>
+                <div class="cap-preview cap-search">
+                    <span class="cap-preview-label">搜索效果示例</span>
+                    <div class="cap-search-query"><span aria-hidden="true">⌕</span>海边看日落的照片</div>
+                    <div class="cap-search-results">
+                        <span>海边</span><span>日落</span><span>傍晚</span>
+                    </div>
+                    <div class="cap-search-hint"><Sun aria-hidden="true" /><span>从画面线索开始<small>还可结合人物、时间与地点查找</small></span></div>
+                </div>
+                <a class="cap-link" href="https://demo.siyuan.ink/search" target="_blank" rel="noopener">试试照片搜索 <span aria-hidden="true">↗</span></a>
             </article>
-            <article><span class="cap-icon">⌁</span><span class="cap-label">03 / 回顾</span><h3>看照片，也看走过的路。</h3><p>在地图上查看带有地点信息的照片，回顾到过的城市，再用旅行日记和年度报告留住经历。</p>
-                <div class="cap-tags"><span>足迹地图</span><span>旅行日记</span><span>年度报告</span></div>
+            <article>
+                <span class="cap-icon" aria-hidden="true">⌁</span><span class="cap-label">03 / 回顾</span>
+                <h3>足迹相册</h3>
+                <p>在地图上回看拍摄地点，让沿途照片串成可以重读的旅行日记，专门的5A景区识别，记录去过的景区。</p>
+                <div class="cap-preview cap-recall">
+                    <span class="cap-preview-label">旅程效果示例</span>
+                    <div class="cap-route" aria-label="示例旅程：山间、海岸、日落">
+                        <svg viewBox="0 0 300 66" preserveAspectRatio="none" aria-hidden="true"><path d="M20 42 C65 42 80 12 150 12 S230 42 280 42" /><circle cx="20" cy="42" r="4" /><circle cx="150" cy="12" r="4" /><circle cx="280" cy="42" r="4" /></svg>
+                        <div class="cap-route-labels"><span>山间</span><span>海岸</span><span>日落</span></div>
+                    </div>
+                    <div class="cap-trip-diary"><span>旅行日记 · 示例片段</span><strong>沿着海岸，等一场日落。</strong><small>把沿途照片与足迹，留在同一个故事里。</small></div>
+                </div>
+                <a class="cap-link" href="#journeys" data-jump-map="3d">查看足迹地图 <span aria-hidden="true">↓</span></a>
             </article>
         </div>
     </section>
@@ -130,7 +164,27 @@ onBeforeUnmount(() => cleanup?.())
                 <div class="map-switcher">
                     <div class="map-view-tabs" role="tablist" aria-label="选择足迹展示方式">
                         <button type="button" data-map-view="3d" id="map-view-3d" role="tab" :aria-selected="mapView === '3d'" :tabindex="mapView === '3d' ? 0 : -1" @click="mapView = '3d'" aria-controls="live-map">3D 足迹</button><button type="button" data-map-view="city" id="map-view-city" role="tab" :aria-selected="mapView === 'city'" :tabindex="mapView === 'city' ? 0 : -1" @click="mapView = 'city'" aria-controls="city-showcase-frame">城市点亮</button><button type="button" data-map-view="puzzle" id="map-view-puzzle" role="tab" :aria-selected="mapView === 'puzzle'" :tabindex="mapView === 'puzzle' ? 0 : -1" @click="mapView = 'puzzle'" aria-controls="puzzle-showcase-frame">足迹拼图</button></div><button type="button" class="map-expand" data-expand="live-map-shell" aria-expanded="false">全屏查看</button></div><div class="desktop-viewport"><DemoEmbed id="live-map" path="/footprint" title="行影集 · 3D 足迹地图" :active="mapView === '3d'" /><iframe :hidden="mapView !== 'city'" id="city-showcase-frame" src="/showcase/city-fragment.html" title="城市点亮地图节选" loading="lazy"></iframe><div id="puzzle-showcase-frame" class="native-map-content" :hidden="mapView !== 'puzzle'"><FootprintPuzzle /></div></div></div><p class="feature-caption" id="map-view-caption">{{ mapCaptions[mapView] }}</p><div class="feature-progress" aria-hidden="true"><span></span></div></section></div>
-    <section class="wrap real-feature reading-feature" id="stories"><div class="live-section-heading"><div><div class="eyebrow">旅行日记 / 让照片连成故事</div><h2 class="section-title">让一段旅程，<br>成为可以重读的故事。</h2><p class="section-desc">把沿途的照片与足迹串成旅行日记，收藏风景，也留下出发时的心情。</p></div></div><div class="live-shell story-window" id="live-story-shell"><div class="live-toolbar"><span><i></i> 国庆七日 · 2025 / 完整游记</span><div><button type="button" data-reload="live-story">刷新</button><button type="button" data-expand="live-story-shell">全屏查看</button><a href="/examples/travel-diary-2025-golden-week.html" id="live-story-link" target="_blank" rel="noopener">新窗口打开 ↗</a></div></div><div class="desktop-viewport"><iframe id="live-story" src="/examples/travel-diary-2025-golden-week.html" title="国庆七日 · 2025 / 完整游记" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe></div></div></section>
+    <section class="wrap real-feature reading-feature" id="stories">
+        <div class="live-section-heading">
+            <div>
+                <div class="eyebrow">旅行日记 / 让照片连成故事</div>
+                <h2 class="section-title">让一段旅程，<br>成为可以重读的故事。</h2>
+                <p class="section-desc">把沿途的照片与足迹串成旅行日记，收藏风景，也留下出发时的心情。</p>
+            </div>
+        </div>
+        <div class="live-shell story-window" id="live-story-shell">
+            <div class="live-toolbar"><span><i></i> 国庆七日 · 2025 / 完整游记</span>
+                <div>
+                    <button type="button" data-reload="live-story">刷新</button>
+                    <button type="button" data-expand="live-story-shell">全屏查看</button>
+                    <a href="/examples/travel-diary-2025-golden-week.html" id="live-story-link" target="_blank" rel="noopener">新窗口打开 ↗</a>
+                </div>
+            </div>
+            <div class="desktop-viewport">
+                <iframe id="live-story" src="/examples/travel-diary-2025-golden-week.html" title="国庆七日 · 2025 / 完整游记" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+            </div>
+        </div>
+    </section>
     <section class="wrap everyday-tools" id="everyday-tools">
         <div class="tools-heading">
             <div class="eyebrow">记录与整理 / 不止于浏览照片</div>
