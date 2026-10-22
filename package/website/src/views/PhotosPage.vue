@@ -100,6 +100,7 @@ import { ref, computed, nextTick, onUnmounted, onActivated, onDeactivated, watch
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotosPageStore } from '@/stores/photoStore'
+import { normalizeMediaTypeFilters } from '@/utils/mediaTypeFilters'
 import { Filter, X, Settings, FolderPlus, UploadCloud } from 'lucide-vue-next'
 import { useMediaQuery, onClickOutside } from '@vueuse/core'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
@@ -218,7 +219,6 @@ const parseQueryFilter = (value: unknown): string[] => {
 const applyQueryFilters = () => {
   const f = photoStore.selectedFilters
   // 先清空已有筛选，避免上一次访问残留
-  f.is_panorama = undefined
   f.image_types = []
   f.file_types = []
   f.uploaded_after = undefined
@@ -229,9 +229,8 @@ const applyQueryFilters = () => {
   f.models = []
 
   const { image_types, file_types, years, cities, makes, models, uploaded_after, uploaded_before, is_panorama } = route.query
-  f.is_panorama = is_panorama === 'true' ? true : undefined
   f.image_types = parseQueryFilter(image_types)
-  f.file_types = parseQueryFilter(file_types)
+  f.file_types = normalizeMediaTypeFilters(parseQueryFilter(file_types), is_panorama)
   f.makes = parseQueryFilter(makes)
   f.models = parseQueryFilter(models)
   f.cities = parseQueryFilter(cities)
