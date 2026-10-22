@@ -55,15 +55,16 @@
         </article>
         <InstallPrompt class="nas-prompt" :title="copy.nasPromptTitle" :description="copy.nasPromptDescription" :prompt="nasPrompt" :copy-label="copy.copyPrompt" :copied-label="copy.promptCopied" :error-label="copy.copyFailed" :show-label="copy.showPrompt" :hide-label="copy.hidePrompt" />
       </section>
-      <footer class="download-footer">{{ copy.footer }}</footer>
     </div>
   </main>
+  <ContactFooter />
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useData } from 'vitepress'
 import InstallPrompt from './InstallPrompt.vue'
+import ContactFooter from './ContactFooter.vue'
 import { ArrowRight, ArrowUpRight, Download, Server } from 'lucide-vue-next'
 
 type PlatformKey = 'windows' | 'macos' | 'linux'
@@ -317,4 +318,29 @@ button:focus-visible, a:focus-visible, summary:focus-visible, section:focus-visi
 @media (max-width: 959px) { .download-page { padding-top: 40px; } }
 @media (max-width: 600px) { .download-page { padding: 40px 16px 24px; } .featured-card, .nas-card { padding: 22px; } .platform-heading { gap: 14px; } .platform-icon { width: 50px; height: 50px; padding: 12px; border-radius: 12px; } .format-tags { margin-left: 0; } .other-platforms { gap: 12px; } .secondary-card { flex-direction: column; gap: 12px; padding: 18px; } .install-tabs button { padding: 9px 20px; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<style>
+
+/* Keep the download route in the same palette as the official landing page. */
+.custom-download-page {
+  --vp-c-brand-1: #456854;
+  --vp-c-brand-2: #355441;
+  --vp-c-brand-3: #456854;
+  --vp-c-bg: #f7f8f5;
+  --vp-c-bg-alt: #f7f8f5;
+  --vp-c-text-1: #25342e;
+  --vp-c-text-2: #68756d;
+  --vp-c-divider: #dde3db;
+}
+.dark .custom-download-page {
+  --vp-c-brand-1: #aac4ad;
+  --vp-c-brand-2: #537b60;
+  --vp-c-brand-3: #456854;
+  --vp-c-bg: #141c18;
+  --vp-c-bg-alt: #141c18;
+  --vp-c-text-1: #e9eee7;
+  --vp-c-text-2: #a5afa7;
+  --vp-c-divider: #354339;
+}
 </style>
