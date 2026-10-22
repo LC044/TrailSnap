@@ -294,8 +294,9 @@ test.describe.serial('P1 - 位置相册', () => {
     await yearBtn.click()
 
     // 弹出菜单：至少有"全部时间"和"自定义范围"
-    const allTimeItem = page.getByText('全部时间').first()
-    const customRangeItem = page.getByText('自定义范围').first()
+    const yearMenu = yearDesktop.locator(':scope > .absolute')
+    const allTimeItem = yearMenu.getByRole('button', { name: '全部时间', exact: true })
+    const customRangeItem = yearMenu.getByRole('button', { name: '自定义范围', exact: true })
     await expect(allTimeItem).toBeVisible({ timeout: 5_000 })
     await expect(customRangeItem).toBeVisible()
 

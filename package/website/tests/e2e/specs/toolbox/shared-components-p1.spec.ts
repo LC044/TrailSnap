@@ -57,7 +57,7 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
       } }))
     })
     await page.goto('/settings?tab=basic')
-    await page.locator('.el-collapse-item__header').filter({ hasText: 'AI 服务与人脸设置' }).click()
+    await page.locator('.el-collapse-item__header').filter({ hasText: '人脸与识别设置' }).click()
     await expect(page.getByRole('textbox', { name: 'AI API 地址', exact: true })).toHaveValue('http://ai-service:8001')
     await page.getByRole('button', { name: '保存 AI 配置', exact: true }).click()
     await expect.poll(() => payloads.length).toBe(1)

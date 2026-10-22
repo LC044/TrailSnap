@@ -84,7 +84,7 @@ Docker 用户无需修改挂载、环境变量或目录。新的存储引用字�
 pwsh .\scripts\build-windows-installer.ps1
 ```
 
-构建脚本会检查必要工具，并依次完成依赖安装、Vue 构建、PyInstaller Server 打包、
+构建脚本会检查必要工具，并依次完成依赖安装、Vue 构建、PyInstaller Server 与 AI 分别打包、
 Sidecar 暂存和 Tauri NSIS 打包。重复构建时可以用 `-SkipInstall` 跳过依赖安装，
 用 `-OpenOutput` 在成功后打开产物目录：
 
