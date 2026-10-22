@@ -1,0 +1,21 @@
+{
+  "landscapes": {
+    "source": "Unsplash",
+    "urls": {
+      "lake.jpg": "https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=1400&q=88",
+      "mountain.jpg": "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=88",
+      "forest.jpg": "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1200&q=88",
+      "sea.jpg": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=88"
+    }
+  },
+  "moon": {
+    "credit": "NASA / LRO / Scientific Visualization Studio",
+    "page": "https://science.nasa.gov/resource/moon-mosaic/",
+    "asset": "https://assets.science.nasa.gov/dynamicimage/assets/science/psd/earths-moon/outreach-materials/NASA-LRO-Moon-mosaic.png?fit=contain&w=1000&h=1000"
+  },
+  "moonClassic": {
+    "credit": "NASA/JPL/USGS",
+    "page": "https://images.nasa.gov/details/PIA00405",
+    "asset": "https://images-assets.nasa.gov/image/PIA00405/PIA00405~medium.jpg"
+  }
+}

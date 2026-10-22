@@ -18,7 +18,7 @@
           <p>登录账号，继续记录每一段旅程</p>
         </header>
         <el-form ref="loginFormRef" :model="loginForm" :rules="rules" label-position="top" size="large" class="auth-form" @submit.prevent="handleLogin">
-          <div v-if="demoMode" class="auth-notice">演示账号已填写，点击「登录」即可体验</div>
+          <div v-if="demoMode" class="auth-notice" role="status" aria-live="polite">{{ loading ? '正在进入演示相册…' : '自动进入暂未成功，请点击「登录」重试。' }}</div>
           <div v-if="!isTauriApp() && authState !== 'ready'" class="auth-notice" role="status" aria-live="polite">
             {{ authState === 'checking' ? '正在连接服务…' : '暂时无法连接服务，首次启动可能需要一些时间。正在自动重试。' }}
             <el-button v-if="authState === 'unavailable'" link type="primary" @click="retryAuthStatus">立即重试</el-button>
@@ -80,6 +80,7 @@ import { useUserStore } from '@/stores/user';
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus';
 import { User, Lock } from '@element-plus/icons-vue';
 import { useAuthStatus } from '@/composables/useAuthStatus';
+import { createDemoEntry } from '@/composables/demoEntry';
 import { getServerHistory, getServerUrl, isMobileApp, isTauriApp, saveServerUrl } from '@/config/server';
 import LoginCharacters from './components/LoginCharacters.vue';
 import './auth.css';
@@ -99,6 +100,14 @@ const focusTarget = ref<'username' | 'password' | null>(null);
 const isCelebrating = ref(false);
 const isMocking = ref(false);
 
+const enterDemo = createDemoEntry(
+  async () => {
+    const entered = await userStore.login({ username: 'trailsnap', password: 'trailsnap' });
+    if (!entered) throw new Error('Demo session was not created');
+  },
+  () => router.replace((route.query.redirect as string) || '/'),
+);
+
 const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status) => {
   hasUsers.value = status.has_users;
   allowRegistration.value = !status.has_users || status.allow_registration;
@@ -110,6 +119,15 @@ const { state: authState, check: checkAuthStatus } = useAuthStatus(async (status
     loginForm.username = 'trailsnap';
     loginForm.password = 'trailsnap';
     demoMode.value = true;
+    loading.value = true;
+    try {
+      await enterDemo(status);
+    } catch {
+      // Keep the prefilled form available; do not repeatedly retry a failed login.
+      ElMessage.warning('暂时无法自动进入演示相册，请重试');
+    } finally {
+      loading.value = false;
+    }
   }
 });
 
