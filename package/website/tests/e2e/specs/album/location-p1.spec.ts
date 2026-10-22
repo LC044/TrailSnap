@@ -343,7 +343,9 @@ test.describe.serial('P1 - 位置相册', () => {
     // 就出现（loading 时与 el-skeleton 并存，所以不能 .or(skeleton)，否则 strict mode
     // 会因同时命中标题和骨架屏报错）。直接断言标题可见即可。
     const overviewHeading = page.getByRole('heading', { name: '足迹概览' })
-    await expect(overviewHeading).toBeVisible({ timeout: 20_000 })
+    // 2026-10-23 值守：整轮 full E2E 里位置统计在负载下偶发超过 20s 才渲染
+    // （定向重跑 18.4s 通过，离超时只差 1.6s），放宽到 30s 只放宽时间、不改断言。
+    await expect(overviewHeading).toBeVisible({ timeout: 30_000 })
   })
 
   test('2.4.14 时间轴视图 - 切换后 LocationTimelineView 渲染月分组或空态', async ({ page }, testInfo) => {

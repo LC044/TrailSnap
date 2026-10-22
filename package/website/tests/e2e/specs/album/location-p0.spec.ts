@@ -172,8 +172,10 @@ test.describe.serial('P0 - 位置相册', () => {
     await mapBtn.click()
 
     // 地图容器（echarts canvas）始终渲染
+    // 2026-10-23 值守：整轮 full E2E 里 echarts canvas 在本地负载下偶发超过 15s 才挂载
+    // （定向重跑 10.3s 通过），与同文件其它慢查询等待统一放宽到 30s，只放宽时间、不改断言。
     const mapContainer = page.locator('.location-list canvas').first()
-    await expect(mapContainer).toBeVisible({ timeout: 15_000 })
+    await expect(mapContainer).toBeVisible({ timeout: 30_000 })
 
     // 地图视图右侧面板：要么 GlobalOverviewPanel（含"足迹概览"标题），要么仍处于
     // 加载骨架屏状态（globalStats 还没回来）。两者都视为地图视图就绪。
