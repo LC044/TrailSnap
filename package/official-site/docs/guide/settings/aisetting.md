@@ -21,7 +21,7 @@ TrailSnap 内置了 AI 连接功能，开箱即用。内置连接使用 MiniCPM-
 - 填写模型名称（可选，不填则可以使用该api key的所有模型），例如`gpt-3.5-turbo`、`qwen3.5:4b`等。
 - 点击验证按钮，验证成功后会显示连接成功。
 
-![alt text](/images/aisettings.png)
+![alt text](/images/aisettings.webp)
 
 ## AI对话配置
 

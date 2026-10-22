@@ -195,7 +195,7 @@ service.interceptors.response.use(
 
           errorMsg = '登录已过期，请重新登录';
           // Clear auth state and redirect to login
-          userStore.resetState();
+          userStore.resetState(true);
           break;
         }
         case 403:

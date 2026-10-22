@@ -70,7 +70,7 @@ TrailSnap 是一个智能化的 **AI 相册**应用，致力于帮助用户轻�
 - 清理重复、相似照片
 - AI大模型识别并清理低质量、无意义的照片
 
-![](/images/toolbox.png)
+![](/images/toolbox.webp)
 
 ## 🛠️ 待开发功能
 

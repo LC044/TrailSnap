@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { authService, type LoginParams, type UserInfo } from '@/api/auth';
 import router from '@/router';
 import { isTauriApp } from '@/config/server';
+import { loginLocation } from '@/router/authRedirect';
 
 const PERSIST_KEY_PREFIXES = ['trailsnap:', 'ticket-', 'trailsnap-location-'];
 const USER_INFO_KEY = 'user_info';
@@ -94,11 +95,12 @@ export const useUserStore = defineStore('user', () => {
     }
   };
 
-  const resetState = () => {
+  const resetState = (preserveDestination = false) => {
+    const destination = window.location.pathname + window.location.search + window.location.hash;
     setToken(null);
     userInfo.value = null;
     clearPersistedState();
-    router.push('/login');
+    void router.replace(preserveDestination ? loginLocation(destination) : '/login');
   };
 
   // Server-unreachable handling must retain the configured server and local UI

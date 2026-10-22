@@ -50,6 +50,9 @@ async function bootstrap() {
   }
   await registerExternalLinkOpener()
   app.use(router);
+  // Resolve authentication before App starts background protected requests.
+  // Otherwise their early 401 can cancel a demo entry and lose its destination.
+  await router.isReady()
   app.mount('#app');
   if (isTauriApp()) {
     void import('@/api/desktopPort').then(async ({ getDesktopPortConfig }) => {
@@ -63,7 +66,6 @@ async function bootstrap() {
   registerElementPlusOverlayBridge()
   registerButtonMotion()
 
-  await router.isReady()
   schedulePagePreloads(commonPageLoaders, () => !!useUserStore().token && !useNavigationStore().pending)
   await registerConnectionDeepLinks(router)
   await registerNativeBackButton(router)

@@ -1,0 +1,1002 @@
+{
+  "scanned": 135,
+  "original_bytes": 28385000,
+  "optimized": 16,
+  "saved_bytes": 1370775,
+  "applied": true,
+  "images": [
+    {
+      "path": "demo.jpg",
+      "bytes": 281428,
+      "width": 1260,
+      "height": 2648,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/hero-huizhou.jpg",
+      "bytes": 1384049,
+      "width": 4032,
+      "height": 2268,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/huangshan-firework.jpg",
+      "bytes": 161912,
+      "width": 1536,
+      "height": 2048,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/huangshan-fish-lamp.jpg",
+      "bytes": 156725,
+      "width": 1536,
+      "height": 2048,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/huangshan-lanterns.jpg",
+      "bytes": 174996,
+      "width": 2048,
+      "height": 1536,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/jingdezhen-ceramics.jpg",
+      "bytes": 172141,
+      "width": 1536,
+      "height": 2048,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/jingdezhen-cups.jpg",
+      "bytes": 126194,
+      "width": 1536,
+      "height": 2048,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/jingdezhen-night-street.jpg",
+      "bytes": 112964,
+      "width": 1536,
+      "height": 2048,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/suzhou-garden-mist.jpg",
+      "bytes": 385384,
+      "width": 2048,
+      "height": 1756,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/suzhou-lantern.jpg",
+      "bytes": 141311,
+      "width": 1536,
+      "height": 2048,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/suzhou-pingjianglu.jpg",
+      "bytes": 376946,
+      "width": 2048,
+      "height": 1536,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/zhoushan-bridge-moon.jpg",
+      "bytes": 197663,
+      "width": 2048,
+      "height": 1756,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/zhoushan-seaside.jpg",
+      "bytes": 35605,
+      "width": 1024,
+      "height": 768,
+      "action": "unchanged"
+    },
+    {
+      "path": "examples/images/zhoushan-sunrise.jpg",
+      "bytes": 329825,
+      "width": 2048,
+      "height": 1756,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/AI-analyize.png",
+      "bytes": 615045,
+      "width": 1296,
+      "height": 975,
+      "action": "lossless-png",
+      "optimized_bytes": 592973,
+      "saved_bytes": 22072,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/AI-narrative.jpg",
+      "bytes": 270085,
+      "width": 2377,
+      "height": 1426,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/aisettings.png",
+      "bytes": 23793,
+      "width": 498,
+      "height": 426,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 5300,
+      "saved_bytes": 18493,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/classification.jpeg",
+      "bytes": 266535,
+      "width": 2980,
+      "height": 1809,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/img.png",
+      "bytes": 29579,
+      "width": 742,
+      "height": 935,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/img_1.png",
+      "bytes": 126795,
+      "width": 530,
+      "height": 478,
+      "action": "lossless-png",
+      "optimized_bytes": 106522,
+      "saved_bytes": 20273,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/map-province.png",
+      "bytes": 212717,
+      "width": 2154,
+      "height": 1815,
+      "action": "lossless-png",
+      "optimized_bytes": 204827,
+      "saved_bytes": 7890,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/map.png",
+      "bytes": 110111,
+      "width": 1525,
+      "height": 931,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/on-this-day.png",
+      "bytes": 1000445,
+      "width": 1611,
+      "height": 879,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/report.png",
+      "bytes": 1513334,
+      "width": 1500,
+      "height": 2667,
+      "action": "lossless-png",
+      "optimized_bytes": 1482033,
+      "saved_bytes": 31301,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/ScreenShot_2026-05-09_005142_617.png",
+      "bytes": 616549,
+      "width": 797,
+      "height": 687,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 496430,
+      "saved_bytes": 120119,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/tianditu.png",
+      "bytes": 109334,
+      "width": 1197,
+      "height": 963,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 30232,
+      "saved_bytes": 79102,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/ticket-result.png",
+      "bytes": 41987,
+      "width": 743,
+      "height": 933,
+      "action": "lossless-png",
+      "optimized_bytes": 38229,
+      "saved_bytes": 3758,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/timeline.png",
+      "bytes": 579365,
+      "width": 1660,
+      "height": 1114,
+      "action": "lossless-png",
+      "optimized_bytes": 567343,
+      "saved_bytes": 12022,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/toolbox.jpg",
+      "bytes": 161440,
+      "width": 762,
+      "height": 571,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/toolbox.png",
+      "bytes": 888537,
+      "width": 1448,
+      "height": 1086,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 642028,
+      "saved_bytes": 246509,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/ugos-start.png",
+      "bytes": 89002,
+      "width": 1188,
+      "height": 789,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 44432,
+      "saved_bytes": 44570,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/ugos.png",
+      "bytes": 101848,
+      "width": 1179,
+      "height": 784,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 38146,
+      "saved_bytes": 63702,
+      "pixel_exact": true
+    },
+    {
+      "path": "images/wechat_longscreenshot_2026-04-27_224237_662.jpg",
+      "bytes": 175055,
+      "width": 1511,
+      "height": 1842,
+      "action": "unchanged"
+    },
+    {
+      "path": "images/火车票_郑州东_天津西_G1710_2026-12-12.png",
+      "bytes": 465530,
+      "width": 1712,
+      "height": 1080,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 289374,
+      "saved_bytes": 176156,
+      "pixel_exact": true
+    },
+    {
+      "path": "qq_group.jpg",
+      "bytes": 69257,
+      "width": 1348,
+      "height": 1428,
+      "action": "unchanged"
+    },
+    {
+      "path": "qrcodes/bilibili_qr.png",
+      "bytes": 662221,
+      "width": 1106,
+      "height": 1572,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 381044,
+      "saved_bytes": 281177,
+      "pixel_exact": true
+    },
+    {
+      "path": "qrcodes/douyin_qr.png",
+      "bytes": 484691,
+      "width": 1313,
+      "height": 1960,
+      "action": "lossless-webp-variant",
+      "optimized_bytes": 251832,
+      "saved_bytes": 232859,
+      "pixel_exact": true
+    },
+    {
+      "path": "qrcodes/wechat_group_qr.webp",
+      "bytes": 23380,
+      "width": 606,
+      "height": 615,
+      "action": "lossless-png",
+      "optimized_bytes": 12608,
+      "saved_bytes": 10772,
+      "pixel_exact": true
+    },
+    {
+      "path": "qrcodes/wechat_official_account_qr.webp",
+      "bytes": 17276,
+      "width": 412,
+      "height": 411,
+      "action": "unchanged"
+    },
+    {
+      "path": "qrcodes/wechat_qr.jpg",
+      "bytes": 40704,
+      "width": 430,
+      "height": 430,
+      "action": "unchanged"
+    },
+    {
+      "path": "qrcodes/xiaohongshu_qr.jpg",
+      "bytes": 98019,
+      "width": 987,
+      "height": 1347,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/assets/forest.jpg",
+      "bytes": 335314,
+      "width": 1200,
+      "height": 799,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/assets/lake.jpg",
+      "bytes": 309961,
+      "width": 1400,
+      "height": 933,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/assets/moon-classic.jpg",
+      "bytes": 201881,
+      "width": 1280,
+      "height": 1280,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/assets/mountain.jpg",
+      "bytes": 269593,
+      "width": 1200,
+      "height": 800,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/assets/sea.jpg",
+      "bytes": 145418,
+      "width": 1200,
+      "height": 798,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-00-0.webp",
+      "bytes": 96088,
+      "width": 1280,
+      "height": 1017,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-00-1.webp",
+      "bytes": 361886,
+      "width": 1080,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-00-2.webp",
+      "bytes": 253364,
+      "width": 960,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-01-0.webp",
+      "bytes": 364530,
+      "width": 1440,
+      "height": 810,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-01-1.webp",
+      "bytes": 21798,
+      "width": 640,
+      "height": 360,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-01-2.webp",
+      "bytes": 210734,
+      "width": 1244,
+      "height": 660,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-02-0.webp",
+      "bytes": 82350,
+      "width": 1024,
+      "height": 681,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-02-1.webp",
+      "bytes": 107184,
+      "width": 1024,
+      "height": 788,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-02-2.webp",
+      "bytes": 96520,
+      "width": 1024,
+      "height": 683,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-03-0.webp",
+      "bytes": 400170,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-03-1.webp",
+      "bytes": 367766,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-04-0.webp",
+      "bytes": 123124,
+      "width": 1440,
+      "height": 900,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-04-1.webp",
+      "bytes": 243700,
+      "width": 1024,
+      "height": 727,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-04-2.webp",
+      "bytes": 374202,
+      "width": 1440,
+      "height": 900,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-05-0.webp",
+      "bytes": 68556,
+      "width": 1024,
+      "height": 576,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-05-1.webp",
+      "bytes": 92622,
+      "width": 1024,
+      "height": 683,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-05-2.webp",
+      "bytes": 24964,
+      "width": 1024,
+      "height": 683,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-06-0.webp",
+      "bytes": 48778,
+      "width": 1024,
+      "height": 789,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-06-1.webp",
+      "bytes": 36440,
+      "width": 1024,
+      "height": 734,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-06-2.webp",
+      "bytes": 192960,
+      "width": 1024,
+      "height": 768,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-07-0.webp",
+      "bytes": 120396,
+      "width": 1024,
+      "height": 680,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-07-1.webp",
+      "bytes": 124964,
+      "width": 1024,
+      "height": 681,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-07-2.webp",
+      "bytes": 50630,
+      "width": 1024,
+      "height": 679,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-08-0.webp",
+      "bytes": 179640,
+      "width": 1440,
+      "height": 1159,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-09-0.webp",
+      "bytes": 91486,
+      "width": 1024,
+      "height": 771,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-09-1.webp",
+      "bytes": 63684,
+      "width": 1024,
+      "height": 683,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-09-2.webp",
+      "bytes": 81802,
+      "width": 1024,
+      "height": 683,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-10-0.webp",
+      "bytes": 83990,
+      "width": 1024,
+      "height": 768,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-10-1.webp",
+      "bytes": 72022,
+      "width": 940,
+      "height": 587,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-11-0.webp",
+      "bytes": 23158,
+      "width": 1080,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-11-1.webp",
+      "bytes": 4302,
+      "width": 1080,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-12-0.webp",
+      "bytes": 253880,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-12-1.webp",
+      "bytes": 303724,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-12-2.webp",
+      "bytes": 470478,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-13-0.webp",
+      "bytes": 56200,
+      "width": 1080,
+      "height": 720,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-13-1.webp",
+      "bytes": 332732,
+      "width": 1382,
+      "height": 922,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-13-2.webp",
+      "bytes": 12596,
+      "width": 489,
+      "height": 300,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-14-0.webp",
+      "bytes": 48030,
+      "width": 440,
+      "height": 661,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-14-1.webp",
+      "bytes": 38376,
+      "width": 500,
+      "height": 312,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-14-2.webp",
+      "bytes": 154568,
+      "width": 1024,
+      "height": 683,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-15-0.webp",
+      "bytes": 112056,
+      "width": 1024,
+      "height": 681,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-15-1.webp",
+      "bytes": 117342,
+      "width": 1024,
+      "height": 686,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-15-2.webp",
+      "bytes": 168238,
+      "width": 1024,
+      "height": 768,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-16-0.webp",
+      "bytes": 251852,
+      "width": 960,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-16-1.webp",
+      "bytes": 86156,
+      "width": 1080,
+      "height": 1439,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-16-2.webp",
+      "bytes": 228046,
+      "width": 1017,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-17-0.webp",
+      "bytes": 502750,
+      "width": 1440,
+      "height": 1159,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-17-1.webp",
+      "bytes": 423386,
+      "width": 1440,
+      "height": 1235,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-18-0.webp",
+      "bytes": 325200,
+      "width": 1113,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-18-1.webp",
+      "bytes": 350238,
+      "width": 1113,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-18-2.webp",
+      "bytes": 369480,
+      "width": 1113,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-19-0.webp",
+      "bytes": 186510,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-19-1.webp",
+      "bytes": 119478,
+      "width": 1440,
+      "height": 961,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-19-2.webp",
+      "bytes": 257254,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-20-0.webp",
+      "bytes": 81522,
+      "width": 976,
+      "height": 768,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-20-1.webp",
+      "bytes": 133348,
+      "width": 1024,
+      "height": 685,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-20-2.webp",
+      "bytes": 141202,
+      "width": 1024,
+      "height": 569,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-21-0.webp",
+      "bytes": 36246,
+      "width": 640,
+      "height": 360,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-21-1.webp",
+      "bytes": 130444,
+      "width": 640,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-21-2.webp",
+      "bytes": 156832,
+      "width": 640,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-22-0.webp",
+      "bytes": 81384,
+      "width": 640,
+      "height": 1138,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-22-1.webp",
+      "bytes": 71238,
+      "width": 640,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-22-2.webp",
+      "bytes": 222308,
+      "width": 640,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-23-0.webp",
+      "bytes": 39650,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-23-1.webp",
+      "bytes": 72828,
+      "width": 1080,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-23-2.webp",
+      "bytes": 145338,
+      "width": 1440,
+      "height": 1235,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-24-0.webp",
+      "bytes": 208728,
+      "width": 640,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-24-1.webp",
+      "bytes": 366130,
+      "width": 1080,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-25-0.webp",
+      "bytes": 104586,
+      "width": 1280,
+      "height": 720,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-25-1.webp",
+      "bytes": 138280,
+      "width": 1280,
+      "height": 854,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-25-2.webp",
+      "bytes": 107174,
+      "width": 1280,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-26-0.webp",
+      "bytes": 45630,
+      "width": 393,
+      "height": 262,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-26-1.webp",
+      "bytes": 40502,
+      "width": 392,
+      "height": 262,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-26-2.webp",
+      "bytes": 46536,
+      "width": 393,
+      "height": 263,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-27-0.webp",
+      "bytes": 55612,
+      "width": 640,
+      "height": 480,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-27-1.webp",
+      "bytes": 91318,
+      "width": 1080,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-27-2.webp",
+      "bytes": 149412,
+      "width": 640,
+      "height": 854,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-28-0.webp",
+      "bytes": 48870,
+      "width": 640,
+      "height": 480,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-28-1.webp",
+      "bytes": 32998,
+      "width": 640,
+      "height": 853,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-28-2.webp",
+      "bytes": 61960,
+      "width": 640,
+      "height": 797,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-29-0.webp",
+      "bytes": 276350,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-29-1.webp",
+      "bytes": 64250,
+      "width": 576,
+      "height": 864,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-29-2.webp",
+      "bytes": 193478,
+      "width": 640,
+      "height": 1138,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-30-0.webp",
+      "bytes": 550734,
+      "width": 1440,
+      "height": 1080,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-30-1.webp",
+      "bytes": 205780,
+      "width": 1080,
+      "height": 1424,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-30-2.webp",
+      "bytes": 133826,
+      "width": 956,
+      "height": 1440,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-31-0.webp",
+      "bytes": 202148,
+      "width": 768,
+      "height": 1024,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-31-1.webp",
+      "bytes": 50666,
+      "width": 784,
+      "height": 1024,
+      "action": "unchanged"
+    },
+    {
+      "path": "showcase/puzzle-photos/region-31-2.webp",
+      "bytes": 173368,
+      "width": 680,
+      "height": 1024,
+      "action": "unchanged"
+    }
+  ]
+}

@@ -4,6 +4,9 @@ import { ElMessageBox } from 'element-plus';
 import { hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
 import { installNavigationFeedback } from './navigationFeedback';
 import { HomePage, PhotosPage, AlbumList, TicketPage } from './commonPages';
+import { loginLocation, safeAuthRedirect } from './authRedirect';
+import { authService } from '@/api/auth';
+import { createDemoEntry } from '@/composables/demoEntry';
 
 // 路由懒加载（优化首屏性能，TS 自动推断类型）
 // const AlbumPage = () => import('@/views/AlbumPage.vue');
@@ -171,7 +174,7 @@ import { useUserStore } from '@/stores/user';
 installNavigationFeedback(router);
 
 // 可选：路由守卫 - 动态设置页面标题
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   if (to.meta.title) {
     document.title = to.meta.title as string;
   }
@@ -186,7 +189,7 @@ router.beforeEach((to, from, next) => {
 
   if (userStore.token) {
     if (to.path === '/login') {
-      next({ path: '/' });
+      next(safeAuthRedirect(to.query.redirect));
     } else {
       next();
     }
@@ -194,7 +197,28 @@ router.beforeEach((to, from, next) => {
     if (whiteList.includes(to.path) || to.path.startsWith('/annual-report')) { // Allow annual report for now or specific public pages
       next();
     } else {
-      next(`/login?redirect=${to.fullPath}`);
+      // Explicit public demo entry: authenticate before loading the login view.
+      // The server, rather than the query parameter, decides whether this is a demo.
+      if (!isNativeApp() && to.query.demo === '1') {
+        // Fetch target view code while authentication is in flight. Importing
+        // a lazy route does not mount it or start its authenticated data calls.
+        for (const record of to.matched) {
+          const load = record.components?.default;
+          if (typeof load === 'function') void Promise.resolve(load()).catch(() => {});
+        }
+        try {
+          const status = await authService.getAuthStatus({ silentError: true });
+          const enterDemo = createDemoEntry(async () => {
+            if (!await userStore.login({ username: 'trailsnap', password: 'trailsnap' })) throw new Error('Demo session was not created');
+          }, async () => {});
+          if (await enterDemo(status)) { next(); return; }
+        } catch {
+          userStore.clearSession();
+          next(loginLocation(to.fullPath, true));
+          return;
+        }
+      }
+      next(loginLocation(to.fullPath));
     }
   }
 });
