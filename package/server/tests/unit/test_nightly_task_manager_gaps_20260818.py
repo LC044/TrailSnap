@@ -566,7 +566,8 @@ def test_add_task_scan_folder_reuses_existing_pending_for_payload_user(monkeypat
     mgr = _make_manager()
 
     existing = SimpleNamespace(
-        id="existing-scan", status="PENDING", type="SCAN_FOLDER", priority=0
+        id="existing-scan", status="pending", type="SCAN_FOLDER", priority=0,
+        payload={'user_id': 'u1', 'scan_roots': ['/p']},
     )
 
     base_query = MagicMock()
@@ -604,7 +605,8 @@ def test_add_task_scan_folder_falls_back_to_owner_id(monkeypatch):
     mgr = _make_manager()
 
     existing = SimpleNamespace(
-        id="existing-by-owner", status="PROCESSING", type="SCAN_FOLDER", priority=0
+        id="existing-by-owner", status="processing", type="SCAN_FOLDER", priority=0,
+        payload={'scan_roots': ['/photos']},
     )
 
     base_query = MagicMock()

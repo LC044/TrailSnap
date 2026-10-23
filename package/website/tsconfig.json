@@ -19,6 +19,7 @@
     "typeRoots": ["./node_modules/@types", "./src/types"],
     "types": ["vite/client", "node"], // 包含 vite 内置类型
     "paths": {
+      "trailsnap-cesium": ["src/utils/cesiumRuntime.ts"],
       "@/*": ["src/*"]
     }
   },

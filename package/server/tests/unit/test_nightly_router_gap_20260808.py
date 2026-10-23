@@ -177,12 +177,14 @@ def test_remove_directory_returns_current_when_no_settings():
     user = _user(is_superuser=True)
     user.settings = None
 
-    with patch.object(settings_api, "get_storage_root", return_value="/data/photos"):
+    with patch.object(settings_api, "get_storage_root", return_value="/data/photos"), \
+        patch('app.service.gallery_sync.lock_user', return_value=user), \
+        patch.object(settings_api.config_manager, 'update_user_config'):
         result = settings_api.remove_directory(
             payload={"path": "/data/x"}, db=db, current_user=user
         )
 
-    assert result == {"primary": "/data/photos", "external": []}
+    assert result == {"primary": "/data/photos", "external": [], "deleted_photos": 0}
 
 
 # =====================================================================

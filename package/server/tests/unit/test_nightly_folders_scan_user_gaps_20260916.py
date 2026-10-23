@@ -212,12 +212,19 @@ class TestReadPhotoFoldersChildLayer:
 class TestScanForUser:
     """Drives ``_scan_for_user`` end-to-end with patched disk + DB."""
 
+    @pytest.fixture(autouse=True)
+    def current_library(self, monkeypatch, tmp_path):
+        from app.service import gallery_sync
+        user = SimpleNamespace(id='u-1', settings={'storage': {'external_directories': [str(tmp_path)]}})
+        monkeypatch.setattr(gallery_sync, 'lock_user', lambda *_: user)
+        monkeypatch.setattr(gallery_sync, 'cancel_path_tasks', lambda *_: 0)
+
     def _strategy(self):
         return ScanFolderStrategy()
 
     def _patch_filesystem(self, files_by_root):
         """Patch ``scan_directory_recursive`` to return ``files_by_root[root]``."""
-        def fake_scan(path, exts, filter_settings=None, exclude_folder_patterns=None, *, recursive=True):
+        def fake_scan(path, exts, filter_settings=None, exclude_folder_patterns=None, *, recursive=True, strict=False):
             return set(files_by_root.get(path, set()))
         return patch.object(scan_module, "scan_directory_recursive", side_effect=fake_scan)
 

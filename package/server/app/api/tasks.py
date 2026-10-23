@@ -28,6 +28,7 @@ class TaskSchema(BaseModel):
     updated_at: Optional[datetime]
     error: Optional[str]
     payload: Optional[Dict[str, Any]]
+    result: Optional[Any] = None
     total_items: Optional[int]
     processed_items: Optional[int]
     attempt_count: int = 0

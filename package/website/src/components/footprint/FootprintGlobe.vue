@@ -603,7 +603,7 @@ function emitViewChange() {
 
 onMounted(async () => {
   try {
-    C = await import('@/utils/cesiumRuntime')
+    C = await import('trailsnap-cesium')
     if (disposed || !container.value) return
     viewer = new C.Viewer(container.value, {
       baseLayer: false, baseLayerPicker: false, geocoder: false, homeButton: false,
