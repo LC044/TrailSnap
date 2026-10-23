@@ -159,9 +159,21 @@
 
         <!-- 已接入图库 -->
         <section class="mb-6">
-          <div class="mb-3 flex items-center justify-between">
+          <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h3 class="font-medium text-gray-900 dark:text-gray-200">已添加的文件夹</h3>
-            <span v-if="registeredDirs.length" class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ registeredDirs.length }} 个</span>
+            <div class="flex flex-wrap items-center gap-2">
+              <span v-if="registeredDirs.length" class="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">{{ registeredDirs.length }} 个</span>
+              <el-button v-if="isSuperuser" :loading="scanningAll" :disabled="!!removingPath" size="small" class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" @click="scanAllDirs">
+                <RefreshCw class="mr-1 h-3.5 w-3.5" />扫描全部文件夹
+              </el-button>
+            </div>
+          </div>
+          <p v-if="isSuperuser" class="ts-muted mb-3 text-xs">扫描全部文件夹会补充新增照片、清理已失效的索引，原文件保持不变。无法读取的文件夹会保留记录。</p>
+          <div v-if="scanMessage" role="status" class="ts-muted mb-3 rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-900">
+            <p>{{ scanMessage }}</p>
+            <ul v-if="scanSkipped.length" class="mt-2 space-y-1 text-xs">
+              <li v-for="item in scanSkipped" :key="item.path" class="break-all">{{ item.path }}：{{ item.reason }}</li>
+            </ul>
           </div>
           <div v-if="registeredDirs.length" class="grid gap-3">
             <article v-for="row in registeredDirs" :key="row.path" class="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700 sm:flex-row sm:items-center">
@@ -179,7 +191,7 @@
               </div>
               <div v-if="isSuperuser" class="flex shrink-0 gap-2 pl-[52px] sm:pl-0">
                 <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" size="small" @click="scanDir(row.path)"><RefreshCw class="mr-1 h-3.5 w-3.5" />重新扫描</el-button>
-                <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" type="danger" plain size="small" @click="removeDir(row.path)">移除</el-button>
+                <el-button class="focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none" type="danger" plain size="small" :loading="removingPath === row.path" :disabled="!!removingPath" @click="removeDir(row.path)">移除</el-button>
               </div>
             </article>
           </div>
@@ -312,11 +324,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { settingsApi } from '@/api/settings'
 import { tasksApi } from '@/api/tasks'
 import { userService, type User } from '@/api/user'
 import { useUserStore } from '@/stores/user'
+import { usePhotoStore, usePhotosPageStore } from '@/stores/photoStore'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete } from '@element-plus/icons-vue'
 import { FolderPlus, FolderOpen, HardDrive, RefreshCw, ShieldCheck } from 'lucide-vue-next'
@@ -335,6 +348,12 @@ interface Candidate {
 
 const activeTab = ref('directories')
 const userStore = useUserStore()
+const photoStore = usePhotoStore()
+const photosPageStore = usePhotosPageStore()
+const invalidatePhotos = () => {
+  photoStore.markDataStale('PROCESS_BASIC')
+  photosPageStore.markDataStale('PROCESS_BASIC')
+}
 const users = ref<User[]>([])
 const selectedUserId = ref('')
 const isSuperuser = computed(() => !!userStore.userInfo?.is_superuser)
@@ -349,6 +368,20 @@ const selectedSet = reactive<Set<string>>(new Set())
 
 // 已接入
 const registeredDirs = ref<{ path: string }[]>([])
+const scanningAll = ref(false)
+const removingPath = ref('')
+const scanMessage = ref('')
+const scanSkipped = ref<{ path: string; reason: string }[]>([])
+let scanPoll: ReturnType<typeof setTimeout> | undefined
+let scanGeneration = 0
+onUnmounted(() => { scanGeneration++; clearTimeout(scanPoll) })
+watch(selectedUserId, () => {
+  scanGeneration++
+  clearTimeout(scanPoll)
+  scanningAll.value = false
+  scanMessage.value = ''
+  scanSkipped.value = []
+})
 
 // 手动添加
 const manualCollapse = ref<string[]>([])
@@ -558,7 +591,50 @@ const scanDir = async (path: string) => {
   }
 }
 
+const scanAllDirs = async () => {
+  if (scanningAll.value) return
+  const generation = ++scanGeneration
+  scanningAll.value = true
+  scanSkipped.value = []
+  scanMessage.value = '正在提交扫描任务…'
+  try {
+    const result = await settingsApi.scanAllDirectories(uid())
+    if (generation !== scanGeneration) return
+    scanMessage.value = '正在扫描全部文件夹并核对索引…'
+    const poll = async () => {
+      if (generation !== scanGeneration) return
+      try {
+        const task = await tasksApi.getTask(result.task_id)
+        if (generation !== scanGeneration) return
+        if (task.status === 'completed') {
+          invalidatePhotos()
+          const summary = task.result || {}
+          scanSkipped.value = summary.skipped_roots || []
+          scanMessage.value = `目录核对完成：发现 ${summary.new_files || 0} 个新增文件，清理 ${summary.deleted_files || 0} 条失效索引。新增照片将在处理完成后显示。${scanSkipped.value.length ? '以下文件夹未能读取，已保留记录：' : ''}`
+          scanningAll.value = false
+        } else if (task.status === 'failed' || task.status === 'cancelled') {
+          scanMessage.value = task.error || '扫描未完成，请重试'
+          scanningAll.value = false
+        } else {
+          scanPoll = setTimeout(poll, 2000)
+        }
+      } catch {
+        if (generation !== scanGeneration) return
+        scanMessage.value = '暂时无法获取扫描结果，请稍后重新扫描以核对目录'
+        scanningAll.value = false
+      }
+    }
+    await poll()
+  } catch {
+    if (generation !== scanGeneration) return
+    scanMessage.value = '创建扫描任务失败，请重试'
+    ElMessage.error('创建全部文件夹扫描任务失败，请重试')
+    scanningAll.value = false
+  }
+}
+
 const removeDir = async (path: string) => {
+  if (removingPath.value) return
   try {
     await ElMessageBox.confirm(
       `确定要移除目录 "${path}" 吗？该目录下的所有照片索引及其缩略图将被删除（源文件不会被删除）。`,
@@ -569,12 +645,18 @@ const removeDir = async (path: string) => {
     return // 用户取消
   }
   // 先调用后端，成功后再刷新列表，避免提前提示成功
+  removingPath.value = path
   try {
     await settingsApi.removeDirectory(path, uid())
+    invalidatePhotos()
     ElMessage.success('移除成功')
     await reloadAll()
   } catch {
-    ElMessage.error('移除失败，该目录可能正在被使用')
+    ElMessage.error('移除未完成，可重试或扫描全部文件夹以清理残留索引')
+    invalidatePhotos()
+    await reloadAll()
+  } finally {
+    removingPath.value = ''
   }
 }
 

@@ -456,6 +456,30 @@ class TaskManager:
                     ))
                 existing_scan = query.order_by(Task.created_at.desc()).first()
                 if existing_scan:
+                    existing_payload = existing_scan.payload or {}
+                    requested_payload = payload or {}
+                    # A per-folder scan cannot satisfy a full reconciliation.
+                    # Pending work can be widened; running work needs a follow-up.
+                    widen = requested_payload.get('reconcile') and not existing_payload.get('reconcile')
+                    old_roots = set(existing_payload.get('scan_roots') or [])
+                    new_roots = set(requested_payload.get('scan_roots') or [])
+                    widen = widen or (bool(old_roots) and (not new_roots or not new_roots.issubset(old_roots)))
+                    # A folder just added during a running full scan may not
+                    # have been in that scan's snapshot.
+                    widen = widen or (existing_scan.status == TaskStatus.PROCESSING and bool(new_roots) and not old_roots)
+                    if widen and existing_scan.status == TaskStatus.PENDING:
+                        merged = dict(existing_payload)
+                        if requested_payload.get('reconcile') or not new_roots:
+                            merged.pop('scan_roots', None)
+                        else:
+                            merged['scan_roots'] = sorted(old_roots | new_roots)
+                        if requested_payload.get('reconcile'):
+                            merged['reconcile'] = True
+                        existing_scan.payload = merged
+                        db.commit()
+                    elif widen:
+                        existing_scan = None
+                if existing_scan:
                     logging.info(
                         f"SCAN_FOLDER already {existing_scan.status} for user={target_user_id}, "
                         f"skip creating duplicate. Reusing task={existing_scan.id}"

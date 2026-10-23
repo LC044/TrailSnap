@@ -364,7 +364,8 @@ def test_remove_directory_noop_when_not_in_external_list(tmp_path):
         settings_api.config_manager,
         "get_user_config",
         return_value=_config(external=[str(tmp_path / "a")]),
-    ):
+    ), patch('app.service.gallery_sync.lock_user', return_value=user), \
+        patch.object(settings_api.config_manager, 'update_user_config'):
         result = settings_api.remove_directory(
             payload={"path": str(other)},
             db=db,

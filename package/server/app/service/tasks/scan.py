@@ -1,6 +1,6 @@
 from app.service.task_strategy import BaseTaskStrategy, TaskStrategyFactory
 from app.db.models.task import TaskType, DEFAULT_PRIORITIES
-from typing import List, Dict, Set, Optional
+from typing import Any, List, Dict, Set, Optional
 import asyncio
 import logging
 import os
@@ -39,12 +39,12 @@ def _is_folder_excluded(name: str, compiled_patterns: List[re.Pattern]) -> bool:
     return False
 
 @media_io('path')
-def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None, *, recursive: bool = True) -> Set[str]:
+def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optional[Dict] = None, exclude_folder_patterns: Optional[List[re.Pattern]] = None, *, recursive: bool = True, strict: bool = False) -> Set[str]:
     found = set()
     try:
         with os.scandir(path) as it:
             for entry in it:
-                if entry.is_file():
+                if entry.is_file(follow_symlinks=False):
                     if os.path.splitext(entry.name)[1].lower() in exts:
                         # Apply filters
                         if filter_settings and filter_settings.get('enable'):
@@ -70,14 +70,14 @@ def scan_directory_recursive(path: str, exts: Set[str], filter_settings: Optiona
                                 continue
 
                         found.add(entry.path)
-                elif recursive and entry.is_dir():
+                elif recursive and entry.is_dir(follow_symlinks=False):
                     # Skip excluded folders (e.g. NAS @eaDir / #recycle) regardless of filter enable
                     if _is_folder_excluded(entry.name, exclude_folder_patterns or []):
                         continue
-                    found.update(scan_directory_recursive(entry.path, exts, filter_settings, exclude_folder_patterns))
+                    found.update(scan_directory_recursive(entry.path, exts, filter_settings, exclude_folder_patterns, strict=strict))
     except OSError:
         from app.service.storage_paths import portable_enabled
-        if portable_enabled():
+        if strict or portable_enabled():
             raise
         pass
     return found
@@ -105,6 +105,7 @@ class ScanFolderStrategy(BaseTaskStrategy):
 
         total_new = 0
         total_deleted = 0
+        skipped_roots = []
 
         for user, specific_roots in users_to_process:
             roots = specific_roots
@@ -112,24 +113,33 @@ class ScanFolderStrategy(BaseTaskStrategy):
                 config = config_manager.get_user_config(user.id, db)
                 roots = config.storage.external_directories
             
+            if task.payload.get('reconcile'):
+                # Always use the current DB configuration for a full scan,
+                # including an empty list (which still needs orphan cleanup).
+                from app.service.gallery_sync import lock_user, external_roots, import_allowed, cancel_path_tasks, delete_index
+                user = lock_user(db, user.id)
+                roots = external_roots(user)
+                cancel_path_tasks(db, user.id, lambda path: not import_allowed(user, path))
+                orphaned = [p for p in db.query(Photo).filter(Photo.owner_id == user.id).all()
+                            if not import_allowed(user, p.file_path)]
+                total_deleted += delete_index(db, user.id, orphaned)
+                db.commit()
             if not roots:
                 continue
             
             res = await self._scan_for_user(worker, db, user, roots)
             total_new += res.get('new_files', 0)
             total_deleted += res.get('deleted_files', 0)
+            skipped_roots.extend(res.get('skipped_roots', []))
 
-        return {'new_files': total_new, 'deleted_files': total_deleted}
+        result = {'new_files': total_new, 'deleted_files': total_deleted}
+        if skipped_roots:
+            result['skipped_roots'] = skipped_roots
+            worker.scan_status['message'] = f'扫描完成，{len(skipped_roots)} 个目录不可读取，已保留其照片记录'
+        return result
 
-    async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str]) -> Dict[str, int]:
-        from app.service.storage_paths import portable_enabled
-        if portable_enabled():
-            online = [root for root in scan_roots if os.path.isdir(root)]
-            if len(online) != len(scan_roots):
-                logging.warning("Offline gallery roots skipped; their photo records are preserved")
-            scan_roots = online
-            if not scan_roots:
-                return {"new_files": 0, "deleted_files": 0}
+    async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str]) -> Dict[str, Any]:
+        from app.service.gallery_sync import contains, external_roots, lock_user, path_key, cancel_path_tasks
         EXTS = set(IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
         loop = asyncio.get_running_loop()
         logging.info(f"Scanning roots for user {user.id}: {scan_roots}")
@@ -141,7 +151,8 @@ class ScanFolderStrategy(BaseTaskStrategy):
 
         def parallel_scan_wrapper():
             found_files = set()
-            work_items = []
+            readable = []
+            skipped = []
             roots = sorted(set(os.path.abspath(root) for root in scan_roots), key=len)
             unique_roots = []
             for root in roots:
@@ -149,33 +160,48 @@ class ScanFolderStrategy(BaseTaskStrategy):
                 if not any(normalized == os.path.normcase(parent) or normalized.startswith(os.path.normcase(parent).rstrip(os.sep) + os.sep) for parent in unique_roots):
                     unique_roots.append(root)
             for root in unique_roots:
-                if not os.path.exists(root):
-                    continue
-                found_files.update(scan_directory_recursive(root, EXTS, filter_config, exclude_folder_patterns, recursive=False))
                 try:
+                    # Treat a failed subtree as a failed root. Never diff an
+                    # incomplete listing against DB records as if it were empty.
+                    root_files = scan_directory_recursive(root, EXTS, filter_config, exclude_folder_patterns, recursive=False, strict=True)
+                    work_items = []
                     with os.scandir(root) as it:
                         for entry in it:
-                            if entry.is_dir():
+                            if entry.is_dir(follow_symlinks=False):
                                 # Skip excluded folders at the top level too
                                 if _is_folder_excluded(entry.name, exclude_folder_patterns):
                                     continue
                                 work_items.append(entry.path)
-                except OSError:
-                    pass
-            work_items = list(set(work_items))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=disk_budget.limit) as executor:
-                futures = {executor.submit(scan_directory_recursive, item, EXTS, filter_config, exclude_folder_patterns): item for item in work_items}
-                for future in concurrent.futures.as_completed(futures):
-                    found_files.update(future.result())
-            return found_files
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=disk_budget.limit) as executor:
+                        futures = [executor.submit(scan_directory_recursive, item, EXTS, filter_config, exclude_folder_patterns, strict=True) for item in set(work_items)]
+                        for future in concurrent.futures.as_completed(futures):
+                            root_files.update(future.result())
+                    found_files.update(root_files)
+                    readable.append(root)
+                except OSError as error:
+                    logging.warning('Gallery scan skipped %s: %s', root, error)
+                    skipped.append({'path': root, 'reason': str(error)})
+            return found_files, readable, skipped
 
-        files_on_disk = await loop.run_in_executor(None, parallel_scan_wrapper)
+        files_on_disk, readable, skipped = await loop.run_in_executor(None, parallel_scan_wrapper)
+
+        # Removal may happen while filesystem work runs. Revalidate before any
+        # enqueue or deletion, and release the lock before more filesystem work.
+        user = lock_user(db, user.id)
+        current_roots = external_roots(user)
+        scan_roots = [root for root in readable if any(contains(allowed, root) for allowed in current_roots)]
+        files_on_disk = {path for path in files_on_disk if any(contains(root, path) for root in scan_roots)}
+        if not scan_roots:
+            db.commit()
+            return {'new_files': 0, 'deleted_files': 0, 'skipped_roots': skipped}
 
         existing_files, live_photo_to_add = self._get_existing_files(db, str(user.id), scan_roots)
         
         # Determine new and deleted
-        new_files = files_on_disk - existing_files
-        deleted_files = existing_files - files_on_disk
+        disk_keys = {path_key(path) for path in files_on_disk}
+        existing_keys = {path_key(path) for path in existing_files}
+        new_files = {path for path in files_on_disk if path_key(path) not in existing_keys}
+        deleted_files = {path for path in existing_files if path_key(path) not in disk_keys}
 
         for lp in live_photo_to_add:
             if lp.endswith('.jpg'):
@@ -197,21 +223,28 @@ class ScanFolderStrategy(BaseTaskStrategy):
         worker.scan_status['message'] = f"Found {len(new_files)} new, {len(deleted_files)} deleted"
         worker.scan_status['total_files'] += len(new_files)
 
-        await self._create_tasks_for_new_files(str(user.id), new_files, loop, db)
+        # Cancel pending imports for missing/filtered files before releasing the
+        # DB lock; completion also rechecks the filesystem and configured roots.
+        cancel_path_tasks(db, user.id, lambda path: any(contains(root, path) for root in scan_roots) and path_key(path) not in disk_keys)
+        db.commit()
         self._handle_deleted_files(str(user.id), deleted_files, db, worker)
+        await self._create_tasks_for_new_files(str(user.id), new_files, loop, db)
 
-        return {'new_files': len(new_files), 'deleted_files': len(deleted_files)}
+        result = {'new_files': len(new_files), 'deleted_files': len(deleted_files)}
+        if skipped:
+            result['skipped_roots'] = skipped
+        return result
 
     def _get_existing_files(self, db: Session, user_id: str, scan_roots: List[str]) -> tuple[Set[str], Set[str]]:
         existing_files = set()
         live_photo_to_add = set()
 
         query = db.query(Photo.file_path, Photo.file_type).filter(Photo.owner_id == user_id)
-        norm_paths = {os.path.normpath(path) for path in scan_roots}
+        from app.service.gallery_sync import contains
         for p in query.all():
             is_exist = False
-            for norm_path in norm_paths:
-                if os.path.normpath(p[0]).startswith(norm_path):
+            for norm_path in scan_roots:
+                if contains(norm_path, p[0]):
                     is_exist = True
             if not is_exist:
                 continue
@@ -308,9 +341,27 @@ class ScanFolderStrategy(BaseTaskStrategy):
                     processed_paths.add(fp)
 
         if new_tasks:
+            from app.service.gallery_sync import lock_user, import_allowed, path_key, owned_path_tasks
             chunk_size = 1000
             for i in range(0, len(new_tasks), chunk_size):
-                db.bulk_save_objects(new_tasks[i:i+chunk_size])
+                user = lock_user(db, user_id)
+                chunk = new_tasks[i:i+chunk_size]
+                paths = [t.payload['file_path'] for t in chunk]
+                known = {path_key(row[0]) for row in db.query(Photo.file_path).filter(
+                    Photo.owner_id == user.id, Photo.file_path.in_(paths)).all()}
+                known.update(path_key(t.payload['file_path']) for t in owned_path_tasks(db, user.id).filter(
+                    Task.type == TaskType.PROCESS_BASIC,
+                    Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+                ).all() if (t.payload or {}).get('file_path'))
+                accepted = []
+                for task in chunk:
+                    path = task.payload['file_path']
+                    if import_allowed(user, path) and path_key(path) not in known:
+                        task.owner_id = user.id
+                        task.payload = dict(task.payload, external_scan=True)
+                        accepted.append(task)
+                        known.add(path_key(path))
+                db.bulk_save_objects(accepted)
                 db.commit()
 
     def _handle_deleted_files(self, user_id: str, deleted_files: Set[str], db: Session, worker):

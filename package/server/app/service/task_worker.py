@@ -1299,7 +1299,7 @@ class TaskWorker:
             # Tasks that should be preserved in DB after completion.
             # Only reference real TaskType members here — a non-existent
             # member raises AttributeError and crashes completion cleanup.
-            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS, TaskType.RENDER_DAILY_FRAME}
+            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS, TaskType.RENDER_DAILY_FRAME, TaskType.SCAN_FOLDER}
 
             for item in items:
                 if item['status'] == TaskStatus.COMPLETED:
