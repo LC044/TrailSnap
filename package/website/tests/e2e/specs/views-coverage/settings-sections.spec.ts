@@ -40,17 +40,51 @@ async function expandSection(page: Page, title: string) {
   await expect(header).toHaveClass(/is-active/)
 }
 
+/**
+ * 固定的设置数据。
+ *
+ * BasicSettings 的 11 个分区共享同一份 settings 响应；如果 CI 容器里的
+ * 真实配置缺字段（例如 ai.face_recognition_threshold 为 null），Element Plus
+ * 的 el-slider 会在渲染时抛错，导致**整块 AI 分区不渲染**（其它分区正常），
+ * 表现为「该分区找不到」而不是断言失败。这里像仓库既有的
+ * toolbox/shared-components-p1.spec.ts 一样把设置接口 stub 成确定的形状。
+ */
+const SETTINGS_STUB = {
+  ai: {
+    ai_api_url: 'http://localhost:8001',
+    face_recognition_threshold: 0.7,
+    face_cluster_threshold: 0.4,
+    face_rescan_auto_match_threshold: 0.35,
+    face_rescan_candidate_threshold: 0.45,
+    face_rescan_removal_threshold: 0.52,
+    face_recognition_min_photos: 5,
+  },
+  image: { thumbnail_size: 250, thumbnail_quality: 80, preview_quality: 85, preview_size: 1440 },
+  map: { provider: 'tianditu', api_keys: [''] },
+  storage: { photo_storage_path: '', external_directories: [] },
+}
+
 test.describe('Nightly view coverage — 设置分区 @views-coverage', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo))) return
+    await page.route('**/api/settings/', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ code: 0, msg: 'success', data: SETTINGS_STUB }),
+    }))
   })
 
   test('系统设置页挂载全部 11 个设置分区', async ({ page }) => {
     await page.goto('/settings?tab=basic')
 
-    await expect(page.getByRole('heading', { name: '系统设置', level: 1 })).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('h1', { hasText: '系统设置' }).first()).toBeVisible({ timeout: 20_000 })
+    // 定位方式与仓库既有 spec（toolbox/shared-components-p1.spec.ts）保持一致：
+    // Element Plus 折叠面板的标题是 .el-collapse-item__header 里的 slot 内容，
+    // 用 role=heading 去找在 CI 容器里会偶发「element(s) not found」。
     for (const title of SECTION_TITLES) {
-      await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible()
+      const header = page.locator('.el-collapse-item__header', { hasText: title }).first()
+      await expect(header, `设置分区「${title}」没有渲染`).toBeVisible()
+      await expect(header).toContainText(title)
     }
   })
 
