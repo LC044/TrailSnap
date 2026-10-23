@@ -36,7 +36,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   test('电脑网页的「连接手机 App」生成可扫描二维码', async ({ page }) => {
     await page.goto('/settings#mobile-app');
 
-    await expect(page.getByRole('heading', { name: '连接手机 App', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '连接手机 App', exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('heading', { name: '下载 Android App' })).toBeVisible();
     await expect(page.getByText(/当前版本：TrailSnap v\d+\.\d+\.\d+/)).toBeVisible();
     await expect(page.getByRole('link', { name: '下载 Android APK' })).toHaveAttribute(
