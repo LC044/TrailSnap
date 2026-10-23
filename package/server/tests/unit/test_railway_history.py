@@ -182,3 +182,58 @@ def test_snapshot_fallback_after_missing_delta_keeps_existing_history(initial):
     cache.sync(third,files.__getitem__)
     assert cache.status()['sequence']==3 and cache.status()['stations']==3
     assert cache.resolve('G1','2026-10-01')['version']=='A'
+
+def test_scheduled_sync_skips_packages_and_projection_when_unchanged(initial, monkeypatch):
+    from railway import history_cache, history_sync, initialization
+    cache,_,manifest,files=initial
+    monkeypatch.setenv('RAILWAY_HISTORY_DB',str(cache.file))
+    monkeypatch.setattr(initialization,'wait_for_initialization',lambda:None)
+    def fetch(**kwargs):
+        return kwargs['cache'].sync(manifest,lambda _:pytest.fail('unchanged feed downloaded a pack'))
+    monkeypatch.setattr(history_cache,'fetch_feed',fetch)
+    projections=[]
+    monkeypatch.setattr(history_sync,'project_stations',lambda:projections.append(True))
+    history_sync.sync_history()
+    assert cache.projected_sequence()==1 and len(projections)==1
+    before=cache.file.read_bytes()
+    history_sync.sync_history()
+    assert len(projections)==1 and cache.file.read_bytes()==before
+
+
+def test_scheduled_sync_retries_failed_projection_and_applies_next_version(initial, monkeypatch):
+    from railway import history_cache, history_sync, initialization
+    cache,rows,first,_=initial
+    monkeypatch.setenv('RAILWAY_HISTORY_DB',str(cache.file))
+    monkeypatch.setattr(initialization,'wait_for_initialization',lambda:None)
+    manifest=first
+    available={}
+    def fetch(**kwargs):
+        return kwargs['cache'].sync(manifest,available.__getitem__)
+    monkeypatch.setattr(history_cache,'fetch_feed',fetch)
+    def fail():raise RuntimeError('projection interrupted')
+    monkeypatch.setattr(history_sync,'project_stations',fail)
+    history_sync.sync_history()
+    assert cache.status()['sequence']==1 and cache.projected_sequence()==0
+    calls=[]
+    monkeypatch.setattr(history_sync,'project_stations',lambda:calls.append(True))
+    history_sync.sync_history()
+    rows['station:CCC']=station('CCC','更新站',30,120)
+    manifest,available=feed(2,rows,first)
+    history_sync.sync_history()
+    assert len(calls)==2 and cache.projected_sequence()==2 and cache.stations('CCC')
+
+
+def test_history_sync_registers_daily_with_startup_check_and_can_be_disabled(monkeypatch):
+    from railway.history_sync import register_history_sync
+    from unittest.mock import Mock
+    from datetime import datetime, timezone
+    scheduler=Mock();before=datetime.now(timezone.utc)
+    monkeypatch.delenv('RAILWAY_HISTORY_SYNC_SECONDS',raising=False)
+    monkeypatch.delenv('RAILWAY_HISTORY_SYNC_ENABLED',raising=False)
+    register_history_sync(scheduler)
+    kwargs=scheduler.register_interval_job.call_args.kwargs
+    assert kwargs['seconds']==86400
+    assert 59 <= (kwargs['next_run_time']-before).total_seconds() <= 62
+    scheduler.reset_mock();monkeypatch.setenv('RAILWAY_HISTORY_SYNC_ENABLED','0')
+    register_history_sync(scheduler)
+    scheduler.register_interval_job.assert_not_called()

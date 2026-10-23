@@ -65,6 +65,17 @@ class HistoryCache:
                     'trains': db.execute('SELECT count(DISTINCT code) FROM train_version').fetchone()[0],
                     'versions': db.execute('SELECT count(*) FROM train_version').fetchone()[0]}
 
+    def projected_sequence(self):
+        with self.connect() as db:
+            row = db.execute("SELECT value FROM meta WHERE key='station_projection_sequence'").fetchone()
+            return int(row[0]) if row else 0
+
+    def mark_projected(self, sequence):
+        with self.connect() as db:
+            db.execute('''INSERT INTO meta VALUES ('station_projection_sequence', ?)
+                ON CONFLICT(key) DO UPDATE SET value =
+                max(CAST(meta.value AS INTEGER), CAST(excluded.value AS INTEGER))''', (str(sequence),))
+
     def sync(self, manifest, loader):
         if manifest.get('schema_version') != 1:
             raise ValueError('Unsupported railway feed schema')

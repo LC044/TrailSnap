@@ -7,12 +7,19 @@ logger = logging.getLogger(__name__)
 
 
 def sync_history():
-    from railway.history_cache import fetch_feed
+    from railway.history_cache import HistoryCache, fetch_feed
     try:
         from railway.initialization import wait_for_initialization
         wait_for_initialization()
-        result = fetch_feed()
+        cache = HistoryCache()
+        result = fetch_feed(cache=cache)
+        sequence = result['sequence']
+        if sequence <= cache.projected_sequence():
+            logger.debug('Railway history unchanged at sequence %s; skipping', sequence)
+            return
         project_stations()
+        # Mark only after a successful projection so interrupted updates retry.
+        cache.mark_projected(sequence)
         logger.info('Railway history synced: %s', result)
     except Exception:
         logger.warning('Railway history sync unavailable; keeping local data', exc_info=True)
