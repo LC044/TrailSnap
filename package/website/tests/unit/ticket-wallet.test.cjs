@@ -121,3 +121,29 @@ test('browser back closes only the top dialog and re-arms history after cancelli
     first.unmount(); second.unmount(); await flush(); global.window = original
   }
 })
+
+test('ticket history query uses travel date and preserves unknown GPS mileage across midnight', async () => {
+  let params;
+  const { ticketService } = load('api/ticketService.ts', { '@/utils/request': { default: { get: async (url, options) => {
+    assert.equal(url, '/api/railway/history/trains'); params = options.params;
+    return { data: { match: 'nearest', matched_date: '2026-10-01', stops: [
+      { n: 'A', a: '23:55', d: '00:05', dd: 0, accumulated_mileage: 0, raw: { running_time: '01:00' } },
+      { n: 'B', a: '01:00', d: null, dd: 1, accumulated_mileage: null, raw: { running_time: '02:05' } },
+    ] } };
+  } } } });
+  const result = await ticketService.trainSchedules('G1', '2026-10-03T12:00');
+  assert.equal(params.query_date, '2026-10-03');
+  assert.equal(result.list[1].accumulated_mileage, null);
+  assert.equal(result.list[1].running_time - result.list[0].departure_running_time, 55);
+  assert.equal(result.match, 'nearest');
+});
+
+test('ticket editor retains offline seed lookup until the first historical sync', async () => {
+  const calls=[];
+  const { ticketService } = load('api/ticketService.ts', { '@/utils/request': { default: { get: async (url) => {
+    calls.push(url);
+    return { data: url.endsWith('/history/trains') ? { history_available:false,stops:[] } : { list:[{station_name:'seed'}] } };
+  } } } });
+  assert.equal((await ticketService.trainSchedules('G1','2026-10-03')).list[0].station_name,'seed');
+  assert.equal(calls.length,2);
+});

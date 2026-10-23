@@ -42,6 +42,28 @@ async def get_schedule_info(train_code: str) -> Dict[str, Any]:
 # 计算车票里程和时间
 async def calculate_ticket_mileage_and_time(ticket: TrainTicketCreate) -> Dict[str, Any]:
     """计算车票里程和时间"""
+    # The history feed is optional: retain the bundled offline seed until first sync.
+    # Keep each lookup inside its own thread and use the actual ticket date.
+    try:
+        from railway.history_cache import HistoryCache
+        def query_history():
+            cache = HistoryCache()
+            if not cache.status()['sequence']:
+                return None
+            return cache.resolve(ticket.train_code, ticket.date_time,
+                                 ticket.departure_station, ticket.arrival_station)
+        historical = await asyncio.to_thread(query_history)
+        if historical is not None:
+            return {
+                'total_mileage': historical['distance_km'],
+                'total_time': historical['duration_minutes'],
+                'stop_stations': [dict(
+                    station_telecode=s['c'], station_name=s['n'],
+                    arrival_time=s['a'], departure_time=s['d'],
+                ) for s in historical['stops']],
+            }
+    except Exception as exc:
+        logger.warning('Historical railway lookup unavailable: %s', exc)
     total_mileage = 0
     total_time = 0
     stop_stations = []

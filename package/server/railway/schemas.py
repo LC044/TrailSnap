@@ -349,8 +349,8 @@ class TicketBatchRequest(BaseModel):
 
 class TicketStats(BaseModel):
     id: Optional[str] = Field(None, description="车票唯一标识")
-    distance_km: float = Field(0, description="旅程距离（公里）")
-    duration_minutes: int = Field(0, description="旅程时长（分钟）")
+    distance_km: Optional[float] = Field(0, description="旅程距离（公里），未知时为空")
+    duration_minutes: Optional[int] = Field(0, description="旅程时长（分钟），未知时为空")
     train_no: Optional[str] = Field(None, description="匹配到的内部车次号")
 
 class TicketBatchResponse(BaseResponse[List[TicketStats]]):
