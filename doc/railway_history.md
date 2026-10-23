@@ -103,3 +103,17 @@ TrailSnap 服务启动 60 秒后通过现有 JobScheduler 同步一次，以后�
 - [正式发布运行 39907778305](https://github.com/LC044/trailsnap-railway-history/actions/runs/39907778305) 成功，包含数据提交、不可变包、manifest 及独立 Release；当前正式 feed 序号为 1。
 - 实际使用默认 GitHub raw 地址和行影集客户端同步到独立 SQLite：首次 2 个 HTTP 请求（清单+snapshot），导入 3,398 站、15,730 车次及对应完整时刻表；再次检查仅 1 个清单请求，无数据包请求，数据库 SHA-256 前后相同。G1 按 2026-10-23 精确查询成功。
 - 本机验证证据为 tmp/railway-live-feed-validation.json。任务代码提交 ebe90d84 已推送 codex/req196-railway-history；采集仓库入口提交 c8348eb 已推送 main。行影集分支尚未合并部署，不能声称现有生产实例已启用定时任务。
+
+## 本地车站坐标同步与缺失补齐
+
+铁路 `station` 表新增可空 `latitude`、`longitude`、`coordinate_source`、`coordinate_system`、`coordinates_updated_at`，以及补齐状态、最后查询时间和下次重试时间。普通车站查询返回经纬度、来源、参考系和更新时间。同步历史包时投影最新有效 GPS，保留车站 ID 和本地资料；有效本地/天地图坐标不会被覆盖。源坐标变化可更新既有 `12306` 坐标，历史包中的过去坐标仍保留。投影模式版本升级会补做一次已有 feed 的坐标入库，无需等待 GitHub 产生新序号。
+
+铁路库与照片主库独立，启动时执行独立 Alembic 链：PostgreSQL 位于 `alembic/railway_versions/`，SQLite 位于 `alembic_sqlite/railway_versions/`，版本表为 `alembic_version_railway`。不修改主库迁移头；新库和旧库均支持幂等升级，原有站点 ID 不变。桌面构建包含迁移运行文件。
+
+缺失坐标独立于 feed 更新任务，启动后 120 秒检查，此后每小时执行。默认每批最多 50 站、45 秒预算，请求间隔 250 毫秒；`RAILWAY_COORDINATE_BATCH_SIZE` 可调整批量，`RAILWAY_COORDINATE_SYNC_ENABLED=0` 可关闭补齐。优先使用服务端环境变量 `RAILWAY_TIANDITU_KEY`，否则复用已启用管理员的天地图地图配置。无可用 Key 时跳过，不影响历史数据同步。
+
+调用天地图官方 POI 查询接口，仅接受站名规范化后精确匹配、城市一致且有效的唯一坐标；不接收行政区中心、站内店铺或含糊的多个结果。结果标记 `tianditu` / `CGCS2000`；种子坐标未确认参考系时标记 `unknown`。未找到/歧义结果七天后重试，限额、鉴权或网络错误一天后重试；限额和 Key 错误停止当前批次。凭据不写入车站数据库、feed、日志或 GitHub。
+
+成功坐标同时写入本地历史查询的坐标补充表。按历史日期计算距离时优先使用当时历史包坐标，缺失才用本地补齐值；保留 GPS 直线距离乘 1.2 的估算标识，不作为实际铁路营业里程。停用、已拆除或地图无法可靠定位的历史车站允许继续为空。
+
+2026-10-23 验证：64 项相关后端回归通过；真实 PostgreSQL 隔离 schema 中验证旧表升级和重复升级，保留原 ID。正式 feed 的 3,398 个车站投影至隔离 SQLite，其中 2,859 站自带有效 GPS；第一批真实天地图补齐查询 144 个缺失站，99 个可靠匹配入库，坐标覆盖达到 2,958 站。其余包括尚未查询、未找到和歧义结果，不宣称全量补齐。验证数据库和脱敏结果保存在本机 `tmp/coordinates-validation/`，没有修改用户运行中的铁路库。后续批次结果以 PR 验证说明为准。

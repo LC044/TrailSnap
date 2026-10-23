@@ -46,6 +46,12 @@ class StationCreate(BaseModel):
     status: int = Field(ge=0, le=1, default=1, description="状态（1=运营，0=暂停）")
 
 class StationRead(BaseSchema):
+    latitude: Optional[float] = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: Optional[float] = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    coordinate_source: Optional[str] = None
+    coordinate_system: Optional[str] = None
+    coordinates_updated_at: Optional[datetime] = None
+    coordinate_status: Optional[str] = None
     station_name: str
     station_pinyin: str
     province: Optional[str]

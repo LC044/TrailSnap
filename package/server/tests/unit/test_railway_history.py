@@ -37,7 +37,8 @@ def feed(sequence, rows, previous=None):
 
 
 @pytest.fixture
-def initial(tmp_path):
+def initial(tmp_path, monkeypatch):
+    monkeypatch.setenv('RAILWAY_DB_URL','sqlite:///:memory:')
     cache=HistoryCache(tmp_path/'history.sqlite')
     rows={'station:AAA':station('AAA','新站',39.9,116.4,'旧站'),
           'station:BBB':station('BBB','终点',31.2,121.5),
@@ -235,5 +236,6 @@ def test_history_sync_registers_daily_with_startup_check_and_can_be_disabled(mon
     assert kwargs['seconds']==86400
     assert 59 <= (kwargs['next_run_time']-before).total_seconds() <= 62
     scheduler.reset_mock();monkeypatch.setenv('RAILWAY_HISTORY_SYNC_ENABLED','0')
+    monkeypatch.setenv('RAILWAY_COORDINATE_SYNC_ENABLED','0')
     register_history_sync(scheduler)
     scheduler.register_interval_job.assert_not_called()

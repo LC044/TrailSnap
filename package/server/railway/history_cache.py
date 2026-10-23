@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import date
 from urllib.request import urlopen
 
@@ -39,6 +39,9 @@ class HistoryCache:
                 CREATE TABLE IF NOT EXISTS observation (code TEXT NOT NULL, day TEXT NOT NULL, hash TEXT NOT NULL,
                     PRIMARY KEY(code, day, hash));
                 CREATE INDEX IF NOT EXISTS observation_code_day ON observation(code, day);
+                CREATE TABLE IF NOT EXISTS local_coordinates (code TEXT PRIMARY KEY,
+                    latitude REAL NOT NULL, longitude REAL NOT NULL, source TEXT,
+                    system TEXT, updated_at TEXT);
             ''')
 
     @contextmanager
@@ -67,14 +70,37 @@ class HistoryCache:
 
     def projected_sequence(self):
         with self.connect() as db:
+            schema = db.execute("SELECT value FROM meta WHERE key='station_projection_schema'").fetchone()
+            if not schema or schema[0] != '2':
+                return 0
             row = db.execute("SELECT value FROM meta WHERE key='station_projection_sequence'").fetchone()
             return int(row[0]) if row else 0
 
     def mark_projected(self, sequence):
         with self.connect() as db:
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('station_projection_schema', '2')")
             db.execute('''INSERT INTO meta VALUES ('station_projection_sequence', ?)
                 ON CONFLICT(key) DO UPDATE SET value =
                 max(CAST(meta.value AS INTEGER), CAST(excluded.value AS INTEGER))''', (str(sequence),))
+
+    def store_coordinates(self, code, latitude, longitude, source, system, updated_at=None, *, connection=None):
+        from railway.coordinates import valid_coordinates
+        coordinates = valid_coordinates(latitude, longitude)
+        if coordinates is None:
+            raise ValueError('Invalid station coordinates')
+        with (self.connect() if connection is None else nullcontext(connection)) as db:
+            db.execute('''INSERT INTO local_coordinates VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(code) DO UPDATE SET latitude=excluded.latitude, longitude=excluded.longitude,
+                    source=excluded.source, system=excluded.system, updated_at=excluded.updated_at
+                WHERE latitude IS NOT excluded.latitude OR longitude IS NOT excluded.longitude
+                    OR source IS NOT excluded.source OR system IS NOT excluded.system
+                    OR updated_at IS NOT excluded.updated_at''',
+                       (code, *coordinates, source, system, str(updated_at) if updated_at else None))
+
+    def local_coordinates(self, code):
+        with self.connect() as db:
+            row = db.execute('SELECT latitude, longitude FROM local_coordinates WHERE code=?', (code,)).fetchone()
+            return tuple(row) if row else None
 
     def sync(self, manifest, loader):
         if manifest.get('schema_version') != 1:
@@ -155,25 +181,20 @@ class HistoryCache:
         return rows[0] if len(rows) == 1 else None
 
     def distance(self, first, second, day=None):
+        from railway.coordinates import valid_coordinates
         def coord(station):
             if not station:
                 return None
             versions = station.get('versions') or []
             if not versions:
-                return None
+                return self.local_coordinates(station['telecode'])
             if day:
                 selected = min(versions, key=lambda v: (min(abs((date.fromisoformat(day)-date.fromisoformat(v[k])).days) for k in ('first','last')), v['first']))
             else:
                 selected = versions[-1]
             gps = selected['data'].get('gps') or {}
-            try:
-                lat, lng = float(gps['latitude']), float(gps.get('longitude', gps.get('longitute')))
-                if not math.isfinite(lat) or not math.isfinite(lng) or not -90<=lat<=90 or not -180<=lng<=180 or (lat == 0 and lng == 0):
-                    return None
-                return lat, lng
-            except (KeyError, TypeError, ValueError):
-                return None
-        a, b = coord(self._station(first)), coord(self._station(second))
+            return valid_coordinates(gps.get('latitude'), gps.get('longitude', gps.get('longitute'))) or self.local_coordinates(station['telecode'])
+        a, b = coord(self._station(first)) or self.local_coordinates(first), coord(self._station(second)) or self.local_coordinates(second)
         if a is None or b is None:
             return None
         lat1, lng1, lat2, lng2 = map(math.radians, (*a, *b))
