@@ -280,8 +280,9 @@ const formId = `ticket-editor-${props.type}`,
 const stations = ref<
   Array<{
     station_name: string;
-    accumulated_mileage: number;
-    running_time: number;
+    accumulated_mileage: number | null;
+    running_time: number | null;
+    departure_running_time?: number | null;
     sequence: number;
   }>
 >([]);
@@ -337,16 +338,21 @@ watch(
         (station) => station.station_name === form.value.to,
       );
     if (from && to && from.sequence < to.sequence) {
-      form.value.distance = Math.max(
+      if (to.accumulated_mileage !== null && from.accumulated_mileage !== null) form.value.distance = Math.max(
         0,
         to.accumulated_mileage - from.accumulated_mileage,
       );
-      form.value.totalRunningTime = Math.max(
+      const departureTime = from.departure_running_time ?? from.running_time;
+      if (to.running_time !== null && departureTime !== null) form.value.totalRunningTime = Math.max(
         0,
-        to.running_time - from.running_time,
+        to.running_time - departureTime,
       );
     }
   },
+);
+watch(
+  () => [form.value.code, form.value.dateTime.slice(0, 10)],
+  () => { stations.value = []; scheduleMessage.value = ""; },
 );
 async function confirmExit() {
   if (props.saving || recognizing.value) return false;
@@ -457,14 +463,17 @@ async function recognize(event: Event) {
 }
 async function loadSchedules() {
   const code = form.value.code,
+    day = form.value.dateTime.slice(0, 10),
     request = generation;
   schedulesLoading.value = true;
   try {
-    const result = await ticketService.trainSchedules(code);
-    if (request !== generation || code !== form.value.code) return;
+    const result = await ticketService.trainSchedules(code, day);
+    if (request !== generation || code !== form.value.code || day !== form.value.dateTime.slice(0, 10)) return;
     stations.value = result.list || [];
     scheduleMessage.value = stations.value.length
-      ? "选择站点后自动计算里程和时长"
+      ? ('match' in result && result.match === 'nearest'
+        ? `使用 ${result.matched_date} 最近记录；里程为 GPS 估算`
+        : 'match' in result ? "选择站点后计算时长；里程为 GPS 估算" : "选择站点后自动计算里程和时长")
       : "没有找到时刻表，可手动填写";
   } catch {
     scheduleMessage.value = "查询失败，可手动填写";

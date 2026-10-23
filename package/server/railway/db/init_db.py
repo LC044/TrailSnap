@@ -15,6 +15,8 @@ from railway.db.base import Base
 
 def init_models():
     Base.metadata.create_all(bind=engine)
+    from railway.db.migrations import upgrade_railway_schema
+    upgrade_railway_schema(engine)
     print("✅ 数据库初始化完成")
 
 if __name__ == "__main__":
