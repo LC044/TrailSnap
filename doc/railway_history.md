@@ -92,3 +92,14 @@ TrailSnap 服务启动 60 秒后通过现有 JobScheduler 同步一次，以后�
 上述为 GitHub 实时采集样本验证，测试数据在隔离 artifact 中，不覆盖正式 data/ 或发布正式 Release。本次没有重新启动数小时的全国全量采集。仓库已有 2026-10-23 的全量基线 Release；完整发布链路与定时运行仍需正式全量任务继续验收。
 
 需求平台 REQ-196 的旧交付任务处于 changes_requested，start/claim 均返回“当前没有可领取的交付任务”，本次没有伪造租约或覆盖旧执行。代码提交和 GitHub 验证事实保存在本文与 automation memory 中，平台任务待恢复可领取状态后再上报正式交付结果。
+
+## 行影集定时检查与无更新跳过验收（2026-10-23）
+
+- 启动后 60 秒检查一次，之后默认每 86,400 秒检查；RAILWAY_HISTORY_SYNC_SECONDS 可调整，最低 3,600 秒。
+- 每次只先读 GitHub manifest.json，比对本地 sequence。相同序号跳过压缩包下载与历史导入；已完成车站查询投影时，也跳过关系库写入。
+- 车站投影完成后才记录 station_projection_sequence；下载导入成功但投影中断时，下次仍会补做投影，不能因为游标已推进就永久漏更新。
+- 新增 3 项调度/跳过/中断恢复测试，干净提交工作区 58 项相关后端回归通过。采集器 7 项测试和 TypeScript 检查通过。
+- 原来正式 data/feed/manifest.json 缺失，已补充 publish_existing 工作流入口，转换现有完整基线，保留原始运行日期和状态。发布不重新声明全国采集已完成，也不重新发起数小时网络抓取。
+- [正式发布运行 39907778305](https://github.com/LC044/trailsnap-railway-history/actions/runs/39907778305) 成功，包含数据提交、不可变包、manifest 及独立 Release；当前正式 feed 序号为 1。
+- 实际使用默认 GitHub raw 地址和行影集客户端同步到独立 SQLite：首次 2 个 HTTP 请求（清单+snapshot），导入 3,398 站、15,730 车次及对应完整时刻表；再次检查仅 1 个清单请求，无数据包请求，数据库 SHA-256 前后相同。G1 按 2026-10-23 精确查询成功。
+- 本机验证证据为 tmp/railway-live-feed-validation.json。任务代码提交 ebe90d84 已推送 codex/req196-railway-history；采集仓库入口提交 c8348eb 已推送 main。行影集分支尚未合并部署，不能声称现有生产实例已启用定时任务。
