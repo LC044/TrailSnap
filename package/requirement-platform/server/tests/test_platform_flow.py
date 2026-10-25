@@ -631,13 +631,14 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
                 "number": 321, "title": "feat: 完成 Webhook 状态同步", "body": "Closes #99993",
                 "html_url": "https://github.com/LC044/TrailSnap/pull/321", "state": "closed",
                 "draft": False, "merged": True, "merged_at": "2026-09-10T01:00:00Z",
+                "base": {"ref": "master", "repo": {"full_name": "LC044/TrailSnap"}},
                 "updated_at": "2026-09-10T01:00:00Z",
             },
             "sender": {"id": 123456789, "login": "octocat"},
         })
         assert merged.status_code == 200, merged.text
         detail = client.get(f"/api/requirements/{created['id']}").json()["data"]
-        assert detail["status"] == "pending_review"
+        assert detail["status"] == "closed"
         assert detail["github_pull_requests"] == [{
             "number": 321, "title": "feat: 完成 Webhook 状态同步",
             "url": "https://github.com/LC044/TrailSnap/pull/321", "state": "merged",
@@ -648,8 +649,8 @@ def test_github_webhook_updates_platform_status_with_actor_and_history(monkeypat
         try:
             assert jobs.query(BackgroundJob).filter(
                 BackgroundJob.object_id == created["id"],
-                BackgroundJob.idempotency_key == f"github_issue:{created['id']}:pr-merged:delivery-pr-merged",
-            ).count() == 0
+                BackgroundJob.idempotency_key.like(f"github_issue:{created['id']}:pr-merged:321:%"),
+            ).count() == 1
         finally:
             jobs.close()
 
@@ -1529,3 +1530,184 @@ def test_triage_ai_retries_after_invalid_output(monkeypatch):
     assert len(calls) == 2
     assert "未通过结构校验" in calls[1][-1]["content"]
     assert "所有面向用户的文字必须使用简体中文" in calls[0][0]["content"]
+
+
+@pytest.fixture
+def github_sync_db():
+    from sqlalchemy import create_engine, event
+    from sqlalchemy.orm import Session
+    from requirement_platform.db import Base
+    from requirement_platform.models import User
+    isolated = create_engine('sqlite://')
+    @event.listens_for(isolated, 'connect')
+    def foreign_keys(connection, _record):
+        connection.execute('PRAGMA foreign_keys=ON')
+    Base.metadata.create_all(isolated)
+    with Session(isolated) as db:
+        db.add(User(id='sync-owner', username='sync-owner', email='sync@example.com', password_hash='unused', role='owner'))
+        db.commit()
+        yield db
+    isolated.dispose()
+
+
+def sync_requirement(db, **kwargs):
+    row = Requirement(type='bug', title='PR sync regression', description='Preserve merged facts',
+                      created_by='sync-owner', **kwargs)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def sync_pr(**kwargs):
+    return {'number': 700, 'html_url': 'https://github.com/LC044/TrailSnap/pull/700',
+            'body': 'Closes #600', 'state': 'closed', 'merged': True,
+            'merged_at': '2026-10-25T00:00:00Z', 'head': {'sha': 'b' * 40},
+            'base': {'ref': 'master', 'sha': 'a' * 40, 'repo': {'full_name': 'LC044/TrailSnap'}}, **kwargs}
+
+
+def approved_sync_spec(db, row, monkeypatch):
+    from requirement_platform.delivery import create_spec, approve_spec
+    from requirement_platform.schemas import RequirementSpecContent
+    monkeypatch.setattr(GitHubClient, 'get_branch_sha', lambda *_: 'a' * 40)
+    spec = create_spec(db, row, RequirementSpecContent.model_validate(_spec_content()), 'sync-owner', row.state_version)
+    return approve_spec(db, spec, 'sync-owner', spec.state_version)
+
+
+@pytest.mark.parametrize('visibility,queued', [('public', 1), ('private', 0)])
+def test_approved_spec_creates_issue_only_for_public(github_sync_db, monkeypatch, visibility, queued):
+    from requirement_platform.services import sync_requirement_issue
+    db = github_sync_db
+    row = sync_requirement(db, visibility=visibility)
+    approved_sync_spec(db, row, monkeypatch)
+    assert row.status == 'accepted'
+    assert db.query(BackgroundJob).filter_by(job_type='github_issue', object_id=row.id).count() == queued
+    calls = []
+    def create(_client, requirement):
+        calls.append(requirement.id)
+        return {'number': 600, 'html_url': 'https://github.com/LC044/TrailSnap/issues/600', 'state': 'open'}
+    monkeypatch.setattr(GitHubClient, 'create_issue', create)
+    if visibility == 'private':
+        with pytest.raises(ValueError, match='Private'):
+            sync_requirement_issue(db, row.id)
+        assert calls == []
+    else:
+        sync_requirement_issue(db, row.id)
+        assert row.github_issue_number == 600
+        assert calls == [row.id]
+
+
+@pytest.mark.parametrize('status', ['accepted', 'merged', 'closed', 'released', 'rejected', 'duplicate', 'withdrawn'])
+def test_merged_pr_closes_once_and_preserves_terminal_states(github_sync_db, status):
+    from requirement_platform.github_sync import apply_pull_request, TERMINAL_STATUSES
+    db = github_sync_db
+    row = sync_requirement(db, status=status, github_issue_number=600)
+    before = row.state_version
+    count = apply_pull_request(db, sync_pr(), source='test')
+    assert row.status == (status if status in TERMINAL_STATUSES else 'closed')
+    assert count == (0 if status in TERMINAL_STATUSES else 1)
+    assert row.state_version == before + count
+    assert apply_pull_request(db, sync_pr(), source='test-retry') == 0
+    assert db.query(BackgroundJob).filter_by(job_type='github_issue').count() == count
+    assert len(row.github_pull_requests) == 1
+
+
+@pytest.mark.parametrize('changes', [
+    {'base': {'ref': 'develop', 'repo': {'full_name': 'LC044/TrailSnap'}}},
+    {'base': {'ref': 'master', 'repo': {'full_name': 'other/TrailSnap'}}},
+    {'base': {}},
+    {'body': 'Closes other/TrailSnap#600'},
+    {'merged': False, 'merged_at': None},
+])
+def test_untrusted_or_unmerged_pr_does_not_close(github_sync_db, changes):
+    from requirement_platform.github_sync import apply_pull_request
+    db = github_sync_db
+    row = sync_requirement(db, status='accepted', github_issue_number=600)
+    assert apply_pull_request(db, sync_pr(**changes), source='test') == 0
+    assert row.status == 'accepted'
+
+
+def test_deleted_requirement_not_closed(github_sync_db):
+    from requirement_platform.github_sync import apply_pull_request
+    row = sync_requirement(github_sync_db, status='accepted', github_issue_number=600,
+                           deleted_at=datetime.now(timezone.utc))
+    assert apply_pull_request(github_sync_db, sync_pr(), source='test') == 0
+    assert row.status == 'accepted'
+
+
+@pytest.mark.parametrize('already_merged', [True, False])
+def test_pr_link_applies_remote_merge_state(github_sync_db, monkeypatch, already_merged):
+    from requirement_platform.delivery import create_delivery_task, link_pull_request
+    from requirement_platform.github_sync import apply_pull_request
+    db = github_sync_db
+    row = sync_requirement(db)
+    spec = approved_sync_spec(db, row, monkeypatch)
+    task = create_delivery_task(db, spec, 'sync-owner', risk_level='low', budget={}, dependency_ids=[])
+    task.state = 'implementing'
+    remote = sync_pr(body='', merged=already_merged, merged_at='2026-10-25T00:00:00Z' if already_merged else None,
+                     state='closed' if already_merged else 'open')
+    monkeypatch.setattr(GitHubClient, 'get_pull_request', lambda *_: remote)
+    linked = link_pull_request(db, task, number=700, url=remote['html_url'], head_sha='b' * 40,
+                              base_sha='a' * 40, covered_ids=['AC-01'], expected_state_version=task.state_version)
+    assert linked.state == ('merged' if already_merged else 'open')
+    assert task.state == ('merged' if already_merged else 'pr_open')
+    assert row.status == ('closed' if already_merged else 'accepted')
+    assert len(row.github_pull_requests) == 1
+    # The explicit task link works even without an Issue or a closing keyword.
+    apply_pull_request(db, sync_pr(body=''), source='test-webhook')
+    assert task.state == 'merged'
+    assert row.status == 'closed'
+    version = task.state_version
+    apply_pull_request(db, sync_pr(body=''), source='test-webhook-retry')
+    assert task.state_version == version
+
+
+def test_reconciliation_catches_missing_webhook_and_retries(github_sync_db, monkeypatch):
+    from requirement_platform.github_sync import reconcile_pull_requests
+    db = github_sync_db
+    row = sync_requirement(db, status='accepted', github_issue_number=600)
+    db.commit()
+    def failing(_client):
+        yield sync_pr()
+        raise RuntimeError('GitHub unavailable')
+    monkeypatch.setattr(GitHubClient, 'iter_closed_pull_requests', failing)
+    with pytest.raises(RuntimeError):
+        reconcile_pull_requests(db, 'LC044/TrailSnap')
+    db.rollback()
+    assert row.status == 'accepted'
+    monkeypatch.setattr(GitHubClient, 'iter_closed_pull_requests', lambda _: iter([sync_pr()]))
+    reconcile_pull_requests(db, 'LC044/TrailSnap')
+    db.commit()
+    assert row.status == 'closed'
+    version = row.state_version
+    reconcile_pull_requests(db, 'LC044/TrailSnap')
+    assert row.state_version == version
+
+
+def test_reconciliation_schedule_and_pagination(github_sync_db, monkeypatch):
+    from types import SimpleNamespace
+    from requirement_platform import github_sync
+    db = github_sync_db
+    monkeypatch.setattr(github_sync, 'settings', SimpleNamespace(github_token='configured', github_repo='LC044/TrailSnap'))
+    github_sync.schedule_pull_request_reconciliation(db)
+    github_sync.schedule_pull_request_reconciliation(db)
+    assert db.query(BackgroundJob).filter_by(job_type='github_pull_requests').count() == 1
+    pages = []
+    def request(_self, method, path, **kwargs):
+        page = kwargs['params']['page']
+        pages.append(page)
+        return [sync_pr(number=i) for i in range(100)] if page == 1 else [sync_pr(number=101)]
+    monkeypatch.setattr(GitHubClient, '_request', request)
+    assert len(list(GitHubClient().iter_closed_pull_requests())) == 101
+    assert pages == [1, 2]
+
+
+def test_delayed_open_event_does_not_undo_merge(github_sync_db):
+    from requirement_platform.github_sync import apply_pull_request
+    db = github_sync_db
+    row = sync_requirement(db, status='accepted', github_issue_number=600)
+    apply_pull_request(db, sync_pr(), source='merged')
+    version = row.state_version
+    apply_pull_request(db, sync_pr(state='open', merged=False, merged_at=None, body=''), source='delayed-open')
+    assert row.status == 'closed'
+    assert row.state_version == version
+    assert row.github_pull_requests[0]['state'] == 'merged'

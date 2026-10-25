@@ -22,6 +22,7 @@ from .models import (
 )
 from .schemas import RequirementSpecContent
 from .services import GitHubClient
+from .integrations.github import pull_request_summary
 from .domain.common import audit, enqueue
 
 
@@ -180,7 +181,7 @@ def approve_spec(db: Session, spec: RequirementSpec, actor_id: str, expected_sta
     spec.status, spec.approved_by, spec.approved_at = "approved", actor_id, now
     spec.state_version += 1
     requirement_transition(db, requirement, "accepted", actor_id=actor_id, reason=f"规格 v{spec.revision} 已批准", source="spec_approval")
-    if requirement.github_issue_number:
+    if requirement.github_issue_number or requirement.visibility == "public":
         enqueue(db, "github_issue", requirement.id, f"github_issue:{requirement.id}:spec-approved:{spec.id}")
     _event(db, "spec.approved", "spec", spec.id, spec.state_version, source=source,
            payload={"base_sha": base_sha, "sha_source": sha_source, "content_hash": spec.content_hash})
@@ -517,11 +518,15 @@ def link_pull_request(db: Session, task: DeliveryTask, *, number: int, url: str,
         raise DomainConflict("该 PR 已关联其他交付任务")
     row = existing or PullRequestLink(task_id=task.id, repository=task.repository, pull_request_number=number,
                                       url=url, head_sha=head_sha.lower(), base_sha=base_sha.lower())
-    row.covered_acceptance_ids, row.state = covered_ids, "open"
+    row.covered_acceptance_ids = covered_ids
+    row.state = pull_request_summary(remote)["state"]
     db.add(row)
     task.state, task.state_version = "pr_open", task.state_version + 1
     _event(db, "pr.linked", "delivery_task", task.id, task.state_version, source="mcp",
            payload={"number": number, "head_sha": head_sha, "base_sha": base_sha})
+    from .github_sync import apply_pull_request
+    db.flush()
+    apply_pull_request(db, remote, source="github_pr_link")
     return row
 
 
