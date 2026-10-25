@@ -391,6 +391,15 @@ test.describe.serial('P1 - 位置相册', () => {
     await gotoRetry(page, '/album/location')
     if (!(await waitForLocationRoute(page, testInfo))) return
     await switchToSceneLevel(page)
+    // 景区过滤默认是「已打卡」(locationStore 持久化 trailsnap-location-filter-status,
+    // 默认值 'checked')，只有 photo_count > 0 的景区才会进网格。景区有没有照片
+    // 取决于 fixture 照片是否被 EXIF 归到景区上：没有照片时「已打卡」视图是空的，
+    // 卡片永远不会出现，但断言本身没错。切到「全部」让网格不依赖过滤态，
+    // 只要存在景区就一定有卡片 —— 与 2.4.11 用同一组按钮。
+    const allFilterBtn = desktopFilterButton(page, '全部')
+    await expect(allFilterBtn).toBeVisible({ timeout: 10_000 })
+    await allFilterBtn.click()
+
 
     // 等至少一张景区卡片出现
     const card = locationGridCard(page).first()
