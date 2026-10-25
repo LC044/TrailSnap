@@ -5,7 +5,7 @@ import path from 'node:path'
 import type { APIRequestContext } from '@playwright/test'
 
 import { e2eEnv } from '../../../playwright/e2e-env'
-import { waitForTasksToSettle } from '../../../e2e-system/helpers/task-poller'
+import { configurePreparationTasks, waitForTasksToSettle } from '../../../e2e-system/helpers/task-poller'
 
 export type PhotoFixtureBucket = 'smoke' | 'p0'
 type FixtureReadySuite = typeof e2eEnv.suite
@@ -239,7 +239,6 @@ async function triggerScanAndWait(
   serverDirectory: string,
   waitProgressMs: number,
 ): Promise<void> {
-  const startedAt = new Date().toISOString()
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
@@ -262,8 +261,7 @@ async function triggerScanAndWait(
   const taskBody = await createResponse.json() as TaskSchema | { data?: TaskSchema }
   const task: TaskSchema = (taskBody as { data?: TaskSchema }).data ?? (taskBody as TaskSchema)
   await waitForTasksToSettle(request, token, {
-    progressQuietWindowMs: waitProgressMs,
-    updatedSince: startedAt,
+    timeoutMs: waitProgressMs,
     taskId: task.id,
     tasksUrl: `${e2eEnv.apiBaseUrl}/tasks/`,
   })
@@ -273,6 +271,7 @@ async function waitForImportedPhotos(
   request: APIRequestContext,
   token: string,
   timeoutMs: number,
+  serverDirectory: string,
 ): Promise<void> {
   const startedAt = Date.now()
   const headers = {
@@ -286,6 +285,7 @@ async function waitForImportedPhotos(
       params: {
         skip: 0,
         limit: 1,
+        folder: serverDirectory,
       },
     })
 
@@ -389,12 +389,12 @@ export async function preparePhotoFixtures(
         deleteState(statePath)
       }
 
-      // 记录加目录前的时间戳：POST /settings/directories 会在添加目录时自动触发一次
-      // SCAN_FOLDER（扫描所有 external 目录）。我们只能等这次扫描，不能再额外建第二个
+      // POST /settings/directories 会自动触发一次 SCAN_FOLDER。
+      // 我们只等待这次扫描，不能再额外建第二个
       // 扫描任务——两个 scope 重叠的 SCAN_FOLDER 会被 IO consumer 并发执行，而扫描去重
       // 仅靠查库内已有 file_path，并发时双方都查到「不存在」→ 同一文件各插一条 Photo →
       // 相册里同一张照片出现两份。
-      const scanStartedAt = new Date().toISOString()
+      await configurePreparationTasks(request, options.token, `${e2eEnv.apiBaseUrl}/tasks/`)
       const addedByTest = await ensureDirectoryConfigured(request, options.token, directories.serverDirectory)
       if (addedByTest) {
         writeCleanupMarker(cleanupPath, {
@@ -404,12 +404,11 @@ export async function preparePhotoFixtures(
         })
       }
 
-      const waitMs = options.timeoutMs ?? 15_000
+      const waitMs = options.timeoutMs ?? 5 * 60_000
       if (addedByTest) {
         // 目录是本次新增的：POST 已经排了一个 SCAN_FOLDER，只等任务跑完，不再重复触发。
         await waitForTasksToSettle(request, options.token, {
-          progressQuietWindowMs: waitMs,
-          updatedSince: scanStartedAt,
+          timeoutMs: waitMs,
           tasksUrl: `${e2eEnv.apiBaseUrl}/tasks/`,
         })
       } else {
@@ -420,6 +419,7 @@ export async function preparePhotoFixtures(
         request,
         options.token,
         Math.min(waitMs, 2 * 60 * 1000),
+        directories.serverDirectory,
       )
 
       const successState = {

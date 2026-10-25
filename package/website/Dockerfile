@@ -12,9 +12,9 @@ COPY ./patches ./patches
 RUN corepack enable
 RUN corepack prepare pnpm@10.18.3 --activate
 
-# 再复制项目文件
-COPY . .
 RUN pnpm install --frozen-lockfile --verbose
+# 源码变化不使依赖安装层失效
+COPY . .
 # 构建生产版本（会生成dist目录）
 RUN pnpm run build
 

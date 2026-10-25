@@ -31,7 +31,6 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
       json: { code: 0, msg: 'success', data: { total: 1, retention_days: 7 } },
     }));
     await page.goto('/recycle-bin');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     const enterBtn = page.getByRole('button', { name: '选择照片', exact: true });
     await expect(enterBtn).toBeVisible({ timeout: 8_000 });
@@ -110,7 +109,6 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
     });
 
     await page.goto('/recycle-bin');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // 模板里的「回收站为空」文本可见
     await expect(page.getByText('回收站为空')).toBeVisible({ timeout: 8_000 });
@@ -136,7 +134,6 @@ test.describe('P1 - 回收站深层 @recycle-bin', () => {
     });
 
     await page.goto('/recycle-bin');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // 「天数」剩余 token 出现在 photo overlay 上 —— 宽泛正则匹配
     await expect(page.locator('text=/\\d+天/').first()).toBeVisible({ timeout: 8_000 });

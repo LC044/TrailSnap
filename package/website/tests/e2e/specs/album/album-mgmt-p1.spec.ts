@@ -53,7 +53,6 @@ async function listAlbums(request: APIRequestContext, token: string): Promise<Al
   return Array.isArray(body) ? body : body.data ?? []
 }
 
-
 async function findAlbumByName(request: APIRequestContext, name: string, token: string): Promise<AlbumSummary | null> {
   const all = await listAlbums(request, token)
   return all.find((a) => a.name === name) ?? null
@@ -324,27 +323,30 @@ test.describe('P1 - 相册管理', () => {
       threshold: 0.25,
     }, authToken)
 
-    // 轮询任务状态（最多 30s）
-    let finalStatus: string | null = null
-    for (let i = 0; i < 15; i += 1) {
-      await page.waitForTimeout(2_000)
-      const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/?type=SCAN_ALBUM&limit=50`, {
+    try {
+      // Completed jobs are deleted from /tasks/. Explicitly enqueue (or reuse)
+      // a sync job so we can track its ID through the detail endpoint, whose
+      // contract reports completed after a successful job row is removed.
+      const response = await request.post(`${e2eEnv.apiBaseUrl}/tasks/`, {
         headers: authHeaders(authToken),
+        data: { type: 'SCAN_ALBUM', payload: { album_id: created.id } },
       })
-      if (!res.ok()) continue
-      const body = (await res.json()) as Array<{ payload?: { album_id?: string }; status: string }> | BaseResponse<Array<{ payload?: { album_id?: string }; status: string }>>
-      const tasks = (Array.isArray(body) ? body : body.data) ?? []
-      const mine = tasks.find((t) => t.payload?.album_id === created.id)
-      if (mine && (mine.status === 'completed' || mine.status === 'cancelled' || mine.status === 'failed')) {
-        finalStatus = mine.status
-        break
-      }
+      expect(response.ok()).toBeTruthy()
+      const body = await response.json()
+      expect(body.code).toBe(0)
+      const taskId = body.data.id
+      expect(taskId).toBeTruthy()
+      await expect.poll(async () => {
+        const result = await request.get(`${e2eEnv.apiBaseUrl}/tasks/${taskId}`, { headers: authHeaders(authToken) })
+        expect(result.ok()).toBeTruthy()
+        const task = await result.json()
+        expect(task.code).toBe(0)
+        expect(task.data.status, task.data.error ?? 'SCAN_ALBUM failed').not.toBe('failed')
+        return task.data.status
+      }, { timeout: 30_000, intervals: [200, 500, 1_000] }).toMatch(/^(completed|cancelled)$/)
+    } finally {
+      await deleteAlbumById(request, created.id, authToken)
     }
-    // 不强制 completed（可能因为无匹配照片被 cancelled，或 failed），但任务必须存在过
-    expect(finalStatus !== null || true).toBeTruthy() // 弱断言：只要 SCAN_ALBUM 类型任务存在
-
-    // 清理
-    await deleteAlbumById(request, created.id, authToken)
   }, 60_000)
 
   test('2.2.9 AlbumSelector 对话框 - Lightbox 中可调起', async ({ page, request }, testInfo) => {

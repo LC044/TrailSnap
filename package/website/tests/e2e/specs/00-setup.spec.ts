@@ -57,7 +57,7 @@ test.describe('Test Environment Setup @setup', () => {
     test.setTimeout(180_000); // Allow up to 3 minutes for scanning tasks to complete
     
     // Set up a listener or polling mechanism if you want progress output
-    // Note: The preparePhotoFixturesForSuite already does quiet polling internally via waitForTasksToSettle
+    // Preparation checks completed scans and drained prerequisite task queues.
     const fixtureReady = await preparePhotoFixturesForSuite(request, access_token, e2eEnv.suite, {
       onUnavailable: 'throw',
     });

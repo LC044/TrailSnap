@@ -57,10 +57,8 @@ async function waitForLocationRoute(
   page: Page,
   testInfo: { skip(condition: boolean, ...args: unknown[]): void },
 ): Promise<boolean> {
-  // 先等到路由守卫跑完（异步 store 初始化 + 路由判断）
-  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
-  // 再给 SPA 一点点时间做最后的导航修正
-  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/\/album\/location(?:[/?]|$)/)
+  await expect(page.getByRole('heading', { name: '位置', exact: true })).toBeVisible()
 
   const url = page.url()
   if (/\/album\/location(?:\?|$|\/)/.test(url)) {
