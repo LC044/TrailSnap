@@ -285,7 +285,9 @@ async function waitForImportedPhotos(
       params: {
         skip: 0,
         limit: 1,
-        folder: serverDirectory,
+        // The folder API accepts POSIX absolute paths or relative components.
+        // A Windows drive path is matched by its full relative components.
+        folder: serverDirectory.replace(/^[a-zA-Z]:[\\/]/, '').replaceAll('\\', '/'),
       },
     })
 
