@@ -58,6 +58,7 @@ def test_complete_build_changes_with_ai_and_rejects_mixed_versions(tmp_path):
     first=stage()
     manifest=json.loads((tmp_path/'installed/app'/first/'manifest.json').read_text())
     assert manifest['bundledAI'] is True
+    assert manifest['minLauncherVersion'] == 2
     assert not (tmp_path/'installed/app'/first/'ai-extensions.json').exists()
     (ai/'trailsnap-ai.exe').write_bytes(b'changed AI')
     assert stage() != first

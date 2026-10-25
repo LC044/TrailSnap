@@ -299,7 +299,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         else:
             from app.core.config_manager import VERSION
             manifest = {"schemaVersion":1,"version":VERSION,"buildId":VERSION+"-"+file_hash(program/"trailsnap-desktop.exe")[:12],
-                        "platform":"windows-"+("aarch64" if __import__('platform').machine().lower() in {"arm64","aarch64"} else "x86_64"),"minLauncherVersion":1,"executable":"trailsnap-desktop.exe"}
+                        "platform":"windows-"+("aarch64" if __import__('platform').machine().lower() in {"arm64","aarch64"} else "x86_64"),"minLauncherVersion":2,"executable":"trailsnap-desktop.exe"}
         build = manifest["buildId"]
         if Path(build).name != build or ":" in build or build in {".",".."}: raise ValueError("程序版本标识无效")
         report_progress("program")
@@ -308,7 +308,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         # Installation and data historically can share a directory. Copy only
         # program resources rather than nesting another copy of the photo library.
         for entry in program.iterdir():
-            if entry.name in {"server", "resources", "webview-runtime"} and entry.is_dir():
+            if entry.name in {"server", "ai", "resources", "webview-runtime"} and entry.is_dir():
                 shutil.copytree(filesystem_path(entry), filesystem_path(destination / entry.name))
             elif entry.is_file() and (entry.name in {"trailsnap-desktop.exe", "portable-launcher.exe", "ai-extensions.json"} or entry.suffix.lower() == ".dll"):
                 shutil.copy2(filesystem_path(entry), filesystem_path(destination / entry.name))

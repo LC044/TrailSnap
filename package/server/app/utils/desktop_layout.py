@@ -55,7 +55,7 @@ def stage_program(root: Path, program: Path, server: Path, launcher: Path, catal
                 digest.update(chunk)
     build = f'{version}-{digest.hexdigest()[:16]}'
     manifest = {'schemaVersion': 1, 'version': version, 'buildId': build,
-                'bundledAI': ai is not None, 'platform': f'windows-{arch}', 'minLauncherVersion': 1, 'executable': 'trailsnap-desktop.exe'}
+                'bundledAI': ai is not None, 'platform': f'windows-{arch}', 'minLauncherVersion': 2, 'executable': 'trailsnap-desktop.exe'}
     app = root / 'app'
     app.mkdir(parents=True, exist_ok=True)
     target = app / build

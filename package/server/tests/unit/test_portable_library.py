@@ -304,6 +304,8 @@ def test_conversion_closes_database_pool_before_publishing_directory(tmp_path, m
                    (str(uuid.uuid4()), "desktop-admin", "desktop@trailsnap.app", "hash", "{}"))
     for path in (program / "trailsnap-desktop.exe", program / "server/trailsnap-server.exe", program / "launcher.exe"):
         path.write_bytes(b"program-fixture")
+    (program / "ai").mkdir()
+    (program / "ai/trailsnap-ai.exe").write_bytes(b"bundled-ai-fixture")
     # Cover an installer placed over its former data root: the new instance's
     # userdata and programs must not become nested copies inside the old library.
     (source / 'userdata/webview').mkdir(parents=True)
@@ -323,6 +325,8 @@ def test_conversion_closes_database_pool_before_publishing_directory(tmp_path, m
     assert not (target / 'userdata/instance.json').exists()
     assert (source / 'userdata/.instance.lock').read_bytes() == b'live lock'
     assert next((target / "app").glob("*/portable-launcher.exe")).read_bytes() == b"program-fixture"
+    assert next((target / "app").glob("*/ai/trailsnap-ai.exe")).read_bytes() == b"bundled-ai-fixture"
+    assert json.loads(next((target / "app").glob("*/manifest.json")).read_text())['minLauncherVersion'] == 2
     moved = target.with_name("moved")
     target.rename(moved)
     with closing(sqlite3.connect(moved / "userdata/data/trailsnap.sqlite")) as db:
