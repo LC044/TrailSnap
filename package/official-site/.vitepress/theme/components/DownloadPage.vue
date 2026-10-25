@@ -49,8 +49,7 @@
         <p class="all-assets"><a :href="releaseUrl">{{ copy.allAssets }} <ArrowUpRight :size="14" aria-hidden="true" /></a></p>
         <p v-if="apiUnavailable" role="status" class="api-warning">{{ copy.apiUnavailable }}</p>
         <InstallPrompt :title="copy.desktopPromptTitle" :description="copy.desktopPromptDescription" :prompt="desktopPrompt" :copy-label="copy.copyPrompt" :copied-label="copy.promptCopied" :error-label="copy.copyFailed" :show-label="copy.showPrompt" :hide-label="copy.hidePrompt" />
-        <details class="extension-help"><summary>{{ copy.aiTitle }}</summary><p>{{ copy.aiDescription }}</p><a :href="docLink('/docs/guide/desktop-ai-extension')">{{ copy.aiGuide }} ↗</a></details>
-      </section>
+        </section>
 
       <section v-show="activeMode === 'nas'" id="nas" role="tabpanel" aria-labelledby="nas-tab" tabindex="0">
         <article class="download-card nas-card">
@@ -114,8 +113,8 @@ const translations = {
     desktopDescription: '适合照片主要存放在电脑上的用户。选择对应系统的安装包，下载并安装；遇到不熟悉的步骤，也可以用下面的提示词请 AI 帮忙。',
     installerTitle: '下载安装包', recommended: '适合当前设备', download: '下载', preparing: '准备中…',
     downloadZip: '下载 ZIP 便携版', portableHint: '完整便携包，解压后运行 TrailSnap.exe，无需安装。',
-    accelHint: '国内下载慢？', accelLines: ['加速线路一', '加速线路二'], accelInline: '国内加速',
-    mirrorHint: '仍无法下载？', mirrorLink: '从国内备用地址下载',
+    accelHint: '下载慢？', accelLines: ['加速线路一', '加速线路二'], accelInline: '国内加速',
+    mirrorHint: '仍无法下载？', mirrorLink: '从备用地址下载',
     assetHint: '没有找到合适的安装包？查看', allAssets: '全部版本与文件',
     apiUnavailable: '暂时无法获取最新安装包。下载按钮将打开 GitHub 版本页面，你可以在那里选择对应系统的安装包。',
     desktopPromptTitle: '让 AI 帮你安装',

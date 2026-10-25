@@ -93,11 +93,11 @@ onBeforeUnmount(() => { disposed = true; controller.abort(); observer?.disconnec
 
 <template>
   <div ref="host" class="footprint-puzzle">
-    <canvas ref="canvas" role="img" :aria-label="active ? `${active}的照片拼图` : '演示相册的全国足迹拼图，照片按省份排列'" @click="choose" />
+    <canvas ref="canvas" role="img" :aria-label="active ? `${active}的照片拼图` : '全国足迹拼图，照片按省份排列'" @click="choose" />
     <p v-if="state === 'loading'" class="puzzle-state" role="status">正在拼起旅途中的照片…</p>
     <div v-if="state === 'error'" class="puzzle-state" role="alert">拼图暂时无法加载 <button type="button" @click="load">重试</button></div>
     <button v-if="active" class="puzzle-back" type="button" @click="active = null; schedule()">← 全国足迹</button>
-    <span v-if="state === 'ready'" class="puzzle-source">{{ active || `${regionCount} 个省级地区` }} · 演示相册快照</span>
+    <span v-if="state === 'ready'" class="puzzle-source">{{ active || `${regionCount} 个省级地区` }} · 地图拼图</span>
   </div>
 </template>
 
