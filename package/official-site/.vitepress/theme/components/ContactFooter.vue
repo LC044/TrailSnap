@@ -24,7 +24,7 @@ function open(channel: typeof channels[number], event: Event) {
 <template>
   <footer class="contact-footer">
     <div class="contact-grid">
-      <div class="contact-brand"><a href="/" aria-label="行影集首页"><img src="/logo.svg" alt="" width="36" height="36"><strong>行影集 <small>TRAILSNAP</small></strong></a><p>{{ english ? 'A private home for your photos and memories.' : '整理照片，珍藏日常与远方。' }}</p><a href="mailto:sixyuan044@gmail.com">sixyuan044@gmail.com ↗</a></div>
+      <div class="contact-brand"><a href="/" aria-label="行影集首页"><img src="/logo.svg" alt="" width="36" height="36"><strong>行影集 <small>TRAILSNAP</small></strong></a><p>{{ english ? 'A private home for your photos and memories.' : '整理照片，珍藏日常与远方' }}</p><a href="mailto:sixyuan044@gmail.com">sixyuan044@gmail.com ↗</a></div>
       <div><h2>{{ english ? 'Explore' : '产品与支持' }}</h2><nav><a :href="english ? '/en/download' : '/download'">{{ english ? 'Download' : '下载行影集' }}</a><a :href="english ? '/en/docs/guide/install' : '/docs/guide/install'">{{ english ? 'Documentation' : '使用文档' }}</a><a :href="english ? '/en/docs/guide/changelog' : '/docs/guide/changelog'">{{ english ? 'Changelog' : '更新日志' }}</a><a href="https://feedback.trailsnap.cn/" target="_blank" rel="noopener">{{ english ? 'Feedback' : '建议与反馈' }} ↗</a></nav></div>
       <div><h2>{{ english ? 'Community & source' : '交流与共建' }}</h2><nav class="contact-channels"><button v-for="channel in channels" :key="channel.name" type="button" aria-haspopup="dialog" @click="open(channel, $event)">{{ channel.name }} <span aria-hidden="true">⌑</span></button><a href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener">GitHub ↗</a><a href="https://atomgit.com/LC044/TrailSnap" target="_blank" rel="noopener">AtomGit ↗</a><a href="https://github.com/LC044/TrailSnap/blob/master/LICENSE" target="_blank" rel="noopener">AGPL-3.0 ↗</a></nav></div>
       <div class="contact-follow"><h2>{{ english ? 'Follow us' : '关注我们' }}</h2><div class="social-links">
@@ -34,7 +34,7 @@ function open(channel: typeof channels[number], event: Event) {
         </div>
       </div></div>
     </div>
-    <div class="contact-bottom"><span>© {{ new Date().getFullYear() }} TrailSnap 行影集</span><span>{{ english ? 'Your photos and memories, always yours.' : '照片与回忆，始终属于你。' }}</span></div>
+    <div class="contact-bottom"><span>© {{ new Date().getFullYear() }} TrailSnap 行影集</span><span>{{ english ? 'Your photos and memories, always yours.' : '照片与回忆，始终属于你' }}</span></div>
     <dialog class="contact-dialog" aria-labelledby="contact-dialog-title" @click="($event.target === $event.currentTarget) && ($event.currentTarget as HTMLDialogElement).close()">
       <form method="dialog"><button class="contact-close" aria-label="关闭二维码">×</button></form>
       <template v-if="active"><h2 id="contact-dialog-title">{{ active.name }}</h2><img :src="active.image" :alt="`${active.name}二维码`"><p>使用对应应用扫码关注或加入</p></template>

@@ -8,6 +8,7 @@ import { assignPhotos, buildGrid } from '../../../../website/src/utils/mapPuzzle
 import { renderPuzzle, setupCanvas, LIGHT_THEME, DARK_THEME } from '../../../../website/src/utils/mapPuzzle/renderer'
 
 const { isDark } = useData()
+const props = withDefaults(defineProps<{ preload?: boolean }>(), { preload: false })
 const host = ref<HTMLElement>()
 const canvas = ref<HTMLCanvasElement>()
 const state = ref<'loading' | 'ready' | 'error'>('loading')
@@ -77,12 +78,15 @@ async function load() {
   } catch { if (!disposed) state.value = 'error' }
 }
 onMounted(() => {
+  // preload 由首页在 load 后触发：面板仍隐藏（尺寸为 0）时也可提前拉取数据与照片。
+  if (props.preload && !started) { started = true; void load() }
   observer = new ResizeObserver(() => {
     if (!host.value?.clientWidth || !host.value.clientHeight) return
     if (!started) { started = true; void load() } else schedule()
   })
   if (host.value) observer.observe(host.value)
 })
+watch(() => props.preload, value => { if (value && !started) { started = true; void load() } })
 watch(isDark, schedule)
 onBeforeUnmount(() => { disposed = true; controller.abort(); observer?.disconnect(); cancelAnimationFrame(frame); images.clear() })
 </script>

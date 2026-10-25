@@ -13,10 +13,27 @@ import '../landing/memory-showcase.css'
 const { isDark } = useData()
 const root = ref<HTMLElement>()
 const mapView = ref<'3d' | 'city' | 'puzzle'>('3d')
-const mapCaptions = { '3d': '拖动地球、缩放视角，直接探索演示相册的足迹。', city: '在照片里，点亮去过的城市。', puzzle: '用沿途的照片，拼起走过的世界。' }
+const mapCaptions = { '3d': '拖动地球、缩放视角，直接探索演示相册的足迹', city: '在照片里，点亮去过的城市', puzzle: '每一张照片，都落回它拍摄的地方' }
+// 首页 load 完成后再预热地图三个视图，避免首次切换时白屏等待。
+const citySrc = ref('')
+const mapPreload3d = ref(false)
+const mapPreloadPuzzle = ref(false)
+let preloadTimers: ReturnType<typeof setTimeout>[] = []
+function scheduleMapPreload() {
+  // 拼图与城市片段是本地轻量资源，优先预热；3D 演示较重，放到最后。
+  preloadTimers.push(setTimeout(() => { mapPreloadPuzzle.value = true }, 400))
+  preloadTimers.push(setTimeout(() => { citySrc.value = '/showcase/city-fragment.html' }, 1200))
+  preloadTimers.push(setTimeout(() => { mapPreload3d.value = true }, 2400))
+}
 let cleanup: (() => void) | undefined
-onMounted(() => { if (root.value) { initFixedSamples(root.value); cleanup = initHome(root.value, { setMapView: (view: '3d' | 'city' | 'puzzle') => { mapView.value = view } }) } })
-onBeforeUnmount(() => cleanup?.())
+onMounted(() => {
+  if (root.value) { initFixedSamples(root.value); cleanup = initHome(root.value, { setMapView: (view: '3d' | 'city' | 'puzzle') => { mapView.value = view } }) }
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+  if (connection?.saveData) return
+  if (document.readyState === 'complete') scheduleMapPreload()
+  else window.addEventListener('load', scheduleMapPreload, { once: true })
+})
+onBeforeUnmount(() => { cleanup?.(); preloadTimers.forEach(clearTimeout); preloadTimers = [] })
 </script>
 <template><div ref="root" class="trailsnap-home">
 
@@ -26,8 +43,8 @@ onBeforeUnmount(() => cleanup?.())
     <div class="scroll-scene">
         <section class="wrap hero">
             <div class="hero-copy">
-                <div class="eyebrow">行影集 TRAILSNAP · 开源 AI 相册</div>
-                <h1>一个会整理照片的<br><span>私人 AI 相册。</span></h1>
+                <div class="eyebrow">行影集 TRAILSNAP · 开源 · 私人 AI 相册</div>
+                <h1>一个会整理照片的<br><span>私人 AI 相册</span></h1>
                 <p class="hero-desc">把电脑里的照片接入行影集，按人物、场景和时间整理；用一句话查找照片，在地图上回顾足迹，还能让 AI 帮你写旅行日记。</p>
                 <p class="hosting-note">安装在自己的电脑或服务器上，照片由自己保存。</p>
                 <div class="actions">
@@ -45,12 +62,12 @@ onBeforeUnmount(() => cleanup?.())
             <div class="scene-progress" aria-hidden="true"><span></span></div>
         </section>
     </div>
-    <div class="wrap hero-bottom"><span>整理日常照片，也珍藏每一段旅行。</span><div><span>智能相册 / 足迹地图 / 旅行日记</span><a href="#capabilities">了解它能做什么 ↓</a></div></div>
+    <div class="wrap hero-bottom"><span>整理日常照片，也珍藏每一段旅行</span><div><span>智能相册 / 足迹地图 / 旅行日记</span><a href="#capabilities">了解它能做什么 ↓</a></div></div>
     <section class="wrap capabilities" id="capabilities">
         <div class="cap-heading">
             <div>
                 <div class="eyebrow">从照片文件夹，到自己的智能相册</div>
-                <h2 class="section-title">整理、查找、回顾，让照片不止于存放。</h2>
+                <h2 class="section-title">整理、查找、回顾，让照片不止于存放</h2>
             </div>
         </div>
         <div class="cap-grid">
@@ -64,7 +81,7 @@ onBeforeUnmount(() => cleanup?.())
                         <div class="cap-album"><UsersRound class="cap-album-icon" aria-hidden="true" /><span>家人<small>按人物浏览</small></span></div>
                         <div class="cap-album"><Mountain class="cap-album-icon" aria-hidden="true" /><span>风景<small>按场景浏览</small></span></div>
                     </div>
-                    <div class="cap-preview-foot">也可以按时间，回看某一天。</div>
+                    <div class="cap-preview-foot">也可以按时间，回看某一天</div>
                 </div>
                 <a class="cap-link" href="https://demo.siyuan.ink" target="_blank" rel="noopener">体验智能相册 <span aria-hidden="true">↗</span></a>
             </article>
@@ -85,7 +102,7 @@ onBeforeUnmount(() => cleanup?.())
             <article>
                 <span class="cap-icon" aria-hidden="true">⌁</span><span class="cap-label">03 / 回顾</span>
                 <h3>足迹相册</h3>
-                <p>在地图上回看拍摄地点，让沿途照片串成可以重读的旅行日记，专门的5A景区识别，记录去过的景区。</p>
+                <p>在地图上回看拍摄地点，让沿途照片串成一段值得重读的旅行日记；内置 5A 景区识别，记录去过的景区。</p>
                 <div class="cap-preview cap-recall">
                     <span class="cap-preview-label">旅程效果示例</span>
                     <div class="cap-route" aria-label="示例旅程：山间、海岸、日落">
@@ -111,15 +128,15 @@ onBeforeUnmount(() => cleanup?.())
                 <div class="eyebrow">生活里的线索 / 三种方式，重新遇见</div>
                 <div class="memory-copy-body">
                     <div class="memory-copy-item is-active" data-memory-copy="0">
-                        <h2>把一段时光，<br>装订成自己的日记。</h2>
+                        <h2>把一段时光，<br>装订成自己的日记</h2>
                         <p>一天一页，照片与文字留在一起。翻阅人生章节里的每日日记，把散落的生活重新读一遍。</p>
                     </div>
                     <div class="memory-copy-item" data-memory-copy="1" hidden>
-                        <h2>你拍过的月亮，<br>也有自己的时间线。</h2>
+                        <h2>你拍过的月亮，<br>也有自己的时间线</h2>
                         <p>按月相回看拍到的月亮。从渐盈到满月，收藏那些曾经抬头的夜晚。</p>
                     </div>
                     <div class="memory-copy-item" data-memory-copy="2" hidden>
-                        <h2>每一张票，<br>都是出发的证据。</h2>
+                        <h2>每一张票，<br>都是出发的证据</h2>
                         <p>火车票和机票，留下路线、日期与车次。把旅程里的凭证放在一起，也找回当时为什么出发。</p>
                     </div>
                 </div>
@@ -145,7 +162,7 @@ onBeforeUnmount(() => cleanup?.())
                 </div>
             </div>
             <div class="memory-footer">
-                <span>生活的不同侧面，都值得留下。</span>
+                <span>生活的不同侧面，都值得留下</span>
                 <span id="memory-page-label" aria-live="polite">01 / 03 · 人生章节</span>
             </div>
             <div class="memory-progress" aria-hidden="true"><span></span></div>
@@ -156,20 +173,20 @@ onBeforeUnmount(() => cleanup?.())
             <div class="live-section-heading">
                 <div>
                     <div class="eyebrow">足迹 / 走过的地方</div>
-                    <h2 class="section-title">走过的世界，<br>换个视角再看一遍。</h2>
-                    <p class="section-desc">在地球上回望旅程，在地图上点亮城市，再用沿途照片，拼起走过的世界。</p>
+                    <h2 class="section-title">走过的世界，<br>换个视角再看一遍</h2>
+                    <p class="section-desc">在地球上回望旅程，在地图上点亮城市，再把沿途照片拼成完整的版图。</p>
                 </div>
             </div>
             <div class="live-shell map-window" id="live-map-shell">
                 <div class="map-switcher">
                     <div class="map-view-tabs" role="tablist" aria-label="选择足迹展示方式">
-                        <button type="button" data-map-view="3d" id="map-view-3d" role="tab" :aria-selected="mapView === '3d'" :tabindex="mapView === '3d' ? 0 : -1" @click="mapView = '3d'" aria-controls="live-map">3D 足迹</button><button type="button" data-map-view="city" id="map-view-city" role="tab" :aria-selected="mapView === 'city'" :tabindex="mapView === 'city' ? 0 : -1" @click="mapView = 'city'" aria-controls="city-showcase-frame">城市点亮</button><button type="button" data-map-view="puzzle" id="map-view-puzzle" role="tab" :aria-selected="mapView === 'puzzle'" :tabindex="mapView === 'puzzle' ? 0 : -1" @click="mapView = 'puzzle'" aria-controls="puzzle-showcase-frame">足迹拼图</button></div><button type="button" class="map-expand" data-expand="live-map-shell" aria-expanded="false">全屏查看</button></div><div class="desktop-viewport"><DemoEmbed id="live-map" path="/footprint" title="行影集 · 3D 足迹地图" :active="mapView === '3d'" /><iframe :hidden="mapView !== 'city'" id="city-showcase-frame" src="/showcase/city-fragment.html" title="城市点亮地图节选" loading="lazy"></iframe><div id="puzzle-showcase-frame" class="native-map-content" :hidden="mapView !== 'puzzle'"><FootprintPuzzle /></div></div></div><p class="feature-caption" id="map-view-caption">{{ mapCaptions[mapView] }}</p><div class="feature-progress" aria-hidden="true"><span></span></div></section></div>
+                        <button type="button" data-map-view="3d" id="map-view-3d" role="tab" :aria-selected="mapView === '3d'" :tabindex="mapView === '3d' ? 0 : -1" @click="mapView = '3d'" aria-controls="live-map">3D 足迹</button><button type="button" data-map-view="city" id="map-view-city" role="tab" :aria-selected="mapView === 'city'" :tabindex="mapView === 'city' ? 0 : -1" @click="mapView = 'city'" aria-controls="city-showcase-frame">城市点亮</button><button type="button" data-map-view="puzzle" id="map-view-puzzle" role="tab" :aria-selected="mapView === 'puzzle'" :tabindex="mapView === 'puzzle' ? 0 : -1" @click="mapView = 'puzzle'" aria-controls="puzzle-showcase-frame">足迹拼图</button></div><button type="button" class="map-expand" data-expand="live-map-shell" aria-expanded="false">全屏查看</button></div><div class="desktop-viewport"><DemoEmbed id="live-map" path="/footprint" title="行影集 · 3D 足迹地图" :active="mapView === '3d'" :preload="mapPreload3d" /><iframe :hidden="mapView !== 'city'" id="city-showcase-frame" :src="citySrc" :loading="citySrc ? 'eager' : 'lazy'" title="城市点亮地图节选"></iframe><div id="puzzle-showcase-frame" class="native-map-content" :hidden="mapView !== 'puzzle'"><FootprintPuzzle :preload="mapPreloadPuzzle" /></div></div></div><p class="feature-caption" id="map-view-caption">{{ mapCaptions[mapView] }}</p><div class="feature-progress" aria-hidden="true"><span></span></div></section></div>
     <section class="wrap real-feature reading-feature" id="stories">
         <div class="live-section-heading">
             <div>
                 <div class="eyebrow">旅行日记 / 让照片连成故事</div>
-                <h2 class="section-title">让一段旅程，<br>成为可以重读的故事。</h2>
-                <p class="section-desc">把沿途的照片与足迹串成旅行日记，收藏风景，也留下出发时的心情。</p>
+                <h2 class="section-title">让一段旅程，<br>成为可以重读的故事</h2>
+                <p class="section-desc">把沿途的照片与足迹写成一篇旅行日记，收藏风景，也留下出发时的心情。</p>
             </div>
         </div>
         <div class="live-shell story-window" id="live-story-shell">
@@ -188,12 +205,12 @@ onBeforeUnmount(() => cleanup?.())
     <section class="wrap everyday-tools" id="everyday-tools">
         <div class="tools-heading">
             <div class="eyebrow">记录与整理 / 不止于浏览照片</div>
-            <h2>给相册减减负，留住真正喜欢的。</h2>
+            <h2>给相册减减负，留住真正喜欢的</h2>
         </div>
         <div class="tools-grid">
             <article class="tool-showcase">
                 <div class="tool-copy"><span class="eyebrow">断舍离 / 轻一点的相册</span>
-                    <h3>留下喜欢的，放下多余的。</h3>
+                    <h3>留下喜欢的，放下多余的</h3>
                     <p>向右保留，向左丢弃，给相册做个断舍离。</p>
                     <a href="https://demo.siyuan.ink/swipe-filter" target="_blank" rel="noopener">在演示站打开断舍离 ↗</a>
                 </div>
@@ -206,14 +223,14 @@ onBeforeUnmount(() => cleanup?.())
             <div class="product-head">
                 <div>
                     <div class="eyebrow">开始使用 / YOUR OWN PHOTO LIBRARY</div>
-                    <h2 class="section-title">装好相册，接入照片，就能开始浏览。</h2>
+                    <h2 class="section-title">装好相册，接入照片，就能开始浏览</h2>
                 </div>
                 <a class="btn secondary" href="/docs/guide/install">查看完整安装指南 ↗</a>
             </div>
             <div class="start-grid">
                 <article><span>01</span>
                     <h3>选择安装方式</h3>
-                    <p>个人电脑使用可下载桌面端；希望长期运行，可参考文档在自己的服务器上部署。</p>
+                    <p>个人电脑使用，可下载桌面版；希望长期运行，可参考文档在自己的服务器上部署。</p>
                     <a href="/download">查看下载选项 →</a>
                 </article>
                 <article>
@@ -233,7 +250,7 @@ onBeforeUnmount(() => cleanup?.())
         <div class="trust-heading">
             <div>
                 <div class="eyebrow">数据与存储 / YOUR MEMORIES, YOUR HOME</div>
-                <h2 class="section-title">珍贵的回忆，自己保管。</h2>
+                <h2 class="section-title">珍贵的回忆，自己保管</h2>
             </div>
             <p class="section-desc">从照片存储，到 AI 整理，<br>每一步都由你掌握。</p>
         </div>
@@ -245,7 +262,7 @@ onBeforeUnmount(() => cleanup?.())
     </section>
     <section class="wrap end">
         <div class="eyebrow">THE NEXT CHAPTER IS YOURS</div>
-        <h2>给照片一个家，让回忆更好找。</h2>
+        <h2>给照片一个家，让回忆更好找</h2>
         <p>下载行影集，开始整理你的日常照片与旅行记忆。</p>
         <div class="actions">
             <a class="btn" href="/download">下载行影集 <span>↗</span></a>

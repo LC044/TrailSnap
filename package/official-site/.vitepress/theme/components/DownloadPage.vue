@@ -104,7 +104,7 @@ const translations = {
     nasPromptDescription: '告诉 AI 设备型号和照片路径，获取分步部署指导。',
     desktopLabel: '方式二 · 个人电脑', desktopTitle: '在自己的电脑上，整理照片与回忆',
     desktopDescription: '适合照片主要存放在电脑上的用户。选择对应系统的安装包，下载并安装；遇到不熟悉的步骤，也可以用下面的提示词请 AI 帮忙。',
-    installerTitle: '下载安装包', recommended: '适合当前设备', download: '下载', preparing: '准备中...',
+    installerTitle: '下载安装包', recommended: '适合当前设备', download: '下载', preparing: '准备中…',
     downloadZip: '下载 ZIP 便携版', portableHint: '完整便携包，解压后运行 TrailSnap.exe，无需安装。',
     assetHint: '没有找到合适的安装包？查看', allAssets: '全部版本与文件',
     apiUnavailable: '暂时无法获取最新安装包。下载按钮将打开 GitHub 版本页面，你可以在那里选择对应系统的安装包。',
