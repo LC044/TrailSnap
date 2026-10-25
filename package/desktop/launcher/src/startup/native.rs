@@ -85,12 +85,7 @@ pub fn coordinate(run: fn() -> Result<(), String>) -> Result<(), String> {
         return run();
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let root = crate::portable::clean_path(
-        exe.parent()
-            .ok_or("启动目录无效")?
-            .canonicalize()
-            .map_err(|e| e.to_string())?,
-    );
+    let root = crate::portable::instance_root_for_executable(&exe)?;
     let identity = super::identity(&root);
     let handle =
         unsafe { CreateMutexW(null_mut(), 0, wide(&format!("Local\\{identity}")).as_ptr()) };

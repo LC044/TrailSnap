@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-pub const LAUNCHER_VERSION: u32 = 1;
+pub const LAUNCHER_VERSION: u32 = 2;
 
 /// The executable layout is the only discovery mechanism. Ambient variables,
 /// working directories and per-user OS configuration never select a library.

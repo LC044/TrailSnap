@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn unfinished_updates_retain_both_builds() {
         let (f, mut config) = fixture();
-        for name in ["verified", "apply_requested", "backed_up", "validating"] {
+        for name in ["verified", "apply_requested", "backed_up", "validating", "awaiting_ready"] {
             phase(&f.0, name);
             after_ready(&f.0, &mut config).unwrap();
             assert!(f.0.join("app/old/server/trailsnap-server.exe").exists());
