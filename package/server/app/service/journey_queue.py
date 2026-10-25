@@ -10,7 +10,7 @@ def enqueue(db: Session, owner_id):
         return None
     # The same owner lock is used by the matcher. Do not reuse a processing
     # task: a source commit after its snapshot must leave another pending pass.
-    db.query(User.id).filter(User.id == owner_id).with_for_update().first()
+    db.query(User).filter(User.id == owner_id).with_for_update().first()
     for row in db.new:
         if isinstance(row, Task) and row.type == TaskType.ASSOCIATE_JOURNEYS and row.owner_id == owner_id:
             return row
