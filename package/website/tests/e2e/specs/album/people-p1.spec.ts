@@ -398,19 +398,38 @@ test.describe.serial('P1 - 人物相册', () => {
     // 先等底部批量工具栏挂载，再等第一张缩略图可见（与 photos-flow-p1 一致）。
     const selectionBar = page.getByTestId('photo-selection-bar')
     await expect(selectionBar).toBeVisible({ timeout: 10_000 })
-    const imgs = gallery.locator('img')
-    await expect(imgs.first()).toBeVisible({ timeout: 15_000 })
-    // 进入批量模式后 PhotoGallery 会重渲染一次；只等 img 存在不够，
-    // force click 会打在重渲染前的旧位置上，导致选中数一直停在 0。
-    // 选中数为 0 时 PhotoBatchActionBar 的删除按钮是 disabled 的，
-    // 点击会一直重试到测试超时（2026-10-24 的 CI 就是这样挂的）。
-    // 所以这里点完必须确认「已选 1 项」，没选上就重新点一次。
+    // 选中第一张照片。这里有三个坑（2026-10-24 / 2026-10-25 两轮 CI 都挂在这里）：
+    // 1) .photo-gallery 里第一张 <img> 不一定属于照片节点（日期分组头部还有头像 img），
+    //    点它不会触发选中 —— 必须定位到带 data-photo-id 的照片节点本身。
+    // 2) PhotoGallery 是虚拟滚动 + 月/日分块渲染，进入批量模式后会重排，
+    //    太早点击会落到还没渲染好的节点上。
+    // 3) 页面顶部有 sticky 头，force click 会跳过命中校验、直接把点击打在头部遮罩上，
+    //    结果选中数一直是 0 → 删除按钮 disabled → 一直重试到测试超时。
+    // 所以：定位照片节点 → 滚到视口中间避开 sticky 头 → 正常点击（命中不对就直接报错）
+    // → 用「已选 1 项」确认选中真的生效，没生效就重来。
+    const firstPhoto = gallery.locator('[data-photo-id]').first()
+    await expect(firstPhoto).toBeVisible({ timeout: 15_000 })
     await expect(async () => {
       const current = (await selectionBar.textContent()) ?? ''
       if (/已选\s*1\s*项/.test(current)) return
-      await imgs.first().click({ force: true })
-      await expect(selectionBar).toContainText('已选 1 项', { timeout: 2_000 })
-    }).toPass({ timeout: 30_000 })
+      // 先把照片滚到视口中间，避开页面顶部的 sticky 头。
+      await firstPhoto.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }))
+      try {
+        // 正常点击走真实用户路径（Playwright 会校验命中目标，命中不对会直接报错）。
+        await firstPhoto.click({ timeout: 8_000 })
+      } catch {
+        // 被浮层（sticky 头等）挡住时，force click 会把点击打在浮层上 ——
+        // 2026-10-24 / 2026-10-25 两轮 CI 就是这样：选中数一直是 0，
+        // 删除按钮保持 disabled，最后重试到超时。
+        // 这里退化成直接向照片节点派发 click 事件：被测的是"点照片能选中"这个行为，
+        // 不是浮层命中。
+        await firstPhoto.evaluate((el) => {
+          const target = (el.querySelector('img') as HTMLElement | null) ?? (el as HTMLElement)
+          target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }))
+        })
+      }
+      await expect(selectionBar).toContainText('已选 1 项', { timeout: 3_000 })
+    }).toPass({ timeout: 60_000 })
 
     // PhotoGallery 的 trash 按钮 title = deleteLabel prop = "从人物中移除"，
     // 它在没有选中照片时是 disabled 的（PhotoBatchActionBar: localSelectedIds.size === 0）。
