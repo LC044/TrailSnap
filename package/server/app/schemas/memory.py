@@ -44,6 +44,8 @@ class MemoryDiscoverRequest(BaseModel):
     end_time: datetime | None = None
     min_photos: int = Field(default=5, ge=3, le=50)
     max_candidates: int = Field(default=50, ge=1, le=200)
+    journey_before_hours: int = Field(default=24, ge=1, le=168)
+    journey_after_hours: int = Field(default=48, ge=1, le=168)
 
 
 class MemoryStoryRequest(BaseModel):

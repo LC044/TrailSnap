@@ -95,6 +95,8 @@ def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.U
         owner_id=owner_id
     )
     db.add(db_ticket)
+    from app.service.journey_queue import enqueue
+    enqueue(db, owner_id)
     if commit:
         db.commit()
         db.refresh(db_ticket)
@@ -118,6 +120,17 @@ def update_train_ticket(
     for key, value in update_data.items():
         setattr(db_ticket, key, value)
 
+    if update_data.get("date_time") and db_ticket.photo_id:
+        from app.db.models.photo import Photo
+        source = db.query(Photo).filter(Photo.id == db_ticket.photo_id,
+                                        Photo.owner_id == db_ticket.owner_id).first()
+        if source:
+            tasks = dict(source.processed_tasks or {})
+            times = dict(tasks.get("ticket_time_sources") or {})
+            if times.pop(f"train:{db_ticket.id}", None):
+                source.processed_tasks = dict(tasks, ticket_time_sources=times)
+    from app.service.journey_queue import enqueue
+    enqueue(db, db_ticket.owner_id)
     db.commit()
     db.refresh(db_ticket)
     return db_ticket
@@ -134,6 +147,8 @@ def delete_train_ticket(db: Session, ticket_id: str) -> bool:
     for link_model in (AlbumTicket, MemoryTicket, TicketDismissal):
         db.query(link_model).filter(link_model.ticket_type == "train", link_model.ticket_id == ticket_id).delete(synchronize_session=False)
     db.delete(db_ticket)
+    from app.service.journey_queue import enqueue
+    enqueue(db, db_ticket.owner_id)
     db.commit()
     return True
 
