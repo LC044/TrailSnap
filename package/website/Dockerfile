@@ -7,6 +7,7 @@ WORKDIR /app
 # 先复制依赖文件，提升 Docker 层缓存命中率
 COPY ./package.json ./
 COPY ./pnpm-lock.yaml ./
+COPY ./pnpm-workspace.yaml ./
 COPY ./patches ./patches
 
 RUN corepack enable
