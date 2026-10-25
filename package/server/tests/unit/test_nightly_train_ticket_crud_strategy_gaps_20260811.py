@@ -168,12 +168,14 @@ def test_create_train_ticket_persists_when_new():
         photo_id=None,
     )
     new = crud_ticket.create_train_ticket(db, payload, owner_id=uuid4())
-    db.add.assert_called_once()
+    assert db.add.call_count == 2
     db.commit.assert_called_once()
     db.refresh.assert_called_once()
-    added = db.add.call_args[0][0]
+    ticket_add, journey_task_add = [call.args[0] for call in db.add.call_args_list]
+    assert ticket_add is new
+    assert journey_task_add.type == TaskType.ASSOCIATE_JOURNEYS
     # The ''no-seat'' fallback in crud only applies to the duplicate-check SQL; the column stores the user value as-is.
-    assert added.seat_num == ""
+    assert ticket_add.seat_num == ""
 
 
 def test_update_train_ticket_returns_none_when_missing():

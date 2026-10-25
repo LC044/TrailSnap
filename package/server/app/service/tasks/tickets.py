@@ -272,6 +272,7 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                         continue
                 if dt is None:
                     raise ValueError('票据日期时间无法识别，请重试或手动添加')
+                inferred_year = dt.year == 1900 or str(info.get('year_source') or '').startswith('inferred')
                 if dt.year == 1900:
                     if not photo.photo_time:
                         raise ValueError('票据缺少年份且照片无拍摄时间，请手动添加')
@@ -301,10 +302,11 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                         ticket.stop_stations = json.dumps(extra['stop_stations'])
                     except Exception as exc:
                         logger.warning('Optional railway enrichment failed: %s', exc)
-                prepared.append((kind, ticket))
+                prepared.append((kind, ticket, inferred_year))
 
             added = existing = 0
-            for kind, ticket in prepared:
+            time_sources = dict((photo.processed_tasks or {}).get('ticket_time_sources') or {})
+            for kind, ticket, inferred_year in prepared:
                 create = (crud_flight_tickets.create_flight_ticket if kind == 'flight'
                           else crud_train_tickets.create_train_ticket)
                 saved = create(db, ticket, owner_id=photo.owner_id, commit=False)
@@ -312,7 +314,11 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                     existing += 1
                 else:
                     added += 1
+                    if inferred_year:
+                        time_sources[f'{kind}:{saved.id}'] = 'inferred_year'
             photo.processed_tasks = dict(photo.processed_tasks or {}, tickets=True, tickets_version=2)
+            if time_sources:
+                photo.processed_tasks = dict(photo.processed_tasks, ticket_time_sources=time_sources)
             db.add(photo)
             db.commit()
             return {'status': 'success' if prepared else 'no_tickets',

@@ -413,6 +413,7 @@ def _retire_legacy_candidates(db: Session, owner_id: UUID) -> int:
         Memory.status == MemoryStatus.CANDIDATE,
         Memory.origin == MemoryOrigin.AUTO,
         Memory.algorithm_version != ALGORITHM_VERSION,
+        ~Memory.algorithm_version.like("journey-%"),
     ).all()
     now = datetime.now()
     for row in rows:
@@ -451,28 +452,22 @@ def _attach_tickets(db: Session, memory: Memory, owner_id: UUID) -> None:
         return
     start = memory.start_time - timedelta(hours=24)
     end = memory.end_time + timedelta(hours=6)
-    trains = db.query(TrainTicket).filter(
-        TrainTicket.owner_id == owner_id, TrainTicket.date_time >= start, TrainTicket.date_time <= end,
-    ).all()
+    # Train associations require railway endpoint cities, handled by journey.
     flights = db.query(FlightTicket).filter(
         FlightTicket.owner_id == owner_id, FlightTicket.date_time >= start, FlightTicket.date_time <= end,
     ).all()
     dismissed = {(item.ticket_type, item.ticket_id) for item in db.query(TicketDismissal).filter(TicketDismissal.memory_id == memory.id)}
-    for ticket in trains:
-        if ("train", ticket.id) in dismissed:
-            continue
-        memory.tickets.append(MemoryTicket(ticket_type="train", ticket_id=ticket.id, source="inferred", confidence=0.75))
     for ticket in flights:
         if ("flight", ticket.id) in dismissed:
             continue
         memory.tickets.append(MemoryTicket(ticket_type="flight", ticket_id=ticket.id, source="inferred", confidence=0.75))
-    count = len(trains) + len(flights)
+    count = len(flights)
     if count:
         memory.evidence.append(MemoryEvidence(
             evidence_type="ticket", summary=f"发现 {count} 张时间相符的行程票据",
             score=0.75,
-            source_refs=[str(row.id) for row in trains + flights],
-            payload={"train": len(trains), "flight": len(flights)}, algorithm_version=ALGORITHM_VERSION,
+            source_refs=[str(row.id) for row in flights],
+            payload={"train": 0, "flight": len(flights)}, algorithm_version=ALGORITHM_VERSION,
         ))
 
 
@@ -484,11 +479,25 @@ def discover(
     end_time: datetime | None = None,
     min_photos: int = 5,
     max_candidates: int = 50,
+    journey_before_hours: int = 24,
+    journey_after_hours: int = 48,
 ) -> list[Memory]:
     # Serialize discovery for one owner. The fingerprint check and insert must
     # share this lock; otherwise concurrent requests can both pass the check.
     db.query(User.id).filter(User.id == owner_id).with_for_update().first()
     _retire_legacy_candidates(db, owner_id)
+    from app.service import journey
+    import logging
+    journey_created = []
+    try:
+        # Railway can be unavailable without breaking ordinary memory discovery.
+        with db.begin_nested():
+            journey_created = journey.discover(
+                db, owner_id, before_hours=journey_before_hours, after_hours=journey_after_hours,
+                start_time=start_time, end_time=end_time, max_candidates=max_candidates,
+            )
+    except Exception:
+        logging.getLogger(__name__).warning("Journey discovery deferred: railway/matching unavailable", exc_info=True)
     query = (
         db.query(Photo, PhotoMetadata)
         .join(PhotoMetadata, PhotoMetadata.photo_id == Photo.id)
@@ -507,7 +516,8 @@ def discover(
         query = query.filter(Photo.photo_time <= end_time)
     rows = query.order_by(Photo.photo_time.asc()).all()
     if not rows:
-        return []
+        db.commit()
+        return [get_detail(db, memory.id, owner_id) for memory in journey_created]
 
     segments: list[list[tuple[Photo, PhotoMetadata | None]]] = []
     current: list[tuple[Photo, PhotoMetadata | None]] = []
@@ -526,7 +536,7 @@ def discover(
     if current:
         segments.append(current)
 
-    created: list[Memory] = []
+    created: list[Memory] = list(journey_created)
     for segment in segments:
         if len(segment) < min_photos or len(created) >= max_candidates:
             continue

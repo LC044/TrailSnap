@@ -126,6 +126,8 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
         if metadatas:
             db.bulk_save_objects(metadatas)
 
+        from app.service.journey_queue import enqueue
+        enqueue(db, user_id)
         if commit:
             db.commit()
         else:
@@ -162,6 +164,11 @@ def update_photo_metadata(db: Session, photo_id: UUID, metadata: PhotoMetadataUp
         setattr(db_metadata, key, value)
 
     db.add(db_metadata)
+    if {"city", "province", "latitude", "longitude"} & update_data.keys():
+        from app.service.journey_queue import enqueue
+        photo = get_photo(db, photo_id)
+        if photo:
+            enqueue(db, photo.owner_id)
     db.commit()
     db.refresh(db_metadata)
     
@@ -939,6 +946,8 @@ def update_photo(db: Session, photo_id: UUID, photo_update: photo_schemas.PhotoU
             db_photo.filename = filename_to_store
         if photo_update.photo_time is not None:
             db_photo.photo_time = photo_update.photo_time
+            from app.service.journey_queue import enqueue
+            enqueue(db, db_photo.owner_id)
         db.commit()
         db.refresh(db_photo)
         if user_id:

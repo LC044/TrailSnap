@@ -421,6 +421,8 @@ def update_photo_metadata_from_extract(db: Session, photo: Photo, meta: dict, *,
     tasks_status['metadata'] = True
     photo.processed_tasks = tasks_status
     db.add(photo)
+    from app.service.journey_queue import enqueue
+    enqueue(db, photo.owner_id)
     if commit:
         db.commit()
     

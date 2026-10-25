@@ -60,6 +60,8 @@ def discover_memories(
         end_time=payload.end_time,
         min_photos=payload.min_photos,
         max_candidates=payload.max_candidates,
+        journey_before_hours=payload.journey_before_hours,
+        journey_after_hours=payload.journey_after_hours,
     )
     return BaseResponse.success(data={
         "created": len(rows),

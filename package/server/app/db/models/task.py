@@ -39,6 +39,7 @@ class TaskType(str, enum.Enum):
     BATCH_TIME_FROM_FILENAME = "BATCH_TIME_FROM_FILENAME"
     EXTRACT_EMOTION = "EXTRACT_EMOTION"
     DISCOVER_CHAPTERS = "DISCOVER_CHAPTERS"
+    ASSOCIATE_JOURNEYS = "ASSOCIATE_JOURNEYS"
     RENDER_DAILY_FRAME = "RENDER_DAILY_FRAME"
 
 # Tasks started explicitly by a user are allowed to run even when the same
@@ -71,6 +72,7 @@ DEFAULT_PRIORITIES = {
     TaskType.BATCH_TIME_FROM_FILENAME: 1000,
     TaskType.EXTRACT_EMOTION: 6,
     TaskType.DISCOVER_CHAPTERS: 1000,
+    TaskType.ASSOCIATE_JOURNEYS: 0,
     TaskType.RENDER_DAILY_FRAME: INTERACTIVE_TASK_PRIORITY,
 }
 
@@ -95,6 +97,7 @@ CATEGORY_DESCRIPTION_MAP = {
     TaskType.BATCH_TIME_FROM_FILENAME: '用于根据文件名提取时间并批量修改照片的拍摄时间和设备信息',
     TaskType.EXTRACT_EMOTION: '用于提取照片的主色调、亮度、饱和度及情绪色彩',
     TaskType.DISCOVER_CHAPTERS: '用于从照片时间与地点线索发现人生章节建议',
+    TaskType.ASSOCIATE_JOURNEYS: '根据乘车时间和车站城市关联照片与记忆',
     TaskType.RENDER_DAILY_FRAME: '用于生成一日一帧回忆影片',
 }
 
@@ -118,6 +121,7 @@ CATEGORY_NAME_MAP = {
     TaskType.BATCH_TIME_FROM_FILENAME: '修改拍摄信息',
     TaskType.EXTRACT_EMOTION: '色彩情绪提取',
     TaskType.DISCOVER_CHAPTERS: '发现人生章节',
+    TaskType.ASSOCIATE_JOURNEYS: '关联行程照片',
     TaskType.RENDER_DAILY_FRAME: '一日一帧影片',
 }
 

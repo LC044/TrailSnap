@@ -29,7 +29,7 @@ from app.service.adaptive_limiter import AdaptiveResourceLimiter
 from app.service.task_runtime import await_owned
 from app.service.disk_budget import disk_budget
 # Import tasks to register strategies
-from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery
+from app.service.tasks import thumbnail, metadata, album, scan, face, face_cluster, ocr, classification, image_embedding, visual_description, basic, duplicate, similar, tickets, organize, rename, time_from_filename, emotion, chapter_discovery, journey
 from app.service.tasks import daily_frame, panorama
 
 class CompletionContext:
@@ -1299,7 +1299,7 @@ class TaskWorker:
             # Tasks that should be preserved in DB after completion.
             # Only reference real TaskType members here — a non-existent
             # member raises AttributeError and crashes completion cleanup.
-            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS, TaskType.RENDER_DAILY_FRAME, TaskType.SCAN_FOLDER}
+            PRESERVED_TASK_TYPES = {TaskType.DISCOVER_CHAPTERS, TaskType.RENDER_DAILY_FRAME, TaskType.SCAN_FOLDER, TaskType.ASSOCIATE_JOURNEYS}
 
             for item in items:
                 if item['status'] == TaskStatus.COMPLETED:
