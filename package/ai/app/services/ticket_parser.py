@@ -472,15 +472,20 @@ def _extract_month_day(txt: str):
     # 0. 点号格式 (如 2026.04.02)
     m0 = re.search(r'(?:\d{4}\.)?(\d{1,2})\.(\d{1,2})', s)
     if m0:
-        mm = m0.group(1).zfill(2)
-        dd = m0.group(2).zfill(2)
-        try:
-            imonth = int(mm)
-            iday = int(dd)
-            if 1 <= imonth <= 12 and 1 <= iday <= 31:
-                return (mm, dd)
-        except:
-            pass
+        # 价格/折扣块里的点号不是日期："6.6折"、"￥12.5"、"5.5元"
+        # 否则会把折扣块误读成 06月06日、把票价误读成 12月05日。
+        before = s[m0.start() - 1] if m0.start() > 0 else ''
+        after = s[m0.end()] if m0.end() < len(s) else ''
+        if before not in ('￥', '¥') and after not in ('折', '元'):
+            mm = m0.group(1).zfill(2)
+            dd = m0.group(2).zfill(2)
+            try:
+                imonth = int(mm)
+                iday = int(dd)
+                if 1 <= imonth <= 12 and 1 <= iday <= 31:
+                    return (mm, dd)
+            except:
+                pass
 
     # 1. 标准格式：X月X日
     m = re.search(r'(\d{1,2})\s*月\s*(\d{1,2})\s*日', s)
