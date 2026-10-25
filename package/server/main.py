@@ -193,6 +193,8 @@ async def lifespan(app: FastAPI):
         job_scheduler.register_once_job(
             "color_reanalysis", datetime.now() + timedelta(seconds=10), reanalyze_pending_colors,
         )
+    from railway.history_sync import register_history_sync
+    register_history_sync(job_scheduler)
     job_scheduler.start()
     app.state.job_scheduler = job_scheduler
 

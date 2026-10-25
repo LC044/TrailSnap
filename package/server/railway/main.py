@@ -18,7 +18,15 @@ from railway import api
 async def lifespan(app: FastAPI):
     from railway.initialization import start_background_initialization
     start_background_initialization()
-    yield
+    from app.service.scheduler import JobScheduler
+    from railway.history_sync import register_history_sync
+    scheduler = JobScheduler()
+    register_history_sync(scheduler)
+    scheduler.start()
+    try:
+        yield
+    finally:
+        scheduler.stop(wait=True)
 
 
 app = FastAPI(title="12306 车次信息 API", description="基于 FastAPI+PostgreSQL+SQLAlchemy 的铁路车次信息管理接口", version="1.0.0", lifespan=lifespan)

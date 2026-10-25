@@ -35,6 +35,14 @@ class Station(Base):
     district = Column(String(length=30), nullable=True, comment="所属区县")
     is_high_speed = Column(SmallInteger, nullable=False, default=0, comment="是否高铁站（0=普速，1=高铁）")
     status = Column(SmallInteger, nullable=False, default=1, comment="状态（1=运营，0=暂停）")
+    latitude = Column(DECIMAL(10, 7), nullable=True, comment="纬度，缺失时为空")
+    longitude = Column(DECIMAL(10, 7), nullable=True, comment="经度，缺失时为空")
+    coordinate_source = Column(String(32), nullable=True, comment="坐标来源：12306/tianditu/manual")
+    coordinate_system = Column(String(16), nullable=True, comment="坐标参考系，未确认时为unknown")
+    coordinates_updated_at = Column(DateTime(timezone=True), nullable=True)
+    coordinate_status = Column(String(24), nullable=True, comment="坐标补齐状态")
+    coordinate_lookup_at = Column(DateTime(timezone=True), nullable=True)
+    coordinate_retry_after = Column(DateTime(timezone=True), nullable=True)
 
     # 索引/约束
     __table_args__ = (

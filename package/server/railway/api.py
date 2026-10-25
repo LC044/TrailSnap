@@ -36,6 +36,32 @@ from app.dependencies import BaseResponse as ApiResponse
 router = APIRouter()
 
 
+@router.get("/history/status", response_model=ApiResponse[Dict[str, Any]])
+def railway_history_status():
+    from railway.history_cache import HistoryCache
+    return ApiResponse.success(data=HistoryCache().status())
+
+
+@router.get("/history/stations", response_model=ApiResponse[List[Dict[str, Any]]])
+def railway_station_history(name_or_code: str = Query(..., min_length=1, max_length=100)):
+    from railway.history_cache import HistoryCache
+    return ApiResponse.success(data=HistoryCache().stations(name_or_code))
+
+
+@router.get("/history/trains", response_model=ApiResponse[Dict[str, Any]])
+def railway_train_history(
+    train_code: str = Query(..., min_length=1, max_length=20),
+    query_date: date = Query(...),
+    departure_station: Optional[str] = Query(None, max_length=100),
+    arrival_station: Optional[str] = Query(None, max_length=100),
+):
+    from railway.history_cache import HistoryCache
+    cache = HistoryCache()
+    result = cache.resolve(train_code, query_date, departure_station, arrival_station)
+    result['history_available'] = bool(cache.status()['sequence'])
+    return ApiResponse.success(data=result)
+
+
 @router.get("/status", response_model=ApiResponse[Dict[str, str]])
 def railway_initialization_status() -> ApiResponse[Dict[str, str]]:
     from railway.initialization import get_initialization_state
@@ -368,6 +394,19 @@ def batch_calculate_stats(
     request: TicketBatchRequest,
     db: Session = Depends(get_db)
 ):
+    from railway.history_cache import HistoryCache
+    cache = HistoryCache()
+    if cache.status()['sequence']:
+        results = []
+        for item in request.items:
+            try:
+                day = date.fromisoformat(item.date_time[:10]) if item.date_time else date.today()
+            except ValueError:
+                return BaseResponse(code=422, msg="乘车日期格式无效", data=None)
+            result = cache.resolve(item.train_code, day, item.departure_station, item.arrival_station)
+            results.append(TicketStats(id=item.id, distance_km=result['distance_km'],
+                                       duration_minutes=result['duration_minutes'], train_no=result['train_no']))
+        return BaseResponse(data=results)
     results = []
     # 1. 收集所有车次号
     train_codes = set(item.train_code for item in request.items)
