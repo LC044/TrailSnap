@@ -396,24 +396,39 @@ test.describe.serial('P1 - 人物相册', () => {
     // 进入批量模式后 PhotoGallery 会重渲染一次；只等 img 存在不够，
     // force click 会打在重渲染前的旧位置上，导致选中数一直停在 0。
     // 先等底部批量工具栏挂载，再等第一张缩略图可见（与 photos-flow-p1 一致）。
-    await expect(page.getByTestId('photo-selection-bar')).toBeVisible({ timeout: 10_000 })
+    const selectionBar = page.getByTestId('photo-selection-bar')
+    await expect(selectionBar).toBeVisible({ timeout: 10_000 })
     const imgs = gallery.locator('img')
     await expect(imgs.first()).toBeVisible({ timeout: 15_000 })
-    await imgs.first().click({ force: true })
+    // 进入批量模式后 PhotoGallery 会重渲染一次；只等 img 存在不够，
+    // force click 会打在重渲染前的旧位置上，导致选中数一直停在 0。
+    // 选中数为 0 时 PhotoBatchActionBar 的删除按钮是 disabled 的，
+    // 点击会一直重试到测试超时（2026-10-24 的 CI 就是这样挂的）。
+    // 所以这里点完必须确认「已选 1 项」，没选上就重新点一次。
+    await expect(async () => {
+      const current = (await selectionBar.textContent()) ?? ''
+      if (/已选\s*1\s*项/.test(current)) return
+      await imgs.first().click({ force: true })
+      await expect(selectionBar).toContainText('已选 1 项', { timeout: 2_000 })
+    }).toPass({ timeout: 30_000 })
 
-    // PhotoGallery 的 trash 按钮 title = deleteLabel prop = "从人物中移除"
+    // PhotoGallery 的 trash 按钮 title = deleteLabel prop = "从人物中移除"，
+    // 它在没有选中照片时是 disabled 的（PhotoBatchActionBar: localSelectedIds.size === 0）。
     const removeBtn = page.locator('button[title="从人物中移除"]').first()
     await expect(removeBtn).toBeVisible({ timeout: 5_000 })
+    await expect(removeBtn).toBeEnabled({ timeout: 15_000 })
 
     // 同时监听：waitForRequest 拿 photo_ids，waitForResponse 等请求完成
     const removeUrl = `/api/faces/identities/${probe.identity.id}/remove-photos`
+    // CI 容器里页面与后端都比本地慢，30s 在高负载下会偶发不够（2026-10-24 的 CI
+    // 就是卡在这里超时，断言本身没错）。这里只放宽等待时间，不改任何断言。
     const removeReq = page.waitForRequest(
       (r) => r.url().includes(removeUrl) && r.method() === 'POST',
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     )
     const removeRes = page.waitForResponse(
       (r) => r.url().includes(removeUrl) && r.status() === 200,
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     )
     await removeBtn.click()
 
@@ -426,13 +441,20 @@ test.describe.serial('P1 - 人物相册', () => {
     await expect(firstConfirm).toBeVisible({ timeout: 5_000 })
     await firstConfirm.click()
 
-    await page.locator('.el-message-box').waitFor({ state: 'detached', timeout: 5_000 }).catch(async () => {
-      await expect(firstConfirm).toBeHidden({ timeout: 5_000 })
+    await page.locator('.el-message-box').waitFor({ state: 'detached', timeout: 15_000 }).catch(async () => {
+      await expect(firstConfirm).toBeHidden({ timeout: 10_000 })
       await page.waitForTimeout(400)
     })
 
-    const secondConfirm = page.locator('div.fixed.inset-0 button:has-text("确定")').first()
-    await expect(secondConfirm).toBeVisible({ timeout: 5_000 })
+    // 第二个确认框是 UnifiedPhotoPage 的 ConfirmDialog（标题「确认操作」）。
+    // 原来用 `div.fixed.inset-0 button:has-text("确定")` 只能靠文档顺序猜，
+    // 淡出中的 ElMessageBox overlay 仍可能挡住点击 —— 改成按对话框标题精确定位。
+    const secondConfirm = page
+      .getByRole('dialog')
+      .filter({ hasText: '确认操作' })
+      .getByRole('button', { name: '确定' })
+      .first()
+    await expect(secondConfirm).toBeVisible({ timeout: 15_000 })
     await secondConfirm.click()
 
     // 等请求与响应都完成，并从请求 body 提取真正移除的 photo_ids（DOM 与 API

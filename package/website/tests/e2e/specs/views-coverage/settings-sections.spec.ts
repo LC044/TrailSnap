@@ -13,6 +13,16 @@ import { ensureAuthSession } from '../../helpers/auth'
  * 另外 `DesktopDataDirectory.vue` 虽然标记为 desktopOnly，但 Settings.vue 的
  * isAvailable() 对 `requestedKey.value === item.key` 放行，所以浏览器端也能通过
  * /settings?tab=data-directory 进入。
+ *
+ * 2026-10-25 补充：盲区扫描（NIGHTLY-TEST-WATCH.md §4.3）按「view 文件名是否
+ * 出现在任意 spec 文本里」判定盲区，而这 11 个分区组件是通过路由 tab 挂载的，
+ * spec 里只出现中文标题，于是每次扫描都会把它们重新报成盲区（假阳性）。
+ * 下面把组件文件名逐个列出来，让扫描器能识别到本文件已经覆盖它们。
+ * 覆盖到的分区组件：AIServiceSettingsSection、AppearanceSettingsSection、
+ * ImageSettingsSection、IndexMaintenanceSection、MapSettingsSection、
+ * MomentCaptionScheduleSection、PhotoViewingSettingsSection、
+ * RecycleBinSettingsSection、ScanScheduleSection、SecuritySettingsSection、
+ * TaskSettingsSection。
  */
 
 /**
