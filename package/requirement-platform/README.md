@@ -150,6 +150,10 @@ MCP 作用域与能力：
 5. 保存返回的 `id`（run_id）、`attempt_id`、`lease_token` 和 `state_version` 后编码。默认租约为 30 分钟，每次调用 `heartbeat_run` 将到期时间延长到当前时间之后 30 分钟；自动续租助手仍每约 20 秒发送心跳。心跳仅更新租约时间，不改变状态版本；计划、结果等业务写入仍推进版本。可以用 `request_clarification` 提问，并由具备审核权限的 Agent 按已确认答案调用 `answer_run_clarification`；范围变化必须修订规格。
 6. 完成后登记必要证据并调用 `submit_run_result`，如实上报每项 AC 的验证结果；成功结果绑定完整 head SHA。创建 PR 后通过 `list_delivery_tasks` 获取最新任务版本，再调用 `link_pull_request`，平台回查仓库、目标分支及 head/base SHA。
 
+公开需求批准规格后会异步创建或同步 GitHub Issue，私密需求不会自动创建公开 Issue。PR 应通过交付任务显式关联，或在正文使用 `Closes #Issue编号`；仅写 `REQ-*` 或需求链接不会触发自动关闭。
+
+目标仓库 `master` 的关联 PR 合并后，需求自动变为 `closed`，交付任务保留 `merged`；已发布、已拒绝、重复、已撤回等终态不会被覆盖。合并后才绑定 PR 也会立即补齐状态。后台 worker 在配置 GitHub 凭证时每小时对全部已关闭 PR 分页对账，补偿漏收的合并事件；Web/MCP 的“同步 GitHub Issues”也会排队触发对账。对账失败使用普通后台任务的重试机制，可通过后台任务记录查看错误。历史上没有 Issue 或交付任务关联的需求需人工核验合并证据后关闭，不凭标题或模糊提及自动关闭。
+
 仍支持逐步执行 `create_delivery_task` → `claim_delivery_task(task_id=... 或 requirement_id="REQ-123")` → `submit_implementation_plan`；不传筛选时才从队列领取最早满足依赖的任务。任务绑定令牌不能跨任务领取。平台提供完整工具和仓库技能，但不在后台自动启动编码模型；由当前 Codex/Claude 会话执行上述流程。
 
 长时间命令可使用自动续租助手（在 `server` 目录执行）：

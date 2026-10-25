@@ -37,7 +37,7 @@ def get_requirement(db: Session, requirement_id: str, *, include_deleted: bool =
 
 
 def enqueue_github_sync(db: Session, row: Requirement, *, unique_suffix: str) -> None:
-    if row.github_issue_number or (row.visibility == "public" and row.status == "candidate"):
+    if row.github_issue_number or (row.visibility == "public" and row.status in {"candidate", "accepted"}):
         enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:{row.status}:{unique_suffix}")
 
 

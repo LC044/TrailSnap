@@ -380,6 +380,16 @@ class GitHubClient:
     def get_pull_request(self, pull_request_number: int) -> dict[str, Any]:
         return self._request("GET", f"/repos/{settings.github_repo}/pulls/{pull_request_number}")
 
+    def iter_closed_pull_requests(self):
+        page = 1
+        while True:
+            rows = self._request("GET", f"/repos/{settings.github_repo}/pulls",
+                                 params={"state": "closed", "per_page": 100, "page": page})
+            yield from rows
+            if len(rows) < 100:
+                return
+            page += 1
+
     def update_issue_state(self, issue_number: int, state: str) -> dict[str, Any]:
         return self._request(
             "PATCH", f"/repos/{settings.github_repo}/issues/{issue_number}", json={"state": state}
@@ -477,7 +487,9 @@ def sync_requirement_issue(db: Session, requirement_id: str) -> None:
               issue_number=requirement.github_issue_number, status=requirement.status)
         db.commit()
         return
-    if requirement.status not in {"candidate", "scheduled", "developing", "testing", "release_ready", "released"}:
+    if requirement.visibility != "public":
+        raise ValueError("Private requirements cannot be automatically published to GitHub")
+    if requirement.status not in {"candidate", "accepted", "scheduled", "developing", "testing", "release_ready", "released"}:
         raise ValueError("Requirement is not eligible for GitHub issue creation")
     data = client.create_issue(requirement)
     requirement.github_issue_number = data["number"]

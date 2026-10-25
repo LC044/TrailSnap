@@ -699,6 +699,7 @@ def sync_github_issues() -> dict[str, int]:
             if row.status == "submitted":
                 enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
             created += 1
+        enqueue(db, "github_pull_requests", settings.github_repo, f"github_pull_requests:manual:{secrets.token_hex(8)}")
         audit(db, actor.id, "github.issues.synchronized", "github_repository", settings.github_repo, source="mcp", created=created, updated=updated, skipped=skipped, total=len(issues))
         db.commit()
     return {"created": created, "updated": updated, "skipped": skipped, "total": len(issues)}

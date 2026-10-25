@@ -9,13 +9,14 @@ from sqlalchemy.orm import Session
 from ..config import settings
 from ..db import get_db
 from ..delivery import requirement_transition
+from ..github_sync import apply_pull_request
 from ..domain import requirements as requirement_service
 from ..domain.common import audit, enqueue
 from ..integrations.github import (
-    closing_issue_numbers, pull_request_summary, requirement_status_from_github, verify_webhook,
+    requirement_status_from_github, verify_webhook,
 )
 from ..models import (
-    DeliveryTask, GitHubIdentity, PullRequestLink, Requirement, RequirementFollower, User, WebhookEvent,
+    GitHubIdentity, Requirement, RequirementFollower, User, WebhookEvent,
 )
 from ..presenters import requirement_data
 from ..schemas import GitHubIssueLinkInput, ReasonInput
@@ -119,6 +120,7 @@ def import_github_issues(actor: User = Depends(manager), db: Session = Depends(g
             enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
         audit(db, actor.id, "github.issue.imported", "requirement", row.id, issue_number=number)
         created += 1
+    enqueue(db, "github_pull_requests", settings.github_repo, f"github_pull_requests:manual:{secrets.token_hex(8)}")
     audit(db, actor.id, "github.issues.synchronized", "github_repository", settings.github_repo,
           created=created, updated=updated, skipped=skipped, total=len(issues))
     db.commit()
@@ -212,52 +214,8 @@ async def github_webhook(
                 enqueue(db, "github_issue", row.id, f"github_issue:{row.id}:webhook:{delivery_id}")
     elif x_github_event == "pull_request":
         pull_request = payload.get("pull_request") or {}
-        pull_request_number = pull_request.get("number") or payload.get("number")
-        linked_issue_numbers = closing_issue_numbers(pull_request)
-        if pull_request_number:
-            summary = pull_request_summary({**pull_request, "number": pull_request_number})
-            delivery_link = db.query(PullRequestLink).filter(
-                PullRequestLink.repository == settings.github_repo,
-                PullRequestLink.pull_request_number == pull_request_number,
-            ).first()
-            if delivery_link:
-                delivery_link.url = summary.get("url") or delivery_link.url
-                delivery_link.head_sha = str((pull_request.get("head") or {}).get("sha") or delivery_link.head_sha)
-                delivery_link.state = summary["state"]
-                task = db.query(DeliveryTask).filter(DeliveryTask.id == delivery_link.task_id).one()
-                if summary["state"] == "merged" and task.state != "merged":
-                    task.state, task.state_version = "merged", task.state_version + 1
-                    requirement = db.query(Requirement).filter(Requirement.id == task.requirement_id).one()
-                    requirement_transition(db, requirement, "merged", actor_id=None,
-                                           reason=f"关联 PR #{pull_request_number} 已合并，等待版本发布",
-                                           source="github_pull_request_webhook")
-            linked_rows = db.query(Requirement).filter(
-                Requirement.github_issue_number.is_not(None), Requirement.deleted_at.is_(None)
-            ).all()
-            for row in linked_rows:
-                related = [
-                    item for item in (row.github_pull_requests or [])
-                    if item.get("number") != pull_request_number
-                ]
-                is_linked = row.github_issue_number in linked_issue_numbers
-                if is_linked:
-                    related.append(summary)
-                    related.sort(key=lambda item: item.get("number") or 0, reverse=True)
-                if related != (row.github_pull_requests or []):
-                    was_linked = any(
-                        item.get("number") == pull_request_number for item in (row.github_pull_requests or [])
-                    )
-                    row.github_pull_requests = related
-                    audit(
-                        db, None,
-                        "github.pull_request.updated" if is_linked else "github.pull_request.unlinked",
-                        "requirement", row.id, source="github_webhook",
-                        pull_request_number=pull_request_number, pull_request_url=summary.get("url"),
-                        newly_linked=is_linked and not was_linked,
-                    )
-                if is_linked and summary["state"] == "merged":
-                    audit(db, None, "github.pull_request.merged", "requirement", row.id,
-                          source="github_pull_request_webhook", pull_request_number=pull_request_number)
+        apply_pull_request(db, {**pull_request, "number": pull_request.get("number") or payload.get("number")},
+                           source="github_pull_request_webhook")
     event.processed = True
     db.commit()
     return ok({"accepted": True})
