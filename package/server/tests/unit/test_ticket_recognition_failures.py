@@ -38,7 +38,13 @@ def train(**kwargs):
 @pytest.mark.asyncio
 async def test_reference_lookup_failure_still_saves_and_retry_keeps_id(scenario):
     db, owner, _, photo = scenario
-    with patch.object(tickets, 'get_schedule_info', new=AsyncMock(side_effect=OSError('railway unavailable'))):
+    # The optional offline railway history cache (REQ-196) is filled on
+    # developer machines and answers the mileage before the patched live
+    # lookup is ever reached. Neutralise it so the test does not depend on
+    # whether the machine synced the railway history yet.
+    with patch('railway.history_cache.HistoryCache') as history_cache, \
+         patch.object(tickets, 'get_schedule_info', new=AsyncMock(side_effect=OSError('railway unavailable'))):
+        history_cache.return_value.status.return_value = {'sequence': 0}
         result = await tickets.RecognizeTicketStrategy().save_recognition_result(photo, {'tickets': [train()]}, db)
         saved = db.query(TrainTicket).one()
         saved_id = saved.id

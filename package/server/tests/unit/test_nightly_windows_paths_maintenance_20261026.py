@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -91,8 +92,19 @@ def test_publish_directory_retries_while_the_target_is_locked(monkeypatch, tmp_p
             raise PermissionError("file is in use")
         return real_rename(self, other)
 
+    # The retry loop only exists on Windows: ``publish_directory`` re-raises
+    # the PermissionError straight away when ``os.name != "nt"``. Pretend to
+    # be Windows so the retry path is the one under test on every platform
+    # (the CI container runs on Linux).
+    monkeypatch.setattr(os, "name", "nt")
     monkeypatch.setattr(Path, "rename", flaky_rename)
-    monkeypatch.setattr(windows_paths.time, "sleep", lambda _seconds: None)
+    # Patch the module level ``time`` reference instead of the stdlib module so
+    # the sleeping process wide ``time.sleep`` is left alone.
+    monkeypatch.setattr(
+        windows_paths,
+        "time",
+        SimpleNamespace(monotonic=time.monotonic, sleep=lambda _seconds: None),
+    )
 
     windows_paths.publish_directory(source, target)
 
@@ -114,8 +126,15 @@ def test_publish_directory_gives_up_after_the_deadline(monkeypatch, tmp_path):
         # first call builds the deadline, later calls are already past it
         return 0.0 if clock["calls"] == 1 else 100.0
 
+    # Same as above: on POSIX the PermissionError is re-raised before the
+    # deadline is ever consulted, so the deadline branch needs a fake Windows.
+    monkeypatch.setattr(os, "name", "nt")
     monkeypatch.setattr(Path, "rename", lambda self, other: (_ for _ in ()).throw(PermissionError("locked")))
-    monkeypatch.setattr(windows_paths.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(
+        windows_paths,
+        "time",
+        SimpleNamespace(monotonic=fake_monotonic, sleep=lambda _seconds: None),
+    )
 
     with pytest.raises(PermissionError):
         windows_paths.publish_directory(source, target)

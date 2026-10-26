@@ -260,8 +260,11 @@ def test_release_async_frees_the_model():
     wrapper.get()
 
     assert wrapper.release_async() is True
-    for _ in range(100):
-        if wrapper.model is None:
+    # The worker drops the model *before* ``gc.collect()`` runs and only then
+    # clears ``releasing``, so the model can already be gone while the flag is
+    # still set. Wait for both, otherwise the assertion races the collector.
+    for _ in range(200):
+        if wrapper.model is None and not wrapper.releasing:
             break
         time.sleep(0.01)
 
@@ -269,11 +272,14 @@ def test_release_async_frees_the_model():
     assert wrapper.releasing is False
 
 
-def test_release_except_keeps_the_requested_family():
+def test_release_except_keeps_the_requested_family(monkeypatch):
     from app.services.model_manager import model_manager
 
-    model_manager.models.clear()
     released = []
+    # Swap the registry for a scratch dict instead of clearing the process wide
+    # one: the models registered by the other services (tickets_yolo, ...) must
+    # survive this test, otherwise the later suites lose them.
+    monkeypatch.setattr(model_manager, "models", {})
 
     def register(name):
         wrapper = SimpleWrapper(name, released)
@@ -286,23 +292,21 @@ def test_release_except_keeps_the_requested_family():
     register("tickets_yolo")
     register("unrelated")
 
-    try:
-        model_manager.release_except("classification")
-        assert sorted(released) == ["clip_text", "tickets_yolo", "unrelated"]
+    # ``monkeypatch`` restores the original registry when the test ends.
+    model_manager.release_except("classification")
+    assert sorted(released) == ["clip_text", "tickets_yolo", "unrelated"]
 
-        released.clear()
-        model_manager.release_except("embedding")
-        assert sorted(released) == ["tickets_yolo", "unrelated", "yolo_photo_cls_a", "yolo_photo_cls_b"]
+    released.clear()
+    model_manager.release_except("embedding")
+    assert sorted(released) == ["tickets_yolo", "unrelated", "yolo_photo_cls_a", "yolo_photo_cls_b"]
 
-        released.clear()
-        model_manager.release_except("tickets")
-        assert sorted(released) == ["clip_text", "unrelated", "yolo_photo_cls_a", "yolo_photo_cls_b"]
+    released.clear()
+    model_manager.release_except("tickets")
+    assert sorted(released) == ["clip_text", "unrelated", "yolo_photo_cls_a", "yolo_photo_cls_b"]
 
-        released.clear()
-        model_manager.release_except("unrelated")
-        assert sorted(released) == ["clip_text", "tickets_yolo", "yolo_photo_cls_a", "yolo_photo_cls_b"]
-    finally:
-        model_manager.models.clear()
+    released.clear()
+    model_manager.release_except("unrelated")
+    assert sorted(released) == ["clip_text", "tickets_yolo", "yolo_photo_cls_a", "yolo_photo_cls_b"]
 
 
 class SimpleWrapper:
@@ -317,9 +321,12 @@ class SimpleWrapper:
 
 
 def test_monitor_loop_evicts_idle_models(monkeypatch):
-    from app.services.model_manager import ModelManager
+    from app.services import model_manager as model_manager_module
 
-    manager = ModelManager.__new__(ModelManager)
+    # ``ModelManager`` is a singleton: ``ModelManager.__new__`` hands back the
+    # process wide instance, so building it that way would replace the models
+    # registered by the other services. Build a detached instance instead.
+    manager = object.__new__(model_manager_module.ModelManager)
     manager.models = {}
     manager.idle_timeout = 0
     manager.running = True
@@ -336,11 +343,21 @@ def test_monitor_loop_evicts_idle_models(monkeypatch):
 
     manager.models["idle"] = IdleWrapper()
 
-    def stop_after_one_sleep(_seconds):
-        manager.running = False
+    class FakeClock:
+        """Stands in for the ``time`` module of ``app.services.model_manager``."""
 
-    monkeypatch.setattr(time, "sleep", stop_after_one_sleep)
-    monkeypatch.setattr(time, "time", lambda: 1_000_000.0)
+        @staticmethod
+        def sleep(_seconds):
+            manager.running = False
+
+        @staticmethod
+        def time():
+            return 1_000_000.0
+
+    # Patch the module level ``time`` reference instead of the stdlib module:
+    # patching ``time.sleep`` would also disturb the real monitor thread of the
+    # singleton and every other thread of the test session.
+    monkeypatch.setattr(model_manager_module, "time", FakeClock)
 
     manager._monitor_loop()
 
