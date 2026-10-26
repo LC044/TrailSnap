@@ -20,34 +20,10 @@ def _ticket(departure="Alpha", arrival="Charlie"):
 
 
 def _schedule():
-    return {
-        "code": 200,
-        "data": {
-            "list": [
-                {
-                    "station_telecode": "AAA",
-                    "station_name": "Alpha",
-                    "arrival_time": "08:00:00",
-                    "departure_time": "08:05:00",
-                    "accumulated_mileage": 0,
-                },
-                {
-                    "station_telecode": "BBB",
-                    "station_name": "Bravo",
-                    "arrival_time": "09:00:00",
-                    "departure_time": "09:05:00",
-                    "accumulated_mileage": 100,
-                },
-                {
-                    "station_telecode": "CCC",
-                    "station_name": "Charlie",
-                    "arrival_time": "10:00:00",
-                    "departure_time": "10:05:00",
-                    "accumulated_mileage": 250,
-                },
-            ]
-        },
-    }
+    return {'distance_km': 250, 'duration_minutes': 130, 'stops': [
+        {'c': code, 'n': name, 'a': '08:00', 'd': '08:05'}
+        for code, name in [('AAA', 'Alpha'), ('BBB', 'Bravo'), ('CCC', 'Charlie')]
+    ]}
 
 
 @pytest.mark.asyncio
@@ -57,15 +33,15 @@ async def test_calculate_ticket_mileage_and_time_uses_schedule_segments():
 
     assert result["total_mileage"] == 250
     assert result["total_time"] == 130
-    assert [stop["station_name"] for stop in result["stop_stations"]] == ["Alpha", "Bravo"]
+    assert [stop["station_name"] for stop in result["stop_stations"]] == ["Alpha", "Bravo", "Charlie"]
 
 
 @pytest.mark.asyncio
 async def test_calculate_ticket_mileage_and_time_handles_missing_station():
-    with patch.object(tickets, "get_schedule_info", new=AsyncMock(return_value=_schedule())):
+    with patch.object(tickets, "get_schedule_info", new=AsyncMock(return_value={"distance_km": None, "duration_minutes": None, "stops": []})):
         result = await tickets.calculate_ticket_mileage_and_time(_ticket(arrival="Missing"))
 
-    assert result == {"total_mileage": 0, "total_time": 0, "stop_stations": []}
+    assert result == {"total_mileage": None, "total_time": None, "stop_stations": []}
 
 
 @pytest.mark.asyncio

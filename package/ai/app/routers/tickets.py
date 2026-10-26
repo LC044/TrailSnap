@@ -23,6 +23,8 @@ class TicketInfo(BaseModel):
     seat_type: Optional[str] = Field(default=None)
     name: Optional[str] = Field(default=None)
     discount_type: Optional[str] = Field(default=None)
+    duration_minutes: Optional[int] = Field(default=None)
+    duration_source: Optional[str] = Field(default=None)
     
     # 飞机票特有字段 (兼容)
     flight_code: Optional[str] = Field(default=None)

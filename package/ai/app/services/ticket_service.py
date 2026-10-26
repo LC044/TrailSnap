@@ -8,7 +8,7 @@ import re
 from app.config import settings
 from app.services.model_manager import model_manager
 from app.services.unified_model_manager import ai_model_manager
-from app.services.ticket_parser import parse_ticket_info, extract_text, resolve_train_code
+from app.services.ticket_parser import parse_ticket_info, parse_ticket_cards, extract_text, resolve_train_code, normalize_ticket_text, candidate_train_codes
 from app.services.fly_ticket_parser import extract_flight_info
 from app.services.onnx_providers import create_inference_session
 from app.services.ocr_service import openvino_infer_lock
@@ -63,27 +63,203 @@ model_manager.register_model("tickets_yolo", load_onnx_model, release_onnx_model
 def has_railway_evidence(texts):
     text = ' '.join(texts).translate(str.maketrans({'車': '车', '號': '号'}))
     # Airline numbers (e.g. G3915 as an airline designator) alone are insufficient.
-    code = re.search(r'(?<![A-Za-z0-9])[GDCKTZ]\d{1,4}(?![A-Za-z0-9])', text)
+    code = re.search(r'(?<![A-Za-z0-9])[GDCKTZSNLYA]\d{1,4}(?![A-Za-z0-9])', text)
     railway = re.search(r'\d{1,2}\s*车\s*\d{1,3}\s*[A-Fa-f]?\s*号|二等座|一等座|复兴号|中国铁路|12306', text)
     aviation = re.search(r'登机口|航班|航空|机场|经济舱', text)
     return bool(code and railway and not aviation)
 
 
-def supplement_train_code(info, image, ocr):
-    """At most one full-image OCR; never copy other fields across crop boundaries."""
+def _ocr_blocks(result):
+    result = result[0] if isinstance(result, tuple) else result
+    if hasattr(result, 'txts'):
+        texts = list(result.txts) if result.txts is not None else []
+        boxes=getattr(result,'boxes',None)
+        polys = boxes.tolist() if hasattr(boxes, 'tolist') else boxes
+        return texts, polys if polys is not None else []
+    return ([str(item[1]) for item in (result or []) if len(item) >= 2],
+            [item[0] for item in (result or []) if len(item) >= 2])
+
+
+def _full_image_ticket(image, ocr):
+    """Detector misses require strong railway evidence, not just a number."""
+    with openvino_infer_lock():
+        texts, polys = _ocr_blocks(ocr(image,use_det=True,use_cls=True,use_rec=True))
+    if not has_railway_evidence(texts):
+        return None
+    info = parse_ticket_info(texts, polys)
+    if not all(info.get(k) for k in ('train_code', 'departure_station', 'arrival_station')):
+        return None
+    if not re.search(r'\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}', info.get('datetime') or ''):
+        return None
+    return dict(info, type='train', detection_id=0)
+
+
+def recover_station_line(info,image,texts,polys,ocr):
+    """Read an undersized endpoint from its own card's opposite station column."""
+    from app.services.ticket_parser import _get_valid_station_names, _poly_center, _is_valid_station_name
+    endpoints=('departure_station','arrival_station')
+    present=[info[k] for k in endpoints if info.get(k)]
+    if len(present)!=1 or not info.get('train_code'):return
+    known=_get_valid_station_names()
+    anchors=[p for t,p in zip(texts,polys) if t.strip().removesuffix('站')==present[0] and len(p)>=4]
+    if len(anchors)!=1:return
+    box=anchors[0];x,_=_poly_center(box);height,width=image.shape[:2]
+    top=max(0,int(min(p[1] for p in box))-3);bottom=min(height,int(max(p[1] for p in box))+3)
+    left,right=(0,int(width*.4)) if x>width/2 else (int(width*.6),width)
+    region=image[top:bottom,left:right]
+    if region.size==0:return
+    enlarged=cv2.resize(region,(region.shape[1]*3,region.shape[0]*3),interpolation=getattr(cv2,'INTER_CUBIC',cv2.INTER_LINEAR))
     try:
         with openvino_infer_lock():
-            result = ocr(image)
-        result = result[0] if isinstance(result, tuple) else result
-        if hasattr(result, 'txts'):
-            texts = list(result.txts) if result.txts is not None else []
-            polys = result.boxes.tolist() if hasattr(result.boxes, 'tolist') else result.boxes
-        else:
-            texts = [str(item[1]) for item in (result or []) if len(item) >= 2]
-            polys = [item[0] for item in (result or []) if len(item) >= 2]
+            words,_=_ocr_blocks(ocr(enlarged,use_det=False,use_cls=False))
+        candidates=set()
+        credible=set()
+        for word in words:
+            name=re.sub(r'[^\u4e00-\u9fff]','',word).removesuffix('站')
+            if name[-1:] in ('过','始','终') and name[:-1] in known:name=name[:-1]
+            if name in known and name!=present[0]:candidates.add(name)
+            elif _is_valid_station_name(name) and len(name)>=2 and name!=present[0]:credible.add(name)
+        if not candidates and len(credible)==1:candidates=credible
+        if len(candidates)==1:
+            name=candidates.pop()
+            info['departure_station'],info['arrival_station']=(name,present[0]) if x>width/2 else (present[0],name)
+            info['station_source']='card-line-ocr'
+    except Exception:
+        logging.warning('Station-line OCR could not recover an endpoint')
+
+
+def recover_clock_orientation(info,path,texts,ocr):
+    clocks=[m for text in texts for m in re.finditer(r'(?<!\d)(\d{1,2})[:：](\d{2})(?!\d)',text)]
+    damaged=any(int(m[1])>=24 or int(m[2])>=60 for m in clocks)
+    if not info.get('train_code') or (not damaged and _ticket_readability(info)[2]):return
+    try:
+        with openvino_infer_lock():
+            words,boxes=_ocr_blocks(ocr(path,use_det=True,use_cls=False,use_rec=True))
+        alternative=parse_ticket_info(words,boxes)
+        if alternative.get('train_code')!=info['train_code']:return
+        value=alternative.get('datetime') or ''
+        match=re.search(r'(\d{1,2}):(\d{2})$',value)
+        if not match or int(match[1])>=24 or int(match[2])>=60:return
+        if not _ticket_readability(alternative)[2]:return
+        info['datetime']=value
+        info['datetime_source']='card-without-orientation'
+        for key in ('duration_minutes','duration_source'):
+            if alternative.get(key):info[key]=alternative[key]
+    except Exception:
+        logging.warning('Could not recover an incorrectly oriented clock')
+
+
+def _ticket_readability(info):
+    from datetime import datetime
+    from app.services.ticket_parser import _get_valid_station_names
+    known = _get_valid_station_names()
+    endpoints = [info.get(k) for k in ('departure_station', 'arrival_station')]
+    date_ok = False
+    value = info.get('datetime') or ''
+    for text, fmt in ((value, '%Y年%m月%d日 %H:%M'), ('2000年' + value, '%Y年%m月%d日 %H:%M')):
+        try:
+            date_ok = 1850 <= datetime.strptime(text, fmt).year <= datetime.now().year+2
+            if date_ok:
+                break
+        except ValueError:
+            pass
+    return (len({n for n in endpoints if n in known}), bool(info.get('train_code')), date_ok)
+
+
+def recover_mirrored_card(info, image, texts, polys, ocr):
+    """Retry unreadable cards after reversing a possible camera/augmentation mirror.
+
+    Accept only a strictly better result with both dictionary endpoints, a service
+    and a valid departure datetime. A readable original never incurs this retry.
+    """
+    if _ticket_readability(info) == (2, True, True):
+        return info, texts, polys
+    try:
+        variants=[('horizontal-mirror',image[:,::-1])]
+        if image.shape[0]>image.shape[1]*1.2:
+            # A portrait detector crop can be a sideways paper ticket. Text-line
+            # angle classification alone does not restore its route geometry.
+            variants.extend((label,np.rot90(source,turns))
+                            for source,prefix in ((image,''),(image[:,::-1],'mirror-'))
+                            for turns,label in ((1,prefix+'rotate-90'),(3,prefix+'rotate-270')))
+        for label,variant in variants:
+            with openvino_infer_lock():
+                words, boxes = _ocr_blocks(ocr(np.ascontiguousarray(variant),
+                                              use_det=True, use_cls=True, use_rec=True))
+            alternative = parse_ticket_info(words, boxes)
+            if _ticket_readability(alternative) == (2, True, True):
+                alternative.update(type='train', ocr_transform=label)
+                return alternative, words, boxes
+    except Exception:
+        logging.warning('Could not recover a mirrored ticket card')
+    return info, texts, polys
+
+
+def reconcile_ticket_copies(tickets, serials):
+    """Use a readable copy only when the printed ticket serial proves identity."""
+    from app.services.ticket_parser import _get_valid_station_names
+    known = _get_valid_station_names()
+    originals = [dict(t) for t in tickets]
+    for info in tickets:
+        identity = serials.get(info.get('detection_id'), set())
+        if not identity or _ticket_readability(info) == (2, True, True):
+            continue
+        references=[]
+        for other in originals:
+            if _ticket_readability(other)!=(2, True, True):continue
+            if not identity.intersection(serials.get(other.get('detection_id'),set())):continue
+            if info.get('train_code') and info['train_code']!=other['train_code']:continue
+            if any(info.get(k) in known and info[k]!=other[k] for k in ('departure_station','arrival_station')):continue
+            value=info.get('datetime') or ''
+            if value and not other['datetime'].startswith(value):continue
+            references.append(other)
+        fields=('train_code','departure_station','arrival_station','datetime')
+        if references and len({tuple(t[k] for k in fields) for t in references})==1:
+            info.update({k:references[0][k] for k in fields})
+            info['station_source']='same-printed-ticket-serial'
+
+
+def supplement_train_code(info, image, ocr):
+    """Recover context for a single ticket; never merge fields from multiple cards."""
+    try:
+        with openvino_infer_lock():
+            result = ocr(image,use_det=True,use_cls=True,use_rec=True)
+        texts, polys = _ocr_blocks(result)
+        texts = [normalize_ticket_text(t) for t in texts]
         code = resolve_train_code(texts, info.get('departure_station', ''), polys)
-        if code:
+        if code and not info.get('train_code'):
             info['train_code'] = code
+        # More than one service in the full image is ambiguous, even if YOLO
+        # found just one card. Departure-specific renumbering is handled above.
+        codes = candidate_train_codes(texts)
+        if not polys or not all(p is not None and len(p) >= 4 for p in polys):
+            return
+        full = parse_ticket_info(texts, polys)
+        if not codes and re.fullmatch(r'\d{3,5}',full.get('train_code') or ''):
+            code=full['train_code']
+            codes={code}
+            if not info.get('train_code'):info['train_code']=code
+        if len(codes) != 1 or not code or code != info.get('train_code'):
+            return
+        # Existing endpoints must agree before importing a missing endpoint/date.
+        endpoints=('departure_station','arrival_station')
+        present=[info[k] for k in endpoints if info.get(k)]
+        full_pair=[full.get(k) for k in endpoints]
+        if len(present)==1 and all(full_pair) and present[0] in full_pair:
+            for key in endpoints:info[key]=full[key]
+        for key in ('departure_station', 'arrival_station'):
+            if info.get(key) and full.get(key) and info[key] != full[key]:
+                return
+        for key in ('departure_station', 'arrival_station'):
+            if not info.get(key) and full.get(key):
+                info[key] = full[key]
+        if not re.search(r'\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}', info.get('datetime') or ''):
+            if re.search(r'\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}', full.get('datetime') or ''):
+                info['datetime'] = full['datetime']
+        # Use the card's resolved endpoints to locate its clocks in the page.
+        from app.services.ticket_journey_parser import extract_journey_time
+        if not info.get('duration_minutes'):
+            info.update(extract_journey_time(texts, polys, info))
     except Exception:
         logging.warning('Full-image train-code OCR failed; retaining crop result')
 
@@ -183,7 +359,9 @@ class TicketService:
                 
         # NMS
         if len(boxes) > 0:
-            indices = cv2.dnn.NMSBoxes(boxes, scores, 0.25, 0.45)
+            # OpenCV expects x/y/width/height; detector coordinates are x1/y1/x2/y2.
+            nms_boxes = [[x1, y1, x2-x1, y2-y1] for x1, y1, x2, y2 in boxes]
+            indices = np.asarray(cv2.dnn.NMSBoxes(nms_boxes, scores, 0.25, 0.45)).reshape(-1)
             filtered_boxes = [boxes[i] for i in indices]
             filtered_scores = [scores[i] for i in indices]
             filtered_class_ids = [class_ids[i] for i in indices]
@@ -193,12 +371,19 @@ class TicketService:
             filtered_class_ids = []
 
         tickets = []
+        card_serials = {}
 
         # 确保输出目录存在 (用于调试或模拟中间文件)
         output_dir = "output"
         os.makedirs(output_dir, exist_ok=True)
         if not filtered_boxes:
-            return {"tickets": tickets, "count": 0}
+            try:
+                info = _full_image_ticket(img, model_manager.get_model('ocr'))
+                if info:
+                    tickets.append(info)
+            except Exception:
+                logging.warning('Full-image fallback could not identify a railway ticket')
+            return {"tickets": tickets, "count": len(tickets)}
 
         ocr = None
         filtered_count = 0
@@ -220,6 +405,12 @@ class TicketService:
             crop = img[y1:y2, x1:x2]
             if crop.size == 0:
                 continue
+            # Small cards in contact sheets/crops otherwise fall below the text
+            # detector's useful scale. Resize pixels only; never synthesize text.
+            ch,cw=crop.shape[:2]
+            scale=min(4.0,max(1.0,640/cw,192/ch))
+            if scale>1:
+                crop=cv2.resize(crop,(round(cw*scale),round(ch*scale)),interpolation=cv2.INTER_CUBIC)
 
             # 1. 保存裁剪图像到临时文件
             temp_filename = f"temp_crop_{uuid.uuid4().hex[:8]}_{conf*100:.0f}.png"
@@ -235,7 +426,7 @@ class TicketService:
                 if not ocr:
                     ocr = model_manager.get_model("ocr")
                 with openvino_infer_lock():
-                    out = ocr(temp_path)
+                    out = ocr(temp_path,use_det=True,use_cls=True,use_rec=True)
             except Exception as e:
                 logging.warning(f"OCR inference failed for {temp_path}: {e}")
                 out = None
@@ -285,22 +476,38 @@ class TicketService:
                 
                 # 5. 解析车票信息
                 cls_name = yolo_session.names.get(cls_id, str(cls_id))
+                additional=[]
                 
                 if cls_name == "label1" and not has_railway_evidence(texts):
                     # 飞机票
                     info = extract_flight_info(texts)
                     info["type"] = "flight"
+                    # Advertisements/order headers can look like boarding passes.
+                    # A detector box alone is not evidence of an airline ticket.
+                    if not info.get('flight_code') and not re.search(r'航班|航空|登机|机场', ' '.join(texts)):
+                        continue
                 else:
                     # 火车票 (label)
                     info = parse_ticket_info(texts, polys)
                     info["type"] = "train"
-                    if not info.get('train_code') and len(filtered_boxes) == 1:
-                        supplement_train_code(info, img, ocr)
+                    if not info.get('train_code') or not (info.get('departure_station') and info.get('arrival_station')):
+                        cards=parse_ticket_cards(texts,polys,initial=info)
+                        info=cards[0]
+                        info['type']='train'
+                        additional=cards[1:]
+                    if not additional:
+                        info, texts, polys = recover_mirrored_card(info,crop,texts,polys,ocr)
+                        recover_station_line(info,crop,texts,polys,ocr)
+                        recover_clock_orientation(info,temp_path,texts,ocr)
+                    card_serials[i]={m[0]+m[1:].replace('O','0') for text in texts
+                                     for m in re.findall(r'[A-Z][0-9O]{6,8}(?![0-9])',text.upper())}
                 
                 logging.info(f"Ticket detection {i} ({cls_name}): parsed info: {info}")
                 if info:
                     info['detection_id'] = i
                     tickets.append(info)
+                    for extra in additional:
+                        tickets.append(dict(extra,type='train',detection_id=i))
 
             except Exception as e:
                 logging.error(f"Error processing JSON flow for ticket {i}: {e}")
@@ -308,9 +515,30 @@ class TicketService:
                 # 清理临时 JSON 文件
                 if os.path.exists(json_path):
                     os.remove(json_path)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
         if filtered_count > 0:
             logging.info(f"Filtered out {filtered_count} low confidence detections")
+
+        reconcile_ticket_copies(tickets,card_serials)
+
+        if len(tickets) == 1 and tickets[0].get('type') == 'train':
+            info = tickets[0]
+            missing_fields = any(not info.get(k) for k in ('train_code', 'departure_station', 'arrival_station'))
+            missing_date = not re.search(r'\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}', info.get('datetime') or '')
+            if missing_fields or missing_date:
+                supplement_train_code(info, img, ocr)
+        elif len(tickets) > 1 and all(t.get('type') == 'train' for t in tickets):
+            if any(re.fullmatch(r'\d{1,2}:\d{2}',t.get('datetime') or '') for t in tickets):
+                try:
+                    with openvino_infer_lock():
+                        texts, context_polys = _ocr_blocks(ocr(img,use_det=True,use_cls=True,use_rec=True))
+                    from app.services.ticket_journey_parser import apply_shared_ticket_date,apply_section_ticket_dates
+                    apply_shared_ticket_date(texts,tickets)
+                    apply_section_ticket_dates(texts,context_polys,tickets)
+                except Exception:
+                    logging.warning('Could not recover a shared ticket-page date')
 
         return {"tickets": tickets, "count": len(tickets)}
 
