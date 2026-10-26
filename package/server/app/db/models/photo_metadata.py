@@ -10,6 +10,10 @@ class PhotoMetadata(Base):
     __tablename__ = "photo_metadata"
 
     __table_args__ = (
+        # Keep geography reads in a narrow covering index: EXIF and other large
+        # metadata columns otherwise make each photo_id lookup fetch a table page.
+        Index('ix_photo_metadata_location_summary', 'photo_id', 'province', 'city',
+              'district', 'country', 'scene_id', 'latitude', 'longitude'),
         Index('idx_location_lat_lng', 'latitude', 'longitude'),
         Index('idx_location_city', 'city'),
         Index('idx_location_province', 'province'),

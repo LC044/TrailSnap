@@ -15,7 +15,7 @@
     "test:pi": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0"
+    "@modelcontextprotocol/sdk": "1.32.0"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -43,5 +43,8 @@
     "skills": [
       "../../skills/trailsnap-agent"
     ]
+  },
+  "overrides": {
+    "ip-address": "^10.7.4"
   }
 }

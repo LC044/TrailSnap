@@ -116,13 +116,16 @@
 import { ref, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { systemApi } from '@/api/system'
-import { getServerUrl, isMobileApp } from '@/config/server'
+import { getServerUrl, isMobileApp, isTauriApp } from '@/config/server'
 import { useAppUpdate } from '@/composables/useAppUpdate'
+import { useDesktopUpdatesStore } from '@/stores/desktopUpdates'
 
 const currentVersion = ref('0.0.0') // Default placeholder
 const checking = ref(false)
 const serverUrl = getServerUrl()
 const mobileApp = isMobileApp()
+const desktopApp = isTauriApp()
+const desktopUpdates = useDesktopUpdatesStore()
 // Android 壳走 App 自更新（自己下载 APK 并唤起安装），Web / 桌面保持原有跳转逻辑。
 const appUpdate = useAppUpdate()
 const appVersion = appUpdate.currentVersion
@@ -131,7 +134,7 @@ onMounted(async () => {
   try {
     const res = await systemApi.getVersion()
     currentVersion.value = res.version
-    checkUpdate()
+    if (!desktopApp) checkUpdate()
   } catch (e) {
     console.error('Failed to fetch version', e)
   }
@@ -140,6 +143,11 @@ onMounted(async () => {
 const checkUpdate = async () => {
   checking.value = true
   try {
+    if (desktopApp) {
+      await desktopUpdates.check(true)
+      if (!desktopUpdates.visible) ElMessage.success('当前已是最新版本')
+      return
+    }
     if (appUpdate.supported) {
       const found = await appUpdate.checkForUpdate()
       if (!found && !appUpdate.errorMessage.value) ElMessage.success('当前已是最新版本')

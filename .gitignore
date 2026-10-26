@@ -21,6 +21,7 @@ releases/
 package/desktop/dist/
 package/desktop/launcher/target/
 package/desktop/server-dist/
+package/desktop/ai-dist/
 package/server/build/
 package/server/dist/
 package/ai/build/

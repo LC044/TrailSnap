@@ -155,7 +155,7 @@ async def test_ticket_batch_persists_flight_and_train_tickets(tmp_path):
                 "departure_station": "北京南",
                 "arrival_station": "上海虹桥",
                 "datetime": "05月01日 10:20",
-                "price": "not-a-price",
+                "price": "0元",
                 "name": "李四",
                 "carriage": "05",
                 "seat_num": "06F",
@@ -165,7 +165,7 @@ async def test_ticket_batch_persists_flight_and_train_tickets(tmp_path):
     )
 
     assert result["status"] == "completed"
-    assert result["result"] == {"status": "success", "tickets_added": 2}
+    assert result["result"] == {"status": "success", "tickets_added": 2, "tickets_existing": 0}
 
     flight = create_flight.call_args.args[1]
     assert flight.flight_code == "CA1234"
@@ -183,7 +183,7 @@ async def test_ticket_batch_persists_flight_and_train_tickets(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_ticket_batch_skips_invalid_ticket_payloads(tmp_path):
+async def test_ticket_batch_rejects_invalid_ticket_payloads(tmp_path):
     result, photo, _db, create_train, create_flight, _calculate = await _run_ticket_batch(
         tmp_path,
         [
@@ -193,10 +193,12 @@ async def test_ticket_batch_skips_invalid_ticket_payloads(tmp_path):
         ],
     )
 
-    assert result["result"] == {"status": "success", "tickets_added": 0}
+    assert result["status"] == "failed"
+    assert result["result"]["status"] == "failed"
+    assert result["result"]["error"]
     create_train.assert_not_called()
     create_flight.assert_not_called()
-    assert photo.processed_tasks["tickets"] is True
+    assert photo.processed_tasks["tickets"] is False
 
 
 # ---------------------------------------------------------------------------

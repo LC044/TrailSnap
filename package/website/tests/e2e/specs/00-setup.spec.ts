@@ -29,7 +29,27 @@ test.describe('Test Environment Setup @setup', () => {
     expect(statusResponse.ok()).toBeTruthy();
     const status = await statusResponse.json();
 
-    if (!status.has_users) {
+    // 账号可能不存在：① 全新库 has_users=false；② 上一轮 99-teardown 删掉了管理账号，
+    // 但库里仍留着其它用例注册的账号（has_users 仍为 true），
+    // 导致 setup 跳过注册后登录失败。
+    // 因此不能只看 has_users：改为「先尝试登录，登录失败再补注册」。
+    const login = () =>
+      request.post('/api/auth/login', {
+        form: {
+          username: ADMIN.username,
+          password: ADMIN.password,
+        },
+      });
+
+    let loginResponse = await login();
+
+    if (!loginResponse.ok()) {
+      // 注册开关关闭时直接失败，不要用一个模糊的 401 覆盖真因。
+      expect(
+        status.allow_registration,
+        `admin login failed (${loginResponse.status()}) and registration is disabled`,
+      ).toBeTruthy();
+
       const registerResponse = await request.post('/api/auth/register', {
         data: {
           username: ADMIN.username,
@@ -39,16 +59,14 @@ test.describe('Test Environment Setup @setup', () => {
           security_answer: ADMIN.securityAnswer,
         },
       });
-      expect(registerResponse.ok()).toBeTruthy();
+      // 注册失败不直接中断：可能账号已存在但密码不符，交给下面的登录给出真实错误。
+      if (!registerResponse.ok()) {
+        console.warn(
+          `[setup] register ${ADMIN.username} returned ${registerResponse.status()}; retrying login.`,
+        );
+      }
+      loginResponse = await login();
     }
-
-    // 2. Login to get token
-    const loginResponse = await request.post('/api/auth/login', {
-      form: {
-        username: ADMIN.username,
-        password: ADMIN.password,
-      },
-    });
     expect(loginResponse.ok()).toBeTruthy();
     const { access_token } = await loginResponse.json();
 
@@ -57,7 +75,7 @@ test.describe('Test Environment Setup @setup', () => {
     test.setTimeout(180_000); // Allow up to 3 minutes for scanning tasks to complete
     
     // Set up a listener or polling mechanism if you want progress output
-    // Note: The preparePhotoFixturesForSuite already does quiet polling internally via waitForTasksToSettle
+    // Preparation checks completed scans and drained prerequisite task queues.
     const fixtureReady = await preparePhotoFixturesForSuite(request, access_token, e2eEnv.suite, {
       onUnavailable: 'throw',
     });

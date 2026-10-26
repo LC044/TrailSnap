@@ -14,6 +14,7 @@ DEPENDENCIES = {
     TaskType.OCR: ("ocr",),
     TaskType.IMAGE_EMBEDDING: ("embedding",),
     TaskType.RECOGNIZE_TICKET: ("ticket", "ocr"),
+    TaskType.VISUAL_DESCRIPTION: ("llm",),
 }
 _cache = {}
 _lock = threading.Lock()
@@ -30,6 +31,8 @@ def model_wait_reason(snapshot, task_type):
         name = model.get("name", selection)
         status = model.get("status")
         if status == "downloading":
+            if model.get("downloadState") == "queued":
+                return f"{WAIT_PREFIX}{name} 排队等待下载，完成后自动继续"
             return f"{WAIT_PREFIX}{name} 正在下载，完成后自动继续"
         if status == "failed":
             return f"{WAIT_PREFIX}{name} 下载失败，请到设置 → AI 模型管理重试；成功后自动继续"

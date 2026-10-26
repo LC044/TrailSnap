@@ -7,12 +7,14 @@ from .db import SessionLocal, init_db
 from .models import BackgroundJob
 from .services import analyze_requirement, sync_batch_milestone, sync_requirement_issue
 from .domain.common import retry_at
+from .github_sync import reconcile_pull_requests, schedule_pull_request_reconciliation
 
 
 HANDLERS = {
     "triage": analyze_requirement,
     "github_issue": sync_requirement_issue,
     "github_milestone": sync_batch_milestone,
+    "github_pull_requests": reconcile_pull_requests,
 }
 
 
@@ -68,6 +70,8 @@ def main() -> None:
     while True:
         db = SessionLocal()
         try:
+            schedule_pull_request_reconciliation(db)
+            db.commit()
             job_id = claim_job(db)
         finally:
             db.close()

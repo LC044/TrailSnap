@@ -28,6 +28,7 @@ class TaskSchema(BaseModel):
     updated_at: Optional[datetime]
     error: Optional[str]
     payload: Optional[Dict[str, Any]]
+    result: Optional[Any] = None
     total_items: Optional[int]
     processed_items: Optional[int]
     attempt_count: int = 0
@@ -44,6 +45,7 @@ class TaskCreate(BaseModel):
 
 
 PHOTO_PROCESSING_TYPES = {
+    TaskType.EXTRACT_METADATA,
     TaskType.VISUAL_DESCRIPTION,
     TaskType.RECOGNIZE_FACE,
     TaskType.OCR,
@@ -230,7 +232,7 @@ def create_photo_processing_task(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Queue one user-triggered AI operation for a photo.
+    """Queue one user-triggered processing operation for a photo.
 
     Completed task rows are intentionally short-lived in this project, so this
     endpoint only deduplicates active PENDING/PROCESSING rows. The completion
@@ -257,6 +259,16 @@ def create_photo_processing_task(
     for active_task in active_tasks:
         payload = active_task.payload or {}
         if str(payload.get("photo_id")) == str(photo.id):
+            if task_in.operation == TaskType.EXTRACT_METADATA and task_in.force and not payload.get('force'):
+                # Import jobs may carry cached EXIF. A running job has already
+                # loaded its payload, so queue a fresh forced pass after it.
+                if active_task.status == TaskStatus.PROCESSING:
+                    continue
+                active_task.payload = dict(payload, force=True)
+                active_task.priority = INTERACTIVE_TASK_PRIORITY
+                db.commit()
+                db.refresh(active_task)
+                TaskManager.get_instance().start_worker_if_needed()
             return BaseResponse.success(data={"task": active_task, "reused": True})
 
     payload = {
@@ -275,6 +287,19 @@ def create_photo_processing_task(
         owner_id=current_user.id,
     )
     return BaseResponse.success(data={"task": task, "reused": False})
+
+
+@router.post("/recover-ticket-recognition", response_model=BaseResponse[Dict[str, int]], summary="恢复旧版无票据的识别任务")
+def recover_ticket_tasks(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.service.ticket_recovery import recover_ticket_recognition
+    from app.service.tasks.ai_runtime import AIBatchSession
+    # Use a fresh transaction to reserve SQLite's writer before selecting targets.
+    with AIBatchSession(bind=db.get_bind(), expire_on_commit=False) as recovery_db:
+        count = recover_ticket_recognition(recovery_db, TaskManager.get_instance(), current_user.id)
+    return BaseResponse.success(data={'count': count})
 
 
 @router.get("/{task_id}", response_model=BaseResponse[TaskSchema], summary="根据 ID 获取任务详情")

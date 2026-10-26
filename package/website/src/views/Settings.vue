@@ -93,7 +93,7 @@
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Activity, BrainCircuit, ChevronRight, CloudUpload, Database, FolderOpen, Info, Key, List, MessageSquare, Settings as SettingsIcon, Smartphone, User, UserCircle } from 'lucide-vue-next'
+import { Activity, ChevronRight, CloudUpload, Database, FolderOpen, Info, Key, List, MessageSquare, Settings as SettingsIcon, Smartphone, User, UserCircle } from 'lucide-vue-next'
 import UserManagement from './settings/UserManagement.vue'
 import ProfileSettings from './settings/ProfileSettings.vue'
 import TaskManagement from './settings/TaskManagement.vue'
@@ -103,7 +103,6 @@ import PerformanceTest from './settings/PerformanceTest.vue'
 import Tokens from './settings/Tokens.vue'
 import AboutPage from './settings/AboutPage.vue'
 import FeedbackPage from './settings/FeedbackPage.vue'
-import DesktopAIExtensions from './settings/DesktopAIExtensions.vue'
 import DesktopDataDirectory from './settings/DesktopDataDirectory.vue'
 import AIModelManagement from './settings/AIModelManagement.vue'
 import MobileBackup from './settings/MobileBackup.vue'
@@ -135,7 +134,6 @@ const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
   { label: '系统与 AI', items: [
     { key: 'basic', label: '系统设置', description: '安全、地图、扫描与任务选项', icon: SettingsIcon },
     { key: 'tasks', label: '任务管理', description: '查看和控制后台处理任务', icon: List },
-    { key: 'ai-extensions', label: 'AI 扩展包', description: '安装桌面 AI 运行能力', icon: BrainCircuit, desktopOnly: true },
     { key: 'ai-models', label: 'AI 模型管理', description: '管理大模型连接与本地模型', icon: Database },
     { key: 'performance', label: '性能测试', description: '检测存储与服务性能', icon: Activity },
   ] },
@@ -158,7 +156,7 @@ const allItems = computed(() => menuGroups.value.flatMap(group => group.items))
 const activeItem = computed(() => allItems.value.find(item => item.key === activeTab.value))
 const tabComponents: Record<string, typeof ProfileSettings> = {
   profile: ProfileSettings, 'mobile-app': MobileAppConnection, user: UserManagement, tasks: TaskManagement,
-  basic: BasicSettings, 'data-directory': DesktopDataDirectory, 'ai-extensions': DesktopAIExtensions, 'ai-models': AIModelManagement, external: ExternalGallery,
+  basic: BasicSettings, 'data-directory': DesktopDataDirectory, 'ai-models': AIModelManagement, external: ExternalGallery,
   'mobile-backup': MobileBackup, performance: PerformanceTest, tokens: Tokens, about: AboutPage, feedback: FeedbackPage,
 }
 const currentComponent = computed(() => tabComponents[activeTab.value || 'profile'] ?? ProfileSettings)

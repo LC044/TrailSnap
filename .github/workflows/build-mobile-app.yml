@@ -6,12 +6,14 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'package/website/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-mobile-app.yml'
   push:
     branches: [ "master" ]
     tags: [ "v*.*.*" ]
     paths:
       - 'package/website/**'
+      - 'scripts/release_assets.py'
       - '.github/workflows/build-mobile-app.yml'
   workflow_dispatch:
 
@@ -77,14 +79,16 @@ jobs:
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
-            ASSET="TrailSnap-$VERSION-debug.apk"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             VERSION="pr-${{ github.event.number }}"
-            ASSET="$VERSION-TrailSnap-debug.apk"
           else
             VERSION="$PACKAGE_VERSION"
-            ASSET="TrailSnap-$VERSION-debug.apk"
           fi
+          RELEASE_VERSION="$PACKAGE_VERSION"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then RELEASE_VERSION="$VERSION"; fi
+          ASSET=$(python ../../scripts/release_assets.py --version "$RELEASE_VERSION" --component mobile \
+            --platform android --arch universal --suffix=-debug.apk)
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then ASSET="$VERSION-$ASSET"; fi
           SOURCE="artifacts/TrailSnap-$PACKAGE_VERSION-debug.apk"
           TARGET="artifacts/$ASSET"
           if [[ "$SOURCE" != "$TARGET" ]]; then

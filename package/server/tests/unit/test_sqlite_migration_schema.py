@@ -20,6 +20,13 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 SERVER_ROOT = Path(__file__).parents[2]
 
 
+def test_desktop_fast_start_schema_revision_matches_sqlite_head():
+    from desktop_entry import DESKTOP_SCHEMA_REVISION
+
+    config = _config("sqlite://")
+    assert DESKTOP_SCHEMA_REVISION == ScriptDirectory.from_config(config).get_current_head()
+
+
 def _config(database_url: str) -> Config:
     config = Config()
     config.set_main_option("script_location", str(SERVER_ROOT / "alembic_sqlite"))

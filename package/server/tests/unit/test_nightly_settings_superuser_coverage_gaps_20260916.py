@@ -228,7 +228,9 @@ def test_remove_directory_cascade_deletes_photos_in_removed_path(tmp_path):
         return_value=fake_task_manager,
     ), patch(
         "app.crud.photo.batch_delete_photos_db", batch_delete
-    ), patch.object(settings_api, "get_storage_root", return_value="/srv/root"):
+    ), patch.object(settings_api, "get_storage_root", return_value="/srv/root"), \
+        patch('app.service.gallery_sync.lock_user', return_value=target), \
+        patch('app.service.gallery_sync.cancel_path_tasks', return_value=0):
         settings_api.remove_directory(
             payload={"user_id": "victim-user", "path": str(target_path)},
             db=db,
@@ -350,7 +352,7 @@ def test_ai_model_request_returns_503_on_connection_error():
         result = settings_api._ai_model_request("GET", "/ai/models", user, db)
 
     assert result.code == 503
-    assert "AI 模型服务不可用" in result.msg
+    assert "暂时无法准备 AI 模型" in result.msg
 
 
 def test_ai_model_request_falls_back_to_text_on_invalid_json():

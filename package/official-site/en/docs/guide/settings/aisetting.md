@@ -1,7 +1,7 @@
 # AI / LLM Settings
 
 ::: tip Desktop users
-This page configures model connections for chat and image understanding. Local face recognition, OCR, classification, and semantic search require the [desktop AI extension](/en/docs/guide/desktop-ai-extension) first. Docker deployments do not use the desktop extension.
+This page configures model connections for chat and image understanding. Desktop AI is included in the application; models are downloaded as needed. See [built-in desktop AI](/en/docs/guide/desktop-ai-extension).
 :::
 
 ## Built-in Connection
@@ -21,7 +21,7 @@ Go to **Settings → General → AI Configuration → LLM Connection** to add a 
 - Fill in the model name (optional — if left empty, all models available with that API key can be used), e.g. `gpt-3.5-turbo`, `qwen3.5:4b`, etc.
 - Click the verify button; a success message will appear if the connection works.
 
-![alt text](/images/aisettings.png)
+![alt text](/images/aisettings.webp)
 
 ## AI Chat Configuration
 

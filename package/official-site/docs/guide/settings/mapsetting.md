@@ -38,7 +38,7 @@ TrailSnap 使用地图服务来展示照片的地理位置分布（足迹地图�
      - **应用类型**：选择 **“服务端”**。TrailSnap 的网页、桌面端和手机 App 都通过自部署 Server 调用天地图，Key 不会发送给浏览器或 WebView。
      - **IP 白名单**（非必须）：如需启用，请填写 TrailSnap Server 访问互联网时使用的公网出口 IP，而不是手机或浏览器的 IP。
 
-   ![Alt text](/images/tianditu.png)
+   ![Alt text](/images/tianditu.webp)
 
 5. **获取 Key**
    创建成功后，您会在应用列表中看到刚才创建的应用。复制 **Key** 列对应的一串字符（通常称为 `tk`）。

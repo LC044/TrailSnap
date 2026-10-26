@@ -136,7 +136,7 @@ const t = computed(() => {
       {
         id: 'locations',
         title: '位置与时间轴',
-        desc: '基于照片的GPS信息统计，查询照片位置分布、足迹时间轴。',
+        desc: '基于照片的 GPS 信息统计，查询照片位置分布、足迹时间轴。',
         terminal: `<span class="text-blue-500 dark:text-blue-400">$ trailsnap locations --help</span>
 
 <span class="text-gray-600 dark:text-gray-300">Usage: trailsnap locations [options] [command]</span>

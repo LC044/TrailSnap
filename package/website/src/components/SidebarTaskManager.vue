@@ -4,15 +4,22 @@
     <div
       class="flex items-center px-3 py-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
       @click="toggleExpand"
-      :title="isCollapsed ? '后台任务' : undefined"
+      role="button"
+      tabindex="0"
+      :aria-expanded="expanded"
+      :aria-label="totalFailed > 0 ? `${totalFailed} 个后台任务失败，查看详情` : '后台任务'"
+      @keydown.enter.prevent="toggleExpand"
+      @keydown.space.prevent="toggleExpand"
+      :title="totalFailed > 0 ? `${totalFailed} 个任务失败，点击查看` : '后台任务'"
     >
       <Loader2 v-if="hasPending" class="w-5 h-5 shrink-0 text-primary-500 animate-spin" />
+      <AlertCircle v-else-if="totalFailed > 0" class="w-5 h-5 shrink-0 text-red-500 dark:text-red-400" />
       <CheckCircle2 v-else class="w-5 h-5 shrink-0 text-emerald-500" />
 
       <transition name="fade">
         <div v-if="!isCollapsed" class="ml-3 flex-1 flex items-center justify-between overflow-hidden">
           <span class="text-sm text-slate-700 dark:text-slate-300 truncate">
-            {{ hasPending ? `处理中 (${totalPending})` : '任务已完成' }}
+            {{ hasPending ? `处理中 (${totalPending})${totalFailed ? ` · 失败 ${totalFailed}` : ''}` : totalFailed > 0 ? `${totalFailed} 个任务失败` : '任务已完成' }}
           </span>
           <ChevronDown
             class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0"
@@ -69,9 +76,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Loader2, ChevronDown, CheckCircle2 } from 'lucide-vue-next'
+import { Loader2, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { useDebounceFn } from '@vueuse/core'
 import { tasksApi } from '@/api/tasks'
@@ -115,12 +122,18 @@ const hasPending = computed(() => totalPending.value > 0)
 const wasPending = ref(false)
 const showSuccess = ref(false)
 let successTimer: number | null = null
-const shouldShow = computed(() => hasPending.value || showSuccess.value)
+const shouldShow = computed(() => hasPending.value || totalFailed.value > 0 || showSuccess.value)
 
 const fetchStatus = async () => {
   try {
     const data = await tasksApi.getGroupedStatus()
+    const previousFailed = totalFailed.value
     groupedStatus.value = data
+    if (totalFailed.value > previousFailed) {
+      ElMessage.warning(`${totalFailed.value} 个后台任务失败，可在任务管理查看原因并重试`)
+      expanded.value = true
+      showSuccess.value = false
+    }
 
     if (totalPending.value > 0) {
       wasPending.value = true
@@ -132,10 +145,10 @@ const fetchStatus = async () => {
     } else if (wasPending.value && totalPending.value === 0) {
       // 从有任务过渡到全部完成
       wasPending.value = false
-      expanded.value = false
+      expanded.value = totalFailed.value > 0
       if (successTimer) window.clearTimeout(successTimer)
       successTimer = null
-      if (groupedStatus.value.every(cat => cat.pending === 0)) {
+      if (totalFailed.value === 0 && groupedStatus.value.every(cat => cat.pending === 0)) {
         ElMessage.success('所有后台任务已处理完成')
         showSuccess.value = true
         successTimer = window.setTimeout(() => {
@@ -172,7 +185,10 @@ const refresh = async () => {
 }
 
 const toggleExpand = () => {
-  if (props.isCollapsed) return
+  if (props.isCollapsed) {
+    goToTasks()
+    return
+  }
   expanded.value = !expanded.value
 }
 
@@ -188,6 +204,10 @@ watch(() => store.lastEventAt, () => {
 onMounted(() => {
   // 挂载时拉一次初始状态；后续刷新完全由 SSE 事件驱动
   refresh()
+})
+
+onUnmounted(() => {
+  if (successTimer !== null) window.clearTimeout(successTimer)
 })
 </script>
 

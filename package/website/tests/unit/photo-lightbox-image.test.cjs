@@ -44,7 +44,7 @@ function fixture() {
   const state = vue.reactive({
     image: photo('a'), displayImageSrc: '/a/original', scale: 1, translateX: 0, translateY: 0,
     adjacentPreviewSrc: item => item.preview || item.url, startDrag() {},
-    highlightedFace: null, highlightedOCR: null, showOCR: false, ocrRecords: [], isPlayingLive: false,
+    highlightedFace: null, photoFaces: [], canShowFaces: false, highlightedOCR: null, showOCR: false, ocrRecords: [], isPlayingLive: false,
     currentImageLoaded: false, onCurrentImageLoad() {},
     isDragging: false, isPinching: false,
   })

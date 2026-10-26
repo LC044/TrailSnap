@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 
 class FlightTicketParser:
@@ -60,6 +61,8 @@ class FlightTicketParser:
         }
 
         full_text = " ".join(text_list)
+        date_texts = [text for text in text_list
+                      if not any(word in text for word in ('广告', '优惠', '活动', '当前时间'))]
 
         # 1. 提取航班号
         # 优先在列表中单独查找
@@ -78,7 +81,7 @@ class FlightTicketParser:
         # 应对如 "2025-09-2713:25" 或 "2025-09-27 13:25"
         combined_dt_pattern = re.compile(r'(?:(\d{4})[./年-])?(\d{1,2})[./月-](\d{1,2})[日]?\s*([0-2]?\d[:：][0-5]\d)')
 
-        for text in text_list:
+        for text in date_texts:
             match = combined_dt_pattern.search(text)
             if match:
                 year = match.group(1)
@@ -93,7 +96,8 @@ class FlightTicketParser:
                         continue
 
                 if not year:
-                    year = "2025"  # 默认年份，或者基于当前时间推断
+                    year = str(datetime.now().year)
+                    result['year_source'] = 'inferred_current_year'
 
                 date_str = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
                 time_str = time_val.replace('：', ':')
@@ -105,7 +109,7 @@ class FlightTicketParser:
 
         # 策略2.2: 如果未找到组合，分别查找
         if not date_str or not time_str:
-            for text in text_list:
+            for text in date_texts:
                 if not date_str:
                     date_match = self.patterns['date'].search(text)
                     if date_match:
@@ -119,11 +123,12 @@ class FlightTicketParser:
                         day = date_match.group(3)
 
                         if not year:
-                            year = "2025"
+                            year = str(datetime.now().year)
+                            result['year_source'] = 'inferred_current_year'
 
                         date_str = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
 
-                if not time_str:
+                if date_str and not time_str:
                     # 排除可能是日期一部分的数字 (虽然 regex 已区分，但为了保险)
                     if self.patterns['date'].search(text) and not combined_dt_pattern.search(text):
                         # 如果这一行有日期但没有匹配到组合时间，不要在这里强行找时间（除非单独有时间）

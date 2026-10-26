@@ -97,6 +97,21 @@ def test_catalog_drives_tasks_and_candidate_models(manager):
     assert [item["id"] for item in result["models"]] == ["large", "small", "draft"]
 
 
+def test_download_observation_distinguishes_active_and_queued_with_real_file_sizes(manager):
+    manager._status.update(large='downloading', small='downloading')
+    def download(repo_id, target, source):
+        (target / 'model.onnx.incomplete').write_bytes(b'1234567')
+        rows = {item['id']: item for item in manager.list_models()['models']}
+        assert rows['large']['downloadState'] == 'active'
+        assert rows['large']['downloadedBytes'] == 7
+        assert rows['small']['downloadState'] == 'queued'
+        (target / 'model.onnx.incomplete').rename(target / 'model.onnx')
+    with patch.object(manager, '_download_snapshot', side_effect=download):
+        manager._download('large')
+    assert manager._active_download is None
+    assert manager.list_models()['models'][0]['status'] == 'ready'
+
+
 def test_download_uses_modelscope_snapshot_and_validates_files(manager):
     def fake_snapshot(repo_id, target, source):
         assert repo_id == "owner/large"

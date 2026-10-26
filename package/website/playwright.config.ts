@@ -46,16 +46,17 @@ export default defineConfig({
 
   reporter: [
     ['list'],
-    ['html', { outputFolder: e2eEnv.reportDir }],
+    ['html', { outputFolder: `${e2eEnv.reportDir}/${process.env.TS_E2E_SUITE ?? suite}` }],
+    ['json', { outputFile: `${e2eEnv.reportDir}/${process.env.TS_E2E_SUITE ?? suite}.json` }],
   ],
-  outputDir: e2eEnv.outputDir,
+  outputDir: `${e2eEnv.outputDir}/${process.env.TS_E2E_SUITE ?? suite}`,
 
   use: {
     baseURL: e2eEnv.webBaseUrl,
     storageState: e2eEnv.storageState,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video: 'on-first-retry',
   },
 
   // dev 套件自动拉起 vite dev server；system 套件依赖 docker compose（pnpm test:e2e:up 拉起）

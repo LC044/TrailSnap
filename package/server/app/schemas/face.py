@@ -7,6 +7,18 @@ from app.schemas.photo import Photo
 
 
 # Face Schemas
+class PhotoFace(BaseModel):
+    id: int
+    photo_id: UUID
+    face_rect: Optional[List[float]] = None
+    identity_id: Optional[UUID] = None
+    identity_name: Optional[str] = None
+
+
+class AssignPhotoFace(BaseModel):
+    identity_id: Optional[UUID] = Field(..., description="人物ID；null表示移除此脸归属")
+
+
 class FaceBase(BaseModel):
     face_rect: Optional[List[float]] = None
     face_confidence: Optional[float] = None

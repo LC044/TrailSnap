@@ -1,9 +1,11 @@
 // src/router/index.ts
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router';
-import { ElMessageBox } from 'element-plus';
-import { hasConfiguredServer, isNativeApp, isTauriApp } from '@/config/server';
+import { hasConfiguredServer, isNativeApp } from '@/config/server';
 import { installNavigationFeedback } from './navigationFeedback';
 import { HomePage, PhotosPage, AlbumList, TicketPage } from './commonPages';
+import { loginLocation, safeAuthRedirect } from './authRedirect';
+import { authService } from '@/api/auth';
+import { createDemoEntry } from '@/composables/demoEntry';
 
 // 路由懒加载（优化首屏性能，TS 自动推断类型）
 // const AlbumPage = () => import('@/views/AlbumPage.vue');
@@ -171,7 +173,7 @@ import { useUserStore } from '@/stores/user';
 installNavigationFeedback(router);
 
 // 可选：路由守卫 - 动态设置页面标题
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   if (to.meta.title) {
     document.title = to.meta.title as string;
   }
@@ -186,7 +188,7 @@ router.beforeEach((to, from, next) => {
 
   if (userStore.token) {
     if (to.path === '/login') {
-      next({ path: '/' });
+      next(safeAuthRedirect(to.query.redirect));
     } else {
       next();
     }
@@ -194,66 +196,30 @@ router.beforeEach((to, from, next) => {
     if (whiteList.includes(to.path) || to.path.startsWith('/annual-report')) { // Allow annual report for now or specific public pages
       next();
     } else {
-      next(`/login?redirect=${to.fullPath}`);
+      // Explicit public demo entry: authenticate before loading the login view.
+      // The server, rather than the query parameter, decides whether this is a demo.
+      if (!isNativeApp() && to.query.demo === '1') {
+        // Fetch target view code while authentication is in flight. Importing
+        // a lazy route does not mount it or start its authenticated data calls.
+        for (const record of to.matched) {
+          const load = record.components?.default;
+          if (typeof load === 'function') void Promise.resolve(load()).catch(() => {});
+        }
+        try {
+          const status = await authService.getAuthStatus({ silentError: true });
+          const enterDemo = createDemoEntry(async () => {
+            if (!await userStore.login({ username: 'trailsnap', password: 'trailsnap' })) throw new Error('Demo session was not created');
+          }, async () => {});
+          if (await enterDemo(status)) { next(); return; }
+        } catch {
+          userStore.clearSession();
+          next(loginLocation(to.fullPath, true));
+          return;
+        }
+      }
+      next(loginLocation(to.fullPath));
     }
   }
-});
-
-const desktopAIFeatures: Record<string, { name: string; description: string }> = {
-  face: {
-    name: '人脸识别',
-    description: '用于检测照片中的人脸并生成人物相册',
-  },
-  classification: {
-    name: '智能分类',
-    description: '用于分析照片内容并生成智能分类相册',
-  },
-};
-
-// Desktop AI is distributed separately to keep the base installer small. Check
-// before opening an AI-backed album so users get an actionable explanation
-// instead of an empty page or a background task failure.
-router.beforeEach(async (to) => {
-  const capability = to.meta.desktopAICapability as string | undefined;
-  if (!capability || !isTauriApp()) return true;
-
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const snapshot = await invoke<{ extensions?: Array<{ installed?: { capabilities?: string[] } }> }>('ai_extension_list');
-    const installed = snapshot.extensions?.some(extension =>
-      extension.installed?.capabilities?.includes(capability),
-    );
-    if (installed) return true;
-  } catch {
-    // If the desktop bridge itself is temporarily unavailable, let the page
-    // load; normal API error handling will still report the service problem.
-    return true;
-  }
-
-  const feature = desktopAIFeatures[capability] || { name: '此 AI 功能', description: '用于完成本地 AI 分析' };
-  try {
-    await ElMessageBox.confirm(
-      `${feature.name}需要桌面 AI 扩展包，${feature.description}。扩展包与模型文件独立于桌面基础安装包，请先前往设置安装。`,
-      '需要安装 AI 扩展包',
-      {
-        confirmButtonText: '前往安装',
-        cancelButtonText: '暂不安装',
-        type: 'info',
-        autofocus: false,
-      },
-    );
-  } catch {
-    return false;
-  }
-
-  return {
-    path: '/settings',
-    query: {
-      tab: 'ai-extensions',
-      guide: capability,
-      redirect: to.fullPath,
-    },
-  };
 });
 
 export default router;

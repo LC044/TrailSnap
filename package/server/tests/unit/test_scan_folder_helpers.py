@@ -42,7 +42,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
 
 @pytest.mark.asyncio
-async def test_overlapping_scan_roots_visit_each_child_once(tmp_path):
+async def test_overlapping_scan_roots_visit_each_child_once(tmp_path, monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, MagicMock, patch
     from app.service.tasks import scan
@@ -57,6 +57,10 @@ async def test_overlapping_scan_roots_visit_each_child_once(tmp_path):
         return original(path)
     config = SimpleNamespace(filter=SimpleNamespace(model_dump=lambda: {'enable': False}))
     strategy = scan.ScanFolderStrategy()
+    from app.service import gallery_sync
+    user = SimpleNamespace(id='user', settings={'storage': {'external_directories': [str(tmp_path)]}})
+    monkeypatch.setattr(gallery_sync, 'lock_user', lambda *_: user)
+    monkeypatch.setattr(gallery_sync, 'cancel_path_tasks', lambda *_: 0)
     with patch.object(scan.os, 'scandir', side_effect=counted), \
          patch.object(scan.config_manager, 'get_user_config', return_value=config), \
          patch.object(strategy, '_get_existing_files', return_value=(set(), set())), \

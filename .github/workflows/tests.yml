@@ -377,14 +377,28 @@ jobs:
           echo "level=$LEVEL" >> $GITHUB_OUTPUT
           echo "E2E level decided: $LEVEL"
 
-      - name: Build local server + frontend images
-        # AI 镜像不本地构建——直接拉 Docker Hub 已发布的 siyuan044/trailsnap-ai:master
-        #（由 ‘构建ai’ 关键字触发的流水线推送），省掉 insightface/torch 的重度编译。
-        run: |
-          docker build -t siyuan044/trailsnap-server:ci \
-            -f package/server/Dockerfile package/server
-          docker build -t siyuan044/trailsnap-frontend:ci \
-            -f package/website/Dockerfile package/website
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build local server image
+        uses: docker/build-push-action@v6
+        with:
+          context: package/server
+          file: package/server/Dockerfile
+          load: true
+          tags: siyuan044/trailsnap-server:ci
+          cache-from: type=gha,scope=e2e-server
+          cache-to: type=gha,mode=max,scope=e2e-server
+
+      - name: Build local frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: package/website
+          file: package/website/Dockerfile
+          load: true
+          tags: siyuan044/trailsnap-frontend:ci
+          cache-from: type=gha,scope=e2e-frontend
+          cache-to: type=gha,mode=max,scope=e2e-frontend
 
       - name: Override image tags for e2e stack
         # server/frontend 用本地刚 build 的 :ci；ai 保持 :master（下一步 docker pull 拉取）
@@ -417,6 +431,11 @@ jobs:
         shell: pwsh
         run: ./tests/scripts/run-tests.ps1 -Layer e2e -Level ${{ steps.e2e-level.outputs.level }} -Mode docker -EnvFile tests/.env.test
 
+      - name: Summarize E2E timing and stability
+        if: always()
+        working-directory: package/website
+        run: node playwright/summarize-results.mjs
+
       - name: Fix AI model cache permissions
         # AI 容器以 root 挂载写入 tests/.cache/ai-models，产生 runner 用户无权读取的
         # .msc 元数据文件，导致 actions/cache/save 的 tar 打包 Permission denied。
@@ -436,7 +455,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-playwright-report
+          name: e2e-playwright-report-attempt-${{ github.run_attempt }}
           path: package/website/.playwright-system/report/
           retention-days: 7
 
@@ -444,7 +463,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-docker-logs
+          name: e2e-docker-logs-attempt-${{ github.run_attempt }}
           path: tests/artifacts/
           retention-days: 7
 

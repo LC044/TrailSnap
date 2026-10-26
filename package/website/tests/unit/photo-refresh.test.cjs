@@ -11,6 +11,11 @@ function harness() {
   const stats = { total_photos: 1, timeline: [{ year: 2026, month: 10, day: 1, count: 1 }] }
   const api = { getTimelineStats: async () => stats, getAllPhotos: async () => [photo('old')] }
   const deps = { '@/api/album': { albumService: api }, '@/api/search': {}, '@/config/server': { toServerUrl: url => url }, '@/utils/mediaUrl': { thumbnailUrl: id => `/thumb/${id}` } }
+  const helpers = { exports: {} }
+  const helperSource = fs.readFileSync(path.resolve(__dirname, '../../src/utils/mediaTypeFilters.ts'), 'utf8')
+  const helperCode = ts.transpileModule(helperSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+  vm.runInThisContext(`(function(exports){${helperCode}\n})`)(helpers.exports)
+  deps['@/utils/mediaTypeFilters'] = helpers.exports
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/stores/photoStore.ts'), 'utf8')
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const module = { exports: {} }

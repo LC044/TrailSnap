@@ -17,6 +17,8 @@ datas = [
     (str(root / "resources"), "resources"),
     (str(root / "alembic_sqlite"), "alembic_sqlite"),
     (str(root / "railway" / "source"), "railway/source"),
+    (str(root / "railway" / "migrations"), "railway/migrations"),
+    (str(root / "alembic" / "railway_versions"), "alembic/railway_versions"),
 ]
 for package in ("fastapi", "pydantic", "passlib", "langchain", "langchain_core", "langgraph"):
     try:

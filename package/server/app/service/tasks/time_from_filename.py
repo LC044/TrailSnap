@@ -105,6 +105,10 @@ class TimeFromFilenameStrategy(BaseTaskStrategy):
                     # Use user-specified time for all photos
                     photo_time = custom_time
                     p.photo_time = custom_time
+                    owner_id = getattr(p, "owner_id", None)
+                    if owner_id is not None:
+                        from app.service.journey_queue import enqueue
+                        enqueue(db, owner_id)
                 # elif time_mode == 'none': photo_time remains None
 
                 # Update or create PhotoMetadata with make/model

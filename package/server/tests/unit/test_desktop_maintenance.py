@@ -10,6 +10,26 @@ from app.utils.desktop_network import lan_urls
 pytestmark = [pytest.mark.smoke, pytest.mark.module_system]
 
 
+def test_whole_application_maintenance_blocks_model_reads_and_writes():
+    async def scenario():
+        maintenance = DesktopMaintenance()
+        maintenance.draining = True
+        calls, responses = [], []
+        async def app(scope, receive, send):
+            calls.append(scope['method'])
+        async def send(message):
+            responses.append(message)
+        for method, path in [('GET', '/api/settings/ai-models'),
+                             ('POST', '/api/settings/ai-models/llm/download'),
+                             ('DELETE', '/api/settings/ai-models/llm'),
+                             ('PUT', '/api/settings/ai-models/selection')]:
+            await maintenance.middleware({'type': 'http', 'method': method, 'path': path}, None, send, app)
+        assert not calls
+        assert [r['status'] for r in responses if r['type'] == 'http.response.start'] == [503]*4
+        assert maintenance.active == 0
+    asyncio.run(scenario())
+
+
 def test_migration_waits_for_streamed_upload_and_rejects_new_requests(monkeypatch):
     calls = []
     monkeypatch.setitem(sys.modules, "railway.initialization", SimpleNamespace(

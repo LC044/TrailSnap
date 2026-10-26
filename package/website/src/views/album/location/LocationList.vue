@@ -421,7 +421,8 @@
     <!-- Map View -->
     <LocationMapView
       class="flex-1"
-      v-show="viewMode === 'map' && level !== 'photo-map' && level !== 'scene'"
+      v-if="viewMode === 'map' && level !== 'photo-map' && level !== 'scene'"
+      :statistics="statistics"
       :level="level"
       :view-mode="viewMode"
       :start-date="dateRange?.[0]"
@@ -492,7 +493,7 @@
 <script setup lang="ts">
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import BackButton from '@/components/ui/BackButton.vue'
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed, defineAsyncComponent } from 'vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
@@ -500,19 +501,20 @@ import { injectTheme } from '@/composables/useTheme'
 import { storeToRefs } from 'pinia'
 import { useLocationStore } from '@/stores/locationStore'
 import { locationService } from '@/api/location'
+import { locationMetadataRevision } from '@/utils/locationMetadataCache'
 import type { Location, LocationStatistics, Scene } from '@/types/location'
 import type { Photo } from '@/types/album'
 import { LayoutGrid, Map, MapPin, Images, Plus, ChevronDown, Calendar, Check, Clock, Route, BarChart3, Shapes, X, Globe2 } from 'lucide-vue-next'
 import { onClickOutside } from '@vueuse/core'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import LocationMap from './LocationMap.vue'
 import AddSceneDialog from './AddSceneDialog.vue'
 import LocationListView from './LocationListView.vue'
-import LocationMapView from './LocationMapView.vue'
-import LocationTimelineView from './LocationTimelineView.vue'
-import LocationTrajectoryView from './LocationTrajectoryView.vue'
-import LocationStatsView from './LocationStatsView.vue'
-import LocationPuzzleView from './LocationPuzzleView.vue'
+const LocationMap = defineAsyncComponent(() => import('./LocationMap.vue'))
+const LocationMapView = defineAsyncComponent(() => import('./LocationMapView.vue'))
+const LocationTimelineView = defineAsyncComponent(() => import('./LocationTimelineView.vue'))
+const LocationTrajectoryView = defineAsyncComponent(() => import('./LocationTrajectoryView.vue'))
+const LocationStatsView = defineAsyncComponent(() => import('./LocationStatsView.vue'))
+const LocationPuzzleView = defineAsyncComponent(() => import('./LocationPuzzleView.vue'))
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const router = useRouter()
@@ -686,48 +688,61 @@ const mobileViewOptions = [
 ]
 
 // Fetch data for Grid View
+let locationRequest = 0
 const fetchLocations = async () => {
+  const request = ++locationRequest
   loading.value = true
   try {
-    // Fetch stats
-    statistics.value = await locationService.getStatistics()
-
     const startDate = dateRange.value?.[0] || undefined
     const endDate = dateRange.value?.[1] || undefined
 
     if (level.value === 'photo-map') {
-      locationsRaw.value = await locationService.getLocations('city', 0, 10000, startDate, endDate)
+      const result = await locationService.getLocations('city', 0, 10000, startDate, endDate)
+      if (request === locationRequest) locationsRaw.value = result
       return
     }
     
     if (level.value === 'scene' && !startDate && !endDate) {
       const scenes = await locationService.getScenesList(0, 1000)
       // Map Scene to Location-like structure for the grid view
-      locationsRaw.value = scenes.map(s => ({
+      if (request === locationRequest) locationsRaw.value = scenes.map(s => ({
         ...s,
         count: s.photo_count || 0,
         level: 'scene' as const
       })) as any[]
     } else if (level.value === 'scene' && (startDate || endDate)) {
       const scenes = await locationService.getScenesList(0, 1000, startDate, endDate)
-      locationsRaw.value = scenes.map(s => ({
+      if (request === locationRequest) locationsRaw.value = scenes.map(s => ({
         ...s,
         count: s.photo_count || 0,
         level: 'scene' as const
       })) as any[]
     } else {
-      locationsRaw.value = await locationService.getLocations(level.value, 0, 10000, startDate, endDate)
+      const result = await locationService.getLocations(level.value, 0, 10000, startDate, endDate)
+      if (request === locationRequest) locationsRaw.value = result
     }
   } catch (e) {
     console.error(e)
   } finally {
-    loading.value = false
+    if (request === locationRequest) loading.value = false
   }
 }
 
-const fetchYears = async () => {
+let metadataRequest = 0
+const fetchStatistics = async () => {
+  const request = ++metadataRequest
   try {
-    availableYears.value = await locationService.getYears()
+    const result = await locationService.getStatistics()
+    if (request === metadataRequest) statistics.value = result
+  } catch (e) { console.error(e) }
+}
+
+let yearsRequest = 0
+const fetchYears = async () => {
+  const request = ++yearsRequest
+  try {
+    const result = await locationService.getYears()
+    if (request === yearsRequest) availableYears.value = result
   } catch (e) {
     console.error(e)
   }
@@ -901,7 +916,18 @@ watch(viewMode, (newMode) => {
   }
 })
 
+watch(locationMetadataRevision, () => {
+  fetchStatistics()
+  fetchYears()
+})
+onBeforeUnmount(() => {
+  ++locationRequest
+  ++metadataRequest
+  ++yearsRequest
+})
+
 onMounted(() => {
+  fetchStatistics()
   fetchYears()
   fetchLocations()
 })

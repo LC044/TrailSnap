@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-10-19 (0.18.1)
+
+### Improvements
+
+- More accurate train-ticket screenshot recognition: station names without the suffix, newly opened stations, and traditional/simplified carriage-seat forms; a missing train number triggers one full-image pass, and dates ignore ads and status bars.
+- The desktop mobile-connection port now falls back to a new port automatically when occupied, with a prompt to re-scan; settings add automatic or custom port selection, editable directly from the startup failure page.
+- Legacy library upgrade verification only checks photos actually copied this time, so externally edited originals or offline disks no longer block upgrades; verification results are reused per startup.
+- Single photos can re-extract metadata to force-refresh EXIF cached at import.
+- All download artifacts now share one naming scheme (version-component-platform-arch); the download page splits NAS deployment from desktop installs and the Docker template uses a China mirror.
+
+### Bug Fixes
+
+- Fixed bulk task rebuilds: thumbnails, metadata and ticket tasks can be re-run for the whole library from task management.
+- Fixed stale AI model download waits piling up; waiting tasks resume automatically once models are ready.
+- Fixed task worker processes lingering after exiting the desktop app and holding photo files.
+- Fixed train/flight ticket misclassification and ad years overriding real travel dates.
+
 ## 2026-10-19 (0.18.0)
 
 ### New

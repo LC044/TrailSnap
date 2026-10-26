@@ -35,7 +35,8 @@ GITHUB_RELEASE_API = "https://api.github.com/repos/{repo}/releases/tags/v{versio
 SUPPORTED_PLATFORMS = ("android",)
 
 # CI（.github/workflows/build-mobile-app.yml）固定产出的 APK 名称。
-APK_ASSET_TEMPLATE = "TrailSnap-{version}-debug.apk"
+APK_ASSET_TEMPLATE = "TrailSnap-{version}-mobile-android-universal-debug.apk"
+LEGACY_APK_ASSET_TEMPLATE = "TrailSnap-{version}-debug.apk"
 APK_FALLBACK_URL = (
     "https://github.com/{repo}/releases/download/v{version}/" + APK_ASSET_TEMPLATE
 )
@@ -207,12 +208,19 @@ async def ensure_cached_apk(version: str, repo: str = GITHUB_REPO) -> Optional[s
     if not path:
         asset = await fetch_release_apk(version, repo=repo)
         if asset is None:
-            asset = {
-                "download_url": APK_FALLBACK_URL.format(repo=repo, version=version),
-                "size": 0,
-                "file_name": APK_ASSET_TEMPLATE.format(version=version),
-            }
-        path = await cache_release_apk(version, asset)
+            # API outages must not break either old or newly named releases.
+            for template in (APK_ASSET_TEMPLATE, LEGACY_APK_ASSET_TEMPLATE):
+                filename = template.format(version=version)
+                fallback = {
+                    "download_url": f"https://github.com/{repo}/releases/download/v{version}/{filename}",
+                    "size": 0,
+                    "file_name": filename,
+                }
+                path = await cache_release_apk(version, fallback)
+                if path:
+                    break
+        else:
+            path = await cache_release_apk(version, asset)
     if path:
         # 缓存里只保留最新版，旧版本安装包及时释放磁盘。
         prune_app_update_cache(version)

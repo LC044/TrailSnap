@@ -19,6 +19,8 @@ def generate_photo_tasks(
     budget: int | None = None,
     eligible: Callable[[Photo], bool] | None = None,
     batch_size: int = 1000,
+    include_videos: bool = False,
+    payload_for_photo: Callable[[Photo], dict] | None = None,
 ) -> int:
     """Expand a generator task without loading the whole library at once."""
     if batch_size <= 0:
@@ -42,7 +44,7 @@ def generate_photo_tasks(
 
         entries = []
         for photo in batch:
-            if photo.file_type == FileType.video or (eligible and not eligible(photo)):
+            if (not include_videos and photo.file_type == FileType.video) or (eligible and not eligible(photo)):
                 continue
             if not force and (photo.processed_tasks or {}).get(status_key):
                 continue
@@ -52,6 +54,7 @@ def generate_photo_tasks(
                 "type": task_type,
                 "payload": {
                     "photo_id": str(photo.id), "force": force, "file_path": photo.file_path,
+                    **(payload_for_photo(photo) if payload_for_photo else {}),
                 },
                 "priority": priority,
                 "owner_id": photo.owner_id,

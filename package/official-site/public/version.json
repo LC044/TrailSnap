@@ -203,5 +203,10 @@
         "version": "0.18.0",
         "update_info": "- 新增 360° 全景照片识别与交互浏览<br>- Windows 安装版与便携版统一，支持应用内更新和旧图库自动迁移<br>- 新增自动查看原图，优化缩放、工具栏与加载过渡<br>- 完善图库备份、找回、搬迁与失败恢复<br>- AI 模型未就绪时显示等待原因，就绪后自动继续",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.18.0"
+    },
+    {
+        "version": "0.18.1",
+        "update_info": "- 修复火车票截图识别：新站名、繁简座位、缺车次自动补全<br>- 手机连接端口被占用自动换端口，支持自定义端口<br>- 修复全量任务重做与 AI 模型等待积压问题<br>- 旧图库升级校验更快，外部照片不再阻止升级<br>- 支持单张照片重新提取元数据",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.18.1"
     }
 ]

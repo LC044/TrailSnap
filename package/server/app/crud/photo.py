@@ -126,6 +126,8 @@ def batch_create_photos(db: Session, photos_data: List[dict], user_id: Optional[
         if metadatas:
             db.bulk_save_objects(metadatas)
 
+        from app.service.journey_queue import enqueue
+        enqueue(db, user_id)
         if commit:
             db.commit()
         else:
@@ -162,6 +164,11 @@ def update_photo_metadata(db: Session, photo_id: UUID, metadata: PhotoMetadataUp
         setattr(db_metadata, key, value)
 
     db.add(db_metadata)
+    if {"city", "province", "latitude", "longitude"} & update_data.keys():
+        from app.service.journey_queue import enqueue
+        photo = get_photo(db, photo_id)
+        if photo:
+            enqueue(db, photo.owner_id)
     db.commit()
     db.refresh(db_metadata)
     
@@ -328,7 +335,8 @@ def get_filter_options(db: Session, user_id: UUID):
     image_types = [t.value for t in ImageType]
 
     # File Types
-    file_types = [t.value for t in FileType]
+    # Panorama is a virtual filter, not a stored file type.
+    file_types = [t.value for t in FileType] + ['panorama']
 
     return {
         "years": sorted(list(years_set), reverse=True),
@@ -455,10 +463,15 @@ def _build_photo_filter_query(
         photo_query = photo_query.filter(Photo.image_type == image_type)
 
     # File Types Filter
-    if file_types:
-        photo_query = photo_query.filter(Photo.file_type.in_(file_types))
-    elif file_type:
-        photo_query = photo_query.filter(Photo.file_type == file_type)
+    selected_file_types = file_types or ([file_type] if file_type else [])
+    if selected_file_types:
+        ordinary_types = [value for value in selected_file_types if value != 'panorama']
+        type_conditions = []
+        if ordinary_types:
+            type_conditions.append(Photo.file_type.in_(ordinary_types))
+        if 'panorama' in selected_file_types:
+            type_conditions.append(Photo.panorama_projection.isnot(None))
+        photo_query = photo_query.filter(_or(*type_conditions))
 
     needs_distinct = False
 
@@ -933,6 +946,8 @@ def update_photo(db: Session, photo_id: UUID, photo_update: photo_schemas.PhotoU
             db_photo.filename = filename_to_store
         if photo_update.photo_time is not None:
             db_photo.photo_time = photo_update.photo_time
+            from app.service.journey_queue import enqueue
+            enqueue(db, db_photo.owner_id)
         db.commit()
         db.refresh(db_photo)
         if user_id:

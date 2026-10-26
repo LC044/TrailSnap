@@ -1,9 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod dispatch;
+#[path = "../../src-tauri/src/legacy_ai.rs"]
+mod legacy_ai;
 #[path = "../../src-tauri/src/library_link.rs"]
 mod library_link;
 mod link_recovery;
 #[path = "../../src-tauri/src/portable.rs"]
 mod portable;
+mod program_cleanup;
 mod startup;
 #[path = "../../src-tauri/src/update_transaction.rs"]
 mod update_transaction;
@@ -105,6 +109,9 @@ fn manifest(root: &Path, build: &str) -> Result<BuildManifest, String> {
     {
         return Err("程序清单不兼容".into());
     }
+    if value.bundled_ai && !program.join("ai/trailsnap-ai.exe").is_file() {
+        return Err("行影集程序缺少内置 AI，请重新安装当前版本".into());
+    }
     Ok(value)
 }
 
@@ -186,6 +193,7 @@ fn spawn(
     command
         .current_dir(root)
         .env("TS_INSTANCE_ROOT", root)
+        .env("TS_LAUNCHER_BUNDLED_AI", "1")
         .env("TS_LAUNCHER_LEASE_PORT", lease.0.to_string())
         .env("TS_LAUNCHER_LEASE_TOKEN", &lease.1);
     if let Some(tx) = verify {
@@ -258,8 +266,60 @@ fn apply(
     tx.phase = "validating".into();
     update_transaction::publish(root, tx)?;
     validate(root, config, tx, lease)?;
-    tx.phase = "committed".into();
+    tx.phase = "awaiting_ready".into();
     update_transaction::publish(root, tx)
+}
+
+fn rollback_unready(
+    root: &Path,
+    data: &Path,
+    config: &mut InstanceConfig,
+    error: &str,
+) -> Result<bool, String> {
+    let path = update_transaction::journal_path(root);
+    if !path.exists() {
+        return Ok(false);
+    }
+    let mut tx: UpdateTransaction = portable::read_json(&path)?;
+    if tx.phase != "awaiting_ready" || tx.new_build != config.active_build {
+        return Ok(false);
+    }
+    tx.error = Some(error.into());
+    rollback(root, data, config, &mut tx)?;
+    Ok(true)
+}
+
+fn commit_ready(root: &Path, config: &InstanceConfig) -> Result<(), String> {
+    let path = update_transaction::journal_path(root);
+    if path.exists() {
+        let mut tx: UpdateTransaction = portable::read_json(&path)?;
+        if tx.phase == "awaiting_ready" && tx.new_build == config.active_build {
+            tx.phase = "committed".into();
+            update_transaction::publish(root, &tx)?;
+        }
+    }
+    Ok(())
+}
+
+fn wait_runtime_ready(root: &Path, child: &mut Child, timeout: Duration) -> Result<bool, String> {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
+            return if status.success() {
+                Ok(false)
+            } else {
+                Err("行影集在启动完成前退出，请查看日志后重试。".into())
+            };
+        }
+        if portable::read_json::<serde_json::Value>(&root.join("maintenance/runtime-ready.json"))
+            .ok()
+            .is_some_and(|v| v["pid"] == child.id() && v["verified"] == true)
+        {
+            return Ok(true);
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    Err("行影集启动超时，请检查日志与磁盘后重试。".into())
 }
 
 fn validate(
@@ -327,6 +387,7 @@ fn sync_linked_distribution(source: &Path, target: &Path) -> Result<(), String> 
     let current = portable::load_instance(target)?;
     let current_manifest = manifest(target, &current.active_build)?;
     if should_apply_distribution(&current_manifest, &offered_manifest)? {
+        let _target_lock = portable::lock_directory(&portable::data_root(target, &current)?)?;
         let destination = target.join("app").join(offered);
         if !destination.exists() {
             let stage = target
@@ -363,6 +424,21 @@ fn sync_linked_distribution(source: &Path, target: &Path) -> Result<(), String> 
             copy.map_err(|e| format!("无法将已安装的新程序复制到图库目录 {}：{e}。数据未更改，请检查空间和权限后重试。", target.display()))?;
         }
         manifest(target, offered)?;
+        if offered_manifest.min_launcher_version >= 2 {
+            // Imported libraries may still have a v1 root entry. Upgrade these
+            // offline aliases too, otherwise opening the moved library directly
+            // would bypass the new bootstrap after installing at the old shortcut.
+            let launcher = destination.join("portable-launcher.exe");
+            for alias in [
+                "TrailSnap.exe",
+                "portable-launcher.exe",
+                "trailsnap-desktop.exe",
+            ] {
+                let temporary = target.join(format!(".{alias}.update"));
+                fs::copy(&launcher, &temporary).map_err(|e| e.to_string())?;
+                portable::replace_file(&temporary, &target.join(alias))?;
+            }
+        }
         portable::write_json(&target.join("portable.json"), &descriptor)?;
     }
     link.source_build = Some(offered.into());
@@ -401,14 +477,9 @@ fn automatic_upgrade(root: &Path, action: &str) -> Result<(), String> {
 }
 
 fn run() -> Result<(), String> {
-    let root = portable::clean_path(
-        std::env::current_exe()
-            .map_err(|e| e.to_string())?
-            .parent()
-            .ok_or("启动器路径无效")?
-            .canonicalize()
-            .map_err(|e| e.to_string())?,
-    );
+    let root = portable::instance_root_for_executable(
+        &std::env::current_exe().map_err(|e| e.to_string())?,
+    )?;
     // Only an explicit installer invocation can authorize replacing a removed
     // program build. A normal launch with missing files still fails closed.
     if std::env::args().any(|arg| arg == "--prepare-reinstall") {
@@ -540,6 +611,12 @@ fn run() -> Result<(), String> {
     )?;
     let data = portable::data_root(&root, &config)?;
     let _lock = portable::lock_directory(&data)?;
+    if let Err(error) = update_transaction::cleanup_orphaned(&root, &data) {
+        let _ = portable::write_json(
+            &root.join("maintenance/update-cleanup-error.json"),
+            &serde_json::json!({"error":error}),
+        );
+    }
     let lease = lease_server(data.clone())?;
     let journal = update_transaction::journal_path(&root);
     let automatic_journal = root.join("maintenance/automatic-upgrade.json");
@@ -647,7 +724,16 @@ fn run() -> Result<(), String> {
     if journal.exists() {
         let mut tx: UpdateTransaction = portable::read_json(&journal)?;
         portable::relative_path(Path::new(&tx.id))?;
-        if !["verified", "committed", "rolled_back"].contains(&tx.phase.as_str()) {
+        let args: Vec<_> = std::env::args().collect();
+        let resume = args
+            .windows(2)
+            .any(|args| args[0] == "--apply-staged" && args[1] == tx.id);
+        if tx.phase == "apply_requested" && resume {
+            if let Err(error) = apply(&root, &data, &mut config, &mut tx, &lease) {
+                tx.error = Some(error);
+                rollback(&root, &data, &mut config, &mut tx)?;
+            }
+        } else if !["verified", "committed", "rolled_back"].contains(&tx.phase.as_str()) {
             tx.error = Some("上次更新中断，已恢复升级前的数据与程序".into());
             rollback(&root, &data, &mut config, &mut tx)?;
         }
@@ -674,6 +760,9 @@ fn run() -> Result<(), String> {
                 error: None,
             };
             update_transaction::publish(&root, &tx)?;
+            if dispatch::launch(&root, &tx.new_build, Some(&tx.id))? {
+                return Ok(());
+            }
             if let Err(error) = apply(&root, &data, &mut config, &mut tx, &lease) {
                 tx.error = Some(error);
                 rollback(&root, &data, &mut config, &mut tx)?;
@@ -686,28 +775,35 @@ fn run() -> Result<(), String> {
             fs::remove_file(&ready).map_err(|e| e.to_string())?;
         }
         startup::stage("launching");
-        let (mut child, job) = spawn(&root, &config, &lease, None)?;
+        let (mut child, job) = match spawn(&root, &config, &lease, None) {
+            Ok(child) => child,
+            Err(error) => {
+                if rollback_unready(&root, &data, &mut config, &error)? {
+                    continue;
+                }
+                return Err(error);
+            }
+        };
         startup::child(child.id());
         // Cleanup is authorized only by this normal shell's backend readiness,
         // never by the candidate or a stale marker from an earlier launch.
         {
-            let deadline = Instant::now() + Duration::from_secs(30 * 60);
-            let mut backend_ready = false;
-            while Instant::now() < deadline {
-                if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                    // Closing the actual client during startup is a user exit,
-                    // not a migration failure. Do not clean the old source.
-                    if status.success() {
-                        return Ok(());
-                    }
-                    return Err("行影集在启动完成前退出，请查看日志后重试。".into());
-                }
-                if portable::read_json::<serde_json::Value>(&ready)
-                    .ok()
-                    .is_some_and(|v| v["pid"] == child.id() && v["verified"] == true)
-                {
-                    backend_ready = true;
+            let readiness = wait_runtime_ready(&root, &mut child, Duration::from_secs(30 * 60));
+            match readiness {
+                Ok(true) => {
                     startup::ready();
+                    commit_ready(&root, &config)?;
+                    // Both installer and in-app updates converge here. Keep the
+                    // rollback build until the normal client is actually ready.
+                    if let Err(error) = program_cleanup::after_ready(&root, &mut config) {
+                        let _ = portable::write_json(
+                            &root.join("maintenance/program-cleanup-error.json"),
+                            &serde_json::json!({"error": error}),
+                        );
+                    } else {
+                        let _ =
+                            fs::remove_file(root.join("maintenance/program-cleanup-error.json"));
+                    }
                     if automatic_cleanup {
                         if let Err(error) = automatic_upgrade(&root, "cleanup") {
                             portable::write_json(
@@ -716,12 +812,25 @@ fn run() -> Result<(), String> {
                             )?;
                         }
                     }
-                    break;
                 }
-                std::thread::sleep(Duration::from_millis(200));
-            }
-            if !backend_ready {
-                return Err("行影集启动超时，请检查日志与磁盘后重试。".into());
+                result => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    drop(job); // Reap all writers before restoring SQLite/config.
+                    let error = result
+                        .as_ref()
+                        .err()
+                        .map(String::as_str)
+                        .unwrap_or("新版正式启动就绪前退出");
+                    let restored = rollback_unready(&root, &data, &mut config, error)?;
+                    if result == Ok(false) {
+                        return Ok(());
+                    }
+                    if restored {
+                        continue;
+                    }
+                    return Err(result.unwrap_err());
+                }
             }
         }
         child.wait().map_err(|e| e.to_string())?;
@@ -751,6 +860,9 @@ fn run() -> Result<(), String> {
         if journal.exists() {
             let mut tx: UpdateTransaction = portable::read_json(&journal)?;
             if tx.phase == "apply_requested" {
+                if dispatch::launch(&root, &tx.new_build, Some(&tx.id))? {
+                    return Ok(());
+                }
                 if let Err(error) = apply(&root, &data, &mut latest, &mut tx, &lease) {
                     tx.error = Some(error);
                     rollback(&root, &data, &mut latest, &mut tx)?;
@@ -772,9 +884,16 @@ fn run() -> Result<(), String> {
 }
 
 fn main() {
-    if let Err(error) = startup::coordinate(run) {
+    let result = dispatch::bootstrap().and_then(|delegated| {
+        if delegated {
+            Ok(())
+        } else {
+            startup::coordinate(run)
+        }
+    });
+    if let Err(error) = result {
         if let Ok(executable) = std::env::current_exe() {
-            if let Some(root) = executable.parent() {
+            if let Ok(root) = portable::instance_root_for_executable(&executable) {
                 let _ = portable::write_json(
                     &root.join("maintenance/launcher-error.json"),
                     &serde_json::json!({"error":error}),
@@ -817,6 +936,7 @@ mod tests {
             platform: update_transaction::platform(),
             min_launcher_version: 1,
             executable: "trailsnap-desktop.exe".into(),
+            bundled_ai: false,
         }
     }
 

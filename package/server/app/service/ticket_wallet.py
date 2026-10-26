@@ -56,6 +56,9 @@ def import_records(db, owner_id, records):
                 if ticket_id:
                     data["id"] = ticket_id
                 db.add(model(**data, owner_id=owner_id))
+            if kind == "train":
+                from app.service.journey_queue import enqueue
+                enqueue(db, owner_id)
             db.commit()
             success += 1
             updated += int(was_updated)
@@ -175,6 +178,9 @@ def delete_ticket(db, owner_id, kind, ticket_id):
     for model in (AlbumTicket, MemoryTicket, TicketDismissal):
         db.query(model).filter(model.ticket_type == kind, model.ticket_id == ticket_id).delete(synchronize_session=False)
     db.delete(row)
+    if kind == "train":
+        from app.service.journey_queue import enqueue
+        enqueue(db, owner_id)
     db.flush()
 
 

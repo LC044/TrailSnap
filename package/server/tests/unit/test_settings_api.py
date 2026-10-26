@@ -70,7 +70,9 @@ def test_get_storage_root_falls_back_to_uploads():
 # ----------------------- GET/PUT settings -----------------------
 
 
-def test_get_settings_returns_config_dump():
+@pytest.mark.parametrize("managed", [False, True])
+def test_get_settings_returns_config_dump(monkeypatch, managed):
+    monkeypatch.setenv("TS_DESKTOP_BUNDLED_AI", "1" if managed else "0")
     db = MagicMock()
     user = _user()
     cfg = _config("D:/photos")
@@ -78,7 +80,7 @@ def test_get_settings_returns_config_dump():
     with patch.object(settings_api.config_manager, "get_user_config", return_value=cfg):
         result = settings_api.get_settings(db=db, current_user=user)
 
-    assert result == {"storage": {"photo_storage_path": "D:/photos"}}
+    assert result == {"storage": {"photo_storage_path": "D:/photos"}, "runtime": {"managedAI": managed}}
 
 
 def test_update_settings_returns_new_config():

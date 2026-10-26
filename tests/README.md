@@ -360,8 +360,18 @@ pnpm test:e2e:headed                       # 可见浏览器
 | Server integration | service container pgvector(55432) + uvicorn(58000) + `pytest tests/integration` | HTTP 级集成 |
 | E2E | `run-tests.ps1 -Layer e2e -Level <level> -Mode docker` | 本地 `-Mode docker` 同路径 |
 
-**E2E level 选择**：PR / push master → `p0`；nightly cron → `full`；手动 dispatch → 可选。同一 PR 多次推送用 `concurrency` 取消旧 run；nightly 与 push 落在不同 group，互不打断。
+**E2E level 选择**：PR / push master / nightly cron → `full`；手动 dispatch → 可选。同一 PR 多次推送用 `concurrency` 取消旧 run；nightly 与 push 落在不同 group，互不打断。
 
 **AI 模型权重缓存**：e2e 栈的 ai 容器把 `tests/.cache/ai-models` bind-mount 进去；CI 用 `actions/cache`（key `ai-models-v1`）跨 run 持久化。首次 run 下载数百 MB（modelscope），后续秒级恢复。`services-up` 的 AI 预热轮询 `POST /embedding/text` 到 200 确认模型就绪。
 
 **镜像来源**：server/frontend 用本地 `docker build :ci`（测当前代码）；ai 直接 `docker pull siyuan044/trailsnap-ai:master`（由 `构建ai` 关键字推送，省掉 insightface/torch 重编译）。改了 `package/ai/` 后记得先走一次带 `构建ai` 的提交再跑 e2e，避免 ai 镜像版本漂移。
+
+### E2E CI 提速与稳定性
+
+CI 保持 2 个 Playwright workers，所有 PR/push 仍执行 full。server/frontend 使用独立 scope 的 Buildx GHA `mode=max` 缓存；首次或依赖变更后的冷构建仍较慢。
+
+CI 的 `TS_E2E_PREP_DEFERRED_TYPES=VISUAL_DESCRIPTION,RECOGNIZE_TICKET` 仅暂停通用照片夹具准备中的自动远程大模型任务；不筛掉业务测试。真实照片导入、基础信息、元数据、缩略图、分类、人脸/聚类、向量与 OCR 仍完成后才放行业务测试。通用 E2E 不证明外部视觉/票据模型质量；模型专项应单独验收。移除此变量可恢复全部自动处理。
+
+准备器在添加目录前配置处理分类，然后等待已提交的 SCAN_FOLDER 排空及必需处理队列连续三轮为空；必需任务失败立即报错，默认每个 bucket 最多 5 分钟。后端会删除完成任务，故不能在列表中等待历史 completed 行。准备完成后暂停分类，防止测试期间后台继续改动数据。
+
+full 的 scan/full_setup/light/full_teardown 各自保存 HTML 和 JSON 报告，避免 teardown 覆盖业务报告。录像仅在首次重试录制；截图仍保留失败现场。`[Timing]` 日志与 Actions 摘要显示阶段耗时、失败、flaky、skip 和重试列表。评估稳定性应对同一提交至少运行三轮 full，比较首次失败及 skip 名单，不能仅以重试后的绿色结论判断。

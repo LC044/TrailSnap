@@ -46,24 +46,13 @@ PowerShell 脚本使用对应的 `-Upgrade`、`-Uninstall` 参数；运行 `Get-
 
 ### 1. 目录规划
 
-在 NAS 上先准备一个共享文件夹作为 TrailSnap 的“项目目录”，建议包含两类数据：
+在 NAS 上先准备一个空白文件夹作为 TrailSnap 的项目目录，例如：`/docker/trailsnap`。
 
-- **应用数据**：数据库与应用运行数据（需要长期持久化）
-- **照片目录**：你自己的照片库（建议只读挂载）
+### 2. Docker Compose
 
-示例结构（仅示意）：
-
-```
-trailsnap/
-  docker-compose.yml
-  data/
-  pg_data/
-```
-
-### 2. Docker Compose（推荐模板）
+在上面的目录下新建一个docker-compose.yaml文档，写入以下内容：
 
 下面的 compose 与安装指南保持一致，你只需要修改两处：
-
 - `server.volumes` 里照片目录的宿主机路径
 - 如有端口冲突，修改 `frontend.ports` 中唯一的访问端口
 
@@ -148,12 +137,9 @@ networks:
 docker-compose up -d
 ```
 
-启动后只有一个用户入口：
+启动后访问：
 
 - TrailSnap：`http://<NAS_IP>:3180`
-- API 文档：`http://<NAS_IP>:3180/api/docs`
-
-移动 App 可填写同一地址，也可以扫描连接二维码或使用“自动查找 TrailSnap”。Android App 会在 mDNS 无结果时探测默认 `3180` 入口，因此普通 Docker bridge 部署不需要额外开放组播端口。Server、AI 和 PostgreSQL 只在 Compose 内部网络通信。
 
 ## GPU 加速支持 (可选)
 

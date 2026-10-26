@@ -30,6 +30,7 @@ struct State {
     child: AtomicU32,
     ready: AtomicBool,
     pausing: AtomicBool,
+    migration_visible: AtomicBool,
     mode: Mutex<Option<String>>,
     displayed_error: Mutex<Option<String>>,
     decision: (Mutex<Option<bool>>, Condvar),
@@ -84,12 +85,7 @@ pub fn coordinate(run: fn() -> Result<(), String>) -> Result<(), String> {
         return run();
     }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let root = crate::portable::clean_path(
-        exe.parent()
-            .ok_or("启动目录无效")?
-            .canonicalize()
-            .map_err(|e| e.to_string())?,
-    );
+    let root = crate::portable::instance_root_for_executable(&exe)?;
     let identity = super::identity(&root);
     let handle =
         unsafe { CreateMutexW(null_mut(), 0, wide(&format!("Local\\{identity}")).as_ptr()) };
@@ -124,6 +120,7 @@ pub fn coordinate(run: fn() -> Result<(), String>) -> Result<(), String> {
         child: AtomicU32::new(0),
         ready: AtomicBool::new(false),
         pausing: AtomicBool::new(false),
+        migration_visible: AtomicBool::new(false),
         mode: Mutex::new(None),
         displayed_error: Mutex::new(None),
         decision: (Mutex::new(None), Condvar::new()),
@@ -164,7 +161,7 @@ pub fn coordinate(run: fn() -> Result<(), String>) -> Result<(), String> {
                 if cancel.exists() {
                     fs::remove_file(cancel).map_err(|e| e.to_string())?;
                 }
-                stage("checking");
+                stage("launching");
             }
         }
     }
@@ -209,13 +206,16 @@ unsafe extern "system" fn focus_child(hwnd: HWND, pointer: LPARAM) -> BOOL {
     1
 }
 unsafe fn wake(hwnd: HWND, state: &State) {
-    if state.ready.load(Ordering::SeqCst) {
+    if state.mode.lock().unwrap().is_some() {
+        reveal(hwnd);
+    } else if !state.ready.load(Ordering::SeqCst) && state.migration_visible.load(Ordering::SeqCst)
+    {
+        reveal(hwnd);
+    } else if state.child.load(Ordering::SeqCst) != 0 {
         EnumWindows(
             Some(focus_child),
             state.child.load(Ordering::SeqCst) as LPARAM,
         );
-    } else {
-        reveal(hwnd);
     }
 }
 
@@ -273,6 +273,11 @@ unsafe fn render(hwnd: HWND, state: &State) {
         .filter(|v| v["session"] == state.session)
         .unwrap_or_default();
     let stage = value["stage"].as_str().unwrap_or("launching");
+    let migrating = super::is_migration_stage(stage);
+    // Discovery alone is not a migration. Keep ordinary launches invisible;
+    // reveal once real migration starts without restoring a minimized window
+    // on every progress tick. A stale session cannot trigger this path.
+    let reveal_migration = migrating && !state.migration_visible.swap(true, Ordering::SeqCst);
     MoveWindow(GetDlgItem(hwnd, 2), 24, 60, 540, 50, 1);
     set_text(hwnd, 1, super::label(stage));
     let elapsed = state.started.lock().unwrap().elapsed().as_secs();
@@ -328,8 +333,10 @@ unsafe fn render(hwnd: HWND, state: &State) {
             "正在等待当前文件安全停止，请稍候…"
         } else if cancellable {
             "正在升级旧版本数据，完成后自动打开。大图库可能需要较长时间。可安全暂停后稍后继续；未完成的复制需重做。"
-        } else {
+        } else if migrating {
             "正在准备或完成升级，请保持磁盘连接。此阶段完成前请勿结束进程，窗口仍可最小化。"
+        } else {
+            "正在启动行影集，完成后自动打开。"
         },
     );
     set_text(hwnd, PAUSE, "稍后继续");
@@ -355,6 +362,9 @@ unsafe fn render(hwnd: HWND, state: &State) {
             ((done.min(total) as u128 * 100) / total as u128) as WPARAM,
             0,
         );
+    }
+    if reveal_migration {
+        reveal(hwnd);
     }
 }
 
@@ -554,7 +564,7 @@ unsafe fn window(
             (ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32,
         ),
         (3, "msctls_progress32", "", 24, 116, 540, 18, PBS_MARQUEE),
-        (4, "STATIC", "正在准备升级…", 24, 150, 540, 68, 0),
+        (4, "STATIC", "正在启动行影集…", 24, 150, 540, 68, 0),
         (
             PAUSE,
             "BUTTON",
@@ -617,9 +627,6 @@ unsafe fn window(
     SetTimer(hwnd, 1, 250, None);
     SendMessageW(GetDlgItem(hwnd, 3), PBM_SETMARQUEE, 1, 40);
     render(hwnd, &state);
-    if std::env::var("TS_DESKTOP_TEST_HIDE_WINDOW").as_deref() != Ok("1") {
-        reveal(hwnd);
-    }
     let _ = sender.send(Ok(()));
     let mut message: MSG = std::mem::zeroed();
     while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {

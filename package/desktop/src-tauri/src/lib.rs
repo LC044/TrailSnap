@@ -1,10 +1,9 @@
-mod ai_extension;
+mod legacy_ai;
 mod ai_gateway;
 mod data_directory;
 mod library_link;
 mod import_flow;
 mod maintenance_wait;
-mod extension_lifecycle;
 mod llama_runtime;
 mod portable;
 mod update_manager;
@@ -12,7 +11,6 @@ mod update_transaction;
 
 use data_directory::{desktop_data_directory, desktop_set_data_directory, DataDirectory};
 
-use ai_extension::AIExtensionManager;
 use ai_gateway::AIGateway;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -188,15 +186,7 @@ async fn drain_desktop_inner(app: &tauri::AppHandle) -> Result<(), String> {
         }
         activity.0 = true;
     }
-    // Native mutations are sealed before checking asynchronous extension jobs.
     app.state::<AIGateway>().prepare_migration();
-    loop {
-        let busy = app.state::<AIExtensionManager>().has_active_installs();
-        if !busy {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
     let status = desktop_runtime_status(app.state());
     let response: Value = reqwest::Client::new()
         .post(format!(
@@ -278,6 +268,17 @@ async fn desktop_prepare_update(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn desktop_restart_for_port(app: tauri::AppHandle) -> Result<(), String> {
+    let status = desktop_runtime_status(app.state());
+    if status.ready {
+        drain_desktop(&app, "port-change").await?;
+    } else if status.phase != "failed" {
+        return Err("本地服务仍在启动，请稍后重试".into());
+    }
+    desktop_restart(app)
+}
+
+#[tauri::command]
 fn desktop_restart(app: tauri::AppHandle) -> Result<(), String> {
     if app.state::<DesktopState>().drain.lock().expect("drain poisoned")
         .as_ref().is_some_and(|drain| drain.receiver.borrow().is_none()) {
@@ -302,102 +303,6 @@ fn desktop_runtime_status(state: tauri::State<'_, DesktopState>) -> RuntimeStatu
         .lock()
         .expect("desktop status poisoned")
         .clone()
-}
-
-fn extension_snapshot(manager: &AIExtensionManager, gateway: &AIGateway) -> Value {
-    let mut snapshot = manager.list();
-    snapshot["gateway"] = gateway.status();
-    snapshot
-}
-
-#[tauri::command]
-fn ai_extension_list(
-    manager: tauri::State<'_, AIExtensionManager>,
-    gateway: tauri::State<'_, AIGateway>,
-) -> Value {
-    extension_snapshot(&manager, &gateway)
-}
-
-#[tauri::command]
-async fn ai_extension_refresh(
-    app: tauri::AppHandle,
-    manager: tauri::State<'_, AIExtensionManager>,
-    gateway: tauri::State<'_, AIGateway>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    let _ = manager.refresh_catalog().await;
-    manager.reconcile().await?;
-    Ok(extension_snapshot(&manager, &gateway))
-}
-
-#[tauri::command]
-fn ai_extension_install(
-    app: tauri::AppHandle,
-    id: String,
-    manager: tauri::State<'_, AIExtensionManager>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    manager.start_install(&id)
-}
-
-#[tauri::command]
-fn ai_extension_pause(
-    app: tauri::AppHandle,
-    id: String,
-    manager: tauri::State<'_, AIExtensionManager>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    manager.pause(&id)
-}
-
-#[tauri::command]
-fn ai_extension_retry(
-    app: tauri::AppHandle,
-    id: String,
-    manager: tauri::State<'_, AIExtensionManager>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    manager.retry(&id)
-}
-
-#[tauri::command]
-async fn ai_extension_import(
-    app: tauri::AppHandle,
-    path: String,
-    manager: tauri::State<'_, AIExtensionManager>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    // A complete AI archive is hundreds of megabytes. Hashing and extracting
-    // it in a synchronous Tauri command blocks the desktop UI long enough to
-    // look like a crash, while the former lightweight extension did not.
-    let manager = manager.inner().clone();
-    let installed = manager.import_archive_safely(PathBuf::from(path)).await?;
-    Ok(json!({ "canceled": false, "installed": installed }))
-}
-
-#[tauri::command]
-async fn ai_extension_uninstall(
-    app: tauri::AppHandle,
-    id: String,
-    manager: tauri::State<'_, AIExtensionManager>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    manager.uninstall_safely(&id).await?;
-    Ok(json!({ "removed": true }))
-}
-
-#[tauri::command]
-fn llama_runtime_status() -> Value {
-    llama_runtime::status()
-}
-
-#[tauri::command]
-async fn llama_runtime_install(
-    app: tauri::AppHandle,
-    manager: tauri::State<'_, AIExtensionManager>,
-) -> Result<Value, String> {
-    let _activity = begin_activity(&app)?;
-    manager.install_llama_runtime().await
 }
 
 fn server_executable(resource_dir: &Path) -> PathBuf {
@@ -455,7 +360,11 @@ fn update_status(app: &tauri::AppHandle, next: RuntimeStatus) {
 }
 
 fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), String> {
-    let port = app.state::<DataDirectory>().server_port()?;
+    spawn_server_attempt(app, ai_gateway_port, 0)
+}
+
+fn spawn_server_attempt(app: tauri::AppHandle, ai_gateway_port: u16, attempt: usize) -> Result<(), String> {
+    let port = app.state::<DataDirectory>().server_port(attempt > 0)?;
     let api_url = format!("http://127.0.0.1:{port}");
     update_status(
         &app,
@@ -516,6 +425,7 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
         .current_dir(&data_dir)
         .env("TS_DATA_DIR", &data_dir)
         .env("TS_DESKTOP", "1")
+        .env("TS_DESKTOP_BUNDLED_AI", "1")
         .env("LOG_DIR", &log_dir)
         .env("TS_DESKTOP_START_NONCE", &nonce)
         .env("TS_DB_URL", database_url)
@@ -562,8 +472,18 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
             };
             if let Some(exit) = exited {
                 let details: Option<Value> = portable::read_json(&startup_error).ok();
+                let code = details.as_ref().and_then(|v| v["code"].as_str());
+                if data_directory::retry_port_start(app.state::<DataDirectory>().fixed_port(), attempt, code) {
+                    if let Err(message) = spawn_server_attempt(app.clone(), ai_gateway_port, attempt + 1) {
+                        update_status(&app, RuntimeStatus { phase: "failed".into(), message: Some(message), ..Default::default() });
+                    }
+                    break;
+                }
                 let message = details.as_ref().and_then(|v|v["message"].as_str()).map(str::to_string)
                     .unwrap_or_else(||format!("本地服务已退出（{exit}）。请检查磁盘空间、写入权限和日志：{}。数据目录不会自动切换。", log_dir.display()));
+                if matches!(code, Some("port_bind_failed" | "port_listener_failed")) {
+                    app.state::<DataDirectory>().mark_port_error(message.clone());
+                }
                 update_status(
                     &app,
                     RuntimeStatus {
@@ -607,7 +527,14 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                     if !session_secret.is_empty() {
                         let identity = client
                             .get(format!("{api_url}/api/system/desktop/runtime"))
-                            .timeout(Duration::from_secs(30))
+                            // A migration proof can hash copied media for much
+                            // longer than 30s. Keep this request alive instead of
+                            // repeatedly starting verification after disconnects.
+                            .timeout(Duration::from_secs(if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
+                                30 * 60
+                            } else {
+                                30
+                            }))
                             .header("X-TrailSnap-Desktop-Secret", &session_secret)
                             .send()
                             .await;
@@ -624,6 +551,10 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                             tokio::time::sleep(Duration::from_millis(100)).await;
                             continue;
                         }
+                        if let Err(message) = app.state::<DataDirectory>().commit_server_port(port) {
+                            update_status(&app, RuntimeStatus { phase: "failed".into(), message: Some(message), ..Default::default() });
+                            break;
+                        }
                         if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
                             if let Some(root) = &app.state::<DataDirectory>().instance_root {
                                 let _ = portable::write_json(
@@ -637,6 +568,21 @@ fn spawn_server(app: tauri::AppHandle, ai_gateway_port: u16) -> Result<(), Strin
                             if let Some(root) = &app.state::<DataDirectory>().instance_root {
                                 let _ = portable::write_json(&root.join("maintenance/runtime-ready.json"),
                                     &json!({"pid": std::process::id(), "verified": true}));
+                            }
+                        }
+                        // Old stable launchers can apply the full update but do not know
+                        // how to retire extension files. Finish that migration only after
+                        // normal readiness and an actual bundled-AI startup proof.
+                        if std::env::var("TS_DESKTOP_VERIFY").as_deref() != Ok("1")
+                            && std::env::var("TS_LAUNCHER_BUNDLED_AI").as_deref() != Ok("1") {
+                            let data = app.state::<DataDirectory>().root();
+                            if data.join("ai-extensions/core-ai").exists() {
+                                let gateway = app.state::<AIGateway>().inner().clone();
+                                tauri::async_runtime::spawn(async move {
+                                    if gateway.verify_runtime().await.is_ok() {
+                                        let _ = tauri::async_runtime::spawn_blocking(move || legacy_ai::cleanup_legacy_ai(&data)).await;
+                                    }
+                                });
                             }
                         }
                         update_status(
@@ -664,18 +610,46 @@ fn stop_server(app: &tauri::AppHandle) {
     let Some(mut child) = state.child.lock().expect("desktop child poisoned").take() else {
         return;
     };
+    stop_child_process_tree(&mut child);
+}
+
+fn stop_child_process_tree(child: &mut Child) {
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let result = Command::new("taskkill")
             .args(["/pid", &child.id().to_string(), "/t", "/f"])
             .creation_flags(0x08000000)
-            .status();
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {}
+            result => {
+                match result {
+                    Ok(output) => eprintln!(
+                        "Failed to stop child process tree (PID {}): {} {}",
+                        child.id(), output.status, String::from_utf8_lossy(&output.stderr)
+                    ),
+                    Err(error) => eprintln!(
+                        "Failed to run taskkill for child PID {}: {error}", child.id()
+                    ),
+                }
+                // For the backend, its Job Object also reaps descendants.
+                if let Err(error) = child.kill() {
+                    eprintln!("Failed to kill child PID {}: {error}", child.id());
+                    return;
+                }
+            }
+        }
     }
     #[cfg(not(windows))]
     {
-        let _ = child.kill();
+        if let Err(error) = child.kill() {
+            eprintln!("Failed to kill child PID {}: {error}", child.id());
+            return;
+        }
     }
-    let _ = child.wait();
+    if let Err(error) = child.wait() {
+        eprintln!("Failed to reap child PID {}: {error}", child.id());
+    }
 }
 
 #[cfg(windows)]
@@ -713,6 +687,9 @@ pub fn run() {
         .manage(update_manager::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
+            data_directory::desktop_port_config,
+            data_directory::desktop_set_port,
+            desktop_restart_for_port,
             desktop_data_directory,
             desktop_set_data_directory,
             desktop_open_data_directory,
@@ -736,15 +713,6 @@ pub fn run() {
             update_manager::desktop_update_status,
             update_manager::desktop_update_apply,
             desktop_reveal_photo,
-            ai_extension_list,
-            ai_extension_refresh,
-            ai_extension_install,
-            ai_extension_pause,
-            ai_extension_retry,
-            ai_extension_import,
-            ai_extension_uninstall,
-            llama_runtime_status,
-            llama_runtime_install,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -767,13 +735,6 @@ pub fn run() {
             #[cfg(windows)] { window = window.data_directory(portable::webview_directory(&directory_root).map_err(std::io::Error::other)?); }
             if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") || std::env::var("TS_DESKTOP_TEST_HEADLESS").as_deref() == Ok("1") { window = window.visible(false); }
             window.build()?;
-            let catalog_path = app
-                .path()
-                .resource_dir()
-                .map_err(|error| std::io::Error::other(format!("无法定位 AI 扩展清单：{error}")))?
-                .join("ai-extensions.json");
-            // Default is the running Server's v{version} Release catalog.
-            let catalog_url = std::env::var("TS_AI_EXTENSION_CATALOG_URL").unwrap_or_default();
             tauri::async_runtime::spawn(async move {
                 let result = async {
                     if let Some(target) = handle.state::<DataDirectory>().pending() {
@@ -827,35 +788,14 @@ pub fn run() {
                         .expect("data directory has parent")
                         .to_path_buf();
                     std::env::set_var("TS_DESKTOP_ROOT", &app_root);
-                    if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
-                        return spawn_server(handle.clone(), 0);
-                    }
-                    let manager =
-                        AIExtensionManager::initialize(&app_root, &catalog_path, catalog_url)?;
-                    let gateway = AIGateway::new(manager.clone(), app_root, std::process::id());
-                    manager.configure_lifecycle(extension_lifecycle::ExtensionLifecycle {
-                        server_status: handle.state::<DesktopState>().status.clone(), gateway: gateway.clone(),
-                    });
-                    handle.manage(manager.clone());
+                    let resource_dir = handle.path().resource_dir().map_err(|e| e.to_string())?;
+                    let gateway = AIGateway::new(resource_dir, app_root, std::process::id());
                     handle.manage(gateway.clone());
                     let gateway_port = gateway.listen().await?;
-                    let refresh_manager = manager.clone();
-                    let refresh_handle = handle.clone();
-                    tauri::async_runtime::spawn(async move {
-                        if let Ok(_activity) = begin_activity(&refresh_handle) {
-                            // Startup refresh can finish before the API sidecar is ready.
-                            loop {
-                                let status = desktop_runtime_status(refresh_handle.state());
-                                if status.ready { break; }
-                                if status.phase == "failed" { return; }
-                                tokio::time::sleep(Duration::from_millis(200)).await;
-                            }
-                            let _ = refresh_manager.refresh_catalog().await;
-                            if let Err(error) = refresh_manager.reconcile().await {
-                                eprintln!("AI extension startup reconciliation failed: {error}");
-                            }
-                        }
-                    });
+                    if std::env::var("TS_DESKTOP_VERIFY").as_deref() == Ok("1") {
+                        gateway.verify_runtime().await?;
+                        gateway.stop_sidecar();
+                    }
                     spawn_server(handle.clone(), gateway_port)
                 }
                 .await;

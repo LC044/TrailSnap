@@ -115,8 +115,17 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      // A bare alias lets Vite prebundle only the globe's public export surface,
+      // rather than retaining every export of the cesium package in development.
+      'trailsnap-cesium': path.resolve(__dirname, 'src/utils/cesiumRuntime.ts'),
       '@': path.resolve(__dirname, 'src'), // 这里定义 @ 代表 src 目录
     },
+  },
+  optimizeDeps: {
+    include: ['trailsnap-cesium'],
+    // Vendor dependencies do not need development formatting. Keep source maps
+    // for debugging while avoiding multi-megabyte unminified globe downloads.
+    esbuildOptions: { minify: true },
   },
   server: {
     host: '0.0.0.0', // 允许外部访问，设置为 'localhost' 只允许本地访问

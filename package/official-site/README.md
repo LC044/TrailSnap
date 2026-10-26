@@ -52,7 +52,8 @@ pnpm run docs:preview
 
 ## 部署
 
-本项目已配置 GitHub Actions 自动部署。
-每当代码推送到 `main` 分支且涉及 `package/official-site` 目录变更时，会自动构建并将 `dist` 目录推送到 `gh-pages` 分支。
+正式首页由 `index.md` 中的 `Home` 组件加载；下载入口为 `download.md`，英文路由保留在 `en/` 下。
 
-详情请参考项目根目录下的 `.github/workflows/deploy-docs.yml`。
+官网与共享地图拼图算法变更时，GitHub Actions 的 `.github/workflows/official-site.yml` 会执行独立构建检查。部署产物为 `package/official-site/.vitepress/dist/`，将该目录作为静态站点根目录发布。
+
+官网中的固定展示数据与素材来源见 `public/showcase/README.md`。演示站自动进入相册还需同步部署 `package/website` 前端，并由服务端启用演示模式。

@@ -227,7 +227,6 @@ export interface SimilarPhoto {
 }
 
 export interface FilterState {
-  is_panorama?: boolean;
   years: number[];
   cities: string[];
   makes: string[];

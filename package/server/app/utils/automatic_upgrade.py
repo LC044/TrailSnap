@@ -14,7 +14,7 @@ import hashlib
 from app.utils.portable_library import file_hash, write_json
 from app.utils.desktop_import import discover_libraries
 from app.utils.desktop_data_migration import migrate_data_directory, remove_staging_directory, _wait_for_sidecars
-from app.utils.desktop_verification import media_baseline, verify_media
+from app.utils.desktop_verification import media_baseline, photo_paths, verify_media
 from app.utils.windows_paths import filesystem_path
 
 
@@ -201,10 +201,11 @@ def prepare(root):
                 else:
                     raise ValueError('迁移临时目录需检查，未删除任何文件。')
             job['files'] = _inventory(source, lambda done, total: progress.report('inventory', done, total))
+            from app.utils.portable_conversion import conversion_exclusions
             job['media'] = media_baseline(source, limit=None, full=True,
+                                         excluded_entries=conversion_exclusions(source),
                                          progress=lambda done, total: progress.report('baseline', done, total, unit='photos'))
             write_json(stage / 'automatic-upgrade-owner.json', {'operationId': job['id']})
-            from app.utils.portable_conversion import conversion_exclusions
             migrate_data_directory(source, staged_data, skip_browser_state=True,
                                    excluded_entries=conversion_exclusions(source) | {'automatic-upgrade-owner.json'},
                                    checkpoint=progress.checkpoint,
@@ -256,7 +257,16 @@ def finish(root, action):
         return job
     data = root / 'userdata'
     with _legacy_lock(source):
-        verify_media(data, job['media'])
+        media = job['media']
+        # Legacy proofs have no copied flag. Consult the unchanged SOURCE
+        # database before cleanup so a copied record redirected outside userdata
+        # cannot be mistaken for an untouched external original and skipped.
+        if any('copied' not in item for item in media) and (source / 'data/trailsnap.sqlite').is_file():
+            with closing(sqlite3.connect((source / 'data/trailsnap.sqlite').as_uri() + '?mode=ro', uri=True)) as db:
+                copied_ids = {photo for photo, _, path in photo_paths(db, source)
+                              if Path(path).resolve().is_relative_to(source)}
+            media = [dict(item, copied=True) if item['id'] in copied_ids else item for item in media]
+        verify_media(data, media)
         # Validate the complete deletion set before the first unlink. Unknown or
         # changed files stay in place; never recursively delete a legacy root.
         targets = []

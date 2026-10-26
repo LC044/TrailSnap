@@ -37,6 +37,10 @@ export const settingsApi = {
     const { data } = await request.delete('/api/settings/directories', { data: { path, user_id } })
     return data
   },
+  async scanAllDirectories(user_id?: string) {
+    const { data } = await request.post('/api/settings/directories/scan-all', { user_id })
+    return data
+  },
   // 外部图库一键接入：候选发现 / 单路径校验 / 批量添加（均返回 BaseResponse {code,msg,data}）
   async getDirectoryCandidates(user_id?: string) {
     const { data } = await request.get('/api/settings/directories/candidates', { params: { user_id } })
@@ -136,7 +140,7 @@ export const settingsApi = {
     return data
   },
   async getAIModels() {
-    const { data } = await request.get('/api/settings/ai-models')
+    const { data } = await request.get('/api/settings/ai-models', { silentError: true })
     return data
   },
   async downloadAIModel(modelId: string) {

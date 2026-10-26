@@ -101,25 +101,25 @@ def get_grouped_status(db: Session, paused_categories: set) -> List[Dict[str, An
     ]
 
     try:
-        # Optimize: query all pending/processing counts in one go
-        pending_counts = db.query(
-            Task.type, func.count(Task.id)
+        # COUNT(*) can use the existing (type, status) covering index without
+        # fetching UUIDs from every task row in a large background backlog.
+        counts = db.query(
+            Task.type, Task.status, func.count()
         ).filter(
-            Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING, TaskStatus.FAILED]),
             Task.type.in_(categories)
-        ).group_by(Task.type).all()
-        pending_map = {row[0]: row[1] for row in pending_counts}
-
-        # Optimize: query all failed counts in one go
-        failed_counts = db.query(
-            Task.type, func.count(Task.id)
-        ).filter(
-            Task.status == TaskStatus.FAILED,
-            Task.type.in_(categories)
-        ).group_by(Task.type).all()
-        failed_map = {row[0]: row[1] for row in failed_counts}
+        ).group_by(Task.type, Task.status).all()
+        pending_map = {}
+        failed_map = {}
+        for task_type, status, count in counts:
+            if status == TaskStatus.FAILED:
+                failed_map[task_type] = count
+            else:
+                pending_map[task_type] = pending_map.get(task_type, 0) + count
         waiting_rows = db.query(Task.type, func.min(Task.error)).filter(
             Task.status == TaskStatus.PENDING,
+            # Match the partial index: tasks without errors need no row fetch.
+            Task.error.isnot(None),
             Task.error.startswith(WAIT_PREFIX),
             Task.type.in_(categories),
         ).group_by(Task.type).all()

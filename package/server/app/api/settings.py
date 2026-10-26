@@ -12,6 +12,7 @@ import requests
 import time
 from datetime import timedelta
 from urllib.parse import quote, urlparse
+from uuid import UUID
 from app.dependencies import get_db, BaseResponse
 from app.api.deps import get_current_user
 from app.db.models.user import User
@@ -38,6 +39,10 @@ router = APIRouter()
 
 class MapKeyTestRequest(BaseModel):
     api_key: str
+
+
+class ScanAllDirectoriesRequest(BaseModel):
+    user_id: UUID | None = None
 
 
 @router.get('/map/runtime', response_model=BaseResponse)
@@ -258,7 +263,7 @@ def _ai_model_request(method: str, path: str, current_user: User, db: Session, j
         return BaseResponse.fail(code=504, msg="AI 模型服务响应超时")
     except requests.RequestException:
         logging.exception("Failed to access AI model service at %s", api_url)
-        return BaseResponse.fail(code=503, msg="AI 模型服务不可用，请先安装 AI 扩展包")
+        return BaseResponse.fail(code=503, msg="暂时无法准备 AI 模型，请稍后重试或重启行影集")
 
 
 @router.get('/ai-models', response_model=BaseResponse)
@@ -448,44 +453,37 @@ def remove_directory(
         if not target_user:
             raise HTTPException(status_code=404, detail="User not found")
     
-    if not target_user.settings:
-        return {'primary': get_storage_root(target_user.id, db), 'external': []}
+    from app.service.gallery_sync import remove_gallery
+    try:
+        result = remove_gallery(db, target_user.id, path)
+    except ValueError as error:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {'primary': get_storage_root(target_user.id, db), **result}
 
-    settings = config_manager.get_user_config(target_user.id, db)
-    external = settings.storage.external_directories
-    
-    if path in external:
-        external.remove(path)
 
-        settings.storage.external_directories = external
-        # target_user.settings = settings
-
-        # from sqlalchemy.orm.attributes import flag_modified
-        # flag_modified(target_user, "settings")
-        # db.add(target_user)
-
-        # Update via manager
-        config_manager.update_user_config(target_user.id, settings.model_dump(), db)
-
-        # Cleanup photos belonging to this directory and user
-        # 用结构化层级判断而非字符串前缀，避免 /app/Photos/family 误删
-        # /app/Photos/family2 下的照片
-        photos = db.query(Photo).filter(Photo.owner_id == target_user.id).all()
-
-        photo_ids_to_delete = []
-        for p in photos:
-            if gallery_service.relation(p.file_path, path) in ("equal", "child"):
-                photo_ids_to_delete.append(p.id)
-                db.add(IndexLog(action='deleted', file_path=p.file_path, photo_id=p.id, owner_id=target_user.id))
-        
-        if photo_ids_to_delete:
-            from app.crud.photo import batch_delete_photos_db
-            batch_delete_photos_db(db, photo_ids_to_delete, is_delete_file=False, user_id=target_user.id)
-        
-        db.commit()
-        db.refresh(target_user)
-
-    return {'primary': get_storage_root(target_user.id, db), 'external': external}
+@router.post('/directories/scan-all', response_model=BaseResponse[dict])
+def scan_all_directories(
+    payload: ScanAllDirectoriesRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reconcile all configured galleries, including orphaned external records."""
+    if not current_user.is_superuser:
+        raise HTTPException(status_code=403, detail='Not authorized')
+    user_id = payload.user_id or current_user.id
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if target_user is None:
+        raise HTTPException(status_code=404, detail='User not found')
+    from app.service.gallery_sync import lock_user
+    lock_user(db, target_user.id)
+    task = TaskManager.get_instance().add_task(
+        db, TaskType.SCAN_FOLDER,
+        {'user_id': str(target_user.id), 'reconcile': True}, owner_id=target_user.id,
+    )
+    # Also releases the lock when add_task reuses an existing task.
+    db.commit()
+    return BaseResponse.success(data={'task_id': str(task.id), 'message': '已创建全部文件夹扫描任务'})
 
 # ------------------------- 外部图库一键接入 ------------------------- #
 
@@ -614,7 +612,9 @@ def get_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return config_manager.get_user_config(current_user.id, db).model_dump()
+    settings = config_manager.get_user_config(current_user.id, db).model_dump()
+    settings["runtime"] = {"managedAI": os.getenv("TS_DESKTOP_BUNDLED_AI") == "1"}
+    return settings
 
 @router.put('/')
 def update_settings(
@@ -622,6 +622,8 @@ def update_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    if os.getenv("TS_DESKTOP_BUNDLED_AI") == "1" and isinstance(payload.get("ai"), dict):
+        payload["ai"].pop("ai_api_url", None)
     for connection in payload.get("ai", {}).get("connections", []):
         models = connection.get("models") or []
         model_names = connection.get("model_names") or []

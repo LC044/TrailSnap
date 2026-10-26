@@ -1,6 +1,6 @@
 import 'mingcute_icon/font/Mingcute.css';
 import { Capacitor } from '@capacitor/core'
-import { createApp } from 'vue'
+import { createApp, h } from 'vue'
 import { createPinia } from 'pinia'  // 1. 导入 createPinia
 // Element Plus 按需引入：模板组件（el-dialog / el-select 等）与 v-loading 指令由
 // unplugin-vue-components + ElementPlusResolver 自动注册并注入对应样式，无需 app.use(ElementPlus)
@@ -50,11 +50,22 @@ async function bootstrap() {
   }
   await registerExternalLinkOpener()
   app.use(router);
+  // Resolve authentication before App starts background protected requests.
+  // Otherwise their early 401 can cancel a demo entry and lose its destination.
+  await router.isReady()
   app.mount('#app');
+  if (isTauriApp()) {
+    void import('@/api/desktopPort').then(async ({ getDesktopPortConfig }) => {
+      const config = await getDesktopPortConfig()
+      if (config.notice) {
+        const { ElNotification } = await import('element-plus')
+        ElNotification({ title: '手机连接端口已更换', message: config.notice, type: 'warning', duration: 0 })
+      }
+    }).catch(error => console.warn('读取端口通知失败', error))
+  }
   registerElementPlusOverlayBridge()
   registerButtonMotion()
 
-  await router.isReady()
   schedulePagePreloads(commonPageLoaders, () => !!useUserStore().token && !useNavigationStore().pending)
   await registerConnectionDeepLinks(router)
   await registerNativeBackButton(router)
@@ -65,14 +76,33 @@ void bootstrap().catch(async error => {
   console.error('Application startup failed', error)
   const container = document.querySelector<HTMLElement>('.boot-splash__content')
   if (!container) return
+  container.classList.add('max-h-[100dvh]', 'overflow-y-auto', 'w-full')
   container.replaceChildren()
   const title = document.createElement('h1')
+  title.className = 'text-xl font-semibold'
   title.textContent = '行影集未能启动'
   const detail = document.createElement('p')
   detail.className = 'ts-muted my-4 max-w-xl break-words'
   detail.textContent = String(error)
   container.append(title, detail)
   if (isTauriApp()) {
+    try {
+      const { getDesktopPortConfig } = await import('@/api/desktopPort')
+      if ((await getDesktopPortConfig()).error) {
+        const { default: DesktopPortSettings } = await import('@/components/settings/DesktopPortSettings.vue')
+        const { provideTheme } = await import('@/composables/useTheme')
+        const recovery = document.createElement('div')
+        recovery.className = 'my-4 w-full max-w-xl'
+        container.append(recovery)
+        // Startup failed before App mounted, so this recovery root owns the theme.
+        container.parentElement?.style.setProperty('background', 'var(--ts-color-page)')
+        container.parentElement?.style.setProperty('color', 'var(--ts-color-text)')
+        createApp({ setup() {
+          provideTheme()
+          return () => h(DesktopPortSettings, { recovery: true })
+        } }).use(createPinia()).mount(recovery)
+      }
+    } catch (cause) { detail.textContent += `\n读取端口配置失败：${cause}` }
     const { invoke } = await import('@tauri-apps/api/core')
     for (const [label, command] of [['打开数据与日志目录', 'desktop_open_data_directory'], ['重新启动', 'desktop_restart']]) {
       const button = document.createElement('button')

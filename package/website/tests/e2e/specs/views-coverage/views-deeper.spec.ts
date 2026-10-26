@@ -140,7 +140,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
         }
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: { security: { allow_registration: true } } }) })
       } else {
-        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: { security: { allow_registration: false }, task: {}, map: {}, ai: {}, scan: {}, recycle_bin: {}, index: {} } }) })
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: { security: { allow_registration: true }, task: {}, map: {}, ai: {}, scan: {}, recycle_bin: {}, index: {} } }) })
       }
     })
 
@@ -148,11 +148,18 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     await page.locator('.el-collapse-item__header', { hasText: '安全设置' }).first().click()
     const sw = page.locator('.el-form-item', { hasText: '允许新用户注册' }).locator('.el-switch').first()
     await expect(sw).toBeVisible({ timeout: 5_000 })
+    // 等待服务端配置加载完成：loadData 拿到 getSystemConfig 的结果后会用服务端值覆盖
+    // securityForm，若在加载完成前就切换开关，会被异步加载静默重置（见 useBasicSettings.ts 的 loadData）。
+    // 开关变为打开状态（表单默认为 false）即代表服务端配置已应用。
+    // 注意：Element Plus 的 el-switch 根节点是 div，toBeChecked 只接受
+    // checkbox/radio 语义（会报 "Not a checkbox or radio button"），
+    // 因此按 Element Plus 自身的契约断言根节点的 is-checked class。
+    await expect(sw).toHaveClass(/is-checked/, { timeout: 15_000 })
     await sw.click()
     await page.getByRole('button', { name: '保存安全配置' }).click()
 
     await expect.poll(() => updateCalls.length).toBeGreaterThan(0)
-    expect(updateCalls[0].body).toMatchObject({ security: { allow_registration: true } })
+    expect(updateCalls[0].body).toMatchObject({ security: { allow_registration: false } })
   })
 
   test('地图设置测试 Key 成功后再保存配置', async ({ page }) => {
@@ -166,7 +173,22 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
       })
     })
     await page.route('**/api/settings/', async (route) => {
-      if (route.request().method() !== 'PUT') return route.continue()
+      if (route.request().method() === 'GET') {
+        // GET 返回一个可识别的服务端旧 Key：输入框里出现它就代表 loadData
+        // 已用服务端 map 配置覆盖了表单。loadData 拿到服务端 map 配置后会重置 mapForm
+        // （api_keys 被覆盖为服务端值），若在加载完成前就填写，刚填好的 Key
+        // 会被异步加载静默抹掉，表现为「至少需要填写一个 API Key」、无法保存。
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 0,
+            message: 'success',
+            data: { map: { provider: 'tianditu', api_keys: ['stale-server-key'] } },
+          }),
+        })
+        return
+      }
       savedMap = JSON.parse(route.request().postData() || '{}')
       await route.fulfill({
         status: 200,
@@ -179,6 +201,8 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
     const keyInput = page.getByLabel('地图 API Key 1')
     await expect(keyInput).toBeVisible({ timeout: 10_000 })
+    // 等待服务端 map 配置加载完成后再填写新 Key。
+    await expect(keyInput).toHaveValue('stale-server-key', { timeout: 15_000 })
     await keyInput.fill('e2e-valid-map-key')
 
     await page.getByRole('button', { name: '测试', exact: true }).first().click()
@@ -198,10 +222,26 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
         body: JSON.stringify({ valid: false, reason: '非法key' }),
       })
     })
+    // 同上：等待服务端 map 配置加载完成（输入框出现服务端旧 Key）后再填写，
+    // 否则 loadData 会把刚填好的 Key 覆盖掉，预期的「非法key」提示不会出现。
+    await page.route('**/api/settings/', async (route) => {
+      if (route.request().method() !== 'GET') return route.continue()
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          code: 0,
+          message: 'success',
+          data: { map: { provider: 'tianditu', api_keys: ['stale-server-key'] } },
+        }),
+      })
+    })
 
     await page.goto('/settings#basic')
     await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
-    await page.getByLabel('地图 API Key 1').fill('invalid-map-key')
+    const invalidKeyInput = page.getByLabel('地图 API Key 1')
+    await expect(invalidKeyInput).toHaveValue('stale-server-key', { timeout: 15_000 })
+    await invalidKeyInput.fill('invalid-map-key')
     await page.getByRole('button', { name: '测试', exact: true }).first().click()
 
     await expect(page.getByText('非法key')).toBeVisible()
@@ -237,7 +277,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     })
 
     await page.goto('/settings#basic')
-    await page.locator('.el-collapse-item__header', { hasText: 'AI 服务与人脸设置' }).first().click()
+    await page.locator('.el-collapse-item__header', { hasText: '人脸与识别设置' }).first().click()
     const apiInput = page.getByLabel('AI API 地址')
     await expect(apiInput).toBeVisible({ timeout: 10_000 })
     await expect.poll(() => settingsLoaded).toBe(true)

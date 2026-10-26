@@ -1,6 +1,6 @@
 [project]
 name = "project"
-version = "0.18.0"
+version = "0.18.1"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110.0",
@@ -8,7 +8,7 @@ dependencies = [
   "modelscope>=1.40.1",
   "numpy>=1.26.0",
   "opencv-python-headless>=4.9.0",
-  "pillow>=12.3.0",
+  "pillow>=13.0.0",
   "pydantic>=2.6.0",
   "pydantic-settings>=2.2.0",
   "python-multipart>=0.0.31",

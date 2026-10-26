@@ -1,7 +1,7 @@
 # AI 大模型设置
 
 ::: tip 桌面版用户
-本页配置的是对话与图片理解所使用的“大模型连接”。人脸识别、OCR、分类、语义检索等本地能力需要先安装[桌面版 AI 扩展](/docs/guide/desktop-ai-extension)；Docker 部署无需额外安装桌面扩展。
+本页配置对话与图片理解使用的大模型连接。桌面版已内置 AI 运行环境，识别模型按需下载，参见[桌面版内置 AI](/docs/guide/desktop-ai-extension)。
 :::
 
 ## 内置连接
@@ -21,7 +21,7 @@ TrailSnap 内置了 AI 连接功能，开箱即用。内置连接使用 MiniCPM-
 - 填写模型名称（可选，不填则可以使用该api key的所有模型），例如`gpt-3.5-turbo`、`qwen3.5:4b`等。
 - 点击验证按钮，验证成功后会显示连接成功。
 
-![alt text](/images/aisettings.png)
+![alt text](/images/aisettings.webp)
 
 ## AI对话配置
 

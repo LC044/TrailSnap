@@ -125,7 +125,7 @@ irm https://trailsnap.cn/install.ps1 | iex
 
 更多用法（非交互模式、GPU 加速、自定义端口等）请参考 [安装文档](https://trailsnap.cn/docs/guide/install.html)。
 
-### Docker 手动部署
+### Docker 手动部署（推荐）
 
 1. 确保已安装 Docker 和 Docker Compose。
 
@@ -138,11 +138,10 @@ version: '3.8'
 
 services:
   postgres:
-    image: siyuan044/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
     container_name: postgres_container
     restart: always
     environment:
-      TZ: Asia/Shanghai
       POSTGRES_DB: trailsnap
       POSTGRES_USER: trailsnap
       POSTGRES_PASSWORD: trailsnap
@@ -159,33 +158,33 @@ services:
       start_period: 10s
 
   server:
-    image: siyuan044/trailsnap-server:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
     networks: [ app-network ]
     volumes:
-      - ./data:/app/data        # 挂载数据目录
-      - F:\Photos:/app/Photos/  # 挂载本地照片目录
+      - ./data:/app/data
+      - /path/to/your/photos:/app/Photos
     environment:
       - TZ=Asia/Shanghai
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
-      # 改为当前主机的局域网地址后，App 可自动发现此实例
+      # 请替换为这台主机的局域网 IP，供 App 自动发现
       - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
     depends_on:
       postgres:
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
     networks: [ app-network ]
     volumes:
-      - ./data:/app/data        # 挂载数据目录
+      - ./data:/app/data
     environment:
       - TZ=Asia/Shanghai
     healthcheck:
@@ -196,14 +195,11 @@ services:
       start_period: 30s
 
   frontend:
-    image: siyuan044/trailsnap-frontend:latest
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
     restart: always
-    # 唯一需要对外开放的端口
     ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
-    environment:
-      - TZ=Asia/Shanghai
 
 networks:
   app-network:

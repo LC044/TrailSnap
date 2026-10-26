@@ -34,7 +34,7 @@ def _fix_ocr_text(s):
 
 
 _STATION_INTERFERENCE = {
-    "上铺", "中铺", "下铺",
+    "上铺", "中铺", "下铺", "复兴号", "和谐号", "智能动车", "乘车人", "身份证", "二等座",
     "限乘", "当日", "当次",
     "报销", "使用",
     "改签", "退票", "变更", "变更到", "变更到站",
@@ -88,6 +88,68 @@ def _poly_center(poly):
     cx = sum(p[0] for p in poly) / 4
     cy = sum(p[1] for p in poly) / 4
     return cx, cy
+
+
+def _station_candidates(texts, polys):
+    """Accept dictionary entries or new stations with route layout evidence."""
+    known = _get_valid_station_names()
+    candidates = []
+    for i, (text, poly) in enumerate(zip(texts, polys)):
+        raw = text.strip()
+        labeled = re.match(r'^(?:出发站|到达站|出发|到达)[:：\s]*(.+)$', raw)
+        name = labeled.group(1) if labeled else raw
+        arrow = bool(re.search(r'[>›→]$', name))
+        name = re.sub(r'[>›→\s]+$', '', name)
+        name = name.removesuffix('站')
+        if name[:1] in ('始', '终', '过') and name[1:] in known:
+            name = name[1:]
+        if not _is_valid_station_name(name):
+            continue
+        x, y = _poly_center(poly)
+        height = max(p[1] for p in poly) - min(p[1] for p in poly) if len(poly) >= 4 else 0
+        if name in known or labeled:
+            candidates.append((name, i, x, y, True, height))
+        elif arrow or raw.endswith('站'):
+            candidates.append((name, i, x, y, False, height))
+        elif any(_extract_hhmm(t) and abs(_poly_center(p)[0] - x) < 80
+                 and abs(_poly_center(p)[1] - y) < 100 for t, p in zip(texts, polys)):
+            candidates.append((name, i, x, y, False, height))
+    return [(name, i, x) for name, i, x, y, trusted, height in candidates
+            if trusted or any(j != i and abs(yy - y) <= max(30, height * 2)
+                              and abs(xx - x) > max(40, height * 2)
+                              for _, j, xx, yy, _, _ in candidates)]
+
+
+def resolve_train_code(texts, departure_station='', polys=None):
+    """Resolve only an unambiguous service, including departure-specific renumbering."""
+    if departure_station:
+        pattern = re.compile(re.escape(departure_station) + r'站?起车次(?:号)?变更为\s*([GDCKTZ]\d{1,4})(?!\d)')
+        changed = {m.group(1) for t in texts for m in pattern.finditer(t)}
+        if len(changed) == 1:
+            return changed.pop()
+        if polys:
+            # 12306 puts “自当前车站起车次号变更为…” below the relevant stop.
+            for i, (text, poly) in enumerate(zip(texts, polys)):
+                note = re.search(r'当前车站起车次(?:号)?变更为\s*([GDCKTZ]\d{1,4})(?!\d)', text)
+                if not note or len(poly) < 4:
+                    continue
+                _, y = _poly_center(poly)
+                height = max(p[1] for p in poly) - min(p[1] for p in poly)
+                stops = []
+                for j, (stop, box) in enumerate(zip(texts, polys)):
+                    name = re.sub(r'[^\u4e00-\u9fa5]+$', '', stop.strip()).removesuffix('站')
+                    if name not in _get_valid_station_names() and name != departure_station:
+                        continue
+                    _, yy = _poly_center(box)
+                    if 0 < y - yy <= max(60, height * 4):
+                        stops.append((y - yy, name))
+                if stops and min(stops)[1] == departure_station:
+                    changed.add(note.group(1))
+            if len(changed) == 1:
+                return changed.pop()
+    codes = {m.group(1) for t in texts
+             for m in re.finditer(r'(?<![A-Za-z0-9])([GDCKTZ]\d{1,4})(?![A-Za-z0-9])', t)}
+    return next(iter(codes)) if len(codes) == 1 else ''
 
 
 def _order_dep_arr_by_geometry(a, b):
@@ -268,7 +330,7 @@ def _post_fix_arrival_station(ticket_info: dict, ocr_texts: list):
 
 # 新增：票面固定提示/字段标签等（这些不可能是姓名）
 _NAME_BLOCKLIST_SUBSTR = {
-    "事由", "动车组", "中国铁路", "祝您旅途愉快",
+    "事由", "动车组", "智能动车", "乘车人", "身份证", "中国铁路", "祝您旅途愉快",
     "仅供报销", "报销", "凭证", "遗失", "不补", "退票", "改签",
     "检票", "限乘", "当日", "当次", "中途下车失效","和谐号","复兴号",
     "买票请到", "请到", "12306", "95306","经停信息","成人票",
@@ -410,15 +472,20 @@ def _extract_month_day(txt: str):
     # 0. 点号格式 (如 2026.04.02)
     m0 = re.search(r'(?:\d{4}\.)?(\d{1,2})\.(\d{1,2})', s)
     if m0:
-        mm = m0.group(1).zfill(2)
-        dd = m0.group(2).zfill(2)
-        try:
-            imonth = int(mm)
-            iday = int(dd)
-            if 1 <= imonth <= 12 and 1 <= iday <= 31:
-                return (mm, dd)
-        except:
-            pass
+        # 价格/折扣块里的点号不是日期："6.6折"、"￥12.5"、"5.5元"
+        # 否则会把折扣块误读成 06月06日、把票价误读成 12月05日。
+        before = s[m0.start() - 1] if m0.start() > 0 else ''
+        after = s[m0.end()] if m0.end() < len(s) else ''
+        if before not in ('￥', '¥') and after not in ('折', '元'):
+            mm = m0.group(1).zfill(2)
+            dd = m0.group(2).zfill(2)
+            try:
+                imonth = int(mm)
+                iday = int(dd)
+                if 1 <= imonth <= 12 and 1 <= iday <= 31:
+                    return (mm, dd)
+            except:
+                pass
 
     # 1. 标准格式：X月X日
     m = re.search(r'(\d{1,2})\s*月\s*(\d{1,2})\s*日', s)
@@ -453,6 +520,13 @@ def _extract_hhmm(txt: str) -> str:
     if not m:
         return ""
     return f"{m.group(1).zfill(2)}:{m.group(2)}"
+
+
+# OCR 常把整串日期时间识别成一个粘连的数字块：年份直接粘在月份前（'202405月07日'），
+# 时分直接粘在日字后（'... 日1022'）。通用提取器看不到这两段信息，
+# 只能还原出 '05月07日'，年份与时分会整体丢失，这里单独识别出来。
+_COMPACT_YEAR_RE = re.compile(r'(?<!\d)(\d{4})\d{1,2}月\d{1,2}日')
+_COMPACT_TIME_RE = re.compile(r'(?<!\d)\d{4}年?\d{1,2}月\d{1,2}日(\d{2})(\d{2})(?!\d)')
 
 
 def _select_name_by_proximity(ocr_texts: list, station_name_set: set, ticket_info: dict) -> str:
@@ -520,18 +594,15 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
 
     # 年份（可选，有就拼，没有就不猜）
     year = ""
-    for t in ocr_texts:
-        tt = _fix_ocr_text(t).strip()
-        ym = re.search(r'(\d{4})[年\.]', tt)
-        if ym:
-            year = ym.group(1)
-            break
+    selected_date_index = None
 
     # 收集 月日、时间候选（带坐标）
     md_cands = []    # (index, cx, cy, mm, dd)
     time_cands = []  # (index, cx, cy, hhmm)
 
     for i, (t, poly) in enumerate(zip(ocr_texts, polys)):
+        if any(w in t for w in ('广告', '优惠', '活动', '截止', '经停', '当前时间')):
+            continue
         cx, cy = _poly_center(poly)
 
         md = _extract_month_day(t)
@@ -542,6 +613,12 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
         hhmm = _extract_hhmm(t)
         if hhmm:
             time_cands.append((i, cx, cy, hhmm))
+        elif md:
+            # '粘连块'：时分直接粘在日字后、没有冒号（'202405月07日1022开'）。
+            # 通用时间提取器需要冒号，会跳过这种块，导致时分丢失。
+            compact = _COMPACT_TIME_RE.search(t)
+            if compact:
+                time_cands.append((i, cx, cy, f"{compact.group(1)}:{compact.group(2)}"))
 
     if not md_cands and not time_cands:
         return ""
@@ -586,6 +663,7 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
                     best_pair = (md, tm)
         
         if best_pair:
+            selected_date_index = best_pair[0][0]
             best_mm, best_dd = best_pair[0][3], best_pair[0][4]
             best_time = best_pair[1][3]
             
@@ -599,6 +677,7 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
                 # 否则选最靠上的
                 md_cands.sort(key=lambda x: x[2])
             best_mm, best_dd = md_cands[0][3], md_cands[0][4]
+            selected_date_index = md_cands[0][0]
 
         if time_cands:
             # 时间：如果有多个时间（出发、到达），通常出发在左/上
@@ -624,6 +703,28 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
 
     # 拼接输出
     date_part = ""
+    if selected_date_index is not None:
+        # A year belongs to the selected date, never to an unrelated advert.
+        selected_text = _fix_ocr_text(ocr_texts[selected_date_index])
+        ym = re.search(r'(?<!\d)(\d{4})[年./-]\d{1,2}[月./-]\d{1,2}', selected_text)
+        if ym:
+            year = ym.group(1)
+        elif compact_year := _COMPACT_YEAR_RE.search(selected_text):
+            # 年份直接粘在月份前：'202405月07日' -> 2024年05月07日
+            year = compact_year.group(1)
+        else:
+            # OCR can split the year from the date. Only an adjacent, bare year
+            # in the same row/column belongs to it; prose/adverts never do.
+            dx, dy = _poly_center(polys[selected_date_index])
+            for j, (text, poly) in enumerate(zip(ocr_texts, polys)):
+                bare_year = re.fullmatch(r'(\d{4})年', text.strip())
+                x, y = _poly_center(poly)
+                if bare_year and abs(j - selected_date_index) == 1 and (
+                    (abs(y - dy) <= 20 and 0 <= dx - x <= 100) or
+                    (abs(x - dx) <= 20 and 0 <= dy - y <= 60)
+                ):
+                    year = bare_year.group(1)
+                    break
     if best_mm and best_dd:
         date_part = f"{best_mm}月{best_dd}日"
         if year:
@@ -641,6 +742,7 @@ def parse_ticket_info(ocr_texts, polys):
     解析OCR识别的文本
     """
     logging.debug("ticket_parser.parse_ticket_info: start")
+    ocr_texts = [t.translate(str.maketrans({'車': '车', '號': '号'})) for t in ocr_texts]
     logging.debug("ticket_parser.parse_ticket_info: raw_texts=%s", ocr_texts)
     ticket_info = {
         "train_code": "",
@@ -656,8 +758,6 @@ def parse_ticket_info(ocr_texts, polys):
         "discount_type": "",
         "detection_id": 0
     }
-
-    print(f"OCR独立文本块列表: {ocr_texts}\n")
 
     # 为每个文本块计算中心点
     centers = []
@@ -682,16 +782,7 @@ def parse_ticket_info(ocr_texts, polys):
     # 从visual_texts中提取车站
     station_candidates = []  # (name, visual_idx, cx)
 
-    for idx, txt in enumerate(visual_texts):
-        orig_idx = visual_order_indices[idx]  # 原始索引，用于取 polys
-        fixed_txt = _fix_ocr_text(txt)
-        for match in re.finditer(r'([\u4e00-\u9fa5]{1,6})站', txt):
-            name = match.group(1)
-            if _is_valid_station_name(name):
-                # 获取该文本块的原始 poly，计算 x 中心
-                poly = polys[orig_idx]
-                cx = sum(p[0] for p in poly) / 4 if len(poly) >= 4 else 0
-                station_candidates.append((name, idx, cx))
+    station_candidates = _station_candidates(visual_texts, [polys[i] for i in visual_order_indices])
 
     # 从visual_texts中提取车次
     train_code = ""
@@ -722,7 +813,7 @@ def parse_ticket_info(ocr_texts, polys):
         for idx, txt in enumerate(visual_texts):
             s = _fix_ocr_text(txt).strip()
             # 排除明显价格/时间/日期块
-            if any(x in s for x in ["￥", "元", ":", "：", "月", "日"]):
+            if any(x in s for x in ["￥", "元", ":", "：", "月", "日", "/", "-", ".", "年"]):
                 continue
             # 排除长数字（订单号/票号）
             if re.search(r'\d{6,}', s):
@@ -1093,7 +1184,7 @@ def parse_ticket_info(ocr_texts, polys):
                 if not ticket_info["carriage"]:
                     ticket_info["carriage"] = combo_match.group(1)
                 if not ticket_info["seat_num"]:
-                    ticket_info["seat_num"] = combo_match.group(2)
+                    ticket_info["seat_num"] = re.sub(r'\s+', '', combo_match.group(2)).upper()
                 if not ticket_info["berth_type"] and combo_match.group(3):
                     # 归一化去掉中间空白：上\s*铺 -> 上铺
                     ticket_info["berth_type"] = re.sub(r'\s+', '', combo_match.group(3))
@@ -1295,11 +1386,7 @@ def parse_ticket_info(ocr_texts, polys):
                 ticket_info["name"] = glued
                 continue
 
-            # 排除常见的非姓名词汇
-            # 备用规则3：纯中文兜底（仅在票面不存在证件号/掩码块时启用）
-            if (not has_id_like) and _is_name_candidate_text(txt, ticket_info, station_name_set):
-                ticket_info["name"] = txt.strip()
-                continue
+            # A standalone Chinese word is not evidence of a passenger name.
 
     # 姓名增强纠正
     # 若当前 name 低置信，则尝试从证件号/掩码附近挑选姓名
@@ -1312,23 +1399,9 @@ def parse_ticket_info(ocr_texts, polys):
             if _is_low_confidence_name(ticket_info.get("name", ""), station_name_set):
                 ticket_info["name"] = ""
 
-    ticket_info = _post_fix_arrival_station(ticket_info, ocr_texts)
     _split_carriage_seat_if_glued(ticket_info)
     
-    # --- 新增：兜底策略和后处理 ---
-    # 提取 package/ai/app/data/railway_station.json 文件下的 station_name
-    valid_stations = _get_valid_station_names()
-    if valid_stations:
-        for k in ("departure_station", "arrival_station"):
-            v = (ticket_info.get(k) or "").strip()
-            if v:
-                if v in valid_stations:
-                    ticket_info[k] = v
-                elif v.endswith("站") and v[:-1] in valid_stations:
-                    ticket_info[k] = v[:-1]
-                else:
-                    ticket_info[k] = ""
-    # ---------------------------------
+    # Candidates were validated before selection, including credible new stations.
 
     # 再构建 station_name_set（保证包含最终的 dep/arr）
     station_name_set = set()
@@ -1341,6 +1414,30 @@ def parse_ticket_info(ocr_texts, polys):
     # 若姓名等于站名，直接清空（电子票里没有证件号时，宁可空也别错）
     if ticket_info.get("name") in station_name_set:
         ticket_info["name"] = ""
+
+    # Explicit labels outrank guesses around identity-number fragments.
+    for i, text in enumerate(ocr_texts):
+        match = re.fullmatch(r'(?:乘车人|旅客姓名|姓名)[:：\s]*([\u4e00-\u9fa5]{2,6})?', text.strip())
+        if not match:
+            continue
+        name = match.group(1) or ''
+        if not name and i < len(polys):
+            x, y = _poly_center(polys[i])
+            nearby = []
+            for j, (candidate, poly) in enumerate(zip(ocr_texts, polys)):
+                xx, yy = _poly_center(poly)
+                if j != i and _is_name_candidate_text(candidate, ticket_info, station_name_set):
+                    if (abs(yy - y) <= 25 and 0 < xx - x < 240) or (abs(xx - x) < 80 and 0 < yy - y < 60):
+                        nearby.append((abs(xx - x) + abs(yy - y), candidate))
+            if nearby:
+                name = min(nearby)[1]
+        if _is_name_candidate_text(name, ticket_info, station_name_set):
+            ticket_info['name'] = name
+            break
+
+    codes = {m.group(0) for t in ocr_texts for m in re.finditer(r'(?<![A-Za-z0-9])[GDCKTZ]\d{1,4}(?![A-Za-z0-9])', t)}
+    if codes:
+        ticket_info['train_code'] = resolve_train_code(ocr_texts, ticket_info['departure_station'], polys)
 
     logging.debug("ticket_parser.parse_ticket_info: parsed ticket_info=%s", ticket_info)
     return ticket_info

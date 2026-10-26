@@ -76,9 +76,11 @@ def snapshot_library(root: Path, destination: Path) -> None:
                 os.fsync(stream.fileno())
         records.append({"path": relative, "existed": exists,
                         "sha256": file_hash(target) if exists else None})
-    from app.utils.desktop_verification import media_baseline
+    # This snapshot copies databases/configuration, not media. Only a conversion
+    # proof may add media to candidate verification; normal updates need no hash
+    # reads of originals (managed or external).
     write_json(complete, {"schemaVersion": 1, "source": str(root), "libraryId": _library_id(root), "files": records,
-                          "media": media_baseline(root)})
+                          "media": []})
 
 
 def file_hash(path: Path) -> str:

@@ -123,7 +123,7 @@ fn three_aliases_reuse_one_native_window_while_other_installations_stay_independ
 }
 
 #[test]
-fn closing_the_client_before_readiness_exits_without_a_failure_dialog() {
+fn ordinary_launches_stay_hidden_and_only_current_migration_progress_reveals_the_window() {
     let cache =
         std::env::temp_dir().join(format!("trailsnap-startup-close-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(cache.join("userdata")).unwrap();
@@ -133,7 +133,16 @@ fn closing_the_client_before_readiness_exits_without_a_failure_dialog() {
         cache.join("TrailSnap.exe"),
     )
     .unwrap();
-    fs::write(cache.join("child.rs"), "fn main() {}").unwrap();
+    fs::write(
+        cache.join("child.rs"),
+        r#"fn main() {
+        std::fs::write("child-started", b"started").unwrap();
+        while !std::path::Path::new("close-child").exists() {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }"#,
+    )
+    .unwrap();
     assert!(Command::new("rustc")
         .arg(cache.join("child.rs"))
         .arg("-o")
@@ -154,8 +163,78 @@ fn closing_the_client_before_readiness_exits_without_a_failure_dialog() {
         "schemaVersion":1,"buildId":"build","version":"1.0.0","platform":format!("windows-{}",std::env::consts::ARCH),
         "minLauncherVersion":1,"executable":"child.exe"
     })).unwrap()).unwrap();
-    let mut process = launch(&cache.join("TrailSnap.exe"));
-    wait_exit(&mut process);
+    for attempt in 0..2 {
+        let mut process = Running(
+            Command::new(cache.join("TrailSnap.exe"))
+                .creation_flags(0x08000000)
+                .env_remove("TS_DESKTOP_TEST_HEADLESS")
+                .env_remove("TS_DESKTOP_TEST_HIDE_WINDOW")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let window = loop {
+            let mut pair: (u32, HWND) = (process.0.id(), std::ptr::null_mut());
+            unsafe {
+                EnumWindows(Some(find), &mut pair as *mut _ as LPARAM);
+            }
+            if !pair.1.is_null() && cache.join("child-started").exists() {
+                break pair.1;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "ordinary launcher failed to start child"
+            );
+            thread::sleep(Duration::from_millis(50));
+        };
+        assert_eq!(unsafe { IsWindowVisible(window) }, 0);
+        let progress = cache.join("maintenance/automatic-upgrade-progress.json");
+        let initial: serde_json::Value =
+            serde_json::from_slice(&fs::read(&progress).unwrap()).unwrap();
+        assert_eq!(initial["stage"], "launching");
+        assert!(!cache.join("maintenance/automatic-upgrade.json").exists());
+        // Clicking the launcher again during ordinary startup must stay silent.
+        let mut duplicate = launch(&cache.join("TrailSnap.exe"));
+        wait_exit(&mut duplicate);
+        assert_eq!(unsafe { IsWindowVisible(window) }, 0);
+        if attempt == 0 {
+            for (session, stage, visible) in [
+                ("previous-session", "copying", false),
+                (initial["session"].as_str().unwrap(), "checking", false),
+                (initial["session"].as_str().unwrap(), "inventory", true),
+            ] {
+                fs::write(
+                    &progress,
+                    serde_json::to_vec(&serde_json::json!({
+                        "session":session,"stage":stage,"cancellable":true
+                    }))
+                    .unwrap(),
+                )
+                .unwrap();
+                thread::sleep(Duration::from_millis(600));
+                assert_eq!(
+                    unsafe { IsWindowVisible(window) } != 0,
+                    visible,
+                    "stage {stage}"
+                );
+            }
+            unsafe {
+                ShowWindow(window, SW_MINIMIZE);
+            }
+            thread::sleep(Duration::from_millis(600));
+            assert_ne!(
+                unsafe { IsIconic(window) },
+                0,
+                "progress must not steal focus on each tick"
+            );
+        }
+        fs::write(cache.join("close-child"), b"close").unwrap();
+        wait_exit(&mut process);
+        fs::remove_file(cache.join("close-child")).unwrap();
+        fs::remove_file(cache.join("child-started")).unwrap();
+    }
     assert!(!cache.join("maintenance/launcher-error.json").exists());
     assert!(!cache.join("maintenance/runtime-ready.json").exists());
     fs::remove_dir_all(cache).unwrap();

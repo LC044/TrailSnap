@@ -34,6 +34,21 @@ function harness(mode, options = {}) {
   return { store: module.exports.useDesktopUpdatesStore(), calls }
 }
 
+test('automatic and manual checks share one download', async () => {
+  const { store, calls } = harness('portable')
+  await Promise.all([store.check(), store.check(true)])
+  assert.deepEqual(calls, ['portable-download'])
+  assert.equal(store.phase.value, 'ready')
+})
+
+test('a manual check joining an automatic check still reports an offline catalog', async () => {
+  const { store } = harness('portable', { checkError: true })
+  await Promise.all([store.check(), store.check(true)])
+  assert.equal(store.visible.value, true)
+  assert.equal(store.phase.value, 'error')
+  assert.match(store.message.value, /暂时无法检查更新/)
+})
+
 test('portable updates use only the signed portable update route', async () => {
   const { store, calls } = harness('portable')
   await store.check(); await store.install()

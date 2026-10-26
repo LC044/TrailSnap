@@ -1,0 +1,236 @@
+.trailsnap-home .cap-grid article {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 25px 24px 16px;
+}
+
+.trailsnap-home .cap-grid h3 {
+  font-size: 18px;
+  line-height: 1.6;
+  margin: 23px 0 10px;
+}
+
+.trailsnap-home .cap-grid p {
+  min-height: 48px;
+  margin: 0 0 20px;
+}
+
+.trailsnap-home .cap-preview {
+  height: 204px;
+  padding: 14px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.trailsnap-home .cap-preview-label {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.trailsnap-home .cap-albums {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trailsnap-home .cap-album {
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 16px 10px 8px;
+  text-align: center;
+}
+
+.trailsnap-home .cap-album-icon {
+  display: block;
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 3px;
+  color: var(--primary);
+  stroke-width: 1.5;
+}
+
+.trailsnap-home .cap-album > span {
+  display: block;
+  padding: 7px 10px;
+  font-size: 11px;
+  color: var(--ink);
+}
+
+.trailsnap-home .cap-album small {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.trailsnap-home .cap-search-query {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.trailsnap-home .cap-search-query > span {
+  color: var(--primary);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.trailsnap-home .cap-search-results {
+  display: flex;
+  gap: 7px;
+  font-size: 10px;
+  color: var(--primary);
+}
+
+.trailsnap-home .cap-search-results > span {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+}
+
+.trailsnap-home .cap-preview-foot {
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.trailsnap-home .cap-search-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.trailsnap-home .cap-search-hint svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  stroke-width: 1.5;
+}
+
+.trailsnap-home .cap-search-hint small {
+  display: block;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.trailsnap-home .cap-route {
+  margin: 0 2px 10px;
+}
+
+.trailsnap-home .cap-route svg {
+  display: block;
+  width: 100%;
+  height: 44px;
+  overflow: visible;
+}
+
+.trailsnap-home .cap-route path {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 5;
+}
+
+.trailsnap-home .cap-route circle {
+  fill: var(--paper);
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.trailsnap-home .cap-route-labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--primary);
+  font-size: 9px;
+}
+
+.trailsnap-home .cap-trip-diary {
+  padding: 8px 11px;
+  border-left: 2px solid var(--primary);
+  background: var(--paper);
+  border-radius: 0 5px 5px 0;
+}
+
+.trailsnap-home .cap-trip-diary > span,
+.trailsnap-home .cap-trip-diary small {
+  display: block;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.trailsnap-home .cap-trip-diary strong {
+  display: block;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 500;
+  margin: 2px 0;
+}
+
+.trailsnap-home .cap-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-top: 14px;
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.trailsnap-home .cap-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (min-width: 701px) and (max-width: 1000px) {
+  .trailsnap-home .cap-grid article {
+    padding: 20px 16px 12px;
+  }
+
+  .trailsnap-home .cap-grid h3 {
+    min-height: 52px;
+    font-size: 16px;
+  }
+
+  .trailsnap-home .cap-grid p {
+    min-height: 96px;
+  }
+
+  .trailsnap-home .cap-preview {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 700px) {
+  .trailsnap-home .cap-grid article {
+    padding: 22px 20px 12px;
+  }
+
+  .trailsnap-home .cap-grid h3 {
+    font-size: 19px;
+    margin-top: 17px;
+  }
+
+  .trailsnap-home .cap-grid p {
+    min-height: 0;
+    margin-bottom: 18px;
+  }
+}

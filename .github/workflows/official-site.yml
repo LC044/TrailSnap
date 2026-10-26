@@ -1,0 +1,41 @@
+name: Official site
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths: &site_paths
+      - 'package/official-site/**'
+      - 'package/website/src/utils/mapPuzzle/**'
+      - '.github/workflows/official-site.yml'
+  push:
+    branches: [master, main]
+    paths: *site_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: official-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build official site
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: package/official-site
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: package/official-site/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run docs:build

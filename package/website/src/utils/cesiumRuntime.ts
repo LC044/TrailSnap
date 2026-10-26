@@ -1,5 +1,6 @@
 // An explicit export surface lets Rollup remove Cesium features the footprint
-// does not use, while the whole runtime remains a lazy route dependency.
+// does not use. The trailsnap-cesium alias also uses this as Vite's development
+// prebundle entry; importing cesium directly would retain its entire export list.
 export {
   ArcGISTiledElevationTerrainProvider, ArcType, BoundingSphere, Cartesian2,
   Cartesian3, Color, ConstantPositionProperty, ConstantProperty, Credit,

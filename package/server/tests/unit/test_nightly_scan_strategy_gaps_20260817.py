@@ -139,6 +139,13 @@ class TestGetExistingFiles:
 
 
 class TestCreateTasksForNewFiles:
+    @pytest.fixture(autouse=True)
+    def current_library(self, monkeypatch):
+        from app.service import gallery_sync
+        user = SimpleNamespace(id='user-1')
+        monkeypatch.setattr(gallery_sync, 'lock_user', lambda *_: user)
+        monkeypatch.setattr(gallery_sync, 'import_allowed', lambda *_: True)
+
     @pytest.mark.asyncio
     async def test_emits_basic_task_for_each_image(self):
         db = MagicMock()

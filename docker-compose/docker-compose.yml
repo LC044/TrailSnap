@@ -2,11 +2,10 @@ version: '3.8'
 
 services:
   postgres:
-    image: siyuan044/pgvector:pg18-trixie
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
     container_name: postgres_container
     restart: always
     environment:
-      TZ: Asia/Shanghai
       POSTGRES_DB: trailsnap
       POSTGRES_USER: trailsnap
       POSTGRES_PASSWORD: trailsnap
@@ -14,7 +13,7 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     networks: [ app-network ]
     volumes:
-      - ./pg_data:/var/lib/postgresql/data  # 数据持久化
+      - ./pg_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U trailsnap -d trailsnap -p 5432"]
       interval: 5s
@@ -23,66 +22,48 @@ services:
       start_period: 10s
 
   server:
-    image: siyuan044/trailsnap-server:master
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:latest
     restart: always
     expose: [ "8000" ]
     networks: [ app-network ]
     volumes:
       - ./data:/app/data
-      - F:\Photos:/app/Photos/
+      - /path/to/your/photos:/app/Photos
     environment:
       - TZ=Asia/Shanghai
       - DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap
       - RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/railway
       - AI_API_URL=http://ai:8001
       - TRAILSNAP_ROOT_PATH=/api
-      - TRAILSNAP_PUBLIC_URL=${TRAILSNAP_PUBLIC_URL:-}
-      - TRAILSNAP_INSTANCE_NAME=${TRAILSNAP_INSTANCE_NAME:-TrailSnap}
-      - TRAILSNAP_DISCOVERY_ENABLED=false
-    depends_on:  # 增强依赖配置
+      # 请替换为这台主机的局域网 IP，供 App 自动发现
+      - TRAILSNAP_PUBLIC_URL=http://192.168.1.10:3180
+    depends_on:
       postgres:
         condition: service_healthy
 
   ai:
-    image: siyuan044/trailsnap-ai:master
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:latest
     restart: always
     stop_grace_period: 15s
     expose: [ "8001" ]
     networks: [ app-network ]
     volumes:
-      - ./data:/app/data        # 挂载数据目录
+      - ./data:/app/data
     environment:
       - TZ=Asia/Shanghai
-      - MODEL_PATH=/app/data/models
-      - AI_CONFIG_PATH=/app/data/ai_config.json
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health-check', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
+
   frontend:
-    image: siyuan044/trailsnap-frontend:master
+    image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:latest
     restart: always
-    ports: [ "${TRAILSNAP_PORT:-3180}:80" ]
+    ports: [ "3180:80" ]
     depends_on: [ server ]
     networks: [ app-network ]
-    environment:
-      - TZ=Asia/Shanghai
-
-  # Linux 可选增强：让 mDNS 从宿主机网卡广播，而不是困在 Docker bridge 中。
-  # 启用：docker compose --profile lan-discovery up -d
-  discovery:
-    image: siyuan044/trailsnap-server:master
-    restart: unless-stopped
-    profiles: [ "lan-discovery" ]
-    network_mode: host
-    command: [ "python", "discovery_host.py" ]
-    environment:
-      - TZ=Asia/Shanghai
-      - TRAILSNAP_PUBLIC_URL=${TRAILSNAP_PUBLIC_URL:-}
-      - TRAILSNAP_INSTANCE_NAME=${TRAILSNAP_INSTANCE_NAME:-TrailSnap}
-      - TRAILSNAP_DISCOVERY_ENABLED=true
 
 networks:
   app-network:

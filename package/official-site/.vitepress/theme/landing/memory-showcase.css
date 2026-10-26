@@ -1,0 +1,125 @@
+/* Fit the curated samples within the stage instead of nesting scroll areas. */
+.trailsnap-home .fixed-moon,
+.trailsnap-home .fixed-tickets {
+  overflow: visible;
+}
+
+.trailsnap-home .fixed-moon {
+  padding: 20px 24px;
+}
+
+.trailsnap-home .nm-header,
+.trailsnap-home .nm-filters,
+.trailsnap-home .nm-footer {
+  flex-shrink: 0;
+}
+
+.trailsnap-home .nm-filters {
+  margin: 12px 0 10px;
+  padding-bottom: 8px;
+}
+
+.trailsnap-home .nm-gallery {
+  min-height: 0;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trailsnap-home .nm-phase {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  padding: 8px 4px;
+}
+
+.trailsnap-home .nm-phase svg {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  max-height: 90px;
+  margin-bottom: 5px;
+}
+
+.trailsnap-home .nm-phase strong,
+.trailsnap-home .nm-phase p {
+  flex-shrink: 0;
+}
+
+.trailsnap-home .nm-footer {
+  padding-top: 8px;
+  margin-top: 10px;
+}
+
+.trailsnap-home .fixed-tickets {
+  padding: 18px 24px 14px;
+}
+
+.trailsnap-home .nt-header,
+.trailsnap-home .nt-filters,
+.trailsnap-home .nt-note {
+  flex-shrink: 0;
+}
+
+.trailsnap-home .nt-filters {
+  margin: 10px 0;
+}
+
+.trailsnap-home .nt-list {
+  gap: 8px;
+}
+
+.trailsnap-home .nt-ticket {
+  padding: 9px 16px;
+}
+
+.trailsnap-home .nt-ticket-head {
+  padding-bottom: 6px;
+}
+
+.trailsnap-home .nt-route {
+  margin: 6px 0;
+}
+
+.trailsnap-home .nt-route > strong {
+  line-height: 1.3;
+}
+
+.trailsnap-home .nt-note {
+  margin: 8px 0 0;
+}
+
+@media (min-width: 1001px) and (prefers-reduced-motion: no-preference) {
+  .trailsnap-home.motion-ready .memory-stage {
+    padding: 24px 0 50px;
+  }
+
+  .trailsnap-home.motion-ready .memory-visual {
+    min-height: 460px;
+    max-height: max(460px, calc(100svh - 165px));
+  }
+}
+
+@media (max-width: 700px) {
+  .trailsnap-home .fixed-moon,
+  .trailsnap-home .fixed-tickets {
+    padding: 20px 16px 16px;
+  }
+
+  .trailsnap-home .nm-gallery {
+    gap: 10px 5px;
+  }
+
+  .trailsnap-home .nm-phase {
+    padding: 8px 2px;
+  }
+
+  .trailsnap-home .nm-phase svg {
+    max-height: 64px;
+  }
+
+  .trailsnap-home .nt-ticket {
+    padding: 12px;
+  }
+}

@@ -114,18 +114,38 @@ pub async fn desktop_update_download(app: tauri::AppHandle) -> Result<UpdateInfo
         current.clone()
     };
     progress(&app, &info);
+    let result = download_and_stage(&instance_root, &mut info, |info| progress(&app, info)).await;
+    progress(&app, &info);
+    result?;
+    Ok(info)
+}
+
+async fn download_and_stage(
+    instance_root: &std::path::Path,
+    info: &mut UpdateInfo,
+    on_progress: impl Fn(&UpdateInfo),
+) -> Result<(), String> {
     let download = instance_root
         .join("maintenance")
         .join(format!("download-{}.zip", uuid::Uuid::new_v4()));
-    fs::create_dir_all(download.parent().ok_or("下载目录无效")?).map_err(|e| e.to_string())?;
     let result = async {
-        let response = reqwest::Client::new()
-            .get(&info.url)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?
-            .error_for_status()
+        fs::create_dir_all(download.parent().ok_or("下载目录无效")?).map_err(|e| e.to_string())?;
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .build()
             .map_err(|e| e.to_string())?;
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(45),
+            client
+                .get(&info.url)
+                .timeout(std::time::Duration::from_secs(60 * 60))
+                .send(),
+        )
+        .await
+        .map_err(|_| "更新下载响应超时")?
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
         let mut stream = response.bytes_stream();
         let mut output = fs::OpenOptions::new()
             .create_new(true)
@@ -143,14 +163,14 @@ pub async fn desktop_update_download(app: tauri::AppHandle) -> Result<UpdateInfo
                 return Err("下载体积超出签名清单".into());
             }
             output.write_all(&chunk).map_err(|e| e.to_string())?;
-            progress(&app, &info);
+            on_progress(info);
         }
         output.sync_all().map_err(|e| e.to_string())?;
         drop(output);
         if info.downloaded != info.size {
             return Err("更新包下载不完整".into());
         }
-        let staging_root = instance_root.clone();
+        let staging_root = instance_root.to_path_buf();
         let archive = download.clone();
         let signature = info.signature.clone();
         let hash = info.sha256.clone();
@@ -169,12 +189,54 @@ pub async fn desktop_update_download(app: tauri::AppHandle) -> Result<UpdateInfo
         Err(error) => {
             info.phase = "error".into();
             info.error = Some(error.clone());
-            progress(&app, &info);
             return Err(error);
         }
     }
-    progress(&app, &info);
-    Ok(info)
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn directory_failure_leaves_retryable_state_and_retry_reaches_download() {
+        let root = std::env::temp_dir().join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("maintenance"), b"blocked").unwrap();
+        let mut info = UpdateInfo {
+            phase: "downloading".into(),
+            size: 4,
+            ..Default::default()
+        };
+        assert!(download_and_stage(&root, &mut info, |_| {}).await.is_err());
+        assert_eq!(info.phase, "error");
+        assert!(info.error.is_some());
+        fs::remove_file(root.join("maintenance")).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        info.url = format!("http://{}/update.zip", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut buffer = [0; 4096];
+            let _ = socket.read(&mut buffer).unwrap();
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\ntest")
+                .unwrap();
+        });
+        info.phase = "downloading".into();
+        // A retry downloads all bytes; the deliberately unsigned payload fails
+        // verification and is removed, rather than leaving a stuck operation.
+        assert!(download_and_stage(&root, &mut info, |_| {}).await.is_err());
+        server.join().unwrap();
+        assert_eq!(info.downloaded, 4);
+        assert_eq!(info.phase, "error");
+        assert_eq!(fs::read_dir(root.join("maintenance")).unwrap().count(), 0);
+        fs::remove_dir_all(root).unwrap();
+    }
 }
 
 #[tauri::command]

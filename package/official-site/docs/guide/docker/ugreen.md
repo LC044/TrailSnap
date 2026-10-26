@@ -15,7 +15,7 @@ title: 绿联 NAS（UGREEN）部署
 在 UGOS Pro 系统中，打开 Docker 应用，点击【项目】 > 【创建】，启动项目创建向导。
 项目名称填为 `trailsnap`，其他默认即可。
 
-![Alt text](/images/ugos.png)
+![Alt text](/images/ugos.webp)
 
 ## 2. 配置 Docker Compose 文件
 
@@ -59,7 +59,7 @@ TrailSnap 默认只开放一个访问端口：`3180`。网页、App 和 CLI 都�
 
 - `http://<NAS_IP>:3180`
 
-![Alt text](/images/ugos-start.png)
+![Alt text](/images/ugos-start.webp)
 
 打开设置->外部图库，填入容器内的照片路径：`/app/Photos`，添加外部图库之后会自动扫描并在后台运行任务（可以在设置->任务管理查看任务详情）。
 

@@ -29,6 +29,7 @@ if config.config_file_name is not None:
 from app.db import models
 from app.db.models import *
 from app.db.base import Base
+from app.db.migration_compat import normalize_local_index_revision
 
 # a = TrainTicket
 
@@ -79,6 +80,8 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        with connection.begin():
+            normalize_local_index_revision(connection, 'c71d4f920a31', 'portable_0020')
         context.configure(
             connection=connection, target_metadata=target_metadata
         )

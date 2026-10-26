@@ -59,7 +59,7 @@ def validate_library_source(source: Path) -> Path:
 
 def conversion_exclusions(source: Path) -> frozenset[str]:
     """An overwritten legacy installation can also contain the NEW live library."""
-    excluded = {'server', 'trailsnap-desktop.exe', 'uninstall.exe'}
+    excluded = {'server', 'ai', 'trailsnap-desktop.exe', 'uninstall.exe'}
     if (source / 'portable.json').is_file():
         excluded.update({'app', 'maintenance', 'userdata', 'TrailSnap.exe', 'portable-launcher.exe', 'portable.json',
                          'ai-extensions.json', 'resources', 'webview-runtime'})
@@ -152,7 +152,8 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         raise ValueError("转换需要完整的新桌面程序、后端与启动器")
     preview = preview_conversion(source)
     validate_external_target(preview, target)
-    baseline = media_baseline(source)
+    baseline = media_baseline(source, copy_external=copy_external,
+                              excluded_entries=conversion_exclusions(source))
     if copy_external and any(not item["available"] for item in preview["externalRoots"]):
         raise ValueError("外部图库磁盘不可用，不能创建完整便携副本")
     if copy_external and preview["unregisteredPhotos"]:
@@ -298,7 +299,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         else:
             from app.core.config_manager import VERSION
             manifest = {"schemaVersion":1,"version":VERSION,"buildId":VERSION+"-"+file_hash(program/"trailsnap-desktop.exe")[:12],
-                        "platform":"windows-"+("aarch64" if __import__('platform').machine().lower() in {"arm64","aarch64"} else "x86_64"),"minLauncherVersion":1,"executable":"trailsnap-desktop.exe"}
+                        "platform":"windows-"+("aarch64" if __import__('platform').machine().lower() in {"arm64","aarch64"} else "x86_64"),"minLauncherVersion":2,"executable":"trailsnap-desktop.exe"}
         build = manifest["buildId"]
         if Path(build).name != build or ":" in build or build in {".",".."}: raise ValueError("程序版本标识无效")
         report_progress("program")
@@ -307,7 +308,7 @@ def convert_to_portable(source: Path, target: Path, program: Path, launcher: Pat
         # Installation and data historically can share a directory. Copy only
         # program resources rather than nesting another copy of the photo library.
         for entry in program.iterdir():
-            if entry.name in {"server", "resources", "webview-runtime"} and entry.is_dir():
+            if entry.name in {"server", "ai", "resources", "webview-runtime"} and entry.is_dir():
                 shutil.copytree(filesystem_path(entry), filesystem_path(destination / entry.name))
             elif entry.is_file() and (entry.name in {"trailsnap-desktop.exe", "portable-launcher.exe", "ai-extensions.json"} or entry.suffix.lower() == ".dll"):
                 shutil.copy2(filesystem_path(entry), filesystem_path(destination / entry.name))

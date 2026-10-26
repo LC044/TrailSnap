@@ -57,10 +57,8 @@ async function waitForLocationRoute(
   page: Page,
   testInfo: { skip(condition: boolean, ...args: unknown[]): void },
 ): Promise<boolean> {
-  // 先等到路由守卫跑完（异步 store 初始化 + 路由判断）
-  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
-  // 再给 SPA 一点点时间做最后的导航修正
-  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/\/album\/location(?:[/?]|$)/)
+  await expect(page.getByRole('heading', { name: '位置', exact: true })).toBeVisible()
 
   const url = page.url()
   if (/\/album\/location(?:\?|$|\/)/.test(url)) {
@@ -172,8 +170,10 @@ test.describe.serial('P0 - 位置相册', () => {
     await mapBtn.click()
 
     // 地图容器（echarts canvas）始终渲染
+    // 2026-10-23 值守：整轮 full E2E 里 echarts canvas 在本地负载下偶发超过 15s 才挂载
+    // （定向重跑 10.3s 通过），与同文件其它慢查询等待统一放宽到 30s，只放宽时间、不改断言。
     const mapContainer = page.locator('.location-list canvas').first()
-    await expect(mapContainer).toBeVisible({ timeout: 15_000 })
+    await expect(mapContainer).toBeVisible({ timeout: 30_000 })
 
     // 地图视图右侧面板：要么 GlobalOverviewPanel（含"足迹概览"标题），要么仍处于
     // 加载骨架屏状态（globalStats 还没回来）。两者都视为地图视图就绪。

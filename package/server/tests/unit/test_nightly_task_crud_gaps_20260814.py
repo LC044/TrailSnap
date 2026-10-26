@@ -132,20 +132,16 @@ def test_get_grouped_status_returns_categories_sorted_by_priority_desc():
     from app.crud import task as crud_task
     from app.db.models.task import TaskType
     db = MagicMock()
-    # Pending counts, failed counts and model wait reasons.
+    # Grouped type/status counts and model wait reasons.
     pending_query = MagicMock()
     pending_query.filter.return_value = pending_query
     pending_query.group_by.return_value = pending_query
-    pending_query.all.return_value = [(TaskType.PROCESS_BASIC, 3)]
-    failed_query = MagicMock()
-    failed_query.filter.return_value = failed_query
-    failed_query.group_by.return_value = failed_query
-    failed_query.all.return_value = []
+    pending_query.all.return_value = [(TaskType.PROCESS_BASIC, 'pending', 3)]
     waiting_query = MagicMock()
     waiting_query.filter.return_value = waiting_query
     waiting_query.group_by.return_value = waiting_query
     waiting_query.all.return_value = [(TaskType.RECOGNIZE_FACE, "等待 AI 模型：人脸模型正在下载")]
-    db.query.side_effect = [pending_query, failed_query, waiting_query]
+    db.query.side_effect = [pending_query, waiting_query]
 
     out = crud_task.get_grouped_status(db, paused_categories={TaskType.RECOGNIZE_FACE})
     # All 10 categories surfaced (CLUSTER_FACES joined the panel when

@@ -63,13 +63,14 @@ def get_all_train_tickets(db: Session, owner_id: uuid.UUID = None) -> List[Train
 
 
 
-def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.UUID = None) -> TrainTicket:
+def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.UUID = None, *, commit: bool = True) -> TrainTicket:
     """创建新的火车票"""
     # Check duplicate
     existing = db.query(TrainTicket).filter(
         TrainTicket.train_code == ticket.train_code,
         TrainTicket.date_time == ticket.date_time,
-        TrainTicket.seat_num == (ticket.seat_num or '无座')
+        TrainTicket.seat_num == (ticket.seat_num or '无座'),
+        TrainTicket.owner_id == owner_id,
     ).first()
     if existing:
         logging.info(f"Duplicate train ticket found: {ticket.train_code} {ticket.date_time}")
@@ -94,8 +95,13 @@ def create_train_ticket(db: Session, ticket: TrainTicketCreate, owner_id: uuid.U
         owner_id=owner_id
     )
     db.add(db_ticket)
-    db.commit()
-    db.refresh(db_ticket)  # 刷新获取数据库生成的字段（如id、created_at）
+    from app.service.journey_queue import enqueue
+    enqueue(db, owner_id)
+    if commit:
+        db.commit()
+        db.refresh(db_ticket)
+    else:
+        db.flush()
     return db_ticket
 
 
@@ -114,6 +120,17 @@ def update_train_ticket(
     for key, value in update_data.items():
         setattr(db_ticket, key, value)
 
+    if update_data.get("date_time") and db_ticket.photo_id:
+        from app.db.models.photo import Photo
+        source = db.query(Photo).filter(Photo.id == db_ticket.photo_id,
+                                        Photo.owner_id == db_ticket.owner_id).first()
+        if source:
+            tasks = dict(source.processed_tasks or {})
+            times = dict(tasks.get("ticket_time_sources") or {})
+            if times.pop(f"train:{db_ticket.id}", None):
+                source.processed_tasks = dict(tasks, ticket_time_sources=times)
+    from app.service.journey_queue import enqueue
+    enqueue(db, db_ticket.owner_id)
     db.commit()
     db.refresh(db_ticket)
     return db_ticket
@@ -130,6 +147,8 @@ def delete_train_ticket(db: Session, ticket_id: str) -> bool:
     for link_model in (AlbumTicket, MemoryTicket, TicketDismissal):
         db.query(link_model).filter(link_model.ticket_type == "train", link_model.ticket_id == ticket_id).delete(synchronize_session=False)
     db.delete(db_ticket)
+    from app.service.journey_queue import enqueue
+    enqueue(db, db_ticket.owner_id)
     db.commit()
     return True
 

@@ -53,7 +53,6 @@ async function listAlbums(request: APIRequestContext, token: string): Promise<Al
   return Array.isArray(body) ? body : body.data ?? []
 }
 
-
 async function findAlbumByName(request: APIRequestContext, name: string, token: string): Promise<AlbumSummary | null> {
   const all = await listAlbums(request, token)
   return all.find((a) => a.name === name) ?? null
@@ -312,39 +311,31 @@ test.describe('P1 - 相册管理', () => {
     await expect(page.getByText(name)).toHaveCount(0)
   })
 
-  test('2.2.8 智能相册同步 - 新建后 SCAN_ALBUM 任务会跑，状态最终变 COMPLETED/CANCELLED', async ({ request, page }, testInfo) => {
-    // 智能相册 SCAN_ALBUM 需要对全库照片算 embedding 比对，结算可能较慢，放宽到 120s
-    test.setTimeout(120_000)
-    // 与 2.2.3 共用代码：智能相册创建时也会调度 SCAN_ALBUM
+  test('2.2.8 智能相册同步 - 新建后自动同步匹配照片并更新计数', async ({ request }) => {
     const name = `${UNIQUE_TAG}-sync`
     const created = await createAlbumViaApi(request, {
       name,
       type: 'smart',
       description: '带雪的风景',
-      threshold: 0.25,
+      // Cosine similarity is in [-1, 1]. Include the real embedded fixtures
+      // regardless of semantic match so this checks sync, not model quality.
+      threshold: -1,
     }, authToken)
 
-    // 轮询任务状态（最多 30s）
-    let finalStatus: string | null = null
-    for (let i = 0; i < 15; i += 1) {
-      await page.waitForTimeout(2_000)
-      const res = await request.get(`${e2eEnv.apiBaseUrl}/tasks/?type=SCAN_ALBUM&limit=50`, {
-        headers: authHeaders(authToken),
-      })
-      if (!res.ok()) continue
-      const body = (await res.json()) as Array<{ payload?: { album_id?: string }; status: string }> | BaseResponse<Array<{ payload?: { album_id?: string }; status: string }>>
-      const tasks = (Array.isArray(body) ? body : body.data) ?? []
-      const mine = tasks.find((t) => t.payload?.album_id === created.id)
-      if (mine && (mine.status === 'completed' || mine.status === 'cancelled' || mine.status === 'failed')) {
-        finalStatus = mine.status
-        break
-      }
+    try {
+      // Completed task rows are deleted. Check the persisted counter written
+      // by the automatically scheduled SCAN_ALBUM, rather than wait for a
+      // historical completed row or enqueue a second job just for the test.
+      await expect.poll(async () => {
+        const result = await request.get(`${e2eEnv.apiBaseUrl}/albums/${created.id}`, { headers: authHeaders(authToken) })
+        expect(result.ok()).toBeTruthy()
+        const body = await result.json()
+        expect(body.code).toBe(0)
+        return body.data.num_photos
+      }, { timeout: 30_000, intervals: [200, 500, 1_000] }).toBeGreaterThan(0)
+    } finally {
+      await deleteAlbumById(request, created.id, authToken)
     }
-    // 不强制 completed（可能因为无匹配照片被 cancelled，或 failed），但任务必须存在过
-    expect(finalStatus !== null || true).toBeTruthy() // 弱断言：只要 SCAN_ALBUM 类型任务存在
-
-    // 清理
-    await deleteAlbumById(request, created.id, authToken)
   }, 60_000)
 
   test('2.2.9 AlbumSelector 对话框 - Lightbox 中可调起', async ({ page, request }, testInfo) => {

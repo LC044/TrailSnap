@@ -20,6 +20,17 @@ import pytest
 pytestmark = [pytest.mark.smoke]
 
 
+@pytest.fixture(autouse=True)
+def completion_source_boundary(request, monkeypatch):
+    # These tests isolate metadata/downstream dispatch. Directory revocation
+    # and real filesystem checks are exercised by test_gallery_reconciliation.
+    if request.node.name.startswith('test_handle_completion'):
+        from app.service import gallery_sync
+        monkeypatch.setattr(gallery_sync, 'lock_user', lambda db, uid: SimpleNamespace(id=uid))
+        monkeypatch.setattr(gallery_sync, 'import_allowed', lambda *_: True)
+        monkeypatch.setattr('app.service.tasks.basic.os.path.isfile', lambda *_: True)
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
@@ -467,6 +478,7 @@ def test_handle_completion_pre_created_inserts_photo_metadata(monkeypatch):
 
     photo_id = uuid4()
     user_id = str(uuid4())
+    _completion_rows(db, photos=[SimpleNamespace(id=photo_id, processed_tasks={})])
     item = {
         "status": "completed",
         "task_id": uuid4(),
@@ -499,6 +511,7 @@ def test_handle_completion_marks_pre_created_motion_photo_as_live(monkeypatch):
     db = MagicMock()
     db_photo = SimpleNamespace(
         file_type=FileType.image, md5=None, size=1, width=None, height=None, duration=None,
+        processed_tasks={},
     )
     db.get.return_value = db_photo
     db.query.return_value.filter.return_value.first.return_value = None
@@ -516,6 +529,7 @@ def test_handle_completion_marks_pre_created_motion_photo_as_live(monkeypatch):
 
     assert db_photo.file_type == FileType.live_photo
     assert db_photo.md5 == "f" * 32
+    assert db_photo.processed_tasks['basic'] is True
 
 
 def test_handle_completion_skips_metadata_when_no_metadata_schema():
@@ -526,6 +540,7 @@ def test_handle_completion_skips_metadata_when_no_metadata_schema():
 
     photo_id = uuid4()
     user_id = str(uuid4())
+    _completion_rows(db, photos=[SimpleNamespace(id=photo_id, processed_tasks={})])
     data = _photo_create_data(photo_id, user_id, is_pre_created=True)
     data["metadata"] = None
 
@@ -553,7 +568,8 @@ def test_handle_completion_pre_existing_metadata_with_exif_is_not_overwritten(mo
     worker.scan_status = {"added": 0, "processed_files": 0}
 
     photo_id = uuid4()
-    _completion_rows(db, metadata=[SimpleNamespace(photo_id=photo_id, exif_info=json.dumps({'existing': True}))])
+    _completion_rows(db, photos=[SimpleNamespace(id=photo_id, processed_tasks={})],
+                     metadata=[SimpleNamespace(photo_id=photo_id, exif_info=json.dumps({'existing': True}))])
     user_id = str(uuid4())
     item = {
         "status": "completed",

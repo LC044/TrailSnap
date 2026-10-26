@@ -8,6 +8,7 @@ import searchService, { type TextSearchRequest } from '@/api/search'
 import type { Photo, TimelineStats, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
 import { toServerUrl } from '@/config/server'
 import { thumbnailUrl } from '@/utils/mediaUrl'
+import { normalizeMediaTypeFilters } from '@/utils/mediaTypeFilters'
 
 // --- 缓存工具 ---
 const CACHE_PREFIX = 'trailsnap:';
@@ -150,8 +151,7 @@ export const photoStoreSetup = () => {
       makes: [],
       models: [],
       image_types: [],
-      file_types: [],
-      is_panorama: undefined
+      file_types: []
   });
 
   const getContextKey = () => {
@@ -202,9 +202,12 @@ export const photoStoreSetup = () => {
   // 筛选条件持久化到 trailsnap:selectedFilters，刷新/重开后恢复（P1 2.1.9 回归用例依赖）。
   {
       const FILTER_CACHE_KEY = 'selectedFilters'
-      const cached = getLocalCache<FilterState>(FILTER_CACHE_KEY)
+      const cached = getLocalCache<FilterState & { is_panorama?: boolean }>(FILTER_CACHE_KEY)
       if (cached) {
-          Object.assign(selectedFilters, cached)
+          const { is_panorama, ...filters } = cached
+          Object.assign(selectedFilters, filters, {
+              file_types: normalizeMediaTypeFilters(filters.file_types, is_panorama),
+          })
       }
       watch(selectedFilters, (val) => {
           setLocalCache(FILTER_CACHE_KEY, { ...val })

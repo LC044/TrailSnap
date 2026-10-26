@@ -16,6 +16,6 @@ if ($WebViewRuntime) { $runtimeArguments = @('--webview-runtime', $WebViewRuntim
     --program (Join-Path $rustRoot 'target/release') `
     --server (Join-Path $repoRoot 'package/server/dist/trailsnap-server') `
     --launcher (Join-Path $rustRoot 'target/release/trailsnap-launcher.exe') `
-    --catalog (Join-Path $rustRoot 'resources/ai-extensions.json') `
+    --ai (Join-Path $repoRoot 'package/ai/dist/trailsnap-ai') `
     --output $OutputDirectory --version $version --arch $Architecture @runtimeArguments
 if ($LASTEXITCODE -ne 0) { throw 'Portable packaging failed' }

@@ -31,12 +31,13 @@ STATUS_LABELS = {
 }
 GITHUB_CLOSED_REQUIREMENT_STATUSES = {"released", "rejected", "duplicate", "withdrawn", "closed"}
 CLOSING_ISSUE_PATTERN = re.compile(
-    r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:[\w.-]+/[\w.-]+)?#(\d+)\b"
+    r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:([\w.-]+/[\w.-]+))?#(\d+)\b"
 )
 
 
 def closing_issue_numbers(pull_request: dict[str, Any]) -> set[int]:
-    return {int(number) for number in CLOSING_ISSUE_PATTERN.findall(pull_request.get("body") or "")}
+    return {int(number) for repository, number in CLOSING_ISSUE_PATTERN.findall(pull_request.get("body") or "")
+            if not repository or repository.lower() == settings.github_repo.lower()}
 
 
 def pull_request_summary(pull_request: dict[str, Any]) -> dict[str, Any]:

@@ -153,6 +153,43 @@ def test_panorama_filter_and_schema(face_sqlite_session, tmp_path):
     assert PhotoSchema.model_validate(photo).panorama_projection == "equirectangular"
 
 
+@pytest.mark.parametrize("filters, expected", [
+    ({"file_types": ["panorama"]}, {"panorama"}),
+    ({"file_types": ["video", "panorama"]}, {"video", "panorama"}),
+    ({"file_types": ["image"]}, {"image", "panorama"}),
+    ({"file_types": ["image", "panorama", "panorama"]}, {"image", "panorama"}),
+    ({"file_types": ["live_photo", "panorama"]}, {"live_photo", "panorama"}),
+    ({"file_types": ["image", "video", "live_photo", "panorama"]}, {"image", "video", "live_photo", "panorama"}),
+    ({"file_types": []}, {"image", "video", "live_photo", "panorama"}),
+    ({"file_type": "panorama"}, {"panorama"}),
+    ({"file_types": ["video", "panorama"], "years": [2025]}, set()),
+    ({"file_types": ["video", "panorama"], "is_panorama": True}, {"panorama"}),
+    ({"file_types": ["video", "panorama"], "is_panorama": False}, {"video"}),
+])
+def test_panorama_virtual_type_union_and_timeline(face_sqlite_session, tmp_path, filters, expected):
+    from datetime import datetime
+    from app.crud.photo import get_all_photos, get_timeline_stats, get_filter_options
+    db = face_sqlite_session
+    owner, panorama = fixture_photo(db, tmp_path)
+    panorama.photo_time = datetime(2026, 2, 16)
+    apply_detection(panorama, full_geometry(800, 400))
+    for name in ("image", "video", "live_photo", "deleted"):
+        db.add(Photo(id=uuid4(), owner_id=owner.id, filename=name,
+                     file_path=str(tmp_path / name), file_type=FileType.video if name == "deleted" else FileType(name),
+                     photo_time=panorama.photo_time, is_deleted=name == "deleted"))
+    stranger, other = fixture_photo(db, tmp_path, name="stranger")
+    other.photo_time = panorama.photo_time
+    apply_detection(other, full_geometry(800, 400))
+    db.commit()
+    rows = get_all_photos(db, user_id=owner.id, **filters)
+    names = ["panorama" if row.id == panorama.id else row.filename for row in rows]
+    assert set(names) == expected
+    assert len(names) == len(expected)
+    stats = get_timeline_stats(db, user_id=owner.id, **filters)
+    assert stats["total_photos"] == len(expected)
+    assert get_filter_options(db, owner.id)["file_types"] == ["image", "video", "live_photo", "panorama"]
+
+
 def test_postgres_panorama_migration_compiles_without_database():
     import importlib.util
     import io

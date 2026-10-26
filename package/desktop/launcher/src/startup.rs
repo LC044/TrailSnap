@@ -57,15 +57,29 @@ pub fn label(stage: &str) -> &'static str {
     match stage {
         "checking" => "正在检查旧版本数据…",
         "inventory" => "正在检查旧数据文件…",
-        "baseline" => "正在记录原照片校验信息…",
+        "baseline" => "正在记录待复制照片校验信息…",
         "copying" => "正在复制并校验数据…",
         "checking_source" => "正在确认旧数据未发生变化…",
         "database" => "正在升级相册和照片记录…",
-        "verifying" => "正在校验照片…",
+        "verifying" => "正在校验已复制的照片…",
         "publishing" => "正在完成数据切换，请勿退出…",
         "validating" => "正在验证升级后的行影集…",
         _ => "正在启动行影集…",
     }
+}
+
+pub fn is_migration_stage(stage: &str) -> bool {
+    matches!(
+        stage,
+        "inventory"
+            | "baseline"
+            | "copying"
+            | "checking_source"
+            | "database"
+            | "verifying"
+            | "publishing"
+            | "validating"
+    )
 }
 
 #[cfg(test)]

@@ -304,6 +304,8 @@ def test_conversion_closes_database_pool_before_publishing_directory(tmp_path, m
                    (str(uuid.uuid4()), "desktop-admin", "desktop@trailsnap.app", "hash", "{}"))
     for path in (program / "trailsnap-desktop.exe", program / "server/trailsnap-server.exe", program / "launcher.exe"):
         path.write_bytes(b"program-fixture")
+    (program / "ai").mkdir()
+    (program / "ai/trailsnap-ai.exe").write_bytes(b"bundled-ai-fixture")
     # Cover an installer placed over its former data root: the new instance's
     # userdata and programs must not become nested copies inside the old library.
     (source / 'userdata/webview').mkdir(parents=True)
@@ -323,6 +325,8 @@ def test_conversion_closes_database_pool_before_publishing_directory(tmp_path, m
     assert not (target / 'userdata/instance.json').exists()
     assert (source / 'userdata/.instance.lock').read_bytes() == b'live lock'
     assert next((target / "app").glob("*/portable-launcher.exe")).read_bytes() == b"program-fixture"
+    assert next((target / "app").glob("*/ai/trailsnap-ai.exe")).read_bytes() == b"bundled-ai-fixture"
+    assert json.loads(next((target / "app").glob("*/manifest.json")).read_text())['minLauncherVersion'] == 2
     moved = target.with_name("moved")
     target.rename(moved)
     with closing(sqlite3.connect(moved / "userdata/data/trailsnap.sqlite")) as db:
@@ -377,6 +381,10 @@ def test_installer_and_zip_share_layout_without_overwriting_instance_data(tmp_pa
     (source / 'server').mkdir(parents=True)
     (source / 'trailsnap-desktop.exe').write_bytes(b'shell__TAURI_BUNDLE_TYPE_VAR_UNK')
     (source / 'server/trailsnap-server.exe').write_bytes(b'server')
+    (source / 'ai').mkdir()
+    (source / 'ai/trailsnap-ai.exe').write_bytes(b'ai')
+    for component in ('server', 'ai'):
+        (source / component / 'runtime-version.json').write_text('{"version":"1.0.0"}')
     (source / 'portable-launcher.exe').write_bytes(b'launcher')
     (source / 'ai-extensions.json').write_text('{}')
     (source / 'instance.json').write_bytes(b'keep user config')
@@ -385,7 +393,7 @@ def test_installer_and_zip_share_layout_without_overwriting_instance_data(tmp_pa
     import platform
     arch = 'aarch64' if platform.machine().lower() in {'arm64','aarch64'} else 'x86_64'
     zip_root = tmp_path / 'zip'
-    expected = stage_program(zip_root,source,source / 'server',source / 'portable-launcher.exe',source / 'ai-extensions.json','1.0.0',arch)
+    expected = stage_program(zip_root,source,source / 'server',source / 'portable-launcher.exe',None,'1.0.0',arch,ai=source / 'ai')
     (source / 'trailsnap-desktop.exe').write_bytes(b'shell__TAURI_BUNDLE_TYPE_VAR_NSS')
     assert finalize_install(source,'1.0.0') == expected
     assert (zip_root / 'app' / expected / 'trailsnap-desktop.exe').read_bytes().endswith(b'_UNK')
@@ -410,12 +418,13 @@ def test_uninstaller_preserves_library_and_local_config(tmp_path, data_path):
     data = tmp_path / data_path
     data.mkdir(parents=True, exist_ok=True)
     (data / 'photos').write_bytes(b'original media')
-    config = json.dumps({'dataRoot': {'kind': 'relative', 'path': data_path}})
-    (tmp_path / 'instance.json').write_text(config)
+    config = json.dumps({'displayName': '行影集安装测试', 'dataRoot': {'kind': 'relative', 'path': data_path}},
+                        ensure_ascii=False)
+    (tmp_path / 'instance.json').write_text(config, encoding='utf-8')
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
                              '-File', str(script), '-InstallDirectory', str(tmp_path)], capture_output=True)
     assert (data / 'photos').read_bytes() == b'original media'
-    assert (tmp_path / 'instance.json').read_text() == config
+    assert (tmp_path / 'instance.json').read_text(encoding='utf-8') == config
     assert (result.returncode == 0) == (data_path == 'userdata')
     assert (tmp_path / 'app').exists() == (data_path != 'userdata')
 

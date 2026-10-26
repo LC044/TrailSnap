@@ -31,6 +31,7 @@ from app.utils import motion_photo
 from app.service.disk_budget import budgeted_open
 from contextlib import ExitStack
 from app.service.task_runtime import await_owned
+from app.service.tasks.photo_generator import generate_photo_tasks
 
 
 def _json_safe_metadata(metadata):
@@ -185,12 +186,29 @@ class BasicTaskStrategy(BaseTaskStrategy):
         return 'CPU'
 
     async def process(self, worker, task: Task, db: Session) -> Any:
-        pass
+        generated = generate_photo_tasks(
+            db, worker, task, task_type=TaskType.PROCESS_BASIC,
+            status_key='basic', priority=DEFAULT_PRIORITIES[TaskType.PROCESS_BASIC],
+            include_videos=True,
+            payload_for_photo=lambda photo: {'is_live_photo': photo.file_type == FileType.live_photo},
+        )
+        return {'generated_tasks': generated}
 
     async def process_batch(self, worker, tasks: List[Task], db: Session) -> List[Dict]:
         from app.db.models.photo import Photo
 
         results = []
+        photo_tasks = []
+        for task in tasks:
+            if (task.payload or {}).get('scope') == 'all' and not task.payload.get('file_path') and not task.payload.get('photo_id'):
+                result = await self.process(worker, task, db)
+                results.append({'task_id': task.id, 'task_type': task.type,
+                                'status': 'completed', 'result': result})
+            else:
+                photo_tasks.append(task)
+        tasks = photo_tasks
+        if not tasks:
+            return results
         batch_jobs_data = []
         # 按 user_id 预取一次 image_config，避免 _save_thumbnails 在 CPU worker 中
         # 为批内每张图各开一次 SessionLocal 拉 DB（config_manager 内部有 5s LRU
@@ -365,6 +383,18 @@ class BasicTaskStrategy(BaseTaskStrategy):
         index_logs = []
         processed_photos = {}
 
+        from app.service.gallery_sync import lock_user, import_allowed
+        owners = sorted({str(item['result']['photo_create_data']['user_id']) for item in items
+                         if item['status'] == TaskStatus.COMPLETED
+                         and 'photo_create_data' in (item.get('result') or {})})
+        users = {owner: lock_user(db, owner) for owner in owners}
+        task_ids = [item['task_id'] for item in items if item.get('task_id')]
+        cancelled = set()
+        for offset in range(0, len(task_ids), 500):
+            cancelled.update(row[0] for row in db.query(Task.id).filter(
+                Task.id.in_(task_ids[offset:offset + 500]), Task.status == TaskStatus.CANCELLED,
+            ).all())
+
         for item in items:
             status = item['status']
             if status == TaskStatus.COMPLETED:
@@ -372,6 +402,15 @@ class BasicTaskStrategy(BaseTaskStrategy):
                 if 'photo_create_data' in res:
                     data = res['photo_create_data']
                     user_id = data.get('user_id')
+                    # Removal and import completion share a DB lock. Re-read
+                    # current settings after CPU work, never the worker's cache.
+                    user = users[str(user_id)]
+                    if (item.get('task_id') in cancelled
+                            or (not data.get('is_pre_created') and
+                                (not import_allowed(user, data['file_path']) or not os.path.isfile(data['file_path'])))):
+                        storage.delete_thumbnails(user_id, data['photo_id'])
+                        item['result'] = {'status': 'skipped', 'reason': 'source removed or unavailable'}
+                        continue
                     if data.get('is_pre_created'):
                         pre_created_items.append(data)
                     else:
@@ -408,6 +447,8 @@ class BasicTaskStrategy(BaseTaskStrategy):
             photo_id = str(data['photo_id'])
             photo_schema = data.get('photo')
             meta_schema = data.get('metadata')
+            if data['photo_id'] not in existing_photos:
+                continue
             # 手机上传会先创建 Photo，再异步执行 PROCESS_BASIC。Motion Photo
             # 的内嵌视频是在这个阶段才被识别和提取，因此必须把检测结果
             # 回写到预创建记录，否则前端永远只会把它当普通图片。
@@ -453,7 +494,8 @@ class BasicTaskStrategy(BaseTaskStrategy):
 
         eligible_ids = set(inserted_ids)
         for data in pre_created_items:
-            eligible_ids.add(str(data['photo_id']))
+            if data['photo_id'] in existing_photos:
+                eligible_ids.add(str(data['photo_id']))
 
         if not eligible_ids:
             return
@@ -464,9 +506,11 @@ class BasicTaskStrategy(BaseTaskStrategy):
             file_path = info['path']
             owner_id = info['owner_id']
 
+            db_photo = db.get(Photo, UUID(photo_id))
+            if db_photo is not None:
+                db_photo.processed_tasks = dict(db_photo.processed_tasks or {}, basic=True)
             if info.get("raw_metadata") is not None and "panorama" in info["raw_metadata"]:
                 from app.utils.panorama import apply_detection
-                db_photo = db.get(Photo, UUID(photo_id))
                 if db_photo is not None:
                     apply_detection(db_photo, info["raw_metadata"]["panorama"])
 

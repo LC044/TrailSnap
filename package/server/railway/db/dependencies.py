@@ -29,3 +29,5 @@ def get_ready_db() -> Session:
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    from railway.db.migrations import upgrade_railway_schema
+    upgrade_railway_schema(engine)
