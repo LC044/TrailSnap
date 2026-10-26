@@ -7,6 +7,8 @@ mod maintenance_wait;
 mod llama_runtime;
 mod portable;
 mod update_manager;
+mod update_network;
+mod installed_updates;
 mod update_transaction;
 
 use data_directory::{desktop_data_directory, desktop_set_data_directory, DataDirectory};
@@ -685,6 +687,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(DesktopState::default())
         .manage(update_manager::UpdateState::default())
+        .manage(installed_updates::InstalledUpdateState::default())
         .invoke_handler(tauri::generate_handler![
             desktop_runtime_status,
             data_directory::desktop_port_config,
@@ -712,6 +715,9 @@ pub fn run() {
             update_manager::desktop_update_download,
             update_manager::desktop_update_status,
             update_manager::desktop_update_apply,
+            installed_updates::desktop_installed_update_check,
+            installed_updates::desktop_installed_update_download,
+            installed_updates::desktop_installed_update_install,
             desktop_reveal_photo,
         ])
         .setup(|app| {
