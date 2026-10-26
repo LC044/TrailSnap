@@ -29,15 +29,7 @@ test.describe('Smoke - 回收站 @smoke', () => {
 
   test('回收站空态或图片列表至少渲染其中一种', async ({ page }) => {
     await page.goto('/recycle-bin');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
-    // 数据加载前可能短暂无内容，等加载完成（loading 标记消失）。
-    // 空态：「回收站是空的」或类似文案；非空态：图片卡片网格存在。
-    const emptyHint = await page.getByText(/回收站是空的|暂无已删除的照片/).count();
-    const hasGrid = await page.locator('img, .photo-card').count();
-    // 容许：纯空态、纯列表、或短暂"两者都没渲染但 body 已显示"——只要命中其一
-    // 就认为页面已经 mount 到 React 树，挂载后再走 store 渲染数据。
-    expect(emptyHint + hasGrid).toBeGreaterThanOrEqual(0);
-    await expect(page.locator('body')).toBeVisible();
+    await expect(page.getByText('回收站为空').or(page.locator('.photo-gallery img')).first()).toBeVisible({ timeout: 10_000 });
   });
 });

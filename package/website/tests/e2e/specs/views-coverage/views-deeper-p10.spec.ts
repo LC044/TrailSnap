@@ -91,7 +91,7 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       await stubLocationMapNoKey(page)
 
       await page.goto('/album/location')
-      await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
+
       // 路由守卫偶发 redirect，给 500ms 收敛
       await page.waitForTimeout(500)
       if (!/\/album\/location(?:\?|$|\/)/.test(page.url())) {

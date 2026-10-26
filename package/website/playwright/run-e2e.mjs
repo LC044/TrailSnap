@@ -70,7 +70,12 @@ function runPlaywright(suiteName) {
   if (cfg && cfg.grepInvert) {
     args.push('--grep-invert', cfg.grepInvert)
   }
-  execFileSync(process.execPath, [playwrightCli, ...args], { stdio: 'inherit', env })
+  const started = Date.now()
+  try {
+    execFileSync(process.execPath, [playwrightCli, ...args], { stdio: 'inherit', env })
+  } finally {
+    console.log(`[Timing] ${suiteName}: ${((Date.now() - started) / 1000).toFixed(1)}s`)
+  }
 }
 
 if (suite !== 'scan' && shouldRunFixtureScan()) {

@@ -86,15 +86,15 @@ async function switchToSceneLevel(page: Page): Promise<void> {
 
 /**
  * 等待路由稳定在 /album/location 上。SPA 路由守卫可能在初次导航后异步触发
- * redirect（auth 状态异步加载），所以先等 networkidle + 0.5s 让路由收敛，
+ * redirect（auth 状态异步加载），所以等待目标 URL 与位置标题挂载，
  * 再核对当前 URL；不在 /album/location 上时直接 testInfo.skip()。
  */
 async function waitForLocationRoute(
   page: Page,
   testInfo: { skip(condition: boolean, ...args: unknown[]): void },
 ): Promise<boolean> {
-  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
-  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/\/album\/location(?:[/?]|$)/)
+  await expect(page.getByRole('heading', { name: '位置', exact: true })).toBeVisible()
 
   const url = page.url()
   if (/\/album\/location(?:\?|$|\/)/.test(url)) {

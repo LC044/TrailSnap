@@ -39,7 +39,6 @@ test.describe('Smoke - 桌面端搜索结果页 @smoke', () => {
   test('空 query 时进入 empty 状态 - 文案"未找到相关照片"可见', async ({ page }) => {
     // 当 query 为空时，结果列表为空，进入 empty 状态（不受样本数量影响）
     await page.goto('/search');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     await expect(page.getByText('未找到相关照片')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('尝试更换搜索关键词')).toBeVisible();
@@ -47,7 +46,6 @@ test.describe('Smoke - 桌面端搜索结果页 @smoke', () => {
 
   test('头部副标题元素可见 - 渲染计数或加载文案', async ({ page }) => {
     await page.goto('/search');
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // subtitle 计算属性：loading 时 "搜索中..."，否则 "N 个结果" 或 "N+ 个结果"
     // 直接定位 main .sticky p 段落元素并断言文本匹配三种合法文案

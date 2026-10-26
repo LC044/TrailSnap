@@ -33,15 +33,10 @@ test.describe('Smoke - 猜城市游戏页 @smoke', () => {
   test('猜城市页面渲染出时间提示区块或空态文案', async ({ page }) => {
     await page.goto('/game');
 
-    // 等待懒加载组件 mount；网络空闲容错避免空数据时 5xx 长尾
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-
     // 至少命中以下其中一项：
     //   - 有数据时：「时间提示：xxxxx」
     //   - 无数据时：「暂无可用的照片」
-    const hasTimeHint = await page.getByText(/时间提示[:：]/).count();
-    const hasEmpty = await page.getByText('暂无可用的照片').count();
-    expect(hasTimeHint + hasEmpty).toBeGreaterThan(0);
+    await expect(page.getByText(/时间提示[:：]/).or(page.getByText('暂无可用的照片')).first()).toBeVisible({ timeout: 10_000 });
   });
 });
 
