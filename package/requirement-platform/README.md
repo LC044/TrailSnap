@@ -37,6 +37,15 @@ requirement-platform/
 
 ## 本地开发
 
+### AI 反馈后的持续跟进
+
+- 匿名提交成功后显示结果卡，提供查看进度、保存修改入口和继续交给 AI 的操作。
+- “本机提交记录”保存在当前浏览器。换设备或清除浏览器数据前应私下保存修改入口；持有链接的人具有对应需求的修改权限。
+- 详情中的“补充信息”保存为独立记录。正文进入开发后仍可补充，补充不会自动改动已批准正文、规格或交付授权。
+- `GET /api/requirements/{id}/supplements` 读取补充；`POST` 接受 `{ "body": "4–4000 字说明" }`，仅提交者、管理员或对应编辑凭证可追加。公开需求的补充公开，私有需求沿用原读取权限；每条需求每小时最多 10 条、累计最多 100 条。
+- “复制给 AI 继续处理”仅包含公开需求链接和操作说明，不携带编辑凭证、联系方式或私密日志。
+- 本次新增表与匿名编辑字段合并在尚未发布的 `c8d4a7e2f610` 迁移中，部署时需要升级数据库。
+
 后端：
 
 ```powershell
@@ -115,6 +124,21 @@ GitHub 登录需要另外创建 GitHub OAuth App，并将 Authorization callback
 `read:user user:email`，平台取回身份后立即丢弃 GitHub Access Token。
 
 ## Codex / MCP 接入
+
+### 普通用户 AI 反馈
+
+普通用户无需登录或配置 MCP。AI 可读取公开 `/api/agent-guide`，通过 HTTP 搜索和匿名提交需求。
+提交返回独立 `edit_token`，只允许修改对应需求的内容，不授予审核、状态或任务管理权限。
+网页自动保存本机回执，AI 提供的 `#edit_token=...` 私有管理链接打开后也会自动导入；
+公开分享只使用不含凭证的详情链接。丢失回执不能仅凭昵称或 IP 恢复。
+
+创建可携带 CSPRNG 生成的 32 字节 base64url `client_edit_token`，相同凭证和相同请求重试不会重复创建。
+后续 `PATCH /api/requirements/{id}` 使用 `X-Requirement-Edit-Token` 请求头和
+`expected_state_version`；版本冲突返回 409，编辑仅限提交、待补充与待审核阶段。
+旧 `upload_token` 不升级为编辑权限。部署前由维护者执行新增 SQLite 迁移，
+应用的 `create_all` 不会为已有数据库补齐字段。
+
+下述 MCP 接入与交付协议仅适用于受信任管理员 Agent，不适用于普通匿名贡献者。
 
 管理员在“集成设置”中创建 Agent 令牌并选择最小必要作用域。服务地址默认为
 `https://feedback.trailsnap.cn/mcp/`，使用 Streamable HTTP 与 Bearer Token。Codex 配置示例：

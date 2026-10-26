@@ -109,7 +109,9 @@ async def validation_error(_request: Request, exc: RequestValidationError):
     message = first.get("msg") or "格式不正确"
     return JSONResponse(
         status_code=422,
-        content={"code": 422, "msg": f"{field}：{message}", "data": {"errors": exc.errors()}},
+        content={"code": 422, "msg": f"{field}：{message}", "data": {
+            "errors": [{"loc": error["loc"], "type": error["type"], "msg": error["msg"]} for error in exc.errors()],
+        }},
     )
 
 

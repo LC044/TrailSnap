@@ -16,7 +16,10 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function restore() {
-    if (!localStorage.getItem(TOKEN_KEY) || restoring.value) return
+    if (restoring.value) return
+    try {
+      if (!localStorage.getItem(TOKEN_KEY)) return
+    } catch { return }
     restoring.value = true
     try {
       user.value = await api.me()

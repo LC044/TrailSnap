@@ -308,8 +308,9 @@ alembic downgrade -1
 
 ## 问题反馈
 
-- **Bug 反馈**：请在 [GitHub Issues](https://github.com/LC044/TrailSnap/issues) 中提交
-- **功能建议**：欢迎提交 Feature Request
+- **Bug 与功能建议**：通过[需求平台](https://feedback.trailsnap.cn/)匿名提交，无需登录。网页会自动保存本机编辑权限。
+- **让 AI 帮忙**：主应用“设置 → 问题反馈”可一键复制提示词给 Trae、Codex；公开接口说明见[普通用户 AI 指南](https://feedback.trailsnap.cn/api/agent-guide)，无需配置 MCP。私有管理链接用于继续修改自己的需求，请勿公开分享。
+- **AI 代码贡献**：遵循仓库规范、测试和 CLA，通过自己的 GitHub 授权走 Fork PR，注明平台需求编号与公开链接。平台尚未关联 Issue 时可以创建草稿 PR 等待维护者关联，不直接创建 GitHub Issue；不能自动合并或发布。
 - **安全漏洞**：请私信维护者，不要公开披露
 
 ## 许可证
