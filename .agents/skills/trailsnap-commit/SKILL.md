@@ -22,7 +22,8 @@ description: TrailSnap 需求规格、Agent 编码交付、提交与 PR 工作�
 
 ## 需求平台
 
-- 所有开发事项统一通过已配置的 `trailsnap-feedback` MCP 管理。不要使用 GitHub CLI、GitHub API 或网页直接创建、编辑、关闭 GitHub Issue；GitHub Issue 由需求平台在后台创建和同步。
+- 普通用户通过问题反馈页复制的提示词参与反馈或 Fork 贡献时，先读取需求平台 `/api/agent-guide`，使用公开 HTTP 接口匿名提交，并用单条需求编辑回执补充自己的需求。不要求用户登录、设置 MCP 或管理员令牌；不调用以下受信任 Agent 审核、规格批准和任务领取接口。
+- 受信任 Agent 的平台交付事项通过已配置的 `trailsnap-feedback` MCP 管理。任何路径都不要使用 GitHub CLI、GitHub API 或网页直接创建、编辑、关闭 GitHub Issue；GitHub Issue 由需求平台在后台创建和同步。
 - 如果未配置、无法连接或找不到 `trailsnap-feedback` MCP，先引导用户在[需求平台](https://feedback.trailsnap.cn/)的“集成设置”创建 Agent MCP 令牌，并采用平台提供的 MCP 配置完成连接后再继续。不要自行创建令牌、要求用户在对话中粘贴令牌，或回退为直接操作 GitHub Issue。
 - MCP 返回未认证、无权限或缺少 scope 时，说明当前操作所需的最小权限，并请用户联系需求平台管理员开通或调整令牌权限。
 - 开始平台需求的编码交付前调用 `get_agent_capabilities`，检查现有令牌权限和任务绑定；不创建或调整令牌，不通过其他接口绕过 scope。任务创建、领取、取消仍沿用现有鉴权规则；完整编码交付需要 `runs:write`，规格编写需要 `requirements:write`，批准规格和答复执行澄清需要 `requirements:review`。
@@ -39,12 +40,13 @@ description: TrailSnap 需求规格、Agent 编码交付、提交与 PR 工作�
 ## 分支与 PR
 
 - 建议新建分支推送，并通过 PR 合并到主分支。
-- 创建 PR 前必须存在对应的平台需求及其关联 GitHub Issue。PR 标题与描述应与需求呼应，并在 PR 描述中同时写明平台需求编号、链接（例如 `关联需求：[REQ-123](https://feedback.trailsnap.cn/REQ-123)`）和 GitHub 关闭关键字（例如 `Closes #456`）。关闭关键字用于在需求详情页展示关联 PR，并在合并后自动关闭 Issue 与需求单。
+- 普通用户的公开贡献可走 Fork；必须关联平台需求。尚无关联 GitHub Issue 时允许创建草稿 PR，注明等待维护者关联，不能伪造 Issue 编号或宣称已完成正式交付。编辑回执不得进入 PR、仓库或公开日志。GitHub 操作需用户授权，CLA 声明须基于用户明确同意。
+- 创建正式 PR 前必须存在对应的平台需求及其关联 GitHub Issue；普通贡献者尚无 Issue 时可按上一条创建草稿 PR，转为正式 PR 前补齐关联。PR 标题与描述应与需求呼应，并在 PR 描述中写明平台需求编号、链接（例如 `关联需求：[REQ-123](https://feedback.trailsnap.cn/REQ-123)`）；已有 Issue 时填写 GitHub 关闭关键字（例如 `Closes #456`）。关闭关键字用于在需求详情页展示关联 PR，并在合并后自动关闭 Issue 与需求单。
 - PR 使用 `.github/pull_request_template.md`，并在评论中确认 CLA：`I have read and agree to the CLA`（基于 AGPLv3）。
 
 ## PR CI 监控
 
-- 提交 PR 后必须监控对应 CI 流水线，直到全部工作流完成。
+- 提交 PR 后必须使用价格便宜的模型子Agent监控对应 CI 流水线，不要直接用主模型监控，直到全部工作流完成。
 - 使用 GitHub CLI 查看 run 状态与日志，并只关联当前 PR 的 runs，避免混入其他分支任务。
 - 任一工作流失败时，定位到具体 job 和失败日志，分析根因；在本地或工作区实施最小必要修复，推送修复提交后继续监控。
 - 在所有必需 CI 通过前，不要宣称 PR 已完成或可以合并。

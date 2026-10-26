@@ -19,6 +19,11 @@
 
     <div class="detail-layout">
       <div class="detail-main">
+        <article class="panel detail-status" aria-label="下一步">
+          <strong>接下来做什么</strong>
+          <p class="field-hint">{{ nextAction(requirement.status) }}</p>
+          <p class="field-hint">最近更新：{{ formatDateTime(requirement.updated_at) }}。AI 整理完成不代表需求已被采纳。</p>
+        </article>
         <article class="panel issue-content detail-section-card">
           <h2 class="detail-section-title"><span class="detail-section-icon">概</span>需求描述</h2>
           <div class="markdown-body" v-html="renderMarkdown(requirement.description)"></div>
@@ -82,6 +87,18 @@
           </div>
         </article>
         <DeliveryWorkspace v-if="manager" :requirement="requirement" :user-role="userRole" @refresh="emit('refresh')" />
+        <article class="panel detail-status" aria-labelledby="supplements-title">
+          <h2 id="supplements-title" class="detail-section-title">补充说明</h2>
+          <p class="field-hint">补充复现条件、使用场景或方案调整，保留原需求正文。补充内容由维护者评估，不代表已经采纳。</p>
+          <p v-if="supplementsError" role="alert">补充说明加载失败。<el-button link type="primary" @click="emit('refresh')">重试</el-button></p>
+          <p v-else-if="!supplements.length" class="field-hint">暂时没有补充说明。</p>
+          <section v-for="note in supplements" :key="note.id" class="issue-section">
+            <strong>{{ note.author_name }}</strong> <span class="field-hint">{{ formatDateTime(note.created_at) }}</span>
+            <p class="supplement-body">{{ note.body }}</p>
+          </section>
+          <el-button v-if="canSupplement" @click="emit('supplement')">补充信息</el-button>
+          <p v-else class="field-hint">这是你提交的需求？请用原浏览器或保存的私有管理链接打开，恢复修改权限。</p>
+        </article>
       </div>
 
       <aside class="detail-sidebar">
@@ -115,7 +132,12 @@
             </a>
           </div>
           <div class="detail-actions">
-            <el-button v-if="manager" type="primary" :icon="Edit" @click="emit('edit')">编辑需求</el-button>
+            <el-button v-if="manager || canEdit" type="primary" :icon="Edit" @click="emit('edit')">编辑需求</el-button>
+            <el-button v-if="canSupplement" @click="emit('supplement')">补充信息</el-button>
+            <el-button @click="emit('continueAI')">复制给 AI 继续处理</el-button>
+            <el-button v-if="hasReceipt" @click="emit('copyManagement')">保存修改入口</el-button>
+            <p v-if="hasReceipt" class="field-hint">修改权限保存在此浏览器。换设备或清除浏览器数据前，请保存修改入口；持有链接的人可以修改此需求，请勿公开分享。</p>
+            <p v-if="editReason" class="field-hint">{{ editReason }}</p>
             <el-button v-if="canFollow" :icon="Star" @click="emit('follow')">关注（{{ requirement.follower_count || 0 }}）</el-button>
             <el-button v-if="manager" :icon="Promotion" @click="emit('review')">提交审核</el-button>
           </div>
@@ -143,7 +165,8 @@ import { computed, reactive, ref, watch } from 'vue'
 import { ArrowDown, ArrowLeft, Calendar, Clock, CollectionTag, Edit, Flag, Link, MagicStick, Promotion, Star, TopRight, User, View, Warning } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElInput, ElMessage, ElOption, ElSelect } from 'element-plus'
 import MarkdownIt from 'markdown-it'
-import type { Requirement, RequirementHistory } from './api'
+import type { Requirement, RequirementHistory, RequirementSupplement } from './api'
+import { nextAction } from './feedbackExperience'
 import { avatarColor, formatDateTime, priorityLabel, statusLabel } from './labels'
 import DeliveryWorkspace from './DeliveryWorkspace.vue'
 import { api } from './api'
@@ -154,6 +177,12 @@ const props = defineProps<{
   requirement: Requirement
   history: RequirementHistory[]
   manager: boolean
+  canEdit?: boolean
+  hasReceipt?: boolean
+  editReason?: string
+  canSupplement?: boolean
+  supplements: RequirementSupplement[]
+  supplementsError?: boolean
   canFollow: boolean
   canEditSummary: boolean
   userRole: string
@@ -161,6 +190,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   back: []
   copyLink: []
+  copyManagement: []
+  continueAI: []
+  supplement: []
   follow: []
   edit: []
   status: []
@@ -227,6 +259,8 @@ const historyLabel = (event: RequirementHistory) => {
 .detail-meta strong { color: var(--rp-text-2); font-weight: 600; }
 .detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; }
 .detail-main, .detail-sidebar { min-width: 0; }
+.detail-main { display: grid; gap: 20px; }
+.supplement-body { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--rp-text-2); line-height: 1.7; }
 .issue-content { padding: 20px; overflow: hidden; }
 .detail-section-card { background: rgba(255,255,255,.96); }
 .detail-section-title { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; color: var(--rp-text); font-size: 16px; }

@@ -73,14 +73,14 @@ class HistoryCache:
     def projected_sequence(self):
         with self.connect() as db:
             schema = db.execute("SELECT value FROM meta WHERE key='station_projection_schema'").fetchone()
-            if not schema or schema[0] != '2':
+            if not schema or schema[0] != '4':
                 return 0
             row = db.execute("SELECT value FROM meta WHERE key='station_projection_sequence'").fetchone()
             return int(row[0]) if row else 0
 
     def mark_projected(self, sequence):
         with self.connect() as db:
-            db.execute("INSERT OR REPLACE INTO meta VALUES ('station_projection_schema', '2')")
+            db.execute("INSERT OR REPLACE INTO meta VALUES ('station_projection_schema', '4')")
             db.execute('''INSERT INTO meta VALUES ('station_projection_sequence', ?)
                 ON CONFLICT(key) DO UPDATE SET value =
                 max(CAST(meta.value AS INTEGER), CAST(excluded.value AS INTEGER))''', (str(sequence),))
@@ -172,10 +172,13 @@ class HistoryCache:
         db.execute('INSERT OR REPLACE INTO entity VALUES (?, ?)', (key, json.dumps(value, ensure_ascii=False)))
 
     def stations(self, name_or_code):
+        name_or_code = name_or_code.strip()
         with self.connect() as db:
             rows = db.execute('''SELECT body FROM entity WHERE key=? OR key IN
                 (SELECT 'station:' || code FROM station_name WHERE name=?) ORDER BY key''',
                 ('station:' + name_or_code, name_or_code)).fetchall()
+            if not rows and name_or_code.endswith('站'):
+                return self.stations(name_or_code[:-1])
             return [json.loads(row[0]) for row in rows]
 
     def _station(self, name_or_code):
@@ -252,7 +255,8 @@ class HistoryCache:
         if not stops:
             return None
         def match(stop, name):
-            if stop['n'] == name or stop.get('c') == name:
+            name = name.strip()
+            if stop['n'] == name or stop.get('c') == name or stop['n'] == name.removesuffix('站'):
                 return True
             station = self._station(name)
             return bool(station and station['telecode'] == stop.get('c'))
@@ -297,7 +301,7 @@ class HistoryCache:
                 'duration_minutes':duration,'stops':[dict(s, accumulated_mileage=cumulative[i]) for i,s in enumerate(stops)]}
 
 
-def fetch_feed(base_url=None, cache=None):
+def read_feed(base_url=None):
     base_url = base_url or os.getenv('RAILWAY_HISTORY_FEED_URL') or DEFAULT_FEED
     if not base_url.startswith('https://'):
         raise ValueError('Railway feed requires HTTPS')
@@ -323,4 +327,9 @@ def fetch_feed(base_url=None, cache=None):
                     errors.append(f'{source}: {error}')
         raise OSError('Railway feed download failed after retries: ' + '; '.join(errors))
     manifest=json.loads(download('manifest.json'))
+    return manifest, download
+
+
+def fetch_feed(base_url=None, cache=None):
+    manifest, download = read_feed(base_url)
     return (cache or HistoryCache()).sync(manifest, download)

@@ -33,7 +33,29 @@ def _fix_ocr_text(s):
     return s.replace('I', '1').replace('l', '1').replace('O', '0').replace('o', '0')
 
 
+def normalize_ticket_text(text):
+    text=text.translate(str.maketrans({'車':'车','號':'号','東':'东','溫':'温','鄉':'乡','臺':'台','廣':'广',
+        '門':'门','樂':'乐','長':'长','慶':'庆','雲':'云','龍':'龙','寧':'宁','濟':'济','蘭':'兰','陽':'阳',
+        '烏':'乌','張':'张','壽':'寿','貴':'贵','黃':'黄','興':'兴'})).strip()
+    text=re.sub(r'(?<!\d)(\d{1,2}[-/]\d{2})(\d{2}[:：]\d{2})',r'\1 \2',text)
+    text=re.sub(r'(?<=[\u4e00-\u9fa5])[Il|丨]\s*([GDCKTZSNLYA]\d{1,4})',r'\1',text)
+    text=re.sub(r'(?<![A-Za-z0-9])([gdcktzsnlya])(?=\d{1,4}(?!\d))',lambda m:m[1].upper(),text)
+    text=re.sub(r'(?<![A-Za-z0-9])([GDCKTZS])i(?=\d{1,3}(?!\d))',r'\g<1>1',text)
+    # A paper ticket's service can be glued to a noisy serial/station block.
+    if '站' in text and re.search(r'[\u4e00-\u9fa5]',text):
+        text=re.sub(r'(?<=\d)([GDCKTZS]\d{1,4})$',r' \1',text)
+    return re.sub(r'^[0O①②③④⑤⑥⑦⑧⑨]\s*([GDCKTZSNLYA]\d{1,4})$',r'\1',text)
+
+
+def candidate_train_codes(texts):
+    texts=[_fix_ocr_text(normalize_ticket_text(t)) for t in texts]
+    modern={m[1] for t in texts for m in re.finditer(r'(?<![A-Za-z0-9])([GDCKTZS]\d{1,4})(?![A-Za-z0-9])',t)}
+    if modern:return modern
+    return {m[1] for t in texts if (m:=re.fullmatch(r'([NLYA]\d{1,4})\s*次?',t))}
+
+
 _STATION_INTERFERENCE = {
+    "去看看", "时刻表", "其他问题", "年月日",
     "上铺", "中铺", "下铺", "复兴号", "和谐号", "智能动车", "乘车人", "身份证", "二等座",
     "限乘", "当日", "当次",
     "报销", "使用",
@@ -42,7 +64,9 @@ _STATION_INTERFERENCE = {
     "学生票", "非现金", "线上购买", "交回", "须交回",
     "餐饮", "特产", "订酒店", "租车", "约车",
      "经停", "经停站", "检票口", "检票", "前往",
-     "购票成功", "抢票成功", "成功", "以车","已出","已进"
+     "购票成功", "抢票成功", "成功", "以车","已出","已进",
+     "车次", "座席", "今天", "明天", "昨天", "过去", "未来", "成人票", "电子乘车码", "同车换座",
+     "一等座", "商务座", "硬座", "无座", "软座", "硬卧", "软卧", "误售", "广告", "传媒", "中国铁", "全价", "网折"
 }
 
 
@@ -51,6 +75,33 @@ def _normalize_station_name(name: str) -> str:
 
 
 _VALID_STATION_NAMES = set()
+_STATION_PINYIN = None
+
+
+def _station_from_printed_pinyin(name, poly, texts, polys):
+    """Corroborate a single damaged Chinese glyph with its printed romanization."""
+    global _STATION_PINYIN
+    if name in _get_valid_station_names() or len(name)<2 or len(poly)<4:
+        return name
+    if _STATION_PINYIN is None:
+        try:
+            path=os.path.join(os.path.dirname(__file__),'..','data','railway_station_pinyin.json')
+            with open(path,encoding='utf-8') as stream:
+                _STATION_PINYIN=json.load(stream)['stations']
+        except (OSError,ValueError,KeyError):
+            _STATION_PINYIN={}
+    x,y=_poly_center(poly)
+    height=max(p[1] for p in poly)-min(p[1] for p in poly)
+    printed=set()
+    for text,box in zip(texts,polys):
+        if not re.fullmatch(r"[A-Za-z' ]{3,40}",text.strip()) or len(box)<4:continue
+        xx,yy=_poly_center(box)
+        if abs(xx-x)<=max(80,height*3) and 0<yy-y<=max(70,height*3):
+            printed.add(re.sub(r"[^a-z]",'',text.lower()))
+    candidates={station for station,pinyin in _STATION_PINYIN.items()
+                if len(station)==len(name) and sum(a!=b for a,b in zip(station,name))==1
+                and pinyin.lower() in printed}
+    return candidates.pop() if len(candidates)==1 else name
 
 def _get_valid_station_names():
     global _VALID_STATION_NAMES
@@ -75,9 +126,13 @@ def _is_valid_station_name(name: str) -> bool:
     name = name.strip()
     if not (1 <= len(name) <= 8):
         return False
+    if len(name) == 1 and name not in _get_valid_station_names():
+        return False
     if not re.fullmatch(r'[\u4e00-\u9fa5]+', name):
         return False
     if any(w in name for w in _STATION_INTERFERENCE):
+        return False
+    if re.fullmatch(r'(?:周|星期)[一二三四五六日天]', name):
         return False
     return True
 
@@ -94,15 +149,62 @@ def _station_candidates(texts, polys):
     """Accept dictionary entries or new stations with route layout evidence."""
     known = _get_valid_station_names()
     candidates = []
+    rail_rows=[_poly_center(p)[1] for t,p in zip(texts,polys)
+               if re.fullmatch(r'(?:[GDCKTZSNLYA]\d{1,4}|\d{3,5})\s*次?',normalize_ticket_text(t))]
     for i, (text, poly) in enumerate(zip(texts, polys)):
         raw = text.strip()
+        if '站' in raw and candidate_train_codes([raw]):
+            chinese=re.sub(r'[^\u4e00-\u9fa5]','',raw).removesuffix('站')
+            if chinese in known:raw=chinese
+        # Paper tickets can merge a route arrow or a numeric service into a name.
+        route = re.fullmatch(r'([\u4e00-\u9fa5]+?)[—→一-]([\u4e00-\u9fa5]+)', raw)
+        if route and all(n in known for n in route.groups()) and len(poly)>=4:
+            x,y=_poly_center(poly);width=max(p[0] for p in poly)-min(p[0] for p in poly)
+            for name,offset in zip(route.groups(),(-.25,.25)):
+                candidates.append((name,i,x+offset*width,y,True,20))
+            continue
+        inline = re.fullmatch(r'([\u4e00-\u9fa5]+?)(?:[GDCKTZSNLYA]?\d{1,5})次',raw)
+        if inline and inline[1] in known:
+            raw=inline[1]
+        punctuated=re.sub(r'[。·\s]','',raw)
+        if punctuated.removesuffix('站') in known:
+            raw=punctuated
+        joined=[(raw[:j],raw[j:]) for j in range(1,len(raw))
+                if raw not in known and raw[:j] in known and raw[j:] in known and raw[:j]!=raw[j:]]
+        if len(joined)==1 and len(poly)>=4:
+            x,y=_poly_center(poly);width=max(p[0] for p in poly)-min(p[0] for p in poly)
+            for name,offset in zip(joined[0],(-.25,.25)):
+                candidates.append((name,i,x+offset*width,y,True,20))
+            continue
+        # Compact order lists put the complete route into a single text box.
+        compact = re.fullmatch(r'[GDCKTZSNLYA]\d{1,4}\s*(.+?)\s*[-—→一]\s*(.+)', raw)
+        pair = [part.strip().removesuffix('站') for part in compact.groups()] if compact else []
+        if len(pair) == 2 and all(name in known for name in pair):
+            x,y = _poly_center(poly)
+            width = max(p[0] for p in poly)-min(p[0] for p in poly)
+            for name,offset in zip(pair,(-.25,.25)):
+                candidates.append((name,i,x+offset*width,y,True,20))
+            continue
+        merged = [m for m in re.finditer(r'([\u4e00-\u9fa5]{1,8})站',raw) if m[1] in known]
+        if len(merged) >= 2 and len(poly) >= 4:
+            left=min(p[0] for p in poly);right=max(p[0] for p in poly)
+            _,y=_poly_center(poly)
+            for match in merged:
+                x=left+(right-left)*(match.start()+match.end())/(2*len(raw))
+                candidates.append((match[1],i,x,y,True,20))
+            continue
         labeled = re.match(r'^(?:出发站|到达站|出发|到达)[:：\s]*(.+)$', raw)
         name = labeled.group(1) if labeled else raw
         arrow = bool(re.search(r'[>›→]$', name))
         name = re.sub(r'[>›→\s]+$', '', name)
+        # Position icons and a merged clock are outside the station's text.
+        name = re.sub(r'^[^\u4e00-\u9fa5]+|[^\u4e00-\u9fa5]+$', '', name)
         name = name.removesuffix('站')
-        if name[:1] in ('始', '终', '过') and name[1:] in known:
+        if name[:1] in ('始', '终', '过', '一') and name[1:] in known:
             name = name[1:]
+        if name[-1:] in ('始','终','过','一') and name[:-1] in known:
+            name = name[:-1]
+        name = _station_from_printed_pinyin(name,poly,texts,polys)
         if not _is_valid_station_name(name):
             continue
         x, y = _poly_center(poly)
@@ -110,27 +212,52 @@ def _station_candidates(texts, polys):
         if name in known or labeled:
             candidates.append((name, i, x, y, True, height))
         elif arrow or raw.endswith('站'):
+            candidates.append((name, i, x, y, True, height))
+        elif any(abs(row-y)<=max(40,height*2) for row in rail_rows):
             candidates.append((name, i, x, y, False, height))
         elif any(_extract_hhmm(t) and abs(_poly_center(p)[0] - x) < 80
                  and abs(_poly_center(p)[1] - y) < 100 for t, p in zip(texts, polys)):
             candidates.append((name, i, x, y, False, height))
+    # Join a split station glyph only with adjacent geometry and a unique known name.
+    for i,(text,poly) in enumerate(zip(texts,polys)):
+        left=text.strip()
+        if len(poly)<4 or not re.fullmatch(r'[\u4e00-\u9fa5]{1,3}',left) or left in known:
+            continue
+        x,y=_poly_center(poly);height=max(p[1] for p in poly)-min(p[1] for p in poly)
+        right=max(p[0] for p in poly)
+        joins=[]
+        for j,(tail,box) in enumerate(zip(texts,polys)):
+            if i==j or len(box)<4:continue
+            name=(left+tail.strip()).removesuffix('站')
+            xx,yy=_poly_center(box)
+            gap=min(p[0] for p in box)-right
+            if name in known and abs(yy-y)<=max(12,height*.6) and -.2*height<=gap<=height:
+                joins.append((name,(x+xx)/2))
+        if len(joins)==1:
+            name,xx=joins[0]
+            candidates.append((name,i,xx,y,True,height))
+    # Prefer dictionary-supported endpoints over weak clock-adjacent labels.
+    # Keep novel stations when there is no complete known pair.
+    if len({name for name, *_ in candidates if name in known}) >= 2:
+        candidates = [c for c in candidates if c[0] in known]
     return [(name, i, x) for name, i, x, y, trusted, height in candidates
-            if trusted or any(j != i and abs(yy - y) <= max(30, height * 2)
+            if trusted or any(j != i and tt and abs(yy - y) <= max(30, height * 2)
                               and abs(xx - x) > max(40, height * 2)
-                              for _, j, xx, yy, _, _ in candidates)]
+                              for _, j, xx, yy, tt, _ in candidates)]
 
 
 def resolve_train_code(texts, departure_station='', polys=None):
     """Resolve only an unambiguous service, including departure-specific renumbering."""
+    texts=[normalize_ticket_text(text) for text in texts]
     if departure_station:
-        pattern = re.compile(re.escape(departure_station) + r'站?起车次(?:号)?变更为\s*([GDCKTZ]\d{1,4})(?!\d)')
+        pattern = re.compile(re.escape(departure_station) + r'站?起车次(?:号)?变更为\s*([GDCKTZSNLYA]\d{1,4})(?!\d)')
         changed = {m.group(1) for t in texts for m in pattern.finditer(t)}
         if len(changed) == 1:
             return changed.pop()
         if polys:
             # 12306 puts “自当前车站起车次号变更为…” below the relevant stop.
             for i, (text, poly) in enumerate(zip(texts, polys)):
-                note = re.search(r'当前车站起车次(?:号)?变更为\s*([GDCKTZ]\d{1,4})(?!\d)', text)
+                note = re.search(r'当前车站起车次(?:号)?变更为\s*([GDCKTZSNLYA]\d{1,4})(?!\d)', text)
                 if not note or len(poly) < 4:
                     continue
                 _, y = _poly_center(poly)
@@ -147,8 +274,7 @@ def resolve_train_code(texts, departure_station='', polys=None):
                     changed.add(note.group(1))
             if len(changed) == 1:
                 return changed.pop()
-    codes = {m.group(1) for t in texts
-             for m in re.finditer(r'(?<![A-Za-z0-9])([GDCKTZ]\d{1,4})(?![A-Za-z0-9])', t)}
+    codes = candidate_train_codes(texts)
     return next(iter(codes)) if len(codes) == 1 else ''
 
 
@@ -240,7 +366,7 @@ def _pick_dep_arr_from_station_candidates(station_with_y):
                 uniq.append((n, cx, cy))
                 seen.add(n)
         if len(uniq) >= 2:
-            return uniq[0][0], uniq[1][0]
+            return _order_dep_arr_by_geometry(uniq[0], uniq[1])
 
     # 回退：选“水平距离最大”的两站（抗倾斜/分行）
     # 先去重（同名站可能出现多次）
@@ -725,6 +851,13 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
                 ):
                     year = bare_year.group(1)
                     break
+    if not year and best_mm and best_dd:
+        header_years=set()
+        for text in ocr_texts:
+            explicit=re.match(r'^(?:乘车日期|发车时间|出发日期)[:：]\s*(\d{4})[年/-](\d{1,2})[月/-](\d{1,2})',text.strip())
+            if explicit and (int(explicit[2]),int(explicit[3]))==(int(best_mm),int(best_dd)):
+                header_years.add(explicit[1])
+        if len(header_years)==1:year=header_years.pop()
     if best_mm and best_dd:
         date_part = f"{best_mm}月{best_dd}日"
         if year:
@@ -742,7 +875,7 @@ def parse_ticket_info(ocr_texts, polys):
     解析OCR识别的文本
     """
     logging.debug("ticket_parser.parse_ticket_info: start")
-    ocr_texts = [t.translate(str.maketrans({'車': '车', '號': '号'})) for t in ocr_texts]
+    ocr_texts = [normalize_ticket_text(t) for t in ocr_texts]
     logging.debug("ticket_parser.parse_ticket_info: raw_texts=%s", ocr_texts)
     ticket_info = {
         "train_code": "",
@@ -788,7 +921,8 @@ def parse_ticket_info(ocr_texts, polys):
     train_code = ""
     train_index_in_visual = -1
     # 车次优先级：G > D > C > K > T > Z
-    prefixes = ['G', 'D', 'C', 'K', 'T', 'Z']
+    present_codes=candidate_train_codes(visual_texts)
+    prefixes = list('GDCKTZS') if any(c[0] in 'GDCKTZS' for c in present_codes) else list('NLYA')
     for idx, txt in enumerate(visual_texts):
         fixed_txt = _fix_ocr_text(txt)
         if train_code:
@@ -800,8 +934,10 @@ def parse_ticket_info(ocr_texts, polys):
             if not m:
                 continue
             code = m.group(1)
+            if code not in present_codes:
+                continue
             # 过滤明显伪造码：如 C0000 / G0000
-            if re.fullmatch(r'[GDCKTZ]0{3,4}', code):
+            if re.fullmatch(r'[GDCKTZSNLYA]0{3,4}', code):
                 continue
             # 基本长度约束（2~5）
             if 2 <= len(code) <= 5:
@@ -818,7 +954,15 @@ def parse_ticket_info(ocr_texts, polys):
             # 排除长数字（订单号/票号）
             if re.search(r'\d{6,}', s):
                 continue
-            m_num = re.search(r'(?<![A-Za-z0-9])(\d{3,5})(?![A-Za-z0-9])', s)
+            # A fare or seat number inside a larger block is not a train code.
+            m_num = re.fullmatch(r'(\d{3,5})\s*(?:次|车次)?', s)
+            if not m_num:
+                # Preserve the actual printed legacy prefix (e.g. 游5次).
+                m_num = re.fullmatch(r'((?:游|临|特|直|快|普)\d{1,4})次',s)
+            if not m_num:
+                embedded=re.fullmatch(r'([\u4e00-\u9fa5]+?)(\d{1,5})次',s)
+                if embedded and embedded[1].removesuffix('站') in _get_valid_station_names():
+                    m_num=re.fullmatch(r'(\d{1,5})次',embedded[2]+'次')
             if m_num:
                 train_code = m_num.group(1)
                 train_index_in_visual = idx
@@ -874,7 +1018,10 @@ def parse_ticket_info(ocr_texts, polys):
             dep, arr = "", ""
             if train_anchor_y is not None:
                 # 经验阈值：同一行上下浮动，倾斜票面会拉大y差，所以这里放宽一些
-                band = [s for s in station_with_y if abs(s[2] - train_anchor_y) <= 90]
+                anchor_poly=polys[visual_order_indices[train_index_in_visual]]
+                anchor_height=max(p[1] for p in anchor_poly)-min(p[1] for p in anchor_poly) if len(anchor_poly)>=4 else 0
+                band = [s for s in station_with_y if abs(s[2] - train_anchor_y) <= max(90,anchor_height*2)]
+                band.sort(key=lambda s:abs(s[2]-train_anchor_y))
                 # band里如果能取到2个站名，按x左->右就是出发->到达
                 dep, arr = _pick_left_right_station_names(band)
 
@@ -918,7 +1065,7 @@ def parse_ticket_info(ocr_texts, polys):
             # 2. 查找车次及其位置
             train_match = None
             if not ticket_info["train_code"]:
-                train_match = re.search(r'(?<![0-9])([GDCKTZ]\d{1,4})(?![0-9])', txt)
+                train_match = re.search(r'(?<![0-9])([GDCKTZSNLYA]\d{1,4})(?![0-9])', txt)
                 if train_match:
                     ticket_info["train_code"] = train_match.group(1)
                     train_start = train_match.start()
@@ -926,7 +1073,7 @@ def parse_ticket_info(ocr_texts, polys):
                     train_start = -1
             else:
                 # 车次已知，但仍可尝试定位（用于已有车次但未处理车站的情况）
-                tm = re.search(r'(?<![0-9])([GDCKTZ]\d{1,4})(?![0-9])', txt)
+                tm = re.search(r'(?<![0-9])([GDCKTZSNLYA]\d{1,4})(?![0-9])', txt)
                 train_start = tm.start() if tm else -1
 
             # 3. 如果有车站
@@ -1435,9 +1582,42 @@ def parse_ticket_info(ocr_texts, polys):
             ticket_info['name'] = name
             break
 
-    codes = {m.group(0) for t in ocr_texts for m in re.finditer(r'(?<![A-Za-z0-9])[GDCKTZ]\d{1,4}(?![A-Za-z0-9])', t)}
+    codes = candidate_train_codes(ocr_texts)
     if codes:
         ticket_info['train_code'] = resolve_train_code(ocr_texts, ticket_info['departure_station'], polys)
+    damaged=[m for text in ocr_texts if (m:=re.fullmatch(r'([GDCKTZ])([0-9]{5})',text.strip()))]
+    if len(damaged)==1 and not any(code[0] in 'GDCKTZ' for code in codes):
+        match=damaged[0]
+        ticket_info['train_code']=''
+        ticket_info['train_code_raw']=match[0]
+        ticket_info['train_code_candidates']=[match[1]+match[2][:-1],match[1]+match[2][1:]]
 
     logging.debug("ticket_parser.parse_ticket_info: parsed ticket_info=%s", ticket_info)
+    from app.services.ticket_journey_parser import extract_journey_time
+    ticket_info.update(extract_journey_time(ocr_texts, polys, ticket_info))
     return ticket_info
+
+
+def parse_ticket_cards(texts, polys, initial=None):
+    """Split a compact order list only when every resulting card is complete."""
+    initial = parse_ticket_info(texts,polys) if initial is None else initial
+    anchors=[]
+    for text,poly in zip(texts,polys):
+        codes=re.findall(r'(?<![A-Za-z0-9])[GDCKTZSNLYA]\d{1,4}(?![A-Za-z0-9])',normalize_ticket_text(text))
+        if len(set(codes))==1 and len(poly)>=4:
+            anchors.append((_poly_center(poly)[1],codes[0]))
+    anchors.sort()
+    if len(anchors)<2 or any(b[0]-a[0]<60 for a,b in zip(anchors,anchors[1:])):
+        return [initial]
+    boundaries=[(a[0]+b[0])/2 for a,b in zip(anchors,anchors[1:])]
+    cards=[]
+    for i,(_,code) in enumerate(anchors):
+        lo=boundaries[i-1] if i else -float('inf')
+        hi=boundaries[i] if i<len(boundaries) else float('inf')
+        blocks=[(t,p) for t,p in zip(texts,polys) if lo<=_poly_center(p)[1]<hi]
+        info=parse_ticket_info([t for t,p in blocks],[p for t,p in blocks])
+        if (info.get('train_code')!=code or not all(info.get(k) for k in ('departure_station','arrival_station'))
+                or not re.search(r'\d{1,2}月\d{1,2}日|\d{4}[-/]\d{1,2}[-/]\d{1,2}',info.get('datetime') or '')):
+            return [initial]
+        cards.append(info)
+    return cards

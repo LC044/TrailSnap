@@ -126,6 +126,8 @@ Docker 中的视频尺寸、时长和缩略图由 FFprobe/FFmpeg 读取，不重
 
 ## 目录结构
 
+铁路参考数据统一由 `resources/railway-history/` 的版本化快照离线初始化，并可从 GitHub 增量更新；不再打包或导入铁路 CSV。`resources/railway-stations.json` 补充站点行政区资料和旧名，用户已有铁路数据保留。按乘车日期查询及更新内置快照的命令见[铁路历史数据说明](../../doc/railway_history.md)。
+
 - `app/`: 应用代码
   - `api/`: 路由接口
   - `core/`: 核心配置

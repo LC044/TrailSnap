@@ -44,7 +44,6 @@ test.describe('Smoke - 首页深度 @smoke', () => {
   test('首页 - 主体主区域渲染', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // main 元素可见（HomePage.vue 顶层包了 main）
     await expect(page.locator('main').first()).toBeVisible({ timeout: 10_000 });
@@ -53,7 +52,6 @@ test.describe('Smoke - 首页深度 @smoke', () => {
   test('首页 - 年度回忆录 banner 可见', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('h1', { hasText: '首页' }).first()).toBeVisible({ timeout: 15_000 });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
 
     // 年度回忆录 h3 显示 "[year] 年度回忆录"，断言 banner 存在
     const banner = page.getByText(/年度回忆录/).first();

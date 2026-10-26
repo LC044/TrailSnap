@@ -69,14 +69,7 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
     await expect(page).toHaveURL(/\/game/);
     await expect(page.locator('h1', { hasText: '猜城市' }).first()).toBeVisible({ timeout: 10_000 });
 
-    // 等网络空闲（容错：无照片时不会进入长轮询）
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-
-    // 三选一：时间提示 / 空态 / 加载 spinner
-    const hasTimeHint = await page.getByText(/时间提示[:：]/).count();
-    const hasEmpty = await page.getByText('暂无可用的照片').count();
-    const hasLoading = await page.locator('.animate-spin').count();
-    expect(hasTimeHint + hasEmpty + hasLoading).toBeGreaterThan(0);
+    await expect(page.getByText(/时间提示[:：]/).or(page.getByText('暂无可用的照片')).or(page.locator('.animate-spin')).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('猜城市页 - 拦截 random 接口返 code=404 后渲染空态与「重新加载」按钮', async ({ page }) => {

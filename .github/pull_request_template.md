@@ -13,7 +13,7 @@
 - [ ] 🔧 构建/工具链修改 (Build/Chore)
 
 ## 相关 Issue
-<!-- 必填：使用 Closes #123 / Fixes #123 / Resolves #123 关联需求平台同步的 GitHub Issue。PR 合并后会自动关闭 Issue 和对应需求单。 -->
+<!-- 填写平台需求编号与公开链接。正式 PR 使用 Closes #123 / Fixes #123 / Resolves #123 关联平台同步的 GitHub Issue；普通贡献者尚无 Issue 时可创建草稿 PR，注明等待维护者关联，转为正式 PR 前补齐。 -->
 
 ## 如何测试
 <!-- 请描述您是如何测试这些更改的 -->
