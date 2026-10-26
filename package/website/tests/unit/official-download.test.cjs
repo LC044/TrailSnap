@@ -4,13 +4,14 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 const ts = require('typescript')
+const { computed } = require('vue')
 
 const source = fs.readFileSync(path.resolve(__dirname, '../../../official-site/.vitepress/theme/components/DownloadPage.vue'), 'utf8')
 const matcherSource = source.slice(source.indexOf('function matchesPlatform('), source.indexOf('async function fetchAssets('))
 const matcherCode = ts.transpileModule(matcherSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 
 function harness(items = []) {
-  const context = { assets: { value: items }, releaseUrl: 'release-fallback' }
+  const context = { assets: { value: items }, releaseUrl: 'release-fallback', computed }
   vm.createContext(context)
   vm.runInContext(matcherCode, context)
   return context
