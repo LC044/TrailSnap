@@ -22,14 +22,21 @@
           <a ref="featuredDownload" :href="assetUrl(featuredPlatform.key, featuredKind)" class="primary-action" :aria-busy="loadingPlatform === featuredLoadingKey" @click="onDownload(featuredPlatform.key, $event, featuredKind)">
             <Download :size="19" aria-hidden="true" />{{ loadingPlatform === featuredLoadingKey ? copy.preparing : `${copy.download} ${featuredPlatform.name} ${featuredPlatform.key === 'linux' ? 'AppImage' : copy.installer}` }}
           </a>
+          <p v-if="featuredAccels.length" class="accel-options">
+            <span>{{ copy.accelHint }}</span>
+            <a v-for="(url, index) in featuredAccels" :key="index" :href="url" target="_blank" rel="noopener noreferrer">{{ copy.accelLines[index] }} <ArrowUpRight :size="14" aria-hidden="true" /></a>
+          </p>
           <div v-if="featuredPlatform.key === 'windows'" class="portable-download">
             <a :href="assetUrl('windows', 'portable')" :aria-busy="loadingPlatform === 'windows-portable'" @click="onDownload('windows', $event, 'portable')">{{ loadingPlatform === 'windows-portable' ? copy.preparing : copy.downloadZip }}</a>
+            <a v-if="portableAccel" :href="portableAccel" target="_blank" rel="noopener noreferrer">{{ copy.accelInline }}</a>
             <p>{{ copy.portableHint }}</p>
           </div>
           <div v-if="featuredPlatform.key === 'linux'" class="portable-download">
             <a :href="assetUrl('linux', 'deb')" :aria-busy="loadingPlatform === 'linux-deb'" @click="onDownload('linux', $event, 'deb')">{{ loadingPlatform === 'linux-deb' ? copy.preparing : `${copy.download} .deb` }}</a>
+            <a v-if="debAccel" :href="debAccel" target="_blank" rel="noopener noreferrer">{{ copy.accelInline }}</a>
             <p>Debian / Ubuntu · x64</p>
           </div>
+          <p class="mirror-download">{{ copy.mirrorHint }} <a :href="mirrorUrl" target="_blank" rel="noopener noreferrer">{{ copy.mirrorLink }} <ArrowUpRight :size="14" aria-hidden="true" /></a></p>
           <div class="release-row"><span>{{ releaseName ? `${copy.latest}: ${releaseName}` : copy.releaseHint }}</span><a :href="docLink('/docs/guide/changelog')">{{ copy.changelog }} <ArrowUpRight :size="14" aria-hidden="true" /></a></div>
         </article>
 
@@ -42,8 +49,7 @@
         <p class="all-assets"><a :href="releaseUrl">{{ copy.allAssets }} <ArrowUpRight :size="14" aria-hidden="true" /></a></p>
         <p v-if="apiUnavailable" role="status" class="api-warning">{{ copy.apiUnavailable }}</p>
         <InstallPrompt :title="copy.desktopPromptTitle" :description="copy.desktopPromptDescription" :prompt="desktopPrompt" :copy-label="copy.copyPrompt" :copied-label="copy.promptCopied" :error-label="copy.copyFailed" :show-label="copy.showPrompt" :hide-label="copy.hidePrompt" />
-        <details class="extension-help"><summary>{{ copy.aiTitle }}</summary><p>{{ copy.aiDescription }}</p><a :href="docLink('/docs/guide/desktop-ai-extension')">{{ copy.aiGuide }} ↗</a></details>
-      </section>
+        </section>
 
       <section v-show="activeMode === 'nas'" id="nas" role="tabpanel" aria-labelledby="nas-tab" tabindex="0">
         <article class="download-card nas-card">
@@ -75,6 +81,7 @@ type ReleaseAsset = { name: string; browser_download_url: string }
 const { lang } = useData()
 const isEnglish = computed(() => lang.value.startsWith('en'))
 const releaseUrl = 'https://github.com/LC044/TrailSnap/releases/latest'
+const mirrorUrl = 'https://ug.link/dxp4800plus-72ab-9a51/filemgr/share-download/?id=35a6dea0517d482aa40526429a453e29'
 const assets = ref<ReleaseAsset[]>([])
 const releaseName = ref('')
 const detectedPlatform = ref<PlatformKey | ''>('')
@@ -106,6 +113,8 @@ const translations = {
     desktopDescription: '适合照片主要存放在电脑上的用户。选择对应系统的安装包，下载并安装；遇到不熟悉的步骤，也可以用下面的提示词请 AI 帮忙。',
     installerTitle: '下载安装包', recommended: '适合当前设备', download: '下载', preparing: '准备中…',
     downloadZip: '下载 ZIP 便携版', portableHint: '完整便携包，解压后运行 TrailSnap.exe，无需安装。',
+    accelHint: '下载慢？', accelLines: ['加速线路一', '加速线路二'], accelInline: '国内加速',
+    mirrorHint: '仍无法下载？', mirrorLink: '从备用地址下载',
     assetHint: '没有找到合适的安装包？查看', allAssets: '全部版本与文件',
     apiUnavailable: '暂时无法获取最新安装包。下载按钮将打开 GitHub 版本页面，你可以在那里选择对应系统的安装包。',
     desktopPromptTitle: '让 AI 帮你安装',
@@ -130,6 +139,8 @@ const translations = {
     desktopDescription: 'For photos stored on your computer. Download the installer for your operating system. For help with installation, use the AI prompt below.',
     installerTitle: 'Download an installer', recommended: 'For this device', download: 'Download for', preparing: 'Preparing...',
     downloadZip: 'Download portable ZIP', portableHint: 'Full portable package. Extract it and run TrailSnap.exe without installing.',
+    accelHint: 'Slow download?', accelLines: ['Fast link 1', 'Fast link 2'], accelInline: 'China mirror',
+    mirrorHint: 'Still not working?', mirrorLink: 'Get them from an alternate mirror',
     assetHint: 'Need a different installer? Browse', allAssets: 'all versions and assets',
     apiUnavailable: 'The latest installers could not be loaded. Download buttons open the GitHub release page so you can choose an installer manually.',
     desktopPromptTitle: 'Need help installing? Ask AI',
@@ -228,6 +239,25 @@ function assetUrl(platform: PlatformKey, kind: DownloadKind = 'installer') {
   return assets.value.find(asset => matchesPlatform(asset.name, platform, kind))?.browser_download_url || releaseUrl
 }
 
+// GitHub 直连在国内多数网络下不稳定，提供公共加速前缀作为备用下载线路。
+const accelPrefixes = ['https://gh-proxy.com/', 'https://gh-proxy.at9.net/']
+
+function resolvedAssetUrl(platform: PlatformKey, kind: DownloadKind = 'installer') {
+  return assets.value.find(asset => matchesPlatform(asset.name, platform, kind))?.browser_download_url || ''
+}
+
+function accelLink(platform: PlatformKey, kind: DownloadKind = 'installer', index = 0) {
+  const url = resolvedAssetUrl(platform, kind)
+  return url ? `${accelPrefixes[index]}${url}` : ''
+}
+
+const featuredAccels = computed<string[]>(() => {
+  const url = resolvedAssetUrl(featuredPlatform.value.key, featuredKind.value)
+  return url ? accelPrefixes.map(prefix => `${prefix}${url}`) : []
+})
+const portableAccel = computed(() => accelLink('windows', 'portable'))
+const debAccel = computed(() => accelLink('linux', 'deb'))
+
 async function fetchAssets(): Promise<boolean> {
   try {
     const response = await fetch('https://api.github.com/repos/LC044/TrailSnap/releases/latest', {
@@ -293,6 +323,12 @@ a:hover, .text-action:hover { color: var(--vp-c-brand-2); }
 .primary-action:hover { background: var(--vp-c-brand-2); color: white; }
 .portable-download { margin-top: 16px; text-align: center; font-size: 14px; font-weight: 600; }
 .portable-download p { margin-top: 4px; font-size: 12px; font-weight: 400; line-height: 1.8; color: var(--vp-c-text-2); }
+.portable-download a + a::before { content: '·'; margin: 0 10px; color: var(--vp-c-text-3); }
+.accel-options { margin-top: 12px; text-align: center; font-size: 13px; color: var(--vp-c-text-2); }
+.accel-options a { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; font-weight: 600; }
+.accel-options a:not(:last-of-type)::after { content: '·'; margin-left: 10px; color: var(--vp-c-text-3); }
+.mirror-download { margin-top: 14px; text-align: center; font-size: 13px; color: var(--vp-c-text-2); }
+.mirror-download a { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
 .release-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 24px; padding-top: 17px; border-top: 1px solid var(--vp-c-divider); font-size: 12px; color: var(--vp-c-text-2); }
 .release-row a, .all-assets a, .preflight-link a, .text-action { display: inline-flex; align-items: center; gap: 5px; }
 .other-platforms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }

@@ -472,15 +472,20 @@ def _extract_month_day(txt: str):
     # 0. 点号格式 (如 2026.04.02)
     m0 = re.search(r'(?:\d{4}\.)?(\d{1,2})\.(\d{1,2})', s)
     if m0:
-        mm = m0.group(1).zfill(2)
-        dd = m0.group(2).zfill(2)
-        try:
-            imonth = int(mm)
-            iday = int(dd)
-            if 1 <= imonth <= 12 and 1 <= iday <= 31:
-                return (mm, dd)
-        except:
-            pass
+        # 价格/折扣块里的点号不是日期："6.6折"、"￥12.5"、"5.5元"
+        # 否则会把折扣块误读成 06月06日、把票价误读成 12月05日。
+        before = s[m0.start() - 1] if m0.start() > 0 else ''
+        after = s[m0.end()] if m0.end() < len(s) else ''
+        if before not in ('￥', '¥') and after not in ('折', '元'):
+            mm = m0.group(1).zfill(2)
+            dd = m0.group(2).zfill(2)
+            try:
+                imonth = int(mm)
+                iday = int(dd)
+                if 1 <= imonth <= 12 and 1 <= iday <= 31:
+                    return (mm, dd)
+            except:
+                pass
 
     # 1. 标准格式：X月X日
     m = re.search(r'(\d{1,2})\s*月\s*(\d{1,2})\s*日', s)
@@ -515,6 +520,13 @@ def _extract_hhmm(txt: str) -> str:
     if not m:
         return ""
     return f"{m.group(1).zfill(2)}:{m.group(2)}"
+
+
+# OCR 常把整串日期时间识别成一个粘连的数字块：年份直接粘在月份前（'202405月07日'），
+# 时分直接粘在日字后（'... 日1022'）。通用提取器看不到这两段信息，
+# 只能还原出 '05月07日'，年份与时分会整体丢失，这里单独识别出来。
+_COMPACT_YEAR_RE = re.compile(r'(?<!\d)(\d{4})\d{1,2}月\d{1,2}日')
+_COMPACT_TIME_RE = re.compile(r'(?<!\d)\d{4}年?\d{1,2}月\d{1,2}日(\d{2})(\d{2})(?!\d)')
 
 
 def _select_name_by_proximity(ocr_texts: list, station_name_set: set, ticket_info: dict) -> str:
@@ -601,6 +613,12 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
         hhmm = _extract_hhmm(t)
         if hhmm:
             time_cands.append((i, cx, cy, hhmm))
+        elif md:
+            # '粘连块'：时分直接粘在日字后、没有冒号（'202405月07日1022开'）。
+            # 通用时间提取器需要冒号，会跳过这种块，导致时分丢失。
+            compact = _COMPACT_TIME_RE.search(t)
+            if compact:
+                time_cands.append((i, cx, cy, f"{compact.group(1)}:{compact.group(2)}"))
 
     if not md_cands and not time_cands:
         return ""
@@ -687,10 +705,13 @@ def _build_departure_datetime(ocr_texts: list, polys: list, anchor_y=None) -> st
     date_part = ""
     if selected_date_index is not None:
         # A year belongs to the selected date, never to an unrelated advert.
-        ym = re.search(r'(?<!\d)(\d{4})[年./-]\d{1,2}[月./-]\d{1,2}',
-                       _fix_ocr_text(ocr_texts[selected_date_index]))
+        selected_text = _fix_ocr_text(ocr_texts[selected_date_index])
+        ym = re.search(r'(?<!\d)(\d{4})[年./-]\d{1,2}[月./-]\d{1,2}', selected_text)
         if ym:
             year = ym.group(1)
+        elif compact_year := _COMPACT_YEAR_RE.search(selected_text):
+            # 年份直接粘在月份前：'202405月07日' -> 2024年05月07日
+            year = compact_year.group(1)
         else:
             # OCR can split the year from the date. Only an adjacent, bare year
             # in the same row/column belongs to it; prose/adverts never do.
