@@ -14,6 +14,8 @@ from contextlib import contextmanager, nullcontext
 from datetime import date
 from urllib.request import urlopen
 
+from app.utils.github_download import github_url_candidates
+
 DEFAULT_FEED = 'https://raw.githubusercontent.com/LC044/trailsnap-railway-history/main/data/feed/'
 MAX_PACK_BYTES = 128 * 1024 * 1024
 MAX_JSON_BYTES = 512 * 1024 * 1024
@@ -305,11 +307,25 @@ def read_feed(base_url=None):
         raise ValueError('Railway feed requires HTTPS')
     base_url = base_url.rstrip('/')+'/'
     def download(file):
-        with urlopen(base_url+file, timeout=30) as response:
-            value=response.read(MAX_PACK_BYTES+1)
-        if len(value)>MAX_PACK_BYTES:
-            raise ValueError('Railway download too large')
-        return value
+        url = base_url + file
+        sources = github_url_candidates(url)
+        errors = []
+        # Two bounded passes across all mirrors and the origin. Keep size and
+        # manifest/pack validation downstream of transport retries.
+        for round_number in range(2):
+            if round_number:
+                import time
+                time.sleep(0.5 * (2 ** (round_number - 1)))
+            for source in sources:
+                try:
+                    with urlopen(source, timeout=30) as response:
+                        value = response.read(MAX_PACK_BYTES + 1)
+                    if len(value) > MAX_PACK_BYTES:
+                        raise ValueError('Railway download too large')
+                    return value
+                except Exception as error:
+                    errors.append(f'{source}: {error}')
+        raise OSError('Railway feed download failed after retries: ' + '; '.join(errors))
     manifest=json.loads(download('manifest.json'))
     return manifest, download
 
