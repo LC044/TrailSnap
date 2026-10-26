@@ -8,27 +8,25 @@ export const ticketService = {
     return (await request.post<Record<string, unknown>>(`/api/${type === 'train' ? 'train' : 'flight'}-ticket/recognize`, payload)).data;
   },
   async trainSchedules(code: string, day?: string) {
-    if (day) {
-      const result = (await request.get<{
-        match: string; matched_date: string | null; history_available?: boolean;
-        stops: Array<{ n: string; a: string | null; d: string | null; dd: number;
-          accumulated_mileage: number | null; raw?: { running_time?: string } }>;
-      }>('/api/railway/history/trains', { params: { train_code: code, query_date: day.slice(0, 10) } })).data;
-      const minutes = (time?: string | null) => time && /^\d+:\d{2}$/.test(time)
-        ? Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]) : null;
-      if (result.history_available !== false) return {
-        match: result.match, matched_date: result.matched_date,
-        list: result.stops.map((stop, index) => {
-          const running = minutes(stop.raw?.running_time) ?? (minutes(stop.a || stop.d) !== null
-            ? stop.dd * 1440 + minutes(stop.a || stop.d)! : null);
-          const dwell = stop.a && stop.d ? (minutes(stop.d)! - minutes(stop.a)! + 1440) % 1440 : 0;
-          return { station_name: stop.n, accumulated_mileage: stop.accumulated_mileage,
-            running_time: running, departure_running_time: running === null ? null : running + dwell,
-            sequence: index + 1 };
-        }),
-      };
-    }
-    return (await request.get<{ list: Array<{ station_name: string; accumulated_mileage: number; running_time: number; sequence: number }> }>('/api/railway/train-schedules', { params: { train_code: code, page: 1, page_size: 100 } })).data;
+    const queryDay = day?.slice(0, 10) || new Date().toLocaleDateString('sv-SE');
+    const result = (await request.get<{
+      match: string; matched_date: string | null; history_available?: boolean;
+      stops: Array<{ n: string; a: string | null; d: string | null; dd: number;
+        accumulated_mileage: number | null; raw?: { running_time?: string } }>;
+    }>('/api/railway/history/trains', { params: { train_code: code, query_date: queryDay } })).data;
+    const minutes = (time?: string | null) => time && /^\d+:\d{2}$/.test(time)
+      ? Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]) : null;
+    return {
+      match: result.match, matched_date: result.matched_date,
+      list: result.stops.map((stop, index) => {
+        const running = minutes(stop.raw?.running_time) ?? (minutes(stop.a || stop.d) !== null
+          ? stop.dd * 1440 + minutes(stop.a || stop.d)! : null);
+        const dwell = stop.a && stop.d ? (minutes(stop.d)! - minutes(stop.a)! + 1440) % 1440 : 0;
+        return { station_name: stop.n, accumulated_mileage: stop.accumulated_mileage,
+          running_time: running, departure_running_time: running === null ? null : running + dwell,
+          sequence: index + 1 };
+      }),
+    };
   },
   // 获取列表
   async getTickets(params: TicketQueryParams) {

@@ -27,8 +27,6 @@ def create_database():
             from railway.db.dependencies import init_db
             init_db()
             print("Railway SQLite tables are ready")
-            from railway.initialization import ensure_seed_data
-            ensure_seed_data()
             return
 
         if url.get_backend_name() != 'postgresql':
@@ -74,6 +72,4 @@ def create_database():
         raise
     print("数据库表已创建")
     from railway.db.dependencies import init_db
-    from railway.initialization import ensure_seed_data
     init_db()
-    ensure_seed_data()

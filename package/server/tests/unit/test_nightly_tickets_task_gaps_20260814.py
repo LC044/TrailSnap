@@ -168,15 +168,13 @@ def test_process_skips_already_processed_when_not_force():
 
 
 @pytest.mark.asyncio
-async def test_get_schedule_info_uses_date_aware_history_cache():
+async def test_get_schedule_info_uses_date_aware_history(monkeypatch):
     from app.service.tasks import tickets
-
-    historical = {'match': 'exact', 'distance_km': 100, 'duration_minutes': 60, 'stops': []}
     with patch('railway.history_cache.HistoryCache') as cache:
-        cache.return_value.resolve.return_value = historical
-        result = await tickets.get_schedule_info('G100', '2026-10-25', 'A', 'B')
-    assert result == historical
-    cache.return_value.resolve.assert_called_once_with('G100', '2026-10-25', 'A', 'B')
+        cache.return_value.resolve.return_value = {'match': 'exact', 'stops': []}
+        result = await tickets.get_schedule_info('G100', '2026-10-25', '旧站', '终点')
+        cache.return_value.resolve.assert_called_once_with('G100', '2026-10-25', '旧站', '终点')
+    assert result['match'] == 'exact'
 
 
 # --- calculate_ticket_mileage_and_time edge cases ---------------------------

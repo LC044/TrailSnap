@@ -43,10 +43,11 @@ async def calculate_ticket_mileage_and_time(ticket: TrainTicketCreate, evidence=
     try:
         if evidence is not None:
             def repair():
+                from railway.history_seed import station_metadata
                 from railway.history_cache import HistoryCache
                 from app.service.ticket_journey import repair_station_names
-                cache = HistoryCache()
-                if cache.stations(ticket.departure_station) and cache.stations(ticket.arrival_station):
+                known = {name for s in station_metadata().values() for name in s['names']}
+                if ticket.departure_station in known and ticket.arrival_station in known:
                     return {}
                 return repair_station_names(ticket, HistoryCache(), evidence)
             corrections = await asyncio.to_thread(repair)
