@@ -22,78 +22,58 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-async def get_schedule_info(train_code: str) -> Dict[str, Any]:
-    """Read optional railway reference data in a thread-owned session."""
-    def query_schedule() -> Dict[str, Any]:
-        from railway.db.session import SessionLocal
-        from railway.crud import get_train_schedule_list
-        from railway.schemas import TrainScheduleListQuery
-
-        with SessionLocal() as railway_db:
-            code, msg, data = get_train_schedule_list(
-                railway_db, TrainScheduleListQuery(train_code=train_code, page_size=100)
-            )
-            from fastapi.encoders import jsonable_encoder
-            return {'code': code, 'msg': msg, 'data': jsonable_encoder(data)}
-
-    # Reference data uses its own session; never call the application's HTTP port.
-    return await asyncio.to_thread(query_schedule)
-
-# 计算车票里程和时间
-async def calculate_ticket_mileage_and_time(ticket: TrainTicketCreate) -> Dict[str, Any]:
-    """计算车票里程和时间"""
-    # The history feed is optional: retain the bundled offline seed until first sync.
-    # Keep each lookup inside its own thread and use the actual ticket date.
-    try:
+async def get_schedule_info(train_code: str, day=None, departure=None, arrival=None) -> Dict[str, Any]:
+    """Use the same date-aware offline history as the public railway API."""
+    def query_history():
         from railway.history_cache import HistoryCache
-        def query_history():
-            cache = HistoryCache()
-            if not cache.status()['sequence']:
-                return None
-            return cache.resolve(ticket.train_code, ticket.date_time,
-                                 ticket.departure_station, ticket.arrival_station)
-        historical = await asyncio.to_thread(query_history)
-        if historical is not None:
-            return {
-                'total_mileage': historical['distance_km'],
-                'total_time': historical['duration_minutes'],
-                'stop_stations': [dict(
-                    station_telecode=s['c'], station_name=s['n'],
-                    arrival_time=s['a'], departure_time=s['d'],
-                ) for s in historical['stops']],
-            }
+        return HistoryCache().resolve(train_code, day or datetime.now().date(), departure, arrival)
+    return await asyncio.to_thread(query_history)
+
+
+async def get_endpoint_distance(ticket):
+    def distance():
+        from railway.history_cache import HistoryCache
+        return HistoryCache().distance(ticket.departure_station,ticket.arrival_station,str(ticket.date_time.date()))
+    return await asyncio.to_thread(distance)
+
+
+async def calculate_ticket_mileage_and_time(ticket: TrainTicketCreate, evidence=None) -> Dict[str, Any]:
+    historical = {}
+    corrections = {}
+    try:
+        if evidence is not None:
+            def repair():
+                from railway.history_cache import HistoryCache
+                from app.service.ticket_journey import repair_station_names
+                cache = HistoryCache()
+                if cache.stations(ticket.departure_station) and cache.stations(ticket.arrival_station):
+                    return {}
+                return repair_station_names(ticket, HistoryCache(), evidence)
+            corrections = await asyncio.to_thread(repair)
+            for key, value in corrections.items():
+                setattr(ticket, key, value['resolved'])
+        historical = await get_schedule_info(ticket.train_code, getattr(ticket, 'date_time', None),
+                                            ticket.departure_station, ticket.arrival_station)
+        if evidence is not None and historical.get('distance_km') is None:
+            distance=await get_endpoint_distance(ticket)
+            if distance is not None:
+                historical=dict(historical,distance_km=distance,distance_source='gps-endpoints-haversine-x1.2')
+        result = {
+            'total_mileage': historical['distance_km'],
+            'total_time': historical['duration_minutes'],
+            'stop_stations': [dict(station_telecode=s['c'], station_name=s['n'],
+                                   arrival_time=s['a'], departure_time=s['d'])
+                              for s in historical['stops']],
+        }
     except Exception as exc:
         logger.warning('Historical railway lookup unavailable: %s', exc)
-    total_mileage = 0
-    total_time = 0
-    stop_stations = []
-    departure_station = ticket.departure_station
-    arrival_station = ticket.arrival_station
-
-    try:
-        schedule_json = await get_schedule_info(ticket.train_code)
-    except Exception as exc:
-        logger.warning("Optional railway lookup failed for %s: %s", ticket.train_code, exc)
-        return {'total_mileage': 0, 'total_time': 0, 'stop_stations': []}
-    if schedule_json and schedule_json.get('code') == 200:
-        schedule = schedule_json.get('data', {}).get('list', [])
-        # 计算出发站和到达站之间的距离和时间
-        departure_index = next((i for i, s in enumerate(schedule) if s['station_name'] == departure_station), None)
-        arrival_index = next((i for i, s in enumerate(schedule) if s['station_name'] == arrival_station), None)
-        if departure_index is None or arrival_index is None:
-            logger.error(f"Departure or arrival station not found in schedule for train {ticket.train_code}")
-            return {'total_mileage': 0, 'total_time': 0, 'stop_stations': []}
-        for i in range(departure_index, arrival_index):
-            total_mileage += schedule[i + 1]['accumulated_mileage'] - schedule[i]['accumulated_mileage']
-            total_time += (datetime.strptime(schedule[i + 1]['departure_time'], '%H:%M:%S') -
-                           datetime.strptime(schedule[i]['arrival_time'], '%H:%M:%S')).seconds // 60
-            stop_stations.append({
-                'station_telecode': schedule[i]['station_telecode'],
-                'station_name': schedule[i]['station_name'],
-                'arrival_time': schedule[i]['arrival_time'],
-                'departure_time': schedule[i]['departure_time'],
-            })
-    return {'total_mileage': total_mileage, 'total_time': total_time, 'stop_stations': stop_stations}
+        result = {'total_mileage': None, 'total_time': None, 'stop_stations': []}
+    if evidence is not None:
+        from app.service.ticket_journey import enrich_journey
+        result = enrich_journey(result, historical, evidence, ticket.train_code)
+        if corrections:
+            result['sources']['station_corrections'] = corrections
+    return result
 
 @TaskStrategyFactory.register(TaskType.RECOGNIZE_TICKET)
 class RecognizeTicketStrategy(BaseTaskStrategy):
@@ -262,29 +242,34 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                 if not isinstance(info, dict):
                     raise ValueError('识别服务返回了无效票据')
                 dt_str = info.get('datetime')
-                dt = None
-                for fmt in ('%Y年%m月%d日 %H:%M', '%Y年%m月%d日%H:%M',
-                            '%Y-%m-%d %H:%M', '%Y/%m/%d %H:%M', '%m月%d日 %H:%M'):
-                    try:
-                        dt = datetime.strptime(dt_str, fmt)
-                        break
-                    except (ValueError, TypeError):
-                        continue
-                if dt is None:
-                    raise ValueError('票据日期时间无法识别，请重试或手动添加')
-                inferred_year = dt.year == 1900 or str(info.get('year_source') or '').startswith('inferred')
-                if dt.year == 1900:
-                    if not photo.photo_time:
-                        raise ValueError('票据缺少年份且照片无拍摄时间，请手动添加')
-                    dt = dt.replace(year=photo.photo_time.year)
+                from app.service.ticket_journey import parse_ticket_datetime
+                dt,inferred_year=parse_ticket_datetime(dt_str,getattr(photo,'photo_time',None))
+                inferred_year = inferred_year or str(info.get('year_source') or '').startswith('inferred')
                 price = str(info.get('price') or '0').replace('元', '').replace('￥', '').replace('¥', '').strip()
                 common = dict(date_time=dt, price=price, name=info.get('name') or '未知',
                               total_mileage=0, total_running_time=0,
                               comments=f"自动识别自图片: {photo.filename}", photo_id=str(photo.id))
                 kind = info.get('type') or 'train'
+                code_correction = None
+                if kind=='train' and not info.get('train_code') and info.get('train_code_candidates'):
+                    def resolve_code():
+                        from railway.history_cache import HistoryCache
+                        from app.service.ticket_journey import resolve_code_candidates
+                        return resolve_code_candidates(info,dt,HistoryCache())
+                    resolved_code=await asyncio.to_thread(resolve_code)
+                    if resolved_code:
+                        code_correction={'original':info.get('train_code_raw'),'resolved':resolved_code,
+                                         'source':'unique-code-candidate-in-ordered-route'}
+                        info=dict(info,train_code=resolved_code)
                 required = ('flight_code',) if kind == 'flight' else ('train_code', 'departure_station', 'arrival_station')
                 if kind not in ('train', 'flight') or any(not info.get(key) for key in required):
                     raise ValueError('票据关键字段不完整，请重试或手动添加')
+                if kind=='train' and any(word in info[key] for key in ('departure_station','arrival_station')
+                                         for word in ('去看看','时刻表','其他问题','年月日')):
+                    raise ValueError('车站字段包含界面文字或日期碎片，请重试或手动核对')
+                if kind=='train' and info['departure_station'].strip().removesuffix('站')==info['arrival_station'].strip().removesuffix('站'):
+                    raise ValueError('出发站和到达站重复，请重试或手动核对')
+                journey_sources = None
                 if kind == 'flight':
                     ticket = FlightTicketCreate(
                         flight_code=info['flight_code'], departure_city=info.get('departure_city') or '未知',
@@ -296,17 +281,29 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                         seat_num=info.get('seat_num') or '无座', berth_type=info.get('berth_type') or '无',
                         seat_type=info.get('seat_type') or '未知', stop_stations='[]', **common)
                     try:
-                        extra = await calculate_ticket_mileage_and_time(ticket)
+                        extra = await calculate_ticket_mileage_and_time(ticket, evidence=info)
                         ticket.total_mileage = extra['total_mileage']
                         ticket.total_running_time = extra['total_time']
                         ticket.stop_stations = json.dumps(extra['stop_stations'])
+                        journey_sources = extra.get('sources')
+                        if code_correction and journey_sources:
+                            journey_sources['train_code_correction']=code_correction
+                        if journey_sources:
+                            notes=[]
+                            if journey_sources.get('distance_source') in ('gps-haversine-x1.2','gps-endpoints-haversine-x1.2'):
+                                notes.append('里程按车站坐标估算')
+                            if journey_sources.get('duration_source') == 'estimated-distance-speed':
+                                notes.append('时长按里程及车次类型速度估算')
+                            if notes:
+                                ticket.comments += '；' + '；'.join(notes)
                     except Exception as exc:
                         logger.warning('Optional railway enrichment failed: %s', exc)
-                prepared.append((kind, ticket, inferred_year))
+                prepared.append((kind, ticket, inferred_year, journey_sources))
 
             added = existing = 0
             time_sources = dict((photo.processed_tasks or {}).get('ticket_time_sources') or {})
-            for kind, ticket, inferred_year in prepared:
+            all_journey_sources = dict((photo.processed_tasks or {}).get('ticket_journey_sources') or {})
+            for kind, ticket, inferred_year, journey_sources in prepared:
                 create = (crud_flight_tickets.create_flight_ticket if kind == 'flight'
                           else crud_train_tickets.create_train_ticket)
                 saved = create(db, ticket, owner_id=photo.owner_id, commit=False)
@@ -316,9 +313,13 @@ class RecognizeTicketStrategy(BaseTaskStrategy):
                     added += 1
                     if inferred_year:
                         time_sources[f'{kind}:{saved.id}'] = 'inferred_year'
+                    if journey_sources:
+                        all_journey_sources[f'{kind}:{saved.id}'] = journey_sources
             photo.processed_tasks = dict(photo.processed_tasks or {}, tickets=True, tickets_version=2)
             if time_sources:
                 photo.processed_tasks = dict(photo.processed_tasks, ticket_time_sources=time_sources)
+            if all_journey_sources:
+                photo.processed_tasks = dict(photo.processed_tasks, ticket_journey_sources=all_journey_sources)
             db.add(photo)
             db.commit()
             return {'status': 'success' if prepared else 'no_tickets',

@@ -55,6 +55,8 @@ def _install_fake_cv2(monkeypatch):
     fake.copyMakeBorder = _copy_make_border
     fake.IMREAD_COLOR = 1
     fake.BORDER_CONSTANT = 0
+    fake.INTER_LINEAR = 1
+    fake.INTER_CUBIC = 2
 
     class _NMS:
         @staticmethod
@@ -125,6 +127,7 @@ def patched_env(tmp_path, monkeypatch):
 @pytest.mark.parametrize('count', [1, 2])
 def test_req159_missing_code_supplement_is_single_crop_only(patched_env, monkeypatch, tmp_path, count):
     module = patched_env['module']
+    monkeypatch.setattr(module,'recover_mirrored_card',lambda info,image,texts,polys,ocr:(info,texts,polys))
     monkeypatch.setattr(module, 'cv2', _install_fake_cv2(monkeypatch))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(module.cv2.dnn, 'NMSBoxes', lambda *args: list(range(count)))
@@ -147,9 +150,9 @@ def test_req159_label1_train_uses_train_parser(patched_env, monkeypatch, tmp_pat
     module = patched_env['module']
     monkeypatch.setattr(module, 'cv2', _install_fake_cv2(monkeypatch))
     monkeypatch.chdir(tmp_path)
-    texts = ['G3915', '汉口', '西安东', '07車15D號二等座', '乘车人：林小明']
+    texts = ['G3915', '汉口', '西安东', '07車15D號二等座', '乘车人：林小明', '2026年10月05日 08:00']
     polys = [[[x, y], [x + 50, y], [x + 50, y + 20], [x, y + 20]]
-             for x, y in [(150, 50), (20, 100), (300, 100), (20, 150), (20, 200)]]
+             for x, y in [(150, 50), (20, 100), (300, 100), (20, 150), (20, 200), (20, 30)]]
     ocr = MagicMock(return_value=list(zip(polys, texts)))
     session = _build_fake_session(1, 'label1')
     patched_env['manager'].get_model.side_effect = lambda name: ocr if name == 'ocr' else session
@@ -171,6 +174,134 @@ def test_detect_raises_when_model_not_ready(patched_env, monkeypatch):
     svc = patched_env["module"].TicketService()
     with pytest.raises(Exception, match="not ready"):
         svc.detect(b"\x89PNG\r\n\x1a\nfakebytes")
+
+
+def test_mirror_retry_requires_a_complete_dictionary_supported_card(patched_env):
+    module=patched_env['module']
+    texts=['北京南','G123','上海虹桥','2026年10月05日 08:00']
+    polys=[[[x,y],[x+60,y],[x+60,y+20],[x,y+20]]
+           for x,y in [(20,100),(180,100),(360,100),(20,150)]]
+    image=np.arange(24,dtype=np.uint8).reshape(2,4,3)
+    ocr=MagicMock(return_value=list(zip(polys,texts)))
+    result,_,_=module.recover_mirrored_card({},image,[],[],ocr)
+    assert result['ocr_transform']=='horizontal-mirror'
+    np.testing.assert_array_equal(ocr.call_args.args[0],image[:,::-1])
+    ocr.reset_mock()
+    unchanged,_,_=module.recover_mirrored_card(result,image,texts,polys,ocr)
+    assert unchanged is result
+    ocr.assert_not_called()
+    original={'train_code':'G123','departure_station':'北京南'}
+    ocr.return_value=list(zip(polys[:2],texts[:2]))
+    assert module.recover_mirrored_card(original,image,[],[],ocr)[0] is original
+
+
+def test_nms_uses_width_height_instead_of_bottom_right(patched_env,monkeypatch,tmp_path):
+    module=patched_env['module']
+    monkeypatch.setattr(module,'cv2',_install_fake_cv2(monkeypatch))
+    monkeypatch.chdir(tmp_path)
+    nms=MagicMock(return_value=[])
+    monkeypatch.setattr(module.cv2.dnn,'NMSBoxes',nms)
+    session=_build_fake_session(0,'label')
+    patched_env['manager'].get_model.side_effect=lambda name: MagicMock(return_value=[]) if name=='ocr' else session
+    module.TicketService().detect(b'image')
+    np.testing.assert_allclose(nms.call_args.args[0][0],[220,220,200,200])
+
+
+def test_copy_recovery_requires_matching_serial_and_consistent_fields(patched_env):
+    module=patched_env['module']
+    reference=dict(train_code='G123',departure_station='北京南',arrival_station='上海虹桥',
+                   datetime='2026年10月05日 08:00',detection_id=0)
+    partial=dict(train_code='G123',departure_station='北京南',arrival_station='',
+                 datetime='2026年10月05日',detection_id=1)
+    separate=dict(partial,detection_id=2)
+    conflicting=dict(partial,departure_station='天津',detection_id=3)
+    rows=[reference,partial,separate,conflicting]
+    module.reconcile_ticket_copies(rows,{0:{'N123456'},1:{'N123456'},2:{'N654321'},3:{'N123456'}})
+    assert partial['arrival_station']=='上海虹桥'
+    assert partial['station_source']=='same-printed-ticket-serial'
+    assert separate['arrival_station']==conflicting['arrival_station']==''
+
+
+def test_readability_rejects_identical_endpoints_and_reversed_future_year(patched_env):
+    module=patched_env['module']
+    info=dict(train_code='G123',departure_station='北京南',arrival_station='北京南',datetime='2025年01月05日 08:00')
+    assert module._ticket_readability(info)[0]==1
+    info.update(arrival_station='上海虹桥',datetime='5052年01月05日 08:00')
+    assert module._ticket_readability(info)[2] is False
+
+
+def test_portrait_card_retries_a_sideways_orientation(patched_env):
+    module=patched_env['module']
+    texts=['北京南','G123','上海虹桥','2026年10月05日 08:00']
+    polys=[[[x,y],[x+60,y],[x+60,y+20],[x,y+20]]
+           for x,y in [(20,100),(180,100),(360,100),(20,150)]]
+    image=np.arange(24,dtype=np.uint8).reshape(4,2,3)
+    ocr=MagicMock(side_effect=[[],list(zip(polys,texts))])
+    result,_,_=module.recover_mirrored_card({},image,[],[],ocr)
+    assert result['ocr_transform']=='rotate-90'
+    np.testing.assert_array_equal(ocr.call_args.args[0],np.rot90(image,1))
+
+
+def test_context_recovery_repairs_role_of_the_only_visible_station(patched_env):
+    module=patched_env['module']
+    texts=['G123','北京南','上海虹桥','08月09日','08:00']
+    polys=[[[x,y],[x+60,y],[x+60,y+20],[x,y+20]]
+           for x,y in [(180,100),(20,100),(360,100),(20,40),(20,70)]]
+    info={'train_code':'G123','departure_station':'上海虹桥','arrival_station':'','datetime':'08:00'}
+    module.supplement_train_code(info,None,MagicMock(return_value=list(zip(polys,texts))))
+    assert (info['departure_station'],info['arrival_station'])==('北京南','上海虹桥')
+    assert info['datetime']=='08月09日 08:00'
+
+
+def test_context_recovery_never_copies_from_another_service(patched_env):
+    module=patched_env['module']
+    texts=['G123','G456','北京南','上海虹桥','08月09日','08:00']
+    polys=[[[x,y],[x+60,y],[x+60,y+20],[x,y+20]]
+           for x,y in [(180,100),(180,400),(20,100),(360,100),(20,40),(20,70)]]
+    info={'train_code':'G123','departure_station':'北京南','arrival_station':'','datetime':'08:00'}
+    module.supplement_train_code(info,None,MagicMock(return_value=list(zip(polys,texts))))
+    assert info['arrival_station']=='' and info['datetime']=='08:00'
+
+
+def test_context_recovery_accepts_unambiguous_bare_numeric_service(patched_env):
+    module=patched_env['module']
+    texts=['1462','北京','上海','08月09日','08:00']
+    polys=[[[x,y],[x+60,y],[x+60,y+20],[x,y+20]]
+           for x,y in [(180,100),(20,100),(360,100),(20,40),(20,70)]]
+    info={'train_code':'','departure_station':'北京','arrival_station':'上海','datetime':'08月09日 08:00'}
+    module.supplement_train_code(info,None,MagicMock(return_value=list(zip(polys,texts))))
+    assert info['train_code']=='1462'
+
+
+def test_station_recognition_without_detection_does_not_leak_mode_to_next_card(patched_env,monkeypatch,tmp_path):
+    monkeypatch.setattr(patched_env['module'],'recover_mirrored_card',lambda info,image,texts,polys,ocr:(info,texts,polys))
+    module=patched_env['module'];monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(module,'cv2',_install_fake_cv2(monkeypatch))
+    box=[[5,20],[55,20],[55,40],[5,40]]
+    crop=types.SimpleNamespace(txts=['西安北'],boxes=np.array([box]))
+    line=types.SimpleNamespace(txts=['鄠邑'])
+    ocr=MagicMock(side_effect=[crop,line,crop,line])
+    session=_build_fake_session(0,'label')
+    patched_env['manager'].get_model.side_effect=lambda name:ocr if name=='ocr' else session
+    monkeypatch.setattr(module,'extract_text',lambda _: (['西安北'],[box]))
+    monkeypatch.setattr(module,'parse_ticket_info',lambda *args:{'train_code':'G1573',
+        'departure_station':'西安北','arrival_station':'','datetime':'2025年11月17日 14:50'})
+    for _ in range(2):
+        assert module.TicketService().detect(b'image')['tickets'][0]['arrival_station']=='鄠邑'
+    assert [call.kwargs['use_det'] for call in ocr.call_args_list]==[True,False,True,False]
+
+
+def test_invalid_rotated_clock_retries_without_text_orientation(patched_env):
+    module=patched_env['module']
+    texts=['G7524','诸暨','连云港','12月22日','09:09','14:08']
+    polys=[[[x,y],[x+60,y],[x+60,y+20],[x,y+20]]
+           for x,y in [(180,100),(20,100),(360,100),(20,40),(20,70),(360,70)]]
+    info={'train_code':'G7524','departure_station':'诸暨','arrival_station':'连云港','datetime':'12月22日 60:60'}
+    ocr=MagicMock(return_value=list(zip(polys,texts)))
+    module.recover_clock_orientation(info,'card.png',['60:60'],ocr)
+    assert info['datetime']=='12月22日 09:09'
+    assert info['duration_minutes']==299
+    assert ocr.call_args.kwargs['use_cls'] is False
 
 
 def test_detect_raises_value_error_on_undecodable_bytes(patched_env, monkeypatch):
