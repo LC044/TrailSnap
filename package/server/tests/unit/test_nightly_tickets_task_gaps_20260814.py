@@ -164,20 +164,19 @@ def test_process_skips_already_processed_when_not_force():
     assert res["reason"] == "already processed"
 
 
-# --- get_schedule_info HTTP paths -------------------------------------------
+# --- get_schedule_info history cache paths ----------------------------------
 
 
 @pytest.mark.asyncio
-async def test_get_schedule_info_uses_internal_reference_database(monkeypatch):
-    monkeypatch.setenv('RAILWAY_DB_URL', 'sqlite://')
+async def test_get_schedule_info_uses_date_aware_history_cache():
     from app.service.tasks import tickets
 
-    with patch("railway.db.session.SessionLocal") as factory, \
-         patch("railway.crud.get_train_schedule_list", return_value=(404, 'not found', None)) as query:
-        result = await tickets.get_schedule_info("G100")
-    assert result['code'] == 404
-    assert query.call_args.args[1].train_code == 'G100'
-    assert query.call_args.args[1].page_size == 100
+    historical = {'match': 'exact', 'distance_km': 100, 'duration_minutes': 60, 'stops': []}
+    with patch('railway.history_cache.HistoryCache') as cache:
+        cache.return_value.resolve.return_value = historical
+        result = await tickets.get_schedule_info('G100', '2026-10-25', 'A', 'B')
+    assert result == historical
+    cache.return_value.resolve.assert_called_once_with('G100', '2026-10-25', 'A', 'B')
 
 
 # --- calculate_ticket_mileage_and_time edge cases ---------------------------
@@ -189,7 +188,7 @@ async def test_calculate_ticket_mileage_returns_empty_on_non_200_schedule():
     ticket = SimpleNamespace(train_code="G100", departure_station="A", arrival_station="B")
     with patch.object(tickets, "get_schedule_info", new=AsyncMock(return_value={"code": 500})):
         result = await tickets.calculate_ticket_mileage_and_time(ticket)
-    assert result == {"total_mileage": 0, "total_time": 0, "stop_stations": []}
+    assert result == {"total_mileage": None, "total_time": None, "stop_stations": []}
 
 
 @pytest.mark.asyncio
@@ -198,7 +197,7 @@ async def test_calculate_ticket_mileage_returns_empty_when_schedule_none():
     ticket = SimpleNamespace(train_code="G100", departure_station="A", arrival_station="B")
     with patch.object(tickets, "get_schedule_info", new=AsyncMock(return_value=None)):
         result = await tickets.calculate_ticket_mileage_and_time(ticket)
-    assert result == {"total_mileage": 0, "total_time": 0, "stop_stations": []}
+    assert result == {"total_mileage": None, "total_time": None, "stop_stations": []}
 
 
 @pytest.mark.asyncio
@@ -207,7 +206,7 @@ async def test_calculate_ticket_mileage_returns_empty_on_empty_schedule_list():
     ticket = SimpleNamespace(train_code="G100", departure_station="A", arrival_station="B")
     with patch.object(tickets, "get_schedule_info", new=AsyncMock(return_value={"code": 200, "data": {"list": []}})):
         result = await tickets.calculate_ticket_mileage_and_time(ticket)
-    assert result == {"total_mileage": 0, "total_time": 0, "stop_stations": []}
+    assert result == {"total_mileage": None, "total_time": None, "stop_stations": []}
 
 
 # --- process_single_photo ---------------------------------------------------
