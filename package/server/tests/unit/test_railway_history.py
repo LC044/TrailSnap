@@ -38,6 +38,8 @@ def feed(sequence, rows, previous=None):
 
 @pytest.fixture
 def initial(tmp_path, monkeypatch):
+    from railway import history_seed
+    monkeypatch.setattr(history_seed, 'station_metadata', lambda: {})
     monkeypatch.setenv('RAILWAY_DB_URL','sqlite:///:memory:')
     cache=HistoryCache(tmp_path/'history.sqlite')
     rows={'station:AAA':station('AAA','新站',39.9,116.4,'旧站'),
@@ -239,3 +241,223 @@ def test_history_sync_registers_daily_with_startup_check_and_can_be_disabled(mon
     monkeypatch.setenv('RAILWAY_COORDINATE_SYNC_ENABLED','0')
     register_history_sync(scheduler)
     scheduler.register_interval_job.assert_not_called()
+
+
+def test_fetch_feed_retries_and_switches_github_mirrors(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from railway import history_cache
+
+    cache = HistoryCache(tmp_path / 'history.sqlite')
+    manifest, files = feed(1, {'station:AAA': station('AAA', '新站', 39.9, 116.4)})
+    responses = [OSError('mirror unavailable'), json.dumps(manifest).encode(), next(iter(files.values()))]
+    requested = []
+
+    @contextmanager
+    def fake_urlopen(url, timeout):
+        requested.append(url)
+        value = responses.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        yield type('Response', (), {'read': lambda _self, _size: value})()
+
+    monkeypatch.setattr(history_cache, 'urlopen', fake_urlopen)
+    result = history_cache.fetch_feed(cache=cache)
+
+    assert result['sequence'] == 1
+    assert cache.status()['stations'] == 1
+    assert requested[0].startswith('https://gh-proxy.com/https://raw.githubusercontent.com/')
+    assert requested[1].startswith('https://gh-proxy.at9.net/https://raw.githubusercontent.com/')
+    assert requested[2].startswith('https://gh-proxy.com/https://raw.githubusercontent.com/')
+def test_rename_and_new_station_delta_keeps_old_train_and_station_names(initial):
+    cache, rows, first, _ = initial
+    desc, data = pack(2, {
+        'station:AAA': station('AAA', '又改名', 39.9, 116.4),
+        'station:CCC': station('CCC', '新增站', 30, 120),
+        'train:G1': {'code': 'G1', 'versions': [version('C', ['2026-10-05'])]},
+    })
+    cache.sync(dict(first, sequence=2, deltas=first['deltas'] + [desc]), lambda _: data)
+    assert cache.stations('旧站')[0]['telecode'] == 'AAA'
+    assert cache.stations('新增站')[0]['telecode'] == 'CCC'
+    old = cache.resolve('G1', '2026-10-01', ' 旧站站 ', '终点站')
+    assert old['match'] == 'exact' and old['version'] == 'A'
+    assert old['stops'][0]['n'] == '新站'
+    assert cache.resolve('G1', '2026-10-05', '又改名', '终点')['version'] == 'C'
+
+
+def test_projection_keeps_name_only_present_in_local_seed(initial):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from railway.db.models.models import Base, Station
+    from railway.history_sync import project_stations
+    cache, *_ = initial
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    with sessions() as db:
+        db.add(Station(telecode='AAA', station_name='种子旧名称', station_pinyin='', station_py='', city=''))
+        db.commit()
+    project_stations(cache=cache, sessions=sessions)
+    project_stations(cache=cache, sessions=sessions)
+    assert cache.stations('种子旧名称')[0]['telecode'] == 'AAA'
+    assert len(cache.resolve('G1', '2026-10-01', '种子旧名称站', '终点')['stops']) == 2
+    engine.dispose()
+
+
+def test_offline_seed_upgrades_without_network_or_rollback(initial, tmp_path):
+    from railway.history_seed import import_history_seed
+    cache, rows, first, files = initial
+    directory = tmp_path / 'bundle'
+    def write_bundle(manifest, available):
+        directory.mkdir(exist_ok=True)
+        (directory / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+        for name, raw in available.items():
+            target = directory / name
+            target.parent.mkdir(exist_ok=True)
+            target.write_bytes(raw)
+    write_bundle(first, files)
+    fresh = HistoryCache(tmp_path / 'fresh.sqlite')
+    import_history_seed(fresh, directory)
+    before = fresh.file.read_bytes()
+    import_history_seed(fresh, directory)
+    assert fresh.file.read_bytes() == before
+    assert fresh.resolve('G1', '2026-10-02')['version'] == 'B'
+    rows['station:CCC'] = station('CCC', '新增', 30, 120)
+    third, available = feed(3, rows)
+    write_bundle(third, available)
+    import_history_seed(fresh, directory)
+    assert fresh.status()['sequence'] == 3 and fresh.stations('CCC')
+    write_bundle(first, files)
+    import_history_seed(fresh, directory)
+    assert fresh.status()['sequence'] == 3
+
+
+def test_bundle_update_validates_before_replacing_manifest(initial, tmp_path, monkeypatch):
+    from railway import history_cache
+    from railway.history_seed import update_history_seed
+    _, rows, first, files = initial
+    directory = tmp_path / 'bundle'
+    monkeypatch.setattr(history_cache, 'read_feed', lambda: (first, files.__getitem__))
+    assert update_history_seed(directory)['sequence'] == 1
+    before = (directory / 'manifest.json').read_bytes()
+    second, available = feed(2, rows)
+    monkeypatch.setattr(history_cache, 'read_feed', lambda: (second, lambda _: b'corrupt'))
+    with pytest.raises(ValueError, match='checksum'):
+        update_history_seed(directory)
+    assert (directory / 'manifest.json').read_bytes() == before
+
+
+def test_checked_in_seed_is_valid_and_has_dated_details(tmp_path):
+    from railway.history_seed import import_history_seed
+    cache = HistoryCache(tmp_path / 'bundled.sqlite')
+    result = import_history_seed(cache)
+    assert result['stations'] >= 3404 and result['trains'] >= 16489
+    result = cache.resolve('G1', '2026-10-25')
+    assert result['match'] == 'exact' and len(result['stops']) > 2
+
+
+@pytest.mark.asyncio
+async def test_ticket_enrichment_matches_old_name_and_keeps_ticket_text(initial, monkeypatch):
+    from types import SimpleNamespace
+    from app.service.tasks import tickets
+    cache, *_ = initial
+    monkeypatch.setenv('RAILWAY_HISTORY_DB', str(cache.file))
+    ticket = SimpleNamespace(train_code='G1', date_time='2026-10-02 23:50:00',
+                             departure_station='旧站站', arrival_station='终点')
+    result = await tickets.calculate_ticket_mileage_and_time(ticket)
+    assert result['total_time'] == 70
+    assert result['stop_stations'][0]['station_telecode'] == 'AAA'
+    assert ticket.departure_station == '旧站站'
+
+
+def test_offline_startup_projects_before_ready(tmp_path, monkeypatch):
+    from urllib import request
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from railway import initialization
+    from railway.db import session, dependencies
+    from railway.db.models.models import Base, Station, Train, TrainSchedule
+    from app.core import paths
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    monkeypatch.setattr(session, 'SessionLocal', sessions)
+    monkeypatch.setattr(dependencies, 'engine', engine)
+    monkeypatch.setenv('RAILWAY_DB_URL', 'sqlite:///:memory:')
+    monkeypatch.setattr(paths, 'DATA_DIR', str(tmp_path))
+    monkeypatch.setenv('RAILWAY_HISTORY_DB', str(tmp_path / 'offline.sqlite'))
+    monkeypatch.setattr(request, 'urlopen', lambda *a, **kw: pytest.fail('offline startup attempted network access'))
+    monkeypatch.setattr(initialization, '_state', 'pending')
+    initialization._initialize()
+    initialization.require_ready()
+    cache = HistoryCache(tmp_path / 'offline.sqlite')
+    assert cache.projected_sequence() == cache.status()['sequence'] > 0
+    with sessions() as db:
+        assert db.query(Station).count() >= 3404
+        assert db.query(Train).count() == db.query(TrainSchedule).count() == 0
+        beijing = db.query(Station).filter_by(telecode='VAP').one()
+        assert beijing.province == '北京市' and beijing.station_pinyin == 'beijingbei'
+        assert db.query(Station).filter_by(telecode='BJB').one().station_name == '滨江'
+    engine.dispose()
+
+
+def test_legacy_read_endpoints_use_history_without_relational_timetables(initial, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from railway.api import router, get_db
+    cache, *_ = initial
+    monkeypatch.setenv('RAILWAY_HISTORY_DB', str(cache.file))
+    app = FastAPI()
+    app.include_router(router, prefix='/railway')
+    app.dependency_overrides[get_db] = lambda: None
+    with TestClient(app) as client:
+        params = {'train_code': 'G1', 'query_date': '2026-10-02'}
+        listing = client.get('/railway/trains', params=dict(params, from_station='旧站')).json()
+        assert listing['code'] == 0 and listing['data']['total'] == 1
+        assert listing['data']['list'][0]['matched_date'] == '2026-10-02'
+        single = client.get('/railway/trains/single', params=params).json()
+        assert single['data']['train_no'] == '1234'
+        schedules = client.get('/railway/train-schedules', params=dict(params, page_size=1, page=2)).json()
+        assert schedules['code'] == 0 and schedules['data']['total'] == 2
+        assert schedules['data']['list'][0]['station_name'] == '终点'
+        alias = client.get('/railway/train-schedules', params=dict(params, station_name='旧站')).json()
+        assert alias['data']['total'] == 1 and alias['data']['list'][0]['sequence'] == 1
+        full = client.get('/railway/train-schedules/full/1234', params={'query_date':'2026-10-02'}).json()
+        assert len(full['data']) == 2
+        by_date = client.get('/railway/trains/G1/schedules', params={'query_date':'2026-09-20'}).json()
+        assert by_date['data'][0]['match'] == 'nearest'
+        assert by_date['data'][0]['matched_date'] == '2026-10-01'
+
+
+def test_station_projection_rebuilds_search_and_preserves_local_metadata(initial, monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from railway.db.models.models import Base, Station
+    from railway.history_sync import project_stations
+    from railway.crud import get_station_list, get_station_single
+    from railway.schemas import StationListQuery, StationSingleQuery
+    cache, *_ = initial
+    monkeypatch.setenv('RAILWAY_HISTORY_DB', str(cache.file))
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    sessions = sessionmaker(bind=engine)
+    metadata = {'AAA': {'names':['更早站名'], 'province':'补充省', 'city':'测试市', 'district':'测试区'},
+                'CCC': {'names':['保留旧站'], 'province':'补充省', 'city':'测试市', 'pinyin':'baoliu', 'pinyin_short':'bl'}}
+    with sessions() as db:
+        db.add(Station(station_id=99, telecode='AAA', station_name='本地名称', station_pinyin='', station_py='',
+                       city='', province='用户省份'))
+        db.commit()
+    project_stations(cache=cache, sessions=sessions, metadata=metadata)
+    project_stations(cache=cache, sessions=sessions, metadata=metadata)
+    with sessions() as db:
+        row = db.query(Station).filter_by(telecode='AAA').one()
+        assert row.station_id == 99 and row.province == '用户省份' and row.district == '测试区'
+        code, _, data = get_station_list(db, StationListQuery(keyword='更早站名'))
+        assert code == 200 and data['total'] == 1
+        assert get_station_single(db, StationSingleQuery(station_name='更早站名站'))[2].telecode == 'AAA'
+        assert get_station_list(db, StationListQuery(keyword='baoliu'))[2]['total'] == 1
+        db.query(Station).delete()
+        db.commit()
+    project_stations(cache=cache, sessions=sessions, metadata=metadata)
+    with sessions() as db:
+        assert db.query(Station).count() == 3
+    engine.dispose()

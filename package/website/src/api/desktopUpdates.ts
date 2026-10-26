@@ -1,4 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
+import { Channel, invoke } from '@tauri-apps/api/core'
+import type { DownloadEvent } from '@tauri-apps/plugin-updater'
 
 export interface PortableUpdate {
   version: string
@@ -17,6 +18,15 @@ export interface DesktopUpdateStatus {
 export const getDesktopUpdateStatus = () => invoke<DesktopUpdateStatus>('desktop_update_status')
 export const prepareInstalledUpdate = () => invoke<void>('desktop_prepare_update')
 export async function checkInstalledUpdate() {
-  const { check } = await import('@tauri-apps/plugin-updater')
-  return check({ timeout: 30_000 })
+  const version = await invoke<string | null>('desktop_installed_update_check')
+  if (!version) return null
+  return {
+    version,
+    async download(onEvent: (event: DownloadEvent) => void) {
+      const channel = new Channel<DownloadEvent>()
+      channel.onmessage = onEvent
+      await invoke<void>('desktop_installed_update_download', { onEvent: channel })
+    },
+    install: () => invoke<void>('desktop_installed_update_install'),
+  }
 }

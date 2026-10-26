@@ -20,7 +20,14 @@ function harness(mode, options = {}) {
     checkPortableUpdate: async () => { if (options.checkError) throw Error('catalog 404'); return { phase: options.ready ? 'ready' : 'available', version: options.latestVersion || '1.0.1', size: 10 } },
     downloadPortableUpdate: async () => calls.push('portable-download'),
     applyPortableUpdate: async () => { calls.push('portable-apply'); if (options.pending) throw '后台任务仍在结束，请继续等待' },
-    checkInstalledUpdate: async () => ({ version: '1.0.1', download: async () => calls.push('installer-download'), install: async () => calls.push('installer-install') }),
+    checkInstalledUpdate: async () => ({ version: '1.0.1', download: async onEvent => {
+      calls.push('installer-download')
+      for (const event of options.downloadEvents || []) {
+        onEvent(event)
+        options.onProgress?.(store().progress.value)
+      }
+      if (options.failDownload) throw Error('all sources failed')
+    }, install: async () => calls.push('installer-install') }),
     prepareInstalledUpdate: async () => { calls.push('drain-backup'); if (options.failDrain) throw Error('backup failed') },
   }
   vm.runInNewContext(`(function(require,module,exports){${code}\n})`)(name => {
@@ -31,7 +38,9 @@ function harness(mode, options = {}) {
     if (name === '@/api/desktopUpdates') return api
     throw Error(name)
   }, module, module.exports)
-  return { store: module.exports.useDesktopUpdatesStore(), calls }
+  const instance = module.exports.useDesktopUpdatesStore()
+  const store = () => instance
+  return { store: instance, calls }
 }
 
 test('automatic and manual checks share one download', async () => {
@@ -69,6 +78,58 @@ test('failed backup never runs the installer', async () => {
   await store.check(); await store.install()
   assert.deepEqual(calls, ['installer-download', 'drain-backup'])
   assert.equal(store.phase.value, 'error')
+})
+
+test('switching installer source resets progress instead of adding partial bytes', async () => {
+  const progress = []
+  const { store } = harness('legacy-installed', {
+    downloadEvents: [
+      { event: 'Started', data: { contentLength: 100 } },
+      { event: 'Progress', data: { chunkLength: 80 } },
+      { event: 'Started', data: { contentLength: 100 } },
+      { event: 'Progress', data: { chunkLength: 10 } },
+    ],
+    onProgress: value => progress.push(value),
+  })
+  await store.check()
+  assert.deepEqual(progress, [0, 80, 0, 10])
+  assert.equal(store.phase.value, 'ready')
+})
+
+test('exhausted download retries never offer an unverified installer for installation', async () => {
+  const { store, calls } = harness('legacy-installed', { failDownload: true })
+  await store.check()
+  assert.equal(store.phase.value, 'error')
+  assert.match(store.message.value, /更新下载失败/)
+  assert.deepEqual(calls, ['installer-download'])
+})
+
+test('installer API uses native multi-source commands and forwards progress', async () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../../src/api/desktopUpdates.ts'), 'utf8')
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
+  const calls = []
+  const events = []
+  const module = { exports: {} }
+  const core = {
+    Channel: class {},
+    invoke: async (command, args) => {
+      calls.push(command)
+      if (command === 'desktop_installed_update_check') return '1.0.1'
+      if (command === 'desktop_installed_update_download') args.onEvent.onmessage({ event: 'Finished' })
+    },
+  }
+  vm.runInNewContext(`(function(require,module,exports){${code}\n})`)(name => {
+    assert.equal(name, '@tauri-apps/api/core')
+    return core
+  }, module, module.exports)
+  const update = await module.exports.checkInstalledUpdate()
+  assert.equal(update.version, '1.0.1')
+  await update.download(event => events.push(event.event))
+  await update.install()
+  assert.deepEqual(events, ['Finished'])
+  assert.deepEqual(calls, ['desktop_installed_update_check', 'desktop_installed_update_download', 'desktop_installed_update_install'])
+  core.invoke = async () => null
+  assert.equal(await module.exports.checkInstalledUpdate(), null)
 })
 
 test('an update waiting for writers offers continued waiting and does not restart or redownload', async () => {

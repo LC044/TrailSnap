@@ -1,6 +1,5 @@
 """Initialize optional railway reference data without blocking authentication."""
 
-import hashlib
 import logging
 import os
 import threading
@@ -25,26 +24,6 @@ def require_ready():
             if _state == "failed" else "铁路数据正在初始化，请稍后重试"
         )
         raise HTTPException(status_code=503, detail=message, headers={"Retry-After": "5"})
-
-
-def ensure_seed_data():
-    from app.core.paths import DATA_DIR
-    from railway.build_database import TABLE_MODEL_MAPPING, build_database
-    from railway.db.session import SessionLocal
-
-    # A completed import is separate from database existence. Interrupted imports
-    # resume by primary key, preserving existing reference data and custom rows.
-    digest = hashlib.sha256(os.environ["RAILWAY_DB_URL"].encode()).hexdigest()[:24]
-    marker = Path(DATA_DIR) / f"railway-seed-v1-{digest}.complete"
-    with SessionLocal() as db:
-        if marker.exists() and all(
-            db.query(model).first() is not None for model in TABLE_MODEL_MAPPING.values()
-        ):
-            return
-        marker.unlink(missing_ok=True)
-        build_database(db)
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.touch()
 
 
 def _initialize():
@@ -74,6 +53,8 @@ def _initialize():
             try:
                 from railway.start import create_database
                 create_database()
+                from railway.history_seed import ensure_history_seed
+                ensure_history_seed()
             finally:
                 if os.name == "nt":
                     lock_file.seek(0)

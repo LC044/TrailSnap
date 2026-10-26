@@ -61,7 +61,10 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
         let downloaded = 0
         let total = 0
         await installedUpdate.download(event => {
-          if (event.event === 'Started') total = event.data.contentLength ?? 0
+          if (event.event === 'Started') {
+            downloaded = 0
+            total = event.data.contentLength ?? 0
+          }
           if (event.event === 'Progress') downloaded += event.data.chunkLength
           progress.value = total ? Math.min(100, Math.round(downloaded / total * 100)) : 0
         })

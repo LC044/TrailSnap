@@ -138,12 +138,12 @@ test('ticket history query uses travel date and preserves unknown GPS mileage ac
   assert.equal(result.match, 'nearest');
 });
 
-test('ticket editor retains offline seed lookup until the first historical sync', async () => {
+test('ticket editor never falls back to stale timetables when history is unavailable', async () => {
   const calls=[];
   const { ticketService } = load('api/ticketService.ts', { '@/utils/request': { default: { get: async (url) => {
     calls.push(url);
     return { data: url.endsWith('/history/trains') ? { history_available:false,stops:[] } : { list:[{station_name:'seed'}] } };
   } } } });
-  assert.equal((await ticketService.trainSchedules('G1','2026-10-03')).list[0].station_name,'seed');
-  assert.equal(calls.length,2);
+  assert.deepEqual((await ticketService.trainSchedules('G1','2026-10-03')).list,[]);
+  assert.deepEqual(calls,['/api/railway/history/trains']);
 });

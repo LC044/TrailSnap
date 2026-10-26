@@ -36,6 +36,27 @@ def train(**kwargs):
 
 
 @pytest.mark.asyncio
+async def test_identical_endpoints_are_not_saved_as_a_successful_trip(scenario):
+    db,_,_,photo=scenario
+    info=train();info['arrival_station']=info['departure_station']
+    result=await tickets.RecognizeTicketStrategy().save_recognition_result(photo,{'tickets':[info]},db)
+    assert result['status']=='failed'
+    assert photo.processed_tasks['tickets'] is False
+    assert db.query(TrainTicket).count()==0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('station',['去看看','时刻表','其他问题','年月日日'])
+async def test_interface_labels_are_never_saved_as_station_names(scenario,station):
+    db,_,_,photo=scenario
+    info=train();info['arrival_station']=station
+    result=await tickets.RecognizeTicketStrategy().save_recognition_result(photo,{'tickets':[info]},db)
+    assert result['status']=='failed'
+    assert photo.processed_tasks['tickets'] is False
+    assert db.query(TrainTicket).count()==0
+
+
+@pytest.mark.asyncio
 async def test_reference_lookup_failure_still_saves_and_retry_keeps_id(scenario):
     db, owner, _, photo = scenario
     # The optional offline railway history cache (REQ-196) is filled on
@@ -173,15 +194,14 @@ def test_recovery_endpoint_queues_jobs_and_reuses_existing_work(scenario):
 
 
 @pytest.mark.asyncio
-async def test_internal_schedule_serializes_time_and_decimal_without_http(monkeypatch):
-    monkeypatch.setenv('RAILWAY_DB_URL', 'sqlite://')
-    from datetime import time
-    from decimal import Decimal
-    data = {'list': [{'arrival_time': time(8, 30), 'accumulated_mileage': Decimal('100.5')}]}
-    with patch('railway.db.session.SessionLocal'), \
-         patch('railway.crud.get_train_schedule_list', return_value=(200, 'ok', data)), \
+async def test_internal_schedule_uses_history_without_http_or_legacy_database():
+    data = {'match':'exact', 'distance_km':100.5, 'stops':[{'a':'08:30'}]}
+    with patch('railway.history_cache.HistoryCache') as cache, \
+         patch('railway.db.session.SessionLocal') as legacy, \
          patch.object(tickets.aiohttp, 'ClientSession') as http:
-        result = await tickets.get_schedule_info('G100')
-    assert result['data']['list'][0]['arrival_time'] == '08:30:00'
-    assert result['data']['list'][0]['accumulated_mileage'] == 100.5
+        cache.return_value.resolve.return_value = data
+        result = await tickets.get_schedule_info('G100', '2026-10-25')
+    assert result['stops'][0]['a'] == '08:30'
+    assert result['distance_km'] == 100.5
+    legacy.assert_not_called()
     http.assert_not_called()

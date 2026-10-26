@@ -84,13 +84,13 @@ def test_projection_persists_gps_and_read_schema(database):
     with cache.connect() as db:
         cache._upsert(db,'station:AAA',{'telecode':'AAA','names':[{'name':'测试'}],'status':'active',
             'versions':[{'data':{'gps':{'latitude':'39.5','longitute':'116.7'}}}]})
-    project_stations(cache=cache,sessions=sessions)
+    project_stations(cache=cache,sessions=sessions,metadata={})
     with sessions() as db:
         row=db.query(Station).one()
         assert float(row.latitude)==39.5 and row.coordinate_source=='12306'
         assert StationRead.model_validate(row).model_dump()['longitude']==pytest.approx(116.7)
         row.latitude=40;row.coordinate_source='manual';db.commit()
-    project_stations(cache=cache,sessions=sessions)
+    project_stations(cache=cache,sessions=sessions,metadata={})
     assert cache.local_coordinates('AAA')[0]==40
 
 

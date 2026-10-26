@@ -11,11 +11,16 @@ def main():
     parser.add_argument('--db', help='Cache SQLite path (defaults to application data directory)')
     parser.add_argument('--feed-dir', type=Path, help='Import a local data/feed directory')
     parser.add_argument('--sync', action='store_true', help='Fetch the configured GitHub feed')
+    parser.add_argument('--update-bundle', action='store_true', help='Refresh and validate the repository offline snapshot')
     parser.add_argument('--train')
     parser.add_argument('--date')
     parser.add_argument('--departure')
     parser.add_argument('--arrival')
     args = parser.parse_args()
+    if args.update_bundle:
+        from railway.history_seed import update_history_seed
+        print(json.dumps(update_history_seed(), ensure_ascii=False, indent=2))
+        return
     cache = HistoryCache(args.db)
     if args.feed_dir:
         manifest = json.loads((args.feed_dir/'manifest.json').read_text(encoding='utf-8'))
