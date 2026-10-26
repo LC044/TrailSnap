@@ -208,6 +208,7 @@ releases/ 通常被 git 忽略；确认三个文件存在即可，不强行提�
     gh release edit vX.Y.Z --title "vX.Y.Z" --notes-file "releases\vX.Y.Z\release-notes.md"
 
 7. 再次确认正文与更新后的 release-notes.md 完全一致、安装包直链均来自已验收附件、附件数量不变且全部 uploaded。
+8. 下载release里的各个平台的安装包（只需要安装包）将其放到`\\DXP4800PLUS-72A\personal_folder\电脑软件\TrailSnap\X.Y.Z` 文件夹下留作本地备份，如果文件夹不能访问则跳过该步骤。
 
 ## 11. 社媒文案规范
 
