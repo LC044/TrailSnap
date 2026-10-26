@@ -1038,6 +1038,10 @@ class TaskWorker:
         markers = (
             'timeout', 'timed out', '429', '503', '502', 'connection',
             'temporarily unavailable', 'server disconnected', 'service busy',
+            # Concurrent AI batches write photo_tags in parallel sessions; the
+            # resulting lock cycle is transient, so the batch is retried
+            # instead of being failed for good.
+            'deadlock detected', 'could not serialize access',
             '服务繁忙', 'try again later',
         )
         return TaskWorker._is_model_preparing_error(error) or any(marker in text for marker in markers)
