@@ -168,7 +168,8 @@ def test_on_this_day_vector_sort_works_on_sqlite(sqlite_session, monkeypatch):
     sqlite_session.add(ImageDescription(photo_id=photo.id, memory_score=80, quality_score=70))
     sqlite_session.add(ImageVector(photo_id=photo.id, embedding=[1.0] + [0.0] * 511))
     sqlite_session.commit()
-    monkeypatch.setattr(photo_crud.POSITIVE_SENTIMENT_VECTOR, "embedding", [1.0] + [0.0] * 511)
+    monkeypatch.setattr(photo_crud, "get_search_vectors",
+                        lambda *a, **k: {'positive_sentiment': [1.0] + [0.0] * 511})
 
     result = photo_crud.get_on_this_day_photos(sqlite_session, user.id, 8, 12, 2026)
 

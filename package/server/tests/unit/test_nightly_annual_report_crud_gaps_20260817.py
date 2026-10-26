@@ -32,6 +32,13 @@ import pytest
 pytestmark = [pytest.mark.smoke]
 
 
+@pytest.fixture(autouse=True)
+def current_model_presets(monkeypatch):
+    monkeypatch.setattr('app.crud.annual_report.get_search_vectors',
+                        lambda *a, **k: {key: [1.0] + [0.0] * 511
+                                         for key in ('春', '夏', '秋', '冬', 'easter_egg')})
+
+
 # ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------

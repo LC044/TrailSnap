@@ -1,6 +1,7 @@
 import logging
 import traceback
 import os
+import base64
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
@@ -256,22 +257,17 @@ async def search_by_image(
     """
     try:
         # 1. Get Image Embedding from AI Service
-        # We use /classify endpoint which returns embedding
         async with aiohttp.ClientSession() as session:
             file_content = await file.read()
-            form_data = aiohttp.FormData()
-            form_data.add_field('file', file_content, filename=file.filename)
-            
-            api_url = f"{config_manager.get_user_config(user.id, db).ai.ai_api_url}/classification/classify"
+            api_url = f"{config_manager.get_user_config(user.id, db).ai.ai_api_url.rstrip('/')}/embedding/image"
             async with session.post(
                 api_url,
-                data=form_data,
-                params={"limit": 1} # We don't care about classification results
+                json={"images": [base64.b64encode(file_content).decode('ascii')]},
             ) as resp:
                 if resp.status != 200:
                     raise HTTPException(status_code=502, detail=f"AI Service error: {resp.status}")
                 result = await resp.json()
-                embedding = result.get("embedding")
+                embedding = result[0] if result else None
                 if not embedding:
                     raise HTTPException(status_code=500, detail="No embedding returned from AI service")
 

@@ -12,6 +12,7 @@ router = APIRouter()
 
 class TextEmbeddingRequest(BaseModel):
     texts: List[str]
+    cache: bool = False
 
 class ImageEmbeddingRequest(BaseModel):
     images: List[str]
@@ -26,7 +27,8 @@ async def embed_texts(request: TextEmbeddingRequest):
         raise HTTPException(status_code=400, detail="No texts provided")
     await embedding_admission.acquire()
     try:
-        embeddings = await embedding_service.embed_texts(request.texts)
+        embeddings = (await embedding_service.embed_texts(request.texts, use_cache=True)
+                      if request.cache else await embedding_service.embed_texts(request.texts))
         return embeddings
     except Exception as e:
         logging.error(f"Error in text embedding API: {e}\n{traceback.format_exc()}")

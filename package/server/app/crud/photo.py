@@ -23,7 +23,7 @@ from app.crud.album import (
     update_album_photo_counts,
 )
 from app.crud.cluster import remove_photo_from_clusters, remove_photos_from_clusters
-from app.crud.search_vector import POSITIVE_SENTIMENT_VECTOR
+from app.crud.search_vector import get_search_vectors
 from app.crud.photo_paths import escape_like, normalized_file_path
 from app.db.models import Photo, PhotoMetadata, ImageVector, Album, Face, PhotoTag, ImageDescription, Scene, PhotoDeclutterRecord
 from app.db.models.album import AlbumPhoto
@@ -1338,7 +1338,7 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
     """
     获取“那年今日”的照片：
     1. 过滤：同月同日，排除截图，排除当年
-    2. 排序：AI 评分 (memory_score + quality_score) -> 向量相似度 (POSITIVE_SENTIMENT_VECTOR) -> 时间倒序
+    2. 排序：AI 评分 (memory_score + quality_score) -> 当前模型的美好瞬间文本相似度 -> 时间倒序
     3. 去重：去除相似度高的照片，相似照片只返回一张
     """
     import numpy as np
@@ -1368,11 +1368,10 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
     )
     
     # 重新应用排序
-    sqlite_vector_sort = bool(
-        POSITIVE_SENTIMENT_VECTOR.embedding and db.bind.dialect.name == "sqlite"
-    )
-    if POSITIVE_SENTIMENT_VECTOR.embedding and not sqlite_vector_sort:
-        distance = ImageVector.embedding.cosine_distance(POSITIVE_SENTIMENT_VECTOR.embedding)
+    positive_vector = get_search_vectors(db, user_id, keys=('positive_sentiment',)).get('positive_sentiment')
+    sqlite_vector_sort = bool(positive_vector and db.bind.dialect.name == "sqlite")
+    if positive_vector and not sqlite_vector_sort:
+        distance = ImageVector.embedding.cosine_distance(positive_vector)
         photo_query = photo_query.order_by(ai_score.desc(), distance.asc(), Photo.photo_time.desc())
     else:
         photo_query = photo_query.order_by(ai_score.desc(), Photo.photo_time.desc())
@@ -1404,7 +1403,7 @@ def get_on_this_day_photos(db: Session, user_id: UUID, month: int, day: int, yea
         # Preserve the PostgreSQL ordering semantics without emitting pgvector's
         # unsupported <=> operator. AI score remains the primary key, followed
         # by positive-sentiment cosine distance and capture time.
-        target = POSITIVE_SENTIMENT_VECTOR.embedding
+        target = positive_vector
         candidates.sort(
             key=lambda photo: (
                 -float(

@@ -16,7 +16,7 @@ from app.db.models.face import Face, FaceIdentity
 from app.db.models.tag import PhotoTag, PhotoTagRelation
 from app.db.models.trip import TrainTicket
 from app.db.models.image_vector import ImageVector
-from app.crud.search_vector import SEASON_VECTORS, EASTER_EGG_VECTOR
+from app.crud.search_vector import get_search_vectors
 from app.service.media_urls import thumbnail_url
 
 from app.schemas.annual_report import (
@@ -242,7 +242,7 @@ def find_best_match_photo(
     db: Session, 
     start_time: datetime, 
     end_time: datetime, 
-    embedding: List[float], 
+    embedding: Optional[List[float]],
     months: Optional[List[int]] = None,
     user_id: Optional[UUID] = None
 ) -> Optional[Photo]:
@@ -260,6 +260,9 @@ def find_best_match_photo(
 
     if months:
          query = query.filter(extract('month', Photo.photo_time).in_(months))
+
+    if not embedding:
+        return query.order_by(Photo.photo_time.desc()).first()
          
     # Order by cosine distance (lower is better/more similar)
     if db.bind.dialect.name == "sqlite":
@@ -301,6 +304,7 @@ def get_report_season(
         ("冬", [12, 1, 2], "暖意")
     ]
     season_list = []
+    vectors = None
 
     for name, months, default_tag in seasons_def:
         season_query = base_query.filter(Photo.file_type == FileType.image)\
@@ -309,7 +313,9 @@ def get_report_season(
         count = season_query.count()
 
         # Vector search for representative photo
-        search_vector = SEASON_VECTORS.get(name)
+        if count and vectors is None:
+            vectors = get_search_vectors(db, user_id)
+        search_vector = (vectors or {}).get(name)
         rep_photo = None
         if search_vector:
             rep_photo = find_best_match_photo(db, start_time, end_time, search_vector, months, user_id)
@@ -389,7 +395,8 @@ def get_report_easter_egg(
     user_id: Optional[UUID] = None
 ):
     # Use vector search
-    best_photo = find_best_match_photo(db, start_time, end_time, EASTER_EGG_VECTOR, user_id=user_id)
+    vectors = get_search_vectors(db, user_id)
+    best_photo = find_best_match_photo(db, start_time, end_time, vectors.get('easter_egg'), user_id=user_id)
     
     best_photo_url = thumbnail_url(user_id or best_photo.owner_id, best_photo.id) if best_photo else f"https://picsum.photos/seed/best/400/600"
     best_photo_date = best_photo.photo_time.strftime('%Y-%m-%d') if best_photo else "2024-10-01"
