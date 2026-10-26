@@ -10,7 +10,11 @@ const matcherSource = source.slice(source.indexOf('function matchesPlatform('), 
 const matcherCode = ts.transpileModule(matcherSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 
 function harness(items = []) {
-  const context = { assets: { value: items }, releaseUrl: 'release-fallback' }
+  const context = {
+    assets: { value: items },
+    releaseUrl: 'release-fallback',
+    computed: getter => ({ get value() { return getter() } }),
+  }
   vm.createContext(context)
   vm.runInContext(matcherCode, context)
   return context
