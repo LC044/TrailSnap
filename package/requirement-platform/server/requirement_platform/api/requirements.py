@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, PlainTextResponse
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -19,19 +20,25 @@ from ..domain import requirements as requirement_service
 from ..domain.common import audit, enqueue, requirement_snapshot
 from ..models import (
     AuditEvent, ClarificationQuestion, Requirement, RequirementAttachment, RequirementFollower,
-    RequirementRevision, ReviewDecision, User, utcnow,
+    RequirementRevision, RequirementSupplement, ReviewDecision, User, utcnow,
 )
 from ..presenters import requirement_data, requirement_list_context
 from ..schemas import (
     ClarificationAnswerInput, PreflightTriageInput, ReasonInput, RequirementCreate,
-    RequirementStatusInput, RequirementUpdate, ReviewInput, SummaryCorrectionInput,
+    RequirementStatusInput, RequirementUpdate, RequirementSupplementCreate, ReviewInput, SummaryCorrectionInput,
 )
 from ..security import current_user, manager, optional_user
 from ..services import analyze_draft, analyze_draft_stream
 from .responses import ok
+from ..public_agent_guide import agent_guide
 
 router = APIRouter(tags=["requirements"])
 logger = logging.getLogger(__name__)
+
+
+@router.get("/api/agent-guide", response_class=PlainTextResponse)
+def public_agent_guide():
+    return PlainTextResponse(agent_guide(), headers={"Cache-Control": "no-store"})
 
 
 def enqueue_github_sync(db: Session, row: Requirement) -> None:
@@ -46,9 +53,27 @@ def can_access_private_data(row: Requirement, user: User | None) -> bool:
     return bool(user and (user.id == row.created_by or user.role in {"admin", "owner"}))
 
 
+EDITABLE_STATUSES = {"submitted", "needs_information", "pending_review"}
+
+
+def edit_token_matches(row: Requirement, token: str | None) -> bool:
+    return bool(
+        row.created_by is None and token and len(token) <= 128 and row.anonymous_edit_token_hash
+        and secrets.compare_digest(hashlib.sha256(token.encode()).hexdigest(), row.anonymous_edit_token_hash)
+    )
+
+
+def anonymous_submission_response(row: Requirement, db: Session, token: str) -> JSONResponse:
+    data = requirement_data(row, db)
+    data["edit_token"] = token
+    data["public_url"] = f"{settings.web_url.rstrip('/')}/requirements/REQ-{row.public_number}"
+    return JSONResponse(ok(data, "submitted"), headers={"Cache-Control": "no-store"})
+
+
 @router.post("/api/requirements/preflight-triage")
 def preflight_triage(payload: PreflightTriageInput, db: Session = Depends(get_db)):
     values = payload.model_dump(mode="json")
+    values.pop("client_edit_token", None)
     values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": values.pop("answers", {})}
     return ok(analyze_draft(db, values))
 
@@ -56,6 +81,7 @@ def preflight_triage(payload: PreflightTriageInput, db: Session = Depends(get_db
 @router.post("/api/requirements/preflight-triage/stream")
 async def preflight_triage_stream(payload: PreflightTriageInput):
     values = payload.model_dump(mode="json")
+    values.pop("client_edit_token", None)
     values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": values.pop("answers", {})}
 
     async def events():
@@ -89,6 +115,17 @@ async def preflight_triage_stream(payload: PreflightTriageInput):
 
 @router.post("/api/requirements")
 def create_requirement(payload: RequirementCreate, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    values = payload.model_dump()
+    client_token = values.pop("client_edit_token", None)
+    edit_token = (client_token or secrets.token_urlsafe(32)) if not user else None
+    token_hash = hashlib.sha256(edit_token.encode()).hexdigest() if edit_token else None
+    submission_hash = hashlib.sha256(json.dumps(values, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    if not user and client_token:
+        existing = db.query(Requirement).filter(Requirement.anonymous_creation_token_hash == token_hash).first()
+        if existing:
+            if existing.deleted_at or existing.anonymous_submission_hash != submission_hash or not edit_token_matches(existing, edit_token):
+                raise HTTPException(status_code=409, detail="提交回执已使用，请勿改变重试内容")
+            return anonymous_submission_response(existing, db, edit_token)
     is_manager = bool(user and user.role in {"admin", "owner"})
     if not is_manager:
         since = datetime.now(timezone.utc) - timedelta(hours=1)
@@ -99,7 +136,6 @@ def create_requirement(payload: RequirementCreate, user: User | None = Depends(o
         ).scalar() or 0
         if recent >= settings.non_admin_hourly_submission_limit:
             raise HTTPException(status_code=429, detail="所有非管理员用户每小时最多提交 20 条需求，请稍后再试")
-    values = payload.model_dump()
     preflight_answers = values.pop("ai_clarification_answers", {})
     if preflight_answers:
         values["environment"] = {**values.get("environment", {}), "ai_preflight_answers": preflight_answers}
@@ -114,10 +150,20 @@ def create_requirement(payload: RequirementCreate, user: User | None = Depends(o
     row = Requirement(
         public_number=next_requirement_number(db), created_by=user.id if user else None,
         anonymous_upload_token_hash=hashlib.sha256(upload_token.encode()).hexdigest() if upload_token else None,
+        anonymous_edit_token_hash=token_hash,
+        anonymous_submission_hash=submission_hash if not user else None,
+        anonymous_creation_token_hash=token_hash,
         **values,
     )
     db.add(row)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(Requirement).filter(Requirement.anonymous_creation_token_hash == token_hash).first() if token_hash else None
+        if existing and not existing.deleted_at and existing.anonymous_submission_hash == submission_hash and edit_token_matches(existing, edit_token):
+            return anonymous_submission_response(existing, db, edit_token)
+        raise HTTPException(status_code=409, detail="提交冲突，请重试")
     if user:
         db.add(RequirementFollower(requirement_id=row.id, user_id=user.id))
     audit(db, user.id if user else None, "requirement.created", "requirement", row.id, type=row.type, status=row.status)
@@ -127,7 +173,9 @@ def create_requirement(payload: RequirementCreate, user: User | None = Depends(o
     data = requirement_data(row, db, include_private=bool(user), include_contact=is_manager)
     if upload_token:
         data["upload_token"] = upload_token
-    return ok(data, "submitted")
+        data["edit_token"] = edit_token
+        data["public_url"] = f"{settings.web_url.rstrip('/')}/requirements/REQ-{row.public_number}"
+    return JSONResponse(ok(data, "submitted"), headers={"Cache-Control": "no-store"})
 
 
 ALLOWED_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".txt", ".log", ".json", ".pdf"}
@@ -137,7 +185,8 @@ IMAGE_ATTACHMENT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 @router.post("/api/requirements/{requirement_id}/attachments")
 async def upload_requirement_attachment(
     requirement_id: str, file: UploadFile = File(...), user: User | None = Depends(optional_user),
-    x_requirement_upload_token: str | None = Header(default=None), db: Session = Depends(get_db)
+    x_requirement_upload_token: str | None = Header(default=None), db: Session = Depends(get_db),
+    x_requirement_edit_token: str | None = Header(default=None),
 ):
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
@@ -148,8 +197,23 @@ async def upload_requirement_attachment(
             hashlib.sha256(x_requirement_upload_token.encode()).hexdigest(), row.anonymous_upload_token_hash
         )
     )
-    if not can_access_private_data(row, user) and not anonymous_token_ok:
+    edit_access = edit_token_matches(row, x_requirement_edit_token)
+    if not can_access_private_data(row, user) and not anonymous_token_ok and not edit_access:
         raise HTTPException(status_code=403, detail="Not allowed")
+    if not can_access_private_data(row, user):
+        credential_filter = (
+            Requirement.anonymous_edit_token_hash == hashlib.sha256(x_requirement_edit_token.encode()).hexdigest()
+            if edit_access else
+            Requirement.anonymous_upload_token_hash == hashlib.sha256(x_requirement_upload_token.encode()).hexdigest()
+        )
+        # Lock and recheck credentials/status before writing, including legacy upload receipts.
+        changed = db.query(Requirement).filter(
+            Requirement.id == row.id, Requirement.deleted_at.is_(None),
+            Requirement.status.in_(EDITABLE_STATUSES), credential_filter,
+        ).update({Requirement.state_version: Requirement.state_version}, synchronize_session=False)
+        if not changed:
+            raise HTTPException(status_code=409, detail="需求状态或上传权限已变化，请刷新后重试")
+        db.refresh(row)
     count = db.query(func.count(RequirementAttachment.id)).filter(
         RequirementAttachment.requirement_id == row.id
     ).scalar() or 0
@@ -188,6 +252,7 @@ async def upload_requirement_attachment(
     db.flush()
     row.content_revision += 1
     row.version += 1
+    row.state_version += 1
     invalidate_delivery_authorizations(db, row, actor_id=user.id if user else None,
                                        reason="需求附件变化，旧执行授权已失效", source="attachment")
     enqueue(db, "triage", row.id, f"triage:{row.id}:content:{row.content_revision}")
@@ -325,31 +390,139 @@ def get_requirement(requirement_id: str, user: User | None = Depends(optional_us
     return ok(requirement_data(row, db, include_private=include_private, include_contact=bool(user and user.role in {"admin", "owner"})))
 
 
-@router.patch("/api/requirements/{requirement_id}")
-def update_requirement(
-    requirement_id: str, payload: RequirementUpdate, user: User = Depends(current_user), db: Session = Depends(get_db)
+@router.get("/api/requirements/{requirement_id}/edit-capability")
+def edit_capability(
+    requirement_id: str, x_requirement_edit_token: str | None = Header(default=None),
+    user: User | None = Depends(optional_user), db: Session = Depends(get_db),
 ):
     row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
     if not row:
         raise HTTPException(status_code=404, detail="Requirement not found")
-    if row.created_by != user.id and user.role not in {"admin", "owner"}:
+    if not can_access_private_data(row, user) and not edit_token_matches(row, x_requirement_edit_token):
+        raise HTTPException(status_code=403, detail="编辑凭证无效")
+    return JSONResponse(ok({
+        "can_edit": bool(user and user.role in {"admin", "owner"}) or row.status in EDITABLE_STATUSES,
+        "can_supplement": True,
+        "state_version": row.state_version,
+        "reason": "" if row.status in EDITABLE_STATUSES else "需求已进入处理流程，正文暂时不能修改；你仍可追加补充说明，交由维护者评估。",
+    }), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/requirements/{requirement_id}/supplements")
+def list_supplements(requirement_id: str, user: User | None = Depends(optional_user), db: Session = Depends(get_db)):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row or (row.visibility != "public" and not can_access_private_data(row, user)):
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    notes = db.query(RequirementSupplement).filter_by(requirement_id=row.id).order_by(RequirementSupplement.created_at).all()
+    return ok([{"id": note.id, "body": note.body, "created_at": note.created_at.isoformat(),
+                "author_name": "维护者" if note.author_id and note.author_id != row.created_by else "提交者"} for note in notes])
+
+
+@router.post("/api/requirements/{requirement_id}/supplements")
+def create_supplement(
+    requirement_id: str, payload: RequirementSupplementCreate, user: User | None = Depends(optional_user),
+    db: Session = Depends(get_db), x_requirement_edit_token: str | None = Header(default=None),
+):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    anonymous = edit_token_matches(row, x_requirement_edit_token)
+    if not anonymous and not can_access_private_data(row, user):
+        raise HTTPException(status_code=403, detail="没有这条需求的修改权限")
+    filters = [Requirement.id == row.id, Requirement.deleted_at.is_(None)]
+    if anonymous:
+        filters.append(Requirement.anonymous_edit_token_hash == hashlib.sha256(x_requirement_edit_token.encode()).hexdigest())
+    # Serialize additions with deletion/receipt rotation without revising approved content.
+    if not db.query(Requirement).filter(*filters).update({Requirement.updated_at: Requirement.updated_at}, synchronize_session=False):
+        raise HTTPException(status_code=409, detail="需求或修改权限已变化，请刷新后重试")
+    recent = db.query(func.count(RequirementSupplement.id)).filter(
+        RequirementSupplement.requirement_id == row.id,
+        RequirementSupplement.created_at >= datetime.now(timezone.utc) - timedelta(hours=1),
+    ).scalar() or 0
+    total = db.query(func.count(RequirementSupplement.id)).filter_by(requirement_id=row.id).scalar() or 0
+    if recent >= 10 or total >= 100:
+        raise HTTPException(status_code=429, detail="补充次数过多，请稍后再试")
+    note = RequirementSupplement(requirement_id=row.id, author_id=user.id if user and not anonymous else None, body=payload.body)
+    db.add(note)
+    audit(db, note.author_id, "requirement.supplement_added", "requirement", row.id)
+    db.commit()
+    return JSONResponse(ok({"id": note.id}, "补充说明已保存，等待维护者评估"), headers={"Cache-Control": "no-store"})
+
+
+@router.post("/api/requirements/{requirement_id}/edit-token/rotate")
+def rotate_edit_token(
+    requirement_id: str, x_requirement_edit_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    token = secrets.token_urlsafe(32)
+    changed = db.query(Requirement).filter(
+        Requirement.id == requirement_id, Requirement.created_by.is_(None),
+        Requirement.deleted_at.is_(None),
+        Requirement.anonymous_edit_token_hash == hashlib.sha256((x_requirement_edit_token or "").encode()).hexdigest(),
+    ).update({Requirement.anonymous_edit_token_hash: hashlib.sha256(token.encode()).hexdigest(),
+              Requirement.anonymous_upload_token_hash: None},
+             synchronize_session=False)
+    if not changed:
+        raise HTTPException(status_code=403, detail="编辑凭证无效")
+    audit(db, None, "requirement.edit_token_rotated", "requirement", requirement_id)
+    db.commit()
+    return JSONResponse(ok({"edit_token": token}), headers={"Cache-Control": "no-store"})
+
+
+@router.patch("/api/requirements/{requirement_id}")
+def update_requirement(
+    requirement_id: str, payload: RequirementUpdate, user: User | None = Depends(optional_user),
+    db: Session = Depends(get_db), x_requirement_edit_token: str | None = Header(default=None),
+):
+    row = db.query(Requirement).filter(Requirement.id == requirement_id, Requirement.deleted_at.is_(None)).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+    anonymous = edit_token_matches(row, x_requirement_edit_token)
+    if not can_access_private_data(row, user) and not anonymous:
         raise HTTPException(status_code=403, detail="Not allowed")
-    if row.status not in {"submitted", "needs_information", "pending_review"} and user.role == "viewer":
+    is_manager = bool(user and user.role in {"admin", "owner"})
+    if row.status not in EDITABLE_STATUSES and not is_manager:
         raise HTTPException(status_code=409, detail="Requirement can no longer be edited")
-    db.add(RequirementRevision(requirement_id=row.id, editor_id=user.id, snapshot=requirement_snapshot(row), reason="updated"))
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    values = payload.model_dump(exclude_unset=True)
+    expected = values.pop("expected_state_version", None)
+    if anonymous:
+        if expected is None:
+            raise HTTPException(status_code=422, detail="expected_state_version is required")
+        if "visibility" in values or "environment" in values:
+            raise HTTPException(status_code=422, detail="匿名编辑不能修改公开范围或内部环境信息")
+        if any(values.get(key) is None for key in ("type", "title", "description", "severity") if key in values):
+            raise HTTPException(status_code=422, detail="必填字段不能为空")
+    before = requirement_snapshot(row)
+    if expected is not None:
+        filters = [Requirement.id == row.id, Requirement.state_version == expected, Requirement.status == row.status]
+        if anonymous:
+            filters.append(Requirement.anonymous_edit_token_hash == hashlib.sha256(x_requirement_edit_token.encode()).hexdigest())
+        changed = db.query(Requirement).filter(*filters).update(
+            {Requirement.state_version: Requirement.state_version + 1}, synchronize_session=False,
+        )
+        if not changed:
+            db.rollback()
+            raise DomainConflict("需求已变化，请刷新后重试", current_version=row.state_version)
+        db.refresh(row)
+    else:
+        row.state_version += 1
+    actor_id = user.id if user and not anonymous else None
+    db.add(RequirementRevision(requirement_id=row.id, editor_id=actor_id, snapshot=before, reason="updated"))
+    for key, value in values.items():
         setattr(row, key, value)
     row.version += 1
     row.content_revision += 1
-    invalidate_delivery_authorizations(db, row, actor_id=user.id,
+    invalidate_delivery_authorizations(db, row, actor_id=actor_id,
                                        reason="需求内容变化，旧执行授权已失效", source="rest")
     if row.status == "needs_information":
-        requirement_transition(db, row, "submitted", actor_id=user.id, reason="用户补充了需求信息", source="rest")
+        requirement_transition(db, row, "submitted", actor_id=actor_id, reason="用户补充了需求信息", source="rest")
     enqueue_github_sync(db, row)
     enqueue(db, "triage", row.id, f"triage:{row.id}:v{row.version}")
-    audit(db, user.id, "requirement.updated", "requirement", row.id, version=row.version)
+    audit(db, actor_id, "requirement.updated", "requirement", row.id, version=row.version,
+          actor_name="匿名提交者" if anonymous else user.username, source="anonymous_edit" if anonymous else "rest")
     db.commit()
-    return ok(requirement_data(row, db, include_private=True, include_contact=user.role in {"admin", "owner"}))
+    return JSONResponse(ok(requirement_data(row, db, include_private=not anonymous, include_contact=is_manager)),
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/api/requirements/{requirement_id}/withdraw")

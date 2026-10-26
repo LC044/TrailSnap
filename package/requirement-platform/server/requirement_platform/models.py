@@ -64,6 +64,9 @@ class Requirement(Base):
     submitter_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     submitter_contact: Mapped[str | None] = mapped_column(String(255), nullable=True)
     anonymous_upload_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    anonymous_edit_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    anonymous_submission_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    anonymous_creation_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     version: Mapped[int] = mapped_column(Integer, default=1)
@@ -140,9 +143,19 @@ class RequirementRevision(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     requirement_id: Mapped[str] = mapped_column(String(36), ForeignKey("requirements.id", ondelete="CASCADE"), index=True)
-    editor_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"))
+    editor_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
     snapshot: Mapped[dict] = mapped_column(JSON)
     reason: Mapped[str] = mapped_column(String(255), default="updated")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class RequirementSupplement(Base):
+    __tablename__ = "requirement_supplements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    requirement_id: Mapped[str] = mapped_column(String(36), ForeignKey("requirements.id", ondelete="CASCADE"), index=True)
+    author_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

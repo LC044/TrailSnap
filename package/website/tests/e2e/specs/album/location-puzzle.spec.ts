@@ -43,8 +43,8 @@ async function waitForLocationRoute(
   page: Page,
   testInfo: { skip(condition: boolean, ...args: unknown[]): void },
 ): Promise<boolean> {
-  await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined)
-  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/\/album\/location(?:[/?]|$)/)
+  await expect(page.getByRole('heading', { name: '位置', exact: true })).toBeVisible()
   const url = page.url()
   if (/\/album\/location(?:\?|$|\/)/.test(url)) return true
   testInfo.skip(

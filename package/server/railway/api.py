@@ -10,7 +10,7 @@
 """
 from typing import List, Optional, Dict, Any
 
-from fastapi import FastAPI, Depends, HTTPException, Path, Body, Query, APIRouter
+from fastapi import Depends, Path, Body, Query, APIRouter
 from sqlalchemy.orm import Session
 from datetime import date
 
@@ -18,18 +18,16 @@ from datetime import date
 from railway.schemas import (
     StationRead, StationCreate, BaseResponse, StationSingleQuery, StationListQuery, StationListResponse,
     TrainScheduleRead, TrainScheduleListQuery, TrainScheduleSingleQuery, TrainScheduleBatchCreate, TrainListQuery,
-    TrainSingleQuery, TrainRead, TrainCreate, TrainOperationPlanRead, TrainOperationPlanListQuery,
-    TrainOperationPlanSingleQuery, TrainOperationPlanCreate, TrainListResponse, TrainScheduleResponse,
+    TrainRead, TrainCreate, TrainOperationPlanRead, TrainOperationPlanListQuery,
+    TrainOperationPlanSingleQuery, TrainOperationPlanCreate,
     TicketBatchRequest, TicketStats, TicketBatchResponse
 )
 from railway.crud import (
-    create_station, get_station_single, get_station_list, get_train_full_schedule, delete_train_schedule,
-    get_train_schedule_list, get_train_schedule_single, create_train_schedule_batch, delete_train, get_train_list,
-    get_train_single, create_train, delete_train_operation_plan, update_train_operation_plan_status,
+    create_station, get_station_single, get_station_list, delete_train_schedule,
+    get_train_schedule_single, create_train_schedule_batch, delete_train,
+    create_train, delete_train_operation_plan, update_train_operation_plan_status,
     get_train_operation_plan_list, get_train_operation_plan_single, create_train_operation_plan,
-    get_schedule_by_train_code_and_date,
 )
-from railway.db.models.models import Train, TrainSchedule, TrainOperationPlan
 from railway.db.dependencies import get_ready_db as get_db
 from app.dependencies import BaseResponse as ApiResponse
 
@@ -236,7 +234,7 @@ def create_or_update_train(
 
 @router.get(
     "/trains/single",
-    response_model=BaseResponse[TrainRead],
+    response_model=ApiResponse[Dict[str, Any]],
     summary="单条车次查询（支持ID/内部编号/对外车次等多字段）"
 )
 def query_train_single(
@@ -245,18 +243,24 @@ def query_train_single(
     train_code: Optional[str] = Query(None, description="对外公布车次（如G123）"),
     from_station: Optional[str] = Query(None, description="出发站电报码"),
     to_station: Optional[str] = Query(None, description="到达站电报码"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    query_date: Optional[date] = Query(None, description="乘车日期，默认今天")
 ):
-    query = TrainSingleQuery(
-        train_id=train_id, train_no=train_no, train_code=train_code,
-        from_station=from_station, to_station=to_station
-    )
-    code, msg, data = get_train_single(db, query)
-    return BaseResponse(code=code, msg=msg, data=data)
+    if train_id is not None:
+        # IDs are meaningful only for explicitly managed relational records.
+        return ApiResponse.fail(code=400, msg="历史车次请使用train_code或train_no查询")
+    if not train_code and not train_no:
+        return ApiResponse.fail(code=400, msg="请指定train_code或train_no")
+    from railway.history_queries import trains
+    query = TrainListQuery(train_code=train_code, from_station=from_station, to_station=to_station, page_size=100)
+    items = trains(query, query_date, train_no=train_no)['list']
+    if train_code:
+        items = [item for item in items if item['train_code'] == train_code.strip().upper()]
+    return ApiResponse.success(data=items[0]) if items else ApiResponse.fail(code=404, msg="未找到车次历史")
 
 @router.get(
     "/trains",
-    response_model=BaseResponse[TrainListResponse],
+    response_model=ApiResponse[Dict[str, Any]],
     summary="车次列表查询（筛选+模糊搜索+分页）"
 )
 def query_train_list(
@@ -266,15 +270,16 @@ def query_train_list(
     to_station: Optional[str] = Query(None, description="到达站（电报码或名称模糊匹配）"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页条数（1-100）"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    query_date: Optional[date] = Query(None, description="乘车日期，默认今天")
 ):
     query = TrainListQuery(
         train_code=train_code, train_type=train_type,
         from_station=from_station, to_station=to_station,
         page=page, page_size=page_size
     )
-    code, msg, data = get_train_list(db, query)
-    return BaseResponse(code=code, msg=msg, data=data)
+    from railway.history_queries import trains
+    return ApiResponse.success(data=trains(query, query_date))
 
 @router.delete(
     "/trains/{train_no}",
@@ -322,7 +327,7 @@ def query_schedule_single(
 
 @router.get(
     "/train-schedules",
-    response_model=BaseResponse[TrainScheduleResponse],
+    response_model=ApiResponse[Dict[str, Any]],
     summary="时刻表列表查询（筛选+模糊搜索+分页）"
 )
 def query_schedule_list(
@@ -334,27 +339,35 @@ def query_schedule_list(
     is_arrival: Optional[int] = Query(None, ge=0, le=1, description="是否到达站（1=是）"),
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页条数（1-100）"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    query_date: Optional[date] = Query(None, description="乘车日期，默认今天")
 ):
     query = TrainScheduleListQuery(
         train_no=train_no, train_code=train_code, station_telecode=station_telecode,
         station_name=station_name, is_departure=is_departure, is_arrival=is_arrival,
         page=page, page_size=page_size
     )
-    code, msg, data = get_train_schedule_list(db, query)
-    return BaseResponse(code=code, msg=msg, data=data)
+    from railway.history_queries import schedules
+    return ApiResponse.success(data=schedules(query, query_date))
 
 @router.get(
     "/train-schedules/full/{train_no}",
-    response_model=BaseResponse[List[TrainScheduleRead]],
+    response_model=ApiResponse[List[Dict[str, Any]]],
     summary="获取某车次完整时刻表（按途经顺序排序）"
 )
 def query_full_schedule(
     train_no: str = Path(..., max_length=20, description="车次编号（如0G12300）"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    query_date: Optional[date] = Query(None, description="乘车日期，默认今天")
 ):
-    code, msg, data = get_train_full_schedule(db, train_no)
-    return BaseResponse(code=code, msg=msg, data=data)
+    from railway.history_queries import trains, schedule_details
+    from railway.history_cache import HistoryCache
+    cache = HistoryCache()
+    day = query_date or date.today()
+    candidates = trains(TrainListQuery(page_size=1), day, cache, train_no=train_no)['list']
+    if not candidates:
+        return ApiResponse.fail(msg="未找到车次历史", code=404)
+    return ApiResponse.success(data=schedule_details(cache.resolve(candidates[0]['train_code'], day)))
 
 @router.delete(
     "/train-schedules/{train_no}",
@@ -371,7 +384,7 @@ def delete_schedule(
 
 @router.get(
     "/trains/{train_code}/schedules",
-    response_model=BaseResponse[List[TrainScheduleRead]],
+    response_model=ApiResponse[List[Dict[str, Any]]],
     summary="根据对外车次（train_code）和日期查询时刻表"
 )
 def query_schedule_by_train_code_and_date(
@@ -379,14 +392,10 @@ def query_schedule_by_train_code_and_date(
     query_date: date = Query(..., description="查询日期（YYYY-MM-DD，如2025-11-20）"),
     db: Session = Depends(get_db)
 ):
-    """
-    按对外车次和日期查询完整时刻表：
-    1. 自动匹配对应的内部编号（train_no）
-    2. 校验该日期的运行计划是否有效（生效时间+开行规律）
-    3. 返回按途经顺序排序的完整时刻表
-    """
-    code, msg, data = get_schedule_by_train_code_and_date(db, train_code, query_date)
-    return BaseResponse(code=code, msg=msg, data=data)
+    """按乘车日期选择历史观测；缺少当天数据时明确标记最近匹配。"""
+    from railway.history_cache import HistoryCache
+    from railway.history_queries import schedule_details
+    return ApiResponse.success(data=schedule_details(HistoryCache().resolve(train_code, query_date)))
 
 # ------------------------------ 统计查询接口（新增）------------------------------
 @router.post("/stats/batch", response_model=TicketBatchResponse, summary="批量计算车票里程和时长")
@@ -396,92 +405,17 @@ def batch_calculate_stats(
 ):
     from railway.history_cache import HistoryCache
     cache = HistoryCache()
-    if cache.status()['sequence']:
-        results = []
-        for item in request.items:
-            try:
-                day = date.fromisoformat(item.date_time[:10]) if item.date_time else date.today()
-            except ValueError:
-                return BaseResponse(code=422, msg="乘车日期格式无效", data=None)
-            result = cache.resolve(item.train_code, day, item.departure_station, item.arrival_station)
-            results.append(TicketStats(id=item.id, distance_km=result['distance_km'],
-                                       duration_minutes=result['duration_minutes'], train_no=result['train_no']))
-        return BaseResponse(data=results)
     results = []
-    # 1. 收集所有车次号
-    train_codes = set(item.train_code for item in request.items)
-    if not train_codes:
-        return BaseResponse(data=[])
-
-    # 2. 批量查询车次对应关系 (Train Code -> Train No)
-    trains = db.query(Train).filter(Train.train_code.in_(train_codes)).all()
-    
-    code_to_train_nos = {}
-    for t in trains:
-        if t.train_code not in code_to_train_nos:
-            code_to_train_nos[t.train_code] = []
-        code_to_train_nos[t.train_code].append(t.train_no)
-
-    # 3. 收集相关的 train_no，准备查询时刻表
-    all_train_nos = []
-    for nos in code_to_train_nos.values():
-        all_train_nos.extend(nos)
-    
-    # 4. 批量查询时刻表
-    if all_train_nos:
-        schedules = db.query(TrainSchedule).filter(
-            TrainSchedule.train_no.in_(all_train_nos)
-        ).all()
-    else:
-        schedules = []
-
-    # 构建内存索引: train_no -> { station_name -> schedule_record }
-    schedule_map = {}
-    for s in schedules:
-        if s.train_no not in schedule_map:
-            schedule_map[s.train_no] = {}
-        schedule_map[s.train_no][s.station_name] = s
-
-    # 5. 遍历请求项计算结果
     for item in request.items:
-        stats = TicketStats(id=item.id, distance_km=0, duration_minutes=0)
-        
-        candidate_nos = code_to_train_nos.get(item.train_code, [])
-        best_no = None
-        
-        # 寻找包含出发和到达站的 train_no
-        for no in candidate_nos:
-            s_map = schedule_map.get(no, {})
-            if item.departure_station in s_map and item.arrival_station in s_map:
-                best_no = no
-                break
-        
-        if best_no:
-            s_map = schedule_map[best_no]
-            dep = s_map[item.departure_station]
-            arr = s_map[item.arrival_station]
-            
-            # 计算距离
-            try:
-                dist = float(arr.accumulated_mileage) - float(dep.accumulated_mileage)
-                if dist < 0: dist = 0
-                stats.distance_km = dist
-            except:
-                stats.distance_km = 0
-            
-            # 计算时长
-            try:
-                dur = arr.running_time - dep.running_time
-                if dur < 0: dur = 0
-                stats.duration_minutes = dur
-            except:
-                stats.duration_minutes = 0
-                
-            stats.train_no = best_no
-            
-        results.append(stats)
-
+        try:
+            day = date.fromisoformat(item.date_time[:10]) if item.date_time else date.today()
+        except ValueError:
+            return BaseResponse(code=422, msg="乘车日期格式无效", data=None)
+        result = cache.resolve(item.train_code, day, item.departure_station, item.arrival_station)
+        results.append(TicketStats(id=item.id, distance_km=result['distance_km'],
+                                  duration_minutes=result['duration_minutes'], train_no=result['train_no']))
     return BaseResponse(data=results)
+
 
 if __name__ == "__main__":
     import uvicorn

@@ -12,11 +12,20 @@
           :requirement="detailTarget"
           :history="detailHistory"
           :manager="isManager"
+          :can-edit="detailCanEdit"
+          :has-receipt="!!receipts.tokenFor(detailTarget.id)"
+          :edit-reason="detailEditReason"
+          :can-supplement="detailCanSupplement"
+          :supplements="detailSupplements"
+          :supplements-error="supplementsError"
           :can-follow="canFollow"
           :can-edit-summary="canEditSummary"
           :user-role="user?.role || 'viewer'"
           @back="closeDetail"
           @copy-link="copyRequirementLink(detailTarget)"
+          @copy-management="saveManagementLink(detailTarget)"
+          @continue-a-i="continueWithAI(detailTarget)"
+          @supplement="openSupplement(detailTarget)"
           @follow="followDetail"
           @edit="openEdit(detailTarget)"
           @status="openStatusChange(detailTarget)"
@@ -47,6 +56,8 @@
           </div>
         </div>
 
+        <SubmissionResult v-if="submittedRequirement" :requirement="submittedRequirement" :has-receipt="!!receipts.tokenFor(submittedRequirement.id)"
+          @open="openAnalyzedRequirement" @save="saveManagementLink(submittedRequirement)" @continue-a-i="continueWithAI(submittedRequirement)" />
         <div class="submit-layout">
           <el-form class="panel submit-form" label-position="top" @submit.prevent="submitRequirement" @paste="handlePaste">
             <el-alert v-if="!user" type="info" :closable="false" show-icon title="你正在匿名提交">
@@ -191,7 +202,7 @@
 
       <!-- ============ 我的需求 ============ -->
       <MyRequirementsPage v-else-if="tab === 'mine'" :items="myRequirements" :manager="isManager" :user="user"
-        @login="authDialog = true" @open="openDetail" @action="onRowAction" />
+        @login="authDialog = true" @submit="switchTab('submit')" @open="openDetail" @action="onRowAction" />
 
       <!-- ============ 版本计划 ============ -->
       <VersionPlanPage v-else-if="tab === 'versions'" :batches="batches" :candidates="candidates" :manager="isManager"
@@ -232,8 +243,10 @@
       </div>
     </footer>
 
-    <el-dialog v-model="analysisDialog" title="AI 需求分析" width="min(94vw, 680px)" :close-on-click-modal="analysisProgress.done" :show-close="analysisProgress.done">
-      <div class="analysis-progress-dialog">
+    <el-dialog v-model="analysisDialog" :title="submittedRequirement ? '需求已提交' : 'AI 需求分析'" width="min(94vw, 680px)" :close-on-click-modal="analysisProgress.done" :show-close="analysisProgress.done">
+      <SubmissionResult v-if="submittedRequirement" :requirement="submittedRequirement" :has-receipt="!!receipts.tokenFor(submittedRequirement.id)"
+        @open="openAnalyzedRequirement" @save="saveManagementLink(submittedRequirement)" @continue-a-i="continueWithAI(submittedRequirement)" />
+      <div v-else class="analysis-progress-dialog">
         <el-progress :percentage="analysisProgress.percent" :status="analysisProgress.failed ? 'exception' : analysisProgress.done ? 'success' : undefined" />
         <div class="analysis-current"><el-icon :class="{ spinning: !analysisProgress.done }"><MagicStick /></el-icon><div><strong>{{ analysisProgress.title }}</strong><p>{{ analysisProgress.detail }}</p></div></div>
         <ol class="analysis-stages">
@@ -262,13 +275,26 @@
           </div>
         </div>
         <el-alert v-if="analysisProgress.appliedUpdates.length" type="success" :closable="false" :title="`AI 已根据回答更新：${analysisProgress.appliedUpdates.join('、')}`" />
-        <el-alert v-if="analysisProgress.done" :type="analysisProgress.failed ? 'warning' : 'success'" :closable="false" :title="analysisProgress.failed ? (submittedRequirement ? '需求已保存，AI 分析仍可在后台继续' : 'AI 分析未通过，可查看详细原因后重试') : (submittedRequirement ? 'AI 已完成分析，结果已写入需求详情' : (preflightQuestions.length ? '请直接在下方回答，AI 将自动完善并提交需求' : 'AI 已完成提交前分析'))" />
+        <el-alert v-if="analysisProgress.done" :type="analysisProgress.failed ? 'warning' : 'success'" :closable="false" :title="analysisProgress.failed ? (submittedRequirement ? '需求已保存，AI 分析仍可在后台继续' : 'AI 分析未通过，可查看详细原因后重试') : (submittedRequirement ? '需求已保存，无需等待后台分析' : (preflightQuestions.length ? '请直接在下方回答，AI 将自动完善并提交需求' : 'AI 已完成提交前分析'))" />
       </div>
       <template #footer>
         <el-button v-if="analysisProgress.done" @click="analysisDialog = false">关闭</el-button>
         <el-button v-if="analysisProgress.done && preflightQuestions.length" type="primary" :loading="busy" @click="answerPreflightAndSubmit">应用回答并提交需求</el-button>
-        <el-button v-if="analysisProgress.done && submittedRequirement" type="primary" @click="openAnalyzedRequirement">查看需求与分析结果</el-button>
       </template>
+    </el-dialog>
+
+    <el-dialog v-model="copyDialog" :title="copyTitle" width="min(92vw, 640px)">
+      <p>{{ copyHint }}</p>
+      <el-input :model-value="copyValue" type="textarea" :rows="8" readonly aria-label="待复制内容" @focus="selectCopyText" />
+      <template #footer><el-button @click="copyDialog = false">关闭</el-button><el-button type="primary" @click="copyText(copyValue)">复制</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="supplementDialog" title="补充信息" width="min(92vw, 640px)" :close-on-click-modal="false" :close-on-press-escape="!supplementBusy" :show-close="!supplementBusy">
+      <p>REQ-{{ supplementTarget?.public_number }} · {{ supplementTarget?.title }}</p>
+      <p class="field-hint">{{ supplementTarget?.visibility === 'public' ? '补充内容将公开展示，请先移除个人照片信息、密码、密钥和未脱敏日志。' : '补充内容仅需求提交者和管理员可见。' }}补充不会改动原需求正文，范围调整由维护者评估。</p>
+      <el-input v-model="supplementBody" type="textarea" :rows="6" maxlength="4000" show-word-limit aria-label="补充说明" placeholder="例如：新的复现条件、使用场景或方案调整（4–4,000 字）" />
+      <p v-if="supplementError" role="alert">{{ supplementError }}。输入内容已保留，请确认后重试，避免重复提交。</p>
+      <template #footer><el-button :disabled="supplementBusy" @click="supplementDialog = false">稍后继续</el-button><el-button type="primary" :loading="supplementBusy" @click="submitSupplement">保存补充说明</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="editDialog" title="编辑需求" width="min(92vw, 640px)">
@@ -278,8 +304,8 @@
         <el-form-item label="需求描述" required><el-input v-model="editForm.description" type="textarea" :rows="5" maxlength="8000" show-word-limit /><div class="field-hint">10–8,000 字。</div></el-form-item>
         <el-form-item label="复现步骤"><el-input v-model="editForm.steps_to_reproduce" type="textarea" :rows="3" maxlength="4000" show-word-limit /></el-form-item>
         <div class="form-grid"><el-form-item label="当前行为"><el-input v-model="editForm.current_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item><el-form-item label="期望行为"><el-input v-model="editForm.expected_behavior" type="textarea" :rows="3" maxlength="3000" show-word-limit /></el-form-item></div>
-        <el-form-item label="日志文字（仅提交人和管理员可见）"><el-input v-model="editForm.log_text" type="textarea" :rows="3" maxlength="20000" show-word-limit /></el-form-item>
-        <div class="form-grid"><el-form-item label="产品版本"><el-input v-model="editForm.product_version" maxlength="50" /></el-form-item><el-form-item label="公开范围"><el-select v-model="editForm.visibility"><el-option label="公开" value="public" /><el-option label="仅提交人和管理员" value="private" /></el-select></el-form-item></div>
+        <el-form-item v-if="!anonymousEdit" label="日志文字（仅提交人和管理员可见）"><el-input v-model="editForm.log_text" type="textarea" :rows="3" maxlength="20000" show-word-limit /></el-form-item>
+        <div class="form-grid"><el-form-item label="产品版本"><el-input v-model="editForm.product_version" maxlength="50" /></el-form-item><el-form-item v-if="!anonymousEdit" label="公开范围"><el-select v-model="editForm.visibility"><el-option label="公开" value="public" /><el-option label="仅提交人和管理员" value="private" /></el-select></el-form-item></div>
         <el-alert v-if="editTarget?.github_issue_number" type="info" :closable="false">保存后将异步同步 GitHub Issue 的标题、正文、类型和状态标签。</el-alert>
       </el-form>
       <template #footer><el-button @click="editDialog = false">取消</el-button><el-button type="primary" :loading="busy" @click="submitEdit">保存</el-button></template>
@@ -406,14 +432,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import {
-  Checked, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
+  Checked, CircleCheckFilled, Collection, Connection, DataAnalysis, Document, DocumentAdd, EditPen, Flag, Guide,
   InfoFilled, MagicStick, Opportunity, Promotion, Service, Setting, Switch, Tickets, TrendCharts, Warning,
 } from '@element-plus/icons-vue'
 import { ElButton, ElIcon, ElMessage, ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import axios from 'axios'
 import logoUrl from './assets/logo.svg'
-import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type User as ApiUser } from './api'
+import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type RequirementSupplement, type User as ApiUser } from './api'
+import SubmissionResult from './SubmissionResult.vue'
+import { continuationPrompt } from './feedbackExperience'
 import {
   requirementStatuses, reviewActionLabels,
   statusLabel,
@@ -422,6 +450,7 @@ import RequirementDetail from './RequirementDetail.vue'
 import TokenUsage from './TokenUsage.vue'
 import AISettingsPage from './AISettingsPage.vue'
 import { useSessionStore } from './stores/session'
+import { useAnonymousReceipts, newEditToken } from './stores/anonymousReceipts'
 import { usePreflightTriage } from './composables/usePreflightTriage'
 import PublicRequirementsPage from './views/requirements/PublicRequirementsPage.vue'
 import DashboardPage from './views/dashboard/DashboardPage.vue'
@@ -468,9 +497,18 @@ const emptyRequirementForm = () => ({
 const route = useRoute()
 const router = useRouter()
 const tab = ref<Tab>((route.meta.tab as Tab | undefined) || 'public')
-const navCollapsed = ref(localStorage.getItem('rp_nav_collapsed') === '1')
+const navCollapsed = ref(false)
+try { navCollapsed.value = localStorage.getItem('rp_nav_collapsed') === '1' } catch { /* Storage is optional. */ }
 const header = ref<InstanceType<typeof AppHeader> | null>(null)
 const session = useSessionStore()
+const receipts = useAnonymousReceipts()
+// Keep the original link available until validation and durable receipt storage succeed.
+const incomingEditToken = new URLSearchParams(location.hash.slice(1)).get('edit_token')
+const detailCanEdit = ref(false), detailEditReason = ref('')
+const detailCanSupplement = ref(false), detailSupplements = ref<RequirementSupplement[]>([]), supplementsError = ref(false)
+const copyDialog = ref(false), copyValue = ref(''), copyTitle = ref(''), copyHint = ref('')
+const supplementDialog = ref(false), supplementBody = ref(''), supplementBusy = ref(false), supplementError = ref('')
+const supplementTarget = ref<Requirement | null>(null)
 const { user, isManager } = storeToRefs(session)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
@@ -488,6 +526,7 @@ const detailLoading = ref(false), detailTarget = ref<Requirement | null>(null)
 const reviewTarget = ref<Requirement | null>(null)
 const statusTarget = ref<Requirement | null>(null)
 const editTarget = ref<Requirement | null>(null)
+const anonymousEdit = computed(() => !!editTarget.value && !isManager.value && !!receipts.tokenFor(editTarget.value.id))
 const editForm = reactive({ type: 'feature', severity: 'medium', title: '', description: '', steps_to_reproduce: '', current_behavior: '', expected_behavior: '', log_text: '', product_version: '', visibility: 'public' })
 const filters = reactive({ q: '', type: '', status: '' })
 const authForm = reactive({ username: '', email: '', password: '' })
@@ -526,7 +565,7 @@ const {
 const visibleTabs = computed(() => [
   { key: 'public' as Tab, label: '公开需求', icon: Document },
   { key: 'submit' as Tab, label: '提交需求', icon: EditPen },
-  { key: 'mine' as Tab, label: '我的需求', icon: Collection },
+  { key: 'mine' as Tab, label: user.value ? '我的需求与本机记录' : '本机提交记录', icon: Collection },
   { key: 'versions' as Tab, label: '版本计划', icon: Flag },
   { key: 'usage' as Tab, label: 'Token 用量', icon: TrendCharts },
   ...(isManager.value ? [{ key: 'dashboard' as Tab, label: '总览看板', icon: DataAnalysis }] : []),
@@ -538,7 +577,7 @@ const visibleTabs = computed(() => [
 
 function toggleNavigation() {
   navCollapsed.value = !navCollapsed.value
-  localStorage.setItem('rp_nav_collapsed', navCollapsed.value ? '1' : '0')
+  try { localStorage.setItem('rp_nav_collapsed', navCollapsed.value ? '1' : '0') } catch { /* Keep the session preference. */ }
 }
 
 const plannedStatuses = ['scheduled', 'developing', 'testing', 'release_ready']
@@ -571,7 +610,11 @@ async function loadRequirements() {
   else p.set('include_closed', 'false')
   requirements.value = await api.requirements(`?${p}`)
 }
-async function loadMine() { if (user.value) myRequirements.value = await api.requirements('?mine=true') }
+async function loadMine() {
+  const local = await Promise.allSettled(receipts.receipts.map(item => api.requirementByNumber(item.number)))
+  const own = user.value ? await api.requirements('?mine=true') : []
+  myRequirements.value = [...new Map([...own, ...local.flatMap(item => item.status === 'fulfilled' ? [item.value] : [])].map(item => [item.id, item])).values()]
+}
 async function loadAdmin() { if (isManager.value) adminRequirements.value = await api.requirements(adminStatus.value ? `?status=${adminStatus.value}` : '') }
 async function loadDashboard() { if (isManager.value) dashboard.value = await api.dashboard() }
 async function loadBatches() { batches.value = await api.batches(); if (isManager.value) candidates.value = await api.requirements('?status=candidate&limit=100') }
@@ -661,7 +704,46 @@ function closeMcpConnection() {
   mcpConnectionDialog.value = false
   connectionToken.value = ''
 }
-async function copyText(value: string) { await navigator.clipboard.writeText(value); ElMessage.success('已复制') }
+function selectCopyText(event: FocusEvent) { (event.target as HTMLTextAreaElement).select() }
+function showCopy(value: string, title: string, hint: string) {
+  copyValue.value = value; copyTitle.value = title; copyHint.value = hint; copyDialog.value = true
+}
+async function copyText(value: string) {
+  try { await navigator.clipboard.writeText(value); ElMessage.success('已复制') }
+  catch {
+    if (!copyDialog.value) showCopy(value, '手动复制', '浏览器未允许自动复制，请选中下方内容后手动复制。')
+    else ElMessage.warning('自动复制失败，请选中下方内容后手动复制')
+  }
+}
+function saveManagementLink(item: Requirement) {
+  const link = receipts.managementLink(item)
+  if (!link) { ElMessage.warning('此浏览器没有保存该需求的修改入口'); return }
+  showCopy(link, '保存修改入口', '请复制并私下保存。换设备后打开此链接可恢复修改权限；持有链接的人可以修改对应需求，请勿公开分享。')
+}
+function continueWithAI(item: Requirement) {
+  if (item.visibility !== 'public') { ElMessage.warning('私有需求暂不支持生成公开续办提示词'); return }
+  showCopy(continuationPrompt(item, location.origin), '交给 AI 继续处理', '复制以下内容，粘贴到你的 Trae、Codex 等 AI 工具中，再告诉它这次想做什么。此内容不包含修改权限。')
+}
+function openSupplement(item: Requirement) {
+  if (supplementTarget.value?.id !== item.id && supplementBody.value.trim()) {
+    ElMessage.warning('还有另一条需求的补充草稿，请先完成或清空后再补充其他需求'); return
+  }
+  supplementTarget.value = item; supplementError.value = ''; supplementDialog.value = true
+}
+async function submitSupplement() {
+  const target = supplementTarget.value
+  if (!target || supplementBusy.value) return
+  const body = supplementBody.value.trim()
+  if (body.length < 4) { ElMessage.warning('请填写至少 4 个字符'); return }
+  supplementBusy.value = true; supplementError.value = ''
+  try {
+    await api.addSupplement(target.id, body, isManager.value ? undefined : receipts.tokenFor(target.id))
+    supplementBody.value = ''; supplementDialog.value = false
+    ElMessage.success('补充说明已保存，等待维护者评估')
+    if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
+  } catch (error) { supplementError.value = errorMessage(error) }
+  finally { supplementBusy.value = false }
+}
 
 function onUserCommand(command: string | number | object) {
   if (command === 'logout') logout()
@@ -693,6 +775,7 @@ function applyAIFormUpdates(updates: unknown) {
 }
 
 async function submitRequirement() {
+  if (busy.value) return
   const titleLength = requirementForm.title.trim().length
   const descriptionLength = requirementForm.description.trim().length
   if (titleLength < 4 || titleLength > 160) { ElMessage.error('标题需要 4–160 个字符'); return }
@@ -720,11 +803,30 @@ async function submitRequirement() {
     analysisProgress.percent = 48; analysisProgress.title = '正在保存需求'; analysisProgress.detail = '创建需求记录并加入后台分析队列'
     setAnalysisStage(0, 'done'); setAnalysisStage(1, 'done'); setAnalysisStage(2, 'active')
     const aiAnswers = Object.fromEntries(preflightQuestions.value.map(item => [item.question_id, (preflightAnswers[item.question_id] || '不确定').trim()]))
-    const created = await api.createRequirement({ ...requirementForm, ai_clarification_answers: aiAnswers })
+    const payload = { ...requirementForm, ai_clarification_answers: aiAnswers }
+    let anonymousPayload: typeof payload & { client_edit_token?: string } = payload
+    if (!user.value) {
+      const pendingKey = 'rp_pending_submission'
+      let pending: { payload: typeof anonymousPayload } | null = null
+      try { pending = JSON.parse(localStorage.getItem(pendingKey) || 'null') } catch { /* Start a fresh receipt. */ }
+      const { client_edit_token: _old, ...previous } = pending?.payload || {}
+      anonymousPayload = {
+        ...payload,
+        client_edit_token: JSON.stringify(previous) === JSON.stringify(payload) && pending?.payload.client_edit_token
+          ? pending.payload.client_edit_token : newEditToken(),
+      }
+      try { localStorage.setItem(pendingKey, JSON.stringify({ payload: anonymousPayload })) }
+      catch { ElMessage.warning('浏览器无法保存记录，提交后请保存私有管理链接') }
+    }
+    const created = await api.createRequirement(anonymousPayload)
+    if (created.edit_token) {
+      if (!receipts.save(created, created.edit_token)) ElMessage.warning('需求已提交，请在详情页保存私有管理链接，以便以后修改')
+      try { localStorage.removeItem('rp_pending_submission') } catch { /* Receipt is also kept in memory. */ }
+    }
     submittedRequirement.value = created
     let uploadError: unknown = null
     for (const file of pendingFiles.value) {
-      try { await api.uploadAttachment(created.id, file, created.upload_token) } catch (e) { uploadError = e; break }
+      try { await api.uploadAttachment(created.id, file, created.upload_token || created.edit_token, !!created.edit_token && !created.upload_token) } catch (e) { uploadError = e; break }
     }
     Object.assign(requirementForm, emptyRequirementForm())
     preflightChecked.value = false
@@ -734,21 +836,11 @@ async function submitRequirement() {
     if (fileInput.value) fileInput.value.value = ''
     analysisProgress.percent = 68; analysisProgress.title = '需求已保存，AI 正在后台分析'; analysisProgress.detail = '分析器会提取问题摘要、完整度、重复候选和验收草案'
     setAnalysisStage(2, 'done'); setAnalysisStage(3, 'active')
-    let analyzed: Requirement | null = null
-    for (let attempt = 0; attempt < 30; attempt += 1) {
-      const latest = await api.requirementByNumber(created.public_number!)
-      if (latest.triage) { analyzed = latest; break }
-      analysisProgress.percent = Math.min(94, 68 + attempt)
-      await new Promise(resolve => window.setTimeout(resolve, 1500))
-    }
-    if (analyzed) {
-      submittedRequirement.value = analyzed
-      analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.title = 'AI 分析已完成'; analysisProgress.detail = '结构化结果已保存，可在需求详情中持续查看'
-      analysisProgress.summary = String(analyzed.confirmed_summary || analyzed.triage?.problem_summary || analyzed.triage?.summary || '')
-      setAnalysisStage(3, 'done')
-    } else {
-      analysisProgress.percent = 100; analysisProgress.done = true; analysisProgress.failed = true; analysisProgress.title = '后台分析仍在进行'; analysisProgress.detail = '等待时间较长，但需求已经保存，不会丢失；稍后进入详情页刷新即可查看结果'
-    }
+    analysisProgress.percent = 100
+    analysisProgress.done = true
+    analysisProgress.title = '需求已提交'
+    analysisProgress.detail = '无需等待，AI 会在后台继续分析。以后可在本机提交记录查看进度和补充内容。'
+    setAnalysisStage(3, 'done')
     if (uploadError) ElMessage.warning(`需求已提交，但有附件上传失败：${errorMessage(uploadError)}`)
     else ElMessage.success('需求已提交')
   } catch (e) {
@@ -822,16 +914,34 @@ async function downloadAttachment(requirement: Requirement, attachment: NonNulla
 }
 function saveDraft() {
   const { environment: _env, ...rest } = requirementForm
-  localStorage.setItem('rp_draft', JSON.stringify(rest))
-  ElMessage.success('草稿已保存，下次进入提交页可继续填写')
+  try {
+    localStorage.setItem('rp_draft', JSON.stringify(rest))
+    ElMessage.success('草稿已保存，下次进入提交页可继续填写')
+  } catch { ElMessage.warning('浏览器无法保存草稿，请保留当前页面') }
 }
 
 async function loadDetail(number: number) {
   detailLoading.value = true
+  detailCanEdit.value = false
+  detailCanSupplement.value = false
+  detailSupplements.value = []
+  supplementsError.value = false
+  detailEditReason.value = ''
   try {
     const requirement = await api.requirementByNumber(number)
     detailTarget.value = requirement
+    const token = receipts.tokenFor(requirement.id)
+    if (token || (user.value && (isManager.value || requirement.created_by === user.value.id))) {
+      try {
+        const capability = await api.editCapability(requirement.id, isManager.value ? undefined : token)
+        detailCanEdit.value = capability.can_edit
+        detailCanSupplement.value = capability.can_supplement
+        detailEditReason.value = capability.reason
+      } catch { detailEditReason.value = '本机编辑权限已失效，可继续查看公开进度' }
+    }
     detailHistory.value = await api.requirementHistory(requirement.id)
+    try { detailSupplements.value = await api.supplements(requirement.id) }
+    catch { supplementsError.value = true }
   } catch (e) {
     detailTarget.value = null
     detailHistory.value = []
@@ -862,10 +972,27 @@ async function followDetail() {
     if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
   } catch (e) { ElMessage.error(errorMessage(e)) }
 }
-watch(() => route.fullPath, () => {
+async function importEditReceipt(number: number, token: string) {
+  try {
+    const requirement = await api.requirementByNumber(number)
+    await api.editCapability(requirement.id, token)
+    const saved = receipts.save(requirement, token)
+    if (saved && new URLSearchParams(location.hash.slice(1)).get('edit_token') === token) {
+      history.replaceState(history.state, '', location.pathname + location.search)
+    }
+    ElMessage[saved ? 'success' : 'warning'](saved ? '已添加到本机提交记录。换设备或清除浏览器数据前，请保存修改入口。' : '本浏览器无法保存，请妥善保留原管理链接')
+  } catch { ElMessage.error('管理链接无效，可继续查看需求进度') }
+}
+watch(() => route.fullPath, async () => {
   const number = route.name === 'requirement-detail' ? Number(route.params.number) : null
   detailRouteNumber.value = number
-  if (number) void loadDetail(number)
+  if (number) {
+    const token = new URLSearchParams(location.hash.slice(1)).get('edit_token')
+    if (token) {
+      await importEditReceipt(number, token)
+    }
+    await loadDetail(number)
+  }
   else {
     detailTarget.value = null
     detailHistory.value = []
@@ -888,12 +1015,21 @@ async function submitEdit() {
   if (editForm.title.trim().length < 4 || editForm.description.trim().length < 10) { ElMessage.error('请按要求填写标题和需求描述'); return }
   busy.value = true
   try {
-    const updated = await api.updateRequirement(editTarget.value.id, { ...editForm, title: editForm.title.trim(), description: editForm.description.trim() })
+    const { visibility, log_text, ...publicFields } = editForm
+    const fields = anonymousEdit.value ? publicFields : { ...publicFields, visibility, log_text }
+    const updated = await api.updateRequirement(editTarget.value.id, {
+      ...fields, title: editForm.title.trim(), description: editForm.description.trim(),
+      expected_state_version: editTarget.value.state_version,
+    }, anonymousEdit.value ? receipts.tokenFor(editTarget.value.id) : undefined)
     editDialog.value = false
     ElMessage.success(updated.github_issue_number ? '需求已保存，GitHub Issue 将自动同步' : '需求已保存')
     await refreshManaged()
     if (detailRouteNumber.value) await loadDetail(detailRouteNumber.value)
-  } catch (e) { ElMessage.error(errorMessage(e)) } finally { busy.value = false }
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 409) {
+      ElMessage.warning('需求内容或处理状态已变化，请关闭编辑窗口并刷新后重新修改')
+    } else ElMessage.error(errorMessage(e))
+  } finally { busy.value = false }
 }
 
 function onRowAction(payload: { item: Requirement; command: string }) {
@@ -1105,6 +1241,9 @@ function logout() {
 
 onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
+  if (incomingEditToken && detailRouteNumber.value) {
+    await importEditReceipt(detailRouteNumber.value, incomingEditToken)
+  }
   try { githubOauthEnabled.value = (await api.authStatus()).github_oauth_enabled } catch { githubOauthEnabled.value = false }
   const githubError = params.get('github_error')
   if (githubError) {
@@ -1133,7 +1272,7 @@ onMounted(async () => {
     try {
       const draft = localStorage.getItem('rp_draft')
       if (draft) Object.assign(requirementForm, JSON.parse(draft))
-    } catch { localStorage.removeItem('rp_draft') }
+    } catch { /* Invalid or unavailable drafts must not block feedback. */ }
   }
   if (!user.value) await restoreSession()
   if ((['admin', 'dashboard', 'integrations', 'ai-settings'].includes(tab.value) && !isManager.value) || (tab.value === 'users' && user.value?.role !== 'owner')) tab.value = 'public'

@@ -25,27 +25,47 @@ def sync_history():
         logger.warning('Railway history sync unavailable; keeping local data', exc_info=True)
 
 
-def project_stations(*, cache=None, sessions=None):
+def project_stations(*, cache=None, sessions=None, metadata=None):
     """Update the legacy station search/city projection without replacing IDs or local details."""
     import json
     from railway.history_cache import HistoryCache
     from railway.db.models.models import Station
     from railway.coordinates import read_feed_coordinates, valid_coordinates, sync_coordinate_cache
+    from railway.history_seed import station_metadata
+    metadata = station_metadata() if metadata is None else metadata
+    city_provinces = {}
+    for item in metadata.values():
+        city_provinces.setdefault(item.get('city'), set()).add(item.get('province'))
     cache = cache or HistoryCache()
     if sessions is None:
         from railway.db.session import SessionLocal
         sessions = SessionLocal
     with cache.connect() as source, sessions() as db:
+        # Retain known old stations absent from the feed without inventing any
+        # historical observation dates or train operations.
+        for code, item in metadata.items():
+            if not source.execute('SELECT 1 FROM entity WHERE key=?', ('station:' + code,)).fetchone():
+                cache._upsert(source, 'station:' + code, dict(
+                    telecode=code, names=[{'name': name} for name in item['names']],
+                    pinyin=item.get('pinyin', ''), pinyin_short=item.get('pinyin_short', ''),
+                    city=item.get('city', ''), status='unknown', versions=[], source='legacy-station-metadata'))
         stations = {s.telecode:s for s in db.query(Station).all()}
         for record in source.execute("SELECT body FROM entity WHERE key LIKE 'station:%'"):
             value = json.loads(record[0])
             latest = (value.get('versions') or [{}])[-1].get('data', {})
             names = [n['name'] for n in value['names']]
+            supplement = metadata.get(value['telecode'], {})
             row = stations.get(value['telecode'])
             if row is None:
                 row = Station(telecode=value['telecode'], station_name=names[-1], station_pinyin='', station_py='',city='')
                 db.add(row)
-            aliases = list(dict.fromkeys([*(getattr(row, 'alias_names', None) or []), row.station_name, *names]))
+            aliases = list(dict.fromkeys([*(getattr(row, 'alias_names', None) or []), row.station_name,
+                                          *supplement.get('names', []), *names]))
+            # Preserve names from the older bundled/local station table before
+            # replacing its current name, even if the feed has never seen them.
+            for name in aliases:
+                if name:
+                    source.execute('INSERT OR IGNORE INTO station_name VALUES (?, ?)', (name, value['telecode']))
             row.station_name = names[-1]
             # Older railway seed schemas have no alias column; full history remains
             # queryable in HistoryCache without changing the legacy ORM schema.
@@ -53,8 +73,13 @@ def project_stations(*, cache=None, sessions=None):
                 row.alias_names = [n for n in aliases if n and n != row.station_name]
             row.station_pinyin = latest.get('pinyin') or value.get('pinyin') or row.station_pinyin
             row.station_py = latest.get('pinyin_short') or value.get('pinyin_short') or row.station_py
-            row.city = latest.get('city') or value.get('city') or row.city
-            row.status = 1 if value['status']=='active' else 0
+            row.city = latest.get('city') or value.get('city') or row.city or supplement.get('city', '')
+            provinces = city_provinces.get(row.city, set()) - {None, ''}
+            row.province = row.province or supplement.get('province') or (next(iter(provinces)) if len(provinces) == 1 else None)
+            row.district = row.district or supplement.get('district')
+            row.is_high_speed = row.is_high_speed or supplement.get('is_high_speed', 0)
+            if value['status'] != 'unknown':
+                row.status = 1 if value['status']=='active' else 0
             coordinates = read_feed_coordinates(value)
             if coordinates and (not valid_coordinates(row.latitude, row.longitude) or row.coordinate_source == '12306'):
                 lat, lng, system = coordinates
@@ -63,6 +88,9 @@ def project_stations(*, cache=None, sessions=None):
                 row.latitude, row.longitude = lat, lng
                 row.coordinate_source, row.coordinate_system = '12306', system
                 row.coordinate_status, row.coordinate_retry_after = 'ready', None
+        # Commit captured names before publishing the new current name and
+        # before sync_coordinate_cache opens a second SQLite writer.
+        source.commit()
         db.commit()
         sync_coordinate_cache(cache, db.query(Station).all())
 

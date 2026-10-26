@@ -105,6 +105,11 @@ def get_station_single(db: Session, query: StationSingleQuery) -> Tuple[int, str
         else:  # station_name（精确匹配）
             station_name = format_station_name(query.station_name)
             station = db_query.filter(Station.station_name == station_name).first()
+            if station is None:
+                from railway.history_cache import HistoryCache
+                candidates = HistoryCache().stations(station_name)
+                if len(candidates) == 1:
+                    station = db_query.filter(Station.telecode == candidates[0]['telecode']).first()
 
         if not station:
             return 404, f"未找到符合条件的车站", None
@@ -145,8 +150,13 @@ def get_station_list(db: Session, query: StationListQuery) -> Tuple[int, str, Di
         # 4. 模糊搜索（名称/全拼/简拼，不变）
         if query.keyword:
             keyword = f"%{query.keyword}%"
+            from railway.history_cache import HistoryCache
+            with HistoryCache().connect() as history:
+                alias_codes = [row[0] for row in history.execute(
+                    'SELECT DISTINCT code FROM station_name WHERE name LIKE ?', (keyword,))]
             db_query = db_query.filter(
                 or_(
+                    Station.telecode.in_(alias_codes),
                     Station.station_name.ilike(keyword),
                     Station.station_pinyin.ilike(keyword),
                     Station.station_py.ilike(keyword)
