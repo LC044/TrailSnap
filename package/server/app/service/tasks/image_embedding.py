@@ -41,11 +41,18 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                     if tasks_status.get('image_embedding'):
                          return {'status': 'skipped', 'reason': 'already processed'}
 
-                return await self.process_single_photo(worker, photo, db)
+                return await self.process_single_photo(worker, photo, db, model=task.payload.get('model'))
 
             generated_count = generate_photo_tasks(
                 db, worker, task, task_type=TaskType.IMAGE_EMBEDDING,
                 status_key='image_embedding', priority=DEFAULT_PRIORITIES[TaskType.IMAGE_EMBEDDING],
+                payload_for_photo=lambda photo: {
+                    key: task.payload[key] for key in ('model', 'source') if key in (task.payload or {})
+                },
+                eligible=lambda photo: not (task.payload or {}).get('ai_api_url') or (
+                    config_manager.get_user_config(photo.owner_id, db).ai.ai_api_url.rstrip('/')
+                    == task.payload['ai_api_url'].rstrip('/')
+                ),
             )
 
             return {
@@ -138,7 +145,13 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
 
                 api_url = f"{config_manager.get_user_config(owner_id, db).ai.ai_api_url}/embedding/image"
                 async with aiohttp.ClientSession() as session:
-                    async with session.post(api_url, json={"images": b64_images}) as resp:
+                    expected_models = {t.payload.get('model') for t in valid_tasks if t.payload.get('model')}
+                    if len(expected_models) > 1:
+                        raise ValueError('Conflicting embedding models in one batch')
+                    payload = {"images": b64_images}
+                    if expected_models:
+                        payload['model'] = next(iter(expected_models))
+                    async with session.post(api_url, json=payload) as resp:
                         if resp.status == 200:
                             ai_results = await resp.json() # List[List[float]]
                             
@@ -155,6 +168,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                                         db.add(vector)
                                         vector_map[photo.id] = vector
                                     vector.embedding = embedding
+                                    vector.model_name = self._response_model(resp, payload.get('model'))
                                     
                                     tasks_status = dict(photo.processed_tasks or {})
                                     tasks_status['image_embedding'] = True
@@ -191,7 +205,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
 
         return results
 
-    async def process_single_photo(self, worker, photo: Photo, db: Session) -> Dict[str, Any]:
+    async def process_single_photo(self, worker, photo: Photo, db: Session, model=None) -> Dict[str, Any]:
         try:
             target_path = storage.get_available_photo_path(photo.owner_id, photo.id, photo.file_path)
             if not target_path:
@@ -204,6 +218,8 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                 import base64
                 b64_data = base64.b64encode(file_data).decode('utf-8')
                 json_data = {"images": [b64_data]}
+                if model:
+                    json_data['model'] = model
 
                 api_url = f"{config_manager.get_user_config(photo.owner_id, db).ai.ai_api_url}/embedding/image"
                 async with session.post(api_url, json=json_data) as resp:
@@ -219,6 +235,7 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
                                 vector = ImageVector(photo_id=photo.id)
                                 db.add(vector)
                             vector.embedding = embedding
+                            vector.model_name = self._response_model(resp, model)
 
                             tasks_status = dict(photo.processed_tasks or {})
                             tasks_status['image_embedding'] = True
@@ -243,3 +260,14 @@ class ImageEmbeddingStrategy(BaseTaskStrategy):
 
     def release_resources(self) -> None:
         pass
+
+    @staticmethod
+    def _response_model(response, expected=None):
+        name = getattr(response, 'headers', {}).get('X-Embedding-Model')
+        if not isinstance(name, str) or not name:
+            if expected:
+                raise ValueError('AI 服务未返回实际 embedding 模型，请升级 AI 服务')
+            return 'clip-ViT-B-32'  # Older AI service compatibility.
+        if expected and name != expected:
+            raise ValueError('AI 服务返回的 embedding 模型与任务目标不一致')
+        return name

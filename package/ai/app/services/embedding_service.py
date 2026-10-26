@@ -22,15 +22,21 @@ class ONNXCLIPTextWrapper:
 
         text_model_path = os.path.join(model_dir, "textual.onnx")
         self.text_session = create_inference_session(text_model_path)
+        import json
+        config_path = os.path.join(model_dir, "embedding_config.json")
+        self.max_length = 128
+        if os.path.isfile(config_path):
+            with open(config_path, encoding="utf-8") as stream:
+                self.max_length = int(json.load(stream)["max_length"])
 
     def encode_text(self, texts: List[str]):
         import numpy as np
-        inputs = self.tokenizer(text=texts, return_tensors="np", padding=True, truncation=True, max_length=128)
+        inputs = self.tokenizer(text=texts, return_tensors="np", padding=True, truncation=True, max_length=self.max_length)
         
-        ort_inputs = {
-            self.text_session.get_inputs()[0].name: inputs["input_ids"],
-            self.text_session.get_inputs()[1].name: inputs["attention_mask"]
-        }
+        values = [inputs["input_ids"], inputs["attention_mask"],
+                  inputs.get("token_type_ids", np.zeros_like(inputs["input_ids"]))]
+        ort_inputs = {node.name: values[i].astype(np.int64)
+                      for i, node in enumerate(self.text_session.get_inputs())}
         outputs = self.text_session.run(None, ort_inputs)
         embeddings = outputs[0]
         # Normalize

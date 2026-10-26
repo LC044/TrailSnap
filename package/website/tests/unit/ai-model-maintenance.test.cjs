@@ -6,16 +6,16 @@ const vm = require('node:vm')
 const ts = require('typescript')
 const { ref, computed } = require('vue')
 
-function harness(getAIModels) {
+function harness(getAIModels, overrides = {}) {
   const source = fs.readFileSync(path.resolve(__dirname, '../../src/views/settings/AIModelManagement.vue'), 'utf8')
   const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
   const timers = new Map()
   let cleanup
   const context = { ref, computed, onMounted() {}, onUnmounted(fn) { cleanup = fn },
-    settingsApi: { getAIModels }, ElMessage: {}, ElMessageBox: {},
+    settingsApi: { getAIModels, ...overrides.settingsApi }, ElMessage: overrides.ElMessage || {}, ElMessageBox: overrides.ElMessageBox || {},
     window: { setInterval(fn) { timers.set(1, fn); return 1 }, clearInterval(id) { timers.delete(id) } } }
   vm.createContext(context)
-  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { loadModels, models, maintenance, errorMessage };', {
+  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { loadModels, models, tasks, selectModel, maintenance, errorMessage };', {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context)
   return { ...context.page, timers, cleanup: () => cleanup() }
@@ -33,6 +33,30 @@ test('maintenance keeps model status visible and polls until service resumes', a
   assert.equal(page.maintenance.value, false)
   assert.equal(page.errorMessage.value, '')
   assert.equal(page.timers.size, 0)
+})
+
+test('embedding switch waits for confirmation and reports rebuild task success', async () => {
+  const events = []
+  const snapshot = { tasks: { embedding: { selected: 'old', available: ['old', 'new'] } }, models: [{ id: 'old', status: 'ready' }, { id: 'new', status: 'ready' }] }
+  const page = harness(async () => snapshot, {
+    settingsApi: { async selectAIModel() { events.push('select'); return { rebuildTaskId: 'task' } } },
+    ElMessageBox: { async confirm() { events.push('confirm') } },
+    ElMessage: { success(text) { events.push(text) } },
+  })
+  await page.loadModels()
+  await page.selectModel('embedding', 'new')
+  assert.deepEqual(events, ['confirm', 'select', '模型已切换，已添加图片特征重新处理任务'])
+})
+
+test('cancelled embedding confirmation never switches or queues', async () => {
+  let switches = 0
+  const page = harness(async () => ({ models: [{ id: 'new', status: 'ready' }] }), {
+    settingsApi: { async selectAIModel() { switches++ } },
+    ElMessageBox: { async confirm() { throw 'cancel' } },
+  })
+  await page.loadModels()
+  await page.selectModel('embedding', 'new')
+  assert.equal(switches, 0)
 })
 
 test('application maintenance 503 preserves automatic recovery and unmount clears timers', async () => {

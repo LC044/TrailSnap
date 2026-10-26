@@ -928,7 +928,8 @@ class TaskWorker:
                         local_model = (task_type != TaskType.VISUAL_DESCRIPTION
                                        or config.ai.analysis_connection_id == 'builtin')
                         owner_reasons[task.owner_id] = (
-                            get_model_wait_reason(config.ai.ai_api_url, task.type) if local_model else None
+                            get_model_wait_reason((task.payload or {}).get('ai_api_url') or config.ai.ai_api_url,
+                                                  task.type) if local_model else None
                         )
                         if owner_reasons[task.owner_id]:
                             # Defer this owner's backlog as one operation, so a
@@ -1050,7 +1051,8 @@ class TaskWorker:
     def _is_model_preparing_error(error: Any) -> bool:
         text = str(error or '').lower()
         return (
-            'model_status=downloading' in text
+            '等待 ai 模型：' in text
+            or 'model_status=downloading' in text
             or 'model_status=pending' in text
             or ('model' in text and ('not ready' in text or '尚未就绪' in text))
         )
@@ -1236,7 +1238,8 @@ class TaskWorker:
                 processing_task_list = crud_task.get_tasks_by_status(db, TaskStatus.PROCESSING)
                 for task in processing_task_list:
                     # 检查payload中是否包含force=True
-                    if task.payload and task.payload.get('force') is True:
+                    if (task.type != TaskType.IMAGE_EMBEDDING
+                            and task.payload and task.payload.get('force') is True):
                         # 如果是强制任务，重置时移除force标记，避免无限循环重复处理
                         new_payload = task.payload.copy()
                         new_payload['force'] = False

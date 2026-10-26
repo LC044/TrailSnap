@@ -10,6 +10,7 @@ import re
 import logging
 import requests
 import time
+import threading
 from datetime import timedelta
 from urllib.parse import quote, urlparse
 from uuid import UUID
@@ -19,7 +20,7 @@ from app.db.models.user import User
 from app.core.config_manager import config_manager
 from app.core import security
 from app.db.models.photo import Photo
-from app.db.models.task import TaskType
+from app.db.models.task import Task, TaskType, TaskStatus, DEFAULT_PRIORITIES
 from app.service.storage import delete_thumbnails, update_storage_root_cache, _get_storage_root
 from app.service.indexer import rebuild_index as service_rebuild_index, status as index_status
 from app.db.models.index_log import IndexLog
@@ -35,6 +36,7 @@ def _download_country_data(code: str, data_dir: str):
     download_country_data(code, data_dir)
 
 router = APIRouter()
+_embedding_switch_lock = threading.Lock()
 
 
 class MapKeyTestRequest(BaseModel):
@@ -290,6 +292,11 @@ def delete_ai_model(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    snapshot = _ai_model_request('GET', '/ai/models', current_user, db)
+    if snapshot.code != 0:
+        return snapshot
+    if (snapshot.data or {}).get('tasks', {}).get('embedding', {}).get('selected') == model_id:
+        return BaseResponse.fail(code=409, msg='请先切换图片特征模型，再删除原模型')
     return _ai_model_request('DELETE', f"/ai/models/{quote(model_id, safe='')}", current_user, db)
 
 
@@ -305,6 +312,8 @@ def select_ai_model(
     current_user: User = Depends(get_current_user),
 ):
     """切换当前 AI 微服务使用的模型；桌面与 Docker 共用。"""
+    if req.task == 'embedding':
+        return _select_embedding_model(req, db, current_user)
     return _ai_model_request(
         'POST',
         '/ai/config/model',
@@ -312,6 +321,64 @@ def select_ai_model(
         db,
         json_body=req.model_dump(),
     )
+
+
+def _select_embedding_model(req, db, current_user):
+    # One shared AI service selection affects all libraries using that endpoint.
+    with _embedding_switch_lock:
+        snapshot = _ai_model_request('GET', '/ai/models', current_user, db)
+        if snapshot.code != 0:
+            return snapshot
+        data = snapshot.data
+        previous = data.get('tasks', {}).get('embedding', {}).get('selected')
+        if previous == req.model:
+            return BaseResponse.success(data={'changed': False, 'status': 'active'})
+        model = next((m for m in data.get('models', []) if m['id'] == req.model), None)
+        if not model or 'embedding' not in model.get('tasks', []) or model.get('available') is False:
+            return BaseResponse.fail(code=400, msg='请选择可用的图片特征模型')
+        if model.get('status') != 'ready':
+            return BaseResponse.fail(code=409, msg='请先下载目标模型，下载完成后再切换')
+        active = db.query(Task.id).filter(
+            Task.type == TaskType.IMAGE_EMBEDDING,
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING, TaskStatus.FAILED]),
+        ).first()
+        if active:
+            return BaseResponse.fail(code=409, msg='图片特征提取任务尚未结束，请完成或清理任务后再切换模型')
+        task = Task(type=TaskType.IMAGE_EMBEDDING, status=TaskStatus.PENDING,
+                    priority=DEFAULT_PRIORITIES[TaskType.IMAGE_EMBEDDING],
+                    payload={'force': True, 'source': 'embedding_model_switch',
+                             'model': model['runtimeName'],
+                             'ai_api_url': config_manager.get_user_config(current_user.id, db).ai.ai_api_url.rstrip('/')})
+        attempted = False
+        try:
+            db.add(task)
+            db.flush()  # Detect queue insertion errors before changing the AI service.
+            attempted = True
+            selected = _ai_model_request('POST', '/ai/config/model', current_user, db,
+                                         json_body=req.model_dump())
+            if selected.code != 0 or (selected.data or {}).get('status') != 'active':
+                raise RuntimeError(selected.msg if selected.code else '目标模型尚未激活，请下载完成后重试')
+            db.commit()
+            task_id = str(task.id)
+        except Exception as error:
+            db.rollback()
+            rollback_failed = False
+            if attempted and previous:
+                restored = _ai_model_request('POST', '/ai/config/model', current_user, db,
+                                            json_body={'task': 'embedding', 'model': previous})
+                rollback_failed = restored.code != 0 or (restored.data or {}).get('status') != 'active'
+            logging.exception('Embedding model switch or rebuild queue insertion failed')
+            suffix = '；原模型恢复失败，请检查 AI 服务后重新选择' if rollback_failed else ''
+            return BaseResponse.fail(msg=f'模型切换失败：{error}{suffix}')
+        try:
+            manager = TaskManager.get_instance()
+            manager.start_worker_if_needed()
+            manager.publish_task_update(task, event='task.created')
+        except Exception:
+            # The durable row is committed; the existing watchdog can pick it up.
+            logging.exception('Embedding rebuild queued; worker wakeup will be retried')
+        return BaseResponse.success(data={'changed': True, 'status': 'active',
+                                          'rebuildTaskId': task_id})
 
 @router.get('/directories')
 def get_directories(
