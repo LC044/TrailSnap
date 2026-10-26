@@ -26,6 +26,7 @@ from app.service.update_checker import (
     fetch_remote_update_info,
 )
 from app.core.paths import DATA_DIR
+from app.utils.github_download import DOWNLOAD_ROUNDS, github_url_candidates, retry_backoff
 
 logger = logging.getLogger("app.service.app_update")
 
@@ -44,9 +45,8 @@ APK_FALLBACK_URL = (
 _VERSION_PATTERN = re.compile(r"^\d+(\.\d+)*$")
 APP_UPDATE_CACHE_DIR = os.path.join(DATA_DIR, "app_updates")
 
-# 弱网下载重试：总尝试 3 次，指数退避（2s / 4s / 8s）。
-APK_DOWNLOAD_ATTEMPTS = 3
-APK_RETRY_BASE_DELAY = 2.0
+# 每轮依次尝试两个镜像和 GitHub 原站；轮次间短暂指数退避。
+APK_DOWNLOAD_ATTEMPTS = DOWNLOAD_ROUNDS
 
 
 def normalize_version(value: Optional[str]) -> str:
@@ -74,22 +74,33 @@ async def fetch_release_apk(
     if not version:
         return None
     url = GITHUB_RELEASE_API.format(repo=repo, version=version)
-    try:
-        headers = {"Accept": "application/vnd.github+json"}
-        token = os.getenv("GITHUB_TOKEN", "")
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=timeout) as response:
-                if response.status != 200:
-                    logger.info(f"Release lookup HTTP {response.status}: {url}")
-                    return None
-                payload = await response.json()
-    except Exception as e:
-        logger.info(f"Release lookup failed for v{version}: {e}")
-        return None
-
-    if not isinstance(payload, dict):
+    payload = None
+    sources = github_url_candidates(url)
+    for round_number in range(DOWNLOAD_ROUNDS):
+        await retry_backoff(round_number)
+        for source in sources:
+            headers = {"Accept": "application/vnd.github+json"}
+            token = os.getenv("GITHUB_TOKEN", "")
+            # Never forward a GitHub credential to a third-party mirror.
+            if token and source == url:
+                headers["Authorization"] = f"Bearer {token}"
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(source, headers=headers, timeout=timeout) as response:
+                        if response.status != 200:
+                            logger.info("Release lookup HTTP %s from %s", response.status, source)
+                            continue
+                        candidate = await response.json()
+                if isinstance(candidate, dict) and isinstance(candidate.get("assets"), list):
+                    payload = candidate
+                    break
+                logger.info("Release lookup returned invalid payload from %s", source)
+            except Exception as error:
+                logger.info("Release lookup failed from %s: %s", source, error)
+        if payload is not None:
+            break
+    if payload is None:
+        logger.info("Release lookup failed for v%s after trying mirrors", version)
         return None
     asset = _pick_apk_asset(payload.get("assets") or [])
     if not asset or not asset.get("browser_download_url"):
@@ -160,17 +171,17 @@ async def cache_release_apk(version: str, asset: Dict[str, Any]) -> Optional[str
     os.makedirs(APP_UPDATE_CACHE_DIR, exist_ok=True)
     target = os.path.join(APP_UPDATE_CACHE_DIR, f"TrailSnap-{version}.apk")
     timeout = aiohttp.ClientTimeout(total=None, connect=15, sock_read=90)
-    for attempt in range(1, APK_DOWNLOAD_ATTEMPTS + 1):
-        temporary = f"{target}.{uuid.uuid4().hex}.part"
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, headers={"Accept": "application/octet-stream"}) as response:
-                    if response.status != 200:
-                        logger.warning(
-                            "APK predownload HTTP %s for v%s (attempt %d/%d)",
-                            response.status, version, attempt, APK_DOWNLOAD_ATTEMPTS,
-                        )
-                    else:
+    sources = github_url_candidates(url)
+    for round_number in range(APK_DOWNLOAD_ATTEMPTS):
+        await retry_backoff(round_number)
+        for source in sources:
+            temporary = f"{target}.{uuid.uuid4().hex}.part"
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(source, headers={"Accept": "application/octet-stream"}) as response:
+                        if response.status != 200:
+                            logger.warning("APK predownload HTTP %s from %s", response.status, source)
+                            continue
                         downloaded = 0
                         with open(temporary, "wb") as output:
                             async for chunk in response.content.iter_chunked(256 * 1024):
@@ -180,25 +191,17 @@ async def cache_release_apk(version: str, asset: Dict[str, Any]) -> Optional[str
                             os.replace(temporary, target)
                             logger.info("Cached Android App v%s (%s bytes)", version, downloaded)
                             return target
-                        logger.warning(
-                            "APK predownload size mismatch for v%s (attempt %d/%d)",
-                            version, attempt, APK_DOWNLOAD_ATTEMPTS,
-                        )
-        except asyncio.CancelledError:
-            raise
-        except Exception as error:
-            logger.warning(
-                "APK predownload failed for v%s (attempt %d/%d): %s",
-                version, attempt, APK_DOWNLOAD_ATTEMPTS, error,
-            )
-        finally:
-            try:
-                if os.path.exists(temporary):
-                    os.remove(temporary)
-            except OSError:
-                pass
-        if attempt < APK_DOWNLOAD_ATTEMPTS:
-            await asyncio.sleep(APK_RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+                        logger.warning("APK predownload size mismatch from %s", source)
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.warning("APK predownload failed from %s: %s", source, error)
+            finally:
+                try:
+                    if os.path.exists(temporary):
+                        os.remove(temporary)
+                except OSError:
+                    pass
     return None
 
 

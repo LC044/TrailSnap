@@ -124,6 +124,34 @@ def test_fetch_release_apk_returns_none_on_http_error():
         assert _run(app_update.fetch_release_apk("1.0.0")) is None
 
 
+def test_fetch_release_apk_uses_mirror_without_forwarding_github_token(monkeypatch):
+    from app.service import app_update
+
+    observed = []
+    payload = {
+        "assets": [{
+            "name": "TrailSnap-1.0.0.apk",
+            "browser_download_url": "https://github.com/LC044/TrailSnap/releases/download/v1.0.0/app.apk",
+            "size": 3,
+        }]
+    }
+    session = _fake_session(payload)
+    original_get = session.get
+
+    def capture_get(url, headers=None, **kwargs):
+        observed.append((url, headers))
+        return original_get(url, headers=headers, **kwargs)
+
+    session.get = capture_get
+    monkeypatch.setenv("GITHUB_TOKEN", "secret-token")
+    with patch.object(app_update.aiohttp, "ClientSession", MagicMock(return_value=session)):
+        asset = _run(app_update.fetch_release_apk("1.0.0"))
+
+    assert asset and asset["size"] == 3
+    assert observed[0][0].startswith("https://gh-proxy.com/https://api.github.com/")
+    assert "Authorization" not in observed[0][1]
+
+
 def test_fetch_release_apk_rejects_invalid_version():
     from app.service.app_update import fetch_release_apk
     assert _run(fetch_release_apk("not-a-version")) is None
@@ -256,6 +284,36 @@ def test_cache_release_apk_retries_and_succeeds(tmp_path):
     assert (tmp_path / "TrailSnap-1.2.0.apk").read_bytes() == b"abcde"
     assert not [p for p in tmp_path.iterdir() if p.name.endswith(".part")]
     sleep_mock.assert_awaited_once()
+
+
+def test_cache_release_apk_switches_to_mirror_after_origin_failure(tmp_path):
+    from app.service import app_update
+
+    requested = []
+
+    class TrackingSession(_Session):
+        def get(self, url, *_a, **_k):
+            requested.append(url)
+            return _RespCtx(self.queue.pop(0))
+
+    responses = [
+        _FlakyResponse(503, None),
+        _FlakyResponse(200, _FlakyContent([b"apk"], fail_first=False)),
+    ]
+    with (
+        patch.object(app_update, "APP_UPDATE_CACHE_DIR", str(tmp_path)),
+        patch.object(app_update.aiohttp, "ClientSession", lambda *a, **k: TrackingSession(responses)),
+        patch.object(app_update.asyncio, "sleep", new_callable=AsyncMock),
+    ):
+        path = _run(app_update.cache_release_apk("1.2.0", {
+            "download_url": "https://github.com/LC044/TrailSnap/releases/download/v1.2.0/app.apk",
+            "size": 3,
+        }))
+
+    assert path == str(tmp_path / "TrailSnap-1.2.0.apk")
+    assert (tmp_path / "TrailSnap-1.2.0.apk").read_bytes() == b"apk"
+    assert requested[0].startswith("https://gh-proxy.com/https://github.com/")
+    assert requested[1].startswith("https://gh-proxy.at9.net/https://github.com/")
 
 
 def test_cache_release_apk_retries_on_http_error(tmp_path):

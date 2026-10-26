@@ -239,3 +239,30 @@ def test_history_sync_registers_daily_with_startup_check_and_can_be_disabled(mon
     monkeypatch.setenv('RAILWAY_COORDINATE_SYNC_ENABLED','0')
     register_history_sync(scheduler)
     scheduler.register_interval_job.assert_not_called()
+
+
+def test_fetch_feed_retries_and_switches_github_mirrors(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from railway import history_cache
+
+    cache = HistoryCache(tmp_path / 'history.sqlite')
+    manifest, files = feed(1, {'station:AAA': station('AAA', '新站', 39.9, 116.4)})
+    responses = [OSError('mirror unavailable'), json.dumps(manifest).encode(), next(iter(files.values()))]
+    requested = []
+
+    @contextmanager
+    def fake_urlopen(url, timeout):
+        requested.append(url)
+        value = responses.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        yield type('Response', (), {'read': lambda _self, _size: value})()
+
+    monkeypatch.setattr(history_cache, 'urlopen', fake_urlopen)
+    result = history_cache.fetch_feed(cache=cache)
+
+    assert result['sequence'] == 1
+    assert cache.status()['stations'] == 1
+    assert requested[0].startswith('https://gh-proxy.com/https://raw.githubusercontent.com/')
+    assert requested[1].startswith('https://gh-proxy.at9.net/https://raw.githubusercontent.com/')
+    assert requested[2].startswith('https://gh-proxy.com/https://raw.githubusercontent.com/')
