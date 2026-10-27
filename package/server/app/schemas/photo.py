@@ -39,15 +39,15 @@ class Photo(PhotoBase):
     # Reading Photo.file_path resolves portable paths and can touch offline disks.
     upload_time: Optional[datetime] = Field(default=None, exclude=True)
 
+    class Config:
+        from_attributes = True
+
 
 class PhotoTimeline(Photo):
     """Compact photo row with the selected timeline date instead of two dates."""
 
     time: Optional[datetime] = None
     has_photo_time: bool = False
-
-    class Config:
-        from_attributes = True
 
 class RecyclePhoto(Photo):
     # Optional on purpose. The column is nullable, so a single row with
