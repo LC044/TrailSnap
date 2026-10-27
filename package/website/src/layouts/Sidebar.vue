@@ -41,22 +41,24 @@
             @focus="handleFocus"
             type="text"
             placeholder="搜索或描述画面..."
-            class="ts-input w-full pl-9 pr-8"
+            class="ts-input w-full !pl-9 !pr-20"
           />
           <button
             v-if="searchText"
             @click="clearSearch"
-            class="absolute bg-transparent right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            class="absolute bg-transparent right-12 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            aria-label="清空搜索"
           >
             <X class="w-3 h-3" />
           </button>
           <button
-            v-else
-            @click="searchInputRef?.focus()"
-            class="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-primary-500/50 hover:text-primary-500 transition-colors"
-            title="AI 语义搜索"
+            type="button"
+            @click="showDropdown = false; router.push('/search/image')"
+            class="ts-icon-button ts-button-ghost absolute right-0 top-1/2 -translate-y-1/2 text-primary-600 dark:text-primary-400"
+            aria-label="以图搜图"
+            title="以图搜图"
           >
-            <Sparkles class="w-3.5 h-3.5" />
+            <Images class="w-4 h-4" />
           </button>
 
           <!-- 搜索建议下拉框 -->
@@ -127,9 +129,6 @@
         </button>
       </div>
 
-      <RouterLink to="/search/image" class="ts-button ts-button-ghost mb-2 w-full" aria-label="以图搜图" title="以图搜图">
-        <Images class="h-5 w-5 shrink-0" /><span v-if="!isCollapsed">以图搜图</span>
-      </RouterLink>
       <button
         type="button"
         :class="[
