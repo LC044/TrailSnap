@@ -1006,7 +1006,7 @@ const mobileDockVisible = computed(() =>
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 
 const captureDate = computed(() => {
-    const ts = props.image?.timestamp
+    const ts = props.image?.photoTime !== undefined ? (props.image.photoTime ? new Date(props.image.photoTime).getTime() : NaN) : props.image?.timestamp
     if (!ts) return null
     const date = new Date(ts)
     return Number.isNaN(date.getTime()) ? null : date

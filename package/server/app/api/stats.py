@@ -35,6 +35,8 @@ def get_timeline_stats(
     province: Optional[str] = None,
     folder: Optional[str] = None,
     folder_direct: bool = False,
+    time_field: str = Query("photo_time", pattern="^(photo_time|upload_time)$"),
+    include_covers: bool = False,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -58,6 +60,7 @@ def get_timeline_stats(
         folder=folder,
         folder_direct=folder_direct,
         folder_roots=folder_roots,
+        time_field=time_field, include_covers=include_covers,
         user_id=current_user.id
     )
 

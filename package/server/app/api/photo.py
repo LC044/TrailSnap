@@ -293,6 +293,9 @@ def read_all_photos(
         ids: Optional[List[UUID]] = Query(None),
         order_by: Optional[str] = None,
         order_dir: Optional[str] = None,
+        time_field: str = Query("photo_time", pattern="^(photo_time|upload_time)$"),
+        browse_year: Optional[int] = Query(None, ge=0, le=9998),
+        browse_month: Optional[int] = Query(None, ge=1, le=12),
         folder: Optional[str] = None,
         folder_direct: bool = False,
         dedup_similar: bool = False,
@@ -317,7 +320,8 @@ def read_all_photos(
         face_id=face_id, face_ids=face_ids, tag_id=tag_id, tag_ids=tag_ids,
         lat_min=lat_min, lat_max=lat_max, lng_min=lng_min, lng_max=lng_max,
         radius=radius, center_lat=center_lat, center_lng=center_lng,
-        order_by=order_by, order_dir=order_dir, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
+        order_by=order_by, order_dir=order_dir, time_field=time_field,
+        browse_year=browse_year, browse_month=browse_month, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
         ids=ids, user_id=current_user.id
     )
     logging.info(f"read_all_photos time: {time.time() - st_time}")

@@ -34,7 +34,7 @@
     <div v-else-if="metadata" class="metadata-content p-4 space-y-6">
         <div class="metadata-summary-card md:hidden space-y-3 rounded-2xl bg-gray-50 dark:bg-gray-800 p-4">
             <div class="flex items-start gap-2">
-                <p class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ formatTime(image?.timestamp) }}</p>
+                <p class="flex-1 text-base font-semibold text-gray-900 dark:text-white">{{ formatTime(captureTimestamp) }}</p>
                 <button v-if="allowEdit" @click="openBasicEditDialog" class="text-primary-500 p-1" aria-label="编辑基本信息"><Pencil class="w-4 h-4" /></button>
             </div>
             <p class="text-sm text-gray-600 dark:text-gray-300 break-all">名称：{{ image?.filename || '无文件名' }}</p>
@@ -86,7 +86,7 @@
                 </button>
             </div>
             <p class="text-sm text-gray-900 dark:text-gray-200 font-mono">
-                {{ formatTime(image?.timestamp) }}
+                {{ formatTime(captureTimestamp) }}
             </p>
         </div>
         <!-- Camera Info -->
@@ -569,9 +569,13 @@ const parsedExif = computed(() => {
         .filter((item): item is { label: string, value: string } => item !== null && item.label !== '' && item.value !== '')
 })
 
+const captureTimestamp = computed(() => props.image?.photoTime !== undefined
+  ? (props.image.photoTime ? new Date(props.image.photoTime).getTime() : NaN)
+  : props.image?.timestamp)
+
 // Methods
 const formatTime = (ts?: number) => {
-    if (!ts) return '--'
+    if (ts === undefined || !Number.isFinite(ts)) return '--'
     return format(new Date(ts), 'yyyy-MM-dd HH:mm:ss')
 }
 
@@ -598,8 +602,8 @@ const formatSize = (bytes?: number) => {
 const openBasicEditDialog = () => {
     if (!props.image) return
     basicEditForm.filename = props.image.filename || ''
-    if (props.image.timestamp) {
-        basicEditForm.photoTime = format(new Date(props.image.timestamp), 'yyyy-MM-dd HH:mm:ss')
+    if (captureTimestamp.value !== undefined && Number.isFinite(captureTimestamp.value)) {
+        basicEditForm.photoTime = format(new Date(captureTimestamp.value), 'yyyy-MM-dd HH:mm:ss')
     } else {
         basicEditForm.photoTime = ''
     }
@@ -626,6 +630,8 @@ const saveBasicEdit = async () => {
             if (updated.photo_time) {
                 // 后端返回的可能是 "YYYY-MM-DDTHH:mm:ss"，需要正确解析为本地时间戳
                 imageRef.timestamp = new Date(updated.photo_time).getTime()
+                imageRef.photoTime = updated.photo_time
+                imageRef.hasPhotoTime = true
             }
         }
         

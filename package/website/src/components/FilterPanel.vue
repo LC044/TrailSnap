@@ -87,7 +87,7 @@
     <!-- Year Group -->
     <div class="space-y-2" v-if="availableFilters?.years?.length">
       <button @click="toggleSection('year')" class="flex items-center justify-between w-full group dark:bg-gray-800">
-          <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">年份</h3>
+          <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">拍摄年份</h3>
           <ChevronDown class="w-4 h-4 text-gray-400 transition-transform duration-200" :class="{ 'rotate-180': !collapsed.year }" />
       </button>
       <div v-show="!collapsed.year" class="flex flex-wrap gap-2 animate-in slide-in-from-top-1 duration-200 max-h-60 overflow-y-auto custom-scrollbar">

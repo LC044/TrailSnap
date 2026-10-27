@@ -645,6 +645,9 @@ def get_all_photos(
     ids: Optional[List[UUID]] = None,
     order_by: Optional[str] = None,
     order_dir: Optional[str] = None,
+    time_field: str = "photo_time",
+    browse_year: Optional[int] = None,
+    browse_month: Optional[int] = None,
     folder: Optional[str] = None,
     folder_direct: bool = False,
     folder_roots: Optional[List[str]] = None,
@@ -696,6 +699,16 @@ def get_all_photos(
         user_id=user_id
     )
 
+    # Browse buckets are independent of the existing capture-time filters.
+    timeline_col = Photo.upload_time if time_field == "upload_time" else Photo.photo_time
+    if browse_year == 0:
+        query = query.filter(timeline_col.is_(None))
+    elif browse_year is not None:
+        start = datetime(browse_year, browse_month or 1, 1)
+        end = (datetime(browse_year + 1, 1, 1) if not browse_month or browse_month == 12
+               else datetime(browse_year, browse_month + 1, 1))
+        query = query.filter(timeline_col >= start, timeline_col < end)
+
     # Optimization for user albums / eager load albums
     query = query.options(joinedload(Photo.albums))
     # 排序：name/size/photo_time 在此统一处理（nulls 一律置末）；
@@ -704,6 +717,8 @@ def get_all_photos(
         col, default_dir = Photo.filename, 'asc'
     elif order_by == 'size':
         col, default_dir = Photo.size, 'desc'
+    elif order_by == 'upload_time':
+        col, default_dir = Photo.upload_time, 'desc'
     elif order_by in (None, 'photo_time'):
         col, default_dir = Photo.photo_time, 'desc'
     else:
@@ -711,7 +726,8 @@ def get_all_photos(
     if col is not None:
         direction = order_dir if order_dir in ('asc', 'desc') else default_dir
         query = query.order_by(
-            col.asc().nulls_last() if direction == 'asc' else col.desc().nulls_last()
+            col.asc().nulls_last() if direction == 'asc' else col.desc().nulls_last(),
+            Photo.id.desc(),
         )
     return query.offset(skip).limit(limit).all()
 
@@ -758,6 +774,8 @@ def get_timeline_stats(
     folder: Optional[str] = None,
     folder_direct: bool = False,
     folder_roots: Optional[List[str]] = None,
+    time_field: str = "photo_time",
+    include_covers: bool = False,
     user_id: UUID = None
 ):
     query = _build_photo_filter_query(
@@ -805,6 +823,8 @@ def get_timeline_stats(
         user_id=user_id
     )
 
+    timeline_col = Photo.upload_time if time_field == "upload_time" else Photo.photo_time
+
     # 总数
     total = query.count()
 
@@ -812,30 +832,33 @@ def get_timeline_stats(
         return {
             'total_photos': 0,
             'time_range': None,
+            'months': [],
             'timeline': []
         }
 
     # 按年-月-日分组
     # 使用 extract 保证跨数据库兼容性
     timeline_query = query.with_entities(
-        func.extract('year', Photo.photo_time).label('year'),
-        func.extract('month', Photo.photo_time).label('month'),
-        func.extract('day', Photo.photo_time).label('day'),
+        func.extract('year', timeline_col).label('year'),
+        func.extract('month', timeline_col).label('month'),
+        func.extract('day', timeline_col).label('day'),
         func.count(Photo.id).label('count')
     ).group_by(
-        func.extract('year', Photo.photo_time),
-        func.extract('month', Photo.photo_time),
-        func.extract('day', Photo.photo_time)
+        func.extract('year', timeline_col),
+        func.extract('month', timeline_col),
+        func.extract('day', timeline_col)
     ).order_by(
-        func.extract('year', Photo.photo_time).desc(),
-        func.extract('month', Photo.photo_time).desc(),
-        func.extract('day', Photo.photo_time).desc()
+        func.extract('year', timeline_col).desc(),
+        func.extract('month', timeline_col).desc(),
+        func.extract('day', timeline_col).desc()
     ).all()
 
     timeline = []
     min_time = None
     max_time = None
     for y, m, d, c in timeline_query:
+        if y is None and include_covers:
+            timeline.append({'year': 0, 'month': 0, 'day': 0, 'count': c})
         if y is not None and m is not None and d is not None:
             timeline.append({
                 'year': int(y),
@@ -849,7 +872,33 @@ def get_timeline_stats(
             if max_time is None or dt > max_time:
                 max_time = dt
 
+    months = []
+    if include_covers:
+        # One window query for all month representatives; no per-month SQL or paths.
+        ranked = query.order_by(None).with_entities(
+            Photo.id.label('id'), Photo.owner_id.label('owner_id'),
+            Photo.photo_time.label('photo_time'), Photo.upload_time.label('upload_time'),
+            Photo.width.label('width'), Photo.height.label('height'),
+            func.row_number().over(
+                partition_by=[func.extract('year', timeline_col), func.extract('month', timeline_col)],
+                order_by=[timeline_col.desc().nulls_last(), Photo.id.desc()],
+            ).label('rank'),
+        ).subquery()
+        representatives = db.query(ranked).filter(ranked.c.rank == 1).all()
+        counts = {}
+        for item in timeline:
+            key = (item['year'], item['month'])
+            counts[key] = counts.get(key, 0) + item['count']
+        for row in representatives:
+            stamp = row.upload_time if time_field == 'upload_time' else row.photo_time
+            year, month = (stamp.year, stamp.month) if stamp else (0, 0)
+            months.append({'year': year, 'month': month, 'count': counts[(year, month)],
+                           'cover': {key: getattr(row, key) for key in
+                                     ('id', 'owner_id', 'photo_time', 'upload_time', 'width', 'height')}})
+        months.sort(key=lambda item: (item['year'], item['month']), reverse=True)
+    timeline.sort(key=lambda item: (item['year'], item['month'], item['day']), reverse=True)
     return {
+        'months': months,
         'total_photos': total,
         'time_range': {
             'start': min_time.isoformat() if min_time else None,

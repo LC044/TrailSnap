@@ -41,10 +41,25 @@ class TimelineItem(BaseModel):
     day: int
     count: int
 
+class TimelineCover(BaseModel):
+    id: UUID
+    owner_id: Optional[UUID] = None
+    photo_time: Optional[datetime] = None
+    upload_time: Optional[datetime] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+class TimelineMonth(BaseModel):
+    year: int
+    month: int
+    count: int
+    cover: TimelineCover
+
 class TimelineStats(BaseModel):
     total_photos: int
-    time_range: Optional[Dict[str, datetime]] = None
+    time_range: Optional[Dict[str, Optional[datetime]]] = None
     timeline: List[TimelineItem] = []
+    months: List[TimelineMonth] = Field(default_factory=list)
 
 class SmartAlbumRepresentative(BaseModel):
     entity_id: str

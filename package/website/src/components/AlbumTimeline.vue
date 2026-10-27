@@ -27,7 +27,7 @@
           v-if="tick.showYear"
           class="absolute right-7 whitespace-nowrap font-mono text-xs font-bold transition-colors"
           :class="tick.item.isActiveYear ? 'text-primary-500' : 'text-gray-400 dark:text-gray-500'"
-        >{{ tick.item.year }}</span>
+        >{{ tick.item.year || '未知' }}</span>
         <span
           v-else
           class="absolute right-7 whitespace-nowrap font-mono text-[9px] text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-500"
@@ -108,6 +108,7 @@ let rafId: number | null = null
 let lastMobileIndex = -1
 
 const activeParts = computed(() => {
+  if (props.activeDate === '时间未知') return { year: 0, month: 0, day: 0 }
   const match = props.activeDate?.match(/(\d{4})(?:年|-)(\d{1,2})(?:月|-)?(\d{1,2})?/)
   return {
     year: match ? Number(match[1]) : null,
@@ -129,7 +130,7 @@ const displayItems = computed<DisplayItem[]>(() => {
       .map((item, index, list) => ({
         key: `${item.year}-${item.month}-${item.day}`,
         ...item,
-        dateStr: `${item.year}-${String(item.month).padStart(2, '0')}-${String(item.day).padStart(2, '0')}`,
+        dateStr: item.year ? `${item.year}-${String(item.month).padStart(2, '0')}-${String(item.day).padStart(2, '0')}` : '时间未知',
         isYearStart: index === 0 || list[index - 1].year !== item.year,
         isActive: activeParts.value.year === item.year && activeParts.value.month === item.month
           && (activeParts.value.day == null || activeParts.value.day === item.day),
@@ -147,7 +148,7 @@ const displayItems = computed<DisplayItem[]>(() => {
     .map((item, index, list) => ({
       key: `${item.year}-${item.month}`,
       ...item,
-      dateStr: `${item.year}年${String(item.month).padStart(2, '0')}月`,
+      dateStr: item.year ? `${item.year}年${String(item.month).padStart(2, '0')}月` : '时间未知',
       isYearStart: index === 0 || list[index - 1].year !== item.year,
       isActive: activeParts.value.year === item.year && activeParts.value.month === item.month,
       isActiveYear: activeParts.value.year === item.year,

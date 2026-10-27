@@ -5,7 +5,7 @@ import { defineStore } from 'pinia'
 import { ref, reactive, watch, computed } from 'vue'
 import { albumService } from '@/api/album'
 import searchService, { type TextSearchRequest } from '@/api/search'
-import type { Photo, TimelineStats, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
+import type { Photo, TimelineStats, TimelineCover, AlbumImage, TimelineItem, FilterOptions, FilterState } from '@/types/album'
 import { toServerUrl } from '@/config/server'
 import { thumbnailUrl } from '@/utils/mediaUrl'
 import { normalizeMediaTypeFilters } from '@/utils/mediaTypeFilters'
@@ -70,7 +70,7 @@ const formatDuration = (duration: number | null) => {
   return `${hours > 0 ? `${hours}:` : ''}${minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
 }
 
-export const mapPhotoToImage = (photo: Photo): AlbumImage => {
+export const mapPhotoToImage = (photo: TimelineCover): AlbumImage => {
     // 新 API 在 url 和 thumbnail_url 字段中返回相对地址
     const url = toServerUrl(`/api/medias/${photo.id}/file`);
     const ready = Boolean(photo.width && photo.height);
@@ -109,6 +109,8 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
       srcset: '', // 暂不分发多尺寸，后端按需动态处理
       timestamp,
       hasPhotoTime,
+      photoTime: photo.photo_time,
+      uploadTime: photo.upload_time,
       albumIds: photo.album_ids || [],
       width: photo.width || 300,
       height: photo.height || 300,
@@ -124,6 +126,24 @@ export const mapPhotoToImage = (photo: Photo): AlbumImage => {
   }
 
 export const photoStoreSetup = () => {
+  const timeField = ref<'photo_time' | 'upload_time'>('photo_time')
+  const browseEnabled = ref(false)
+  const browseGranularity = ref<'year' | 'month' | 'day'>('day')
+  const mapTimelinePhoto = (photo: TimelineCover): AlbumImage => {
+      const image = mapPhotoToImage(photo)
+      if (browseEnabled.value) {
+          const raw = timeField.value === 'upload_time' ? photo.upload_time : photo.photo_time
+          image.timestamp = raw ? new Date(raw).getTime() : NaN
+      }
+      return image
+  }
+  const compareImages = (a: AlbumImage, b: AlbumImage) =>
+      (Number.isFinite(b.timestamp) ? b.timestamp : -Infinity) - (Number.isFinite(a.timestamp) ? a.timestamp : -Infinity)
+      || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+  const monthFilters = (year: number, month: number, filters = cleanFilters()) => browseEnabled.value
+      ? { ...filters, browse_year: year, ...(year ? { browse_month: month } : {}) }
+      : { ...filters, start_time: `${year}-${String(month).padStart(2, '0')}-01 00:00:00`,
+          end_time: `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()} 23:59:59.999999` }
   // --- 状态 ---
   const images = ref<AlbumImage[]>([])
   const loading = ref(false)
@@ -244,6 +264,11 @@ export const photoStoreSetup = () => {
       if (provinceFilter.value) {
           filters.province = provinceFilter.value;
       }
+      if (browseEnabled.value) {
+          filters.time_field = timeField.value
+          filters.order_by = timeField.value
+          filters.include_covers = true
+      }
       return filters;
   }
 
@@ -255,7 +280,7 @@ export const photoStoreSetup = () => {
     try {
       const filters = cleanFilters();
       const stats = await albumService.getTimelineStats(albumId, filters)
-      if (requestId !== timelineRequestId) return false;
+      if (requestId !== timelineRequestId || JSON.stringify(filters) !== JSON.stringify(cleanFilters())) return false;
       timelineStats.value = stats
       return true;
     } catch (e) {
@@ -275,10 +300,12 @@ export const photoStoreSetup = () => {
   // 追踪活跃请求以支持取消
   let currentRequestId = 0;
   const activeRequests = new Map<number, AbortController>();
+  const activeRequestDates = new Map<number, string>();
+  const pendingMonthLoads = new Map<string, Promise<void>>();
 
   const getOffsetRangeForMonth = (year: number, month: number): { start: number, count: number } | null => {
       if (!timelineStats.value?.timeline) return null;
-      console.log('timelineStats', timelineStats.value)
+
       // Sort timeline to match gallery order
       const sortedTimeline = [...timelineStats.value.timeline].sort((a, b) => {
           if (a.year !== b.year) return b.year - a.year;
@@ -316,7 +343,7 @@ export const photoStoreSetup = () => {
       }
   }
 
-  const loadPhotosByMonth = async (year: number, month: number, albumId?: string, refresh = false) => {
+  const loadPhotosByMonthImpl = async (year: number, month: number, albumId?: string, refresh = false) => {
     const dateKey = `${year}-${String(month).padStart(2, '0')}`;
     // Check if already loaded or loading
     if (loadedDates.has(dateKey) && !refresh) return;
@@ -326,8 +353,9 @@ export const photoStoreSetup = () => {
     // console.log('offsetInfo', offsetInfo)
     if (!offsetInfo || offsetInfo.count === 0) return;
 
+    const filterKey = JSON.stringify(cleanFilters());
     const processPhotos = (photos: Photo[]) => {
-        const newImages = photos.map(mapPhotoToImage);
+        const newImages = photos.map(mapTimelinePhoto);
 
         // Populate PhotoOffsetMap
         newImages.forEach((img, index) => {
@@ -341,7 +369,7 @@ export const photoStoreSetup = () => {
         if (toAdd.length > 0) {
             // Publish the merged, sorted list once. Watchers must not observe
             // each intermediate array index while sorting a large photo cache.
-            images.value = [...images.value, ...toAdd].sort((a, b) => b.timestamp - a.timestamp);
+            images.value = [...images.value, ...toAdd].sort(compareImages);
         }
         // Prune cache around the loaded area
         pruneCache(offsetInfo.start + offsetInfo.count / 2);
@@ -354,26 +382,13 @@ export const photoStoreSetup = () => {
     const requestId = ++currentRequestId;
     const controller = new AbortController();
     activeRequests.set(requestId, controller);
+    activeRequestDates.set(requestId, dateKey);
 
     try {
         let photosData: Photo[] = [];
         
-        // Calculate start and end time for the month
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0, 23, 59, 59, 999); // Last day of month
-        
-        // Format to YYYY-MM-DD HH:mm:ss
-        const formatDate = (d: Date) => {
-             const pad = (n: number) => n.toString().padStart(2, '0');
-             return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-        };
+        const filters = monthFilters(year, month);
 
-        const filters = {
-            start_time: formatDate(startDate),
-            end_time: formatDate(endDate),
-            ...cleanFilters()
-        };
-        
         const count = offsetInfo.count;
         // console.log('count', count, year, month, cleanFilters())
         if (albumId) {
@@ -382,13 +397,13 @@ export const photoStoreSetup = () => {
              photosData = await albumService.getAllPhotos(0, count, filters);
         }
 
-        if (!activeRequests.has(requestId)) {
-            loadedDates.delete(dateKey);
+        if (!activeRequests.has(requestId) || filterKey !== JSON.stringify(cleanFilters())) {
             return;
         }
         processPhotos(photosData);
 
     } catch (err) {
+        if (!activeRequests.has(requestId) || filterKey !== JSON.stringify(cleanFilters())) return;
         loadedDates.delete(dateKey);
         if (err instanceof Error && err.name === 'AbortError') {
            console.log('请求已取消');
@@ -398,15 +413,30 @@ export const photoStoreSetup = () => {
         }
     } finally {
         activeRequests.delete(requestId);
+        activeRequestDates.delete(requestId);
         if (activeRequests.size === 0) {
             loading.value = false;
         }
     }
   }
 
+  const loadPhotosByMonth = (year: number, month: number, albumId?: string, refresh = false): Promise<void> => {
+      const key = JSON.stringify([year, month, albumId, cleanFilters()])
+      const pending = pendingMonthLoads.get(key)
+      if (pending) return pending
+      const request = loadPhotosByMonthImpl(year, month, albumId, refresh).finally(() => {
+          if (pendingMonthLoads.get(key) === request) pendingMonthLoads.delete(key)
+      })
+      pendingMonthLoads.set(key, request)
+      return request
+  }
+
   const cancelAllPendingLoads = () => {
       activeRequests.forEach(controller => controller.abort());
+      activeRequestDates.forEach(dateKey => loadedDates.delete(dateKey));
+      activeRequestDates.clear();
       activeRequests.clear();
+      pendingMonthLoads.clear();
       activeOffsets.clear();
       loading.value = false;
   }
@@ -474,18 +504,13 @@ export const photoStoreSetup = () => {
       );
       const refreshed = await Promise.all(monthsToReload.map(async (dateKey) => {
           const [year, month] = dateKey.split('-').map(Number);
-          const pad = (value: number) => String(value).padStart(2, '0');
-          const endDay = new Date(year, month, 0).getDate();
-          const monthFilters = { ...filters,
-              start_time: `${year}-${pad(month)}-01 00:00:00`,
-              end_time: `${year}-${pad(month)}-${pad(endDay)} 23:59:59`,
-          };
+          const monthQuery = monthFilters(year, month, filters);
           const count = stats.timeline.filter(day => day.year === year && day.month === month)
               .reduce((sum, day) => sum + day.count, 0);
           const photos = count === 0 ? [] : context.type === 'album' && context.id
-              ? await albumService.getPhotos(context.id, 0, count, monthFilters)
-              : await albumService.getAllPhotos(0, count, monthFilters);
-          return { dateKey, images: photos.map(mapPhotoToImage) };
+              ? await albumService.getPhotos(context.id, 0, count, monthQuery)
+              : await albumService.getAllPhotos(0, count, monthQuery);
+          return { dateKey, images: photos.map(mapTimelinePhoto) };
       }));
       if (getContextKey() !== contextKey || JSON.stringify(cleanFilters()) !== filterKey) return;
 
@@ -495,16 +520,16 @@ export const photoStoreSetup = () => {
       const replacements = new Map(refreshed.map(month => [month.dateKey, month.images]));
       const retained = images.value.filter(image => {
           const date = new Date(image.timestamp);
-          return !replacements.has(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`);
+          return !replacements.has(Number.isFinite(image.timestamp) ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` : '0-00');
       });
       const merged = [...retained, ...refreshed.flatMap(month => month.images)];
-      images.value = [...new Map(merged.map(image => [image.id, image])).values()].sort((a, b) => b.timestamp - a.timestamp);
+      images.value = [...new Map(merged.map(image => [image.id, image])).values()].sort(compareImages);
       timelineStats.value = stats;
       photoOffsetMap.clear();
       const cachedMonths = new Map<string, AlbumImage[]>();
       for (const image of images.value) {
           const date = new Date(image.timestamp);
-          const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          const dateKey = Number.isFinite(image.timestamp) ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` : '0-00';
           const monthImages = cachedMonths.get(dateKey) || [];
           monthImages.push(image);
           cachedMonths.set(dateKey, monthImages);
@@ -515,6 +540,48 @@ export const photoStoreSetup = () => {
           if (offset) monthImages.forEach((image, index) => photoOffsetMap.set(offset.start + index, image));
       }
       acknowledgeContextRevision(contextKey, targetRevision);
+  }
+
+  let sortRequestId = 0
+  const changeTimeField = async (field: 'photo_time' | 'upload_time', anchor?: AlbumImage | null, isCurrent = () => true, loadDetail = true) => {
+      const request = ++sortRequestId
+      const filters = { ...cleanFilters(), time_field: field, order_by: field, include_covers: true }
+      const filterKey = JSON.stringify(cleanFilters())
+      const stats = await albumService.getTimelineStats(undefined, filters)
+      const raw = field === 'upload_time' ? anchor?.uploadTime : anchor?.photoTime
+      const stamp = raw ? new Date(raw).getTime() : NaN
+      const date = new Date(stamp)
+      let year = Number.isFinite(stamp) ? date.getFullYear() : 0
+      let month = Number.isFinite(stamp) ? date.getMonth() + 1 : 0
+      if (!anchor || !stats.timeline.some(item => item.year === year && item.month === month)) {
+          const nearest = [...stats.timeline].sort((a, b) => {
+              const distance = (v: typeof a) => Math.abs(new Date(v.year || 9999, (v.month || 1) - 1, v.day || 1).getTime() - (Number.isFinite(stamp) ? stamp : Date.now()))
+              return distance(a) - distance(b)
+          })[0]
+          year = nearest?.year ?? 0; month = nearest?.month ?? 0
+      }
+      const count = stats.timeline.filter(item => item.year === year && item.month === month).reduce((n, item) => n + item.count, 0)
+      let photos: TimelineCover[]
+      if (loadDetail) photos = count ? await albumService.getAllPhotos(0, count, { ...filters, browse_year: year, ...(year ? { browse_month: month } : {}) }) : []
+      else {
+          photos = anchor ? await albumService.getAllPhotos(0, 1, { ...filters, ids: [anchor.id] }) : []
+          if (!photos.length) {
+              const cover = stats.months?.find(item => item.year === year && item.month === month)?.cover ?? stats.months?.[0]?.cover
+              photos = cover ? [cover] : []
+          }
+      }
+      if (request !== sortRequestId || !isCurrent() || filterKey !== JSON.stringify(cleanFilters())) return false
+      ++timelineRequestId
+      cancelAllPendingLoads()
+      loadedDates.clear()
+      timeField.value = field
+      images.value = photos.map(mapTimelinePhoto).sort(compareImages)
+      timelineStats.value = stats
+      photoOffsetMap.clear()
+      const offset = getOffsetRangeForMonth(year, month)
+      if (loadDetail && offset) images.value.forEach((photo, i) => photoOffsetMap.set(offset.start + i, photo))
+      if (loadDetail) loadedDates.add(`${year}-${String(month).padStart(2, '0')}`)
+      return true
   }
 
   const markDataStale = (taskType?: string, albumId?: string) => {
@@ -546,7 +613,7 @@ export const photoStoreSetup = () => {
           const removedByDay = new Map<string, number>();
           removedPhotos.forEach((photo) => {
               const date = new Date(photo.timestamp);
-              const key = `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+              const key = Number.isFinite(photo.timestamp) ? `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}` : '0-0-0';
               removedByDay.set(key, (removedByDay.get(key) || 0) + 1);
           });
 
@@ -578,8 +645,10 @@ export const photoStoreSetup = () => {
           action: 'delete'
       });
       removeLocalPhotos(photoIds);
+      if (browseEnabled.value) await fetchTimelineStats();
   }
   const resetAll = () => {
+      ++sortRequestId;
       ++timelineRequestId;
       cancelAllPendingLoads();
       timelineStats.value = { total_photos: 0, time_range: {start: null, end: null}, timeline: [] };
@@ -603,6 +672,7 @@ export const photoStoreSetup = () => {
   }
 
   return {
+    timeField, browseEnabled, browseGranularity, changeTimeField, mapTimelinePhoto,
     images,
     loading,
     hasMore,

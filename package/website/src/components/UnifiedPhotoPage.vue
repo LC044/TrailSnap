@@ -2,7 +2,7 @@
   <div class="ts-browse-page unified-photo-page relative mx-auto w-full max-w-screen-2xl py-0 px-[var(--ts-page-gutter)] min-h-screen" :class="{ 'photo-diary-mode': layoutMode === 'diary' }" :style="{ '--photo-page-header-height': `${headerHeight}px` }">
     <span ref="pageTopRef" class="pointer-events-none absolute left-0 top-0 h-px w-px" aria-hidden="true"></span>
     <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
-    <div v-if="layoutMode !== 'folder'" ref="headerRef" class="pointer-events-none sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[var(--ts-safe-area-top)]">
+    <div v-if="layoutMode !== 'folder'" ref="headerRef" data-photo-header class="pointer-events-none sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[var(--ts-safe-area-top)]">
       <div class="ts-browse-header pointer-events-auto flex items-center justify-between gap-1 sm:gap-3 mx-auto py-1.5 sm:py-2">
         <!-- Back & Title -->
         <slot name="header-left" :scrolled="headerScrolled">
@@ -39,85 +39,64 @@
              </button>
 
              <!-- Secondary Menu Dropdown -->
-            <AdaptiveMenu v-model="showViewOptions" title="照片视图" ref="viewOptionsRef">
-                <div class="space-y-3 p-1">
-                  <button v-if="allowUpload" type="button" class="sm:hidden flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800" @click="showViewOptions = false; $emit('upload')">
-                    <UploadCloud class="h-4 w-4" />
-                    <span>上传照片</span>
-                  </button>
-                  <!-- View Size -->
-                  <div v-if="layoutMode !== 'diary'" class="space-y-2">
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 px-1">图片大小</p>
-                    <div class="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                      <button v-for="size in ['sm', 'md', 'lg']" :key="size"
-                        @click="viewSize = size as any"
-                        class="ts-icon-button ts-button-ghost flex-1 min-h-11 text-center dark:bg-gray-800"
-                        :class="{ 'bg-white dark:bg-gray-700 shadow-sm text-primary-500': viewSize === size, 'text-gray-700 dark:text-gray-300': viewSize !== size }"
-                      >
-                        <Grid3x3 v-if="size === 'sm'" class="w-4 h-4 mx-auto" />
-                        <Grid2x2 v-if="size === 'md'" class="w-4 h-4 mx-auto" />
-                        <Maximize v-if="size === 'lg'" class="w-4 h-4 mx-auto" />
-                      </button>
-                    </div>
+            <AdaptiveMenu v-model="showViewOptions" title="照片视图">
+              <div class="photo-view-settings">
+                <section v-if="enableTimeBrowse" class="photo-view-section" aria-labelledby="photo-sort-heading">
+                  <h2 id="photo-sort-heading" class="photo-view-label">排序依据</h2>
+                  <div class="photo-choice-grid grid-cols-2" role="group" aria-label="排序依据" data-testid="photo-time-sort">
+                    <button type="button" class="photo-choice" :aria-pressed="store.timeField === 'photo_time'" @click="changeSort('photo_time')">照片时间</button>
+                    <button type="button" class="photo-choice" :aria-pressed="store.timeField === 'upload_time'" @click="changeSort('upload_time')">添加时间</button>
                   </div>
+                </section>
 
-                  <!-- Layout Mode -->
-                  <div class="space-y-2">
-                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 px-1">布局模式</p>
-                    <div class="grid grid-cols-1 gap-1">
-                       <button
-                        @click="showViewOptions = false; layoutMode = 'waterfall'"
-                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
-                        :class="layoutMode === 'waterfall' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-                      >
-                        <LayoutDashboard class="w-4 h-4" />
-                        <span>自适应</span>
-                      </button>
-                      <button
-                        @click="showViewOptions = false; layoutMode = 'grid'"
-                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
-                        :class="layoutMode === 'grid' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-                      >
-                        <LayoutGrid class="w-4 h-4" />
-                        <span>正方形</span>
-                      </button>
-                      <button
-                        @click="showViewOptions = false; layoutMode = 'moments'"
-                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
-                        :class="layoutMode === 'moments' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-                      >
-                        <LayoutList class="w-4 h-4" />
-                        <span>朋友圈</span>
-                      </button>
-                      <button
-                        v-if="allowDiaryView"
-                        @click="showViewOptions = false; layoutMode = 'diary'"
-                        :aria-pressed="layoutMode === 'diary'"
-                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
-                        :class="layoutMode === 'diary' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-                      >
-                        <BookOpen class="w-4 h-4" />
-                        <span>日记本</span>
-                      </button>
-                      <button
-                        v-if="allowFolderView"
-                        @click="showViewOptions = false; layoutMode = 'folder'"
-                        class="ts-button ts-button-ghost flex min-h-11 items-center gap-2"
-                        :class="layoutMode === 'folder' ? 'bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'"
-                      >
-                        <FolderTree class="w-4 h-4" />
-                        <span>文件夹</span>
-                      </button>
-                    </div>
+                <section v-if="layoutMode !== 'diary'" class="photo-view-section" aria-labelledby="photo-size-heading">
+                  <h2 id="photo-size-heading" class="photo-view-label">图片大小</h2>
+                  <div class="photo-choice-grid grid-cols-3" role="group" aria-label="图片大小">
+                    <button v-for="size in photoSizeOptions" :key="size.value" type="button"
+                      class="photo-choice photo-size-choice" :aria-label="`图片大小：${size.label}`" :aria-pressed="viewSize === size.value" @click="viewSize = size.value">
+                      <component :is="size.icon" class="h-4 w-4" aria-hidden="true" />
+                      <span>{{ size.label }}</span>
+                    </button>
                   </div>
+                </section>
+
+                <section class="photo-view-section" aria-labelledby="photo-layout-heading">
+                  <h2 id="photo-layout-heading" class="photo-view-label">布局模式</h2>
+                  <div class="photo-layout-options" role="group" aria-label="布局模式">
+                    <button v-for="option in photoLayoutOptions" :key="option.value" type="button"
+                      class="photo-option-row" :aria-pressed="layoutMode === option.value"
+                      @click="layoutMode = option.value; showViewOptions = false">
+                      <component :is="option.icon" class="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                      <span class="flex-1">{{ option.label }}</span>
+                      <Check v-if="layoutMode === option.value" class="h-4 w-4 shrink-0" aria-hidden="true" />
+                    </button>
+                  </div>
+                </section>
+
+                <div v-if="enableTimeBrowse || (allowUpload && mobileMenu)" class="photo-view-actions">
+                  <button v-if="enableTimeBrowse" type="button" class="photo-option-row" @click="showViewOptions = false; backToLatest()">
+                    <RefreshCw class="h-[18px] w-[18px]" aria-hidden="true" /><span>回到最新</span>
+                  </button>
+                  <button v-if="allowUpload && mobileMenu" type="button" class="photo-option-row" @click="showViewOptions = false; $emit('upload')">
+                    <UploadCloud class="h-[18px] w-[18px]" aria-hidden="true" /><span>上传照片</span>
+                  </button>
                 </div>
+              </div>
             </AdaptiveMenu>
            </div>
+
+          <button v-if="enableTimeBrowse" type="button" class="ts-glass-button text-sm font-medium"
+            data-testid="photo-view-cycle" :aria-busy="timeChanging"
+            :title="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
+            :aria-label="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
+            :class="{ 'animate-pulse motion-reduce:animate-none': timeChanging }"
+            @click="changeGranularity(nextGranularity)">{{ timeViewLabel }}</button>
+          <span v-if="enableTimeBrowse && timeChanging" role="status" class="sr-only">正在定位照片</span>
 
           <!-- Batch Select -->
           <button 
             @click="enterBatchMode"
-            v-if="!mobileMenu" class="ts-glass-button"
+            v-if="!enableTimeBrowse && !mobileMenu" class="ts-glass-button"
             title="批量选择"
           >
             <CheckSquare class="w-5 h-5" />
@@ -128,7 +107,7 @@
 
           <!-- Mobile Batch Select -->
           <button
-            v-if="mobileMenu"
+            v-if="!enableTimeBrowse && mobileMenu"
             @click="enterBatchMode"
             class="ts-glass-button"
             title="批量选择"
@@ -187,8 +166,18 @@
       <slot v-if="layoutMode !== 'diary'" name="intro"></slot>
 
       <!-- 文件夹视图（作为一种布局模式，与自适应/正方形/朋友圈并列） -->
+      <p v-if="timeError" role="alert" class="ts-surface mb-3 p-3 text-sm">{{ timeError }} <button class="text-primary-500" @click="retryTimeChange">重试</button></p>
+      <p v-if="enableTimeBrowse && granularity !== 'day' && error" role="alert" class="ts-surface p-3">{{ error }} <button class="text-primary-500" @click="$emit('retry')">重试</button></p>
+      <PhotoTimeOverview v-if="enableTimeBrowse && granularity !== 'day'" ref="timeOverviewRef"
+        :months="timelineStats?.months || []" :granularity="granularity as 'year' | 'month'" :anchor="timeAnchor"
+        :map-photo="store.mapTimelinePhoto" @select="drillIntoTime" />
+      <div v-if="enableTimeBrowse && granularity !== 'day' && !error && !timelineStats?.total_photos" class="py-12 text-center ts-muted" role="status">
+        {{ loading ? '正在加载照片…' : '没有符合条件的照片' }}
+        <button v-if="!loading" class="ts-button ts-button-ghost mt-3" @click="$emit('clear-filters')">清除筛选</button>
+      </div>
       <FolderBrowser
         v-if="layoutMode === 'folder'"
+        v-show="granularity === 'day'"
         v-model:view-size="viewSize"
         :allow-diary-view="allowDiaryView"
         @switch-layout="(m) => layoutMode = m as any"
@@ -196,6 +185,7 @@
 
       <PhotoDiary
         v-else-if="layoutMode === 'diary'"
+        v-show="granularity === 'day'"
         ref="diaryRef"
         :store="store"
         :photos="photos"
@@ -214,6 +204,8 @@
       <PhotoGallery
         v-else
         ref="galleryRef"
+        v-show="granularity === 'day'"
+        :active="granularity === 'day'"
         :store="props.store"
         :photos="photos"
         :timeline-stats="timelineStats"
@@ -332,15 +324,19 @@
 </template>
 
 <script setup lang="ts">
+import { useRoute, useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import PhotoTimeOverview from '@/components/PhotoTimeOverview.vue'
+import { timelineParts, nearestTimelinePhoto, type TimeField, type TimeGranularity } from '@/utils/photoTimeline'
 import BackButton from '@/components/ui/BackButton.vue'
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch, useSlots } from 'vue'
 import { Capacitor, SystemBars, SystemBarsStyle, SystemBarType } from '@capacitor/core'
 import { injectTheme } from '@/composables/useTheme'
-import { useMediaQuery, onClickOutside, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
+import { useMediaQuery, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
 import {
   Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
-  UploadCloud, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen } from 'lucide-vue-next'
+  UploadCloud, Check, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen } from 'lucide-vue-next'
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
@@ -368,6 +364,7 @@ function updateStatusBar(overlay: boolean) {
 }
 onUnmounted(() => updateStatusBar(false))
 
+import { albumService } from '@/api/album'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useMomentCaptions } from '@/composables/useMomentCaptions'
@@ -375,6 +372,7 @@ import { useMomentLocations } from '@/composables/useMomentLocations'
 import { useMomentHighlights } from '@/composables/useMomentHighlights'
 
 const props = withDefaults(defineProps<{
+  enableTimeBrowse?: boolean
   title?: string
   subtitle?: string
   loading?: boolean
@@ -417,6 +415,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   (e: 'back'): void
+  (e: 'clear-filters'): void
   (e: 'upload'): void
   (e: 'delete', ids: string[]): void // General delete/remove event
   (e: 'load-more'): void
@@ -443,12 +442,23 @@ useResizeObserver(headerRef, () => {
 }, { box: 'border-box' })
 const viewSize = ref<'sm' | 'md' | 'lg'>('md')
 const layoutMode = ref<'masonry' | 'grid' | 'list' | 'waterfall' | 'moments' | 'folder' | 'diary'>('grid')
+const photoSizeOptions = [
+  { value: 'sm', label: '小图', icon: Grid3x3 },
+  { value: 'md', label: '中图', icon: Grid2x2 },
+  { value: 'lg', label: '大图', icon: Maximize },
+] as const
+const photoLayoutOptions = computed(() => [
+  { value: 'waterfall', label: '自适应', icon: LayoutDashboard },
+  { value: 'grid', label: '正方形', icon: LayoutGrid },
+  { value: 'moments', label: '朋友圈', icon: LayoutList },
+  ...(props.allowDiaryView ? [{ value: 'diary' as const, label: '日记本', icon: BookOpen }] : []),
+  ...(props.allowFolderView ? [{ value: 'folder' as const, label: '文件夹', icon: FolderTree }] : []),
+] as const)
 watch([isDarkMode, layoutMode], () => updateStatusBar(Boolean(slots.hero) && !['folder', 'diary'].includes(layoutMode.value)), { immediate: true })
 const activeDate = ref('')
 const { currentPhoto: lightboxImage, currentIndex: lightboxIndex, hasPrev, hasNext, open: openLightbox, close: closeLightbox, prev: handlePrev, next: handleNext } = usePhotoViewer(() => props.photos)
 const mobileMenu = useMediaQuery('(max-width: 639px)')
 const showViewOptions = ref(false)
-const viewOptionsRef = ref<InstanceType<typeof AdaptiveMenu> | null>(null)
 const galleryRef = ref<InstanceType<typeof PhotoGallery> | null>(null)
 const diaryRef = ref<InstanceType<typeof PhotoDiary> | null>(null)
 const refreshingData = ref(false)
@@ -457,6 +467,13 @@ const scrolling = ref(false)
 let scrollingTimer: ReturnType<typeof setTimeout> | undefined
 const handleBrowsingScroll = () => {
   scrolling.value = true
+  if (props.enableTimeBrowse && granularity.value !== 'day') {
+    const photo = timeOverviewRef.value?.capture()
+    if (photo) {
+      const parts = timelineParts(photo.timestamp)
+      activeDate.value = parts.year ? `${parts.year}年${String(parts.month).padStart(2, '0')}月` : '时间未知'
+    }
+  }
   clearTimeout(scrollingTimer)
   scrollingTimer = setTimeout(() => { scrolling.value = false }, 600)
 }
@@ -507,12 +524,17 @@ const captureVisiblePhoto = (excludedIds: string[]) => {
     ? { top: 0, bottom: window.innerHeight }
     : (container as HTMLElement).getBoundingClientRect()
   const gallery = (galleryRef.value?.$el as HTMLElement | undefined) ?? document
-  const element = Array.from(gallery.querySelectorAll<HTMLElement>('[data-photo-id]')).find((item) => {
+  const minTop = containerRect.top + headerHeight.value + 8
+  const candidates = Array.from(gallery.querySelectorAll<HTMLElement>('[data-photo-id]')).filter(item => {
     const id = item.dataset.photoId
     if (!id || excluded.has(id)) return false
     const rect = item.getBoundingClientRect()
-    return rect.bottom > containerRect.top && rect.top < containerRect.bottom
+    return rect.bottom > minTop && rect.top < containerRect.bottom
   })
+  const element = candidates.find(item => {
+    const rect = item.getBoundingClientRect()
+    return rect.top >= minTop && rect.bottom <= containerRect.bottom
+  }) ?? candidates[0]
   return element
     ? { id: element.dataset.photoId!, top: element.getBoundingClientRect().top }
     : null
@@ -569,10 +591,171 @@ const albumStore = useAlbumStore()
 const photoStore = usePhotoStore()
 const store = computed(() => props.store || photoStore)
 
+const route = useRoute()
+const router = useRouter()
+const userStore = useUserStore()
+const granularity = computed<TimeGranularity>(() => props.enableTimeBrowse ? store.value.browseGranularity : 'day')
+const timeViewLabels = { day: '日', month: '月', year: '年' } as const
+const nextGranularity = computed<TimeGranularity>(() => ({ day: 'month', month: 'year', year: 'day' } as const)[granularity.value])
+const timeViewLabel = computed(() => timeViewLabels[granularity.value])
+const nextTimeViewLabel = computed(() => timeViewLabels[nextGranularity.value])
+const timeOverviewRef = ref<InstanceType<typeof PhotoTimeOverview> | null>(null)
+const timeAnchor = ref<AlbumImage | null>(null)
+const timeChanging = ref(false)
+const timeError = ref('')
+let timeIntent = 0
+let retryTimeChange = () => {}
+let originalLayout: typeof layoutMode.value | null = null
+let anchorTop: number | undefined
+let lastViewedId = ''
+watch(lightboxImage, (image, previous) => {
+  if (!image && previous) lastViewedId = previous.id
+})
+const preferenceKey = () => `photo-timeline-preferences:${userStore.userInfo?.id ?? 'anonymous'}`
+const saveTimePreference = () => {
+  try { localStorage.setItem(preferenceKey(), JSON.stringify({ view: granularity.value, time: store.value.timeField })) } catch {}
+}
+const captureTimeAnchor = () => {
+  if (granularity.value !== 'day') return timeOverviewRef.value?.capture() ?? timeAnchor.value
+  const visible = captureVisiblePhoto([])
+  anchorTop = visible ? Math.max(visible.top, headerHeight.value + 12) : undefined
+  const viewed = props.photos.find(photo => photo.id === lastViewedId)
+  return viewed ?? props.photos.find(photo => photo.id === visible?.id) ?? timeAnchor.value
+}
+const locateTimeAnchor = async (focus = true) => {
+  await nextTick()
+  const photo = timeAnchor.value
+  if (!photo) return
+  const parts = timelineParts(photo.timestamp)
+  activeDate.value = parts.year ? `${parts.year}年${String(parts.month).padStart(2, '0')}月` : '时间未知'
+  if (granularity.value === 'day') {
+    if (layoutMode.value === 'diary') diaryRef.value?.scrollToDate(parts.dayKey)
+    else await galleryRef.value?.scrollToPhoto(photo, anchorTop)
+  } else timeOverviewRef.value?.locate(parts.year, parts.month, focus)
+}
+const publishTimeState = () => {
+  saveTimePreference()
+  void router.push({ query: { ...route.query, view: granularity.value, time: store.value.timeField, anchor: timeAnchor.value?.id || undefined } })
+}
+const animateTimeContent = () => {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const element = granularity.value === 'day' ? galleryRef.value?.$el : timeOverviewRef.value?.$el
+  element?.animate?.([{ opacity: .65, transform: 'translateY(4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 220, easing: 'ease-out' })
+}
+const changeGranularity = async (target: TimeGranularity, clicked?: AlbumImage, navigation = false) => {
+  if (!props.enableTimeBrowse) return
+  const intent = ++timeIntent
+  if (clicked) { anchorTop = undefined; lastViewedId = '' }
+  const photo = clicked ?? captureTimeAnchor() ?? (props.timelineStats?.months?.[0]?.cover ? store.value.mapTimelinePhoto(props.timelineStats.months[0].cover) : null)
+  timeChanging.value = true; timeError.value = ''
+  retryTimeChange = () => { void changeGranularity(target, photo ?? undefined, navigation) }
+  try {
+    if (target === 'day' && photo) {
+      const parts = timelineParts(photo.timestamp)
+      await store.value.loadPhotosByMonth(parts.year, parts.month)
+      if (store.value.error) throw new Error(store.value.error)
+    }
+    if (intent !== timeIntent) return
+    const resolved = props.photos.find(item => item.id === photo?.id)
+    timeAnchor.value = target === 'day' && photo && !resolved
+      ? nearestTimelinePhoto(props.photos, photo)
+      : photo
+    if (target !== 'day' && ['folder', 'diary'].includes(layoutMode.value)) {
+      originalLayout = layoutMode.value; layoutMode.value = 'grid'
+    } else if (target === 'day' && originalLayout) {
+      layoutMode.value = originalLayout; originalLayout = null
+    }
+    store.value.browseGranularity = target
+    await locateTimeAnchor()
+    if (intent !== timeIntent) return
+    animateTimeContent()
+    if (!navigation) publishTimeState()
+  } catch {
+    if (intent === timeIntent) timeError.value = '暂时无法加载目标照片，请重试。'
+  } finally { if (intent === timeIntent) timeChanging.value = false }
+}
+const drillIntoTime = (photo: AlbumImage) => changeGranularity(granularity.value === 'year' ? 'month' : 'day', photo)
+const changeSort = async (field: TimeField, navigation = false, provided?: AlbumImage | null) => {
+  const intent = ++timeIntent
+  const photo = provided ?? captureTimeAnchor()
+  timeChanging.value = true; timeError.value = ''
+  retryTimeChange = () => { void changeSort(field, navigation, photo) }
+  try {
+    const changed = await store.value.changeTimeField(field, photo, () => intent === timeIntent, granularity.value === 'day')
+    if (!changed || intent !== timeIntent) return
+    timeAnchor.value = store.value.images.find((item: AlbumImage) => item.id === photo?.id) ?? store.value.images[0] ?? null
+    await locateTimeAnchor()
+    if (intent !== timeIntent) return
+    animateTimeContent()
+    if (!navigation) publishTimeState()
+  } catch { if (intent === timeIntent) timeError.value = '暂时无法切换排序，请重试。' }
+  finally { if (intent === timeIntent) timeChanging.value = false }
+}
+const backToLatest = async () => {
+  const cover = props.timelineStats?.months?.[0]?.cover
+  if (!cover) return
+  anchorTop = undefined; lastViewedId = ''
+  await changeGranularity(granularity.value, store.value.mapTimelinePhoto(cover))
+}
+const timeNavigationKey = () => [route.query.view, route.query.time, route.query.anchor].join(':')
+const restoreTimeNavigation = async () => {
+  const navigationKey = timeNavigationKey()
+  try {
+    if (!props.enableTimeBrowse || route.name !== 'Photos') return
+    const target = ['year', 'month', 'day'].includes(String(route.query.view)) ? String(route.query.view) as TimeGranularity : 'day'
+    const field: TimeField = route.query.time === 'upload_time' ? 'upload_time' : 'photo_time'
+    const id = String(route.query.anchor ?? '')
+    if (target === granularity.value && field === store.value.timeField && (!id || id === timeAnchor.value?.id)) return
+    let photo = props.photos.find(item => item.id === id)
+    if (!photo && id) {
+      const rows = await albumService.getAllPhotos(0, 1, { ...store.value.getPickerSearchFilters(), ids: [id] })
+      if (navigationKey !== timeNavigationKey()) return
+      if (rows[0]) photo = store.value.mapTimelinePhoto(rows[0])
+    }
+    if (field !== store.value.timeField) await changeSort(field, true, photo)
+    else if (photo) timeAnchor.value = photo
+    if (navigationKey !== timeNavigationKey()) return
+    await changeGranularity(target, timeAnchor.value ?? undefined, true)
+  } catch {
+    timeError.value = '暂时无法恢复照片位置，请重试。'
+    retryTimeChange = () => { void restoreTimeNavigation() }
+  }
+}
+watch(timeNavigationKey, restoreTimeNavigation)
+watch(() => props.timelineStats, async stats => {
+  if (!props.enableTimeBrowse || !stats) return
+  if (timeAnchor.value) {
+    const parts = timelineParts(timeAnchor.value.timestamp)
+    if (!stats.timeline.some((day: { year: number; month: number }) => day.year === parts.year && day.month === parts.month)) {
+      timeAnchor.value = nearestTimelinePhoto((stats.months ?? []).map((month: import('@/types/album').TimelineMonth) => store.value.mapTimelinePhoto(month.cover)), timeAnchor.value)
+    }
+  }
+  if (!timeAnchor.value) {
+    const id = String(route.query.anchor ?? '')
+    let rows: import('@/types/album').Photo[] = []
+    try { rows = id ? await albumService.getAllPhotos(0, 1, { ...store.value.getPickerSearchFilters(), ids: [id] }) : [] }
+    catch { timeError.value = '暂时无法恢复照片位置，请重试。'; retryTimeChange = () => { void restoreTimeNavigation() }; return }
+    if (stats !== props.timelineStats || id !== String(route.query.anchor ?? '')) return
+    timeAnchor.value = rows[0] ? store.value.mapTimelinePhoto(rows[0]) : stats.months?.[0]?.cover ? store.value.mapTimelinePhoto(stats.months[0].cover) : null
+    if (id && timeAnchor.value) await changeGranularity(granularity.value, timeAnchor.value, true)
+  }
+}, { immediate: true })
+watch(() => userStore.userInfo?.id, () => {
+  ++timeIntent; timeAnchor.value = null; lastViewedId = ''; timeError.value = ''; anchorTop = undefined
+})
+watch(() => props.photos, (photos, previous) => {
+  const anchor = timeAnchor.value
+  if (!props.enableTimeBrowse || !anchor || !previous.some(item => item.id === anchor.id) || photos.some(item => item.id === anchor.id)) return
+  timeAnchor.value = nearestTimelinePhoto(photos, anchor)
+})
+watch(layoutMode, mode => {
+  if (props.enableTimeBrowse && ['diary', 'folder'].includes(mode)) store.value.browseGranularity = 'day'
+})
+
 // ---- Moments 朋友圈日文案 ----
 // MVP 阶段只在 "全部照片" 视图启用（scope='all'）
 const showMomentCaption = computed(() =>
-  layoutMode.value === 'moments' && (store.value?.currentContext?.type === 'all')
+  layoutMode.value === 'moments' && (!props.enableTimeBrowse || store.value.timeField === 'photo_time') && (store.value?.currentContext?.type === 'all')
 )
 const {
   captionMap,
@@ -721,11 +904,13 @@ const handleLocationBatchSuccess = () => {
   emit('retry')
 }
 
-onClickOutside(viewOptionsRef, () => {
-  if (!mobileMenu.value) showViewOptions.value = false
-})
-
 const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
+  if (props.enableTimeBrowse && granularity.value !== 'day') {
+    const match = date.match(/(\d+)(?:年|-)(\d+)/)
+    if (date === '时间未知') timeOverviewRef.value?.locate(0, 0)
+    else if (match) timeOverviewRef.value?.locate(Number(match[1]), Number(match[2]))
+    return
+  }
   if (layoutMode.value === 'diary') diaryRef.value?.scrollToDate(date)
   else galleryRef.value?.scrollToDate(date, behavior)
   activeDate.value = date
@@ -834,5 +1019,20 @@ defineExpose({
 </script>
 
 <style scoped>
-/* Scoped styles if necessary */
+.photo-view-settings { padding: 10px; }
+.photo-view-section + .photo-view-section { margin-top: 16px; }
+.photo-view-label { margin: 0 0 8px; padding-inline: 2px; font-size: 12px; font-weight: 500; color: var(--ts-color-text-secondary); }
+.photo-choice-grid { display: grid; gap: 4px; padding: 4px; border-radius: 12px; background: var(--ts-color-surface-muted); }
+.photo-choice { display: flex; align-items: center; justify-content: center; min-height: 40px; padding: 8px 4px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--ts-color-text-secondary); transition: background-color 160ms ease, color 160ms ease; }
+.photo-choice:hover { color: var(--ts-color-text); }
+.photo-choice[aria-pressed="true"] { background: var(--ts-color-surface); color: var(--theme-primary); box-shadow: 0 1px 4px rgb(0 0 0 / 8%); }
+.photo-size-choice { flex-direction: column; gap: 5px; min-height: 58px; font-size: 12px; }
+.photo-layout-options { display: grid; gap: 2px; }
+.photo-option-row { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; min-height: 44px; padding: 10px; border-radius: 10px; text-align: left; font-size: 14px; font-weight: 500; color: var(--ts-color-text-secondary); transition: background-color 160ms ease, color 160ms ease; }
+.photo-option-row:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
+.photo-option-row[aria-pressed="true"] { background: rgba(var(--theme-rgb), .1); color: var(--theme-primary); }
+.photo-view-actions { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--ts-color-divider); }
+.photo-choice:focus-visible, .photo-option-row:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
+@media (max-width: 767px) { .photo-choice { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .photo-choice, .photo-option-row { transition: none; } }
 </style>

@@ -83,7 +83,17 @@ export interface TimelineItem {
   count: number;
 }
 
+export type TimelineCover = Partial<Photo> & Pick<Photo, 'id'>;
+
+export interface TimelineMonth {
+  year: number;
+  month: number;
+  count: number;
+  cover: TimelineCover;
+}
+
 export interface TimelineStats {
+  months?: TimelineMonth[];
   total_photos: number;
   time_range: {
     start: string | null;
@@ -102,6 +112,8 @@ export interface AlbumImage {
   thumbnail: string
   preview: string
   srcset: string
+  photoTime?: string | null
+  uploadTime?: string | null
   timestamp: number
   /**
    * 该照片是否具有真实的 EXIF/拍摄时间。
