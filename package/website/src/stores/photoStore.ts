@@ -132,7 +132,12 @@ export const photoStoreSetup = () => {
   const mapTimelinePhoto = (photo: TimelineCover): AlbumImage => {
       const image = mapPhotoToImage(photo)
       if (browseEnabled.value) {
-          const raw = photo.time
+          // Keep already-cached and older-server responses usable. A present
+          // `time: null` is meaningful and must not fall through to the other
+          // timestamp dimension.
+          const raw = 'time' in photo
+            ? photo.time
+            : timeField.value === 'upload_time' ? photo.upload_time : photo.photo_time
           image.timestamp = raw ? new Date(raw).getTime() : NaN
           image.photoTime = timeField.value === 'photo_time' ? (raw ?? null) : undefined
           image.hasPhotoTime = photo.has_photo_time ?? (timeField.value === 'photo_time' && Boolean(raw))

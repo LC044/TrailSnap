@@ -104,6 +104,19 @@ test('time sorting publishes complete data atomically and keeps the same photo a
   assert.equal(new Date(store.images.value[0].timestamp).getFullYear(), 2026)
 })
 
+test('timeline mapping supports cached legacy dates without crossing a present null time', () => {
+  const { store, photo } = harness()
+  store.browseEnabled.value = true
+  const legacy = { ...photo('legacy'), photo_time: '2020-05-01T12:00:00', upload_time: '2026-10-01T12:00:00' }
+  const capture = store.mapTimelinePhoto(legacy)
+  assert.equal(new Date(capture.timestamp).getFullYear(), 2020)
+  store.timeField.value = 'upload_time'
+  const added = store.mapTimelinePhoto(legacy)
+  assert.equal(new Date(added.timestamp).getFullYear(), 2026)
+  const unknown = store.mapTimelinePhoto({ ...legacy, time: null })
+  assert.ok(Number.isNaN(unknown.timestamp))
+})
+
 test('superseded time queries and failures cannot replace the visible dataset', async () => {
   const { store, api, photo } = harness()
   store.browseEnabled.value = true
