@@ -127,6 +127,9 @@
         </button>
       </div>
 
+      <RouterLink to="/search/image" class="ts-button ts-button-ghost mb-2 w-full" aria-label="以图搜图" title="以图搜图">
+        <Images class="h-5 w-5 shrink-0" /><span v-if="!isCollapsed">以图搜图</span>
+      </RouterLink>
       <button
         type="button"
         :class="[

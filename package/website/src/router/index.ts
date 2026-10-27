@@ -76,6 +76,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/chapters/:id', name: 'ChapterDetail', component: () => import('@/views/chapter/ChapterDetail.vue'), meta: { title: '章节日记本', navGroup: 'memories' } },
       { path: '/memories/new', name: 'MemoryCreate', component: () => import('@/views/memory/MemoryCreate.vue'), meta: { title: '新建记忆', navGroup: 'memories' } },
       { path: '/memories/:id', name: 'MemoryDetail', component: () => import('@/views/memory/MemoryDetail.vue'), meta: { title: '记忆详情', navGroup: 'memories' } },
+      { path: '/search/image', name: 'ImageSearch', component: () => import('@/views/search/ImageSearch.vue'), meta: { title: '以图搜图', navGroup: 'photos' } },
       { path: '/search', name: 'SearchResult', component: SearchResult, meta: { title: '搜索结果', navGroup: 'photos' } },
       { path: '/toolbox', name: 'Toolbox', component: ToolboxPage, meta: { title: '工具箱', navGroup: 'tools' } },
       { path: '/toolbox/similar', name: 'SimilarPhotoCleanup', component: SimilarPhotoCleanup, meta: { title: '相似照片清理', navGroup: 'tools' } },

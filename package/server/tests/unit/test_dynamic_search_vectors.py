@@ -54,6 +54,7 @@ def test_image_search_uses_current_embedding_image_api(monkeypatch):
         async def __aexit__(self, *a): pass
         async def json(self): return [[1., 0.]]
     class Client:
+        def __init__(self, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
         post = MagicMock(return_value=Response())
