@@ -15,6 +15,7 @@ export interface Tag {
 
 export interface PhotoMetadata {
   photo_id: string;
+  photo_time?: string | null;
   file_path?: string;
   exif_info?: string;
   location?: any;
@@ -55,12 +56,14 @@ export interface Photo {
   owner_id?: string;
   album_ids?: string[];
   filename?: string;
-  photo_time: string;
+  photo_time?: string | null;
+  time?: string | null;
+  has_photo_time?: boolean;
   file_path?: string;
   url: string;
   thumbnail_url: string;
   file_type: FileType;
-  upload_time: string;
+  upload_time?: string | null;
   size: number;
   width?: number;
   height?: number;

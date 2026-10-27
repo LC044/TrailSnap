@@ -74,6 +74,9 @@
                 </section>
 
                 <div v-if="enableTimeBrowse || (allowUpload && mobileMenu)" class="photo-view-actions">
+                  <button v-if="enableTimeBrowse" type="button" class="photo-option-row" @click="showViewOptions = false; enterBatchMode()">
+                    <CheckSquare class="h-[18px] w-[18px]" aria-hidden="true" /><span>批量选择</span>
+                  </button>
                   <button v-if="enableTimeBrowse" type="button" class="photo-option-row" @click="showViewOptions = false; backToLatest()">
                     <RefreshCw class="h-[18px] w-[18px]" aria-hidden="true" /><span>回到最新</span>
                   </button>

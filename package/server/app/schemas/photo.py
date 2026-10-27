@@ -36,9 +36,15 @@ class Photo(PhotoBase):
     panorama_override: Optional[str] = None
     id: UUID
     owner_id: Optional[UUID] = None
-    # Keep filesystem properties out of response validation as well as JSON.
     # Reading Photo.file_path resolves portable paths and can touch offline disks.
     upload_time: Optional[datetime] = Field(default=None, exclude=True)
+
+
+class PhotoTimeline(Photo):
+    """Compact photo row with the selected timeline date instead of two dates."""
+
+    time: Optional[datetime] = None
+    has_photo_time: bool = False
 
     class Config:
         from_attributes = True

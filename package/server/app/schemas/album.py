@@ -44,8 +44,7 @@ class TimelineItem(BaseModel):
 class TimelineCover(BaseModel):
     id: UUID
     owner_id: Optional[UUID] = None
-    photo_time: Optional[datetime] = None
-    upload_time: Optional[datetime] = None
+    time: Optional[datetime] = None
     width: Optional[int] = None
     height: Optional[int] = None
 

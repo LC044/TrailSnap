@@ -569,9 +569,11 @@ const parsedExif = computed(() => {
         .filter((item): item is { label: string, value: string } => item !== null && item.label !== '' && item.value !== '')
 })
 
-const captureTimestamp = computed(() => props.image?.photoTime !== undefined
-  ? (props.image.photoTime ? new Date(props.image.photoTime).getTime() : NaN)
-  : props.image?.timestamp)
+const captureTimestamp = computed(() => {
+  if (props.image?.photoTime !== undefined) return props.image.photoTime ? new Date(props.image.photoTime).getTime() : NaN
+  if (props.image?.hasPhotoTime === true) return metadata.value?.photo_time ? new Date(metadata.value.photo_time).getTime() : NaN
+  return props.image?.timestamp
+})
 
 // Methods
 const formatTime = (ts?: number) => {

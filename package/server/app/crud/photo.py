@@ -893,8 +893,8 @@ def get_timeline_stats(
             stamp = row.upload_time if time_field == 'upload_time' else row.photo_time
             year, month = (stamp.year, stamp.month) if stamp else (0, 0)
             months.append({'year': year, 'month': month, 'count': counts[(year, month)],
-                           'cover': {key: getattr(row, key) for key in
-                                     ('id', 'owner_id', 'photo_time', 'upload_time', 'width', 'height')}})
+                           'cover': {'id': row.id, 'owner_id': row.owner_id, 'time': stamp,
+                                     'width': row.width, 'height': row.height}})
         months.sort(key=lambda item: (item['year'], item['month']), reverse=True)
     timeline.sort(key=lambda item: (item['year'], item['month'], item['day']), reverse=True)
     return {

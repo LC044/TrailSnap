@@ -22,6 +22,7 @@ export function overviewBuckets(months: TimelineMonth[], granularity: 'year' | '
 }
 
 export function timelineTimestamp(photo: AlbumImage, field: TimeField) {
+  if (Number.isFinite(photo.timestamp)) return photo.timestamp
   const raw = field === 'upload_time' ? photo.uploadTime : photo.photoTime
   return raw ? new Date(raw).getTime() : NaN
 }

@@ -81,14 +81,15 @@ test('months loaded while a refresh is running keep their virtual offsets', asyn
 test('time sorting publishes complete data atomically and keeps the same photo across years', async () => {
   const { store, api, photo } = harness()
   store.browseEnabled.value = true
-  const a = { ...photo('a'), photo_time: '2020-05-01T12:00:00', upload_time: '2026-10-01T12:00:00' }
+  const a = { id: 'a', width: 100, height: 100, time: '2020-05-01T12:00:00', has_photo_time: true }
   store.images.value = [store.mapTimelinePhoto(a)]
   api.getTimelineStats = async (_album, filters) => {
     assert.equal(filters.time_field, 'upload_time')
     return { total_photos: 1, timeline: [{ year: 2026, month: 10, day: 1, count: 1 }] }
   }
   let release
-  api.getAllPhotos = (_skip, _count, filters) => {
+  api.getAllPhotos = async (_skip, _count, filters) => {
+    if (filters.ids) return [{ ...a, time: '2026-10-01T12:00:00' }]
     assert.equal(filters.browse_year, 2026)
     assert.equal(filters.browse_month, 10)
     return new Promise(resolve => { release = resolve })
@@ -97,7 +98,7 @@ test('time sorting publishes complete data atomically and keeps the same photo a
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(store.timeField.value, 'photo_time')
   assert.equal(new Date(store.images.value[0].timestamp).getFullYear(), 2020)
-  release([a]); assert.equal(await switching, true)
+  release([{ ...a, time: '2026-10-01T12:00:00' }]); assert.equal(await switching, true)
   assert.equal(store.timeField.value, 'upload_time')
   assert.equal(store.images.value[0].id, 'a')
   assert.equal(new Date(store.images.value[0].timestamp).getFullYear(), 2026)
@@ -122,7 +123,7 @@ test('superseded time queries and failures cannot replace the visible dataset', 
 test('unknown times stay unknown, sort last, and load through an explicit unknown bucket', async () => {
   const { store, api, photo } = harness()
   store.browseEnabled.value = true
-  const unknown = { ...photo('unknown'), photo_time: null, upload_time: '2026-10-01T12:00:00' }
+  const unknown = { id: 'unknown', width: 100, height: 100, time: null, has_photo_time: false }
   store.timelineStats.value = { total_photos: 2, timeline: [
     { year: 2026, month: 10, day: 1, count: 1 }, { year: 0, month: 0, day: 0, count: 1 },
   ] }
@@ -133,7 +134,7 @@ test('unknown times stay unknown, sort last, and load through an explicit unknow
   }
   await store.loadPhotosByMonth(0, 0)
   assert.ok(Number.isNaN(store.images.value[0].timestamp))
-  assert.equal(store.images.value[0].uploadTime, unknown.upload_time)
+  assert.equal(store.images.value[0].hasPhotoTime, false)
   assert.equal(store.photoOffsetMap.get(1).id, 'unknown')
 })
 
@@ -155,12 +156,12 @@ test('a drill-down waits for the same in-flight month rather than treating it as
 test('overview sorting only resolves its anchor and defers the full month until drill-down', async () => {
   const { store, api, photo } = harness()
   store.browseEnabled.value = true
-  const a = { ...photo('a'), upload_time: '2026-10-01T12:00:00' }
+  const a = { id: 'a', width: 100, height: 100, time: '2026-10-01T12:00:00', has_photo_time: true }
   let fullMonthLoads = 0
   api.getAllPhotos = async (_offset, count, filters) => {
     if (filters.ids) { assert.equal(count, 1); assert.deepEqual(filters.ids, ['a']) }
     else fullMonthLoads++
-    return [a]
+    return [{ ...a, time: '2026-10-01T12:00:00' }]
   }
   await store.loadPhotosByMonth(2026, 10)
   await store.changeTimeField('upload_time', store.images.value[0], () => true, false)

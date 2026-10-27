@@ -7,6 +7,7 @@ import pytest
 from app.crud.photo import get_all_photos, get_timeline_stats
 from app.db.models.photo import Photo, FileType
 from app.schemas.album import TimelineStats
+from app.api.photo import _serialize_photo_timeline
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_photo]
 
@@ -72,3 +73,18 @@ def test_unknown_only_library_and_microsecond_year_boundary(library):
     db.flush()
     assert [p.id.int for p in get_all_photos(db, user_id=owner, browse_year=2020, browse_month=12)] == [1]
     assert [p.id.int for p in get_all_photos(db, user_id=owner, browse_year=2021, browse_month=1)] == [2]
+
+
+def test_timeline_photo_payload_contains_only_the_selected_time(library):
+    db, owner = library
+    photo = get_all_photos(
+        db, user_id=owner, order_by='upload_time', time_field='upload_time',
+        browse_year=2026, browse_month=10, limit=1,
+    )[0]
+    photo.size = 1
+
+    payload = _serialize_photo_timeline(photo, 'upload_time')
+    assert payload['time'] == datetime(2026, 10, 1)
+    assert payload['has_photo_time'] is True
+    assert 'photo_time' not in payload
+    assert 'upload_time' not in payload

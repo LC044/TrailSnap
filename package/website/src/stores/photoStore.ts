@@ -132,8 +132,10 @@ export const photoStoreSetup = () => {
   const mapTimelinePhoto = (photo: TimelineCover): AlbumImage => {
       const image = mapPhotoToImage(photo)
       if (browseEnabled.value) {
-          const raw = timeField.value === 'upload_time' ? photo.upload_time : photo.photo_time
+          const raw = photo.time
           image.timestamp = raw ? new Date(raw).getTime() : NaN
+          image.photoTime = timeField.value === 'photo_time' ? (raw ?? null) : undefined
+          image.hasPhotoTime = photo.has_photo_time ?? (timeField.value === 'photo_time' && Boolean(raw))
       }
       return image
   }
@@ -547,8 +549,15 @@ export const photoStoreSetup = () => {
       const request = ++sortRequestId
       const filters = { ...cleanFilters(), time_field: field, order_by: field, include_covers: true }
       const filterKey = JSON.stringify(cleanFilters())
-      const stats = await albumService.getTimelineStats(undefined, filters)
-      const raw = field === 'upload_time' ? anchor?.uploadTime : anchor?.photoTime
+      const [stats, anchorRows] = await Promise.all([
+          albumService.getTimelineStats(undefined, filters),
+          anchor && field !== timeField.value
+            ? albumService.getAllPhotos(0, 1, { time_field: field, order_by: field, ids: [anchor.id] })
+            : Promise.resolve([])
+      ])
+      const raw = field === timeField.value && anchor?.timestamp
+        ? new Date(anchor.timestamp).toISOString()
+        : anchorRows[0]?.time
       const stamp = raw ? new Date(raw).getTime() : NaN
       const date = new Date(stamp)
       let year = Number.isFinite(stamp) ? date.getFullYear() : 0
@@ -564,7 +573,7 @@ export const photoStoreSetup = () => {
       let photos: TimelineCover[]
       if (loadDetail) photos = count ? await albumService.getAllPhotos(0, count, { ...filters, browse_year: year, ...(year ? { browse_month: month } : {}) }) : []
       else {
-          photos = anchor ? await albumService.getAllPhotos(0, 1, { ...filters, ids: [anchor.id] }) : []
+          photos = anchorRows
           if (!photos.length) {
               const cover = stats.months?.find(item => item.year === year && item.month === month)?.cover ?? stats.months?.[0]?.cover
               photos = cover ? [cover] : []
