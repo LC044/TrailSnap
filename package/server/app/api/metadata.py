@@ -46,7 +46,7 @@ def get_photo_metadata(
 
     photo_metadata = PhotoMetadata.model_validate(db_metadata)
     photo_metadata.file_path = photo.file_path
-    photo_metadata.photo_time = photo.photo_time
+    photo_metadata.photo_time = getattr(photo, "photo_time", None)
     photo_metadata.albums = albums
     photo_metadata.faces_identities = faces_identities
     photo_metadata.tags = tags
