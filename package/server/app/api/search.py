@@ -1,10 +1,14 @@
 import logging
 import traceback
 import os
+import base64
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from uuid import UUID
+from pathlib import Path
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func, distinct
 import aiohttp
@@ -24,7 +28,7 @@ from app.db.models.ocr import OCR
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.face import FaceIdentity, Face
 from app.db.models.album import Album
-from app.db.models.photo import Photo
+from app.db.models.photo import Photo, FileType
 from app.db.models.tag import PhotoTag
 from app.db.models.scene import Scene
 
@@ -243,44 +247,69 @@ async def search_by_text(
         logging.info(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
+class PhotoSearchRequest(BaseModel):
+    photo_id: UUID
+    limit: int = Field(default=100, ge=1, le=200)
+    threshold: float = Field(default=0.0, ge=-1, le=1)
+
+
+async def _image_query_embedding(content: bytes, db: Session, user: User):
+    # Always encode the query with the active model, including old library photos.
+    timeout = aiohttp.ClientTimeout(total=60, connect=5)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            url = f"{config_manager.get_user_config(user.id, db).ai.ai_api_url.rstrip('/')}/embedding/image"
+            async with session.post(url, json={"images": [base64.b64encode(content).decode('ascii')]}) as resp:
+                if resp.status != 200:
+                    raise HTTPException(status_code=502, detail="图片特征提取失败，请检查 AI 模型是否就绪")
+                result = await resp.json()
+                if not result or not result[0]:
+                    raise HTTPException(status_code=502, detail="AI 服务未返回图片特征")
+                return result[0]
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="无法连接图片特征提取服务，请稍后重试")
+
+
+@router.post("/photo", response_model=BaseResponse[List[SearchResult]])
+async def search_by_photo(
+    body: PhotoSearchRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    photo = db.query(Photo).filter(Photo.id == body.photo_id, Photo.owner_id == user.id,
+                                   Photo.is_deleted == False).first()
+    if photo is None:
+        raise HTTPException(status_code=404, detail="照片不存在")
+    if photo.file_type == FileType.video:
+        raise HTTPException(status_code=400, detail="请选择图片进行搜索")
+    try:
+        content = await run_in_threadpool(Path(photo.file_path).read_bytes)
+    except OSError:
+        raise HTTPException(status_code=404, detail="照片原文件不可用")
+    embedding = await _image_query_embedding(content, db, user)
+    results = crud_vector.search_similar_vectors(db, embedding, body.limit + 1, user_id=user.id)
+    results = [row for row in results if row[0].photo_id != body.photo_id][:body.limit]
+    return BaseResponse.success(data=_build_vector_search_response(db, results, body.threshold), msg="搜索成功")
+
+
 @router.post("/image", response_model=BaseResponse[List[SearchResult]])
 async def search_by_image(
     file: UploadFile = File(...),
-    limit: int = Form(20),
-    threshold: float = Form(0.0),
+    limit: int = Form(100, ge=1, le=200),
+    threshold: float = Form(0.0, ge=-1, le=1),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """
     Search photos by image query using vector similarity.
     """
-    try:
-        # 1. Get Image Embedding from AI Service
-        # We use /classify endpoint which returns embedding
-        async with aiohttp.ClientSession() as session:
-            file_content = await file.read()
-            form_data = aiohttp.FormData()
-            form_data.add_field('file', file_content, filename=file.filename)
-            
-            api_url = f"{config_manager.get_user_config(user.id, db).ai.ai_api_url}/classification/classify"
-            async with session.post(
-                api_url,
-                data=form_data,
-                params={"limit": 1} # We don't care about classification results
-            ) as resp:
-                if resp.status != 200:
-                    raise HTTPException(status_code=502, detail=f"AI Service error: {resp.status}")
-                result = await resp.json()
-                embedding = result.get("embedding")
-                if not embedding:
-                    raise HTTPException(status_code=500, detail="No embedding returned from AI service")
-
-        # 2. Search Vectors
-        results = crud_vector.search_similar_vectors(db, embedding, limit, user_id=user.id)
-
-        # 3. Format Response（批取 Photo，消除原 N+1）
-        response = _build_vector_search_response(db, results, threshold)
-        return BaseResponse(code=200, msg="搜索成功", data=response)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if file.content_type and not file.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="请选择图片文件")
+    content = await file.read(20 * 1024 * 1024 + 1)
+    if not content or len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="图片不能为空且不能超过 20 MB")
+    embedding = await _image_query_embedding(content, db, user)
+    results = crud_vector.search_similar_vectors(db, embedding, limit, user_id=user.id)
+    return BaseResponse(code=200, msg="搜索成功", data=_build_vector_search_response(db, results, threshold))

@@ -14,7 +14,6 @@ from sqlalchemy.pool import StaticPool
 from app.api import annual_report
 from app.api.deps import get_current_user
 from app.crud.annual_report import find_best_match_photo
-from app.crud.search_vector import EASTER_EGG_VECTOR, SEASON_VECTORS
 from app.db.base import Base
 from app.db.models.image_vector import ImageVector
 from app.db.models.photo import FileType, ImageType, Photo
@@ -68,13 +67,13 @@ def test_sqlite_vector_search_ranks_and_filters_real_orm_rows(report_session):
     assert result.id == best.id
 
 
-@pytest.mark.parametrize("endpoint,embedding", [
-    ("season", SEASON_VECTORS["春"]),
-    ("easter-egg", EASTER_EGG_VECTOR),
-])
-def test_annual_vector_endpoints_with_sqlite_photos(report_session, endpoint, embedding):
+@pytest.mark.parametrize("endpoint", ["season", "easter-egg"])
+def test_annual_vector_endpoints_with_sqlite_photos(report_session, endpoint, monkeypatch):
     db = report_session
     owner_id = uuid4()
+    embedding = [1.0] + [0.0] * 511
+    monkeypatch.setattr('app.crud.annual_report.get_search_vectors',
+                        lambda *a, **k: {'春': embedding, 'easter_egg': embedding})
     photo = add_photo(db, owner_id, embedding)
     app = FastAPI()
     app.include_router(annual_report.router, prefix="/annual-report")

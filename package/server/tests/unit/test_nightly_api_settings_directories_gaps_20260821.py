@@ -225,7 +225,8 @@ def test_delete_ai_model_quotes_model_id_and_calls_helper():
             current_user=user,
         )
 
-    helper.assert_called_once()
+    assert helper.call_count == 2
+    assert helper.call_args_list[0].args[:2] == ('GET', '/ai/models')
     sent_method, sent_path, sent_user, sent_db = helper.call_args.args
     assert sent_method == "DELETE"
     assert sent_path == "/ai/models/foo%2Fbar%20baz"

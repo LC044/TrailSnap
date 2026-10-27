@@ -177,13 +177,18 @@ def test_recover_unfinished_tasks_resets_processing_strips_force_flag():
 
     processing_task_with_force = SimpleNamespace(
         id="t-force",
+        type="SCAN_FOLDER",
         payload={"force": True, "scan_roots": ["/photos"]},
         status="PROCESSING",
     )
     processing_task_plain = SimpleNamespace(
         id="t-plain",
+        type="OCR",
         payload={},
         status="PROCESSING",
+    )
+    processing_embedding = SimpleNamespace(
+        id="t-embedding", type="IMAGE_EMBEDDING", payload={"force": True}, status="PROCESSING",
     )
 
     def _save_state(key, value):
@@ -197,23 +202,26 @@ def test_recover_unfinished_tasks_resets_processing_strips_force_flag():
         patch.object(worker, "_load_system_state", return_value=["OCR"]),
     ):
         # pending=1, processing=2 -> total 3
-        crud.count_tasks_by_status.side_effect = [1, 2]
+        crud.count_tasks_by_status.side_effect = [1, 3]
         crud.get_tasks_by_status.return_value = [
             processing_task_with_force,
             processing_task_plain,
+            processing_embedding,
         ]
         TaskWorker._recover_unfinished_tasks(worker)
 
     # force=True 必须被改写为 False，避免下一次扫描无限重复
     assert processing_task_with_force.payload["force"] is False
+    assert processing_embedding.payload["force"] is True
+    assert str(processing_embedding.status).endswith("PENDING")
     # 两个 PROCESSING 都重置为 PENDING
     assert str(processing_task_with_force.status).endswith("PENDING")
     assert str(processing_task_plain.status).endswith("PENDING")
     db.commit.assert_called_once()
     # scan_status 应该带 running=True + message 含 "Recovered 3"
     assert worker.scan_status["running"] is True
-    assert "3" in worker.scan_status["message"]
-    assert worker.scan_status["total_files"] >= 3
+    assert "4" in worker.scan_status["message"]
+    assert worker.scan_status["total_files"] >= 4
     assert worker.paused_categories == {"OCR"}
 
 

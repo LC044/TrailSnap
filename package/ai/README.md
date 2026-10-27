@@ -18,6 +18,49 @@ TrailSnap 的 AI 微服务模块，负责处理所有计算机视觉相关的任
 该策略也用于桌面 AI 扩展。需要让独立客户端的不同模型请求并行时，可在 AI 服务
 环境中设置 `AI_SINGLE_MODEL_FAMILY=false`；后台队列本身仍按阶段执行。
 
+## 中文照片搜索模型
+
+语义搜索默认使用 Chinese-CLIP ViT-B/16，保留多语言 CLIP ViT-B/32 可选。
+两个模型均输出 512 维向量，但语义空间不兼容，切换后必须重新提取图片特征。
+旧版默认配置只迁移一次，用户后续主动选择 B/32 会被保留。
+
+服务端 PostgreSQL 和 SQLite 升级时，有历史向量则登记一次强制图片特征总任务，
+由现有队列展开为逐照片任务。手动切换须先下载模型并确认重做；任务登记成功才
+返回切换成功，登记失败尝试恢复原模型。重建期间使用新模型搜索，允许暂时漏检
+或返回不相关结果。进度、暂停及失败重试均在原任务管理界面操作。
+
+年度报告的四季代表图、年度彩蛋和“那年今日”语义排序使用中文提示词实时取得当前
+模型的文本向量，不保存固定数组。`/embedding/text` 的可选 `cache: true` 将结果
+缓存在当前已加载的模型实例中（最多 64 条），模型切换或卸载后自动重新生成。
+AI 不可用时预设选图退回评分/时间规则；以图搜图也统一使用 `/embedding/image`。
+
+ModelScope 仓库约定为 `SiYuan044/chinese-clip-vit-b16-onnx`，上传目录内容应为：
+
+```text
+configuration.json
+LICENSE
+README.md
+SHA256SUMS.json
+text/   textual.onnx、config.json、tokenizer.json、tokenizer_config.json、
+        special_tokens_map.json、vocab.txt、embedding_config.json
+image/  visual.onnx、preprocessor_config.json
+```
+
+模型为 FP32 / ONNX opset 17，图片输入 224×224，文本上限 52 token。
+文本图的 `input_ids`、`attention_mask`、`token_type_ids` 均为 int64，图像图输入
+`pixel_values` 为 float32；应用负责输出向量归一化。
+
+在包含 transformers 的导出环境中，用 `scripts/prepare_chinese_clip.py` 整理上传目录：
+
+```powershell
+python scripts/prepare_chinese_clip.py --checkpoint <上游checkpoint目录> --onnx-dir <已导出ONNX目录> --output <上传目录> --license-file <上游MIT-LICENSE.txt>
+```
+
+上游为 `OFA-Sys/chinese-clip-vit-base-patch16`，固定 revision
+`36e679e65c2a2fead755ae21162091293ad37834`。ONNX 输入文件名为
+`candidate-text.onnx`、`candidate-image.onnx`。上传时保留目录结构；仓库尚未上传前，
+其他设备首次下载会等待或失败，上传完成后可在模型管理中重试。
+
 ## 环境要求
 
 - Python 3.12+

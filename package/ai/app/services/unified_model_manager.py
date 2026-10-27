@@ -138,6 +138,12 @@ class UnifiedModelManager:
                 value = legacy_map.get(task, {}).get(value, value)
             if value not in self._models or task not in self._models[value].get("tasks", []):
                 value = task_meta["default"]
+            # Apply the new embedding default once. A later explicit choice of
+            # B/32 must survive restarts, including when it is not downloaded.
+            if (task == "embedding" and disk.get("version", 1) < 2
+                    and value == "embedding-clip-vit-b32"
+                    and "embedding-chinese-clip-vit-b16" in self._models):
+                value = "embedding-chinese-clip-vit-b16"
             selections[task] = value
         self._pending_selections = {
             task: model_id
@@ -154,7 +160,7 @@ class UnifiedModelManager:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         temp_path = self.config_path.with_suffix(f"{self.config_path.suffix}.tmp")
         payload = {
-            "version": 1,
+            "version": 2,
             "selections": selections,
             "pendingSelections": self._pending_selections,
         }

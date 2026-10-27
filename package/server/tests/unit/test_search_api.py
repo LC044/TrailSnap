@@ -204,3 +204,85 @@ def test_build_vector_search_response_drops_missing_photos():
 
     assert len(results) == 1
     assert results[0].photo.id == pid_keep
+
+
+@pytest.mark.asyncio
+async def test_library_image_search_encodes_current_model_and_excludes_source(face_sqlite_session, tmp_path, monkeypatch):
+    from app.db.models.photo import Photo
+    from app.db.models.image_vector import ImageVector
+    from unittest.mock import AsyncMock
+    db = face_sqlite_session
+    user = _user()
+    source, match, foreign, deleted = [uuid4() for _ in range(4)]
+    path = tmp_path / 'query.jpg'
+    path.write_bytes(b'current model query')
+    for pid, owner, removed in [(source, user.id, False), (match, user.id, False),
+                                (foreign, uuid4(), False), (deleted, user.id, True)]:
+        db.add(Photo(id=pid, owner_id=owner, filename='query.jpg', file_path=str(path),
+                     file_type=FileType.image, size=19, is_deleted=removed))
+        db.add(ImageVector(photo_id=pid, embedding=[1.] + [0.] * 511, model_name='old-model'))
+    db.commit()
+    encode = AsyncMock(return_value=[1.] + [0.] * 511)
+    monkeypatch.setattr(search_api, '_image_query_embedding', encode)
+    result = await search_api.search_by_photo(search_api.PhotoSearchRequest(photo_id=source, limit=1), db, user)
+    encode.assert_awaited_once_with(b'current model query', db, user)
+    assert [row.photo.id for row in result.data] == [match]
+    for pid in [foreign, deleted, uuid4()]:
+        with pytest.raises(HTTPException) as exc:
+            await search_api.search_by_photo(search_api.PhotoSearchRequest(photo_id=pid), db, user)
+        assert exc.value.status_code == 404
+    assert encode.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_library_video_and_missing_original_do_not_query_ai(tmp_path):
+    from unittest.mock import AsyncMock
+    db, user = MagicMock(), _user()
+    photo = _photo()
+    db.query.return_value.filter.return_value.first.return_value = photo
+    photo.file_type = FileType.video
+    encode = AsyncMock()
+    with patch.object(search_api, '_image_query_embedding', encode):
+        with pytest.raises(HTTPException) as exc:
+            await search_api.search_by_photo(search_api.PhotoSearchRequest(photo_id=photo.id), db, user)
+        assert exc.value.status_code == 400
+        photo.file_type = FileType.image
+        photo.file_path = str(tmp_path / 'missing.jpg')
+        with pytest.raises(HTTPException) as exc:
+            await search_api.search_by_photo(search_api.PhotoSearchRequest(photo_id=photo.id), db, user)
+        assert exc.value.status_code == 404
+    encode.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('content,mime', [(b'', 'image/png'), (b'x', 'text/plain'), (b'x' * (20 * 1024 * 1024 + 1), 'image/png')], ids=['empty', 'non-image', 'oversized'])
+async def test_image_upload_rejects_invalid_input_before_ai(content, mime):
+    from io import BytesIO
+    from fastapi import UploadFile
+    from starlette.datastructures import Headers
+    from unittest.mock import AsyncMock
+    file = UploadFile(file=BytesIO(content), filename='query.png', headers=Headers({'content-type': mime}))
+    encode = AsyncMock()
+    with patch.object(search_api, '_image_query_embedding', encode):
+        with pytest.raises(HTTPException) as exc:
+            await search_api.search_by_image(file, limit=10, threshold=0., db=MagicMock(), user=_user())
+    assert exc.value.status_code == 400
+    encode.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_image_query_preserves_ai_unavailable_status(monkeypatch):
+    class Response:
+        status = 503
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+    class Client:
+        def __init__(self, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        def post(self, *args, **kwargs): return Response()
+    monkeypatch.setattr(search_api.aiohttp, 'ClientSession', Client)
+    monkeypatch.setattr(search_api.config_manager, 'get_user_config', lambda *args: SimpleNamespace(ai=SimpleNamespace(ai_api_url='http://ai')))
+    with pytest.raises(HTTPException) as exc:
+        await search_api._image_query_embedding(b'query', MagicMock(), _user())
+    assert exc.value.status_code == 502

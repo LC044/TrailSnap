@@ -73,6 +73,7 @@
                             <el-dropdown-item v-if="isTauriApp()" command="revealPhoto" :disabled="!image || revealingPhoto">
                                 <div class="flex items-center gap-2"><FolderOpen class="w-4 h-4" /><span>打开所在文件夹</span></div>
                             </el-dropdown-item>
+                            <el-dropdown-item v-if="image && !isCurrentVideo" command="similar"><div class="flex items-center gap-2"><ScanSearch class="h-4 w-4" /><span>搜索相似照片</span></div></el-dropdown-item>
                             <el-dropdown-item command="dailyFrame" :disabled="!canSetDailyFrame">
                                 <div class="flex items-center gap-2"><Film class="w-4 h-4" /><span>设为当天一帧</span></div>
                             </el-dropdown-item>
@@ -469,6 +470,7 @@
             <div class="viewer-menu-header"><h2>更多</h2><button class="ts-icon-button ts-button-ghost" aria-label="关闭更多功能" @click.stop="closeMobileMenu"><X class="h-5 w-5" /></button></div>
 
             <div class="viewer-menu-grid grid grid-cols-4 gap-y-4">
+              <button v-if="image && !isCurrentVideo" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => handleCommand('similar'))"><span class="w-11 h-11 flex items-center justify-center rounded-full"><ScanSearch class="h-5 w-5" /></span><span class="text-[11px]">搜索相似照片</span></button>
               <button v-if="panoramaActive" type="button" :disabled="panoramaState.busy" class="flex flex-col items-center gap-1.5 bg-transparent p-0" @click.stop="runMobileAction(() => panoramaViewerRef?.resetView())">
                 <span class="w-11 h-11 flex items-center justify-center rounded-full"><RotateCcw class="h-5 w-5" /></span>
                 <span class="text-[11px]">重置全景视角</span>
@@ -711,7 +713,7 @@ import BackButton from '@/components/ui/BackButton.vue'
 import { ref, watch, computed, onUnmounted, nextTick, onMounted, defineAsyncComponent } from 'vue'
 import {
     X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Download, FolderPlus, Info, Globe2, RotateCcw,
-    ImagePlus, FolderOpen,
+    ImagePlus, FolderOpen, ScanSearch,
     ScanText,
     MoreHorizontal,
     Image as ImageIcon,
@@ -1106,6 +1108,7 @@ let historyBackPending = false
 let historyListenerMounted = false
 let pendingTimeCompareRoute: { sceneId: string; photoId: string } | null = null
 let pendingDailyFramePhoto: string | null = null
+let pendingSimilarPhoto: string | null = null
 
 const isCurrentLightboxHistoryEntry = () =>
     window.history.state?.[LIGHTBOX_HISTORY_KEY] === lightboxHistoryId
@@ -1132,6 +1135,11 @@ const handleHistoryPopState = () => {
 
     historyEntryActive = false
     if (props.visible) emit('close')
+    if (pendingSimilarPhoto) {
+        const photo = pendingSimilarPhoto
+        pendingSimilarPhoto = null
+        void router.push({ path: '/search/image', query: { photo } })
+    }
     if (pendingDailyFramePhoto) {
         const photo = pendingDailyFramePhoto
         pendingDailyFramePhoto = null
@@ -1587,6 +1595,18 @@ const revealPhoto = async () => {
     } finally { revealingPhoto.value = false }
 }
 const handleCommand = (command: string) => {
+    if (command === 'similar' && props.image && !isCurrentVideo.value) {
+        const photo = props.image.id
+        if (historyEntryActive && isCurrentLightboxHistoryEntry()) {
+            pendingSimilarPhoto = photo
+            historyBackPending = true
+            window.history.back()
+            return
+        }
+        emit('close')
+        void router.push({ path: '/search/image', query: { photo } })
+        return
+    }
     if (command === 'panoramaReset') { panoramaViewerRef.value?.resetView(); return }
     if (command === 'panoramaHigh') { panoramaViewerRef.value?.toggleHigh(); return }
     if (command === 'panoramaFullscreen') { panoramaViewerRef.value?.toggleFullscreen(); return }

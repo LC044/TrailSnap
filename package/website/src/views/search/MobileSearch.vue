@@ -12,6 +12,7 @@
         <button v-if="searchText" class="ts-icon-button ts-button-ghost absolute right-0 top-1/2 -translate-y-1/2" aria-label="清空搜索" @click="clearSearch"><X class="h-4 w-4" /></button>
       </div>
     </header>
+    <div v-if="!embedded" class="px-[var(--ts-page-gutter)] pt-3"><button class="ts-button ts-button-secondary" @click="router.push('/search/image')"><Images class="h-4 w-4" />以图搜图</button></div>
     <!-- Suggestions Area -->
     <div class="flex-1 min-h-0 overflow-y-auto px-[var(--ts-page-gutter)] py-5">
       <div v-if="searchText" class="ts-surface flex flex-col overflow-hidden">

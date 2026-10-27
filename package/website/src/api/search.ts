@@ -60,6 +60,13 @@ const searchService = {
       timeout: 60000
     });
     return res.data;
+  },
+
+  async searchByPhoto(photoId: string, limit: number = 100, threshold: number = 0.0) {
+    const res = await request.post<SearchResult[]>('/api/search/photo', {
+      photo_id: photoId, limit, threshold
+    }, { timeout: 60000 });
+    return res.data;
   }
 };
 

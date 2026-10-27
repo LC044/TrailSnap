@@ -94,6 +94,7 @@
                   <span v-if="model.choiceLabel" class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ model.choiceLabel }}</span>
                   <span v-if="model.id === card.info.selected" class="text-xs text-primary-600 dark:text-primary-500">当前使用</span>
                   <span v-else-if="model.id === card.info.pending" class="text-xs text-primary-600 dark:text-primary-500">准备中</span>
+                  <span v-else-if="card.task === 'embedding' && model.status !== 'ready'" class="text-xs text-gray-500 dark:text-gray-400">点击下载，完成后可切换</span>
                 </div>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ model.choiceHint || model.description }}</p>
                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">{{ formatBytes(model.downloadSize) }} · 建议内存 {{ formatMemory(model.requirements?.memoryMB) }}</p>
@@ -288,12 +289,26 @@ async function selectModel(task: string, model: string) {
   if (!model || model === tasks.value[task]?.selected) return
   switchingTask.value = task
   try {
+    if (task === 'embedding') {
+      if (modelById(model)?.status !== 'ready') {
+        await downloadModel(model)
+        return
+      }
+      await ElMessageBox.confirm(
+        '切换后需要重新提取全部照片的图片特征，系统会自动添加后台任务。处理期间搜索结果可能不完整或不准确。',
+        '切换图片特征模型',
+        { confirmButtonText: '切换并重新处理', cancelButtonText: '取消', type: 'warning' },
+      )
+    }
     const result: any = await settingsApi.selectAIModel(task, model)
-    ElMessage.success(result.status === 'downloading'
+    ElMessage.success(result.rebuildTaskId
+      ? '模型已切换，已添加图片特征重新处理任务'
+      : result.status === 'downloading'
       ? '已开始下载，准备完成后会自动切换，当前模型不受影响'
       : `${taskLabels[task] || task}模型已切换`)
     await loadModels(true)
   } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return
     ElMessage.error(error.message || String(error))
     await loadModels(true)
   } finally {

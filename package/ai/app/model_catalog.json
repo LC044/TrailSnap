@@ -3,7 +3,7 @@
   "tasks": {
     "face": { "name": "人脸识别", "default": "face-buffalo-l", "runtimeKeys": ["face"] },
     "ocr": { "name": "文字识别", "default": "ocr-ppocrv6-small", "runtimeKeys": ["ocr"] },
-    "embedding": { "name": "语义向量", "default": "embedding-clip-vit-b32", "runtimeKeys": ["clip_text", "clip_image"] },
+    "embedding": { "name": "语义向量", "default": "embedding-chinese-clip-vit-b16", "runtimeKeys": ["clip_text", "clip_image"] },
     "classification": { "name": "图片分类", "default": "photo-classification-v1", "runtimeKeys": ["yolo_photo_cls_general"] },
     "ticket": { "name": "票据识别", "default": "photo-classification-v1", "runtimeKeys": ["tickets_yolo"] },
     "llm": { "name": "本地多模态模型", "default": "llm-minicpm-v-4.6", "runtimeKeys": [] }
@@ -152,6 +152,21 @@
       "tags": ["效果优先"],
       "requirements": { "diskMB": 150, "memoryMB": 900 },
       "downloadSize": 139409917,
+      "available": true
+    },
+    {
+      "id": "embedding-chinese-clip-vit-b16",
+      "tasks": ["embedding"],
+      "name": "Chinese-CLIP ViT-B/16",
+      "runtimeName": "chinese-clip-ViT-B-16",
+      "description": "中文图文向量模型，适合中文照片搜索。切换后需重新提取全部图片特征。",
+      "choiceLabel": "中文优先",
+      "choiceHint": "中文检索效果更好，图片特征提取耗时更长。",
+      "repoId": "SiYuan044/chinese-clip-vit-b16-onnx",
+      "localDir": "chinese-clip-vit-b16",
+      "requiredFiles": ["text/textual.onnx", "text/config.json", "text/tokenizer.json", "text/tokenizer_config.json", "text/vocab.txt", "text/embedding_config.json", "image/visual.onnx", "image/preprocessor_config.json"],
+      "requirements": { "diskMB": 720, "memoryMB": 1600 },
+      "downloadSize": 753559774,
       "available": true
     },
     {
