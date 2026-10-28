@@ -26,12 +26,75 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from PIL import ImageDraw, ImageFont
 
 
 pytestmark = [pytest.mark.smoke, pytest.mark.module_album]
 
 
 FONT = r"C:\Windows\Fonts\msyh.ttc"
+
+
+def _stub_font():
+    """Replace the font loader with a stub.
+
+    The CI image has no Chinese font installed and ``ImageFont.truetype``
+    raises ``OSError`` for a missing file.  ``capabilities()`` only checks
+    that the font can be loaded, so a stub is enough there.
+    """
+    return patch("app.service.daily_frame_render.ImageFont.truetype", return_value=MagicMock())
+
+
+def _font_file():
+    """A font that can be loaded on this machine, if there is one.
+
+    The drawing tests need a real font; the CI image ships DejaVu while
+    Windows ships a CJK font, so the file is looked up at runtime.
+    """
+    for candidate in (
+        r"C:\Windows\Fonts\msyh.ttc",
+        r"C:\Windows\Fonts\arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
+    ):
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+def _probe_name():
+    """FFprobe sits next to FFmpeg; the suffix depends on the platform."""
+    return "ffprobe.exe" if os.name == "nt" else "ffprobe"
+
+
+def _measuring_draw():
+    """A draw object whose text is wide enough to force the caption wrapping.
+
+    The bundled fallback font has no Chinese glyphs, so every character would
+    measure as zero and the caption would never wrap.  The real drawing is
+    kept, only the measurement is replaced.
+    """
+    real_draw = ImageDraw.Draw
+    lines = []
+
+    class _Draw:
+        def __init__(self, image, *args, **kwargs):
+            self._inner = real_draw(image, *args, **kwargs)
+
+        def textlength(self, text, font=None):
+            return len(text) * 40
+
+        def text(self, *args, **kwargs):
+            lines.append(args[0] if args else kwargs.get("text"))
+            return self._inner.text(*args, **kwargs)
+
+        def __getattr__(self, item):
+            return getattr(self._inner, item)
+
+    patcher = patch("app.service.daily_frame_render.ImageDraw.Draw", side_effect=lambda image, *a, **k: _Draw(image, *a, **k))
+    return patcher, lines
 
 
 def _render():
@@ -69,7 +132,9 @@ def test_ffmpeg_path_prefers_the_configured_binary(tmp_path):
     binary = tmp_path / "ffmpeg.exe"
     binary.write_bytes(b"x")
     with patch.dict(os.environ, {"TS_FFMPEG_PATH": str(binary)}):
-        assert render.ffmpeg_path() == str(binary)
+        with patch("app.service.daily_frame_render.shutil.which", return_value=str(binary)) as which:
+            assert render.ffmpeg_path() == str(binary)
+    which.assert_called_once_with(str(binary))
 
 
 def test_ffmpeg_path_falls_back_to_the_path_lookup():
@@ -82,9 +147,9 @@ def test_ffmpeg_path_falls_back_to_the_path_lookup():
 
 def test_ffprobe_path_prefers_the_adjacent_binary(tmp_path):
     render = _render()
-    ffmpeg = tmp_path / "ffmpeg.exe"
+    ffmpeg = tmp_path / "ffmpeg"
     ffmpeg.write_bytes(b"x")
-    probe = tmp_path / "ffprobe.exe"
+    probe = tmp_path / _probe_name()
     probe.write_bytes(b"x")
     with patch("app.service.daily_frame_render.ffmpeg_path", return_value=str(ffmpeg)):
         with patch("app.service.daily_frame_render.shutil.which", return_value=None) as which:
@@ -145,8 +210,9 @@ def test_capabilities_report_a_missing_h264_encoder():
     with patch("app.service.daily_frame_render.ffmpeg_path", return_value="ffmpeg"):
         with patch("app.service.daily_frame_render.ffprobe_path", return_value="ffprobe"):
             with patch("app.service.daily_frame_render.font_path", return_value=FONT):
-                with patch("app.service.daily_frame_render.subprocess.run", return_value=completed):
-                    report = render.capabilities()
+                with _stub_font():
+                    with patch("app.service.daily_frame_render.subprocess.run", return_value=completed):
+                        report = render.capabilities()
     assert report["available"] is False
     assert "H.264" in report["reason"]
 
@@ -157,8 +223,9 @@ def test_capabilities_are_available_with_ffmpeg_and_h264():
     with patch("app.service.daily_frame_render.ffmpeg_path", return_value="ffmpeg"):
         with patch("app.service.daily_frame_render.ffprobe_path", return_value="ffprobe"):
             with patch("app.service.daily_frame_render.font_path", return_value=FONT):
-                with patch("app.service.daily_frame_render.subprocess.run", return_value=completed):
-                    report = render.capabilities()
+                with _stub_font():
+                    with patch("app.service.daily_frame_render.subprocess.run", return_value=completed):
+                        report = render.capabilities()
     assert report["available"] is True
     assert report["reason"] is None
 
@@ -168,8 +235,9 @@ def test_capabilities_survive_a_broken_encoder():
     with patch("app.service.daily_frame_render.ffmpeg_path", return_value="ffmpeg"):
         with patch("app.service.daily_frame_render.ffprobe_path", return_value="ffprobe"):
             with patch("app.service.daily_frame_render.font_path", return_value=FONT):
-                with patch("app.service.daily_frame_render.subprocess.run", side_effect=OSError("boom")):
-                    report = render.capabilities()
+                with _stub_font():
+                    with patch("app.service.daily_frame_render.subprocess.run", side_effect=OSError("boom")):
+                        report = render.capabilities()
     assert report["available"] is False
     assert "编码器" in report["reason"]
 
@@ -290,7 +358,10 @@ def test_dimensions_follow_the_orientation():
 
 def test_make_overlay_returns_an_empty_layer_without_text():
     render = _render()
-    with patch("app.service.daily_frame_render.font_path", return_value=FONT):
+    font = _font_file()
+    if font is None:
+        pytest.skip("no usable font on this machine")
+    with patch("app.service.daily_frame_render.font_path", return_value=font):
         overlay = render.make_overlay(_item(caption=""), _settings(show_caption=False, show_date=False))
     assert overlay.size == (1920, 1080)
     assert overlay.getbbox() is None
@@ -298,18 +369,31 @@ def test_make_overlay_returns_an_empty_layer_without_text():
 
 def test_make_overlay_draws_the_date_and_the_caption():
     render = _render()
-    with patch("app.service.daily_frame_render.font_path", return_value=FONT):
+    font = _font_file()
+    if font is None:
+        pytest.skip("no usable font on this machine")
+    with patch("app.service.daily_frame_render.font_path", return_value=font):
         overlay = render.make_overlay(_item(), _settings())
     assert overlay.getbbox() is not None
 
 
 def test_make_overlay_wraps_a_long_caption_into_several_lines():
     render = _render()
-    with patch("app.service.daily_frame_render.font_path", return_value=FONT):
-        short = render.make_overlay(_item(caption="短"), _settings(show_date=False))
-        long = render.make_overlay(_item(caption="很长的中文说明文字" * 8), _settings(show_date=False))
-    # A wrapped caption covers more pixels than a single short line.
-    assert long.getbbox()[3] - long.getbbox()[1] > short.getbbox()[3] - short.getbbox()[1]
+    font = _font_file()
+    if font is None:
+        pytest.skip("no usable font on this machine")
+    patcher, lines = _measuring_draw()
+    with patch("app.service.daily_frame_render.font_path", return_value=font):
+        with patcher:
+            render.make_overlay(_item(caption="短"), _settings(show_date=False))
+    assert len(lines) == 1
+
+    patcher, lines = _measuring_draw()
+    with patch("app.service.daily_frame_render.font_path", return_value=font):
+        with patcher:
+            render.make_overlay(_item(caption="很长的中文说明文字" * 8), _settings(show_date=False))
+    # A long caption is split over several lines.
+    assert len(lines) > 1
 
 
 def test_compose_still_writes_a_canvas_of_the_expected_size(tmp_path):
@@ -319,7 +403,10 @@ def test_compose_still_writes_a_canvas_of_the_expected_size(tmp_path):
     source = tmp_path / "photo.jpg"
     Image.new("RGB", (400, 300), "red").save(source)
     destination = tmp_path / "still.png"
-    with patch("app.service.daily_frame_render.font_path", return_value=FONT):
+    font = _font_file()
+    if font is None:
+        pytest.skip("no usable font on this machine")
+    with patch("app.service.daily_frame_render.font_path", return_value=font):
         render.compose_still(str(source), _item(), _settings(fit="cover"), destination)
     with Image.open(destination) as produced:
         assert produced.size == (1920, 1080)
@@ -468,4 +555,7 @@ def test_render_work_is_cancelled_for_a_finished_work():
             with patch("app.db.models.task.Task", MagicMock()):
                 with pytest.raises(render.RenderCancelled):
                     render.render_work(uuid.uuid4(), 1, uuid.uuid4())
+
+
+
 
