@@ -9,7 +9,7 @@
     ]"
   >
     <div
-      class="mx-auto flex min-h-[var(--ts-header-height)] w-full items-center gap-2 px-[var(--ts-page-gutter)]"
+      class="mx-auto flex min-h-[var(--ts-header-height)] w-full items-center gap-2 py-[var(--ts-header-padding)] px-[var(--ts-page-gutter)]"
       :class="widthClass"
     >
       <slot name="leading">

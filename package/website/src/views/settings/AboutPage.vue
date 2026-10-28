@@ -1,6 +1,6 @@
 <!-- src/views/AboutPage.vue -->
 <template>
-  <div class="about-page max-w-4xl mx-auto space-y-12">
+  <div class="about-page space-y-12">
     <!-- 项目介绍 -->
     <section class="space-y-4">
       <h1 class="text-4xl font-bold text-slate-800 dark:text-slate-100">关于行影集 (TrailSnap)</h1>

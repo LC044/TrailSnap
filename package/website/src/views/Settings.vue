@@ -31,8 +31,8 @@
         </div>
       </aside>
 
-      <div v-if="!activeTab" class="min-w-0 flex-1 overflow-y-auto px-4 pb-8 pt-5 md:hidden">
-        <header class="px-1 pb-5"><h1 class="ts-page-title">设置</h1></header>
+      <div v-if="!activeTab" class="min-w-0 flex-1 overflow-y-auto px-[var(--ts-page-gutter)] pb-8 md:hidden">
+        <header class="ts-browse-header mb-5 flex items-center"><h1 class="ts-page-title">设置</h1></header>
         <button
           type="button"
           data-tab="profile"
@@ -74,11 +74,11 @@
       </div>
 
       <main v-else class="min-w-0 flex-1 overflow-y-auto">
-        <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-2 md:hidden">
+        <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-[var(--ts-page-gutter)] md:hidden">
           <BackButton label="返回设置" @click="goBack" />
           <div class="pointer-events-none absolute inset-x-20 truncate text-center text-[15px] font-semibold">{{ activeItem?.label }}</div>
         </div>
-        <div ref="contentRef" class="mx-auto w-full max-w-5xl p-4 md:p-8">
+        <div ref="contentRef" class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content">
           <Transition :name="transitionName" mode="out-in">
             <MobileBackup v-if="activeTab === 'mobile-backup'" :key="activeTab" hosted @request-settings-back="goBack" />
             <component :is="currentComponent" v-else :key="activeTab" />

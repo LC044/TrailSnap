@@ -1,8 +1,8 @@
 <template>
-  <div class="mx-auto max-w-3xl">
+  <div class="w-full">
     <Transition :name="innerTransition" mode="out-in">
       <div v-if="screen === 'overview'" key="overview" class="space-y-5">
-        <div v-if="hosted" class="-mx-4 -mt-4 flex h-12 items-center border-b border-gray-200 bg-white/95 px-2 backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 md:hidden">
+        <div v-if="hosted" class="-mx-[var(--ts-page-gutter)] -mt-[var(--ts-space-6)] flex min-h-[var(--ts-header-height)] items-center border-b border-gray-200 bg-white/95 px-[var(--ts-page-gutter)] backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 md:hidden">
           <BackButton label="返回设置" @click="emit('requestSettingsBack')" />
           <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">手机备份</div>
         </div>

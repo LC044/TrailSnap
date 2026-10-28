@@ -1,12 +1,11 @@
 <template>
-  <div class="mx-auto w-full max-w-screen-2xl people-list px-[var(--ts-page-gutter)] py-4 md:py-6">
+  <div class="mx-auto w-full max-w-screen-2xl ts-browse-page people-list px-[var(--ts-page-gutter)]">
     <div
-      class="people-toolbar mb-8 flex flex-row justify-between items-start sm:items-center gap-4 border-gray-200/70 bg-gray-50/90 dark:border-gray-700/70 dark:bg-gray-900/90"
+      class="ts-browse-header people-toolbar mb-6 flex flex-row justify-between items-start sm:items-center gap-4 border-gray-200/70 bg-gray-50/90 dark:border-gray-700/70 dark:bg-gray-900/90"
       :class="{ 'is-selection-mode': isMergeMode }"
     >
       <div class="people-toolbar-leading flex items-center gap-3 flex-wrap">
         <div class="people-title-group flex items-center gap-3 w-full md:w-auto bg-white/80 dark:bg-gray-900/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-sm border border-gray-200/50 dark:border-gray-700/50">
-          <BackButton label="返回相册" @click="goBack" />
           <h1 class="ts-page-title text-xl md:text-2xl font-bold text-gray-800 dark:text-white">
             {{ isMergeMode ? `已选择 ${selectedIds.length} 项` : '人物' }}
           </h1>
@@ -35,7 +34,7 @@
         </div>
       </div>
 
-      <div v-if="viewMode === 'solo'" class="people-actions flex items-center gap-3 flex-wrap justify-end">
+      <div v-if="viewMode === 'solo'" class="people-actions flex items-center justify-end" :class="!isMergeMode && 'ts-liquid-glass ts-glass-toolbar'">
         <el-popover
           v-if="!isMergeMode" 
           placement="bottom-end"
@@ -46,7 +45,7 @@
             <button
               type="button"
               aria-label="筛选人物"
-              class="people-filter-btn ts-icon-button ts-button-ghost"
+              class="people-filter-btn ts-glass-button"
             >
               <FilterIcon class="w-5 h-5" />
             </button>
@@ -110,14 +109,15 @@
         <button 
           type="button"
           @click="toggleMergeMode"
+          :aria-label="isMergeMode ? '完成批量操作' : '批量操作人物'"
           :class="[
-            'people-mode-btn px-4 py-2 rounded-lg border transition-all flex items-center gap-2 text-sm font-medium shadow-sm focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none',
+            'people-mode-btn ts-glass-button text-sm font-medium',
             isMergeMode 
               ? 'bg-transparent dark:bg-transparent border-transparent text-primary-600 shadow-none'
-              : 'bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              : ''
           ]"
         >
-          <CheckSquareIcon class="w-4 h-4" />
+          <CheckSquareIcon class="w-5 h-5" />
           <span>{{ isMergeMode ? '完成' : '批量' }}</span>
         </button>
       </div>
@@ -299,10 +299,8 @@
 </template>
 
 <script setup lang="ts">
-import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAppBack } from '@/composables/useAppBack'
 import { faceApi } from '@/api/face'
 import type { FaceIdentity, CoverPhotoInfo, GroupAlbumItem } from '@/types/album'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -325,7 +323,6 @@ import { thumbnailUrl } from '@/utils/mediaUrl'
 
 const router = useRouter()
 const route = useRoute()
-const goBack = useAppBack('/album')
 const loading = ref(true)
 const identities = ref<FaceIdentity[]>([])
 const isMergeMode = ref(false)
@@ -689,7 +686,7 @@ onMounted(() => {
 /* 移动端普通态保持单行，进入批量态后才展开第二行操作栏。 */
 @media (max-width: 767px) {
   .people-list:not(.people-immersive) {
-    padding-top: 0px;
+    padding-top: var(--ts-page-top);
     padding-inline: var(--ts-page-gutter);
   }
 
@@ -701,7 +698,7 @@ onMounted(() => {
     align-items: center;
     gap: 6px;
     margin: 0 calc(-1 * var(--ts-page-gutter)) 1.5rem;
-    padding: max(8px, var(--ts-content-safe-area-top)) 12px 8px;
+    padding: var(--ts-header-padding) var(--ts-page-gutter);
     border-bottom-width: 1px;
     box-shadow: 0 8px 24px rgb(15 23 42 / 0.04);
     backdrop-filter: blur(20px) saturate(165%);
@@ -721,7 +718,7 @@ onMounted(() => {
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    gap: 2px;
+    gap: var(--ts-toolbar-gap);
     flex-wrap: nowrap;
   }
 
@@ -744,13 +741,13 @@ onMounted(() => {
 
   .people-view-toggle button {
     min-width: 48px;
-    min-height: var(--ts-control-md);
+    min-height: var(--ts-toolbar-control-size);
     padding: 0 10px;
   }
 
   .people-filter-btn,
   .people-mode-btn {
-    min-height: var(--ts-control-md);
+    min-height: var(--ts-toolbar-control-size);
   }
 
   .people-filter-btn {
@@ -863,5 +860,14 @@ onMounted(() => {
 
 .max-w-none {
   max-width: none !important;
+}
+
+.people-actions:not(:has(.people-bulk-actions)) .people-filter-btn {
+  width: var(--ts-toolbar-control-size);
+}
+@media (max-width: 639px) {
+  .people-actions:not(:has(.people-bulk-actions)) .people-mode-btn { width: var(--ts-toolbar-control-size); padding: 0; }
+  .people-actions:not(:has(.people-bulk-actions)) .people-mode-btn span { display: none; }
+  .people-view-toggle button { min-width: 40px; padding-inline: 6px; }
 }
 </style>

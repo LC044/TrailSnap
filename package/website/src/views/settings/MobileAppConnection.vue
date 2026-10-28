@@ -1,5 +1,5 @@
 <template>
-  <div class="mx-auto max-w-4xl space-y-6">
+  <div class="space-y-6">
     <header class="space-y-2">
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">连接手机 App</h1>
       <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">

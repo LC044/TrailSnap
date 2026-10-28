@@ -1,5 +1,5 @@
 <template>
-  <section class="max-w-3xl space-y-6" :aria-busy="working">
+  <section class="space-y-6" :aria-busy="working">
     <header>
       <h2 class="text-xl font-semibold md:text-2xl">照片与数据位置</h2>
       <p class="ts-muted mt-2 text-sm">查看保存位置、备份图库，或找回旧版本的照片。</p>

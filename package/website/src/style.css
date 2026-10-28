@@ -52,6 +52,11 @@
   --ts-control-md: 44px;
   --ts-control-lg: 48px;
   --ts-page-gutter: 16px;
+  --ts-page-top: 0px;
+  --ts-header-padding: 8px;
+  --ts-toolbar-control-size: 40px;
+  --ts-toolbar-padding: 2px;
+  --ts-toolbar-gap: 2px;
   --ts-section-gap: 24px;
 
   --ts-shadow-card: 0 1px 2px rgb(15 23 42 / 4%), 0 6px 18px rgb(15 23 42 / 3%);
@@ -348,20 +353,23 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
   --glass-tint: color-mix(in srgb, var(--ts-color-surface) 68%, transparent);
   border: var(--ts-border-unit, 1px) solid var(--ts-color-border);
   border-radius: var(--ts-radius-pill);
-  padding: calc(var(--ts-space-1) / 2);
-  gap: calc(var(--ts-space-1) / 2);
+  flex-shrink: 0;
+  align-items: center;
+  padding: var(--ts-toolbar-padding);
+  gap: var(--ts-toolbar-gap);
 }
 /* A toolbar has one outer rim; reflected bands look like nested outlines. */
 .ts-glass-toolbar::before { content: ''; background: linear-gradient(145deg, var(--ts-glass-highlight), transparent 34%, transparent 70%, var(--ts-glass-highlight)); opacity: .45; }
-.ts-glass-toolbar > .ts-icon-button { height: 40px; }
+.ts-glass-toolbar > .ts-icon-button { min-height: var(--ts-toolbar-control-size); height: var(--ts-toolbar-control-size); }
 
 .ts-glass-button {
   flex-shrink: 0; align-items: center; justify-content: center;
-  min-width: var(--ts-control-md); height: 40px; border-radius: var(--ts-radius-pill); border: 0;
+  min-width: var(--ts-toolbar-control-size); height: var(--ts-toolbar-control-size); padding: 0 10px; gap: var(--ts-space-2); border-radius: var(--ts-radius-pill); border: 0;
   color: var(--ts-color-text); background: transparent;
   transition: transform var(--ts-motion-fast) var(--ts-ease), background-color var(--ts-motion-fast) ease, box-shadow 120ms ease;
 }
 .ts-glass-button:hover { color: var(--accent-color); }
+.ts-glass-button:disabled { opacity: .45; cursor: not-allowed; }
 .ts-glass-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .ts-glass-button[aria-expanded='true'] { color: var(--accent-color); background: transparent; }
 .ts-desktop-menu { --glass-tint: var(--ts-glass-panel); backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); position: absolute; right: 0; top: 100%; margin-top: 12px; width: 240px; border-radius: 20px; padding: 12px; z-index: 50; }
@@ -388,9 +396,14 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .ts-section-title { font-size: 18px; font-weight: 600; line-height: 1.4; }
 .ts-card-title { font-size: var(--ts-font-sm, 14px); font-weight: 600; line-height: 1.45; }
 
-@media (max-width: 639px) {
-  .ts-browse-header { min-height: var(--ts-header-height); padding-block: 8px; gap: 8px; }
+.ts-browse-page { padding-top: var(--ts-page-top); }
+.ts-browse-header {
+  min-height: var(--ts-header-height);
+  padding-block: var(--ts-header-padding);
+  gap: var(--ts-space-2);
 }
+.ts-page-content { padding-block: var(--ts-space-6); }
+.ts-page-inset { padding-inline: var(--ts-page-gutter); }
 
 /* Dates float over photos with the same restrained glass as the controls. */
 .ts-photo-date {

@@ -1,10 +1,9 @@
 <template>
-  <div :class="['location-list mx-auto w-full max-w-screen-2xl flex flex-col relative py-6 px-[var(--ts-page-gutter)]', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? '!max-w-none !px-0 h-full min-h-0 !py-0' : '', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
+  <div :class="['location-list mx-auto w-full max-w-screen-2xl flex flex-col relative ts-browse-page px-[var(--ts-page-gutter)]', (viewMode === 'map' || viewMode === 'trajectory' || viewMode === 'puzzle') ? '!max-w-none !px-0 h-full min-h-0 !py-0' : '', isImmersiveMap ? 'location-immersive' : '', isDarkMode ? 'location-dark' : '']">
     <!-- Header -->
-    <div class="location-toolbar mx-auto w-full max-w-screen-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
+    <div class="ts-browse-header location-toolbar mx-auto w-full max-w-screen-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 flex-shrink-0 z-50 transition-all duration-300 pb-2">
       <div class="location-toolbar-heading flex w-full shrink-0 items-center justify-between gap-3 md:w-auto">
         <div class="location-title-group flex shrink-0 items-center gap-2">
-          <BackButton label="返回相册" @click="goBack" />
           <h1 class="ts-page-title whitespace-nowrap text-xl font-bold text-gray-800 dark:text-white md:text-2xl">位置</h1>
         </div>
         <RouterLink to="/footprint" class="location-footprint-link flex shrink-0 items-center gap-1.5 rounded-full bg-primary-500 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:hidden" title="3D 足迹地图 · 全屏沉浸查看">
@@ -12,7 +11,7 @@
         </RouterLink>
       </div>
 
-      <div :class="['location-toolbar-actions flex w-full min-w-0 items-center gap-1 md:w-auto lg:gap-2', { 'is-dark': isDarkMode }]">
+      <div :class="['ts-liquid-glass ts-glass-toolbar location-toolbar-actions flex w-full min-w-0 items-center md:w-auto', { 'is-dark': isDarkMode }]">
         <RouterLink to="/footprint" class="hidden shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-primary-500 px-3 py-1.5 text-sm text-white hover:bg-primary-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none md:flex" title="3D 足迹地图 · 全屏沉浸查看">
           <Globe2 class="h-4 w-4" /><span>3D 足迹</span>
         </RouterLink>
@@ -492,11 +491,9 @@
 
 <script setup lang="ts">
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
-import BackButton from '@/components/ui/BackButton.vue'
 import { ref, onMounted, onBeforeUnmount, watch, computed, defineAsyncComponent } from 'vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { useRouter } from 'vue-router'
-import { useAppBack } from '@/composables/useAppBack'
 import { injectTheme } from '@/composables/useTheme'
 import { storeToRefs } from 'pinia'
 import { useLocationStore } from '@/stores/locationStore'
@@ -518,7 +515,6 @@ const LocationPuzzleView = defineAsyncComponent(() => import('./LocationPuzzleVi
 import PhotoLightbox from '@/components/PhotoLightbox.vue'
 
 const router = useRouter()
-const goBack = useAppBack('/album')
 const { isDarkMode } = injectTheme()
 const locationStore = useLocationStore()
 const { level, viewMode, filterStatus } = storeToRefs(locationStore)
@@ -972,7 +968,7 @@ onMounted(() => {
   inset: 0 0 auto 0;
   width: 100%;
   max-width: none;
-  padding: 18px 412px 12px 24px;
+  padding: var(--ts-header-padding) calc(388px + var(--ts-page-gutter)) var(--ts-header-padding) var(--ts-page-gutter);
   pointer-events: none;
 }
 
@@ -1012,7 +1008,7 @@ onMounted(() => {
 
 @media (max-width: 1023px) {
   .location-immersive .location-toolbar {
-    padding: 12px 12px 0;
+    padding: var(--ts-header-padding) var(--ts-page-gutter);
   }
 }
 
@@ -1035,7 +1031,7 @@ onMounted(() => {
 
 @media (max-width: 767px) {
   .location-list:not(.location-immersive) {
-    padding-top: 12px;
+    padding-top: var(--ts-page-top);
   }
   .location-toolbar { gap: 10px; padding-bottom: 14px; }
   .location-toolbar-heading { min-height: 46px; }
@@ -1045,22 +1041,6 @@ onMounted(() => {
     padding: 7px 12px;
     font-size: 13px;
     box-shadow: 0 6px 18px rgba(var(--theme-rgb), 0.22);
-  }
-  .location-toolbar-actions {
-    display: flex;
-    gap: 0;
-    padding: 4px;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.72);
-    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
-  }
-  .location-toolbar-actions.is-dark {
-    border-color: rgba(148, 163, 184, 0.2);
-    background: rgba(15, 29, 48, 0.88);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
   .location-immersive .location-toolbar .location-toolbar-actions > .location-year-control,
   .location-immersive .location-toolbar .location-toolbar-actions > .location-level-control,
@@ -1086,7 +1066,7 @@ onMounted(() => {
   }
   .location-toolbar-actions > :deep(a),
   .location-toolbar-actions button {
-    min-height: var(--ts-control-md);
+    min-height: var(--ts-toolbar-control-size);
   }
   .location-year-control,
   .location-level-control,
@@ -1112,7 +1092,7 @@ onMounted(() => {
   }
   .location-add-scene { width: 40px; flex: 0 0 40px; padding-inline: 0; }
   .location-filter-trigger {
-    min-height: 44px;
+    min-height: var(--ts-toolbar-control-size);
     gap: 5px;
     padding-inline: 8px;
     border: 0;
@@ -1181,6 +1161,36 @@ onMounted(() => {
 }
 .location-view-grid button.active { border-color: var(--theme-primary); color: var(--theme-primary); background: rgba(var(--theme-rgb), 0.08); }
 .location-view-check { position: absolute; top: 8px; right: 8px; }
+
+/* The outer pill owns the surface; individual controls share the browsing scale. */
+.location-toolbar-actions.ts-glass-toolbar {
+  gap: var(--ts-toolbar-gap);
+  padding: var(--ts-toolbar-padding);
+  border-radius: var(--ts-radius-pill);
+}
+.location-toolbar-actions > :is(.location-year-control, .location-level-control, .location-view-control) {
+  padding: 0;
+  border: 0;
+  border-radius: var(--ts-radius-pill);
+  background: transparent;
+  box-shadow: none;
+}
+.location-toolbar-actions > a,
+.location-toolbar-actions > button,
+.location-toolbar-actions .location-filter-trigger,
+.location-toolbar-actions :is(.location-level-desktop, .location-view-control > .hidden) > button {
+  min-height: var(--ts-toolbar-control-size);
+  height: var(--ts-toolbar-control-size);
+  min-width: var(--ts-toolbar-control-size);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--ts-radius-pill);
+  box-shadow: none;
+}
+.location-toolbar-actions svg { width: 20px; height: 20px; }
+@media (min-width: 768px) {
+  .location-toolbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+}
 </style>
 
 <style>

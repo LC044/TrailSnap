@@ -1,5 +1,5 @@
 <template>
-  <div class="max-w-3xl space-y-8">
+  <div class="space-y-8">
     <div>
       <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white mb-2">问题反馈</h2>
       <p class="text-gray-500 dark:text-gray-400">遇到问题或有功能建议？可以直接提交，并持续查看审核和版本进展。</p>

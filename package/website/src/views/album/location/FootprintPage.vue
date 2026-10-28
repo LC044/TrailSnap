@@ -19,16 +19,19 @@
       <header class="footprint-header">
         <div class="header-title"><span class="status-dot" />足迹地图 <small>TRAILSNAP</small></div>
         <div class="header-tools">
+          <BackButton class="footprint-back md:hidden" label="返回位置" to="/album/location" />
           <label class="year-control glass"><CalendarDays /><select v-model="year" aria-label="足迹年份" :disabled="loading"><option :value="null">全部年份</option><option v-for="value in years" :key="value" :value="value">{{ value }} 年</option></select></label>
           <div class="mode-switch glass" role="group" aria-label="地图视角"><button v-for="item in modes" :key="item.value" :class="{ active: mode === item.value }" :aria-pressed="mode === item.value" :aria-label="item.description" :title="item.description" @click="setMode(item.value)">{{ item.label }}</button></div>
           <div ref="searchBox" class="search-box glass"><Search /><input v-model="search" aria-label="搜索足迹城市" placeholder="搜索你的足迹城市…" @focus="searchFocused = true" @keydown.escape="searchFocused = false" />
             <div v-if="searchFocused && search.trim()" class="search-results glass"><button v-for="city in searchResults" :key="city.id" @click="selectCity(city.id); searchFocused = false; search = ''"><MapPin /><span>{{ city.name }}<small>{{ city.province || city.country }}</small></span><small>{{ format(city.photo_count) }} 张</small></button><p v-if="!searchResults.length">这个时间范围内没有匹配的足迹</p></div>
           </div>
-          <button class="icon-button glass panel-toggle" :aria-expanded="showPanel" aria-label="切换足迹统计面板" @click="showPanel = !showPanel"><ChartNoAxesColumnIncreasing /></button>
-          <div ref="layerMenu" class="layer-control"><button class="icon-button glass" aria-label="地图图层" :aria-expanded="showLayers" @click="showLayers = !showLayers"><Layers /></button>
+          <div class="ts-liquid-glass ts-glass-toolbar footprint-actions">
+          <button class="ts-glass-button panel-toggle" :aria-expanded="showPanel" aria-label="切换足迹统计面板" @click="showPanel = !showPanel"><ChartNoAxesColumnIncreasing /></button>
+          <div ref="layerMenu" class="layer-control"><button class="ts-glass-button" aria-label="地图图层" :aria-expanded="showLayers" @click="showLayers = !showLayers"><Layers /></button>
             <div v-if="showLayers" class="layer-menu glass"><strong>地图图层</strong><label v-for="item in layerOptions" :key="item.key"><input v-model="layers[item.key]" type="checkbox" />{{ item.label }}</label><p>地形需要网络；底图不可用时自动显示本地地球。</p></div>
           </div>
-          <button class="icon-button glass" :aria-label="fullscreen ? '退出全屏' : '全屏沉浸查看'" :title="fullscreen ? '退出全屏' : '全屏沉浸查看'" @click="toggleFullscreen"><Minimize v-if="fullscreen" /><Maximize v-else /></button>
+          <button class="ts-glass-button" :aria-label="fullscreen ? '退出全屏' : '全屏沉浸查看'" :title="fullscreen ? '退出全屏' : '全屏沉浸查看'" @click="toggleFullscreen"><Minimize v-if="fullscreen" /><Maximize v-else /></button>
+          </div>
         </div>
       </header>
 
@@ -78,6 +81,7 @@
 </template>
 
 <script setup lang="ts">
+import BackButton from '@/components/ui/BackButton.vue'
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { onClickOutside } from '@vueuse/core'

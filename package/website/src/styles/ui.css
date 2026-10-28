@@ -2,6 +2,7 @@
 /* Responsive hidden/flex utilities must win over the default control display. */
 @layer ts-control-layout {
   .ts-button, .ts-icon-button, .ts-glass-button { display: inline-flex; }
+  .ts-glass-toolbar { display: flex; }
 }
 .ts-page-background { background: var(--ts-color-page); color: var(--ts-color-text); }
 .ts-surface {

@@ -16,7 +16,7 @@
       <button class="ts-action-row" @click="showHomeActions = false; showStorageDialog = true"><HardDrive />存储中心</button>
     </AdaptiveMenu>
       <div class="hidden items-center md:flex">
-        <button class="ts-icon-button ts-button-ghost relative" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
+        <button class="ts-glass-button relative" @click="showStorageDialog = true" title="存储中心" aria-label="打开存储中心">
           <HardDrive class="h-5 w-5" />
           <span v-if="showStorageBadge" class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
         </button>

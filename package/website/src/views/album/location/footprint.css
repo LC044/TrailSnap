@@ -192,3 +192,24 @@
   .ui-hidden .map-controls { right: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .footprint-page *, .footprint-page *::before { animation: none !important; transition: none !important; } }
+
+/* Keep immersive controls on the shared browsing-toolbar scale. */
+.footprint-header {
+  top: max(var(--ts-header-padding), var(--ts-content-safe-area-top));
+  left: var(--ts-page-gutter);
+  right: var(--ts-page-gutter);
+  min-height: var(--ts-header-height);
+}
+.footprint-actions.ts-glass-toolbar {
+  --glass-tint: var(--fp-panel);
+  color: #f3f4f6;
+}
+.footprint-actions .ts-glass-button { color: inherit; }
+.footprint-actions .ts-glass-button > svg { width: 20px; height: 20px; }
+@media (max-width: 767px) {
+  .footprint-header .header-tools { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .footprint-header .footprint-back { grid-row: 2; grid-column: 1; color: #f3f4f6; background: var(--fp-panel); border-color: var(--fp-border); }
+  .footprint-header .mode-switch { grid-row: 2; grid-column: 2 / -1; }
+  .footprint-header .search-box { grid-row: 1; grid-column: 2; }
+  .footprint-header .footprint-actions { grid-row: 1; grid-column: 3; }
+}
