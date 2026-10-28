@@ -233,7 +233,7 @@ class TestScanForUser:
         root = tmp_path / "photos"
         root.mkdir()
         db = MagicMock()
-        user = SimpleNamespace(id="u-1")
+        user = SimpleNamespace(id="u-1", settings={"storage": {"external_directories": [str(tmp_path)]}})
         worker = SimpleNamespace(scan_status={"message": "", "total_files": 0, "deleted": 0})
         cfg = _filter_config()
 
@@ -278,7 +278,7 @@ class TestScanForUser:
         root = tmp_path / "photos"
         root.mkdir()
         db = MagicMock()
-        user = SimpleNamespace(id="u-1")
+        user = SimpleNamespace(id="u-1", settings={"storage": {"external_directories": [str(tmp_path)]}})
         worker = SimpleNamespace(scan_status={"message": "", "total_files": 0, "deleted": 0})
         cfg = _filter_config()
 
@@ -320,7 +320,7 @@ class TestScanForUser:
         root = tmp_path / "photos"
         root.mkdir()
         db = MagicMock()
-        user = SimpleNamespace(id="u-1")
+        user = SimpleNamespace(id="u-1", settings={"storage": {"external_directories": [str(tmp_path)]}})
         worker = SimpleNamespace(scan_status={"message": "", "total_files": 0, "deleted": 0})
         cfg = _filter_config()
 
@@ -366,7 +366,7 @@ class TestScanForUser:
         root = tmp_path / "photos"
         root.mkdir()
         db = MagicMock()
-        user = SimpleNamespace(id="u-1")
+        user = SimpleNamespace(id="u-1", settings={"storage": {"external_directories": [str(tmp_path)]}})
         worker = SimpleNamespace(scan_status={"message": "", "total_files": 0, "deleted": 0})
         cfg = _filter_config(exclude_folders=[r"^@eaDir$", r"\.tmp$"])
 

@@ -215,6 +215,7 @@ class TaskWorker:
         self.resource_limiters: Dict[str, AdaptiveResourceLimiter] = {}
         self.adaptive_limits: Dict[str, int] = {}
         self.pressure_task = None
+        self.import_priority_active = False
         self.system_pressure = {"cpu": 0.0, "memory": 0.0}
         self.accepting_tasks = True
 
@@ -395,6 +396,13 @@ class TaskWorker:
             "Adaptive concurrency changed: resource=%s limit=%s reason=%s",
             resource_key, limit, reason,
         )
+
+    def _import_cpu_floor(self) -> int:
+        # Admission still bounds RAM/IO; protect a small import lane from AI
+        # driven CPU pressure. Memory pressure always takes precedence.
+        if self.system_pressure['memory'] >= system_config.config.task.memory_high_watermark:
+            return 1
+        return min(4, self._get_resource_limits()['cpu'])
 
     def _is_system_overloaded(self) -> bool:
         config = system_config.config.task
@@ -625,6 +633,16 @@ class TaskWorker:
             lowest_priorities = {'CPU': -9999, 'IO': -9999, 'AI': -9999}
         reserved_task_ids = reserved_task_ids or set()
         try:
+            importing = db.query(Task.id).filter(
+                Task.type.in_([TaskType.SCAN_FOLDER, TaskType.PROCESS_BASIC]),
+                or_(Task.status == TaskStatus.PROCESSING,
+                    (Task.status == TaskStatus.PENDING)
+                    & or_(Task.next_retry_at.is_(None), Task.next_retry_at <= datetime.now())
+                    & Task.type.notin_(list(self.paused_categories))),
+            ).first() is not None
+            if importing != self.import_priority_active:
+                logging.info('Import priority changed: active=%s', importing)
+            self.import_priority_active = importing
             # 每个 category 的内存队列一次只放入「一种」任务类型的任务。
             # 同类型连续处理以减少模型切换；AI 遇到更高优先级任务时，
             # 停止预取并等待在途批次及结果提交结束后让出阶段。
@@ -664,6 +682,8 @@ class TaskWorker:
                              Task.priority >= INTERACTIVE_TASK_PRIORITY,
                          ))
                           .order_by(Task.priority.desc(), Task.created_at.asc()))
+                if cat == 'AI' and importing:
+                    top_query = top_query.filter(Task.priority >= INTERACTIVE_TASK_PRIORITY)
                 if reserved_task_ids:
                     top_query = top_query.filter(Task.id.notin_(list(reserved_task_ids)))
                 # Equality on each type lets the dispatch index supply the
@@ -672,6 +692,9 @@ class TaskWorker:
                          for task_type in dict.fromkeys(candidate_types)]
                 top = min((head for head in heads if head is not None),
                           key=lambda head: (-head[1], head[2]), default=None)
+                if cat == 'AI' and importing and top is None:
+                    self.ai_phase_yield_requested = True
+                    continue
                 if cat == 'AI' and self.ai_phase_type is not None:
                     phase_query = db.query(Task.priority).filter(Task.type == self.ai_phase_type)
                     # Retry backoff keeps the phase ahead of equal/lower priority
@@ -731,6 +754,8 @@ class TaskWorker:
                                Task.type.notin_(list(self.paused_categories)),
                                Task.priority >= INTERACTIVE_TASK_PRIORITY,
                            )))
+                if cat == 'AI' and importing:
+                    query = query.filter(Task.priority >= INTERACTIVE_TASK_PRIORITY)
                 if reserved_task_ids:
                     query = query.filter(Task.id.notin_(list(reserved_task_ids)))
                 fetch_limit = min(FETCH_BATCH_SIZE, prefetch_limit - queued_items)
@@ -814,6 +839,8 @@ class TaskWorker:
                 try:
                     if category == 'AI':
                         def available(batch):
+                            if self.import_priority_active and batch[0]['priority'] < INTERACTIVE_TASK_PRIORITY:
+                                return False
                             if self.ai_phase_yield_requested:
                                 return False
                             limiter = self._resource_limiter(batch[0].get('resource_key', 'ai'))
@@ -867,6 +894,8 @@ class TaskWorker:
         outcome = None
         acquired = False
         try:
+            if task_type == TaskType.PROCESS_BASIC:
+                await limiter.ensure_capacity(self._import_cpu_floor())
             await limiter.acquire()
             acquired = True
             self.last_active_time[task_type] = datetime.now()
@@ -890,7 +919,8 @@ class TaskWorker:
                 if outcome == 'overload':
                     await limiter.record_overload('transient_failure')
                 elif outcome == 'success' and self._is_system_overloaded():
-                    await limiter.record_overload('system_pressure')
+                    floor = self._import_cpu_floor() if task_type == TaskType.PROCESS_BASIC else 1
+                    await limiter.record_overload('system_pressure', floor=floor)
                 elif outcome == 'success':
                     await limiter.record_success()
             self.last_active_time[task_type] = datetime.now()
@@ -911,6 +941,9 @@ class TaskWorker:
             strategy = TaskStrategyFactory.get_strategy(task_type)
             if strategy is None:
                 raise ValueError(f'Strategy not found for task type: {task_type}')
+            if (self.import_priority_active and strategy.task_category == 'AI'
+                    and not all(t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks)):
+                return [], None
             if task_type in self.paused_categories and not all(
                 t.priority >= INTERACTIVE_TASK_PRIORITY for t in tasks
             ):

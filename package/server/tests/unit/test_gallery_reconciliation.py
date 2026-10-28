@@ -203,6 +203,70 @@ def test_late_completion_is_skipped_after_removal(library, monkeypatch):
     assert db.query(Task).count() == 0
 
 
+def test_large_enqueue_only_resolves_files_before_writer_lock(library, monkeypatch):
+    db, user, root, _ = library
+    paths = {str(root / f'{i}.jpg') for i in range(1100)}
+    original_key = gallery_sync.path_key
+    original_lock = gallery_sync.lock_user
+    locked = [False]
+    calls = []
+    def key(path):
+        if str(path) in paths:
+            calls.append(str(path))
+            assert not locked[0], 'file resolution held SQLite writer lock'
+        return original_key(path)
+    def lock(*args):
+        locked[0] = True
+        return original_lock(*args)
+    original_commit = db.commit
+    def commit():
+        original_commit()
+        locked[0] = False
+    monkeypatch.setattr(gallery_sync, 'path_key', key)
+    monkeypatch.setattr(gallery_sync, 'lock_user', lock)
+    monkeypatch.setattr(db, 'commit', commit)
+    asyncio.run(ScanFolderStrategy()._create_tasks_for_new_files(str(user.id), paths, None, db))
+    assert db.query(Task).count() == 1100
+    assert len(calls) == 1100
+    # Repeated scan and alternate lexical spelling still deduplicate.
+    aliases = {str(root / '..' / root.name / f'{i}.jpg') for i in range(1100)}
+    asyncio.run(ScanFolderStrategy()._create_tasks_for_new_files(str(user.id), aliases, None, db))
+    assert db.query(Task).count() == 1100
+
+
+def test_removal_between_enqueue_chunks_stops_later_imports(library, monkeypatch):
+    db, user, root, _ = library
+    paths = {str(root / f'{i}.jpg') for i in range(1100)}
+    original = gallery_sync.lock_user
+    calls = [0]
+    def lock(*args):
+        calls[0] += 1
+        result = original(*args)
+        if calls[0] == 2:
+            result.settings = dict(result.settings, storage=dict(result.settings['storage'], external_directories=[]))
+            db.flush()
+        return result
+    monkeypatch.setattr(gallery_sync, 'lock_user', lock)
+    asyncio.run(ScanFolderStrategy()._create_tasks_for_new_files(str(user.id), paths, None, db))
+    assert db.query(Task).count() == 500
+
+
+def test_concurrent_scan_alias_is_deduplicated_after_snapshot(library, monkeypatch):
+    db, user, root, _ = library
+    path = str(root / 'one.jpg')
+    alias = str(root / '..' / root.name / 'one.jpg')
+    original = gallery_sync.lock_user
+    def lock(*args):
+        # Another scan commits after our initial snapshot, before our lock.
+        db.add(Task(type=TaskType.PROCESS_BASIC, owner_id=user.id, status=TaskStatus.PENDING,
+                    payload={'file_path': alias, 'scan_path_key': gallery_sync.path_key(alias)}))
+        db.commit()
+        return original(*args)
+    monkeypatch.setattr(gallery_sync, 'lock_user', lock)
+    asyncio.run(ScanFolderStrategy()._create_tasks_for_new_files(str(user.id), {path}, None, db))
+    assert db.query(Task).count() == 1
+
+
 def test_import_completion_and_second_scan_converge_without_duplicates(library):
     from app.schemas.photo import PhotoCreate
     from app.schemas.metadata import PhotoMetadataCreate

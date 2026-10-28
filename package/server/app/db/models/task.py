@@ -54,15 +54,15 @@ DEFAULT_PRIORITIES = {
     TaskType.GENERATE_THUMBNAIL: 98,
     TaskType.EXTRACT_METADATA: 97,
     TaskType.REBUILD_METADATA: 96,
-    TaskType.RECOGNIZE_FACE: 9,
+    TaskType.RECOGNIZE_FACE: 7,
     # Below RECOGNIZE_FACE so a fresh import round finishes recognising before
     # the clustering row is picked up. Priority alone is not enough (the two
     # types live in different category queues), hence the explicit defer guard
     # in ClusterFacesStrategy.
-    TaskType.CLUSTER_FACES: 3,
+    TaskType.CLUSTER_FACES: 6,
     TaskType.CLASSIFY_IMAGE: 10,
     TaskType.IMAGE_EMBEDDING: 8,
-    TaskType.OCR: 7,
+    TaskType.OCR: 5,
     TaskType.RECOGNIZE_TICKET: 4,
     TaskType.VISUAL_DESCRIPTION: 1,
     TaskType.SIMILAR_PHOTO_CLUSTERING: 1000,

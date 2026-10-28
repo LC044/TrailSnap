@@ -103,6 +103,7 @@ def test_fetch_tasks_keeps_interactive_work_in_single_item_batches():
 
     worker = task_worker.TaskWorker.__new__(task_worker.TaskWorker)
     worker.paused_categories = set()
+    worker.import_priority_active = False
     worker._prefetch_limit = lambda category, task_type=None: 8
 
     task_a = SimpleNamespace(
@@ -126,7 +127,9 @@ def test_fetch_tasks_keeps_interactive_work_in_single_item_batches():
     task_query.all.return_value = [task_a, task_b]
 
     db = MagicMock()
-    db.query.side_effect = [top_query, task_query]
+    import_query = MagicMock()
+    import_query.filter.return_value.first.return_value = None
+    db.query.side_effect = [import_query, top_query, task_query]
     strategy = SimpleNamespace(task_category="CPU", resource_key="cpu")
 
     with (

@@ -53,3 +53,27 @@ async def test_limiter_shrink_does_not_cancel_in_flight_work():
     await limiter.release()
     await asyncio.wait_for(blocked, timeout=1)
     await limiter.release()
+
+
+@pytest.mark.asyncio
+async def test_one_pressure_sample_cannot_repeatedly_halve_concurrency(monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr('app.service.adaptive_limiter.time.monotonic', lambda: clock[0])
+    limiter = AdaptiveResourceLimiter('cpu', 16, 16, cooldown_seconds=5)
+    await asyncio.gather(*(limiter.record_overload('system_pressure') for _ in range(16)))
+    assert limiter.current_limit == 8
+    clock[0] += 5
+    await limiter.record_overload('system_pressure', floor=4)
+    assert limiter.current_limit == 4
+    clock[0] += 5
+    await limiter.record_overload('system_pressure', floor=4)
+    assert limiter.current_limit == 4
+    await limiter.record_overload('memory', floor=1)
+    assert limiter.current_limit == 2
+
+
+@pytest.mark.asyncio
+async def test_import_reservation_recovers_a_persisted_low_limit():
+    limiter = AdaptiveResourceLimiter('cpu', 1, 8)
+    await limiter.ensure_capacity(4)
+    assert limiter.current_limit == 4
