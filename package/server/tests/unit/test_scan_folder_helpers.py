@@ -66,7 +66,7 @@ async def test_overlapping_scan_roots_visit_each_child_once(tmp_path, monkeypatc
          patch.object(strategy, '_get_existing_files', return_value=(set(), set())), \
          patch.object(strategy, '_create_tasks_for_new_files', new=AsyncMock()), \
          patch.object(strategy, '_handle_deleted_files'):
-        result = await strategy._scan_for_user(SimpleNamespace(scan_status={'total_files': 0}), MagicMock(), SimpleNamespace(id='user'), [str(tmp_path), str(child)])
+        result = await strategy._scan_for_user(SimpleNamespace(scan_status={'total_files': 0}), MagicMock(), user, [str(tmp_path), str(child)])
     assert result == {'new_files': 2, 'deleted_files': 0}
     assert scans.count(str(child)) == 1
 

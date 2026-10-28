@@ -147,6 +147,43 @@ def test_interactive_task_can_preempt_a_paused_type(scheduler):
     assert fetch()[0][1][0]['id'] == urgent.id
 
 
+@pytest.mark.parametrize('kind', [TaskType.PROCESS_BASIC, TaskType.SCAN_FOLDER])
+def test_import_yields_ai_but_keeps_interactive_work_and_resumes(scheduler, kind):
+    db, worker, add, fetch = scheduler
+    background = add(TaskType.CLASSIFY_IMAGE, 10)
+    assert fetch()
+    importing = add(kind, 99)
+    importing.status = TaskStatus.PROCESSING
+    db.commit()
+    assert not any(cat == 'AI' for cat, _ in fetch())
+    assert worker.import_priority_active
+    urgent = add(TaskType.CLASSIFY_IMAGE, 10000)
+    batches = fetch()
+    assert [t['id'] for cat, batch in batches if cat == 'AI' for t in batch] == [urgent.id]
+    db.delete(urgent)
+    db.delete(importing)
+    db.commit()
+    assert [t['id'] for cat, batch in fetch() if cat == 'AI' for t in batch] == [background.id]
+    assert not worker.import_priority_active
+
+
+def test_paused_and_delayed_imports_do_not_starve_background_ai(scheduler):
+    db, worker, add, fetch = scheduler
+    add(TaskType.PROCESS_BASIC, 99, next_retry_at=datetime.now() + timedelta(hours=1))
+    add(TaskType.SCAN_FOLDER, 100)
+    worker.paused_categories.add(TaskType.SCAN_FOLDER.value)
+    ai = add(TaskType.CLASSIFY_IMAGE, 10)
+    assert [t['id'] for cat, batch in fetch() if cat == 'AI' for t in batch] == [ai.id]
+
+
+def test_memory_pressure_can_override_import_reservation(scheduler):
+    _, worker, _, _ = scheduler
+    worker.system_pressure = {'cpu': 99, 'memory': 50}
+    assert worker._import_cpu_floor() >= 1
+    worker.system_pressure['memory'] = 99
+    assert worker._import_cpu_floor() == 1
+
+
 def test_withdrawn_urgent_candidate_unblocks_current_phase(scheduler):
     db, worker, add, fetch = scheduler
     current = add(TaskType.VISUAL_DESCRIPTION, 1)

@@ -6,7 +6,9 @@ import logging
 import os
 import re
 import concurrent.futures
+from functools import lru_cache
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 
 from app.db.models.task import Task, TaskStatus
 from app.db.models.photo import Photo, FileType
@@ -16,6 +18,12 @@ from app.core.config_manager import config_manager
 from app.service.live_photo import live_photo_service
 from app.utils.image_loading import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 from app.service.disk_budget import disk_budget, media_io
+
+
+def _within_roots(path: str, roots: List[str]) -> bool:
+    """Containment of already canonical keys; no filesystem access."""
+    return any(os.path.splitdrive(root)[0] == os.path.splitdrive(path)[0]
+               and os.path.commonpath([root, path]) == root for root in roots)
 
 def _compile_folder_patterns(patterns: Optional[List[str]]) -> List[re.Pattern]:
     """Compile valid folder-name exclusion patterns (regex)."""
@@ -116,12 +124,20 @@ class ScanFolderStrategy(BaseTaskStrategy):
             if task.payload.get('reconcile'):
                 # Always use the current DB configuration for a full scan,
                 # including an empty list (which still needs orphan cleanup).
-                from app.service.gallery_sync import lock_user, external_roots, import_allowed, cancel_path_tasks, delete_index
+                from app.service.gallery_sync import lock_user, external_roots, managed_roots, path_key, owned_path_tasks, cancel_path_tasks, delete_index
+                key = lru_cache(maxsize=None)(path_key)
+                for (path,) in db.query(Photo.file_path).filter(Photo.owner_id == user.id).all():
+                    key(path)
+                for (path,) in owned_path_tasks(db, user.id).with_entities(Task.payload['file_path'].as_string()).all():
+                    if path:
+                        key(path)
+                db.commit()
                 user = lock_user(db, user.id)
                 roots = external_roots(user)
-                cancel_path_tasks(db, user.id, lambda path: not import_allowed(user, path))
+                allowed_keys = [key(root) for root in roots + managed_roots(user)]
+                cancel_path_tasks(db, user.id, lambda path: not _within_roots(key(path), allowed_keys))
                 orphaned = [p for p in db.query(Photo).filter(Photo.owner_id == user.id).all()
-                            if not import_allowed(user, p.file_path)]
+                            if not _within_roots(key(p.file_path), allowed_keys)]
                 total_deleted += delete_index(db, user.id, orphaned)
                 db.commit()
             if not roots:
@@ -140,6 +156,13 @@ class ScanFolderStrategy(BaseTaskStrategy):
 
     async def _scan_for_user(self, worker, db: Session, user: User, scan_roots: List[str]) -> Dict[str, Any]:
         from app.service.gallery_sync import contains, external_roots, lock_user, path_key, cancel_path_tasks
+        path_key = lru_cache(maxsize=None)(path_key)
+        def contains(root, path):
+            root, path = path_key(root), path_key(path)
+            try:
+                return os.path.commonpath([root, path]) == root
+            except ValueError:
+                return False
         EXTS = set(IMAGE_EXTENSIONS + VIDEO_EXTENSIONS)
         loop = asyncio.get_running_loop()
         logging.info(f"Scanning roots for user {user.id}: {scan_roots}")
@@ -187,7 +210,6 @@ class ScanFolderStrategy(BaseTaskStrategy):
 
         # Removal may happen while filesystem work runs. Revalidate before any
         # enqueue or deletion, and release the lock before more filesystem work.
-        user = lock_user(db, user.id)
         current_roots = external_roots(user)
         scan_roots = [root for root in readable if any(contains(allowed, root) for allowed in current_roots)]
         files_on_disk = {path for path in files_on_disk if any(contains(root, path) for root in scan_roots)}
@@ -219,13 +241,35 @@ class ScanFolderStrategy(BaseTaskStrategy):
             new_files.add(lp)
             deleted_files.add(lp)
 
+        # Warm canonical keys outside the write transaction, then revalidate
+        # roots under lock. Enumeration and path resolution must not block writes.
+        cached_key = path_key
+        for path in files_on_disk | existing_files:
+            cached_key(path)
+        pending_paths = db.query(Task.payload['file_path'].as_string()).filter(
+            Task.type == TaskType.PROCESS_BASIC,
+            or_(Task.owner_id == user.id, Task.payload['user_id'].as_string() == str(user.id)),
+            Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING, TaskStatus.FAILED]),
+        ).all()
+        for (path,) in pending_paths:
+            if path:
+                cached_key(path)
+        db.commit()
+        user = lock_user(db, user.id)
+        allowed_roots = [path_key(root) for root in external_roots(user)]
+        def still_allowed(path):
+            return _within_roots(cached_key(path), allowed_roots)
+        new_files = {path for path in new_files if still_allowed(path)}
+
         logging.info(f"Scan result for user {user.id}: {len(new_files)} new, {len(deleted_files)} deleted")
         worker.scan_status['message'] = f"Found {len(new_files)} new, {len(deleted_files)} deleted"
         worker.scan_status['total_files'] += len(new_files)
 
         # Cancel pending imports for missing/filtered files before releasing the
         # DB lock; completion also rechecks the filesystem and configured roots.
-        cancel_path_tasks(db, user.id, lambda path: any(contains(root, path) for root in scan_roots) and path_key(path) not in disk_keys)
+        scan_root_keys = [path_key(root) for root in scan_roots]
+        cancel_path_tasks(db, user.id, lambda path: _within_roots(cached_key(path), scan_root_keys)
+                          and cached_key(path) not in disk_keys)
         db.commit()
         self._handle_deleted_files(str(user.id), deleted_files, db, worker)
         await self._create_tasks_for_new_files(str(user.id), new_files, loop, db)
@@ -341,26 +385,47 @@ class ScanFolderStrategy(BaseTaskStrategy):
                     processed_paths.add(fp)
 
         if new_tasks:
-            from app.service.gallery_sync import lock_user, import_allowed, path_key, owned_path_tasks
-            chunk_size = 1000
+            from app.service.gallery_sync import lock_user, external_roots, path_key, owned_path_tasks
+            # Resolve filesystem aliases once, before acquiring SQLite's writer
+            # lock. Canonical keys make simultaneous scans use the same identity.
+            canonical = {t.payload['file_path']: path_key(t.payload['file_path']) for t in new_tasks}
+            existing = [row[0] for row in db.query(Photo.file_path).filter(Photo.owner_id == user_id).all()]
+            existing.extend(row[0] for row in owned_path_tasks(db, user_id).filter(
+                Task.type == TaskType.PROCESS_BASIC,
+                Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
+            ).with_entities(Task.payload['file_path'].as_string()).all() if row[0])
+            known = {path_key(path) for path in existing}
+            db.commit()
+            chunk_size = 500
             for i in range(0, len(new_tasks), chunk_size):
+                chunk = new_tasks[i:i + chunk_size]
+                candidates = {canonical[t.payload['file_path']] for t in chunk} - known
+                if not candidates:
+                    continue
                 user = lock_user(db, user_id)
-                chunk = new_tasks[i:i+chunk_size]
-                paths = [t.payload['file_path'] for t in chunk]
-                known = {path_key(row[0]) for row in db.query(Photo.file_path).filter(
-                    Photo.owner_id == user.id, Photo.file_path.in_(paths)).all()}
-                known.update(path_key(t.payload['file_path']) for t in owned_path_tasks(db, user.id).filter(
+                # Only roots (a handful), never every file, touch the filesystem
+                # under the lock. Re-read configuration to respect removals.
+                roots = [path_key(root) for root in external_roots(user)]
+                def allowed(path):
+                    return _within_roots(path, roots)
+                # Check only this batch, including legacy owner-in-payload rows.
+                raw_paths = [t.payload['file_path'] for t in chunk]
+                known.update(row[1] or canonical.get(row[0], row[0]) for row in owned_path_tasks(db, user_id).filter(
                     Task.type == TaskType.PROCESS_BASIC,
                     Task.status.in_([TaskStatus.PENDING, TaskStatus.PROCESSING]),
-                ).all() if (t.payload or {}).get('file_path'))
+                    or_(Task.payload['scan_path_key'].as_string().in_(candidates),
+                        Task.payload['file_path'].as_string().in_(raw_paths + list(candidates))),
+                ).with_entities(Task.payload['file_path'].as_string(), Task.payload['scan_path_key'].as_string()).all())
+                known.update(canonical.get(row[0], row[0]) for row in db.query(Photo.file_path).filter(
+                    Photo.owner_id == user.id, Photo.file_path.in_(raw_paths + list(candidates))).all())
                 accepted = []
                 for task in chunk:
-                    path = task.payload['file_path']
-                    if import_allowed(user, path) and path_key(path) not in known:
+                    path = canonical[task.payload['file_path']]
+                    if path not in known and allowed(path):
                         task.owner_id = user.id
-                        task.payload = dict(task.payload, external_scan=True)
+                        task.payload = dict(task.payload, scan_path_key=path, external_scan=True)
                         accepted.append(task)
-                        known.add(path_key(path))
+                        known.add(path)
                 db.bulk_save_objects(accepted)
                 db.commit()
 

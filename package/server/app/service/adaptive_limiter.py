@@ -33,6 +33,7 @@ class AdaptiveResourceLimiter:
         self._in_use = 0
         self._successes = 0
         self._last_change = 0.0
+        self._last_decrease = float("-inf")
 
     @property
     def in_use(self) -> int:
@@ -50,6 +51,13 @@ class AdaptiveResourceLimiter:
             self._in_use = max(0, self._in_use - 1)
             self._condition.notify_all()
 
+    async def ensure_capacity(self, floor: int) -> None:
+        async with self._condition:
+            floor = min(self.max_limit, max(self.min_limit, floor))
+            if self.current_limit < floor:
+                self._set_limit(floor, "import_reservation")
+                self._condition.notify_all()
+
     async def record_success(self) -> None:
         async with self._condition:
             self._successes += 1
@@ -64,14 +72,17 @@ class AdaptiveResourceLimiter:
                 self._last_change = now
                 self._condition.notify_all()
 
-    async def record_overload(self, reason: str = "overload") -> None:
+    async def record_overload(self, reason: str = "overload", *, floor: int = 1) -> None:
         async with self._condition:
             self._successes = 0
             now = time.monotonic()
-            reduced = max(self.min_limit, math.floor(self.current_limit / 2))
+            if now - self._last_decrease < self.cooldown_seconds:
+                return
+            reduced = max(self.min_limit, min(floor, self.current_limit), math.floor(self.current_limit / 2))
             if reduced < self.current_limit:
                 self._set_limit(reduced, reason)
                 self._last_change = now
+                self._last_decrease = now
 
     def _set_limit(self, value: int, reason: str) -> None:
         value = min(self.max_limit, max(self.min_limit, value))
