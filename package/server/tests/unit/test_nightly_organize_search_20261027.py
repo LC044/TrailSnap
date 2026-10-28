@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import base64
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -138,6 +139,11 @@ def test_commit_transfer_keeps_the_file_when_the_recovery_fails(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+# Every ``session.post`` call is recorded here so a test can assert on the
+# request the server actually sent to the AI service.
+SESSION_CALLS = []
+
+
 class _FakeResponse:
     def __init__(self, status=200, payload=None):
         self.status = status
@@ -158,6 +164,7 @@ class _FakeSession:
         self._response = response
 
     def post(self, *args, **kwargs):
+        SESSION_CALLS.append((args, kwargs))
         return self._response
 
     async def __aenter__(self):
@@ -182,13 +189,27 @@ def _patch_image_search(response, results=("r1",)):
     )
 
 
-def test_search_by_image_returns_vector_results():
-    user = _user()
-    db = MagicMock()
+def _upload():
+    """A fake ``UploadFile`` that passes the image content-type check."""
     upload = MagicMock()
     upload.read = AsyncMock(return_value=b"bytes")
     upload.filename = "query.jpg"
-    response = _FakeResponse(200, {"embedding": [0.1, 0.2]})
+    upload.content_type = "image/jpeg"
+    return upload
+
+
+def test_search_by_image_returns_vector_results():
+    """``/search/image`` asks the AI service for one embedding per query image.
+
+    Since the Chinese-CLIP rollout (REQ-205) the server posts the base64
+    encoded image to ``/embedding/image`` and expects a *list* of embeddings
+    back -- not the old ``{"embedding": [...]}`` envelope.
+    """
+    user = _user()
+    db = MagicMock()
+    upload = _upload()
+    response = _FakeResponse(200, [[0.1, 0.2]])
+    SESSION_CALLS.clear()
 
     client, config, vectors, builder = _patch_image_search(response)
     with client, config, vectors as search, builder:
@@ -200,13 +221,16 @@ def test_search_by_image_returns_vector_results():
     assert result.data == ["built"]
     assert search.call_args.kwargs["user_id"] == user.id
 
+    # The query image is posted base64 encoded to the CLIP embedding endpoint.
+    args, kwargs = SESSION_CALLS[0]
+    assert args[0].endswith("/embedding/image")
+    assert kwargs["json"] == {"images": [base64.b64encode(b"bytes").decode("ascii")]}
+
 
 def test_search_by_image_surfaces_an_ai_service_error():
     user = _user()
     db = MagicMock()
-    upload = MagicMock()
-    upload.read = AsyncMock(return_value=b"bytes")
-    upload.filename = "query.jpg"
+    upload = _upload()
     response = _FakeResponse(500, {})
 
     client, config, vectors, builder = _patch_image_search(response)
@@ -216,17 +240,17 @@ def test_search_by_image_surfaces_an_ai_service_error():
                 search_api.search_by_image(upload, limit=5, threshold=0.0, db=db, user=user)
             )
 
-    assert excinfo.value.status_code == 500
-    assert "502" in str(excinfo.value.detail)
+    # A non-200 answer from the AI service is an upstream failure (502),
+    # not a server error of this endpoint.
+    assert excinfo.value.status_code == 502
+    assert "图片特征提取失败" in str(excinfo.value.detail)
 
 
 def test_search_by_image_rejects_an_answer_without_an_embedding():
     user = _user()
     db = MagicMock()
-    upload = MagicMock()
-    upload.read = AsyncMock(return_value=b"bytes")
-    upload.filename = "query.jpg"
-    response = _FakeResponse(200, {"embedding": None})
+    upload = _upload()
+    response = _FakeResponse(200, [])
 
     client, config, vectors, builder = _patch_image_search(response)
     with client, config, vectors, builder:
@@ -235,8 +259,45 @@ def test_search_by_image_rejects_an_answer_without_an_embedding():
                 search_api.search_by_image(upload, limit=5, threshold=0.0, db=db, user=user)
             )
 
-    assert excinfo.value.status_code == 500
-    assert "embedding" in str(excinfo.value.detail)
+    assert excinfo.value.status_code == 502
+    assert "图片特征" in str(excinfo.value.detail)
+
+
+def test_search_by_image_rejects_a_non_image_upload():
+    """A non-image upload is rejected before the AI service is contacted."""
+    user = _user()
+    db = MagicMock()
+    upload = _upload()
+    upload.content_type = "text/plain"
+    SESSION_CALLS.clear()
+
+    client, config, vectors, builder = _patch_image_search(_FakeResponse(200, [[0.1]]))
+    with client, config, vectors, builder:
+        with pytest.raises(HTTPException) as excinfo:
+            asyncio.run(
+                search_api.search_by_image(upload, limit=5, threshold=0.0, db=db, user=user)
+            )
+
+    assert excinfo.value.status_code == 400
+    assert SESSION_CALLS == []
+
+
+def test_search_by_image_rejects_an_empty_upload():
+    user = _user()
+    db = MagicMock()
+    upload = _upload()
+    upload.read = AsyncMock(return_value=b"")
+    SESSION_CALLS.clear()
+
+    client, config, vectors, builder = _patch_image_search(_FakeResponse(200, [[0.1]]))
+    with client, config, vectors, builder:
+        with pytest.raises(HTTPException) as excinfo:
+            asyncio.run(
+                search_api.search_by_image(upload, limit=5, threshold=0.0, db=db, user=user)
+            )
+
+    assert excinfo.value.status_code == 400
+    assert SESSION_CALLS == []
 
 
 def test_search_by_text_reports_a_500_when_the_query_fails():
