@@ -59,6 +59,9 @@ class BatchLocationUpdate(BaseModel):
 
 class PhotoMetadata(PhotoMetadataBase):
     photo_id: UUID
+    # Capture time is joined from Photo for detail views; it is not stored on
+    # the metadata row and must not be accepted by PhotoMetadataUpdate.
+    photo_time: Optional[datetime] = None
     scene_id: Optional[UUID] = None
     file_path: Optional[str] = None
     albums: Optional[List[Album]] = None

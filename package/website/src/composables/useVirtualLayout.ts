@@ -1,4 +1,5 @@
 import { ref, computed, watch, type Ref } from 'vue'
+import { timelineParts } from '@/utils/photoTimeline'
 import { getMomentPhotos, getMomentSinglePhotoSize } from '@/utils/momentLayout'
 import type { TimelineStats, TimelineItem, AlbumImage } from '@/types/album'
 import {
@@ -128,13 +129,13 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
     if (mode === 'waterfall' || mode === 'moments') {
         photos.value.forEach(p => {
              const d = new Date(p.timestamp)
-             const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+             const key = timelineParts(p.timestamp).dayKey
              if (!photosByDay.has(key)) photosByDay.set(key, [])
              photosByDay.get(key)!.push(p)
         })
     }
 
-    photosByDay.set('all', photos.value)
+    if (!timelineStats.value?.timeline?.length) photosByDay.set('all', photos.value)
 
     // Group Timeline by Month
     const months = new Map<string, { year: number, month: number, days: TimelineItem[] }>()
@@ -224,14 +225,15 @@ export function useVirtualLayout(options: UseVirtualLayoutOptions) {
             // If it's the dummy day, don't show header?
             // Or just show 0 height header.
             const isDummy = dayItem.year === 0
+            const unknownTime = isDummy && Boolean(timelineStats.value?.timeline?.some(item => item.year === 0))
             let effectiveHeaderHeight = options.dateHeaderMode
                 ? getMobileDateHeaderHeight(
                     options.dateHeaderMode.value,
                     dayIndex === 0,
                     isFirstMonthOfYear,
-                    isDummy,
+                    isDummy && !unknownTime,
                   )
-                : (isDummy ? 0 : DAY_HEADER_HEIGHT)
+                : (isDummy && !unknownTime ? 0 : DAY_HEADER_HEIGHT)
             
             if (mode === 'moments') {
                 // 头部：头像 40 + 昵称 20 + 单行占位文案 24 + 上下 margin ≈ 36

@@ -75,7 +75,8 @@
                           :class="dateHeaderContentClass"
                           @click="mobileDateHeaderMode === 'day' && isSelectionMode && toggleDaySelection(day)"
                         >
-                             <template v-if="mobileDateHeaderMode === 'day'">
+                             <span v-if="day.year === 0">时间未知</span>
+                             <template v-else-if="mobileDateHeaderMode === 'day'">
                              <div
                                 v-if="isSelectionMode"
                                 data-testid="photo-date-checkbox"
@@ -434,6 +435,7 @@ import {
 } from 'vue'
 import { CalendarDays, PlayCircle, Image as ImageIcon, MapPin, Check, Loader2, MoreHorizontal, Sparkles, Pencil, RotateCcw, Brain, ChevronDown } from 'lucide-vue-next'
 import { format } from 'date-fns'
+import { timelineParts } from '@/utils/photoTimeline'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useUserStore } from '@/stores/user'
@@ -459,6 +461,7 @@ import {
 interface Props {
   singleSelect?: boolean
   photos: AlbumImage[]
+  active?: boolean
   timelineStats?: TimelineStats
   loading?: boolean
   hasMore?: boolean
@@ -489,6 +492,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   layoutMode: 'masonry',
   viewSize: 'md',
+  active: true,
   groupByDate: true,
   deleteLabel: '删除',
   loading: false,
@@ -779,7 +783,7 @@ const dateHeaderContentClass = computed(() => {
 })
 
 const shouldShowDateHeader = (day: DayBlock, dayIndex: number) => {
-  if (day.year === 0) return false
+  if (day.year === 0) return Boolean(props.timelineStats?.timeline?.some(item => item.year === 0))
   if (mobileDateHeaderMode.value === 'day') return true
   if (dayIndex !== 0) return false
   if (mobileDateHeaderMode.value === 'month') return true
@@ -974,6 +978,7 @@ const getRange = (key: string) => {
 }
 
 const updateVisibleBlocks = () => {
+    if (!props.active) return
     const buffer = 1000 // Month Buffer
     const relativeScrollTop = scrollTop.value - virtualContentTop()
     const visibleMonths = getVisibleBlocks(relativeScrollTop, viewportHeight.value, buffer)
@@ -1042,6 +1047,7 @@ const updateVisibleBlocks = () => {
 
 // Throttle scroll updates
 const handleScroll = useDebounceFn(() => {
+    if (!props.active) return
     updateVisibleBlocks()
     // Update active date based on first visible block
     if (visibleBlocksList.value.length > 0) {
@@ -1049,7 +1055,7 @@ const handleScroll = useDebounceFn(() => {
         const current = visibleBlocksList.value.find(b => {
              return (b.top <= center) && (b.top + b.height >= center)
         }) || visibleBlocksList.value[0]
-        const dateStr = `${current.year}年${String(current.month).padStart(2, '0')}月`
+        const dateStr = current.year ? `${current.year}年${String(current.month).padStart(2, '0')}月` : '时间未知'
         if (props.activeDate !== dateStr) {
             emit('update:activeDate', dateStr)
         }
@@ -1099,6 +1105,7 @@ onMounted(() => {
 
 // --- Data Fetching Logic ---
 const checkAndLoadVisibleMonths = (refresh = false) => {
+    if (!props.active) return
     const context = store.value.currentContext
     const albumId = context.type === 'album' ? context.id : undefined
     visibleBlocksList.value.forEach(block => {
@@ -1140,8 +1147,7 @@ const groupedPhotos = computed(() => {
 
     // Group by Day Key: YYYY-MM-DD
     props.photos.forEach(p => {
-        const d = new Date(p.timestamp)
-        const dayKey = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+        const dayKey = timelineParts(p.timestamp).dayKey
         if (!map.has(dayKey)) map.set(dayKey, [])
         map.get(dayKey)!.push(p)
     })
@@ -1157,7 +1163,7 @@ const hasPhotosForMonth = (monthKey: string) => {
     // Check if we have at least one photo for this month
     return props.photos.some(p => {
         const d = new Date(p.timestamp)
-        return `${d.getFullYear()}-${d.getMonth() + 1}` === monthKey
+        return (Number.isFinite(p.timestamp) ? `${d.getFullYear()}-${d.getMonth() + 1}` : '0-0') === monthKey
     })
 }
 
@@ -1176,6 +1182,11 @@ const getMomentPhotos = (dayKey: string) => {
 // --- Interaction Helpers ---
 const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
     // date format "YYYY年MM月" or "YYYY-MM-DD"
+    if (date === '时间未知') {
+      const photo = props.photos.find(p => !Number.isFinite(p.timestamp))
+      if (photo) void scrollToPhoto(photo)
+      return
+    }
     const dayMatch = date.match(/(\d+)-(\d+)-(\d+)/)
     const match = dayMatch || date.match(/(\d+)年(\d+)月/) || date.match(/(\d+)-(\d+)/)
     if (match) {
@@ -1195,7 +1206,46 @@ const scrollToDate = (date: string, behavior: ScrollBehavior = 'smooth') => {
     }
 }
 
-const formatTime = (ts: number) => format(new Date(ts), 'yyyy-MM-dd HH:mm')
+watch(() => props.active, async active => {
+    if (!active) return
+    await nextTick()
+    if (galleryEl.value?.clientWidth) containerWidth.value = galleryEl.value.clientWidth
+    recalculateLayout()
+    updateVisibleBlocks()
+    checkAndLoadVisibleMonths()
+})
+
+const scrollToPhoto = async (photo: AlbumImage, viewportTop?: number) => {
+    await nextTick()
+    if (galleryEl.value?.clientWidth) containerWidth.value = galleryEl.value.clientWidth
+    recalculateLayout()
+    const parts = timelineParts(photo.timestamp)
+    const block = monthBlocks.value.find(b => b.year === parts.year && b.month === parts.month)
+    const day = block?.days.find(d => d.key === parts.dayKey)
+    if (!block || !day) return
+    const index = Math.max(0, getPhotos(parts.dayKey).findIndex(p => p.id === photo.id))
+    const row = Math.floor(index / Math.max(1, colCount.value))
+    const container = scrollContainerRef.value
+    const mainTop = container && container !== window ? (container as HTMLElement).getBoundingClientRect().top : 0
+    const headerHeight = Number.parseFloat(getComputedStyle(galleryEl.value!).getPropertyValue('--photo-page-header-height')) || 80
+    const targetViewport = Math.max(viewportTop ?? 0, mainTop + headerHeight + 12)
+    const rowTop = props.layoutMode === 'waterfall' || props.layoutMode === 'moments'
+      ? day.height * index / Math.max(1, day.count) : row * (rowHeight.value + gap.value)
+    const targetTop = Math.max(0, virtualContentTop() + block.top + day.top + getDateHeaderHeight(day, block) + rowTop - (targetViewport - mainTop))
+    ;(container || window).scrollTo({ top: targetTop, behavior: 'auto' })
+    updateVisibleBlocks()
+    await nextTick()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const element = galleryEl.value?.querySelector<HTMLElement>(`[data-photo-id="${CSS.escape(photo.id)}"]`)
+    if (element) {
+      ;(container || window).scrollBy({ top: element.getBoundingClientRect().top - targetViewport, behavior: 'auto' })
+      element.tabIndex = -1
+      element.focus({ preventScroll: true })
+      element.animate?.([{ outline: '3px solid var(--theme-primary)', outlineOffset: '2px' }, { outline: '3px solid transparent', outlineOffset: '2px' }], { duration: matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 800 })
+    }
+}
+
+const formatTime = (ts: number) => Number.isFinite(ts) ? format(new Date(ts), 'yyyy-MM-dd HH:mm') : '时间未知'
 
 // Selection Helpers
 
@@ -1360,6 +1410,7 @@ const handleDelete = () => {
 
 defineExpose({
   scrollToDate,
+  scrollToPhoto,
   enterSelectionMode,
   exitSelectionMode,
   isSelectionMode,

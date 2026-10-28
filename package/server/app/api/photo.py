@@ -250,7 +250,7 @@ def get_recycle_bin_purge_status(
         raise HTTPException(status_code=404, detail="Purge job not found")
     return BaseResponse.success(data=job.to_dict())
 
-@router.get("", response_model=List[schemas.Photo])
+@router.get("", response_model=List[schemas.PhotoTimeline], response_model_exclude_unset=True)
 def read_all_photos(
         skip: int = 0,
         limit: int = 100,
@@ -293,6 +293,9 @@ def read_all_photos(
         ids: Optional[List[UUID]] = Query(None),
         order_by: Optional[str] = None,
         order_dir: Optional[str] = None,
+        time_field: Optional[str] = Query(None, pattern="^(photo_time|upload_time)$"),
+        browse_year: Optional[int] = Query(None, ge=0, le=9998),
+        browse_month: Optional[int] = Query(None, ge=1, le=12),
         folder: Optional[str] = None,
         folder_direct: bool = False,
         dedup_similar: bool = False,
@@ -300,6 +303,10 @@ def read_all_photos(
         current_user: User = Depends(get_current_user)
 ):
     st_time = time.time()
+    # Direct Python callers (tests and internal reuse) see FastAPI's Query
+    # default object instead of the injected None value.
+    requested_time_field = time_field if isinstance(time_field, str) else None
+    selected_time_field = requested_time_field or "photo_time"
     # 根层直属（folder 为空且要求 direct）时需要 roots 来定位「扫描根正下方」的照片
     folder_roots = None
     if folder_direct and not (folder and folder.strip()):
@@ -317,7 +324,8 @@ def read_all_photos(
         face_id=face_id, face_ids=face_ids, tag_id=tag_id, tag_ids=tag_ids,
         lat_min=lat_min, lat_max=lat_max, lng_min=lng_min, lng_max=lng_max,
         radius=radius, center_lat=center_lat, center_lng=center_lng,
-        order_by=order_by, order_dir=order_dir, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
+        order_by=order_by, order_dir=order_dir, time_field=selected_time_field,
+        browse_year=browse_year, browse_month=browse_month, folder=folder, folder_direct=folder_direct, folder_roots=folder_roots,
         ids=ids, user_id=current_user.id
     )
     logging.info(f"read_all_photos time: {time.time() - st_time}")
@@ -328,7 +336,18 @@ def read_all_photos(
         from app.service.moment.day_highlight_service import dedup_photo_ids
         kept_set = set(dedup_photo_ids(db, current_user.id, [p.id for p in photos]))
         photos = [p for p in photos if p.id in kept_set]
-    return photos
+    if requested_time_field is None:
+        # Keep the legacy photo_time response for clients that do not opt into
+        # timeline browsing. Timeline clients receive one selected time field.
+        return photos
+    return [_serialize_photo_timeline(photo, selected_time_field) for photo in photos]
+
+
+def _serialize_photo_timeline(photo, time_field: str) -> dict:
+    payload = schemas.Photo.model_validate(photo, from_attributes=True).model_dump(exclude={"photo_time", "upload_time"})
+    payload["time"] = photo.upload_time if time_field == "upload_time" else photo.photo_time
+    payload["has_photo_time"] = photo.photo_time is not None
+    return payload
 
 @router.get("/folders", response_model=BaseResponse[Dict[str, Any]])
 def read_photo_folders(

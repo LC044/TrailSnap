@@ -22,19 +22,18 @@ test.describe('P1 - 照片流核心功能', () => {
   test('2.1.1 无限滚动 - 滚动到底部触发按月加载', async ({ page, request }, testInfo) => {
     const probe = await requirePhotos(request, testInfo, 10, 50)
     if (!probe.ok) return
+    let sawMoreRequests = false
+    page.on('request', (req) => {
+      const url = new URL(req.url())
+      if (url.pathname.endsWith('/api/photos') && (url.searchParams.has('browse_month') || url.searchParams.has('start_time'))) {
+        sawMoreRequests = true
+      }
+    })
     await page.goto('/photos')
 
     // 等首屏月块渲染出来
     const firstMonth = page.locator('.month-block[data-month]').first()
     await expect(firstMonth).toBeVisible({ timeout: 15_000 })
-
-    // 监听后续的 /api/photos 请求（按月加载）
-    let sawMoreRequests = false
-    page.on('request', (req) => {
-      if (req.url().includes('/api/photos') && req.url().includes('start_time=')) {
-        sawMoreRequests = true
-      }
-    })
 
     // 虚拟滚动按月懒加载：window.scrollTo 不一定驱动容器 scrollTop，改用 wheel 增量
     // 滚动，每段停顿让 debounced handleScroll 触发对应月份的 /api/photos?start_time= 请求。
@@ -194,8 +193,9 @@ test.describe('P1 - 照片流核心功能', () => {
     if (!probe.ok) return
     await page.goto('/photos')
 
-    // 进入批量选择模式：UnifiedPhotoPage 顶部 "批量选择" 按钮
-    const batchBtn = page.getByTitle('批量选择')
+    // 进入视图设置后从「批量选择」操作启用选择模式。
+    await page.getByTitle('视图设置').click()
+    const batchBtn = page.getByRole('button', { name: '批量选择' })
     await expect(batchBtn).toBeVisible({ timeout: 10_000 })
     await batchBtn.click()
 

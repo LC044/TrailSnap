@@ -127,6 +127,7 @@ def _make_wrapper():
     return instance
 
 
+@pytest.mark.module_agent
 def test_convert_chunk_populates_reasoning_summary_when_delta_has_reasoning():
     """Reasoning text in the delta must be appended to additional_kwargs.summary."""
     instance = _make_wrapper()
@@ -157,6 +158,7 @@ def test_convert_chunk_populates_reasoning_summary_when_delta_has_reasoning():
     ]
 
 
+@pytest.mark.module_agent
 def test_convert_chunk_skips_when_message_already_has_content():
     """If the base message already carries content, the reasoning pass-through is a no-op."""
     instance = _make_wrapper()

@@ -1,5 +1,5 @@
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -27,6 +27,7 @@ class ChatRequest(BaseModel):
     connection_id: str | None = None
     model_name: str | None = None
     reasoning_effort: str | None = None
+    mode: Literal["assistant", "search"] = "assistant"
 
 class ChatResponse(BaseModel):
     response: str
@@ -46,6 +47,8 @@ def chat_endpoint(
     
     # Ensure session exists
     session = agent_crud.get_session(db, session_id)
+    if session and str(session.user_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to access this session")
     if not session:
         session_create = AgentSessionCreate(
             id=uuid.UUID(session_id),
@@ -66,7 +69,8 @@ def chat_endpoint(
                     db=db,
                     connection_id=request.connection_id,
                     model_name=request.model_name,
-                    reasoning_effort=request.reasoning_effort
+                    reasoning_effort=request.reasoning_effort,
+                    mode=request.mode,
                 ),
                 media_type="text/event-stream"
             )
@@ -78,7 +82,8 @@ def chat_endpoint(
                 db=db,
                 connection_id=request.connection_id,
                 model_name=request.model_name,
-                reasoning_effort=request.reasoning_effort
+                reasoning_effort=request.reasoning_effort,
+                mode=request.mode,
             )
             return ChatResponse(response=reply, session_id=session_id)
     except ValueError as ve:
@@ -86,6 +91,19 @@ def chat_endpoint(
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"内部错误: {str(e)}")
+
+
+@router.get("/search-results/{result_id}/photos", summary="分页读取大模型搜索的完整照片结果")
+def get_search_result_photos(
+    result_id: uuid.UUID,
+    offset: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=100),
+    current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
+):
+    from app.service.agent.photo_search import search_result_page
+    try:
+        return BaseResponse.success(data=search_result_page(db, str(current_user.id), str(result_id), offset, limit))
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 @router.post("/chat/{session_id}/abort", summary="终止流式对话")
 def abort_chat(

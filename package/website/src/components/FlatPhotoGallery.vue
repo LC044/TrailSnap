@@ -54,6 +54,7 @@
                 
                 <!-- Selection Checkbox (Top Left) -->
                 <div
+                    v-if="selectable"
                     class="absolute top-2 left-2 z-30 transition-opacity duration-200 cursor-pointer"
                     :class="(isSelectionMode || localSelectedIds.has(img.id)) ? 'opacity-100 pointer-events-auto' : 'opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto'"
                     @click.stop="toggleSelection(img)"
@@ -136,6 +137,8 @@ interface Props {
   store?: any
   scrollContainer?: HTMLElement | null,
   showActionBar?: boolean
+  selectable?: boolean
+  relativeScroll?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -144,7 +147,9 @@ const props = withDefaults(defineProps<Props>(), {
   loading: false,
   pendingRemoveIds: () => new Set(),
   error: null,
-  showActionBar: true
+  showActionBar: true,
+  selectable: true,
+  relativeScroll: false,
 })
 
 const emit = defineEmits(['click-photo', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'batch-edit-location'])
@@ -193,7 +198,13 @@ const containerWidth = ref(1000)
 const scrollContainerRef = ref<HTMLElement | Window | null>(null)
 const { y: containerScrollTop } = useScroll(scrollContainerRef)
 
-const scrollTop = computed(() => containerScrollTop.value)
+const scrollTop = computed(() => {
+  const scroll = containerScrollTop.value
+  const container = scrollContainerRef.value
+  if (!props.relativeScroll || !galleryEl.value || !container || container === window) return scroll
+  const top = galleryEl.value.getBoundingClientRect().top - (container as HTMLElement).getBoundingClientRect().top + scroll
+  return Math.max(0, scroll - top)
+})
 
 const viewportHeight = ref(window.innerHeight)
 
@@ -327,6 +338,7 @@ const { onTouchstart: startLongPress } = useLongPress({
   }
 })
 const handlePhotoTouchStart = (photo: AlbumImage, event: TouchEvent) => {
+  if (!props.selectable) return
   suppressNextPhotoClick = false
   if (isSelectionMode.value || event.touches.length !== 1) return
   pressedPhoto = photo

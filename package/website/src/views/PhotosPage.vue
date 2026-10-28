@@ -2,6 +2,7 @@
   <UnifiedPhotoPage
     ref="unifiedPhotoPageRef"
     title="照片"
+    enable-time-browse
     :loading="photoStore.loading"
     :error="photoStore.error"
     :photos="images"
@@ -15,6 +16,7 @@
     :allow-folder-view="true"
     :allow-diary-view="true"
     :store="photoStore"
+    @clear-filters="clearPhotoFilters"
     @load-more="photoStore.loadPhotos"
     @retry="photoStore.loadPhotos(true)"
     @upload="triggerUpload"
@@ -64,7 +66,11 @@
     </template>
 
     <template #empty>
-      <div class="flex flex-col items-center justify-center py-20 px-4 text-center max-w-md mx-auto">
+      <div v-if="hasActiveFilters" class="py-20 text-center ts-muted">
+        <p>没有符合条件的照片</p>
+        <button type="button" class="ts-button ts-button-primary mt-4" @click="clearPhotoFilters">清除筛选</button>
+      </div>
+      <div v-else class="flex flex-col items-center justify-center py-20 px-4 text-center max-w-md mx-auto">
         <div class="w-24 h-24 bg-primary-50 dark:bg-primary-900/20 rounded-full flex items-center justify-center mb-6 shadow-sm border border-primary-100 dark:border-primary-800/50">
           <FolderPlus class="w-12 h-12 text-primary-500" />
         </div>
@@ -98,6 +104,7 @@
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { ref, computed, nextTick, onUnmounted, onActivated, onDeactivated, watch } from 'vue'
 import { useRouter, useRoute, onBeforeRouteLeave } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotosPageStore } from '@/stores/photoStore'
 import { normalizeMediaTypeFilters } from '@/utils/mediaTypeFilters'
@@ -116,6 +123,16 @@ const router = useRouter()
 const route = useRoute()
 const store = useAlbumStore()
 const photoStore = usePhotosPageStore()
+const userStore = useUserStore()
+const initializeTimePreferences = () => {
+  let saved: { view?: string; time?: string } = {}
+  try { saved = JSON.parse(localStorage.getItem(`photo-timeline-preferences:${userStore.userInfo?.id ?? 'anonymous'}`) || '{}') } catch {}
+  photoStore.browseEnabled = true
+  const view = route.query.view ?? saved.view
+  photoStore.browseGranularity = view === 'year' || view === 'month' ? view : 'day'
+  photoStore.timeField = (route.query.time ?? saved.time) === 'upload_time' ? 'upload_time' : 'photo_time'
+}
+initializeTimePreferences()
 const unifiedPhotoPageRef = ref<InstanceType<typeof UnifiedPhotoPage> | null>(null)
 const pageActive = ref(false)
 let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -189,8 +206,15 @@ const handleConfirmDelete = async (ids: string[], callback: (success: boolean) =
   }
 }
 
-const handlePhotoUpdate = (event: { id: string, location?: string, tags?: string[] }) => {
-  console.log('Update photo:', event)
+const handlePhotoUpdate = (event: { id: string; filename?: string; photo_time?: string | null }) => {
+  const image = photoStore.images.find(item => item.id === event.id)
+  if (image && event.filename !== undefined) image.filename = event.filename
+  if (image && event.photo_time !== undefined) {
+    image.photoTime = event.photo_time
+    image.hasPhotoTime = Boolean(event.photo_time)
+    if (photoStore.timeField === 'photo_time') image.timestamp = event.photo_time ? new Date(event.photo_time).getTime() : NaN
+    photoStore.markDataStale('EXTRACT_METADATA')
+  }
 }
 
 const refreshPhotoData = async (done: (success?: boolean) => void = () => {}) => {
@@ -239,9 +263,17 @@ const applyQueryFilters = () => {
   f.uploaded_before = parseQueryFilter(uploaded_before)[0]
 }
 
+const filterQueryKey = () => JSON.stringify(Object.fromEntries(Object.entries(route.query).filter(([key]) => !['view', 'time', 'anchor'].includes(key))))
 let lastQueryStr = ''
 let initialized = false
 let savedScrollTop = 0
+
+const hasActiveFilters = computed(() => Object.values(photoStore.selectedFilters).some(value => Array.isArray(value) ? value.length > 0 : Boolean(value)))
+const clearPhotoFilters = async () => {
+  const previousKey = filterQueryKey()
+  await router.replace({ path: '/photos', query: { view: photoStore.browseGranularity, time: photoStore.timeField } })
+  if (previousKey === filterQueryKey()) initData()
+}
 
 const getScrollContainer = () => document.querySelector('main') as HTMLElement | null
 
@@ -253,8 +285,9 @@ onBeforeRouteLeave((_to, from) => {
 
 const initData = () => {
   initialized = true
-  lastQueryStr = JSON.stringify(route.query)
+  lastQueryStr = filterQueryKey()
   photoStore.resetAll()
+  initializeTimePreferences()
   // 从路由查询参数应用筛选条件（如存储中心跳转过来的“截图/视频/实况图”）
   applyQueryFilters()
   // Initial Load
@@ -266,7 +299,7 @@ const initData = () => {
 
 onActivated(() => {
   pageActive.value = true
-  const currentQueryStr = JSON.stringify(route.query)
+  const currentQueryStr = filterQueryKey()
   if (!initialized || currentQueryStr !== lastQueryStr) {
     initData()
   } else {
@@ -282,6 +315,17 @@ onActivated(() => {
       store.fetchAlbums()
     }
   }
+})
+
+watch(() => userStore.userInfo?.id, () => {
+  initialized = false
+  photoStore.resetAll()
+  initializeTimePreferences()
+  if (pageActive.value) initData()
+})
+
+watch(filterQueryKey, key => {
+  if (pageActive.value && route.name === 'Photos' && key !== lastQueryStr) initData()
 })
 
 onDeactivated(() => {

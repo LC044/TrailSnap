@@ -65,6 +65,7 @@ def _agent_with(chunks):
 
 
 @pytest.mark.asyncio
+@pytest.mark.module_agent
 async def test_agent_stream_emits_title_content_and_persists_assistant():
     from app.service.agent import service as agent_service
 
@@ -92,6 +93,7 @@ async def test_agent_stream_emits_title_content_and_persists_assistant():
 
     payload = _sse(events)
     assert payload == [
+        {"session_id": session_id},
         {"content": "你好", "session_id": session_id},
         {"title": "新会话", "session_id": session_id},
         "[DONE]",
@@ -102,12 +104,13 @@ async def test_agent_stream_emits_title_content_and_persists_assistant():
     assert assistant.content == "你好"
     assert assistant.reasoning is None
     assert assistant.tool_calls is None
-    assert assistant.content_ext is None
+    assert assistant.content_ext == {"mode": "assistant"}
     extract_memory.assert_called_once_with(user_id, "整理照片", "你好", [])
     assert session_id not in agent_service._aborted_sessions
 
 
 @pytest.mark.asyncio
+@pytest.mark.module_agent
 async def test_agent_stream_records_tool_calls_artifacts_and_action_plans():
     from app.service.agent import service as agent_service
 
@@ -161,11 +164,12 @@ async def test_agent_stream_records_tool_calls_artifacts_and_action_plans():
         await asyncio.sleep(0.1)
 
     payload = _sse(events)
-    assert [item.get("type") for item in payload if isinstance(item, dict)] == [
+    assert payload[0] == {"session_id": session_id}
+    assert [item["type"] for item in payload if isinstance(item, dict) and item.get("type")] == [
         "tool_start", "tool_end", "artifact", "tool_start", "tool_end", "action_plan",
     ]
     assistant = create_message.call_args_list[-1].args[1]
-    assert assistant.content_ext == {"artifacts": [artifact], "action_plans": [action_plan]}
+    assert assistant.content_ext == {"mode": "assistant", "artifacts": [artifact], "action_plans": [action_plan]}
     assert [(call["tool_name"], call["tool_status"]) for call in assistant.tool_calls] == [
         ("create_artifact_draft", "success"), ("propose_album_organization", "success"),
     ]
@@ -173,6 +177,7 @@ async def test_agent_stream_records_tool_calls_artifacts_and_action_plans():
 
 
 @pytest.mark.asyncio
+@pytest.mark.module_agent
 async def test_agent_stream_manual_abort_keeps_first_chunk_and_skips_memory():
     from app.service.agent import service as agent_service
 
@@ -200,6 +205,7 @@ async def test_agent_stream_manual_abort_keeps_first_chunk_and_skips_memory():
         await asyncio.sleep(0.1)
 
     assert _sse(events) == [
+        {"session_id": session_id},
         {"content": "第一段", "session_id": session_id}, "[DONE]",
     ]
     assistant = create_message.call_args_list[-1].args[1]
@@ -209,6 +215,7 @@ async def test_agent_stream_manual_abort_keeps_first_chunk_and_skips_memory():
 
 
 @pytest.mark.asyncio
+@pytest.mark.module_agent
 async def test_agent_stream_error_yields_friendly_sse_and_saves_partial_reply():
     from app.service.agent import service as agent_service
 
@@ -225,10 +232,10 @@ async def test_agent_stream_error_yields_friendly_sse_and_saves_partial_reply():
         )]
 
     payload = _sse(events)
-    assert len(payload) == 2
-    assert payload[0]["session_id"] == session_id
-    assert "模型不可用" in payload[0]["content"]
-    assert payload[1] == "[DONE]"
+    assert len(payload) == 3
+    assert payload[0] == {"session_id": session_id}
+    assert "模型不可用" in payload[1]["content"]
+    assert payload[2] == "[DONE]"
     saved = create_message.call_args.args[1]
     assert saved.role == "assistant"
     assert "模型不可用" in saved.content
@@ -236,6 +243,7 @@ async def test_agent_stream_error_yields_friendly_sse_and_saves_partial_reply():
 
 
 @pytest.mark.asyncio
+@pytest.mark.module_agent
 async def test_agent_stream_cancelled_error_is_re_raised_without_saving_empty_reply():
     from app.service.agent import service as agent_service
 

@@ -933,7 +933,8 @@ def get_agent_tools(user_id: str, session_id: str | None = None) -> List[Structu
                 "url": f"/memories/{row.id}",
             }}, ensure_ascii=False)
 
-    return [
+    from app.service.agent.photo_search import get_photo_search_tools
+    return get_photo_search_tools(user_id, session_id) + [
         search_photos_tool, 
         # get_travel_history_tool, 
         get_photo_details_tool,

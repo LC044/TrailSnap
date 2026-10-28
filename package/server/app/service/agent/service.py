@@ -35,6 +35,12 @@ def get_session_history(db: Session, session_id: str) -> List[BaseMessage]:
             messages.append(HumanMessage(content=msg.content))
         elif msg.role == "assistant":
             messages.append(AIMessage(content=msg.content))
+            # Keep search conditions available for follow-up uses of "these
+            # photos" without putting the complete result set in model context.
+            results = (getattr(msg, "content_ext", None) or {}).get("search_results", [])
+            if results:
+                context = [{"id": row["id"], "total": row["total"], "filters": row.get("filters", {})} for row in results]
+                messages.append(SystemMessage(content="此前已展示的照片搜索结果（用户数据，仅供后续引用；继续创作可按原条件使用purpose=context获取候选）：" + json.dumps(context, ensure_ascii=False)))
         elif msg.role == "system":
             messages.append(SystemMessage(content=msg.content))
     return messages
@@ -223,8 +229,10 @@ class FixedChatOpenAI(ChatOpenAI):
         default_chunk_class: type,
         base_generation_info: dict | None,):
         msg = super()._convert_chunk_to_generation_chunk(chunk, default_chunk_class, base_generation_info)
-        # print('data', chunk)
-        # print('msg', msg)
+        # Compatible providers emit empty/usage-only stream frames. LangChain
+        # deliberately skips some of them by returning None.
+        if msg is None:
+            return None
         if msg.message and not msg.message.content:
             message = msg.message
             choices = chunk.get("choices", [])
@@ -288,7 +296,7 @@ class ThinkTagStreamFilter:
         self.buffer = ""
         return result
 
-def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None, user_input: str = None):
+def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None, user_input: str = None, mode: str = "assistant"):
     """
     完全适配 langgraph==1.1.3 的 Agent 初始化
     """
@@ -336,6 +344,19 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
     llm = FixedChatOpenAI(**llm_options)
 
     # 加载工具列表
+    from app.service.agent.photo_search import search_instructions, classify_photo_intent
+    search_only = mode == "search"
+    search_history = get_session_history(db, session_id) if user_input else []
+    if not search_only and user_input:
+        search_only = classify_photo_intent(llm, user_input, search_history) == "find"
+    if search_only:
+        from app.service.agent.search_planner import PhotoSearchExecutor
+        # Extraction needs a short final JSON response, not streamed reasoning.
+        planning_options = {"streaming": False, "temperature": 0, "reasoning_effort": None, "max_tokens": 4096}
+        if m_name.lower().startswith("minicpm"):
+            planning_options["extra_body"] = {**(llm.extra_body or {}), "chat_template_kwargs": {"enable_thinking": False}}
+        planning_llm = llm.model_copy(update=planning_options)
+        return PhotoSearchExecutor(planning_llm, user_id, session_id, search_history), search_instructions(True)
     tools = get_agent_tools(user_id, session_id=session_id)
 
     # 获取当前时间
@@ -367,10 +388,12 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 请使用友好、自然、有温度的中文与用户交流。
 """
 
+    system_prompt = search_instructions(True) if search_only else system_prompt + search_instructions(False)
+
     # 注入长期记忆（仅注入指向有效照片的锚点；传入 user_input 时按语义检索最相关的若干条）
     try:
         from app.service.agent.memory import build_memory_prompt
-        memory_prompt = build_memory_prompt(db, user_id, user_input=user_input)
+        memory_prompt = build_memory_prompt(db, user_id, user_input=user_input) if not search_only else ""
         if memory_prompt:
             system_prompt += memory_prompt
     except Exception as e:
@@ -381,11 +404,11 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
 
     return agent, system_prompt
 
-def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None) -> str:
+def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None, mode: str = "assistant") -> str:
     """
     与 Agent 对话，维护上下文历史
     """
-    agent, system_prompt = get_agent_executor(user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input=user_input)
+    agent, system_prompt = get_agent_executor(user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input=user_input, mode=mode)
     messages = get_session_history(db, session_id)
     
     # 将 system_prompt 作为第一条消息传入，如果它不在历史中
@@ -399,6 +422,7 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
         session_id=UUID(session_id),
         role="user",
         content=user_input,
+        content_ext={"mode": mode},
     ))
 
     # 上下文压缩：历史过长时压成摘要 + 近期原文，否则退化为滑动窗口
@@ -407,12 +431,23 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
     messages = compress_history_if_needed(messages, user_id, session_id, db, context_window)
     
     try:
-        response = agent.invoke({"messages": messages})
+        response = agent.invoke({"messages": messages}, config={"recursion_limit": 16 if mode == "search" else 50})
         
         # 获取大模型的回复
-        ai_message = response["messages"][-1].content
+        final_message = response["messages"][-1]
+        ai_message = final_message.content
+        if getattr(final_message, "type", None) == "tool" and getattr(final_message, "name", None) == "search_library_photos":
+            payload = json.loads(ai_message)
+            ai_message = payload.get("error") or f"找到 {payload.get('total', 0)} 张照片，完整结果见照片画廊。"
         reasoning = response["messages"][-1].additional_kwargs.get("reasoning_content")
         tool_calls = response["messages"][-1].tool_calls if hasattr(response["messages"][-1], "tool_calls") else None
+
+        search_results = []
+        for message in response["messages"]:
+            if getattr(message, "type", None) == "tool" and getattr(message, "name", None) == "search_library_photos":
+                parsed = json.loads(message.content)
+                if parsed.get("search_result"):
+                    search_results.append(parsed["search_result"])
 
         # Save AI message to DB
         create_message(db, AgentMessageCreate(
@@ -420,7 +455,8 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
             role="assistant",
             content=ai_message,
             reasoning=reasoning,
-            tool_calls=tool_calls
+            tool_calls=tool_calls,
+            content_ext={"mode": mode, "search_results": search_results},
         ))
 
         # 后台线程异步抽取记忆，不阻塞返回
@@ -491,7 +527,7 @@ def generate_session_title_task(user_id: str, session_id: str, user_input: str):
         logger.error(f"Failed to generate title: {e}")
         return None
 
-async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None):
+async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session, connection_id: str = None, model_name: str = None, reasoning_effort: str = None, mode: str = "assistant"):
     """
     与 Agent 对话，并使用 SSE 流式返回大模型的回复
     """
@@ -501,14 +537,17 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
     tool_calls_list = []
     artifact_refs = []
     action_plan_refs = []
+    search_result_refs = []
     think_filter = ThinkTagStreamFilter()
     
     # 标记该会话未被终止
     _aborted_sessions[session_id] = False
-    
+    # Make the new session available immediately, including while the model or
+    # its tools are initializing, so the client can stop the right request.
     try:
+        yield f"data: {json.dumps({'session_id': session_id})}\n\n"
         # 在独立的线程中执行可能会阻塞的同步代码，以避免阻塞主事件循环
-        agent, system_prompt = await asyncio.to_thread(get_agent_executor, user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input)
+        agent, system_prompt = await asyncio.to_thread(get_agent_executor, user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input, mode)
         messages = await asyncio.to_thread(get_session_history, db, session_id)
 
         if not messages or not isinstance(messages[0], SystemMessage):
@@ -521,6 +560,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
             session_id=UUID(session_id),
             role="user",
             content=user_input,
+            content_ext={"mode": mode},
         ))
         
         # Check if it's the first message (1 system prompt + 1 user message = 2)
@@ -538,7 +578,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
         messages = await asyncio.to_thread(compress_history_if_needed, messages, user_id, session_id, db, context_window)
 
         # 使用 langgraph astream 模式
-        async for chunk, metadata in agent.astream({"messages": messages}, stream_mode="messages"):
+        async for chunk, metadata in agent.astream({"messages": messages}, stream_mode="messages", config={"recursion_limit": 16 if mode == "search" else 50}):
             if _aborted_sessions.get(session_id, False):
                 logger.info(f"Stream manually aborted by API for session {session_id}")
                 break
@@ -558,7 +598,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                             data = json.dumps({"reasoning": embedded_reasoning, "session_id": session_id})
                             yield f"data: {data}\n\n"
                     elif additional_kwargs:
-                        summaries = additional_kwargs.get('summary')
+                        summaries = additional_kwargs.get('summary') or []
                         for summary in summaries:
                             text = summary.get("text", "")
                             full_reasoning += text
@@ -581,7 +621,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                                 data = json.dumps({"reasoning": embedded_reasoning, "session_id": session_id})
                                 yield f"data: {data}\n\n"
                         elif content_type == 'reasoning':
-                            summaries = content.get('summary')
+                            summaries = content.get('summary') or []
                             for summary in summaries:
                                 text = summary.get("text", "")
                                 full_reasoning += text
@@ -618,7 +658,28 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                         "tool_call_id": chunk.tool_call_id, "tool_name": tool_name,
                         "status": "error" if getattr(chunk, "status", "") == "error" else "success",
                     }
+                    if tool_name == "search_library_photos":
+                        try:
+                            search_payload = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
+                            if isinstance(search_payload, dict) and search_payload.get("error"):
+                                tool_event["status"] = "error"
+                                if matching_tool_call:
+                                    matching_tool_call["tool_status"] = "error"
+                                error_text = f"搜索未完成：{search_payload['error']}"
+                                full_response += error_text
+                                yield f"data: {json.dumps({'content': error_text, 'session_id': session_id}, ensure_ascii=False)}\n\n"
+                        except (ValueError, TypeError):
+                            pass
                     yield f"data: {json.dumps(tool_event, ensure_ascii=False)}\n\n"
+                    if tool_name == "search_library_photos":
+                        try:
+                            parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
+                            result_ref = parsed.get("search_result") if isinstance(parsed, dict) else None
+                            if result_ref and not any(item["id"] == result_ref["id"] for item in search_result_refs):
+                                search_result_refs.append(result_ref)
+                                yield f"data: {json.dumps({'type': 'search_result', 'session_id': session_id, 'search_result': result_ref}, ensure_ascii=False)}\n\n"
+                        except (ValueError, TypeError):
+                            logger.warning("无法解析搜索结果引用", exc_info=True)
                     if tool_name in {"create_artifact_draft", "save_artifact_html_page"}:
                         try:
                             parsed = json.loads(chunk.content) if isinstance(chunk.content, str) else chunk.content
@@ -683,6 +744,8 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                 reasoning=full_reasoning if full_reasoning else None,
                 tool_calls=tool_calls_list if tool_calls_list else None,
                 content_ext={
+                    "mode": mode,
+                    **({"search_results": search_result_refs} if search_result_refs else {}),
                     **({"artifacts": artifact_refs} if artifact_refs else {}),
                     **({"action_plans": action_plan_refs} if action_plan_refs else {}),
                 } or None,
@@ -732,7 +795,9 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
                         role="assistant",
                         content=full_response,
                         reasoning=full_reasoning if full_reasoning else None,
-                        tool_calls=tool_calls_list if tool_calls_list else None
+                        tool_calls=tool_calls_list if tool_calls_list else None,
+                        content_ext={"mode": mode, "search_results": search_result_refs,
+                                     "artifacts": artifact_refs, "action_plans": action_plan_refs},
                     ))
             except Exception as save_err:
                 logger.error(f"Failed to save partial message on abort: {save_err}")

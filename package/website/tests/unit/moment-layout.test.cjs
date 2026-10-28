@@ -17,6 +17,7 @@ const { useVirtualLayout } = load('composables/useVirtualLayout.ts', {
   vue,
   '@/utils/momentLayout': sizes,
   '@/utils/photoGridLayout': load('utils/photoGridLayout.ts'),
+  '@/utils/photoTimeline': load('utils/photoTimeline.ts'),
 })
 
 test('a single portrait highlight reserves its full height and updates when highlights change', async () => {

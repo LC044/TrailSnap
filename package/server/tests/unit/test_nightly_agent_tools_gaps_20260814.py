@@ -58,11 +58,14 @@ def _tool(name, user_id):
 # ===========================================================================
 
 
+@pytest.mark.module_agent
 def test_get_agent_tools_returns_expected_names():
     from app.service.agent.tools import get_agent_tools
     user_id = str(uuid4())
     names = sorted(t.name for t in get_agent_tools(user_id))
     assert names == sorted([
+        "lookup_search_people",
+        "search_library_photos",
         "get_photo_details_tool",
         "get_photo_locations_tool",
         "get_photo_persons_tool",
