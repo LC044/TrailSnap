@@ -142,7 +142,7 @@ class TestCreateTasksForNewFiles:
     @pytest.fixture(autouse=True)
     def current_library(self, monkeypatch):
         from app.service import gallery_sync
-        user = SimpleNamespace(id='user-1')
+        user = SimpleNamespace(id='user-1', settings={'storage': {'external_directories': ['E:/p']}})
         monkeypatch.setattr(gallery_sync, 'lock_user', lambda *_: user)
         monkeypatch.setattr(gallery_sync, 'import_allowed', lambda *_: True)
 
