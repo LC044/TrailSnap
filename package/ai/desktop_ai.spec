@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import sys
 
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
@@ -63,6 +64,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="trailsnap-ai",
+    icon=str(root.parent / "desktop" / "src-tauri" / "icons" / "icon.ico") if sys.platform == "win32" else None,
     debug=False,
     strip=False,
     upx=True,
