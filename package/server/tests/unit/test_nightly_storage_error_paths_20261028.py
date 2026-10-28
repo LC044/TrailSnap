@@ -63,7 +63,15 @@ def test_validate_upload_folder_normalizes_separators_and_strips_slashes():
     assert storage._validate_upload_folder("trips\\2026\\") == "trips/2026"
 
 
-@pytest.mark.parametrize("value", ["/etc/passwd", "C:\\Windows\\System32", "../secrets", "a/../../b", "a/./b"])
+# Traversal segments are rejected on every platform.  Absolute paths are
+# platform specific: ``os.path.isabs`` only knows the running platform, so
+# ``C:\\Windows\\System32`` is a harmless relative name on Linux and
+# ``/etc/passwd`` is a relative name on Windows.
+_TRAVERSAL_FOLDERS = ["../secrets", "a/../../b", "a/./b"]
+_ABSOLUTE_FOLDERS = ["C:\\Windows\\System32"] if os.name == "nt" else ["/etc/passwd"]
+
+
+@pytest.mark.parametrize("value", _TRAVERSAL_FOLDERS + _ABSOLUTE_FOLDERS)
 def test_validate_upload_folder_rejects_escaping_paths(value):
     """Error: absolute paths and traversal segments are refused outright."""
     with pytest.raises(ValueError, match="Invalid upload folder"):
