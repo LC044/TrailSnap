@@ -15,6 +15,7 @@ export const useUiStore = defineStore('ui', () => {
   const agentOpen = ref(false)
   const pendingAgentPrompt = ref('')
   const pendingAgentAutoSend = ref(false)
+  const pendingAgentMode = ref<'assistant' | 'search'>('assistant')
 
   const setSelectionActive = (v: boolean) => {
     selectionActive.value = v
@@ -25,15 +26,17 @@ export const useUiStore = defineStore('ui', () => {
   }
 
   const openAgent = () => setAgentOpen(true)
-  const openAgentWithPrompt = (prompt: string, autoSend = false) => {
+  const openAgentWithPrompt = (prompt: string, autoSend = false, mode: 'assistant' | 'search' = 'assistant') => {
     pendingAgentPrompt.value = prompt
     pendingAgentAutoSend.value = autoSend
+    pendingAgentMode.value = mode
     setAgentOpen(true)
   }
   const consumeAgentPrompt = () => {
-    const request = { prompt: pendingAgentPrompt.value, autoSend: pendingAgentAutoSend.value }
+    const request = { prompt: pendingAgentPrompt.value, autoSend: pendingAgentAutoSend.value, mode: pendingAgentMode.value }
     pendingAgentPrompt.value = ''
     pendingAgentAutoSend.value = false
+    pendingAgentMode.value = 'assistant'
     return request
   }
   const closeAgent = () => setAgentOpen(false)

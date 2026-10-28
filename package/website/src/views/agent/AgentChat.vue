@@ -20,6 +20,9 @@
       <div class="agent-main">
         <!-- Header -->
         <AgentHeader
+          :search-mode="currentMode === 'search'"
+          :is-generating="isGenerating"
+          @switch-mode="currentMode = 'assistant'"
           :is-fullscreen="isFullscreen"
           :is-selection-mode="isSelectionMode"
           :selected-count="selectedMessages.length"
@@ -99,7 +102,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Loader2, Bot } from 'lucide-vue-next';
-import { agentApi, type AgentSession, type AgentMessage, type ToolProgressEvent, type AgentArtifactRef, type AgentActionPlan } from '@/api/agent';
+import { agentApi, type AgentSession, type AgentMessage, type ToolProgressEvent, type AgentArtifactRef, type AgentActionPlan, type AgentSearchResult } from '@/api/agent';
 import { settingsApi } from '@/api/settings';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
@@ -181,6 +184,7 @@ const loadModels = async () => {
 // 会话管理
 const sessions = ref<AgentSession[]>([]);
 const currentSession = ref<AgentSession | null>(null);
+const currentMode = ref<'assistant' | 'search'>('assistant');
 
 // 消息管理
 export interface MessageItem {
@@ -193,6 +197,7 @@ export interface MessageItem {
   toolEvents?: ToolProgressEvent[];
   artifacts?: AgentArtifactRef[];
   actionPlans?: AgentActionPlan[];
+  searchResults?: AgentSearchResult[];
   recommendations?: Array<{ id: string; label: string; description: string; prompt: string }>;
 }
 
@@ -224,8 +229,11 @@ watch(
   ([open, pending, generating]) => {
     if (!open || !pending || generating) return;
     const request = uiStore.consumeAgentPrompt();
-    inputMessage.value = request.prompt;
     nextTick(() => {
+      if (request.mode === 'search' || currentMode.value !== request.mode) createNewSession();
+      currentMode.value = request.mode;
+      if (request.mode === 'search') isFullscreen.value = true;
+      inputMessage.value = request.prompt;
       if (request.autoSend) sendMessage();
       else ElMessage.info('需求已填入，发送后 Agent 会继续处理');
     });
@@ -587,8 +595,10 @@ const loadSessions = async () => {
 
 // 主动式记忆：打开助手时拉取未读的主动消息，作为助手消息置顶展示，并标记已读
 const loadProactiveMessages = async () => {
+  if (currentMode.value === 'search' || uiStore.pendingAgentPrompt) return;
   try {
     const res: any = await agentApi.getProactiveMessages();
+    if (currentMode.value === 'search') return;
     const list = res?.data?.messages ?? [];
     if (!list.length) return;
     const proactiveItems: MessageItem[] = list.map((m: any) => ({
@@ -611,6 +621,8 @@ const loadProactiveMessages = async () => {
 };
 
 const createNewSession = () => {
+  if (isGenerating.value) return;
+  currentMode.value = 'assistant';
   currentSession.value = null;
   messages.value = [ { ...defaultWelcomeMessage } ];
   isSelectionMode.value = false;
@@ -621,6 +633,7 @@ const createNewSession = () => {
 };
 
 const switchSession = async (session: AgentSession) => {
+  if (isGenerating.value) return;
   if (currentSession.value?.id === session.id) return;
   currentSession.value = session;
   isSelectionMode.value = false;
@@ -635,6 +648,7 @@ const loadMessages = async (sessionId: string, showLoading: boolean = true) => {
   if (showLoading) isLoading.value = true;
   try {
     const res = await agentApi.getSessionMessages(sessionId);
+    currentMode.value = [...res.data].reverse().find(m => m.content_ext?.mode)?.content_ext?.mode === 'search' ? 'search' : 'assistant';
     if (res.data.length === 0) {
       messages.value = [ { ...defaultWelcomeMessage } ];
     } else {
@@ -647,7 +661,8 @@ const loadMessages = async (sessionId: string, showLoading: boolean = true) => {
         isReasoningExpanded: false,
         toolEvents: (m.tool_calls || []).map((tool: any) => ({ type: 'tool_end', tool_call_id: tool.tool_call_id, tool_name: tool.tool_name, status: tool.tool_status === 'error' ? 'error' : 'success' })),
         artifacts: m.content_ext?.artifacts || [],
-        actionPlans: m.content_ext?.action_plans || []
+        actionPlans: m.content_ext?.action_plans || [],
+        searchResults: m.content_ext?.search_results || [],
       }));
     }
     await scrollToBottom(true);
@@ -724,7 +739,8 @@ const sendMessage = async () => {
         session_id: currentSession.value?.id || undefined,
         connection_id: conn_id || undefined,
         model_name: model || undefined,
-        reasoning_effort: selectedReasoningValue.value || undefined
+        reasoning_effort: selectedReasoningValue.value || undefined,
+        mode: currentMode.value,
       },
       (content) => {
         if (aiMessageIndex === -1) {
@@ -782,7 +798,9 @@ const sendMessage = async () => {
           messages.value.push({ role: 'assistant', content: '', isMarkdown: true, reasoning: '', toolEvents: [], artifacts: [], actionPlans: [] });
         }
         const message = messages.value[aiMessageIndex];
-        if (event.type === 'artifact') {
+        if (event.type === 'search_result') {
+          message.searchResults = [...(message.searchResults || []), event.search_result];
+        } else if (event.type === 'artifact') {
           message.artifacts = [...(message.artifacts || []), event.artifact];
           window.dispatchEvent(new CustomEvent('trailsnap:artifact-updated', { detail: event.artifact }));
         } else if (event.type === 'action_plan') {

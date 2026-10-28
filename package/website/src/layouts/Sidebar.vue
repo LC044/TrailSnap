@@ -87,6 +87,17 @@
             </div>
 
             <!-- 语义搜索选项 -->
+            <button
+              v-if="searchText.trim()" type="button"
+              @mousedown.prevent @click="openModelSearch"
+              class="w-full px-4 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-700 text-sm border-b border-slate-100 dark:border-slate-700 flex items-center gap-2"
+            >
+              <Bot class="w-4 h-4 text-primary-500 shrink-0" />
+              <span class="flex min-w-0 flex-col">
+                <span class="text-slate-800 dark:text-slate-200 font-medium">使用大模型搜索</span>
+                <span class="text-xs text-slate-500 dark:text-slate-400">理解时间、地点和人物等组合条件</span>
+              </span>
+            </button>
             <div
               v-if="searchText"
               @mousedown.prevent="handleSearch"
@@ -475,6 +486,12 @@ const toggleCollapse = () => {
 
 // 搜索相关状态和逻辑
 const searchText = ref('')
+const openModelSearch = () => {
+  const query = searchText.value.trim()
+  if (!query) return
+  uiStore.openAgentWithPrompt(query, true, 'search')
+  showDropdown.value = false
+}
 const showDropdown = ref(false)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const suggestions = ref<SearchSuggestion[]>([])

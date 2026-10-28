@@ -1,5 +1,6 @@
 import request from '@/utils/request';
 import { toServerUrl } from '@/config/server';
+import type { Photo } from '@/types/album';
 
 export interface ChatRequest {
   message: string;
@@ -8,6 +9,7 @@ export interface ChatRequest {
   connection_id?: string;
   model_name?: string;
   reasoning_effort?: string;
+  mode?: 'assistant' | 'search';
 }
 
 export interface ChatResponse {
@@ -160,7 +162,13 @@ export interface AgentRepairProgress {
   recheck: { missing_description: number; missing_hash: number };
 }
 
-export type AgentStreamEvent = ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef } | { type: 'action_plan'; action_plan: AgentActionPlan };
+export interface AgentSearchResult {
+  id: string;
+  total: number;
+  filters: { start_date?: string | null; end_date?: string | null; location?: string | null; person_ids?: string[] | null; people_match?: 'all' | 'any'; description?: string | null; ocr_text?: string | null; tags?: string[] | null; min_people?: number | null; max_people?: number | null };
+}
+
+export type AgentStreamEvent = ToolProgressEvent | { type: 'artifact'; artifact: AgentArtifactRef } | { type: 'action_plan'; action_plan: AgentActionPlan } | { type: 'search_result'; search_result: AgentSearchResult };
 
 export interface ProactiveMessage {
   id: number;
@@ -261,7 +269,7 @@ export const agentApi = {
             if (parsed.title && onTitleUpdate) {
               onTitleUpdate(parsed.title);
             }
-            if ((parsed.type === 'tool_start' || parsed.type === 'tool_end' || parsed.type === 'artifact' || parsed.type === 'action_plan') && onEvent) {
+            if ((parsed.type === 'tool_start' || parsed.type === 'tool_end' || parsed.type === 'artifact' || parsed.type === 'action_plan' || parsed.type === 'search_result') && onEvent) {
               onEvent(parsed);
             }
           } catch (e) {
@@ -273,6 +281,9 @@ export const agentApi = {
   },
   getSessions(params?: { skip?: number; limit?: number }) {
     return request.get<AgentSession[]>('/api/agent/sessions', { params });
+  },
+  getSearchResultPhotos(resultId: string, offset = 0) {
+    return request.get<{ total: number; next_offset: number | null; photos: Photo[] }>(`/api/agent/search-results/${resultId}/photos`, { params: { offset, limit: 60 } });
   },
   createSession(data: CreateSessionRequest) {
     return request.post<AgentSession>('/api/agent/sessions', data);

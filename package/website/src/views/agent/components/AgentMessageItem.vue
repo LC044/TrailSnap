@@ -14,8 +14,8 @@
         <Bot class="w-4 h-4" />
       </div>
 
-      <div class="flex flex-col gap-1 max-w-[85%]" :class="msg.role === 'user' ? 'items-end' : 'items-start'">
-        <div class="message-bubble" :class="[msg.role, { 'opacity-60': isSelectionMode && !isSelected }]">
+      <div class="flex min-w-0 flex-col gap-1 max-w-[85%]" :class="[msg.role === 'user' ? 'items-end' : 'items-start', { 'w-full': msg.searchResults?.length }]">
+        <div class="message-bubble min-w-0" :class="[msg.role, { 'opacity-60': isSelectionMode && !isSelected, 'w-full': msg.searchResults?.length }]">
           <div v-if="msg.role === 'assistant' && msg.reasoning" class="reasoning-container mb-2 text-sm text-slate-500 bg-slate-50 dark:bg-slate-800/50 rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
             <div class="flex items-center justify-between p-2 cursor-pointer select-none bg-slate-100/50 dark:bg-slate-800" @click="emit('toggle-reasoning')">
               <div class="flex items-center gap-2">
@@ -38,6 +38,7 @@
           </div>
           <div v-if="msg.content && msg.isMarkdown" class="markdown-body" v-html="renderMarkdown(msg.content, msg.artifacts?.flatMap(item => item.photo_ids || []) || [])"></div>
           <div v-else-if="msg.content" class="whitespace-pre-wrap break-words">{{ msg.content }}</div>
+          <AgentPhotoSearchResults v-for="result in msg.searchResults" :key="result.id" :result="result" />
           <div v-if="msg.role === 'assistant' && isGenerating" class="generation-status" role="status" aria-live="polite">
             <span class="generation-status-dots" aria-hidden="true"><i></i><i></i><i></i></span>
             <span>正在处理，回复尚未完成</span>
@@ -110,13 +111,15 @@ import { Bot, User, Copy, RefreshCw, Edit2, MoreHorizontal, Trash2, Brain, Chevr
 import { useUserStore } from '@/stores/user';
 import { toServerUrl } from '@/config/server';
 import { useRouter } from 'vue-router';
-import type { ToolProgressEvent, AgentArtifactRef, AgentActionPlan } from '@/api/agent';
+import type { ToolProgressEvent, AgentArtifactRef, AgentActionPlan, AgentSearchResult } from '@/api/agent';
 import AgentActionPlanCard from './AgentActionPlanCard.vue';
+import AgentPhotoSearchResults from './AgentPhotoSearchResults.vue';
 
 const userStore = useUserStore();
 const router = useRouter();
 
 const toolLabel = (name?: string) => ({
+  lookup_search_people: '查找人物', search_library_photos: '按组合条件搜索照片',
   list_skills: '查找工作流', load_skill: '加载工作流', search_photos_v2: '搜索照片',
   get_photo_context: '读取照片信息', search_ocr: '搜索图片文字', get_trip_tickets: '读取票据',
   get_travel_timeline: '整理旅行时间线', view_photos: '查看候选照片', create_contact_sheet: '生成联系表',
@@ -136,6 +139,7 @@ interface MessageItem {
   toolEvents?: ToolProgressEvent[];
   artifacts?: AgentArtifactRef[];
   actionPlans?: AgentActionPlan[];
+  searchResults?: AgentSearchResult[];
   recommendations?: Array<{ id: string; label: string; description: string; prompt: string }>;
 }
 

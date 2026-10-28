@@ -17,6 +17,14 @@
     <div class="flex-1 min-h-0 overflow-y-auto px-[var(--ts-page-gutter)] py-5">
       <div v-if="searchText" class="ts-surface flex flex-col overflow-hidden">
         <!-- Semantic Search Option -->
+        <button type="button" @click="openModelSearch" class="w-full px-4 py-4 text-left flex items-center gap-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+          <span class="w-10 h-10 shrink-0 rounded-full bg-primary-50 dark:bg-primary-900/30 flex items-center justify-center text-primary-500"><Bot class="w-5 h-5" /></span>
+          <span class="flex flex-col flex-1 min-w-0">
+            <span class="text-gray-900 dark:text-white font-medium">使用大模型搜索</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">理解时间、地点和人物等组合条件</span>
+          </span>
+          <ChevronRight class="w-5 h-5 shrink-0 text-gray-300 dark:text-gray-400" />
+        </button>
         <div 
           @click="handleSearch"
           class="px-4 py-4 flex items-center gap-3 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 active:bg-gray-100 dark:active:bg-gray-800 transition-colors"
@@ -133,6 +141,13 @@ const searchText = ref('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const suggestions = ref<SearchSuggestion[]>([])
 const uiStore = useUiStore()
+const openModelSearch = () => {
+  const query = searchText.value.trim()
+  if (!query) return
+  searchStore.remember(query)
+  uiStore.openAgentWithPrompt(query, true, 'search')
+  searchInputRef.value?.blur()
+}
 const searchStore = useSearchStore()
 const albumStore = useAlbumStore()
 const showExamples = ref(true)
