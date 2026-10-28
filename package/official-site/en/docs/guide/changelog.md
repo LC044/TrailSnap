@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-28 (0.19.1)
+
+### Improvements
+
+- Faster library scanning and basic photo processing, with newly imported photos prioritized.
+- Background AI tasks yield during imports and resume afterward; face recognition now runs before clustering.
+
 ## 2026-10-28 (0.19.0)
 
 ### New

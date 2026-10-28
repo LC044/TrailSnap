@@ -213,5 +213,10 @@
         "version": "0.19.0",
         "update_info": "- 照片支持按年、月、日浏览，自然语言搜索与以图搜图<br>- 自动关联火车票、照片与行程记忆，铁路历史数据定期更新<br>- 桌面版内置 AI，安装与更新更方便<br>- 支持人物标记，优化全景筛选与中文语义搜索<br>- 下载支持加速与重试，修复图库同步和车票识别问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.19.0"
+    },
+    {
+        "version": "0.19.1",
+        "update_info": "- 加快图库扫描和照片基本处理，优先处理新导入照片<br>- 导入期间后台 AI 任务主动让路，完成后自动恢复<br>- 优化人脸识别与聚类的处理顺序",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.19.1"
     }
 ]

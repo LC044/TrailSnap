@@ -2605,7 +2605,7 @@ wheels = [
 
 [[package]]
 name = "server"
-version = "0.19.0"
+version = "0.19.1"
 source = { virtual = "." }
 dependencies = [
     { name = "aiofiles" },
