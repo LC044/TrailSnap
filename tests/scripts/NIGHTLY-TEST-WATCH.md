@@ -16,6 +16,7 @@
   - `package/server/app/`
   - `package/server/tests/`
   - `package/ai/app/`
+  - `package/ai/tests/`  # [skip-nightly] §4.2/§4.4 要求 AI 测试写在 package/ai/tests/，原列表漏列导致 §6.1 会误判超范围
   - `package/website/tests/`
 - **禁止动作**：
   - 修改 `tests/scripts/run-tests.ps1` 本身（除非有明确 bug，改完加 `// [skip-nightly]` 注释）。
@@ -239,7 +240,7 @@ $exit = $LASTEXITCODE
 
 6.2. Stage：
    ```powershell
-   git add tests/ package/server/app/ package/server/tests/ package/ai/app/ package/website/tests/
+   git add tests/ package/server/app/ package/server/tests/ package/ai/app/ package/ai/tests/ package/website/tests/   # [skip-nightly] 同上：漏了 package/ai/tests/
    ```
 
 6.3. Commit message（Conventional Commits）：
