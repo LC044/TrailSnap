@@ -208,5 +208,10 @@
         "version": "0.18.1",
         "update_info": "- 修复火车票截图识别：新站名、繁简座位、缺车次自动补全<br>- 手机连接端口被占用自动换端口，支持自定义端口<br>- 修复全量任务重做与 AI 模型等待积压问题<br>- 旧图库升级校验更快，外部照片不再阻止升级<br>- 支持单张照片重新提取元数据",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.18.1"
+    },
+    {
+        "version": "0.19.0",
+        "update_info": "- 照片支持按年、月、日浏览，自然语言搜索与以图搜图<br>- 自动关联火车票、照片与行程记忆，铁路历史数据定期更新<br>- 桌面版内置 AI，安装与更新更方便<br>- 支持人物标记，优化全景筛选与中文语义搜索<br>- 下载支持加速与重试，修复图库同步和车票识别问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.19.0"
     }
 ]

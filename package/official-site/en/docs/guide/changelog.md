@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-10-28 (0.19.0)
+
+### New
+
+- Browse photos by year, month, or day; search using natural language or find similar photos from an upload or the library.
+- Automatically connect train tickets, photos, and journey memories; railway history updates regularly and can be queried by travel date.
+- Label people in photos and see names on hover; filter 360° panoramas by media type.
+- Submit anonymous feedback and open-source contributions with AI assistance.
+
+### Improvements
+
+- Desktop bundles the AI service for unified installation and updates, shows its startup window when needed, and improves update recovery and AI maintenance.
+- Desktop updates, Android packages, and railway data downloads support accelerated sources and retries; the website offers backup mirrors.
+- Updated the photo search model for better Chinese semantic search, and improved album queries, location loading, and website map previews.
+
+### Bug Fixes
+
+- Fixed library synchronization after directory removal and full scans.
+- Improved ticket recognition, date and time recovery, journey evidence, and failure feedback.
+- Fixed desktop update handoff and recovery, and updated dependencies with known security issues.
+
 ## 2026-10-19 (0.18.1)
 
 ### Improvements
