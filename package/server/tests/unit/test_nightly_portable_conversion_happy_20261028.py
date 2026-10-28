@@ -111,8 +111,17 @@ def _legacy_with_photo(root: Path) -> tuple[Path, str]:
 
 @pytest.fixture()
 def isolated_desktop_env(tmp_path, monkeypatch):
-    """Neutralise the desktop-only side effects of a real conversion."""
+    """Neutralise the desktop-only side effects of a real conversion.
+
+    The conversion runs the real desktop code paths, and those set
+    ``TS_DESKTOP*`` / ``TS_DATA_DIR`` in the process environment.  The
+    storage layer resolves every photo path against those variables, so a
+    leaked value would silently redirect the *rest of the test session*
+    into this temporary library.  Snapshot and restore the environment.
+    """
     import desktop_entry
+
+    original_environment = dict(os.environ)
 
     # ``desktop_entry._prepare_desktop_database`` normally upgrades the schema
     # and then registers the portable library paths
@@ -131,7 +140,9 @@ def isolated_desktop_env(tmp_path, monkeypatch):
                  "TS_IMPORT_OPERATION", "TS_IMPORT_PREVIOUS_DATA", "TS_IMPORT_ORIGIN",
                  "TS_IMPORT_ORIGIN_ID"):
         monkeypatch.delenv(name, raising=False)
-    return tmp_path
+    yield tmp_path
+    os.environ.clear()
+    os.environ.update(original_environment)
 
 
 # ---------------------------------------------------------------------------

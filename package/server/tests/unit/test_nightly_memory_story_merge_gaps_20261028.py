@@ -37,15 +37,19 @@ from app.db.models.user import User
 from app.service import memory as memory_service
 
 
-def _config_manager_class():
-    """The class behind the ``config_manager`` singleton.
+def _config_manager_singleton():
+    """The ``config_manager`` singleton used by ``generate_story``.
 
     ``generate_story`` imports the singleton inside the function, so the test
-    has to patch the class rather than a module attribute.
+    has to patch that object.  The *instance* attribute has to be patched -
+    ``tests/unit/test_gallery_service.py`` permanently assigns a mock to
+    ``config_manager.get_user_config``, and an instance attribute shadows the
+    class attribute, so patching the class alone would silently do nothing
+    whenever the whole suite runs.
     """
-    from app.core.config_manager import ConfigManager
+    from app.core.config_manager import config_manager
 
-    return ConfigManager
+    return config_manager
 
 
 pytestmark = [pytest.mark.smoke]
@@ -142,8 +146,8 @@ def test_generate_story_requires_a_configured_chat_model(db, monkeypatch):
         connections=[],
     )
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=settings),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=settings),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -160,8 +164,8 @@ def test_generate_story_rejects_an_unusable_connection(db, monkeypatch):
     settings = _ai_settings()
     settings.connections[0].enable = False
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=settings),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=settings),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -179,8 +183,8 @@ def test_generate_story_refuses_a_concurrent_run(db, monkeypatch):
     db.commit()
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
 
     with pytest.raises(HTTPException) as exc:
@@ -198,8 +202,8 @@ def test_generate_story_allows_a_stale_generation_to_restart(db, monkeypatch):
     db.commit()
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
     _patch_llm(monkeypatch)
 
@@ -218,8 +222,8 @@ def test_generate_story_persists_the_story_and_clears_the_state(db, monkeypatch)
     memory = _memory(db, owner)
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
     _patch_llm(monkeypatch, "模型写下的一段故事。")
 
@@ -259,8 +263,8 @@ def test_generate_story_prompt_contains_only_grounded_facts(db, monkeypatch):
         monkeypatch.setattr("app.service.agent.service.FixedChatOpenAI", lambda **kwargs: llm)
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
     _capture(monkeypatch)
 
@@ -280,8 +284,8 @@ def test_generate_story_marks_the_failure_when_the_model_returns_nothing(db, mon
     memory = _memory(db, owner)
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
     _patch_llm(monkeypatch, "   ")
 
@@ -302,8 +306,8 @@ def test_generate_story_records_a_model_error(db, monkeypatch):
     memory = _memory(db, owner)
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
     llm = MagicMock()
 
@@ -328,8 +332,8 @@ def test_generate_story_strips_think_tags_and_headings(db, monkeypatch):
     memory = _memory(db, owner)
 
     monkeypatch.setattr(
-        _config_manager_class(), "get_user_config",
-        lambda self, owner_id, session: SimpleNamespace(ai=_ai_settings()),
+        _config_manager_singleton(), "get_user_config",
+        lambda *args, **kwargs: SimpleNamespace(ai=_ai_settings()),
     )
     _patch_llm(monkeypatch, "<think>推理过程</think>\n# 标题\n真正的故事正文。")
 
