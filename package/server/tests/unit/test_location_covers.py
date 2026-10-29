@@ -41,13 +41,15 @@ def test_location_summary_covers_statistics_and_bounds_location_reads(location_d
     finally:
         event.remove(db.bind, 'before_cursor_execute', capture)
     plans = [' '.join(row[3] for row in db.connection().exec_driver_sql('EXPLAIN QUERY PLAN '+sql, args)) for sql, args in statements]
-    # Summary reads must avoid the large metadata table. With only one city in
-    # this fixture, SQLite may legitimately prefer a city index for grouping or
-    # ranking; do not pin those queries to one specific metadata access path.
+    # Geography stays narrow; two materialized unindexed inputs must not form
+    # a quadratic nested scan when there are no import statistics yet.
     assert len(plans) == 4
     assert all('COVERING INDEX ix_photo_metadata_location_summary' in plan for plan in plans[:2]), plans
-    assert all('MATERIALIZE visible_location_photos' in plan for plan in plans[2:]), plans
-    assert all('ix_photos_owner_deleted_time_id' in plan for plan in plans[2:]), plans
+    assert all('COVERING INDEX ix_photo_metadata_location_summary' in plan for plan in plans[2:]), plans
+    assert not any('SCAN visible_location_photos' in plan and 'SCAN location_metadata_summary' in plan for plan in plans), plans
+    # With this one-city distribution the planner may use primary-key probes;
+    # both are bounded indexed photo reads, rather than a second full scan.
+    assert all('SEARCH photos USING' in plan for plan in plans[2:]), plans
 
 
 @pytest.fixture

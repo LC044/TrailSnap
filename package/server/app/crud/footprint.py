@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.photo import Photo
 from app.db.models.photo_metadata import PhotoMetadata
+from app.db.sql import location_summary
 
 VISIT_GAP_SECONDS = 7 * 24 * 60 * 60
 _SEPARATOR = "\x1f"
@@ -54,17 +55,17 @@ def _decode_city_id(value: str) -> str:
         raise ValueError("无效的城市标识") from None
 
 
-def _place_expressions():
+def _place_expressions(metadata=PhotoMetadata):
     def clean(column):
         return func.coalesce(func.nullif(func.trim(column), ""), "")
 
-    country = clean(PhotoMetadata.country)
-    province = clean(PhotoMetadata.province)
-    city = clean(PhotoMetadata.city)
-    district = clean(PhotoMetadata.district)
+    country = clean(metadata.country)
+    province = clean(metadata.province)
+    city = clean(metadata.city)
+    district = clean(metadata.district)
     # Ungeocoded GPS photos still appear; separate ~10 km cells prevent unknown
     # places on opposite continents being merged into one fictitious city.
-    cell = cast(func.round(PhotoMetadata.latitude, 1), String) + ":" + cast(func.round(PhotoMetadata.longitude, 1), String)
+    cell = cast(func.round(metadata.latitude, 1), String) + ":" + cast(func.round(metadata.longitude, 1), String)
     location = case((city != "", "city:" + city), else_="gps:" + cell)
     key = country + _SEPARATOR + province + _SEPARATOR + location
     name = case(
@@ -83,9 +84,9 @@ def _photo_filters(owner_id: UUID, year: int | None):
     return filters
 
 
-def _gps_filters():
+def _gps_filters(metadata=PhotoMetadata):
     # BETWEEN also rejects PostgreSQL numeric NaN and out-of-range infinities.
-    return [PhotoMetadata.latitude.between(-90, 90), PhotoMetadata.longitude.between(-180, 180)]
+    return [metadata.latitude.between(-90, 90), metadata.longitude.between(-180, 180)]
 
 
 def _in_bbox(lat, lng, bbox):
@@ -100,18 +101,19 @@ def _elapsed_seconds(db, later, earlier):
     return extract("epoch", later - earlier)
 
 
-def _source(owner_id, year, start_date: date | None = None, end_date: date | None = None):
-    key, country, province, city, name = _place_expressions()
+def _source(db, owner_id, year, start_date: date | None = None, end_date: date | None = None):
+    metadata = location_summary(db)
+    key, country, province, city, name = _place_expressions(metadata)
     query = select(
         Photo.id.label("photo_id"), Photo.photo_time.label("taken_at"),
-        PhotoMetadata.latitude.label("lat"), PhotoMetadata.longitude.label("lng"),
+        metadata.latitude.label("lat"), metadata.longitude.label("lng"),
         key.label("key"), country.label("country"), province.label("province"),
         city.label("city"), name.label("name"),
         func.row_number().over(
             partition_by=key, order_by=(Photo.photo_time.desc().nullslast(), Photo.id.desc()),
         ).label("cover_rank"),
-    ).join(PhotoMetadata, PhotoMetadata.photo_id == Photo.id).where(
-        *_photo_filters(owner_id, year), *_gps_filters(),
+    ).join(metadata, metadata.photo_id == Photo.id).where(
+        *_photo_filters(owner_id, year), *_gps_filters(metadata),
     )
     if start_date is not None:
         query = query.where(Photo.photo_time >= datetime.combine(start_date, time.min))
@@ -203,7 +205,7 @@ def get_map_routes(db: Session, owner_id: UUID, start_date: date | None = None,
     """Return bounded real visit edges across the selected date range."""
     if start_date and end_date and start_date > end_date:
         raise ValueError("开始日期不得晚于结束日期")
-    source = _source(owner_id, None, start_date, end_date)
+    source = _source(db, owner_id, None, start_date, end_date)
     routes, _ = _sample_routes(db, _visits(db, source), max_points)
     return routes
 
@@ -219,7 +221,7 @@ def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
     bounds = parse_bbox(bbox)
     if not 200 <= max_points <= 2000:
         raise ValueError("max_points 必须在 200..2000 之间")
-    source = _source(owner_id, year)
+    source = _source(db, owner_id, year)
     visits = _visits(db, source)
     places = select(
         source.c.key, source.c.country, source.c.province, source.c.city,
@@ -255,7 +257,8 @@ def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
 
     routes, routes_sampled = _sample_routes(db, visits, max_points, bounds)
 
-    key, _, _, city, _ = _place_expressions()
+    metadata = location_summary(db)
+    key, _, _, city, _ = _place_expressions(metadata)
     # SQLite's strftime parser rounds a value such as 23:59:59.999999 into
     # the following day. Read the ISO year directly so the timeline preserves
     # the same calendar year used by the exclusive date-range filter.
@@ -266,8 +269,8 @@ def get_footprint(db: Session, owner_id: UUID, year: int | None = None,
     )
     timeline_rows = db.execute(select(
         year_expr.label("year"), func.count(Photo.id).label("photo_count"),
-        func.count(func.distinct(case((and_(*_gps_filters(), city != ""), key)))).label("city_count"),
-    ).select_from(Photo).outerjoin(PhotoMetadata, PhotoMetadata.photo_id == Photo.id).where(
+        func.count(func.distinct(case((and_(*_gps_filters(metadata), city != ""), key)))).label("city_count"),
+    ).select_from(Photo).outerjoin(metadata, metadata.photo_id == Photo.id).where(
         *_photo_filters(owner_id, None), Photo.photo_time.is_not(None),
     ).group_by(year_expr).order_by(year_expr)).mappings().all()
     timeline = [{"year": int(row["year"]), "photo_count": row["photo_count"], "city_count": row["city_count"]} for row in timeline_rows]

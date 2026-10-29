@@ -2,7 +2,26 @@
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, cast, func
+from sqlalchemy import Date, cast, func, select
+from sqlalchemy.orm import aliased
+
+
+def location_summary(db):
+    """Keep SQLite geography reads on the narrow covering index.
+
+    Materializing the projection prevents photo_id joins from choosing the
+    primary-key index and fetching wide EXIF rows, even before import statistics
+    exist. PostgreSQL keeps its normal planner and predicate pushdown.
+    """
+    from app.db.models.photo_metadata import PhotoMetadata
+    if db.get_bind().dialect.name != "sqlite":
+        return PhotoMetadata
+    columns = ("photo_id", "province", "city", "district", "country",
+               "scene_id", "latitude", "longitude")
+    source = select(*(getattr(PhotoMetadata, name) for name in columns)).cte(
+        "location_metadata_summary"
+    ).prefix_with("MATERIALIZED", dialect="sqlite")
+    return aliased(PhotoMetadata, source)
 
 
 def date_only(db, column):
