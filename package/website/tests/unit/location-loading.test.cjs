@@ -44,9 +44,23 @@ test('invalidation prevents old requests repopulating the cache; failures can re
   assert.equal(await cache.cachedLocationMetadata('stats',async()=>3),2)
   await assert.rejects(cache.cachedLocationMetadata('failure',async()=>{throw Error('offline')}))
   assert.equal(await cache.cachedLocationMetadata('failure',async()=>4),4)
-  cache.observeLocationTasks('user',[{category:'LOCATION',pending:3}])
+  cache.observeLocationTasks('user',[{category:'EXTRACT_METADATA',pending:3}])
   const before=cache.locationMetadataRevision.value
-  cache.observeLocationTasks('user',[{category:'LOCATION',pending:2}])
+  cache.observeLocationTasks('user',[{category:'EXTRACT_METADATA',pending:2}])
+  assert.equal(cache.locationMetadataRevision.value,before+1)
+})
+
+test('OCR and unrelated task progress do not invalidate geography; import still does', () => {
+  const cache=cacheHarness()
+  const groups = (ocr, basic) => [
+    {category:'OCR',pending:ocr}, {category:'PROCESS_BASIC',pending:basic},
+    {category:'RECOGNIZE_FACE',pending:ocr}, {category:'EXTRACT_METADATA',pending:4},
+  ]
+  cache.observeLocationTasks('user',groups(100,2))
+  const before=cache.locationMetadataRevision.value
+  cache.observeLocationTasks('user',groups(90,2).reverse())
+  assert.equal(cache.locationMetadataRevision.value,before)
+  cache.observeLocationTasks('user',groups(80,1))
   assert.equal(cache.locationMetadataRevision.value,before+1)
 })
 

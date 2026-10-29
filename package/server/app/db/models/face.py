@@ -50,6 +50,7 @@ class Face(Base):
     __table_args__ = (
         # 为photo_id加索引：命名规范「idx_表名_字段名」
         Index("idx_face_photo_id", "photo_id"),
+        Index("ix_faces_photo_identity", "photo_id", "face_identity_id"),
         # 为face_identity_id加索引
         Index("idx_face_identity_id", "face_identity_id"),
         Index(

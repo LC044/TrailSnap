@@ -1,7 +1,7 @@
 from operator import rshift
 from typing import Dict, List, Optional
 from uuid import UUID
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 from sqlalchemy import func, desc
 import sqlalchemy as sa
 
@@ -15,6 +15,28 @@ import logging
 from app.schemas.face import FaceIdentitySchema
 
 logger = logging.getLogger(__name__)
+
+
+def _identity_photo_counts(db, owner_id=None, photo_id=None, active_only=False):
+    """Count narrow face relations without fetching feature vectors on SQLite."""
+    faces = sa.select(Face.photo_id, Face.face_identity_id).where(
+        Face.face_identity_id.isnot(None)
+    )
+    if photo_id:
+        faces = faces.where(Face.photo_id == photo_id)
+    if active_only:
+        # Match the existing partial covering index's predicate on SQLite too.
+        faces = faces.where(Face.is_deleted == sa.literal_column("false"))
+    relations = faces.cte("identity_photo_relations").prefix_with("MATERIALIZED", dialect="sqlite")
+    query = db.query(relations.c.face_identity_id,
+                     func.count(sa.distinct(relations.c.photo_id)).label("count"))
+    if owner_id:
+        photos = sa.select(Photo.id).where(Photo.owner_id == owner_id)
+        if active_only:
+            photos = photos.where(Photo.is_deleted == False)
+        visible = photos.cte("identity_owner_photos")
+        query = query.join(visible, visible.c.id == relations.c.photo_id)
+    return query.group_by(relations.c.face_identity_id).subquery()
 
 # Face Operations
 def create_face(db: Session, obj_in: schemas.FaceCreate) -> Face:
@@ -176,21 +198,7 @@ def get_identities_with_details(
     include_named_below_threshold: bool = False,
 ) -> List[FaceIdentitySchema]:
     # 1. 子查询：统计每个人脸身份的人脸数（按photo_id筛选并去重）
-    face_counts_subq = db.query(
-        Face.face_identity_id,
-        func.count(func.distinct(Face.photo_id)).label("count")
-    ).filter(
-        Face.face_identity_id.isnot(None)  # 修正：非空判断
-    )
-    # 仅当photo_id有值时，添加photo_id筛选
-    if photo_id:
-        face_counts_subq = face_counts_subq.filter(Face.photo_id == photo_id)
-    
-    # NEW: Filter by owner_id in subquery
-    if owner_id:
-        face_counts_subq = face_counts_subq.join(Photo).filter(Photo.owner_id == owner_id)
-
-    face_counts_subq = face_counts_subq.group_by(Face.face_identity_id).subquery()
+    face_counts_subq = _identity_photo_counts(db, owner_id, photo_id)
 
     # 2. 主查询：关联FaceIdentity + 统计数 + 默认人脸 + 照片
     count_condition = func.coalesce(face_counts_subq.c.count, 0) >= min_photos
@@ -247,6 +255,8 @@ def get_identities_with_details(
 
     # 4. 排序+分页
     query = query.order_by(FaceIdentity.is_hidden.asc(), face_counts_subq.c.count.desc().nullslast()).offset(skip).limit(limit)
+    query = query.options(load_only(Face.id, Face.photo_id, Face.face_rect,
+                                   Face.face_confidence, Face.recognize_confidence))
 
     results = []
 
@@ -351,22 +361,10 @@ def get_group_albums(
     """
     # 1. 可展示人物（与 get_identities_with_details 的统计口径一致：
     #    distinct photo 数 >= min_photos，未隐藏、未软删）
-    photo_counts_subq = db.query(
-        Face.face_identity_id.label("identity_id"),
-        func.count(func.distinct(Face.photo_id)).label("count")
-    ).filter(
-        Face.face_identity_id.isnot(None),
-        Face.is_deleted == False
-    )
-    if owner_id:
-        photo_counts_subq = photo_counts_subq.join(Photo).filter(
-            Photo.owner_id == owner_id,
-            Photo.is_deleted == False
-        )
-    photo_counts_subq = photo_counts_subq.group_by(Face.face_identity_id).subquery()
+    photo_counts_subq = _identity_photo_counts(db, owner_id, active_only=True)
 
-    displayable_rows = db.query(photo_counts_subq.c.identity_id).join(
-        FaceIdentity, FaceIdentity.id == photo_counts_subq.c.identity_id
+    displayable_rows = db.query(photo_counts_subq.c.face_identity_id).join(
+        FaceIdentity, FaceIdentity.id == photo_counts_subq.c.face_identity_id
     ).filter(
         FaceIdentity.is_deleted == False,
         FaceIdentity.is_hidden == False,
@@ -374,7 +372,7 @@ def get_group_albums(
     )
     if owner_id:
         displayable_rows = displayable_rows.filter(FaceIdentity.owner_id == owner_id)
-    displayable_ids = {row.identity_id for row in displayable_rows.all()}
+    displayable_ids = {row.face_identity_id for row in displayable_rows.all()}
     if len(displayable_ids) < 2:
         return []
 
@@ -403,24 +401,29 @@ def get_group_albums(
     if not photos_by_group:
         return []
 
-    # 4. 封面取组合内 photo_time 最新的一张；一次取回涉及的 Photo + 名称
+    # Rank narrow timestamps first; only hydrate the selected cover per group.
     all_photo_ids = {pid for pids in photos_by_group.values() for pid in pids}
+    photo_times = dict(db.query(Photo.id, Photo.photo_time).filter(Photo.id.in_(all_photo_ids)).all())
+    cover_ids = {
+        members: max((pid for pid in pids if pid in photo_times),
+                     key=lambda pid: (photo_times[pid] is not None, photo_times[pid]), default=None)
+        for members, pids in photos_by_group.items()
+    }
     photos_by_id = {
         photo.id: photo
-        for photo in db.query(Photo).filter(Photo.id.in_(all_photo_ids))
+        for photo in db.query(Photo).filter(Photo.id.in_({pid for pid in cover_ids.values() if pid is not None}))
     }
     identity_names = {
         identity.id: identity.identity_name
-        for identity in db.query(FaceIdentity).filter(FaceIdentity.id.in_(displayable_ids))
+        for identity in db.query(FaceIdentity.id, FaceIdentity.identity_name).filter(FaceIdentity.id.in_(displayable_ids))
     }
 
     # 5. 组装：按成员 id 排序保证组合内顺序稳定，按 photo_count 倒序
     results = []
     for members, pids in photos_by_group.items():
-        covers = [photos_by_id[pid] for pid in pids if pid in photos_by_id]
-        if not covers:
+        cover = photos_by_id.get(cover_ids[members])
+        if cover is None:
             continue
-        cover = max(covers, key=lambda p: (p.photo_time is not None, p.photo_time))
         results.append(schemas.GroupAlbumItem(
             identities=[
                 schemas.GroupAlbumIdentity(identity_id=iid, identity_name=identity_names.get(iid))

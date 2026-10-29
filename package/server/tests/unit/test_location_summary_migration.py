@@ -8,6 +8,7 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 import pytest
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy import Enum
@@ -34,7 +35,7 @@ def test_consolidated_sqlite_upgrade_accepts_local_intermediate_revision(tmp_pat
         command.upgrade(config,'head')
         command.upgrade(config,'head')
         with engine.connect() as connection:
-            assert connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one()=='e205c1a0b002'
+            assert connection.exec_driver_sql('SELECT version_num FROM alembic_version').scalar_one()==ScriptDirectory.from_config(config).get_current_head()
             assert connection.exec_driver_sql('SELECT filename,file_path FROM photos').one()==('retained.jpg','/original/retained.jpg')
             assert 'ix_photo_metadata_location_summary' in {i['name'] for i in inspect(connection).get_indexes('photo_metadata')}
         command.downgrade(config,'portable_sqlite_0020')

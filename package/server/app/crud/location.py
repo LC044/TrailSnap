@@ -7,7 +7,7 @@ from app.db.models.photo import FileType, Photo
 from app.db.models.photo_metadata import PhotoMetadata
 from app.db.models.image_vector import ImageVector
 from app.db.models.scene import Scene
-from app.db.sql import as_date_string, date_only
+from app.db.sql import as_date_string, date_only, location_summary
 
 
 TIME_COMPARE_RADIUS_M = 200
@@ -436,16 +436,17 @@ def get_time_compare_photos(
     return [photo for photo, _ in rows][skip:skip + limit]
 
 def get_location_years(db: Session, owner_id: UUID):
+    metadata = location_summary(db)
     has_location = or_(
-        and_(PhotoMetadata.latitude.isnot(None), PhotoMetadata.longitude.isnot(None)),
-        and_(PhotoMetadata.country.isnot(None), PhotoMetadata.country != ''),
-        and_(PhotoMetadata.province.isnot(None), PhotoMetadata.province != ''),
-        and_(PhotoMetadata.city.isnot(None), PhotoMetadata.city != ''),
-        and_(PhotoMetadata.district.isnot(None), PhotoMetadata.district != ''),
-        PhotoMetadata.scene_id.isnot(None),
+        and_(metadata.latitude.isnot(None), metadata.longitude.isnot(None)),
+        and_(metadata.country.isnot(None), metadata.country != ''),
+        and_(metadata.province.isnot(None), metadata.province != ''),
+        and_(metadata.city.isnot(None), metadata.city != ''),
+        and_(metadata.district.isnot(None), metadata.district != ''),
+        metadata.scene_id.isnot(None),
     )
     years = db.query(extract('year', Photo.photo_time))\
-        .join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)\
+        .join(metadata, Photo.id == metadata.photo_id)\
         .filter(
             Photo.photo_time.isnot(None),
             Photo.is_deleted == False,
@@ -458,22 +459,23 @@ def get_location_years(db: Session, owner_id: UUID):
     return [int(y[0]) for y in years if y[0] is not None]
 
 def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 0, limit: int = 100, start_date: str = None, end_date: str = None):
+    metadata = location_summary(db)
     is_scene = False
     if level == 'city':
-        group_col = PhotoMetadata.city
+        group_col = metadata.city
     elif level == 'province':
-        group_col = PhotoMetadata.province
+        group_col = metadata.province
     elif level == 'district':
-        group_col = PhotoMetadata.district
+        group_col = metadata.district
     elif level == 'scene':
         group_col = Scene.name
         is_scene = True
     else:
         return []
 
-    # Freeze the narrow, owner-filtered photo set before joining geography.
-    # SQLite otherwise favors a city index and repeatedly reads full Photo rows
-    # by primary key. The existing pagination index covers this entire CTE.
+    # Keep the owner-filtered photo projection inlineable. Geography is already
+    # materialized narrowly on SQLite; materializing both sides can disable its
+    # automatic join index and turn this into a quadratic nested scan.
     visible_query = select(Photo.id, Photo.photo_time).where(
         Photo.owner_id == owner_id, Photo.is_deleted == False,
     )
@@ -481,7 +483,7 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
         visible_query = visible_query.where(Photo.photo_time >= start_date)
     if end_date:
         visible_query = visible_query.where(Photo.photo_time <= f"{end_date} 23:59:59")
-    visible = visible_query.cte('visible_location_photos').prefix_with('MATERIALIZED', dialect='sqlite')
+    visible = visible_query.cte('visible_location_photos')
 
     # Group by location and count
     if is_scene:
@@ -491,20 +493,20 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
             Scene.is_custom,
             func.count(visible.c.id).label('count')
         ).select_from(visible).join(
-            PhotoMetadata, visible.c.id == PhotoMetadata.photo_id
+            metadata, visible.c.id == metadata.photo_id
         ).join(
-            Scene, Scene.id == PhotoMetadata.scene_id
+            Scene, Scene.id == metadata.scene_id
         )
     else:
         query = db.query(
             group_col,
             func.count(visible.c.id).label('count')
         ).select_from(visible).join(
-            PhotoMetadata, visible.c.id == PhotoMetadata.photo_id
+            metadata, visible.c.id == metadata.photo_id
         )
 
     # if is_scene:
-    #     query = query.join(Scene, PhotoMetadata.scene_id == Scene.id)
+    #     query = query.join(Scene, metadata.scene_id == Scene.id)
 
     if is_scene:
         # For scenes, we don't filter out None/empty names if they are defined in the Scene table
@@ -532,7 +534,7 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
     # Rank only IDs, then load one Photo per group. DISTINCT ON is PostgreSQL
     # specific: on SQLite it previously loaded every matching photo instead.
     # Scene IDs also keep covers separate when multiple scenes share a name.
-    cover_group = PhotoMetadata.scene_id if is_scene else group_col
+    cover_group = metadata.scene_id if is_scene else group_col
     group_keys = [r[1] if is_scene else r[0] for r in results]
     ranked_query = select(
         visible.c.id.label('photo_id'),
@@ -542,7 +544,7 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
             order_by=(visible.c.photo_time.desc().nullslast(), visible.c.id.desc()),
         ).label('rank'),
     ).select_from(visible).join(
-        PhotoMetadata, visible.c.id == PhotoMetadata.photo_id
+        metadata, visible.c.id == metadata.photo_id
     ).where(
         cover_group.in_(group_keys),
     )
@@ -618,13 +620,14 @@ def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'ci
     ).offset(skip).limit(limit).all()
 
 def get_map_markers(db: Session, owner_id: UUID, start_date: str = None, end_date: str = None):
+    metadata = location_summary(db)
     query = db.query(
         Photo.id,
-        PhotoMetadata.latitude,
-        PhotoMetadata.longitude
-    ).join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)\
-     .filter(PhotoMetadata.latitude.isnot(None))\
-     .filter(PhotoMetadata.longitude.isnot(None))\
+        metadata.latitude,
+        metadata.longitude
+    ).join(metadata, Photo.id == metadata.photo_id)\
+     .filter(metadata.latitude.isnot(None))\
+     .filter(metadata.longitude.isnot(None))\
      .filter(Photo.owner_id == owner_id, Photo.is_deleted == False)
      
     if start_date:
@@ -640,37 +643,38 @@ def get_map_markers(db: Session, owner_id: UUID, start_date: str = None, end_dat
     ]
 
 def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: int = 0, limit: int = 100, start_date: str = None, end_date: str = None):
+    metadata = location_summary(db)
     from app.schemas.location import TimelineResponse, TimelineNode
     from sqlalchemy import cast, String
 
     date_expr = date_only(db, Photo.photo_time)
 
     if level == 'province':
-        base_loc = func.nullif(PhotoMetadata.province, '')
+        base_loc = func.nullif(metadata.province, '')
         base_level = 'province'
     elif level == 'district':
-        base_loc = func.nullif(PhotoMetadata.district, '')
+        base_loc = func.nullif(metadata.district, '')
         base_level = 'district'
     elif level == 'scene':
         base_loc = func.nullif(Scene.name, '')
         base_level = 'scene'
     else: # default 'city'
-        base_loc = func.nullif(PhotoMetadata.city, '')
+        base_loc = func.nullif(metadata.city, '')
         base_level = 'city'
 
     if level == 'scene':
         loc_name_expr = func.coalesce(
             func.nullif(Scene.name, ''),
-            func.nullif(PhotoMetadata.city, ''),
-            func.nullif(PhotoMetadata.district, ''),
-            func.nullif(PhotoMetadata.province, ''),
+            func.nullif(metadata.city, ''),
+            func.nullif(metadata.district, ''),
+            func.nullif(metadata.province, ''),
             '未知位置'
         )
         level_expr = case(
             (func.nullif(Scene.name, '').isnot(None), 'scene'),
-            (func.nullif(PhotoMetadata.city, '').isnot(None), 'city'),
-            (func.nullif(PhotoMetadata.district, '').isnot(None), 'district'),
-            (func.nullif(PhotoMetadata.province, '').isnot(None), 'province'),
+            (func.nullif(metadata.city, '').isnot(None), 'city'),
+            (func.nullif(metadata.district, '').isnot(None), 'district'),
+            (func.nullif(metadata.province, '').isnot(None), 'province'),
             else_='city'
         )
     else:
@@ -690,16 +694,16 @@ def get_timeline_nodes(db: Session, owner_id: UUID, level: str = 'city', skip: i
         loc_name_expr.label('loc_name'),
         level_expr.label('level'),
         func.count(Photo.id).label('photo_count'),
-        func.avg(PhotoMetadata.latitude).label('lat'),
-        func.avg(PhotoMetadata.longitude).label('lng'),
+        func.avg(metadata.latitude).label('lat'),
+        func.avg(metadata.longitude).label('lng'),
         func.max(cast(Photo.id, String)).label('cover_id'),
         func.min(Photo.photo_time).label('start_time'),
         func.max(Photo.photo_time).label('end_time')
-    ).join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id) \
-     .outerjoin(Scene, PhotoMetadata.scene_id == Scene.id) \
+    ).join(metadata, Photo.id == metadata.photo_id) \
+     .outerjoin(Scene, metadata.scene_id == Scene.id) \
      .filter(Photo.owner_id == owner_id, Photo.is_deleted == False) \
-     .filter(PhotoMetadata.latitude.isnot(None)) \
-     .filter(PhotoMetadata.longitude.isnot(None)) \
+     .filter(metadata.latitude.isnot(None)) \
+     .filter(metadata.longitude.isnot(None)) \
      .filter(Photo.photo_time.isnot(None))
 
     if start_date:
@@ -795,27 +799,28 @@ def get_trajectory_points(
     weighted point. A second contiguous bucket pass limits payload size while
     preserving route order, first/last time and total photo counts.
     """
+    metadata = location_summary(db)
     from app.schemas.location import TrajectoryPoint, TrajectoryResponse
 
     rows = db.query(
         Photo.id,
         Photo.photo_time,
-        PhotoMetadata.latitude,
-        PhotoMetadata.longitude,
-        PhotoMetadata.province,
-        PhotoMetadata.city,
-        PhotoMetadata.district,
+        metadata.latitude,
+        metadata.longitude,
+        metadata.province,
+        metadata.city,
+        metadata.district,
         Scene.name.label('scene_name'),
     ).join(
-        PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+        metadata, Photo.id == metadata.photo_id
     ).outerjoin(
-        Scene, PhotoMetadata.scene_id == Scene.id
+        Scene, metadata.scene_id == Scene.id
     ).filter(
         Photo.owner_id == owner_id,
         Photo.is_deleted == False,
         Photo.photo_time.isnot(None),
-        PhotoMetadata.latitude.isnot(None),
-        PhotoMetadata.longitude.isnot(None),
+        metadata.latitude.isnot(None),
+        metadata.longitude.isnot(None),
         Photo.photo_time >= start_date,
         Photo.photo_time <= f"{end_date} 23:59:59",
     ).order_by(Photo.photo_time.asc()).all()
@@ -872,13 +877,14 @@ def get_trajectory_points(
     )
 
 def get_location_distribution(db: Session, owner_id: UUID, level: str = 'city', start_date: str = None, end_date: str = None):
+    metadata = location_summary(db)
     is_scene = False
     if level == 'city':
-        group_col = PhotoMetadata.city
+        group_col = metadata.city
     elif level == 'province':
-        group_col = PhotoMetadata.province
+        group_col = metadata.province
     elif level == 'district':
-        group_col = PhotoMetadata.district
+        group_col = metadata.district
     elif level == 'scene':
         group_col = Scene.name
         is_scene = True
@@ -890,11 +896,11 @@ def get_location_distribution(db: Session, owner_id: UUID, level: str = 'city', 
         group_col.label('name'),
         func.count(Photo.id).label('count')
     ).filter(Photo.owner_id == owner_id, Photo.is_deleted == False).join(
-        PhotoMetadata, Photo.id == PhotoMetadata.photo_id
+        metadata, Photo.id == metadata.photo_id
     )
 
     if is_scene:
-        query = query.join(Scene, PhotoMetadata.scene_id == Scene.id)
+        query = query.join(Scene, metadata.scene_id == Scene.id)
 
     if start_date:
         query = query.filter(Photo.photo_time >= start_date)
@@ -911,17 +917,18 @@ def get_location_distribution(db: Session, owner_id: UUID, level: str = 'city', 
     return [{"name": r[0], "count": r[1], "level": level} for r in results]
 
 def get_location_statistics(db: Session, owner_id: UUID):
+    metadata = location_summary(db)
     # Filter photos by owner_id first
     subq = db.query(Photo.id).filter(Photo.owner_id == owner_id, Photo.is_deleted == False).subquery()
     
     # Query stats using the subquery
     result = db.query(
-        func.count(func.distinct(case((PhotoMetadata.province != '', PhotoMetadata.province), else_=None))),
-        func.count(func.distinct(case((PhotoMetadata.city != '', PhotoMetadata.city), else_=None))),
-        func.count(func.distinct(case((PhotoMetadata.district != '', PhotoMetadata.district), else_=None))),
-        func.count(func.distinct(case((PhotoMetadata.country != '', PhotoMetadata.country), else_=None)))
+        func.count(func.distinct(case((metadata.province != '', metadata.province), else_=None))),
+        func.count(func.distinct(case((metadata.city != '', metadata.city), else_=None))),
+        func.count(func.distinct(case((metadata.district != '', metadata.district), else_=None))),
+        func.count(func.distinct(case((metadata.country != '', metadata.country), else_=None)))
     ).join(
-        subq, PhotoMetadata.photo_id == subq.c.id
+        subq, metadata.photo_id == subq.c.id
     ).first()
     
     return {
