@@ -82,8 +82,9 @@ def run_ai_batch(bind, strategy, worker, task_ids):
         try:
             return asyncio.run(run())
         finally:
-            logging.info(
-                'AI batch timing: type=%s photos=%d total_ms=%.1f commit_ms=%.1f writer_wait_ms=%.1f commits=%d',
-                strategy.resource_key, len(tasks), (time.perf_counter() - started) * 1000,
-                db.write_seconds * 1000, db.writer_wait_seconds * 1000, db.commit_count,
-            )
+            pass
+            # logging.info(
+            #     'AI batch timing: type=%s photos=%d total_ms=%.1f commit_ms=%.1f writer_wait_ms=%.1f commits=%d',
+            #     strategy.resource_key, len(tasks), (time.perf_counter() - started) * 1000,
+            #     db.write_seconds * 1000, db.writer_wait_seconds * 1000, db.commit_count,
+            # )
