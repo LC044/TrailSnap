@@ -97,7 +97,7 @@
           </div>
         </div>
       </div>
-      <div class="grid items-start gap-4 lg:grid-cols-2">
+      <div class="grid gap-4 lg:grid-cols-2">
         <FootprintCard :data="footprintData" :loading="footprintLoading" @retry="fetchFootprint" />
         <FaceSection :data="dashboardData.face" />
       </div>
