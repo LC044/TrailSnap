@@ -128,8 +128,8 @@ test.describe.serial('P0 - 位置相册', () => {
     await expect(page.locator('.location-list button[title="时间轴视图"]').first()).toBeVisible()
     await expect(page.locator('.location-list button[title="轨迹视图"]').first()).toBeVisible()
     await expect(page.locator('.location-list button[title="统计视图"]').first()).toBeVisible()
-    // 返回按钮（lucide-arrow-left）始终存在
-    await expect(page.getByRole('button', { name: '返回相册', exact: true })).toBeVisible()
+    // 位置列表是一级页面，从全局导航进入时不显示返回相册按钮。
+    await expect(page.getByRole('button', { name: '返回相册', exact: true })).toHaveCount(0)
   })
 
   test('2.4.2 切换 level - 点击"省份"后 API 调用 level=province @p0', async ({ page }, testInfo) => {
