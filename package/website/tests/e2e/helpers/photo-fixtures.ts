@@ -352,6 +352,22 @@ export function bucketsForSuite(suite: FixtureReadySuite): PhotoFixtureBucket[] 
   return []
 }
 
+/**
+ * 照片夹具准备的默认等待窗口（毫秒）。
+ *
+ * 扫描 + OCR 在慢机器上可能超过 5 分钟，硬编码上限会让准备阶段以
+ * 「照片准备超时」失败（分类其实还在正常推进）。允许用
+ * TS_E2E_FIXTURE_TIMEOUT_MS 覆盖；未设置或取值非法时保持原来的 5 分钟。
+ */
+function fixtureWaitTimeoutMs(): number {
+  const fallback = 5 * 60_000
+  const raw = process.env.TS_E2E_FIXTURE_TIMEOUT_MS
+  if (!raw) return fallback
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return parsed
+}
+
 export async function preparePhotoFixtures(
   request: APIRequestContext,
   options: PrepareOptions,
@@ -406,7 +422,7 @@ export async function preparePhotoFixtures(
         })
       }
 
-      const waitMs = options.timeoutMs ?? 5 * 60_000
+      const waitMs = options.timeoutMs ?? fixtureWaitTimeoutMs()
       if (addedByTest) {
         // 目录是本次新增的：POST 已经排了一个 SCAN_FOLDER，只等任务跑完，不再重复触发。
         await waitForTasksToSettle(request, options.token, {
