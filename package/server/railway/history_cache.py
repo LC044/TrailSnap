@@ -21,6 +21,21 @@ MAX_PACK_BYTES = 128 * 1024 * 1024
 MAX_JSON_BYTES = 512 * 1024 * 1024
 
 
+def release_snapshot_url(descriptor):
+    """Only the feed's immutable, content-addressed GitHub Release asset is allowed."""
+    url = descriptor.get('url')
+    if url is None:
+        return None
+    digest = descriptor['sha256']
+    if not re.fullmatch(r'[a-f0-9]{64}', digest):
+        raise ValueError('Invalid snapshot hash')
+    expected = ('https://github.com/LC044/trailsnap-railway-history/releases/download/'
+                f'snapshot-v2-{digest}/{digest}.json.gz')
+    if url != expected or descriptor['file'] != f'packs/{digest}.json.gz':
+        raise ValueError('Invalid railway Release snapshot URL')
+    return url
+
+
 def cache_path():
     from app.core.paths import DATA_DIR
     return Path(os.getenv('RAILWAY_HISTORY_DB') or Path(DATA_DIR) / 'railway-history.sqlite')
@@ -64,7 +79,9 @@ class HistoryCache:
     def status(self):
         with self.connect() as db:
             metadata = db.execute("SELECT value FROM meta WHERE key='metadata'").fetchone()
-            return {'sequence': self._sequence(db),
+            schema = db.execute("SELECT value FROM meta WHERE key='feed_schema'").fetchone()
+            return {'schema_version': int(schema[0]) if schema else 1,
+                    'sequence': self._sequence(db),
                     'metadata': json.loads(metadata[0]) if metadata else {},
                     'stations': db.execute("SELECT count(*) FROM entity WHERE key LIKE 'station:%'").fetchone()[0],
                     'trains': db.execute('SELECT count(DISTINCT code) FROM train_version').fetchone()[0],
@@ -105,20 +122,26 @@ class HistoryCache:
             return tuple(row) if row else None
 
     def sync(self, manifest, loader):
-        if manifest.get('schema_version') != 1:
+        if manifest.get('schema_version') != 2:
             raise ValueError('Unsupported railway feed schema')
         target = manifest['sequence']
         if type(target) is not int or not 1 <= target <= 10000000:
             raise ValueError('Railway feed rollback or invalid sequence')
         with self.connect() as db:
             cursor = self._sequence(db)
+            schema = db.execute("SELECT value FROM meta WHERE key='feed_schema'").fetchone()
+            migrating = not schema or schema[0] != '2'
+        # A v1 cursor is unrelated to the v2 publication sequence. Never reset it
+        # until the complete v2 snapshot has been validated and committed.
+        if migrating:
+            cursor = 0
         if target < cursor:
             raise ValueError('Railway feed rollback refused')
         if target == cursor:
             return self.status()
         deltas = sorted((d for d in manifest['deltas'] if d['sequence'] > cursor), key=lambda d: d['sequence'])
         contiguous = len(deltas) == target-cursor and all(d['sequence']==cursor+i+1 for i,d in enumerate(deltas))
-        if cursor == 0 or not contiguous:
+        if cursor == 0 or not contiguous or sum(d['bytes'] for d in deltas) >= manifest['snapshot']['bytes']:
             deltas = [manifest['snapshot']]
             if deltas[0]['sequence'] != target:
                 raise ValueError('Invalid snapshot sequence')
@@ -126,6 +149,10 @@ class HistoryCache:
             file = descriptor['file']
             if not re.fullmatch(r'packs/[a-f0-9]{64}\.json\.gz', file):
                 raise ValueError('Invalid pack path')
+            if 'url' in descriptor:
+                if descriptor != manifest['snapshot']:
+                    raise ValueError('Only snapshots can use Release URLs')
+                release_snapshot_url(descriptor)
             raw = loader(file)
             if len(raw) > MAX_PACK_BYTES or len(raw) != descriptor['bytes'] or hashlib.sha256(raw).hexdigest() != descriptor['sha256']:
                 raise ValueError('Railway pack checksum/size mismatch')
@@ -134,20 +161,55 @@ class HistoryCache:
             if len(decoded) > MAX_JSON_BYTES:
                 raise ValueError('Railway pack too large')
             pack = json.loads(decoded)
-            if pack.get('schema_version') != 1 or pack['sequence'] != descriptor['sequence']:
+            if pack.get('schema_version') != 2 or pack['sequence'] != descriptor['sequence']:
                 raise ValueError('Invalid pack schema or sequence')
+            if descriptor == manifest['snapshot'] and pack.get('full') is not True:
+                raise ValueError('Expected full railway snapshot')
             with self.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 current = self._sequence(db)
+                schema = db.execute("SELECT value FROM meta WHERE key='feed_schema'").fetchone()
+                upgrading = not schema or schema[0] != '2'
+                if upgrading:
+                    if pack.get('full') is not True:
+                        raise ValueError('Railway upgrade requires full snapshot')
+                    current = 0
                 if current >= pack['sequence']:
                     continue
                 if current != pack['sequence'] - 1 and not pack.get('full'):
                     raise ValueError('Railway incremental sequence gap')
-                for item in pack['upserts']:
-                    self._upsert(db, item['key'], item['value'])
+                self._apply_v2(db, pack)
+                if upgrading:
+                    db.execute("DELETE FROM meta WHERE key IN ('station_projection_schema', 'station_projection_sequence')")
+                db.execute("INSERT OR REPLACE INTO meta VALUES ('feed_schema', '2')")
                 db.execute("INSERT OR REPLACE INTO meta VALUES ('sequence', ?)", (str(pack['sequence']),))
                 db.execute("INSERT OR REPLACE INTO meta VALUES ('metadata', ?)", (json.dumps(manifest.get('metadata', {})),))
         return self.status()
+
+    @classmethod
+    def _apply_v2(cls, db, pack):
+        for value in pack['stations']:
+            cls._upsert(db, 'station:' + value['telecode'], value)
+        for row in pack['train_versions']:
+            value, code = row['value'], row['code']
+            if not code or not value['h'] or not isinstance(value['s'], list):
+                raise ValueError('Invalid train version')
+            # Protocol contents are immutable; dates belong to observation rows.
+            content = {k: v for k, v in value.items() if k not in ('dates', 'fd', 'ld', 'observed_at')}
+            old = db.execute('SELECT body FROM train_version WHERE code=? AND hash=?', (code, value['h'])).fetchone()
+            if old:
+                previous = {k: v for k, v in json.loads(old[0]).items() if k not in ('dates', 'fd', 'ld', 'observed_at')}
+                if previous != content:
+                    raise ValueError('Train version content changed')
+            db.execute('INSERT OR REPLACE INTO train_version VALUES (?, ?, ?)',
+                       (code, value['h'], json.dumps(content, ensure_ascii=False)))
+        for row in pack['observations']:
+            code, fingerprint = row['code'], row['hash']
+            if not row['dates'] or not db.execute('SELECT 1 FROM train_version WHERE code=? AND hash=?', (code, fingerprint)).fetchone():
+                raise ValueError('Observation references missing train version or dates')
+            for day in row['dates']:
+                date.fromisoformat(day)
+                db.execute('INSERT OR IGNORE INTO observation VALUES (?, ?, ?)', (code, day, fingerprint))
 
     @staticmethod
     def _upsert(db, key, value):
@@ -306,8 +368,9 @@ def read_feed(base_url=None):
     if not base_url.startswith('https://'):
         raise ValueError('Railway feed requires HTTPS')
     base_url = base_url.rstrip('/')+'/'
+    snapshot_file = snapshot_url = None
     def download(file):
-        url = base_url + file
+        url = snapshot_url if file == snapshot_file else base_url + file
         sources = github_url_candidates(url)
         errors = []
         # Two bounded passes across all mirrors and the origin. Keep size and
@@ -327,6 +390,10 @@ def read_feed(base_url=None):
                     errors.append(f'{source}: {error}')
         raise OSError('Railway feed download failed after retries: ' + '; '.join(errors))
     manifest=json.loads(download('manifest.json'))
+    snapshot = manifest['snapshot']
+    snapshot_url = release_snapshot_url(snapshot)
+    if snapshot_url:
+        snapshot_file = snapshot['file']
     return manifest, download
 
 

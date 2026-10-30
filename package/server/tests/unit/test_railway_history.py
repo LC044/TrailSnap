@@ -24,15 +24,29 @@ def version(hash, days, departure='23:50', arrival='01:00'):
 
 
 def pack(sequence, rows, full=False):
-    data=gzip.compress(json.dumps({'schema_version':1,'sequence':sequence,'full':full,
-                                  'upserts':[{'key':k,'value':v} for k,v in rows.items()]}).encode())
+    stations, versions, observations = [], [], []
+    for key, value in rows.items():
+        if key.startswith('station:'):
+            stations.append(value)
+        elif key.startswith('train:'):
+            for v in value['versions']:
+                versions.append({'code':value['code'], 'value':{k:x for k,x in v.items() if k not in ('dates','fd','ld','observed_at')}})
+                observations.append({'code':value['code'], 'hash':v['h'], 'dates':v.get('dates') or [v['fd'],v['ld']]})
+        else:
+            raise ValueError('Unknown test entity')
+    return v2pack(sequence, stations, versions, observations, full)
+
+
+def v2pack(sequence, stations=(), versions=(), observations=(), full=False):
+    data=gzip.compress(json.dumps({'schema_version':2,'sequence':sequence,'full':full,
+                                  'stations':stations, 'train_versions':versions, 'observations':observations}).encode())
     sha=hashlib.sha256(data).hexdigest()
     return {'sequence':sequence,'file':f'packs/{sha}.json.gz','bytes':len(data),'sha256':sha}, data
 
 
 def feed(sequence, rows, previous=None):
     descriptor,data=pack(sequence,rows,True)
-    return {'schema_version':1,'sequence':sequence,'snapshot':descriptor,
+    return {'schema_version':2,'sequence':sequence,'snapshot':descriptor,
             'deltas':([*previous['deltas'],descriptor] if previous else [descriptor])}, {descriptor['file']:data}
 
 
@@ -75,7 +89,8 @@ def test_historical_alias_and_unknown_endpoints(initial):
 def test_incremental_sync_and_idempotency_fetch_only_new_packs(initial):
     cache,rows,first,_=initial
     desc,data=pack(2,{'station:CCC':station('CCC','新建站',30,115)})
-    manifest={'schema_version':1,'sequence':2,'snapshot':desc,'deltas':first['deltas']+[desc]}
+    snapshot,_=pack(2,dict(rows, **{'station:CCC':station('CCC','新建站',30,115)}),True)
+    manifest={'schema_version':2,'sequence':2,'snapshot':snapshot,'deltas':first['deltas']+[desc]}
     calls=[]
     def load(file): calls.append(file);return data
     cache.sync(manifest,load)
@@ -87,11 +102,12 @@ def test_incremental_sync_and_idempotency_fetch_only_new_packs(initial):
 
 def test_checksum_or_mid_transaction_failure_cannot_advance_cursor(initial):
     cache,_,first,_=initial
-    desc,data=pack(2,{'station:CCC':station('CCC','新建站',30,115),'invalid:bad':{}})
-    manifest={'schema_version':1,'sequence':2,'snapshot':desc,'deltas':first['deltas']+[desc]}
+    desc,data=v2pack(2, [station('CCC','新建站',30,115)], observations=[{'code':'missing','hash':'x','dates':['2026-10-02']}])
+    snapshot=dict(first['snapshot'],sequence=2)
+    manifest={'schema_version':2,'sequence':2,'snapshot':snapshot,'deltas':first['deltas']+[desc]}
     with pytest.raises(ValueError,match='checksum'):
         cache.sync(manifest,lambda _:data+b'bad')
-    with pytest.raises(ValueError,match='Unknown'):
+    with pytest.raises(ValueError,match='missing'):
         cache.sync(manifest,lambda _:data)
     assert cache.status()['sequence']==1 and not cache.stations('CCC')
 
@@ -99,7 +115,7 @@ def test_checksum_or_mid_transaction_failure_cannot_advance_cursor(initial):
 def test_unknown_schema_rollback_and_unsafe_path_refused(initial):
     cache,_,manifest,_=initial
     with pytest.raises(ValueError,match='schema'):
-        cache.sync(dict(manifest,schema_version=2),lambda _:b'')
+        cache.sync(dict(manifest,schema_version=3),lambda _:b'')
     with pytest.raises(ValueError,match='rollback'):
         cache.sync(dict(manifest,sequence=0),lambda _:b'')
     desc={'sequence':2,'file':'../secret','bytes':0,'sha256':'a'*64}
@@ -346,12 +362,15 @@ def test_bundle_update_validates_before_replacing_manifest(initial, tmp_path, mo
     assert (directory / 'manifest.json').read_bytes() == before
 
 
-def test_checked_in_seed_is_valid_and_has_dated_details(tmp_path):
+def test_release_seed_is_valid_and_has_dated_details(initial, tmp_path, monkeypatch):
+    from railway import history_cache
     from railway.history_seed import import_history_seed
+    _, _, manifest, files = initial
+    monkeypatch.setattr(history_cache, 'read_feed', lambda: (manifest, files.__getitem__))
     cache = HistoryCache(tmp_path / 'bundled.sqlite')
     result = import_history_seed(cache)
-    assert result['stations'] >= 3404 and result['trains'] >= 16489
-    result = cache.resolve('G1', '2026-10-25')
+    assert result['stations'] > 0 and result['trains'] > 0
+    result = cache.resolve('G1', '2026-10-02')
     assert result['match'] == 'exact' and len(result['stops']) > 2
 
 
@@ -369,7 +388,8 @@ async def test_ticket_enrichment_matches_old_name_and_keeps_ticket_text(initial,
     assert ticket.departure_station == '旧站站'
 
 
-def test_offline_startup_projects_before_ready(tmp_path, monkeypatch):
+@pytest.mark.parametrize('old_sequence', [0, 99])
+def test_offline_startup_projects_before_ready(tmp_path, monkeypatch, old_sequence):
     from urllib import request
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -377,6 +397,9 @@ def test_offline_startup_projects_before_ready(tmp_path, monkeypatch):
     from railway.db import session, dependencies
     from railway.db.models.models import Base, Station, Train, TrainSchedule
     from app.core import paths
+    from railway import history_cache
+    manifest, files = feed(1, {'station:AAA': station('AAA', '离线种子站', 39, 116)})
+    monkeypatch.setattr(history_cache, 'read_feed', lambda: (manifest, files.__getitem__))
     engine = create_engine('sqlite:///:memory:')
     Base.metadata.create_all(engine)
     sessions = sessionmaker(bind=engine)
@@ -385,11 +408,20 @@ def test_offline_startup_projects_before_ready(tmp_path, monkeypatch):
     monkeypatch.setenv('RAILWAY_DB_URL', 'sqlite:///:memory:')
     monkeypatch.setattr(paths, 'DATA_DIR', str(tmp_path))
     monkeypatch.setenv('RAILWAY_HISTORY_DB', str(tmp_path / 'offline.sqlite'))
-    monkeypatch.setattr(request, 'urlopen', lambda *a, **kw: pytest.fail('offline startup attempted network access'))
+    if old_sequence:
+        old_cache = HistoryCache(tmp_path / 'offline.sqlite')
+        with old_cache.connect() as db:
+            old_cache._upsert(db, 'station:AAA', station('AAA', '旧库保留站', 39, 116))
+            db.execute("INSERT INTO meta VALUES ('sequence', ?)", (str(old_sequence),))
+        old_cache.mark_projected(old_sequence)
+    monkeypatch.setattr(request, 'urlopen', lambda *a, **kw: pytest.fail('mocked Release seed attempted network access'))
     monkeypatch.setattr(initialization, '_state', 'pending')
     initialization._initialize()
     initialization.require_ready()
     cache = HistoryCache(tmp_path / 'offline.sqlite')
+    assert cache.status()['schema_version'] == 2
+    if old_sequence:
+        assert cache.stations('旧库保留站')
     assert cache.projected_sequence() == cache.status()['sequence'] > 0
     with sessions() as db:
         assert db.query(Station).count() >= 3404
@@ -461,3 +493,268 @@ def test_station_projection_rebuilds_search_and_preserves_local_metadata(initial
     with sessions() as db:
         assert db.query(Station).count() == 3
     engine.dispose()
+
+
+def legacy_v1_sync(cache, manifest, files):
+    """Frozen v1 reader contract: accepts whole-entity packs, has no feed_schema."""
+    if manifest['schema_version'] != 1:
+        raise ValueError('Unsupported railway feed schema')
+    descriptor = manifest['snapshot']
+    raw = files[descriptor['file']]
+    assert hashlib.sha256(raw).hexdigest() == descriptor['sha256']
+    payload = json.loads(gzip.decompress(raw))
+    with cache.connect() as db:
+        for item in payload['upserts']:
+            cache._upsert(db, item['key'], item['value'])
+        db.execute("INSERT OR REPLACE INTO meta VALUES ('sequence', ?)", (str(payload['sequence']),))
+
+
+def legacy_cache(tmp_path, rows, sequence):
+    cache = HistoryCache(tmp_path / 'legacy.sqlite')
+    raw = gzip.compress(json.dumps({'schema_version':1, 'sequence':sequence, 'full':True,
+        'upserts':[{'key':key, 'value':value} for key,value in rows.items()]}).encode())
+    digest = hashlib.sha256(raw).hexdigest()
+    descriptor = {'sequence':sequence,'file':f'packs/{digest}.json.gz','bytes':len(raw),'sha256':digest}
+    legacy_v1_sync(cache, {'schema_version':1,'snapshot':descriptor}, {descriptor['file']:raw})
+    return cache
+
+
+@pytest.mark.parametrize('old_sequence', [1, 99])
+def test_v1_failure_then_automatic_v2_upgrade_independent_of_cursor(initial, tmp_path, old_sequence):
+    _, rows, manifest, files = initial
+    old = legacy_cache(tmp_path, rows, old_sequence)
+    old.mark_projected(old_sequence)
+    old.store_coordinates('AAA', 39, 116, 'user', 'WGS84')
+    with pytest.raises(ValueError, match='schema'):
+        legacy_v1_sync(old, manifest, files)
+    assert old.resolve('G1', '2026-10-02')['version'] == 'B'
+    assert old.status()['sequence'] == old_sequence
+    before = old.file.read_bytes()
+    with pytest.raises(ValueError, match='checksum'):
+        old.sync(manifest, lambda _: b'corrupt')
+    assert old.file.read_bytes() == before
+    assert old.projected_sequence() == old_sequence
+    requested = []
+    def load(file):
+        requested.append(file)
+        return files[file]
+    upgraded = HistoryCache(old.file)
+    upgraded.sync(manifest, load)
+    assert requested == [manifest['snapshot']['file']]
+    assert upgraded.status()['schema_version'] == 2 and upgraded.status()['sequence'] == 1
+    assert upgraded.projected_sequence() == 0
+    assert upgraded.local_coordinates('AAA')[:2] == (39, 116)
+    assert upgraded.stations('旧站')
+    assert upgraded.resolve('G1', '2026-10-02')['match'] == 'exact'
+    upgraded.sync(manifest, lambda _: pytest.fail('already upgraded'))
+
+
+def test_upgrade_rolls_back_late_import_failure_and_preserves_local_history(initial, tmp_path):
+    _, rows, _, _ = initial
+    old = legacy_cache(tmp_path, rows, 88)
+    old.mark_projected(88)
+    desc, data = v2pack(1, [station('CCC','新增',30,120)], observations=[
+        {'code':'missing','hash':'x','dates':['2026-10-04']}], full=True)
+    manifest = {'schema_version':2,'sequence':1,'snapshot':desc,'deltas':[]}
+    before = old.file.read_bytes()
+    with pytest.raises(ValueError, match='missing'):
+        old.sync(manifest, lambda _: data)
+    assert old.file.read_bytes() == before and old.projected_sequence() == 88
+    # A valid complete feed may be older than locally retained observations.
+    valid, available = feed(1, {'station:CCC':station('CCC','新增',30,120)})
+    old.sync(valid, available.__getitem__)
+    assert old.stations('CCC') and old.resolve('G1','2026-10-02')['version'] == 'B'
+
+
+def test_date_only_v2_delta_has_exact_observation_and_no_repeated_content(initial):
+    cache, _, first, _ = initial
+    desc, data = v2pack(2, observations=[{'code':'G1','hash':'A','dates':['2026-10-10']}])
+    manifest = dict(first, sequence=2, snapshot=dict(first['snapshot'], sequence=2), deltas=[desc])
+    with cache.connect() as db:
+        before = [tuple(row) for row in db.execute('SELECT * FROM train_version')]
+    cache.sync(manifest, lambda _: data)
+    result = cache.resolve('G1','2026-10-10')
+    assert result['match'] == 'exact' and result['version'] == 'A'
+    assert cache.resolve('G1','2026-10-09')['match'] == 'nearest'
+    with cache.connect() as db:
+        assert [tuple(row) for row in db.execute('SELECT * FROM train_version')] == before
+    cache.sync(manifest, lambda _: pytest.fail('duplicate download'))
+
+
+def test_offline_v2_seed_migrates_higher_v1_cursor(initial, tmp_path):
+    from railway.history_seed import import_history_seed
+    _, rows, manifest, files = initial
+    old = legacy_cache(tmp_path, rows, 900)
+    directory = tmp_path / 'v2-bundle'
+    directory.mkdir()
+    (directory / 'manifest.json').write_text(json.dumps(manifest), encoding='utf-8')
+    for file, raw in files.items():
+        target = directory / file
+        target.parent.mkdir(exist_ok=True)
+        target.write_bytes(raw)
+    import_history_seed(old, directory)
+    assert old.status()['schema_version'] == 2 and old.status()['sequence'] == 1
+    assert old.resolve('G1','2026-10-03')['match'] == 'exact'
+
+
+def test_many_deltas_choose_smaller_snapshot_and_keep_history(initial):
+    cache, rows, first, _ = initial
+    manifest, files = feed(4, rows)
+    manifest['deltas'] = [dict(manifest['snapshot'], sequence=i) for i in (2,3,4)]
+    calls = []
+    def load(file):
+        calls.append(file)
+        return files[file]
+    cache.sync(manifest, load)
+    assert calls == [manifest['snapshot']['file']]
+    assert cache.status()['sequence'] == 4
+    assert cache.resolve('G1','2026-10-01')['match'] == 'exact'
+
+
+def test_collector_v2_history_replay(tmp_path):
+    """Optional cross-repository audit of actual TS packs against retained v1 history."""
+    import os
+    from pathlib import Path
+    report_path = os.getenv('RAILWAY_V2_REPLAY_REPORT')
+    if not report_path:
+        pytest.skip('set RAILWAY_V2_REPLAY_REPORT to a collector replay report')
+    report_path = Path(report_path)
+    report = json.loads(report_path.read_text(encoding='utf-8'))
+    source = Path(report['repository']) / 'data' / 'feed'
+    cache = None
+    results = []
+    for item in report['rows']:
+        retained = json.loads(gzip.decompress((source / item['old_snapshot']).read_bytes()))
+        rows = {row['key']:row['value'] for row in retained['upserts']}
+        if cache is None:
+            cache = legacy_cache(tmp_path, rows, 999)
+            cache.mark_projected(999)
+        manifest = json.loads((report_path.parent / f"manifest-{item['sequence']}.json").read_text(encoding='utf-8'))
+        loaded = []
+        def load(file):
+            loaded.append(file)
+            directory = report['snapshots'] if file == manifest['snapshot']['file'] else report['feed']
+            return (Path(directory) / file).read_bytes()
+        cache.sync(manifest, load)
+        assert cache.status()['schema_version'] == 2
+        expected_observations = set()
+        expected_versions = 0
+        with cache.connect() as db:
+            for key, value in rows.items():
+                if key.startswith('station:'):
+                    assert json.loads(db.execute('SELECT body FROM entity WHERE key=?', (key,)).fetchone()[0]) == value
+                else:
+                    for v in value['versions']:
+                        expected_versions += 1
+                        actual = json.loads(db.execute('SELECT body FROM train_version WHERE code=? AND hash=?', (value['code'],v['h'])).fetchone()[0])
+                        expected = {k:x for k,x in v.items() if k not in ('dates','fd','ld','observed_at')}
+                        assert actual == expected
+                        for day in v.get('dates') or [v['fd'],v['ld']]:
+                            expected_observations.add((value['code'],day,v['h']))
+            assert {tuple(row) for row in db.execute('SELECT * FROM observation')} == expected_observations
+            assert db.execute('SELECT count(*) FROM train_version').fetchone()[0] == expected_versions
+        cache.sync(manifest, lambda _: pytest.fail('replay repeat downloaded data'))
+        results.append({'sequence':item['sequence'],'versions':expected_versions,'observations':len(expected_observations),'downloaded':loaded})
+    (report_path.parent / 'client-validation.json').write_text(json.dumps(results,indent=2),encoding='utf-8')
+
+
+def release_manifest(manifest):
+    snapshot = manifest['snapshot']
+    digest = snapshot['sha256']
+    snapshot['url'] = ('https://github.com/LC044/trailsnap-railway-history/releases/download/'
+                       f'snapshot-v2-{digest}/{digest}.json.gz')
+    return manifest
+
+
+def test_release_snapshot_uses_mirrors_then_origin_and_delta_stays_in_git(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from railway import history_cache
+    cache = HistoryCache(tmp_path / 'release.sqlite')
+    rows = {'station:AAA':station('AAA','新站',39,116),
+            'train:G1':{'code':'G1','versions':[version('A',['2026-10-01'])]}}
+    manifest, files = feed(1, rows)
+    release_manifest(manifest)
+    requested = []
+    @contextmanager
+    def fake_urlopen(url, timeout):
+        requested.append(url)
+        if url.endswith('/manifest.json'):
+            raw = json.dumps(manifest).encode()
+        elif '/releases/download/' in url:
+            if not url.startswith('https://github.com/'):
+                raise OSError('release mirror unavailable')
+            raw = files[manifest['snapshot']['file']]
+        else:
+            raw = next(value for name,value in files.items() if url.endswith(name))
+        yield type('Response', (), {'read':lambda _self,_size:raw})()
+    monkeypatch.setattr(history_cache, 'urlopen', fake_urlopen)
+    history_cache.fetch_feed(cache=cache)
+    assert any(url.startswith('https://github.com/') for url in requested)
+    assert len([url for url in requested if '/releases/download/' in url]) == 3
+    assert not any('/data/feed/packs/' in url for url in requested)
+    assert cache.resolve('G1','2026-10-01')['match'] == 'exact'
+    requested.clear()
+    history_cache.fetch_feed(cache=cache)
+    assert len(requested) == 1 and requested[0].endswith('/manifest.json')
+    delta, raw = pack(2, {'station:BBB':station('BBB','新增站',30,120)})
+    full, full_files = feed(2, dict(rows, **{'station:BBB':station('BBB','新增站',30,120)}))
+    manifest = release_manifest(dict(full, deltas=[delta]))
+    files = {**full_files, delta['file']:raw}
+    requested.clear()
+    history_cache.fetch_feed(cache=cache)
+    assert cache.status()['sequence'] == 2 and cache.stations('BBB')
+    assert any(url.endswith('/data/feed/' + delta['file']) for url in requested)
+    assert not any('/releases/download/' in url for url in requested)
+
+
+@pytest.mark.parametrize('url', ['http://github.com/invalid', 'https://example.com/asset',
+    'https://github.com/LC044/trailsnap-railway-history/releases/download/latest/asset.json.gz'])
+def test_untrusted_release_url_is_rejected_before_asset_download(initial, monkeypatch, url):
+    from contextlib import contextmanager
+    from railway import history_cache
+    cache, rows, _, _ = initial
+    manifest, _ = feed(2, rows)
+    manifest['snapshot']['url'] = url
+    requested = []
+    @contextmanager
+    def fake_urlopen(address, timeout):
+        requested.append(address)
+        assert address.endswith('/manifest.json')
+        yield type('Response', (), {'read':lambda _self,_size:json.dumps(manifest).encode()})()
+    monkeypatch.setattr(history_cache, 'urlopen', fake_urlopen)
+    before = cache.file.read_bytes()
+    with pytest.raises(ValueError, match='Release snapshot URL'):
+        history_cache.fetch_feed(cache=cache)
+    assert len(requested) == 1 and cache.file.read_bytes() == before
+
+
+def test_release_corruption_then_retry_migrates_v1_and_bundle_stays_offline(initial, tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from railway import history_cache, history_seed
+    _, rows, manifest, files = initial
+    release_manifest(manifest)
+    old = legacy_cache(tmp_path, rows, 99)
+    corrupt = True
+    @contextmanager
+    def fake_urlopen(url, timeout):
+        if url.endswith('/manifest.json'):
+            raw = json.dumps(manifest).encode()
+        else:
+            assert '/releases/download/' in url
+            raw = b'corrupt' if corrupt else files[manifest['snapshot']['file']]
+        yield type('Response', (), {'read':lambda _self,_size:raw})()
+    monkeypatch.setattr(history_cache, 'urlopen', fake_urlopen)
+    before = old.file.read_bytes()
+    with pytest.raises(ValueError, match='checksum'):
+        history_cache.fetch_feed(cache=old)
+    assert old.file.read_bytes() == before
+    corrupt = False
+    history_cache.fetch_feed(cache=old)
+    assert old.status()['sequence'] == 1 and old.status()['schema_version'] == 2
+    directory = tmp_path / 'release-bundle'
+    history_seed.update_history_seed(directory)
+    assert (directory / manifest['snapshot']['file']).exists()
+    monkeypatch.setattr(history_cache, 'urlopen', lambda *a,**kw:pytest.fail('offline seed accessed Release'))
+    fresh = HistoryCache(tmp_path / 'offline-release.sqlite')
+    history_seed.import_history_seed(fresh, directory)
+    assert fresh.resolve('G1','2026-10-02')['version'] == 'B'

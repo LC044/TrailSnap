@@ -54,9 +54,9 @@ RUN pip install --no-cache-dir uv && \
 FROM ${PYTHON_IMAGE} AS app-builder
 WORKDIR /app
 COPY . .
-# resources/railway-history contains the checked-in, checksum-verified feed.
-# Keep it outside /app/data so an empty persistent volume cannot hide it.
-RUN python -c "from pathlib import Path; from tempfile import TemporaryDirectory; from railway.history_cache import HistoryCache; from railway.history_seed import import_history_seed; t=TemporaryDirectory(); result=import_history_seed(HistoryCache(Path(t.name)/'history.sqlite')); assert result['sequence'] > 0, result; t.cleanup()"
+# Fetch the checksum-verified Release snapshot into the image for offline startup.
+# The large snapshot is never committed to the Git repository.
+RUN python -c "from railway.history_seed import update_history_seed; result=update_history_seed(); assert result['sequence'] > 0, result"
 # Keep the offline geocoder data; expand it into the persistent volume on first
 # startup. The uncompressed seed never enters a final-image layer.
 RUN python -c "import gzip,pathlib; p=pathlib.Path('resources/rg_data/CN.csv'); pathlib.Path(str(p)+'.gz').write_bytes(gzip.compress(p.read_bytes(),compresslevel=9,mtime=0)); p.unlink()"
