@@ -54,9 +54,10 @@ RUN pip install --no-cache-dir uv && \
 FROM ${PYTHON_IMAGE} AS app-builder
 WORKDIR /app
 COPY . .
-# Fetch the checksum-verified Release snapshot into the image for offline startup.
-# The large snapshot is never committed to the Git repository.
-RUN python -c "from railway.history_seed import update_history_seed; result=update_history_seed(); assert result['sequence'] > 0, result"
+# Fetch the checksum-verified Release snapshot into production images for offline startup.
+# PR validation can build before the collector has published the first v2 Release.
+ARG RAILWAY_HISTORY_SEED_REQUIRED=true
+RUN if [ "$RAILWAY_HISTORY_SEED_REQUIRED" = "true" ]; then python -c "from railway.history_seed import update_history_seed; result=update_history_seed(); assert result['sequence'] > 0, result"; else echo "Skipping external railway seed in PR validation image"; fi
 # Keep the offline geocoder data; expand it into the persistent volume on first
 # startup. The uncompressed seed never enters a final-image layer.
 RUN python -c "import gzip,pathlib; p=pathlib.Path('resources/rg_data/CN.csv'); pathlib.Path(str(p)+'.gz').write_bytes(gzip.compress(p.read_bytes(),compresslevel=9,mtime=0)); p.unlink()"

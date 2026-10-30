@@ -74,6 +74,8 @@ jobs:
         with:
           context: ./package/server
           platforms: linux/${{ matrix.arch }}
+          build-args: |
+            RAILWAY_HISTORY_SEED_REQUIRED=${{ github.event_name != 'pull_request' }}
           provenance: false
           outputs: type=image,name=${{ secrets.DOCKER_HUB_USERNAME }}/trailsnap-server,push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=server-${{ matrix.arch }}
