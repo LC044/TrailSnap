@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>humanizer-zh 去 AI 味效果示例</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "Helvetica Neue", sans-serif;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+    color: #1f2937;
+    line-height: 1.7;
+    min-height: 100vh;
+    padding: 48px 20px;
+  }
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 8px;
+  }
+  .tagline {
+    color: #4b5563;
+    font-size: 15px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 16px 20px;
+    font-weight: 700;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .before .card-header { background: #fee2e2; color: #991b1b; }
+  .after  .card-header { background: #d1fae5; color: #065f46; }
+  .card-body {
+    padding: 20px;
+    font-size: 14.5px;
+    min-height: 220px;
+  }
+  .before .card-body { color: #7f1d1d; }
+  .after  .card-body { color: #064e3b; }
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.06);
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
+  .arrow {
+    display: none;
+    text-align: center;
+    font-size: 28px;
+    color: #2563eb;
+    margin: 12px 0;
+  }
+  footer {
+    text-align: center;
+    margin-top: 32px;
+    color: #6b7280;
+    font-size: 13px;
+  }
+  footer strong { color: #2563eb; }
+  @media (max-width: 720px) {
+    .grid { grid-template-columns: 1fr; }
+    .arrow { display: block; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>humanizer-zh · 去 AI 味效果示例</h1>
+    <p class="tagline">在保留全部事实与数据的前提下，去除"AI 腔 / 机器腔"，降低 AIGC 检测率</p>
+  </header>
+
+  <div class="grid">
+    <div class="card before">
+      <div class="card-header">
+        <span>🤖</span> 改写前（AI 痕迹明显）
+      </div>
+      <div class="card-body">
+        <p style="margin-bottom:12px;">
+          <span class="badge">开场白</span>
+          <span class="badge">空话填充</span>
+          <span class="badge">二元对立</span>
+        </p>
+        <p>
+          随着信息技术的飞速发展，数字化转型已成为推动社会治理现代化的重要引擎。本文旨在探讨基层治理中数字技术赋能的关键路径，并分析其面临的机遇与挑战。研究表明，数字治理既能提升行政效率，又可能引发数据安全风险；因此，必须坚持以人民为中心的发展思想，统筹推进技术应用与制度创新，从而实现治理能力与治理体系现代化的双重目标。
+        </p>
+      </div>
+    </div>
+
+    <div class="card after">
+      <div class="card-header">
+        <span>✍️</span> 改写后（去 AI 味）
+      </div>
+      <div class="card-body">
+        <p style="margin-bottom:12px;">
+          <span class="badge">主语明确</span>
+          <span class="badge">短句错落</span>
+          <span class="badge">事实落脚</span>
+        </p>
+        <p>
+          这几年基层治理用上了不少数字工具。浙江某街道把人口、房屋、事件数据打通后，一次重复投诉的处理时间从 5 天缩到 1 天。但数据集中后也有隐患：2024 年该省抽查发现，37% 的区县平台没有明确数据脱敏流程。要解决这个问题，重点不在"要不要数字化"，而是先把数据权限和泄露责任写进制度，再谈系统升级。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p><strong>去 AI 味</strong> · 保留事实 · 降低 AIGC 检测率 · 适配知网 / 万方 / 维普 / 朱雀 / BestPaper / 论文狗</p>
+  </footer>
+</div>
+</body>
+</html>

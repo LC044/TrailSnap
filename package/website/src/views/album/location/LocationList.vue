@@ -953,10 +953,6 @@ onMounted(() => {
   --location-shadow: rgba(0, 0, 0, 0.3);
 }
 
-.location-toolbar {
-  container: location-toolbar / inline-size;
-}
-
 .location-immersive {
   padding: 0;
   overflow: hidden;
@@ -977,25 +973,25 @@ onMounted(() => {
   pointer-events: auto;
 }
 
-.location-immersive .location-toolbar > div:first-child > div,
-.location-immersive .location-toolbar > div:last-child > div {
-  border-color: rgba(var(--theme-rgb), 0.24) !important;
-  background: var(--location-control) !important;
+/* 沉浸式头部沿用浏览页的玻璃工具栏：外层药丸拥有表面，内部控件保持一致的
+   扁平样式，避免"药丸套药丸"的旧版深色仪表盘观感。 */
+.location-immersive .location-toolbar .location-toolbar-actions {
+  --glass-tint: var(--location-control);
+  border-color: rgba(var(--theme-rgb), 0.24);
   box-shadow: 0 12px 32px var(--location-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(18px);
 }
 
-.location-immersive .location-toolbar button:not(.ts-back-button) {
-  background-color: var(--location-control) !important;
-  border-color: rgba(var(--theme-rgb), 0.18) !important;
-}
-
-.location-immersive .location-toolbar h1,
-.location-immersive .location-toolbar button:not(.text-primary-500):not(.ts-back-button) {
+.location-immersive .location-toolbar h1 {
   color: var(--location-text);
 }
 
-@container location-toolbar (max-width: 1250px) {
+/* 网格与地图模式的桌面控件折叠逻辑对齐：网格模式的 level 按钮组在容器宽度
+   <1250px 时折叠（视口 ≈ 1554px，扣除 240px 侧边栏与 64px 页边距）。沉浸式
+   工具栏右侧固定为信息面板预留 388px，量容器宽度会比网格模式窄一截，
+   改用同一个视口断点，保证同一块屏幕上网格和地图的按钮组形态一致；
+   1024-1554 区间的沉浸式头部没有足够宽度容纳完整按钮组（标题 + 工具栏
+   ≈ 760px，可用仅视口 − 660px），同样收敛为下拉触发器。 */
+@media (min-width: 1024px) and (max-width: 1554px) {
   .location-immersive .location-level-desktop,
   .location-immersive .location-level-divider,
   .location-immersive .location-photo-map-desktop {
@@ -1022,12 +1018,6 @@ onMounted(() => {
   box-shadow: none;
   backdrop-filter: none;
 }
-.location-immersive .location-toolbar .location-toolbar-heading .location-title-group {
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none;
-}
 
 
 @media (max-width: 767px) {
@@ -1042,21 +1032,6 @@ onMounted(() => {
     padding: 7px 12px;
     font-size: 13px;
     box-shadow: 0 6px 18px rgba(var(--theme-rgb), 0.22);
-  }
-  .location-immersive .location-toolbar .location-toolbar-actions > .location-year-control,
-  .location-immersive .location-toolbar .location-toolbar-actions > .location-level-control,
-  .location-immersive .location-toolbar .location-toolbar-actions > .location-view-control {
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none;
-    backdrop-filter: none;
-  }
-  .location-immersive .location-toolbar .location-filter-trigger {
-    background-color: transparent !important;
-    box-shadow: none;
-  }
-  .location-immersive .location-toolbar .location-filter-trigger:active {
-    background-color: rgba(var(--theme-rgb), 0.1) !important;
   }
   .location-toolbar-actions.is-dark .location-level-control::before,
   .location-toolbar-actions.is-dark .location-view-control::before {
