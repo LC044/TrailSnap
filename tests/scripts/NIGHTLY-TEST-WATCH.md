@@ -166,7 +166,12 @@ $exit = $LASTEXITCODE
    ```powershell
    $views = Get-ChildItem -Recurse -Filter *.vue "$repo\package\website\src\views" |
        ForEach-Object { $_.BaseName }
-   $specText = Get-Content -Raw (Get-ChildItem -Recurse -Filter *.spec.ts "$repo\package\website\tests\e2e")
+   # [skip-nightly] 2026-10-30 修复：原示例写成 `Get-Content -Raw (Get-ChildItem ...)`，
+   # PowerShell 下多文件会返回**数组**，`-notmatch` 作用在数组上返回「非空子集」，
+   # 过滤结果恒为真 → 照抄会得到「几乎所有 view 都未覆盖」的假阳性清单。
+   # 改为逐个读取后显式 join，再做匹配。
+   $specText = (Get-ChildItem -Recurse -Filter *.spec.ts "$repo\package\website\tests\e2e" |
+       ForEach-Object { Get-Content -Raw $_.FullName }) -join "`n"
    $gaps = $views | Where-Object { $specText -notmatch [regex]::Escape($_) } | Sort-Object -Unique
    $gaps | Set-Content "$runDir\coverage-gaps-frontend.txt"
    ```
