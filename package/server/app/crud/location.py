@@ -578,10 +578,15 @@ def get_locations(db: Session, owner_id: UUID, level: str = 'city', skip: int = 
         
     return locations
 
-def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'city', skip: int = 0, limit: int = 50, start_date: str = None, end_date: str = None, scene_id: UUID = None, place_key: str = None):
+def get_location_photos(db: Session, owner_id: UUID, name: str, level: str = 'city', skip: int = 0, limit: int = 50, start_date: str = None, end_date: str = None, scene_id: UUID = None, place_key: str = None, person_id: UUID = None):
     # 使用 join 配合 contains_eager 替代 joinedload，避免产生重复的 JOIN 查询，提升性能
     query = db.query(Photo).join(PhotoMetadata, Photo.id == PhotoMetadata.photo_id)
     query = query.filter(Photo.owner_id == owner_id, Photo.is_deleted == False)
+    if person_id is not None:
+        from app.crud.location_stats import person_photo_condition
+        query = query.filter(person_photo_condition(db, owner_id, person_id))
+        if level == 'scene':
+            query = query.filter(db.query(Scene.id).filter(Scene.id == PhotoMetadata.scene_id, or_(Scene.owner_id == owner_id, Scene.owner_id.is_(None))).exists())
 
     if level == 'city':
         col = PhotoMetadata.city

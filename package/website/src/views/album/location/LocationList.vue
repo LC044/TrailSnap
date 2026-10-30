@@ -471,6 +471,7 @@
     <!-- Statistics View -->
     <LocationStatsView
       v-if="viewMode === 'statistics'"
+      :locations="locations"
       :start-date="dateRange?.[0]"
       :end-date="dateRange?.[1]"
       :level="level"

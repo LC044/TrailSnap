@@ -1,120 +1,82 @@
 <template>
-  <div class="flex-1 mx-auto w-full max-w-screen-2xl overflow-y-auto pb-8">
-    <!-- No location data empty state -->
-    <div v-if="showNoLocation" class="flex flex-col items-center justify-center py-20 text-center">
-      <Map class="w-16 h-16 text-gray-300 dark:text-gray-600 mb-4" />
-      <p class="text-gray-500 dark:text-gray-400 mb-4">这段时间还没有位置数据</p>
-      <button
-        @click="goMap"
-        class="px-4 py-2 rounded-lg bg-primary-500 text-white hover:bg-primary-600 transition-colors focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-      >去地图视图标注一下</button>
-    </div>
-
-    <div v-else class="space-y-4">
-      <StatsOverviewCard :overview="overview" :loading="overviewLoading" />
-      <StatsAnnualTrendCard :data="trend" :loading="trendLoading" :error="trendError" @narrow-range="onNarrowRange" @retry="fetchTrend" />
-      <StatsMonthlyRadarCard :data="radar" :most-recent-year="mostRecentYear" :loading="radarLoading" :error="radarError" @narrow-range="onNarrowRange" @retry="fetchRadar" />
-      <StatsTopPlacesCard :places="places.top_places" :loading="placesLoading" :error="placesError" @go-location="onGoLocation" @retry="fetchPlaces" />
-      <StatsRevisitsCard :revisits="places.revisits" :loading="placesLoading" :error="placesError" @retry="fetchPlaces" />
+  <div class="location-stats flex-1 min-h-0 mx-auto w-full max-w-screen-2xl overflow-y-auto pb-8">
+    <div class="space-y-4">
+      <header class="flex flex-wrap items-start justify-between gap-3 py-2">
+        <div><h1 class="text-xl font-semibold tracking-tight">足迹统计</h1><p class="stats-caption mt-1">{{ rangeLabel }} · 从照片中回看走过的地方与记录的日子</p></div>
+        <details class="stats-method">
+          <summary class="stats-caption cursor-pointer py-1">统计口径</summary>
+          <p class="stats-caption mt-2 max-w-lg">概览、时间趋势和日历跟随时间筛选，包含整个图库；城市和省份来自照片中的位置。时间趋势、记录天数和照片数包含无位置的照片，仅统计有拍摄日期的记录。顶部地区层级仅影响地点排名与地点记录。</p>
+        </details>
+      </header>
+      <StatsOverviewCard :overview="overviewError ? null : overview" :loading="overviewLoading" />
+      <div v-if="overviewError" class="stats-caption flex items-center gap-3" role="alert">足迹概览加载失败<button class="text-primary-500" @click="fetchOverview">重试</button></div>
+      <div class="stats-main stats-main-primary">
+        <StatsAnnualTrendCard :data="heatmap.data" :loading="heatmapLoading" :error="heatmapError" @narrow-range="onNarrowRange" @retry="fetchHeatmap" />
+        <StatsTopPlacesCard :places="places.top_places" :covers="covers" :scope="placeScope" :loading="placesLoading" :error="placesError" @go-location="onGoLocation" @retry="fetchPlaces" />
+      </div>
       <StatsHeatmapCard :data="heatmap.data" :loading="heatmapLoading" :error="heatmapError" @narrow-range="onNarrowRange" @retry="fetchHeatmap" />
+      <StatsPersonPlacesCard :start-date="startDate" :end-date="endDate" :level="level" :parent-region="parentRegion" />
+      <StatsRevisitsCard :revisits="places.revisits" :scope="placeScope" :loading="placesLoading" :error="placesError" @retry="fetchPlaces" @go-location="onGoLocation" />
+      <p v-if="!overviewError && overview?.farthest_place" class="stats-caption px-1">最远记录地点 · {{ overview.farthest_place }} · 约 {{ Math.round(overview.farthest_distance_km).toLocaleString() }} 公里</p>
     </div>
   </div>
 </template>
-
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import { Map } from 'lucide-vue-next';
-import { useLocationStore } from '@/stores/locationStore';
-import { locationService, type OverviewStats, type AnnualTrendItem, type MonthlyRadarItem, type PlacesResponse, type HeatmapRangeResponse } from '@/api/location';
-import StatsOverviewCard from './stats/StatsOverviewCard.vue';
-import StatsAnnualTrendCard from './stats/StatsAnnualTrendCard.vue';
-import StatsMonthlyRadarCard from './stats/StatsMonthlyRadarCard.vue';
-import StatsTopPlacesCard from './stats/StatsTopPlacesCard.vue';
-import StatsRevisitsCard from './stats/StatsRevisitsCard.vue';
-import StatsHeatmapCard from './stats/StatsHeatmapCard.vue';
-
-const props = defineProps<{
-  startDate?: string;
-  endDate?: string;
-  level: string;
-  parentRegion?: string;
-}>();
-const emit = defineEmits<{ (e: 'narrow-range', start: string, end: string, year?: number): void; (e: 'go-location', name: string): void }>();
-
-const store = useLocationStore();
-
-const overview = ref<OverviewStats | null>(null);
-const overviewLoading = ref(true);
-const overviewError = ref(false);
-const trend = ref<AnnualTrendItem[]>([]);
-const trendLoading = ref(true);
-const trendError = ref(false);
-const radar = ref<MonthlyRadarItem[]>([]);
-const radarLoading = ref(true);
-const radarError = ref(false);
-const places = ref<PlacesResponse>({ top_places: [], revisits: [] });
-const placesLoading = ref(true);
-const placesError = ref(false);
-const heatmap = ref<HeatmapRangeResponse>({ total_photos: 0, total_days: 0, data: [] });
-const heatmapLoading = ref(true);
-const heatmapError = ref(false);
-const mostRecentYear = ref<number | null>(null);
-
-const showNoLocation = computed(() =>
-  !overviewLoading.value && !overviewError.value && overview.value && !overview.value.has_location && overview.value.travel_days === 0
-);
-
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { mapPhotoToImage } from '@/stores/photoStore'
+import { locationService, type OverviewStats, type PlacesResponse, type HeatmapRangeResponse } from '@/api/location'
+import type { Location } from '@/types/location'
+import StatsPersonPlacesCard from './stats/StatsPersonPlacesCard.vue'
+import StatsOverviewCard from './stats/StatsOverviewCard.vue'
+import StatsAnnualTrendCard from './stats/StatsAnnualTrendCard.vue'
+import StatsTopPlacesCard from './stats/StatsTopPlacesCard.vue'
+import StatsRevisitsCard from './stats/StatsRevisitsCard.vue'
+import StatsHeatmapCard from './stats/StatsHeatmapCard.vue'
+import './stats/stats.css'
+const props = defineProps<{ startDate?: string; endDate?: string; level: string; parentRegion?: string; locations?: Location[] }>()
+const emit = defineEmits<{ (e: 'narrow-range', start: string, end: string, year?: number): void; (e: 'go-location', name: string): void }>()
+const overview = ref<OverviewStats | null>(null)
+const overviewLoading = ref(true)
+const overviewError = ref(false)
+const places = ref<PlacesResponse>({ top_places: [], revisits: [] })
+const placesLoading = ref(true)
+const placesError = ref(false)
+const heatmap = ref<HeatmapRangeResponse>({ total_photos: 0, total_days: 0, data: [] })
+const heatmapLoading = ref(true)
+const heatmapError = ref(false)
+const rangeLabel = computed(() => !props.startDate && !props.endDate ? '全部时间' : `${props.startDate || '最早记录'} 至 ${props.endDate || '最新记录'}`)
+const placeScope = computed(() => `${props.parentRegion ? props.parentRegion + ' · ' : ''}${({ city: '城市', province: '省份', district: '区县', scene: '景区' } as Record<string, string>)[props.level] || '城市'}`)
+const covers = computed(() => Object.fromEntries((props.locations ?? []).filter(l => l.cover).map(l => [l.name, mapPhotoToImage(l.cover!).thumbnail])))
+let overviewRequest = 0, placesRequest = 0, heatmapRequest = 0
 async function fetchOverview() {
-  overviewLoading.value = true; overviewError.value = false;
-  try { overview.value = await locationService.getOverview(props.startDate, props.endDate); }
-  catch { overviewError.value = true; }
-  finally { overviewLoading.value = false; }
-}
-async function fetchTrend() {
-  trendLoading.value = true; trendError.value = false;
-  try { trend.value = await locationService.getAnnualTrend(props.startDate, props.endDate); }
-  catch { trendError.value = true; }
-  finally { trendLoading.value = false; }
-}
-async function fetchRadar() {
-  radarLoading.value = true; radarError.value = false;
-  try { radar.value = await locationService.getMonthlyRadar(props.startDate, props.endDate); }
-  catch { radarError.value = true; }
-  finally { radarLoading.value = false; }
+  const id = ++overviewRequest
+  overviewLoading.value = true; overviewError.value = false
+  try { const value = await locationService.getOverview(props.startDate, props.endDate); if (id === overviewRequest) overview.value = value }
+  catch { if (id === overviewRequest) overviewError.value = true }
+  finally { if (id === overviewRequest) overviewLoading.value = false }
 }
 async function fetchPlaces() {
-  placesLoading.value = true; placesError.value = false;
-  try { places.value = await locationService.getPlaces(props.level, props.startDate, props.endDate, props.parentRegion); }
-  catch { placesError.value = true; }
-  finally { placesLoading.value = false; }
+  const id = ++placesRequest
+  placesLoading.value = true; placesError.value = false
+  try { const value = await locationService.getPlaces(props.level, props.startDate, props.endDate, props.parentRegion); if (id === placesRequest) places.value = value }
+  catch { if (id === placesRequest) placesError.value = true }
+  finally { if (id === placesRequest) placesLoading.value = false }
 }
 async function fetchHeatmap() {
-  heatmapLoading.value = true; heatmapError.value = false;
-  try { heatmap.value = await locationService.getHeatmapRange(props.startDate, props.endDate); }
-  catch { heatmapError.value = true; }
-  finally { heatmapLoading.value = false; }
+  const id = ++heatmapRequest
+  heatmapLoading.value = true; heatmapError.value = false
+  try { const value = await locationService.getHeatmapRange(props.startDate, props.endDate); if (id === heatmapRequest) heatmap.value = value }
+  catch { if (id === heatmapRequest) heatmapError.value = true }
+  finally { if (id === heatmapRequest) heatmapLoading.value = false }
 }
-
-async function loadAll() {
-  await fetchOverview();
-  fetchTrend(); fetchRadar(); fetchPlaces(); fetchHeatmap();
-}
-
-function onNarrowRange(start: string, end: string, year?: number) {
-  emit('narrow-range', start, end, year);
-}
-function onGoLocation(name: string) {
-  emit('go-location', name);
-}
-function goMap() {
-  store.viewMode = 'map';
-}
-
-watch(() => [props.startDate, props.endDate], loadAll);
-watch(() => [props.level, props.parentRegion], fetchPlaces);
-
-onMounted(async () => {
-  try { const years = await locationService.getYears(); mostRecentYear.value = years[0] ?? null; } catch { mostRecentYear.value = null; }
-  loadAll();
-});
+function onNarrowRange(start: string, end: string, year?: number) { emit('narrow-range', start, end, year) }
+function onGoLocation(name: string) { emit('go-location', name) }
+watch(() => [props.startDate, props.endDate], () => { fetchOverview(); fetchHeatmap() }, { immediate: true })
+watch(() => [props.startDate, props.endDate, props.level, props.parentRegion], fetchPlaces, { immediate: true })
+onBeforeUnmount(() => { overviewRequest++; placesRequest++; heatmapRequest++ })
 </script>
+<style scoped>
+.stats-method { max-width: 480px; }
+.stats-method summary { text-align: right; }
+@media (max-width: 639px) { .stats-method summary { text-align: left; } }
+</style>

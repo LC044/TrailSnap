@@ -1,52 +1,26 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">足迹概览</h2>
-    <div v-if="loading" class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <el-skeleton v-for="i in 4" :key="i" animated>
-        <template #template>
-          <el-skeleton-item variant="h1" style="width: 60%" />
-          <el-skeleton-item variant="text" style="width: 80%; margin-top: 8px" />
-        </template>
-      </el-skeleton>
-    </div>
-    <div v-else-if="!overview" class="text-gray-400 dark:text-gray-500 text-sm">暂无数据</div>
-    <div v-else class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="flex flex-col">
-        <span class="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-500 leading-tight">
-          {{ overview.has_location ? overview.total_distance_km.toLocaleString() : '—' }}
-        </span>
-        <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">公里 / 含跨城移动</span>
+  <section aria-label="足迹概览" class="stats-metrics">
+    <SurfaceCard v-for="item in metrics" :key="item.label" padding="lg" :elevated="false">
+      <div class="flex items-center justify-between gap-2">
+        <span class="text-sm ts-muted">{{ item.label }}</span>
+        <component :is="item.icon" class="w-4 h-4 text-primary-500" aria-hidden="true" />
       </div>
-      <div class="flex flex-col">
-        <span class="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-500 leading-tight">
-          {{ overview.province_count }}<span class="text-2xl text-gray-400 dark:text-gray-500"> 省</span>
-          {{ overview.city_count }}<span class="text-2xl text-gray-400 dark:text-gray-500"> 市</span>
-        </span>
-        <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">省 + 城市 / 去重后</span>
-      </div>
-      <div class="flex flex-col">
-        <span class="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-500 leading-tight">
-          {{ overview.travel_days }}
-        </span>
-        <span class="text-xs text-gray-500 dark:text-gray-400 mt-1">天 / 至少 1 张照片</span>
-      </div>
-      <div class="flex flex-col">
-        <span class="text-4xl md:text-5xl font-bold text-primary-600 dark:text-primary-500 leading-tight">
-          {{ overview.has_location ? Math.round(overview.farthest_distance_km).toLocaleString() : '—' }}
-        </span>
-        <span class="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate" :title="overview.farthest_place ? `最远：${overview.farthest_place}` : '公里 / 最远点距中心'">
-          {{ overview.farthest_place ? `公里 / ${overview.farthest_place}` : '公里 / 最远点距中心' }}
-        </span>
-      </div>
-    </div>
-  </div>
+      <div v-if="item.loading" class="h-10 mt-3"><el-skeleton-item variant="h1" style="width: 65%" /></div>
+      <p v-else class="stats-number">{{ item.value == null ? '—' : item.value.toLocaleString() }}<span>{{ item.unit }}</span></p>
+      <p class="text-xs ts-muted mt-2">{{ item.hint }}</p>
+    </SurfaceCard>
+  </section>
 </template>
-
 <script setup lang="ts">
-import type { OverviewStats } from '@/api/location';
-
-defineProps<{
-  overview: OverviewStats | null;
-  loading: boolean;
-}>();
+import { computed } from 'vue'
+import { Building2, MapPinned, CalendarDays, Globe2 } from 'lucide-vue-next'
+import SurfaceCard from '@/components/ui/SurfaceCard.vue'
+import type { OverviewStats } from '@/api/location'
+const props = defineProps<{ overview: OverviewStats | null; loading: boolean }>()
+const metrics = computed(() => [
+  { label: '到访城市', value: props.overview?.city_count, unit: '座', hint: '按照片中的城市去重', icon: Building2, loading: props.loading },
+  { label: '覆盖省份', value: props.overview?.province_count, unit: '个', hint: '按照片中的省级地区去重', icon: MapPinned, loading: props.loading },
+  { label: '记录天数', value: props.overview?.travel_days, unit: '天', hint: '至少留下一张照片的日子', icon: CalendarDays, loading: props.loading },
+  { label: '移动距离', value: props.overview?.has_location ? Math.round(props.overview.total_distance_km) : null, unit: '公里', hint: props.overview?.has_location ? `约绕地球 ${(props.overview.total_distance_km / 40075).toFixed(2)} 圈` : '暂无位置记录', icon: Globe2, loading: props.loading },
+])
 </script>

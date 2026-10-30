@@ -49,3 +49,28 @@ class HeatmapRangeResponse(BaseModel):
     total_photos: int
     total_days: int
     data: List[HeatmapItem] = []
+
+
+class PersonPlaceStats(BaseModel):
+    name: str
+    level: str
+    place_key: Optional[str] = None
+    scene_id: Optional[str] = None
+    parent_label: str = ""
+    photo_count: int
+    record_days: int
+    first_date: Optional[str] = None
+    last_date: Optional[str] = None
+
+
+class PersonPlacesResponse(BaseModel):
+    places: List[PersonPlaceStats] = []
+    total_places: int = 0
+    total_photos: int = 0
+    total_days: int = 0
+
+
+class TopPersonPlaces(PersonPlacesResponse):
+    person_id: str
+    person_name: str
+    cover_photo_id: Optional[str] = None

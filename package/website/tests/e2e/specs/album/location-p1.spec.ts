@@ -325,7 +325,7 @@ test.describe.serial('P1 - 位置相册', () => {
     }
   })
 
-  test('2.4.13 统计视图 - 切换后 StatsOverviewCard 显示"足迹概览"', async ({ page, request }, testInfo) => {
+  test('2.4.13 统计视图 - 切换后显示"足迹统计"', async ({ page, request }, testInfo) => {
     // 统计视图渲染在位置列表之上；没有带 GPS 坐标的照片时位置相册只有空态，
     // StatsOverviewCard 永远不会挂载。同文件的 2.4.11 / 2.4.12 / 2.4.16 都用探针守卫。
     const probe = await requireAnyLocation(request, testInfo)
@@ -340,10 +340,8 @@ test.describe.serial('P1 - 位置相册', () => {
     await expect(statsBtn).toBeVisible({ timeout: 10_000 })
     await statsBtn.click()
 
-    // LocationStatsView 渲染：StatsOverviewCard 的"足迹概览" h2 是静态标题，卡片一挂载
-    // 就出现（loading 时与 el-skeleton 并存，所以不能 .or(skeleton)，否则 strict mode
-    // 会因同时命中标题和骨架屏报错）。直接断言标题可见即可。
-    const overviewHeading = page.getByRole('heading', { name: '足迹概览' })
+    // 统计标题在数据加载期间保持可见。
+    const overviewHeading = page.getByRole('heading', { name: '足迹统计' })
     // 2026-10-23 值守：整轮 full E2E 里位置统计在负载下偶发超过 20s 才渲染
     // （定向重跑 18.4s 通过，离超时只差 1.6s），放宽到 30s 只放宽时间、不改断言。
     await expect(overviewHeading).toBeVisible({ timeout: 30_000 })
