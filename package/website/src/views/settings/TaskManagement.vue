@@ -1,7 +1,7 @@
 <template>
-  <div class="task-management ts-settings-page">
-    <SettingsPageHeader title="任务管理" description="查看处理进度，排查与重试失败任务">
-      <template #actions>
+  <div class="task-management">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+      <div><h2 class="ts-page-title">任务管理</h2><p class="text-sm ts-muted mt-1">查看处理进度，排查与重试失败任务</p></div>
                 <div class="flex items-center gap-2">
                 <span class="text-sm text-gray-600 dark:text-gray-300">快速模式</span>
                 <el-switch v-model="fastMode" @change="handleFastModeChange" />
@@ -11,8 +11,7 @@
                     </span>
                 </el-tooltip>
                 </div>
-      </template>
-    </SettingsPageHeader>
+    </div>
     <div class="task-groups">
       <div v-if="loading && !groupedTasks.length" class="py-12 text-center ts-muted" role="status">正在加载任务…</div>
       <div v-else-if="loadFailed" class="task-group mb-4" role="alert">
@@ -78,7 +77,6 @@
 </template>
 
 <script setup lang="ts">
-import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
