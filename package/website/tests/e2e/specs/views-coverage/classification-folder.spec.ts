@@ -92,9 +92,9 @@ test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
     // 两个 tag 都出现
     await expect(page.getByText('海边').first()).toBeVisible()
     await expect(page.getByText('夜景').first()).toBeVisible()
-    // 返回按钮（带 ArrowLeft 图标的 button）
+    // 智能分类是一级页面，不显示返回相册按钮。
     const backBtn = page.getByRole('button', { name: '返回相册', exact: true })
-    await expect(backBtn).toBeVisible()
+    await expect(backBtn).toHaveCount(0)
   })
 
   test('点击 tag -> 跳 /album/classification/:name + 标题与副标题正确', async ({ page }) => {

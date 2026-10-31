@@ -1,31 +1,33 @@
 <template>
-  <div>
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 sm:gap-0">
-        <h2 class="text-xl md:text-2xl font-semibold text-gray-800 dark:text-white">任务管理</h2>
-        <div class="flex gap-4 items-center w-full sm:w-auto justify-between sm:justify-end">
-                <div class="flex items-center gap-2">
-                <span class="text-sm text-gray-600 dark:text-gray-300">快速模式</span>
-                <el-switch v-model="fastMode" @change="handleFastModeChange" />
-                <el-tooltip content="开启后将同时运行不同类型的任务（CPU/IO），最大化资源利用" placement="top">
-                    <span class="text-gray-400 cursor-pointer">
-                        <i class="i-mdi-help-circle-outline"></i>
-                    </span>
-                </el-tooltip>
-                </div>
+  <div class="task-management ts-settings-page">
+    <SettingsPageHeader title="任务管理" description="查看处理进度，排查与重试失败任务">
+      <template #actions>
+        <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-600 dark:text-gray-300">快速模式</span>
+        <el-switch v-model="fastMode" @change="handleFastModeChange" />
+        <el-tooltip content="开启后将同时运行不同类型的任务（CPU/IO），最大化资源利用" placement="top">
+            <span class="text-gray-400 dark:text-gray-500 cursor-pointer">
+                <i class="i-mdi-help-circle-outline"></i>
+            </span>
+        </el-tooltip>
         </div>
-    </div>
-    <!-- Stats Cards -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6">
-
-      
+      </template>
+    </SettingsPageHeader>
+    <div class="task-groups">
+      <div v-if="loading && !groupedTasks.length" class="py-12 text-center ts-muted" role="status">正在加载任务…</div>
+      <div v-else-if="loadFailed" class="task-group mb-4" role="alert">
+        <p class="ts-muted mb-3">任务状态加载失败，请稍后重试</p>
+        <button class="ts-button ts-button-secondary" @click="fetchTasks">重新加载</button>
+      </div>
+      <p v-else-if="!groupedTasks.length" class="py-12 text-center ts-muted">暂无任务</p>
       <!-- Category Cards -->
       <div class="grid grid-cols-1 gap-4">
-        <div v-for="cat in groupedTasks" :key="cat.category" class="border rounded-lg p-4 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50">
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-2 sm:gap-0">
-            <div class="flex flex-wrap items-center gap-2 sm:gap-3">
-              <h3 class="text-lg flex items-center font-medium dark:text-white">{{cat.task_name}}
+        <div v-for="cat in groupedTasks" :key="cat.category" class="task-group">
+          <div class="flex justify-between items-start gap-3 mb-4">
+            <div class="min-w-0 flex flex-wrap items-center gap-2 sm:gap-3">
+              <h3 class="text-lg flex items-center min-w-0 font-medium dark:text-white">{{cat.task_name}}
                 <el-tooltip :content="cat.description" placement="top">
-                    <Info class="w-4 h-4 ml-1 text-gray-400 cursor-help" />
+                    <Info class="w-4 h-4 ml-1 text-gray-400 dark:text-gray-500 cursor-help" />
                 </el-tooltip>
               </h3>
               <el-tag effect="plain" size="small" class="ml-0 sm:ml-2">
@@ -40,75 +42,49 @@
               <el-tag v-else-if="cat.completed === 0 && cat.pending === 0" type="info" size="small">等待中</el-tag>
               <el-tag v-else type="primary" size="small">进行中</el-tag>
             </div>
-            <div class="w-full sm:w-auto mt-2 sm:mt-0">
-                <el-dropdown trigger="click" @command="(cmd: string) => handleCategoryCommand(cat.category, cmd)" class="w-full sm:w-auto">
-                    <el-button type="primary" size="small" plain class="w-full sm:w-auto">
-                        操作<i class="el-icon-arrow-down el-icon--right"></i>
-                    </el-button>
-                    <template #dropdown>
-                        <el-dropdown-menu>
-                            <el-dropdown-item v-if="cat.status === 'paused'" command="resume">继续任务</el-dropdown-item>
-                            <el-dropdown-item v-else command="pause">暂停任务</el-dropdown-item>
-                            <el-dropdown-item command="scan_missing" divided>执行缺失任务</el-dropdown-item>
-                            <el-dropdown-item command="retry" :disabled="cat.failed === 0">重试失败任务</el-dropdown-item>
-                            <el-dropdown-item v-if="cat.category === 'RECOGNIZE_TICKET'" command="recover_tickets" :disabled="recoveringTickets">恢复旧版未保存的票据</el-dropdown-item>
-                            <el-dropdown-item command="delete_failed" :disabled="cat.failed === 0">删除失败任务</el-dropdown-item>
-                            <el-dropdown-item command="rebuild">强制重做此项</el-dropdown-item>
-                        </el-dropdown-menu>
-                    </template>
-                </el-dropdown>
+            <div class="shrink-0">
+              <button class="ts-icon-button ts-button-secondary" :aria-label="`${cat.task_name}操作`" :aria-expanded="activeMenu === cat.category" aria-haspopup="menu" @click="activeMenu = activeMenu === cat.category ? '' : cat.category"><MoreHorizontal class="h-5 w-5" /></button>
+              <AdaptiveMenu :model-value="activeMenu === cat.category" :title="`${cat.task_name}操作`" close-on-action @update:model-value="value => activeMenu = value ? cat.category : ''">
+                <button class="ts-action-row" @click="handleCategoryCommand(cat.category, cat.status === 'paused' ? 'resume' : 'pause')">{{ cat.status === 'paused' ? '继续任务' : '暂停任务' }}</button>
+                <button class="ts-action-row" @click="handleCategoryCommand(cat.category, 'scan_missing')">执行缺失任务</button>
+                <button class="ts-action-row" :disabled="cat.failed === 0" @click="handleCategoryCommand(cat.category, 'retry')">重试失败任务</button>
+                <button v-if="cat.category === 'RECOGNIZE_TICKET'" class="ts-action-row" :disabled="recoveringTickets" @click="handleCategoryCommand(cat.category, 'recover_tickets')">恢复旧版未保存的票据</button>
+                <button class="ts-action-row" :disabled="cat.failed === 0" @click="handleCategoryCommand(cat.category, 'delete_failed')">删除失败任务</button>
+                <button class="ts-action-row" @click="handleCategoryCommand(cat.category, 'rebuild')">强制重做此项</button>
+              </AdaptiveMenu>
             </div>
           </div>
           <div class="grid grid-cols-2 gap-4 text-center">
-             <div class="bg-white dark:bg-gray-900 p-3 rounded shadow-sm">
-               <div class="text-gray-500 text-xs mb-1">待处理</div>
-               <div class="text-xl font-bold text-blue-600">{{ cat.pending }}</div>
+             <div class="task-stat">
+               <div class="ts-muted text-xs mb-1">待处理</div>
+               <div class="text-xl font-bold primary-text">{{ cat.pending }}</div>
              </div>
-             <div 
-                class="bg-white dark:bg-gray-900 p-3 rounded shadow-sm transition-colors" 
+             <button type="button" :disabled="cat.failed === 0"
+                class="task-stat task-stat-failed transition-colors"
                 :class="{'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800': cat.failed > 0, 'opacity-60': cat.failed === 0}"
                 @click="cat.failed > 0 && showFailedTasks(cat.category)"
              >
-               <div class="text-gray-500 text-xs mb-1">失败 {{ cat.failed > 0 ? '(点击查看)' : '' }}</div>
-               <div class="text-xl font-bold text-red-600">{{ cat.failed }}</div>
-             </div>
+               <div class="ts-muted text-xs mb-1">失败 {{ cat.failed > 0 ? '(点击查看)' : '' }}</div>
+               <div class="text-xl font-bold text-red-600 dark:text-red-400">{{ cat.failed }}</div>
+             </button>
           </div>
         </div>
       </div>
 
     </div>
 
-    <!-- Failed Tasks Dialog -->
-    <el-dialog v-model="failedTasksVisible" title="失败任务列表" width="900px" class="max-w-[90%] w-full sm:w-[900px]">
-        <el-table :data="failedTasksList" style="width: 100%" v-loading="failedTasksLoading" height="500">
-            <el-table-column prop="type" label="类型" width="160" />
-            <el-table-column prop="payload.file_path" label="文件路径" width="180" show-overflow-tooltip />
-            <el-table-column prop="error" label="错误信息" show-overflow-tooltip />
-            <el-table-column prop="created_at" label="创建时间" width="180">
-                <template #default="{ row }">
-                    {{ new Date(row.created_at).toLocaleString('zh-CN') || 'N/A' }}
-                </template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" fixed="right">
-                <template #default="{ row }">
-                    <el-button type="primary" link size="small" @click="retrySingleTask(row)">重试</el-button>
-                </template>
-            </el-table-column>
-        </el-table>
-        <template #footer>
-            <span class="dialog-footer">
-                <el-button @click="failedTasksVisible = false">关闭</el-button>
-            </span>
-        </template>
-    </el-dialog>
+    <FailedTasksDialog v-model="failedTasksVisible" :category="failedCategory" :title="failedCategoryTitle" @retried="fetchTasks" />
   </div>
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Sun, Moon, Palette, Check, Info, Download, Loader2, Trash2 } from 'lucide-vue-next'
+import { Info, MoreHorizontal } from 'lucide-vue-next'
+import FailedTasksDialog from '@/components/FailedTasksDialog.vue'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
 
 interface GroupedTask {
@@ -128,20 +104,24 @@ const fastMode = ref(false)
 const notifyStore = useNotificationStore()
 
 const failedTasksVisible = ref(false)
-const failedTasksList = ref<any[]>([])
-const failedTasksLoading = ref(false)
+const failedCategory = ref('')
+const failedCategoryTitle = ref('')
+const activeMenu = ref('')
+const loading = ref(true)
+const loadFailed = ref(false)
 
 const fetchTasks = async () => {
     try {
-        groupedTasks.value = await tasksApi.getGroupedStatus()
-        // Fetch global status for fast mode
-        const globalStatus = await tasksApi.getGlobalStatus()
+        const [groups, globalStatus] = await Promise.all([tasksApi.getGroupedStatus(), tasksApi.getGlobalStatus()])
+        groupedTasks.value = groups
+        loadFailed.value = false
         if (globalStatus && typeof globalStatus.fast_mode !== 'undefined') {
-            fastMode.value = globalStatus.fast_mode=="True"
+            fastMode.value = globalStatus.fast_mode === true || globalStatus.fast_mode === 'True'
         }
     } catch (e) {
+        loadFailed.value = true
         console.error("Failed to fetch tasks", e)
-    }
+    } finally { loading.value = false }
 }
 
 const handleFastModeChange = async (val: boolean) => {
@@ -275,7 +255,7 @@ const forceRebuildCategory = async (category: string) => {
         for (const type of types) {
              // Skip some legacy or non-trigger types if necessary, but "Force Rebuild" implies all
              // For scanning, we usually just need SCAN_FOLDER, but others might be useful to force re-run
-             // Actually, SCAN_FOLDER triggers others. 
+             // Actually, SCAN_FOLDER triggers others.
              // But if we want to rebuild thumbnails specifically, we trigger GENERATE_THUMBNAIL.
              // Let's trigger all defined types for the category.
             await tasksApi.createTask(type, { scope: 'all', force: true })
@@ -287,33 +267,10 @@ const forceRebuildCategory = async (category: string) => {
     }
 }
 
-const showFailedTasks = async (category: string) => {
+const showFailedTasks = (category: string) => {
+    failedCategory.value = category
+    failedCategoryTitle.value = groupedTasks.value.find(task => task.category === category)?.task_name || formatCategory(category)
     failedTasksVisible.value = true
-    failedTasksLoading.value = true
-    failedTasksList.value = []
-    
-    try {
-       const types = [category]
-       if (types) {
-          failedTasksList.value = await tasksApi.listTasks('failed', types[0], 1000)
-       }
-    } catch (e) {
-        ElMessage.error('获取失败列表失败')
-    } finally {
-        failedTasksLoading.value = false
-    }
-}
-
-const retrySingleTask = async (row: any) => {
-    try {
-        await tasksApi.retryTask(row.id)
-        ElMessage.success('已重试')
-        // Remove from local list
-        failedTasksList.value = failedTasksList.value.filter(t => t.id !== row.id)
-        fetchTasks()
-    } catch (e) {
-        ElMessage.error('重试失败')
-    }
 }
 
 const pauseCategory = async (category: string) => {
@@ -381,3 +338,16 @@ onUnmounted(() => {
     }
 })
 </script>
+
+<style scoped>
+.task-management { min-width: 0; }
+.task-group { padding: var(--ts-space-6); border-radius: var(--ts-radius-card); border: 1px solid var(--ts-color-border); background: var(--ts-color-surface); }
+.task-stat { padding: 12px; border-radius: 14px; background: var(--ts-color-surface-muted); text-align: center; min-width: 0; }
+.task-stat-failed:enabled:hover { background: color-mix(in srgb, var(--ts-color-danger) 8%, var(--ts-color-surface-muted)); }
+.primary-text { color: var(--theme-primary); }
+@media (max-width: 767px) {
+  .task-group { padding: var(--ts-space-4); }
+  .task-group h3 { font-size: 16px; }
+  .task-stat { padding: 10px; }
+}
+</style>

@@ -41,6 +41,7 @@ function profile(update) {
     '@/stores/selectionStore':{useSelectionStore:()=>({})},
     '@/api/user':{userService:{updateCurrentUser:update}},
     '@/components/PhotoSelectorDialog.vue':{},
+    '@/components/ui/SettingsPageHeader.vue':{},
     '@/utils/request':{},
     '@/config/server':{toServerUrl:x=>x},
     '@/utils/mediaUrl':{thumbnailPath:id=>'/thumb/'+id},

@@ -1,10 +1,8 @@
 <template>
-  <div>
-    <div class="mb-4 md:mb-6 flex justify-between items-center">
-      <h2 class="ts-page-title">个人资料</h2>
-    </div>
+  <div class="ts-settings-page">
+    <SettingsPageHeader title="个人资料" description="管理头像、昵称与账号信息" />
 
-    <div class="ts-surface p-4 md:p-6 max-w-2xl">
+    <div class="ts-surface ts-settings-panel">
       <el-form label-position="top" :model="form" @submit.prevent="handleSave">
         <!-- Avatar Section -->
         <el-form-item label="头像">
@@ -59,6 +57,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'

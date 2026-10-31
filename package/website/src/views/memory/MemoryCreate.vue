@@ -1,7 +1,7 @@
 <template>
-  <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] py-4 dark:bg-gray-900 md:py-6">
+  <div class="min-h-full bg-gray-50 px-[var(--ts-page-gutter)] ts-browse-page dark:bg-gray-900">
     <div class="mx-auto max-w-screen-2xl">
-      <header class="flex flex-wrap items-center gap-3">
+      <header class="ts-browse-header flex flex-wrap items-center gap-3">
         <BackButton label="返回" @click="router.back()" />
         <div class="min-w-0 flex-1"><h1 class="ts-page-title text-gray-900 dark:text-white">新建记忆</h1><p class="text-sm text-gray-500 dark:text-gray-400">选择属于同一段经历的照片</p></div>
         <button class="ts-button ts-button-primary bg-primary-500 text-white hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" @click="openAgentCreate"><Bot class="mr-1.5 inline h-4 w-4" />和 AI 对话创建</button>

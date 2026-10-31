@@ -283,6 +283,7 @@ def get_location_photos(
     place_key: Optional[str] = Query(None, max_length=2000, description="关联探索的精确行政区标识"),
     start_date: str = Query(None, description="开始日期"),
     end_date: str = Query(None, description="结束日期"),
+    person_id: Optional[UUID] = Query(None, description="仅查看此人物的照片"),
     skip: int = 0,
     limit: int = 50,
     db: Session = Depends(get_db),
@@ -294,6 +295,8 @@ def get_location_photos(
     import time
     st = time.time()
     extra = {"place_key": place_key} if isinstance(place_key, str) else {}
+    if isinstance(person_id, UUID):
+        extra["person_id"] = person_id
     photos = crud.get_location_photos(db, current_user.id, name, level, skip, limit, start_date, end_date, scene_id, **extra)
     et = time.time()
     print(f"get_location_photos: {et - st} s")

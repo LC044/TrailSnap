@@ -1,5 +1,5 @@
 <template>
-  <el-collapse v-model="activeNames" class="ts-surface ts-settings-section mb-8 overflow-hidden">
+  <el-collapse v-model="activeNames" class="ts-surface ts-settings-section overflow-hidden">
     <el-collapse-item :name="name">
       <template #title><h2 class="ts-section-title px-4 md:px-6">{{ title }}</h2></template>
       <slot />

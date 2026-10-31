@@ -1,6 +1,6 @@
 <template>
   <SettingsSection v-model="activeNames" name="photo-viewing" title="照片查看">
-    <div class="px-6 pb-6 max-w-3xl">
+    <div class="px-4 pb-4 md:px-6 md:pb-6 max-w-3xl">
       <div class="flex items-center justify-between gap-4">
         <label id="auto-view-original-label" for="auto-view-original" class="text-sm font-medium">自动查看原图</label>
         <el-switch id="auto-view-original" v-model="autoViewOriginal" aria-labelledby="auto-view-original-label" aria-describedby="auto-view-original-description" />

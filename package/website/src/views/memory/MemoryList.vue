@@ -1,46 +1,23 @@
 <template>
-  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] py-4 md:py-6">
-    <div class="mx-auto max-w-screen-2xl">
-      <header class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
+  <div class="ts-page-background min-h-full ts-browse-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)]">
+    <div>
+      <header class="ts-browse-header flex items-center justify-between">
+        <div class="min-w-0 flex-1">
           <h1 class="ts-page-title text-gray-900 dark:text-white">记忆</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
         </div>
-        <div class="flex items-center gap-2 sm:hidden" aria-label="记忆操作">
-          <button class="ts-button ts-button-secondary flex h-11 min-w-0 flex-1 items-center justify-center gap-2 border border-gray-200 bg-white text-gray-700 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" :disabled="store.discovering" @click="runDiscovery"><RefreshCw class="h-4 w-4" :class="{ 'animate-spin': store.discovering }" />{{ store.discovering ? '发现中…' : '发现记忆' }}</button>
-          <RouterLink to="/memories/new" class="ts-button ts-button-primary min-w-0 flex-1 px-3"><Plus class="h-4 w-4" />新建记忆</RouterLink>
-          <div class="ts-liquid-glass ts-glass-toolbar"><button @click="showActions = true" class="ts-glass-button" aria-label="更多记忆操作"><MoreHorizontal class="h-5 w-5" /></button><ResponsiveDialog v-model="showActions" title="记忆操作" glass>
-              <button type="button" class="ts-action-row" @click="showActions = false; router.push('/daily-frame')"><Film class="mr-2 h-4 w-4" />一日一帧</button>
-              <button type="button" class="ts-action-row" @click="showActions = false; router.push('/explore/relations')"><Network class="mr-2 h-4 w-4" />关联探索</button>
-              <button type="button" class="ts-action-row" @click="showActions = false; createWithAgent()"><Bot class="mr-2 h-4 w-4" />和 AI 创建</button>
-              <button type="button" class="ts-action-row" v-if="store.activeStatus !== 'ignored'" @click="showActions = false; selectMode = !selectMode">{{ selectMode ? '取消批量选择' : '批量合并' }}</button>
-            </ResponsiveDialog></div>
-        </div>
-        <div class="hidden gap-2 sm:grid sm:grid-cols-5 lg:flex lg:flex-wrap">
-          <RouterLink to="/daily-frame" class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm">
-            <Film class="h-4 w-4 shrink-0" />一日一帧
-          </RouterLink>
-          <RouterLink to="/explore/relations" class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50 px-1 text-xs font-medium text-primary-700 dark:border-primary-800 dark:bg-primary-900/30 dark:text-primary-300 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm">
-            <Network class="h-4 w-4 shrink-0" />关联探索
-          </RouterLink>
-          <button
-            class="ts-button ts-button-secondary flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap border border-primary-200 bg-primary-50 text-xs text-primary-700 shadow-sm hover:bg-primary-100 dark:border-primary-900 dark:bg-primary-900/30 dark:text-primary-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
-            @click="createWithAgent"
-          ><Bot class="h-4 w-4 shrink-0" /><span class="sm:hidden">AI 创建</span><span class="hidden sm:inline">和 AI 创建</span></button>
-          <button
-            class="ts-button ts-button-secondary flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap border border-gray-200 bg-white text-xs text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
-            :disabled="store.discovering"
-            @click="runDiscovery"
-          >
-            <RefreshCw class="h-4 w-4 shrink-0" :class="{ 'animate-spin': store.discovering }" />
-            {{ store.discovering ? '正在发现' : '发现记忆' }}
-          </button>
-          <RouterLink
-            to="/memories/new"
-            class="flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-lg bg-primary-500 px-1 text-xs font-medium text-white shadow-sm hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 sm:min-h-11 sm:flex-row sm:gap-1.5 sm:px-4 sm:text-sm"
-          ><Plus class="h-4 w-4 shrink-0" />新建记忆</RouterLink>
+        <div class="ts-liquid-glass ts-glass-toolbar" aria-label="记忆操作">
+          <button class="ts-glass-button" :disabled="store.discovering" :aria-label="store.discovering ? '正在发现记忆' : '发现记忆'" title="发现记忆" @click="runDiscovery"><RefreshCw class="h-5 w-5" :class="{ 'animate-spin': store.discovering }" /></button>
+          <RouterLink to="/memories/new" class="ts-glass-button" aria-label="新建记忆" title="新建记忆"><Plus class="h-5 w-5" /></RouterLink>
+          <button class="ts-glass-button" aria-label="更多记忆操作" :aria-expanded="showActions" aria-haspopup="menu" @click="showActions = !showActions"><MoreHorizontal class="h-5 w-5" /></button>
+          <AdaptiveMenu v-model="showActions" title="记忆操作" mobile-presentation="popover" glass>
+            <button class="ts-action-row" @click="showActions = false; router.push('/daily-frame')"><Film />一日一帧</button>
+            <button class="ts-action-row" @click="showActions = false; router.push('/explore/relations')"><Network />关联探索</button>
+            <button class="ts-action-row" @click="showActions = false; createWithAgent()"><Bot />和 AI 创建</button>
+            <button v-if="store.activeStatus !== 'ignored'" class="ts-action-row" @click="showActions = false; selectMode = !selectMode">{{ selectMode ? '取消批量选择' : '批量合并' }}</button>
+          </AdaptiveMenu>
         </div>
       </header>
+      <p class="mb-6 text-sm text-gray-500 dark:text-gray-400">把散落的照片，重新连成一段经历</p>
 
       <ChapterShelf />
 
@@ -116,6 +93,7 @@
 </template>
 
 <script setup lang="ts">
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'

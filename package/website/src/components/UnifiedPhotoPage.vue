@@ -3,7 +3,7 @@
     <span ref="pageTopRef" class="pointer-events-none absolute left-0 top-0 h-px w-px" aria-hidden="true"></span>
     <!-- Toolbar & Header（文件夹视图有自己的工具栏，这里整条隐藏以节省移动端空间） -->
     <div v-if="layoutMode !== 'folder'" ref="headerRef" data-photo-header class="pointer-events-none sticky top-0 z-[45] -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] pt-[var(--ts-safe-area-top)]">
-      <div class="ts-browse-header pointer-events-auto flex items-center justify-between gap-1 sm:gap-3 mx-auto py-1.5 sm:py-2">
+      <div class="ts-browse-header pointer-events-auto flex items-center justify-between mx-auto">
         <!-- Back & Title -->
         <slot name="header-left" :scrolled="headerScrolled">
           <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
@@ -22,7 +22,7 @@
         </slot>
 
         <!-- Controls -->
-        <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center justify-end gap-1 sm:gap-2 ml-auto">
+        <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center justify-end ml-auto">
           
           <slot name="header-controls-start"></slot>
 
@@ -88,7 +88,7 @@
             </AdaptiveMenu>
            </div>
 
-          <button v-if="enableTimeBrowse" type="button" class="ts-glass-button text-sm font-medium"
+          <button v-if="enableTimeBrowse" type="button" class="ts-glass-button photo-time-view-button font-medium"
             data-testid="photo-view-cycle" :aria-busy="timeChanging"
             :title="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
             :aria-label="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
@@ -1022,6 +1022,10 @@ defineExpose({
 </script>
 
 <style scoped>
+.photo-time-view-button {
+  font-size: var(--ts-mobile-icon-size, 20px);
+  line-height: 1;
+}
 .photo-view-settings { padding: 10px; }
 .photo-view-section + .photo-view-section { margin-top: 16px; }
 .photo-view-label { margin: 0 0 8px; padding-inline: 2px; font-size: 12px; font-weight: 500; color: var(--ts-color-text-secondary); }

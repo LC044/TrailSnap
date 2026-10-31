@@ -314,7 +314,7 @@ defineExpose({ scrollToDate, isEditing })
 .photo-diary > nav, .photo-diary > div:first-child { flex:none; }
 .diary-navigation { display:flex; flex-shrink:0; align-items:center; gap:8px; min-height:44px; padding:8px 16px; border:1px solid #e5e7eb; border-radius:8px; background:white; color:#4b5563; font-size:13px; white-space:nowrap; }
 .diary-navigation:disabled { opacity:.4; cursor:default; }
-:global(.dark) .diary-navigation { border-color:#374151; background:#111827; color:#d1d5db; }
+html.dark .diary-navigation { border-color:#374151; background:#111827; color:#d1d5db; }
 .photo-diary :deep(.diary-page-content) { padding:26px 28px 56px; }
 .photo-diary :deep(.diary-running) { margin-bottom:22px; }
 @media(max-width:767px) { .photo-diary :deep(.diary-page-content) { padding:22px 20px 52px; } .diary-navigation { padding:8px 12px; } }

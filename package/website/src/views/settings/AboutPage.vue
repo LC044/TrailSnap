@@ -1,17 +1,16 @@
 <!-- src/views/AboutPage.vue -->
 <template>
-  <div class="about-page max-w-4xl mx-auto space-y-12">
+  <div class="ts-settings-page">
     <!-- 项目介绍 -->
-    <section class="space-y-4">
-      <h1 class="text-4xl font-bold text-slate-800 dark:text-slate-100">关于行影集 (TrailSnap)</h1>
-      <p class="text-lg text-slate-600 dark:text-slate-300">
-        TrailSnap 是一个智能化的 AI 相册应用，致力于帮助用户轻松记录、整理和回顾自己的出行经历。通过强大的 AI 处理能力，让每一张照片和每一段旅程都成为值得珍藏的记忆。
-      </p>
+    <SettingsPageHeader title="关于行影集" description="版本、更新与开源信息" />
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">行影集 (TrailSnap)</h2>
+      <p class="ts-muted leading-7">TrailSnap 是一个智能化的 AI 相册应用，致力于帮助用户轻松记录、整理和回顾自己的出行经历。通过强大的 AI 处理能力，让每一张照片和每一段旅程都成为值得珍藏的记忆。</p>
     </section>
 
     <!-- 项目背景与愿景 -->
-    <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">项目背景</h2>
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">项目背景</h2>
       <p class="text-slate-600 dark:text-slate-300">
         我相信未来每个人（至少每个家庭）都有一个属于自己的 AI 数据中心，而相册是数据中心的一个重要数据来源，它留存了你生活中的很多瞬间，而 AI 相册则是将这些瞬间转化为有价值的记忆，它可以帮你默默地记录下相册里的车票、景点门票，可以帮你记录旅行中的所见所闻，可以帮你自动整理出可以发朋友圈的照片（甚至帮你准备好文案），可以帮你剪一段15s的短视频······。
       </p>
@@ -21,8 +20,8 @@
     </section>
 
     <!-- 主要功能 -->
-    <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">主要功能</h2>
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">主要功能</h2>
       <ul class="space-y-2 text-slate-600 dark:text-slate-300">
         <li class="flex items-start gap-2">
           <span class="text-primary-500 mt-1">•</span>
@@ -44,8 +43,8 @@
     </section>
 
     <!-- 版本信息 -->
-    <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">版本信息</h2>
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">版本信息</h2>
       <div class="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-300">
         <span class="font-semibold">当前版本：</span>
         <span>v{{ currentVersion }}</span>
@@ -59,8 +58,8 @@
     </section>
 
     <!-- 服务器 -->
-    <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">服务器</h2>
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">服务器</h2>
       <p class="break-all text-slate-600 dark:text-slate-300">{{ serverUrl || '浏览器同源模式' }}</p>
       <router-link
         :to="mobileApp ? '/server-settings' : '/settings#mobile-app'"
@@ -71,16 +70,16 @@
     </section>
 
     <!-- 联系方式 -->
-    <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">联系方式</h2>
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">联系方式</h2>
       <div class="flex flex-col gap-3">
-        <div class="flex items-center gap-4 text-slate-600 dark:text-slate-300">
+        <div class="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-300">
           <span class="font-semibold">邮箱：</span>
           <a href="mailto:sixyuan044@gmail.com" class="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors">
             sixyuan044@gmail.com
           </a>
         </div>
-        <div class="flex items-center gap-4 text-slate-600 dark:text-slate-300">
+        <div class="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-300">
           <span class="font-semibold">QQ群：</span>
           <span>1078946004</span>
         </div>
@@ -88,22 +87,22 @@
     </section>
 
     <!-- 官网 -->
-     <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">官网</h2>
-      <div class="flex items-center gap-4 text-slate-600 dark:text-slate-300">
+     <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">官网</h2>
+      <div class="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-300">
         <span class="font-semibold">TrailSnap 官网：</span>
-        <a href="https://trailsnap.cn/" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors flex items-center gap-2">
+        <a href="https://trailsnap.cn/" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors flex min-w-0 items-center gap-2 break-all">
           <span>trailsnap.cn</span>
         </a>
       </div>
     </section>
 
     <!-- 开源地址 -->
-    <section class="space-y-4">
-      <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-100">开源地址</h2>
-      <div class="flex items-center gap-4 text-slate-600 dark:text-slate-300">
+    <section class="ts-surface ts-settings-panel space-y-4">
+      <h2 class="ts-section-title">开源地址</h2>
+      <div class="flex flex-wrap items-center gap-4 text-slate-600 dark:text-slate-300">
         <span class="font-semibold">GitHub：</span>
-        <a href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors flex items-center gap-2">
+        <a href="https://github.com/LC044/TrailSnap" target="_blank" rel="noopener noreferrer" class="text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors flex min-w-0 items-center gap-2 break-all">
           <i class="mgc_github_2_line text-2xl"></i>
           <span>github.com/LC044/TrailSnap</span>
         </a>
@@ -113,6 +112,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { systemApi } from '@/api/system'
@@ -197,10 +197,3 @@ const checkUpdate = async () => {
   }
 }
 </script>
-
-<style scoped>
-.about-page {
-  padding-top: 2rem;
-  padding-bottom: 4rem;
-}
-</style>

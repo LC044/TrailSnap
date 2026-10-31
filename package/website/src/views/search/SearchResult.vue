@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen pb-8 px-[var(--ts-page-gutter)]">
+  <div class="mx-auto w-full max-w-screen-2xl min-h-screen pb-8 px-[var(--ts-page-gutter)]">
     <!-- Header -->
     <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
-      <div class="mx-auto py-3 flex items-center gap-4">
+      <div class="ts-browse-header mx-auto flex items-center gap-3">
         <BackButton label="返回" @click="goBack" />
         <div>
           <h1 class="text-lg font-bold text-gray-900 dark:text-white leading-tight">

@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="ai" title="人脸与识别设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
         <el-form-item v-if="!managedAI" label="AI API 地址（人脸识别、OCR等AI微服务地址）">
           <div class="w-full">

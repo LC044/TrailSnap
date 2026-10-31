@@ -276,7 +276,7 @@ test.describe("FeedbackPage 问题反馈 + AboutPage 检查更新 @views-coverag
   test("FeedbackPage 渲染 3 个需求平台链接，并携带视图与类型参数", async ({ page }) => {
     await page.goto("/settings")
     await clickSettingTab(page, "feedback")
-    await expect(page.locator("h2", { hasText: "问题反馈" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator("h1", { hasText: "需求平台" })).toBeVisible({ timeout: 10_000 })
 
     const bugLink = page.locator('a[href*="?view=submit&type=bug"]').first()
     const featureLink = page.locator('a[href*="?view=submit&type=feature"]').first()

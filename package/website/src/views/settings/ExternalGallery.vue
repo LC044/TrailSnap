@@ -1,10 +1,8 @@
 <template>
-  <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:p-6">
-    <div class="mb-5">
-      <h2 class="text-xl font-semibold text-gray-900 dark:text-white md:text-2xl">外部图库</h2>
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">接入已有照片文件夹，TrailSnap 会为照片建立索引，不会移动或修改源文件。</p>
-    </div>
+  <div class="ts-settings-page">
+    <SettingsPageHeader title="外部图库" description="接入已有照片文件夹，TrailSnap 会为照片建立索引，不会移动或修改源文件。" />
 
+    <div class="ts-surface ts-settings-panel min-w-0">
     <el-tabs v-model="activeTab" class="demo-tabs">
       <el-tab-pane label="目录管理" name="directories">
         <!-- 管理员可切换目标用户 -->
@@ -292,6 +290,7 @@
         </el-form>
       </el-tab-pane>
     </el-tabs>
+    </div>
 
     <!-- Docker 配置弹窗 -->
     <el-dialog v-model="showDockerGuide" title="Docker 挂载配置" width="640px">
@@ -324,6 +323,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { settingsApi } from '@/api/settings'
 import { tasksApi } from '@/api/tasks'
