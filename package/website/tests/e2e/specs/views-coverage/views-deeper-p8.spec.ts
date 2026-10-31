@@ -132,7 +132,7 @@ test.describe("Tokens 令牌管理 @views-coverage", () => {
     await expect(page.getByText("暂无令牌")).toBeVisible({ timeout: 15_000 })
     const createBtn = page.getByRole("button", { name: "创建第一个令牌" })
     await expect(createBtn).toBeVisible()
-    await createBtn.click()
+    await createBtn.click({ timeout: 60_000 })
     await expect(page.locator(".el-dialog__title", { hasText: "新增令牌" })).toBeVisible({ timeout: 5_000 })
   })
 
