@@ -34,12 +34,9 @@ Docker Compose已经集成在Docker Desktop中，所以先安装它：
 
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
-    container_name: postgres_container
     restart: always
     environment:
       POSTGRES_DB: trailsnap

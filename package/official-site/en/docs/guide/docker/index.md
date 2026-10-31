@@ -32,12 +32,9 @@ The compose below is consistent with the installation guide, you only need to mo
 - Modify the single `frontend.ports` mapping if there is a port conflict
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
-    container_name: postgres_container
     restart: always
     environment:
       POSTGRES_DB: trailsnap
