@@ -21,14 +21,14 @@ def station_metadata():
 
 
 def update_history_seed(directory=None):
-    """Download and validate a full published snapshot before replacing the manifest."""
+    """Download a Release snapshot into a build image's offline seed directory."""
     from railway.history_cache import read_feed
     manifest, download = read_feed()
     directory = Path(directory) if directory is not None else seed_directory()
     directory.mkdir(parents=True, exist_ok=True)
     if (directory / 'manifest.json').exists():
         previous = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
-        if previous['sequence'] > manifest['sequence']:
+        if previous['schema_version'] == manifest['schema_version'] and previous['sequence'] > manifest['sequence']:
             raise ValueError('Bundled railway feed rollback refused')
     with TemporaryDirectory() as temporary:
         cache = HistoryCache(Path(temporary) / 'validation.sqlite')
@@ -46,7 +46,7 @@ def update_history_seed(directory=None):
         staged.write_bytes((Path(temporary) / file).read_bytes())
         os.replace(staged, target)
         staged_manifest = directory / 'manifest.json.tmp'
-        staged_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        staged_manifest.write_text(json.dumps(dict(manifest, deltas=[]), ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         os.replace(staged_manifest, directory / 'manifest.json')
     return result
 
@@ -55,9 +55,18 @@ def import_history_seed(cache=None, directory=None):
     cache = cache or HistoryCache()
     directory = Path(directory) if directory is not None else seed_directory()
     manifest = json.loads((directory / 'manifest.json').read_text(encoding='utf-8'))
+    snapshot_path = directory / manifest['snapshot']['file']
+    if snapshot_path.is_file():
+        loader = lambda file: (directory / file).read_bytes()
+    else:
+        # Source checkouts do not contain full snapshots. Docker builds fetch the
+        # immutable Release asset into the image; local/dev startup can fetch it too.
+        from railway.history_cache import read_feed
+        manifest, loader = read_feed()
     # Upgrading/downgrading an image must never roll back a newer user cache.
-    if cache.status()['sequence'] < manifest['sequence']:
-        cache.sync(dict(manifest, deltas=[]), lambda file: (directory / file).read_bytes())
+    status = cache.status()
+    if status['schema_version'] != manifest['schema_version'] or status['sequence'] < manifest['sequence']:
+        cache.sync(dict(manifest, deltas=[]), loader)
     return cache.status()
 
 

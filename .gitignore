@@ -32,6 +32,9 @@ package/ai/extension-models/
 pg_data/
 doc/plan/
 
+# Full railway history snapshots are fetched from immutable GitHub Releases.
+package/server/resources/railway-history/packs/*.json.gz
+
 # AI 模型权重缓存（e2e docker compose 挂载；CI 用 actions/cache 持久化）
 tests/.cache/
 tmp*

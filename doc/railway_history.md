@@ -1,4 +1,36 @@
-# 铁路历史数据同步与查询（REQ-196、REQ-200、REQ-201）
+# 铁路历史数据同步与查询（REQ-196、REQ-200、REQ-201、REQ-215）
+
+## v2 与旧版本升级（REQ-215）
+
+新全量快照仅上传数据仓库 GitHub Release，不提交到 Git。清单 snapshot 同时包含逻辑路径 `file=packs/<sha256>.json.gz` 与线上 `url=https://github.com/LC044/trailsnap-railway-history/releases/download/snapshot-v2-<sha256>/<sha256>.json.gz`。客户端首次同步/升级/缺包回退时从 Release 下载，保留镜像轮换、大小与 SHA-256 校验；增量仍从 Git raw 下载。Docker 构建时获取并校验 Release 快照，将其放入镜像作为离线种子；源码仓库不保存完整包。
+
+发布器只把新快照写到忽略的 `snapshot/feed/packs/`，首次发布不再生成冗余全量 delta 1。Actions 浅克隆后先上传并重新下载验证 Release 附件，成功后才提交清单和增量；上传失败或附件损坏不推送清单，重跑可复用已有 Release/补齐缺失附件，禁止将新的 full=true 包提交到 Git。已有 Git 历史和历史包保留，不重写提交历史；文本历史与增量仍会增长。行影集镜像构建后包含一份离线基线，不进入 Git 历史。
+
+当前实现仅发布和读取 v2，地址仍为 `data/feed/manifest.json`，不再维护 v1 兼容源。旧版收到 schema_version=2 会拒绝同步并保留本地缓存；安装新版后，启动时通过镜像内 v2 快照自动迁移；本地开发源码缺少镜像种子时会从 Release 获取。升级指缓存协议迁移，不会自动下载或安装新版应用。
+
+缓存通过 `meta.feed_schema=2` 区分协议；缺少标记视为旧缓存。旧游标即使大于或等于 v2 序号，也必须获取 v2 全量快照，不能直接续接增量。快照校验与导入成功后，在同一 SQLite 事务内切换协议、游标并清除旧站点投影标记，随后重新投影。失败保留旧数据、游标及投影状态，下次自动重试；不清空已有历史、站点别名或本地补齐坐标，无需手动删除数据库。
+
+本次 v2 基线转换自 2026-10-30 保留历史，v2 序号 1，覆盖 3,404 站、16,721 车次；快照作为 Release 附件发布，源码仓库只保存清单。下文的 2026-10-25 基线描述为此前版本记录。
+
+### v2 升级验收（2026-10-30）
+
+Release 存储追加验收：采集端 13 项测试及类型检查通过，覆盖上传失败不推送清单、缺附件重跑补传、损坏附件拒绝发布、复用已存在 Release、草稿发布，以及拒绝将 full=true 包提交进 Git。后端 46 项铁路回归全部通过，包含 Release 镜像失败回退源站、增量仍从 Git 下载、异常 URL 拒绝、附件损坏不推进游标、v1 升级重试和离线种子。新的 7 阶段跨语言重放仍逐条匹配 32,800 个版本与 110,134 条观测。新快照路径已确认被 Git 忽略；本轮仅本地实现与模拟发布验证，没有实际上传附件、推送清单或清理既有 Git 历史。以下为前一轮 v2 协议验收记录。
+
+- 采集仓库 `npm test` 12 项通过，`npm run typecheck` 通过，覆盖 v1 高游标转换、日期增量不含内容、A→B→A、版本内容不可变及历史/观测删除保护。
+- TrailSnap 系统 smoke 718 项通过、1 项跳过；铁路与票据回归 227 项通过、2 项跳过。补充离线旧库启动升级和跨语言历史重放后，铁路专项 41 项全部通过。
+- 旧缓存游标等于/高于新游标、旧客户端拒绝 v2 后升级、校验失败、导入中途失败、重试、重复同步、离线启动投影、本地坐标/旧站名/历史保留均已验证。测试使用临时 SQLite，不写入用户图库。
+- TypeScript 发布器重放 10 月 23 日基线及 25—30 日共 7 个历史快照，Python 客户端从 v1 游标 999 自动升级并连续导入。逐条核对站点、32,800 个内容版本和 110,134 条 `(车次,日期,指纹)` 观测，内容和日期集合与原历史一致。
+- 26—30 日 v1 每日增量 6.37—6.65 MB，v2 为 0.61—0.67 MB，约减少 90%。25 日有数据格式切换，其首次新内容较多，不作为稳定日增量对比。
+
+复现跨仓库验收：先在采集仓库运行 `npm run verify:feed-replay`（需完整 Git 历史及归档包，只向忽略的 snapshot/ 临时目录写入）；再在 TrailSnap 根目录执行：
+
+```powershell
+$env:RAILWAY_V2_REPLAY_REPORT='E:\Project\trailsnap-railway-history\snapshot\v2-replay\report.json'
+$env:PYTEST_ADDOPTS='-k railway'
+pwsh .\tests\scripts\run-tests.ps1 -Layer unit -Component server -Level all -Scope all
+```
+
+未设置 `RAILWAY_V2_REPLAY_REPORT` 时只跳过需要外部仓库的重放用例，其余升级回归默认执行。重放报告及客户端逐阶段统计保存在采集仓库 `snapshot/v2-replay/`。本轮未提交、推送、构建安装包或切换线上 feed。
 
 ## 移除 CSV 种子（REQ-201）
 
@@ -42,18 +74,18 @@ uv run python -m railway.history_cli --update-bundle
 | 只保留历史名称，其他站点字段覆盖丢失 | 保存版本化原始字段 raw_fields、GPS 原始对象及来源、坐标系说明，另记状态变化；新字段不需要加本地 ORM 列 |
 | 失败、测试采集被当作全量，缺少项误报停运 | 失败列表阻止发布本轮，详情失败保留成功记录及列表起终站；测试必须隔离目录，CI 不提交或发布测试；不由缺少车次推断停运 |
 | 读取损坏历史时静默当成空库、覆盖历史 | 缺文件才初始化；JSON 或 JSONL 损坏立即失败，发布时检测实体被删除 |
-| Release 固定 data-auto、失败也发布、缺少客户端协议 | 每次运行独立 Release，仅成功正式采集发布；不可变 SHA-256 gzip 包、单调 sequence、全历史 snapshot、增量 deltas，先提交所有包再发布 |
+| Release 固定 data-auto、失败也发布、缺少客户端协议 | 按快照哈希创建独立 Release；先上传并校验全历史 snapshot，再提交增量与清单，协议内单调 sequence |
 | 本地固定 CSV、单内部号唯一约束不能承载历史 | 新增可重建的 railway-history.sqlite 参考缓存；保留原种子数据库及 ID，异步更新站名/别名/城市查询投影，无 ORM 结构修改 |
 
 ## 数据协议
 
-数据仓库的 `data/feed/manifest.json` 包含 `schema_version=1`、单调 `sequence`、采集覆盖说明 `metadata`、完整历史 `snapshot`、全部不可变增量描述 `deltas`。每个描述包含相对路径、压缩字节数、SHA-256。包是 gzip JSON，包含序号、是否完整快照和实体 upserts。站点实体含所有站名、原始字段版本和状态事件；车次实体含所有内容版本及其实际采样日。
+数据仓库的 `data/feed/manifest.json` 包含 `schema_version=2`、协议内单调 `sequence`、采集覆盖说明 `metadata`、完整历史 `snapshot`、不可变增量描述 `deltas`。每个描述包含相对路径、压缩字节数、SHA-256。gzip JSON 包包含 `schema_version=2`、`sequence`、`full` 以及三个数组：`stations` 为完整站点实体；`train_versions` 为 `{code,value}` 内容版本，value 保留指纹 h、内部车号、起终站、停靠及 raw，不包含 dates/fd/ld/observed_at；`observations` 为 `{code,hash,dates,observed_at?}`，记录该内容版本新增的精确运行观测日期。无内容变化时只传新日期；A→B→A 不重发 A 的时刻表。观测引用不存在的版本时整包回滚。
 
-首次同步下载一个包含保留历史的 snapshot，后续只下载游标后的 delta。中间游标缺失可用 snapshot 恢复。每个包在一个 SQLite 事务里落库并推进游标；校验失败或写入中断不会推进当前包，已完成的前序包可继续恢复。重复同步不重新下载包；多个服务进程在 SQLite 写事务中重新检查游标。未知协议主版本拒绝同步，保留已有离线缓存。
+首次同步或跨协议升级下载包含全部保留历史的 snapshot，后续下载游标后的 delta。中间游标缺失，或待下载增量总大小不小于快照时，改用 snapshot。每个包在一个 SQLite 事务里落库并推进游标；校验失败或写入中断不会推进当前包，已完成的前序包可继续恢复。重复同步不重新下载包；多个服务进程在 SQLite 写事务中重新检查协议和游标。未知协议主版本拒绝同步，保留已有离线缓存。
 
-SHA-256 用于传输完整性，不替代 GitHub 账号和 HTTPS 的信任。Git 仓库中保留所有历史包；GitHub Artifact 只有短期诊断用途，不能作为历史的唯一来源。Release 附件含全历史压缩包和 manifest，自动客户端使用 GitHub raw 上的 feed。snapshot 文件名包含内容哈希，因此远端清单和包可独立缓存。
+SHA-256 用于传输完整性，不替代 GitHub 账号和 HTTPS 的信任。Git 仓库保留旧历史包及新的增量，新全量快照存于不可变 Release 附件；GitHub Artifact 只有短期诊断用途，不能作为历史的唯一来源。Release 附件含全历史压缩包和 manifest，自动客户端从 GitHub raw 读取清单和增量，从 snapshot.url 下载全量快照。snapshot 文件名包含内容哈希，因此远端清单和包可独立缓存。
 
-当前 v1 增量粒度是变化实体：一条车次有新采样日时会重发该车次的历史记录。不是逐站停靠行的最小增量；历史增长后可在协议 v2 引入按观测事件分片和清单分段。不能删除旧 v1 包来节省空间，否则老客户端无法继续增量同步。
+v1 已停止生成；旧包仅作为历史归档保留，不提供旧客户端继续同步的保证。v2 发布器发现旧清单时，将当前全部历史转换为序号 1 的 v2 快照，不生成冗余的全量 delta 1，也不沿用 v1 增量链；检测版本或观测被删除时拒绝发布。
 
 ## 查询规则
 

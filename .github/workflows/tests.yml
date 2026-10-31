@@ -385,6 +385,8 @@ jobs:
         with:
           context: package/server
           file: package/server/Dockerfile
+          build-args: |
+            RAILWAY_HISTORY_SEED_REQUIRED=${{ github.event_name != 'pull_request' }}
           load: true
           tags: siyuan044/trailsnap-server:ci
           cache-from: type=gha,scope=e2e-server
