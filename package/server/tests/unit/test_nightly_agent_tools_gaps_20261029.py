@@ -172,7 +172,8 @@ def test_get_photo_persons_tool_filters_by_photo_ids(tools, library):
 
 def test_get_photo_persons_tool_filters_by_date_window(tools):
     payload = json.loads(tools["get_photo_persons_tool"].func(start_date="2025-05-01"))
-    assert [item["name"] for item in payload] == ["小李", "小王"]
+    # 人物顺序取决于 photos -> faces 关系的返回顺序（SQL 未定义），这里只断言集合。
+    assert {item["name"] for item in payload} == {"小李", "小王"}
 
 
 def test_get_photo_persons_tool_ignores_invalid_date_strings(tools):
