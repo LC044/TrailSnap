@@ -1,0 +1,49 @@
+[
+  {
+    "stepTitle": "安装设置",
+    "items": [
+      {
+        "type": "text",
+        "field": "wizard_port",
+        "label": "端口（1024–65535）",
+        "initValue": "3180",
+        "rules": [
+          {
+            "required": true,
+            "message": "请输入端口"
+          },
+          {
+            "pattern": "^(102[4-9]|10[3-9][0-9]|1[1-9][0-9]{2}|[2-9][0-9]{3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$",
+            "message": "端口范围为 1024–65535"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "field": "wizard_photo_dir",
+        "label": "已有的照片目录（可选）",
+        "initValue": ""
+      },
+      {
+        "type": "tips",
+        "helpText": "填写本地照片文件夹的完整路径，留空可稍后添加。"
+      },
+      {
+        "type": "text",
+        "field": "wizard_data_dir",
+        "label": "用户数据目录",
+        "initValue": "",
+        "rules": [
+          {
+            "required": true,
+            "message": "请选择用于保存上传照片的目录"
+          }
+        ]
+      },
+      {
+        "type": "tips",
+        "helpText": "选择一个空白文件夹用于保存用户数据"
+      }
+    ]
+  }
+]

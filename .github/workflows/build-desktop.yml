@@ -11,6 +11,8 @@ on:
       - 'package/server/**'
       - 'package/ai/**'
       - 'scripts/release_assets.py'
+      - 'package/fnos/**'
+      - 'tests/scripts/run-tests.ps1'
       - '.github/workflows/build-desktop.yml'
   push:
     branches: [ "master" ]
@@ -21,6 +23,8 @@ on:
       - 'package/server/**'
       - 'package/ai/**'
       - 'scripts/release_assets.py'
+      - 'package/fnos/**'
+      - 'tests/scripts/run-tests.ps1'
       - '.github/workflows/build-desktop.yml'
 
 concurrency:
@@ -28,6 +32,81 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  fnos:
+    name: Build fnOS x86 installer
+    if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建飞牛') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: '1'
+      FNOS_IMAGE_NAMESPACE: ${{ vars.FNOS_IMAGE_NAMESPACE || (secrets.ACR_REGISTRY != '' && secrets.ACR_NAMESPACE != '' && format('{0}/{1}', secrets.ACR_REGISTRY, secrets.ACR_NAMESPACE)) || 'siyuan044' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify fnOS packaging and runtime
+        shell: pwsh
+        run: ./tests/scripts/run-tests.ps1 -EnvFile tests/.env.test.ci -Layer unit -Component fnos -Level all
+      - name: Select matching product version
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'package/fnos')
+          from build import product_version, asset_name
+          version = product_version()
+          if os.environ['GITHUB_REF_TYPE'] == 'tag':
+              tag = os.environ['GITHUB_REF_NAME']
+              if tag != 'v' + version:
+                  raise SystemExit('Release tag and source product version differ')
+          asset_name(version)
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('FNOS_VERSION=' + version + '\n')
+          PY
+      - uses: docker/setup-buildx-action@v3
+        if: github.event_name != 'pull_request'
+      - name: Wait for versioned images and lock digests
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          python package/fnos/resolve_images.py --version "$FNOS_VERSION" \
+            --namespace "$FNOS_IMAGE_NAMESPACE" --timeout 5400 \
+            --output "$RUNNER_TEMP/fnos-images.json"
+      - name: Download and verify pinned fnpack
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, urllib.request
+          config = json.loads(pathlib.Path('package/fnos/fnpack.json').read_text())
+          path = pathlib.Path(os.environ['RUNNER_TEMP']) / 'fnpack'
+          urllib.request.urlretrieve(config['url'], path)
+          if hashlib.sha256(path.read_bytes()).hexdigest() != config['sha256']:
+              raise SystemExit('fnpack checksum mismatch')
+          path.chmod(0o755)
+          PY
+      - name: Package and verify fnOS installer
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          python package/fnos/build.py --version "$FNOS_VERSION" \
+            --images-lock "$RUNNER_TEMP/fnos-images.json" --fnpack "$RUNNER_TEMP/fnpack"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: fnos-package
+          path: |
+            package/fnos/dist/*.fpk
+            package/fnos/dist/*.fpk.sha256
+            package/fnos/dist/*.images.json
+          if-no-files-found: error
+          retention-days: 14
+
   build:
     name: Build ${{ matrix.name }} installer
     if: github.event_name == 'pull_request' || startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '构建桌面') || github.event_name == 'workflow_dispatch'
@@ -310,12 +389,13 @@ jobs:
 
   release:
     name: Add desktop installers to GitHub release
-    needs: build
+    needs: [build, fnos]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - name: Download desktop artifacts
         uses: actions/download-artifact@v4
         with:
@@ -342,6 +422,12 @@ jobs:
             [ ! -e "$destination" ] || { echo "::error::Duplicate installer name: ${file##*/}"; exit 1; }
             mv "$file" "$destination"
           done
+
+      - name: Download fnOS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: fnos-package
+          path: release-assets
 
       - name: Generate signed updater manifest
         shell: bash
@@ -382,8 +468,18 @@ jobs:
             release-assets/*-portable-update.zip
             release-assets/*-portable-update.zip.sig
             release-assets/portable-latest.json
+            release-assets/*.fpk
+            release-assets/*.fpk.sha256
+            release-assets/*.images.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add fnOS download links to release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: python package/fnos/release_notes.py --tag "$RELEASE_TAG" --repository "$RELEASE_REPOSITORY"
 
   preview-release:
     name: Add desktop installers to PR preview release

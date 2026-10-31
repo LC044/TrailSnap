@@ -1,0 +1,9 @@
+{
+  "version": "0.19.1",
+  "images": {
+    "server": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:0.19.1@sha256:4056a83d601a2c36a243b7cf02260295ea733c725a639d74fcd82cae69ed6009",
+    "frontend": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:0.19.1@sha256:9b2a05aa590ac6233302f75743a2b220c840a8aa6fd1bf804ffbb6ebd37b1e6e",
+    "ai": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:0.19.1-cpu@sha256:798317c3fb7a1462bccee0994861e5648a4b3563a055503c2d542748e6e7591c",
+    "postgres": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie@sha256:1963bc48febf543433baa1ce3edcc6cc08154de722e22495f86681cc9a849026"
+  }
+}
