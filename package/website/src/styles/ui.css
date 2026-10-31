@@ -152,7 +152,6 @@
   .el-dialog .el-dialog__body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .el-dialog .el-dialog__header, .el-dialog .el-dialog__footer { flex-shrink: 0; }
   .el-message-box { max-width: calc(100vw - 32px); }
-  .ts-settings-section.el-collapse { margin-bottom: var(--ts-space-6); }
 }
 @supports not (backdrop-filter: blur(8px)) {
   .ts-glass, .ts-liquid-glass, .ts-page-header, .el-dialog, .el-message-box, .el-drawer { background: var(--ts-color-surface); }
@@ -165,3 +164,12 @@
 /* Date ranges and their calendars need an opaque reading surface. */
 .el-range-editor.el-input__wrapper { min-height: var(--ts-control-md); background: var(--ts-color-surface); border-radius: var(--ts-radius-control); }
 .el-popper.is-light.el-picker__popper { --el-bg-color-overlay: var(--ts-color-surface); background: var(--ts-color-surface); }
+
+/* Shared layout for settings pages; the host owns the outer gutters. */
+.ts-settings-page { display: flex; min-width: 0; flex-direction: column; gap: var(--ts-section-gap); }
+.ts-settings-page > * { margin-block: 0; }
+.ts-settings-page-header { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--ts-space-4); }
+.ts-settings-page-header > :first-child { flex-basis: 240px; }
+.ts-settings-page-actions { max-width: 100%; }
+.ts-settings-panel { padding: var(--ts-space-4); }
+@media (min-width: 768px) { .ts-settings-panel { padding: var(--ts-space-6); } }

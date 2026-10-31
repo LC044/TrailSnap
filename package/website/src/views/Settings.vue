@@ -73,12 +73,12 @@
         </div>
       </div>
 
-      <main v-else class="min-w-0 flex-1 overflow-y-auto">
+      <main v-else ref="contentRef" class="min-w-0 flex-1 overflow-y-auto">
         <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-[var(--ts-page-gutter)] md:hidden">
           <BackButton label="返回设置" @click="goBack" />
           <div class="pointer-events-none absolute inset-x-20 truncate text-center text-[15px] font-semibold">{{ activeItem?.label }}</div>
         </div>
-        <div ref="contentRef" class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content">
+        <div class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content">
           <Transition :name="transitionName" mode="out-in">
             <MobileBackup v-if="activeTab === 'mobile-backup'" :key="activeTab" hosted @request-settings-back="goBack" />
             <component :is="currentComponent" v-else :key="activeTab" />

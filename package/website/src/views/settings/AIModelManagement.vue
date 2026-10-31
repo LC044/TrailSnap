@@ -1,18 +1,14 @@
 <template>
-  <section class="space-y-6">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-start">
-      <div class="min-w-0 flex-1">
-        <h2 class="text-xl font-semibold text-gray-800 dark:text-white md:text-2xl">AI 模型管理</h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-          管理大模型 API 连接、对话与分析模型，以及本地识别模型。
-        </p>
-      </div>
-      <button
-        :disabled="loading"
-        class="shrink-0 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
-        @click="loadModels()"
-      >{{ loading ? '刷新中…' : '刷新状态' }}</button>
-    </div>
+  <section class="ts-settings-page">
+    <SettingsPageHeader title="AI 模型管理" description="管理大模型 API 连接、对话与分析模型，以及本地识别模型。">
+      <template #actions>
+        <button
+          :disabled="loading"
+          class="ts-button ts-button-secondary"
+          @click="loadModels()"
+        >{{ loading ? '刷新中…' : '刷新状态' }}</button>
+      </template>
+    </SettingsPageHeader>
 
     <LLMSettings />
 
@@ -38,7 +34,7 @@
         <article
           v-for="card in taskCards"
           :key="card.task"
-          class="flex flex-col rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
+          class="flex flex-col ts-surface ts-settings-panel"
         >
           <div class="flex items-center justify-between gap-3">
             <h3 class="font-semibold text-gray-800 dark:text-gray-100">{{ card.info.name || taskLabels[card.task] || card.task }}</h3>
@@ -140,6 +136,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'

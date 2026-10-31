@@ -1,17 +1,18 @@
 <template>
-  <div class="task-management">
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-      <div><h2 class="ts-page-title">任务管理</h2><p class="text-sm ts-muted mt-1">查看处理进度，排查与重试失败任务</p></div>
-                <div class="flex items-center gap-2">
-                <span class="text-sm text-gray-600 dark:text-gray-300">快速模式</span>
-                <el-switch v-model="fastMode" @change="handleFastModeChange" />
-                <el-tooltip content="开启后将同时运行不同类型的任务（CPU/IO），最大化资源利用" placement="top">
-                    <span class="text-gray-400 dark:text-gray-500 cursor-pointer">
-                        <i class="i-mdi-help-circle-outline"></i>
-                    </span>
-                </el-tooltip>
-                </div>
-    </div>
+  <div class="task-management ts-settings-page">
+    <SettingsPageHeader title="任务管理" description="查看处理进度，排查与重试失败任务">
+      <template #actions>
+        <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-600 dark:text-gray-300">快速模式</span>
+        <el-switch v-model="fastMode" @change="handleFastModeChange" />
+        <el-tooltip content="开启后将同时运行不同类型的任务（CPU/IO），最大化资源利用" placement="top">
+            <span class="text-gray-400 dark:text-gray-500 cursor-pointer">
+                <i class="i-mdi-help-circle-outline"></i>
+            </span>
+        </el-tooltip>
+        </div>
+      </template>
+    </SettingsPageHeader>
     <div class="task-groups">
       <div v-if="loading && !groupedTasks.length" class="py-12 text-center ts-muted" role="status">正在加载任务…</div>
       <div v-else-if="loadFailed" class="task-group mb-4" role="alert">
@@ -77,6 +78,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -339,12 +341,12 @@ onUnmounted(() => {
 
 <style scoped>
 .task-management { min-width: 0; }
-.task-group { padding: 20px; border-radius: var(--ts-radius-card); border: 1px solid var(--ts-color-border); background: var(--ts-color-surface); }
+.task-group { padding: var(--ts-space-6); border-radius: var(--ts-radius-card); border: 1px solid var(--ts-color-border); background: var(--ts-color-surface); }
 .task-stat { padding: 12px; border-radius: 14px; background: var(--ts-color-surface-muted); text-align: center; min-width: 0; }
 .task-stat-failed:enabled:hover { background: color-mix(in srgb, var(--ts-color-danger) 8%, var(--ts-color-surface-muted)); }
 .primary-text { color: var(--theme-primary); }
 @media (max-width: 767px) {
-  .task-group { padding: 16px; border-radius: 20px; }
+  .task-group { padding: var(--ts-space-4); }
   .task-group h3 { font-size: 16px; }
   .task-stat { padding: 10px; }
 }

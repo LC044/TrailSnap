@@ -1,11 +1,12 @@
 <template>
-  <div>
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">令牌管理</h1>
+  <div class="ts-settings-page">
+    <SettingsPageHeader title="令牌管理" description="管理外部工具访问相册的授权令牌">
+      <template #actions>
       <el-button type="primary" @click="showCreateDialog = true">
         <Plus class="w-4 h-4 mr-1" />新增令牌
       </el-button>
-    </div>
+      </template>
+    </SettingsPageHeader>
 
     <!-- Usage Guide -->
     <div class="mb-6 bg-primary-50 dark:bg-gray-800/60 border border-primary-200 dark:border-gray-700 rounded-xl overflow-hidden">
@@ -93,7 +94,7 @@
     </div>
 
     <!-- Desktop View -->
-    <div class="hidden md:block bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+    <div class="hidden md:block ts-surface overflow-hidden">
       <el-table :data="tokens" style="width: 100%" v-loading="loading" class="tokens-table">
         <el-table-column prop="name" label="令牌名称" width="200" />
         <el-table-column label="令牌值" min-width="250">
@@ -158,7 +159,7 @@
         <p class="text-gray-500 dark:text-gray-400 mb-4">暂无令牌</p>
         <el-button type="primary" size="small" @click="showCreateDialog = true">创建第一个令牌</el-button>
       </div>
-      <div v-for="token in tokens" :key="token.id" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-4 space-y-3">
+      <div v-for="token in tokens" :key="token.id" class="ts-surface ts-settings-panel space-y-3">
         <div class="flex justify-between items-start">
           <div class="font-semibold text-gray-800 dark:text-white">{{ token.name }}</div>
           <el-tag :type="isExpired(token.expires_at) ? 'danger' : 'success'" size="small" round>
@@ -269,6 +270,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, onMounted, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'

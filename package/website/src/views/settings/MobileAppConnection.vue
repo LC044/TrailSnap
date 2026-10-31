@@ -1,13 +1,8 @@
 <template>
-  <div class="space-y-6">
-    <header class="space-y-2">
-      <h1 class="text-2xl font-bold text-gray-900 dark:text-white">连接手机 App</h1>
-      <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-        还没有 App 时可先扫码下载；安装后再用 App 扫描服务器连接二维码。
-      </p>
-    </header>
+  <div class="ts-settings-page">
+    <SettingsPageHeader title="连接手机 App" description="还没有 App 时可先扫码下载；安装后再用 App 扫描服务器连接二维码。" />
 
-    <section class="grid gap-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:grid-cols-[minmax(0,1fr)_14rem] md:p-7">
+    <section class="grid gap-6 ts-surface ts-settings-panel md:grid-cols-[minmax(0,1fr)_14rem]">
       <div class="space-y-4">
         <div>
           <p class="text-sm font-medium text-primary-600 dark:text-primary-400">还没有安装 App？</p>
@@ -43,7 +38,7 @@
       </div>
     </section>
 
-    <section class="grid gap-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 md:grid-cols-[minmax(0,1fr)_18rem] md:p-7">
+    <section class="grid gap-6 ts-surface ts-settings-panel md:grid-cols-[minmax(0,1fr)_18rem]">
       <div class="space-y-5">
         <div>
           <p class="text-sm font-medium text-primary-600 dark:text-primary-400">已经安装 App？</p>
@@ -125,6 +120,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import DesktopPortSettings from '@/components/settings/DesktopPortSettings.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
