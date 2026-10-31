@@ -157,6 +157,13 @@ jobs:
           cp -R package/server/dist/trailsnap-server package/desktop/server-dist/trailsnap-server
           python package/desktop/scripts/validate_components.py
 
+      - name: Remove duplicate Linux sidecar build output
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          rm -rf package/ai/dist package/server/dist
+          df -h .
+
       - name: Diagnose sidecar native libs (Linux only)
         if: runner.os == 'Linux'
         shell: bash

@@ -58,7 +58,7 @@ test.describe('P0 - 设置中心子 Tab 切换', () => {
 
     await clickSettingTab(page, 'user');
     // UserManagement.vue 模板硬编码 <h2>用户管理</h2>
-    await expect(page.locator('h2', { hasText: '用户管理' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '用户管理' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('切换到「关于行影集」- 渲染 AboutPage 子页 H1', async ({ page }) => {
@@ -78,12 +78,12 @@ test.describe('P0 - 设置中心子 Tab 切换', () => {
 
     // 切到 feedback → 关于的 H1 不再可见，FeedbackPage 的 h2 「问题反馈」出现
     await clickSettingTab(page, 'feedback');
-    await expect(page.locator('h2', { hasText: '问题反馈' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '需求平台' }).first()).toBeVisible({ timeout: 10_000 });
     // 切回 personal profile → profile 的设置项出现，feedback 的 H2 消失
     await clickSettingTab(page, 'profile');
     // ProfileSettings 模板硬编码 <h2>个人资料</h2>
-    await expect(page.locator('h2', { hasText: '个人资料' }).first()).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('h2', { hasText: '问题反馈' })).toHaveCount(0);
+    await expect(page.locator('h1', { hasText: '个人资料' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '需求平台' })).toHaveCount(0);
   });
 });
 
