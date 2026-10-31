@@ -39,6 +39,8 @@ TrailSnap 同时提供桌面安装包和 Docker 自托管部署。先根据使�
 
 ## Docker 部署
 
+飞牛 x86 NAS 也可以通过 `.fpk` 手动安装，无需编辑 Compose 文件，参见[飞牛 NAS 安装与使用](/docs/guide/fnos)。
+
 Docker 适合 NAS 和常驻服务器，会同时运行前端、后端、PostgreSQL 与 AI 服务。开始前请先完成[部署前检查](/docs/guide/preflight)。
 
 ### 一键安装脚本

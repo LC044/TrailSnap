@@ -1,0 +1,10 @@
+{
+  "defaults": {
+    "run-as": "package"
+  },
+  "username": "trailsnap",
+  "groupname": "trailsnap",
+  "join-groups": [
+    "docker"
+  ]
+}
