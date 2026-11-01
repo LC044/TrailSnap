@@ -1,17 +1,9 @@
 [
   {
-    "stepTitle": "图库设置",
+    "stepTitle": "照片目录",
     "items": [
-      {
-        "type": "text",
-        "field": "wizard_add_photo_dir",
-        "label": "新增照片目录（可选）",
-        "initValue": ""
-      },
-      {
-        "type": "tips",
-        "helpText": "保存并重启后，打开行影集「设置 → 外部图库」选择新增文件夹。"
-      }
+      {"type": "text", "field": "wizard_add_photo_dir", "label": "新增照片目录（多个路径用 ; 分隔）", "initValue": ""},
+      {"type": "select", "field": "wizard_add_photo_mode", "label": "本次新增目录权限", "initValue": "rw", "options": [{"label": "只读", "value": "ro"}, {"label": "读写", "value": "rw"}]}
     ]
   }
 ]

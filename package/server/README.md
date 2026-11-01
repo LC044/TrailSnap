@@ -139,3 +139,7 @@ Docker 中的视频尺寸、时长和缩略图由 FFprobe/FFmpeg 读取，不重
 - `railway/`: 铁路数据相关逻辑
 - `data/`: 配置文件与数据存储
 - `reverse_geocode/`: 逆地理编码服务
+
+### 飞牛环境标识
+
+设置 `TS_FNOS=1`（也支持 `true`、`yes`、`on`）可启用飞牛环境标识。外部图库候选接口返回 `deployment: fnos`，网页提供飞牛运行设置的接入指引；默认返回 `server`，保留通用 Docker 说明。飞牛 `.fpk` 已自动注入此变量。此标识只控制引导文案，不改变文件权限。

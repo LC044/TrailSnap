@@ -11,12 +11,13 @@ The `.fpk` installer supports x86 fnOS NAS devices and uses the CPU for AI proce
 
 1. Open the [NAS section on the download page](/en/download#nas) and download the fnOS `.fpk` installer.
 2. In fnOS, open **App Center → Manual installation → Upload from computer** and select the package.
-3. Confirm the application source and complete the three fields:
+3. Confirm the application source and complete the installation settings:
 
 | Field | What to enter |
 | --- | --- |
 | Port | Default: `3180`. Choose another port if it is already in use |
 | Existing photo folder (optional) | The full path of a local photo folder; leave blank to add it later |
+| Photo folder access | Read-only by default, or read-write; NAS permissions must also allow the requested operations |
 | User data folder (required) | An empty folder for TrailSnap user data |
 
 For example, photos might be in `/vol1/1000/Photos`, with user data in `/vol1/1000/TrailSnap`. These are examples, not universal defaults. Use the actual paths shown in your NAS file manager. The folders must be separate and must not contain each other.
@@ -30,17 +31,19 @@ If the latest release has no `.fpk` asset yet, use the [fnOS Docker guide](/en/d
 
 ## Connect existing photos
 
-In TrailSnap, open **Settings → External libraries**, refresh the detected folders, select the existing-photos folder, and choose **Add selected libraries and scan**. Photos appear as scanning progresses.
+In TrailSnap, open **Settings → External libraries**, refresh the detected folders, select your photo folder by name, and choose **Add selected libraries and scan**. Photos appear as scanning progresses.
 
-Source folders are mounted read-only. Their photos are not moved into the user data folder.
+Source folders default to read-only. Read-write access allows application operations such as uploads, moves, and deletion of originals, subject to NAS permissions. Connecting a folder does not automatically move its photos into the user data folder.
 
-## Add another folder
+## Add, authorize, and disconnect folders
 
 1. In fnOS, open **App Center → Installed → TrailSnap → Application settings → Runtime settings → Edit**.
-2. Enter the full path in the new photo-folder field, then **Save and restart**.
-3. In TrailSnap, refresh **Settings → External libraries**, select the new folder, and add it for scanning.
+2. Enter one or more full NAS paths separated by semicolons (`;`) in **New photo folders**, select read-only or read-write access for this batch, and **Save and restart**.
+3. Refresh **Settings → External libraries** in TrailSnap, select the folder, and add it for scanning.
 
-Repeat these steps for additional folders. Folders with the same name stay separate. After adding more photos to a connected folder, use **Rescan** in the list of connected folders.
+Existing folders show their NAS paths and current access. Choose read-only, read-write, or **Remove** for each folder. Removing a mount preserves originals; first remove the corresponding library within TrailSnap if you also want to clean up indexes. NAS ACLs must allow the requested operations.
+
+Only name collisions add `(2)`, `(3)`, and so on. Reconnecting a path restores its previous target. Legacy mount paths remain unchanged. Native access authorizations can still connect folders automatically; runtime-setting changes take priority for those folders.
 
 ## Find uploaded originals
 

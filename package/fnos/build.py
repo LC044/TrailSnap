@@ -16,7 +16,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
-REVISION = 8  # Increment for fnOS-only revisions without a product version change.
+REVISION = 14  # Increment for fnOS-only revisions without a product version change.
 VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?"
 
 
@@ -57,6 +57,14 @@ def build_source(output: Path, version: str, lock: dict) -> Path:
     if output.exists() and any(output.iterdir()):
         raise ValueError(f'Output directory must be empty: {output}')
     shutil.copytree(ROOT / 'template', output, dirs_exist_ok=True)
+    # Git checkouts on Windows may use CRLF. Shell interpreters in the NAS
+    # containers require LF, including scripts copied directly from template.
+    for path in output.rglob('*'):
+        if path.is_dir():
+            path.chmod(0o755)
+        elif path.suffix == '.sh' or path.parent.name == 'cmd':
+            write(path, path.read_text(encoding='utf-8'))
+            path.chmod(0o755)
     description = (ROOT / 'description.html').read_text(encoding='utf-8').strip()
     if any(char in description for char in ('`', '\n', '\r')):
         raise ValueError('Description must be single-line HTML without backticks')
@@ -98,6 +106,10 @@ def verify_package(package: Path, version: str, lock: dict) -> None:
             if data[:8] != b'\x89PNG\r\n\x1a\n' or struct.unpack('>II', data[16:24]) != (size, size):
                 raise ValueError(f'Invalid {name}')
         with tarfile.open(fileobj=io.BytesIO(archive.extractfile('app.tgz').read())) as app:
+            for member in app.getmembers():
+                if member.isfile() and member.name.endswith('.sh'):
+                    if b'\r' in app.extractfile(member).read():
+                        raise ValueError(f'Shell script must use LF: {member.name}')
             compose = json.load(app.extractfile('docker/compose-template.json'))
             for name, service in compose['services'].items():
                 if service['image'] != images['server' if name == 'bootstrap' else name]:

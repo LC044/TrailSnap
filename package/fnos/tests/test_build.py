@@ -40,8 +40,12 @@ class PackagingTests(unittest.TestCase):
                 compose = json.loads((source/'app/docker'/name).read_text(encoding='utf-8'))
                 for service, config in compose['services'].items():
                     self.assertEqual(lock['images']['server' if service=='bootstrap' else service], config['image'])
+                self.assertEqual('1', compose['services']['server']['environment']['TS_FNOS'])
             self.assertNotIn(':0.19.1', (source/'cmd/helper').read_text(encoding='utf-8'))
             self.assertNotIn(':0.19.1', (source/'cmd/upgrade_init').read_text(encoding='utf-8'))
+            for path in source.rglob('*'):
+                if path.is_file() and (path.suffix == '.sh' or path.parent.name == 'cmd'):
+                    self.assertNotIn(b'\r', path.read_bytes(), str(path))
 
     def test_image_wait_locks_ready_services_and_times_out_missing_ones(self):
         calls = []

@@ -15,7 +15,8 @@
         "TS_GID": "${TRIM_GID}",
         "TS_DATA_HOST": "${wizard_data_dir:?请选择用户数据目录}",
         "TS_PHOTO_HOST": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
-        "TS_PORT": "${wizard_port:-3180}"
+        "TS_PORT": "${wizard_port:-3180}",
+        "TS_PHOTO_MODE": "${wizard_photo_mode:-ro}"
       },
       "volumes": [
         {
@@ -43,6 +44,14 @@
           "read_only": false,
           "bind": {
             "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "/var/apps/trailsnap/wizard",
+          "target": "/wizard",
+          "bind": {
+            "create_host_path": false
           }
         }
       ]
@@ -110,7 +119,8 @@
         "TZ": "Asia/Shanghai",
         "AI_API_URL": "http://ai:8001",
         "TRAILSNAP_ROOT_PATH": "/api",
-        "TRAILSNAP_INSTANCE_NAME": "行影集 NAS"
+        "TRAILSNAP_INSTANCE_NAME": "行影集 NAS",
+        "TS_FNOS": "1"
       },
       "depends_on": {
         "postgres": {
@@ -139,7 +149,7 @@
         {
           "type": "bind",
           "source": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
-          "target": "/app/Photos/已有照片",
+          "target": "/app/Photos/photos",
           "read_only": true,
           "bind": {
             "create_host_path": false
@@ -187,7 +197,7 @@
         {
           "type": "bind",
           "source": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
-          "target": "/app/Photos/已有照片",
+          "target": "/app/Photos/photos",
           "read_only": true,
           "bind": {
             "create_host_path": false

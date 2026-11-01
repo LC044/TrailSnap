@@ -83,6 +83,20 @@ def test_list_candidates_root_missing(monkeypatch):
     assert data['directories'] == []
 
 
+@pytest.mark.smoke
+@pytest.mark.module_system
+@pytest.mark.parametrize('value,expected', [(None, 'server'), ('0', 'server'), ('', 'server'),
+                                          ('1', 'fnos'), (' TRUE ', 'fnos'), ('yes', 'fnos')])
+def test_candidates_deployment_reflects_runtime_flag_even_without_root(monkeypatch, value, expected):
+    monkeypatch.setattr(gallery_service, 'EXTERNAL_GALLERY_ROOT', '/definitely/not/exists/xyz')
+    monkeypatch.delenv('TS_FNOS', raising=False)
+    if value is not None:
+        monkeypatch.setenv('TS_FNOS', value)
+    data = gallery_service.list_candidates('u', db=None)
+    assert data['deployment'] == expected
+    assert data['root_exists'] is False
+
+
 def test_directory_tree_is_limited_to_gallery_root(tmp_path, monkeypatch):
     root = tmp_path / 'Photos'
     child = root / 'family'

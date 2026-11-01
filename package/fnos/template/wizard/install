@@ -29,6 +29,22 @@
         "helpText": "填写本地照片文件夹的完整路径，留空可稍后添加。"
       },
       {
+        "type": "select",
+        "field": "wizard_photo_mode",
+        "label": "照片目录访问权限",
+        "initValue": "rw",
+        "options": [
+          {
+            "label": "只读",
+            "value": "ro"
+          },
+          {
+            "label": "读写（允许上传、移动和删除原图）",
+            "value": "rw"
+          }
+        ]
+      },
+      {
         "type": "text",
         "field": "wizard_data_dir",
         "label": "用户数据目录",

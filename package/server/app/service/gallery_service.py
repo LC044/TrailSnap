@@ -171,7 +171,8 @@ def list_candidates(user_id: str, db: Session) -> Dict[str, Any]:
             logger.warning(f"枚举候选目录失败 root={root}: {e}")
 
     directories.sort(key=lambda d: d["name"].lower())
-    return {"root": root, "root_exists": root_exists, "directories": directories}
+    deployment = "fnos" if os.getenv("TS_FNOS", "").strip().lower() in {"1", "true", "yes", "on"} else "server"
+    return {"root": root, "root_exists": root_exists, "directories": directories, "deployment": deployment}
 
 
 def list_directory_tree(path: Optional[str] = None) -> Dict[str, Any]:

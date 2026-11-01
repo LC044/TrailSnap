@@ -77,10 +77,14 @@
               <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">自动发现服务端已挂载的照片文件夹，也可以手动指定路径。</p>
             </div>
             <div class="flex gap-2">
-              <el-button size="small" @click="showDockerGuide = true">Docker 挂载说明</el-button>
+              <el-button size="small" @click="showDockerGuide = true">{{ fnosMode ? '飞牛添加说明' : 'Docker 挂载说明' }}</el-button>
               <el-button size="small" type="primary" plain :loading="detecting" @click="loadCandidates">重新检测</el-button>
             </div>
           </div>
+
+          <p v-if="fnosMode" class="mb-3 rounded-lg border p-3 text-sm leading-6 ts-muted" style="border-color: rgba(var(--theme-rgb), 0.2); background-color: rgba(var(--theme-rgb), 0.05)">
+            新增文件夹：先到飞牛「应用设置 → 运行设置 → 编辑」添加照片目录，保存并重启后，再点击「重新检测」。
+          </p>
 
           <!-- 检测中 -->
           <div v-if="detecting" class="text-sm text-gray-500 dark:text-gray-400 py-4">正在检测已挂载的照片目录…</div>
@@ -88,14 +92,15 @@
           <!-- 未检测到挂载 -->
           <div v-else-if="!candidates.root_exists" class="p-6 text-center bg-gray-50 dark:bg-gray-900 rounded border border-dashed border-gray-300 dark:border-gray-600">
             <p class="text-gray-600 dark:text-gray-300 mb-1">尚未接入照片文件夹</p>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            <p v-if="fnosMode" class="text-sm ts-muted mb-4">请先在飞牛运行设置中添加照片目录，保存并重启后重新检测。</p>
+            <p v-else class="text-sm text-gray-500 dark:text-gray-400 mb-4">
               TrailSnap 默认在
               <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">{{ candidates.root }}</code>
               下自动发现照片图库，当前该目录不存在。可直接手动添加本机任意照片文件夹路径；若使用 Docker 部署，也可按挂载示例把照片目录挂到该路径下。
             </p>
             <div class="flex justify-center gap-2 flex-wrap">
               <el-button type="primary" @click="focusManual">手动指定路径</el-button>
-              <el-button @click="showDockerGuide = true">查看 Docker 配置</el-button>
+              <el-button @click="showDockerGuide = true">{{ fnosMode ? '查看飞牛添加说明' : '查看 Docker 配置' }}</el-button>
             </div>
           </div>
 
@@ -104,7 +109,7 @@
             <p class="text-sm text-gray-500 dark:text-gray-400">
               在 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">{{ candidates.root }}</code> 下未检测到子目录。
             </p>
-            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">可将照片目录放入该路径后重新检测，或使用下方手动添加任意路径。</p>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">{{ fnosMode ? '请先在飞牛运行设置中添加照片目录，保存并重启后重新检测。' : '可将照片目录放入该路径后重新检测，或使用下方手动添加任意路径。' }}</p>
           </div>
 
           <!-- 候选列表 -->
@@ -292,8 +297,18 @@
     </el-tabs>
     </div>
 
-    <!-- Docker 配置弹窗 -->
-    <el-dialog v-model="showDockerGuide" title="Docker 挂载配置" width="640px">
+    <!-- 按服务端运行环境显示目录接入指引 -->
+    <el-dialog v-model="showDockerGuide" :title="fnosMode ? '飞牛添加照片文件夹' : 'Docker 挂载配置'" width="min(640px, calc(100vw - 32px))">
+      <div v-if="fnosMode" class="text-sm leading-7 ts-muted">
+        <ol class="list-decimal space-y-3 pl-5">
+          <li>打开飞牛「应用中心 → 已安装 → 行影集 → 应用设置 → 运行设置 → 编辑」。</li>
+          <li>在「新增照片目录」填写完整 NAS 路径；多个路径用英文分号 <code>;</code> 分隔，并选择本次新增目录的只读或读写权限。</li>
+          <li>点击「保存并重启」，等待行影集恢复运行。</li>
+          <li>回到本页点击「重新检测」，勾选新目录，再点击「添加选中的图库并扫描」。</li>
+        </ol>
+        <p class="mt-4 break-all rounded-lg p-3" style="background: var(--ts-color-surface-muted)">示例：/vol1/1000/旅行;/vol2/1000/家庭</p>
+      </div>
+      <template v-else>
       <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
         把宿主机照片目录挂载到容器的 <code class="px-1 bg-gray-200 dark:bg-gray-700 rounded">/app/Photos/&lt;图库名&gt;</code> 下，TrailSnap 会自动发现这些一级子目录。
       </p>
@@ -314,6 +329,7 @@
       <p class="text-xs text-gray-500 dark:text-gray-400">
         冒号左侧是宿主机照片位置，右侧是容器内路径。修改后需重建容器再回到本页重新检测。
       </p>
+      </template>
       <template #footer>
         <el-button type="primary" @click="showDockerGuide = false">知道了</el-button>
       </template>
@@ -361,9 +377,10 @@ const desktopMode = isTauriApp()
 
 // 候选发现
 const detecting = ref(false)
-const candidates = ref<{ root: string; root_exists: boolean; directories: Candidate[] }>({
-  root: '/app/Photos', root_exists: false, directories: []
+const candidates = ref<{ root: string; root_exists: boolean; directories: Candidate[]; deployment: 'fnos' | 'server' }>({
+  root: '/app/Photos', root_exists: false, directories: [], deployment: 'server'
 })
+const fnosMode = computed(() => !desktopMode && candidates.value.deployment === 'fnos')
 const selectedSet = reactive<Set<string>>(new Set())
 
 // 已接入
@@ -434,7 +451,8 @@ const loadCandidates = async () => {
     candidates.value = {
       root: data.root,
       root_exists: data.root_exists,
-      directories: data.directories || []
+      directories: data.directories || [],
+      deployment: data.deployment === 'fnos' ? 'fnos' : 'server'
     }
     // 默认勾选可读取、未接入、无冲突的项
     selectedSet.clear()

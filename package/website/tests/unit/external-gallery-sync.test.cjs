@@ -12,17 +12,20 @@ function harness(options = {}) {
   const calls = [], timers = [], watchers = []
   let cleanup
   const context = { ref, reactive, computed, onMounted() {}, onUnmounted(fn) { cleanup = fn },
-    watch: (target, fn) => watchers.push(fn), nextTick: async () => {}, isTauriApp: () => false,
+    watch: (target, fn) => watchers.push(fn), nextTick: async () => {}, isTauriApp: () => options.desktop === true,
     useUserStore: () => ({ userInfo: { is_superuser: true } }),
     usePhotoStore: () => ({ markDataStale() {} }), usePhotosPageStore: () => ({ markDataStale() {} }),
-    settingsApi: { scanAllDirectories: options.submit || (async uid => { calls.push(uid); return { task_id: 'scan' } }) },
+    settingsApi: {
+      getDirectoryCandidates: async () => options.candidates || { root: '/app/Photos', root_exists: false, directories: [] },
+      scanAllDirectories: options.submit || (async uid => { calls.push(uid); return { task_id: 'scan' } }),
+    },
     tasksApi: { getTask: options.getTask || (async () => ({ status: 'completed', result: { new_files: 3, deleted_files: 2,
       skipped_roots: [{ path: '/offline', reason: 'unreadable' }] } })) },
     ElMessage: { success() {}, error() {} },
     setTimeout: fn => { timers.push(fn); return timers.length }, clearTimeout() {},
   }
   vm.createContext(context)
-  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { scanAllDirs, scanningAll, selectedUserId, scanMessage, scanSkipped };', {
+  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { scanAllDirs, scanningAll, selectedUserId, scanMessage, scanSkipped, loadCandidates, fnosMode };', {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context)
   return { ...context.page, calls, timers, cleanup: () => cleanup(), switchUser: () => watchers[0]() }
@@ -61,4 +64,15 @@ test('submission failure allows retry and switching users discards a late respon
   await pending
   assert.equal(h.scanMessage.value, '')
   assert.equal(h.scanningAll.value, false)
+})
+
+test('gallery guide follows server deployment and defaults to Docker with older servers', async () => {
+  for (const [deployment, expected] of [['fnos', true], ['server', false], [undefined, false]]) {
+    const h = harness({ candidates: { root: '/app/Photos', root_exists: false, directories: [], deployment } })
+    await h.loadCandidates()
+    assert.equal(h.fnosMode.value, expected)
+  }
+  const desktop = harness({ desktop: true, candidates: { root: '/app/Photos', root_exists: true, directories: [], deployment: 'fnos' } })
+  await desktop.loadCandidates()
+  assert.equal(desktop.fnosMode.value, false)
 })
