@@ -223,5 +223,10 @@
         "version": "0.20.0",
         "update_info": "- 支持飞牛 NAS 安装包，提供安装与升级指引<br>- 完善地点统计、人物地点关联与旅行足迹<br>- 加快桌面人物和地图列表加载<br>- 改善失败任务排查与智能体错误提示",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.20.0"
+    },
+    {
+        "version": "0.20.1",
+        "update_info": "- 飞牛 fnOS 支持批量添加照片目录并设置读写权限<br>- 在运行设置中管理图库，优化同名目录与升级兼容性<br>- 修复安装包脚本换行和目录校验问题",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.20.1"
     }
 ]

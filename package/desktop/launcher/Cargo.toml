@@ -1,6 +1,6 @@
 [package]
 name = "trailsnap-launcher"
-version = "0.20.0"
+version = "0.20.1"
 edition = "2021"
 publish = false
 

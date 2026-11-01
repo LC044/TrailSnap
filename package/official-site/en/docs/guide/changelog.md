@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-11-01 (0.20.1)
+
+### New
+
+- Add multiple photo folders on fnOS and choose read-only or read-write access for each.
+
+### Improvements
+
+- Manage photo folders and permissions in fnOS runtime settings, with tailored library setup guidance.
+- Improve duplicate folder naming and upgrade compatibility while preserving existing library indexes.
+
+### Bug Fixes
+
+- Fix script line endings and folder validation in the fnOS installer.
+
 ## 2026-11-01 (0.20.0)
 
 ### New
