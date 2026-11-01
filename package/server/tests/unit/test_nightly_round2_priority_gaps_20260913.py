@@ -223,7 +223,7 @@ async def test_agent_stream_error_yields_friendly_sse_and_saves_partial_reply():
     config = SimpleNamespace(ai=SimpleNamespace(connections=[]))
 
     with (
-        patch.object(agent_service, "get_agent_executor", side_effect=ValueError("模型不可用")),
+        patch.object(agent_service, "get_agent_executor", side_effect=agent_service.AgentConfigurationError("模型不可用")),
         patch.object(agent_service, "create_message") as create_message,
         patch.object(agent_service, "SessionLocal", _ctx(db)),
     ):

@@ -15,6 +15,7 @@ from app.service.agent.tools import get_agent_tools
 from app.crud.agent import get_messages_by_session, create_message
 from app.crud import agent as agent_crud
 from app.schemas.agent import AgentMessageCreate
+from app.service.agent.errors import AgentConfigurationError, format_agent_error
 
 logger = logging.getLogger(__name__)
 
@@ -309,24 +310,24 @@ def get_agent_executor(user_id: str, session_id: str, db: Session, connection_id
     effort = reasoning_effort or getattr(ai_settings, "chat_reasoning_effort", None) or "none"
 
     if not c_id or not m_name:
-        raise ValueError("未配置智能分析模型，请在「系统设置 -> AI相关配置」中配置连接和模型。")
+        raise AgentConfigurationError("未配置智能分析模型，请在「系统设置 → AI 相关配置」中添加并启用连接，再选择对话模型。")
 
     # Find connection
     connection = next((c for c in ai_settings.connections if c.id == c_id), None)
     if not connection:
-        raise ValueError(f"未找到指定的 AI 连接配置: {c_id}，请在「系统设置 -> AI相关配置」中检查配置。")
+        raise AgentConfigurationError("未找到指定的 AI 连接配置，请在「系统设置 → AI 相关配置」中检查连接，并重新选择对话模型。")
 
     if not connection.enable:
-        raise ValueError(f"选中的 AI 连接已禁用: {c_id}，请在「系统设置 -> AI相关配置」中检查配置")
+        raise AgentConfigurationError("选中的 AI 连接已禁用，请在「系统设置 → AI 相关配置」中启用连接，或选择其他可用模型。")
 
     if not connection.api_key:
-        raise ValueError(f"选中的 AI 连接未配置 API Key: {c_id}，请在「系统设置 -> AI相关配置」中检查配置")
+        raise AgentConfigurationError("选中的 AI 连接未配置 API Key，请在「系统设置 → AI 相关配置」中填写密钥后重试。")
 
     model_config = next((m for m in getattr(connection, "models", []) if m.model_name == m_name), None)
     if getattr(connection, "models", []) and model_config is None:
-        raise ValueError(f"模型 {m_name} 不在连接 {c_id} 的可用模型列表中")
+        raise AgentConfigurationError("所选模型不在当前连接的可用模型列表中，请在「系统设置 → AI 相关配置」中更新模型列表，并重新选择对话模型。")
     if model_config and model_config.reasoning_levels and effort not in model_config.reasoning_levels:
-        raise ValueError(f"模型 {m_name} 不支持思考等级 {effort}")
+        raise AgentConfigurationError("所选模型不支持当前思考等级，请在对话输入框中选择该模型支持的思考等级后重试。")
 
     # 初始化 LLM。“不思考”通过省略 reasoning_effort 表达，兼容不认识
     # 该 OpenAI 扩展参数的普通 Chat Completions 服务。
@@ -408,29 +409,29 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
     """
     与 Agent 对话，维护上下文历史
     """
-    agent, system_prompt = get_agent_executor(user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input=user_input, mode=mode)
-    messages = get_session_history(db, session_id)
-    
-    # 将 system_prompt 作为第一条消息传入，如果它不在历史中
-    if not messages or not isinstance(messages[0], SystemMessage):
-        messages.insert(0, SystemMessage(content=system_prompt))
-        
-    messages.append(HumanMessage(content=user_input))
-    
-    # Save user message to DB
-    create_message(db, AgentMessageCreate(
-        session_id=UUID(session_id),
-        role="user",
-        content=user_input,
-        content_ext={"mode": mode},
-    ))
-
-    # 上下文压缩：历史过长时压成摘要 + 近期原文，否则退化为滑动窗口
-    ai_settings = config_manager.get_user_config(user_id, db).ai
-    context_window = _model_context_window(ai_settings, connection_id, model_name)
-    messages = compress_history_if_needed(messages, user_id, session_id, db, context_window)
-    
     try:
+        agent, system_prompt = get_agent_executor(user_id, session_id, db, connection_id, model_name, reasoning_effort, user_input=user_input, mode=mode)
+        messages = get_session_history(db, session_id)
+    
+        # 将 system_prompt 作为第一条消息传入，如果它不在历史中
+        if not messages or not isinstance(messages[0], SystemMessage):
+            messages.insert(0, SystemMessage(content=system_prompt))
+        
+        messages.append(HumanMessage(content=user_input))
+    
+        # Save user message to DB
+        create_message(db, AgentMessageCreate(
+            session_id=UUID(session_id),
+            role="user",
+            content=user_input,
+            content_ext={"mode": mode},
+        ))
+
+        # 上下文压缩：历史过长时压成摘要 + 近期原文，否则退化为滑动窗口
+        ai_settings = config_manager.get_user_config(user_id, db).ai
+        context_window = _model_context_window(ai_settings, connection_id, model_name)
+        messages = compress_history_if_needed(messages, user_id, session_id, db, context_window)
+    
         response = agent.invoke({"messages": messages}, config={"recursion_limit": 16 if mode == "search" else 50})
         
         # 获取大模型的回复
@@ -474,7 +475,7 @@ def chat_with_agent(user_id: str, session_id: str, user_input: str, db: Session,
         return ai_message
     except Exception as e:
         logger.error(f"Agent 对话失败：{str(e)}", exc_info=True)
-        return f"抱歉，处理你的请求时出错了：{str(e)}，请稍后重试。"
+        return format_agent_error(e)
 
 def generate_session_title_task(user_id: str, session_id: str, user_input: str):
     try:
@@ -774,7 +775,7 @@ async def stream_chat_with_agent(user_id: str, session_id: str, user_input: str,
         raise
     except Exception as e:
         logger.error(f"Agent 流式对话失败：{str(e)}", exc_info=True)
-        error_msg = f"\n\n抱歉，处理你的请求时出错了：{str(e)}，请稍后重试。"
+        error_msg = ("\n\n" if full_response else "") + format_agent_error(e)
         data = json.dumps({"content": error_msg, "session_id": session_id})
         yield f"data: {data}\n\n"
 

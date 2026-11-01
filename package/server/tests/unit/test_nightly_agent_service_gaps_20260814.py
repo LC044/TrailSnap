@@ -172,7 +172,8 @@ def test_chat_with_agent_handles_exception_and_returns_error_string():
         result = agent_service.chat_with_agent(SAMPLE_USER_ID, SAMPLE_SESSION_ID, "user q", db)
 
     assert "抱歉" in result
-    assert "boom" in result
+    assert "后端日志" in result
+    assert "boom" not in result
 
 
 # --- generate_session_title_task ------------------------------------------
