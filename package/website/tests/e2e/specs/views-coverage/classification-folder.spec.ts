@@ -74,6 +74,9 @@ async function enterFolderLayout(page: Page) {
 }
 
 test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
+  // 首个页面等待 Vite 冷编译；避免默认 30s 把启动页误判为失败。
+  test.setTimeout(120_000)
+
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
@@ -85,7 +88,7 @@ test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
       if (/\/photos$/.test(u.pathname)) return mockTagPhotos(route)
       return mockTags(route)
     })
-    await page.goto('/album/classification')
+    await page.goto('/album/classification', { waitUntil: 'domcontentloaded' })
     await expect(page.locator('body')).toBeVisible()
     // 标题"智能分类"
     await expect(page.getByRole('heading', { name: '智能分类' })).toBeVisible({ timeout: 15_000 })
@@ -103,7 +106,7 @@ test.describe('P1 - 智能分类 + 文件夹树 @classification-folder', () => {
       if (/\/photos$/.test(u.pathname)) return mockTagPhotos(route)
       return mockTags(route)
     })
-    await page.goto('/album/classification')
+    await page.goto('/album/classification', { waitUntil: 'domcontentloaded' })
     await expect(page.getByText('海边').first()).toBeVisible({ timeout: 15_000 })
 
     // 点 tag

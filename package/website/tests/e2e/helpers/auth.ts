@@ -20,8 +20,8 @@ import { preparePhotoFixtures, type PhotoFixtureBucket, type SkipCapable } from 
  *
  * 返回 access_token（空串表示当前测试已被 skip，调用方应立即 `return`）。
  *
- * - system / dev 套件：globalSetup 已登录并落盘 storageState，config 的 use.storageState
- *   会在每个 page 启动前把 token 注入 localStorage。这里把该 token 读出来返回，供
+ * - system / dev 套件：globalSetup 已登录并落盘 storageState，但共享 token 可能被
+ *   其他用例登出 / 改密后失效；这里每个用例现登录一次，并返回本次 token。
  *   `request` fixture 直连后端时手动带 Bearer 头（storageState 只作用于浏览器
  *   localStorage，APIRequestContext 不会读取，故直连后端的调用必须自行带 Authorization）。
  * - 兜底：globalSetup 登录失败（后端不可达 / 账号不存在，storageState 为空占位）时，
@@ -69,12 +69,7 @@ export async function ensureApiAccessToken(
   request: APIRequestContext,
   testInfo: SkipCapable,
 ): Promise<string> {
-  // globalSetup 已登录：storageState 含真实 token，config 已自动注入到每个 page。
-  // 读出来返回，供 `request` fixture 直连后端时手动带 Bearer 头。
-  const stored = readStorageToken(e2eEnv.storageState)
-  if (stored) return stored
-
-  // 兜底：globalSetup 未拿到 token，逐测试登录
+  // 每个用例现登录一次，避免共享 token 被其他用例登出 / 改密后失效。
   try {
     const loginRes = await request.post(`${e2eEnv.apiBaseUrl}/auth/login`, {
       form: { username: e2eEnv.testUsername, password: e2eEnv.testPassword },
@@ -112,10 +107,6 @@ export async function ensureAuthSession(
       onUnavailable: 'skip',
     })
     if (!prepared) return ''
-  }
-
-  if (readStorageToken(e2eEnv.storageState)) {
-    return accessToken
   }
 
   await page.context().addInitScript((token) => {

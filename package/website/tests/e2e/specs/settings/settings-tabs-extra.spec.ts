@@ -15,17 +15,21 @@ import { ensureAuthSession } from '../../helpers/auth';
 
 async function clickSettingTab(page, key: string) {
   const anchor = page.locator(`[data-tab="${key}"]`);
+  await expect(anchor.first()).toBeVisible({ timeout: 60_000 });
   await anchor.first().scrollIntoViewIfNeeded();
   await anchor.first().click();
 }
 
 test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
+  // Vite 首个页面冷编译偶发超过默认 30s；后续用例命中编译缓存后恢复正常。
+  test.setTimeout(120_000)
+
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
   });
 
   test('切换到「任务管理」- 渲染 TaskManagement 子页 H2', async ({ page }) => {
-    await page.goto('/settings');
+    await page.goto('/settings', { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/settings/);
 
     await clickSettingTab(page, 'tasks');
@@ -34,8 +38,9 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   });
 
   test('电脑网页的「连接手机 App」生成可扫描二维码', async ({ page }) => {
-    await page.goto('/settings#mobile-app');
+    await page.goto('/settings#mobile-app', { waitUntil: 'domcontentloaded' });
 
+    await expect(page.locator('[data-tab="mobile-app"]').first()).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('heading', { name: '连接手机 App', exact: true })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('heading', { name: '下载 Android App' })).toBeVisible();
     await expect(page.getByText(/当前版本：TrailSnap v\d+\.\d+\.\d+/)).toBeVisible();
