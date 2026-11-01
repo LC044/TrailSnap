@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-01 (0.20.0)
+
+### New
+
+- Added an fnOS NAS installer with installation, upgrade, and migration guidance.
+- Added person-place insights and improved travel and revisit statistics.
+
+### Improvements
+
+- Faster desktop people and map lists, with refined settings and photo page layouts.
+- Improved failed-task troubleshooting and agent error messages; updated railway history synchronization.
+
+### Bug Fixes
+
+- Fixed dark-mode backgrounds on some pages and added icons to desktop runtime executables.
+
 ## 2026-10-28 (0.19.1)
 
 ### Improvements

@@ -218,5 +218,10 @@
         "version": "0.19.1",
         "update_info": "- 加快图库扫描和照片基本处理，优先处理新导入照片<br>- 导入期间后台 AI 任务主动让路，完成后自动恢复<br>- 优化人脸识别与聚类的处理顺序",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.19.1"
+    },
+    {
+        "version": "0.20.0",
+        "update_info": "- 支持飞牛 NAS 安装包，提供安装与升级指引<br>- 完善地点统计、人物地点关联与旅行足迹<br>- 加快桌面人物和地图列表加载<br>- 改善失败任务排查与智能体错误提示",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.20.0"
     }
 ]
