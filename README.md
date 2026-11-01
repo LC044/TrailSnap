@@ -225,8 +225,10 @@ docker-compose up -d
 
 ### 微信交流群
 
+扫码关注公众号回复“行影集”获取入群二维码
+
 <a href="https://blog.siyuan.ink/static/img/46f6ef1506ec8bdc019a796c0aba368b.clipboard-2026-10-18.webp" target="_blank">
-  <img src="https://blog.siyuan.ink/static/img/46f6ef1506ec8bdc019a796c0aba368b.clipboard-2026-10-18.webp" alt="微信交流群" width="200px">
+  <img src="https://trailsnap.cn/qrcodes/wechat_official_account_qr.webp" alt="微信交流群" width="200px">
 </a>
 
 ### 致谢

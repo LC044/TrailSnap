@@ -5,7 +5,7 @@ const { lang } = useData()
 const english = computed(() => lang.value.startsWith('en'))
 const active = ref<{ name: string; image: string } | null>(null)
 const channels = [
-  { name: '微信交流群', image: 'https://blog.siyuan.ink/static/img/46f6ef1506ec8bdc019a796c0aba368b.clipboard-2026-10-18.webp' },
+  { name: '微信交流群', image: 'https://blog.siyuan.ink/static/img/d0152729ef648e64a1ed5194d4af4a3c.å¾®ä¿¡å¾ç_20261101232924_32_560.webp' },
   { name: 'QQ 交流群', image: 'https://blog.siyuan.ink/static/img/51b2cc72642406a33b42b572203a173c.qq_group.webp' },
 ]
 const socialLinks = [
