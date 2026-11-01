@@ -1,0 +1,17 @@
+#!/bin/bash
+set -u
+case "${1:-}" in
+  start|stop) exit 0 ;; # fnOS owns the declared docker-project lifecycle.
+  status)
+    # Check every service, not just nginx. Docker access follows the official template.
+    for name in postgres server ai frontend; do
+      status=$(docker inspect --format '{{.State.Status}}' "trailsnap-fnos-$name" 2>/dev/null) || exit 3
+      [ "$status" = running ] || exit 3
+      if [ "$name" != frontend ]; then
+        health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "trailsnap-fnos-$name" 2>/dev/null) || exit 3
+        [ "$health" = healthy ] || exit 3
+      fi
+    done
+    exit 0 ;;
+  *) exit 1 ;;
+esac

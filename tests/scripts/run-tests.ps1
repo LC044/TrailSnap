@@ -59,7 +59,7 @@ param(
     [ValidateSet('dev', 'scan', 'smoke', 'p0', 'p1', 'all', 'light', 'full')]
     [string]$Level,
 
-    [ValidateSet('server', 'ai', 'website', 'cli', 'desktop', 'requirement-platform', 'all')]
+    [ValidateSet('server', 'ai', 'website', 'cli', 'desktop', 'fnos', 'requirement-platform', 'all')]
     [string]$Component = 'all',
 
     [ValidateSet('dev', 'docker')]
@@ -221,6 +221,12 @@ try {
             }
             finally { Pop-Location }
         }
+    }
+
+    # ---------- fnOS packaging/runtime unit tests (stdlib, no services) ----------
+    if ($Component -eq 'fnos' -and $Layer -eq 'unit') {
+        & uv run --python 3.12 python -m unittest discover -s (Join-Path $RepoRoot 'package/fnos/tests') -v
+        if ($LASTEXITCODE -ne 0) { throw 'fnOS packaging tests failed' }
     }
 
     # ---------- frontend unit (Node test runner, no services) ----------

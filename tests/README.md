@@ -16,6 +16,7 @@
 | 前端 E2E | `package/website/tests/e2e`、`package/website/e2e-system` | Playwright | `run-tests.ps1 -Layer e2e` | 慢，需 server+ai+web 全起 |
 | 前端单元 | `package/website/tests/unit` | Node test runner + Vue | `run-tests.ps1 -Layer unit -Component website` | 秒级，无外部服务 |
 | 桌面单元 | `package/desktop/src-tauri` | Rust | `run-tests.ps1 -Layer unit -Component desktop` | 需要 Rust 和桌面构建资源，显式选择 |
+| 飞牛打包 | `package/fnos/tests` | Python unittest | `run-tests.ps1 -Layer unit -Component fnos -Level all` | 无服务、无网络，不拉取镜像；显式选择 |
 | 需求平台 | `package/requirement-platform/server/tests` | pytest | `run-tests.ps1 -Layer unit -Component requirement-platform -Level all` | 独立临时 SQLite，验证 API、MCP 和 Agent 交付；显式选择，不启动主应用服务 |
 | 桌面升级验收 | `package/server/tests/desktop` | pytest | `run-tests.ps1 -Layer integration -Component desktop` | 独立数据库和图库副本，不启动普通 dev 服务 |
 

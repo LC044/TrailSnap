@@ -1,0 +1,20 @@
+{
+  "docker-project": {
+    "projects": [
+      {
+        "name": "trailsnap-fnos",
+        "path": "docker"
+      }
+    ]
+  },
+  "data-share": {
+    "shares": [
+      {
+        "name": "trailsnap/data"
+      },
+      {
+        "name": "trailsnap/photos"
+      }
+    ]
+  }
+}

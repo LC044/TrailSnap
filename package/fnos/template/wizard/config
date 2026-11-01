@@ -1,0 +1,17 @@
+[
+  {
+    "stepTitle": "图库设置",
+    "items": [
+      {
+        "type": "text",
+        "field": "wizard_add_photo_dir",
+        "label": "新增照片目录（可选）",
+        "initValue": ""
+      },
+      {
+        "type": "tips",
+        "helpText": "保存并重启后，打开行影集「设置 → 外部图库」选择新增文件夹。"
+      }
+    ]
+  }
+]

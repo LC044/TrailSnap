@@ -5,6 +5,8 @@ description: Choose between TrailSnap desktop installers and a self-hosted Docke
 
 # Install TrailSnap
 
+For x86 fnOS NAS devices, see the [fnOS installation guide](/en/docs/guide/fnos) for the `.fpk` installation option and release downloads.
+
 TrailSnap is available as a desktop app and as a self-hosted Docker stack.
 
 | Option | Best for | Platforms | AI features |

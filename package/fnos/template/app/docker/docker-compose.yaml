@@ -1,0 +1,233 @@
+{
+  "services": {
+    "bootstrap": {
+      "image": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:0.19.1@sha256:4056a83d601a2c36a243b7cf02260295ea733c725a639d74fcd82cae69ed6009",
+      "container_name": "trailsnap-fnos-bootstrap",
+      "restart": "no",
+      "network_mode": "none",
+      "entrypoint": [
+        "python",
+        "/package/runtime.py",
+        "init"
+      ],
+      "environment": {
+        "TS_UID": "${TRIM_UID}",
+        "TS_GID": "${TRIM_GID}",
+        "TS_DATA_HOST": "${wizard_data_dir:?请选择用户数据目录}",
+        "TS_PHOTO_HOST": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
+        "TS_PORT": "${wizard_port:-3180}"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${wizard_data_dir:?请选择用户数据目录}",
+          "target": "/state",
+          "read_only": false,
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${TRIM_PKGVAR}",
+          "target": "/meta",
+          "read_only": false,
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${TRIM_APPDEST}",
+          "target": "/package",
+          "read_only": false,
+          "bind": {
+            "create_host_path": true
+          }
+        }
+      ]
+    },
+    "postgres": {
+      "image": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie@sha256:1963bc48febf543433baa1ce3edcc6cc08154de722e22495f86681cc9a849026",
+      "container_name": "trailsnap-fnos-postgres",
+      "restart": "unless-stopped",
+      "depends_on": {
+        "bootstrap": {
+          "condition": "service_completed_successfully"
+        }
+      },
+      "entrypoint": [
+        "/bin/sh",
+        "/fnos-start.sh"
+      ],
+      "environment": {
+        "PGDATA": "/var/lib/postgresql/data/pgdata",
+        "POSTGRES_INITDB_ARGS": "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+      },
+      "volumes": [
+        "${TRIM_APPDEST}/docker/start-postgres.sh:/fnos-start.sh:ro",
+        {
+          "type": "bind",
+          "source": "${wizard_data_dir:?请选择用户数据目录}/runtime",
+          "target": "/fnos-runtime",
+          "read_only": true,
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${wizard_data_dir:?请选择用户数据目录}/pg_data",
+          "target": "/var/lib/postgresql/data",
+          "bind": {
+            "create_host_path": true
+          }
+        }
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -U trailsnap -d trailsnap"
+        ],
+        "interval": "5s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "30s"
+      },
+      "networks": [
+        "backend"
+      ]
+    },
+    "server": {
+      "image": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-server:0.19.1@sha256:4056a83d601a2c36a243b7cf02260295ea733c725a639d74fcd82cae69ed6009",
+      "container_name": "trailsnap-fnos-server",
+      "restart": "unless-stopped",
+      "entrypoint": [
+        "/bin/sh",
+        "/fnos-start.sh"
+      ],
+      "environment": {
+        "TZ": "Asia/Shanghai",
+        "AI_API_URL": "http://ai:8001",
+        "TRAILSNAP_ROOT_PATH": "/api",
+        "TRAILSNAP_INSTANCE_NAME": "行影集 NAS"
+      },
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        }
+      },
+      "volumes": [
+        "${TRIM_APPDEST}/docker/start-server.sh:/fnos-start.sh:ro",
+        {
+          "type": "bind",
+          "source": "${wizard_data_dir:?请选择用户数据目录}/runtime",
+          "target": "/fnos-runtime",
+          "read_only": true,
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${wizard_data_dir:?请选择用户数据目录}/data",
+          "target": "/app/data",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
+          "target": "/app/Photos/已有照片",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health-check', timeout=3)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 10,
+        "start_period": "180s"
+      },
+      "networks": [
+        "backend"
+      ]
+    },
+    "ai": {
+      "image": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-ai:0.19.1-cpu@sha256:798317c3fb7a1462bccee0994861e5648a4b3563a055503c2d542748e6e7591c",
+      "container_name": "trailsnap-fnos-ai",
+      "restart": "unless-stopped",
+      "depends_on": {
+        "bootstrap": {
+          "condition": "service_completed_successfully"
+        }
+      },
+      "stop_grace_period": "30s",
+      "environment": {
+        "TZ": "Asia/Shanghai"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${wizard_data_dir:?请选择用户数据目录}/data",
+          "target": "/app/data",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
+          "target": "/app/Photos/已有照片",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health-check', timeout=3)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 10,
+        "start_period": "120s"
+      },
+      "networks": [
+        "backend"
+      ]
+    },
+    "frontend": {
+      "image": "crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/trailsnap-frontend:0.19.1@sha256:9b2a05aa590ac6233302f75743a2b220c840a8aa6fd1bf804ffbb6ebd37b1e6e",
+      "container_name": "trailsnap-fnos-frontend",
+      "restart": "unless-stopped",
+      "ports": [
+        "${wizard_port:-3180}:80"
+      ],
+      "depends_on": {
+        "server": {
+          "condition": "service_healthy"
+        }
+      },
+      "networks": [
+        "backend"
+      ]
+    }
+  },
+  "networks": {
+    "backend": {}
+  }
+}

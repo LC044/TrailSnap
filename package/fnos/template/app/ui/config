@@ -1,0 +1,13 @@
+{
+  ".url": {
+    "trailsnap.Application": {
+      "title": "行影集",
+      "icon": "images/icon_256.png",
+      "type": "url",
+      "protocol": "http",
+      "port": "${wizard_port}",
+      "url": "/",
+      "allUsers": false
+    }
+  }
+}

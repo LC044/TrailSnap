@@ -75,3 +75,15 @@ test('Linux format choices resolve the selected asset regardless of release orde
   assert.equal(matchesPlatform('TrailSnap-0.19.0-desktop-linux-x64.deb', 'windows', 'deb'), false)
   assert.equal(harness().assetUrl('linux', 'deb'), 'release-fallback')
 })
+
+test('fnOS download resolves a real release asset and never invents a missing link', () => {
+  const name = 'TrailSnap-0.20.0-fnos-x86.fpk'
+  const { fnosAssetUrl } = harness([
+    { name: `${name}.sha256`, browser_download_url: 'checksum' },
+    { name: name.replace('x86', 'arm64'), browser_download_url: 'unsupported' },
+    { name: `pr-123-${name}`, browser_download_url: 'preview' },
+    { name, browser_download_url: 'fnos-package' },
+  ])
+  assert.equal(fnosAssetUrl(), 'fnos-package')
+  assert.equal(harness().fnosAssetUrl(), 'release-fallback')
+})

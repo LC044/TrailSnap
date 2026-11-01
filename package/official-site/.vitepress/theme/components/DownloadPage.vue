@@ -52,6 +52,13 @@
         </section>
 
       <section v-show="activeMode === 'nas'" id="nas" role="tabpanel" aria-labelledby="nas-tab" tabindex="0">
+        <article class="download-card nas-card fnos-card">
+          <div class="platform-heading"><span class="platform-icon"><Server :size="34" aria-hidden="true" /></span><div><h2>{{ copy.fnosTitle }}</h2><p>{{ copy.fnosDescription }}</p></div></div>
+          <div class="format-tags"><span>fnOS · x86 · CPU</span><span>.fpk</span></div>
+          <a :href="fnosAssetUrl()" class="primary-action" :aria-busy="loadingPlatform === 'fnos'" @click="onFnosDownload"><Download :size="19" aria-hidden="true" />{{ loadingPlatform === 'fnos' ? copy.preparing : hasFnosAsset ? copy.fnosDownload : copy.fnosBrowse }}</a>
+          <p v-if="!hasFnosAsset" class="preflight-link" role="status">{{ copy.fnosPending }}</p>
+          <p class="preflight-link"><a :href="docLink('/docs/guide/fnos')">{{ copy.fnosGuide }} <ArrowUpRight :size="14" aria-hidden="true" /></a></p>
+        </article>
         <article class="download-card nas-card">
           <div class="platform-heading"><span class="platform-icon"><Server :size="34" aria-hidden="true" /></span><div><h2>{{ copy.nasTitle }}</h2><p>{{ copy.nasDescription }}</p></div></div>
           <div class="format-tags"><span>{{ copy.nasLabel }}</span><span>{{ copy.dockerLabel }}</span></div>
@@ -107,6 +114,9 @@ const translations = {
     nasDescription: '照片集中存储，同一局域网内的手机、平板和电脑都能通过浏览器访问。',
     nasSteps: [{ title: '准备设备与照片路径', description: '确认 NAS 型号、Docker 支持和存储位置。' }, { title: '按指南完成部署', description: '配置照片目录，启动 TrailSnap 服务。' }, { title: '打开你的照片库', description: '通过浏览器访问，开始整理与浏览。' }],
     dockerGuide: '查看 Docker 部署指南', preflight: '查看设备与环境要求',
+    fnosTitle: '飞牛 NAS 安装包', fnosDescription: '在应用中心手动安装，填写端口和照片、数据目录，即可开始使用。',
+    fnosDownload: '下载飞牛安装包', fnosBrowse: '查看飞牛安装包', fnosGuide: '飞牛安装与使用教程',
+    fnosPending: '暂未找到可下载的飞牛安装包，请在版本页面查看可用文件。',
     nasPromptTitle: '让 AI 帮你部署',
     nasPromptDescription: '告诉 AI 设备型号和照片路径，获取分步部署指导。',
     desktopLabel: '方式二 · 个人电脑', desktopTitle: '在自己的电脑上，整理照片与回忆',
@@ -133,6 +143,9 @@ const translations = {
     nasDescription: 'For photos stored on a NAS or home server. Keep your library in one place and access it from phones, tablets, and computers on the same local network.',
     nasSteps: [{ title: 'Prepare your device and photo path', description: 'Check your NAS model, Docker support, and storage.' }, { title: 'Follow the deployment guide', description: 'Configure the photo folder and start TrailSnap.' }, { title: 'Open your photo library', description: 'Visit in your browser to start organizing and browsing.' }],
     dockerGuide: 'Read the Docker deployment guide', preflight: 'Device and setup requirements',
+    fnosTitle: 'Installer for fnOS NAS', fnosDescription: 'Install through App Center, choose a port and your photo and data folders, then open TrailSnap.',
+    fnosDownload: 'Download fnOS installer', fnosBrowse: 'Browse fnOS installers', fnosGuide: 'fnOS installation and user guide',
+    fnosPending: 'An fnOS installer could not be found. Browse the release page for available files.',
     nasPromptTitle: 'Let AI guide your NAS setup',
     nasPromptDescription: 'Tell AI your device model and photo path for step-by-step guidance.',
     desktopLabel: 'Option two · Personal computer', desktopTitle: 'Manage photos on your own computer',
@@ -239,6 +252,11 @@ function assetUrl(platform: PlatformKey, kind: DownloadKind = 'installer') {
   return assets.value.find(asset => matchesPlatform(asset.name, platform, kind))?.browser_download_url || releaseUrl
 }
 
+function fnosAssetUrl() {
+  return assets.value.find(asset => /^TrailSnap-\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?-fnos-x86\.fpk$/.test(asset.name))?.browser_download_url || releaseUrl
+}
+const hasFnosAsset = computed(() => fnosAssetUrl() !== releaseUrl)
+
 // GitHub 直连在国内多数网络下不稳定，提供公共加速前缀作为备用下载线路。
 const accelPrefixes = ['https://gh-proxy.com/', 'https://gh-proxy.at9.net/']
 
@@ -287,7 +305,18 @@ async function onDownload(platform: PlatformKey, event: MouseEvent, kind: Downlo
   window.location.assign(assetUrl(platform, kind))
 }
 
+async function onFnosDownload(event: MouseEvent) {
+  if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  if (loadingPlatform.value) return
+  loadingPlatform.value = 'fnos'
+  if (assets.value.length === 0 && !(await fetchAssets())) apiUnavailable.value = true
+  loadingPlatform.value = ''
+  window.location.assign(fnosAssetUrl())
+}
+
 onMounted(async () => {
+  if (window.location.hash === '#nas') activeMode.value = 'nas'
   const userAgent = navigator.userAgent.toLowerCase()
   // 手机浏览器可能包含 Mac/Linux 标识，不将其推荐为桌面设备。
   if (!/android|iphone|ipad|ipod/.test(userAgent) && !(navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
@@ -308,6 +337,7 @@ h1 { margin: 0; font-size: clamp(28px, 3.3vw, 40px); font-weight: 750; line-heig
 .download-content { max-width: 820px; margin: auto; }
 .download-card { background: var(--vp-c-bg); border: 1px solid var(--vp-c-divider); border-radius: 20px; box-shadow: 0 3px 14px rgb(0 0 0 / 2%); }
 .featured-card, .nas-card { position: relative; padding: 32px; border-color: var(--vp-c-brand-1); }
+.fnos-card { margin-bottom: 20px; }
 .device-badge { display: block; width: fit-content; margin: -8px 0 12px auto; padding: 4px 10px; border-radius: 999px; background: var(--vp-c-brand-soft); color: var(--vp-c-brand-1); font-size: 11px; font-weight: 600; }
 .platform-heading { display: flex; align-items: flex-start; gap: 20px; }
 .platform-heading > div { min-width: 0; }
