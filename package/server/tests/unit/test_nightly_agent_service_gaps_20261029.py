@@ -88,7 +88,7 @@ def test_get_agent_executor_rejects_model_outside_connection_list():
     ai = _ai_settings(chat_connection_id="c1", chat_model_name="other",
                       connections=[_connection("c1", models=[model])])
     with patch.object(agent_service.config_manager, "get_user_config", return_value=_config(ai)):
-        with pytest.raises(ValueError, match="不在连接"):
+        with pytest.raises(ValueError, match="不在当前连接的可用模型列表"):
             agent_service.get_agent_executor("u", SESSION_ID, MagicMock())
 
 
@@ -97,7 +97,7 @@ def test_get_agent_executor_rejects_unsupported_reasoning_level():
     ai = _ai_settings(chat_connection_id="c1", chat_model_name="m1",
                       connections=[_connection("c1", models=[model])])
     with patch.object(agent_service.config_manager, "get_user_config", return_value=_config(ai)):
-        with pytest.raises(ValueError, match="不支持思考等级"):
+        with pytest.raises(ValueError, match="不支持当前思考等级"):
             agent_service.get_agent_executor("u", SESSION_ID, MagicMock(), reasoning_effort="ultra")
 
 
