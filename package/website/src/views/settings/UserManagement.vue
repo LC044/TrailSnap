@@ -1,16 +1,15 @@
 <template>
-  <div class="">
-    <div class="mb-4 md:mb-6 flex justify-between items-center">
-      <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white">用户管理</h2>
-      <div class="flex gap-2">
+  <div class="ts-settings-page">
+    <SettingsPageHeader title="用户管理" description="管理成员账号与访问权限">
+      <template #actions>
         <el-button type="primary" @click="showCreateDialog = true">添加用户</el-button>
         <el-button v-if="!isTauriApp()" type="danger" @click="handleLogout" class="hidden md:inline-flex">退出登录</el-button>
         <el-button v-if="!isTauriApp()" type="danger" size="small" @click="handleLogout" class="md:hidden">退出</el-button>
-      </div>
-    </div>
+      </template>
+    </SettingsPageHeader>
 
     <!-- Desktop View -->
-    <div class="hidden md:block bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="hidden md:block ts-surface overflow-hidden">
       <el-table :data="users" style="width: 100%" v-loading="loading">
         <el-table-column prop="username" label="用户名" />
         <el-table-column prop="email" label="邮箱" />
@@ -52,7 +51,7 @@
       <div v-if="users.length === 0 && !loading" class="text-center text-gray-500 py-8">
         暂无用户数据
       </div>
-      <div v-for="user in users" :key="user.id" class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+      <div v-for="user in users" :key="user.id" class="ts-surface ts-settings-panel">
         <div class="flex justify-between items-start mb-3">
           <div>
             <div class="font-bold text-gray-800 dark:text-white text-lg">{{ user.username }}</div>
@@ -132,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted, computed, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { userService, type User } from '@/api/user'

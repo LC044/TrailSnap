@@ -1,14 +1,9 @@
 <template>
-  <div class="h-full flex flex-col gap-6">
-    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-4 sm:gap-0">
-        <h2 class="text-xl md:text-2xl font-semibold text-gray-800 dark:text-white">性能测试</h2>
-        <div class="text-sm text-gray-500 dark:text-gray-400">
-            用于测试添加外部图库目录后，端到端各项处理任务的耗时与速率。
-        </div>
-    </div>
+  <div class="ts-settings-page">
+    <SettingsPageHeader title="性能测试" description="测试外部图库照片从导入到各项处理完成的耗时与速率。" />
 
     <!-- 控制面板 -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6">
+    <div class="ts-surface ts-settings-panel">
       <div class="flex flex-col sm:flex-row gap-4 items-center">
          <el-input 
             v-model="testPath" 
@@ -51,7 +46,7 @@
     </div>
 
     <!-- 任务明细表格 -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 flex-1 overflow-hidden flex flex-col">
+    <div class="ts-surface ts-settings-panel flex-1 overflow-hidden flex flex-col">
         <h3 class="text-lg font-medium mb-4 text-gray-800 dark:text-white">各任务处理详情</h3>
         <el-table 
             :data="statsList" 
@@ -119,6 +114,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onUnmounted, computed } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { settingsApi } from '@/api/settings'

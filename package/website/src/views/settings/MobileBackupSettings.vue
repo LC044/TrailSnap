@@ -1,11 +1,8 @@
 <template>
-  <div class="space-y-5">
-    <div v-if="!embedded">
-      <h1 class="text-xl font-bold text-gray-800 dark:text-white md:text-2xl">备份设置</h1>
-      <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">设置手机图库的备份范围和服务器目录结构。</p>
-    </div>
+  <div class="ts-settings-page">
+    <SettingsPageHeader v-if="!embedded" title="备份设置" description="设置手机图库的备份范围和服务器目录结构。" />
 
-    <section v-if="!supported" class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
+    <section v-if="!supported" class="ts-surface ts-settings-panel">
       <p class="font-medium text-gray-800 dark:text-white">当前平台暂不支持图库备份设置</p>
       <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">请在 Android 原生 APP 中配置本地相册范围。</p>
     </section>
@@ -23,13 +20,13 @@
         </div>
       </section>
 
-      <section class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
+      <section class="ts-surface ts-settings-panel">
         <h2 class="font-medium text-gray-800 dark:text-white">服务器保存路径</h2>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">填写服务器照片目录下的相对路径，例如“手机备份”。</p>
         <el-input v-model="form.folder" class="mt-4" placeholder="手机备份" maxlength="120" />
       </section>
 
-      <section class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
+      <section class="ts-surface ts-settings-panel">
         <h2 class="font-medium text-gray-800 dark:text-white">目的地整理方式</h2>
         <div class="mt-4 grid gap-3 md:grid-cols-3">
           <button
@@ -47,7 +44,7 @@
         </div>
       </section>
 
-      <section class="rounded-2xl bg-white p-5 shadow-sm dark:bg-gray-800">
+      <section class="ts-surface ts-settings-panel">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 class="font-medium text-gray-800 dark:text-white">备份源</h2>
@@ -91,6 +88,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { galleryBackupNative, type GallerySourceFolder } from '@/native/galleryBackup'

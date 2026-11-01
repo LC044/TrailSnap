@@ -1,6 +1,9 @@
 <template>
   <div class="moon-journal min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" data-testid="moon-journal">
-    <div class="mx-auto max-w-screen-2xl px-[var(--ts-page-gutter)] py-3 md:py-6">
+    <div class="mx-auto max-w-screen-2xl ts-page-inset ts-browse-page">
+      <div class="ts-browse-header flex items-center gap-3">
+        <h1 class="ts-page-title">月迹</h1>
+      </div>
       <header class="relative isolate min-h-[168px] overflow-hidden rounded-3xl bg-gray-950 text-white shadow-lg md:min-h-[190px]">
         <img
           v-if="heroPhoto"
@@ -14,9 +17,8 @@
         <div class="flex h-full min-h-[168px] flex-col justify-between p-4 sm:p-5 md:min-h-[190px] md:p-6">
           <div class="flex items-start justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
-              <BackButton label="返回" @click="goBack" />
               <div class="min-w-0">
-                <h1 class="text-xl font-bold tracking-wide sm:text-2xl">月迹</h1>
+                <p class="text-xl font-bold tracking-wide sm:text-2xl">月相观察</p>
                 <p class="mt-0.5 truncate text-xs text-gray-300 dark:text-gray-300 sm:text-sm">记录每一次阴晴圆缺</p>
               </div>
             </div>
@@ -296,10 +298,8 @@
 </template>
 
 <script setup lang="ts">
-import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAppBack } from '@/composables/useAppBack'
 import { CalendarDays, ImageMinus } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 
@@ -316,7 +316,6 @@ import type { MoonObservation, MoonPhase, MoonPhaseGroup, MoonView } from '@/typ
 const MOON_TAG_NAME = '月亮'
 const route = useRoute()
 const router = useRouter()
-const goBack = useAppBack('/album')
 const photoStore = usePhotoStore()
 
 const viewTabs: Array<{ value: MoonView; label: string }> = [

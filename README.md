@@ -134,12 +134,9 @@ irm https://trailsnap.cn/install.ps1 | iex
 docker-compose.yml 配置文件（注意修改挂载路径为本地路径，不然无法扫描本地照片目录），具体可以参考 [TrailSnap 文档](https://trailsnap.cn/docs/guide/install.html) ：
 
 ```yml
-version: '3.8'
-
 services:
   postgres:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
-    container_name: postgres_container
     restart: always
     environment:
       POSTGRES_DB: trailsnap

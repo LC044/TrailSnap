@@ -72,6 +72,7 @@ async function stubAuthMe(page: Page) {
 }
 
 async function mockLocationStatsApis(page: Page) {
+  await page.route("**/api/location-stats/top-person-places**", route => route.fulfill({status:200, contentType:"application/json", body:JSON.stringify(ok([]))}))
   await page.route("**/api/location-stats/overview**", async (route: Route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ok(fakeOverview)) })
   })
@@ -128,107 +129,67 @@ test.beforeEach(async ({ page }) => {
   await mockLocationStatsApis(page)
 })
 
-test.describe("LocationStatsView 统计视图 @views-coverage", () => {
-  test("统计视图渲染 6 张统计卡 (overview / annual / monthly / top-places / revisits / heatmap)", async ({ page }) => {
+test.describe("足迹统计 @views-coverage", () => {
+  test("显示明确指标、时间趋势、地点排名和拍摄日历", async ({ page }) => {
     await page.goto("/album/location")
-    await expect(page.getByRole("heading", { name: "足迹概览" })).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByRole("heading", { name: "年度旅行趋势" })).toBeVisible()
-    await expect(page.getByRole("heading", { name: "月度出行雷达" })).toBeVisible()
-    await expect(page.getByText(/最常去的\s*2\s*个地方/)).toBeVisible()
-    await expect(page.getByRole("heading", { name: "重访清单" })).toBeVisible()
-    await expect(page.getByRole("heading", { name: "旅行日历热力图" })).toBeVisible()
-  })
-
-  test("StatsAnnualTrendCard 提供下载为图片按钮", async ({ page }) => {
-    await page.goto("/album/location")
-    await expect(page.getByRole("heading", { name: "年度旅行趋势" })).toBeVisible({ timeout: 15_000 })
-    await expect(page.locator("button[title=\u4e0b\u8f7d\u4e3a\u56fe\u7247]").first()).toBeVisible()
-  })
-
-  test("StatsTopPlacesCard 渲染地点列表 + 切换图表模式", async ({ page }) => {
-    await page.goto("/album/location")
-    await expect(page.getByText("上海").first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText("北京").first()).toBeVisible()
-    const chartBtn = page.getByRole("button", { name: "图表" })
-    await expect(chartBtn).toBeVisible()
-    await chartBtn.click()
-    await expect(chartBtn).toBeVisible()
-    // 切回列表保证不影响后续 test 顺序
-    await page.getByRole("button", { name: "列表" }).click()
-  })
-
-  test("StatsMonthlyRadarCard 1月、12月月份按钮可见", async ({ page }) => {
-    await page.goto("/album/location")
-    const monthLabel = page.getByRole("button", { name: "1月" }).first()
-    await expect(monthLabel).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByRole("button", { name: "12月" }).first()).toBeVisible()
-  })
-
-  test("StatsRevisitsCard 显示 3 次重访 + 间隔天数", async ({ page }) => {
-    await page.goto("/album/location")
-    await expect(page.getByText("3 次").first()).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByText(/间隔\s*\d+\s*天/).first()).toBeVisible()
-  })
-})
-
-
-test.describe("StatsHeatmapCard \u70ed\u529b\u56fe\u5361 @views-coverage", () => {
-  test("\u70ed\u529b\u56fe\u5361 \u5355\u5143\u683c\u53ef\u89c1 (\u9ed8\u8ba4 mock \u4e09\u6761\u6570\u636e)", async ({ page }) => {
-    await page.goto("/album/location")
-    await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible({ timeout: 15_000 })
-    // count > 0 \u4f1a\u6e32\u67d3\u4e3a button\uff0c\u9ed8\u8ba4 mock \u91cc 5/10/3 \u90fd > 0\uff0c\u5e94\u8be5\u51fa\u73b0 3 \u4e2a\u53ef\u70b9\u51fb\u5355\u5143\u683c
-    const cells = page.locator("button[title*=\u5f20\u7167\u7247]")
-    await expect(cells).toHaveCount(3)
-    // \u56fe\u4f8b\u6587\u6848\uff1a\u5c11 / \u591a \u6807\u7b7e\u53ef\u89c1
-    await expect(page.getByText("\u5c11").first()).toBeVisible()
-    await expect(page.getByText("\u591a").first()).toBeVisible()
-  })
-
-  test("\u70ed\u529b\u56fe\u5355\u5143\u683c \u70b9\u51fb\u540e \u70ed\u529b\u56fe\u672a\u62a5\u9519 (click \u4e0d\u5d29)", async ({ page }) => {
-    await page.goto("/album/location")
-    await expect(page.getByRole("heading", { name: "\u65c5\u884c\u65e5\u5386\u70ed\u529b\u56fe" })).toBeVisible({ timeout: 15_000 })
-    // \u70b9\u51fb\u5355\u5143\u683c\u4f1a narrow \u65e5\u671f\u8303\u56f4\u5e76\u628a viewMode \u5207\u5230 'grid'\uff08LocationList.handleNarrowRange
-    // \u8bbe\u8ba1\u5982\u6b64\uff09\uff0cLocationStatsView \u968f v-if \u5378\u8f7d\uff0c\u70ed\u529b\u56fe\u6807\u9898\u81ea\u7136\u6d88\u5931\u2014\u2014\u8fd9\u4e0d\u662f\u5d29\u6e83\u3002
-    // \u6545\u53ea\u9a8c\u8bc1\u300c\u70b9\u51fb\u672a\u62a5\u9519\u300d\uff1a\u4ecd\u505c\u7559\u5728 /album/location\u3001body \u4ecd\u53ef\u89c1\u3001\u65e0\u300c\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25\u300d\u3002
-    const cells = page.locator("button[title*=\u5f20\u7167\u7247]")
-    const count = await cells.count()
-    if (count > 0) {
-      await cells.first().click()
-      await expect(page).toHaveURL(/\/album\/location/)
-      await expect(page.locator("body")).toBeVisible()
-      await expect(page.getByText("\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25")).not.toBeVisible()
+    await expect(page.getByRole("heading", { name: "足迹统计" })).toBeVisible()
+    await expect(page.getByRole("region", { name: "足迹概览" })).toBeVisible()
+    for (const name of ["足迹随时间变化", "留下最多照片的地方", "多日记录的地方", "拍摄日历", "人物足迹"]) {
+      await expect(page.getByRole("heading", { name })).toBeVisible()
     }
+    await expect(page.getByText("移动距离", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "下载趋势图" })).toBeVisible()
   })
-
-  test("\u70ed\u529b\u56fe\u52a0\u8f7d\u5931\u8d25 -> \u663e\u793a\u91cd\u8bd5\u6309\u94ae", async ({ page }) => {
-    await page.unroute("**/api/location-stats/heatmap**").catch(() => {})
-    await page.route("**/api/location-stats/heatmap**", async (route: Route) => {
-      await route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: JSON.stringify({ code: 500, message: "boom", data: null }),
-      })
-    })
-    await page.goto("/album/location")
-    await expect(page.getByText("\u7edf\u8ba1\u52a0\u8f7d\u5931\u8d25")).toBeVisible({ timeout: 15_000 })
-    const retry = page.getByRole("button", { name: "\u91cd\u8bd5" })
-    await expect(retry).toBeVisible()
-    await retry.click()
+  test("自动展示照片最多人物及地点并保留照片下钻", async ({ page }) => {
+    await page.route('**/api/location-stats/top-person-places**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(ok([
+      { person_id: '11111111-1111-1111-1111-111111111111', person_name: '小周', cover_photo_id: null, total_places: 1, total_photos: 12, total_days: 3, places: [{ name: '杭州', level: 'city', place_key: 'place:region:city:2:中国2:浙江2:杭州', scene_id: null, parent_label: '浙江', photo_count: 12, record_days: 3, first_date: '2024-02-01', last_date: '2024-02-29' }] },
+      { person_id: '22222222-2222-2222-2222-222222222222', person_name: '小李', cover_photo_id: null, total_places: 1, total_photos: 5, total_days: 1, places: [{ name: '上海', level: 'city', place_key: 'place:region:city:2:中国2:上海2:上海', scene_id: null, parent_label: '上海', photo_count: 5, record_days: 1, first_date: '2024-03-01', last_date: '2024-03-01' }] },
+    ])) }))
+    await page.goto('/album/location')
+    await expect(page.getByRole('region', { name: '小周的足迹' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '小李的足迹' })).toBeVisible()
+    await expect(page.getByRole('combobox', { name: '选择统计人物' })).toHaveCount(0)
+    await expect(page.getByText('1 个城市 · 12 张照片 · 3 个记录日')).toBeVisible()
+    await page.getByRole('button', { name: '查看小周在杭州的 12 张照片' }).click()
+    await expect(page).toHaveURL(/personId=11111111-1111-1111-1111-111111111111/)
+    await expect(page).toHaveURL(/place_key=/)
   })
-
-  test("\u70ed\u529b\u56fe\u7a7a\u6570\u636e -> \u663e\u793a\u201c\u6682\u65e0\u6570\u636e\u201d", async ({ page }) => {
-    await page.unroute("**/api/location-stats/heatmap**").catch(() => {})
-    await page.route("**/api/location-stats/heatmap**", async (route: Route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify(ok({ total_photos: 0, total_days: 0, data: [] })),
-      })
-    })
+  test("切换指标及月份，月度选择显示具体年份", async ({ page }) => {
     await page.goto("/album/location")
-    await expect(page.getByText("\u6682\u65e0\u6570\u636e").first()).toBeVisible({ timeout: 15_000 })
+    await page.getByRole("button", { name: "记录天数", exact: true }).click()
+    await expect(page.getByRole("img", { name: "年度记录天数柱状图" })).toBeVisible()
+    await page.getByRole("button", { name: "按月", exact: true }).click()
+    await expect(page.getByLabel("趋势年份")).toBeVisible()
+    await expect(page.getByRole("img", { name: "月度记录天数柱状图" })).toBeVisible()
+  })
+  test("地点排名显示照片单位和查看入口", async ({ page }) => {
+    await page.goto("/album/location")
+    await expect(page.getByRole("button", { name: /上海，.*张照片，查看照片/ })).toBeVisible()
+    await expect(page.getByRole("button", { name: /北京，.*张照片，查看照片/ })).toBeVisible()
+    await expect(page.getByText(/不代表独立到访次数/)).toBeVisible()
+  })
+  test("日历单元格可下钻，日期筛选展示正确", async ({ page }) => {
+    await page.goto("/album/location")
+    const cell = page.locator(".calendar-cell[aria-label]").first()
+    await expect(cell).toBeVisible()
+    await cell.click()
+    await expect(page).toHaveURL(/\/album\/location/)
+    await expect(page.getByRole("heading", { name: "拍摄日历" })).not.toBeVisible()
+  })
+  test("时间数据失败可重试", async ({ page }) => {
+    await page.route("**/api/location-stats/heatmap**", route => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ code: 500, msg: "boom", data: null }) }))
+    await page.goto("/album/location")
+    await expect(page.getByText("拍摄日历加载失败", { exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "重试", exact: true }).first().click()
+    await expect(page.getByText("时间统计加载失败", { exact: true })).toBeVisible()
+  })
+  test("无拍摄数据时显示明确空状态", async ({ page }) => {
+    await page.route("**/api/location-stats/heatmap**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ok({ total_photos: 0, total_days: 0, data: [] })) }))
+    await page.goto("/album/location")
+    await expect(page.getByText("这段时间还没有拍摄记录").first()).toBeVisible()
   })
 })
+
 test.describe("LocationDetail 位置详情 @views-coverage", () => {
   test("访问位置详情路由 -> 调用 /api/locations/<name>/photos", async ({ page }) => {
     const photosCalls: string[] = []

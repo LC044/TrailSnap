@@ -1,5 +1,5 @@
 <template>
-  <section class="space-y-4 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800 sm:p-5">
+  <section class="ts-surface ts-settings-panel space-y-4">
     <div>
       <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">大模型连接与任务配置</h3>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">管理 OpenAI 兼容连接，并为智能分析和 AI 对话选择默认模型。</p>

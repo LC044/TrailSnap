@@ -56,6 +56,8 @@ const startDate = route.query.startDate as string | undefined
 const endDate = route.query.endDate as string | undefined
 const sceneId = route.query.sceneId as string | undefined
 const placeKey = route.query.place_key as string | undefined
+const personId = route.query.personId as string | undefined
+const personName = route.query.personName as string | undefined
 
 const loading = ref(false)
 const photos = ref<AlbumImage[]>([])
@@ -90,7 +92,7 @@ const fetchTimeCompareSummary = async () => {
 
 const title = computed(() => {
   if (name === 'map_selection') return route.query.title as string || '地图精选'
-  return name
+  return personId ? `${personName || '人物'} · ${name}` : name
 })
 const calculateTimelineStats = (photos: AlbumImage[]) => {
   const stats = new Map<string, { year: number, month: number, day: number, count: number }>()
@@ -135,7 +137,7 @@ const fetchAllPhotos = async () => {
       while (hasNext) {
         // Encode name to ensure special characters (like / or ?) don't break the path
         const safeName = encodeURIComponent(name)
-        const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId, placeKey)
+        const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId, placeKey, personId)
 
         const newPhotos = rawPhotos.map(mapPhotoToImage)
 
@@ -168,7 +170,7 @@ const loadMore = async () => {
     const limit = 100
     // Encode name to ensure special characters (like / or ?) don't break the path
     const safeName = encodeURIComponent(name)
-    const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId, placeKey)
+    const rawPhotos = await locationService.getLocationPhotos(safeName, level, skip.value, limit, startDate, endDate, sceneId, placeKey, personId)
 
     const newPhotos = rawPhotos.map(mapPhotoToImage)
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="ts-browse-page album-library mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-6 pt-0 sm:py-6">
+  <div class="ts-browse-page album-library mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-6">
     <!-- Header -->
     <div class="ts-browse-header mb-5 flex items-center justify-between gap-3 sm:mb-8">
       <div class="min-w-0">

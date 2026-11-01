@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="recycle_bin" title="回收站设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
             <el-form-item label="保留天数">
               <el-input-number v-model="recycleBinForm.retention_days" :min="1" :max="365" class="w-full sm:w-auto" />

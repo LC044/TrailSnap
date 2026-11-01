@@ -1,12 +1,9 @@
 <template>
-  <div class="max-w-3xl space-y-8">
-    <div>
-      <h2 class="text-xl md:text-2xl font-bold text-gray-800 dark:text-white mb-2">问题反馈</h2>
-      <p class="text-gray-500 dark:text-gray-400">遇到问题或有功能建议？可以直接提交，并持续查看审核和版本进展。</p>
-    </div>
+  <div class="ts-settings-page">
+<SettingsPageHeader title="需求平台" description="提交需求、反馈问题，并持续查看审核和版本进展。" />
 
     <!-- Requirement platform -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+    <div class="ts-surface ts-settings-panel">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-10 h-10 rounded-lg bg-gray-900 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
           <ListChecks class="w-5 h-5 text-white" />
@@ -73,7 +70,7 @@
       </div>
     </div>
 
-    <section class="ts-surface p-5 md:p-6 space-y-4" aria-labelledby="ai-feedback-title">
+    <section class="ts-surface ts-settings-panel space-y-4" aria-labelledby="ai-feedback-title">
       <div class="flex items-start gap-3">
         <div class="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
           <Sparkles class="w-5 h-5 text-primary-600 dark:text-primary-400" />
@@ -113,7 +110,7 @@
     </section>
 
     <!-- Community -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 p-6">
+    <div class="ts-surface ts-settings-panel">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center flex-shrink-0">
           <MessageCircle class="w-5 h-5 text-primary-600 dark:text-primary-400" />
@@ -138,6 +135,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { computed, nextTick, ref } from 'vue'
 import { Bug, Lightbulb, ExternalLink, ListChecks, AlertCircle, MessageCircle, Sparkles, Copy } from 'lucide-vue-next'
 import { copyTextToClipboard } from '@/utils/clipboard'

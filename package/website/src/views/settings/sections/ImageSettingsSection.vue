@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="image" title="图片设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <div class="text-sm text-gray-500 dark:text-gray-400 mt-1 w-full">修改图片配置后将在下次新增照片时生效，如果要修改已有图片质量请在任务管理中执行缩略图生成任务</div>
           <el-form label-position="top" class="max-w-3xl">
             <el-form-item label="缩略图大小">

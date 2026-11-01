@@ -57,12 +57,9 @@ PowerShell 脚本使用对应的 `-Upgrade`、`-Uninstall` 参数；运行 `Get-
 - 如有端口冲突，修改 `frontend.ports` 中唯一的访问端口
 
 ```yaml
-version: '3.8'
-
 services:
   postgres:
     image: crpi-d7wuvvdylhqugyu2.cn-hangzhou.personal.cr.aliyuncs.com/siyuan044/pgvector:pg18-trixie
-    container_name: postgres_container
     restart: always
     environment:
       POSTGRES_DB: trailsnap

@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 px-[var(--ts-page-gutter)] py-6">
+  <div class="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300 px-[var(--ts-page-gutter)] ts-page-content">
     <div class="mx-auto w-full max-w-screen-2xl mb-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
         <BackButton label="返回列表" @click="goBack" />

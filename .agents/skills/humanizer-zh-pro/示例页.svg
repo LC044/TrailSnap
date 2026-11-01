@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f5f7fa"/>
+      <stop offset="100%" stop-color="#e4edf5"/>
+    </linearGradient>
+    <linearGradient id="left" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fee2e2"/>
+      <stop offset="100%" stop-color="#fecaca"/>
+    </linearGradient>
+    <linearGradient id="right" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d1fae5"/>
+      <stop offset="100%" stop-color="#a7f3d0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景 -->
+  <rect width="800" height="400" fill="url(#bg)"/>
+
+  <!-- 标题 -->
+  <text x="400" y="52" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="26" font-weight="bold" fill="#111827">humanizer-zh · 去 AI 味效果示例</text>
+  <text x="400" y="82" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="14" fill="#4b5563">保留事实与数据 · 降低 AIGC 检测率</text>
+
+  <!-- 左卡片：改写前 -->
+  <rect x="40" y="110" width="340" height="230" rx="16" fill="#fff" stroke="#fecaca" stroke-width="2"/>
+  <rect x="40" y="110" width="340" height="44" rx="16" fill="url(#left)"/>
+  <rect x="40" y="132" width="340" height="22" fill="#fee2e2"/>
+  <text x="68" y="139" font-family="Microsoft YaHei, sans-serif" font-size="15" font-weight="bold" fill="#991b1b">🤖 改写前（AI 痕迹明显）</text>
+  <text x="62" y="178" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#7f1d1d">随着信息技术的飞速发展，数字化</text>
+  <text x="62" y="198" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#7f1d1d">转型已成为推动社会治理现代化的</text>
+  <text x="62" y="218" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#7f1d1d">重要引擎。本文旨在探讨关键路</text>
+  <text x="62" y="238" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#7f1d1d">径，并分析其面临的机遇与挑战。</text>
+  <text x="62" y="258" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#7f1d1d">研究表明，数字治理既能提升效率，</text>
+  <text x="62" y="278" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#7f1d1d">又可能引发数据安全风险……</text>
+
+  <!-- 右卡片：改写后 -->
+  <rect x="420" y="110" width="340" height="230" rx="16" fill="#fff" stroke="#a7f3d0" stroke-width="2"/>
+  <rect x="420" y="110" width="340" height="44" rx="16" fill="url(#right)"/>
+  <rect x="420" y="132" width="340" height="22" fill="#d1fae5"/>
+  <text x="448" y="139" font-family="Microsoft YaHei, sans-serif" font-size="15" font-weight="bold" fill="#065f46">✍️ 改写后（去 AI 味）</text>
+  <text x="442" y="178" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">这几年基层治理用上了不少数字工</text>
+  <text x="442" y="198" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">具。浙江某街道把数据打通后，重</text>
+  <text x="442" y="218" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">复投诉处理时间从 5 天缩到 1 天。</text>
+  <text x="442" y="238" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">但 2024 年抽查发现，37% 区县平</text>
+  <text x="442" y="258" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">台没有明确数据脱敏流程。重点不</text>
+  <text x="442" y="278" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">在"要不要数字化"，而是先把权限</text>
+  <text x="442" y="298" font-family="Microsoft YaHei, sans-serif" font-size="12" fill="#064e3b">和责任写进制度……</text>
+
+  <!-- 中间箭头 -->
+  <g transform="translate(390, 220)">
+    <circle cx="10" cy="0" r="18" fill="#2563eb"/>
+    <path d="M2 -6 L18 0 L2 6" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- 底部 -->
+  <text x="400" y="375" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="13" fill="#6b7280">适配 知网 / 万方 / 维普 / 朱雀 / BestPaper / 论文狗</text>
+</svg>

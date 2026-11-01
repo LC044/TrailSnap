@@ -30,7 +30,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     await clickSettingTab(page, 'tasks');
     // TaskManagement.vue 模板硬编码 <h2>任务管理</h2>
-    await expect(page.locator('h2', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('电脑网页的「连接手机 App」生成可扫描二维码', async ({ page }) => {
@@ -70,7 +70,7 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     await clickSettingTab(page, 'performance');
     // PerformanceTest.vue 模板硬编码 <h2>性能测试</h2>
-    await expect(page.locator('h2', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('设置提供模型管理并移除独立扩展入口', async ({ page }) => {
@@ -112,18 +112,18 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
     // 任务管理
     await clickSettingTab(page, 'tasks');
-    await expect(page.locator('h2', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
 
     // 切到外部图库 — 任务管理 H2 应消失，外部图库 H2 出现
     await clickSettingTab(page, 'external');
     await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('h2', { hasText: '任务管理' })).toHaveCount(0);
+    await expect(page.locator('h1', { hasText: '任务管理' })).toHaveCount(0);
 
     // 再切到性能测试 — 前两个 H2 都应消失
     await clickSettingTab(page, 'performance');
-    await expect(page.locator('h2', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toHaveCount(0);
-    await expect(page.locator('h2', { hasText: '任务管理' })).toHaveCount(0);
+    await expect(page.locator('h1', { hasText: '任务管理' })).toHaveCount(0);
   });
   test('外部图库可切换到图片文件过滤并返回目录管理', async ({ page }) => {
     await page.goto('/settings');

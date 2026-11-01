@@ -1,0 +1,8 @@
+# humanizer-zh 依赖声明
+#
+# 本技能为纯规则 + Markdown 的指令型（prompt）技能，去 AI 味 / AI 率检测
+# 全部由本助手按 SKILL.md 规则在本地完成，不调用任何 Python 第三方库。
+# 因此无需安装任何依赖；下列仅为占位说明，pip 安装时不会产生实际依赖。
+#
+# 若需处理 .docx 文档，由 WorkBuddy 本地 Office 编辑通道完成，亦不要求用户
+# 额外配置 Python 环境。

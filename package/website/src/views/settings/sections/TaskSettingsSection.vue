@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="task" title="任务设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
             <el-form-item label="后台处理性能">
               <div class="grid w-full gap-2 sm:grid-cols-2">

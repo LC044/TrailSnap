@@ -124,12 +124,9 @@ For more options (non-interactive mode, GPU acceleration, custom ports, etc.), s
 
 docker-compose.yml configuration (note: modify the mount path to a local path, otherwise local photo directories cannot be scanned)
 ```yml
-version: '3.8'
-
 services:
   postgres:
     image: siyuan044/pgvector:pg18-trixie
-    container_name: postgres_container
     restart: always
     environment:
       TZ: Asia/Shanghai

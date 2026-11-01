@@ -1,6 +1,6 @@
 <template>
   <div
-    class="ticket-wallet ts-browse-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-8 pt-0 sm:py-6"
+    class="ticket-wallet ts-browse-page mx-auto w-full max-w-screen-2xl px-[var(--ts-page-gutter)] pb-8"
   >
     <header
       class="ts-browse-header mb-5 flex items-center justify-between gap-3"
@@ -1290,8 +1290,3 @@ async function importFile(event: Event) {
   }
 }
 </script>
-<style>
-.ticket-wallet .ts-glass-button {
-  height: 44px;
-}
-</style>

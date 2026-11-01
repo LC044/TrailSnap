@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="scan_schedule" title="定时扫描设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
             <el-form-item label="扫描模式">
               <el-radio-group v-model="scanScheduleForm.mode">

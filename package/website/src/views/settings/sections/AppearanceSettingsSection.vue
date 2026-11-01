@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="appearance" title="外观设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <div class="space-y-6 max-w-3xl">
 
         <div>

@@ -1,9 +1,8 @@
 <template>
-  <div>
+  <div class="ts-settings-page">
     <!-- Header with Actions -->
-    <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
-      <h1 class="ts-page-title">系统设置</h1>
-      <div class="ts-form-actions">
+    <SettingsPageHeader title="系统设置" description="管理安全、地图、照片浏览与后台处理选项">
+      <template #actions>
         <el-upload
           :auto-upload="false"
           :show-file-list="false"
@@ -13,8 +12,8 @@
           <el-button>导入配置</el-button>
         </el-upload>
         <el-button @click="handleExport">导出配置</el-button>
-      </div>
-    </div>
+      </template>
+    </SettingsPageHeader>
     <!-- Map Settings -->
     <SecuritySettingsSection />
 
@@ -50,6 +49,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { provideBasicSettings } from '@/composables/settings/useBasicSettings'
 import SecuritySettingsSection from './sections/SecuritySettingsSection.vue'
 import TaskSettingsSection from './sections/TaskSettingsSection.vue'

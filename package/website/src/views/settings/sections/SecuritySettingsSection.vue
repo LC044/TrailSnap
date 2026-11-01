@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="security" title="安全设置">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
             <el-form-item label="允许新用户注册">
               <div class="flex items-center gap-3">

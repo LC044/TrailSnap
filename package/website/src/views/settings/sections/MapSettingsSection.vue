@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="map" title="地图设置">
-<div class="px-4 sm:px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <div class="max-w-3xl rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-5 dark:border-gray-700 dark:bg-gray-900">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div class="flex min-w-0 items-start gap-3">

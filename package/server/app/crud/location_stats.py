@@ -269,3 +269,96 @@ def get_heatmap_range(db: Session, owner_id: UUID, start_date: Optional[str] = N
         data.append(HeatmapItem(date=as_date_string(r.d), count=r.cnt))
 
     return HeatmapRangeResponse(total_photos=total_photos, total_days=len(data), data=data)
+
+
+def person_photo_condition(db: Session, owner_id: UUID, person_id: UUID):
+    """EXISTS keeps one photo once even if the same identity has multiple faces."""
+    from app.db.models.face import Face, FaceIdentity
+    return db.query(Face.id).join(FaceIdentity, Face.face_identity_id == FaceIdentity.id).filter(
+        Face.photo_id == Photo.id,
+        Face.is_deleted.is_(False),
+        FaceIdentity.id == person_id,
+        FaceIdentity.owner_id == owner_id,
+        FaceIdentity.is_deleted.is_(False),
+        FaceIdentity.is_hidden.is_(False),
+    ).exists()
+
+
+def get_person_places(db: Session, owner_id: UUID, person_id: UUID, level: str = 'city',
+                      start_date: Optional[str] = None, end_date: Optional[str] = None,
+                      parent_region: Optional[str] = None):
+    from sqlalchemy import or_
+    from app.schemas.location_stats import PersonPlaceStats, PersonPlacesResponse
+    from app.service.relations import REGION_FIELDS, region_key
+
+    date_expr = date_only(db, Photo.photo_time)
+    if level == 'scene':
+        columns = [Scene.id, Scene.name]
+    elif level in REGION_FIELDS[1:]:
+        columns = [func.coalesce(func.trim(getattr(PhotoMetadata, field)), '') for field in REGION_FIELDS[:REGION_FIELDS.index(level) + 1]]
+    else:
+        raise ValueError('Unsupported location level')
+    query = db.query(*columns, date_expr, func.count(Photo.id)).select_from(Photo).join(
+        PhotoMetadata, Photo.id == PhotoMetadata.photo_id,
+    ).filter(Photo.owner_id == owner_id, Photo.is_deleted.is_(False), person_photo_condition(db, owner_id, person_id))
+    if level == 'scene':
+        query = query.join(Scene, PhotoMetadata.scene_id == Scene.id).filter(or_(Scene.owner_id == owner_id, Scene.owner_id.is_(None)))
+    else:
+        query = query.filter(columns[-1] != '')
+    if parent_region:
+        query = query.filter(PhotoMetadata.province == parent_region)
+    rows = _apply_date_filter(query, start_date, end_date).group_by(*columns, date_expr).all()
+    grouped = {}
+    all_dates = set()
+    for row in rows:
+        values, day, count = list(row[:-2]), as_date_string(row[-2]) if row[-2] is not None else None, row[-1]
+        key = f'scene:{values[0]}' if level == 'scene' else region_key(level, values)
+        item = grouped.setdefault(key, {'values': values, 'count': 0, 'dates': set()})
+        item['count'] += count
+        if day:
+            item['dates'].add(day)
+            all_dates.add(day)
+    places = []
+    for key, item in grouped.items():
+        values, dates = item['values'], sorted(item['dates'])
+        places.append(PersonPlaceStats(
+            name=values[-1], level=level,
+            place_key=None if level == 'scene' else key,
+            scene_id=str(values[0]) if level == 'scene' else None,
+            parent_label=' · '.join(v for v in values[1:-1] if v) if level != 'scene' else '',
+            photo_count=item['count'], record_days=len(dates),
+            first_date=dates[0] if dates else None, last_date=dates[-1] if dates else None,
+        ))
+    places.sort(key=lambda p: (-p.photo_count, p.name, p.place_key or p.scene_id or ''))
+    return PersonPlacesResponse(places=places, total_places=len(places), total_photos=sum(p.photo_count for p in places), total_days=len(all_dates))
+
+
+def get_top_person_places(db: Session, owner_id: UUID, level: str = 'city',
+                          start_date: Optional[str] = None, end_date: Optional[str] = None,
+                          parent_region: Optional[str] = None, limit: int = 5):
+    from sqlalchemy import String, cast, or_
+    from app.db.models.face import Face, FaceIdentity
+    from app.schemas.location_stats import TopPersonPlaces
+    count = func.count(func.distinct(Photo.id))
+    query = db.query(FaceIdentity.id, FaceIdentity.identity_name,
+                     func.max(cast(Photo.id, String)).label('cover'), count.label('photo_count')).select_from(FaceIdentity).join(
+        Face, Face.face_identity_id == FaceIdentity.id,
+    ).join(Photo, Photo.id == Face.photo_id).join(PhotoMetadata, PhotoMetadata.photo_id == Photo.id).filter(
+        FaceIdentity.owner_id == owner_id, FaceIdentity.is_deleted.is_(False), FaceIdentity.is_hidden.is_(False),
+        Face.is_deleted.is_(False), Photo.owner_id == owner_id, Photo.is_deleted.is_(False),
+    )
+    if level == 'scene':
+        query = query.join(Scene, Scene.id == PhotoMetadata.scene_id).filter(or_(Scene.owner_id == owner_id, Scene.owner_id.is_(None)))
+    elif level in ('city', 'province', 'district'):
+        query = query.filter(func.trim(getattr(PhotoMetadata, level)) != '')
+    else:
+        raise ValueError('Unsupported location level')
+    if parent_region:
+        query = query.filter(PhotoMetadata.province == parent_region)
+    leaders = _apply_date_filter(query, start_date, end_date).group_by(
+        FaceIdentity.id, FaceIdentity.identity_name,
+    ).order_by(count.desc(), FaceIdentity.id).limit(limit).all()
+    return [TopPersonPlaces(
+        person_id=str(person.id), person_name=person.identity_name or '未命名人物', cover_photo_id=person.cover,
+        **get_person_places(db, owner_id, person.id, level, start_date, end_date, parent_region).model_dump(),
+    ) for person in leaders]

@@ -1,6 +1,6 @@
 <template>
-  <div class="ts-page-background min-h-full px-[var(--ts-page-gutter)] pb-8">
-    <header class="ts-page-header flex items-center gap-3 py-4">
+  <div class="ts-page-background mx-auto w-full max-w-screen-2xl min-h-full px-[var(--ts-page-gutter)] pb-8">
+    <header class="ts-browse-header flex items-center gap-3">
       <BackButton label="返回" @click="goBack" />
       <h1 class="ts-page-title">以图搜图</h1>
     </header>

@@ -15,6 +15,7 @@ function component(directory, inlineTemplate, calls) {
   const store = vue.reactive({ directory, discovery: null, error: null, loading: false, clearPreview() {}, async load() {}, async loadDiscovery() {} })
   const deps = {
     vue,
+    '@/components/ui/SettingsPageHeader.vue': { default: { render: () => null } },
     'lucide-vue-next': { FolderOpen: { render: () => null } },
     'element-plus': { ElMessageBox: {} },
     '@/config/server': { isTauriApp: () => true },

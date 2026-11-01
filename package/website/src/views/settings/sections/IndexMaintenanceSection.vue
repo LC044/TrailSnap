@@ -1,6 +1,6 @@
 <template>
 <SettingsSection v-model="activeNames" name="index" title="索引维护">
-<div class="px-6 pb-6">
+<div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
         <el-form-item label="重建索引">
           <el-button type="danger" @click="rebuildIndex" :disabled="indexStatus.running">立即重建索引</el-button>

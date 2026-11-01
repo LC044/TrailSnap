@@ -1,0 +1,4 @@
+interface:
+  display_name: "TrailSnap 产品运营"
+  short_description: "面向 NAS 用户的版本宣传、日常推广、海报与三平台图文运营"
+  default_prompt: "使用 $trailsnap-marketing，为行影集制定以曝光和 GitHub Star 为目标的图文运营方案。"

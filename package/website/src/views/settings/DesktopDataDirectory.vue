@@ -1,12 +1,9 @@
 <template>
-  <section class="max-w-3xl space-y-6" :aria-busy="working">
-    <header>
-      <h2 class="text-xl font-semibold md:text-2xl">照片与数据位置</h2>
-      <p class="ts-muted mt-2 text-sm">查看保存位置、备份图库，或找回旧版本的照片。</p>
-    </header>
-    <p v-if="!isTauriApp()" class="ts-surface p-5">请在行影集桌面客户端中管理本机照片位置。</p>
+  <section class="ts-settings-page" :aria-busy="working">
+    <SettingsPageHeader title="照片与数据位置" description="查看保存位置、备份图库，或找回旧版本的照片。" />
+    <p v-if="!isTauriApp()" class="ts-surface ts-settings-panel">请在行影集桌面客户端中管理本机照片位置。</p>
     <template v-else>
-      <div v-if="store.error" role="alert" class="ts-surface space-y-3 p-5">
+      <div v-if="store.error" role="alert" class="ts-surface space-y-3 ts-settings-panel">
         <p class="break-words text-[var(--ts-color-danger)]">{{ store.error }}</p>
         <div class="flex flex-wrap gap-3">
           <button v-if="store.waitingForTasks" class="ts-button ts-button-primary" :disabled="working" @click="store.waitAndRestart()">继续等待，结束后重启恢复</button>
@@ -17,7 +14,7 @@
       </div>
       <p v-if="store.loading" role="status" class="ts-muted">{{ store.inspecting ? '正在检查照片和文件，大图库需要多等一会儿…' : '正在读取保存位置…' }}</p>
       <template v-if="store.directory">
-        <div class="ts-surface space-y-4 p-5 md:p-6">
+        <div class="ts-surface ts-settings-panel space-y-4">
           <h3 class="font-medium">行影集文件夹</h3>
           <p class="ts-muted break-all text-sm" data-testid="desktop-location">{{ locationRoot }}</p>
           <p class="ts-muted text-sm">{{ portable && !detachedData ? '程序、相册、照片记录和设置保存在这个文件夹中。' : portable ? '这里是行影集的程序文件夹。' : '这里保存相册、照片记录和设置。' }}引用其他文件夹中的原照片时，仍需保留那些文件夹。</p>
@@ -42,7 +39,7 @@
             </div>
           </details>
         </div>
-        <div v-if="store.directory.pendingRoot" class="ts-surface space-y-3 p-5">
+        <div v-if="store.directory.pendingRoot" class="ts-surface space-y-3 ts-settings-panel">
           <h3 class="font-medium">等待搬迁</h3>
           <p class="ts-muted break-all text-sm">{{ store.directory.pendingRoot }}</p>
           <p class="ts-muted text-sm">重启前会等待上传和后台任务结束；原目录保留。未完成的手机上传可在重启后重试。</p>
@@ -51,11 +48,11 @@
             <button class="ts-button ts-button-secondary" :disabled="busy" @click="store.save(null)">取消搬迁</button>
           </div>
         </div>
-        <div v-if="store.directory.migrationError" role="alert" class="ts-surface p-5">
+        <div v-if="store.directory.migrationError" role="alert" class="ts-surface ts-settings-panel">
           <p>上次搬迁未完成，仍使用原位置。</p><p class="ts-muted mt-2 break-words text-sm">{{ store.directory.migrationError }}</p>
         </div>
         <template v-if="store.directory.portableSupported">
-          <div v-if="operation" class="ts-surface space-y-3 p-5" role="status">
+          <div v-if="operation" class="ts-surface space-y-3 ts-settings-panel" role="status">
             <h3 class="font-medium">{{ operation.phase === 'completed' ? (operation.activate ? '旧照片已导入以下位置' : '上次备份已完成') : '上次复制尚未完成' }}</h3>
             <p class="ts-muted break-all text-sm">副本位置：{{ operation.target }}</p>
             <p v-if="operation.phase === 'completed' && !operation.activate" class="ts-muted text-sm">{{ operation.copyExternal ? '已包含已登记的外部原照片。建议打开副本核对后再清理原位置。' : '未额外复制外部原照片，副本可能仍依赖原磁盘，请勿将它当作那些原照片的备份。' }}</p>
@@ -72,7 +69,7 @@
               </div>
             </template>
           </div>
-          <div v-if="!unfinished" class="ts-surface space-y-5 p-5 md:p-6">
+          <div v-if="!unfinished" class="ts-surface space-y-5 ts-settings-panel">
             <div class="flex flex-wrap gap-3" role="group" aria-label="管理图库">
               <button class="ts-button" :class="!importing ? 'ts-button-primary' : 'ts-button-secondary'" :aria-pressed="showCopyForm && !importing" :disabled="busy" @click="selectMode('current')">备份当前图库</button>
               <button class="ts-button" :class="importing ? 'ts-button-primary' : 'ts-button-secondary'" :aria-pressed="showCopyForm && importing" :disabled="busy" @click="selectMode('legacy')">找回旧版本照片</button>
@@ -134,12 +131,12 @@
               </template>
           </div>
         </template>
-        <div v-if="store.converting" class="ts-surface space-y-3 p-5" role="status" aria-live="polite">
+        <div v-if="store.converting" class="ts-surface space-y-3 ts-settings-panel" role="status" aria-live="polite">
           <p class="font-medium">{{ progressLabel }}</p>
           <template v-if="store.progress?.total"><progress class="w-full accent-[var(--theme-primary)]" :value="store.progress.completed" :max="store.progress.total" /><p class="ts-muted text-sm">{{ store.progress.completed }} / {{ store.progress.total }} 个文件</p></template>
           <p class="ts-muted text-sm">请保持窗口打开，不要拔出磁盘。原图库仍保留。</p>
         </div>
-        <details class="ts-surface p-5 text-sm">
+        <details class="ts-surface ts-settings-panel text-sm">
           <summary class="cursor-pointer font-medium">高级信息</summary>
           <div class="ts-muted mt-3 space-y-3">
             <p v-if="portable">搬迁上方的行影集文件夹时，请保留其中全部内容。</p>
@@ -157,6 +154,7 @@
 </template>
 
 <script setup lang="ts">
+import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { computed, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { FolderOpen } from 'lucide-vue-next'
 import { ElMessageBox } from 'element-plus'

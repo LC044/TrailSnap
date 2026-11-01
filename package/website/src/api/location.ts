@@ -54,7 +54,43 @@ export interface HeatmapRangeResponse {
   data: HeatmapItem[];
 }
 
+export interface PersonPlaceStats {
+  name: string;
+  level: 'city' | 'province' | 'district' | 'scene';
+  place_key: string | null;
+  scene_id: string | null;
+  parent_label: string;
+  photo_count: number;
+  record_days: number;
+  first_date: string | null;
+  last_date: string | null;
+}
+export interface PersonPlacesResponse {
+  places: PersonPlaceStats[];
+  total_places: number;
+  total_photos: number;
+  total_days: number;
+}
+
+export interface TopPersonPlaces extends PersonPlacesResponse {
+  person_id: string;
+  person_name: string;
+  cover_photo_id: string | null;
+}
+
 export const locationService = {
+  async getTopPersonPlaces(level: string, startDate?: string, endDate?: string, parentRegion?: string) {
+    const response = await request.get<TopPersonPlaces[]>('/api/location-stats/top-person-places', {
+      params: { level, start_date: startDate || undefined, end_date: endDate || undefined, parent_region: parentRegion || undefined },
+    });
+    return response.data;
+  },
+  async getPersonPlaces(personId: string, level: string, startDate?: string, endDate?: string, parentRegion?: string) {
+    const response = await request.get<PersonPlacesResponse>('/api/location-stats/person-places', {
+      params: { person_id: personId, level, start_date: startDate || undefined, end_date: endDate || undefined, parent_region: parentRegion || undefined },
+    });
+    return response.data;
+  },
   async getYears() {
     return cachedLocationMetadata(`${getServerUrl()}:${localStorage.getItem('user_token')}:years`, async () => {
       const data = await request.get<number[]>('/api/locations/years');
@@ -90,9 +126,9 @@ export const locationService = {
     return data.data;
   },
   
-  async getLocationPhotos(name: string, level: 'city' | 'province' | 'district' | 'scene' = 'city', skip: number = 0, limit: number = 50, startDate?: string, endDate?: string, sceneId?: string, placeKey?: string) {
+  async getLocationPhotos(name: string, level: 'city' | 'province' | 'district' | 'scene' = 'city', skip: number = 0, limit: number = 50, startDate?: string, endDate?: string, sceneId?: string, placeKey?: string, personId?: string) {
     const data = await request.get<Photo[]>(`/api/locations/${name}/photos`, {
-      params: { level, skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, scene_id: sceneId || undefined, place_key: placeKey || undefined }
+      params: { level, skip, limit, start_date: startDate || undefined, end_date: endDate || undefined, scene_id: sceneId || undefined, place_key: placeKey || undefined, person_id: personId || undefined }
     });
     return data.data;
   },

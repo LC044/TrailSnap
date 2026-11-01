@@ -1,10 +1,12 @@
 <template>
-  <div class="ts-page-background search-page h-full min-h-0 flex flex-col">
-    <header class="ts-page-header shrink-0 px-[var(--ts-page-gutter)] py-2">
-      <div v-if="!embedded" class="mb-5 flex items-center gap-3">
-        <BackButton label="返回" @click="goBack" />
+  <div class="ts-page-background search-page mx-auto w-full max-w-screen-2xl h-full min-h-0 flex flex-col">
+    <header class="shrink-0 px-[var(--ts-page-gutter)] pb-2">
+      <div v-if="!embedded" class="ts-browse-header flex items-center gap-3">
         <h1 class="ts-page-title flex-1 text-gray-900 dark:text-white">搜索</h1>
-        <button class="search-agent-button ts-liquid-glass flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-primary-600 dark:text-primary-400" aria-label="AI 助手" @click="uiStore.openAgent()"><Bot class="h-6 w-6" /></button>
+        <div class="ts-liquid-glass ts-glass-toolbar" aria-label="搜索工具栏">
+          <button class="ts-glass-button" aria-label="以图搜图" title="以图搜图" @click="router.push('/search/image')"><Images class="h-5 w-5" /></button>
+          <button class="ts-glass-button" aria-label="AI 助手" title="AI 助手" @click="uiStore.openAgent()"><Bot class="h-5 w-5" /></button>
+        </div>
       </div>
       <div class="relative min-w-0">
         <input ref="searchInputRef" v-model="searchText" type="search" aria-label="搜索照片" placeholder="搜索时间、地点、人物、类别…" class="ts-input search-input w-full rounded-full pl-10 pr-11" @input="onInput" @keydown.enter.prevent.stop="handleSearch" />
@@ -12,7 +14,6 @@
         <button v-if="searchText" class="ts-icon-button ts-button-ghost absolute right-0 top-1/2 -translate-y-1/2" aria-label="清空搜索" @click="clearSearch"><X class="h-4 w-4" /></button>
       </div>
     </header>
-    <div v-if="!embedded" class="px-[var(--ts-page-gutter)] pt-3"><button class="ts-button ts-button-secondary" @click="router.push('/search/image')"><Images class="h-4 w-4" />以图搜图</button></div>
     <!-- Suggestions Area -->
     <div class="flex-1 min-h-0 overflow-y-auto px-[var(--ts-page-gutter)] py-5">
       <div v-if="searchText" class="ts-surface flex flex-col overflow-hidden">
@@ -94,7 +95,6 @@
 </template>
 
 <script setup lang="ts">
-import BackButton from '@/components/ui/BackButton.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { 
@@ -117,7 +117,6 @@ import { useDebounceFn } from '@vueuse/core'
 import searchService, { type SearchSuggestion } from '@/api/search'
 import { parseDateRange } from '@/utils/date'
 import IconButton from '@/components/ui/IconButton.vue'
-import { useAppBack } from '@/composables/useAppBack'
 import { useUiStore } from '@/stores/uiStore'
 import { useSearchStore } from '@/stores/searchStore'
 import { useAlbumStore } from '@/stores/albumStore'
@@ -181,7 +180,6 @@ const openRepresentative = (id: keyof SmartAlbumOverview, route: string, item: S
 }
 const runExample = (value: string) => { searchText.value = value; handleSearch() }
 
-const goBack = useAppBack('/')
 
 const clearSearch = () => {
   searchText.value = ''
@@ -289,7 +287,6 @@ const getIcon = (type: string) => {
 .search-cover-strip { display: flex; gap: 12px; overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity; padding-bottom: 4px; }
 .search-cover-strip::-webkit-scrollbar { display: none; }
 .search-cover-card { flex: 0 0 32%; min-width: 112px; scroll-snap-align: start; }
-.search-agent-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 input[type=search]::-webkit-search-cancel-button { display: none; }
 .animate-in {
   animation: slideIn 0.3s ease-out;
