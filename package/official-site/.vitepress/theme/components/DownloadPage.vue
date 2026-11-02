@@ -278,14 +278,28 @@ const debAccel = computed(() => accelLink('linux', 'deb'))
 
 async function fetchAssets(): Promise<boolean> {
   try {
-    const response = await fetch('https://api.github.com/repos/LC044/TrailSnap/releases/latest', {
-      headers: { Accept: 'application/vnd.github+json' }
-    })
+    const response = await fetch('/version.json', { cache: 'no-cache' })
     if (!response.ok) return false
-    const release = await response.json()
-    releaseName.value = release.name || release.tag_name || ''
-    assets.value = Array.isArray(release.assets) ? release.assets : []
-    return assets.value.length > 0
+    const versions = await response.json()
+    if (!Array.isArray(versions) || versions.length === 0) return false
+    // 与安卓更新检查一致：版本清单按发布时间排列，最后一项为最新版本。
+    const version = versions[versions.length - 1]?.version
+    if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) return false
+    // 与发布脚本的统一命名保持一致；这里不请求 GitHub API 查询附件。
+    const names = [
+      `TrailSnap-${version}-desktop-windows-x64-setup.exe`,
+      `TrailSnap-${version}-desktop-windows-x64-portable.zip`,
+      `TrailSnap-${version}-desktop-macos-arm64.dmg`,
+      `TrailSnap-${version}-desktop-linux-x64.AppImage`,
+      `TrailSnap-${version}-desktop-linux-x64.deb`,
+      `TrailSnap-${version}-fnos-x86.fpk`,
+    ]
+    releaseName.value = `v${version}`
+    assets.value = names.map(name => ({
+      name,
+      browser_download_url: `https://github.com/LC044/TrailSnap/releases/download/v${version}/${name}`,
+    }))
+    return true
   } catch {
     return false
   }

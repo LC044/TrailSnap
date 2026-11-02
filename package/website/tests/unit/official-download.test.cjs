@@ -76,7 +76,7 @@ test('Linux format choices resolve the selected asset regardless of release orde
   assert.equal(harness().assetUrl('linux', 'deb'), 'release-fallback')
 })
 
-test('fnOS download resolves a real release asset and never invents a missing link', () => {
+test('fnOS download selects the x86 package and falls back without assets', () => {
   const name = 'TrailSnap-0.20.0-fnos-x86.fpk'
   const { fnosAssetUrl } = harness([
     { name: `${name}.sha256`, browser_download_url: 'checksum' },
@@ -86,4 +86,57 @@ test('fnOS download resolves a real release asset and never invents a missing li
   ])
   assert.equal(fnosAssetUrl(), 'fnos-package')
   assert.equal(harness().fnosAssetUrl(), 'release-fallback')
+})
+
+const fetchCode = ts.transpileModule(
+  source.slice(source.indexOf('async function fetchAssets('), source.indexOf('async function onDownload(')),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+).outputText
+
+function fetchHarness(fetch) {
+  const context = harness()
+  context.fetch = fetch
+  context.releaseName = { value: '' }
+  vm.runInContext(fetchCode, context)
+  return context
+}
+
+test('static version manifest generates installer, portable, fnOS and accelerated links', async () => {
+  const context = fetchHarness(async (url, options) => {
+    assert.equal(url, '/version.json')
+    assert.equal(options.cache, 'no-cache')
+    return { ok: true, json: async () => [{ version: '0.19.0' }, { version: '0.20.1' }] }
+  })
+  assert.equal(await context.fetchAssets(), true)
+  assert.equal(context.releaseName.value, 'v0.20.1')
+  const base = 'https://github.com/LC044/TrailSnap/releases/download/v0.20.1/TrailSnap-0.20.1-'
+  for (const [platform, kind, suffix] of [
+    ['windows', 'installer', 'desktop-windows-x64-setup.exe'],
+    ['windows', 'portable', 'desktop-windows-x64-portable.zip'],
+    ['macos', 'installer', 'desktop-macos-arm64.dmg'],
+    ['linux', 'appimage', 'desktop-linux-x64.AppImage'],
+    ['linux', 'deb', 'desktop-linux-x64.deb'],
+  ]) {
+    assert.equal(context.assetUrl(platform, kind), base + suffix)
+    assert.equal(context.accelLink(platform, kind), 'https://gh-proxy.com/' + base + suffix)
+  }
+  assert.equal(context.fnosAssetUrl(), base + 'fnos-x86.fpk')
+  assert.doesNotMatch(source, /api\.github\.com/)
+})
+
+test('unavailable or invalid version manifests preserve release-page fallback', async () => {
+  const responses = [
+    { ok: false },
+    { ok: true, json: async () => { throw new Error('invalid JSON') } },
+    ...[null, {}, [], [null], [{ version: 123 }], [{ version: '0.20.1/invalid' }],
+      [{ version: '0.20.1' }, { version: '' }]].map(payload => ({ ok: true, json: async () => payload })),
+  ]
+  for (const response of responses) {
+    const context = fetchHarness(async () => response)
+    assert.equal(await context.fetchAssets(), false)
+    assert.equal(context.assetUrl('windows'), 'release-fallback')
+    assert.equal(context.fnosAssetUrl(), 'release-fallback')
+    assert.equal(context.accelLink('windows'), '')
+  }
+  assert.equal(await fetchHarness(async () => { throw new Error('offline') }).fetchAssets(), false)
 })

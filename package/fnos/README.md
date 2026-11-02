@@ -30,7 +30,7 @@ python package/fnos/build.py --images-lock /tmp/fnos-images.json --fnpack /path/
 
 仓库变量 `FNOS_IMAGE_NAMESPACE` 可以指定公开镜像命名空间。默认优先使用已有 ACR registry/namespace，未配置时使用 `siyuan044`；不需要 NAS 凭据。Release 使用工作流已有的 `GITHUB_TOKEN`。
 
-官网只解析最新 Release 中实际存在的飞牛 x86 `.fpk`。没有附件或 API 不可用时回退 Release 页面，不拼接尚未存在的附件地址。
+官网读取同域 `/version.json` 的最新版本号，按 `TrailSnap-<版本>-fnos-x86.fpk` 构造飞牛 x86 下载地址，不查询 GitHub API。版本清单不可用时回退 Release 页面；更新清单前应确认对应版本安装包已发布。
 
 ## 图标和介绍
 
