@@ -8,7 +8,7 @@ const test = base.extend<{}, { navigationServer: string }>({
       configFile: path.resolve('vite.config.js'),
       cacheDir: path.resolve('.playwright-system/navigation-cache', String(workerInfo.workerIndex)),
       optimizeDeps: { entries: ['tests/e2e/fixtures/navigation-harness.js'] },
-      server: { host: '127.0.0.1', port: 0, strictPort: false, open: false },
+      server: { host: '127.0.0.1', port: 5200 + workerInfo.workerIndex, strictPort: false, open: false },
     })
     await server.listen()
     try { await use(server.resolvedUrls!.local[0]!) } finally { await server.close() }
