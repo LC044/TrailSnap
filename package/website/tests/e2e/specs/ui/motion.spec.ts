@@ -11,7 +11,7 @@ const test = base.extend<{}, { motionServer: string }>({
       configFile: path.resolve('vite.config.js'),
       cacheDir: path.join(os.tmpdir(), 'trailsnap-motion-cache', String(process.pid), String(workerInfo.workerIndex)),
       optimizeDeps: { entries: ['tests/e2e/fixtures/motion-harness.js'] },
-      server: { host: '127.0.0.1', port: 0, strictPort: false, open: false },
+      server: { host: '127.0.0.1', port: 5200 + workerInfo.workerIndex, strictPort: false, open: false },
     })
     await server.listen()
     try { await use(server.resolvedUrls!.local[0]!) }

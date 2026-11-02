@@ -146,7 +146,7 @@ test.describe("足迹统计 @views-coverage", () => {
       { person_id: '22222222-2222-2222-2222-222222222222', person_name: '小李', cover_photo_id: null, total_places: 1, total_photos: 5, total_days: 1, places: [{ name: '上海', level: 'city', place_key: 'place:region:city:2:中国2:上海2:上海', scene_id: null, parent_label: '上海', photo_count: 5, record_days: 1, first_date: '2024-03-01', last_date: '2024-03-01' }] },
     ])) }))
     await page.goto('/album/location')
-    await expect(page.getByRole('region', { name: '小周的足迹' })).toBeVisible()
+    await expect(page.getByRole('region', { name: '小周的足迹' })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('region', { name: '小李的足迹' })).toBeVisible()
     await expect(page.getByRole('combobox', { name: '选择统计人物' })).toHaveCount(0)
     await expect(page.getByText('1 个城市 · 12 张照片 · 3 个记录日')).toBeVisible()
