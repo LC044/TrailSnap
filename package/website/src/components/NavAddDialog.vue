@@ -4,6 +4,7 @@
     @update:model-value="$emit('update:visible', $event)"
     title="添加快捷导航"
     width="480px"
+    append-to-body
     :close-on-click-modal="true"
     class="nav-add-dialog"
   >

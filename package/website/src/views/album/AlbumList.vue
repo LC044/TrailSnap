@@ -38,7 +38,7 @@
       </button></h2>
       <div v-show="!collapsed.mine">
       
-      <div v-if="visibleAlbums.length > 0" class="album-cover-strip">
+      <HorizontalStrip v-if="visibleAlbums.length > 0" label="我的相册" strip-class="album-cover-strip">
         <div
           v-for="album in visibleAlbums"
           :key="album.id"
@@ -102,7 +102,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </HorizontalStrip>
       
       <!-- Empty State for Custom Albums -->
       <div v-else class="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-gray-200 bg-gray-50 px-4 py-12 text-center text-gray-400 dark:text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 sm:py-20">
@@ -121,7 +121,7 @@
         <button class="min-h-11 text-xs text-gray-500 dark:text-gray-400" aria-label="查看全部回忆" @click="router.push('/memories')">{{ memoryTotal }} <ChevronRight class="inline h-4 w-4" /></button>
       </h2>
       <div v-show="!collapsed.memories">
-        <div v-if="memoryPreviews.length" class="album-cover-strip" @scroll.passive="onMemoryScroll">
+        <HorizontalStrip v-if="memoryPreviews.length" label="回忆" strip-class="album-cover-strip" @scroll="onMemoryScroll">
           <RouterLink v-for="memory in memoryPreviews" :key="memory.id" :to="`/memories/${memory.id}`" class="album-cover-card text-left">
             <div class="relative aspect-square overflow-hidden rounded-[22px] bg-gray-100 dark:bg-gray-800">
               <img v-if="memory.cover_photo_id" :src="thumbnailUrl(memory.cover_photo_id, 'small')" :alt="memory.title" class="h-full w-full object-cover" loading="lazy" />
@@ -131,7 +131,7 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ memory.photo_count }} 张照片</p>
           </RouterLink>
           <button v-if="memoryPreviews.length < memoryTotal" class="album-cover-card text-sm text-primary-500" :disabled="memoryLoading" @click="loadMemoryPreviews(true)">{{ memoryLoading ? '加载中…' : memoryLoadError ? '加载失败，点击重试' : '加载更多' }}</button>
-        </div>
+        </HorizontalStrip>
         <div v-else class="ts-surface flex min-h-20 items-center gap-3 px-4">
           <BookHeart class="h-7 w-7 text-primary-500" /><p class="text-sm text-gray-500 dark:text-gray-400">{{ memoryLoading ? '正在加载回忆…' : memoryLoadError ? '回忆加载失败' : '确认后的记忆会显示在这里' }}</p>
           <button v-if="memoryLoadError" class="ml-auto min-h-11 text-sm text-primary-500" @click="loadMemoryPreviews()">重试</button>
@@ -152,7 +152,7 @@
         <button class="min-h-11 text-xs text-gray-500 dark:text-gray-400" :aria-label="`查看全部${group.title}`" @click="navigateToSmartAlbum(group)">{{ smartOverviewLoading ? '加载中' : formatSmartCount(group.data?.item_count) }} <ChevronRight class="inline h-4 w-4" /></button>
       </h2>
       <div v-show="!collapsed[group.id]">
-      <div v-if="group.data?.representatives?.length" class="album-cover-strip" @scroll.passive="onGroupScroll(group.id, $event)">
+      <HorizontalStrip v-if="group.data?.representatives?.length" :label="group.title" strip-class="album-cover-strip" @scroll="onGroupScroll(group.id, $event)">
         <button v-for="item in group.data.representatives" :key="item.entity_id" class="album-cover-card text-left" @click="openRepresentative(group, item)">
           <div class="relative aspect-square overflow-hidden rounded-[22px]">
             <SmartAlbumCover :type="group.id" :icon="group.icon" :data="{ item_count: 1, photo_count: item.photo_count, representatives: [item] }" :alt-prefix="item.name" />
@@ -162,7 +162,7 @@
           </div>
         </button>
         <button v-if="group.data.representatives.length < group.data.item_count" class="album-cover-card flex items-center justify-center text-sm text-primary-500" :disabled="store.sectionLoading[group.id]" @click="store.loadMoreSection(group.id)">{{ store.sectionLoading[group.id] ? '加载中…' : store.sectionErrors[group.id] ? '加载失败，点击重试' : '加载更多' }}</button>
-      </div>
+      </HorizontalStrip>
       <button v-else class="flex min-h-20 w-full items-center gap-3 rounded-2xl bg-white px-4 text-left dark:bg-gray-900" @click="navigateToSmartAlbum(group)">
         <span class="text-sm text-gray-500 dark:text-gray-400">{{ smartOverviewLoading ? '正在加载封面…' : group.emptyDescription }}</span><ChevronRight class="ml-auto h-4 w-4 text-gray-500 dark:text-gray-400" />
       </button>
@@ -401,6 +401,7 @@ import { useUiStore } from '@/stores/uiStore'
 import { useOverlayStack } from '@/composables/useOverlayStack'
 import { useLongPress } from '@/composables/useLongPress'
 import SmartAlbumCover from '@/components/SmartAlbumCover.vue'
+import HorizontalStrip from '@/components/ui/HorizontalStrip.vue'
 
 const router = useRouter()
 const store = useAlbumStore()
@@ -890,8 +891,8 @@ const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
 <style scoped>
 .album-details-form :deep(.el-select), .album-details-form :deep(.el-tree-select) { min-width: 0; }
 
-.album-cover-strip { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
-  .album-cover-strip::-webkit-scrollbar { display: none; }
+:deep(.album-cover-strip) { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
+  :deep(.album-cover-strip)::-webkit-scrollbar { display: none; }
   .album-cover-card { flex: 0 0 clamp(140px, 18vw, 220px); min-width: 0; scroll-snap-align: start; }
 @media (max-width: 639px) {
   .album-cover-card { flex-basis: 38%; }

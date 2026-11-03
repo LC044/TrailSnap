@@ -12,9 +12,9 @@
         <button :aria-pressed="metric === 'photos'" @click="metric = 'photos'">照片数</button>
         <button :aria-pressed="metric === 'days'" @click="metric = 'days'">记录天数</button>
       </div>
-      <select v-if="grain === 'month' && years.length" v-model.number="year" class="ts-input text-xs" aria-label="趋势年份">
-        <option v-for="y in years" :key="y" :value="y">{{ y }} 年</option>
-      </select>
+      <el-select v-if="grain === 'month' && years.length" v-model="year" class="!w-32" aria-label="趋势年份">
+        <el-option v-for="y in years" :key="y" :value="y" :label="`${y} 年`" />
+      </el-select>
     </div>
     <div v-if="loading" class="stats-empty"><el-skeleton-item variant="rect" style="width:100%;height:260px" /></div>
     <div v-else-if="error" class="stats-empty"><span>时间统计加载失败</span><button class="text-primary-500" @click="$emit('retry')">重试</button></div>
@@ -23,9 +23,9 @@
       <p class="text-sm mt-5"><strong>{{ peak?.label }}{{ grain === 'year' ? ' 年' : '' }}</strong><span class="ts-muted">留下最多{{ metric === 'photos' ? '照片' : '记录' }}，共 </span><strong>{{ peak?.[metric].toLocaleString() }} {{ unit }}</strong></p>
       <div ref="chartEl" class="w-full h-72 min-h-[18rem] flex-1 mt-2" role="img" :aria-label="`${grain === 'year' ? '年度' : '月度'}${metric === 'photos' ? '照片数' : '记录天数'}柱状图`"></div>
       <div class="flex flex-wrap items-center gap-2 mt-3">
-        <select v-model="selected" class="ts-input text-xs flex-1" aria-label="查看时间段">
-          <option v-for="b in buckets.filter(b => b.photos > 0)" :key="b.start" :value="b.start">{{ grain === 'month' ? `${year} 年 ` : '' }}{{ b.label }} · {{ b[metric].toLocaleString() }} {{ unit }}</option>
-        </select>
+        <el-select v-model="selected" class="!w-auto min-w-0 flex-1" aria-label="查看时间段">
+          <el-option v-for="b in buckets.filter(b => b.photos > 0)" :key="b.start" :value="b.start" :label="`${grain === 'month' ? `${year} 年 ` : ''}${b.label} · ${b[metric].toLocaleString()} ${unit}`" />
+        </el-select>
         <button class="ts-button ts-button-secondary ts-button-sm" @click="openSelected">查看照片</button>
         <button class="ts-icon-button ts-button-sm ts-button-ghost" aria-label="下载趋势图" @click="downloadPng"><Download class="w-4 h-4" /></button>
       </div>

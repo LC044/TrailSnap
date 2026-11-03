@@ -18,6 +18,8 @@ description: 基于 TrailSnap（行影集）现有设计系统设计、实现和
 
 - Vue 使用 `<script setup lang="ts">`；状态管理使用 Pinia，HTTP 通过 `package/website/src/api/*`。沿用 Vue Router、Tailwind CSS 3、Element Plus 与现有组件。
 - 优先复用 `package/website/src/components/ui/` 的页面、卡片、按钮和弹层组件。照片浏览优先接入 `UnifiedPhotoPage` 与现有画廊，避免重复实现虚拟布局、筛选和批量选择。
+- 新增“更多”等动作菜单使用 `AdaptiveMenu`，每个动作使用 `.ts-action-row`（危险项加 `.danger`），复用 `src/style.css` 的紧凑尺寸：悬浮菜单宽度上限 220px、动作行最小高度 44px、字号桌面 14px/移动端 13–14px、图标 18px。不要在页面重新放大菜单宽度、行高或内边距；长文本允许换行，触控区域不低于 44px。工具栏旁的移动悬浮菜单设置 `mobile-presentation="popover"`；底部动作菜单沿用默认 sheet；表单与内容对话框使用 `ResponsiveDialog`。
+- 下拉选择先对照现有同类组件，默认使用 `el-select` / `el-option`，继承 `src/styles/ui.css` 的圆角、尺寸与全局明暗主题；不要用原生 `<select>` 搭配 `.ts-input` 实现普通业务选择框。动作菜单使用 `AdaptiveMenu`。选项较多时保持菜单限高滚动，窄屏下控件与长文本不撑破布局；菜单挂载到 body，避免被玻璃容器或滚动祖先裁切。替换已有选择器时保留值类型、选中态及联动行为，并检查菜单展开后的明暗与窄屏效果。参考 `src/views/settings/sections/MapSettingsSection.vue` 和 `src/views/album/location/stats/StatsAnnualTrendCard.vue`。
 - 中性色使用 `--ts-color-*` 或共享语义类；主题强调色使用 `primary-*`、`--theme-primary` 和 `--theme-rgb`。不要把默认天空蓝写死为品牌色。
 - 每个 `text-gray-*`、`bg-white` 及其变体配套相应的 `dark:` 样式；优先用自动适配明暗的语义 token。Element Plus 继承全局明暗配置，不在实例内覆盖内部颜色。
 - 子组件通过 `injectTheme()` 使用根组件提供的主题；不要重复 `provideTheme()` 或创建独立主题状态。图表、Canvas 和动态颜色读取 `currentTheme.value.primary` / `.rgb`，随主题变化更新；明暗相关图表也响应 `isDarkMode`。

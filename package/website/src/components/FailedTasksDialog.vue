@@ -1,5 +1,5 @@
 <template>
-  <ResponsiveDialog v-model="visible" title="失败任务" :description="title" max-width="56rem" mobile-mode="fullscreen" mobile-back :glass="false">
+  <ResponsiveDialog v-model="visible" title="失败任务" :description="title" max-width="56rem" mobile-mode="fullscreen" mobile-back history :glass="false">
     <div v-if="loading" class="py-16 text-center ts-muted" role="status">正在加载失败任务…</div>
     <div v-else-if="loadError" class="py-12 text-center">
       <p class="ts-muted mb-4">失败任务加载失败</p>

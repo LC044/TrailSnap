@@ -39,7 +39,7 @@ test('chapter covers become visible while the parallel suggestion count is still
     list: () => { calls.push('list'); return list.promise },
     count: () => { calls.push('count'); return count.promise },
   })
-  state.shelf.value = { scrollLeft: 0 }
+  state.shelf.value = { scrollLeft: 0, setScrollLeft(value) { this.scrollLeft = value } }
   const pending = mount()
   assert.deepEqual(calls, ['list', 'count'])
   list.resolve({ items: [{ id: 'chapter', cover_photo_id: 'cover' }] })

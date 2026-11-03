@@ -23,7 +23,16 @@
 
         <!-- Controls -->
         <div class="ts-liquid-glass ts-glass-toolbar flex shrink-0 items-center justify-end ml-auto">
-          
+
+          <!-- 年月日视图切换按钮 -->
+          <button v-if="enableTimeBrowse" type="button" class="ts-glass-button photo-time-view-button font-medium"
+            data-testid="photo-view-cycle" :aria-busy="timeChanging"
+            :title="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
+            :aria-label="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
+            :class="{ 'animate-pulse motion-reduce:animate-none': timeChanging }"
+            @click="changeGranularity(nextGranularity)">{{ timeViewLabel }}
+          </button>
+
           <slot name="header-controls-start"></slot>
 
           <!-- View Options Menu -->
@@ -88,12 +97,7 @@
             </AdaptiveMenu>
            </div>
 
-          <button v-if="enableTimeBrowse" type="button" class="ts-glass-button photo-time-view-button font-medium"
-            data-testid="photo-view-cycle" :aria-busy="timeChanging"
-            :title="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
-            :aria-label="`当前${timeViewLabel}视图，点击切换为${nextTimeViewLabel}视图`"
-            :class="{ 'animate-pulse motion-reduce:animate-none': timeChanging }"
-            @click="changeGranularity(nextGranularity)">{{ timeViewLabel }}</button>
+
           <span v-if="enableTimeBrowse && timeChanging" role="status" class="sr-only">正在定位照片</span>
 
           <!-- Batch Select -->
@@ -128,7 +132,6 @@
             aria-label="上传照片"
           >
             <UploadCloud class="w-5 h-5" />
-            <span class="hidden sm:inline">上传</span>
           </button>
 
         </div>

@@ -86,6 +86,13 @@ test('large failure lists render progressively and Windows filenames remain read
   assert.equal(page.filename({ payload: { file_path: 'C:\\Photos\\trip.jpg' } }), 'trip.jpg')
 })
 
+test('mobile back closes the dialog instead of leaving the page', async () => {
+  const template = fs.readFileSync(path.resolve(__dirname, '../../src/components/FailedTasksDialog.vue'), 'utf8').split('<script setup lang="ts">')[0]
+  // history keeps a browser-history entry so mobile back gesture dismisses the
+  // fullscreen dialog; without it back navigates away from /settings entirely.
+  assert.match(template, /<ResponsiveDialog[^>]*\bhistory\b/)
+})
+
 
 test('ignore deletes only the selected record, blocks duplicate/retry races, and refreshes parent', async () => {
   const page = harness(); page.rows([task(), task('keep')]); await page.loadTasks()

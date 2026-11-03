@@ -120,16 +120,18 @@ test.describe('票夹交通统计 / 纪念票面 @views-coverage', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('更多菜单交通统计 -> 旅行足迹报告显示票据里程和城市数量', async ({ page }) => {
+  test('更多菜单交通统计 -> 出行概览显示票据里程和城市数量', async ({ page }) => {
     await mockTicketApis(page, [trainTicket])
     await page.goto('/ticket')
     await expect(page.locator('main article')).toHaveCount(1)
     await page.getByRole('button', { name: '更多票夹操作', exact: true }).click()
     await page.getByRole('button', { name: '交通统计', exact: true }).click()
     await expect(page).toHaveURL(/\/statistics/)
-    await expect(page.getByRole('heading', { name: '旅行足迹报告', exact: true })).toBeVisible()
-    await expect(page.getByText('年度总里程', { exact: true }).locator('..').locator('..')).toContainText('1,318')
-    await expect(page.getByText('点亮城市', { exact: true }).locator('..').locator('..').locator('.text-4xl')).toHaveText('2')
+    await expect(page.getByRole('heading', { name: '出行概览', exact: true })).toBeVisible()
+    await expect(page.getByTestId('metric-distance')).toContainText('1,318')
+    await expect(page.getByTestId('metric-cities').locator('.metric-value')).toContainText('2')
+    await expect(page.getByRole('navigation', { name: '出发状态' })).toHaveCount(0)
+    await expect(page.getByTestId('metric-count').locator('.metric-value')).toContainText('1')
   })
 
   test('票据详情 -> 纪念票面打开并可切换票面样式', async ({ page }) => {
