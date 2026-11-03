@@ -12,7 +12,7 @@ const test = base.extend<{}, { navigationServer: string }>({
     })
     await server.listen()
     try { await use(server.resolvedUrls!.local[0]!) } finally { await server.close() }
-  }, { scope: 'worker' }],
+  }, { scope: 'worker', timeout: 120_000 }],
 })
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -27,7 +27,7 @@ async function fixture(page: Page, origin: string) {
 
 test.describe('Navigation feedback @p0', () => {
   // A cold Vite dependency prebundle can take tens of seconds on CI/Windows.
-  test.setTimeout(60_000)
+  test.setTimeout(90_000)
   test('slow route gives immediate feedback before the module arrives, then clears it', async ({ page, navigationServer }) => {
     let release!: () => void
     const gate = new Promise<void>(resolve => { release = resolve })
