@@ -16,7 +16,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
-REVISION = 14  # Increment for fnOS-only revisions without a product version change.
+REVISION = 16  # Increment for fnOS-only revisions without a product version change.
 VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?"
 
 
@@ -98,8 +98,11 @@ def verify_package(package: Path, version: str, lock: dict) -> None:
         if description != (ROOT / 'description.html').read_text(encoding='utf-8').strip():
             raise ValueError('fnpack truncated or changed the application description')
         wizard = json.load(archive.extractfile('wizard/install'))
+        defaults = {item.get('field'): item.get('initValue') for item in wizard[0]['items']}
+        if defaults.get('wizard_data_dir') != 'trailsnap/data' or defaults.get('wizard_photo_dir') != 'trailsnap/photos':
+            raise ValueError('Installation directory defaults changed')
         hints = [item.get('helpText') for item in wizard[0]['items'] if item['type'] == 'tips']
-        if hints != ['填写本地照片文件夹的完整路径，留空可稍后添加。', '选择一个空白文件夹用于保存用户数据']:
+        if hints != ['填写本地已有照片文件夹的完整路径，留空可稍后添加。', '选择一个空白文件夹用于保存模型、缩略图、用户上传的照片的用户数据']:
             raise ValueError('Installation wording changed')
         for name, size in [('ICON.PNG', 64), ('ICON_256.PNG', 256)]:
             data = archive.extractfile(name).read()

@@ -19,6 +19,19 @@ class PackagingTests(unittest.TestCase):
     def setUp(self):
         self.lock = json.loads((ROOT/'images.lock.json').read_text())
 
+    def test_default_directories_follow_install_volume_and_allow_overrides(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = build.build_source(Path(directory)/'source', self.lock['version'], self.lock)
+            compose = json.loads((source/'app/docker/docker-compose.yaml').read_text(encoding='utf-8'))
+            env = compose['services']['bootstrap']['environment']
+            for field, folder in [('DATA', 'data'), ('PHOTO', 'photos')]:
+                self.assertEqual('${wizard_' + field.lower() + '_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/' + folder + '}', env['TS_' + field + '_HOST'])
+            wizard = json.loads((source/'wizard/install').read_text(encoding='utf-8'))
+            for item in wizard[0]['items']:
+                if item.get('field') in ('wizard_data_dir', 'wizard_photo_dir'):
+                    self.assertEqual('trailsnap/' + ('data' if item['field'] == 'wizard_data_dir' else 'photos'), item['initValue'])
+                    self.assertFalse(any(rule.get('required') for rule in item.get('rules', [])))
+
     def test_mixed_or_mutable_versions_are_rejected(self):
         for reference in ['user/server:latest', 'user/server:9.9.9@sha256:'+'a'*64]:
             lock = copy.deepcopy(self.lock)

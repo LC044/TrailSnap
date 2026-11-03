@@ -12,6 +12,54 @@ BASH = (r'C:\Program Files\Git\bin\bash.exe' if os.name == 'nt' else shutil.whic
 
 @unittest.skipUnless(BASH and Path(BASH).exists(), 'Bash required')
 class HookTests(unittest.TestCase):
+    def test_install_accepts_default_and_custom_data_but_rejects_internal_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hook = Path(directory) / 'helper'
+            hook.write_text((ROOT/'src/hooks.sh').read_text(encoding='utf-8').replace('@@APP@@', 'trailsnap'), encoding='utf-8', newline='\n')
+            for value, expected in [('', 0), ('trailsnap/data', 0), ('/vol2/@appshare/trailsnap/data', 0),
+                                    ('/vol1/1000/My Data', 0), ('/vol2/@appdata/trailsnap', 1),
+                                    ('/vol2/@appshare/other/data', 1), ('/vol2/@appshare/trailsnap/data/child', 1)]:
+                env = dict(os.environ, HOOK=hook.as_posix(), TRIM_APPDEST_VOL='/vol2', wizard_data_dir=value,
+                           wizard_photo_dir='trailsnap/photos', wizard_port='3180')
+                script = '''
+ss() { return 0; }
+realpath() { printf '%s\\n' "${@: -1}"; }
+export -f ss realpath
+source "$HOOK" install
+'''
+                result = subprocess.run([BASH, '-c', script], env=env, capture_output=True)
+                self.assertEqual(expected, result.returncode, (value, result.stderr))
+
+    def test_callbacks_resolve_prefilled_directories_and_keep_custom_paths(self):
+        import json
+        import sys
+        sys.path.insert(0, str(ROOT))
+        import build
+        lock = json.loads((ROOT/'images.lock.json').read_text())
+        for callback in ('install_callback', 'upgrade_callback'):
+            for data, photos in [('trailsnap/data', 'trailsnap/photos'), ('', ''),
+                                 ('/vol1/1000/My Data', '/vol3/1000/Photos'),
+                                 ('trailsnap/data', '/vol3/1000/Photos')]:
+                with self.subTest(callback=callback, data=data, photos=photos), tempfile.TemporaryDirectory() as directory:
+                    source = build.build_source(Path(directory)/'source', lock['version'], lock)
+                    env = dict(os.environ, CALLBACK=(source/'cmd'/callback).as_posix(),
+                               TRIM_APPDEST=(source/'app').as_posix(), TRIM_APPDEST_VOL='/vol4',
+                               wizard_data_dir=data, wizard_photo_dir=photos)
+                    script = '''
+realpath() { printf '%s\\n' "${@: -1}"; }
+export -f realpath
+/bin/bash "$CALLBACK"
+'''
+                    result = subprocess.run([BASH, '-c', script], env=env, capture_output=True)
+                    self.assertEqual(0, result.returncode, result.stderr)
+                    compose = json.loads((source/'app/docker/docker-compose.yaml').read_text(encoding='utf-8'))
+                    bootstrap = compose['services']['bootstrap']
+                    for field, folder, value in [('DATA', 'data', data), ('PHOTO', 'photos', photos)]:
+                        expr = '${wizard_' + field.lower() + '_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/' + folder + '}'
+                        expected = '/vol4/@appshare/trailsnap/' + folder if value in ('', 'trailsnap/' + folder) else expr
+                        self.assertEqual(expected, bootstrap['environment']['TS_' + field + '_HOST'])
+                    self.assertEqual(bootstrap['environment']['TS_DATA_HOST'], bootstrap['volumes'][0]['source'])
+
     def invoke(self, folders, **settings):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

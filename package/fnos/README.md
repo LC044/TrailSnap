@@ -40,7 +40,7 @@ python package/fnos/build.py --images-lock /tmp/fnos-images.json --fnpack /path/
 
 ## 数据与升级
 
-- 用户数据目录必填，应为个人或共享文件中的独立空文件夹，拒绝 `/volN/@app*` 管理目录。
+- 安装向导预填 `trailsnap/data` 和 `trailsnap/photos`，安装/升级回调将其解析为实际安装卷的 `@appshare/trailsnap/data` 和 `@appshare/trailsnap/photos`（留空仍使用默认目录），均可在安装时填写完整 NAS 路径自定义。默认目录可通过「应用文件 → trailsnap」访问；自定义数据目录须为独立空文件夹。允许本应用的共享数据目录，仍拒绝其他 `/volN/@app*` 管理目录。
 - 外部照片默认只读，可逐目录选择服务端读写；AI 挂载始终只读。新安装主图库和新增图库使用源文件夹名，仅重名时加 `(2)`、`(3)` 序号，分配结果持久化。旧版升级保留「已有照片」和摘要映射，保护已有索引。
 - 通过飞牛「访问权限」原生 UI 添加/移除目录，config_callback 按 `TRIM_DATA_ACCESSIBLE_PATHS` 的冒号分隔快照同步；缺失快照保留原生挂载，空快照取消全部原生挂载，过滤固定 data-share。按应用账号的实际访问权限映射只读/读写。旧版手工图库可通过稳定字段显式移除，或在原生界面选择同一路径接管管理。所有目录校验完成后才保存，不删除原文件或数据库索引。使用官方 `/var/apps/trailsnap/wizard` 目录向 bootstrap 提供向导写入挂载。
 - 读写挂载不修改 NAS 文件 ACL，用户需为应用运行账号授予相应权限。目录名不支持英文分号（批量分隔符）。
