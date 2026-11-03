@@ -18,7 +18,7 @@
           <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
         </div>
         <div v-if="mapError" class="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-          <p class="text-sm text-gray-500">地图加载失败，请检查地图 API 配置</p>
+          <MapUnavailable :error="mapError" retryable @retry="initBatchMap" />
         </div>
       </div>
 
@@ -80,6 +80,7 @@
 </template>
 
 <script setup lang="ts">
+import MapUnavailable from '@/components/MapUnavailable.vue'
 import { ref, computed } from 'vue'
 import { Loader2 } from 'lucide-vue-next'
 import { useLocationMap, type LocationDetail } from '@/composables/useLocationMap'

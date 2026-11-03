@@ -12,7 +12,7 @@
         <label class="mt-3 block text-xs leading-5 text-gray-600 dark:text-gray-300">补充想写的经历（选填）<textarea v-model="notes" maxlength="1000" rows="2" placeholder="例如：这一年开始学摄影，想多写写旅行。" class="mt-2 w-full rounded-lg border border-primary-200 bg-white p-3 text-sm dark:border-primary-800 dark:bg-gray-900" /></label>
         <button class="mt-3 flex min-h-11 items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm text-white disabled:opacity-50" :disabled="busy || chapter.is_hidden" @click="store.generate(chapter.id, year, chapter.version, notes)"><Sparkles :size="15" />{{ busy ? '正在起草，可以关闭此窗口…' : draft ? '重新起草' : '生成草稿' }}</button>
         <p v-if="chapter.is_hidden" class="mt-3 text-xs text-gray-500 dark:text-gray-400">隐藏的章节支持手写；恢复显示后可使用 AI。</p>
-        <div v-if="store.errors[draftKey]" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{{ store.errors[draftKey] }}<RouterLink v-if="store.errors[draftKey].includes('配置')" to="/settings" class="mt-2 block text-primary-600 dark:text-primary-400">前往配置 AI →</RouterLink></div>
+        <div v-if="store.errors[draftKey]" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{{ store.errors[draftKey] }}<RouterLink v-if="store.errors[draftKey].includes('配置')" to="/settings#ai-models" class="mt-2 block text-primary-600 dark:text-primary-400">前往配置 AI →</RouterLink></div>
         <div v-if="draft" class="mt-4 border-t border-primary-200 pt-4 dark:border-primary-800">
           <p class="text-xs font-medium text-primary-700 dark:text-primary-300">AI 草稿 · 尚未保存</p>
           <h4 v-if="draft.title && year !== null" class="mt-2 font-serif text-lg text-gray-900 dark:text-white">{{ draft.title }}</h4>

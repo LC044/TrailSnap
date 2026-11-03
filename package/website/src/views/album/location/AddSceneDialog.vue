@@ -75,6 +75,7 @@
       <!-- Map -->
       <div class="w-2/3 relative rounded-lg overflow-hidden border border-gray-200 bg-gray-100">
          <div id="add-scene-map" class="w-full h-full"></div>
+         <MapUnavailable v-if="mapError" :error="mapError" class="absolute inset-0" retryable @retry="initMap" />
       </div>
     </div>
     
@@ -90,6 +91,7 @@
 </template>
 
 <script setup lang="ts">
+import MapUnavailable from '@/components/MapUnavailable.vue'
 import { ref, reactive, watch, nextTick, computed } from 'vue'
 import { getTiandituTileTemplate, loadMapScript } from '@/utils/mapLoader'
 import { locationService } from '@/api/location'
@@ -170,8 +172,12 @@ const resetForm = () => {
   }
 }
 
+const mapError = ref<string | null>(null)
 const initMap = async () => {
-  const mapAccessToken = await loadMapScript()
+  mapError.value = null
+  let mapAccessToken: string
+  try { mapAccessToken = await loadMapScript() }
+  catch (error: any) { mapError.value = error?.code || 'UNKNOWN'; return }
   nextTick(() => {
     // Always create new map instance to ensure proper rendering in dialog
     // Clean up old map if needed (though local variable usually suffices)

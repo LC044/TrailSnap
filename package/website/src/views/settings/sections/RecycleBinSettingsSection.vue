@@ -1,29 +1,24 @@
 <template>
-<SettingsSection v-model="activeNames" name="recycle_bin" title="回收站设置">
-<div class="px-4 pb-4 md:px-6 md:pb-6">
-          <el-form label-position="top" class="max-w-3xl">
-            <el-form-item label="保留天数">
-              <el-input-number v-model="recycleBinForm.retention_days" :min="1" :max="365" class="w-full sm:w-auto" />
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-1 w-full">照片在回收站中保留的天数，超过该天数将被永久删除。</div>
-            </el-form-item>
-            <el-form-item label="自动清理时间">
-              <UnifiedDatePicker type="time"
-                v-model="recycleBinForm.cleanup_time"
-                start="00:00"
-                step="00:30"
-                end="23:30"
-                placeholder="选择时间"
-              />
-              <div class="text-sm text-gray-500 dark:text-gray-400 mt-1 w-full">每天执行自动清理过期照片的时间。</div>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="saveRecycleBinSettings">保存回收站设置</el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-</SettingsSection>
+  <SettingsSection v-model="activeNames" name="recycle_bin" title="回收站设置">
+    <div class="px-4 pb-4 md:px-6">
+      <SettingsFormRow label="保留天数" control-id="recycle-retention" description="保留期内可恢复，过期后自动永久删除。">
+        <el-input-number id="recycle-retention" v-model="recycleBinForm.retention_days" :min="1" :max="365" class="!w-36" />
+        <span class="ts-muted text-sm">天</span>
+      </SettingsFormRow>
+      <details class="py-2">
+        <summary class="cursor-pointer ts-muted text-sm">高级选项 · 自动清理时间</summary>
+        <SettingsFormRow label="自动清理时间" label-id="recycle-time-label" description="每天检查并清理超过保留期限的照片。">
+          <UnifiedDatePicker v-model="recycleBinForm.cleanup_time" type="time" start="00:00" step="00:30" end="23:30" placeholder="选择时间" aria-labelledby="recycle-time-label" />
+        </SettingsFormRow>
+      </details>
+      <div class="flex justify-end border-t ts-divider mt-2 pt-3">
+        <el-button type="primary" @click="saveRecycleBinSettings">保存回收站设置</el-button>
+      </div>
+    </div>
+  </SettingsSection>
 </template>
 <script setup lang="ts">
+import SettingsFormRow from '@/components/ui/SettingsFormRow.vue'
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import SettingsSection from '@/components/ui/SettingsSection.vue'
 import { useBasicSettingsContext } from '@/composables/settings/useBasicSettings'

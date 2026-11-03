@@ -2,6 +2,7 @@ import { ref, onMounted, computed, provide, inject, type InjectionKey } from 'vu
 import { settingsApi } from '@/api/settings';
 import { ElMessage } from 'element-plus';
 import { injectTheme } from '@/composables/useTheme';
+import { useUserStore } from '@/stores/user';
 import { useMapSettings } from './useMapSettings';
 import { useIndexMaintenance } from './useIndexMaintenance';
 export function useBasicSettings() {
@@ -17,7 +18,7 @@ export function useBasicSettings() {
   });
   const aiForm = ref({
     ai_api_url: 'http://localhost:8001',
-    face_recognition_threshold: 0.6,
+    face_recognition_threshold: 0.7,
     face_cluster_threshold: 0.4,
     face_rescan_auto_match_threshold: 0.35,
     face_rescan_candidate_threshold: 0.45,
@@ -63,7 +64,7 @@ export function useBasicSettings() {
   });
   const scanScheduleForm = ref({
     mode: 'off',
-    interval: 15,
+    interval: 60,
     weekdays: [0, 1, 2, 3, 4, 5, 6],
     time: '02:00'
   });
@@ -75,7 +76,7 @@ export function useBasicSettings() {
     per_caption_delay_sec: 2
   });
   const recycleBinForm = ref({
-    retention_days: 7,
+    retention_days: 30,
     cleanup_time: '00:00'
   });
   const securityForm = ref({
@@ -206,7 +207,7 @@ export function useBasicSettings() {
           imageForm.value = { ...settings.image };
         }
         try {
-          const sysConfig = await settingsApi.getSystemConfig();
+          const sysConfig = useUserStore().userInfo?.is_superuser ? await settingsApi.getSystemConfig() : {};
           if (sysConfig.scan_schedule) {
             scanScheduleForm.value = { ...sysConfig.scan_schedule };
           }
@@ -240,12 +241,21 @@ export function useBasicSettings() {
   };
   const saveAISettings = async () => {
     try {
-      await settingsApi.updateSettings({ ai: aiForm.value });
+      const { ai_api_url, ...recognition } = aiForm.value;
+      await settingsApi.updateSettings({ ai: recognition });
       ElMessage.success('AI 配置已保存');
     }
     catch (e) {
       ElMessage.error('保存失败');
     }
+  };
+  const saveAIServiceSettings = async () => {
+    const address = aiForm.value.ai_api_url.trim();
+    if (!address) { ElMessage.warning('请填写 AI API 地址'); return; }
+    try {
+      await settingsApi.updateSettings({ ai: { ai_api_url: address } });
+      ElMessage.success('识别服务地址已保存');
+    } catch { ElMessage.error('保存失败'); }
   };
   const saveImageSettings = async () => {
     try {
@@ -321,7 +331,7 @@ export function useBasicSettings() {
   onMounted(() => {
     loadData();
   });
-  return { managedAI, activeNames, aiActiveNames, storageForm, aiForm, aiServiceTest, resetAIServiceTest, testAIServiceConnection, imageForm, scanScheduleForm, momentCaptionScheduleForm, recycleBinForm, securityForm, taskForm, taskPerformanceModes, savingTaskSettings, taskApplyMessage, saveScanScheduleSettings, saveMomentCaptionScheduleSettings, saveRecycleBinSettings, saveSecuritySettings, saveTaskSettings, pathValid, pathStatusText, pathStatusClass, loadData, saveAISettings, saveImageSettings, validatePath, handleExport, handleImportFile, currentMode, currentTheme, themeColors, setMode, setTheme, ...mapSettings, ...indexMaintenance };
+  return { managedAI, activeNames, aiActiveNames, storageForm, aiForm, aiServiceTest, resetAIServiceTest, testAIServiceConnection, imageForm, scanScheduleForm, momentCaptionScheduleForm, recycleBinForm, securityForm, taskForm, taskPerformanceModes, savingTaskSettings, taskApplyMessage, saveScanScheduleSettings, saveMomentCaptionScheduleSettings, saveRecycleBinSettings, saveSecuritySettings, saveTaskSettings, pathValid, pathStatusText, pathStatusClass, loadData, saveAISettings, saveAIServiceSettings, saveImageSettings, validatePath, handleExport, handleImportFile, currentMode, currentTheme, themeColors, setMode, setTheme, ...mapSettings, ...indexMaintenance };
 }
 export type BasicSettingsContext = ReturnType<typeof useBasicSettings>;
 const settingsKey: InjectionKey<BasicSettingsContext> = Symbol('basic-settings');

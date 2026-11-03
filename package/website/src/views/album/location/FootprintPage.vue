@@ -6,7 +6,7 @@
       <button class="nav-item active" aria-label="3D 足迹地图"><Globe2 /><span>足迹</span></button>
       <RouterLink to="/album/location" class="nav-item"><MapPin /><span>位置</span></RouterLink>
       <RouterLink to="/album" class="nav-item"><Images /><span>相册</span></RouterLink>
-      <RouterLink to="/settings" class="nav-item nav-bottom"><Settings2 /><span>设置</span></RouterLink>
+      <RouterLink to="/settings#map" class="nav-item nav-bottom"><Settings2 /><span>设置</span></RouterLink>
     </aside>
 
     <main class="footprint-stage">

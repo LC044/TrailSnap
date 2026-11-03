@@ -193,6 +193,7 @@ test('download success preserves each gallery policy; failure preserves selectio
 test('saving face/service settings excludes stale LLM connections and defaults', async () => {
   const payloads = []
   const { useBasicSettings } = loadSource('composables/settings/useBasicSettings.ts', {
+    '@/stores/user': { useUserStore: () => ({ userInfo: { is_superuser: true } }) },
     'element-plus': { ElMessage: { error() {}, success() {}, warning() {} }, ElMessageBox: {} },
     '@/api/settings': { settingsApi: {
       getSettings: async () => ({ ai: { ai_api_url: 'http://ai', face_recognition_threshold: 0.7, connections: [{ id: 'stale' }], chat_model_name: 'stale-model' } }),
@@ -206,7 +207,10 @@ test('saving face/service settings excludes stale LLM connections and defaults',
   await flush()
   await mounted.value.saveAISettings()
   assert.equal(payloads[0].ai.face_recognition_threshold, 0.7)
-  assert.equal(payloads[0].ai.ai_api_url, 'http://ai')
+  assert.equal('ai_api_url' in payloads[0].ai, false)
+  await mounted.value.saveAIServiceSettings()
+  assert.deepEqual(Object.keys(payloads[1].ai), ['ai_api_url'])
+  assert.equal(payloads[1].ai.ai_api_url, 'http://ai')
   assert.equal('connections' in payloads[0].ai, false)
   assert.equal('chat_model_name' in payloads[0].ai, false)
   mounted.unmount()

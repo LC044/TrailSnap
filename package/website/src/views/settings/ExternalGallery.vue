@@ -1,6 +1,7 @@
 <template>
   <div class="ts-settings-page">
     <SettingsPageHeader title="外部图库" description="接入已有照片文件夹，TrailSnap 会为照片建立索引，不会移动或修改源文件。" />
+<BasicSettings category="gallery" embedded class="mb-6" />
 
     <div class="ts-surface ts-settings-panel min-w-0">
     <el-tabs v-model="activeTab" class="demo-tabs">
@@ -339,6 +340,7 @@
 </template>
 
 <script setup lang="ts">
+import BasicSettings from './BasicSettings.vue'
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { settingsApi } from '@/api/settings'

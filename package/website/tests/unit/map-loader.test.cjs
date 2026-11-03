@@ -9,7 +9,7 @@ const apiNames = ['Map', 'TileLayer', 'Marker', 'Label', 'Polyline', 'LngLat', '
 const completeSdk = () => Object.fromEntries(apiNames.map(name => [name, function () {}]))
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve() }
 
-function fixture() {
+function fixture(getMapRuntime = async () => ({ provider: 'tianditu', access_token: 'new-token' })) {
   const entries = new Map([
     ['TDT_version', 'trailsnap2'], ['TDT_components0', 'old-port script'], ['TDT_components1', 'old-token script'],
     ['TDT_style0', 'old-port CSS'], ['trailsnap:theme', 'dark'],
@@ -30,7 +30,7 @@ function fixture() {
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText
   const module = { exports: {} }
   const dependencies = {
-    '@/api/settings': { settingsApi: { getMapRuntime: async () => ({ provider: 'tianditu', access_token: 'new-token' }) } },
+    '@/api/settings': { settingsApi: { getMapRuntime } },
     '@/config/server': { toServerUrl: value => `http://127.0.0.1:53373${value}` },
   }
   vm.runInNewContext(code, { window, document, module, exports: module.exports, require: name => dependencies[name] })
@@ -84,4 +84,20 @@ test('an already complete SDK is reused without touching its live resources', as
   assert.equal(await f.loader.loadMapScript(), 'new-token')
   assert.equal(f.scripts.length, 0)
   assert.equal(f.entries.get('trailsnap:theme'), 'dark')
+})
+
+
+test('missing key is distinguished from a connection failure and can recover after configuration', async () => {
+  let configured = false
+  const f = fixture(async () => {
+    if (!configured) throw { response: { data: { detail: 'Map API Key is missing' } } }
+    return { provider: 'tianditu', access_token: 'configured-token' }
+  })
+  await assert.rejects(f.loader.loadMapScript(), error => error.code === 'MAP_KEY_MISSING')
+  assert.equal(f.scripts.length, 0)
+  configured = true
+  f.window.T = completeSdk()
+  assert.equal(await f.loader.loadMapScript(), 'configured-token')
+  const disconnected = fixture(async () => { throw Error('offline') })
+  await assert.rejects(disconnected.loader.loadMapScript(), error => error.code === 'SETTINGS_ERROR')
 })

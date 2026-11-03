@@ -1,6 +1,7 @@
 <template>
   <div class="relative w-full h-full">
     <div id="tianditu-map" class="w-full h-full z-10 overflow-hidden"></div>
+    <MapUnavailable v-if="mapError" :error="mapError" class="absolute inset-0 z-20" retryable @retry="initializeMap" />
     
     <!-- Loading Overlay -->
     <div v-if="loading" class="absolute inset-0 z-50 flex items-center justify-center bg-white/50 backdrop-blur-sm">
@@ -10,6 +11,7 @@
 </template>
 
 <script setup lang="ts">
+import MapUnavailable from '@/components/MapUnavailable.vue'
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 // @ts-ignore  缺少 supercluster 类型声明，暂时忽略
 import Supercluster from 'supercluster'
@@ -45,32 +47,19 @@ const props = defineProps<{
   endDate?: string
 }>()
 
-onMounted(async () => {
+const mapError = ref<string | null>(null)
+const initializeMap = async () => {
+  mapError.value = null
+  loading.value = true
   try {
     mapAccessToken.value = await loadMapScript()
     initMap()
     await loadContent()
-  } catch (e: any) {
-    if (e.code === 'MAP_KEY_MISSING') {
-      ElMessageBox.confirm(
-        '查看地图照片需要配置地图 API Key。是否立即前往设置？',
-        '缺少配置',
-        {
-          confirmButtonText: '去设置',
-          cancelButtonText: '取消',
-          type: 'warning',
-          center: true
-        }
-      ).then(() => {
-        router.push('/settings#basic')
-      }).catch(() => {
-        // User cancelled
-      })
-    } else {
-      ElMessage.error('地图加载失败: ' + e.message)
-    }
-  }
-})
+  } catch (error: any) {
+    mapError.value = error?.code || 'UNKNOWN'
+  } finally { loading.value = false }
+}
+onMounted(initializeMap)
 
 watch(level, async (newVal) => {
   if (!map.value) return

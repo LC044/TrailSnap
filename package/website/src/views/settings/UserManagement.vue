@@ -7,6 +7,7 @@
         <el-button v-if="!isTauriApp()" type="danger" size="small" @click="handleLogout" class="md:hidden">退出</el-button>
       </template>
     </SettingsPageHeader>
+<BasicSettings category="members" embedded class="mb-6" />
 
     <!-- Desktop View -->
     <div class="hidden md:block ts-surface overflow-hidden">
@@ -131,6 +132,7 @@
 </template>
 
 <script setup lang="ts">
+import BasicSettings from './BasicSettings.vue'
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted, computed, reactive } from 'vue'
 import { ElMessage } from 'element-plus'

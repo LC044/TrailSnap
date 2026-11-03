@@ -1,8 +1,8 @@
 <template>
-<SettingsSection v-model="activeNames" name="ai" title="人脸与识别设置">
+<SettingsSection v-model="activeNames" :name="serviceOnly ? 'ai-service' : 'ai'" :title="serviceOnly ? 'AI 识别服务连接' : '人物识别参数'">
 <div class="px-4 pb-4 md:px-6 md:pb-6">
           <el-form label-position="top" class="max-w-3xl">
-        <el-form-item v-if="!managedAI" label="AI API 地址（人脸识别、OCR等AI微服务地址）">
+        <el-form-item v-if="serviceOnly && !managedAI" label="AI API 地址（人脸识别、OCR等AI微服务地址）">
           <div class="w-full">
             <div class="flex flex-col gap-2 sm:flex-row">
               <el-input
@@ -26,61 +26,36 @@
           </div>
         </el-form-item>
 
-        <el-collapse v-model="aiActiveNames" class="my-4 border-none">
+        <p v-if="serviceOnly && managedAI" class="ts-muted text-sm">识别服务由桌面应用管理，无需填写地址。</p>
+        <el-collapse v-if="!serviceOnly" v-model="aiActiveNames" class="my-4 border-none">
 
 
 <!-- Face Recognition -->
           <el-collapse-item name="face">
             <template #title>
-              <span class="text-sm font-medium text-gray-600 dark:text-gray-300">人脸识别配置</span>
+              <span class="text-sm font-medium text-gray-600 dark:text-gray-300">高级识别参数 · 通常无需修改</span>
             </template>
-            <el-form-item label="识别阈值">
-              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
-                <el-slider v-model="aiForm.face_recognition_threshold" :min="0" :max="1" :step="0.05" class="w-full sm:w-64" show-input />
-                <span class="text-sm text-gray-500 dark:text-gray-400">判定为人脸的最低置信度 (默认 0.7)</span>
-              </div>
-            </el-form-item>
-            <el-form-item label="聚类阈值">
-              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
-                <el-slider v-model="aiForm.face_cluster_threshold" :min="0" :max="1" :step="0.05" class="w-full sm:w-64" show-input />
-                <span class="text-sm text-gray-500 dark:text-gray-400">判定为同一人的距离阈值 (默认 0.4，越小越严格)</span>
-              </div>
-            </el-form-item>
-            <el-form-item label="重扫高置信度阈值">
-              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
-                <el-slider v-model="aiForm.face_rescan_auto_match_threshold" :min="0.2" :max="aiForm.face_rescan_candidate_threshold" :step="0.01" class="w-full sm:w-64" show-input />
-                <span class="text-sm text-gray-500 dark:text-gray-400">低于该距离时默认勾选新增（默认 0.35）</span>
-              </div>
-            </el-form-item>
-            <el-form-item label="重扫候选阈值">
-              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
-                <el-slider v-model="aiForm.face_rescan_candidate_threshold" :min="aiForm.face_rescan_auto_match_threshold" :max="aiForm.face_rescan_removal_threshold" :step="0.01" class="w-full sm:w-64" show-input />
-                <span class="text-sm text-gray-500 dark:text-gray-400">低于该距离时展示为潜在新增（默认 0.45）</span>
-              </div>
-            </el-form-item>
-            <el-form-item label="重扫移出阈值">
-              <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 w-full">
-                <el-slider v-model="aiForm.face_rescan_removal_threshold" :min="aiForm.face_rescan_candidate_threshold" :max="0.8" :step="0.01" class="w-full sm:w-64" show-input />
-                <span class="text-sm text-gray-500 dark:text-gray-400">高于该距离时展示为潜在移出（默认 0.52）</span>
-              </div>
-            </el-form-item>
-            <el-form-item label="最少照片数">
-              <el-input-number v-model="aiForm.face_recognition_min_photos" :min="1" />
-              <span class="text-sm text-gray-500 dark:text-gray-400 ml-2">形成人物聚类所需的最少照片数量 (默认 5)</span>
-            </el-form-item>
+            <SettingsFormRow label="识别阈值" description="判定为人脸的最低置信度 (默认 0.7)"><el-slider v-model="aiForm.face_recognition_threshold" :min="0" :max="1" :step="0.05" class="!w-full max-w-sm" show-input /></SettingsFormRow>
+            <SettingsFormRow label="聚类阈值" description="越小越严格，较少混入其他人，但同一个人可能分成多组。默认 0.4。"><el-slider v-model="aiForm.face_cluster_threshold" :min="0" :max="1" :step="0.05" class="!w-full max-w-sm" show-input /></SettingsFormRow>
+            <SettingsFormRow label="重扫高置信度阈值" description="低于该距离时默认勾选新增（默认 0.35）"><el-slider v-model="aiForm.face_rescan_auto_match_threshold" :min="0.2" :max="aiForm.face_rescan_candidate_threshold" :step="0.01" class="!w-full max-w-sm" show-input /></SettingsFormRow>
+            <SettingsFormRow label="重扫候选阈值" description="低于该距离时展示为潜在新增（默认 0.45）"><el-slider v-model="aiForm.face_rescan_candidate_threshold" :min="aiForm.face_rescan_auto_match_threshold" :max="aiForm.face_rescan_removal_threshold" :step="0.01" class="!w-full max-w-sm" show-input /></SettingsFormRow>
+            <SettingsFormRow label="重扫移出阈值" description="高于该距离时展示为潜在移出（默认 0.52）"><el-slider v-model="aiForm.face_rescan_removal_threshold" :min="aiForm.face_rescan_candidate_threshold" :max="0.8" :step="0.01" class="!w-full max-w-sm" show-input /></SettingsFormRow>
+            <SettingsFormRow label="最少照片数" description="形成人物聚类所需的最少照片数量 (默认 5)"><el-input-number v-model="aiForm.face_recognition_min_photos" :min="1" /></SettingsFormRow>
           </el-collapse-item>
         </el-collapse>
 
-        <el-form-item>
-          <el-button type="primary" @click="saveAISettings">保存 AI 配置</el-button>
+        <el-form-item v-if="!serviceOnly || !managedAI">
+          <el-button type="primary" @click="serviceOnly ? saveAIServiceSettings() : saveAISettings()">{{ serviceOnly ? '保存服务地址' : '保存识别参数' }}</el-button>
         </el-form-item>
           </el-form>
         </div>
 </SettingsSection>
 </template>
 <script setup lang="ts">
+import SettingsFormRow from '@/components/ui/SettingsFormRow.vue'
 import SettingsSection from '@/components/ui/SettingsSection.vue'
 import { useBasicSettingsContext } from '@/composables/settings/useBasicSettings'
 import { CheckCircle2, Loader2, XCircle } from 'lucide-vue-next'
-const { managedAI, activeNames, aiActiveNames, aiForm, aiServiceTest, resetAIServiceTest, saveAISettings, testAIServiceConnection } = useBasicSettingsContext()
+withDefaults(defineProps<{ serviceOnly?: boolean }>(), { serviceOnly: false })
+const { managedAI, activeNames, aiActiveNames, aiForm, aiServiceTest, resetAIServiceTest, saveAISettings, saveAIServiceSettings, testAIServiceConnection } = useBasicSettingsContext()
 </script>

@@ -118,8 +118,9 @@
                     metadata.address || '无位置信息'
                 }}
             </p>
-            <div v-if="hasPhotoCoordinates && !previewMapError" class="relative h-32 md:h-36 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+            <div v-if="hasPhotoCoordinates" :class="{ 'min-h-44': previewMapError }" class="relative h-32 md:h-36 rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
                 <div id="photo-metadata-map" class="w-full h-full"></div>
+                <MapUnavailable v-if="previewMapError" :error="previewMapError" class="absolute inset-0" />
                 <div v-if="previewMapLoading" class="absolute inset-0 flex items-center justify-center bg-gray-100/80 dark:bg-gray-800/80"><Loader2 class="w-5 h-5 animate-spin text-primary-500" /></div>
             </div>
             <p v-if="hasPhotoCoordinates" class="text-xs text-gray-500 dark:text-gray-400">{{ metadata.latitude?.toFixed(6) }}, {{ metadata.longitude?.toFixed(6) }}</p>
@@ -237,7 +238,7 @@
     </div>
     <div v-else-if="!metadata">
          <span class="text-sm text-gray-400 italic">无元数据信息，请等待元数据处理完成之后再试</span>
-         <a href='/settings#task-management'  class="text-sm text-primary-500 hover:underline">点击查看任务管理</a>
+         <RouterLink to="/settings#tasks"  class="text-sm text-primary-500 hover:underline">点击查看后台任务</RouterLink>
     </div>
   </div>
   </Transition>
@@ -325,7 +326,7 @@
           <Loader2 class="w-6 h-6 animate-spin text-primary-500" />
         </div>
         <div v-if="locationMapError" class="absolute inset-0 flex items-center justify-center bg-gray-100 dark:bg-gray-800">
-          <p class="text-sm text-gray-500">地图加载失败，请检查地图 API 配置</p>
+          <MapUnavailable :error="locationMapError" retryable @retry="initLocationMap" />
         </div>
       </div>
       <div class="photo-location-edit-controls w-52 flex flex-col gap-3">
@@ -366,6 +367,7 @@
 </template>
 
 <script setup lang="ts">
+import MapUnavailable from '@/components/MapUnavailable.vue'
 import UnifiedDatePicker from '@/components/ui/UnifiedDatePicker.vue'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import {

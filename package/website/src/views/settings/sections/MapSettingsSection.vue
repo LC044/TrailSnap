@@ -14,8 +14,6 @@
               </div>
               <el-select v-model="mapForm.provider" aria-label="地图提供商" class="w-full sm:w-48" @change="resetMapKeyTests">
                 <el-option label="天地图 (Tianditu)" value="tianditu" />
-                <el-option label="高德地图 (开发中)" value="amap" disabled />
-                <el-option label="百度地图 (开发中)" value="baidu" disabled />
               </el-select>
             </div>
 

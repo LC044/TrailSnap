@@ -1,8 +1,8 @@
 <template>
   <div class="task-management ts-settings-page">
-    <SettingsPageHeader title="任务管理" description="查看处理进度，排查与重试失败任务">
+    <SettingsPageHeader title="后台任务" description="查看处理进度，排查与重试失败任务">
       <template #actions>
-        <div class="flex items-center gap-2">
+        <div class="task-quick-mode flex items-center gap-2">
         <span class="text-sm text-gray-600 dark:text-gray-300">快速模式</span>
         <el-switch v-model="fastMode" @change="handleFastModeChange" />
         <el-tooltip content="开启后将同时运行不同类型的任务（CPU/IO），最大化资源利用" placement="top">
@@ -13,6 +13,7 @@
         </div>
       </template>
     </SettingsPageHeader>
+<BasicSettings category="tasks" embedded class="mb-6" />
     <div class="task-groups">
       <div v-if="loading && !groupedTasks.length" class="py-12 text-center ts-muted" role="status">正在加载任务…</div>
       <div v-else-if="loadFailed" class="task-group mb-4" role="alert">
@@ -20,30 +21,19 @@
         <button class="ts-button ts-button-secondary" @click="fetchTasks">重新加载</button>
       </div>
       <p v-else-if="!groupedTasks.length" class="py-12 text-center ts-muted">暂无任务</p>
-      <!-- Category Cards -->
-      <div class="grid grid-cols-1 gap-4">
-        <div v-for="cat in groupedTasks" :key="cat.category" class="task-group">
-          <div class="flex justify-between items-start gap-3 mb-4">
-            <div class="min-w-0 flex flex-wrap items-center gap-2 sm:gap-3">
-              <h3 class="text-lg flex items-center min-w-0 font-medium dark:text-white">{{cat.task_name}}
-                <el-tooltip :content="cat.description" placement="top">
-                    <Info class="w-4 h-4 ml-1 text-gray-400 dark:text-gray-500 cursor-help" />
-                </el-tooltip>
-              </h3>
-              <el-tag effect="plain" size="small" class="ml-0 sm:ml-2">
-                 优先级: {{ cat.priority }}
-              </el-tag>
 
-              <!-- Status Logic -->
-              <el-tag v-if="cat.status === 'paused'" type="warning" size="small">已暂停</el-tag>
-              <el-tag v-else-if="cat.waiting_reason && cat.pending > 0" type="info" size="small">{{ cat.waiting_reason }}</el-tag>
-              <el-tag v-else-if="cat.failed > 0" type="danger" size="small">有失败任务</el-tag>
-              <el-tag v-else-if="cat.pending === 0" type="success" size="small">已完成</el-tag>
-              <el-tag v-else-if="cat.completed === 0 && cat.pending === 0" type="info" size="small">等待中</el-tag>
-              <el-tag v-else type="primary" size="small">进行中</el-tag>
-            </div>
+      <div v-if="groupedTasks.length" class="task-list ts-surface overflow-hidden">
+        <article v-for="cat in groupedTasks" :key="cat.category" class="task-row">
+          <div class="flex items-center gap-3">
+            <button type="button" class="min-w-0 flex-1 py-3 text-left" :aria-expanded="expandedTask === cat.category" @click="expandedTask = expandedTask === cat.category ? '' : cat.category">
+              <span class="block text-[15px] font-medium">{{ cat.task_name }}</span>
+              <span v-if="cat.status === 'paused'" class="block text-xs ts-muted mt-1">已暂停<span v-if="cat.pending"> · 待处理 {{ cat.pending }}</span></span>
+              <span v-else-if="cat.pending > 0" class="block text-xs ts-muted mt-1">{{ cat.waiting_reason || '处理中' }} · 待处理 {{ cat.pending }}</span>
+              <span v-else-if="cat.failed === 0" class="block text-xs ts-muted mt-1">已完成</span>
+            </button>
+            <button v-if="cat.failed > 0" type="button" class="shrink-0 min-h-11 text-sm text-red-600 dark:text-red-400" :aria-label="`${cat.task_name}：${cat.failed} 项失败，查看详情`" @click="showFailedTasks(cat.category)">失败 {{ cat.failed }}</button>
             <div class="shrink-0">
-              <button class="ts-icon-button ts-button-secondary" :aria-label="`${cat.task_name}操作`" :aria-expanded="activeMenu === cat.category" aria-haspopup="menu" @click="activeMenu = activeMenu === cat.category ? '' : cat.category"><MoreHorizontal class="h-5 w-5" /></button>
+              <button class="ts-icon-button ts-button-ghost" :aria-label="`${cat.task_name}操作`" :aria-expanded="activeMenu === cat.category" aria-haspopup="menu" @click="activeMenu = activeMenu === cat.category ? '' : cat.category"><MoreHorizontal class="h-5 w-5" /></button>
               <AdaptiveMenu :model-value="activeMenu === cat.category" :title="`${cat.task_name}操作`" close-on-action @update:model-value="value => activeMenu = value ? cat.category : ''">
                 <button class="ts-action-row" @click="handleCategoryCommand(cat.category, cat.status === 'paused' ? 'resume' : 'pause')">{{ cat.status === 'paused' ? '继续任务' : '暂停任务' }}</button>
                 <button class="ts-action-row" @click="handleCategoryCommand(cat.category, 'scan_missing')">执行缺失任务</button>
@@ -54,21 +44,11 @@
               </AdaptiveMenu>
             </div>
           </div>
-          <div class="grid grid-cols-2 gap-4 text-center">
-             <div class="task-stat">
-               <div class="ts-muted text-xs mb-1">待处理</div>
-               <div class="text-xl font-bold primary-text">{{ cat.pending }}</div>
-             </div>
-             <button type="button" :disabled="cat.failed === 0"
-                class="task-stat task-stat-failed transition-colors"
-                :class="{'cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800': cat.failed > 0, 'opacity-60': cat.failed === 0}"
-                @click="cat.failed > 0 && showFailedTasks(cat.category)"
-             >
-               <div class="ts-muted text-xs mb-1">失败 {{ cat.failed > 0 ? '(点击查看)' : '' }}</div>
-               <div class="text-xl font-bold text-red-600 dark:text-red-400">{{ cat.failed }}</div>
-             </button>
+          <div v-if="expandedTask === cat.category" class="pb-4 text-xs ts-muted leading-5">
+            <p>{{ cat.description }}</p>
+            <p class="mt-1">优先级 {{ cat.priority }} · 已完成 {{ cat.completed }} · 待处理 {{ cat.pending }} · 失败 {{ cat.failed }}</p>
           </div>
-        </div>
+        </article>
       </div>
 
     </div>
@@ -78,11 +58,12 @@
 </template>
 
 <script setup lang="ts">
+import BasicSettings from './BasicSettings.vue'
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Info, MoreHorizontal } from 'lucide-vue-next'
+import { MoreHorizontal } from 'lucide-vue-next'
 import FailedTasksDialog from '@/components/FailedTasksDialog.vue'
 import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
@@ -107,6 +88,7 @@ const failedTasksVisible = ref(false)
 const failedCategory = ref('')
 const failedCategoryTitle = ref('')
 const activeMenu = ref('')
+const expandedTask = ref('')
 const loading = ref(true)
 const loadFailed = ref(false)
 
@@ -341,13 +323,14 @@ onUnmounted(() => {
 
 <style scoped>
 .task-management { min-width: 0; }
+.task-row { padding: 0 16px; }
+.task-row + .task-row { border-top: 1px solid var(--ts-color-divider); }
+.task-row button:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; border-radius: 8px; }
+
 .task-group { padding: var(--ts-space-6); border-radius: var(--ts-radius-card); border: 1px solid var(--ts-color-border); background: var(--ts-color-surface); }
-.task-stat { padding: 12px; border-radius: 14px; background: var(--ts-color-surface-muted); text-align: center; min-width: 0; }
-.task-stat-failed:enabled:hover { background: color-mix(in srgb, var(--ts-color-danger) 8%, var(--ts-color-surface-muted)); }
-.primary-text { color: var(--theme-primary); }
 @media (max-width: 767px) {
   .task-group { padding: var(--ts-space-4); }
   .task-group h3 { font-size: 16px; }
-  .task-stat { padding: 10px; }
+  .task-quick-mode { width: 100%; justify-content: space-between; padding: 8px 14px; border-radius: 16px; background: var(--ts-color-surface); }
 }
 </style>
