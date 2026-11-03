@@ -159,7 +159,7 @@ test.describe("足迹统计 @views-coverage", () => {
     await page.getByRole("button", { name: "记录天数", exact: true }).click()
     await expect(page.getByRole("img", { name: "年度记录天数柱状图" })).toBeVisible()
     await page.getByRole("button", { name: "按月", exact: true }).click()
-    await expect(page.getByLabel("趋势年份")).toBeVisible()
+    await expect(page.getByRole("combobox", { name: "趋势年份" })).toBeVisible()
     await expect(page.getByRole("img", { name: "月度记录天数柱状图" })).toBeVisible()
   })
   test("地点排名显示照片单位和查看入口", async ({ page }) => {
