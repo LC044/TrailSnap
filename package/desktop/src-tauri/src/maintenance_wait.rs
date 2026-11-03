@@ -2,7 +2,7 @@
 use std::time::Duration;
 use tokio::sync::watch;
 
-pub const PENDING: &str = "后台任务仍在结束，尚未开始复制。请保持窗口和磁盘连接，稍后点击“继续等待”；不会强制结束正在写入的任务。";
+pub const PENDING: &str = "后台任务仍在结束或进程尚未退出，尚未开始备份或切换版本。请保持窗口和磁盘连接，稍后点击“继续等待”；等待也可能来自 AI 请求或模型下载。";
 
 pub struct Drain {
     purpose: String,

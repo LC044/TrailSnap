@@ -32,8 +32,8 @@ class AdmissionGate:
                 self._semaphore.acquire(),
                 timeout=settings.AI_ADMISSION_WAIT_SECONDS,
             )
-            logging.info('AI admission timing: model=%s wait_ms=%.1f',
-                         self.name, (time.perf_counter() - started) * 1000)
+            # logging.info('AI admission timing: model=%s wait_ms=%.1f',
+            #              self.name, (time.perf_counter() - started) * 1000)
         except asyncio.TimeoutError as exc:
             raise HTTPException(
                 status_code=429,

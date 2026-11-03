@@ -6,14 +6,14 @@
       <div class="ts-browse-header pointer-events-auto flex items-center justify-between mx-auto">
         <!-- Back & Title -->
         <slot name="header-left" :scrolled="headerScrolled">
-          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
+          <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled && !stableTitle ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
             <BackButton label="返回" v-if="showBack" @click="$emit('back')" />
-            <div class="min-w-0 transition-colors duration-200" :class="headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
-              <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled }">
+            <div class="min-w-0 transition-colors duration-200" :class="stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
+              <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled && !stableTitle }">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>
               </h1>
-              <p v-if="subtitle && !headerScrolled" class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ subtitle }}</p>
+              <p v-if="subtitle && (stableTitle || !headerScrolled)" class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ subtitle }}</p>
             </div>
             <div v-else class="pr-2 animate-pulse">
               <div class="h-6 w-32 bg-gray-200 dark:bg-gray-800 rounded"></div>
@@ -375,6 +375,7 @@ import { useMomentLocations } from '@/composables/useMomentLocations'
 import { useMomentHighlights } from '@/composables/useMomentHighlights'
 
 const props = withDefaults(defineProps<{
+  stableTitle?: boolean
   enableTimeBrowse?: boolean
   title?: string
   subtitle?: string
@@ -396,6 +397,7 @@ const props = withDefaults(defineProps<{
   updateAvailable?: boolean
   updateMessage?: string
 }>(), {
+  stableTitle: false,
   title: '',
   subtitle: '',
   loading: false,

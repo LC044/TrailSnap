@@ -29,10 +29,11 @@
           <pre tabindex="0" aria-label="完整错误信息">{{ task.error || '未记录错误信息' }}</pre>
         </details>
         <div class="failure-actions">
+          <button class="ts-button ts-button-ghost ts-button-sm" :disabled="ignoring.has(task.id) || retrying.has(task.id)" title="删除这条失败任务记录，保留原照片" @click="ignoreTask(task)"><CircleOff class="h-4 w-4" />{{ ignoring.has(task.id) ? '忽略中…' : '忽略' }}</button>
           <button class="ts-button ts-button-secondary ts-button-sm" :disabled="!task.error || copying.has(task.id)" @click="copyErrorLog(task)"><Copy class="h-4 w-4" />{{ copying.has(task.id) ? '复制中…' : '复制日志' }}</button>
           <button v-if="photoId(task)" class="ts-button ts-button-secondary ts-button-sm" :disabled="previewing === task.id" @click="viewPhoto(task)"><ImageIcon class="h-4 w-4" />{{ previewing === task.id ? '加载中…' : '查看照片' }}</button>
           <button v-if="isTauriApp() && (filePath(task) || photoId(task))" class="ts-button ts-button-secondary ts-button-sm" :disabled="revealing.has(task.id)" @click="revealPhoto(task)"><FolderOpen class="h-4 w-4" />打开所在文件夹</button>
-          <button class="ts-button ts-button-primary ts-button-sm" :disabled="retrying.has(task.id)" @click="retryTask(task)"><RotateCw class="h-4 w-4" />{{ retrying.has(task.id) ? '重试中…' : '重试' }}</button>
+          <button class="ts-button ts-button-primary ts-button-sm" :disabled="retrying.has(task.id) || ignoring.has(task.id)" @click="retryTask(task)"><RotateCw class="h-4 w-4" />{{ retrying.has(task.id) ? '重试中…' : '重试' }}</button>
         </div>
       </article>
       <button v-if="shownTasks.length < tasks.length" class="ts-button ts-button-secondary w-full" @click="showMore">加载更多（剩余 {{ tasks.length - shownTasks.length }} 项）</button>
@@ -44,8 +45,9 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Copy, FolderOpen, Image as ImageIcon, ImageOff, RotateCw } from 'lucide-vue-next'
+import { Copy, FolderOpen, Image as ImageIcon, ImageOff, RotateCw, CircleOff } from 'lucide-vue-next'
 import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
+import { useNotificationStore } from '@/stores/notificationStore'
 import { tasksApi, type Task } from '@/api/tasks'
 import { albumService } from '@/api/album'
 import { revealDesktopPhoto } from '@/api/desktopDataDirectory'
@@ -57,14 +59,16 @@ import type { AlbumImage, Photo } from '@/types/album'
 
 const PhotoLightbox = defineAsyncComponent(() => import('@/components/PhotoLightbox.vue'))
 const props = defineProps<{ modelValue: boolean; category: string; title: string }>()
-const emit = defineEmits<{ 'update:modelValue': [value: boolean]; retried: [] }>()
+const emit = defineEmits<{ 'update:modelValue': [value: boolean]; retried: []; ignored: [] }>()
 const visible = computed({ get: () => props.modelValue, set: value => emit('update:modelValue', value) })
+const notifications = useNotificationStore()
 const tasks = ref<Task[]>([])
 const loading = ref(false)
 const loadError = ref(false)
 const photos = ref<Record<string, Photo>>({})
 const brokenImages = ref(new Set<string>())
 const retrying = ref(new Set<string>())
+const ignoring = ref(new Set<string>())
 const revealing = ref(new Set<string>())
 const copying = ref(new Set<string>())
 const previewing = ref<string | null>(null)
@@ -142,8 +146,25 @@ const revealPhoto = async (task: Task) => {
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : String(error || '打开文件夹失败')) }
   finally { revealing.value.delete(task.id) }
 }
+const ignoreTask = async (task: Task) => {
+  if (ignoring.value.has(task.id) || retrying.value.has(task.id)) return
+  ignoring.value.add(task.id)
+  const version = generation
+  try {
+    await tasksApi.ignoreFailedTask(task.id)
+    if (version === generation) {
+      tasks.value = tasks.value.filter(item => item.id !== task.id)
+      void hydratePhotos(version)
+    }
+    notifications.dismissTask(task.id)
+    notifications.handleEvent('task.category', { category: task.type, action: 'ignored' })
+    emit('ignored')
+    ElMessage.success('已忽略失败任务')
+  } catch { ElMessage.error('忽略失败，请稍后重试') }
+  finally { ignoring.value.delete(task.id) }
+}
 const retryTask = async (task: Task) => {
-  if (retrying.value.has(task.id)) return
+  if (retrying.value.has(task.id) || ignoring.value.has(task.id)) return
   retrying.value.add(task.id)
   const version = generation
   try {

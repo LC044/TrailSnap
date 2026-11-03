@@ -78,6 +78,7 @@ test('failed backup never runs the installer', async () => {
   await store.check(); await store.install()
   assert.deepEqual(calls, ['installer-download', 'drain-backup'])
   assert.equal(store.phase.value, 'error')
+  assert.match(store.message.value, /请先退出行影集.*完整安装包.*原安装目录覆盖安装.*无需卸载.*保留现有数据目录/)
 })
 
 test('switching installer source resets progress instead of adding partial bytes', async () => {
@@ -101,6 +102,7 @@ test('exhausted download retries never offer an unverified installer for install
   await store.check()
   assert.equal(store.phase.value, 'error')
   assert.match(store.message.value, /更新下载失败/)
+  assert.match(store.message.value, /原安装目录覆盖安装/)
   assert.deepEqual(calls, ['installer-download'])
 })
 
@@ -137,6 +139,7 @@ test('an update waiting for writers offers continued waiting and does not restar
   await store.check(); await store.install()
   assert.equal(store.waitingForTasks.value, true)
   assert.equal(store.needsRestart.value, false)
+  assert.match(store.message.value, /若多次等待仍无进展.*请先退出行影集.*原安装目录覆盖安装/)
   await store.install()
   assert.deepEqual(calls, ['portable-download', 'portable-apply', 'wait'])
   assert.equal(store.phase.value, 'error')
@@ -150,6 +153,7 @@ test('a rollback is explained before downloading the failed release again', asyn
   assert.match(store.message.value, /已恢复升级前/)
   assert.match(store.message.value, /照片校验失败/)
   assert.match(store.message.value, /backups/)
+  assert.match(store.message.value, /原安装目录覆盖安装/)
   await store.check(true)
   assert.deepEqual(calls, ['portable-download'])
 })
@@ -169,6 +173,7 @@ test('an unavailable automatic update catalog does not look like a failed instal
   await store.check(true)
   assert.equal(store.visible.value, true)
   assert.match(store.message.value, /暂时无法检查更新/)
+  assert.doesNotMatch(store.message.value, /覆盖安装/)
 })
 
 test('an offline catalog never hides the persisted rollback explanation', async () => {
@@ -177,4 +182,5 @@ test('an offline catalog never hides the persisted rollback explanation', async 
   assert.equal(store.visible.value, true)
   assert.match(store.message.value, /已恢复升级前/)
   assert.match(store.message.value, /backups/)
+  assert.match(store.message.value, /原安装目录覆盖安装/)
 })

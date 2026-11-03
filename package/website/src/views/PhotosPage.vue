@@ -2,6 +2,7 @@
   <UnifiedPhotoPage
     ref="unifiedPhotoPageRef"
     title="照片"
+    stable-title
     enable-time-browse
     :loading="photoStore.loading"
     :error="photoStore.error"

@@ -153,6 +153,7 @@ impl AIGateway {
 
     pub async fn drain_for_update(&self) -> Result<(), String> {
         self.finish_maintenance(true);
+        self.record_maintenance("waiting_ai_requests", None);
         loop {
             if self.admission.lock().expect("AI admission poisoned").1 == 0 {
                 break;
@@ -160,9 +161,45 @@ impl AIGateway {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         let _start_guard = self.start_lock.lock().await;
+        self.record_maintenance("waiting_model_downloads", None);
         self.wait_for_model_downloads().await?;
-        self.stop_sidecar();
+        self.record_maintenance("stopping_ai_process", None);
+        // Keep synchronous process waits off the async executor. Preserve
+        // ownership on failure rather than treating a lost handle as stopped.
+        let gateway = self.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            gateway.stop_sidecar_checked(crate::process_shutdown::stop)
+        })
+        .await
+        .map_err(|e| format!("停止 AI 进程失败：{e}"))?;
+        if let Err(error) = result {
+            self.record_maintenance("failed", Some(&error));
+            return Err(format!("停止 AI 进程失败，未开始升级：{error}。请退出后使用完整安装包覆盖安装到原目录"));
+        }
+        self.record_maintenance("stopped", None);
         Ok(())
+    }
+
+    fn stop_sidecar_checked(
+        &self,
+        stop: impl FnOnce(&mut Child) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let sidecar = self.sidecar.lock().expect("AI sidecar poisoned").take();
+        if let Some(mut sidecar) = sidecar {
+            if let Err(error) = stop(&mut sidecar.child) {
+                *self.sidecar.lock().expect("AI sidecar poisoned") = Some(sidecar);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn record_maintenance(&self, phase: &str, error: Option<&str>) {
+        let _ = crate::portable::write_json(
+            &self.app_root.join("logs/desktop-maintenance.json"),
+            &json!({"phase": phase, "error": error, "time": now_seconds(),
+                "activeRequests": self.admission.lock().expect("AI admission poisoned").1}),
+        );
     }
 
     async fn wait_for_model_downloads(&self) -> Result<(), String> {
@@ -645,6 +682,11 @@ mod tests {
             child,
             port,
         });
+        // An OS/helper failure must retain ownership, not authorize a snapshot
+        // by leaving sidecar=None. The subsequent real stop must still work.
+        let error = gateway.stop_sidecar_checked(|_| Err("fixture: stop denied".into()));
+        assert!(error.unwrap_err().contains("stop denied"));
+        assert!(gateway.running_port().is_some());
         gateway.admission.lock().unwrap().1 = 1;
         let request = RequestGuard(gateway.admission.clone());
         let copy = gateway.clone();
@@ -697,6 +739,10 @@ mod tests {
             .unwrap();
         assert!(gateway.running_port().is_none());
         assert!(polls.load(Ordering::SeqCst) >= 2);
+        let maintenance: Value =
+            crate::portable::read_json(&root.join("logs/desktop-maintenance.json")).unwrap();
+        assert_eq!(maintenance["phase"], "stopped");
+        assert_eq!(maintenance["activeRequests"], 0);
         let observed = proxy_inner(
             &gateway,
             Method::GET,

@@ -82,6 +82,11 @@ export const tasksApi = {
     return data.data
   },
 
+  async ignoreFailedTask(taskId: string) {
+    const response = await request.post<{ count: number }>(`/api/tasks/${taskId}/ignore`)
+    return response.data
+  },
+
   async retryTask(taskId: string) {
     const data = await request.post<Task>(`/api/tasks/${taskId}/retry`)
     return data.data
