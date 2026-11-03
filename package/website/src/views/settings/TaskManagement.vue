@@ -73,7 +73,7 @@
 
     </div>
 
-    <FailedTasksDialog v-model="failedTasksVisible" :category="failedCategory" :title="failedCategoryTitle" @retried="fetchTasks" />
+    <FailedTasksDialog v-model="failedTasksVisible" :category="failedCategory" :title="failedCategoryTitle" @retried="fetchTasks" @ignored="fetchTasks" />
   </div>
 </template>
 

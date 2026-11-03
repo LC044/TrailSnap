@@ -4,6 +4,7 @@ mod data_directory;
 mod library_link;
 mod import_flow;
 mod maintenance_wait;
+mod process_shutdown;
 mod llama_runtime;
 mod portable;
 mod update_manager;
@@ -161,6 +162,9 @@ async fn drain_desktop(app: &tauri::AppHandle, purpose: &str) -> Result<(), Stri
             // never cancel shutdown halfway through or authorize an offline copy.
             tauri::async_runtime::spawn(async move {
                 let result = drain_desktop_inner(&handle).await;
+                if let Err(error) = &result {
+                    handle.state::<AIGateway>().record_maintenance("failed", Some(error));
+                }
                 let _ = sender.send(Some(result));
             });
             receiver
@@ -189,6 +193,7 @@ async fn drain_desktop_inner(app: &tauri::AppHandle) -> Result<(), String> {
         activity.0 = true;
     }
     app.state::<AIGateway>().prepare_migration();
+    app.state::<AIGateway>().record_maintenance("waiting_server_tasks", None);
     let status = desktop_runtime_status(app.state());
     let response: Value = reqwest::Client::new()
         .post(format!(
@@ -208,6 +213,7 @@ async fn drain_desktop_inner(app: &tauri::AppHandle) -> Result<(), String> {
             .unwrap_or("准备迁移失败，请重启后重试")
             .into());
     }
+    app.state::<AIGateway>().record_maintenance("waiting_server_exit", None);
     loop {
         let exited = {
             let state = app.state::<DesktopState>();

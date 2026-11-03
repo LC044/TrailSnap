@@ -377,11 +377,11 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .ts-glass-sheet.responsive-dialog-panel::before,
 .ts-desktop-menu::before { opacity: .18; }
 .ts-glass-sheet .responsive-dialog-body { overscroll-behavior: contain; }
-.ts-action-content button { min-height: 48px; }
-.ts-action-row { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 12px; border-radius: 14px; text-align: left; color: var(--ts-color-text); }
+.ts-action-content button { min-height: var(--ts-control-md); }
+.ts-action-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--ts-control-md); padding: 8px 12px; border-radius: 14px; font-size: var(--ts-font-sm, 14px); line-height: 1.5; overflow-wrap: anywhere; text-align: left; color: var(--ts-color-text); }
 .ts-action-row:hover { background: rgba(var(--theme-rgb), .08); }
 .ts-action-row:disabled { opacity: .5; }
-.ts-action-row svg { width: 20px; height: 20px; }
+.ts-action-row svg { width: 18px; height: 18px; flex-shrink: 0; }
 .ts-action-row.danger { color: var(--ts-color-danger); }
 @supports not (backdrop-filter: blur(3px)) {
   .ts-liquid-glass { background: var(--ts-color-surface); }
@@ -416,11 +416,11 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .ts-photo-date::before { opacity: .22; }
 
 /* System album menus: frosted shell, quiet separators and clear content groups. */
-.ts-desktop-menu { width: min(260px, calc(100vw - 32px)); padding: 6px; border-radius: 24px; border-color: var(--ts-glass-border); }
-.ts-desktop-menu .ts-menu-content > .ts-action-row { min-height: 52px; padding-inline: 16px; border-radius: 0; font-weight: 500; }
+.ts-desktop-menu { width: min(220px, calc(100vw - 32px)); padding: 4px; border-radius: 20px; border-color: var(--ts-glass-border); }
+.ts-desktop-menu .ts-menu-content > .ts-action-row { border-radius: 0; font-weight: 500; }
 .ts-desktop-menu .ts-menu-content > .ts-action-row + .ts-action-row { border-top: 1px solid var(--ts-color-divider); }
-.ts-desktop-menu .ts-menu-content > .ts-action-row:first-child { border-radius: 18px 18px 0 0; }
-.ts-desktop-menu .ts-menu-content > .ts-action-row:last-child { border-radius: 0 0 18px 18px; }
+.ts-desktop-menu .ts-menu-content > .ts-action-row:first-child { border-top-left-radius: 16px; border-top-right-radius: 16px; }
+.ts-desktop-menu .ts-menu-content > .ts-action-row:last-child { border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
 .ts-action-content { padding: 6px; border-radius: 20px; background: var(--ts-menu-card); }
 .ts-action-content > .ts-action-row + .ts-action-row { border-top: 1px solid var(--ts-color-divider); }
 .ts-glass-sheet:not(.mobile-fullscreen) .responsive-dialog-header { position: relative; border-bottom: 0; min-height: 76px; }

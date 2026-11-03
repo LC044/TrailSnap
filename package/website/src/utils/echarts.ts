@@ -37,6 +37,7 @@ import {
   AxisPointerComponent,
   RadarComponent,
   DatasetComponent,
+  GraphicComponent,
 } from 'echarts/components'
 
 // —— 渲染器 ——
@@ -65,6 +66,7 @@ echarts.use([
   AxisPointerComponent,
   RadarComponent,
   DatasetComponent,
+  GraphicComponent,
   // renderer
   CanvasRenderer,
 ])

@@ -3,10 +3,6 @@
     <div class="space-y-4">
       <header class="flex flex-wrap items-start justify-between gap-3 py-2">
         <div><h1 class="text-xl font-semibold tracking-tight">足迹统计</h1><p class="stats-caption mt-1">{{ rangeLabel }} · 从照片中回看走过的地方与记录的日子</p></div>
-        <details class="stats-method">
-          <summary class="stats-caption cursor-pointer py-1">统计口径</summary>
-          <p class="stats-caption mt-2 max-w-lg">概览、时间趋势和日历跟随时间筛选，包含整个图库；城市和省份来自照片中的位置。时间趋势、记录天数和照片数包含无位置的照片，仅统计有拍摄日期的记录。顶部地区层级仅影响地点排名与地点记录。</p>
-        </details>
       </header>
       <StatsOverviewCard :overview="overviewError ? null : overview" :loading="overviewLoading" />
       <div v-if="overviewError" class="stats-caption flex items-center gap-3" role="alert">足迹概览加载失败<button class="text-primary-500" @click="fetchOverview">重试</button></div>

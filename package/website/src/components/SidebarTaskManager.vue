@@ -1,84 +1,80 @@
 <template>
-  <div v-if="shouldShow" class="mb-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/50 transition-all">
-    <!-- Header / Toggle -->
-    <div
-      class="flex items-center px-3 py-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-      @click="toggleExpand"
-      role="button"
-      tabindex="0"
-      :aria-expanded="expanded"
-      :aria-label="totalFailed > 0 ? `${totalFailed} 个后台任务失败，查看详情` : '后台任务'"
-      @keydown.enter.prevent="toggleExpand"
-      @keydown.space.prevent="toggleExpand"
-      :title="totalFailed > 0 ? `${totalFailed} 个任务失败，点击查看` : '后台任务'"
+  <div v-if="shouldShow" class="task-status">
+    <el-popover
+      v-model:visible="expanded"
+      trigger="click"
+      placement="right-end"
+      popper-class="ts-liquid-glass"
+      :width="320"
+      :offset="14"
+      :show-arrow="false"
+      :disabled="isCollapsed"
+      :popper-style="{ maxWidth: 'calc(100vw - 24px)' }"
+      @after-leave="focusTrigger"
     >
-      <Loader2 v-if="hasPending" class="w-5 h-5 shrink-0 text-primary-500 animate-spin" />
-      <AlertCircle v-else-if="totalFailed > 0" class="w-5 h-5 shrink-0 text-red-500 dark:text-red-400" />
-      <CheckCircle2 v-else class="w-5 h-5 shrink-0 text-emerald-500" />
-
-      <transition name="fade">
-        <div v-if="!isCollapsed" class="ml-3 flex-1 flex items-center justify-between overflow-hidden">
-          <span class="text-sm text-slate-700 dark:text-slate-300 truncate">
-            {{ hasPending ? `处理中 (${totalPending})${totalFailed ? ` · 失败 ${totalFailed}` : ''}` : totalFailed > 0 ? `${totalFailed} 个任务失败` : '任务已完成' }}
-          </span>
-          <ChevronDown
-            class="w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0"
-            :class="{ 'rotate-180': expanded }"
-          />
-        </div>
-      </transition>
-    </div>
-
-    <!-- Expanded Body -->
-    <div v-show="!isCollapsed && expanded" class="px-3 pb-2 pt-2 max-h-48 overflow-y-auto custom-scrollbar border-t border-slate-100 dark:border-slate-700/50">
-      <div v-if="activeCategories.length === 0" class="py-2 text-center text-xs text-slate-500">
-        没有正在处理的任务
-      </div>
-      <div
-        v-for="cat in activeCategories"
-        :key="cat.category"
-        class="py-1.5 flex flex-col gap-1"
-      >
-        <div class="flex items-center justify-between">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300 truncate pr-2">
-            {{ cat.task_name }}
-          </span>
-          <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0">
-            剩余 {{ cat.pending }}
-          </span>
-        </div>
-        <el-progress
-          v-if="!cat.waiting_reason"
-          :percentage="100"
-          :show-text="false"
-          :stroke-width="4"
-          status="success"
-          class="!my-0 task-progress-bar"
-          :indeterminate="true"
-        />
-        <p v-else class="ts-muted text-xs">{{ cat.waiting_reason }}</p>
-      </div>
-
-      <div class="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between items-center">
-        <span v-if="totalFailed > 0" class="text-xs text-red-500">
-          {{ totalFailed }} 个任务失败
-        </span>
-        <span v-else></span>
+      <template #reference>
         <button
-          @click="goToTasks"
-          class="text-xs text-primary-500 hover:text-primary-600 dark:hover:text-primary-400 font-medium focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none rounded"
+          ref="triggerRef"
+          type="button"
+          class="task-status-trigger"
+          :class="{ 'is-collapsed': isCollapsed, 'is-open': expanded }"
+          :aria-expanded="!isCollapsed && expanded"
+          :aria-haspopup="isCollapsed ? undefined : 'dialog'"
+          :aria-label="`后台任务，${formatCount(totalPending)} 项待处理${totalFailed ? `，${formatCount(totalFailed)} 项失败` : ''}`"
+          :title="isCollapsed ? '后台任务 · 查看任务管理' : undefined"
+          @click="isCollapsed && toggleExpand()"
+          @keydown.esc.stop="closePanel"
         >
-          查看详情 →
+          <span class="task-status-icon">
+            <Loader2 v-if="hasPending" class="h-5 w-5 text-primary-500 motion-safe:animate-spin" />
+            <AlertCircle v-else-if="totalFailed > 0" class="h-5 w-5 task-danger" />
+            <CheckCircle2 v-else class="h-5 w-5 text-primary-500" />
+            <span v-if="isCollapsed && hasPending && totalFailed > 0" class="task-failure-dot" />
+          </span>
+          <span v-if="!isCollapsed" class="task-status-copy">
+            <span class="task-status-heading">
+              <span>后台任务</span>
+              <ChevronRight class="h-4 w-4 task-muted" />
+            </span>
+            <span class="task-status-summary">
+              <span class="task-muted">{{ hasPending ? `${compactCount(totalPending)} 项待处理` : totalFailed ? '需要处理' : '处理完成' }}</span>
+              <span v-if="totalFailed > 0" class="task-danger inline-flex items-center gap-1">
+                <AlertCircle class="h-3 w-3" />{{ compactCount(totalFailed) }} 项失败
+              </span>
+            </span>
+          </span>
         </button>
-      </div>
-    </div>
+      </template>
+
+      <section class="task-panel" role="dialog" aria-label="后台任务详情" @keydown.esc.stop="closePanel">
+        <header class="task-panel-header">
+          <h2 class="text-sm font-semibold">后台任务</h2>
+          <button type="button" class="task-panel-close" aria-label="关闭任务详情" @click="closePanel"><X class="h-4 w-4" /></button>
+        </header>
+        <div class="task-panel-list">
+          <div v-for="cat in detailCategories" :key="cat.category" class="task-category">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-sm font-medium min-w-0 break-words">{{ shortTaskName(cat.task_name) }}</span>
+              <span class="task-muted text-xs shrink-0">{{ cat.status === 'paused' ? '已暂停' : cat.waiting_reason ? '等待中' : cat.pending > 0 ? '处理中' : '待处理失败' }}</span>
+            </div>
+            <div class="task-muted mt-1 text-xs tabular-nums">{{ formatCount(cat.pending) }} 项待处理<span v-if="cat.failed > 0" class="task-danger"> · {{ formatCount(cat.failed) }} 项失败</span></div>
+            <p v-if="cat.waiting_reason" class="task-muted mt-1 text-xs break-words">{{ cat.waiting_reason }}</p>
+          </div>
+          <p v-if="detailCategories.length === 0" class="task-muted py-4 text-center text-sm">所有后台任务已处理完成</p>
+        </div>
+        <footer class="task-panel-footer">
+          <button v-if="totalFailed > 0" type="button" class="task-manage task-danger" @click="goToTasks">查看并处理 {{ formatCount(totalFailed) }} 项失败<ArrowUpRight class="h-4 w-4" /></button>
+          <button v-else type="button" class="task-manage text-primary-500" @click="goToTasks">查看全部任务<ArrowUpRight class="h-4 w-4" /></button>
+        </footer>
+      </section>
+    </el-popover>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Loader2, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-vue-next'
+import { Loader2, ChevronRight, CheckCircle2, AlertCircle, ArrowUpRight, X } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import { useDebounceFn } from '@vueuse/core'
 import { tasksApi } from '@/api/tasks'
@@ -100,6 +96,16 @@ const props = defineProps<{
 const router = useRouter()
 const store = useNotificationStore()
 
+const triggerRef = ref<HTMLButtonElement | null>(null)
+let returnFocus = false
+const focusTrigger = () => {
+  if (returnFocus) triggerRef.value?.focus()
+  returnFocus = false
+}
+const closePanel = () => {
+  returnFocus = true
+  expanded.value = false
+}
 const expanded = ref(false)
 const groupedStatus = ref<TaskCategoryStatus[]>([])
 // 拉取在途标记：防止 SSE 事件在请求中途触发并发刷新
@@ -109,6 +115,13 @@ let pendingRefresh = false
 const activeCategories = computed(() => {
   return groupedStatus.value.filter(cat => cat.status !== 'paused' && cat.pending > 0)
 })
+
+const detailCategories = computed(() => groupedStatus.value.filter(cat => cat.pending > 0 || cat.failed > 0))
+const formatCount = (count: number) => count.toLocaleString('zh-CN')
+const compactCount = (count: number) => count >= 10000
+  ? `${(count / 10000).toFixed(1).replace(/\.0$/, '')} 万`
+  : formatCount(count)
+const shortTaskName = (name: string) => name === '大模型智能分析' ? '智能分析' : name
 
 const totalPending = computed(() => {
   return activeCategories.value.reduce((sum, cat) => sum + cat.pending, 0)
@@ -131,7 +144,6 @@ const fetchStatus = async () => {
     groupedStatus.value = data
     if (totalFailed.value > previousFailed) {
       ElMessage.warning(`${totalFailed.value} 个后台任务失败，可在任务管理查看原因并重试`)
-      expanded.value = true
       showSuccess.value = false
     }
 
@@ -145,7 +157,6 @@ const fetchStatus = async () => {
     } else if (wasPending.value && totalPending.value === 0) {
       // 从有任务过渡到全部完成
       wasPending.value = false
-      expanded.value = totalFailed.value > 0
       if (successTimer) window.clearTimeout(successTimer)
       successTimer = null
       if (totalFailed.value === 0 && groupedStatus.value.every(cat => cat.pending === 0)) {
@@ -164,6 +175,7 @@ const fetchStatus = async () => {
 }
 
 const goToTasks = () => {
+  expanded.value = false
   router.push({ path: '/settings', query: { tab: 'tasks' } })
 }
 
@@ -212,51 +224,30 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
+.task-status { color: var(--ts-color-text); }
+.task-muted { color: var(--ts-color-text-secondary); }
+.task-danger { color: var(--ts-color-danger); }
+.task-status-trigger {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px;
+  border-radius: var(--ts-radius-control); text-align: left;
+  transition: background-color var(--ts-motion-fast) ease;
 }
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1;
-  border-radius: 4px;
-}
-.dark .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #475569;
-}
-
-/* Make indeterminate progress bar move */
-:deep(.task-progress-bar .el-progress-bar__inner) {
-  background-image: linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.15) 25%,
-    transparent 25%,
-    transparent 50%,
-    rgba(255, 255, 255, 0.15) 50%,
-    rgba(255, 255, 255, 0.15) 75%,
-    transparent 75%,
-    transparent
-  );
-  background-size: 1rem 1rem;
-  animation: progress-stripes 1s linear infinite;
-}
-
-@keyframes progress-stripes {
-  0% {
-    background-position: 1rem 0;
-  }
-  100% {
-    background-position: 0 0;
-  }
-}
+.task-status-trigger:hover, .task-status-trigger.is-open { background: var(--ts-color-surface-muted); }
+.task-status-trigger:focus-visible, .task-panel button:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
+.task-status-icon { position: relative; display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 24px; height: 24px; }
+.task-failure-dot { position: absolute; top: -1px; right: -1px; width: 7px; height: 7px; border-radius: 50%; background: var(--ts-color-danger); box-shadow: 0 0 0 2px var(--ts-color-surface); }
+.task-status-copy { flex: 1; min-width: 0; }
+.task-status-heading { display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 500; }
+.task-status-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; margin-top: 4px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.task-status-trigger.is-collapsed { justify-content: center; }
+.task-panel { color: var(--ts-color-text); }
+.task-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 8px; }
+.task-panel-close { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; color: var(--ts-color-text-secondary); }
+.task-panel-close:hover { background: var(--ts-color-surface-muted); }
+.task-panel-list { max-height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain; }
+.task-category { padding: 12px 0; }
+.task-category + .task-category { border-top: 1px solid var(--ts-color-divider); }
+.task-panel-footer { border-top: 1px solid var(--ts-color-divider); padding-top: 8px; }
+.task-manage { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 36px; font-size: 12px; border-radius: 8px; }
+.task-manage:hover { background: var(--ts-color-surface-muted); }
 </style>

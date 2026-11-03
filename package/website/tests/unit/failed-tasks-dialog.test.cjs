@@ -11,22 +11,23 @@ function harness() {
   const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
   const props = { modelValue: true, category: 'OCR', title: '文字识别' }
   const errors = [], events = [], reveals = []
-  let rows = [], photoRows = [], desktop = false, list = async () => rows, retry = async () => {}
+  let rows = [], photoRows = [], desktop = false, list = async () => rows, retry = async () => {}, ignore = async () => {}
   const context = {
     ref, computed, watch() {}, defineAsyncComponent() {}, defineProps: () => props,
     defineEmits: () => (...args) => events.push(args),
-    tasksApi: { listTasks: (...args) => list(...args), retryTask: (...args) => retry(...args) },
+    tasksApi: { listTasks: (...args) => list(...args), retryTask: (...args) => retry(...args), ignoreFailedTask: (...args) => ignore(...args) },
     albumService: { getPhotosByIds: async ids => photoRows.filter(photo => ids.includes(photo.id)), getMetadata: async () => ({}) },
+    useNotificationStore: () => ({ dismissTask() {}, handleEvent() {} }),
     isTauriApp: () => desktop, revealDesktopPhoto: async file => reveals.push(file),
     mapPhotoToImage: photo => ({ ...photo, preview: 'preview' }), ElMessage: { error: value => errors.push(value), success() {} },
   }
   vm.createContext(context)
-  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { loadTasks, tasks, loadError, shownTasks, showMore, photos, viewPhoto, preview, revealPhoto, retryTask, retrying, filename };', {
+  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { loadTasks, tasks, loadError, shownTasks, showMore, photos, viewPhoto, preview, revealPhoto, retryTask, retrying, ignoreTask, ignoring, filename };', {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context)
   return { ...context.page, props, errors, events, reveals,
     rows: value => { rows = value }, photosData: value => { photoRows = value }, desktop: value => { desktop = value },
-    list: value => { list = value }, retry: value => { retry = value } }
+    list: value => { list = value }, retry: value => { retry = value }, ignore: value => { ignore = value } }
 }
 const task = (id = 'task-1') => ({ id, type: 'OCR', payload: { photo_id: 'photo-1' }, error: 'failure', created_at: '' })
 
@@ -83,4 +84,39 @@ test('large failure lists render progressively and Windows filenames remain read
   await page.loadTasks(); assert.equal(page.shownTasks.value.length, 20)
   page.showMore(); assert.equal(page.shownTasks.value.length, 40)
   assert.equal(page.filename({ payload: { file_path: 'C:\\Photos\\trip.jpg' } }), 'trip.jpg')
+})
+
+test('mobile back closes the dialog instead of leaving the page', async () => {
+  const template = fs.readFileSync(path.resolve(__dirname, '../../src/components/FailedTasksDialog.vue'), 'utf8').split('<script setup lang="ts">')[0]
+  // history keeps a browser-history entry so mobile back gesture dismisses the
+  // fullscreen dialog; without it back navigates away from /settings entirely.
+  assert.match(template, /<ResponsiveDialog[^>]*\bhistory\b/)
+})
+
+
+test('ignore deletes only the selected record, blocks duplicate/retry races, and refreshes parent', async () => {
+  const page = harness(); page.rows([task(), task('keep')]); await page.loadTasks()
+  let finish, calls = 0, retries = 0
+  page.ignore(id => { assert.equal(id, 'task-1'); calls++; return new Promise(resolve => { finish = resolve }) })
+  page.retry(async () => { retries++ })
+  const pending = page.ignoreTask(task())
+  await page.ignoreTask(task()); await page.retryTask(task())
+  assert.equal(calls, 1); assert.equal(retries, 0)
+  assert.equal(page.tasks.value.length, 2)
+  finish(); await pending
+  assert.deepEqual(Array.from(page.tasks.value, row => row.id), ['keep'])
+  assert.equal(page.events[0][0], 'ignored'); assert.equal(page.ignoring.value.size, 0)
+})
+
+test('ignore failure retains record and stale completion cannot remove a newly loaded record', async () => {
+  const page = harness(); page.rows([task()]); await page.loadTasks()
+  page.ignore(async () => { throw new Error('offline') }); await page.ignoreTask(task())
+  assert.equal(page.tasks.value.length, 1); assert.equal(page.events.length, 0)
+  assert.equal(page.ignoring.value.size, 0); assert.match(page.errors[0], /忽略失败/)
+  let finish
+  page.ignore(() => new Promise(resolve => { finish = resolve }))
+  const pending = page.ignoreTask(task())
+  await page.loadTasks()
+  finish(); await pending
+  assert.equal(page.tasks.value.length, 1)
 })

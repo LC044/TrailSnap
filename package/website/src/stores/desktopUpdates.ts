@@ -4,6 +4,8 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { getDesktopDataDirectory, isDesktopDrainPending, waitForDesktopDrain, restartDesktop } from '@/api/desktopDataDirectory'
 import { applyPortableUpdate, checkPortableUpdate, downloadPortableUpdate, prepareInstalledUpdate, checkInstalledUpdate, getDesktopUpdateStatus, type PortableUpdate } from '@/api/desktopUpdates'
 
+const manualUpdateHelp = '请先退出行影集，从官网下载最新版本的完整安装包，选择原安装目录覆盖安装。无需卸载，请保留现有数据目录。'
+
 export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
   const visible = ref(false)
   const version = ref('')
@@ -43,7 +45,7 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
           visible.value = true
           version.value = `v${status.transaction.version}`
           phase.value = 'error'
-          message.value = `上次更新失败，已恢复升级前的程序与数据。${status.transaction.error || ''} 备份：${status.backupPath || '数据目录/backups'}。可继续使用当前版本，或手动重试。`
+          message.value = `上次更新失败，已恢复升级前的程序与数据。${status.transaction.error || ''} 备份：${status.backupPath || '数据目录/backups'}。可继续使用当前版本。如需手动更新，${manualUpdateHelp}`
           return
         }
         if (!unlisten) unlisten = await listen<PortableUpdate>('desktop-update-status', event => updateProgress(event.payload))
@@ -77,7 +79,7 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
         visible.value = true
         version.value = `v${status.transaction.version}`
         phase.value = 'error'
-        message.value = `上次更新失败，已恢复升级前的程序与数据。${status.transaction.error || ''} 备份：${status.backupPath || '数据目录/backups'}。暂时无法检查新版本，可继续使用当前版本。`
+        message.value = `上次更新失败，已恢复升级前的程序与数据。${status.transaction.error || ''} 备份：${status.backupPath || '数据目录/backups'}。暂时无法检查新版本，可继续使用当前版本。如需手动更新，${manualUpdateHelp}`
         return
       }
       if (checking && !retry && !explicitCheckRequested) {
@@ -88,7 +90,9 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
       }
       visible.value = true
       phase.value = 'error'
-      message.value = `${checking ? '暂时无法检查更新，可继续使用当前版本' : '更新下载失败'}：${String(error)}`
+      message.value = checking
+        ? `暂时无法检查更新，可继续使用当前版本：${String(error)}`
+        : `更新下载失败：${String(error)}。${manualUpdateHelp}`
     }
   }
   async function install() {
@@ -107,7 +111,9 @@ export const useDesktopUpdatesStore = defineStore('desktop-updates', () => {
       waitingForTasks.value = isDesktopDrainPending(error)
       needsRestart.value = !waitingForTasks.value
       phase.value = 'error'
-      message.value = waitingForTasks.value ? String(error) : `更新失败，请重新启动后重试：${String(error)}`
+      message.value = waitingForTasks.value
+        ? `${String(error)} 若多次等待仍无进展，${manualUpdateHelp}`
+        : `更新失败：${String(error)}。${manualUpdateHelp}`
     }
   }
   function dispose() { unlisten?.(); unlisten = null }

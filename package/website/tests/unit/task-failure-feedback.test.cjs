@@ -18,7 +18,7 @@ function harness() {
     ElMessage: { success: text => success.push(text), warning: text => warnings.push(text) },
     window: { setTimeout(fn) { timers.set(1, fn); return 1 }, clearTimeout(id) { timers.delete(id) } } }
   vm.createContext(context)
-  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { fetchStatus, shouldShow, showSuccess, expanded, totalFailed, toggleExpand };', {
+  vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { compactCount, formatCount, detailCategories, fetchStatus, shouldShow, showSuccess, expanded, totalFailed, toggleExpand };', {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, context)
   return { ...context.page, success, warnings, routes, timers, cleanup: () => cleanup(),
@@ -32,7 +32,7 @@ test('existing failures remain visible on initial load and collapsed header open
   await page.update([group(0, 3)])
   assert.equal(page.shouldShow.value, true)
   assert.equal(page.totalFailed.value, 3)
-  assert.equal(page.expanded.value, true)
+  assert.equal(page.expanded.value, false)
   page.toggleExpand()
   assert.equal(page.routes[0].query.tab, 'tasks')
   assert.equal(page.success.length, 0)
@@ -66,4 +66,26 @@ test('successful completion is temporary and unmount releases its timer', async 
   assert.equal(page.timers.size, 1)
   page.cleanup()
   assert.equal(page.timers.size, 0)
+})
+
+
+test('failure updates preserve the user choice to keep details closed or open', async () => {
+  const page = harness()
+  await page.update([group(5, 1)])
+  assert.equal(page.expanded.value, false)
+  page.expanded.value = true
+  await page.update([group(0, 2)])
+  assert.equal(page.expanded.value, true)
+  page.expanded.value = false
+  await page.update([group(0, 3)])
+  assert.equal(page.expanded.value, false)
+})
+
+test('summary uses compact numbers while details retain exact counts and paused categories', async () => {
+  const page = harness()
+  assert.equal(page.compactCount(84856), '8.5 万')
+  assert.equal(page.compactCount(10000), '1 万')
+  assert.equal(page.formatCount(84856), '84,856')
+  await page.update([group(12, 0, 'paused')])
+  assert.equal(page.detailCategories.value.length, 1)
 })

@@ -372,6 +372,36 @@ def retry_task(task_id: UUID, db: Session = Depends(get_db)):
     return BaseResponse.success(data=task)
 
 
+@router.post("/{task_id}/ignore", summary="忽略并删除指定失败任务", response_model=BaseResponse[Dict[str, int]])
+def ignore_failed_task(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = crud_task.get_task(db, task_id)
+    if not task:
+        return BaseResponse.fail(code=404, msg="失败任务不存在或已被删除")
+    owner_id = task.owner_id or (task.payload or {}).get("user_id")
+    if not current_user.is_superuser and str(owner_id) != str(current_user.id):
+        return BaseResponse.fail(code=403, msg="无权忽略此任务")
+    category = task.type
+    # Keep the status predicate in the DELETE itself: a concurrent retry must
+    # never have its pending/processing task removed by this action.
+    count = db.query(Task).filter(Task.id == task_id, Task.status == TaskStatus.FAILED).delete(synchronize_session=False)
+    if not count:
+        db.rollback()
+        return BaseResponse.fail(code=409, msg="任务状态已变化，请刷新后重试")
+    db.commit()
+    try:
+        TaskManager.get_instance().publish_event("task.category", {
+            "category": category, "action": "ignored", "task_id": str(task_id),
+        })
+    except Exception:
+        import logging
+        logging.exception("Failed to publish ignored task event")
+    return BaseResponse.success(data={"count": count})
+
+
 @router.post("/retry-all-failed", summary="重试所有失败任务", response_model=BaseResponse[Dict[str, Any]])
 def retry_all_failed_tasks(
     types: Optional[List[str]] = Query(None),
