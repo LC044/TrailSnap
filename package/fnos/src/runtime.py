@@ -13,7 +13,7 @@ STATE = Path('/state')
 PACKAGE = Path('/package')
 CANDIDATE = Path('/candidate')
 WIZARD = Path('/wizard/config')
-DATA_EXPR = '${wizard_data_dir:?请选择用户数据目录}'
+DATA_EXPR = '${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/' + APP + '/data}'
 PHOTO_EXPR = '${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/' + APP + '/photos}'
 
 def fail(message):
@@ -36,7 +36,7 @@ def inside(child, parent):
 
 def data_path(value):
     value = host_path(value)
-    if value.split('/')[2].startswith('@app'):
+    if value.split('/')[2].startswith('@app') and not re.fullmatch(r'/vol[0-9]+/@appshare/' + re.escape(APP) + '/data', value):
         fail('请选择个人文件或共享文件中的独立目录，不要使用应用管理目录。')
     return value
 

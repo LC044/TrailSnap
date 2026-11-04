@@ -22,14 +22,43 @@ validate_path() {
 check_port_free() {
   if command -v ss >/dev/null && [ -n "$(ss -H -ltn "sport = :$1" 2>/dev/null)" ]; then fail '选择的端口已被占用，请换一个端口。'; fi
 }
+resolve_directory() {
+  local value="$1" folder="$2"
+  if [ -z "$value" ] || [ "$value" = "$APP/$folder" ]; then
+    printf '%s/@appshare/%s/%s' "$TRIM_APPDEST_VOL" "$APP" "$folder"
+  else
+    printf '%s' "$value"
+  fi
+}
 case "${1:-}" in
  install)
   validate_port "${wizard_port:-3180}"
   check_port_free "${wizard_port:-3180}"
-  [ -n "${wizard_data_dir:-}" ] || fail '请选择用户数据目录，用于保存上传的照片。'
-  validate_path "$wizard_data_dir"
-  [[ ! "$wizard_data_dir" =~ ^/vol[0-9]+/@app ]] || fail '请选择个人文件或共享文件中的独立目录。'
-  if [ -n "${wizard_photo_dir:-}" ]; then validate_path "$wizard_photo_dir"; fi
+  data_path=$(resolve_directory "${wizard_data_dir:-}" data)
+  validate_path "$data_path"
+  if [[ "$data_path" =~ ^/vol[0-9]+/@app ]] && [[ ! "$data_path" =~ ^/vol[0-9]+/@appshare/$APP/data$ ]]; then
+    fail '请选择本应用的数据共享目录，或个人文件、共享文件中的独立目录。'
+  fi
+  validate_path "$(resolve_directory "${wizard_photo_dir:-}" photos)"
+  ;;
+ prepare)
+  # fnOS passes the visible shared-directory names literally. Resolve them
+  # before its docker-project starts; custom absolute paths keep interpolation.
+  compose_path="$TRIM_APPDEST/docker/docker-compose.yaml"
+  content=$(cat "$TRIM_APPDEST/docker/compose-template.json")
+  for folder in data photos; do
+    if [ "$folder" = data ]; then value="${wizard_data_dir:-}"; field=wizard_data_dir
+    else value="${wizard_photo_dir:-}"; field=wizard_photo_dir; fi
+    if [ -z "$value" ] || [ "$value" = "$APP/$folder" ]; then
+      resolved=$(resolve_directory "$value" "$folder")
+      validate_path "$resolved"
+      expression='${'"$field"':-${TRIM_APPDEST_VOL}/@appshare/'"$APP/$folder"'}'
+      content=${content//"$expression"/"$resolved"}
+    fi
+  done
+  printf '%s\n' "$content" > "$compose_path.tmp"
+  chmod 644 "$compose_path.tmp"
+  mv -f -- "$compose_path.tmp" "$compose_path"
   ;;
  configure)
   [ -r "$TRIM_PKGVAR/data-path" ] || fail '应用还未初始化，请先启动应用。'

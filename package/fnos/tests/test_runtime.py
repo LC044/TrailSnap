@@ -97,8 +97,23 @@ class RuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {'TS_PHOTO_HOST':'/vol2/test/state/photos'}):
             with self.assertRaises(RuntimeError): self.module.initialize()
 
-    def test_required_data_cannot_use_application_managed_directory(self):
-        for value in ['', '/vol1/@appshare/trailsnap/data', '/vol2/@appdata/trailsnap']:
+    def test_shared_defaults_initialize_and_persist(self):
+        with patch.dict(os.environ, {'TS_DATA_HOST': '/vol2/@appshare/trailsnap/data',
+                                     'TS_PHOTO_HOST': '/vol2/@appshare/trailsnap/photos'}):
+            self.module.initialize()
+            password = (self.module.STATE / 'runtime/postgres.env').read_bytes()
+            self.module.initialize()
+        compose = self.read_compose()
+        self.assertEqual('/vol2/@appshare/trailsnap/data', compose['services']['bootstrap']['environment']['TS_DATA_HOST'])
+        self.assertEqual(password, (self.module.STATE / 'runtime/postgres.env').read_bytes())
+        mounts = compose['services']['server']['volumes']
+        self.assertTrue(any(v.get('source') == '/vol2/@appshare/trailsnap/photos' for v in mounts if isinstance(v, dict)))
+        self.assertNotIn('${wizard_data_dir', json.dumps(compose))
+
+    def test_other_application_managed_directories_are_rejected(self):
+        for value in ['', '/vol1/@appshare/other/data', '/vol2/@appdata/trailsnap',
+                      '/vol2/@appshare/trailsnap', '/vol2/@appshare/trailsnap/data/child',
+                      '/vol2/@appshare/trailsnap/database']:
             with patch.dict(os.environ, {'TS_DATA_HOST': value}):
                 with self.assertRaises(RuntimeError): self.module.initialize()
 

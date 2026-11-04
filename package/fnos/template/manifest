@@ -13,4 +13,4 @@ desktop_applaunchname=trailsnap.Application
 checkport=false
 ctl_stop=true
 disable_authorization_path=false
-changelog=用户数据目录必填；图库统一显示在外部图库列表中；同名文件夹使用独立目录。
+changelog=安装时预填应用共享数据与照片目录，可自定义完整路径；图库统一显示在外部图库列表中。

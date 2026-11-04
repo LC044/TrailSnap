@@ -21,12 +21,12 @@
       {
         "type": "text",
         "field": "wizard_photo_dir",
-        "label": "已有的照片目录（可选）",
-        "initValue": ""
+        "label": "照片目录（可选择NAS里已有的照片目录）",
+        "initValue": "trailsnap/photos"
       },
       {
         "type": "tips",
-        "helpText": "填写本地照片文件夹的完整路径，留空可稍后添加。"
+        "helpText": "填写本地已有照片文件夹的完整路径，留空可稍后添加。"
       },
       {
         "type": "select",
@@ -48,17 +48,11 @@
         "type": "text",
         "field": "wizard_data_dir",
         "label": "用户数据目录",
-        "initValue": "",
-        "rules": [
-          {
-            "required": true,
-            "message": "请选择用于保存上传照片的目录"
-          }
-        ]
+        "initValue": "trailsnap/data"
       },
       {
         "type": "tips",
-        "helpText": "选择一个空白文件夹用于保存用户数据"
+        "helpText": "选择一个空白文件夹用于保存模型、缩略图、用户上传的照片的用户数据"
       }
     ]
   }
