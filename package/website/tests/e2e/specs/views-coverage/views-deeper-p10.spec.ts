@@ -85,7 +85,7 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       })
     })
 
-    test('切换到景区 + 地图视图 -> 渲染 LocationMap 容器 (缺 map key 时进入确认弹窗)', async ({
+    test('切换到景区 + 地图视图 -> 渲染 LocationMap 容器 (缺 map key 时显示内联缺配置面板)', async ({
       page,
     }, testInfo) => {
       await stubLocationMapNoKey(page)
@@ -114,14 +114,12 @@ test.describe('P1 - Nightly view coverage round 2026-08-27 @views-coverage', () 
       await expect(mapBtn).toBeVisible({ timeout: 10_000 })
       await mapBtn.click()
 
-      // 3) LocationMap 容器 (#tianditu-map) 应挂载；同时 onMounted 抛 MAP_KEY_MISSING
-      //    会触发 ElMessageBox 询问「去设置 / 取消」。
+      // 3) LocationMap 容器 (#tianditu-map) 应挂载；缺 map key 时不再弹
+      //    ElMessageBox 确认框（PR #438 改为内联 MapUnavailable 面板），
+      //    断言面板给出「尚未配置地图服务」提示与「配置地图服务」入口。
       await expect(page.locator('#tianditu-map')).toHaveCount(1, { timeout: 10_000 })
-      const dialog = page.getByRole('dialog').filter({ hasText: '查看地图照片需要配置地图 API Key' })
-      await expect(dialog).toBeVisible({ timeout: 10_000 })
-      // 关闭弹窗保持测试幂等
-      await dialog.getByRole('button', { name: '取消' }).click()
-      await expect(dialog).toHaveCount(0, { timeout: 5_000 })
+      await expect(page.getByText('尚未配置地图服务')).toBeVisible({ timeout: 10_000 })
+      await expect(page.getByRole('link', { name: '配置地图服务' })).toBeVisible()
     })
   })
 

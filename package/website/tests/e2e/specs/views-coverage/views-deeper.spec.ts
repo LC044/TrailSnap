@@ -9,7 +9,7 @@ import { ensureAuthSession } from '../../helpers/auth'
  *    Issue #78 文件夹视图，layoutMode='folder'，通过 /photos 视图设置下拉切换；
  *    onMounted 触发 GET /api/photos/folders?parent= + GET /api/photos?folder&folder_direct
  * 2. BasicSettings（views/settings/BasicSettings.vue）
- *    /settings#basic 含 6+ 个折叠面板：安全/任务/地图/AI/扫描/索引/回收站；导出 / 导入
+ *    /settings 各分区页含 6+ 个设置分区（安全/任务/地图/AI/扫描/索引/回收站）；导出 / 导入
  * 3. TicketExportModal（views/ticket/components/TicketExportModal.vue）
  *    header "导出数据" 按钮 -> handleExport -> isExportModalOpen=true -> 弹窗；JSON/CSV/PNG
  * 4. DuplicatePhotoCleanup（views/toolbox/DuplicatePhotoCleanup.vue）
@@ -119,17 +119,36 @@ test.describe('P1 - FolderBrowser 文件夹视图 @views-coverage', () => {
 test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
+    // e2e-admin 是首个注册用户（必然 superuser）；#user 是 superuserOnly tab，
+    // 且开放注册/后台处理性能等分区按 admin computed 门控（user_info 异步拉取）。
+    // 预置 is_superuser，跳过身份回填时序。
+    await page.addInitScript(() => {
+      const raw = localStorage.getItem('user_info')
+      if (!raw) {
+        localStorage.setItem('user_info', JSON.stringify({ id: 'u-e2e', username: 'e2e-admin', is_active: true, is_superuser: true }))
+      }
+    })
   })
 
-  test('/settings#basic 渲染安全/任务/地图折叠面板', async ({ page }) => {
-    await page.goto('/settings#basic')
-    for (const title of ['安全设置', '任务设置', '地图设置']) {
-      const header = page.locator('.el-collapse-item__header', { hasText: title }).first()
-      await expect(header, `折叠面板 ${title} 应可见`).toBeVisible({ timeout: 15_000 })
-    }
+  test('设置分区页渲染安全/任务/地图分区', async ({ page }) => {
+    // 设置重组后：开放注册 → /settings#user（直渲染 section）；
+    // 后台处理性能 → /settings#tasks（TaskManagement 的 <details> 折叠）；
+    // 地图设置 → /settings#map（el-collapse 折叠面板）。
+    // 后台处理性能收起时内容隐藏，先点开 <details> 的 summary 再断言。
+    await page.goto('/settings#user')
+    const securityHeader = page.locator('.settings-native-group > header h2').filter({ hasText: '开放注册' }).first()
+    await expect(securityHeader, '分区 开放注册 应可见').toBeVisible({ timeout: 15_000 })
+
+    await page.goto('/settings#tasks')
+    // 后台处理性能是 <details> 折叠（summary 常显，内容收起）；断言 summary 文本即可。
+    await expect(page.locator('.task-performance > summary'), '分区 后台处理性能 应可见').toContainText('后台处理性能')
+
+    await page.goto('/settings#map')
+    const mapHeader = page.locator('.el-collapse-item__header, .el-collapse-item .ts-section-title').filter({ hasText: '地图设置' }).first()
+    await expect(mapHeader, '分区 地图设置 应可见').toBeVisible({ timeout: 15_000 })
   })
 
-  test('安全设置展开 -> 切换允许注册开关 -> 保存触发 PUT /api/system/config', async ({ page }) => {
+  test('开放注册展开 -> 切换允许注册开关 -> 保存触发 PUT /api/system/config', async ({ page }) => {
     const updateCalls: { url: string; body: unknown }[] = []
     await page.route('**/api/system/config', async (route) => {
       if (route.request().method() === 'PUT') {
@@ -144,9 +163,8 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
       }
     })
 
-    await page.goto('/settings#basic')
-    await page.locator('.el-collapse-item__header', { hasText: '安全设置' }).first().click()
-    const sw = page.locator('.el-form-item', { hasText: '允许新用户注册' }).locator('.el-switch').first()
+    await page.goto('/settings#user')
+    const sw = page.locator('.settings-native-group', { hasText: '开放注册' }).first().locator('.el-switch').first()
     await expect(sw).toBeVisible({ timeout: 5_000 })
     // 等待服务端配置加载完成：loadData 拿到 getSystemConfig 的结果后会用服务端值覆盖
     // securityForm，若在加载完成前就切换开关，会被异步加载静默重置（见 useBasicSettings.ts 的 loadData）。
@@ -156,7 +174,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
     // 因此按 Element Plus 自身的契约断言根节点的 is-checked class。
     await expect(sw).toHaveClass(/is-checked/, { timeout: 15_000 })
     await sw.click()
-    await page.getByRole('button', { name: '保存安全配置' }).click()
+    await page.getByRole('button', { name: '保存注册设置' }).click()
 
     await expect.poll(() => updateCalls.length).toBeGreaterThan(0)
     expect(updateCalls[0].body).toMatchObject({ security: { allow_registration: false } })
@@ -197,8 +215,9 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
       })
     })
 
-    await page.goto('/settings#basic')
-    await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
+    // 地图设置分区现位于 /settings#map（el-collapse；BasicSettings 的 activeNames
+    // 默认含 'map'，面板初始即展开，无需点击——点击反而会把它收起）。
+    await page.goto('/settings#map')
     const keyInput = page.getByLabel('地图 API Key 1')
     await expect(keyInput).toBeVisible({ timeout: 10_000 })
     // 等待服务端 map 配置加载完成后再填写新 Key。
@@ -237,8 +256,9 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
       })
     })
 
-    await page.goto('/settings#basic')
-    await page.locator('.el-collapse-item__header', { hasText: '地图设置' }).first().click()
+    // 地图设置分区现位于 /settings#map（el-collapse；BasicSettings 的 activeNames
+    // 默认含 'map'，面板初始即展开，无需点击——点击反而会把它收起）。
+    await page.goto('/settings#map')
     const invalidKeyInput = page.getByLabel('地图 API Key 1')
     await expect(invalidKeyInput).toHaveValue('stale-server-key', { timeout: 15_000 })
     await invalidKeyInput.fill('invalid-map-key')
@@ -259,7 +279,7 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
         body: JSON.stringify({
           code: 0,
           message: 'success',
-          data: { ai: { ai_api_url: 'http://initial-ai:8001', connections: [] } },
+          data: { ai: { ai_api_url: 'http://initial-ai:8001', connections: [] }, runtime: { managedAI: false } },
         }),
       })
     })
@@ -276,8 +296,13 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
       })
     })
 
-    await page.goto('/settings#basic')
-    await page.locator('.el-collapse-item__header', { hasText: '人脸与识别设置' }).first().click()
+    // AI API 地址输入框现位于 /settings#recognition（本地识别模型页的服务分区）；
+    // stub 未带 runtime.managedAI → 默认 true 会隐藏输入框，需显式置 false。
+    await page.route('**/api/settings/ai-models', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ code: 0, message: 'success', data: { models: [], tasks: {} } }),
+    }))
+    await page.goto('/settings#recognition')
     const apiInput = page.getByLabel('AI API 地址')
     await expect(apiInput).toBeVisible({ timeout: 10_000 })
     await expect.poll(() => settingsLoaded).toBe(true)
@@ -300,8 +325,9 @@ test.describe('P1 - BasicSettings 基础设置面板 @views-coverage', () => {
       })
     })
 
-    await page.goto('/settings#basic')
-    await page.getByRole('button', { name: '导出配置' }).click()
+    // 导出/导入个人配置按钮现位于 /settings#maintenance（高级维护页）。
+    await page.goto('/settings#maintenance')
+    await page.getByRole('button', { name: '导出个人配置' }).click()
 
     await expect.poll(() => exportHit, { timeout: 5_000 }).toBeTruthy()
     await expect(page.locator('.el-message', { hasText: '配置导出成功' })).toBeVisible({ timeout: 5_000 })

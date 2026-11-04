@@ -97,7 +97,8 @@ test.describe('P1 - ActionPlanDetail / LLMSettings @views-coverage', () => {
     })
 
     await page.goto('/settings#ai-models')
-    await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible()
+    // 设置重组后 ai-models 页 SettingsPageHeader 标题为「大模型与文案」。
+    await expect(page.locator('h1.ts-page-title', { hasText: '大模型与文案' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '大模型连接与任务配置' })).toBeVisible()
     await expect(page.getByText('Built-in AI', { exact: true })).toBeVisible()
     await expect(page.getByText('已添加 1 个模型')).toBeVisible()

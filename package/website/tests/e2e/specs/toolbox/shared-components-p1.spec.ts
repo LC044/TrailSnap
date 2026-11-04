@@ -54,12 +54,15 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
       } else await route.fulfill(response({ ai: {
         ai_api_url: 'http://ai-service:8001', face_recognition_threshold: 0.7,
         connections: [{ id: 'existing-connection' }], chat_model_name: 'existing-model',
-      } }))
+      }, runtime: { managedAI: false } }))
     })
-    await page.goto('/settings?tab=basic')
-    await page.locator('.el-collapse-item__header').filter({ hasText: '人脸与识别设置' }).click()
-    await expect(page.getByRole('textbox', { name: 'AI API 地址', exact: true })).toHaveValue('http://ai-service:8001')
-    await page.getByRole('button', { name: '保存 AI 配置', exact: true }).click()
+    // 设置重组后 AI 服务地址输入框只出现在「本地识别模型」（recognition）页的服务分区，
+    // 不再挂在与大模型共用的 basic 页；recognition 页面还请求 ai-models 列表，一并桩掉。
+    await page.route('**/api/settings/ai-models', route => route.fulfill(response({ models: [], tasks: {} })))
+    await page.goto('/settings#recognition')
+    // runtime.managedAI=false 时才渲染 AI API 地址输入框；等输入框出现即代表 loadData 已应用服务端值。
+    await expect(page.getByRole('textbox', { name: 'AI API 地址', exact: true })).toHaveValue('http://ai-service:8001', { timeout: 10_000 })
+    await page.getByRole('button', { name: '保存服务地址', exact: true }).click()
     await expect.poll(() => payloads.length).toBe(1)
     expect(payloads[0].ai.ai_api_url).toBe('http://ai-service:8001')
     expect(payloads[0].ai).not.toHaveProperty('connections')
