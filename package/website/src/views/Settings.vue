@@ -1,30 +1,27 @@
 <template>
   <div class="settings-shell ts-page-background h-full min-h-0">
     <div class="mx-auto flex h-full min-h-0 w-full max-w-screen-2xl">
-      <aside class="ts-settings-nav hidden w-64 lg:w-72 shrink-0 overflow-y-auto border-r px-5 py-6 md:block">
+      <aside class="ts-settings-nav hidden w-64 lg:w-80 shrink-0 overflow-y-auto border-r px-5 py-6 lg:px-6 md:block">
         <h1 class="px-2 text-2xl font-bold">设置</h1>
         <p class="mt-1 px-2 text-sm text-gray-500 dark:text-gray-400">管理账号、图库与系统服务</p>
-        <el-input v-model="search" class="mt-5" placeholder="搜索设置，如原图、扫描" clearable aria-label="搜索设置" /><div class="mt-5 space-y-6">
+        <el-input v-model="search" class="mt-5" placeholder="搜索设置，如原图、扫描" clearable aria-label="搜索设置" />
+        <div class="mt-6 space-y-7">
           <section v-for="group in menuGroups" :key="group.label">
-            <h2 class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ group.label }}</h2>
-            <div class="ts-surface overflow-hidden">
+            <h2 class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ group.label }}</h2>
+            <div class="ts-surface space-y-1 overflow-hidden p-1">
               <button
-                v-for="(item, index) in group.items"
+                v-for="item in group.items"
                 :key="item.key"
                 :data-tab="item.key"
                 type="button"
-                class="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-gray-700"
-                :class="[index > 0 ? 'border-t border-gray-100 dark:border-gray-700' : '', activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : '']"
+                class="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-gray-700"
+                :class="activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : ''"
                 @click="selectItem(item.key)"
               >
-                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
-                  <component :is="item.icon" class="h-5 w-5" />
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+                  <component :is="item.icon" class="h-4 w-4" />
                 </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-sm font-medium">{{ item.label }}</span>
-                  <span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ item.description }}</span>
-                </span>
-                <ChevronRight class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ item.label }}</span>
               </button>
             </div>
           </section>
@@ -76,7 +73,8 @@
       <main v-else ref="contentRef" class="min-w-0 flex-1 overflow-y-auto">
         <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-[var(--ts-page-gutter)] md:hidden">
           <BackButton label="返回设置" @click="goBack" />
-          <h1 class="pointer-events-none absolute inset-x-20 truncate text-center text-[17px] font-semibold">{{ activeItem?.label }}</h1>
+          <h1 class="min-w-0 flex-1 truncate px-2 text-center text-[17px] font-semibold">{{ activeItem?.label }}</h1>
+          <div id="ts-mobile-page-actions" class="ml-auto flex shrink-0 items-center justify-end gap-2"></div>
         </div>
         <div class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content settings-page-content ts-bottom-safe">
           <Transition :name="transitionName" mode="out-in">
@@ -213,10 +211,10 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
 
 /* Settings owns its inner scroll area; reserve navigation space inside it. */
 .settings-page-content.ts-bottom-safe {
-  padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom));
+  padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom) + var(--ts-pwa-prompt-space, 0px));
 }
 @media (min-width: 768px) {
-  .settings-page-content.ts-bottom-safe { padding-bottom: var(--ts-space-8); }
+  .settings-page-content.ts-bottom-safe { padding-bottom: calc(var(--ts-space-8) + var(--ts-pwa-prompt-space, 0px)); }
 }
 
 .settings-forward-enter-active, .settings-back-enter-active { transition: opacity var(--ts-motion-normal) ease, transform var(--ts-motion-page) var(--ts-ease); }

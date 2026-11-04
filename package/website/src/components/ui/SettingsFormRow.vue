@@ -16,7 +16,7 @@ defineProps<{ label: string; description?: string; labelId?: string; controlId?:
 .settings-form-row-inline .settings-form-control { justify-content: flex-end; }
 .settings-form-control { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 @container settings-content (min-width: 520px) {
-  .settings-form-row { grid-template-columns: minmax(160px, 1fr) minmax(0, 1.3fr); align-items: center; column-gap: 24px; }
-  .settings-form-control { justify-content: flex-end; }
+  .settings-form-row { grid-template-columns: minmax(160px, 240px) minmax(0, 1fr); align-items: center; column-gap: 24px; }
+  .settings-form-row .settings-form-control { justify-content: flex-start; }
 }
 </style>

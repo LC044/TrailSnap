@@ -83,7 +83,7 @@
               >获取与配置 API Key</a>
             </div>
 
-            <div class="mt-5 flex flex-col-reverse gap-2 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:justify-end">
+            <div class="mt-2 flex flex-wrap items-center justify-end gap-3 border-t ts-divider pt-3">
               <el-button :loading="testingAllMapKeys" @click="testAllMapKeys">测试全部</el-button>
               <el-button type="primary" :loading="savingMapSettings" @click="saveMapSettings">验证并保存</el-button>
             </div>

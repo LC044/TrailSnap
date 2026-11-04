@@ -3,8 +3,6 @@
     <SettingsPageHeader title="用户管理" description="管理成员账号与访问权限">
       <template #actions>
         <el-button type="primary" @click="showCreateDialog = true">添加用户</el-button>
-        <el-button v-if="!isTauriApp()" type="danger" @click="handleLogout" class="hidden md:inline-flex">退出登录</el-button>
-        <el-button v-if="!isTauriApp()" type="danger" size="small" @click="handleLogout" class="md:hidden">退出</el-button>
       </template>
     </SettingsPageHeader>
 <BasicSettings category="members" embedded class="mb-6" />
@@ -12,16 +10,16 @@
     <!-- Desktop View -->
     <div class="hidden md:block ts-surface overflow-hidden">
       <el-table :data="users" style="width: 100%" v-loading="loading">
-        <el-table-column prop="username" label="用户名" />
-        <el-table-column prop="email" label="邮箱" />
-        <el-table-column label="角色">
+        <el-table-column prop="username" label="用户名" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="email" label="邮箱" min-width="220" show-overflow-tooltip />
+        <el-table-column label="角色" width="110">
           <template #default="{ row }">
             <el-tag :type="row.is_superuser ? 'danger' : 'info'">
               {{ row.is_superuser ? '管理员' : '普通用户' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态">
+        <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="row.is_active ? 'success' : 'danger'">
               {{ row.is_active ? '正常' : '禁用' }}
@@ -41,7 +39,7 @@
                 <el-button type="danger" link>删除</el-button>
               </template>
             </el-popconfirm>
-            <span v-else class="text-gray-400 text-sm ml-2">当前用户</span>
+            <span v-else class="ts-muted text-sm ml-2">当前用户</span>
           </template>
         </el-table-column>
       </el-table>
@@ -49,29 +47,25 @@
 
     <!-- Mobile View -->
     <div class="md:hidden space-y-4" v-loading="loading">
-      <div v-if="users.length === 0 && !loading" class="text-center text-gray-500 py-8">
+      <div v-if="users.length === 0 && !loading" class="text-center ts-muted py-8">
         暂无用户数据
       </div>
       <div v-for="user in users" :key="user.id" class="ts-surface ts-settings-panel">
-        <div class="flex justify-between items-start mb-3">
-          <div>
-            <div class="font-bold text-gray-800 dark:text-white text-lg">{{ user.username }}</div>
-            <div class="text-sm text-gray-500 mt-1">{{ user.email }}</div>
+        <div class="mb-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="min-w-0 break-all font-semibold">{{ user.username }}</span>
+            <el-tag :type="user.is_superuser ? 'danger' : 'info'" size="small">
+              {{ user.is_superuser ? '管理员' : '普通用户' }}
+            </el-tag>
+            <el-tag :type="user.is_active ? 'success' : 'danger'" size="small">
+              {{ user.is_active ? '正常' : '禁用' }}
+            </el-tag>
           </div>
-          <el-tag :type="user.is_superuser ? 'danger' : 'info'" size="small">
-            {{ user.is_superuser ? '管理员' : '普通用户' }}
-          </el-tag>
+          <p class="ts-muted mt-1 break-all text-sm">{{ user.email }}</p>
         </div>
         
-        <div class="flex justify-between items-center pt-3 border-t dark:border-gray-700">
-          <div class="flex items-center gap-2">
-             <span class="text-sm text-gray-500">状态:</span>
-             <el-tag :type="user.is_active ? 'success' : 'danger'" size="small">
-              {{ user.is_active ? '正常' : '禁用' }}
-             </el-tag>
-          </div>
-          
-          <div class="flex gap-2">
+        <div class="flex justify-end items-center pt-3 border-t ts-divider">
+          <div class="flex flex-wrap items-center justify-end gap-2">
             <el-button type="primary" size="small" plain @click="openResetPassword(user)">重置密码</el-button>
             <div v-if="currentUser?.id !== user.id">
               <el-popconfirm
@@ -84,7 +78,7 @@
                 </template>
               </el-popconfirm>
             </div>
-            <span v-else class="text-gray-400 text-xs self-center">当前用户</span>
+            <span v-else class="ts-muted text-xs self-center">当前用户</span>
           </div>
         </div>
       </div>
@@ -138,11 +132,8 @@ import { ref, onMounted, computed, reactive } from 'vue'
 import { ElMessage } from 'element-plus'
 import { userService, type User } from '@/api/user'
 import { useUserStore } from '@/stores/user'
-import { useRouter } from 'vue-router'
-import { isTauriApp } from '@/config/server'
 
 const userStore = useUserStore()
-const router = useRouter()
 const users = ref<User[]>([])
 const loading = ref(false)
 
@@ -220,11 +211,6 @@ const handleResetPassword = async () => {
   } finally {
     resetLoading.value = false
   }
-}
-
-const handleLogout = async () => {
-  await userStore.logout()
-  router.push('/login')
 }
 
 const handleDelete = async (user: User) => {

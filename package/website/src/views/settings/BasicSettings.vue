@@ -12,13 +12,20 @@
 <MapSettingsSection v-if="category === 'map'" />
 <AIServiceSettingsSection v-if="category === 'recognition' || category === 'service'" :service-only="category === 'service'" />
 <MomentCaptionScheduleSection v-if="category === 'captions' && admin" />
-<TaskSettingsSection v-if="category === 'tasks' && admin" />
+<TaskSettingsSection v-if="category === 'tasks' && admin"><slot name="task-options" /></TaskSettingsSection>
+<section v-else-if="category === 'tasks'" class="ts-surface ts-settings-panel">
+  <h2 class="ts-section-title">后台处理性能</h2>
+  <slot name="task-options" />
+</section>
 <SecuritySettingsSection v-if="category === 'members' && admin" />
 <template v-if="category === 'maintenance'">
 <IndexMaintenanceSection v-if="admin" />
 <section class="ts-surface p-5 space-y-3"><h2 class="ts-section-title">个人配置迁移</h2><p class="ts-muted text-sm">包含当前账号的图库、地图、识别与图片配置，可能包含密钥，请妥善保管。不包含照片或服务器全局设置。</p>
 <div class="flex flex-wrap gap-3"><el-upload :auto-upload="false" :show-file-list="false" accept=".json" @change="handleImportFile"><el-button>导入个人配置</el-button></el-upload><el-button @click="handleExport">导出个人配置</el-button></div></section>
-<RouterLink class="ts-button ts-button-secondary" to="/settings#performance">打开性能测试</RouterLink>
+<RouterLink class="ts-surface ts-settings-panel flex items-center gap-4 ts-focus-ring" to="/settings#performance">
+  <div class="min-w-0 flex-1"><h2 class="ts-section-title">性能测试</h2><p class="ts-muted mt-1 text-sm">打开性能测试，检查照片浏览与加载表现。</p></div>
+  <ChevronRight class="h-5 w-5 shrink-0 ts-muted" />
+</RouterLink>
 </template>
 </div>
 </template>
@@ -37,6 +44,7 @@ import RecycleBinSettingsSection from './sections/RecycleBinSettingsSection.vue'
 import IndexMaintenanceSection from './sections/IndexMaintenanceSection.vue'
 import AppearanceSettingsSection from './sections/AppearanceSettingsSection.vue'
 import { computed } from 'vue'
+import { ChevronRight } from 'lucide-vue-next'
 import { useUserStore } from '@/stores/user'
 const props = withDefaults(defineProps<{ category?: string; embedded?: boolean }>(), { category: 'preferences', embedded: false })
 const admin = computed(() => !!useUserStore().userInfo?.is_superuser)

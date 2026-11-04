@@ -99,8 +99,12 @@
 .ts-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ts-space-2); }
 .ts-section-stack { display: flex; flex-direction: column; gap: var(--ts-section-gap); }
 .ts-main-scroll:has(.ts-bottom-safe) { padding-bottom: 0; }
-.ts-bottom-safe { padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom)); }
-@media (min-width: 768px) { .ts-bottom-safe { padding-bottom: var(--ts-space-8); } }
+.ts-bottom-safe { padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom) + var(--ts-pwa-prompt-space, 0px)); }
+.ts-main-scroll:not(:has(.ts-bottom-safe)) { padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom) + var(--ts-pwa-prompt-space, 0px)); }
+@media (min-width: 768px) {
+  .ts-bottom-safe { padding-bottom: calc(var(--ts-space-8) + var(--ts-pwa-prompt-space, 0px)); }
+  .ts-main-scroll:not(:has(.ts-bottom-safe)) { padding-bottom: var(--ts-pwa-prompt-space, 0px); }
+}
 
 /* Element Plus uses the same scale, including teleported menus and dialogs. */
 .el-button { font-family: var(--ts-font-sans); font-weight: 600; border-radius: var(--ts-radius-control); }

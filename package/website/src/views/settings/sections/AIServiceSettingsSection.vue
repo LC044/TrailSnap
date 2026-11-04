@@ -44,9 +44,9 @@
           </el-collapse-item>
         </el-collapse>
 
-        <el-form-item v-if="!serviceOnly || !managedAI">
+        <div v-if="!serviceOnly || !managedAI" class="mt-2 flex flex-wrap items-center justify-end gap-3 border-t ts-divider pt-3">
           <el-button type="primary" @click="serviceOnly ? saveAIServiceSettings() : saveAISettings()">{{ serviceOnly ? '保存服务地址' : '保存识别参数' }}</el-button>
-        </el-form-item>
+        </div>
           </el-form>
         </div>
 </SettingsSection>

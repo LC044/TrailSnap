@@ -1,7 +1,8 @@
 <template>
   <aside
     v-if="visible"
-    class="fixed bottom-4 left-4 right-4 z-[3000] mx-auto max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-800"
+    ref="promptRef"
+    class="pwa-install-prompt fixed left-4 right-4 z-[3000] mx-auto max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-800"
     role="status"
     aria-live="polite"
   >
@@ -29,7 +30,7 @@
       </div>
       <button
         type="button"
-        class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:outline-none dark:hover:bg-gray-700 dark:hover:text-gray-300"
+        class="ts-icon-button ts-button-ghost"
         aria-label="关闭"
         @click="dismiss"
       >
@@ -40,14 +41,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { usePwa } from '@/composables/usePwa'
 
 const dismissed = ref(sessionStorage.getItem('trailsnap-pwa-prompt-dismissed') === '1')
+const promptRef = ref<HTMLElement | null>(null)
 const { canInstall, isIos, isInstalled, updateAvailable, installPwa, applyPwaUpdate } = usePwa()
 
 const showIosGuide = computed(() => isIos && !isInstalled.value)
 const visible = computed(() => !dismissed.value && (canInstall.value || updateAvailable.value || showIosGuide.value))
+// The banner floats above navigation; scroll containers reserve its measured height.
+function reservePromptSpace() {
+  const height = visible.value ? promptRef.value?.getBoundingClientRect().height || 0 : 0
+  document.documentElement.style.setProperty('--ts-pwa-prompt-space', height ? `${Math.ceil(height) + 16}px` : '0px')
+}
+useResizeObserver(promptRef, reservePromptSpace)
+watch(visible, reservePromptSpace, { flush: 'post' })
+onBeforeUnmount(() => document.documentElement.style.removeProperty('--ts-pwa-prompt-space'))
 const title = computed(() => updateAvailable.value ? '发现新版本' : '安装行影集')
 const description = computed(() => {
   if (updateAvailable.value) return '刷新以使用最新功能和修复。'
@@ -68,3 +79,10 @@ function dismiss() {
   sessionStorage.setItem('trailsnap-pwa-prompt-dismissed', '1')
 }
 </script>
+
+<style scoped>
+.pwa-install-prompt { bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom)); }
+@media (min-width: 768px) {
+  .pwa-install-prompt { bottom: 16px; }
+}
+</style>

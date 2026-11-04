@@ -23,7 +23,7 @@
           <UnifiedDatePicker v-model="scanScheduleForm.time" type="time" start="00:00" step="00:30" end="23:30" placeholder="选择时间" aria-labelledby="scan-time-label" />
         </SettingsFormRow>
       </template>
-      <div class="flex justify-end border-t ts-divider mt-2 pt-3">
+      <div class="flex flex-wrap items-center justify-end gap-3 border-t ts-divider mt-2 pt-3">
         <el-button type="primary" @click="saveScanScheduleSettings">保存扫描设置</el-button>
       </div>
     </div>

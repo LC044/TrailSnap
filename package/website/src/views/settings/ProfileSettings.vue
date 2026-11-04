@@ -3,10 +3,10 @@
     <SettingsPageHeader title="个人资料" description="管理头像、昵称与账号信息" />
 
     <div class="ts-surface ts-settings-panel">
-      <el-form label-position="top" :model="form" @submit.prevent="handleSave">
+      <el-form label-position="top" :model="form" class="max-w-md" @submit.prevent="handleSave">
         <!-- Avatar Section -->
         <el-form-item label="头像">
-          <div class="flex flex-wrap items-center gap-4">
+          <div class="flex flex-col items-start gap-3">
             <el-avatar :size="80" :src="toServerUrl(form.avatar || defaultAvatar)" class="border-2 border-gray-200 dark:border-gray-700" />
             <div class="flex flex-col gap-2">
               <div class="ts-form-actions">
@@ -39,9 +39,9 @@
           <el-input v-model="form.nickname" placeholder="请输入昵称" />
         </el-form-item>
 
-        <el-form-item>
+        <div class="mt-2 flex flex-wrap items-center justify-end gap-3 border-t ts-divider pt-3">
           <el-button type="primary" @click="handleSave" :loading="saving" :disabled="uploading || savingAvatar">保存修改</el-button>
-        </el-form-item>
+        </div>
       </el-form>
     </div>
 

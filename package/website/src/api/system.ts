@@ -29,8 +29,8 @@ export const systemApi = {
     const data = await request.get<{version: string}>('/api/system/version')
     return data.data
   },
-  async checkUpdate(): Promise<UpdateCheckResult> {
-    const data = await request.get<UpdateCheckResult>('/api/system/update-check')
+  async checkUpdate(silent = false): Promise<UpdateCheckResult> {
+    const data = await request.get<UpdateCheckResult>('/api/system/update-check', { silentError: silent })
     return data.data
   },
   async checkAppUpdate(version: string, platform = 'android'): Promise<AppUpdateCheckResult> {
