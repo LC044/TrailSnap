@@ -1,7 +1,6 @@
 import { test as base, expect, type Page } from '@playwright/test'
 import { createServer } from 'vite'
 import path from 'node:path'
-import os from 'node:os'
 
 // CI serves the production image, which intentionally has no /src modules.
 // Exercise the actual Vue components on a separate, worker-owned Vite server.
@@ -9,14 +8,14 @@ const test = base.extend<{}, { motionServer: string }>({
   motionServer: [async ({}, use, workerInfo) => {
     const server = await createServer({
       configFile: path.resolve('vite.config.js'),
-      cacheDir: path.join(os.tmpdir(), 'trailsnap-motion-cache', String(process.pid), String(workerInfo.workerIndex)),
+      cacheDir: path.resolve('.playwright-system/motion-cache', String(workerInfo.workerIndex)),
       optimizeDeps: { entries: ['tests/e2e/fixtures/motion-harness.js'] },
       server: { host: '127.0.0.1', port: 5200 + workerInfo.workerIndex, strictPort: false, open: false },
     })
     await server.listen()
     try { await use(server.resolvedUrls!.local[0]!) }
     finally { await server.close() }
-  }, { scope: 'worker' }],
+  }, { scope: 'worker', timeout: 120_000 }],
 })
 
 test.use({ storageState: { cookies: [], origins: [] } })
@@ -32,6 +31,8 @@ async function fixture(page: Page, origin: string) {
 }
 
 test.describe('Shared motion @p0', () => {
+  // Cold Vite dependency prebundling can exceed the default 30s on Windows/CI.
+  test.setTimeout(90_000)
   test('pointer and keyboard presses compress then settle; disabled controls stay still', async ({ page, motionServer }) => {
     await fixture(page, motionServer)
     const button = page.locator('#sheet-trigger')

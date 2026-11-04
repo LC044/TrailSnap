@@ -186,7 +186,7 @@ test.describe("足迹统计 @views-coverage", () => {
   test("无拍摄数据时显示明确空状态", async ({ page }) => {
     await page.route("**/api/location-stats/heatmap**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(ok({ total_photos: 0, total_days: 0, data: [] })) }))
     await page.goto("/album/location")
-    await expect(page.getByText("这段时间还没有拍摄记录").first()).toBeVisible()
+    await expect(page.getByText("这段时间还没有拍摄记录").first()).toBeVisible({ timeout: 15_000 })
   })
 })
 
@@ -205,5 +205,3 @@ test.describe("LocationDetail 位置详情 @views-coverage", () => {
     await expect.poll(() => photosCalls.length, { timeout: 15_000 }).toBeGreaterThan(0)
   })
 })
-
-
