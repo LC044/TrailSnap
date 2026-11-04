@@ -174,7 +174,7 @@ Open your browser at `http://localhost:3180`. The mobile app and CLI use the sam
 
 You will see the TrailSnap web interface.
 
-Go to **More → Settings → External Library** and add:
+Go to **More → Settings → Photo folders (照片文件夹)** and add:
 `/app/Photos/`
 
 If you have multiple volumes, add:

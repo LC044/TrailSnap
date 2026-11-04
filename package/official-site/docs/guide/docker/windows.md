@@ -173,7 +173,7 @@ time="2026-03-06T17:42:03+08:00" level=warning msg="C:\\ProgramData\\TrailSnap\\
 
 打开浏览器，访问 `http://localhost:3180`，即可看到 TrailSnap。移动 App 与 CLI 也使用同一个地址。
 
-然后点击更多->设置->外部图库，添加`/app/Photos`。
+然后点击更多 → 设置 → 照片文件夹，添加`/app/Photos`。
 
 ### 常见问题解决
 1. **启动时提示“找不到docker-compose.yml”**：确认命令行当前目录是文件所在目录，或执行`docker-compose -f 完整路径/文件名.yml up -d`。

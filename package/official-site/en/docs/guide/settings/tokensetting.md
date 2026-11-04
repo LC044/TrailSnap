@@ -6,7 +6,7 @@ Using a token allows third-party apps (such as TrailSnap CLI or Agent Skills) to
 
 ## Get a Token
 
-Open **Settings** → **Token Management** → **New Token**, then set a name and expiration time. After verifying your account password, you will get a token.
+Open **Settings** → **External tool authorization (外部工具授权)** → **New Token**, then set a name and expiration time. After verifying your account password, you will get a token.
 
 Example token: `ts_hV5nsCZJDheBvvmcd5L248IiAUnIwwZAn`
 

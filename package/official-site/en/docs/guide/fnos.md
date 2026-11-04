@@ -31,7 +31,7 @@ If the latest release has no `.fpk` asset yet, use the [fnOS Docker guide](/en/d
 
 ## Connect existing photos
 
-In TrailSnap, open **Settings → External libraries**, refresh the detected folders, select your photo folder by name, and choose **Add selected libraries and scan**. Photos appear as scanning progresses.
+In TrailSnap, open **Settings → Photo folders (照片文件夹)**, refresh the detected folders, select your photo folder by name, and choose **Add selected libraries and scan**. Photos appear as scanning progresses.
 
 Source folders default to read-only. Read-write access allows application operations such as uploads, moves, and deletion of originals, subject to NAS permissions. Connecting a folder does not automatically move its photos into the user data folder.
 
@@ -39,7 +39,7 @@ Source folders default to read-only. Read-write access allows application operat
 
 1. In fnOS, open **App Center → Installed → TrailSnap → Application settings → Runtime settings → Edit**.
 2. Enter one or more full NAS paths separated by semicolons (`;`) in **New photo folders**, select read-only or read-write access for this batch, and **Save and restart**.
-3. Refresh **Settings → External libraries** in TrailSnap, select the folder, and add it for scanning.
+3. Refresh **Settings → Photo folders (照片文件夹)** in TrailSnap, select the folder, and add it for scanning.
 
 Existing folders show their NAS paths and current access. Choose read-only, read-write, or **Remove** for each folder. Removing a mount preserves originals; first remove the corresponding library within TrailSnap if you also want to clean up indexes. NAS ACLs must allow the requested operations.
 

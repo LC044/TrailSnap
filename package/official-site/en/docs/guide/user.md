@@ -12,17 +12,17 @@ After logging in, you will see the system dashboard, which includes:
 
 ### Add External Library
 
-1. Click "Settings -> External Libraries" in the navigation bar.
+1. Click "Settings → Photo folders (照片文件夹)" in the navigation bar.
 2. Enter the path of the external library (this is the Docker container path).
    - Example Docker mount: `/home/user/photos:/app/Photos/`
    - If you want to add the original folder `/home/user/photos/sea`, then add `/app/Photos/sea` in TrailSnap
    - If you want to add the whole `/home/user/photos` directory, then add `/app/Photos/`
-3. Click Confirm, and the system will automatically scan all photos in that directory (task progress can be viewed in "Settings -> Task Management").
+3. Click Confirm, and the system will automatically scan all photos in that directory (task progress can be viewed in "Settings → Background tasks (后台任务)").
 4. See [Directories](/en/docs/guide/settings/directories) for common issues.
 
 ### Map Service
 
-If you want map features (view photos on map, edit custom scenic spots, etc.), make sure you configured your map provider in **Settings → Map Service**. See [Map Settings](/en/docs/guide/settings/mapsetting).
+If you want map features (view photos on map, edit custom scenic spots, etc.), make sure you configured your map provider in **Settings → Maps and locations (地图与地点)**. See [Map Settings](/en/docs/guide/settings/mapsetting).
 
 ![](/images/map.png)
 
@@ -71,11 +71,6 @@ This is a featured function of TrailSnap designed for travelers.
 
 ## 5. System Settings
 
-On the settings page, you can configure the following:
-
-- **Personal Information**: Modify avatar, nickname, password.
-- **Theme Settings**: Switch between light/dark modes, or follow the system automatically.
-- **Storage Settings**: View storage space usage.
-- **Task Management**: View background task progress (such as ongoing AI recognition tasks, thumbnail generation tasks).
+Manage your profile, appearance, photo folders, map settings, local recognition models, and LLM connections from Settings. Administrators can also manage members, scheduled scans, and recycle-bin retention. Open **Settings → Background tasks (后台任务)** to inspect processing progress. See the [Settings Guide](./settings/index.md).
 
 If you have any questions, see [Feedback](/en/docs/guide/feedback) or the [Developer Guide](/en/docs/dev/guide).

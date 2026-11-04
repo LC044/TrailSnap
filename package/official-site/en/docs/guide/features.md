@@ -150,9 +150,9 @@ The list below describes current project capabilities. Features that need the AI
 | --- | --- |
 | User authentication | Login, registration, password reset |
 | Multi-user support | Data isolation between users |
-| External libraries | Add external folders as data sources |
-| Token management | API token configuration for login-free access |
-| Task management | Background task monitoring and management |
+| Photo folders (照片文件夹) | Add external folders as data sources |
+| External tool authorization (外部工具授权) | Manage API access tokens |
+| Background tasks (后台任务) | Monitor and manage background tasks |
 
 ---
 

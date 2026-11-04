@@ -25,7 +25,7 @@ The unified public entry only requires the TrailSnap frontend port. Do not expos
 ## 2. Create an Agent Token
 
 1. Sign in to TrailSnap.
-2. Open **Settings → Token Management**.
+2. Open **Settings → External tool authorization (外部工具授权)**.
 3. Select **New Token**, then set a name and expiration time.
 4. Grant only the scopes required by the agent.
 5. Verify your account password and immediately store the generated `ts_` token securely.
