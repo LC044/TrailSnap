@@ -18,7 +18,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx264-dev libdav1d-dev libssl-dev zlib1g-dev && \
     rm -rf /var/lib/apt/lists/*
 WORKDIR /build
-RUN curl -fsSL --retry 3 "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" -o ffmpeg.tar.xz && \
+# ffmpeg.org intermittently rejects connections from GitHub-hosted runners. Try
+# the checksum-identical MacPorts distfiles mirror first, then fall back to the
+# upstream release host so local builds still use the official source.
+RUN set -eu; \
+    mirrors="https://ftp.kaist.ac.kr/macports/distfiles/ffmpeg/ffmpeg-${FFMPEG_VERSION}.tar.xz https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"; \
+    for mirror in $mirrors; do \
+      echo "Downloading FFmpeg from $mirror"; \
+      if curl -fsSL --retry 3 --connect-timeout 15 "$mirror" -o ffmpeg.tar.xz; then break; fi; \
+    done; \
+    test -s ffmpeg.tar.xz && \
     echo "${FFMPEG_SHA256}  ffmpeg.tar.xz" | sha256sum -c - && \
     tar -xf ffmpeg.tar.xz && cd "ffmpeg-${FFMPEG_VERSION}" && \
     ./configure --prefix=/opt/ffmpeg --enable-shared --disable-static \
