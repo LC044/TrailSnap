@@ -432,6 +432,7 @@ const emit = defineEmits<{
   (e: 'set-cover', ids: string[]): void
   (e: 'add-to-album', id: string): void
   (e: 'photo-update', event: any): void
+  (e: 'viewer-close'): void
   (e: 'remove-from-album', ids: string[]): void // General delete/remove event
   (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void): void
   (e: 'refresh-data', done: (success?: boolean) => void): void
@@ -617,7 +618,10 @@ let originalLayout: typeof layoutMode.value | null = null
 let anchorTop: number | undefined
 let lastViewedId = ''
 watch(lightboxImage, (image, previous) => {
-  if (!image && previous) lastViewedId = previous.id
+  if (!image && previous) {
+    lastViewedId = previous.id
+    emit('viewer-close')
+  }
 })
 const preferenceKey = () => `photo-timeline-preferences:${userStore.userInfo?.id ?? 'anonymous'}`
 const saveTimePreference = () => {

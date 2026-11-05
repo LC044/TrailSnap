@@ -43,6 +43,39 @@ def assign_photo_face(photo_id: UUID, face_id: int, payload: schemas.AssignPhoto
     return BaseResponse.success({"face_id": face_id})
 
 
+@router.get("/photos/{photo_id}/{face_id}/similar", response_model=BaseResponse[schemas.SimilarFacesResult])
+def search_similar_faces(
+    photo_id: UUID, face_id: int,
+    scope: schemas.SimilarFaceScope = "all", match: schemas.SimilarFaceMatch = "balanced",
+    exclude_identity_id: Optional[UUID] = None,
+    skip: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=100),
+    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
+):
+    from app.service.similar_faces import search_similar_faces as search
+    return BaseResponse.success(search(
+        db, photo_id, face_id, current_user.id, scope, match, exclude_identity_id, skip, limit,
+    ))
+
+
+@router.post("/photos/{photo_id}/{face_id}/similar/assign",
+             response_model=BaseResponse[schemas.BatchFaceAssignmentResult])
+def assign_similar_faces(
+    photo_id: UUID, face_id: int, payload: schemas.AssignSimilarFaces,
+    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
+):
+    from app.service.similar_faces import assign_similar_faces as assign
+    return BaseResponse.success(assign(db, photo_id, face_id, current_user.id, payload))
+
+
+@router.post("/assignments/undo", response_model=BaseResponse[schemas.BatchFaceAssignmentResult])
+def undo_face_assignment(
+    payload: schemas.UndoFaceAssignment,
+    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
+):
+    from app.service.similar_faces import undo_face_assignment as undo
+    return BaseResponse.success(undo(db, current_user.id, payload.undo_token))
+
+
 class TimelineHideInput(BaseModel):
     start_at: datetime
     end_at: datetime

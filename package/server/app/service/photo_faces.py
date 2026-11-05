@@ -50,8 +50,15 @@ def assign_photo_face(db: Session, photo_id: UUID, face_id: int,
     face.face_identity_id = identity_id
     face.recognize_confidence = 1.0 if identity_id else None
     db.flush()
-    # Repair both covers inside the same transaction, without loading AI models.
-    for affected_id in {previous_id, identity_id} - {None}:
+    repair_face_covers(db, {previous_id, identity_id} - {None}, owner_id)
+    db.commit()
+    from app.crud.album import trigger_conditional_albums_update
+    trigger_conditional_albums_update(db, owner_id, [photo_id])
+
+
+def repair_face_covers(db: Session, identity_ids: set[UUID], owner_id: UUID) -> None:
+    """Repair covers inside the caller's transaction, without loading AI models."""
+    for affected_id in sorted(identity_ids, key=str):
         person = db.query(FaceIdentity).filter(
             FaceIdentity.id == affected_id, FaceIdentity.owner_id == owner_id
         ).first()
@@ -64,6 +71,3 @@ def assign_photo_face(db: Session, photo_id: UUID, face_id: int,
         if not person.default_face_id or not candidates.filter(Face.id == person.default_face_id).first():
             replacement = candidates.order_by(Face.recognize_confidence.desc().nullslast(), Face.id).first()
             person.default_face_id = replacement[0] if replacement else None
-    db.commit()
-    from app.crud.album import trigger_conditional_albums_update
-    trigger_conditional_albums_update(db, owner_id, [photo_id])

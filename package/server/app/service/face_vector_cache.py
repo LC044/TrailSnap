@@ -263,12 +263,13 @@ class FaceVectorCache:
 
     # -- public API --------------------------------------------------------
 
-    def similarities(self, db: Session, owner_id, queries: np.ndarray):
+    def similarities(self, db: Session, owner_id, queries: np.ndarray, *, valid_only: bool = False):
         """Yield ``(ids, scores)`` blocks of cosine similarity for ``queries``.
 
         ``queries`` is ``(q, dim)`` and each yielded ``scores`` is ``(rows, q)``.
         Cached libraries yield exactly one block; oversized ones yield a block
         per streamed chunk so memory stays bounded.
+        ``valid_only`` excludes invalid/zero embeddings for dissimilar searches.
         """
         # The matmul is computed while the lock is held, but the result is
         # yielded after releasing it. Yielding inside the critical section would
@@ -282,9 +283,14 @@ class FaceVectorCache:
             if shard is not None:
                 matrix = shard.matrix
                 if matrix.shape[0] and matrix.shape[1] == queries.shape[1]:
+                    ids = shard.ids
+                    scores = matrix @ queries.T
+                    if valid_only:
+                        valid = np.isfinite(matrix).all(axis=1) & np.any(matrix != 0, axis=1)
+                        ids, scores = ids[valid], scores[valid]
                     # Copy the ids: the shard's buffer may be reallocated by a
                     # later append while the consumer still holds this view.
-                    block = (shard.ids.copy(), matrix @ queries.T)
+                    block = (ids.copy(), scores)
 
         if cached:
             if block is not None:
@@ -294,7 +300,12 @@ class FaceVectorCache:
         # Oversized library: stream and score chunk by chunk.
         for chunk_ids, vectors in _stream_rows(db, owner_id, 0):
             packed = _pack(vectors, queries.shape[1])
-            yield np.asarray(chunk_ids, dtype=np.int64), packed @ queries.T
+            ids = np.asarray(chunk_ids, dtype=np.int64)
+            scores = packed @ queries.T
+            if valid_only:
+                valid = np.isfinite(packed).all(axis=1) & np.any(packed != 0, axis=1)
+                ids, scores = ids[valid], scores[valid]
+            yield ids, scores
 
     def invalidate(self, owner_id=None) -> None:
         """Drop cached rows. Only needed if embeddings are ever backfilled."""
