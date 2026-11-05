@@ -44,4 +44,13 @@ withDefaults(defineProps<{ label?: string; disabled?: boolean; to?: RouteLocatio
 .ts-back-button:active { transform: scale(.96); }
 .ts-back-button:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; }
 .ts-back-button:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+@media (max-width: 767px) {
+  .ts-back-button {
+    position: relative;
+    width: 36px;
+    height: 36px;
+  }
+  .ts-back-button::after { content: ''; position: absolute; inset: -4px; }
+  .ts-back-button > svg { width: 20px; height: 20px; }
+}
 </style>

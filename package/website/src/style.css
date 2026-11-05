@@ -372,6 +372,16 @@ main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .ts-glass-button:disabled { opacity: .45; cursor: not-allowed; }
 .ts-glass-button:focus-visible { outline: 2px solid var(--accent-color); outline-offset: 2px; }
 .ts-glass-button[aria-expanded='true'] { color: var(--accent-color); background: transparent; }
+@media (max-width: 767px) {
+  .ts-glass-toolbar {
+    --ts-toolbar-control-size: 32px;
+    --ts-toolbar-gap: 4px;
+  }
+  .ts-glass-toolbar .ts-glass-button { position: relative; padding-inline: 8px; }
+  /* Extend the hit area without enlarging the visible capsule. */
+  .ts-glass-toolbar .ts-glass-button::after { content: ''; position: absolute; inset: -6px -2px; }
+  .ts-glass-toolbar .ts-glass-button > svg { width: 18px; height: 18px; }
+}
 .ts-desktop-menu { --glass-tint: var(--ts-glass-panel); backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); position: absolute; right: 0; top: 100%; margin-top: 12px; width: 240px; border-radius: 20px; padding: 12px; z-index: 50; }
 .ts-glass-sheet.responsive-dialog-panel { --glass-tint: var(--ts-glass-panel); backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); -webkit-backdrop-filter: blur(var(--ts-glass-blur-panel)) saturate(var(--ts-glass-saturation)); }
 .ts-glass-sheet.responsive-dialog-panel::before,

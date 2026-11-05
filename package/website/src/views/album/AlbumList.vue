@@ -894,9 +894,25 @@ const onAlbumTouchStart = (album: Album, event: TouchEvent) => {
 :deep(.album-cover-strip) { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--ts-page-gutter); padding: 2px 2px 8px; padding-bottom: 4px; scrollbar-width: none; }
   :deep(.album-cover-strip)::-webkit-scrollbar { display: none; }
   .album-cover-card { flex: 0 0 clamp(140px, 18vw, 220px); min-width: 0; scroll-snap-align: start; }
-@media (max-width: 639px) {
-  .album-cover-card { flex-basis: 38%; }
+@media (max-width: 767px) {
+  /* Leave part of the next square cover visible to invite horizontal swiping. */
+  .album-library { --album-cover-columns: 3.5; --album-cover-gap: 8px; }
+  .album-library .ts-browse-header { margin-bottom: 8px; }
+  .album-sections { gap: 8px; }
+  .album-sections > section > h2 { margin-bottom: 4px; }
+  .album-sections > section > h2 > :is(button, a) { position: relative; min-height: 36px; }
+  .album-sections > section > h2 > :is(button, a)::after { content: ''; position: absolute; inset: -4px 0; }
+  .album-sections .ts-section-title { font-size: 16px; }
+  :deep(.album-cover-strip) { gap: var(--album-cover-gap); padding-bottom: 2px; }
+  .album-cover-card { flex-basis: calc((100% - (var(--album-cover-columns) - 1) * var(--album-cover-gap)) / var(--album-cover-columns)); }
+  .album-cover-card > div:first-child { width: 100%; border-radius: 12px; margin-bottom: 4px; }
+  .album-cover-card .ts-card-title { font-size: 12px; line-height: 1.35; }
+  .album-cover-card > p { margin-top: 2px; }
+  .album-cover-card :deep(.absolute.inset-x-0) { padding: 16px 8px 6px; }
   .album-cover-card:active { transform: scale(.98); }
+}
+@media (min-width: 420px) and (max-width: 767px) {
+  .album-library { --album-cover-columns: 4.5; }
 }
 
 </style>

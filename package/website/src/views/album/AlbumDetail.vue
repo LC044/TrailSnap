@@ -25,7 +25,7 @@
       <button
         v-if="album?.type === 'custom' || album?.type === 'user'"
         @click="showPhotoSelector = true"
-        class="flex items-center gap-2 p-2 sm:px-4 sm:py-2 text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-full transition-colors font-medium text-sm"
+        class="ts-glass-button sm:px-4 font-medium text-sm"
         title="添加照片"
       >
         <ImagePlus class="w-5 h-5" />
@@ -38,7 +38,7 @@
       >
         <button
           type="button"
-          class="flex items-center justify-center rounded-full bg-white/80 p-2 text-gray-700 shadow-sm backdrop-blur-md transition-all hover:bg-white border border-gray-200/50 dark:border-gray-700/50 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:bg-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          class="ts-glass-button"
           title="更多操作"
           aria-label="更多操作"
         >
