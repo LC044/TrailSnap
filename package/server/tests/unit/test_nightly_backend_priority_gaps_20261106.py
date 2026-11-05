@@ -26,7 +26,7 @@ def test_identity_rescan_without_reference_faces_is_a_safe_empty_analysis(
     face_sqlite_session.add(identity)
     face_sqlite_session.commit()
 
-    service = FaceClusterService(db=face_sqlite_session, user_id=user.id)
+    service = FaceClusterService(db=face_sqlite_session, user_id=None)
     analysis = service._analyze_identity_rescan(
         identity.id, user.id, lock=False
     )
