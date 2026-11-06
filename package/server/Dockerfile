@@ -48,6 +48,10 @@ RUN mkdir -p /opt/fonts && \
 
 FROM ${PYTHON_IMAGE} AS python-builder
 # hnswlib supplies a source distribution for Python 3.12.
+# 其 setup.py 默认 -march=native：构建层缓存会在 Intel/AMD 异构 runner 间复用，
+# AVX-512 二进制落回无该指令集的机器时直接 SIGILL（exit 132）。设此变量
+# 退回通用 x86-64 目标，与 manylinux wheel 的运行时 dispatch 策略对齐。
+ENV HNSWLIB_NO_NATIVE=1
 RUN apt-get update && apt-get install -y --no-install-recommends g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv UV_PYTHON_DOWNLOADS=never
