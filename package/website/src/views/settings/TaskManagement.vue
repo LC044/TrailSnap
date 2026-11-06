@@ -8,7 +8,7 @@
       </template>
     </SettingsPageHeader>
 
-    <section class="task-overview ts-surface ts-settings-panel" aria-label="任务队列总览">
+    <section class="task-overview ts-surface ts-settings-panel" :class="{ 'task-overview-alert': summary.failed > 0 }" aria-label="任务队列总览">
       <div v-if="loading && !groupedTasks.length" class="py-4 ts-muted" role="status">正在加载任务…</div>
       <div v-else-if="loadFailed" role="alert">
         <h2 class="ts-section-title">暂时无法获取任务状态</h2>
@@ -16,79 +16,84 @@
         <button type="button" class="ts-button ts-button-secondary mt-4" :disabled="loading" @click="fetchTasks">重新加载</button>
       </div>
       <template v-else>
-        <div class="flex items-start gap-3">
-          <span class="task-overview-icon" :class="{ 'task-has-failures': summary.failed > 0 }">
-            <AlertCircle v-if="summary.failed" class="h-6 w-6" />
-            <Clock3 v-else-if="summary.pending" class="h-6 w-6" />
-            <CheckCircle2 v-else class="h-6 w-6" />
-          </span>
-          <div class="min-w-0 flex-1">
-            <h2 class="ts-section-title">{{ summary.failed ? '有失败任务需要处理' : summary.pending ? '还有任务待处理' : '当前没有待处理任务' }}</h2>
+        <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div class="flex min-w-0 items-start gap-3">
+            <span class="task-overview-icon" :class="{ 'task-has-failures': summary.failed > 0 }">
+              <AlertCircle v-if="summary.failed" class="h-6 w-6" />
+              <Clock3 v-else-if="summary.pending" class="h-6 w-6" />
+              <CheckCircle2 v-else class="h-6 w-6" />
+            </span>
+            <h2 class="ts-section-title">{{ overviewTitle }}</h2>
           </div>
+          <button v-if="summary.failed" type="button" class="ts-button ts-button-sm task-failure-cta" :aria-label="`查看并处理 ${formatCount(summary.failed)} 项失败任务`" @click="taskFilter = 'failed'">
+            处理失败项 <span class="tabular-nums">{{ formatCount(summary.failed) }}</span> <ChevronRight class="h-4 w-4" />
+          </button>
         </div>
-        <div class="mt-5 flex flex-wrap items-end gap-x-6 gap-y-3">
-          <div><span class="text-3xl font-semibold tabular-nums">{{ formatCount(summary.pending) }}</span><span class="ts-muted ml-2 text-sm">项待处理</span></div>
-          <button v-if="summary.failed" type="button" class="task-failure-link min-h-11 text-sm font-medium" @click="taskFilter = 'failed'">失败 {{ formatCount(summary.failed) }} 项 <ChevronRight class="inline h-4 w-4" /></button>
-          <span v-else class="ts-muted text-sm">没有失败任务</span>
-          <button v-if="summary.paused" type="button" class="min-h-11 text-sm ts-muted" @click="taskFilter = 'paused'">已暂停 {{ summary.paused }} 类</button>
+        <!-- 状态摘要即筛选：胶囊计数与下方列表 taskFilter 联动 -->
+        <div class="task-summary-row mt-5" role="group" aria-label="按状态筛选任务">
+          <button v-for="statusFilter in summaryFilters" :key="statusFilter.value" type="button"
+            class="task-summary-chip" :class="{ 'task-chip-active': taskFilter === statusFilter.value }"
+            :aria-pressed="taskFilter === statusFilter.value" :aria-label="`${statusFilter.label} ${formatCount(statusFilter.count)}，${taskFilter === statusFilter.value ? '已选中' : '点击筛选'}`"
+            @click="taskFilter = taskFilter === statusFilter.value && statusFilter.value !== 'all' ? 'all' : statusFilter.value">
+            <span class="task-chip-dot" :class="`task-dot-${statusFilter.value}`" aria-hidden="true" />
+            <span>{{ statusFilter.label }}</span>
+            <span class="tabular-nums">{{ formatCount(statusFilter.count) }}</span>
+          </button>
         </div>
       </template>
     </section>
 
     <section class="task-groups" aria-labelledby="task-list-title">
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 id="task-list-title" class="ts-section-title">处理类型</h2>
-        <div class="task-filters flex flex-wrap gap-1" role="group" aria-label="筛选任务">
-          <button v-for="filter in taskFilters" :key="filter.value" type="button" class="task-filter"
-            :class="{ 'task-filter-active': taskFilter === filter.value }" :aria-pressed="taskFilter === filter.value" @click="taskFilter = filter.value">
-            {{ filter.label }} <span class="tabular-nums">{{ filterTaskGroups(groupedTasks, filter.value).length }}</span>
+      <h2 id="task-list-title" class="ts-section-title mb-3">{{ filteredTitle }}</h2>
+
+      <!-- 需要关注：失败 / 等待条件 / 已暂停 -->
+      <section v-if="attentionTasks.length" class="task-tier" aria-label="需要关注">
+        <h3 class="task-tier-title task-tier-attention">{{ tierLabels.attention }}</h3>
+        <div class="task-list ts-surface overflow-hidden" :aria-busy="loading">
+          <article v-for="cat in attentionTasks" :key="cat.category" class="task-row" :class="`task-row-${getTaskState(cat)}`">
+            <TaskRowContent v-bind="rowBindings(cat)" />
+          </article>
+        </div>
+      </section>
+
+      <!-- 进行中：有待处理且未暂停 -->
+      <section v-if="progressTasks.length" class="task-tier" aria-label="进行中">
+        <h3 class="task-tier-title">{{ tierLabels.progress }}</h3>
+        <div class="task-list ts-surface overflow-hidden" :aria-busy="loading">
+          <article v-for="cat in progressTasks" :key="cat.category" class="task-row" :class="`task-row-${getTaskState(cat)}`">
+            <TaskRowContent v-bind="rowBindings(cat)" />
+          </article>
+        </div>
+      </section>
+
+      <!-- 空闲类型：默认折叠为一行摘要 -->
+      <section v-if="idleCount > 0" class="task-tier" aria-label="暂无任务">
+        <div v-if="!idleExpanded" class="ts-surface">
+          <button type="button" class="task-idle-summary" :aria-expanded="false" aria-controls="task-idle-list" @click="idleExpanded = true">
+            <CheckCircle2 class="h-5 w-5 shrink-0 ts-muted" />
+            <span class="min-w-0 flex-1 text-left">{{ tierLabels.idle }}（{{ idleCount }} 类）</span>
+            <span class="task-idle-names ts-muted hidden truncate md:block">{{ idleNames }}</span>
+            <ChevronDown class="h-4 w-4 shrink-0 ts-muted" />
           </button>
         </div>
-      </div>
+        <template v-else>
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h3 class="task-tier-title">{{ tierLabels.idle }} · {{ idleCount }} 类</h3>
+            <button type="button" class="task-idle-collapse min-h-11 text-sm ts-muted" :aria-expanded="true" aria-controls="task-idle-list" @click="idleExpanded = false">收起</button>
+          </div>
+          <div id="task-idle-list" class="task-list ts-surface overflow-hidden">
+            <article v-for="cat in idleTasks" :key="cat.category" class="task-row task-row-idle">
+              <TaskRowContent v-bind="rowBindings(cat)" />
+            </article>
+          </div>
+        </template>
+      </section>
+
       <p v-if="!loading && !loadFailed && !visibleTasks.length" class="ts-surface ts-settings-panel text-center ts-muted text-sm">
         {{ taskFilter === 'all' ? '暂无处理类型' : `没有${taskFilters.find(filter => filter.value === taskFilter)?.label}的处理类型` }}
       </p>
-      <div v-if="visibleTasks.length" class="task-list ts-surface overflow-hidden" :aria-busy="loading">
-        <article v-for="cat in visibleTasks" :key="cat.category" class="task-row">
-          <div class="task-row-main">
-            <button type="button" class="task-details-trigger flex min-w-0 items-start gap-3 text-left" :aria-label="`${cat.task_name}详情`" :aria-expanded="expandedTask === cat.category" :aria-controls="`task-details-${cat.category}`" @click="expandedTask = expandedTask === cat.category ? '' : cat.category">
-              <span class="task-state-icon" :class="`task-state-${getTaskState(cat)}`">
-                <component :is="stateIcons[getTaskState(cat)]" class="h-5 w-5" />
-              </span>
-              <span class="min-w-0 flex-1">
-                <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span class="text-[15px] font-semibold">{{ cat.task_name }}</span>
-                  <span class="task-state-label" :class="`task-state-${getTaskState(cat)}`">{{ taskStateLabels[getTaskState(cat)] }}</span>
-                  <ChevronDown class="h-3.5 w-3.5 ts-muted transition-transform" :class="{ 'rotate-180': expandedTask === cat.category }" />
-                </span>
-                <span class="ts-muted mt-1 block text-sm">{{ cat.pending > 0 ? `待处理 ${formatCount(cat.pending)} 项` : '暂无待处理任务' }}</span>
-                <span v-if="cat.waiting_reason && cat.pending > 0" class="task-waiting-reason mt-1 block text-xs leading-5">{{ cat.waiting_reason }}</span>
-              </span>
-            </button>
-            <div class="task-row-actions flex flex-wrap items-center justify-end gap-2">
-              <button v-if="cat.failed > 0" type="button" class="task-failure-link min-h-11 text-sm font-medium" :aria-label="`${cat.task_name}：${cat.failed} 项失败，查看详情`" @click="showFailedTasks(cat.category)">失败 {{ formatCount(cat.failed) }} 项 <ChevronRight class="inline h-4 w-4" /></button>
-              <button type="button" class="ts-button ts-button-secondary ts-button-sm hidden md:inline-flex" :disabled="loadFailed" @click="handleCategoryCommand(cat.category, cat.status === 'paused' ? 'resume' : 'pause')">{{ cat.status === 'paused' ? '继续' : '暂停' }}</button>
-              <div class="shrink-0">
-              <button class="ts-icon-button ts-button-ghost" :aria-label="`${cat.task_name}操作`" :aria-expanded="activeMenu === cat.category" aria-haspopup="menu" :disabled="loadFailed" @click="activeMenu = activeMenu === cat.category ? '' : cat.category"><MoreHorizontal class="h-5 w-5" /></button>
-              <AdaptiveMenu :model-value="activeMenu === cat.category" :title="`${cat.task_name}操作`" close-on-action @update:model-value="value => activeMenu = value ? cat.category : ''">
-                <button v-if="isMobile" class="ts-action-row" @click="handleCategoryCommand(cat.category, cat.status === 'paused' ? 'resume' : 'pause')">{{ cat.status === 'paused' ? '继续任务' : '暂停任务' }}</button>
-                <button class="ts-action-row" @click="handleCategoryCommand(cat.category, 'scan_missing')">执行缺失任务</button>
-                <button class="ts-action-row" :disabled="cat.failed === 0" @click="handleCategoryCommand(cat.category, 'retry')">重试失败任务</button>
-                <button v-if="cat.category === 'RECOGNIZE_TICKET'" class="ts-action-row" :disabled="recoveringTickets" @click="handleCategoryCommand(cat.category, 'recover_tickets')">恢复旧版未保存的票据</button>
-                <button class="ts-action-row danger" :disabled="cat.failed === 0" @click="handleCategoryCommand(cat.category, 'delete_failed')">删除失败任务</button>
-                <button class="ts-action-row danger" @click="handleCategoryCommand(cat.category, 'rebuild')">强制重做此项</button>
-              </AdaptiveMenu>
-              </div>
-            </div>
-          </div>
-          <div v-if="expandedTask === cat.category" :id="`task-details-${cat.category}`" class="task-details ts-muted text-sm leading-6">
-            <p>{{ cat.description }}</p>
-            <p class="mt-1">调度优先级 {{ cat.priority }} · 待处理 {{ formatCount(cat.pending) }} 项 · 失败 {{ formatCount(cat.failed) }} 项</p>
-            <p v-if="cat.status === 'paused'" class="mt-1">此类型已暂停，点击“继续”恢复调度；当前执行中的任务会先完成。</p>
-          </div>
-        </article>
-      </div>
     </section>
+
 
     <details class="task-performance ts-surface">
       <summary class="flex cursor-pointer items-center gap-3 p-4 md:p-6">
@@ -114,23 +119,68 @@
 import BasicSettings from './BasicSettings.vue'
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import SettingsFormRow from '@/components/ui/SettingsFormRow.vue'
+import TaskRowContent from './components/TaskRowContent.vue'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Circle, Clock3, MoreHorizontal, PauseCircle, RefreshCw, Settings2 } from 'lucide-vue-next'
+import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock3, RefreshCw, Settings2 } from 'lucide-vue-next'
 import FailedTasksDialog from '@/components/FailedTasksDialog.vue'
-import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import { useNotificationStore } from '@/stores/notificationStore'
-import { filterTaskGroups, getTaskState, summarizeTaskGroups, taskFilters, taskStateLabels, type TaskFilter, type TaskGroup } from '@/utils/taskPresentation'
+import { filterTaskGroups, getTaskState, summarizeTaskGroups, taskFilters, type TaskFilter, type TaskGroup } from '@/utils/taskPresentation'
 
 const groupedTasks = ref<TaskGroup[]>([])
 const isMobile = useMediaQuery('(max-width: 767px)')
 const taskFilter = ref<TaskFilter>('all')
 const summary = computed(() => summarizeTaskGroups(groupedTasks.value))
 const visibleTasks = computed(() => filterTaskGroups(groupedTasks.value, taskFilter.value))
-const stateIcons = { paused: PauseCircle, waiting: Clock3, pending: Clock3, failed: AlertCircle, idle: Circle }
 const formatCount = (count: number) => count.toLocaleString('zh-CN')
+
+// —— 三层分组：需要关注（失败/等待/暂停）、进行中、空闲 ——
+const isAttention = (task: TaskGroup) => {
+  const state = getTaskState(task)
+  return state === 'failed' || state === 'waiting' || state === 'paused'
+}
+const attentionTasks = computed(() => visibleTasks.value.filter(isAttention))
+const progressTasks = computed(() => visibleTasks.value.filter(task => !isAttention(task) && getTaskState(task) === 'pending'))
+const idleTasks = computed(() => visibleTasks.value.filter(task => getTaskState(task) === 'idle'))
+const idleCount = computed(() => idleTasks.value.length)
+const idleNames = computed(() => idleTasks.value.map(task => task.task_name).join('、'))
+const idleExpanded = ref(false)
+const tierLabels = { attention: '需要关注', progress: '进行中', idle: '暂无任务' }
+
+const rowBindings = (cat: TaskGroup) => ({
+  task: cat,
+  expanded: expandedTask.value === cat.category,
+  menuOpen: activeMenu.value === cat.category,
+  disabled: loadFailed.value,
+  onToggleExpand: () => { expandedTask.value = expandedTask.value === cat.category ? '' : cat.category },
+  onShowFailed: () => showFailedTasks(cat.category),
+  onToggleMenu: () => { activeMenu.value = activeMenu.value === cat.category ? '' : cat.category },
+  onUpdateMenu: (value: boolean) => { activeMenu.value = value ? cat.category : '' },
+  onCategoryCommand: (command: string) => { void handleCategoryCommand(cat.category, command) },
+})
+
+const overviewTitle = computed(() => {
+  if (summary.value.failed) return '有失败任务需要处理'
+  if (summary.value.pending) return '还有任务待处理'
+  return '当前没有待处理任务'
+})
+
+// 状态摘要胶囊：与 taskFilter 一一对应，计数分别为任务数与类目数
+const summaryFilters = computed(() => [
+  { value: 'all' as TaskFilter, label: '全部', count: groupedTasks.value.length },
+  { value: 'pending' as TaskFilter, label: '进行中', count: filterTaskGroups(groupedTasks.value, 'pending').length },
+  { value: 'failed' as TaskFilter, label: '失败', count: summary.value.failed },
+  { value: 'paused' as TaskFilter, label: '已暂停', count: summary.value.paused },
+])
+
+const filteredTitle = computed(() => {
+  if (taskFilter.value === 'all') return '处理类型'
+  const label = taskFilters.find(filter => filter.value === taskFilter.value)?.label ?? ''
+  return `${label}类型`
+})
+
 const fastMode = ref(false)
 const savingFastMode = ref(false)
 const notifyStore = useNotificationStore()
@@ -386,24 +436,49 @@ onUnmounted(() => {
 
 <style scoped>
 .task-management { min-width: 0; container: task-management / inline-size; }
-.task-overview-icon, .task-state-icon { display: flex; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 12px; }
-.task-overview-icon { width: 44px; height: 44px; color: var(--theme-primary); background: rgba(var(--theme-rgb), .1); }
-.task-state-icon { width: 36px; height: 36px; background: var(--ts-color-surface-muted); color: var(--ts-color-text-secondary); }
-.task-state-label { border-radius: 6px; padding: 2px 6px; font-size: 11px; line-height: 1.5; background: var(--ts-color-surface-muted); color: var(--ts-color-text-secondary); }
-.task-state-pending { color: var(--theme-primary); background: rgba(var(--theme-rgb), .1); }
-.task-state-paused, .task-state-waiting { color: #b45309; background: rgb(245 158 11 / 10%); }
-.task-state-failed, .task-has-failures { color: var(--ts-color-danger); background: rgb(239 68 68 / 10%); }
-.task-failure-link { color: var(--ts-color-danger); }
-.task-waiting-reason { overflow-wrap: anywhere; color: var(--ts-color-text-secondary); }
-.task-filter { min-height: 36px; padding: 6px 10px; border-radius: 10px; font-size: 13px; color: var(--ts-color-text-secondary); }
-.task-filter:hover { background: var(--ts-color-surface-muted); }
-.task-filter-active { background: rgba(var(--theme-rgb), .1); color: var(--theme-primary); font-weight: 600; }
+/* —— 总览：警示态 + 状态胶囊 —— */
+.task-overview-alert { border-color: rgb(239 68 68 / 35%); }
+.task-overview-icon { display: flex; flex-shrink: 0; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; color: var(--theme-primary); background: rgba(var(--theme-rgb), .1); }
+.task-has-failures { color: var(--ts-color-danger); background: rgb(239 68 68 / 10%); }
+.task-failure-cta { color: var(--ts-color-danger); }
+.task-summary-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-summary-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+  padding: 4px 12px 4px 10px; border-radius: 10px; font-size: 13px;
+  color: var(--ts-color-text-secondary); background: var(--ts-color-surface-muted);
+  transition: background-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease;
+}
+.task-summary-chip:hover { color: var(--ts-color-text); }
+.task-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ts-color-text-tertiary); }
+.task-dot-pending { background: var(--theme-primary); }
+.task-dot-failed { background: var(--ts-color-danger); }
+.task-dot-paused { background: #f59e0b; }
+.task-chip-active { background: rgba(var(--theme-rgb), .1); color: var(--theme-primary); font-weight: 600; }
+/* 失败/暂停胶囊即使未被选中也保持语义色计数可读 */
+.task-summary-chip[aria-pressed="true"].task-chip-failed { color: var(--ts-color-danger); }
+/* —— 三层分组 —— */
+.task-tier + .task-tier { margin-top: 24px; }
+.task-tier-title { margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--ts-color-text-secondary); }
+.task-tier-attention { color: var(--ts-color-danger); }
+/* —— 行 —— */
+/* 行容器与左边条作用于本组件的 article；徽章/状态点样式随 TaskRowContent 迁移 */
 .task-row { padding: 16px; }
 .task-row + .task-row { border-top: 1px solid var(--ts-color-divider); }
-.task-row-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; }
-.task-row-main:has(.task-failure-link) .task-row-actions { grid-column: 1 / -1; }
-.task-details-trigger { padding-block: 4px; }
-.task-details { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--ts-color-divider); }
+/* 需要关注：彩色左边条（失败红 / 等待琥珀 / 暂停灰琥珀） */
+.task-row-failed, .task-row-waiting, .task-row-paused { position: relative; }
+.task-row-failed::before, .task-row-waiting::before, .task-row-paused::before {
+  content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0;
+}
+.task-row-failed::before { background: var(--ts-color-danger); }
+.task-row-waiting::before, .task-row-paused::before { background: #f59e0b; }
+:global(.dark .task-row-waiting::before), :global(.dark .task-row-paused::before) { background: #fbbf24; }
+/* —— 空闲收纳 —— */
+.task-idle-summary { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 16px; font-size: 14px; }
+.task-idle-summary:hover { background: var(--ts-color-surface-muted); }
+.task-idle-names { flex: 1 1 auto; max-width: 40%; font-size: 13px; }
+.task-idle-collapse { min-height: 44px; padding: 4px 10px; border-radius: 8px; }
+.task-idle-collapse:hover { background: var(--ts-color-surface-muted); color: var(--ts-color-text); }
+.task-row-idle { padding: 12px 16px; }
 .task-performance > summary { list-style: none; }
 .task-performance > summary::-webkit-details-marker { display: none; }
 .task-performance[open] .task-performance-chevron { transform: rotate(180deg); }
@@ -412,13 +487,12 @@ onUnmounted(() => {
 .task-performance :deep(.settings-native-fields > div) { padding: 0; }
 .task-performance :deep(.settings-native-fields) { background: transparent; }
 .task-management button:focus-visible, .task-performance > summary:focus-visible { outline: 2px solid var(--theme-primary); outline-offset: 2px; border-radius: 8px; }
-:global(.dark) .task-state-paused, :global(.dark) .task-state-waiting { color: #fbbf24; }
 @container task-management (min-width: 560px) {
   .task-row { padding: 16px 20px; }
-  .task-row-main:has(.task-failure-link) .task-row-actions { grid-column: auto; }
+  .task-row-idle { padding: 12px 20px; }
 }
 @media (max-width: 767px) {
-  .task-filter { min-height: 44px; }
+  .task-summary-chip { min-height: 44px; }
   .task-overview.ts-settings-panel { padding: 16px; }
 }
 </style>
