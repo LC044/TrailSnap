@@ -51,10 +51,13 @@
         <span v-if="appVersion" class="text-sm text-slate-500 dark:text-slate-400">
           App v{{ appVersion }}
         </span>
-        <el-button type="primary" size="small" :loading="checking" @click="checkUpdate">
+        <el-button type="primary" size="small" :loading="checking" @click="checkUpdate(false)">
           检查更新
         </el-button>
       </div>
+      <p v-if="availableUpdate" class="ts-muted text-sm" role="status">
+        发现新版本 v{{ availableUpdate.latest_version }}，点击“检查更新”查看详情。
+      </p>
     </section>
 
     <!-- 服务器 -->
@@ -115,13 +118,14 @@
 import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { ref, onMounted } from 'vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
-import { systemApi } from '@/api/system'
+import { systemApi, type UpdateCheckResult } from '@/api/system'
 import { getServerUrl, isMobileApp, isTauriApp } from '@/config/server'
 import { useAppUpdate } from '@/composables/useAppUpdate'
 import { useDesktopUpdatesStore } from '@/stores/desktopUpdates'
 
 const currentVersion = ref('0.0.0') // Default placeholder
 const checking = ref(false)
+const availableUpdate = ref<UpdateCheckResult | null>(null)
 const serverUrl = getServerUrl()
 const mobileApp = isMobileApp()
 const desktopApp = isTauriApp()
@@ -134,13 +138,14 @@ onMounted(async () => {
   try {
     const res = await systemApi.getVersion()
     currentVersion.value = res.version
-    if (!desktopApp) checkUpdate()
+    if (!desktopApp) await checkUpdate(true)
   } catch (e) {
     console.error('Failed to fetch version', e)
   }
 })
 
-const checkUpdate = async () => {
+const checkUpdate = async (silent = false) => {
+  if (checking.value) return
   checking.value = true
   try {
     if (desktopApp) {
@@ -149,19 +154,21 @@ const checkUpdate = async () => {
       return
     }
     if (appUpdate.supported) {
-      const found = await appUpdate.checkForUpdate()
-      if (!found && !appUpdate.errorMessage.value) ElMessage.success('当前已是最新版本')
-      else if (!found) ElMessage.error(appUpdate.errorMessage.value)
+      const found = await appUpdate.checkForUpdate(silent)
+      if (!silent && !found && !appUpdate.errorMessage.value) ElMessage.success('当前已是最新版本')
+      else if (!silent && !found) ElMessage.error(appUpdate.errorMessage.value)
       return
     }
 
-    const data = await systemApi.checkUpdate()
+    const data = await systemApi.checkUpdate(silent)
     
     // Update current version in case it changed or was not loaded
     if (data.current_version) {
       currentVersion.value = data.current_version
     }
 
+    availableUpdate.value = data.has_update ? data : null
+    if (silent) return
     if (data.has_update) {
        ElMessageBox.confirm(
         `
@@ -190,7 +197,7 @@ const checkUpdate = async () => {
       ElMessage.success('当前已是最新版本')
     }
   } catch (error) {
-    ElMessage.error('检查更新失败，请稍后重试')
+    if (!silent) ElMessage.error('检查更新失败，请稍后重试')
     console.error(error)
   } finally {
     checking.value = false

@@ -175,292 +175,28 @@ def test_find_matching_face_ids_pg_branch_empty_prototypes_skips_query():
 # ---------------------------------------------------------------------------
 
 
-def test_cluster_unassigned_faces_creates_identity_for_large_cluster():
-    """When DBSCAN returns >= MIN_CLUSTER_SIZE_FOR_IDENTITY members in one
-    cluster, a new FaceIdentity is created and faces are reassigned."""
-    from app.db.models.face import Face
-
-    rows = _rows(6)
-    db = _cluster_db(rows)
-    svc = _service(db)
-
-    dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
-
-    new_identity_id = uuid4()
-    new_identity = SimpleNamespace(id=new_identity_id)
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity", return_value=new_identity) as create_identity, \
-         patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    create_identity.assert_called_once()
-    # One bulk UPDATE for the whole cluster, not one statement per member.
-    assert len(db.update_calls) == 1
-    values = db.update_calls[0]
-    assert values[Face.face_identity_id] == new_identity_id
-    assert values[Face.recognize_confidence] == 0.9
-
-    update_identity.assert_called_once()
-    call = update_identity.call_args
-    if call.kwargs:
-        assert call.kwargs["default_face_id"] == rows[0][0]
-    else:
-        assert call.args[2].default_face_id == rows[0][0]
-    db.commit.assert_called()
-
-
-def test_cluster_unassigned_faces_streams_the_pool_instead_of_materialising_it():
-    """The unassigned select must be consumed with yield_per, never .all().
-
-    ``.all()`` buffers the whole result set in the driver and then holds one
-    ndarray per face on top of it -- 14.5 KB per face against 3.0 KB for the
-    streamed loop, i.e. 1.4 GB against 0.3 GB on a 100k-face library. Now that
-    a single pass covers the entire library, that peak is what would put a NAS
-    in front of the OOM killer.
-    """
-    rows = _rows(6)
-    db = _cluster_db(rows)
-    svc = _service(db)
-
-    unassigned = []
-
-    original = db.query.side_effect
-
-    def _spy(*args):
-        q = original(*args)
-        if len(args) == 2:
-            unassigned.append(q)
-        return q
-
-    db.query.side_effect = _spy
-
-    with patch("app.service.face_cluster.DBSCAN", _patch_dbscan(np.zeros(6, dtype=int))), \
-         patch("app.service.face_cluster.crud_face.create_identity",
-               return_value=SimpleNamespace(id=uuid4())), \
-         patch("app.service.face_cluster.crud_face.update_identity"):
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    assert unassigned, "the unassigned scalar select was never issued"
-    query = unassigned[0]
-    query.yield_per.assert_called_once()
-    query.all.assert_not_called()
-
-
-def test_cluster_unassigned_faces_feeds_dbscan_a_float32_matrix():
-    """One contiguous float32 block, not a list of per-face arrays.
-
-    float64 would double the matrix and sklearn's internal working set with it.
-    """
-    rows = _rows(6)
-    db = _cluster_db(rows)
-    svc = _service(db)
-    dbscan_cls = _patch_dbscan(np.zeros(6, dtype=int))
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity",
-               return_value=SimpleNamespace(id=uuid4())), \
-         patch("app.service.face_cluster.crud_face.update_identity"):
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    matrix = dbscan_cls.return_value.fit.call_args.args[0]
-    assert matrix.dtype == np.float32
-    assert matrix.shape == (len(rows), len(rows[0][1]))
-    # Trimmed to the rows actually streamed, not left at the counted size.
-    assert len(matrix) == len(rows)
-
-
-def test_cluster_unassigned_faces_keeps_rows_that_arrive_after_the_count():
-    """A concurrent insert between count() and the scan must not be dropped.
-
-    Recognition keeps writing faces while the pass runs, so the preallocated
-    matrix has to grow rather than truncate -- a dropped face would never be
-    clustered until something else happened to re-trigger a pass.
-    """
-    rows = _rows(8)
-    db = _cluster_db(rows)
-
-    def _query(*args):
-        q = MagicMock()
-        q.filter.return_value = q
-        q.join.return_value = q
-        q.order_by.return_value = q
-        if len(args) == 2:
-            # count() saw 6 rows; the scan then returns 8.
-            q.count.return_value = 6
-            q.yield_per.return_value = list(rows)
-        else:
-            q.all.return_value = [(row[0],) for row in rows]
-            q.update.return_value = len(rows)
-        return q
-
-    db.query.side_effect = _query
-    svc = _service(db)
-    dbscan_cls = _patch_dbscan(np.zeros(8, dtype=int))
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity",
-               return_value=SimpleNamespace(id=uuid4())), \
-         patch("app.service.face_cluster.crud_face.update_identity"):
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    matrix = dbscan_cls.return_value.fit.call_args.args[0]
-    assert len(matrix) == 8, "rows added after the count were dropped"
-    # The grown block must carry the original rows over unchanged.
-    np.testing.assert_allclose(matrix[0], rows[0][1], rtol=1e-6)
-    np.testing.assert_allclose(matrix[7], rows[7][1], rtol=1e-6)
-
-
-def test_cluster_unassigned_faces_uses_per_user_eps_not_global_config():
-    """eps must come from the user's resolved threshold.
-
-    Reading ``config_manager.config`` here applied the global default to every
-    user, silently ignoring a per-user face_cluster_threshold.
-    """
-    db = _cluster_db(_rows(6))
-    svc = _service(db)
-    svc.DBSCAN_EPS = 0.33
-
-    dbscan_cls = _patch_dbscan(np.array([-1] * 6))
 
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity"):
-        svc._cluster_unassigned_faces(owner_id=None)
 
-    assert dbscan_cls.call_args.kwargs["eps"] == 0.33
-
-
-def test_cluster_unassigned_faces_skips_small_cluster_below_min_size():
-    """A cluster whose size < MIN_CLUSTER_SIZE_FOR_IDENTITY must NOT create
-    an identity."""
-    db = _cluster_db(_rows(6))
-    svc = _service(db)
-
-    dbscan_cls = _patch_dbscan(np.array([0, 0, -1, -1, -1, -1]))
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity") as create_identity, \
-         patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    dbscan_cls.assert_called_once()
-    create_identity.assert_not_called()
-    update_identity.assert_not_called()
-    assert db.update_calls == []
-
-
-def test_cluster_unassigned_faces_handles_two_clusters():
-    """Two DBSCAN clusters of sufficient size should each create their own
-    identity (or be merged if centers are close)."""
-    # MIN_CLUSTER_SIZE_FOR_IDENTITY defaults to 5; build 6 faces per cluster
-    # plus 2 noise (14 total) so both clusters exceed the minimum.
-    db = _cluster_db(_rows(14))
-    svc = _service(db)
-
-    labels = np.array([0] * 6 + [1] * 6 + [-1, -1])
-    dbscan_cls = _patch_dbscan(labels)
-
-    new_identity_a = SimpleNamespace(id=uuid4())
-    new_identity_b = SimpleNamespace(id=uuid4())
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity", side_effect=[new_identity_a, new_identity_b]) as create_identity, \
-         patch("app.service.face_cluster.crud_face.update_identity"):
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    # Two clusters of size 6 each, both >= MIN_CLUSTER_SIZE_FOR_IDENTITY=5;
-    # random unit vectors will not be close enough to merge.
-    assert 1 <= create_identity.call_count <= 2
-    assert len(db.update_calls) == create_identity.call_count
-
-
-def test_cluster_unassigned_faces_short_circuits_when_below_min_samples():
-    """When there are fewer than DBSCAN_MIN_SAMPLES unassigned faces,
-    the DBSCAN call should be skipped entirely."""
-    db = _cluster_db(_rows(4))
-    svc = _service(db)
-    assert svc.DBSCAN_MIN_SAMPLES == 5
-
-    dbscan_cls = MagicMock(name="DBSCAN-class")
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls) as dbs, \
-         patch("app.service.face_cluster.crud_face.create_identity") as create_identity:
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    dbs.assert_not_called()
-    create_identity.assert_not_called()
-
-
-def test_cluster_unassigned_faces_rolls_back_on_pending_rollback_error():
-    """PendingRollbackError triggers db.rollback() and re-raises."""
-    from sqlalchemy.exc import PendingRollbackError
-
-    db = _cluster_db(_rows(6))
-    svc = _service(db)
-    dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity", side_effect=PendingRollbackError("stmt", {}, Exception("orig"))):
-        with pytest.raises(PendingRollbackError):
-            svc._cluster_unassigned_faces(owner_id=None)
-
-    db.rollback.assert_called_once()
-
-
-def test_cluster_unassigned_faces_rolls_back_on_sqlalchemy_error():
-    """SQLAlchemyError triggers db.rollback() and re-raises."""
-    from sqlalchemy.exc import SQLAlchemyError
-
-    db = _cluster_db(_rows(6))
-    svc = _service(db)
-    dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity", side_effect=SQLAlchemyError("boom")):
-        with pytest.raises(SQLAlchemyError):
-            svc._cluster_unassigned_faces(owner_id=None)
-
-    db.rollback.assert_called_once()
-
-
-def test_cluster_unassigned_faces_skips_vanished_face_member():
-    """A member deleted between the select and the write is excluded.
-
-    The live-id re-check replaces the old per-member ``get_face`` lookup, and
-    the default face must come from the surviving members.
-    """
-    rows = _rows(6)
-    # Face 1 disappeared (deleted) after the unassigned select ran.
-    db = _cluster_db(rows, live_ids=[row[0] for row in rows[1:]])
-    svc = _service(db)
-    dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
-
-    new_identity = SimpleNamespace(id=uuid4())
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity", return_value=new_identity), \
-         patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    call = update_identity.call_args
-    if call.kwargs:
-        assert call.kwargs["default_face_id"] == rows[1][0]
-    else:
-        assert call.args[2].default_face_id == rows[1][0]
-
-
-def test_cluster_unassigned_faces_skips_cluster_with_no_live_members():
-    """If every member vanished, no identity write happens for that cluster."""
-    db = _cluster_db(_rows(6), live_ids=[])
-    svc = _service(db)
-    dbscan_cls = _patch_dbscan(np.array([0, 0, 0, 0, 0, 0]))
-
-    with patch("app.service.face_cluster.DBSCAN", dbscan_cls), \
-         patch("app.service.face_cluster.crud_face.create_identity", return_value=SimpleNamespace(id=uuid4())), \
-         patch("app.service.face_cluster.crud_face.update_identity") as update_identity:
-        svc._cluster_unassigned_faces(owner_id=None)
-
-    assert db.update_calls == []
-    update_identity.assert_not_called()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -558,3 +294,18 @@ def test_process_unassigned_faces_delegates_to_cluster_helper():
         svc.process_unassigned_faces(owner_id=uuid4())
 
     cluster.assert_called_once()
+
+
+def test_cluster_dispatch_requires_owner():
+    from app.service.face_cluster import FaceClusterService
+    with pytest.raises(ValueError, match="owner"):
+        FaceClusterService(MagicMock())._cluster_unassigned_faces(None)
+
+
+def test_cluster_dispatch_uses_appearance_service():
+    from app.service.face_cluster import FaceClusterService
+    owner = uuid4()
+    db = MagicMock()
+    with patch("app.service.face_appearance_clusters.process_faces") as process:
+        FaceClusterService(db)._cluster_unassigned_faces(owner)
+    process.assert_called_once_with(db, owner)

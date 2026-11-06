@@ -87,7 +87,7 @@ def test_daily_logger_rotates_date_and_prunes_oldest_files(tmp_path):
         assert handler.baseFilename == handler._get_filename(date.today())
         remaining = list(tmp_path.glob("*.log*"))
         assert len(remaining) == 1
-        assert "2026-11-05" in remaining[0].name
+        assert date.today().isoformat() in remaining[0].name
     finally:
         handler.close()
 

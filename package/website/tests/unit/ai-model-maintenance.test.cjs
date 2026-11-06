@@ -11,7 +11,7 @@ function harness(getAIModels, overrides = {}) {
   const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
   const timers = new Map()
   let cleanup
-  const context = { ref, computed, onMounted() {}, onUnmounted(fn) { cleanup = fn },
+  const context = { defineProps: () => ({}), withDefaults: (props, defaults) => ({ ...defaults, ...props }), useUserStore: () => ({ userInfo: { is_superuser: true } }), ref, computed, onMounted() {}, onUnmounted(fn) { cleanup = fn },
     settingsApi: { getAIModels, ...overrides.settingsApi }, ElMessage: overrides.ElMessage || {}, ElMessageBox: overrides.ElMessageBox || {},
     window: { setInterval(fn) { timers.set(1, fn); return 1 }, clearInterval(id) { timers.delete(id) } } }
   vm.createContext(context)

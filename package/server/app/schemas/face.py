@@ -1,7 +1,7 @@
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.photo import Photo
 
@@ -17,6 +17,45 @@ class PhotoFace(BaseModel):
 
 class AssignPhotoFace(BaseModel):
     identity_id: Optional[UUID] = Field(..., description="人物ID；null表示移除此脸归属")
+
+
+class SimilarFaceCandidate(PhotoFace):
+    photo_time: Optional[datetime] = None
+    similarity: float
+    manually_confirmed: bool
+    review_token: str
+
+
+class SimilarFacesResult(BaseModel):
+    reference: SimilarFaceCandidate
+    items: List[SimilarFaceCandidate]
+    face_count: int
+    photo_count: int
+    has_more: bool
+
+
+class SimilarFaceSelection(BaseModel):
+    face_id: int = Field(gt=0)
+    review_token: str = Field(min_length=1, max_length=4096)
+
+
+class AssignSimilarFaces(BaseModel):
+    identity_id: Optional[UUID] = Field(..., description="目标人物ID；null表示释放为未标记人脸")
+    selections: List[SimilarFaceSelection] = Field(min_length=1, max_length=500)
+
+
+class UndoFaceAssignment(BaseModel):
+    undo_token: str = Field(min_length=1, max_length=200000)
+
+
+class BatchFaceAssignmentResult(BaseModel):
+    face_count: int
+    photo_ids: List[UUID]
+    undo_token: Optional[str] = None
+
+
+SimilarFaceScope = Literal["all", "current", "current_low", "other", "unassigned"]
+SimilarFaceMatch = Literal["strict", "balanced", "broad"]
 
 
 class FaceBase(BaseModel):
@@ -72,6 +111,12 @@ class FaceIdentitySchema(BaseModel):
 class MergeRequest(BaseModel):
     source_ids: List[UUID] = Field(..., description="源人物ID列表")
     target_id: UUID = Field(..., description="目标人物ID")
+    identity_name: Optional[str] = Field(None, min_length=1, max_length=500, description="合并后人物名称")
+
+    @field_validator("identity_name", mode="before")
+    @classmethod
+    def trim_identity_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
 class RemovePhotosRequest(BaseModel):
     photo_ids: List[UUID] = Field(..., description="要移除的照片ID列表")

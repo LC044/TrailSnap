@@ -10,11 +10,13 @@
       <p>{{ failure }}</p>
       <span>城市列表和照片仍可查看</span>
     </div>
+    <div v-if="isReady && imageryError" class="absolute bottom-12 left-3 right-3 z-10 rounded-xl overflow-hidden"><MapUnavailable :error="imageryError" /><p class="ts-muted text-xs text-center p-2" style="background: var(--ts-color-surface)">已使用内置地球底图，足迹仍可浏览。</p></div>
     <div v-if="isReady" class="globe-hint" aria-hidden="true">{{ mode === '2d' ? '拖动平移 · 滚轮缩放' : '拖动旋转 · 滚轮缩放 · 右键倾斜' }}</div>
   </div>
 </template>
 
 <script setup lang="ts">
+import MapUnavailable from '@/components/MapUnavailable.vue'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
@@ -25,6 +27,7 @@ import { thumbnailUrl } from '@/utils/mediaUrl'
 import { arcCoordinates, boundaryLines, validPosition, type ArcPosition, type BoundaryLine } from '@/utils/footprintScene'
 import type { FootprintCity, FootprintRoute } from '@/types/footprint'
 
+const imageryError = ref<string | null>(null)
 const props = withDefaults(defineProps<{
   cities: FootprintCity[]
   routes: FootprintRoute[]
@@ -404,7 +407,7 @@ async function loadImagery() {
   try {
     const runtime = await settingsApi.getMapRuntime()
     if (disposed || !viewer) return
-    if (runtime?.provider !== 'tianditu' || !runtime?.access_token) throw new Error('没有卫星影像配置')
+    if (runtime?.provider !== 'tianditu' || !runtime?.access_token) throw Object.assign(new Error('没有卫星影像配置'), { code: 'MAP_KEY_MISSING' })
     const template = toServerUrl(`/api/system/map-proxy/${encodeURIComponent(runtime.access_token)}/t0.tianditu.gov.cn/DataServer?T=img_w&x={x}&y={y}&l={z}`)
     // Probe once before Cesium fans out tile requests. A configured key can
     // still be temporarily unreachable; in that case Natural Earth remains
@@ -422,13 +425,17 @@ async function loadImagery() {
     cleanup.push(satellite.errorEvent.addEventListener(() => {
       if (++failures === 8 && !disposed && viewer) {
         layer.show = false
+        imageryError.value = 'SCRIPT_LOAD_ERROR'
         emit('status', '卫星影像暂不可用，已切换为内置地球底图')
         requestRender()
       }
     }))
     emit('status', '天地图卫星影像 · WGS84 足迹')
-  } catch {
-    if (!disposed) emit('status', '当前使用内置地球底图；配置天地图后可显示高清卫星影像')
+  } catch (error: any) {
+    if (!disposed) {
+      imageryError.value = error?.code || (error?.response?.data?.detail === 'Map API Key is missing' ? 'MAP_KEY_MISSING' : 'SETTINGS_ERROR')
+      emit('status', '当前使用内置地球底图；可在地图与地点中检查卫星影像配置')
+    }
   }
   requestRender()
 }

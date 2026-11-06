@@ -7,6 +7,8 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 root = Path(SPECPATH)
 
 hiddenimports = (
+    ["hnswlib"]
+    +
     collect_submodules("app")
     + collect_submodules("railway")
     + collect_submodules("uvicorn")

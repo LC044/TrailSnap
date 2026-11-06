@@ -79,3 +79,30 @@ def face_sqlite_session(tmp_path):
         session.close()
         engine.dispose()
 
+
+
+@pytest.fixture
+def mock_appearance_for_fake_sessions(monkeypatch):
+    from unittest.mock import MagicMock
+    # These rescan tests exercise candidate selection with a fake Session.
+    # Actual cluster membership is covered with real databases separately.
+    from app.service import face_appearance_clusters as appearance
+    state = appearance.get_state
+    lock = appearance.lock_owner
+    assign = appearance.set_identity
+
+    def lock_session(db, owner_id, **kwargs):
+        if isinstance(db, MagicMock):
+            return {}
+        return lock(db, owner_id, **kwargs)
+
+    def assign_session(db, face, identity_id, owner_id):
+        if isinstance(db, MagicMock):
+            face.face_identity_id = identity_id
+        else:
+            assign(db, face, identity_id, owner_id)
+
+    monkeypatch.setattr(appearance, "get_state",
+                        lambda db, owner_id: {} if isinstance(db, MagicMock) else state(db, owner_id))
+    monkeypatch.setattr(appearance, "lock_owner", lock_session)
+    monkeypatch.setattr(appearance, "set_identity", assign_session)

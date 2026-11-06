@@ -65,7 +65,7 @@
       </el-collapse-item>
     </el-collapse>
 
-    <div class="flex justify-end">
+    <div class="mt-2 flex flex-wrap items-center justify-end gap-3 border-t ts-divider pt-3">
       <el-button type="primary" :loading="saving" @click="saveAll">保存大模型配置</el-button>
     </div>
 

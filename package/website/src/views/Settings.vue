@@ -1,30 +1,27 @@
 <template>
-  <div class="ts-page-background h-full">
-    <div class="mx-auto flex h-full w-full max-w-screen-2xl">
-      <aside class="ts-settings-nav hidden w-64 lg:w-72 shrink-0 overflow-y-auto border-r px-5 py-6 md:block">
+  <div class="settings-shell ts-page-background h-full min-h-0">
+    <div class="mx-auto flex h-full min-h-0 w-full max-w-screen-2xl">
+      <aside class="ts-settings-nav hidden w-64 lg:w-80 shrink-0 overflow-y-auto border-r px-5 py-6 lg:px-6 md:block">
         <h1 class="px-2 text-2xl font-bold">设置</h1>
         <p class="mt-1 px-2 text-sm text-gray-500 dark:text-gray-400">管理账号、图库与系统服务</p>
-        <div class="mt-7 space-y-6">
+        <el-input v-model="search" class="mt-5" placeholder="搜索设置，如原图、扫描" clearable aria-label="搜索设置" />
+        <div class="mt-6 space-y-7">
           <section v-for="group in menuGroups" :key="group.label">
-            <h2 class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ group.label }}</h2>
-            <div class="ts-surface overflow-hidden">
+            <h2 class="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{{ group.label }}</h2>
+            <div class="ts-surface space-y-1 overflow-hidden p-1">
               <button
-                v-for="(item, index) in group.items"
+                v-for="item in group.items"
                 :key="item.key"
                 :data-tab="item.key"
                 type="button"
-                class="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-gray-700"
-                :class="[index > 0 ? 'border-t border-gray-100 dark:border-gray-700' : '', activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : '']"
+                class="flex min-h-12 w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:hover:bg-gray-700"
+                :class="activeTab === item.key ? 'bg-primary-50 text-primary-600 dark:bg-gray-700 dark:text-primary-400' : ''"
                 @click="selectItem(item.key)"
               >
-                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
-                  <component :is="item.icon" class="h-5 w-5" />
+                <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">
+                  <component :is="item.icon" class="h-4 w-4" />
                 </span>
-                <span class="min-w-0 flex-1">
-                  <span class="block text-sm font-medium">{{ item.label }}</span>
-                  <span class="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{{ item.description }}</span>
-                </span>
-                <ChevronRight class="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+                <span class="min-w-0 flex-1 truncate text-sm font-medium">{{ item.label }}</span>
               </button>
             </div>
           </section>
@@ -48,7 +45,7 @@
           <ChevronRight class="h-5 w-5 text-gray-300 dark:text-gray-600" />
         </button>
 
-        <div class="space-y-6">
+        <el-input v-model="search" class="mb-4" placeholder="搜索设置" clearable aria-label="搜索设置" /><div class="space-y-6 ts-bottom-safe">
           <section v-for="group in mobileMenuGroups" :key="group.label">
             <h2 class="mb-2 px-3 text-[13px] font-medium text-gray-500 dark:text-gray-400">{{ group.label }}</h2>
             <div class="ts-surface overflow-hidden">
@@ -76,12 +73,13 @@
       <main v-else ref="contentRef" class="min-w-0 flex-1 overflow-y-auto">
         <div v-if="activeTab !== 'mobile-backup'" class="ts-page-header sticky top-0 z-20 flex items-center border-b px-[var(--ts-page-gutter)] md:hidden">
           <BackButton label="返回设置" @click="goBack" />
-          <div class="pointer-events-none absolute inset-x-20 truncate text-center text-[15px] font-semibold">{{ activeItem?.label }}</div>
+          <h1 class="min-w-0 flex-1 truncate px-2 text-center text-[17px] font-semibold">{{ activeItem?.label }}</h1>
+          <div id="ts-mobile-page-actions" class="ml-auto flex shrink-0 items-center justify-end gap-2"></div>
         </div>
-        <div class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content">
+        <div class="mx-auto w-full max-w-5xl ts-page-inset ts-page-content settings-page-content ts-bottom-safe">
           <Transition :name="transitionName" mode="out-in">
             <MobileBackup v-if="activeTab === 'mobile-backup'" :key="activeTab" hosted @request-settings-back="goBack" />
-            <component :is="currentComponent" v-else :key="activeTab" />
+            <BasicSettings v-else-if="['basic', 'map', 'captions', 'maintenance'].includes(activeTab)" :key="activeTab" :category="activeTab === 'basic' ? 'preferences' : activeTab" /><AIModelManagement v-else-if="activeTab === 'recognition' || activeTab === 'ai-models'" :key="activeTab" :group="activeTab === 'ai-models' ? 'llm' : 'local'" /><component :is="currentComponent" v-else :key="activeTab" />
           </Transition>
         </div>
       </main>
@@ -90,6 +88,7 @@
 </template>
 
 <script setup lang="ts">
+import { resolveSettingsTab } from '@/config/settingsNavigation'
 import BackButton from '@/components/ui/BackButton.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -120,39 +119,41 @@ const transitionName = ref<'settings-forward' | 'settings-back' | 'settings-none
 const contentRef = ref<HTMLElement | null>(null)
 
 const baseGroups: Array<{ label: string; items: MenuItem[] }> = [
-  { label: '账号', items: [
-    { key: 'profile', label: '个人资料', description: '头像、昵称与账号信息', icon: UserCircle },
-    { key: 'user', label: '用户管理', description: '管理成员和访问权限', icon: User, superuserOnly: true },
-    { key: 'tokens', label: '令牌管理', description: '管理 Agent 访问令牌', icon: Key },
-  ] },
-  { label: '设备与图库', items: [
-    { key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接此服务器', icon: Smartphone, hideInMobileApp: true },
-    { key: 'mobile-backup', label: '手机备份', description: '查看进度并设置自动备份', icon: CloudUpload, mobileOnly: true },
-    { key: 'external', label: '外部图库', description: '管理服务器照片目录', icon: FolderOpen },
-    { key: 'data-directory', label: '照片与数据位置', description: '查看保存位置、备份或找回旧照片', icon: Database, desktopOnly: true },
-  ] },
-  { label: '系统与 AI', items: [
-    { key: 'basic', label: '系统设置', description: '安全、地图、扫描与任务选项', icon: SettingsIcon },
-    { key: 'tasks', label: '任务管理', description: '查看和控制后台处理任务', icon: List },
-    { key: 'ai-models', label: 'AI 模型管理', description: '管理大模型连接与本地模型', icon: Database },
-    { key: 'performance', label: '性能测试', description: '检测存储与服务性能', icon: Activity },
-  ] },
-  { label: '支持', items: [
-    { key: 'feedback', label: '需求平台', description: '提交需求、反馈问题并跟进进度', icon: MessageSquare },
-    { key: 'about', label: '关于行影集', description: '版本、更新与开源信息', icon: Info },
-  ] },
+{ label: '我的设置', items: [
+{ key: 'profile', label: '个人资料', description: '头像、昵称与账号信息', icon: UserCircle },
+{ key: 'basic', label: '外观与浏览', description: '主题、明暗模式与原图加载', icon: SettingsIcon },
+{ key: 'tokens', label: '外部工具授权', description: '管理工具访问当前账号的令牌', icon: Key },
+] },
+{ label: '照片与图库', items: [
+{ key: 'external', label: '照片文件夹', description: '添加目录、自动扫描与图库选项', icon: FolderOpen },
+{ key: 'mobile-app', label: '连接手机 App', description: '下载 App 并连接服务器', icon: Smartphone, hideInMobileApp: true },
+{ key: 'mobile-backup', label: '手机备份', description: '进度与自动备份', icon: CloudUpload, mobileOnly: true },
+{ key: 'data-directory', label: '照片与数据位置', description: '保存位置、备份与找回照片', icon: Database, desktopOnly: true },
+{ key: 'map', label: '地图与地点', description: '地点解析与离线城市数据', icon: FolderOpen },
+] },
+{ label: '智能功能', items: [
+{ key: 'recognition', label: '本地识别模型', description: 'AI 服务地址、识别模型与人脸参数', icon: User },
+{ key: 'ai-models', label: '大模型与文案', description: '模型连接、提示词与自动文案', icon: Database },
+] },
+{ label: '管理与维护', items: [
+{ key: 'user', label: '成员与注册', description: '管理成员、权限与开放注册', icon: User, superuserOnly: true },
+{ key: 'tasks', label: '后台任务', description: '处理进度、重试与性能模式', icon: List },
+{ key: 'maintenance', label: '高级维护', description: '索引修复、性能测试与配置迁移', icon: Activity },
+] },
+{ label: '帮助与关于', items: [
+{ key: 'feedback', label: '帮助与反馈', description: '提交需求、反馈问题并跟进', icon: MessageSquare },
+{ key: 'about', label: '关于行影集', description: '版本、更新与开源信息', icon: Info },
+] },
 ]
-const requestedKey = computed(() => {
-  const raw = (route.hash ? route.hash.slice(1) : '') || (typeof route.query.tab === 'string' ? route.query.tab : '')
-  return raw === 'mobile-backup-settings' ? 'mobile-backup' : raw
-})
+const requestedKey = computed(() => resolveSettingsTab(route.hash, route.query.tab))
 const isAvailable = (item: MenuItem) => (!item.superuserOnly || userStore.userInfo?.is_superuser)
   && (!item.desktopOnly || isTauriApp() || requestedKey.value === item.key)
   && (!item.mobileOnly || isMobileApp() || requestedKey.value === item.key)
   && (!item.hideInMobileApp || !isMobileApp())
-const menuGroups = computed(() => baseGroups.map(group => ({ ...group, items: group.items.filter(isAvailable) })).filter(group => group.items.length))
+const search = ref('')
+const menuGroups = computed(() => baseGroups.map(group => ({ ...group, items: group.items.filter(item => isAvailable(item) && `${item.label} ${item.description}`.includes(search.value.trim())) })).filter(group => group.items.length))
 const mobileMenuGroups = computed(() => menuGroups.value.map(group => ({ ...group, items: group.items.filter(item => item.key !== 'profile') })).filter(group => group.items.length))
-const allItems = computed(() => menuGroups.value.flatMap(group => group.items))
+const allItems = computed(() => [...baseGroups.flatMap(group => group.items), { key: 'performance', label: '性能测试', description: '', icon: Activity }].filter(isAvailable))
 const activeItem = computed(() => allItems.value.find(item => item.key === activeTab.value))
 const tabComponents: Record<string, typeof ProfileSettings> = {
   profile: ProfileSettings, 'mobile-app': MobileAppConnection, user: UserManagement, tasks: TaskManagement,
@@ -190,6 +191,32 @@ onBeforeUnmount(() => window.removeEventListener('resize', syncViewport))
 </script>
 
 <style scoped>
+@media (max-width: 767px) {
+  .settings-shell :deep(.ts-surface) { border: 0; border-radius: 16px; box-shadow: none; }
+  .settings-shell :deep(.ts-settings-page-header > :first-child) { display: none; }
+  .settings-shell :deep(.ts-settings-page-header:not(:has(.ts-settings-page-actions))) { display: none; }
+  .settings-shell :deep(.ts-settings-page-header) { min-height: 0; }
+  .settings-shell :deep(.ts-settings-page-actions) { width: 100%; }
+  .settings-shell :deep(.ts-back-button) { border: 0; box-shadow: none; background: transparent; }
+  .settings-page-content { padding-top: 16px; }
+  .settings-shell :deep(.ts-settings-page) { gap: 20px; }
+  .settings-shell :deep(.settings-native-group) { background: transparent; overflow: visible; }
+  .settings-shell :deep(.settings-native-group > header) { padding: 0 12px 8px; }
+  .settings-shell :deep(.settings-native-group > header h2) { font-size: 13px; font-weight: 500; color: var(--ts-color-text-secondary); }
+  .settings-shell :deep(.settings-native-group > header p) { display: none; }
+  .settings-shell :deep(.settings-native-fields) { background: var(--ts-color-surface); border-radius: 16px; padding-top: 4px; }
+  .settings-shell :deep(.settings-form-row + .settings-form-row) { border-top: 1px solid var(--ts-color-divider); }
+  .settings-shell :deep(.settings-form-row) { min-height: 52px; }
+}
+
+/* Settings owns its inner scroll area; reserve navigation space inside it. */
+.settings-page-content.ts-bottom-safe {
+  padding-bottom: calc(var(--ts-tabbar-h) + var(--ts-safe-area-bottom) + var(--ts-pwa-prompt-space, 0px));
+}
+@media (min-width: 768px) {
+  .settings-page-content.ts-bottom-safe { padding-bottom: calc(var(--ts-space-8) + var(--ts-pwa-prompt-space, 0px)); }
+}
+
 .settings-forward-enter-active, .settings-back-enter-active { transition: opacity var(--ts-motion-normal) ease, transform var(--ts-motion-page) var(--ts-ease); }
 .settings-forward-enter-from { opacity: 0; transform: translateX(18px); }
 .settings-back-enter-from { opacity: 0; transform: translateX(-18px); }

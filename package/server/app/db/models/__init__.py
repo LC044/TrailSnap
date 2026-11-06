@@ -4,7 +4,7 @@ from .storage_root import StorageRoot
 from .photo import Photo
 from .album import Album, AlbumPhoto
 from .tag import PhotoTag, PhotoTagRelation
-from .face import Face
+from .face import Face, FaceCluster
 from .photo_metadata import PhotoMetadata
 from .task import Task
 from .index_log import IndexLog

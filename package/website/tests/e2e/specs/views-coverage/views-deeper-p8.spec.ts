@@ -276,7 +276,7 @@ test.describe("FeedbackPage 问题反馈 + AboutPage 检查更新 @views-coverag
   test("FeedbackPage 渲染 3 个需求平台链接，并携带视图与类型参数", async ({ page }) => {
     await page.goto("/settings")
     await clickSettingTab(page, "feedback")
-    await expect(page.locator("h1", { hasText: "需求平台" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator("h1.ts-page-title", { hasText: "需求平台" })).toBeVisible({ timeout: 10_000 })
 
     const bugLink = page.locator('a[href*="?view=submit&type=bug"]').first()
     const featureLink = page.locator('a[href*="?view=submit&type=feature"]').first()
@@ -308,7 +308,7 @@ test.describe("FeedbackPage 问题反馈 + AboutPage 检查更新 @views-coverag
 
     await page.goto("/settings")
     await clickSettingTab(page, "about")
-    await expect(page.locator("h1", { hasText: "关于行影集" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator("h1.ts-page-title", { hasText: "关于行影集" })).toBeVisible({ timeout: 10_000 })
 
     const checkBtn = page.getByRole("button", { name: "检查更新" }).first()
     await expect(checkBtn).toBeVisible()
@@ -335,7 +335,7 @@ test.describe("FeedbackPage 问题反馈 + AboutPage 检查更新 @views-coverag
 
     await page.goto("/settings")
     await clickSettingTab(page, "about")
-    await expect(page.locator("h1", { hasText: "关于行影集" })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator("h1.ts-page-title", { hasText: "关于行影集" })).toBeVisible({ timeout: 10_000 })
 
     // mount 触发的 checkUpdate() 返回 has_update=false，只弹 toast，无 message box 拦截
     await page.getByRole("button", { name: "检查更新" }).first().click()

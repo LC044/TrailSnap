@@ -14,18 +14,18 @@
       <AlbumDetailTitle :title="title" :scrolled="scrolled" :subtitle="`${totalCount > 0 ? totalCount : `${photos.length}${hasMore ? '+' : ''}`} 个项目`" back-label="返回位置相册" @back="goBack" />
     </template>
     <template #header-actions>
-      <RouterLink v-if="name !== 'map_selection'" :to="{ path: '/explore/relations', query: placeKey ? { root: placeKey } : sceneId ? { root: `place:scene:${sceneId}` } : { placeName: name } }" title="关联" aria-label="关联" class="inline-flex h-11 w-11 sm:w-auto items-center justify-center rounded-full bg-primary-500 sm:px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"><Link2 class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>
+      <RouterLink v-if="name !== 'map_selection'" :to="{ path: '/explore/relations', query: placeKey ? { root: placeKey } : sceneId ? { root: `place:scene:${sceneId}` } : { placeName: name } }" title="关联" aria-label="关联" class="ts-glass-button sm:w-auto sm:px-4 text-sm font-medium"><Link2 class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>
       <button
         v-if="timeCompareSummary?.eligible && sceneId"
         type="button"
         title="时光对照"
         aria-label="时光对照"
-        class="flex h-11 w-11 sm:w-auto items-center justify-center gap-2 rounded-full bg-primary-500 sm:px-4 text-sm font-semibold text-white shadow-lg shadow-primary-500/30 transition hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-900"
+        class="ts-glass-button sm:w-auto sm:px-4 text-sm font-medium"
         @click="openTimeCompare"
       >
         <History class="h-4 w-4" />
         <span class="hidden sm:inline">时光对照</span>
-        <span class="hidden text-white/75 sm:inline">{{ timeSpanLabel }}</span>
+        <span class="hidden ts-muted sm:inline">{{ timeSpanLabel }}</span>
       </button>
     </template>
   </UnifiedPhotoPage>

@@ -90,8 +90,9 @@ test.describe('Nightly view coverage —— 票夹子组件 @views-coverage', ()
     const section = page.locator('section', { has: page.getByRole('button', { name: '票夹' }) }).first()
     await expect(section).toBeVisible({ timeout: 20_000 })
     // WalletTicketCard 的主按钮 aria-label 是「火车票 <标题> <车次> · <时间>」
-    await expect(section.getByRole('button', { name: /火车票 国庆回家 G1/ })).toBeVisible()
-    await expect(section.getByText('国庆回家')).toBeVisible()
+    const card = section.getByRole('button', { name: /火车票 国庆回家 G1/ })
+    await expect(card).toBeVisible()
+    await expect(card.getByText('国庆回家', { exact: true })).toBeVisible()
     await expect(section.getByRole('link', { name: '查看全部' })).toHaveAttribute('href', '/ticket')
   })
 

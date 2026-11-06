@@ -180,7 +180,7 @@ def test_assign_face_to_identity_ignores_other_owner(face_sqlite_session):
         "app.service.face_cluster.config_manager.get_user_config",
         return_value=_threshold_config(0.4),
     ), patch("app.service.face_cluster.crud_face.update_face") as update:
-        result = svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), mine.id)
+        result = svc._sqlite_nearest_assigned_face(np.asarray(_vec(1.0, 0.0)), target.id, mine.id)
 
     assert result is None
     update.assert_not_called()
@@ -204,9 +204,14 @@ def test_assign_face_to_identity_picks_closest_of_many(face_sqlite_session):
         "app.service.face_cluster.config_manager.get_user_config",
         return_value=_threshold_config(0.4),
     ), patch("app.service.face_cluster.crud_face.update_face"):
-        result = svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id)
+        from app.service.face_appearance_clusters import process_faces
+        config = _threshold_config(0.4)
+        config.ai.face_recognition_min_photos = 5
+        with patch("app.service.face_cluster.config_manager.get_user_config", return_value=config):
+            process_faces(face_sqlite_session, user.id)
+        face_sqlite_session.refresh(target)
 
-    assert result == close.id
+    assert target.face_identity_id == close.id
 
 
 def test_no_assigned_reference_skips_vectors_and_candidate_windows(face_sqlite_session):
@@ -220,7 +225,7 @@ def test_no_assigned_reference_skips_vectors_and_candidate_windows(face_sqlite_s
     with patch.object(face_vector_cache, "similarities") as vectors, patch.object(
         svc, "_resolve_assigned_candidates"
     ) as resolve:
-        assert svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id) is None
+        assert svc._sqlite_nearest_assigned_face(np.asarray(_vec(1.0, 0.0)), target.id, user.id) is None
 
     vectors.assert_not_called()
     resolve.assert_not_called()
@@ -232,23 +237,19 @@ def test_negative_reference_check_sees_later_assignment(face_sqlite_session):
     target = _add_face(face_sqlite_session, user, _vec(1.0, 0.0))
     face_sqlite_session.commit()
     svc = FaceClusterService(face_sqlite_session)
-    assert svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id) is None
+    assert svc._sqlite_nearest_assigned_face(np.asarray(_vec(1.0, 0.0)), target.id, user.id) is None
 
     identity = FaceIdentity(identity_name="New", owner_id=user.id)
     face_sqlite_session.add(identity)
     face_sqlite_session.flush()
     reference.face_identity_id = identity.id
     face_sqlite_session.flush()
-    with patch("app.service.face_cluster.config_manager.get_user_config",
-               return_value=_threshold_config(0.4)):
-        assert svc.assign_face_to_identity(
-            target.id, _vec(1.0, 0.0), user.id, commit=False
-        ) == identity.id
-    assert target.face_identity_id == identity.id
+    nearest = svc._sqlite_nearest_assigned_face(np.asarray(_vec(1.0, 0.0)), target.id, user.id)
+    assert nearest[1] == identity.id
     face_sqlite_session.rollback()
 
     with patch.object(face_vector_cache, "similarities") as vectors:
-        assert svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id) is None
+        assert svc._sqlite_nearest_assigned_face(np.asarray(_vec(1.0, 0.0)), target.id, user.id) is None
     vectors.assert_not_called()
 
 
@@ -341,7 +342,7 @@ def test_embeddings_are_loaded_once_across_repeated_lookups(face_sqlite_session)
         return_value=_threshold_config(0.4),
     ), patch("app.service.face_cluster.crud_face.update_face"):
         for target in targets:
-            svc.assign_face_to_identity(target.id, _vec(1.0, 0.0), user.id)
+            svc._sqlite_nearest_assigned_face(np.asarray(_vec(1.0, 0.0)), target.id, user.id)
 
     total_faces = 35
     assert rows_streamed == total_faces, (

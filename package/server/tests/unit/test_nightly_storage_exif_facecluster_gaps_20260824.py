@@ -344,6 +344,7 @@ def test_assign_face_to_identity_sqlite_returns_nearest_identity(face_sqlite_ses
 
     class _StubAI:
         face_cluster_threshold = 0.4
+        face_recognition_min_photos = 5
 
     class _StubConfig:
         ai = _StubAI()
@@ -351,19 +352,11 @@ def test_assign_face_to_identity_sqlite_returns_nearest_identity(face_sqlite_ses
     svc = face_cluster.FaceClusterService(db=face_sqlite_session, user_id=None)
     with patch.object(face_cluster.config_manager, "get_user_config", return_value=_StubConfig()), \
          patch.object(face_cluster.crud_face, "update_face", return_value=True) as update:
-        result = svc.assign_face_to_identity(
-            face_id=target.id,
-            embedding=[1.0, 0.0, 0.0] + [0.0] * 509,
-            owner_id=user.id,
-        )
+        svc.process_unassigned_faces(user.id)
 
-    assert result == near_identity.id
-    update.assert_called_once()
-    # update_face signature: update_face(db, face_id, obj_in, owner_id=None)
-    args, kwargs = update.call_args
-    assert kwargs.get("owner_id") == user.id
-    obj_in = args[2]
-    assert obj_in.recognize_confidence > 0.99
+    face_sqlite_session.refresh(target)
+    assert target.face_identity_id == near_identity.id
+    update.assert_not_called()
 
 
 def test_assign_face_to_identity_sqlite_returns_none_when_no_candidates(face_sqlite_session):
@@ -407,6 +400,6 @@ def test_assign_face_to_identity_returns_none_on_pending_rollback():
     svc.db.execute.side_effect = PendingRollbackError("txn rolled back", None, None)
     svc.db.query.side_effect = PendingRollbackError("txn rolled back", None, None)
 
-    with pytest.raises(PendingRollbackError):
-        svc.assign_face_to_identity(face_id=1, embedding=[1.0, 0.0, 0.0])
-    svc.db.rollback.assert_called_once()
+    assert svc.assign_face_to_identity(face_id=1, embedding=[1.0, 0.0, 0.0]) is None
+    svc.db.query.assert_not_called()
+    svc.db.execute.assert_not_called()

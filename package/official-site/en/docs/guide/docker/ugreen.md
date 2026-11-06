@@ -45,7 +45,7 @@ Access in browser after startup:
 
 - `http://<NAS_IP>:3180`
 
-Open Settings -> External Libraries, fill in the photo path inside the container: `/app/Photos/`, adding an external library will automatically scan and run tasks in the background (task details can be viewed in Settings -> Task Management).
+Open Settings → Photo folders (照片文件夹), fill in the photo path inside the container: `/app/Photos/`, adding an external library will automatically scan and run tasks in the background (task details can be viewed in Settings → Background tasks (后台任务)).
 
 API documentation is available at `http://<NAS_IP>:3180/api/docs`.
 

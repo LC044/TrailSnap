@@ -229,3 +229,12 @@ def test_apply_identity_rescan_returns_result_and_triggers_album_update():
             id=identity_id, db=MagicMock(), current_user=user)
     assert response.data == {"applied": 1}
     trigger.assert_called_once()
+
+
+@pytest.fixture(autouse=True)
+def appearance_service_collaborators(monkeypatch):
+    # API selection tests use fake sessions. Cluster membership has real-DB tests.
+    from app.service import face_appearance_clusters as appearance
+    monkeypatch.setattr(appearance, "lock_owner", lambda *args, **kwargs: {})
+    monkeypatch.setattr(appearance, "set_identity",
+                        lambda db, face, identity_id, owner_id: setattr(face, "face_identity_id", identity_id))

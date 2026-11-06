@@ -53,6 +53,7 @@ class FaceClusterService:
 
     def __init__(self, db: Session, user_id: uuid.UUID = None):
         self.db = db
+        self.owner_id = user_id
         # Initialize from config
         if user_id:
             config = config_manager.get_user_config(user_id, db)
@@ -101,76 +102,9 @@ class FaceClusterService:
         return emb / norm
 
     def assign_face_to_identity(self, face_id: int, embedding: list, owner_id: uuid.UUID = None, *, commit: bool = True) -> uuid.UUID | None:
-        """
-        优化版：利用pgvector索引查找最近邻人脸，快速分配Identity
-        :param face_id: 人脸ID
-        :param embedding: 人脸特征向量
-        :return: 匹配的Identity ID / None（无匹配）
-        """
-        target_emb = self.normalize_embedding(embedding)
-
-        try:
-            if self.db.bind.dialect.name == "sqlite":
-                # SQLite has no pgvector <=> operator. Score the whole library
-                # with one BLAS matmul against the cached embedding matrix
-                # instead of building an ORM entity per candidate.
-                nearest = self._sqlite_nearest_assigned_face(target_emb, face_id, owner_id)
-                if nearest is None:
-                    return None
-                nearest_face_id, best_match_id, dist = nearest
-            else:
-                # 1. 利用pgvector <=> 操作符查找最近邻人脸（排除当前人脸，且必须有Identity）
-                # <=> 是 cosine distance
-                query = self.db.query(Face).join(Photo).filter(
-                    Face.id != face_id,
-                    Face.face_identity_id.isnot(None),
-                    Face.is_deleted == False
-                )
-
-                if owner_id:
-                    query = query.filter(Photo.owner_id == owner_id)
-
-                nearest_face = query.order_by(
-                    Face.face_feature.cosine_distance(target_emb)
-                ).limit(1).first()
-
-                if not nearest_face:
-                    # 无参考人脸，返回None由外部决定是否触发聚类
-                    return None
-
-                # 2. 计算距离
-                # 注意：数据库中的向量通常应该是归一化的，但为了保险起见，再次归一化
-                nearest_emb = self.normalize_embedding(nearest_face.face_feature)
-                dist = 1.0 - np.dot(target_emb, nearest_emb)
-                best_match_id = nearest_face.face_identity_id
-
-            # 3. 判断是否匹配成功
-            if dist < config_manager.get_user_config(owner_id, self.db).ai.face_cluster_threshold:
-                # 分配到已有Identity
-
-                # 使用 update_face 更新
-                update_data = schemas.FaceUpdate(
-                    face_identity_id=best_match_id,
-                    recognize_confidence=float(1.0 - dist)
-                )
-                crud_face.update_face(self.db, face_id, update_data, owner_id=owner_id, commit=commit)
-
-                return best_match_id
-            else:
-                return None
-
-        except PendingRollbackError:
-            # 事务已回滚，重置Session
-            self.db.rollback()
-            logger.error("事务回滚，重置Session后重试")
-            raise
-        except SQLAlchemyError as e:
-            self.db.rollback()
-            logger.error(f"分配Identity失败：{str(e)}", exc_info=True)
-            raise
-        except Exception as e:
-            logger.error(f"分配Identity异常：{str(e)}", exc_info=True)
-            raise
+        """Compatibility entry point: defer recognition output to batch clustering."""
+        # The CPU clustering task processes committed faces as a batch.
+        return None
 
     def _assigned_face_query(self, owner_id: uuid.UUID | None):
         query = self.db.query(Face.id, Face.face_identity_id).filter(
@@ -280,6 +214,9 @@ class FaceClusterService:
     ) -> dict:
         """Recompute and atomically apply only the candidates confirmed by the user."""
         try:
+            from app.service.face_appearance_clusters import lock_owner
+            lock_owner(self.db, owner_id)
+            self.owner_id = owner_id
             analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True)
             valid_add_ids = {item["face"].id for item in analysis["add_candidates"]}
             valid_remove_ids = {item["face"].id for item in analysis["remove_candidates"]}
@@ -299,6 +236,9 @@ class FaceClusterService:
     def rescan_identity(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None) -> dict:
         """Apply high-confidence additions and all removal candidates for API compatibility."""
         try:
+            from app.service.face_appearance_clusters import lock_owner
+            lock_owner(self.db, owner_id)
+            self.owner_id = owner_id
             analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True)
             return self._apply_rescan_analysis(
                 analysis,
@@ -485,7 +425,8 @@ class FaceClusterService:
             face = item["face"]
             if face.id not in selected_remove_ids:
                 continue
-            face.face_identity_id = None
+            from app.service.face_appearance_clusters import set_identity
+            set_identity(self.db, face, None, self.owner_id)
             face.recognize_confidence = None
             affected_photo_ids.add(face.photo_id)
 
@@ -497,7 +438,8 @@ class FaceClusterService:
             if previous_identity_id and previous_identity_id != analysis["identity_id"]:
                 affected_identity_ids.add(previous_identity_id)
                 reassigned_count += 1
-            face.face_identity_id = analysis["identity_id"]
+            from app.service.face_appearance_clusters import set_identity
+            set_identity(self.db, face, analysis["identity_id"], self.owner_id)
             face.recognize_confidence = float(1.0 - item["distance"])
             affected_photo_ids.add(face.photo_id)
 
@@ -691,187 +633,11 @@ class FaceClusterService:
             identity.default_face_id = replacement[0] if replacement else None
 
     def process_unassigned_faces(self, owner_id: uuid.UUID = None):
-        """
-        批量处理未分配的人脸（DBSCAN聚类）
-        """
-        # 只要有未分配的人脸，就尝试聚类
-        # 为了避免过多无效调用，可以先count一下? 
-        # _try_create_new_cluster 内部有查询逻辑，可以直接调用，但我们需要稍微修改一下 _try_create_new_cluster
-        # 让它不依赖 current_face_id
+        """Process committed faces and initialize legacy appearance clusters."""
         self._cluster_unassigned_faces(owner_id)
 
     def _cluster_unassigned_faces(self, owner_id: uuid.UUID = None):
-        """
-        优化版：调整DBSCAN参数 + 簇合并逻辑，解决聚类分散问题
-        对未分配的人脸做DBSCAN聚类，合并相似簇后创建新Identity
-        """
-        try:
-            # 1. 查询未分配的人脸。
-            # Only the id and the embedding are needed, so select scalars
-            # instead of whole ORM entities: hydrating a Face object per
-            # unassigned face was a large part of the runtime and of the peak
-            # RSS on six-figure libraries.
-            unassigned_query = self.db.query(Face.id, Face.face_feature).filter(
-                Face.face_identity_id == None,
-                Face.is_deleted == False,
-                Face.face_feature.isnot(None)
-            )
-            if owner_id:
-                # Without this filter the DBSCAN input mixed every user's faces
-                # together, which both leaked data across accounts and made the
-                # O(n^2) distance matrix far larger than it needed to be.
-                unassigned_query = unassigned_query.filter(
-                    Face.photo_id.in_(
-                        self.db.query(Photo.id).filter(
-                            Photo.owner_id == owner_id,
-                            Photo.is_deleted.is_(False),
-                        )
-                    )
-                )
-            unassigned_faces = unassigned_query.order_by(Face.id)
-
-            # 2. 流式读取并归一化到一块预分配的 float32 矩阵。
-            # ``.all()`` buffered the entire result set in the driver and then
-            # kept one ndarray object per face on top of it. Measured at 20k
-            # faces: 14.5 KB per face that way against 3.0 KB for this loop,
-            # i.e. 1.4 GB versus 0.3 GB on a 100k-face library. That peak is
-            # what puts a NAS at risk of the OOM killer once the whole library
-            # is clustered in a single pass.
-            face_count = unassigned_query.count()
-            if face_count < self.DBSCAN_MIN_SAMPLES:
-                return
-
-            X = None
-            face_ids = []
-            for face_id, face_feature in unassigned_faces.yield_per(_FETCH_BATCH):
-                emb = self.normalize_embedding(face_feature)
-                if X is None:
-                    X = np.empty((face_count, len(emb)), dtype=np.float32)
-                elif len(face_ids) == face_count:
-                    # Rows inserted between the count and the scan; grow rather
-                    # than silently drop them.
-                    grown = np.empty((face_count * 2, X.shape[1]), dtype=np.float32)
-                    grown[:face_count] = X
-                    X = grown
-                    face_count = X.shape[0]
-                X[len(face_ids)] = emb
-                face_ids.append(face_id)
-
-            face_count = len(face_ids)
-            if face_count < self.DBSCAN_MIN_SAMPLES:
-                return
-            X = X[:face_count]
-
-            logger.info("开始对 %s 个未分配人脸聚类（owner=%s）", face_count, owner_id)
-
-            # 3. DBSCAN聚类（宽松参数，避免拆分）
-            clustering = DBSCAN(
-                eps=self.DBSCAN_EPS,
-                min_samples=self.DBSCAN_MIN_SAMPLES,
-                metric='cosine'
-            ).fit(X)
-
-            labels = clustering.labels_
-            
-            # 4. 计算簇中心，合并相似簇（核心：解决同一人拆分为多个簇）
-            cluster_centers = {}  # label -> 簇中心向量
-            cluster_members = {}  # label -> 成员face ID列表
-
-            # 4.1 计算每个簇的中心（均值向量）
-            unique_labels = set(labels)
-            for label in unique_labels:
-                if label == -1:  # 噪声点，跳过
-                    continue
-
-                cluster_indices = np.where(labels == label)[0]
-                if len(cluster_indices) < 1:
-                    continue
-
-                # 簇内向量的均值作为中心
-                cluster_emb = X[cluster_indices]
-                center = np.mean(cluster_emb, axis=0)
-                center = self.normalize_embedding(center)
-
-                cluster_centers[label] = center
-                cluster_members[label] = [face_ids[idx] for idx in cluster_indices]
-
-            # 4.2 合并相似簇（中心距离 < 阈值）
-            merged_clusters = []
-            used_labels = set()
-
-            for label1 in cluster_centers:
-                if label1 in used_labels:
-                    continue
-
-                # 初始合并当前簇
-                merged_members = cluster_members[label1].copy()
-                used_labels.add(label1)
-
-                # 遍历其他簇，判断是否合并
-                for label2 in cluster_centers:
-                    if label1 == label2 or label2 in used_labels:
-                        continue
-
-                    # 计算簇中心的余弦距离
-                    dist = 1.0 - np.dot(cluster_centers[label1], cluster_centers[label2])
-                    if dist < self.DISTANCE_THRESHOLD + 0.08:
-                        merged_members += cluster_members[label2]
-                        used_labels.add(label2)
-                        logger.info(f"合并簇 {label1} 和 {label2}（中心距离={dist:.4f}）")
-
-                merged_clusters.append(merged_members)
-
-            # 5. 为合并后的簇创建新Identity
-            for cluster in merged_clusters:
-                cluster_size = len(cluster)
-                if cluster_size < self.MIN_CLUSTER_SIZE_FOR_IDENTITY:
-                    continue
-
-                # 创建新Identity
-                create_identity_data = schemas.FaceIdentityCreate(identity_name="未命名")
-                new_identity = crud_face.create_identity(self.db, create_identity_data, owner_id)
-
-                # 分配人脸到新Identity。
-                # One bulk UPDATE per cluster instead of a get_face +
-                # update_face round trip per member: a 1000-face cluster used
-                # to cost 2000 statements.
-                assigned_ids = [
-                    row[0]
-                    for row in self.db.query(Face.id).filter(
-                        Face.id.in_(cluster),
-                        Face.is_deleted.is_(False),
-                    ).order_by(Face.id).all()
-                ]
-                if not assigned_ids:
-                    continue
-
-                self.db.query(Face).filter(Face.id.in_(assigned_ids)).update(
-                    {
-                        Face.face_identity_id: new_identity.id,
-                        Face.recognize_confidence: 0.9,
-                    },
-                    synchronize_session=False,
-                )
-
-                # 设置默认人脸
-                update_identity_data = schemas.FaceIdentityUpdate(default_face_id=assigned_ids[0])
-                crud_face.update_identity(self.db, new_identity.id, update_identity_data)
-
-                logger.info(
-                    f"创建新Identity {new_identity.id}，包含 {len(assigned_ids)} 个人脸（合并后）"
-                )
-
-            self.db.commit()
-
-        except PendingRollbackError:
-            self.db.rollback()
-            logger.error("聚类时事务回滚，重置Session", exc_info=True)
-            raise
-        except SQLAlchemyError as e:
-            self.db.rollback()
-            logger.error(f"聚类数据库错误：{str(e)}", exc_info=True)
-            raise
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"聚类异常：{str(e)}", exc_info=True)
-            raise
+        from app.service.face_appearance_clusters import process_faces
+        if owner_id is None:
+            raise ValueError("Face clustering requires an owner")
+        process_faces(self.db, owner_id)

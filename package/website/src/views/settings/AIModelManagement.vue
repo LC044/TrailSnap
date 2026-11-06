@@ -1,6 +1,6 @@
 <template>
   <section class="ts-settings-page">
-    <SettingsPageHeader title="AI 模型管理" description="管理大模型 API 连接、对话与分析模型，以及本地识别模型。">
+    <SettingsPageHeader :title="group === 'llm' ? '大模型与文案' : '本地识别模型'" :description="group === 'llm' ? '大模型连接、提示词、自动文案与本地多模态模型' : 'AI 服务地址、人脸与文字识别模型、人物分组参数'">
       <template #actions>
         <button
           :disabled="loading"
@@ -10,7 +10,13 @@
       </template>
     </SettingsPageHeader>
 
-    <LLMSettings />
+    <BasicSettings v-if="group === 'local'" category="service" embedded />
+    <BasicSettings v-if="group === 'local'" category="recognition" embedded />
+
+    <section v-if="group === 'llm'" class="space-y-4" aria-label="大模型连接与文案生成">
+      <LLMSettings />
+      <BasicSettings v-if="userStore.userInfo?.is_superuser" category="captions" embedded />
+    </section>
 
     <div v-if="maintenance" role="status" aria-live="polite" class="rounded-xl border border-primary-500/30 bg-primary-500/5 p-5">
       <p class="font-medium text-primary-600 dark:text-primary-500">行影集正在准备更新</p>
@@ -140,10 +146,14 @@ import SettingsPageHeader from '@/components/ui/SettingsPageHeader.vue'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { settingsApi } from '@/api/settings'
+import BasicSettings from './BasicSettings.vue'
+import { useUserStore } from '@/stores/user'
 import LLMSettings from './LLMSettings.vue'
 
 type TaskSelection = { name: string; selected: string; pending?: string; recommended: string; available: string[] }
 
+const props = withDefaults(defineProps<{ group?: 'local' | 'llm' }>(), { group: 'local' })
+const userStore = useUserStore()
 const models = ref<any[]>([])
 const tasks = ref<Record<string, TaskSelection>>({})
 const loading = ref(false)
@@ -185,6 +195,7 @@ const formatBytes = (value?: number) => {
 const formatMemory = (value?: number) => value ? (value >= 1024 ? `${(value / 1024).toFixed(1)} GB` : `${value} MB`) : '未知'
 const modelById = (id: string) => models.value.find(model => model.id === id)
 const taskCards = computed(() => Object.entries(tasks.value)
+  .filter(([task]) => props.group === 'llm' ? task === 'llm' : task !== 'llm')
   .map(([task, info]) => ({
     task,
     info,

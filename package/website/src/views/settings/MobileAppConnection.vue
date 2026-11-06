@@ -6,7 +6,7 @@
       <div class="space-y-4">
         <div>
           <p class="text-sm font-medium text-primary-600 dark:text-primary-400">还没有安装 App？</p>
-          <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">下载 Android App</h2>
+          <h2 class="mt-1 text-base md:text-xl font-semibold text-gray-900 dark:text-white">下载 Android App</h2>
         </div>
         <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
           当前版本：TrailSnap v{{ appVersion }}。可直接下载安装包，或用手机相机扫描右侧二维码下载。
@@ -42,7 +42,7 @@
       <div class="space-y-5">
         <div>
           <p class="text-sm font-medium text-primary-600 dark:text-primary-400">已经安装 App？</p>
-          <h2 class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">连接到这台 TrailSnap</h2>
+          <h2 class="mt-1 text-base md:text-xl font-semibold text-gray-900 dark:text-white">连接到这台 TrailSnap</h2>
         </div>
         <label class="block">
           <span class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">手机可访问的 TrailSnap 地址</span>
@@ -98,7 +98,7 @@
         </div>
       </div>
 
-      <div class="flex flex-col items-center justify-center rounded-2xl bg-gray-50 p-5 text-center dark:bg-gray-900">
+      <div class="flex flex-col items-center justify-center self-start w-full rounded-2xl border border-dashed ts-divider bg-gray-50 p-5 text-center dark:bg-gray-900">
         <template v-if="connectionQrCode && !isLoopbackAddress">
           <img :src="connectionQrCode" alt="TrailSnap 手机 App 连接二维码" class="h-52 w-52 rounded-xl bg-white p-2" />
           <p class="mt-3 text-xs font-medium text-gray-700 dark:text-gray-200">请用 TrailSnap App 扫码连接</p>

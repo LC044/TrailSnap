@@ -19,7 +19,7 @@ from uuid import uuid4
 import pytest
 
 
-pytestmark = [pytest.mark.smoke]
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 def _run(coro):
@@ -288,7 +288,7 @@ def test_enqueue_cluster_faces_creates_a_pending_task():
 
     assert result == "created"
     assert lookup.call_args.args[1] == TaskType.CLUSTER_FACES
-    assert lookup.call_args.args[3] == [TaskStatus.PENDING, TaskStatus.PROCESSING]
+    assert lookup.call_args.args[3] == [TaskStatus.PENDING]
     assert add_task.call_args.args[1] == TaskType.CLUSTER_FACES
     assert add_task.call_args.kwargs["owner_id"] == owner_id
 

@@ -65,7 +65,8 @@ test.describe('P1 - 设置中心问题反馈 + 截图清理覆盖 @views-coverag
     page.on('pageerror', (err) => consoleErrors.push(err.message))
 
     await page.goto('/settings?tab=basic')
-    await expect(page.getByRole('heading', { name: '系统设置', exact: true })).toBeVisible({ timeout: 15_000 })
+    // 设置重组后 basic 页标题为「外观与浏览」（SettingsPageHeader 的 h1.ts-page-title）。
+    await expect(page.locator('h1.ts-page-title', { hasText: '外观与浏览' })).toBeVisible()
 
     // 没有任何 page error；尤其不能有「Failed to resolve component」「找不到 dialog 文件」之类。
     const fatal = consoleErrors.filter(

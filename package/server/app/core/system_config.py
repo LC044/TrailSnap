@@ -137,7 +137,7 @@ class MomentCaptionScheduleSettings(BaseModel):
 
 
 class RecycleBinSettings(BaseModel):
-    retention_days: int = Field(default=7, description="Number of days to keep photos in recycle bin before permanent deletion")
+    retention_days: int = Field(default=30, description="Number of days to keep photos in recycle bin before permanent deletion")
     cleanup_time: str = Field(default="00:00", description="Time of day to run the cleanup task, format HH:mm")
 
 class ProactiveMemoryScheduleSettings(BaseModel):

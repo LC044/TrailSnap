@@ -67,20 +67,18 @@ test.describe('系统设置-开放注册开关 @settings @system-config', () => 
     }
     const before = await getAllowRegistration(page, token);
 
-    // 3) 进入 基础设置 → 展开 安全设置 折叠区（默认收起）
-    await page.goto('/settings#basic');
-    const secHeader = page.locator('.el-collapse-item__header', {
-      hasText: '安全设置',
-    });
-    await secHeader.click();
+    // 3) 进入 成员与注册 → 开放注册 分区（设置重组后：安全设置改名「开放注册」，
+    //    直渲染 <section>（SettingsSection direct 列表），不再有折叠头）
+    await page.goto('/settings#user');
+    const secItem = page.locator('.settings-native-group', {
+      hasText: '开放注册',
+    }).first();
+    await expect(secItem).toBeVisible({ timeout: 15_000 });
 
-    const secItem = page.locator('.el-form-item', {
-      hasText: '允许新用户注册',
-    });
     const sw = secItem.locator('.el-switch');
     const swInput = sw.locator('input');
 
-    // 等待「安全设置」面板与开关渲染完成，并加载出服务端真实值
+    // 等待「开放注册」面板与开关渲染完成，并加载出服务端真实值
     await expect(sw).toBeVisible({ timeout: 10_000 });
     await expect(swInput).toHaveAttribute(
       'aria-checked',
@@ -99,7 +97,7 @@ test.describe('系统设置-开放注册开关 @settings @system-config', () => 
           { timeout: 5_000 },
         );
       }
-      await page.getByRole('button', { name: '保存安全配置' }).click();
+      await page.getByRole('button', { name: '保存注册设置' }).click();
       const successMsg = page.locator('.el-message', {
         hasText: '安全设置已保存',
       });

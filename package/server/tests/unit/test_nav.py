@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import OperationalError
 
 from app.api.nav import (
     resolve_album,
@@ -45,6 +46,25 @@ def test_resolve_single_entity_returns_none_when_resolver_raises():
 
     with patch("app.api.nav.resolve_album", side_effect=RuntimeError("boom")):
         assert resolve_single_entity(ref, uuid4(), MagicMock()) is None
+
+
+def test_database_failure_rolls_back_and_preserves_navigation_reference():
+    user_id = uuid4()
+    db = MagicMock()
+    person = NavItemRef(entity_type="person", entity_id=str(uuid4()))
+    location = NavItemRef(entity_type="location", entity_id="西安市")
+    missing = NavItemRef(entity_type="album", entity_id=str(uuid4()))
+    config = SimpleNamespace(nav=SimpleNamespace(items=[person, location, missing]))
+    failure = OperationalError("SELECT faces", {}, RuntimeError("missing column"))
+    with patch("app.api.nav.config_manager.get_user_config", return_value=config), \
+         patch("app.api.nav.resolve_person", side_effect=failure), \
+         patch("app.api.nav.resolve_location", return_value="LOCATION") as resolve_location_mock, \
+         patch("app.api.nav.resolve_album", return_value=None), \
+         patch("app.api.nav.config_manager.update_user_config") as update_config:
+        resolve_location_mock.side_effect = lambda *args: "LOCATION" if db.rollback.called else pytest.fail("Transaction was not rolled back")
+        assert resolve_nav_items(user_id, db) == ["LOCATION"]
+    db.rollback.assert_called_once()
+    assert update_config.call_args.args[1]["nav"]["items"] == [person.model_dump(), location.model_dump()]
 
 
 def test_resolve_album_returns_none_when_query_empty():

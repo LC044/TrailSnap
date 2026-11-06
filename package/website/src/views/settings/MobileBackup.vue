@@ -5,21 +5,18 @@
         <div v-if="hosted" class="relative mb-6 -mx-[var(--ts-page-gutter)] -mt-[var(--ts-space-6)] flex min-h-[var(--ts-header-height)] items-center border-b border-gray-200 bg-white/95 px-[var(--ts-page-gutter)] backdrop-blur dark:border-gray-800 dark:bg-gray-900/95 md:hidden">
           <BackButton label="返回设置" @click="emit('requestSettingsBack')" />
           <div class="pointer-events-none absolute left-1/2 -translate-x-1/2 text-[15px] font-semibold">手机备份</div>
+          <button
+            v-if="supported"
+            type="button"
+            class="ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:bg-gray-800 dark:text-gray-300"
+            aria-label="打开备份设置"
+            @click="openSettings"
+          >
+            <Settings class="h-5 w-5" />
+          </button>
         </div>
         <div class="ts-settings-page">
-          <SettingsPageHeader title="手机备份" description="安全地将手机照片同步到你的服务器">
-            <template #actions>
-              <button
-                v-if="supported"
-                type="button"
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-gray-600 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:bg-gray-800 dark:text-gray-300"
-                aria-label="打开备份设置"
-                @click="openSettings"
-              >
-                <Settings class="h-5 w-5" />
-              </button>
-            </template>
-          </SettingsPageHeader>
+          <SettingsPageHeader title="手机备份" description="安全地将手机照片同步到你的服务器" />
 
           <section v-if="!supported" class="ts-surface ts-settings-panel">
             <div class="flex items-start gap-3">

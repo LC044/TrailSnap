@@ -59,6 +59,7 @@ export function useLocationMap(callbacks?: {
   })
 
   const initMap = async (opts: LocationMapOptions) => {
+    mapError.value = null
     let mapAccessToken = ''
     try {
       mapAccessToken = await loadMapScript()

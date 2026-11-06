@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import get_current_user
 from app.db.models.user import User
@@ -36,6 +37,10 @@ def resolve_nav_items(user_id: UUID, db: Session) -> List[ResolvedNavItem]:
                 valid_refs.append(ref)
             else:
                 needs_prune = True
+        except SQLAlchemyError as e:
+            logger.warning(f"Failed to resolve nav item {ref.entity_type}/{ref.entity_id}: {e}")
+            db.rollback()
+            valid_refs.append(ref)
         except Exception as e:
             logger.warning(f"Failed to resolve nav item {ref.entity_type}/{ref.entity_id}: {e}")
             db.rollback()
@@ -66,6 +71,8 @@ def resolve_single_entity(ref: NavItemRef, user_id: UUID, db: Session) -> Resolv
         else:
             logger.warning(f"Unknown nav entity type: {ref.entity_type}")
             return None
+    except SQLAlchemyError:
+        raise
     except Exception as e:
         logger.warning(f"Failed to resolve nav item {ref.entity_type}/{ref.entity_id}: {e}")
         return None

@@ -33,7 +33,7 @@ After installation:
 1. Start TrailSnap.
 2. Add a photo directory in Settings.
 3. Scan a small folder first to verify permissions and runtime behavior.
-4. Check the required models in AI Models and start an analysis task.
+4. Check recognition models under **Settings → Local recognition models (本地识别模型)** and language models under **Settings → LLMs and captions (大模型与文案)**, then start an analysis task.
 
 ## Docker deployment
 

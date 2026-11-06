@@ -1083,6 +1083,8 @@ def delete_photo(db: Session, photo_id: UUID, is_delete_file = False, user_id: U
             
         remove_photo_from_clusters(db, db_photo.id)
         
+        from app.service.face_appearance_clusters import detach_photo_clusters
+        detach_photo_clusters(db, [db_photo.id])
         db.delete(db_photo)
         db.commit()
     return db_photo
@@ -1096,6 +1098,8 @@ def batch_soft_delete_photos(db: Session, photo_ids: List[UUID], user_id: UUID =
     photos = query.all()
     count = len(photos)
     
+    from app.service.face_appearance_clusters import detach_photo_clusters
+    detach_photo_clusters(db, [photo.id for photo in photos])
     for photo in photos:
         photo.is_deleted = True
         photo.deleted_at = datetime.now()
@@ -1128,6 +1132,10 @@ def restore_photos(db: Session, photo_ids: List[UUID], user_id: UUID = None):
     for photo in photos:
         photo.is_deleted = False
         photo.deleted_at = None
+
+    from app.service.tasks.face_cluster import enqueue_cluster_faces
+    for owner_id in {photo.owner_id for photo in photos}:
+        enqueue_cluster_faces(db, owner_id, commit=False)
 
     # Restoring a photo discarded by the swipe filter reverses that decision,
     # so the photo can be considered again. Keep decisions are intentionally
@@ -1220,6 +1228,8 @@ def _reassign_face_identity_defaults(db: Session, photo_ids: List[UUID]) -> None
     if not photo_ids:
         return
 
+    from app.service.face_appearance_clusters import detach_photo_clusters
+    detach_photo_clusters(db, photo_ids)
     doomed_face_ids = [
         row[0] for row in db.query(Face.id).filter(Face.photo_id.in_(photo_ids)).all()
     ]

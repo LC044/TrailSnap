@@ -14,8 +14,6 @@
               </div>
               <el-select v-model="mapForm.provider" aria-label="地图提供商" class="w-full sm:w-48" @change="resetMapKeyTests">
                 <el-option label="天地图 (Tianditu)" value="tianditu" />
-                <el-option label="高德地图 (开发中)" value="amap" disabled />
-                <el-option label="百度地图 (开发中)" value="baidu" disabled />
               </el-select>
             </div>
 
@@ -85,7 +83,7 @@
               >获取与配置 API Key</a>
             </div>
 
-            <div class="mt-5 flex flex-col-reverse gap-2 border-t border-gray-200 pt-4 dark:border-gray-700 sm:flex-row sm:justify-end">
+            <div class="mt-2 flex flex-wrap items-center justify-end gap-3 border-t ts-divider pt-3">
               <el-button :loading="testingAllMapKeys" @click="testAllMapKeys">测试全部</el-button>
               <el-button type="primary" :loading="savingMapSettings" @click="saveMapSettings">验证并保存</el-button>
             </div>

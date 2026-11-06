@@ -12,6 +12,8 @@
     @back="goBack"
     @confirm-delete="handleConfirmDelete"
     @set-cover="handleSetCover"
+    @photo-update="handlePhotoUpdate"
+    @viewer-close="refreshChangedFaces"
   >
     <template #hero>
       <div class="relative -mx-[var(--ts-page-gutter)] h-[90vw] min-h-[320px] max-h-[520px] overflow-hidden bg-gray-200 dark:bg-gray-800 sm:mx-0 sm:h-[420px] sm:rounded-b-3xl">
@@ -53,11 +55,11 @@
       </section>
     </template>
     <template #header-actions>
-      <RouterLink :to="{ path: '/explore/relations', query: { root: `person:${identityId}` } }" title="关联" aria-label="关联" class="inline-flex h-11 w-11 sm:w-auto items-center justify-center rounded-full bg-primary-500 sm:px-4 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"><Link2Icon class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>
+      <RouterLink :to="{ path: '/explore/relations', query: { root: `person:${identityId}` } }" title="关联" aria-label="关联" class="ts-glass-button sm:w-auto sm:px-4 text-sm font-medium"><Link2Icon class="h-5 w-5 sm:hidden" /><span class="hidden sm:inline">关联</span></RouterLink>
       <el-dropdown trigger="click" placement="bottom-end" @command="handlePersonCommand">
         <button
           type="button"
-          class="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200/50 bg-white/90 text-gray-700 shadow-sm backdrop-blur-xl transition-all hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/50 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-900"
+          class="ts-glass-button"
           title="人物操作"
           aria-label="人物操作"
           :disabled="!identity"
@@ -149,6 +151,7 @@ const images = ref<AlbumImage[]>([])
 const loading = ref(true)
 const editDialogVisible = ref(false)
 const rescanDialogVisible = ref(false)
+const facesChanged = ref(false)
 const timeline = ref<any[]>([])
 const pendingRemoveIds = ref(new Set<string>())
 const coverPhotoId = computed(() => identity.value?.cover_photo?.photo_id || images.value[0]?.id || null)
@@ -262,6 +265,17 @@ const handleSetCover = async (ids: string[]) => {
 
 const handleRescanApplied = async () => {
   await Promise.all([fetchIdentity(), fetchAllPhotos()])
+}
+
+const handlePhotoUpdate = (event: { facesChanged?: boolean }) => {
+  if (event.facesChanged) facesChanged.value = true
+}
+
+const refreshChangedFaces = async () => {
+  if (!facesChanged.value) return
+  // Keep the viewer and undo action alive until the user finishes reviewing.
+  facesChanged.value = false
+  await handleRescanApplied()
 }
 
 const handlePersonCommand = (command: string) => {

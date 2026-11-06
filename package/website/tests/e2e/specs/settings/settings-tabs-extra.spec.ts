@@ -8,7 +8,7 @@ import { ensureAuthSession } from '../../helpers/auth';
  * 本文件补齐前几轮夜间测试报告标记为「未覆盖」的三项：
  *   - 任务管理（TaskManagement）   data-tab="tasks"
  *   - 外部图库（ExternalGallery）   data-tab="external"
- *   - 性能测试（PerformanceTest）   data-tab="performance"
+ *   - 性能测试（PerformanceTest）   /settings#performance（侧边栏无锚点，入口在「高级维护」）
  *
  * 仅验证 sidebar 锚点点击 → 对应子页面 H2 渲染，遵循既有 settings-tabs 套件风格。
  */
@@ -26,6 +26,15 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
 
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
+    // e2e-admin 是首个注册用户（必然 superuser），但 user_info 只在部分页面异步拉取；
+    // store 初始读 localStorage 为 null 会让 superuserOnly 菜单/管理员分区迟到。
+    // 直接预置 is_superuser，跳过这个时序依赖。
+    await page.addInitScript(() => {
+      const raw = localStorage.getItem('user_info')
+      if (!raw) {
+        localStorage.setItem('user_info', JSON.stringify({ id: 'u-e2e', username: 'e2e-admin', is_active: true, is_superuser: true }))
+      }
+    });
   });
 
   test('切换到「任务管理」- 渲染 TaskManagement 子页 H2', async ({ page }) => {
@@ -33,8 +42,9 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
     await expect(page).toHaveURL(/\/settings/);
 
     await clickSettingTab(page, 'tasks');
-    // TaskManagement.vue 模板硬编码 <h2>任务管理</h2>
-    await expect(page.locator('h1', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
+    // TaskManagement 的 SettingsPageHeader 渲染 <h1>后台任务</h1>。
+    // 移动端页头也有同文案 h1（桌面隐藏），用 ts-page-title 精确命中内容区。
+    await expect(page.locator('h1.ts-page-title', { hasText: '后台任务' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('电脑网页的「连接手机 App」生成可扫描二维码', async ({ page }) => {
@@ -71,11 +81,12 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   });
 
   test('切换到「性能测试」- 渲染 PerformanceTest 子页 H2', async ({ page }) => {
-    await page.goto('/settings');
-
-    await clickSettingTab(page, 'performance');
-    // PerformanceTest.vue 模板硬编码 <h2>性能测试</h2>
-    await expect(page.locator('h1', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
+    // performance 不再是侧边栏独立 tab：设置重组后入口收进「高级维护」分区的卡片链接。
+    await page.goto('/settings#maintenance');
+    await expect(page.locator('h1.ts-page-title', { hasText: '高级维护' })).toBeVisible({ timeout: 60_000 });
+    await page.getByRole('link', { name: /性能测试/ }).click();
+    // PerformanceTest 的 SettingsPageHeader 渲染 <h1>性能测试</h1>（ts-page-title 规避移动端同名 h1）。
+    await expect(page.locator('h1.ts-page-title', { hasText: '性能测试' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('设置提供模型管理并移除独立扩展入口', async ({ page }) => {
@@ -100,11 +111,13 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
         },
       } }),
     }));
+    // 设置重组后任务卡分组：classification 属本地识别任务 → group='local'，
+    // 挂在 /settings#recognition（本地识别模型）页；ai-models 页只剩 llm 任务卡。
     await page.goto('/settings');
-    await clickSettingTab(page, 'ai-models');
+    await clickSettingTab(page, 'recognition');
 
-    // 'heading' 角色：侧边栏菜单项「AI 模型管理」是 <a> 锚点而非标题，用 heading 精确命中内容区 <h2>。
-    await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible();
+    // recognition 页 SettingsPageHeader 标题为「本地识别模型」。
+    await expect(page.locator('h1.ts-page-title', { hasText: '本地识别模型' })).toBeVisible();
     // 合并模型卡片后（c0605b5），模型名只在 <select> 的 <option> 中出现，Playwright 视 <option> 不可见；
     // 改为断言任务卡片标题「图片智能分类」可见——taskCards 会过滤掉 model 缺失的卡片，
     // 故该 <h3> 可见即说明 yolo_photo_cls_general 已加载并渲染。
@@ -115,20 +128,22 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   test('连续切换 tasks → external → performance - 内容独立渲染不残留', async ({ page }) => {
     await page.goto('/settings');
 
-    // 任务管理
+    // 后台任务
     await clickSettingTab(page, 'tasks');
-    await expect(page.locator('h1', { hasText: '任务管理' }).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '后台任务' })).toBeVisible({ timeout: 10_000 });
 
-    // 切到外部图库 — 任务管理 H2 应消失，外部图库 H2 出现
+    // 切到照片文件夹 — 后台任务 H1 应消失，外部图库 H1 出现
     await clickSettingTab(page, 'external');
     await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('h1', { hasText: '任务管理' })).toHaveCount(0);
+    await expect(page.locator('h1.ts-page-title', { hasText: '后台任务' })).toHaveCount(0);
 
-    // 再切到性能测试 — 前两个 H2 都应消失
-    await clickSettingTab(page, 'performance');
-    await expect(page.locator('h1', { hasText: '性能测试' }).first()).toBeVisible({ timeout: 10_000 });
+    // 再从「高级维护」的卡片链接进性能测试 — 前两个 H1 都应消失
+    await page.goto('/settings#maintenance');
+    await expect(page.locator('h1.ts-page-title', { hasText: '高级维护' })).toBeVisible({ timeout: 60_000 });
+    await page.getByRole('link', { name: /性能测试/ }).click();
+    await expect(page.locator('h1.ts-page-title', { hasText: '性能测试' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('heading', { name: '外部图库', exact: true })).toHaveCount(0);
-    await expect(page.locator('h1', { hasText: '任务管理' })).toHaveCount(0);
+    await expect(page.locator('h1.ts-page-title', { hasText: '后台任务' })).toHaveCount(0);
   });
   test('外部图库可切换到图片文件过滤并返回目录管理', async ({ page }) => {
     await page.goto('/settings');
@@ -169,8 +184,8 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   });
 
   test('性能测试空路径提交显示校验提示且保持停止状态', async ({ page }) => {
-    await page.goto('/settings');
-    await clickSettingTab(page, 'performance');
+    // performance 无侧边栏锚点（入口在「高级维护」卡片），hash 直接进入。
+    await page.goto('/settings#performance');
 
     const startButton = page.getByRole('button', { name: '开始测试' });
     const stopButton = page.getByRole('button', { name: '停止监控' });
@@ -183,8 +198,8 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   });
 
   test('性能测试填写路径后可取消确认且不会添加目录', async ({ page }) => {
-    await page.goto('/settings');
-    await clickSettingTab(page, 'performance');
+    // performance 无侧边栏锚点（入口在「高级维护」卡片），hash 直接进入。
+    await page.goto('/settings#performance');
 
     let addDirectoryRequests = 0;
     page.on('request', request => {

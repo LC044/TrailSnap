@@ -32,13 +32,13 @@
             </div>
           </div>
 
-          <div class="space-y-3">
+          <div class="space-y-5">
             <!-- Step 1 -->
             <div class="flex gap-3">
               <div class="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">1</div>
-              <div class="flex-1">
+              <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">安装 CLI 工具</p>
-                <div class="bg-gray-900 dark:bg-gray-950 rounded-lg px-3 py-2 font-mono text-xs text-green-400 overflow-x-auto leading-relaxed">
+                <div class="bg-gray-900 dark:bg-gray-950 rounded-lg px-3 py-2 font-mono text-xs text-green-400 break-words leading-relaxed">
                   npm install -g trailsnap-cli<br>
                   trailsnap -v
                 </div>
@@ -47,9 +47,9 @@
             <!-- Step 2 -->
             <div class="flex gap-3">
               <div class="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">2</div>
-              <div class="flex-1">
+              <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">配置服务地址和令牌</p>
-                <div class="bg-gray-900 dark:bg-gray-950 rounded-lg px-3 py-2 font-mono text-xs text-green-400 overflow-x-auto">
+                <div class="bg-gray-900 dark:bg-gray-950 rounded-lg px-3 py-2 font-mono text-xs text-green-400 break-words leading-relaxed">
                   trailsnap config set --url &lt;url&gt; --token <span class="text-amber-400">&lt;token&gt;</span>
                 </div>
               </div>
@@ -57,9 +57,9 @@
             <!-- Step 3 -->
             <div class="flex gap-3">
               <div class="flex-shrink-0 w-6 h-6 rounded-full bg-primary-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">3</div>
-              <div class="flex-1">
+              <div class="min-w-0 flex-1">
                 <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">查询相册数据</p>
-                <div class="bg-gray-900 dark:bg-gray-950 rounded-lg px-3 py-2 font-mono text-xs text-green-400 overflow-x-auto leading-relaxed">
+                <div class="bg-gray-900 dark:bg-gray-950 rounded-lg px-3 py-2 font-mono text-xs text-green-400 break-words leading-relaxed">
                   trailsnap photos list --limit 10<br>
                   trailsnap albums list<br>
                   trailsnap locations timeline --level city

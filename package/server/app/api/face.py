@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Body, Query, Path, Request
 from sqlalchemy.orm import Session
 
 import app.schemas.photo
@@ -25,7 +25,46 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+def _guard_clustering(request: Request, db: Session = Depends(get_db),
+                      current_user: User = Depends(deps.get_current_user)):
+    if request.url.path.endswith(("/clustering/status", "/clustering/reset", "/clustering/retry")):
+        return
+    from app.service.face_appearance_clusters import get_state
+    if get_state(db, current_user.id).get("phase") in ("resetting", "failed"):
+        raise HTTPException(409, "人物正在重新整理，请稍后重试")
+
+
+router = APIRouter(dependencies=[Depends(_guard_clustering)])
+
+
+@router.get("/clustering/status", response_model=BaseResponse[Dict[str, Any]])
+def clustering_status(db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    from app.service.face_appearance_clusters import get_state
+    return BaseResponse.success(get_state(db, current_user.id))
+
+
+@router.post("/clustering/retry", response_model=BaseResponse[Dict[str, Any]])
+def retry_clustering(db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    from app.service.face_appearance_clusters import retry_clustering as retry
+    result = retry(db, current_user.id)
+    from app.service.task_manager import TaskManager
+    TaskManager.get_instance().start_worker_for_pending_tasks()
+    return BaseResponse.success(result)
+
+
+class ResetClusteringRequest(BaseModel):
+    request_id: UUID
+
+
+@router.post("/clustering/reset", response_model=BaseResponse[Dict[str, Any]])
+def reset_clustering(payload: Optional[ResetClusteringRequest] = Body(None),
+                     db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user)):
+    from app.service.face_appearance_clusters import request_reset
+    result = request_reset(db, current_user.id, payload.request_id if payload else None)
+    from app.service.task_manager import TaskManager
+    TaskManager.get_instance().start_worker_for_pending_tasks()
+    return BaseResponse.success(result, msg="已开始重新整理人物")
+
 
 
 @router.get("/photos/{photo_id}", response_model=BaseResponse[List[schemas.PhotoFace]])
@@ -41,6 +80,39 @@ def assign_photo_face(photo_id: UUID, face_id: int, payload: schemas.AssignPhoto
     from app.service.photo_faces import assign_photo_face as assign
     assign(db, photo_id, face_id, payload.identity_id, current_user.id)
     return BaseResponse.success({"face_id": face_id})
+
+
+@router.get("/photos/{photo_id}/{face_id}/similar", response_model=BaseResponse[schemas.SimilarFacesResult])
+def search_similar_faces(
+    photo_id: UUID, face_id: int,
+    scope: schemas.SimilarFaceScope = "all", match: schemas.SimilarFaceMatch = "balanced",
+    exclude_identity_id: Optional[UUID] = None,
+    skip: int = Query(0, ge=0), limit: int = Query(60, ge=1, le=100),
+    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
+):
+    from app.service.similar_faces import search_similar_faces as search
+    return BaseResponse.success(search(
+        db, photo_id, face_id, current_user.id, scope, match, exclude_identity_id, skip, limit,
+    ))
+
+
+@router.post("/photos/{photo_id}/{face_id}/similar/assign",
+             response_model=BaseResponse[schemas.BatchFaceAssignmentResult])
+def assign_similar_faces(
+    photo_id: UUID, face_id: int, payload: schemas.AssignSimilarFaces,
+    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
+):
+    from app.service.similar_faces import assign_similar_faces as assign
+    return BaseResponse.success(assign(db, photo_id, face_id, current_user.id, payload))
+
+
+@router.post("/assignments/undo", response_model=BaseResponse[schemas.BatchFaceAssignmentResult])
+def undo_face_assignment(
+    payload: schemas.UndoFaceAssignment,
+    db: Session = Depends(get_db), current_user: User = Depends(deps.get_current_user),
+):
+    from app.service.similar_faces import undo_face_assignment as undo
+    return BaseResponse.success(undo(db, current_user.id, payload.undo_token))
 
 
 class TimelineHideInput(BaseModel):
@@ -149,9 +221,11 @@ async def add_photos_to_identity(
     if not identity:
         raise HTTPException(status_code=404, detail="Identity not found")
     
+    from app.service.face_appearance_clusters import lock_owner, set_identity
+    lock_owner(db, current_user.id)
     count = 0
     
-    # 1. 计算当前人物的特征中心（如果有已关联的人脸）
+    # Use distinct appearance samples when choosing a face in a group photo.
     assigned_faces = db.query(Face).join(Photo).filter(
         Face.face_identity_id == id,
         Face.is_deleted == False,
@@ -159,16 +233,16 @@ async def add_photos_to_identity(
         Photo.owner_id == current_user.id
     ).all()
     
-    identity_center = None
+    identity_centers = None
     if assigned_faces:
         import numpy as np
 
         embeddings = [np.array(f.face_feature) for f in assigned_faces]
         if embeddings:
-            identity_center = np.mean(embeddings, axis=0)
-            norm = np.linalg.norm(identity_center)
-            if norm > 0:
-                identity_center = identity_center / norm
+            valid = [embedding / np.linalg.norm(embedding) for embedding in embeddings
+                     if np.linalg.norm(embedding) > 0]
+            if valid:
+                identity_centers = np.stack(valid)
             
     for photo_id in payload.photo_ids:
         photo = db.query(Photo).get(photo_id)
@@ -195,7 +269,7 @@ async def add_photos_to_identity(
         if faces:
             # 4. 如果有人脸（原有或AI识别出），选择最佳匹配
             best_face = None
-            if identity_center is not None:
+            if identity_centers is not None:
                 # 找余弦距离最近的
                 min_dist = 2.0
                 for face in faces:
@@ -208,7 +282,7 @@ async def add_photos_to_identity(
                     norm = np.linalg.norm(feat)
                     if norm > 0:
                         feat = feat / norm
-                        dist = 1.0 - np.dot(identity_center, feat)
+                        dist = 1.0 - float(np.max(identity_centers @ feat))
                         if dist < min_dist:
                             min_dist = dist
                             best_face = face
@@ -233,7 +307,7 @@ async def add_photos_to_identity(
             
             if best_face:
                 # 关联到人物
-                best_face.face_identity_id = id
+                set_identity(db, best_face, id, current_user.id)
                 # 可以选择设置 recognize_confidence，这里设为 1.0 表示手动确认
                 best_face.recognize_confidence = 1.0
                 db.add(best_face)
@@ -416,7 +490,8 @@ def merge_identities(
     """
     合并人物。
     """
-    if not crud_face.merge_identities(db, payload.target_id, payload.source_ids, owner_id=current_user.id):
+    if not crud_face.merge_identities(db, payload.target_id, payload.source_ids,
+                                      owner_id=current_user.id, identity_name=payload.identity_name):
          raise HTTPException(status_code=400, detail="Merge failed")
 
     from app.crud.album import trigger_conditional_albums_update

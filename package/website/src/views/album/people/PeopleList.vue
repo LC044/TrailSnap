@@ -611,16 +611,22 @@ const confirmMerge = async () => {
   // 取选中人物中第一个非“未命名”的人物名称
   const targetName = selectedIds.value
     .map(id => identities.value.find(i => i.id === id))
-    .find(i => i?.identity_name !== '未命名')?.identity_name || target?.identity_name || '合并人物'
+    .find(i => i?.identity_name?.trim() && i.identity_name !== '未命名')?.identity_name || target?.identity_name || '未命名'
   try {
-    await ElMessageBox.confirm(`确定合并为 "${targetName}" 吗？`, '合并确认')
-    await faceApi.mergeIdentities(targetId, selectedIds.value)
+    const { value } = await ElMessageBox.prompt('请输入合并后的人物名称', '合并确认', {
+      inputValue: targetName,
+      inputPlaceholder: '人物名称',
+      inputValidator: (name: string) => !!name?.trim() && Array.from(name.trim()).length <= 500 || '请输入 1 至 500 个字符',
+      confirmButtonText: '确认合并',
+      cancelButtonText: '取消',
+    })
+    await faceApi.mergeIdentities(targetId, selectedIds.value, value.trim())
     ElMessage.success('合并成功')
     isMergeMode.value = false
     selectedIds.value = []
     fetchIdentities()
   } catch (e) {
-    if (e !== 'cancel') ElMessage.error('合并失败')
+    if (e !== 'cancel' && e !== 'close') ElMessage.error('合并失败')
   }
 }
 

@@ -184,6 +184,7 @@
         aria-label="人物标记" @click.stop @mousedown.stop @touchstart.stop>
         <template v-if="selectedPhotoFace">
           <div class="flex items-center gap-3">
+            <FaceThumbnail :face="selectedPhotoFace" class="h-12 w-12 shrink-0 rounded-xl" />
             <div class="min-w-0 flex-1"><p class="truncate text-sm font-semibold">{{ selectedPhotoFace.identity_name || '未标记的人脸' }}</p><p class="ts-muted mt-1 text-xs">只修改选中的这张脸</p></div>
             <button class="ts-icon-button ts-button-ghost" aria-label="取消选择人脸" @click="selectedPhotoFace = null"><X class="h-4 w-4" /></button>
           </div>
@@ -191,6 +192,8 @@
             <button class="ts-button ts-button-primary flex-1" :disabled="isAddingPerson" @click="showPersonSelector = true">{{ selectedPhotoFace.identity_id ? '更正人物' : '标记人物' }}</button>
             <button v-if="selectedPhotoFace.identity_id" class="ts-button ts-button-secondary" :disabled="isAddingPerson" @click="saveFaceIdentity(null)">移除标记</button>
           </div>
+          <button v-if="allowAddToPerson" type="button" class="ts-button ts-button-secondary mt-2 w-full"
+            :disabled="isAddingPerson" @click="openSimilarFaces"><ScanSearch class="h-4 w-4" />查找相似人脸 · 批量更正</button>
         </template>
         <p v-else-if="facesLoading" class="ts-muted text-sm" role="status">正在读取人脸…</p>
         <div v-else-if="facesError" class="flex items-center gap-3"><p class="ts-muted flex-1 text-sm">人脸信息加载失败</p><button class="ts-button ts-button-secondary" @click="loadPhotoFaces">重试</button></div>
@@ -686,6 +689,9 @@
         @select="handlePersonSelected"
       />
 
+      <SimilarFacesDialog v-if="batchFaceReference && !isEditing" v-model:visible="showSimilarFaces"
+        :reference="batchFaceReference" @applied="handleBatchFacesUpdated" />
+
       <ResponsiveDialog v-model="showDescription" title="AI 智能分析" max-width="38rem">
         <div v-loading="descriptionLoading" class="analysis-content min-h-40">
           <div v-if="imageDescription" class="space-y-4">
@@ -743,6 +749,8 @@ import { revealDesktopPhoto } from '@/api/desktopDataDirectory'
 import { ocrApi, type OCRRecord } from '@/api/ocr'
 import { faceApi, type PhotoFace } from '@/api/face'
 import PhotoFaceOverlay from './PhotoFaceOverlay.vue'
+import FaceThumbnail from './FaceThumbnail.vue'
+const SimilarFacesDialog = defineAsyncComponent(() => import('./SimilarFacesDialog.vue'))
 import { containFaceCircle } from '@/utils/photoFaces'
 import { tasksApi, type PhotoProcessingOperation } from '@/api/tasks'
 import type { PhotoMetadata, AlbumImage, CoverPhotoInfo } from '@/types/album'
@@ -821,6 +829,8 @@ const controlsVisible = ref(true)
 const showFaces = ref(false)
 const photoFaces = ref<PhotoFace[]>([])
 const selectedPhotoFace = ref<PhotoFace | null>(null)
+const showSimilarFaces = ref(false)
+const batchFaceReference = ref<PhotoFace | null>(null)
 const facesLoading = ref(false)
 const facesError = ref(false)
 let facesRequest = 0
@@ -1108,6 +1118,7 @@ const lightboxHistoryId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
 let historyEntryActive = false
 let historyBackPending = false
 let historyListenerMounted = false
+let lightboxHistoryUrl = ''
 let pendingTimeCompareRoute: { sceneId: string; photoId: string } | null = null
 let pendingDailyFramePhoto: string | null = null
 let pendingSimilarPhoto: string | null = null
@@ -1117,6 +1128,7 @@ const isCurrentLightboxHistoryEntry = () =>
 
 const pushLightboxHistoryEntry = () => {
     if (!historyListenerMounted || historyEntryActive) return
+    lightboxHistoryUrl = window.location.href
     window.history.pushState(
         { ...(window.history.state ?? {}), [LIGHTBOX_HISTORY_KEY]: lightboxHistoryId },
         '',
@@ -1134,8 +1146,15 @@ const removeLightboxHistoryEntry = () => {
 const handleHistoryPopState = () => {
     historyBackPending = false
     if (!historyEntryActive) return
+    // A nested dialog can consume Back while the lightbox entry is still current.
+    if (isCurrentLightboxHistoryEntry()) return
 
     historyEntryActive = false
+    if (props.visible && showOCR.value && window.location.href === lightboxHistoryUrl) {
+        showOCR.value = false
+        pushLightboxHistoryEntry()
+        return
+    }
     if (props.visible) emit('close')
     if (pendingSimilarPhoto) {
         const photo = pendingSimilarPhoto
@@ -1481,6 +1500,10 @@ watch(() => props.visible, async (newVal) => {
 
 // Methods
 const close = () => {
+    if (showOCR.value) {
+        showOCR.value = false
+        return
+    }
     if (historyEntryActive && isCurrentLightboxHistoryEntry()) {
         if (!historyBackPending) {
             historyBackPending = true
@@ -1528,6 +1551,7 @@ const handleMediaDoubleClick = (event: MouseEvent) => {
 }
 
 useOverlayStack(computed(() => props.visible), close)
+useOverlayStack(computed(() => props.visible && showOCR.value), () => { showOCR.value = false })
 // 后注册即后入栈，Android 返回键先收动作面板，再关查看器
 useOverlayStack(showMobileMenu, closeMobileMenu)
 
@@ -1907,6 +1931,30 @@ const handlePersonSelected = async (person: any) => {
     isAddingPerson.value = false
   }
 }
+
+const openSimilarFaces = () => {
+    if (!selectedPhotoFace.value || !props.allowAddToPerson || isAddingPerson.value) return
+    batchFaceReference.value = { ...selectedPhotoFace.value }
+    showSimilarFaces.value = true
+}
+
+const handleBatchFacesUpdated = async (photoIds: string[]) => {
+    const photoId = props.image?.id
+    const faceId = batchFaceReference.value?.id
+    if (photoId && photoIds.includes(photoId)) {
+        await loadPhotoFaces()
+        if (props.image?.id === photoId) {
+            selectedPhotoFace.value = photoFaces.value.find(face => face.id === faceId) || null
+            void fetchMetadata(photoId)
+        }
+    }
+    for (const id of photoIds) emit('update', { id, facesChanged: true })
+}
+
+watch([() => props.image?.id, () => props.visible], () => {
+    showSimilarFaces.value = false
+    batchFaceReference.value = null
+})
 
 const fetchMetadata = async (photoId: string) => {
     loading.value = true

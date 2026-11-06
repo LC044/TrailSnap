@@ -14,8 +14,7 @@ scripts/.dev-services.state.json，由 dev-services-down.ps1 读取后用 taskki
 如果上一次的 PID 还活着，脚本会拒绝启动并提示先运行关闭脚本。
 
 .PARAMETER Reload
-后端和 AI 是否用 uvicorn --reload（默认开启）。关闭后改用 python start.py
-（带 alembic 迁移 + 5A CSV 导入的初始化流程）。
+后端和 AI 是否启用热重载（默认开启）。后端通过 start.py 执行迁移后启动。
 
 .PARAMETER BackendPort
 后端端口，默认 8000。
@@ -110,7 +109,7 @@ $startedPids = @()
 # -----------------------------------------------------------------------------
 if (-not $SkipBackend) {
     $serverCmd = if ($Reload) {
-        "title TrailSnap - Backend ($BackendPort) && uv run uvicorn main:app --host 0.0.0.0 --port $BackendPort --reload"
+        "title TrailSnap - Backend ($BackendPort) && uv run python start.py --port $BackendPort --reload"
     } else {
         "title TrailSnap - Backend ($BackendPort) && uv run python start.py --port $BackendPort"
     }

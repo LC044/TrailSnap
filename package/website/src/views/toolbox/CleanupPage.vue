@@ -32,7 +32,7 @@
           <ImageIcon class="w-12 h-12 opacity-20" />
         </div>
         <p class="text-lg font-medium">暂无照片，请在完成
-          <a href="/settings#tasks" class="text-primary-500 hover:underline">大模型智能分析任务</a>
+          <RouterLink to="/settings#tasks" class="text-primary-500 hover:underline">大模型智能分析任务</RouterLink>
           之后再执行清理操作</p>
       </div>
 

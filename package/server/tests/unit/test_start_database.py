@@ -35,3 +35,19 @@ def test_postgres_uses_default_alembic_branch():
         start.run_migrations('postgresql://user:pass@localhost/trailsnap')
 
     run.assert_called_once_with(['alembic', 'upgrade', 'head'], check=True)
+
+
+@pytest.mark.parametrize("reload", [False, True])
+def test_server_migrates_before_starting_with_optional_reload(monkeypatch, reload):
+    calls = []
+    monkeypatch.setenv("TS_DB_URL", "sqlite:///test.sqlite")
+    monkeypatch.setattr(start.sys, "argv", ["start.py", "--port", "8123"] + (["--reload"] if reload else []))
+    monkeypatch.setattr(start, "initialize_database", lambda url: calls.append("initialize"))
+    monkeypatch.setattr(start, "run_migrations", lambda url: calls.append("migrate"))
+    monkeypatch.setattr(start, "import_scenes", lambda url: calls.append("scenes"))
+    with patch.object(start.os, "execvp", side_effect=lambda *args: calls.append("serve")) as execute:
+        start.main()
+    assert calls == ["initialize", "migrate", "scenes", "serve"]
+    command = execute.call_args.args[1]
+    assert ("--reload" in command) is reload
+    assert command[command.index("--port") + 1] == "8123"

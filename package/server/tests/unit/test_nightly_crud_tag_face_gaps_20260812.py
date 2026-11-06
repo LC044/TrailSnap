@@ -22,7 +22,7 @@ from app.schemas.photo import Photo as PhotoSchema
 from app.schemas.tag import PhotoTagResponse, TagStats
 
 
-pytestmark = [pytest.mark.smoke, pytest.mark.module_face]
+pytestmark = [pytest.mark.smoke, pytest.mark.module_face, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 _UNSET = object()
@@ -387,6 +387,7 @@ def _face(face_id=None, identity_id=None, is_deleted=False):
     return SimpleNamespace(
         id=face_id or 1,
         face_identity_id=identity_id,
+        face_cluster_id=None,
         face_rect=[0, 0, 10, 10],
         face_confidence=0.9,
         recognize_confidence=0.8,

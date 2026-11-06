@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-pytestmark = [pytest.mark.smoke, pytest.mark.module_face]
+pytestmark = [pytest.mark.smoke, pytest.mark.module_face, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 # ----------------------------- normalize_embedding -----------------------------

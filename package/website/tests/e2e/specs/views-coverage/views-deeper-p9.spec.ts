@@ -53,10 +53,12 @@ test.describe('AI desktop view contracts @views-coverage', () => {
         })),
       })
     })
-    await page.goto('/settings?tab=ai-models')
-    await clickTab(page, 'ai-models')
+    // embedding 任务卡属本地识别组（group='local' → task !== 'llm'），
+    // 挂在 /settings?tab=recognition 页；ai-models 页（group='llm'）只渲染 llm 任务卡。
+    await page.goto('/settings?tab=recognition')
+    await clickTab(page, 'recognition')
 
-    await expect(page.getByRole('heading', { name: 'AI 模型管理' })).toBeVisible()
+    await expect(page.locator('h1.ts-page-title', { hasText: '本地识别模型' })).toBeVisible()
     await expect(page.getByRole('heading', { name: '语义向量与搜索' })).toBeVisible()
     await expect(page.getByRole('button', { name: '下载', exact: true })).toBeEnabled()
   })

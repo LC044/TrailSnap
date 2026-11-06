@@ -2,6 +2,7 @@
   <div class="trajectory-cockpit relative flex h-full w-full flex-col overflow-hidden md:flex-row" :class="{ 'trajectory-dark': isDarkMode }">
     <section class="trajectory-map-stage relative order-1 h-full min-h-0 flex-1 md:order-2">
       <div id="trajectory-map" class="h-full w-full overflow-hidden" />
+      <MapUnavailable v-if="mapError" :error="mapError" class="absolute inset-0 z-50" retryable @retry="initializeMap" />
       <div class="map-vignette pointer-events-none absolute inset-0" aria-hidden="true" />
 
       <div v-if="timelineNodes.length" class="journey-hud hidden md:block">
@@ -152,6 +153,7 @@
 </template>
 
 <script setup lang="ts">
+import MapUnavailable from '@/components/MapUnavailable.vue'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { ChevronRight, LoaderCircle, Map, Pause, Play, Route } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
@@ -621,7 +623,9 @@ watch([() => currentTheme.value.primary, isDarkMode], () => {
   }
 })
 
-onMounted(async () => {
+const mapError = ref<string | null>(null)
+const initializeMap = async () => {
+  mapError.value = null
   try {
     mapAccessToken.value = await loadMapScript()
     // 天地图主脚本就绪后，Label 等覆盖物组件仍可能异步注册。
@@ -632,9 +636,10 @@ onMounted(async () => {
       await fetchTimelineData()
     }
   } catch (e: any) {
-    ElMessage.error('地图加载失败: ' + (e.message || e))
+    mapError.value = e?.code || 'UNKNOWN'
   }
-})
+}
+onMounted(initializeMap)
 
 onUnmounted(() => {
   stopPlayback(false)

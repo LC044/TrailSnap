@@ -85,7 +85,7 @@
         <textarea id="ai-feedback-idea" v-model="idea" rows="3" maxlength="4000"
           class="ts-input w-full resize-y" placeholder="描述遇到的问题，或你希望增加的功能……"></textarea>
       </div>
-      <div class="flex flex-wrap gap-2" aria-label="选择 AI 帮助方式">
+      <div class="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap" aria-label="选择 AI 帮助方式">
         <button v-for="option in aiModes" :key="option.value" type="button"
           class="ts-button" :class="aiMode === option.value ? 'ts-button-primary' : 'ts-button-secondary'"
           :aria-pressed="aiMode === option.value" @click="aiMode = option.value; copyStatus = ''">{{ option.label }}</button>

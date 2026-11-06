@@ -24,7 +24,7 @@ from app.api import train_ticket as train_api
 from app.schemas.photo import BatchDownloadRequest
 
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 def _user(**overrides):

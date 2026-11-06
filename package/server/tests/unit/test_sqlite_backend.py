@@ -145,14 +145,12 @@ def test_face_assignment_uses_in_memory_cosine_distance_on_sqlite(sqlite_session
     reference = Face(photo_id=reference_photo.id, face_identity_id=identity.id, face_feature=[1.0] + [0.0] * 511)
     target = Face(photo_id=target_photo.id, face_feature=[0.99, 0.01] + [0.0] * 510)
     sqlite_session.add_all([reference, target]); sqlite_session.commit()
-    cfg = type("Cfg", (), {"ai": type("AI", (), {"face_cluster_threshold": 0.4})()})()
+    cfg = type("Cfg", (), {"ai": type("AI", (), {"face_cluster_threshold": 0.4, "face_recognition_min_photos": 5})()})()
     monkeypatch.setattr("app.service.face_cluster.config_manager.get_user_config", lambda *_: cfg)
 
-    matched = FaceClusterService(sqlite_session).assign_face_to_identity(
-        target.id, target.face_feature, user.id
-    )
-
-    assert matched == identity.id
+    FaceClusterService(sqlite_session).process_unassigned_faces(user.id)
+    sqlite_session.refresh(target)
+    assert target.face_identity_id == identity.id
 
 
 def test_on_this_day_vector_sort_works_on_sqlite(sqlite_session, monkeypatch):

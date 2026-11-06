@@ -9,6 +9,30 @@ export interface PhotoFace {
   identity_name: string | null;
 }
 
+export type SimilarFaceScope = 'all' | 'current' | 'current_low' | 'other' | 'unassigned';
+export type SimilarFaceMatch = 'strict' | 'balanced' | 'broad';
+
+export interface SimilarFaceCandidate extends PhotoFace {
+  photo_time: string | null;
+  similarity: number;
+  manually_confirmed: boolean;
+  review_token: string;
+}
+
+export interface SimilarFacesResult {
+  reference: SimilarFaceCandidate;
+  items: SimilarFaceCandidate[];
+  face_count: number;
+  photo_count: number;
+  has_more: boolean;
+}
+
+export interface BatchFaceAssignmentResult {
+  face_count: number;
+  photo_ids: string[];
+  undo_token: string | null;
+}
+
 export interface FaceRescanCandidate {
   face_id: number;
   photo_id: string;
@@ -33,7 +57,28 @@ export interface FaceRescanPreview {
   summary: { add_count: number; remove_count: number; reassign_count: number };
 }
 
+export interface FaceClusteringStatus {
+  phase: 'initializing' | 'ready' | 'resetting' | 'failed';
+  checkpoint?: number;
+  error?: string;
+}
+
 export const faceApi = {
+  async retryClustering(): Promise<FaceClusteringStatus> {
+    const response = await request.post('/api/faces/clustering/retry');
+    return response.data;
+  },
+
+  async clusteringStatus(): Promise<FaceClusteringStatus> {
+    const response = await request.get('/api/faces/clustering/status');
+    return response.data;
+  },
+
+  async resetClustering(requestId: string): Promise<FaceClusteringStatus> {
+    const response = await request.post('/api/faces/clustering/reset', { request_id: requestId });
+    return response.data;
+  },
+
   async getPhotoFaces(photoId: string) {
     const res = await request.get<PhotoFace[]>(`/api/faces/photos/${photoId}`);
     return res.data;
@@ -43,6 +88,32 @@ export const faceApi = {
     const res = await request.put(`/api/faces/photos/${photoId}/${faceId}/identity`, { identity_id: identityId });
     return res.data;
   },
+
+  async searchSimilarFaces(photoId: string, faceId: number, params: {
+    scope: SimilarFaceScope; match: SimilarFaceMatch; skip: number; limit: number;
+    exclude_identity_id?: string;
+  }, signal?: AbortSignal) {
+    const res = await request.get<SimilarFacesResult>(`/api/faces/photos/${photoId}/${faceId}/similar`, {
+      params, signal, silentError: true,
+    });
+    return res.data;
+  },
+
+  async assignSimilarFaces(photoId: string, faceId: number, identityId: string | null, items: SimilarFaceCandidate[]) {
+    const res = await request.post<BatchFaceAssignmentResult>(`/api/faces/photos/${photoId}/${faceId}/similar/assign`, {
+      identity_id: identityId,
+      selections: items.map(item => ({ face_id: item.id, review_token: item.review_token })),
+    }, { silentError: true });
+    return res.data;
+  },
+
+  async undoFaceAssignment(undoToken: string) {
+    const res = await request.post<BatchFaceAssignmentResult>('/api/faces/assignments/undo', {
+      undo_token: undoToken,
+    }, { silentError: true });
+    return res.data;
+  },
+
   async listIdentities(page = 1, limit = 20, types?: string[], minPhotos?: number) {
     const data = await request.get<FaceIdentity[]>('/api/faces/identities', {
       params: { skip: (page - 1) * limit, limit, types, min_photos: minPhotos }
@@ -94,10 +165,11 @@ export const faceApi = {
     return data.data;
   },
 
-  async mergeIdentities(targetId: string, sourceIds: string[]) {
+  async mergeIdentities(targetId: string, sourceIds: string[], identityName?: string) {
     const data = await request.post('/api/faces/identities/merge', {
       target_id: targetId,
-      source_ids: sourceIds
+      source_ids: sourceIds,
+      identity_name: identityName
     });
     return data.data;
   },
