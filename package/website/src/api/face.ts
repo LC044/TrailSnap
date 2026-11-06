@@ -57,7 +57,28 @@ export interface FaceRescanPreview {
   summary: { add_count: number; remove_count: number; reassign_count: number };
 }
 
+export interface FaceClusteringStatus {
+  phase: 'initializing' | 'ready' | 'resetting' | 'failed';
+  checkpoint?: number;
+  error?: string;
+}
+
 export const faceApi = {
+  async retryClustering(): Promise<FaceClusteringStatus> {
+    const response = await request.post('/api/faces/clustering/retry');
+    return response.data;
+  },
+
+  async clusteringStatus(): Promise<FaceClusteringStatus> {
+    const response = await request.get('/api/faces/clustering/status');
+    return response.data;
+  },
+
+  async resetClustering(requestId: string): Promise<FaceClusteringStatus> {
+    const response = await request.post('/api/faces/clustering/reset', { request_id: requestId });
+    return response.data;
+  },
+
   async getPhotoFaces(photoId: string) {
     const res = await request.get<PhotoFace[]>(`/api/faces/photos/${photoId}`);
     return res.data;

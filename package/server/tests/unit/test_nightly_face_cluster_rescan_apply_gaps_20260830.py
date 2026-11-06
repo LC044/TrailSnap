@@ -27,7 +27,7 @@ import numpy as np
 import pytest
 
 
-pytestmark = [pytest.mark.smoke]
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 # ---------------------------------------------------------------------------
@@ -440,22 +440,19 @@ def test_assign_face_to_identity_sqlite_branch_skips_pgvector_order_by(face_sqli
         target_feature=[1.0, 0.0] + [0.0] * 510,
     )
 
-    identity_cfg = MagicMock()
-    identity_cfg.ai.face_cluster_threshold = 0.5
+    identity_cfg = SimpleNamespace(ai=SimpleNamespace(face_cluster_threshold=.5, face_recognition_min_photos=5))
 
     svc = face_cluster.FaceClusterService(db=face_sqlite_session, user_id=None)
     with patch(
         "app.service.face_cluster.config_manager.get_user_config",
         return_value=identity_cfg,
     ), patch("app.service.face_cluster.crud_face.update_face") as update_spy:
-        result = svc.assign_face_to_identity(
-            face_id=fixture["target_id"],
-            embedding=fixture["target_feature"],
-            owner_id=fixture["owner_id"],
-        )
+        identity_cfg.ai.face_recognition_min_photos = 5
+        svc.process_unassigned_faces(fixture["owner_id"])
 
-    assert result == fixture["identity_id"]
-    update_spy.assert_called_once()
+    from app.db.models.face import Face
+    assert face_sqlite_session.get(Face, fixture["target_id"]).face_identity_id == fixture["identity_id"]
+    update_spy.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -463,22 +460,6 @@ def test_assign_face_to_identity_sqlite_branch_skips_pgvector_order_by(face_sqli
 # ---------------------------------------------------------------------------
 
 
-def test_cluster_unassigned_faces_short_circuits_when_below_min_samples():
-    db = MagicMock(name="db")
-    db.bind = SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
-    # Return only 2 faces (less than DBSCAN_MIN_SAMPLES=5 default).
-    db.query.return_value = _chain_query([
-        _face(1, np.array([1.0, 0.0])),
-        _face(2, np.array([0.0, 1.0])),
-    ])
-
-    svc = _service(db)
-    # Should return without invoking DBSCAN (no exception).
-    with patch("app.service.face_cluster.DBSCAN") as dbscan_spy:
-        result = svc._cluster_unassigned_faces(owner_id=None)
-
-    assert result is None
-    dbscan_spy.assert_not_called()
 
 
 def test_process_unassigned_faces_delegates_to_cluster_helper():

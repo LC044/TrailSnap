@@ -24,7 +24,7 @@ from app.utils import filename as filename_utils
 from app.utils import path as path_utils
 from app.utils import path_validation
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 USER = SimpleNamespace(id="user-nightly")
 

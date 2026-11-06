@@ -34,6 +34,7 @@ class Face(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     photo_id = Column(UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), nullable=False)
     face_identity_id = Column(UUID(as_uuid=True), ForeignKey("face_identities.id", ondelete="SET NULL"), nullable=True)
+    face_cluster_id = Column(UUID(as_uuid=True), ForeignKey("face_clusters.id", ondelete="SET NULL", name="fk_faces_cluster", use_alter=True), nullable=True)
     face_feature = Column(VECTOR(512))  # Human face feature vector
     face_rect = Column(JSON)     # 人脸检测框 [x1, y1, x2, y2]
     face_confidence = Column(DECIMAL(5, 4))
@@ -48,6 +49,10 @@ class Face(Base):
 
     # 索引定义（核心新增）
     __table_args__ = (
+        Index("ix_faces_cluster_photo", "face_cluster_id", "photo_id"),
+        Index("ix_faces_unclustered", "id", "photo_id",
+              sqlite_where=text("face_cluster_id IS NULL AND is_deleted = false AND face_feature IS NOT NULL"),
+              postgresql_where=text("face_cluster_id IS NULL AND is_deleted = false AND face_feature IS NOT NULL")),
         # 为photo_id加索引：命名规范「idx_表名_字段名」
         Index("idx_face_photo_id", "photo_id"),
         Index("ix_faces_photo_identity", "photo_id", "face_identity_id"),
@@ -67,4 +72,25 @@ class Face(Base):
             postgresql_using="hnsw",
             postgresql_ops={"face_feature": "vector_cosine_ops"},
         ).ddl_if(dialect="postgresql"),
+    )
+
+
+class FaceCluster(Base):
+    __tablename__ = "face_clusters"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    identity_id = Column(UUID(as_uuid=True), ForeignKey("face_identities.id", ondelete="SET NULL"), nullable=True)
+    center = Column(VECTOR(512), nullable=False)
+    vector_sum = Column(VECTOR(512), nullable=False)
+    anchor_face_id = Column(Integer, ForeignKey("faces.id", ondelete="SET NULL"), nullable=True)
+    face_count = Column(Integer, nullable=False, default=0)
+    status = Column(String(16), nullable=False, default="pending")
+    revision = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
+
+    __table_args__ = (
+        Index("ix_face_clusters_owner_identity", "owner_id", "identity_id", "id"),
+        Index("ix_face_clusters_owner_status", "owner_id", "status", "id"),
     )

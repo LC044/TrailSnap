@@ -260,7 +260,7 @@ pnpm lint       # 代码检查
 
 ```bash
 cd package/server
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run python start.py --port 8000 --reload
 ```
 
 **添加新 API：**

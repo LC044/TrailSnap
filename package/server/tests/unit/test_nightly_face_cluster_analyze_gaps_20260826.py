@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 
-pytestmark = [pytest.mark.smoke]
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 def _service(db):

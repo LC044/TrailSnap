@@ -33,6 +33,8 @@ def list_photo_faces(db: Session, photo_id: UUID, owner_id: UUID) -> list[PhotoF
 
 def assign_photo_face(db: Session, photo_id: UUID, face_id: int,
                       identity_id: UUID | None, owner_id: UUID) -> None:
+    from app.service.face_appearance_clusters import lock_owner, set_identity
+    lock_owner(db, owner_id)
     owned_photo(db, photo_id, owner_id)
     face = db.query(Face).filter(Face.id == face_id, Face.photo_id == photo_id,
                                  Face.is_deleted.is_(False)).with_for_update().first()
@@ -47,7 +49,7 @@ def assign_photo_face(db: Session, photo_id: UUID, face_id: int,
         if not identity:
             raise HTTPException(404, "人物不存在")
     previous_id = face.face_identity_id
-    face.face_identity_id = identity_id
+    set_identity(db, face, identity_id, owner_id)
     face.recognize_confidence = 1.0 if identity_id else None
     db.flush()
     repair_face_covers(db, {previous_id, identity_id} - {None}, owner_id)

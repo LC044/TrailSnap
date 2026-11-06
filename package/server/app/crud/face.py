@@ -71,8 +71,25 @@ def update_face(db: Session, face_id: int, obj_in: schemas.FaceUpdate, owner_id:
         return None
 
     update_data = obj_in.model_dump(exclude_unset=True)
+    membership_changed = any(key in update_data for key in ("face_identity_id", "face_feature", "is_deleted"))
+    resolved_owner = owner_id
+    if membership_changed:
+        from app.service.face_appearance_clusters import lock_owner, set_identity, detach, changed
+        resolved_owner = owner_id or db.query(Photo.owner_id).filter(Photo.id == db_obj.photo_id).scalar()
+        lock_owner(db, resolved_owner)
+        if "face_feature" in update_data or "is_deleted" in update_data:
+            detach(db, db_obj)
+    identity_id = update_data.pop("face_identity_id", db_obj.face_identity_id)
     for field, value in update_data.items():
         setattr(db_obj, field, value)
+    if membership_changed:
+        if not db_obj.is_deleted:
+            set_identity(db, db_obj, identity_id, resolved_owner)
+        else:
+            changed(db, resolved_owner)
+        if "face_feature" in update_data:
+            from app.service.face_vector_cache import face_vector_cache
+            face_vector_cache.invalidate(resolved_owner)
 
     db.add(db_obj)
     identity = db.query(FaceIdentity).get(db_obj.face_identity_id)
@@ -113,6 +130,12 @@ def handle_face_deletion_dependency(db: Session, face: Face):
     Check if the face is the default face for its identity.
     If so, update the identity's default_face_id to another face.
     """
+    if face.face_cluster_id:
+        from app.service.face_appearance_clusters import detach, changed, lock_owner
+        owner = db.query(Photo.owner_id).filter(Photo.id == face.photo_id).scalar()
+        lock_owner(db, owner)
+        detach(db, face)
+        changed(db, owner)
     if face.face_identity_id:
         identity = db.query(FaceIdentity).get(face.face_identity_id)
         if identity and identity.default_face_id == face.id:
@@ -138,6 +161,9 @@ def handle_face_deletion_dependency(db: Session, face: Face):
 
 # FaceIdentity Operations
 def create_identity(db: Session, obj_in: schemas.FaceIdentityCreate, owner_id: UUID) -> FaceIdentity:
+    from app.service.face_appearance_clusters import lock_owner
+    if owner_id:
+        lock_owner(db, owner_id)
     db_obj = FaceIdentity(
         identity_name=obj_in.identity_name,
         owner_id=owner_id
@@ -160,6 +186,9 @@ def get_identities(db: Session, skip: int = 0, limit: int = 100, owner_id: Optio
     return query.offset(skip).limit(limit).all()
 
 def update_identity(db: Session, identity_id: UUID, obj_in: schemas.FaceIdentityUpdate, owner_id: Optional[UUID] = None) -> Optional[FaceIdentity]:
+    from app.service.face_appearance_clusters import lock_owner
+    if owner_id:
+        lock_owner(db, owner_id)
     db_obj = get_identity(db, identity_id, owner_id)
     if not db_obj:
         return None
@@ -174,10 +203,19 @@ def update_identity(db: Session, identity_id: UUID, obj_in: schemas.FaceIdentity
     return db_obj
 
 def delete_identity(db: Session, identity_id: UUID, owner_id: Optional[UUID] = None) -> bool:
+    from app.service.face_appearance_clusters import lock_owner, changed
+    from app.db.models.face import FaceCluster
+    if owner_id:
+        lock_owner(db, owner_id)
     identity = get_identity(db, identity_id, owner_id)
     if not identity:
         return False
 
+    db.query(FaceCluster).filter(
+        FaceCluster.owner_id == identity.owner_id, FaceCluster.identity_id == identity_id,
+    ).update({FaceCluster.identity_id: None, FaceCluster.status: "pending",
+              FaceCluster.revision: FaceCluster.revision + 1}, synchronize_session="fetch")
+    changed(db, identity.owner_id)
     for model in (PersonTimelineHide,):
         db.query(model).filter(
             model.owner_id == identity.owner_id,
@@ -468,6 +506,9 @@ def get_group_album_photos(
     return query.order_by(Photo.photo_time.desc().nullslast(), desc(Photo.id)).offset(skip).limit(limit).all()
 
 def remove_photos_from_identity(db: Session, identity_id: UUID, photo_ids: List[UUID], owner_id: Optional[UUID] = None) -> int:
+    from app.service.face_appearance_clusters import lock_owner
+    if owner_id:
+        lock_owner(db, owner_id)
     identity = get_identity(db, identity_id, owner_id)
     if not identity:
         return 0
@@ -482,7 +523,8 @@ def remove_photos_from_identity(db: Session, identity_id: UUID, photo_ids: List[
     
     for face in faces:
         handle_face_deletion_dependency(db, face)
-        face.face_identity_id = None
+        from app.service.face_appearance_clusters import set_identity
+        set_identity(db, face, None, identity.owner_id)
         db.add(face)
         
     db.commit()
@@ -504,6 +546,9 @@ def delete_faces_by_photo(db: Session, photo_id: UUID, confidence_threshold: flo
     return count
 
 def set_identity_cover(db: Session, identity_id: UUID, photo_id: UUID, owner_id: Optional[UUID] = None) -> bool:
+    from app.service.face_appearance_clusters import lock_owner
+    if owner_id:
+        lock_owner(db, owner_id)
     identity = get_identity(db, identity_id, owner_id)
     if not identity:
         return False
@@ -524,7 +569,12 @@ def set_identity_cover(db: Session, identity_id: UUID, photo_id: UUID, owner_id:
     db.commit()
     return True
 
-def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner_id: Optional[UUID] = None) -> bool:
+def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner_id: Optional[UUID] = None,
+                     *, commit: bool = True) -> bool:
+    from app.service.face_appearance_clusters import lock_owner, changed
+    from app.db.models.face import FaceCluster
+    if owner_id:
+        lock_owner(db, owner_id)
     target = get_identity(db, target_id, owner_id)
     if not target:
         return False
@@ -537,11 +587,12 @@ def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner
         if not source:
             continue
 
-        # Move faces
-        faces = db.query(Face).filter(Face.face_identity_id == source_id).all()
-        for face in faces:
-            face.face_identity_id = target_id
-            db.add(face)
+        db.query(FaceCluster).filter(
+            FaceCluster.owner_id == target.owner_id, FaceCluster.identity_id == source_id,
+        ).update({FaceCluster.identity_id: target_id, FaceCluster.revision: FaceCluster.revision + 1}, synchronize_session="fetch")
+        db.query(Face).filter(Face.face_identity_id == source_id).update(
+            {Face.face_identity_id: target_id}, synchronize_session="fetch")
+        changed(db, target.owner_id)
 
         # Keep user-authored story exclusions when a source identity is merged.
         for rule in db.query(PersonTimelineHide).filter(
@@ -560,5 +611,8 @@ def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner
         source.is_deleted = True
         db.add(source)
 
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return True

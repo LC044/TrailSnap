@@ -38,6 +38,8 @@ RUN mkdir -p /opt/fonts && \
     curl -fsSL --retry 3 "https://raw.githubusercontent.com/notofonts/noto-cjk/${NOTO_REVISION}/Sans/LICENSE" -o /opt/fonts/LICENSE
 
 FROM ${PYTHON_IMAGE} AS python-builder
+# hnswlib supplies a source distribution for Python 3.12.
+RUN apt-get update && apt-get install -y --no-install-recommends g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv UV_PYTHON_DOWNLOADS=never
 COPY pyproject.toml uv.lock ./
@@ -67,7 +69,7 @@ FROM ${PYTHON_IMAGE} AS runtime
 WORKDIR /app
 
 # Shared libraries used by our media build; no compilers, uv or full font suite.
-RUN apt-get update && apt-get install -y --no-install-recommends libx264-164 libdav1d7 && \
+RUN apt-get update && apt-get install -y --no-install-recommends libx264-164 libdav1d7 libstdc++6 libgomp1 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=media-builder /opt/ffmpeg /opt/ffmpeg
@@ -83,5 +85,5 @@ COPY --from=app-builder /app /app
 EXPOSE 8000
 # 核心：将虚拟环境的 bin 目录加入 PATH
 ENV PATH="/app/.venv/bin:/opt/ffmpeg/bin:$PATH"
-RUN python -c "from scipy.spatial import cKDTree; from sklearn.cluster import DBSCAN; from app.service.daily_frame_render import capabilities; result=capabilities(); assert result['available'], result"
+RUN python -c "import hnswlib; from scipy.spatial import cKDTree; from sklearn.cluster import DBSCAN; from app.service.daily_frame_render import capabilities; result=capabilities(); assert result['available'], result"
 CMD ["python", "start.py"]

@@ -121,6 +121,7 @@ def run_migrations(database_url):
 def main():
     parser = argparse.ArgumentParser(description="Start the TrailSnap server")
     parser.add_argument("--port", type=int, default=8000, help="Port to run the server on")
+    parser.add_argument("--reload", action="store_true", help="Reload the development server after code changes")
     args = parser.parse_args()
 
     print("Starting application initialization...")
@@ -168,7 +169,10 @@ def main():
     try:
         sys.stdout.flush()
         # Using python -m uvicorn to ensure it uses the same python environment
-        os.execvp(sys.executable, [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(args.port), "--timeout-graceful-shutdown", "15"])
+        command = [sys.executable, "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", str(args.port), "--timeout-graceful-shutdown", "15"]
+        if args.reload:
+            command.append("--reload")
+        os.execvp(sys.executable, command)
     except OSError as e:
         print(f"Error starting application: {e}")
         sys.exit(1)

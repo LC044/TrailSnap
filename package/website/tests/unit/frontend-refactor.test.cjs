@@ -202,6 +202,7 @@ test('saving face/service settings excludes stale LLM connections and defaults',
     '@/composables/useTheme': { injectTheme: () => ({}) },
     './useMapSettings': { useMapSettings: () => ({ mapForm: vue.ref({ provider: 'tianditu', api_keys: [''] }), resetMapKeyTests() {} }) },
     './useIndexMaintenance': { useIndexMaintenance: () => ({}) },
+    './faceRecognitionPresets': loadSource('composables/settings/faceRecognitionPresets.ts'),
   })
   const mounted = mount(useBasicSettings)
   await flush()

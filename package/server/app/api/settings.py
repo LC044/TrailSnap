@@ -698,6 +698,14 @@ def update_settings(
             raise HTTPException(status_code=400, detail="每个大模型连接必须至少添加一个模型")
     # Use config_manager to update settings and cache
     new_config = config_manager.update_user_config(current_user.id, payload, db)
+    clustering_keys = {"face_cluster_threshold", "face_cluster_merge_threshold", "face_identity_match_threshold",
+                       "face_identity_merge_threshold", "face_recognition_min_photos"}
+    if clustering_keys.intersection(payload.get("ai") or {}):
+        from app.service.tasks.face_cluster import enqueue_cluster_faces
+        task = enqueue_cluster_faces(db, current_user.id, commit=False)
+        task.payload = {**(task.payload or {}), "auto": False}
+        db.commit()
+        TaskManager.get_instance().start_worker_for_pending_tasks()
 
     # Check if storage root changed to update cache
     root = new_config.storage.photo_storage_path

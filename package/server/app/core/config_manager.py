@@ -182,7 +182,10 @@ class AISettings(BaseModel):
     chat_reasoning_effort: str = Field(default="none", description="Default reasoning effort for agent chat")
     ai_api_url: str = Field(default=os.getenv("TS_AI_API_URL") or os.getenv("AI_API_URL", "http://localhost:8001"), description="AI Service API URL")
     face_recognition_threshold: float = Field(default=0.7, description="Face recognition confidence threshold")
-    face_cluster_threshold: float = Field(default=0.4, description="Face cluster distance threshold")
+    face_cluster_threshold: float = Field(default=0.5, description="Face cluster distance threshold")
+    face_cluster_merge_threshold: float = Field(default=0.25, ge=0, le=1, description="Maximum distance for physical appearance-cluster merging")
+    face_identity_match_threshold: float = Field(default=0.425, ge=0, le=1, description="Maximum distance for appearance-cluster identity matching")
+    face_identity_merge_threshold: float = Field(default=0.2, ge=0, le=1, description="Maximum center distance for automatic unnamed identity merging")
     face_rescan_auto_match_threshold: float = Field(default=0.35, description="High-confidence distance threshold for identity rescan")
     face_rescan_candidate_threshold: float = Field(default=0.45, description="Maximum distance for identity rescan candidates")
     face_rescan_removal_threshold: float = Field(default=0.52, description="Minimum distance for identity rescan removal candidates")
@@ -371,6 +374,14 @@ class ConfigManager:
             return target
 
         merged_data = deep_merge(current_data, user_settings)
+        stored_ai = user_settings.get('ai') or {}
+        for key, factor in {
+            'face_cluster_merge_threshold': 0.5,
+            'face_identity_match_threshold': 0.85,
+            'face_identity_merge_threshold': 0.4,
+        }.items():
+            if key not in stored_ai:
+                merged_data['ai'][key] = round(merged_data['ai']['face_cluster_threshold'] * factor, 4)
 
         # The desktop shell owns a random-port lazy AI gateway. It must win over
         # an older persisted localhost:8001 value so upgraded desktop installs

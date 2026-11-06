@@ -79,6 +79,7 @@ test('changed settings components compile their scripts and templates', () => {
     'views/settings/TaskManagement.vue', 'views/settings/Tokens.vue',
     'views/settings/FeedbackPage.vue', 'views/settings/MobileAppConnection.vue',
     'views/settings/sections/TaskSettingsSection.vue',
+    'views/settings/sections/AIServiceSettingsSection.vue',
   ]) {
     const { descriptor, errors } = parse(read(file))
     assert.deepEqual(errors, [], file)

@@ -31,6 +31,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+
 import pytest
 
 from app.core.config_manager import (
@@ -359,3 +360,24 @@ def test_get_default_config_returns_serializable_dict():
     assert "ai" in dump and "image" in dump and "filter" in dump
     # Round-trip back into AppSettings to confirm compatibility.
     AppSettings(**dump)
+
+
+def test_face_default_parameters_and_legacy_custom_thresholds():
+    from app.core.config_manager import AISettings
+
+    defaults = AISettings()
+    assert defaults.face_cluster_threshold == .5
+    assert defaults.face_cluster_merge_threshold == .25
+    assert defaults.face_identity_match_threshold == .425
+    assert defaults.face_identity_merge_threshold == .2
+    legacy = config_manager.merge_user_settings({"ai": {"face_cluster_threshold": .2}}).ai
+    assert legacy.face_cluster_merge_threshold == .1
+    assert legacy.face_identity_match_threshold == .17
+    assert legacy.face_identity_merge_threshold == .08
+    custom = config_manager.merge_user_settings({"ai": {
+        "face_cluster_threshold": .2, "face_cluster_merge_threshold": .05,
+        "face_identity_match_threshold": .18, "face_identity_merge_threshold": .06,
+    }}).ai
+    assert custom.face_cluster_merge_threshold == .05
+    assert custom.face_identity_match_threshold == .18
+    assert custom.face_identity_merge_threshold == .06

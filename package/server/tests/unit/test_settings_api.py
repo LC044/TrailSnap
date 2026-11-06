@@ -109,6 +109,21 @@ def test_update_settings_returns_new_config():
     assert result["config"]["storage"]["photo_storage_path"] == "F:/photos"
 
 
+def test_saving_face_parameters_schedules_existing_people_without_reset():
+    db = MagicMock()
+    user = _user()
+    task = SimpleNamespace(payload={"owner_id":str(user.id), "auto":True, "custom":"preserved"})
+    with patch.object(settings_api.config_manager, "update_user_config", return_value=_config()), \
+         patch.object(settings_api, "update_storage_root_cache"), \
+         patch("app.service.tasks.face_cluster.enqueue_cluster_faces", return_value=task) as enqueue, \
+         patch.object(settings_api.TaskManager, "get_instance") as manager:
+        result = settings_api.update_settings({"ai":{"face_cluster_threshold":.5}}, db, user)
+    enqueue.assert_called_once_with(db, user.id, commit=False)
+    assert task.payload == {"owner_id":str(user.id), "auto":False, "custom":"preserved"}
+    manager.return_value.start_worker_for_pending_tasks.assert_called_once()
+    assert result["status"] == "success"
+
+
 def test_update_settings_rejects_connection_without_models():
     with pytest.raises(HTTPException) as exc:
         settings_api.update_settings(

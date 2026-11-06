@@ -203,6 +203,8 @@ def _finish(db: Session, owner_id: UUID, faces: list[Face], identity_ids: set[UU
 def assign_similar_faces(db: Session, photo_id: UUID, face_id: int, owner_id: UUID,
                          payload: AssignSimilarFaces) -> BatchFaceAssignmentResult:
     try:
+        from app.service.face_appearance_clusters import lock_owner, set_identity
+        lock_owner(db, owner_id)
         reference = _reference(db, photo_id, face_id, owner_id)
         signature = _feature_signature(_normalised_feature(reference))
         if payload.identity_id is not None:
@@ -234,7 +236,7 @@ def assign_similar_faces(db: Session, photo_id: UUID, face_id: int, owner_id: UU
             })
             if face.face_identity_id:
                 affected.add(face.face_identity_id)
-            face.face_identity_id = payload.identity_id
+            set_identity(db, face, payload.identity_id, owner_id)
             face.recognize_confidence = confidence
         undo_token = _sign({"items": previous}, owner_id, "face-undo", 15) if previous else None
         photo_ids = _finish(db, owner_id, changed, affected) if changed else []
@@ -246,6 +248,8 @@ def assign_similar_faces(db: Session, photo_id: UUID, face_id: int, owner_id: UU
 
 def undo_face_assignment(db: Session, owner_id: UUID, token: str) -> BatchFaceAssignmentResult:
     try:
+        from app.service.face_appearance_clusters import lock_owner, set_identity
+        lock_owner(db, owner_id)
         payload = _verify(token, owner_id, "face-undo")
         items = payload.get("items", [])
         if not items or len(items) > 500:
@@ -262,7 +266,7 @@ def undo_face_assignment(db: Session, owner_id: UUID, token: str) -> BatchFaceAs
             face = faces[item["id"]]
             if face.face_identity_id:
                 affected.add(face.face_identity_id)
-            face.face_identity_id = UUID(item["identity"]) if item["identity"] else None
+            set_identity(db, face, UUID(item["identity"]) if item["identity"] else None, owner_id)
             face.recognize_confidence = item["confidence"]
             if face.face_identity_id:
                 affected.add(face.face_identity_id)

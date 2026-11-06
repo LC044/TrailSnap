@@ -5,6 +5,7 @@ import { injectTheme } from '@/composables/useTheme';
 import { useUserStore } from '@/stores/user';
 import { useMapSettings } from './useMapSettings';
 import { useIndexMaintenance } from './useIndexMaintenance';
+import { faceRecognitionPresets } from './faceRecognitionPresets';
 export function useBasicSettings() {
   const mapSettings = useMapSettings();
   const indexMaintenance = useIndexMaintenance();
@@ -18,12 +19,7 @@ export function useBasicSettings() {
   });
   const aiForm = ref({
     ai_api_url: 'http://localhost:8001',
-    face_recognition_threshold: 0.7,
-    face_cluster_threshold: 0.4,
-    face_rescan_auto_match_threshold: 0.35,
-    face_rescan_candidate_threshold: 0.45,
-    face_rescan_removal_threshold: 0.52,
-    face_recognition_min_photos: 5,
+    ...faceRecognitionPresets.normal.parameters,
   });
   type ConnectionTestState = {
     status: 'idle' | 'testing' | 'valid' | 'invalid';
@@ -243,7 +239,7 @@ export function useBasicSettings() {
     try {
       const { ai_api_url, ...recognition } = aiForm.value;
       await settingsApi.updateSettings({ ai: recognition });
-      ElMessage.success('AI 配置已保存');
+      ElMessage.success('识别参数已保存，正在后台整理未命名人物');
     }
     catch (e) {
       ElMessage.error('保存失败');

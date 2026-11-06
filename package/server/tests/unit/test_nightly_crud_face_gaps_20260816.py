@@ -16,7 +16,7 @@ from uuid import uuid4
 import pytest
 
 
-pytestmark = [pytest.mark.smoke]
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("mock_appearance_for_fake_sessions")]
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +96,7 @@ def _face(**overrides):
         id=1,
         photo_id=uuid4(),
         face_identity_id=None,
+        face_cluster_id=None,
         face_rect=[0.1, 0.2, 0.3, 0.4],
         face_confidence=0.99,
         recognize_confidence=0.0,
@@ -668,7 +669,7 @@ def test_merge_identities_moves_faces_and_soft_deletes_sources():
     source_id = uuid4()
     target = _identity(id=target_id)
     source = _identity(id=source_id, is_deleted=False)
-    moved_face = _face(id=1, face_identity_id=source_id)
+    face_update = MagicMock()
     calls = [0]
 
     def query_factory(*args, **kwargs):
@@ -678,7 +679,7 @@ def test_merge_identities_moves_faces_and_soft_deletes_sources():
         if calls[0] == 2:
             return _q(first=source)
         if args[0] is crud_face.Face:
-            return _q(all=[moved_face])
+            return face_update
         return _q(all=[])
 
     db.query = MagicMock(side_effect=query_factory)
@@ -688,7 +689,9 @@ def test_merge_identities_moves_faces_and_soft_deletes_sources():
     )
 
     assert result is True
-    assert moved_face.face_identity_id == target_id
+    face_update.filter.return_value.update.assert_called_once_with(
+        {crud_face.Face.face_identity_id: target_id}, synchronize_session="fetch",
+    )
     assert source.is_deleted is True
     db.commit.assert_called_once()
 

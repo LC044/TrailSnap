@@ -57,11 +57,9 @@ def _int_env(name: str, default: int, minimum: int) -> int:
         return default
 
 
-# A pass re-clusters the owner's whole unassigned pool, so importing a handful
-# of photos should not trigger one. The throttle compares against the pool the
-# last completed pass left behind: those faces were already examined and came
-# out as noise, so only the growth since then carries new information.
-MIN_NEW_UNASSIGNED = _int_env("TS_FACE_CLUSTER_MIN_NEW_FACES", 10, 1)
+# Appearance clustering consumes only faces without a cluster. Even one new
+# face can extend a pending appearance group, so the default increment is one.
+MIN_NEW_UNASSIGNED = _int_env("TS_FACE_CLUSTER_MIN_NEW_FACES", 1, 1)
 
 # No threshold is lossless -- a single new face can bridge four previously
 # isolated ones into a cluster -- so the increment check alone would let a
@@ -85,6 +83,7 @@ def count_unassigned_faces(db: Session, owner_id) -> int:
     """
     query = db.query(func.count(Face.id)).filter(
         Face.face_identity_id.is_(None),
+        Face.face_cluster_id.is_(None),
         Face.is_deleted.is_(False),
         Face.face_feature.isnot(None),
     )
@@ -145,11 +144,11 @@ def should_cluster(db: Session, owner_id) -> Tuple[bool, str]:
 
 
 def enqueue_cluster_faces(db: Session, owner_id, *, commit: bool = True) -> Optional[Task]:
-    """Register at most one outstanding clustering task per owner.
+    """Reuse pending work while preserving a follow-up for processing work.
 
     Called from ``RecognizeFaceStrategy.handle_completion``. Reusing an
-    existing PENDING/PROCESSING row is what collapses a whole import round
-    into a single clustering pass.
+    existing pending row coalesces new work. Processing work retains its
+    own row so commits arriving at completion have a pending follow-up.
     """
     if owner_id is None:
         return None
@@ -160,7 +159,7 @@ def enqueue_cluster_faces(db: Session, owner_id, *, commit: bool = True) -> Opti
         db,
         TaskType.CLUSTER_FACES,
         owner_id,
-        [TaskStatus.PENDING, TaskStatus.PROCESSING],
+        [TaskStatus.PENDING],
     )
     if existing:
         return existing
@@ -194,7 +193,10 @@ def _cluster_in_thread(owner_id: UUID) -> None:
     from app.service.face_cluster import FaceClusterService
 
     db = SessionLocal()
+    from app.service.face_appearance_clusters import get_state
+    starting_generation = None
     try:
+        starting_generation = get_state(db, owner_id).get("generation", 0)
         FaceClusterService(db, owner_id).process_unassigned_faces(owner_id)
         # Anchor the throttle to what this pass leaves behind rather than to
         # what it started with: the leftovers are noise this pass already
@@ -202,6 +204,18 @@ def _cluster_in_thread(owner_id: UUID) -> None:
         # this session, after the pass, so a failed pass keeps the old
         # baseline and the next round retries.
         record_baseline(db, owner_id, count_unassigned_faces(db, owner_id))
+        from app.crud.album import trigger_conditional_albums_update
+        trigger_conditional_albums_update(db, owner_id, [])
+    except Exception:
+        db.rollback()
+        from app.service.face_appearance_clusters import lock_owner, save_state
+        state = lock_owner(db, owner_id, allow_reset=True)
+        if starting_generation is not None and state.get("generation", 0) == starting_generation:
+            state["phase"] = "failed"
+            state["error"] = "人物整理中断，请重试"
+            save_state(db, owner_id, state)
+        db.commit()
+        raise
     finally:
         db.close()
 
@@ -230,12 +244,8 @@ class ClusterFacesStrategy(BaseTaskStrategy):
         if owner_id is None:
             return {'status': 'skipped', 'reason': 'missing owner_id'}
 
-        if self._recognition_in_flight(db, owner_id):
+        if not (task.payload or {}).get("reset") and self._recognition_in_flight(db, owner_id):
             self._defer(db, task)
-            logger.info(
-                "Deferring face clustering for owner %s: recognition still running",
-                owner_id,
-            )
             return None
 
         if (task.payload or {}).get('auto'):
