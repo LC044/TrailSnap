@@ -238,6 +238,14 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             raise ValueError(f"Visual Model connection has no api_key: {settings.analysis_connection_id}")
 
         # 2. Call OpenAI API
+        # 显式传独立的 http_async_client：langchain_openai 默认走 lru_cache 缓存的
+        # 共享 httpx.AsyncClient（_client_utils._get_default_async_httpx_client），
+        # 相同 (base_url, timeout) 的 ChatOpenAI 实例会共用同一条 keep-alive 连接。
+        # 本任务的批次在 batch_pool 线程里以每批 asyncio.run() 的新事件循环执行，
+        # 共享连接会在不同线程的 loop 间复用，触发
+        # "Event loop is closed" / "bound to a different event loop"，表现为约 50%
+        # 间歇性 APIConnectionError（Issue #451）。每实例独享连接池即可隔离。
+        import httpx
         from langchain_openai import ChatOpenAI
         client = ChatOpenAI(
             api_key=connection.api_key,
@@ -246,6 +254,9 @@ class VisualDescriptionStrategy(BaseTaskStrategy):
             timeout=VISUAL_REQUEST_TIMEOUT_SECONDS,
             max_retries=0,
             max_completion_tokens=4096,
+            http_async_client=httpx.AsyncClient(
+                timeout=VISUAL_REQUEST_TIMEOUT_SECONDS,
+            ),
             extra_body={
                 "chat_template_kwargs": {"enable_thinking": getattr(settings, "analysis_reasoning_effort", "none") != "none"},
             },
