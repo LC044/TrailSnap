@@ -72,7 +72,7 @@
     "@capacitor/cli": "8.5.1",
     "@iconify/json": "^2.2.428",
     "@iconify/tailwind": "^1.2.0",
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.65.0",
     "@types/node": "^24.10.1",
     "@types/piexifjs": "^1.0.0",
     "@types/qrcode": "1.5.6",
