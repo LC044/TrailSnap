@@ -160,8 +160,15 @@ test.describe('Smoke - 设置中心剩余 Tab 切换 @smoke', () => {
   test('外部图库空路径时手动添加禁用且不发起添加请求', async ({ page }) => {
     // 该用例依赖异步 getUserInfo（isSuperuser gating）+ 折叠展开，CI 偶发 30s 预算吃紧
     test.setTimeout(60000);
+    // ExternalGallery sets selectedUserId after /api/users resolves; that watch
+    // resets manual validation state. Wait for the response before clicking so a
+    // slow user lookup under the full suite cannot erase the expected message.
+    const usersLoaded = page.waitForResponse(
+      response => response.url().includes('/api/users') && response.status() === 200
+    );
     await page.goto('/settings');
     await clickSettingTab(page, 'external');
+    await usersLoaded;
 
     let addDirectoryRequests = 0;
     page.on('request', request => {
