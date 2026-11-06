@@ -1,7 +1,7 @@
 """Nightly coverage additions for the lowest-covered server modules on 2026-11-06."""
 
 from datetime import date
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import numpy as np
@@ -19,16 +19,14 @@ from app.service.face_cluster import FaceClusterService
 pytestmark = [pytest.mark.smoke]
 
 
-def test_face_cluster_assign_returns_none_when_sqlite_has_no_reference():
+def test_face_cluster_assign_defers_recognition_to_batch_clustering():
     db = MagicMock()
-    db.bind.dialect.name = "sqlite"
     service = FaceClusterService(db)
 
-    with patch.object(service, "_sqlite_nearest_assigned_face", return_value=None) as nearest:
-        result = service.assign_face_to_identity(101, [0.1, 0.2], commit=False)
+    result = service.assign_face_to_identity(101, [0.1, 0.2], commit=False)
 
     assert result is None
-    nearest.assert_called_once()
+    db.query.assert_not_called()
     db.rollback.assert_not_called()
 
 
