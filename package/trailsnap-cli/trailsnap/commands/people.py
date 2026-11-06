@@ -143,8 +143,8 @@ def execute_merge(args):
     set_formatter(args.format)
     sources = [s.strip() for s in args.sources.split(',')]
     payload = {
-        "target_identity_id": args.target,
-        "source_identity_ids": sources
+        "target_id": args.target,
+        "source_ids": sources
     }
     data = make_request("/faces/identities/merge", method="POST", json_data=payload)
     output(data)

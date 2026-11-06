@@ -1,10 +1,12 @@
 import pytest
 import sys
 import argparse
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from trailsnap import cli
 from trailsnap.commands import medias
+from trailsnap.commands import people
 
 pytestmark = [pytest.mark.smoke]
 
@@ -43,3 +45,17 @@ def test_thumbnail_endpoint_uses_current_owner_id():
 
     assert endpoint == "/medias/owner-1/photo-1/thumbnail?size=medium"
     request.assert_called_once_with("/users/me")
+
+
+def test_people_merge_payload_matches_server_contract():
+    # 服务端 MergeRequest 只认 target_id/source_ids；字段名错配会因
+    # extra=forbid 直接 422，而不是被静默忽略
+    args = SimpleNamespace(target="tgt-1", sources="s1, s2", format="json")
+    with patch.object(people, "make_request", return_value={"code": 200}) as request:
+        people.execute_merge(args)
+
+    request.assert_called_once_with(
+        "/faces/identities/merge",
+        method="POST",
+        json_data={"target_id": "tgt-1", "source_ids": ["s1", "s2"]},
+    )

@@ -176,6 +176,16 @@ def test_merge_request_validates_and_trims_optional_name():
         MergeRequest(**args, identity_name="a" * 501)
 
 
+def test_merge_request_rejects_unknown_fields():
+    # 前后端字段错配（旧 schema 不认识 identity_name）必须显式 422，
+    # 不能静默丢弃导致合并结果退回“未命名”
+    from pydantic import ValidationError
+    from app.schemas.face import MergeRequest
+
+    with pytest.raises(ValidationError):
+        MergeRequest(target_id=uuid4(), source_ids=[uuid4()], identity_nme="错别字段名")
+
+
 def test_merge_api_passes_the_name_in_the_merge_transaction():
     from app.schemas.face import MergeRequest
 

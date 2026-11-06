@@ -1,7 +1,7 @@
 from typing import Optional, List, Any, Literal
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.photo import Photo
 
@@ -109,6 +109,9 @@ class FaceIdentitySchema(BaseModel):
         from_attributes = True
 
 class MergeRequest(BaseModel):
+    # extra="forbid"：合并入口的字段一旦被前后端版本错配（旧 schema 不认识新字段），
+    # 必须显式 422 报错，而不是静默丢弃 identity_name 让合并结果退回“未命名”
+    model_config = ConfigDict(extra="forbid")
     source_ids: List[UUID] = Field(..., description="源人物ID列表")
     target_id: UUID = Field(..., description="目标人物ID")
     identity_name: Optional[str] = Field(None, min_length=1, max_length=500, description="合并后人物名称")
