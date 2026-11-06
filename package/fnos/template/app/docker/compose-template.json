@@ -13,7 +13,7 @@
       "environment": {
         "TS_UID": "${TRIM_UID}",
         "TS_GID": "${TRIM_GID}",
-        "TS_DATA_HOST": "${wizard_data_dir:?请选择用户数据目录}",
+        "TS_DATA_HOST": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}",
         "TS_PHOTO_HOST": "${wizard_photo_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/photos}",
         "TS_PORT": "${wizard_port:-3180}",
         "TS_PHOTO_MODE": "${wizard_photo_mode:-ro}"
@@ -21,7 +21,7 @@
       "volumes": [
         {
           "type": "bind",
-          "source": "${wizard_data_dir:?请选择用户数据目录}",
+          "source": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}",
           "target": "/state",
           "read_only": false,
           "bind": {
@@ -77,7 +77,7 @@
         "${TRIM_APPDEST}/docker/start-postgres.sh:/fnos-start.sh:ro",
         {
           "type": "bind",
-          "source": "${wizard_data_dir:?请选择用户数据目录}/runtime",
+          "source": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}/runtime",
           "target": "/fnos-runtime",
           "read_only": true,
           "bind": {
@@ -86,7 +86,7 @@
         },
         {
           "type": "bind",
-          "source": "${wizard_data_dir:?请选择用户数据目录}/pg_data",
+          "source": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}/pg_data",
           "target": "/var/lib/postgresql/data",
           "bind": {
             "create_host_path": true
@@ -131,7 +131,7 @@
         "${TRIM_APPDEST}/docker/start-server.sh:/fnos-start.sh:ro",
         {
           "type": "bind",
-          "source": "${wizard_data_dir:?请选择用户数据目录}/runtime",
+          "source": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}/runtime",
           "target": "/fnos-runtime",
           "read_only": true,
           "bind": {
@@ -140,7 +140,7 @@
         },
         {
           "type": "bind",
-          "source": "${wizard_data_dir:?请选择用户数据目录}/data",
+          "source": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}/data",
           "target": "/app/data",
           "bind": {
             "create_host_path": true
@@ -188,7 +188,7 @@
       "volumes": [
         {
           "type": "bind",
-          "source": "${wizard_data_dir:?请选择用户数据目录}/data",
+          "source": "${wizard_data_dir:-${TRIM_APPDEST_VOL}/@appshare/trailsnap/data}/data",
           "target": "/app/data",
           "bind": {
             "create_host_path": true

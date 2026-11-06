@@ -1,2 +1,3 @@
 #!/bin/bash
-exit 0
+set -euo pipefail
+exec /bin/bash "$(dirname "$0")/helper" prepare
