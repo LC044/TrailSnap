@@ -349,8 +349,9 @@ test.describe.serial('P1 - 人物相册', () => {
       )
       await mergeBtn.click()
 
-      // 二次确认（confirmMerge → ElMessageBox.confirm）
-      const confirmBtn = page.locator('.el-message-box__btns button:has-text("确定")').first()
+      // 合并时可直接修改人物名称。
+      await page.getByPlaceholder('人物名称').fill('合并后的名字')
+      const confirmBtn = page.locator('.el-message-box__btns button:has-text("确认合并")').first()
       await expect(confirmBtn).toBeVisible({ timeout: 5_000 })
       await confirmBtn.click()
       await mergeReq
@@ -362,7 +363,7 @@ test.describe.serial('P1 - 人物相册', () => {
         after.find((i) => i.id === t2.id),
         'merged source identity should no longer be in the list',
       ).toBeUndefined()
-      expect(after.find((i) => i.id === t1.id), 'merge target identity should remain').toBeTruthy()
+      expect(after.find((i) => i.id === t1.id)?.identity_name).toBe('合并后的名字')
     } finally {
       // 兜底：DB 残留下清理
       await deleteIdentity(request, authToken, t1.id)

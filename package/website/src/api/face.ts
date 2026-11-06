@@ -165,10 +165,11 @@ export const faceApi = {
     return data.data;
   },
 
-  async mergeIdentities(targetId: string, sourceIds: string[]) {
+  async mergeIdentities(targetId: string, sourceIds: string[], identityName?: string) {
     const data = await request.post('/api/faces/identities/merge', {
       target_id: targetId,
-      source_ids: sourceIds
+      source_ids: sourceIds,
+      identity_name: identityName
     });
     return data.data;
   },

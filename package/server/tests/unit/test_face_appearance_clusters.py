@@ -189,6 +189,52 @@ def test_merge_moves_clusters_without_replacing_centers(library, monkeypatch):
     assert {cluster.identity_id for cluster in db.query(FaceCluster).all()} == {people[0].id}
 
 
+def test_merge_name_and_membership_commit_together(library):
+    from app.crud.face import merge_identities
+    db, owner = library
+    target = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="旧名称")
+    source = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="另一个")
+    db.add_all([target, source])
+    db.flush()
+    face = add_face(db, owner, 0, source.id)
+    db.commit()
+    assert merge_identities(db, target.id, [source.id], owner.id, commit=False, identity_name="新名称")
+    db.rollback()
+    db.expire_all()
+    assert target.identity_name == "旧名称" and not source.is_deleted
+    assert face.face_identity_id == source.id
+    assert merge_identities(db, target.id, [source.id], owner.id, identity_name="新名称")
+    db.expire_all()
+    assert target.identity_name == "新名称" and source.is_deleted
+    assert face.face_identity_id == target.id
+
+
+def test_merge_name_and_membership_on_both_databases(legacy_database):
+    from alembic import command
+    from sqlalchemy.orm import Session
+    from app.crud.face import merge_identities
+
+    engine, migration, _ = legacy_database
+    command.upgrade(migration, "head")
+    with Session(engine, autoflush=False) as db:
+        owner = User(id=uuid4(), username="merge-name", hashed_password="unused")
+        db.add(owner)
+        db.flush()
+        target = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="旧名称")
+        source = FaceIdentity(id=uuid4(), owner_id=owner.id, identity_name="另一个")
+        db.add_all([target, source])
+        db.flush()
+        face = add_face(db, owner, 0, source.id)
+        db.commit()
+        assert merge_identities(db, target.id, [source.id], owner.id, commit=False, identity_name="新名称")
+        db.rollback()
+        db.expire_all()
+        assert target.identity_name == "旧名称" and face.face_identity_id == source.id
+        assert merge_identities(db, target.id, [source.id], owner.id, identity_name="新名称")
+        db.expire_all()
+        assert target.identity_name == "新名称" and face.face_identity_id == target.id and source.is_deleted
+
+
 def test_deleted_anchor_is_removed_from_statistics(library):
     db, owner = library
     faces = [add_face(db, owner, angle) for angle in [0, .1]]

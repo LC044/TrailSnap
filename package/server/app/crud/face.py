@@ -570,7 +570,7 @@ def set_identity_cover(db: Session, identity_id: UUID, photo_id: UUID, owner_id:
     return True
 
 def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner_id: Optional[UUID] = None,
-                     *, commit: bool = True) -> bool:
+                     *, commit: bool = True, identity_name: Optional[str] = None) -> bool:
     from app.service.face_appearance_clusters import lock_owner, changed
     from app.db.models.face import FaceCluster
     if owner_id:
@@ -578,6 +578,8 @@ def merge_identities(db: Session, target_id: UUID, source_ids: List[UUID], owner
     target = get_identity(db, target_id, owner_id)
     if not target:
         return False
+    if identity_name is not None:
+        target.identity_name = identity_name
 
     for source_id in source_ids:
         if source_id == target_id:

@@ -490,7 +490,8 @@ def merge_identities(
     """
     合并人物。
     """
-    if not crud_face.merge_identities(db, payload.target_id, payload.source_ids, owner_id=current_user.id):
+    if not crud_face.merge_identities(db, payload.target_id, payload.source_ids,
+                                      owner_id=current_user.id, identity_name=payload.identity_name):
          raise HTTPException(status_code=400, detail="Merge failed")
 
     from app.crud.album import trigger_conditional_albums_update

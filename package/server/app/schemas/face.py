@@ -1,7 +1,7 @@
 from typing import Optional, List, Any, Literal
 from uuid import UUID
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.photo import Photo
 
@@ -111,6 +111,12 @@ class FaceIdentitySchema(BaseModel):
 class MergeRequest(BaseModel):
     source_ids: List[UUID] = Field(..., description="源人物ID列表")
     target_id: UUID = Field(..., description="目标人物ID")
+    identity_name: Optional[str] = Field(None, min_length=1, max_length=500, description="合并后人物名称")
+
+    @field_validator("identity_name", mode="before")
+    @classmethod
+    def trim_identity_name(cls, value):
+        return value.strip() if isinstance(value, str) else value
 
 class RemovePhotosRequest(BaseModel):
     photo_ids: List[UUID] = Field(..., description="要移除的照片ID列表")

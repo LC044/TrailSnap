@@ -141,7 +141,7 @@ def test_set_identity_cover_succeeds():
 def test_merge_identities_raises_400_on_failure():
     user = _user()
     db = MagicMock()
-    payload = SimpleNamespace(target_id=uuid4(), source_ids=[uuid4(), uuid4()])
+    payload = SimpleNamespace(target_id=uuid4(), source_ids=[uuid4(), uuid4()], identity_name=None)
 
     with patch.object(face_api.crud_face, "merge_identities", return_value=False):
         with pytest.raises(HTTPException) as exc_info:
@@ -153,7 +153,7 @@ def test_merge_identities_raises_400_on_failure():
 def test_merge_identities_triggers_album_update_on_success():
     user = _user()
     db = MagicMock()
-    payload = SimpleNamespace(target_id=uuid4(), source_ids=[uuid4()])
+    payload = SimpleNamespace(target_id=uuid4(), source_ids=[uuid4()], identity_name=None)
 
     with patch.object(face_api.crud_face, "merge_identities", return_value=True):
         with patch("app.crud.album.trigger_conditional_albums_update") as trigger:
@@ -161,6 +161,31 @@ def test_merge_identities_triggers_album_update_on_success():
 
     trigger.assert_called_once_with(db, user.id, None)
     assert response.code == 200
+
+
+def test_merge_request_validates_and_trims_optional_name():
+    from pydantic import ValidationError
+    from app.schemas.face import MergeRequest
+
+    args = {"target_id": uuid4(), "source_ids": [uuid4()]}
+    assert MergeRequest(**args).identity_name is None
+    assert MergeRequest(**args, identity_name="  新名字  ").identity_name == "新名字"
+    with pytest.raises(ValidationError):
+        MergeRequest(**args, identity_name="   ")
+    with pytest.raises(ValidationError):
+        MergeRequest(**args, identity_name="a" * 501)
+
+
+def test_merge_api_passes_the_name_in_the_merge_transaction():
+    from app.schemas.face import MergeRequest
+
+    user, db = _user(), MagicMock()
+    payload = MergeRequest(target_id=uuid4(), source_ids=[uuid4()], identity_name=" 新名字 ")
+    with patch.object(face_api.crud_face, "merge_identities", return_value=True) as merge, \
+         patch("app.crud.album.trigger_conditional_albums_update"):
+        face_api.merge_identities(payload=payload, db=db, current_user=user)
+    merge.assert_called_once_with(db, payload.target_id, payload.source_ids,
+                                 owner_id=user.id, identity_name="新名字")
 
 
 # ----------------------------- POST /identities/{id}/rescan -----------
