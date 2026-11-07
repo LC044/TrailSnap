@@ -8,7 +8,8 @@ PREFIX = "ts-instance:/"
 PATH_FIELDS = {"path", "file_path", "photo_storage_path", "storage_root", "model_path",
                "mmproj_path", "model_dir", "model_directory", "scan_roots", "external_directories",
                "target_dir", "target_path", "target_root_path", "live_photo_video_path",
-               "output_path", "source_path", "folder_path", "directory"}
+               "output_path", "source_path", "folder_path", "directory",
+               "folders", "targets", "target", "requested_targets", "requested_target"}
 
 
 def remap_path_fields(value, mappings, *, key: str = ""):

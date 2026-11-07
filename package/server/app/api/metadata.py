@@ -55,31 +55,47 @@ def get_photo_metadata(
 
 
 @router.put("", response_model=BaseResponse[PhotoMetadata])
-def update_photo_metadata(
+async def update_photo_metadata(
         photo_id: UUID,
         metadata: PhotoMetadataUpdate,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    result = crud_photo.update_photo_metadata(db, photo_id=photo_id, metadata=metadata, user_id=current_user.id)
+    # GPS 写回含磁盘 IO 与视频容器重写，走线程池避免阻塞事件循环
+    import asyncio
+    result = await asyncio.to_thread(
+        crud_photo.update_photo_metadata, db, photo_id=photo_id,
+        metadata=metadata, user_id=current_user.id)
     if not result:
         raise HTTPException(status_code=404, detail="Photo not found or access denied")
-    return BaseResponse.success(data=result)
+    data = BaseResponse.success(data=result)
+    write_back = getattr(result, '_write_back', None)
+    if write_back is not None:
+        data.msg = {
+            'written': '位置已写入原文件',
+            'skipped': '位置已更新，原文件格式不支持写入或文件缺失',
+            'failed': '位置已更新，但写入原文件失败',
+        }[write_back]
+    return data
 
 @router.post("/batch-location", response_model=BaseResponse[dict])
-def batch_update_location(
+async def batch_update_location(
         batch_data: BatchLocationUpdate,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
+    import asyncio
     if not batch_data.photo_ids:
         raise HTTPException(status_code=400, detail="No photo IDs provided")
 
+    write_to_file = bool(batch_data.write_to_file)
     updated_count = 0
+    write_stats = {"written": 0, "skipped": 0, "failed": 0}
     for photo_id in batch_data.photo_ids:
         update_data: dict = {
             "latitude": batch_data.latitude,
             "longitude": batch_data.longitude,
+            "write_to_file": write_to_file,
         }
         if batch_data.formatted_address:
             update_data["address"] = batch_data.formatted_address
@@ -93,11 +109,22 @@ def batch_update_location(
             update_data["country"] = batch_data.country
 
         metadata_update = PhotoMetadataUpdate(**update_data)
-        result = crud_photo.update_photo_metadata(
+        # 写回含磁盘 IO 与视频容器重写，走线程池避免阻塞事件循环；
+        # 逐个串行执行，避免并发写同一存储卷（disk_budget 单卷限流也会串行化）。
+        result = await asyncio.to_thread(
+            crud_photo.update_photo_metadata,
             db, photo_id=photo_id, metadata=metadata_update, user_id=current_user.id
         )
         if result:
             updated_count += 1
+            if write_to_file:
+                write_stats[getattr(result, '_write_back', 'skipped')] += 1
 
-    return BaseResponse(data={"message": f"Successfully updated location for {updated_count} photos", "count": updated_count})
+    payload = {"message": f"Successfully updated location for {updated_count} photos",
+               "count": updated_count}
+    if write_to_file:
+        # 分项统计：written=写回成功；skipped=格式不支持或文件缺失；failed=写回失败
+        # （数据库更新不受影响）。
+        payload["write_back"] = write_stats
+    return BaseResponse(data=payload)
 

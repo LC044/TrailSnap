@@ -63,6 +63,8 @@ class TimeFromFilenameRequest(BaseModel):
     custom_time: Optional[str] = None
 
 router = APIRouter()
+from app.api.toolbox_workflows import router as workflow_router
+router.include_router(workflow_router)
 
 @router.post("/duplicate-photos/scan", response_model=BaseResponse[TaskResponse])
 def scan_duplicate_photos(
@@ -404,13 +406,7 @@ def start_organize_task(
     if existing_task:
         return BaseResponse(data=existing_task)
 
-    task = TaskManager.get_instance().add_task(
-        db,
-        type=TaskType.ORGANIZE_PHOTOS,
-        payload=req.model_dump(),
-        owner_id=current_user.id
-    )
-    return BaseResponse(data=task)
+    return BaseResponse.fail(code=400, msg="旧版整理接口已停用，请指定影像范围并通过 /toolbox/plans 预览和确认执行")
 
 @router.post("/organize/preview-options", response_model=BaseResponse[OrganizePreviewOptionsResponse])
 def get_organize_preview_options(
@@ -565,13 +561,7 @@ def start_rename_task(
     if existing_task:
         return BaseResponse(data=existing_task)
 
-    task = TaskManager.get_instance().add_task(
-        db,
-        type=TaskType.BATCH_RENAME,
-        payload=req.model_dump(),
-        owner_id=current_user.id
-    )
-    return BaseResponse(data=task)
+    return BaseResponse.fail(code=400, msg="旧版重命名接口已停用，请指定影像范围并通过 /toolbox/plans 预览和确认执行")
 
 @router.get("/rename/tasks/latest", response_model=BaseResponse[Optional[TaskResponse]])
 def get_latest_rename_task(

@@ -31,6 +31,15 @@
         <ImagePlus class="w-5 h-5" />
         <span class="hidden sm:inline">添加照片</span>
       </button>
+      <div v-if="isUserAlbum && album?.ownerId === userStore.userInfo?.id" class="relative">
+        <button type="button" class="ts-glass-button" aria-label="批量处理此相册" :aria-expanded="showToolMenu" @click="showToolMenu = !showToolMenu">
+          <Wrench class="h-5 w-5" />
+        </button>
+        <AdaptiveMenu v-model="showToolMenu" title="处理此相册" close-on-action mobile-presentation="popover">
+          <button type="button" class="ts-action-row" @click="router.push({ path: '/toolbox/organize', query: { album: albumId } })"><Folder class="h-[18px] w-[18px]" />整理这些影像</button>
+          <button type="button" class="ts-action-row" @click="router.push({ path: '/toolbox/rename', query: { album: albumId } })"><Tag class="h-[18px] w-[18px]" />批量重命名</button>
+        </AdaptiveMenu>
+      </div>
       <el-dropdown
         v-if="album && album.type !== 'system'"
         trigger="click"
@@ -141,7 +150,8 @@ import { useAlbumStore } from '@/stores/albumStore'
 import { usePhotoStore } from '@/stores/photoStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { albumService } from '@/api/album'
-import { Folder, Loader2, Check, ImagePlus, MoreVertical, Edit2, Trash2, Image as ImageIcon } from 'lucide-vue-next'
+import { Folder, Loader2, Check, ImagePlus, MoreVertical, Edit2, Trash2, Wrench, Tag, Image as ImageIcon } from 'lucide-vue-next'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
 import UnifiedPhotoPage from '@/components/UnifiedPhotoPage.vue'
 import PhotoSelectorDialog from '@/components/PhotoSelectorDialog.vue'
 import { format } from 'date-fns'
@@ -164,6 +174,7 @@ const isUserAlbum = computed(() => album.value?.type === 'user' || album.value?.
 
 // UI State
 const showPhotoSelector = ref(false)
+const showToolMenu = ref(false)
 
 const pendingRemoveIds = ref(new Set<string>())
 

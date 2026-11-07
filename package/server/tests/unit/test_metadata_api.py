@@ -84,6 +84,7 @@ def test_get_photo_metadata_404_when_row_missing():
 
 
 def test_update_photo_metadata_returns_wrapped_result():
+    import asyncio
     photo_id = uuid4()
     db = MagicMock()
     user = _user()
@@ -91,15 +92,15 @@ def test_update_photo_metadata_returns_wrapped_result():
         longitude=121.0, latitude=31.0, city="上海",
         address="外滩", province="上海市", district=None,
         country="中国", make=None, model=None,
-        shooting_params=None, exif_info=None,
+        shooting_params=None, exif_info=None, write_to_file=False,
     )
     fake_result = SimpleNamespace(id=photo_id, city="上海")
 
     with patch("app.api.metadata.crud_photo.update_photo_metadata", return_value=fake_result) as update:
         with patch("app.api.metadata.BaseResponse.success") as success:
-            metadata_api.update_photo_metadata(
+            result = asyncio.run(metadata_api.update_photo_metadata(
                 photo_id=photo_id, metadata=payload, db=db, current_user=user,
-            )
+            ))
 
     update.assert_called_once_with(db, photo_id=photo_id, metadata=payload, user_id=user.id)
     success.assert_called_once()
@@ -107,6 +108,7 @@ def test_update_photo_metadata_returns_wrapped_result():
 
 
 def test_update_photo_metadata_404_when_helper_returns_none():
+    import asyncio
     photo_id = uuid4()
     db = MagicMock()
     user = _user()
@@ -114,14 +116,14 @@ def test_update_photo_metadata_404_when_helper_returns_none():
         longitude=None, latitude=None, city=None,
         address=None, province=None, district=None,
         country=None, make=None, model=None,
-        shooting_params=None, exif_info=None,
+        shooting_params=None, exif_info=None, write_to_file=False,
     )
 
     with patch("app.api.metadata.crud_photo.update_photo_metadata", return_value=None):
         with pytest.raises(HTTPException) as exc_info:
-            metadata_api.update_photo_metadata(
+            asyncio.run(metadata_api.update_photo_metadata(
                 photo_id=photo_id, metadata=payload, db=db, current_user=user,
-            )
+            ))
 
     assert exc_info.value.status_code == 404
     assert "Photo not found" in exc_info.value.detail
@@ -131,20 +133,21 @@ def test_update_photo_metadata_404_when_helper_returns_none():
 
 
 def test_batch_update_location_400_on_empty_photo_ids():
+    import asyncio
     db = MagicMock()
     user = _user()
     payload = SimpleNamespace(
         photo_ids=[],
         latitude=10.0, longitude=20.0,
         formatted_address=None, province=None, city=None,
-        district=None, country=None,
+        district=None, country=None, write_to_file=False,
     )
 
     with patch("app.api.metadata.crud_photo.update_photo_metadata") as update:
         with pytest.raises(HTTPException) as exc_info:
-            metadata_api.batch_update_location(
+            asyncio.run(metadata_api.batch_update_location(
                 batch_data=payload, db=db, current_user=user,
-            )
+            ))
 
     assert exc_info.value.status_code == 400
     detail = exc_info.value.detail
@@ -153,6 +156,7 @@ def test_batch_update_location_400_on_empty_photo_ids():
 
 
 def test_batch_update_location_counts_only_successful_rows():
+    import asyncio
     db = MagicMock()
     user = _user()
     payload = SimpleNamespace(
@@ -160,6 +164,7 @@ def test_batch_update_location_counts_only_successful_rows():
         latitude=31.2304, longitude=121.4737,
         formatted_address="上海市 黄浦区",
         province="上海市", city="上海市", district="黄浦区", country="中国",
+        write_to_file=False,
     )
 
     def _fake_update(db_inner, photo_id, metadata, user_id):
@@ -168,9 +173,9 @@ def test_batch_update_location_counts_only_successful_rows():
         return SimpleNamespace(id=photo_id)
 
     with patch("app.api.metadata.crud_photo.update_photo_metadata", side_effect=_fake_update) as update:
-        result = metadata_api.batch_update_location(
+        result = asyncio.run(metadata_api.batch_update_location(
             batch_data=payload, db=db, current_user=user,
-        )
+        ))
 
     assert update.call_count == 3
     for call in update.call_args_list:
@@ -182,16 +187,19 @@ def test_batch_update_location_counts_only_successful_rows():
 
     assert result.data["count"] == 2
     assert "Successfully updated location for 2 photos" in result.data["message"]
+    # write_to_file=False 时不返回写回统计（向后兼容的响应形状）
+    assert "write_back" not in result.data
 
 
 def test_batch_update_location_omits_unset_optional_fields():
+    import asyncio
     db = MagicMock()
     user = _user()
     payload = SimpleNamespace(
         photo_ids=[uuid4()],
         latitude=10.0, longitude=20.0,
         formatted_address=None, province=None, city=None,
-        district=None, country=None,
+        district=None, country=None, write_to_file=False,
     )
     captured = []
 
@@ -200,9 +208,9 @@ def test_batch_update_location_omits_unset_optional_fields():
         return SimpleNamespace(id=photo_id)
 
     with patch("app.api.metadata.crud_photo.update_photo_metadata", side_effect=_capture):
-        result = metadata_api.batch_update_location(
+        result = asyncio.run(metadata_api.batch_update_location(
             batch_data=payload, db=db, current_user=user,
-        )
+        ))
 
     assert len(captured) == 1
     meta = captured[0]
@@ -215,3 +223,64 @@ def test_batch_update_location_omits_unset_optional_fields():
     assert result.data["count"] == 1
 
 
+
+
+# ----------------------- write_to_file 批量写回统计 -----------------------
+
+
+def test_batch_update_location_aggregates_write_back_stats():
+    import asyncio
+    db = MagicMock()
+    user = _user()
+    ids = [uuid4(), uuid4(), uuid4()]
+    payload = SimpleNamespace(
+        photo_ids=ids,
+        latitude=31.0, longitude=121.0,
+        formatted_address=None, province=None, city=None,
+        district=None, country=None, write_to_file=True,
+    )
+
+    statuses = iter(['written', 'skipped', 'failed'])
+    results = {}
+    for pid in ids:
+        row = SimpleNamespace(id=pid)
+        object.__setattr__(row, '_write_back', next(statuses))
+        results[pid] = row
+
+    def _fake_update(db_inner, photo_id, metadata, user_id):
+        return results.get(photo_id)
+
+    with patch("app.api.metadata.crud_photo.update_photo_metadata",
+               side_effect=_fake_update) as update:
+        result = asyncio.run(metadata_api.batch_update_location(
+            batch_data=payload, db=db, current_user=user,
+        ))
+
+    assert update.call_count == 3
+    # 每个请求都携带 write_to_file=True
+    for call in update.call_args_list:
+        assert call.kwargs["metadata"].write_to_file is True
+
+    stats = result.data["write_back"]
+    assert stats == {"written": 1, "skipped": 1, "failed": 1}
+    assert result.data["count"] == 3
+
+
+def test_batch_update_location_without_write_flag_has_no_stats():
+    import asyncio
+    db = MagicMock()
+    user = _user()
+    payload = SimpleNamespace(
+        photo_ids=[uuid4()],
+        latitude=10.0, longitude=20.0,
+        formatted_address=None, province=None, city=None,
+        district=None, country=None, write_to_file=False,
+    )
+
+    with patch("app.api.metadata.crud_photo.update_photo_metadata",
+               return_value=SimpleNamespace(id=uuid4())):
+        result = asyncio.run(metadata_api.batch_update_location(
+            batch_data=payload, db=db, current_user=user,
+        ))
+
+    assert "write_back" not in result.data

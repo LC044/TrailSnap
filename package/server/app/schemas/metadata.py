@@ -44,7 +44,9 @@ class PhotoMetadataCreate(PhotoMetadataBase):
 
 
 class PhotoMetadataUpdate(PhotoMetadataBase):
-    pass
+    # 是否把 GPS 坐标写回原文件（图片 EXIF / 视频 QuickTime 原子）。
+    # 默认 False：仅更新数据库，行为与历史版本完全一致。
+    write_to_file: bool = False
 
 
 class BatchLocationUpdate(BaseModel):
@@ -56,6 +58,8 @@ class BatchLocationUpdate(BaseModel):
     city: Optional[str] = None
     district: Optional[str] = None
     country: Optional[str] = None
+    # 是否把 GPS 坐标写回原文件，语义同 PhotoMetadataUpdate.write_to_file。
+    write_to_file: bool = False
 
 class PhotoMetadata(PhotoMetadataBase):
     photo_id: UUID

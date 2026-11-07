@@ -51,6 +51,13 @@
 
         <el-input v-model="formattedAddress" placeholder="自定义地址（留空使用自动解析）" size="small" />
 
+        <el-checkbox v-model="writeToFile" class="batch-location-write-file">
+          <span class="text-xs">写入原文件</span>
+        </el-checkbox>
+        <p v-if="writeToFile" class="text-xs text-amber-600 dark:text-amber-400 -mt-2">
+          勾选后会把新位置写入照片/视频原文件（EXIF / QuickTime 元数据），下载到其他设备后位置仍会保留
+        </p>
+
         <div class="batch-location-photos flex-1 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-2 bg-white dark:bg-gray-900">
           <div class="grid grid-cols-3 gap-1">
             <div v-for="photo in photos" :key="photo.id" class="aspect-square rounded overflow-hidden">
@@ -105,6 +112,7 @@ const mapLoading = ref(false)
 const submitting = ref(false)
 const searchQuery = ref('')
 const formattedAddress = ref('')
+const writeToFile = ref(false)
 const batchLocationDetail = ref<LocationDetail | null>(null)
 let openingGeneration = 0
 
@@ -158,6 +166,7 @@ const destroyBatchMap = () => {
   destroyMap()
   searchQuery.value = ''
   formattedAddress.value = ''
+  writeToFile.value = false
   batchLocationDetail.value = null
 }
 
@@ -190,14 +199,30 @@ const handleApply = async () => {
   submitting.value = true
   try {
     const detail = batchLocationDetail.value || currentLocationDetail.value
-    await albumService.batchUpdateLocation(
+    const result = await albumService.batchUpdateLocation(
       props.photoIds,
       currentMapLat.value,
       currentMapLng.value,
       formattedAddress.value || detail?.address || undefined,
-      detail
+      detail,
+      writeToFile.value
     )
-    ElMessage.success(`已更新 ${props.photoIds.length} 张照片的位置`)
+    if (writeToFile.value && result?.write_back) {
+      const stats = result.write_back
+      const parts: string[] = [`写入 ${stats.written} 个文件`]
+      if (stats.skipped > 0) parts.push(`${stats.skipped} 个格式不支持已跳过`)
+      if (stats.failed > 0) parts.push(`${stats.failed} 个写入失败`)
+      const summary = parts.join('，')
+      if (stats.failed > 0) {
+        ElMessage.warning(`已更新 ${result.count} 张位置，${summary}（数据库已更新，原文件未变）`)
+      } else if (stats.skipped > 0) {
+        ElMessage.success(`已更新 ${result.count} 张位置，${summary}`)
+      } else {
+        ElMessage.success(`已更新 ${result.count} 张位置并全部写入原文件`)
+      }
+    } else {
+      ElMessage.success(`已更新 ${props.photoIds.length} 张照片的位置`)
+    }
     dialogVisible.value = false
     emit('success')
   } catch (error) {
