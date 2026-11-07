@@ -320,14 +320,14 @@ export const albumService = {
       return data.data;
   },
   
-  async updateMetadata(photoId: string, metadata: Partial<PhotoMetadata>) {
+  async updateMetadata(photoId: string, metadata: Partial<PhotoMetadata> & { write_to_file?: boolean }) {
       const url = `/api/metadata?photo_id=${photoId}`;
       const data = await request.put<PhotoMetadata>(url, metadata);
       return data.data;
   },
 
-  async batchUpdateLocation(photoIds: string[], lat: number, lng: number, formattedAddress?: string, locationDetail?: { province?: string; city?: string; district?: string; country?: string }) {
-      const data = await request.post<{message: string, count: number}>('/api/metadata/batch-location', {
+  async batchUpdateLocation(photoIds: string[], lat: number, lng: number, formattedAddress?: string, locationDetail?: { province?: string; city?: string; district?: string; country?: string }, writeToFile?: boolean) {
+      const data = await request.post<{message: string, count: number, write_back?: {written: number; skipped: number; failed: number}}>('/api/metadata/batch-location', {
           photo_ids: photoIds,
           latitude: lat,
           longitude: lng,
@@ -335,7 +335,8 @@ export const albumService = {
           province: locationDetail?.province,
           city: locationDetail?.city,
           district: locationDetail?.district,
-          country: locationDetail?.country
+          country: locationDetail?.country,
+          write_to_file: writeToFile ?? false
       });
       return data.data;
   },

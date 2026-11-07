@@ -24,7 +24,8 @@ const MoonJournal = () => import('@/views/moon/MoonJournal.vue');
 const SearchResult = () => import('@/views/search/SearchResult.vue');
 const MobileSearch = () => import('@/views/search/MobileSearch.vue');
 const CleanupPage = () => import('@/views/toolbox/CleanupPage.vue');
-const ToolboxPage = () => import('@/views/toolbox/ToolboxPage.vue');
+const ToolboxPage = () => import('@/views/toolbox/ToolboxHomePage.vue');
+const ToolWorkflowPage = () => import('@/views/toolbox/ToolWorkflowPage.vue');
 const SimilarPhotoCleanup = () => import('@/views/toolbox/SimilarPhotoCleanup.vue');
 const DuplicatePhotoCleanup = () => import('@/views/toolbox/DuplicatePhotoCleanup.vue');
 const TicketEdit = () => import('@/views/More.vue');
@@ -79,12 +80,13 @@ const routes: RouteRecordRaw[] = [
       { path: '/search/image', name: 'ImageSearch', component: () => import('@/views/search/ImageSearch.vue'), meta: { title: '以图搜图', navGroup: 'photos' } },
       { path: '/search', name: 'SearchResult', component: SearchResult, meta: { title: '搜索结果', navGroup: 'photos' } },
       { path: '/toolbox', name: 'Toolbox', component: ToolboxPage, meta: { title: '工具箱', navGroup: 'tools' } },
-      { path: '/toolbox/similar', name: 'SimilarPhotoCleanup', component: SimilarPhotoCleanup, meta: { title: '相似照片清理', navGroup: 'tools' } },
-      { path: '/toolbox/duplicate', name: 'DuplicatePhotoCleanup', component: DuplicatePhotoCleanup, meta: { title: '重复照片清理', navGroup: 'tools' } },
-      { path: '/toolbox/organize', name: 'OrganizePhotos', component: () => import('@/views/toolbox/OrganizePage.vue'), meta: { title: '图片文件整理', navGroup: 'tools' } },
-      { path: '/toolbox/rename', name: 'BatchRename', component: () => import('@/views/toolbox/RenamePage.vue'), meta: { title: '批量重命名', navGroup: 'tools' } },
-      { path: '/toolbox/time-from-filename', name: 'TimeFromFilename', component: () => import('@/views/toolbox/TimeFromFilenamePage.vue'), meta: { title: '从文件名修改拍摄信息', navGroup: 'tools' } },
-      { path: '/toolbox/cleanup', name: 'ToolboxCleanup', component: CleanupPage, meta: { title: '清理相册', navGroup: 'tools' } },
+      { path: '/toolbox/similar', name: 'SimilarPhotoCleanup', component: ToolWorkflowPage, props: { kind: 'cleanup', cleanupMode: 'similar' }, meta: { title: '相似照片清理', navGroup: 'tools' } },
+      { path: '/toolbox/duplicate', name: 'DuplicatePhotoCleanup', component: ToolWorkflowPage, props: { kind: 'cleanup', cleanupMode: 'duplicate' }, meta: { title: '重复照片清理', navGroup: 'tools' } },
+      { path: '/toolbox/organize', name: 'OrganizePhotos', component: ToolWorkflowPage, props: { kind: 'organize' }, meta: { title: '影像整理', navGroup: 'tools' } },
+      { path: '/toolbox/rename', name: 'BatchRename', component: ToolWorkflowPage, props: { kind: 'rename' }, meta: { title: '批量重命名', navGroup: 'tools' } },
+      { path: '/toolbox/albums', name: 'ToolboxAlbums', component: ToolWorkflowPage, props: { kind: 'album' }, meta: { title: '按规则创建相册', navGroup: 'tools' } },
+      { path: '/toolbox/time-from-filename', name: 'TimeFromFilename', component: ToolWorkflowPage, props: { kind: 'metadata' }, meta: { title: '修正拍摄信息', navGroup: 'tools' } },
+      { path: '/toolbox/cleanup', name: 'ToolboxCleanup', component: ToolWorkflowPage, props: { kind: 'cleanup', cleanupMode: 'quality' }, meta: { title: '低质量照片清理', navGroup: 'tools' } },
       { path: '/toolbox/ticket-edit', name: 'TicketEdit', component: TicketEdit, meta: { title: '车票编辑', navGroup: 'tickets' } },
       { path: '/recycle-bin', name: 'RecycleBin', component: RecycleBinPage, meta: { title: '回收站', navGroup: 'more' } },
       { path: '/photos', name: 'Photos', component: PhotosPage, meta: { title: '所有照片', keepAlive: true, navGroup: 'photos' } },

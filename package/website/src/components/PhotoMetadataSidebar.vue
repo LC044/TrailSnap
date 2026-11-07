@@ -350,6 +350,12 @@
           <p>纬度: {{ locationMapHasMarker ? currentMapLat.toFixed(6) : '--' }}</p>
         </div>
         <el-input v-model="locationForm.address" placeholder="详细地址" size="small" />
+        <el-checkbox v-model="locationWriteToFile" class="location-write-file">
+          <span class="text-xs">写入原文件</span>
+        </el-checkbox>
+        <p v-if="locationWriteToFile" class="text-xs text-amber-600 dark:text-amber-400 -mt-2">
+          会把新位置写入原文件（EXIF / QuickTime 元数据），下载到其他设备后位置仍会保留
+        </p>
         <p class="text-xs" :class="locationLookupFailed ? 'text-red-500 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'">
           {{ resolvingLocation ? '正在解析位置...' : locationLookupFailed ? '位置解析失败，请重新选择地图位置' : '拖拽地图标记可更新经纬度' }}
         </p>
@@ -473,6 +479,7 @@ const showLocationEditDialog = ref(false)
 const savingLocation = ref(false)
 const locationMapLoading = ref(false)
 const locationSearchQuery = ref('')
+const locationWriteToFile = ref(false)
 
 const locationForm = reactive({
   latitude: 0 as number,
@@ -763,6 +770,7 @@ const openLocationEditDialog = () => {
     locationForm.district = props.metadata.district || ''
     locationForm.country = props.metadata.country || ''
     locationSearchQuery.value = ''
+    locationWriteToFile.value = false
     showLocationEditDialog.value = true
 }
 
@@ -793,7 +801,7 @@ const saveLocationEdit = async () => {
     if (!props.image || !locationMapHasMarker.value || resolvingLocation.value || locationLookupFailed.value) return
     savingLocation.value = true
     try {
-        const updates: Partial<PhotoMetadata> = {
+        const updates: Partial<PhotoMetadata> & { write_to_file?: boolean } = {
             latitude: currentMapLat.value,
             longitude: currentMapLng.value,
             address: locationForm.address,
@@ -801,10 +809,15 @@ const saveLocationEdit = async () => {
             city: locationForm.city,
             district: locationForm.district,
             country: locationForm.country,
+            write_to_file: locationWriteToFile.value,
         }
         const updated = await albumService.updateMetadata(props.image.id, updates)
         emit('update', { id: props.image.id, ...updated })
-        ElMessage.success('位置更新成功')
+        if (locationWriteToFile.value) {
+            ElMessage.success('位置已更新，并已写入原文件')
+        } else {
+            ElMessage.success('位置更新成功')
+        }
         showLocationEditDialog.value = false
     } catch (error) {
         console.error('Failed to update location', error)

@@ -276,7 +276,7 @@ def test_start_organize_task_reuses_existing_pending():
     assert response.data is existing
 
 
-def test_start_organize_task_creates_when_no_existing():
+def test_start_organize_task_requires_scoped_preview_when_no_existing():
     user = _user()
     db = MagicMock()
     new_task = _task(TaskType.ORGANIZE_PHOTOS, owner_id=user.id,
@@ -295,8 +295,9 @@ def test_start_organize_task_creates_when_no_existing():
             db=db, current_user=user,
         )
 
-    assert response.code == 0
-    assert response.data is new_task
+    assert response.code == 400
+    assert response.data is None
+    assert "plans" in response.msg
 
 
 def test_get_latest_organize_task_includes_completed_in_search():
@@ -372,7 +373,7 @@ def test_start_rename_task_reuses_existing_pending():
     assert response.data is existing
 
 
-def test_start_rename_task_enqueues_when_no_pending():
+def test_start_rename_task_requires_scoped_preview_when_no_pending():
     user = _user()
     db = MagicMock()
     new_task = _task(TaskType.BATCH_RENAME, owner_id=user.id,
@@ -389,7 +390,9 @@ def test_start_rename_task_enqueues_when_no_pending():
             db=db, current_user=user,
         )
 
-    assert response.data is new_task
+    assert response.code == 400
+    assert response.data is None
+    assert "plans" in response.msg
 
 
 def test_get_latest_rename_task_returns_completed_after_failure():

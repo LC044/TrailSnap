@@ -246,6 +246,12 @@
       >
         <template #batch-actions="{ selectedIds, clearSelection }">
             <slot name="batch-actions" :selected-ids="selectedIds" :clear-selection="clearSelection"></slot>
+            <button v-if="selectedIds.size" type="button" class="ts-action-row" aria-label="整理所选影像" @click="openSelectedTool(Array.from(selectedIds), 'organize')">
+              <FolderTree class="h-[18px] w-[18px]" /><span>整理所选影像</span>
+            </button>
+            <button v-if="selectedIds.size" type="button" class="ts-action-row" aria-label="重命名所选影像" @click="openSelectedTool(Array.from(selectedIds), 'rename')">
+              <Tag class="h-[18px] w-[18px]" /><span>重命名所选影像</span>
+            </button>
         </template>
         
         <template #overlay-actions="{ photo }">
@@ -332,6 +338,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { openToolForSelection } from '@/utils/toolboxEntry'
 import PhotoTimeOverview from '@/components/PhotoTimeOverview.vue'
 import { timelineParts, nearestTimelinePhoto, type TimeField, type TimeGranularity } from '@/utils/photoTimeline'
 import BackButton from '@/components/ui/BackButton.vue'
@@ -342,7 +349,7 @@ import { injectTheme } from '@/composables/useTheme'
 import { useMediaQuery, useIntersectionObserver, useResizeObserver } from '@vueuse/core'
 import {
   Grid3x3, Grid2x2, Maximize, LayoutDashboard, LayoutGrid, LayoutList,
-  UploadCloud, Check, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen } from 'lucide-vue-next'
+  UploadCloud, Check, CheckSquare, Settings2, FolderTree, RefreshCw, BookOpen, Tag } from 'lucide-vue-next'
 import { ElMessageBox, ElMessage, ElNotification } from 'element-plus'
 
 import PhotoGallery from '@/components/PhotoGallery.vue'
@@ -603,6 +610,10 @@ const store = computed(() => props.store || photoStore)
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const openSelectedTool = (ids: string[], kind: 'organize' | 'rename') => {
+  try { return openToolForSelection(router, userStore.userInfo?.id || '', ids, kind) }
+  catch { ElMessage.error('无法保存当前选择，请从工具箱手动选择范围') }
+}
 const granularity = computed<TimeGranularity>(() => props.enableTimeBrowse ? store.value.browseGranularity : 'day')
 const timeViewLabels = { day: '日', month: '月', year: '年' } as const
 const nextGranularity = computed<TimeGranularity>(() => ({ day: 'month', month: 'year', year: 'day' } as const)[granularity.value])

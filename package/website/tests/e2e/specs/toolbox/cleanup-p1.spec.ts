@@ -1,56 +1,57 @@
-import { test, expect, type Route } from '@playwright/test'
+import { test, expect } from '@playwright/test'
 
 import { ensureAuthSession } from '../../helpers/auth'
 
-const cleanupApi = '**/api/toolbox/cleanup**'
+/**
+ * REQ-238 工具箱重构后，/toolbox/cleanup 不再直连 /api/toolbox/cleanup 列表接口，
+ * 而是与整理/重命名共用 ToolWorkflowPage 的「选择范围 → 设置规则 → 预览并执行」工作流。
+ * 旧页面的空态文案、排序下拉和列表接口都不存在了，这里改为验证新页面的范围契约：
+ * 默认不预选全库、范围来源可切换、范围核对失败时页面仍可用。
+ */
 
-function fulfillCleanup(route: Route, photos: unknown[]) {
-  return route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ code: 0, message: 'success', data: photos }),
-  })
-}
-
-test.describe('P1 - 清理相册页面 @toolbox-cleanup', () => {
+test.describe('P1 - 低质量照片清理工作流 @toolbox-cleanup', () => {
   test.beforeEach(async ({ page, request }, testInfo) => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('无低分照片时显示空态和处理建议', async ({ page }) => {
-    await page.route(cleanupApi, route => fulfillCleanup(route, []))
-
+  test('默认不预选全库，需显式选择范围后才能设置规则', async ({ page }) => {
     await page.goto('/toolbox/cleanup')
     await expect(page).toHaveURL(/\/toolbox\/cleanup/)
-    await expect(page.getByRole('heading', { name: '清理相册' })).toBeVisible()
-    await expect(page.getByText('暂无照片，请在完成')).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByRole('link', { name: '大模型智能分析任务' })).toHaveAttribute('href', '/settings#tasks')
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible()
+    await expect(page.getByText('先选范围，预览变化，再确认执行。')).toBeVisible()
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+    await expect(page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '相册' }))
+      .toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByText('范围与整理规则独立。不会默认处理整个图库。')).toBeVisible()
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
   })
 
-  test('切换排序后以降序重新请求清理照片', async ({ page }) => {
-    const requests: string[] = []
-    await page.route(cleanupApi, async route => {
-      requests.push(route.request().url())
-      await fulfillCleanup(route, [])
-    })
-
+  test('切换范围来源会更新范围摘要并解锁下一步', async ({ page }) => {
     await page.goto('/toolbox/cleanup')
-    await expect(page.getByText('暂无照片，请在完成')).toBeVisible({ timeout: 10_000 })
+    const sources = page.getByRole('group', { name: '范围来源' })
 
-    const sort = page.locator('select')
-    await expect(sort).toHaveValue('asc')
-    await sort.selectOption('desc')
-    await expect.poll(() => requests.length).toBeGreaterThanOrEqual(2)
-    expect(requests.at(-1)).toContain('sort_by=desc')
-    await expect(sort).toHaveValue('desc')
+    await sources.getByRole('button', { name: '文件夹' }).click()
+    await expect(page.getByRole('button', { name: '选择文件夹' })).toBeVisible()
+    await expect(page.getByText('尚未选择文件夹')).toBeVisible()
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
+
+    await sources.getByRole('button', { name: '全部' }).click()
+    await expect(page.getByText('你已主动选择全部影像，请特别注意执行前的影响范围。')).toBeVisible()
+    await expect(page.getByText('全部图库（主动选择）')).toBeVisible()
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeEnabled()
   })
 
-  test('清理照片接口失败时显示错误提示并保持页面可用', async ({ page }) => {
-    await page.route(cleanupApi, route => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }))
+  test('范围核对失败时显示错误提示并保持页面可用', async ({ page }) => {
+    await page.route('**/api/toolbox/scopes/preview**', route => route.fulfill({
+      status: 500, contentType: 'application/json', body: '{}',
+    }))
 
     await page.goto('/toolbox/cleanup')
-    await expect(page.getByRole('heading', { name: '清理相册' })).toBeVisible()
-    await expect(page.getByText('获取照片失败')).toBeVisible({ timeout: 10_000 })
-    await expect(page.locator('select')).toBeVisible()
+    await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部' }).click()
+    await page.getByRole('button', { name: '查看范围内影像' }).click()
+
+    await expect(page.getByText('范围核对失败，请检查选择并重试')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible()
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
   })
 })
