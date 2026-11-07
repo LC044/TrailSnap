@@ -5,7 +5,7 @@ import { ensureAuthSession } from '../../helpers/auth';
  * Smoke / 视图合同 - 第三组补测
  *
  * 命中此前覆盖偏薄的视图：
- *   - /toolbox       工具箱首页（6 张工具卡 + 最近活动占位）
+ *   - /toolbox       工具箱首页（整理与命名 / 清理与修复两组卡片 + 操作记录）
  *   - /annual-report 年度报告（白名单，无 token 也可访问）
  *   - /game          猜城市游戏（空数据 / 加载 / 交互骨架）
  *
@@ -18,41 +18,42 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return;
   });
 
-  test('Toolbox 首页 - 渲染 6 张工具卡且卡片可点击导航', async ({ page }) => {
+  test('Toolbox 首页 - 渲染分组工具卡且卡片可点击导航', async ({ page }) => {
     await page.goto('/toolbox');
 
-    // 标题
-    await expect(page.getByRole('heading', { name: '工具箱' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '工具箱' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('region', { name: '整理与命名' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '清理与修复' })).toBeVisible();
 
-    // 6 张工具卡
-    const toolTitles = [
-      '低分清理',
-      '相似照片清理',
-      '清理重复',
-      '图片整理',
-      '批量重命名',
-      '修改图片元数据',
+    // 重构后首页按用途分组：整理与命名 3 张 + 清理与修复 4 张，共 7 个入口。
+    const tools: Array<[string, string]> = [
+      ['影像整理', '/toolbox/organize'],
+      ['批量重命名', '/toolbox/rename'],
+      ['按规则创建相册', '/toolbox/albums'],
+      ['重复照片', '/toolbox/duplicate'],
+      ['相似照片', '/toolbox/similar'],
+      ['低质量照片', '/toolbox/cleanup'],
+      ['修正拍摄信息', '/toolbox/time-from-filename'],
     ];
-    for (const title of toolTitles) {
-      await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
+    for (const [title, href] of tools) {
+      await expect(page.getByRole('link', { name: new RegExp(title) }).first()).toHaveAttribute('href', href);
     }
 
-    // 最近活动占位
-    await expect(page.getByText('暂无最近活动')).toBeVisible();
+    // 旧「暂无最近活动」占位改为「操作记录」分区，记录来自持久化预览计划。
+    await expect(page.getByRole('region', { name: '操作记录' })).toBeVisible();
 
-    // 点击「批量重命名」卡应导航到 /toolbox/rename
-    await page.getByText('批量重命名', { exact: true }).first().click();
+    await page.getByRole('link', { name: /批量重命名/ }).first().click();
     await expect(page).toHaveURL(/\/toolbox\/rename$/);
-    await expect(page.locator('h1', { hasText: '批量重命名' })).toBeVisible();
+    await expect(page.locator('h1.ts-page-title', { hasText: '批量重命名' })).toBeVisible({ timeout: 10_000 });
   });
 
-  test('Toolbox 首页 - 「低分清理」卡片跳转到清理页', async ({ page }) => {
+  test('Toolbox 首页 - 「低质量照片」卡片跳转到清理页', async ({ page }) => {
     await page.goto('/toolbox');
-    await expect(page.getByRole('heading', { name: '工具箱' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '工具箱' })).toBeVisible({ timeout: 10_000 });
 
-    await page.getByText('低分清理', { exact: true }).first().click();
+    await page.getByRole('link', { name: /低质量照片/ }).first().click();
     await expect(page).toHaveURL(/\/toolbox\/cleanup$/);
-    await expect(page.getByRole('heading', { name: '清理相册' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('年度报告页 - 白名单路由不会踢去 /login', async ({ page }) => {

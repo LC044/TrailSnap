@@ -389,59 +389,17 @@ test.describe('P1 - DuplicatePhotoCleanup 重复照片清理 @views-coverage', (
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  test('加载重复组 -> 渲染 重复组 1 (2 张) -> 删除冗余触发 DELETE /api/photos/batch', async ({ page }) => {
-    const dupCalls: string[] = []
-    const deleteCalls: { url: string; body: unknown }[] = []
-
-    await page.route('**/api/toolbox/duplicate**', async (route) => {
-      dupCalls.push(route.request().url())
-      // Note: DuplicatePhotoCleanup.vue calls result.map() on the response, so we
-      // mock the unwrapped array shape (the production axios interceptor returns
-      // the full BaseResponse wrapper, but the consumer treats it as an array).
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          {
-            md5: 'md5-aaa',
-            photos: [
-              { id: 'p1', filename: 'a.jpg', thumbnail: '', file_path: '/tmp/a.jpg', file_type: 'photo', taken_at: null },
-              { id: 'p2', filename: 'b.jpg', thumbnail: '', file_path: '/tmp/b.jpg', file_type: 'photo', taken_at: null },
-            ],
-          },
-        ]),
-      })
-    })
-
-    await page.route('**/api/photos/batch', async (route) => {
-      try {
-        deleteCalls.push({ url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') })
-      } catch {
-        deleteCalls.push({ url: route.request().url(), body: null })
-      }
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: { deleted: 1 } }) })
-    })
-
-    page.on('dialog', (d) => d.accept().catch(() => undefined))
-
+  // REQ-238 后 /toolbox/duplicate 由 ToolWorkflowPage 承载：不再直连
+  // /api/toolbox/duplicate 聚类结果，也不再直接 DELETE /api/photos/batch；
+  // 删除候选改由持久化预览计划逐项确认后执行。
+  test('重复照片入口加载预览计划工作流，首屏不触发删除', async ({ page }) => {
     await page.goto('/toolbox/duplicate')
 
-    await expect(page.getByText(/重复组\s*1\s*\(2\s*张\)/)).toBeVisible({ timeout: 10_000 })
-    await expect.poll(() => dupCalls.length).toBeGreaterThan(0)
-
-    const selectRedundant = page.getByRole('button', { name: '选择冗余项' }).first()
-    await selectRedundant.click()
-    // 选择冗余项 -> 渲染 "删除选中 (1张)" 按钮（Element Plus 类前缀 + 文本匹配）
-    const deleteSelected = page.locator('button', { hasText: /删除选中\s*\(\d+张\)/ }).first()
-    await expect(deleteSelected).toBeVisible({ timeout: 5_000 })
-    await deleteSelected.click()
-    // ElMessageBox 确认弹窗 -> 点击 "删除"
-    const confirmBtn = page.locator('.el-message-box__btns button', { hasText: '删除' }).first()
-    await expect(confirmBtn).toBeVisible({ timeout: 5_000 })
-    await confirmBtn.click()
-
-    await expect.poll(() => deleteCalls.length, { timeout: 5_000 }).toBeGreaterThan(0)
-    expect(deleteCalls[0].body).toMatchObject({ photo_ids: expect.arrayContaining(['p2']) })
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '选择冗余项' })).toHaveCount(0)
   })
 })
 
