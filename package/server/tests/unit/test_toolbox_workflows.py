@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
@@ -24,6 +24,15 @@ pytestmark = [pytest.mark.smoke, pytest.mark.module_toolbox]
 def library(tmp_path, monkeypatch):
     monkeypatch.delenv("TS_DESKTOP_PORTABLE", raising=False)
     engine = create_engine("sqlite://")
+
+    # Production sessions enable PRAGMA foreign_keys (app/db/session.py). Keep
+    # the unit test engine aligned, otherwise FK ordering bugs stay invisible.
+    @event.listens_for(engine, "connect")
+    def _foreign_keys_on(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
     with Session(engine, expire_on_commit=False) as db:
         user = User(id=uuid4(), username="toolbox", hashed_password="unused",
@@ -114,6 +123,17 @@ def test_selection_ownership_and_exclusions(library):
     assert scope_preview(library.db, library.user, scope)["total"] == 0
 
 
+def test_scope_preview_paginates_with_sql_for_non_folder_sources(library):
+    photos = [library.add(f"{index}.jpg") for index in range(5)]
+    scope = MediaScope(source="selected", photo_ids=[p.id for p in photos])
+    pages = [scope_preview(library.db, library.user, scope, offset=offset, limit=2)
+             for offset in (0, 2, 4)]
+    assert [page["total"] for page in pages] == [5, 5, 5]
+    assert [len(page["items"]) for page in pages] == [2, 2, 1]
+    ids = [item["id"] for page in pages for item in page["items"]]
+    assert len(set(ids)) == 5
+
+
 def test_rename_template_validation_collision_and_memory(library):
     one = library.add("one.jpg")
     two = library.add("two.jpg")
@@ -128,6 +148,42 @@ def test_rename_template_validation_collision_and_memory(library):
     library.db.refresh(library.user)
     assert library.user.settings["toolbox"]["recent"][0]["template"] == config.template
     assert one.filename.startswith("IMG_")
+
+
+def test_template_validation_names_broken_placeholders():
+    with pytest.raises(ValueError) as error:
+        validate_template("IMG_{date}_{time")
+    assert "未闭合或不完整的变量" in str(error.value)
+    assert "{time" in str(error.value)
+    with pytest.raises(ValueError, match="未知变量：dat"):
+        validate_template("IMG_{dat}.jpg")
+
+
+def test_rename_sequence_only_counts_real_renames(library):
+    one = library.add("one.jpg", when=datetime(2026, 5, 1))
+    two = library.add("two.jpg", when=datetime(2026, 5, 2))
+    three = library.add("three.jpg", when=datetime(2026, 5, 3))
+    # A live-photo sidecar makes the middle item unsupported and skipped.
+    (library.root / "two.mov").write_bytes(b"live photo")
+    config = ToolConfig(kind="rename", template="IMG_{sequence3}")
+    scope = MediaScope(source="selected", photo_ids=[one.id, two.id, three.id])
+    plan = create_plan(library.db, library.user, PlanRequest(scope=scope, config=config))
+    rows = library.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id).order_by(ToolboxPlanItem.id).all()
+    assert [row.status for row in rows] == ["ready", "skipped", "ready"]
+    assert [Path(row.target).name for row in rows if row.status == "ready"] == ["IMG_001.jpg", "IMG_002.jpg"]
+
+
+def test_descending_still_keeps_undated_photos_last(library):
+    early = library.add("early.jpg", when=datetime(2026, 1, 1))
+    late = library.add("late.jpg", when=datetime(2026, 6, 1))
+    undated = library.add("undated.jpg", when=None)
+    scope = MediaScope(source="selected", photo_ids=[early.id, late.id, undated.id])
+    for descending, expected_first in ((False, early.id), (True, late.id)):
+        plan = create_plan(library.db, library.user, PlanRequest(
+            scope=scope, config=ToolConfig(kind="rename", template="PHOTO_{index}", descending=descending)))
+        rows = library.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id).order_by(ToolboxPlanItem.id).all()
+        assert rows[0].photo_id == expected_first
+        assert rows[-1].photo_id == undated.id
 
 
 def test_confirmation_expiry_and_forged_tasks(library):
@@ -218,6 +274,26 @@ def test_directory_authorization(library, tmp_path):
         allowed_directory(library.db, library.user, str(tmp_path.parent))
 
 
+def test_unconfigured_source_is_skipped_at_preview(library, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("unconfigured-storage") / "a.jpg"
+    outside.write_bytes(b"unconfigured")
+    photo = library.add("a.jpg")
+    photo.file_path = str(outside)
+    library.db.commit()
+
+    scope = MediaScope(source="selected", photo_ids=[photo.id])
+    plan = create_plan(library.db, library.user, PlanRequest(
+        scope=scope, config=ToolConfig(kind="rename", template="IMG_{date}")))
+    row = library.db.query(ToolboxPlanItem).filter_by(plan_id=plan.id).one()
+    assert row.status == "skipped" and "未接入存储" in row.reason
+    assert plan.summary["ready"] == 0
+
+    # Album plans never touch the file system, so they must not be skipped.
+    album_plan = create_plan(library.db, library.user, PlanRequest(
+        scope=scope, config=ToolConfig(kind="album")))
+    assert album_plan.summary["ready"] == 1
+
+
 def test_copy_creates_owned_photo_and_skip_repeated_copy(library):
     photo = library.add("src/a.jpg")
     config = ToolConfig(kind="organize", target=str(library.root / "out"), action="copy")
@@ -228,6 +304,35 @@ def test_copy_creates_owned_photo_and_skip_repeated_copy(library):
     assert library.db.query(Photo).count() == 2
     again = create_plan(library.db, library.user, PlanRequest(scope=scope, config=config))
     assert again.summary["ready"] == 0
+
+
+def test_copy_thumbnail_task_waits_for_cloned_photo(library):
+    """Regression for the immediate tasks.photo_id FK check (PostgreSQL).
+
+    A clone carrying metadata + tags + albums makes the unit of work insert
+    the thumbnail task first; without an explicit flush before queuing it the
+    copy fails with fk_tasks_photo_id_photos before any file is written.
+    """
+    from app.db.models.tag import PhotoTag
+    from app.db.models.task import TaskType
+
+    photo = library.add("src/with-relations.jpg")
+    photo.tags = [PhotoTag(id=uuid4(), tag_name="旅行", owner_id=library.user.id)]
+    photo.albums = [Album(id=uuid4(), owner_id=library.user.id, type="user",
+                          name="原始相册", num_photos=1)]
+    library.db.commit()
+
+    config = ToolConfig(kind="organize", target=str(library.root / "out"), action="copy")
+    plan = create_plan(library.db, library.user, PlanRequest(
+        scope=MediaScope(source="selected", photo_ids=[photo.id]), config=config))
+    result = run(library, plan)
+    assert result["success_count"] == 1 and result["failed_count"] == 0
+
+    clone = library.db.query(Photo).filter(Photo.id != photo.id).one()
+    assert Path(clone.file_path).exists()
+    assert Path(photo.file_path).exists()
+    thumbnail = library.db.query(Task).filter_by(type=TaskType.GENERATE_THUMBNAIL).one()
+    assert thumbnail.photo_id == clone.id
 
 
 def metadata_plan(library):

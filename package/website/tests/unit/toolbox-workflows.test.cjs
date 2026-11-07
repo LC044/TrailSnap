@@ -97,6 +97,14 @@ test('rename variables insert at the cursor and unknown variables are rejected',
   invalid.unmount()
 })
 
+test('rename template error names the broken placeholder', () => {
+  const { renameTemplateError } = api()
+  assert.match(renameTemplateError('IMG_{date}_{time'), /未闭合的变量占位符/)
+  assert.match(renameTemplateError('IMG_{date}_{time'), /\{time/)
+  assert.match(renameTemplateError('IMG_{unknown}'), /未知变量：unknown/)
+  assert.equal(renameTemplateError('IMG_{date}_{time}'), '')
+})
+
 test('default rename template wins over recent and save-as clears rename mode', async () => {
   const { defaultConfig } = api()
   const defaultRule = { ...defaultConfig('rename'), template: 'DEFAULT_{date}' }

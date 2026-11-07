@@ -23,11 +23,8 @@ const ClassificationDetail = () => import('@/views/album/intelligent-classificat
 const MoonJournal = () => import('@/views/moon/MoonJournal.vue');
 const SearchResult = () => import('@/views/search/SearchResult.vue');
 const MobileSearch = () => import('@/views/search/MobileSearch.vue');
-const CleanupPage = () => import('@/views/toolbox/CleanupPage.vue');
-const ToolboxPage = () => import('@/views/toolbox/ToolboxHomePage.vue');
+const ToolboxHomePage = () => import('@/views/toolbox/ToolboxHomePage.vue');
 const ToolWorkflowPage = () => import('@/views/toolbox/ToolWorkflowPage.vue');
-const SimilarPhotoCleanup = () => import('@/views/toolbox/SimilarPhotoCleanup.vue');
-const DuplicatePhotoCleanup = () => import('@/views/toolbox/DuplicatePhotoCleanup.vue');
 const TicketEdit = () => import('@/views/More.vue');
 const RecycleBinPage = () => import('@/views/RecycleBinPage.vue');
 
@@ -79,7 +76,7 @@ const routes: RouteRecordRaw[] = [
       { path: '/memories/:id', name: 'MemoryDetail', component: () => import('@/views/memory/MemoryDetail.vue'), meta: { title: '记忆详情', navGroup: 'memories' } },
       { path: '/search/image', name: 'ImageSearch', component: () => import('@/views/search/ImageSearch.vue'), meta: { title: '以图搜图', navGroup: 'photos' } },
       { path: '/search', name: 'SearchResult', component: SearchResult, meta: { title: '搜索结果', navGroup: 'photos' } },
-      { path: '/toolbox', name: 'Toolbox', component: ToolboxPage, meta: { title: '工具箱', navGroup: 'tools' } },
+      { path: '/toolbox', name: 'Toolbox', component: ToolboxHomePage, meta: { title: '工具箱', navGroup: 'tools' } },
       { path: '/toolbox/similar', name: 'SimilarPhotoCleanup', component: ToolWorkflowPage, props: { kind: 'cleanup', cleanupMode: 'similar' }, meta: { title: '相似照片清理', navGroup: 'tools' } },
       { path: '/toolbox/duplicate', name: 'DuplicatePhotoCleanup', component: ToolWorkflowPage, props: { kind: 'cleanup', cleanupMode: 'duplicate' }, meta: { title: '重复照片清理', navGroup: 'tools' } },
       { path: '/toolbox/organize', name: 'OrganizePhotos', component: ToolWorkflowPage, props: { kind: 'organize' }, meta: { title: '影像整理', navGroup: 'tools' } },

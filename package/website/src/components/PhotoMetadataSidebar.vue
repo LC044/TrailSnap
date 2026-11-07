@@ -811,10 +811,17 @@ const saveLocationEdit = async () => {
             country: locationForm.country,
             write_to_file: locationWriteToFile.value,
         }
-        const updated = await albumService.updateMetadata(props.image.id, updates)
+        const { data: updated, msg } = await albumService.updateMetadataWithResult(props.image.id, updates)
         emit('update', { id: props.image.id, ...updated })
-        if (locationWriteToFile.value) {
-            ElMessage.success('位置已更新，并已写入原文件')
+        // The backend reports written / skipped / failed through `msg`. Never
+        // claim the file was written just because the switch was checked: an
+        // unsupported format or a failed write only updates the database.
+        if (msg && msg !== 'success') {
+            if (msg.includes('失败') || msg.includes('不支持') || msg.includes('缺失')) {
+                ElMessage.warning(msg)
+            } else {
+                ElMessage.success(msg)
+            }
         } else {
             ElMessage.success('位置更新成功')
         }

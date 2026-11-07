@@ -94,7 +94,9 @@ export function renameTemplateError(template: string): string {
   const unknown = [...template.matchAll(/\{([^{}]*)\}/g)].map(match => match[1]).filter(key => !allowed.has(key))
   if (unknown.length) return `未知变量：${unknown.join('、')}`
   const literal = template.replace(/\{[^{}]*\}/g, '')
-  if (/[{}\\/:\x00*?"<>|]/.test(literal)) return '存在未闭合变量或非法路径字符'
+  const broken = literal.match(/[{}][^{}]*/g)
+  if (broken?.length) return `存在未闭合的变量占位符：${broken.join('、')}`
+  if (/[\\/:\x00*?"<>|]/.test(literal)) return '模板包含非法路径字符：\\ / : * ? " < > |'
   return template.trim() ? '' : '请选择模板或输入命名规则'
 }
 

@@ -102,11 +102,26 @@ def iter_scope(db, user, scope: MediaScope, *, relations=False):
         yield photo
 
 
+def _scope_row(photo):
+    return {"id": str(photo.id), "filename": photo.filename,
+            "photo_time": photo.photo_time, "file_type": getattr(photo.file_type, "value", photo.file_type)}
+
+
 def scope_preview(db, user, scope: MediaScope, offset=0, limit=40):
-    count, rows = 0, []
-    for photo in iter_scope(db, user, scope):
-        if offset <= count < offset + limit:
-            rows.append({"id": str(photo.id), "filename": photo.filename,
-                         "photo_time": photo.photo_time, "file_type": getattr(photo.file_type, "value", photo.file_type)})
-        count += 1
-    return {"total": count, "items": rows}
+    if scope.source == "folders":
+        # Folder membership uses canonical()/is_below() in Python (and can
+        # distinguish exact folder vs. subfolders), so it cannot be pushed
+        # into SQL. Keep the single pass for this source only.
+        count, rows = 0, []
+        for photo in iter_scope(db, user, scope):
+            if offset <= count < offset + limit:
+                rows.append(_scope_row(photo))
+            count += 1
+        return {"total": count, "items": rows}
+    # All other sources are fully expressible in SQL: count without loading
+    # every row, then fetch just the requested page. Previously a 50k-item
+    # library was walked end-to-end on every scope check / page turn.
+    base = scope_query(db, user, scope)
+    total = base.order_by(None).count()
+    rows = [_scope_row(photo) for photo in base.order_by(Photo.id).offset(offset).limit(limit).all()]
+    return {"total": total, "items": rows}

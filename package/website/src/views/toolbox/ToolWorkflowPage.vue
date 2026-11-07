@@ -66,7 +66,10 @@
       </aside>
     </div>
     <ResponsiveDialog v-model="scopeDialog" title="核对处理范围" max-width="60rem" mobile-mode="fullscreen" mobile-back>
-      <p class="ts-muted mb-4 text-sm">共 {{ scopeCount }} 项。可以排除不想处理的影像，范围变更后会重新核对。</p>
+      <p class="ts-muted mb-4 text-sm" aria-live="polite">
+        <template v-if="scopeCount === null || checking">正在重新核对处理范围，请稍候…</template>
+        <template v-else>共 {{ scopeCount.toLocaleString() }} 项。可以排除不想处理的影像，范围变更后会重新核对。</template>
+      </p>
       <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <article v-for="photo in scopeRows" :key="photo.id" class="ts-divider min-w-0 rounded-xl border p-2">
           <img :src="thumbnailUrl(photo.id)" :alt="photo.filename" loading="lazy" class="aspect-square w-full rounded-lg object-cover" />

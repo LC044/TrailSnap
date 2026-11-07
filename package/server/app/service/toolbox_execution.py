@@ -174,6 +174,11 @@ def mutate_file(db, user, photo, item, config):
         output.file_path = target
         output.filename = os.path.basename(target)
         apply_photo_reference(output, db)
+        # Task.photo_id has no ORM relationship to Photo, so the unit of work
+        # is free to insert the thumbnail task before the cloned photo. Both
+        # PostgreSQL and SQLite (foreign_keys=ON) check that FK immediately,
+        # which made every copy fail. Persist the clone first.
+        db.flush()
         if not move:
             db.add(Task(type=TaskType.GENERATE_THUMBNAIL, owner_id=user.id, priority=98,
                         payload={"photo_id": str(output.id)}, status="pending"))

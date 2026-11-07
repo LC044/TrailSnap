@@ -34,10 +34,18 @@ def digest(value):
 
 def validate_template(template: str):
     variables = re.findall(r"\{([^{}]*)\}", template)
-    unknown = set(variables) - VARIABLES
+    unknown = sorted(set(variables) - VARIABLES)
     literal = re.sub(r"\{[^{}]*\}", "", template)
-    if unknown or "{" in literal or "}" in literal:
-        raise ValueError("未知或不完整的模板变量：" + ", ".join(sorted(unknown)))
+    # A broken brace never matches {name} above, so the old error listed no
+    # variable at all. Report the exact fragments so users can fix the typo.
+    broken = re.findall(r"[{}][^{}]*", literal)
+    problems = []
+    if unknown:
+        problems.append("未知变量：" + ", ".join(unknown))
+    if broken:
+        problems.append("未闭合或不完整的变量：" + ", ".join(broken))
+    if problems:
+        raise ValueError("；".join(problems))
     if not template.strip() or any(c in literal for c in '/\\:*?"<>|\x00'):
         raise ValueError("命名模板为空或包含非法路径字符")
     return set(variables)
@@ -276,6 +284,14 @@ def item_for_photo(db, user, photo, config, index, reserved, candidates, anchor)
         reason = unsupported_reason(photo)
         if reason:
             raise ValueError(reason)
+        if config.kind in {"organize", "rename", "metadata"}:
+            # Execution refuses unconfigured source directories. Check them
+            # while building the preview so the item is reported as skipped
+            # with a reason instead of failing after the user confirms.
+            try:
+                allowed_directory(db, user, os.path.dirname(path))
+            except ValueError as error:
+                raise ValueError(f"源文件所在位置未接入存储，无法处理（{error}）") from error
         item.fingerprint = fingerprint(photo)
         if config.kind == "cleanup":
             if photo.id not in candidates:
@@ -359,7 +375,12 @@ def create_plan(db, user, request: PlanRequest):
     photos = list(itertools.islice(iter_scope(db, user, request.scope, relations=True), 50001))
     if len(photos) > 50000:
         raise ValueError("本版每次最多处理 50000 项，请缩小范围")
-    photos.sort(key=lambda p: (p.photo_time is None, p.photo_time or datetime.max, str(p.id)), reverse=config.descending)
+    photos.sort(key=lambda p: (p.photo_time is None, p.photo_time or datetime.max, str(p.id)),
+                reverse=config.descending)
+    # reverse=True also flips the "missing time" group key, which would put
+    # undated photos first when sorting descending. Stable re-sort keeps them
+    # last in both directions without changing the order inside each group.
+    photos.sort(key=lambda p: p.photo_time is None)
     candidates = cleanup_candidates(db, user, photos, config) if config.kind == "cleanup" else {}
     plan = ToolboxPlan(id=uuid4(), owner_id=user.id, kind=config.kind, status="preview", version=1,
                        request={"scope": request.scope.model_dump(mode="json"), "config": config.model_dump(mode="json")},
@@ -372,8 +393,11 @@ def create_plan(db, user, request: PlanRequest):
     for position, photo in enumerate(photos):
         directory = os.path.dirname(photo.file_path) if config.reset_index else ""
         index = counters[directory] + config.start_index
-        counters[directory] += 1
         item = item_for_photo(db, user, photo, config, index, reserved, candidates, anchor)
+        # Only a rename that will actually run consumes a sequence number.
+        # Skipped items must not leave gaps in {index}/{sequence3}/{sequence4}.
+        if config.kind == "rename" and item.status == "ready":
+            counters[directory] += 1
         item.plan_id = plan.id
         targets = item.detail.get("targets", [])
         if item.status == "ready" and len(targets) > 1:
