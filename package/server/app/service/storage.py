@@ -31,6 +31,20 @@ def _load_cv2():
     except ImportError:
         return None
 
+
+# ``cv2`` is never imported at module scope, so a plain ``cv2`` reference would
+# raise NameError.  Tests may pin the module attribute to ``None`` to exercise
+# the ffmpeg fallback, therefore an explicit override always wins.
+_CV2_UNSET = object()
+
+
+def _resolve_cv2():
+    """Return the OpenCV module, or ``None`` when it is unavailable."""
+    module = globals().get("cv2", _CV2_UNSET)
+    if module is not _CV2_UNSET:
+        return module
+    return _load_cv2()
+
 # Global cache for storage root (User ID -> Root Path)
 _STORAGE_ROOT_CACHE = {}
 
@@ -389,6 +403,7 @@ def get_image_dimensions(file_path: str, image_obj: Optional[Image.Image] = None
                 with budgeted_open(file_path) as source, Image.open(source) as img:
                     return (*display_image_size(img), None)
         elif ext in VIDEO_EXTENSIONS:
+            cv2 = _resolve_cv2()
             if cv2 is None:
                 return probe_video(file_path)
             cap = cv2.VideoCapture(file_path)
