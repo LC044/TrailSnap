@@ -140,7 +140,13 @@ $exit = $LASTEXITCODE
    解析 `coverage-backend.xml`（Cobertura 格式），按「未覆盖行数 / 覆盖率」排序，产出候选清单：
    ```powershell
    [xml]$cov = Get-Content "$runDir\coverage-backend.xml"
-   $rows = foreach ($cls in $cov.coverage.packages.package.classes.class) {
+   # [skip-nightly] 2026-11-10 修复：Cobertura XML 里有多个 <package>（本仓库实测 17 个），
+   # 原写法 `$cov.coverage.packages.package.classes.class` 只会取到**第一个** package，
+   # 得到的候选清单只覆盖一个子包，漏掉 app/api、app/service 等绝大部分模块。
+   # 改为遍历全部 package。
+   $classes = @()
+   foreach ($pkg in @($cov.coverage.packages.package)) { $classes += @($pkg.classes.class) }
+   $rows = foreach ($cls in $classes) {
        $lines = @($cls.lines.line)
        $total = $lines.Count
        $miss  = ($lines | Where-Object { $_.hits -eq '0' }).Count
