@@ -72,16 +72,19 @@ def test_classify_saved_palette_rejects_a_stale_saved_metric():
 # --------------------------------------------------------------------------
 # app/service/user_storage.py
 # --------------------------------------------------------------------------
-def test_is_below_returns_false_for_paths_on_different_drives():
+def test_is_below_returns_false_when_the_path_cannot_be_normalised():
     from app.service.user_storage import _is_below
 
-    assert _is_below(r"C:\photos\a", r"D:\photos") is False
+    # A NUL byte makes os.path.abspath raise, which the helper must swallow.
+    # (A Windows-only "different drive" pair would not raise on Linux CI.)
+    assert _is_below("bad\x00path", "parent") is False
 
 
-def test_is_below_returns_true_for_a_nested_path():
+def test_is_below_returns_true_for_a_nested_path(tmp_path):
     from app.service.user_storage import _is_below
 
-    assert _is_below(r"C:\photos\a\b", r"C:\photos") is True
+    nested = os.path.join(str(tmp_path), "a", "b")
+    assert _is_below(nested, str(tmp_path)) is True
 
 
 def test_move_file_returns_none_when_source_and_target_are_the_same_missing_path(tmp_path):
