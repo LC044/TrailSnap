@@ -1,7 +1,7 @@
 """Run real AI inference with the benchmark's explicit ONNX thread policy.
 
-InsightFace creates its own sessions, bypassing the application's ONNX factory.
-Supply the same SessionOptions so all measured inference honours the policy.
+InsightFace and RapidOCR create sessions outside the application's ONNX factory.
+Bound their thread pools too, preserving all other supplied session options.
 No inference results or business handlers are replaced.
 """
 import sys
@@ -12,20 +12,21 @@ from app.core.runtime_limits import configure_inference_runtime
 
 configure_inference_runtime()
 
-from insightface.model_zoo import model_zoo
+import onnxruntime as ort
 import uvicorn
 from app.services.onnx_providers import get_session_options
 
-OriginalSession = model_zoo.PickableInferenceSession
+OriginalSession = ort.InferenceSession
 
 
 class BenchmarkInferenceSession(OriginalSession):
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("sess_options", get_session_options())
-        super().__init__(*args, **kwargs)
+    def __init__(self, path_or_bytes, sess_options=None, *args, **kwargs):
+        options = sess_options if sess_options is not None else get_session_options()
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
+        super().__init__(path_or_bytes, options, *args, **kwargs)
 
 
-# InsightFace's get_model forwards providers but discards sess_options.
-# Apply the policy at the session constructor that its ModelRouter uses.
-model_zoo.PickableInferenceSession = BenchmarkInferenceSession
+# Install before uvicorn imports the real app and its inference libraries.
+ort.InferenceSession = BenchmarkInferenceSession
 uvicorn.run("main:app", host="0.0.0.0", port=8001)
