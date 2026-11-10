@@ -13,12 +13,14 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
     const filterButton = page.locator('main').getByRole('button', { name: '筛选' })
     await expect(filterButton).toBeVisible({ timeout: 15_000 })
     await filterButton.click()
-    const sourceGroup = page.locator('main').getByRole('heading', { name: '来源' })
-    await expect(sourceGroup).toBeVisible()
-    await expect(page.locator('main').getByRole('heading', { name: '类型' })).toBeVisible()
+    // 筛选面板重构后主分组为媒体类型/拍摄年份/地点/人物/类别，
+    // 来源与相机信息收进「高级筛选」折叠区。
+    const mediaTypeGroup = page.locator('main').getByRole('heading', { name: '媒体类型' })
+    await expect(mediaTypeGroup).toBeVisible()
+    await expect(page.locator('main').getByRole('heading', { name: '拍摄年份' })).toBeVisible()
 
     await filterButton.click()
-    await expect(sourceGroup).toBeHidden()
+    await expect(mediaTypeGroup).toBeHidden()
   })
 
   test('ToolboxPage 的低质量照片卡片导航到清理页', async ({ page }) => {
