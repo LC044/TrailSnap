@@ -724,7 +724,7 @@ const timeNavigationKey = () => [route.query.view, route.query.time, route.query
 const restoreTimeNavigation = async () => {
   const navigationKey = timeNavigationKey()
   try {
-    if (!props.enableTimeBrowse || route.name !== 'Photos') return
+    if (!props.enableTimeBrowse || !['Photos', 'SearchResult'].includes(String(route.name))) return
     const target = ['year', 'month', 'day'].includes(String(route.query.view)) ? String(route.query.view) as TimeGranularity : 'day'
     const field: TimeField = route.query.time === 'upload_time' ? 'upload_time' : 'photo_time'
     const id = String(route.query.anchor ?? '')
@@ -778,7 +778,7 @@ watch(layoutMode, mode => {
 // ---- Moments 朋友圈日文案 ----
 // MVP 阶段只在 "全部照片" 视图启用（scope='all'）
 const showMomentCaption = computed(() =>
-  layoutMode.value === 'moments' && (!props.enableTimeBrowse || store.value.timeField === 'photo_time') && (store.value?.currentContext?.type === 'all')
+  layoutMode.value === 'moments' && !store.value.searchFilters?.search_type && (!props.enableTimeBrowse || store.value.timeField === 'photo_time') && (store.value?.currentContext?.type === 'all')
 )
 const {
   captionMap,

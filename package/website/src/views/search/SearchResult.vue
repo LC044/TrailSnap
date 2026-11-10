@@ -1,5 +1,6 @@
 <template>
-  <div class="mx-auto w-full max-w-screen-2xl min-h-screen pb-8 px-[var(--ts-page-gutter)]">
+  <ConditionSearchResult v-if="isConditionSearch(type)" />
+  <div v-else class="mx-auto w-full max-w-screen-2xl min-h-screen pb-8 px-[var(--ts-page-gutter)]">
     <!-- Header -->
     <div class="sticky top-0 z-30 -mx-[var(--ts-page-gutter)] px-[var(--ts-page-gutter)] backdrop-blur-md bg-gray-50/90 dark:bg-gray-900/90">
       <div class="ts-browse-header mx-auto flex items-center gap-3">
@@ -88,6 +89,8 @@
 
 <script setup lang="ts">
 import BackButton from '@/components/ui/BackButton.vue'
+import ConditionSearchResult from './ConditionSearchResult.vue'
+import { isConditionSearch } from '@/utils/conditionSearch'
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppBack } from '@/composables/useAppBack'
@@ -232,6 +235,7 @@ onUnmounted(() => {
 })
 
 const performSearch = async (isLoadMore = false) => {
+  if (isConditionSearch(type.value)) return
   if (!query.value) return
   if (loading.value) return
   

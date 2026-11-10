@@ -37,6 +37,12 @@ def get_timeline_stats(
     folder_direct: bool = False,
     time_field: str = Query("photo_time", pattern="^(photo_time|upload_time)$"),
     include_covers: bool = False,
+    search_type: Optional[str] = Query(None, pattern="^(person|location|ocr|album|folder|filename|tag|scene|date)$"),
+    search_text: Optional[str] = None,
+    people: Optional[List[str]] = Query(None),
+    categories: Optional[List[str]] = Query(None),
+    start_time: Optional[datetime.datetime] = None,
+    end_time: Optional[datetime.datetime] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -47,6 +53,10 @@ def get_timeline_stats(
     return app.crud.photo.get_timeline_stats(
         db,
         album_id=album_id,
+        search_type=search_type if isinstance(search_type, str) else None, search_text=search_text,
+        people=people if isinstance(people, list) else None,
+        categories=categories if isinstance(categories, list) else None,
+        start_time=start_time, end_time=end_time,
         years=years,
         cities=cities,
         makes=makes,
