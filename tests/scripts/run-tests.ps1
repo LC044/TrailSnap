@@ -129,11 +129,13 @@ if ($StopServices) {
 # 不再走下面的 unit/e2e 分支，避免两套服务生命周期叠加。
 if ($Layer -eq 'performance') {
     if ($Scope -eq 'import') {
-        & python (Join-Path $RepoRoot 'tests/performance/import_benchmark.py')
+        $perfPython = if (Get-Command python -ErrorAction SilentlyContinue) { 'python' } else { 'python3' }
+        & $perfPython (Join-Path $RepoRoot 'tests/performance/import_benchmark.py')
         exit $LASTEXITCODE
     }
     if ($Scope -eq 'import-unit') {
-        & python -m unittest discover -s (Join-Path $RepoRoot 'tests/performance') -p 'test_import_benchmark.py' -v
+        $perfPython = if (Get-Command python -ErrorAction SilentlyContinue) { 'python' } else { 'python3' }
+        & $perfPython -m unittest discover -s (Join-Path $RepoRoot 'tests/performance') -p 'test_import_benchmark.py' -v
         exit $LASTEXITCODE
     }
     $perfMode = if ($Mode) {

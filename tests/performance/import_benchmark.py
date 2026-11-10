@@ -133,7 +133,9 @@ def run_profile(args, profile, repetition, dataset, output):
                 options += ["-e", "POSTGRES_USER=trailsnap", "-e", "POSTGRES_PASSWORD=trailsnap", "-e", "POSTGRES_DB=trailsnap"]
             elif service == "ai":
                 options += ["-p", "127.0.0.1::8001", "-e", "MODEL_PATH=/app/data/models", "-e", "IDLE_TIMEOUT=86400",
-                            "-v", f"{args.model_cache.resolve()}:/app/data/models"]
+                            "-v", f"{args.model_cache.resolve()}:/app/data/models",
+                            "-e", "AI_MODEL_CATALOG_PATH=/benchmark-catalog.json",
+                            "-v", f"{(output / 'model-catalog.json').resolve()}:/benchmark-catalog.json:ro"]
             else:
                 options += ["-p", "127.0.0.1::8000", "-e", "DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap",
                             "-e", "RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap",
@@ -271,7 +273,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=Path, default=ROOT / "tests/.cache/benchmark-photos")
     parser.add_argument("--output", type=Path, default=Path(os.environ["TS_PERF_OUTPUT"]) if os.environ.get("TS_PERF_OUTPUT") else ROOT / "tests/artifacts/import-benchmark" / datetime.now().strftime("%Y%m%d-%H%M%S"))
-    parser.add_argument("--model-cache", type=Path, default=ROOT / "tests/.cache/benchmark-models")
+    parser.add_argument("--model-cache", type=Path, default=Path(os.environ["TS_PERF_MODEL_CACHE"]) if os.environ.get("TS_PERF_MODEL_CACHE") else ROOT / "tests/.cache/benchmark-models")
     parser.add_argument("--server-image", default="trailsnap-import-benchmark:local")
     parser.add_argument("--ai-image", default="siyuan044/trailsnap-ai:master")
     parser.add_argument("--postgres-image", default="siyuan044/pgvector:pg18-trixie")
@@ -291,6 +293,11 @@ def main():
     for image in (args.server_image, args.ai_image, args.postgres_image):
         if not docker("images", "-q", image):
             docker("pull", image)
+    catalog = json.loads(docker("run", "--rm", "--entrypoint", "cat", args.ai_image, "/app/app/model_catalog.json"))
+    # Excluded LLM downloads must not consume network/CPU during measured imports.
+    for model in catalog["models"]:
+        model["autoDownload"] = False
+    write_json(args.output / "model-catalog.json", catalog)
     result["comparison_key"] = dict(dataset=CONFIG, host=os.environ.get("TS_PERF_MACHINE_ID", platform.node()),
         cpu=result["host"]["processor"], docker_cpus=result["host"]["docker"]["NCPU"],
         docker_memory=result["host"]["docker"]["MemTotal"], ai_image=json.loads(docker("image", "inspect", args.ai_image))[0]["Id"],
