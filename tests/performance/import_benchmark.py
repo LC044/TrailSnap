@@ -16,7 +16,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+import scan_folder_benchmark as scan_metrics
 from scan_folder_benchmark import HttpApi, TaskEventStream, TaskEventTracker, ensure_admin_session
+
+# The isolated server explicitly uses UTC, including its naive worker timestamps.
+scan_metrics._LOCAL_TZ = timezone.utc
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = json.loads(Path(__file__).with_name("import-v1.json").read_text())
@@ -41,6 +45,15 @@ def write_json(path, data):
 
 def inspect(name):
     return json.loads(docker("inspect", name))[0]
+
+
+def cpu_model():
+    info = Path("/proc/cpuinfo")
+    if info.exists():
+        for line in info.read_text().splitlines():
+            if line.startswith("model name"):
+                return line.partition(":")[2].strip()
+    return platform.processor()
 
 
 def wait_http(api, path="/health-check", timeout=600):
@@ -112,7 +125,8 @@ def validate_snapshot(snapshot, expected):
 
 def prepare_dataset(path):
     if not path.exists():
-        command("git", "clone", CONFIG["repository"], str(path))
+        command("git", "clone", "--no-checkout", CONFIG["repository"], str(path))
+        command("git", "-C", str(path), "checkout", "--detach", CONFIG["commit"])
     actual = command("git", "-C", str(path), "rev-parse", "HEAD")
     if actual != CONFIG["commit"]:
         raise RuntimeError(f"Dataset v1 requires {CONFIG['commit']}, found {actual}")
@@ -312,9 +326,10 @@ def main():
         parser.error("repetitions must be positive")
     args.output.mkdir(parents=True, exist_ok=True)
     args.model_cache.mkdir(parents=True, exist_ok=True)
+    docker_info = json.loads(docker("info", "--format", "{{json .}}"))
     result = dict(schema_version=1, dataset=CONFIG, commit=command("git", "rev-parse", "HEAD"),
-                  host=dict(platform=platform.platform(), machine=platform.machine(), processor=platform.processor(), cpu_count=os.cpu_count(),
-                            docker=json.loads(docker("info", "--format", "{{json .}}"))), samples=[])
+                  host=dict(platform=platform.platform(), machine=platform.machine(), processor=cpu_model(), cpu_count=os.cpu_count(),
+                            docker={k: docker_info.get(k) for k in ("NCPU", "MemTotal", "Architecture", "KernelVersion", "OperatingSystem", "ServerVersion")}), samples=[])
     dataset = prepare_dataset(args.dataset)
     for image in (args.server_image, args.ai_image, args.postgres_image):
         if not docker("images", "-q", image):
