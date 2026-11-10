@@ -228,5 +228,10 @@
         "version": "0.20.1",
         "update_info": "- 飞牛 fnOS 支持批量添加照片目录并设置读写权限<br>- 在运行设置中管理图库，优化同名目录与升级兼容性<br>- 修复安装包脚本换行和目录校验问题",
         "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.20.1"
+    },
+    {
+        "version": "0.20.2",
+        "update_info": "- 新增结构化条件搜索与全新筛选面板<br>- 照片整理工具箱重构：真实预览、重命名模板记忆、GPS 写回原文件<br>- 人物识别支持多外观聚类、查找相似人脸与自定义合并名称<br>- 批量修改照片拍摄时间<br>- 设置中心改版与移动端体验优化",
+        "download_url": "https://github.com/LC044/TrailSnap/releases/tag/v0.20.2"
     }
 ]

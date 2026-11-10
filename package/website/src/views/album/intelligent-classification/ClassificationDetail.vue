@@ -14,23 +14,27 @@
       <AlbumDetailTitle :title="title" :scrolled="scrolled" :subtitle="`${photos.length}${hasMore ? '+' : ''} 个项目`" back-label="返回智能分类" @back="goBack" />
     </template>
     <template #batch-actions="{ selectedIds, clearSelection }">
-      <el-dropdown-item
+      <button
           v-if="selectedIds.size === 1"
+          type="button"
+          class="ts-action-row"
           @click="handleSetCover(Array.from(selectedIds)); clearSelection()"
       >
           <div class="flex items-center gap-2">
             <ImageIcon class="w-4 h-4" />
             <span>设为封面</span>
           </div>
-      </el-dropdown-item>
-      <el-dropdown-item
+      </button>
+      <button
+          type="button"
+          class="ts-action-row"
           @click="removePhotoFromTags(Array.from(selectedIds)); clearSelection()"
       >
           <div class="flex items-center gap-2">
             <ImageMinus class="w-4 h-4" />
             <span>从分类中移除</span>
           </div>
-      </el-dropdown-item>
+      </button>
     </template>
   </UnifiedPhotoPage>
 </template>

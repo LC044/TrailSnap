@@ -93,15 +93,17 @@
     </template>
 
     <template #batch-actions="{ selectedIds, clearSelection }">
-      <el-dropdown-item
+      <button
           v-if="selectedIds.size === 1"
+          type="button"
+          class="ts-action-row"
           @click="handleSetCover(Array.from(selectedIds)); clearSelection()"
       >
           <div class="flex items-center gap-2">
             <ImageIcon class="w-4 h-4" />
             <span>设为封面</span>
           </div>
-      </el-dropdown-item>
+      </button>
     </template>
   </UnifiedPhotoPage>
 

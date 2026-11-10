@@ -334,16 +334,13 @@ test.describe.serial('P0 - 人物相册', () => {
     // 选第一张（click = toggle 选择模式，PhotoGallery handlePhotoClick）
     await thumb.click({ force: true })
 
-    // "设为封面" 在 PhotoGallery 的 el-dropdown 里（MoreHorizontal 触发）。
-    // 选中 1 张后，先点击 MoreHorizontal 按钮让下拉展开。
-    const moreActionsBtn = page.locator('button:has(svg.lucide-ellipsis, svg.lucide-more-horizontal)').filter({
-      hasNotText: /筛选/,
-    }).last()
+    // 选中 1 张后，批量工具栏的「更多」按钮展开 AdaptiveMenu（ac263d8f 起替代 el-dropdown）。
+    const moreActionsBtn = page.getByTestId('photo-selection-bar').getByRole('button', { name: '更多' })
     await expect(moreActionsBtn).toBeVisible({ timeout: 5_000 })
     await moreActionsBtn.click()
 
-    // PeopleDetail 自定义了 #batch-actions 插槽，显示"设为封面"项
-    const setCoverItem = page.locator('.el-dropdown-menu__item:has-text("设为封面")').first()
+    // PeopleDetail 自定义了 #batch-actions 插槽，在 AdaptiveMenu 里显示"设为封面"项
+    const setCoverItem = page.getByRole('button', { name: '设为封面' }).first()
     await expect(setCoverItem).toBeVisible({ timeout: 5_000 })
 
     const coverReq = page.waitForResponse(
