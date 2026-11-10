@@ -8,7 +8,7 @@
         <slot name="header-left" :scrolled="headerScrolled">
           <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled && !stableTitle ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
             <BackButton label="返回" v-if="showBack" @click="$emit('back')" />
-            <div class="min-w-0 transition-colors duration-200" :class="stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
+            <div v-if="!loadingTitle" class="ts-title-block min-w-0 transition-colors duration-200" :class="[stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2', { 'ts-title-block--compact': subtitle && (stableTitle || !headerScrolled) }]">
               <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled && !stableTitle }">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>
@@ -1042,6 +1042,29 @@ defineExpose({
 </script>
 
 <style scoped>
+/* A subtitle used to stack a 24px title over a second line, turning the glass
+   capsule into a tall oval next to the 36-44px round controls. Keep both on one
+   line so the capsule stays the same height as the back / toolbar buttons. */
+.ts-title-block--compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ts-toolbar-control-size);
+  padding-block: 4px;
+}
+.ts-title-block--compact .ts-page-title { min-width: 0; font-size: 16px; line-height: 1.2; letter-spacing: -.01em; }
+.ts-title-block--compact p { flex-shrink: 0; font-size: 12px; line-height: 1.2; white-space: nowrap; }
+@media (max-width: 767px) {
+  .ts-title-block--compact { gap: 5px; min-height: 34px; padding-block: 3px; }
+  .ts-title-block--compact .ts-page-title { font-size: 15px; }
+}
+/* Below 360px the fixed-width subtitle would squeeze the title down to a
+   single ellipsis. Tighten the capsule and let the subtitle shrink instead. */
+@media (max-width: 359px) {
+  .ts-title-block--compact { padding-inline: 6px; gap: 3px; }
+  .ts-title-block--compact .ts-page-title { flex-grow: 1; font-size: 14px; }
+  .ts-title-block--compact p { min-width: 0; flex-shrink: .5; font-size: 11px; }
+}
 .photo-time-view-button {
   font-size: var(--ts-mobile-icon-size, 20px);
   line-height: 1;

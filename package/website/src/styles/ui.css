@@ -169,6 +169,24 @@
 .el-range-editor.el-input__wrapper { min-height: var(--ts-control-md); background: var(--ts-color-surface); border-radius: var(--ts-radius-control); }
 .el-popper.is-light.el-picker__popper { --el-bg-color-overlay: var(--ts-color-surface); background: var(--ts-color-surface); }
 
+/* Filter chips float over photo thumbnails in the sticky search header. Give
+   them the same opaque glass as the date pills so labels stay readable, and
+   keep them as short as the surrounding round controls. */
+.ts-filter-chip {
+  min-height: 36px;
+  padding-inline: var(--ts-space-3);
+  background: var(--ts-glass-bg);
+  border-color: var(--ts-color-border);
+  border-radius: var(--ts-radius-pill);
+  box-shadow: var(--ts-shadow-glass);
+  -webkit-backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
+  backdrop-filter: blur(var(--ts-glass-blur)) saturate(var(--ts-glass-saturation));
+}
+.ts-filter-chip:hover { background: var(--ts-color-surface); }
+@supports not (backdrop-filter: blur(8px)) {
+  .ts-filter-chip { background: var(--ts-color-surface); }
+}
+
 /* Shared layout for settings pages; the host owns the outer gutters. */
 .ts-settings-page { display: flex; min-width: 0; flex-direction: column; gap: var(--ts-section-gap); }
 .ts-settings-page > * { margin-block: 0; }

@@ -27,14 +27,14 @@
       </button>
     </template>
     <template #header-extension>
-      <div class="flex min-w-0 flex-wrap items-center gap-2 pb-3">
-        <button type="button" class="ts-button ts-button-ghost max-w-full text-primary-600 dark:text-primary-400" :aria-label="`移除${typeLabel}条件：${query}`" @click="clearSearch">
+      <div class="flex min-w-0 flex-wrap items-center justify-center gap-2 pb-3">
+        <button type="button" class="ts-button ts-filter-chip max-w-full text-primary-600 dark:text-primary-400" :aria-label="`移除${typeLabel}条件：${query}`" @click="clearSearch">
           <span class="truncate">{{ typeLabel }}：{{ query }}</span><X class="h-4 w-4 shrink-0" />
         </button>
-        <button v-for="chip in extraFilters" :key="chip.key + chip.value" type="button" class="ts-button ts-button-ghost max-w-full" :aria-label="`移除筛选：${chip.label}`" @click="removeFilter(chip.key, chip.value)">
+        <button v-for="chip in extraFilters" :key="chip.key + chip.value" type="button" class="ts-button ts-filter-chip max-w-full" :aria-label="`移除筛选：${chip.label}`" @click="removeFilter(chip.key, chip.value)">
           <span class="truncate">{{ chip.label }}</span><X class="h-4 w-4 shrink-0" />
         </button>
-        <button type="button" class="ts-button ts-button-ghost ts-muted" @click="showFilters = true">添加筛选</button>
+        <button type="button" class="ts-button ts-filter-chip ts-muted" @click="showFilters = true">添加筛选</button>
       </div>
     </template>
     <template #empty>
@@ -83,11 +83,7 @@ const subtitle = computed(() => {
   if (store.loading && !store.timelineStats?.total_photos) return '搜索中…'
   const stats = store.timelineStats
   if (!stats) return ''
-  const range = stats.time_range
-  const startYear = range?.start?.slice(0, 4)
-  const endYear = range?.end?.slice(0, 4)
-  const years = startYear && endYear ? `${startYear === endYear ? startYear : `${startYear}—${endYear}`} 年` : ''
-  return [`共 ${stats.total_photos} 张照片`, years].filter(Boolean).join(' · ')
+  return [`${stats.total_photos} 张照片`].filter(Boolean).join(' · ')
 })
 const clearSearch = () => router.push('/mobile-search')
 const clearExtraFilters = () => {
