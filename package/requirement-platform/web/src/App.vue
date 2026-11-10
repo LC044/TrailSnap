@@ -41,7 +41,8 @@
         @reload="loadRequirements" @submit="switchTab('submit')" @open="openDetail" @action="onRowAction" />
 
       <!-- ============ 管理总览 ============ -->
-      <DashboardPage v-else-if="tab === 'dashboard' && isManager && dashboard" :data="dashboard" />
+      <DashboardPage v-else-if="tab === 'dashboard' && isManager && dashboard" :data="dashboard" :loading="dashboardLoading"
+        @reload="loadDashboard" @navigate="switchTab" @open-detail="openDetail" />
 
       <!-- ============ 提交需求 ============ -->
       <section v-else-if="tab === 'submit'">
@@ -513,7 +514,7 @@ const { user, isManager } = storeToRefs(session)
 const requirements = ref<Requirement[]>([]), myRequirements = ref<Requirement[]>([]), adminRequirements = ref<Requirement[]>([])
 const batches = ref<Batch[]>([]), users = ref<ApiUser[]>([]), candidates = ref<Requirement[]>([])
 const agentTokens = ref<AgentToken[]>([])
-const dashboard = ref<Dashboard | null>(null), detailHistory = ref<RequirementHistory[]>([])
+const dashboard = ref<Dashboard | null>(null), dashboardLoading = ref(false), detailHistory = ref<RequirementHistory[]>([])
 const busy = ref(false), syncingGithub = ref(false), authDialog = ref(false), reviewDialog = ref(false), editDialog = ref(false), statusDialog = ref(false), batchDialog = ref(false), tokenDialog = ref(false), mcpConnectionDialog = ref(false)
 const analysisDialog = ref(false)
 const analysisOutputEl = ref<HTMLElement | null>(null)
@@ -616,7 +617,11 @@ async function loadMine() {
   myRequirements.value = [...new Map([...own, ...local.flatMap(item => item.status === 'fulfilled' ? [item.value] : [])].map(item => [item.id, item])).values()]
 }
 async function loadAdmin() { if (isManager.value) adminRequirements.value = await api.requirements(adminStatus.value ? `?status=${adminStatus.value}` : '') }
-async function loadDashboard() { if (isManager.value) dashboard.value = await api.dashboard() }
+async function loadDashboard() {
+  if (!isManager.value) return
+  dashboardLoading.value = true
+  try { dashboard.value = await api.dashboard() } finally { dashboardLoading.value = false }
+}
 async function loadBatches() { batches.value = await api.batches(); if (isManager.value) candidates.value = await api.requirements('?status=candidate&limit=100') }
 async function loadUsers() { if (user.value?.role === 'owner') users.value = await api.users() }
 async function loadIntegrations() { if (isManager.value) agentTokens.value = await api.agentTokens() }
@@ -642,7 +647,7 @@ async function switchTab(value: Tab) {
 }
 async function scrollActiveTab() {
   await nextTick()
-  header.value?.element?.querySelector<HTMLElement>('button.active')?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
+  header.value?.scrollActiveIntoView()
 }
 async function restoreSession() {
   await session.restore()
@@ -948,12 +953,13 @@ async function loadDetail(number: number) {
     ElMessage.error(errorMessage(e))
   } finally { detailLoading.value = false }
 }
-async function openDetail(item: Requirement) {
-  if (!item.public_number) return
-  detailRouteNumber.value = item.public_number
-  await router.push({ name: 'requirement-detail', params: { number: item.public_number } })
+async function openDetail(item: Requirement | number) {
+  const number = typeof item === 'number' ? item : item.public_number
+  if (!number) return
+  detailRouteNumber.value = number
+  await router.push({ name: 'requirement-detail', params: { number } })
   window.scrollTo({ top: 0, behavior: 'smooth' })
-  await loadDetail(item.public_number)
+  await loadDetail(number)
 }
 function closeDetail() {
   detailRouteNumber.value = null
