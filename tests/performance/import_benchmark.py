@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import platform
-import shutil
 import statistics
 import subprocess
 import sys
@@ -77,6 +77,22 @@ def prepare_models(api, timeout=1200):
     return {"selected": sorted(selected), "manifest": manifest}
 
 
+def model_fingerprint(root, prepared):
+    """Hash selected required files once, outside the timed interval."""
+    files = {}
+    for model in prepared["manifest"]["models"]:
+        if model["id"] not in prepared["selected"]:
+            continue
+        for relative in model["requiredFiles"]:
+            path = root / model["localDir"] / relative
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            files[f"{model['id']}/{relative}"] = digest.hexdigest()
+    return files
+
+
 def validate_snapshot(snapshot, expected):
     """Completion requires durable processing flags as well as drained queues."""
     tasks = [t for t in snapshot["tasks"] if t["type"] not in EXCLUDED]
@@ -134,6 +150,7 @@ def run_profile(args, profile, repetition, dataset, output):
             elif service == "ai":
                 options += ["-p", "127.0.0.1::8001", "-e", "MODEL_PATH=/app/data/models", "-e", "IDLE_TIMEOUT=86400",
                             "-v", f"{args.model_cache.resolve()}:/app/data/models",
+                            "-e", "ORT_INTRA_OP_THREADS=1", "-e", "AI_INFERENCE_THREADS=1",
                             "-e", "AI_MODEL_CATALOG_PATH=/benchmark-catalog.json",
                             "-v", f"{(output / 'model-catalog.json').resolve()}:/benchmark-catalog.json:ro"]
             else:
@@ -159,6 +176,10 @@ def run_profile(args, profile, repetition, dataset, output):
         wait_http(api)
         wait_http(ai_api)
         sample["models"] = prepare_models(ai_api)
+        sample["inference_threads"] = 1
+        if args.model_fingerprint is None:
+            args.model_fingerprint = model_fingerprint(args.model_cache, sample["models"])
+        sample["model_fingerprint"] = args.model_fingerprint
         # A fresh process per sample: model initialization is included in import time.
         # Downloaded model files are shared; downloads are reported by the model manifest.
         sample["images"] = {s: inspect(c)["Image"] for s, c in zip(("postgres", "ai", "server"), containers)}
@@ -286,6 +307,7 @@ def main():
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--baseline", type=Path, default=Path(os.environ["TS_PERF_BASELINE"]) if os.environ.get("TS_PERF_BASELINE") else None)
     args = parser.parse_args()
+    args.model_fingerprint = None
     if args.repetitions < 1:
         parser.error("repetitions must be positive")
     args.output.mkdir(parents=True, exist_ok=True)
@@ -305,11 +327,12 @@ def main():
     result["comparison_key"] = dict(dataset=CONFIG, host=os.environ.get("TS_PERF_MACHINE_ID", platform.node()),
         cpu=result["host"]["processor"], docker_cpus=result["host"]["docker"]["NCPU"],
         docker_memory=result["host"]["docker"]["MemTotal"], ai_image=json.loads(docker("image", "inspect", args.ai_image))[0]["Id"],
-        postgres_image=json.loads(docker("image", "inspect", args.postgres_image))[0]["Id"], scenario="process-cold-model-files-cached-v1")
+        postgres_image=json.loads(docker("image", "inspect", args.postgres_image))[0]["Id"], scenario="process-cold-model-files-cached-threads1-v1")
     baseline = json.loads(args.baseline.read_text()) if args.baseline and args.baseline.exists() else None
     for repetition in range(1, args.repetitions + 1):
         for profile in args.profiles:
             result["samples"].append(run_profile(args, profile, repetition, dataset, args.output))
+            result["comparison_key"]["model_fingerprint"] = args.model_fingerprint
             write_json(args.output / "result.json", result)
             (args.output / "report.md").write_text(summarize(result, baseline), encoding="utf-8")
     print((args.output / "report.md").read_text(encoding="utf-8"))

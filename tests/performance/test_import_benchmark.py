@@ -1,7 +1,6 @@
-import copy
 import unittest
 
-from import_benchmark import CONFIG, REQUIRED_FLAGS, summarize, validate_snapshot
+from import_benchmark import REQUIRED_FLAGS, summarize, validate_snapshot
 
 
 class ImportBenchmarkTests(unittest.TestCase):

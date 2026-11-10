@@ -17,6 +17,8 @@ pwsh tests/scripts/run-tests.ps1 -Layer performance -Scope import
 1 / 2 / 4 CPU 与 3 / 4 / 5 GiB 内存，PostgreSQL 固定 0.5 CPU / 1 GiB，禁用 swap。
 这是同一主机的资源预算模拟，不等于三种真实 CPU、磁盘或 GPU。CI runner 的可用 CPU
 不足时，高档配额也不会创造额外算力；报告保留 Docker 主机信息与实际容器限制。
+各档固定 `ORT_INTRA_OP_THREADS=1` 和 `AI_INFERENCE_THREADS=1`，避免推理库按宿主机
+全部 CPU 创建大量线程而在低档配额中反复抢占；因此结果对应这份固定推理配置。
 
 可通过 `TS_PERF_OUTPUT`、`TS_PERF_BASELINE` 配置输出目录和历史结果。
 需要重复测试或选档时，底层运行器支持：
@@ -44,7 +46,7 @@ python tests/performance/import_benchmark.py --profiles low medium high --repeti
 
 输出 `result.json`、`report.md` 和每轮 `tasks.csv`、`progress.jsonl`、服务日志。
 单次测量用于初始基线，不能证明小幅优化或提供可靠 P95。建议稳定后运行五轮比较中位数。
-历史比较仅对兼容的数据集、主机与 AI/数据库镜像生效；代码 SHA 保留但不作为兼容条件。
+历史比较仅对兼容的数据集、主机、模型文件 SHA256 与 AI/数据库镜像生效；代码 SHA 保留但不作为兼容条件。
 
 ## 每日 CI 与记录留存
 
