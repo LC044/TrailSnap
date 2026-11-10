@@ -432,8 +432,8 @@ test.describe.serial('P1 - 人物相册', () => {
       await expect(selectionBar).toContainText('已选 1 项', { timeout: 3_000 })
     }).toPass({ timeout: 60_000 })
 
-    // PhotoGallery 的 trash 按钮 title = deleteLabel prop = "从人物中移除"，
-    // 它在没有选中照片时是 disabled 的（PhotoBatchActionBar: localSelectedIds.size === 0）。
+    // 主删除按钮已恢复为默认「删除」，「从人物中移除」移到批量工具栏的「更多」菜单里。
+    await selectionBar.getByRole('button', { name: '更多' }).click()
     const removeBtn = page.locator('button[title="从人物中移除"]').first()
     await expect(removeBtn).toBeVisible({ timeout: 5_000 })
     await expect(removeBtn).toBeEnabled({ timeout: 15_000 })
@@ -452,30 +452,10 @@ test.describe.serial('P1 - 人物相册', () => {
     )
     await removeBtn.click()
 
-    // PeopleDetail 启用 confirm-remove=true：走两次确认 ——
-    // 1) UnifiedPhotoPage.handleBatchRemoveFromAlbum 弹 ElMessageBox.confirm
-    // 2) confirmRemove=true 进入 handleBatchDelete → 弹 ConfirmDialog（z-100）
-    // ElMessageBox z-index:2000 的 overlay 在淡出中可能仍盖住 ConfirmDialog，
-    // 因此先 click ElMessageBox 确定，再 detached 等待。
-    const firstConfirm = page.locator('.el-message-box__btns button:has-text("确定")').first()
-    await expect(firstConfirm).toBeVisible({ timeout: 5_000 })
-    await firstConfirm.click()
-
-    await page.locator('.el-message-box').waitFor({ state: 'detached', timeout: 15_000 }).catch(async () => {
-      await expect(firstConfirm).toBeHidden({ timeout: 10_000 })
-      await page.waitForTimeout(400)
-    })
-
-    // 第二个确认框是 UnifiedPhotoPage 的 ConfirmDialog（标题「确认操作」）。
-    // 原来用 `div.fixed.inset-0 button:has-text("确定")` 只能靠文档顺序猜，
-    // 淡出中的 ElMessageBox overlay 仍可能挡住点击 —— 改成按对话框标题精确定位。
-    const secondConfirm = page
-      .getByRole('dialog')
-      .filter({ hasText: '确认操作' })
-      .getByRole('button', { name: '确定' })
-      .first()
-    await expect(secondConfirm).toBeVisible({ timeout: 15_000 })
-    await secondConfirm.click()
+    // 解除关联只走一次 ElMessageBox 确认（不再复用删除照片的 ConfirmDialog）。
+    const confirmBtn = page.locator('.el-message-box__btns button:has-text("确定")').first()
+    await expect(confirmBtn).toBeVisible({ timeout: 5_000 })
+    await confirmBtn.click()
 
     // 等请求与响应都完成，并从请求 body 提取真正移除的 photo_ids（DOM 与 API
     // 排序不同，不能依赖 before 列表下标）

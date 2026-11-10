@@ -221,7 +221,8 @@
         :layout-mode="layoutMode"
         :view-size="viewSize"
         :group-by-date="true"
-        :delete-label="deleteLabel"
+        :delete-label="batchDeleteLabel"
+        :remove-label="removeLabel"
         :pending-remove-ids="pendingRemoveIds"
         :day-captions="captionMap"
         :day-locations="locationMap"
@@ -233,6 +234,7 @@
         @load-more="$emit('load-more')"
         @load-range="(offset) => $emit('load-range', offset)"
         @batch-delete="handleBatchDelete"
+        @remove-association="handleBatchRemoveAssociation"
         @remove-from-album="handleBatchRemoveFromAlbum"
         @add-to-album="handleBatchAddToAlbum"
         @set-album-cover="(ids) => $emit('set-cover', ids)"
@@ -396,6 +398,8 @@ const props = withDefaults(defineProps<{
   timelineItems?: any[]
   allowUpload?: boolean
   deleteLabel?: string
+  // 非空时：主删除按钮恢复默认「删除」，该文案作为「更多」里的解除关联项
+  removeLabel?: string
   hasMore?: boolean
   timelineStats?: any
   confirmRemove?: boolean
@@ -417,6 +421,7 @@ const props = withDefaults(defineProps<{
   timelineItems: () => [],
   allowUpload: false,
   deleteLabel: '删除',
+  removeLabel: '',
   hasMore: false,
   timelineStats: null,
   confirmRemove: false,
@@ -441,9 +446,13 @@ const emit = defineEmits<{
   (e: 'photo-update', event: any): void
   (e: 'viewer-close'): void
   (e: 'remove-from-album', ids: string[]): void // General delete/remove event
-  (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void): void
+  (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void, source: 'batch' | 'lightbox'): void
+  (e: 'confirm-remove-association', ids: string[], callback: (success: boolean) => void): void
   (e: 'refresh-data', done: (success?: boolean) => void): void
 }>()
+
+// 批量工具栏的主按钮：有解除关联菜单项时恢复为默认「删除」，灯箱仍用 deleteLabel
+const batchDeleteLabel = computed(() => props.removeLabel ? '删除' : props.deleteLabel)
 
 // UI State
 const pageTopRef = ref<HTMLElement | null>(null)
@@ -988,6 +997,22 @@ const handleBatchRemoveFromAlbum = (ids: string[]) => {
     })
 }
 
+// 「更多」里的解除关联：只影响当前相册/人物，照片本体保留
+const handleBatchRemoveAssociation = (ids: string[]) => {
+    if (ids.length === 0) return
+    ElMessageBox.confirm(
+        `确定要将选中的 ${ids.length} 张照片${props.removeLabel}吗？仅解除关联，照片本身不会被删除。`,
+        '确认',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+        emit('confirm-remove-association', ids, (success: boolean) => {
+            if (success) galleryRef.value?.exitSelectionMode()
+        })
+    }).catch(() => {
+        // 用户点击取消
+    })
+}
+
 const handlePhotoDelete = (id: string) => {
     lightboxDeleteId.value = id
     idsToDelete.value = [id]
@@ -995,18 +1020,22 @@ const handlePhotoDelete = (id: string) => {
 }
 
 const confirmMessage = computed(() => {
-  if (props.deleteLabel === '删除') {
-    return `确定要删除选中的 ${idsToDelete.value.length} 张照片吗？删除的照片将放入回收站，可稍后恢复。`
+  const count = idsToDelete.value.length
+  // 主按钮恢复为默认「删除」时给回收站提示；灯箱沿用原有的移除文案
+  if (props.deleteLabel === '删除' || (!lightboxDeleteId.value && props.removeLabel)) {
+    return `确定要删除选中的 ${count} 张照片吗？删除的照片将放入回收站，可稍后恢复。`
   }
-  return `确定要${props.deleteLabel}选中的 ${idsToDelete.value.length} 张照片吗？`
+  return `确定要${props.deleteLabel}选中的 ${count} 张照片吗？`
 })
 
 const confirmDelete = () => {
+    const source: 'batch' | 'lightbox' = lightboxDeleteId.value ? 'lightbox' : 'batch'
+    const realDelete = props.deleteLabel === '删除' || (source === 'batch' && !!props.removeLabel)
     const scrollAnchor = captureVisiblePhoto(idsToDelete.value)
     emit('confirm-delete', idsToDelete.value, (success: boolean) => {
         if (success) {
             // Show particle if needed (usually for permanent delete)
-            if (props.deleteLabel === '删除') {
+            if (realDelete) {
                 showParticle.value = true
             }
             galleryRef.value?.exitSelectionMode()
@@ -1016,7 +1045,7 @@ const confirmDelete = () => {
             })))
         }
         lightboxDeleteId.value = null
-    })
+    }, source)
 }
 
 const handleAddToAlbumFromLightbox = (img: AlbumImage) => {

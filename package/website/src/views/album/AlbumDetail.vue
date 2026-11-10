@@ -8,6 +8,7 @@
     :timeline-stats="photoStore.timelineStats"
     :timeline-items="timelineItems"
     :delete-label="isUserAlbum ? '从相册中移除' : '删除'"
+    :remove-label="isUserAlbum ? '从相册中移除' : ''"
     :pending-remove-ids="pendingRemoveIds"
     :has-more="photoStore.hasMore"
     :update-available="photoStore.dataStale"
@@ -16,6 +17,7 @@
     @load-more="loadMorePhotos"
     @retry="photoStore.loadAlbumPhotos(albumId, true)"
     @confirm-delete="handleConfirmDelete"
+    @confirm-remove-association="handleConfirmRemoveAssociation"
     @remove-from-album="handleBatchRemoveFromAlbum"
     @photo-update="handlePhotoUpdate"
     @set-cover="setCover"
@@ -316,22 +318,46 @@ const handleMenuCommand = (command: string) => {
   else if (command === 'delete') deleteCurrentAlbum()
 }
 
-const handleConfirmDelete = async (ids: string[], callback: (success: boolean) => void) => {
+// 仅解除相册关联，照片本体保留
+const detachPhotos = async (ids: string[], callback: (success: boolean) => void) => {
     try {
-        if (isUserAlbum.value) {
-            await albumStore.removePhotosFromAlbum(albumId, ids)
-            photoStore.removeLocalPhotos(ids)
-        } else {
-            await photoStore.deletePhotos(ids)
-        }
+        await albumStore.removePhotosFromAlbum(albumId, ids)
+        photoStore.removeLocalPhotos(ids)
+        ElMessage.success('已移出相册')
         callback(true)
         void albumStore.fetchAlbums()
     } catch (e) {
         console.error(e)
-        ElMessage.error('操作失败')
+        ElMessage.error('移出失败')
         callback(false)
     }
 }
+
+// 主删除按钮：删除照片本体，移入回收站
+const deletePhotosGlobally = async (ids: string[], callback: (success: boolean) => void) => {
+    try {
+        await photoStore.deletePhotos(ids)
+        ElMessage.success(`已删除 ${ids.length} 张照片，可在回收站恢复`)
+        callback(true)
+        void albumStore.fetchAlbums()
+    } catch (e) {
+        console.error(e)
+        ElMessage.error('删除失败')
+        callback(false)
+    }
+}
+
+// 批量主按钮 = 默认删除；灯箱沿用原有语义（普通相册只移出，系统相册真删除）
+const handleConfirmDelete = (
+    ids: string[],
+    callback: (success: boolean) => void,
+    source: 'batch' | 'lightbox' = 'lightbox',
+) => {
+    if (source === 'batch' || !isUserAlbum.value) return deletePhotosGlobally(ids, callback)
+    return detachPhotos(ids, callback)
+}
+
+const handleConfirmRemoveAssociation = detachPhotos
 
 const handleBatchRemoveFromAlbum = async (ids: string[]) => {
     if (ids.length === 0) return

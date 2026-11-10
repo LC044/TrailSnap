@@ -100,7 +100,18 @@
                   </el-dropdown-item>
 
                   <el-dropdown-item
-                    v-if="albumContext"
+                    v-if="removeLabel"
+                    :disabled="localSelectedIds.size === 0"
+                    @click="$emit('remove-association', selectedArray)"
+                  >
+                     <button type="button" class="flex w-full items-center gap-2 disabled:cursor-not-allowed" :title="removeLabel" :disabled="localSelectedIds.size === 0">
+                        <ImageMinusIcon class="w-4 h-4" />
+                        <span>{{ removeLabel }}</span>
+                     </button>
+                  </el-dropdown-item>
+
+                  <el-dropdown-item
+                    v-if="albumContext && !removeLabel"
                     :disabled="localSelectedIds.size === 0"
                     @click="$emit('remove-from-album', selectedArray)"
                   >
@@ -154,16 +165,19 @@ const props = withDefaults(defineProps<{
   deleteLabel: string
   albumContext?: boolean
   allowTransfer?: boolean
+  // 非空时，「从相册/人物中移除」显示在这里的「更多」菜单，主按钮保持默认「删除」
+  removeLabel?: string
   selectedCount?: number
   actionColumns?: number
   showMobileHeader?: boolean
-}>(), { albumContext: false, allowTransfer: false, actionColumns: 4, showMobileHeader: true })
+}>(), { albumContext: false, allowTransfer: false, removeLabel: '', actionColumns: 4, showMobileHeader: true })
 const localSelectedIds = computed(() => props.selectedIds)
 const selectionCount = computed(() => props.selectedCount ?? props.selectedIds.size)
 const selectedArray = computed(() => Array.from(props.selectedIds))
 const emit = defineEmits<{
   cancel: []; 'select-all': []; download: []; delete: []; person: []
   'add-to-album': [ids: string[]]; 'remove-from-album': [ids: string[]]
+  'remove-association': [ids: string[]]
   'set-album-cover': [ids: string[]]; 'batch-edit-location': [ids: string[]]
   transfer: [action: 'move' | 'copy', ids: string[]]
 }>()
