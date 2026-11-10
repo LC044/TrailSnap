@@ -10,6 +10,7 @@
   --rp-card: #ffffff;
   --rp-radius: 16px;
   --rp-shadow: 0 1px 2px rgba(15,23,42,.025), 0 12px 34px -24px rgba(37,99,235,.28);
+  --rp-mobile-header-height: 102px;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   color: var(--rp-text);
   background: var(--rp-bg);
@@ -23,6 +24,7 @@ a { color: inherit; }
 .app-shell.nav-collapsed { --rp-sidebar-width: 72px; }
 
 /* ---------- 侧边导航 ---------- */
+.mobile-nav { display: none; }
 .topbar { position: fixed; inset: 0 auto 0 0; z-index: 30; width: var(--rp-sidebar-width); background: rgba(255,255,255,.92); backdrop-filter: blur(18px) saturate(1.15); border-right: 1px solid rgba(226,232,240,.95); box-shadow: 1px 0 16px rgba(15,23,42,.035); transition: width .2s ease; }
 .topbar-inner { height: 100%; padding: 18px 12px 14px; display: flex; flex-direction: column; align-items: stretch; gap: 18px; overflow: hidden; }
 .brand { min-height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 7px; font-size: 18px; font-weight: 800; white-space: nowrap; }
@@ -180,14 +182,6 @@ a { color: inherit; }
 .section-head .el-icon { color: var(--rp-primary); }
 .field-hint { color: var(--rp-text-3); font-size: 12.5px; line-height: 1.5; margin-top: 5px; }
 .submit-quota { color: var(--rp-text-2); font-size: 13px; line-height: 1.5; margin-top: 10px; }
-.dashboard-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.dashboard-card { display: grid; gap: 6px; text-align: center; }
-.dashboard-card strong { color: var(--rp-primary); font-size: 28px; }
-.dashboard-card span { color: var(--rp-text-2); font-size: 13px; }
-.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.metric-cards { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.metric-cards .dashboard-card { grid-column: span 3; }
-.dashboard-grid h2 { margin: 0 0 14px; font-size: 17px; }
 .distribution-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--rp-border); }
 .contact-box { margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 13px; }
 .timeline { margin-top: 20px; border-top: 1px solid var(--rp-border); padding-top: 14px; }
@@ -266,14 +260,40 @@ a { color: inherit; }
   .public-page-head .stat-cards { margin-top: 20px; }
 }
 @media (max-width: 860px) {
-  .app-shell { --rp-sidebar-width: 72px; }
-  .brand-copy, .nav-label, .user-chip > .el-icon:last-child { display: none; }
-  .brand, .nav button, .collapse-btn, .topbar-side .user-chip { justify-content: center; padding-left: 0; padding-right: 0; }
-  .collapse-btn { display: none; }
-  .collapsed-login { display: inline-flex; }
+  /* 窄屏不再使用左侧栏，改为固定顶部导航栏 */
+  .app-shell, .app-shell.nav-collapsed { --rp-sidebar-width: 0px; padding-left: 0; padding-top: var(--rp-mobile-header-height); }
+  .topbar { position: fixed; inset: 0 0 auto 0; width: 100%; height: var(--rp-mobile-header-height); border-right: 0; border-bottom: 1px solid rgba(226,232,240,.95); box-shadow: 0 4px 18px rgba(15,23,42,.06); }
+  .desktop-nav { display: none; }
+  .mobile-nav { display: block; position: relative; z-index: 31; }
+  .mobile-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 56px; padding: 0 12px; }
+  .mobile-brand { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--rp-text); text-align: left; cursor: pointer; }
+  .mobile-brand img { width: 32px; height: 32px; flex: none; border-radius: 9px; box-shadow: 0 6px 16px -8px rgba(37,99,235,.7); }
+  .mobile-brand-copy { display: grid; min-width: 0; line-height: 1.15; }
+  .mobile-brand-copy strong { font-size: 16px; font-weight: 800; white-space: nowrap; }
+  .mobile-brand-copy small { margin-top: 3px; color: var(--rp-text-3); font-size: 10.5px; white-space: nowrap; }
+  .mobile-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+  .mobile-actions .icon-btn { width: 36px; height: 36px; }
+  .mobile-user { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
+  .mobile-user:hover { background: var(--rp-primary-soft); }
+  .menu-toggle { color: var(--rp-primary); }
+  .mobile-tabs { display: flex; gap: 4px; height: 46px; padding: 0 8px 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; border-top: 1px solid var(--rp-border); }
+  .mobile-tabs::-webkit-scrollbar { display: none; }
+  .mobile-tabs button { display: inline-flex; align-items: center; gap: 5px; flex: none; min-height: 34px; margin-top: 6px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--rp-text-2); font-size: 13px; white-space: nowrap; cursor: pointer; transition: background .15s, color .15s; }
+  .mobile-tabs button .el-icon { flex: none; }
+  .mobile-tabs button.active { background: var(--rp-primary-soft); color: var(--rp-primary); font-weight: 700; }
+  .mobile-tabs button:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 1px; }
+  .mobile-menu { position: absolute; top: var(--rp-mobile-header-height); left: 0; right: 0; z-index: 33; max-height: calc(100vh - var(--rp-mobile-header-height)); overflow-y: auto; padding: 16px 14px 18px; background: #fff; border-bottom: 1px solid var(--rp-border); box-shadow: 0 18px 32px -18px rgba(15,23,42,.3); }
+  .mobile-menu-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 12px; color: var(--rp-text); font-size: 13px; font-weight: 700; }
+  .mobile-menu-head small { color: var(--rp-text-3); font-size: 11.5px; font-weight: 500; }
+  .mobile-menu-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .mobile-menu-grid button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 82px; padding: 10px 4px; border: 1px solid var(--rp-border); border-radius: 12px; background: #fbfcff; color: var(--rp-text-2); font-size: 12px; line-height: 1.3; text-align: center; cursor: pointer; }
+  .mobile-menu-grid button.active { border-color: #bfdbfe; background: var(--rp-primary-soft); color: var(--rp-primary); font-weight: 700; }
+  .mobile-menu-grid button:focus-visible { outline: 2px solid var(--rp-primary); outline-offset: 1px; }
+  .mobile-menu-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; background: #fff; color: var(--rp-primary); box-shadow: 0 1px 3px rgba(15,23,42,.06); }
+  .mobile-menu-label { max-width: 100%; overflow-wrap: anywhere; }
+  .mobile-menu-mask { position: fixed; inset: var(--rp-mobile-header-height) 0 0; z-index: 29; background: rgba(15,23,42,.18); }
   .main { padding: 20px 16px 48px; }
   .page-head-actions { width: 100%; justify-content: space-between; }
-  .dashboard-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   .main { padding: 16px 12px 36px; }
@@ -300,7 +320,6 @@ a { color: inherit; }
   .submit-form .actions { display: grid; grid-template-columns: minmax(0, 1fr); }
   .submit-form .actions > .el-button { width: 100%; max-width: 100%; min-width: 0; }
   .page-head-actions > .el-button { max-width: 100%; min-width: 0; }
-  .dashboard-cards, .dashboard-grid, .metric-cards { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .native-file { min-height: 44px; }
   .file-row { align-items: flex-start; flex-wrap: wrap; word-break: break-all; }
   .batch-grid { grid-template-columns: minmax(0, 1fr); }
@@ -318,9 +337,11 @@ a { color: inherit; }
 }
 
 @media (max-width: 420px) {
-  .topbar-inner { padding: 12px 10px; }
-  .brand img { width: 30px; height: 30px; }
-  .topbar-side .el-button { padding-left: 12px; padding-right: 12px; }
+  .mobile-bar { padding: 0 8px; }
+  .mobile-brand-copy small { display: none; }
+  .mobile-tabs { padding-left: 6px; padding-right: 6px; }
+  .mobile-tabs button { padding: 0 10px; }
+  .mobile-menu-grid { gap: 6px; }
   .page-head .sub { font-size: 14px; }
   .page-head .desc { display: none; }
   .el-dialog { width: calc(100vw - 24px) !important; margin: 12px auto !important; }

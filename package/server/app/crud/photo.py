@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session, joinedload
 
 from app.crud.album import (
@@ -395,13 +395,47 @@ def get_filter_options(db: Session, user_id: UUID):
     # Panorama is a virtual filter, not a stored file type.
     file_types = [t.value for t in FileType] + ['panorama']
 
+    from app.db.models.face import FaceIdentity
+    categories = db.query(PhotoTag.tag_name).filter(
+        PhotoTag.is_deleted.is_(False),
+        PhotoTag.photos.any((Photo.owner_id == user_id) & Photo.is_deleted.is_(False)),
+    ).distinct().order_by(PhotoTag.tag_name).all()
+
+    from app.crud.face import _identity_photo_counts
+    counts = _identity_photo_counts(db, owner_id=user_id, active_only=True)
+    # Prefer the configured avatar; fall back to another active face if needed.
+    avatars = db.query(
+        Face.face_identity_id, Face.photo_id, Face.face_rect,
+        func.row_number().over(partition_by=Face.face_identity_id, order_by=(
+            case((Face.id == FaceIdentity.default_face_id, 0), else_=1), Face.id
+        )).label('rank'),
+    ).join(Photo, Photo.id == Face.photo_id).join(
+        FaceIdentity, FaceIdentity.id == Face.face_identity_id
+    ).filter(Photo.owner_id == user_id, Photo.is_deleted.is_(False),
+             Face.is_deleted.is_(False), FaceIdentity.owner_id == user_id,
+             FaceIdentity.is_deleted.is_(False)).subquery()
+    photo_count = func.coalesce(counts.c.count, 0)
+    person_rows = db.query(FaceIdentity.id, FaceIdentity.identity_name,
+                           photo_count.label('photo_count'), avatars.c.photo_id, avatars.c.face_rect).outerjoin(
+        counts, counts.c.face_identity_id == FaceIdentity.id
+    ).outerjoin(avatars, (avatars.c.face_identity_id == FaceIdentity.id) & (avatars.c.rank == 1)).filter(
+        FaceIdentity.owner_id == user_id, FaceIdentity.is_deleted.is_(False),
+    ).order_by(photo_count.desc(), FaceIdentity.id).all()
+    person_options = [dict(id=str(row.id), name=(row.identity_name or '').strip() or '未命名',
+                           photo_count=row.photo_count,
+                           photo_id=str(row.photo_id) if row.photo_id else None,
+                           face_rect=row.face_rect) for row in person_rows]
+
     return {
         "years": sorted(list(years_set), reverse=True),
         "cities": sorted(list(cities_set)),
         "makes": sorted(list(makes_set)),
         "models": sorted(list(models_set)),
         "image_types": image_types,
-        "file_types": file_types
+        "file_types": file_types,
+        "people": [person['id'] for person in person_options],
+        "person_options": person_options,
+        "categories": [row[0] for row in categories],
     }
 
 
@@ -449,13 +483,21 @@ def _build_photo_filter_query(
     folder_direct: bool = False,
     folder_roots: Optional[List[str]] = None,
     user_id: UUID = None,
-    is_deleted: bool = False
+    is_deleted: bool = False,
+    search_type: Optional[str] = None,
+    search_text: Optional[str] = None,
+    people: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None
 ):
     # 先筛选 Photo，减少后续连表的数据量
     photo_query = db.query(Photo.id).filter(Photo.is_deleted == is_deleted)
 
     if user_id is not None:
         photo_query = photo_query.filter(Photo.owner_id == user_id)
+
+    if search_type or people or categories:
+        from app.crud.metadata_search import apply_metadata_search
+        photo_query = apply_metadata_search(photo_query, search_type, search_text, cities, people, categories)
 
     # Filter by IDs if provided
     if ids:
@@ -493,6 +535,16 @@ def _build_photo_filter_query(
             photo_query = photo_query.filter(~norm_expr.like(esc + '/%', escape='\\'))
 
     # 时间范围过滤（Photo 表）
+    if search_type == 'date' and years and (start_time or end_time):
+        from sqlalchemy import and_, or_
+        photo_query = photo_query.filter(or_(
+            and_(Photo.photo_time >= (start_time or datetime.min),
+                 Photo.photo_time <= (end_time or datetime.max)),
+            func.extract('year', Photo.photo_time).in_(years),
+        ))
+        start_time = end_time = None
+        years = None
+
     if start_time or end_time:
         if not start_time:
             start_time = datetime.min
@@ -563,6 +615,9 @@ def _build_photo_filter_query(
 
     if needs_distinct:
         photo_query = photo_query.distinct()
+
+    if search_type == 'location':
+        cities = None
 
     has_metadata_filters = (
         (city and city.strip()) or cities or
@@ -708,10 +763,15 @@ def get_all_photos(
     folder: Optional[str] = None,
     folder_direct: bool = False,
     folder_roots: Optional[List[str]] = None,
-    user_id: UUID = None
+    user_id: UUID = None,
+    search_type: Optional[str] = None,
+    search_text: Optional[str] = None,
+    people: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None
 ):
     query = _build_photo_filter_query(
         db=db,
+        search_type=search_type, search_text=search_text, people=people, categories=categories,
         start_time=start_time,
         end_time=end_time,
         uploaded_after=uploaded_after,
@@ -833,10 +893,15 @@ def get_timeline_stats(
     folder_roots: Optional[List[str]] = None,
     time_field: str = "photo_time",
     include_covers: bool = False,
-    user_id: UUID = None
+    user_id: UUID = None,
+    search_type: Optional[str] = None,
+    search_text: Optional[str] = None,
+    people: Optional[List[str]] = None,
+    categories: Optional[List[str]] = None
 ):
     query = _build_photo_filter_query(
         db=db,
+        search_type=search_type, search_text=search_text, people=people, categories=categories,
         start_time=start_time,
         end_time=end_time,
         uploaded_after=uploaded_after,

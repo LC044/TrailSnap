@@ -411,30 +411,60 @@ def list_jobs(_actor: User = Depends(manager), db: Session = Depends(get_db)):
 
 @app.get("/api/admin/dashboard")
 def dashboard(_actor: User = Depends(manager), db: Session = Depends(get_db)):
-    base = db.query(Requirement).filter(Requirement.deleted_at.is_(None))
+    """总览看板数据。原有字段保持不变，新增维度均为可选增量字段。"""
+    not_deleted = Requirement.deleted_at.is_(None)
+    base = db.query(Requirement).filter(not_deleted)
+
+    def breakdown(column):
+        rows = db.query(column, func.count(Requirement.id)).filter(not_deleted).group_by(column).all()
+        return {str(key or "unknown"): count for key, count in rows}
+
     status_rows = db.query(Requirement.status, func.count(Requirement.id)).filter(
-        Requirement.deleted_at.is_(None)
+        not_deleted
     ).group_by(Requirement.status).all()
     type_rows = db.query(Requirement.type, func.count(Requirement.id)).filter(
-        Requirement.deleted_at.is_(None)
+        not_deleted
     ).group_by(Requirement.type).all()
     now = datetime.now(timezone.utc)
     since_7 = now - timedelta(days=7)
     since_30 = now - timedelta(days=30)
+    since_90 = now - timedelta(days=90)
+
+    # 时间维度：一次性返回 90 天数据，前端可切换 7 / 30 / 90 天窗口
+    day_expr = func.substr(Requirement.created_at, 1, 10)
     trend_rows = db.query(
-        func.substr(Requirement.created_at, 1, 10).label("day"), func.count(Requirement.id)
+        day_expr.label("day"), func.count(Requirement.id)
     ).filter(
-        Requirement.deleted_at.is_(None), Requirement.created_at >= since_30
-    ).group_by("day").all()
+        not_deleted, Requirement.created_at >= since_90
+    ).group_by(day_expr).all()
     trend_by_day = {day: count for day, count in trend_rows}
-    daily_new = []
-    for offset in range(29, -1, -1):
+    daily_new_90d = []
+    for offset in range(89, -1, -1):
         day = (now - timedelta(days=offset)).date().isoformat()
-        daily_new.append({"date": day, "count": trend_by_day.get(day, 0)})
+        daily_new_90d.append({"date": day, "count": trend_by_day.get(day, 0)})
+
+    # 类型维度：按天按类型拆分，用于堆叠/多序列趋势
+    type_trend_rows = db.query(
+        day_expr.label("day"), Requirement.type, func.count(Requirement.id)
+    ).filter(
+        not_deleted, Requirement.created_at >= since_90
+    ).group_by(day_expr, Requirement.type).all()
+    type_by_day: dict[str, dict[str, int]] = {}
+    for day, kind, count in type_trend_rows:
+        type_by_day.setdefault(day, {})[kind] = count
+    known_types = ("feature", "improvement", "bug")
+    daily_new_by_type_90d = []
+    for point in daily_new_90d:
+        counts = type_by_day.get(point["date"], {})
+        row = {"date": point["date"]}
+        row.update({kind: counts.get(kind, 0) for kind in known_types})
+        row["other"] = max(0, point["count"] - sum(row[kind] for kind in known_types))
+        daily_new_by_type_90d.append(row)
+
     contributors_rows = db.query(
         Requirement.created_by, User.username, func.count(Requirement.id)
     ).join(User, User.id == Requirement.created_by).filter(
-        Requirement.deleted_at.is_(None), Requirement.created_by.is_not(None)
+        not_deleted, Requirement.created_by.is_not(None)
     ).group_by(Requirement.created_by, User.username).all()
     contributors = [{
         "user_id": user_id,
@@ -444,7 +474,42 @@ def dashboard(_actor: User = Depends(manager), db: Session = Depends(get_db)):
     contributors.sort(key=lambda item: (-item["count"], item["name"]))
     anonymous_count = base.filter(Requirement.created_by.is_(None)).count()
     followers = db.query(func.count(RequirementFollower.id)).scalar() or 0
+
+    # 关注度维度：被关注最多的需求
+    follower_expr = func.count(RequirementFollower.id)
+    followed_rows = db.query(
+        Requirement.id, Requirement.public_number, Requirement.title, follower_expr
+    ).join(RequirementFollower, RequirementFollower.requirement_id == Requirement.id).filter(
+        not_deleted
+    ).group_by(Requirement.id, Requirement.public_number, Requirement.title).order_by(
+        follower_expr.desc()
+    ).limit(5).all()
+    top_followed = [{
+        "id": requirement_id,
+        "public_number": public_number,
+        "title": title,
+        "follower_count": count,
+    } for requirement_id, public_number, title, count in followed_rows]
+
+    done_statuses = {"released", "published", "completed"}
+    terminal_statuses = done_statuses | {"closed", "rejected", "duplicate", "withdrawn", "cancelled"}
+    resolved_rows = db.query(Requirement.created_at, Requirement.updated_at).filter(
+        not_deleted, Requirement.status.in_(done_statuses)
+    ).all()
+    durations = []
+    for created, updated in resolved_rows:
+        if created is None or updated is None:
+            continue
+        try:
+            days = (updated - created).total_seconds() / 86400
+        except TypeError:
+            continue
+        if 0 <= days < 3650:
+            durations.append(days)
+    avg_resolution_days = round(sum(durations) / len(durations), 1) if durations else None
+
     return ok({
+        "generated_at": now.isoformat(),
         "total": base.count(),
         "new_last_7_days": base.filter(Requirement.created_at >= since_7).count(),
         "pending_review": base.filter(Requirement.status.in_({"submitted", "triaging", "pending_review"})).count(),
@@ -453,8 +518,25 @@ def dashboard(_actor: User = Depends(manager), db: Session = Depends(get_db)):
         "anonymous": anonymous_count,
         "by_status": {status: count for status, count in status_rows},
         "by_type": {kind: count for kind, count in type_rows},
+        "by_priority": breakdown(Requirement.priority),
+        "by_severity": breakdown(Requirement.severity),
+        "by_source": breakdown(Requirement.source),
+        "by_visibility": breakdown(Requirement.visibility),
         "contributor_count": len(contributors) + (1 if anonymous_count else 0),
+        "active_contributors_30d": db.query(func.count(func.distinct(Requirement.created_by))).filter(
+            not_deleted, Requirement.created_by.is_not(None), Requirement.created_at >= since_30
+        ).scalar() or 0,
         "follower_count": followers,
-        "daily_new_30d": daily_new,
-        "top_contributors": contributors[:5],
+        "released_last_30d": base.filter(
+            Requirement.status.in_(done_statuses), Requirement.updated_at >= since_30
+        ).count(),
+        "closed_last_30d": base.filter(
+            Requirement.status.in_(terminal_statuses), Requirement.updated_at >= since_30
+        ).count(),
+        "avg_resolution_days": avg_resolution_days,
+        "daily_new_30d": daily_new_90d[-30:],
+        "daily_new_90d": daily_new_90d,
+        "daily_new_by_type_90d": daily_new_by_type_90d,
+        "top_contributors": contributors[:8],
+        "top_followed": top_followed,
     })

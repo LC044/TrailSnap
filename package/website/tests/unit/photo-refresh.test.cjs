@@ -22,8 +22,48 @@ function harness() {
   vm.runInThisContext(`(function(require,module,exports){${code}\n})`)(name => deps[name] || require(name), module, module.exports)
   const store = module.exports.photoStoreSetup()
   store.timelineStats.value = stats
-  return { store, api, photo }
+  return { store, api, photo, exports: module.exports }
 }
+
+test('condition search applies the same filters to statistics, months and sort changes', async () => {
+  const { store, api, photo } = harness()
+  store.browseEnabled.value = true
+  store.searchFilters.value = { search_type: 'location', search_text: '西安市' }
+  store.selectedFilters.years = [2026]
+  const seen = []
+  api.getTimelineStats = async (_album, filters) => {
+    seen.push(filters)
+    return { total_photos: 1, timeline: [{ year: 2026, month: 10, day: 1, count: 1 }] }
+  }
+  api.getAllPhotos = async (_skip, _count, filters) => { seen.push(filters); return [photo('match')] }
+  await store.loadPhotos(true)
+  await store.loadPhotosByMonth(2026, 10)
+  await store.changeTimeField('upload_time')
+  assert.ok(seen.length >= 4)
+  for (const filters of seen) {
+    assert.equal(filters.search_type, 'location')
+    assert.equal(filters.search_text, '西安市')
+    assert.deepEqual([...filters.years], [2026])
+  }
+})
+
+test('search store starts independently of persisted gallery filters and does not overwrite them', async () => {
+  const { exports } = harness()
+  const { createPinia, setActivePinia } = require('pinia')
+  setActivePinia(createPinia())
+  const previous = global.localStorage
+  const data = new Map([['trailsnap:selectedFilters', JSON.stringify({ timestamp: Date.now(), data: { years: [2020], cities: ['杭州'], file_types: [] } })]])
+  global.localStorage = { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) }
+  try {
+    const before = data.get('trailsnap:selectedFilters')
+    const search = exports.useSearchPhotosStore()
+    assert.deepEqual([...search.selectedFilters.years], [])
+    assert.deepEqual([...search.selectedFilters.cities], [])
+    search.selectedFilters.years.push(2026)
+    await require('vue').nextTick()
+    assert.equal(data.get('trailsnap:selectedFilters'), before)
+  } finally { global.localStorage = previous }
+})
 
 test('background refresh keeps old photos until new data is ready, with no empty frame', async () => {
   const { store, api, photo } = harness()

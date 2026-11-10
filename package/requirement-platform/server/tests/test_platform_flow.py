@@ -493,6 +493,11 @@ def test_batch_update_closed_filter_and_dashboard_charts():
         assert dashboard["contributor_count"] >= 1
         assert isinstance(dashboard["top_contributors"], list)
         assert dashboard["follower_count"] >= 1
+        assert len(dashboard["daily_new_90d"]) == 90
+        assert len(dashboard["daily_new_by_type_90d"]) == 90
+        assert sum(point["count"] for point in dashboard["daily_new_90d"][-30:]) >= 1
+        assert dashboard["by_priority"] and dashboard["by_severity"] and dashboard["by_source"]
+        assert isinstance(dashboard["top_followed"], list)
 
 
 def test_manager_imports_github_issues(monkeypatch):

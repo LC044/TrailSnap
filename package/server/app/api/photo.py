@@ -299,6 +299,10 @@ def read_all_photos(
         folder: Optional[str] = None,
         folder_direct: bool = False,
         dedup_similar: bool = False,
+        search_type: Optional[str] = Query(None, pattern="^(person|location|ocr|album|folder|filename|tag|scene|date)$"),
+        search_text: Optional[str] = None,
+        people: Optional[List[str]] = Query(None),
+        categories: Optional[List[str]] = Query(None),
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
@@ -314,6 +318,9 @@ def read_all_photos(
         folder_roots = get_user_roots(current_user.id, db)
     photos = app.crud.photo.get_all_photos(
         db, skip=skip, limit=limit, start_time=start_time, end_time=end_time,
+        search_type=search_type if isinstance(search_type, str) else None, search_text=search_text,
+        people=people if isinstance(people, list) else None,
+        categories=categories if isinstance(categories, list) else None,
         uploaded_after=uploaded_after, uploaded_before=uploaded_before,
         years=years, city=city, cities=cities, scene=scene, scenes=scenes, province=province, provinces=provinces, country=country, countries=countries, 
         make=make, makes=makes, model=model, models=models, 

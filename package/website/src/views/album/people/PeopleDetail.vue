@@ -7,10 +7,11 @@
     :timeline-stats="{ timeline }"
     :allow-upload="false"
     delete-label="从人物中移除"
+    remove-label="从人物中移除"
     :pending-remove-ids="pendingRemoveIds"
-    confirm-remove
     @back="goBack"
     @confirm-delete="handleConfirmDelete"
+    @confirm-remove-association="handleConfirmRemoveAssociation"
     @set-cover="handleSetCover"
     @photo-update="handlePhotoUpdate"
     @viewer-close="refreshChangedFaces"
@@ -229,26 +230,55 @@ const fetchAllPhotos = async () => {
   }
 }
 
-const handleConfirmDelete = async (ids: string[], callback: (success: boolean) => void) => {
+const removeFromLocal = (ids: string[]) => {
+  images.value = images.value.filter(img => !ids.includes(img.id))
+  calculateTimelineStats(images.value)
+}
+
+// 仅解除照片与人物的关联，照片本体保留
+const detachPhotos = async (ids: string[], callback: (success: boolean) => void) => {
   try {
     ids.forEach(id => pendingRemoveIds.value.add(id))
-
     await faceApi.removePhotos(identityId, ids)
-
-    // Remove from local list
-    images.value = images.value.filter(img => !ids.includes(img.id))
-    calculateTimelineStats(images.value)
+    removeFromLocal(ids)
     ElMessage.success('移除成功')
-
     callback(true)
-
+    void fetchIdentity()
   } catch (e) {
+    console.error(e)
     ElMessage.error('移除失败')
     callback(false)
   } finally {
     ids.forEach(id => pendingRemoveIds.value.delete(id))
   }
 }
+
+// 主删除按钮：删除照片本体，移入回收站
+const deletePhotosGlobally = async (ids: string[], callback: (success: boolean) => void) => {
+  try {
+    ids.forEach(id => pendingRemoveIds.value.add(id))
+    await photoStore.deletePhotos(ids)
+    removeFromLocal(ids)
+    ElMessage.success(`已删除 ${ids.length} 张照片，可在回收站恢复`)
+    callback(true)
+    void fetchIdentity()
+  } catch (e) {
+    console.error(e)
+    ElMessage.error('删除失败')
+    callback(false)
+  } finally {
+    ids.forEach(id => pendingRemoveIds.value.delete(id))
+  }
+}
+
+// 批量主按钮 = 默认删除；灯箱沿用原有的「从人物中移除」语义
+const handleConfirmDelete = (
+  ids: string[],
+  callback: (success: boolean) => void,
+  source: 'batch' | 'lightbox' = 'lightbox',
+) => source === 'batch' ? deletePhotosGlobally(ids, callback) : detachPhotos(ids, callback)
+
+const handleConfirmRemoveAssociation = detachPhotos
 
 const handleSetCover = async (ids: string[]) => {
   if (!ids.length) return

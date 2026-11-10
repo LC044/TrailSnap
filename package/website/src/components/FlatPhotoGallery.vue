@@ -12,6 +12,7 @@
       @add-to-album="ids => $emit('add-to-album', ids)"
       @remove-from-album="ids => $emit('remove-from-album', ids)"
       @set-album-cover="ids => $emit('set-album-cover', ids)"
+      @batch-edit-time="ids => $emit('batch-edit-time', ids)"
       @batch-edit-location="ids => $emit('batch-edit-location', ids)"
     >
       <template v-if="$slots['batch-actions']" #batch-actions="scope"><slot name="batch-actions" v-bind="scope" /></template>
@@ -152,7 +153,7 @@ const props = withDefaults(defineProps<Props>(), {
   relativeScroll: false,
 })
 
-const emit = defineEmits(['click-photo', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'batch-edit-location'])
+const emit = defineEmits(['click-photo', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'batch-edit-time', 'batch-edit-location'])
 
 // --- Selection State ---
 const { 

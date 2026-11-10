@@ -24,7 +24,7 @@ import { thumbnailUrl } from '@/utils/mediaUrl'
 
 defineProps({
   person: {
-    type: Object as () => FaceIdentity,
+    type: Object as () => Pick<FaceIdentity, 'cover_photo'>,
     required: true,
     default: () => ({})
   }
