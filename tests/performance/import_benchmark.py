@@ -165,6 +165,10 @@ def run_profile(args, profile, repetition, dataset, output):
         sample["docker_limits"] = {s: {k: inspect(c)["HostConfig"][k] for k in ("NanoCpus", "Memory", "MemorySwap")}
                                    for s, c in zip(("postgres", "ai", "server"), containers)}
         ensure_admin_session(api, "benchmark-admin", "Benchmark-pass-123!", "benchmark@example.com")
+        settings = api.unwrap(api.get("/settings/export"))
+        settings["filter"].update(enable=False, exclude_folders=[])
+        api.unwrap(api.post("/settings/import", json_body=settings))
+        sample["filter"] = settings["filter"]
         groups = api.unwrap(api.get("/tasks/grouped-status"))
         if not groups:
             raise RuntimeError("Empty task categories")
