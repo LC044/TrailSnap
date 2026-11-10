@@ -23,7 +23,10 @@ def _kmeans_colors(pixels: np.ndarray, k: int = 5, max_iter: int = 20) -> tuple:
     centers[0] = pixels[np.random.randint(n)]
     for i in range(1, k):
         dists = np.min(np.sum((pixels[:, None] - centers[None, :i]) ** 2, axis=2), axis=1)
-        probs = dists / (dists.sum() + 1e-10)
+        total = dists.sum()
+        # A uniform image has zero distances, so the k-means++ distribution
+        # degenerates. Fall back to a uniform draw instead of crashing.
+        probs = dists / total if total > 0 else np.full(n, 1.0 / n)
         centers[i] = pixels[np.random.choice(n, p=probs)]
 
     labels = np.zeros(n, dtype=np.int32)
