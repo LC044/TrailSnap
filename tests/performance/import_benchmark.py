@@ -174,12 +174,14 @@ def run_profile(args, profile, repetition, dataset, output):
         docker("exec", server, "mkdir", "-p", "/benchmark-photos")
         for folder in CONFIG["folders"]:
             docker("exec", server, "cp", "-a", f"/benchmark-source/{folder}", "/benchmark-photos/")
-        extensions = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".gif", ".mp4", ".mov", ".avi"}
-        expected = sum(1 for folder in CONFIG["folders"] for p in (dataset / folder).rglob("*") if p.is_file() and p.suffix.lower() in extensions)
+        docker("cp", str(Path(__file__).with_name("import_expected.py")), f"{server}:/app/import_expected.py")
+        expected_counts = json.loads(docker("exec", server, "python", "/app/import_expected.py"))
+        expected = expected_counts["photos"]
         if not expected:
             raise RuntimeError("Dataset contains no media")
-        sample["expected_files"] = expected
-        docker("cp", str(Path(__file__).with_name("import_snapshot.py")), f"{server}:/tmp/import_snapshot.py")
+        sample["expected_files"] = expected_counts["files"]
+        sample["expected_photos"] = expected
+        docker("cp", str(Path(__file__).with_name("import_snapshot.py")), f"{server}:/app/import_snapshot.py")
         stream = TaskEventStream(api, tracker, stop)
         stream.start()
         if not stream.connected.wait(15):
@@ -192,7 +194,7 @@ def run_profile(args, profile, repetition, dataset, output):
         last_progress = None
         with (report / "progress.jsonl").open("w", encoding="utf-8") as progress_file:
             while time.monotonic() - start < args.timeout:
-                snapshot = json.loads(docker("exec", server, "python", "/tmp/import_snapshot.py", timeout=60))
+                snapshot = json.loads(docker("exec", server, "python", "/app/import_snapshot.py", timeout=60))
                 elapsed = time.monotonic() - start
                 progress_file.write(json.dumps(dict(seconds=elapsed, tasks=snapshot["tasks"], photos=len(snapshot["photos"]))) + "\n")
                 progress_file.flush()
@@ -205,7 +207,7 @@ def run_profile(args, profile, repetition, dataset, output):
                     last_progress = progress
                 if stable >= 3:
                     sample.update(status="passed", total_seconds=round(first_empty, 3), confirmed_seconds=round(elapsed, 3),
-                                  files_per_second=round(expected / first_empty, 3), snapshot=snapshot)
+                                  files_per_second=round(expected_counts["files"] / first_empty, 3), snapshot=snapshot)
                     break
                 for c in containers:
                     state = inspect(c)["State"]
