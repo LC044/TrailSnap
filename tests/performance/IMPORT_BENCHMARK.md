@@ -21,6 +21,8 @@ pwsh tests/scripts/run-tests.ps1 -Layer performance -Scope import
 全部 CPU 创建大量线程而在低档配额中反复抢占；因此结果对应这份固定推理配置。
 同时将容器 CPU affinity 限制到对应数量的可用逻辑核，避免 InsightFace 内部会话
 按宿主机核数建立线程池。各服务共享这些逻辑核；配额是上限，不是独占算力。
+AI 使用 `import_ai_entry.py` 启动真实应用，为 InsightFace 内部会话补上传递同一份
+SessionOptions；该库默认绕过应用的 ONNX 工厂。只统一线程配置，不替换推理或业务处理。
 
 可通过 `TS_PERF_OUTPUT`、`TS_PERF_BASELINE` 配置输出目录和历史结果。
 需要重复测试或选档时，底层运行器支持：

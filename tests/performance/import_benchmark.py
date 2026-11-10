@@ -166,6 +166,7 @@ def run_profile(args, profile, repetition, dataset, output):
                 options += ["-p", "127.0.0.1::8001", "-e", "MODEL_PATH=/app/data/models", "-e", "IDLE_TIMEOUT=86400",
                             "-v", f"{args.model_cache.resolve()}:/app/data/models",
                             "-e", "ORT_INTRA_OP_THREADS=1", "-e", "AI_INFERENCE_THREADS=1",
+                            "-v", f"{Path(__file__).with_name('import_ai_entry.py').resolve()}:/benchmark-ai-entry.py:ro",
                             "-e", "AI_MODEL_CATALOG_PATH=/benchmark-catalog.json",
                             "-v", f"{(output / 'model-catalog.json').resolve()}:/benchmark-catalog.json:ro"]
             else:
@@ -173,7 +174,7 @@ def run_profile(args, profile, repetition, dataset, output):
                             "-e", "RAILWAY_DB_URL=postgresql://trailsnap:trailsnap@postgres:5432/trailsnap",
                             "-e", "AI_API_URL=http://ai:8001", "-e", "CI=false", "-e", "TZ=UTC",
                             "-v", f"{dataset.resolve()}:/benchmark-source:ro"]
-            docker(*options, image)
+            docker(*options, image, *(["python", "/benchmark-ai-entry.py"] if service == "ai" else []))
             if service == "postgres":
                 for _ in range(60):
                     if "accepting connections" in docker("exec", container, "pg_isready", "-U", "trailsnap", check=False):
