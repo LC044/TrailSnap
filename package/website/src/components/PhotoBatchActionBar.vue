@@ -100,10 +100,11 @@
 
                   <button type="button" class="ts-action-row"
                     v-if="removeLabel"
+                    :title="removeLabel"
                     :disabled="localSelectedIds.size === 0"
                     @click="$emit('remove-association', selectedArray)"
                   >
-                     <div class="flex w-full items-center gap-2" :title="removeLabel">
+                     <div class="flex w-full items-center gap-2">
                         <ImageMinusIcon class="w-4 h-4" />
                         <span>{{ removeLabel }}</span>
                      </div>
