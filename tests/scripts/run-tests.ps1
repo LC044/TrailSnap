@@ -128,6 +128,14 @@ if ($StopServices) {
 # -Layer performance：独立性能基准，自带 services-up / 空白库 / 清理 / 报告流程。
 # 不再走下面的 unit/e2e 分支，避免两套服务生命周期叠加。
 if ($Layer -eq 'performance') {
+    if ($Scope -eq 'import') {
+        & python (Join-Path $RepoRoot 'tests/performance/import_benchmark.py')
+        exit $LASTEXITCODE
+    }
+    if ($Scope -eq 'import-unit') {
+        & python -m unittest discover -s (Join-Path $RepoRoot 'tests/performance') -p 'test_import_benchmark.py' -v
+        exit $LASTEXITCODE
+    }
     $perfMode = if ($Mode) {
         $Mode
     } elseif ($env:TS_TEST_ENV -in 'docker', 'ci') {

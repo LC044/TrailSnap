@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "repository": "https://github.com/LC044/trailsnap-test-photos.git",
+  "commit": "609f747b7a6c318eb6d550469e11d11ce078495b",
+  "folders": ["fixtures/smoke", "fixtures/p0"],
+  "excluded_task_types": ["VISUAL_DESCRIPTION", "RECOGNIZE_TICKET"],
+  "profiles": {
+    "low": {"cpus": 1, "memory_gb_per_service": 3},
+    "medium": {"cpus": 2, "memory_gb_per_service": 4},
+    "high": {"cpus": 4, "memory_gb_per_service": 5}
+  }
+}
