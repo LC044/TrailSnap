@@ -9,7 +9,9 @@
 - 桌面 ≥768px 展示可折叠侧栏，移动端展示底部五项悬浮玻璃导航。新增业务页通常由路由进入现有布局，不重复创建全局导航。
 - html/body/#app 禁止页面级滚动，主滚动区是 `.ts-main-scroll`。粘性标题、弹层和虚拟画廊先确认实际滚动祖先；flex 滚动区域保留 min-h-0，长文本容器保留 min-w-0。
 - MainLayout 默认为移动底栏预留 `--ts-tabbar-h + --ts-safe-area-bottom`。需要页内拥有底部留白时用 `AppPage bottom-safe` / `.ts-bottom-safe`；ui.css 的 `:has(.ts-bottom-safe)` 会取消外层留白，不再补第二份 tabbar padding。
-- Android 由布局处理顶部安全区，相册 hero 可延伸至状态栏后，其工具栏自行避让一次。遵循 `--ts-safe-area-*` 与 `--ts-content-safe-area-top`，不复制未经验证的平台常数。
+- 顶部安全区一律由布局层（`.ts-main-content` / `.ts-blank-layout`）避让，body 不留白、`#app` 用 `100dvh`；否则 body 的 padding 会把 `#app` 顶出视口，底部内容被裁掉且无法滚动。左右安全区仍留在 body（横屏刘海靠边，不挤高内容）。
+- 只有 iOS 浏览器避让顶部安全区（`ios-browser` class）。安卓浏览器的状态栏是浮在网页之上的系统层，部分浏览器（vivo 自带浏览器、部分 OEM WebView）的 `env(safe-area-inset-top)` 返回非 0，据此避让会在状态栏下方多出一条空白带；非 iOS 浏览器一律把顶部安全区按 0 处理。不要用 `env()` 的数值判断平台。
+- 相册 hero 可延伸至状态栏后，其工具栏自行避让一次：布局层遇到 `.unified-photo-page` 时不再重复留白。遵循 `--ts-safe-area-*` 与 `--ts-content-safe-area-top`，不复制未经验证的平台常数。
 - 日记本模式已有专用 flex 布局与滚动覆盖，不随意加 h-screen 或嵌套全高滚动容器。
 
 ## 首页与内容发现

@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { isNativeApp } from '@/config/server'
+import { isIosBrowser, isNativeApp } from '@/config/server'
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -13,7 +13,8 @@ const isInstalled = ref(window.matchMedia('(display-mode: standalone)').matches 
 let registration: ServiceWorkerRegistration | undefined
 let updateRequested = false
 
-const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+// iOS 浏览器才需要"添加到主屏幕"引导；原生 App 本身就是已安装状态。
+const isIos = isIosBrowser()
 const canInstall = computed(() => !!deferredPrompt.value)
 
 window.addEventListener('online', () => { isOnline.value = true })

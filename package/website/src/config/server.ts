@@ -15,6 +15,17 @@ export const isTauriApp = () => '__TAURI_INTERNALS__' in window
 export const isMobileApp = () => Capacitor.isNativePlatform()
 export const isNativeApp = () => Capacitor.isNativePlatform() || isTauriApp()
 
+/**
+ * iOS 上的浏览器（Safari、Chrome、微信等）之外的环境。
+ *
+ * iOS 之外的系统没有真正的"安全区"概念：状态栏是浮在网页之上的系统层，
+ * 部分安卓浏览器（vivo 自带浏览器、部分 OEM WebView）仍会让
+ * env(safe-area-inset-top) 返回非 0 值，若据此避让就会多出一条空白带。
+ * 只有 iOS 的刘海/home 指示条会真正遮挡网页内容，需要避让。
+ */
+export const isIosBrowser = () =>
+  !isNativeApp() && /iPad|iPhone|iPod/.test(navigator.userAgent)
+
 export function normalizeServerUrl(value: string): string {
   let candidate = value.trim()
   if (!candidate) return ''

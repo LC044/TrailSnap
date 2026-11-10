@@ -12,6 +12,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <!-- Capacitor 使用 viewport-fit=cover 暴露异形屏安全区，布局通过 env() 留白。 -->
     <title>行影集 ✨</title>
+    <script>
+      /* 同步标记 iOS 浏览器：只有它的刘海/home 指示条真正遮挡网页内容。
+         安卓浏览器（vivo 自带浏览器、部分 OEM WebView）即使 env(safe-area-inset-top)
+         返回非 0，状态栏也是浮在网页之上的系统层，据此避让会多出一条空白带。
+         必须在首帧渲染前执行，否则 iOS 会先按未避让的布局闪一下。
+         Capacitor 原生 App 由 MainActivity 注入真实系统栏高度，不走这条路径。 */
+      if (!window.Capacitor && !('__TAURI_INTERNALS__' in window) && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+        document.documentElement.classList.add('ios-browser');
+      }
+    </script>
     <style>
       /* Vue waits for the desktop sidecar before mounting. Keep this startup
          screen inline so it paints immediately and is replaced by Vue. */

@@ -83,9 +83,20 @@ Android 在各系统版本上统一采用边到边显示，保留状态栏和系
 `MainActivity` 负责读取系统栏及刘海的 WindowInsets，向页面注入
 `--safe-area-inset-*`；`SystemBars.insetsHandling` 设为 `disable`，避免容器重复留白。
 页面使用 `src/style.css` 中的 `--ts-safe-area-*`，浏览器和 iOS 自动回退到 `env()`。
-普通页面由布局避让顶部安全区；相册封面延伸到状态栏后方，工具栏自行避让一次。
+顶部安全区由布局层（`.ts-main-content` / `.ts-blank-layout`）避让，`body` 不留白、
+`#app` 用 `100dvh`；左右安全区仍留在 `body`，供横屏刘海避让。相册封面延伸到状态栏
+后方，工具栏自行避让一次。
+
+只有 iOS 浏览器的刘海/home 指示条真正遮挡网页内容，需要避让顶部安全区，页面用
+`ios-browser` class 标记（`index.html` 内联脚本同步设置，避免 iOS 首帧闪动）。
+安卓浏览器的状态栏是浮在网页之上的系统层，即使部分浏览器（vivo 自带浏览器、
+部分 OEM WebView）的 `env(safe-area-inset-top)` 返回非 0，据此避让也会在状态栏
+下方多出一条空白带，因此非 iOS 浏览器一律把顶部安全区按 0 处理。
+
 修改后应在不同 Android/WebView 版本上检查相册初始位置、滚动后的工具栏、
-横竖屏切换、底部手势/三键导航以及软键盘打开和关闭。
+横竖屏切换、底部手势/三键导航以及软键盘打开和关闭；浏览器侧另需在 iOS Safari
+与 standalone PWA 下确认顶部不被刘海遮挡、底部内容不被裁切，并在安卓第三方
+浏览器上确认顶部没有多余空白带。
 
 ## 环境变量（暂不需要）
 
