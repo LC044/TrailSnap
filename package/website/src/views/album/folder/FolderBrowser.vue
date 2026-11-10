@@ -49,6 +49,14 @@
           </template>
         </nav>
 
+        <div v-if="currentParent" class="relative">
+          <button type="button" class="ts-icon-button" aria-label="处理此文件夹" :aria-expanded="toolMenu"
+            :disabled="openingTool" @click="toolMenu = !toolMenu"><Wrench class="h-[18px] w-[18px]" /></button>
+          <AdaptiveMenu v-model="toolMenu" title="处理此文件夹" mobile-presentation="popover" close-on-action>
+            <button type="button" class="ts-action-row" :disabled="openingTool" @click="openFolderTool('organize')"><FolderTree2 class="h-[18px] w-[18px]" />整理此文件夹</button>
+            <button type="button" class="ts-action-row" :disabled="openingTool" @click="openFolderTool('rename')"><Tag class="h-[18px] w-[18px]" />重命名此文件夹影像</button>
+          </AdaptiveMenu>
+        </div>
         <!-- 排序 -->
         <el-dropdown trigger="click" placement="bottom-end" @command="onSortCommand">
           <button class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" title="排序">
@@ -375,7 +383,7 @@ import {
   Folder, FolderOpen, FolderTree as FolderTree2, HardDrive, ChevronRight, ChevronDown,
   Loader2, Grid3x3, Grid2x2, Maximize, LayoutGrid, LayoutDashboard, List,
   ArrowUpDown, ArrowUp, ArrowDown, Check, X, Download, Trash2, ImagePlusIcon,
-  MoreHorizontal, UserPlus, CheckSquare, Settings2, BookOpen } from 'lucide-vue-next'
+  MoreHorizontal, UserPlus, CheckSquare, Settings2, BookOpen, Wrench, Tag } from 'lucide-vue-next'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { albumService } from '@/api/album'
 import { photoApi } from '@/api/photo'
@@ -389,6 +397,11 @@ import AlbumSelector from '@/components/AlbumSelector.vue'
 import PersonSelector from '@/components/PersonSelector.vue'
 import PhotoOrganizeActions from '@/components/PhotoOrganizeActions.vue'
 import FolderTree from './FolderTree.vue'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
+import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
+import { workflowApi } from '@/api/toolboxWorkflows'
+import { openToolForFolder } from '@/utils/toolboxEntry'
 
 interface FolderChild {
   name: string
@@ -413,6 +426,22 @@ const emit = defineEmits<{
 }>()
 
 const setViewSize = (size: ViewSize) => emit('update:viewSize', size)
+
+const router = useRouter(), user = useUserStore()
+const toolMenu = ref(false), openingTool = ref(false)
+const openFolderTool = async (kind: 'organize' | 'rename') => {
+  if (openingTool.value || !currentParent.value) return
+  const owner = user.userInfo?.id
+  const parent = currentParent.value
+  openingTool.value = true
+  try {
+    const path = await workflowApi.resolveFolder(parent)
+    if (owner && owner === user.userInfo?.id && parent === currentParent.value) {
+      await openToolForFolder(router, owner, path, kind)
+    }
+  } catch { ElMessage.error('无法确定实际目录，请在工具箱中选择文件夹') }
+  finally { openingTool.value = false }
+}
 
 const PAGE_SIZE = 100
 const VIEW_MODE_KEY = 'trailsnap:folderViewMode'

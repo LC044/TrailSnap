@@ -4,17 +4,10 @@ import { ensureAuthSession } from '../../helpers/auth';
 /**
  * Smoke 测试 — 工具箱子页面（src/views/toolbox/*）
  *
- * 覆盖以下此前未单独 smoke 的子路由：
- *   /toolbox/similar  - 相似照片清理
- *   /toolbox/duplicate - 重复照片清理
- *   /toolbox/rename   - 批量重命名
- *   /toolbox/organize - 图片文件整理
- *   /toolbox/time-from-filename - 从文件名修改拍摄信息
- *   /toolbox/cleanup  - 清理相册
- *   /toolbox/ticket-edit - 车票编辑
- *
- * 这些页面普遍依赖后台 SCAN_* 任务，smoke 仅验证页面骨架（h1 / 提示文案 /
- * 主要 CTA 按钮）能正常渲染，不验证扫描结果。
+ * REQ-238 重构后，similar / duplicate / cleanup / organize / rename /
+ * time-from-filename / albums 全部由 ToolWorkflowPage 承载，首屏统一是
+ * 「选择范围」；各页面的 h1 由 props.kind 决定（清理类统一为「照片清理」）。
+ * smoke 只验证页面骨架与工作流入口，不依赖扫描结果或真实数据。
  */
 
 test.describe('Smoke - 工具箱子页面 @smoke', () => {
@@ -26,77 +19,40 @@ test.describe('Smoke - 工具箱子页面 @smoke', () => {
     await page.goto('/toolbox/similar');
     await expect(page).toHaveURL(/\/toolbox\/similar/);
     await expect(page.locator('body')).toBeVisible();
-    // SimilarPhotoCleanup.vue 通过 CleanupTaskShell 渲染 title="相似照片清理"
-    await expect(page.getByText('相似照片清理').first()).toBeVisible({ timeout: 10_000 });
+    // 相似/重复/低分清理共用 kind=cleanup 的 ToolWorkflowPage，标题为「照片清理」。
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible();
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible();
   });
 
-  test('相似照片最多可同时对比四张并标记删除', async ({ page }) => {
-    const taskId = '11111111-1111-4111-8111-111111111111';
-    const photos = Array.from({ length: 5 }, (_, index) => ({
-      id: `22222222-2222-4222-8222-22222222222${index}`,
-      filename: `burst-${index + 1}.jpg`,
-      photo_time: `2026-08-30T10:00:0${index}`,
-      upload_time: `2026-08-30T10:01:0${index}`,
-      url: `/api/medias/22222222-2222-4222-8222-22222222222${index}/file`,
-      thumbnail_url: `/api/medias/22222222-2222-4222-8222-22222222222${index}/thumbnail`,
-      file_type: 'image',
-      size: 2_000_000 + index,
-      width: 4032,
-      height: 3024,
-    }));
-
-    await page.route('**/api/toolbox/similar/tasks/latest', route => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        code: 0,
-        msg: 'success',
-        data: {
-          id: taskId,
-          type: 'SIMILAR_PHOTO_CLUSTERING',
-          status: 'completed',
-          created_at: '2026-08-30T10:00:00',
-          updated_at: '2026-08-30T10:00:00',
-          total_items: 5,
-          processed_items: 5,
-          result: null,
-        },
-      }),
-    }));
-    await page.route(`**/api/toolbox/similar/tasks/${taskId}/result*`, route => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ code: 0, msg: 'success', data: [photos] }),
-    }));
-    await page.route('**/api/medias/**', route => route.fulfill({
-      contentType: 'image/svg+xml',
-      body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="#9ca3af"/></svg>',
-    }));
-
+  test('相似照片工作流从范围选择开始，不直接加载聚类结果', async ({ page }) => {
     await page.goto('/toolbox/similar');
-    await expect(page.getByText('分组 1 (5 张)')).toBeVisible();
-    await page.getByRole('button', { name: '对比照片' }).click();
-
-    const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('照片对比')).toBeVisible();
-    await expect(dialog.locator('article')).toHaveCount(4);
-    await dialog.getByRole('button', { name: /标记删除/ }).first().click();
-    await expect(dialog.getByText('已标记 1 张')).toBeVisible();
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 });
+    // 旧版「对比照片」弹窗 /「标记删除」按钮已由持久化预览计划替代；
+    // 首屏不再拉取聚类结果，也不会默认处理整个图库。
+    await expect(page.getByText('范围与整理规则独立。不会默认处理整个图库。')).toBeVisible();
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '对比照片' })).toHaveCount(0);
   });
 
   test('重复照片清理页面正常加载', async ({ page }) => {
     await page.goto('/toolbox/duplicate');
     await expect(page).toHaveURL(/\/toolbox\/duplicate/);
     await expect(page.locator('body')).toBeVisible();
-    await expect(page.getByText('重复照片清理').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible();
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible();
   });
 
-  test('批量重命名页面正常加载 - 标题与说明可见', async ({ page }) => {
+  test('批量重命名页面正常加载 - 标题与工作流骨架可见', async ({ page }) => {
     await page.goto('/toolbox/rename');
     await expect(page).toHaveURL(/\/toolbox\/rename/);
     await expect(page.locator('body')).toBeVisible();
-    // RenamePage.vue 模板硬编码 <h1>批量重命名</h1>
-    await expect(page.locator('h1', { hasText: '批量重命名' })).toBeVisible({ timeout: 10_000 });
-    // 操作说明文案（YYYYMMDD_HHMMSS）
-    await expect(page.getByText(/YYYYMMDD_HHMMSS/)).toBeVisible();
+    await expect(page.locator('h1.ts-page-title', { hasText: '批量重命名' })).toBeVisible({ timeout: 10_000 });
+    // 模板说明（YYYYMMDD_HHMMSS 等）现在属于第二步的 RenameTemplateEditor，首屏只显示范围选择。
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible();
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled();
   });
 
   test('图片文件整理页面正常加载', async ({ page }) => {

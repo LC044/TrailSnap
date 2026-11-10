@@ -90,11 +90,14 @@ function Wait-HttpReady {
     return $false
 }
 # 计算本次运行“关心的”服务端口（server + ai，web 仅当 Component 含 website）
+# 只清理本次真正要管理的端口：`-Component server` 不应误杀用户正在运行的 AI 服务。
 function Get-ServicePorts {
     param([string]$Component = 'all')
     $ports = @()
     if ($env:TS_API_BASE_URL) { try { $ports += [int]([System.Uri]$env:TS_API_BASE_URL).Port } catch {} }
-    if ($env:TS_AI_API_URL)   { try { $ports += [int]([System.Uri]$env:TS_AI_API_URL).Port } catch {} }
+    if ($Component -in 'ai', 'all' -and $env:TS_AI_API_URL) {
+        try { $ports += [int]([System.Uri]$env:TS_AI_API_URL).Port } catch {}
+    }
     if ($Component -in 'website', 'all' -and $env:TS_WEB_BASE_URL) {
         try { $ports += [int]([System.Uri]$env:TS_WEB_BASE_URL).Port } catch {}
     }
@@ -230,7 +233,13 @@ function Test-KeepServicesFlag {
 # PostgreSQL 则连接维护库 postgres 执行 DROP DATABASE ... WITH (FORCE)。
 # 复用于：① services-up dev 模式启动 server 前重置（TS_TEST_RESET_DB=true）；② run-tests -Cleanup。
 function Invoke-TestDatabaseDrop {
-    param([string]$Reason = '清理', [string]$RepoRoot)
+    param(
+        [string]$Reason = '清理',
+        [string]$RepoRoot,
+        # 一键性能测试等破坏性入口使用：只允许库名带 test/perf/ci 的测试库，
+        # 防止把误配置的个人开发库 DROP 掉。
+        [switch]$RequireTestName
+    )
     if ($env:TS_DB_URL -match '^sqlite(?:\+[^:]*)?:///(.+?)(?:\?.*)?$') {
         $rawPath = [System.Uri]::UnescapeDataString($matches[1])
         if ($rawPath -eq ':memory:') { return }
@@ -254,6 +263,9 @@ function Invoke-TestDatabaseDrop {
     }
     $dbUser = $matches[1]; $dbPass = $matches[2]; $dbHost = $matches[3]; $dbPort = $matches[4]
     $dbName = ($matches[5] -split '\?')[0]
+    if ($RequireTestName -and $dbName -notmatch '(?i)(test|perf|ci)') {
+        throw "拒绝删除非测试库：$dbName（库名需包含 test/perf/ci）。请检查 TS_DB_URL 或使用 -KeepDatabase。"
+    }
     Write-Host "  ${Reason}测试数据库: $dbName (@ ${dbHost}:${dbPort})" -ForegroundColor Cyan
     $dropScript = @"
 import sys

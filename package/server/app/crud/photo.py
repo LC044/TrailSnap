@@ -33,6 +33,7 @@ from app.schemas import photo as photo_schemas
 from app.schemas.metadata import PhotoMetadataUpdate
 from app.service import storage
 from app.utils.exif import extract_metadata
+from app.utils.gps_writeback import WriteBackUnsupported, update_photo_md5, write_gps_to_file
 from app.utils.path_validation import validate_target_path
 
 
@@ -160,7 +161,10 @@ def update_photo_metadata(db: Session, photo_id: UUID, metadata: PhotoMetadataUp
         db_metadata = PhotoMetadata(photo_id=photo_id)
         db.add(db_metadata)
 
-    update_data = metadata.model_dump(exclude_unset=True)
+    # GPS 写回开关不落库：它属于本次请求的行为参数，不是元数据字段
+    write_to_file = bool(getattr(metadata, 'write_to_file', False))
+
+    update_data = metadata.model_dump(exclude_unset=True, exclude={'write_to_file'})
     for key, value in update_data.items():
         setattr(db_metadata, key, value)
 
@@ -172,12 +176,64 @@ def update_photo_metadata(db: Session, photo_id: UUID, metadata: PhotoMetadataUp
             enqueue(db, photo.owner_id)
     db.commit()
     db.refresh(db_metadata)
-    
+
+    # 数据库更新已提交。写回是尽力而为的附加动作：文件写失败不回滚数据库，
+    # 失败原因记入日志并由返回对象的 _write_back 属性带回 API 层统计。
+    write_back_status = None
+    if write_to_file and update_data.get("latitude") is not None \
+            and update_data.get("longitude") is not None:
+        write_back_status = _write_gps_back(db, photo_id, user_id,
+                                            update_data["latitude"], update_data["longitude"])
+        if write_back_status == 'written':
+            db.refresh(db_metadata)
+
     if user_id:
         from app.crud.album import trigger_conditional_albums_update
         trigger_conditional_albums_update(db, user_id, [photo_id])
-        
+
+    if write_back_status is not None:
+        # API 层读取该临时属性做分项统计；不进 ORM flush（下划线开头且
+        # 不在表字段中，SQLAlchemy 只 flush 映射列）。
+        object.__setattr__(db_metadata, '_write_back', write_back_status)
     return db_metadata
+
+
+def _write_gps_back(db: Session, photo_id: UUID, user_id: UUID, latitude, longitude) -> str:
+    """把 GPS 写回原文件并同步 md5。返回 written / skipped / failed 之一。
+
+    数据库位置更新已在调用前提交，本函数任何失败都不回滚它。
+    """
+    photo = get_photo(db, photo_id)
+    if photo is None:
+        return 'skipped'
+    if user_id is not None and photo.owner_id != user_id:
+        return 'skipped'
+    try:
+        file_path = photo.file_path
+    except ValueError:
+        import logging
+        logging.getLogger(__name__).warning(
+            "GPS write-back skipped: storage reference broken for photo %s", photo_id)
+        return 'skipped'
+    if not file_path or not os.path.exists(file_path):
+        return 'skipped'
+
+    import logging
+    log = logging.getLogger(__name__)
+    try:
+        write_gps_to_file(file_path, latitude, longitude)
+    except WriteBackUnsupported as e:
+        log.info("GPS write-back skipped for %s: %s", photo_id, e)
+        return 'skipped'
+    except Exception as e:
+        log.error("GPS write-back failed for %s: %s", photo_id, e)
+        return 'failed'
+
+    if update_photo_md5(db, photo):
+        db.commit()
+    else:
+        log.warning("GPS write-back succeeded but md5 update failed for %s", photo_id)
+    return 'written'
 
 
 def get_photo_metadata(db: Session, photo_id: UUID, user_id: UUID = None):

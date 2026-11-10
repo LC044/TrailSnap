@@ -320,14 +320,30 @@ export const albumService = {
       return data.data;
   },
   
-  async updateMetadata(photoId: string, metadata: Partial<PhotoMetadata>) {
+  async updateMetadata(photoId: string, metadata: Partial<PhotoMetadata> & { write_to_file?: boolean }) {
       const url = `/api/metadata?photo_id=${photoId}`;
       const data = await request.put<PhotoMetadata>(url, metadata);
       return data.data;
   },
 
-  async batchUpdateLocation(photoIds: string[], lat: number, lng: number, formattedAddress?: string, locationDetail?: { province?: string; city?: string; district?: string; country?: string }) {
-      const data = await request.post<{message: string, count: number}>('/api/metadata/batch-location', {
+  /**
+   * Same call as updateMetadata, but keeps the backend `msg`. The single-photo
+   * metadata endpoint uses it to report the GPS write-back result
+   * (written / skipped / failed); a checked "write to file" switch alone is not
+   * proof that the file was changed.
+   */
+  async updateMetadataWithResult(photoId: string, metadata: Partial<PhotoMetadata> & { write_to_file?: boolean }) {
+      const url = `/api/metadata?photo_id=${photoId}`;
+      const response = await request.put<PhotoMetadata>(url, metadata);
+      // The response interceptor returns the raw BaseResponse object while
+      // axios still types it as AxiosResponse<PhotoMetadata>. `.data` is the
+      // metadata in both shapes; `msg` only exists on the response body.
+      const payload = response as unknown as { data: PhotoMetadata; msg?: string };
+      return { data: payload.data, msg: payload.msg ?? '' };
+  },
+
+  async batchUpdateLocation(photoIds: string[], lat: number, lng: number, formattedAddress?: string, locationDetail?: { province?: string; city?: string; district?: string; country?: string }, writeToFile?: boolean) {
+      const data = await request.post<{message: string, count: number, write_back?: {written: number; skipped: number; failed: number}}>('/api/metadata/batch-location', {
           photo_ids: photoIds,
           latitude: lat,
           longitude: lng,
@@ -335,7 +351,8 @@ export const albumService = {
           province: locationDetail?.province,
           city: locationDetail?.city,
           district: locationDetail?.district,
-          country: locationDetail?.country
+          country: locationDetail?.country,
+          write_to_file: writeToFile ?? false
       });
       return data.data;
   },

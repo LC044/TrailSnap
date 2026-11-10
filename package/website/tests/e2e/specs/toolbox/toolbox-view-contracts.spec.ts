@@ -21,55 +21,45 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
     await expect(sourceGroup).toBeHidden()
   })
 
-  test('ToolboxPage 的低分清理卡片导航到清理页', async ({ page }) => {
+  test('ToolboxPage 的低质量照片卡片导航到清理页', async ({ page }) => {
     await page.goto('/toolbox')
-    await expect(page.getByRole('heading', { name: '工具箱' })).toBeVisible()
+    await expect(page.locator('h1.ts-page-title', { hasText: '工具箱' })).toBeVisible()
 
-    await page.getByText('低分清理', { exact: true }).click()
+    // 首页卡片改名「低质量照片」，并统一指向 kind=cleanup 的工作流页。
+    await page.getByRole('link', { name: /低质量照片/ }).first().click()
     await expect(page).toHaveURL(/\/toolbox\/cleanup$/)
-    await expect(page.getByRole('heading', { name: '清理相册' })).toBeVisible()
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible()
   })
 
-  test('CleanupPage 切换降序会以 desc 重新请求', async ({ page }) => {
-    const requests: string[] = []
-    await page.route('**/api/toolbox/cleanup**', async route => {
-      requests.push(route.request().url())
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: [] }) })
-    })
-
+  test('CleanupPage 选择全部范围后才解锁下一步（排序列表已移除）', async ({ page }) => {
     await page.goto('/toolbox/cleanup')
-    await expect(page.getByText(/暂无照片/)).toBeVisible({ timeout: 10_000 })
-    await page.locator('select').selectOption('desc')
+    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible()
 
-    await expect.poll(() => requests.some(url => url.includes('sort_by=desc'))).toBeTruthy()
+    // 旧页的 sort_by=asc/desc 请求随直连列表页移除，候选改由预览计划生成。
+    const next = page.getByRole('button', { name: '下一步：设置规则' })
+    await expect(next).toBeDisabled()
+    await page.getByRole('group', { name: '范围来源' }).getByRole('button', { name: '全部' }).click()
+    await expect(next).toBeEnabled()
+    await expect(page.getByText('全部图库（主动选择）')).toBeVisible()
   })
 
-  test('OrganizePage 切换位置策略显示位置粒度', async ({ page }) => {
-    await page.route('**/api/toolbox/organize/**', async route => {
-      const url = route.request().url()
-      const data = url.includes('preview') ? { options: [] } : null
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data }) })
-    })
-
+  test('OrganizePage 使用范围与规则分离的工作流骨架', async ({ page }) => {
     await page.goto('/toolbox/organize')
-    await expect(page.getByRole('heading', { name: '图片文件整理' })).toBeVisible()
-    await page.getByText('按位置', { exact: true }).click()
-
-    await expect(page.getByText('位置粒度', { exact: true })).toBeVisible()
-    await expect(page.getByText('省-市-区', { exact: true })).toBeVisible()
+    await expect(page.locator('h1.ts-page-title', { hasText: '影像整理' })).toBeVisible()
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+    // 「按位置 / 位置粒度 / 省-市-区」是旧 OrganizePage 的直连表单，现归入第二步的归档规则编辑器。
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
   })
 
-  test('TimeFromFilenamePage 指定时间模式显示日期控件', async ({ page }) => {
-    await page.route('**/api/toolbox/time-from-filename/**', async route => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ code: 0, message: 'success', data: null }) })
-    })
-
+  test('修正拍摄信息页显示工作流骨架，指定时间入口移到第二步', async ({ page }) => {
     await page.goto('/toolbox/time-from-filename')
-    await expect(page.getByRole('heading', { name: '修改图片元数据' })).toBeVisible()
-    await page.getByText('指定时间', { exact: true }).click()
-
-    await expect(page.getByPlaceholder('选择日期和时间')).toBeVisible()
-    await expect(page.getByRole('button', { name: '开始修改拍摄信息' })).toBeDisabled()
+    await expect(page.locator('h1.ts-page-title', { hasText: '修正拍摄信息' })).toBeVisible()
+    await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+    // 旧页「指定时间」+ 日期控件 +「开始修改拍摄信息」直连表单已被 ToolWorkflowPage 第二步取代。
+    await expect(page.getByRole('group', { name: '范围来源' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '开始修改拍摄信息' })).toHaveCount(0)
   })
 })
 

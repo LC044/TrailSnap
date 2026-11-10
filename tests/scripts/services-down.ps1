@@ -20,7 +20,9 @@
 param(
     [string]$EnvFile,
     [ValidateSet('dev', 'docker')][string]$Mode,
-    [ValidateSet('server', 'ai', 'website', 'all')][string]$Component = 'all'
+    [ValidateSet('server', 'ai', 'website', 'all')][string]$Component = 'all',
+    # 与 services-up 对称：调用方显式设置的重置/保留开关不应被 .env 覆盖。
+    [switch]$PreserveExisting
 )
 
 $ErrorActionPreference = 'Stop'
@@ -30,7 +32,7 @@ if (-not [System.IO.Path]::IsPathRooted($EnvFile)) { $EnvFile = Join-Path $RepoR
 # EnvFile 可能不存在（例如从未生成），不加载也不报错——端口清理只依赖 TS_* 是否已在会话中。
 if (Test-Path $EnvFile) {
     . (Join-Path $PSScriptRoot 'Import-EnvFile.ps1')
-    Import-EnvFile -Path $EnvFile
+    Import-EnvFile -Path $EnvFile -PreserveExisting:$PreserveExisting
 }
 . (Join-Path $PSScriptRoot 'test-services-lib.ps1')
 
@@ -71,3 +73,4 @@ elseif ($Mode -eq 'docker') {
 }
 
 Write-Host "==> 服务关闭完成" -ForegroundColor Green
+exit 0

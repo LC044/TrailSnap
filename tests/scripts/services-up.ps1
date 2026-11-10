@@ -23,7 +23,10 @@
 param(
     [string]$EnvFile,
     [ValidateSet('dev', 'docker')][string]$Mode,
-    [ValidateSet('server', 'ai', 'website', 'all')][string]$Component = 'all'
+    [ValidateSet('server', 'ai', 'website', 'all')][string]$Component = 'all',
+    # 调用方已显式覆盖 TS_TEST_RESET_DB / TS_TEST_KEEP_SERVICES 时，
+    # 不要再被 .env 文件里的同名变量冲掉。
+    [switch]$PreserveExisting
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,7 +42,7 @@ if (-not (Test-Path $EnvFile)) {
 }
 
 . (Join-Path $PSScriptRoot 'Import-EnvFile.ps1')
-Import-EnvFile -Path $EnvFile
+Import-EnvFile -Path $EnvFile -PreserveExisting:$PreserveExisting
 . (Join-Path $PSScriptRoot 'test-services-lib.ps1')
 
 if (-not $Mode) {
@@ -204,3 +207,4 @@ elseif ($Mode -eq 'docker') {
 }
 
 Write-Host "==> 服务启动完成" -ForegroundColor Green
+exit 0

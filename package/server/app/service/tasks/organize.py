@@ -56,6 +56,9 @@ class OrganizePhotosStrategy(BaseTaskStrategy):
         
     async def process(self, worker, task: Task, db: Session) -> Dict[str, Any]:
         payload = task.payload or {}
+        if payload.get("toolbox_plan_id"):
+            from app.service.toolbox_execution import execute_plan
+            return await execute_plan(worker, task, db)
         target_root_path = payload.get('target_root_path')
         strategy = payload.get('strategy')
         action = payload.get('action')

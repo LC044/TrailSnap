@@ -8,41 +8,39 @@ test.describe('P1 - 公共任务、目录与设置组件', () => {
     if (!(await ensureAuthSession(request, page, testInfo, { photoBucket: 'smoke' }))) return
   })
 
-  for (const tool of ['rename', 'organize', 'time-from-filename']) {
-    test(`${tool} 恢复任务并在完成后解除表单禁用`, async ({ page }) => {
-      const task = { id: 'shared-task', type: 'TEST', status: 'processing', total_items: 10, processed_items: 3 }
-      let completed = false
-      await page.route(`**/api/toolbox/${tool}/tasks/latest`, route => route.fulfill(response(task)))
-      await page.route('**/api/tasks/shared-task', route => route.fulfill(response(completed ? { ...task, status: 'completed', processed_items: 10 } : task)))
-      await page.goto(`/toolbox/${tool}`)
-      await expect(page.getByText('3 / 10', { exact: true })).toBeVisible()
-      await expect(page.getByRole('button', { name: '选择目录', exact: true })).toBeDisabled()
-      completed = true
-      await expect(page.getByText('任务状态: 已完成')).toBeVisible({ timeout: 10000 })
-      await expect(page.getByRole('button', { name: '选择目录', exact: true })).toBeEnabled()
+  // 三个工具页现在共用 ToolWorkflowPage：旧版 `/api/toolbox/<tool>/tasks/latest`
+  // 轮询、进度条「3 / 10」和「选择目录」禁用态都已移除，任务进度改由持久化预览计划呈现。
+  for (const tool of [
+    { path: 'rename', title: '批量重命名' },
+    { path: 'organize', title: '影像整理' },
+    { path: 'time-from-filename', title: '修正拍摄信息' },
+  ]) {
+    test(`${tool.path} 使用统一预览计划工作流而非旧任务轮询`, async ({ page }) => {
+      await page.goto(`/toolbox/${tool.path}`)
+      await expect(page.locator('h1.ts-page-title', { hasText: tool.title })).toBeVisible({ timeout: 10_000 })
+      await expect(page.getByRole('list', { name: '操作步骤' })).toBeVisible()
+      await expect(page.getByRole('link', { name: '操作记录' })).toHaveAttribute('href', '/toolbox')
+      await expect(page.getByRole('button', { name: '下一步：设置规则' })).toBeDisabled()
     })
   }
 
-  test('目录加载失败可重试，取消选择不会修改已确认路径', async ({ page }) => {
-    await page.route('**/api/toolbox/rename/tasks/latest', route => route.fulfill(response(null)))
-    let fail = true
-    await page.route('**/api/settings/directories/tree*', async route => {
-      if (fail) await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ detail: 'temporary error' }) })
-      else await route.fulfill(response({ directories: [{ name: '照片目录', path: '/photos', is_leaf: true }] }))
-    })
+  test('范围来源切换不会隐式带入目录，文件夹需显式选择', async ({ page }) => {
     await page.goto('/toolbox/rename')
-    await page.getByRole('button', { name: '选择目录', exact: true }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('alert')).toContainText('加载目录失败')
-    fail = false
-    await dialog.getByRole('button', { name: '重试', exact: true }).click()
-    await dialog.getByText('照片目录', { exact: true }).click()
-    await dialog.getByRole('button', { name: '确认', exact: true }).click()
-    const input = page.getByPlaceholder('请选择要进行重命名操作的文件夹')
-    await expect(input).toHaveValue('/photos')
-    await page.getByRole('button', { name: '选择目录', exact: true }).click()
-    await dialog.getByRole('button', { name: '取消', exact: true }).click()
-    await expect(input).toHaveValue('/photos')
+    const sources = page.getByRole('group', { name: '范围来源' })
+
+    await sources.getByRole('button', { name: '文件夹' }).click()
+    await expect(page.getByRole('button', { name: '选择文件夹' })).toBeVisible()
+    await expect(page.getByText('包含子文件夹', { exact: true })).toBeVisible()
+    await expect(page.getByText('这些是服务器或桌面图库中的实际目录，不是手机本地相册。')).toBeVisible()
+    await expect(page.getByText('尚未选择文件夹')).toBeVisible()
+    // 旧版目录树「加载失败/重试/确认/取消」与文件夹输入框随直连表单移除，
+    // 目录现在作为范围的一部分显式列出，不再写回输入框。
+    await expect(page.getByPlaceholder('请选择要进行重命名操作的文件夹')).toHaveCount(0)
+
+    await sources.getByRole('button', { name: '全部' }).click()
+    await expect(page.getByText('全部图库（主动选择）')).toBeVisible()
+    await sources.getByRole('button', { name: '文件夹' }).click()
+    await expect(page.getByText('尚未选择文件夹')).toBeVisible()
   })
 
   test('AI 服务分区保存不会提交大模型连接或默认模型', async ({ page }) => {

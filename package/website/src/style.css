@@ -4,7 +4,7 @@
 
 /* TrailSnap design foundation. Theme colors are injected by useTheme.ts. */
 :root {
-  /* Android publishes native insets; browsers/iOS use their viewport insets. */
+  /* Android publishes native insets; iOS browsers use their viewport insets. */
   --ts-safe-area-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   --ts-safe-area-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
   --ts-safe-area-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
@@ -181,7 +181,7 @@ html.dark {
     background: var(--ts-color-page);
   }
 
-  html, body, #app {
+  html, body {
     height: 100%;
     min-height: 0;
     overflow: hidden;
@@ -191,7 +191,9 @@ html.dark {
     margin: 0;
     min-width: 320px;
     min-height: 0;
-    padding: var(--ts-safe-area-top) var(--ts-safe-area-right) 0 var(--ts-safe-area-left);
+    /* 左右安全区留在 body：横屏刘海靠边，只影响水平留白，不会挤高内容。
+       顶部安全区交给布局层，避免 #app 被 padding 顶出视口后底部裁切。 */
+    padding: 0 var(--ts-safe-area-right) 0 var(--ts-safe-area-left);
     background: var(--ts-color-page);
     color: var(--ts-color-text);
   }
@@ -202,7 +204,9 @@ html.dark {
 
   #app {
     width: 100%;
-    min-height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
     background: var(--ts-color-page);
     color: var(--ts-color-text);
     transition: background-color 200ms ease, color 200ms ease;
@@ -288,17 +292,28 @@ html.dark *::-webkit-scrollbar-thumb { background-color: #475569 !important; }
 
 html.capacitor-native .h-screen { height: calc(100dvh - var(--ts-safe-area-top)); }
 
-/* Android backgrounds reach the window edges; each layout owns its controls. */
-html.capacitor-android body { padding-top: 0; }
-html.capacitor-android .h-screen { height: 100dvh; }
-html.capacitor-android .ts-blank-layout,
-html.capacitor-android .ts-main-content {
+/* 平台门控：只有 iOS 浏览器的刘海/home 指示条真正遮挡网页内容，需要避让顶部安全区。
+   安卓浏览器（vivo 自带浏览器、部分 OEM WebView）即使 env(safe-area-inset-top) 返回非 0，
+   状态栏也是浮在网页之上的系统层，据此避让会在状态栏下方多出一条空白带。
+   原生 App 保留真实系统栏高度（MainActivity 注入 --safe-area-inset-*）。 */
+html:not(.ios-browser):not(.capacitor-native) {
+  --ts-safe-area-top: 0px;
+}
+
+/* 布局层承担顶部安全区：body 不再留白，避免 #app 被 padding 挤出视口后底部裁切。 */
+html .ts-main-content,
+html .ts-blank-layout {
   padding-top: var(--ts-safe-area-top);
   --ts-content-safe-area-top: 0px;
 }
-/* UnifiedPhotoPage already insets its sticky toolbar, with the hero behind it. */
-html.capacitor-android .ts-main-content:has(.unified-photo-page) { padding-top: 0; }
-html.capacitor-android .unified-photo-page { padding-top: 0; }
+/* UnifiedPhotoPage 已自行给 sticky 工具栏留出顶部安全区，hero 延伸到状态栏后，
+   布局层不再重复留白。 */
+html .ts-main-content:has(.unified-photo-page) { padding-top: 0; }
+html .unified-photo-page { padding-top: 0; }
+
+/* Android backgrounds reach the window edges; each layout owns its controls. */
+html.capacitor-android body { padding-top: 0; }
+html.capacitor-android .h-screen { height: 100dvh; }
 
 main:has(> .photo-diary-mode) { overflow-y: hidden; }
 .unified-photo-page.photo-diary-mode {

@@ -18,7 +18,7 @@ import './styles/ui.css'
 import App from './App.vue'
 import router from '@/router';
 import { registerPwa } from '@/composables/usePwa'
-import { getServerUrl, initializeServerConfig, isNativeApp, isTauriApp } from '@/config/server'
+import { getServerUrl, initializeServerConfig, isIosBrowser, isNativeApp, isTauriApp } from '@/config/server'
 import { registerNativeBackButton } from '@/composables/useNativeBackButton'
 import { registerExternalLinkOpener } from '@/composables/useExternalLinks'
 import { registerElementPlusOverlayBridge } from '@/composables/useOverlayStack'
@@ -33,6 +33,10 @@ import { schedulePagePreloads } from '@/router/preload'
 async function bootstrap() {
   document.documentElement.classList.toggle('capacitor-android', Capacitor.getPlatform() === 'android')
   document.documentElement.classList.toggle('tauri-desktop', isTauriApp())
+  // 只有 iOS 浏览器的刘海/home 指示条真正遮挡网页内容，需要避让顶部安全区。
+  // 安卓浏览器即使 env(safe-area-inset-top) 非 0，多留白也会在状态栏下多出一条空白带。
+  // 同步设置，避免首帧按错误的布局渲染。
+  document.documentElement.classList.toggle('ios-browser', isIosBrowser())
   // Load the initial route while the sidecar starts, rather than after login.
   // Keep errors handled here; Vue Router still owns navigation error reporting.
   if (isTauriApp()) {
