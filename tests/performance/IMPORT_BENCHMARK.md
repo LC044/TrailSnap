@@ -19,6 +19,8 @@ pwsh tests/scripts/run-tests.ps1 -Layer performance -Scope import
 不足时，高档配额也不会创造额外算力；报告保留 Docker 主机信息与实际容器限制。
 各档固定 `ORT_INTRA_OP_THREADS=1` 和 `AI_INFERENCE_THREADS=1`，避免推理库按宿主机
 全部 CPU 创建大量线程而在低档配额中反复抢占；因此结果对应这份固定推理配置。
+同时将容器 CPU affinity 限制到对应数量的可用逻辑核，避免 InsightFace 内部会话
+按宿主机核数建立线程池。各服务共享这些逻辑核；配额是上限，不是独占算力。
 
 可通过 `TS_PERF_OUTPUT`、`TS_PERF_BASELINE` 配置输出目录和历史结果。
 需要重复测试或选档时，底层运行器支持：

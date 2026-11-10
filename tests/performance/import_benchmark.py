@@ -157,6 +157,7 @@ def run_profile(args, profile, repetition, dataset, output):
             containers.append(container)
             options = ["run", "-d", "--name", container, "--network", network, "--network-alias", service,
                        "--cpus", str(limits["cpus"] if service != "postgres" else 0.5),
+                       "--cpuset-cpus", ",".join(map(str, args.available_cpus[:limits["cpus"] if service != "postgres" else 1])),
                        "--memory", f"{limits['memory_gb_per_service'] if service != 'postgres' else 1}g",
                        "--memory-swap", f"{limits['memory_gb_per_service'] if service != 'postgres' else 1}g"]
             if service == "postgres":
@@ -197,7 +198,7 @@ def run_profile(args, profile, repetition, dataset, output):
         # A fresh process per sample: model initialization is included in import time.
         # Downloaded model files are shared; downloads are reported by the model manifest.
         sample["images"] = {s: inspect(c)["Image"] for s, c in zip(("postgres", "ai", "server"), containers)}
-        sample["docker_limits"] = {s: {k: inspect(c)["HostConfig"][k] for k in ("NanoCpus", "Memory", "MemorySwap")}
+        sample["docker_limits"] = {s: {k: inspect(c)["HostConfig"][k] for k in ("NanoCpus", "CpusetCpus", "Memory", "MemorySwap")}
                                    for s, c in zip(("postgres", "ai", "server"), containers)}
         ensure_admin_session(api, "benchmark-admin", "Benchmark-pass-123!", "benchmark@example.com")
         settings = api.unwrap(api.get("/settings/export"))
@@ -322,6 +323,7 @@ def main():
     parser.add_argument("--baseline", type=Path, default=Path(os.environ["TS_PERF_BASELINE"]) if os.environ.get("TS_PERF_BASELINE") else None)
     args = parser.parse_args()
     args.model_fingerprint = None
+    args.available_cpus = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else list(range(os.cpu_count() or 1))
     if args.repetitions < 1:
         parser.error("repetitions must be positive")
     args.output.mkdir(parents=True, exist_ok=True)
