@@ -6,7 +6,7 @@
 
 ## 1. 总览
 
-五类测试，一个入口脚本，一份环境变量文件。
+常用测试层，一个入口脚本，一份环境变量文件。
 
 | 层 | 位置 | 框架 | 触发 | 速度 |
 |---|---|---|---|---|
@@ -19,6 +19,7 @@
 | 飞牛打包 | `package/fnos/tests` | Python unittest | `run-tests.ps1 -Layer unit -Component fnos -Level all` | 无服务、无网络，不拉取镜像；显式选择 |
 | 需求平台 | `package/requirement-platform/server/tests` | pytest | `run-tests.ps1 -Layer unit -Component requirement-platform -Level all` | 独立临时 SQLite，验证 API、MCP 和 Agent 交付；显式选择，不启动主应用服务 |
 | 桌面升级验收 | `package/server/tests/desktop` | pytest | `run-tests.ps1 -Layer integration -Component desktop` | 独立数据库和图库副本，不启动普通 dev 服务 |
+| 文件夹扫描性能 | `tests/performance` | 独立 Python 基准 | `run-tests.ps1 -Layer performance` | 一键空白库、扫描真实/合成文件夹、输出耗时报告；需 DB |
 
 **统一入口**：`tests/scripts/run-tests.ps1`（CI 与本地共用）。它按 `.env` 文件委托 `services-up.ps1` 拉起服务（dev 本地进程 或 docker compose 栈）、注入环境变量、调度对应测试运行器（uv/pytest、pnpm/playwright），测后委托 `services-down.ps1` 关闭服务。
 
@@ -41,6 +42,7 @@ run-tests.ps1            ← 唯一入口（CI + 本地都用它）
   ├─ services-up.ps1        启动服务（dev 本地进程 / docker compose）+ AI 模型预热
   ├─ services-down.ps1      关闭服务 + 收集 docker 日志
   ├─ test-services-lib.ps1  共享函数库（端口探测 / 进程树清理 / uv 解析 / DB 删除 / AI 预热）
+  ├─ run-perf.ps1           文件夹扫描性能测试的一键入口（空白库 + 报告 + 清理）
   └─ Import-EnvFile.ps1     .env 文件加载器（注入 $env:，子进程继承）
 ```
 
@@ -101,6 +103,9 @@ pwsh .\tests\scripts\services-up.ps1 -Mode docker
 
 # 按端口清理所有服务（含孤儿子进程）
 pwsh .\tests\scripts\run-tests.ps1 -StopServices
+
+# 文件夹扫描性能测试（一键空白库；详情见 tests/performance/README.md）
+pwsh .\tests\scripts\run-perf.ps1
 ```
 
 ### `run-tests.ps1` 参数
@@ -108,7 +113,7 @@ pwsh .\tests\scripts\run-tests.ps1 -StopServices
 | 参数 | 取值 | 说明 |
 |---|---|---|
 | `EnvFile`（位置参数） | 路径 | 默认 `tests\.env.test` |
-| `-Layer` | unit/integration/e2e/all | 测哪一层 |
+| `-Layer` | unit/integration/e2e/all/performance | 测哪一层；performance 委托 `run-perf.ps1` |
 | `-Level` | dev/scan/smoke/p0/p1/all/light/full | 深度/套件；默认读 `TS_E2E_SUITE` |
 | `-Component` | server/ai/website/cli/desktop/requirement-platform/all | 测哪个组件；desktop、requirement-platform 需显式选择，不包含在 all 中；需求平台使用 unit 层运行完整独立协议测试 |
 | `-Mode` | dev/docker | 服务载体；默认按 `TS_TEST_ENV` |

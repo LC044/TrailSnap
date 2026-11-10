@@ -9,7 +9,8 @@
 
     四个维度：
       -EnvFile    第一个位置参数，环境变量文件路径，不传则默认 tests\.env.test
-      -Layer      unit | integration | e2e | all
+      -Layer      unit | integration | e2e | all | performance
+                  performance = 文件夹扫描性能测试，委托 run-perf.ps1（空白库 + 报告 + 清理）
       -Level      dev | scan | smoke | p0 | p1 | all | light | full（深度/套件；默认读 TS_E2E_SUITE，再不行 smoke）
                   unit/integration → pytest -m 映射（smoke→-m smoke，其余不加 -m）；e2e → run-e2e.mjs <level>
       -Component  server | ai | website | cli | all
@@ -33,6 +34,7 @@
     integration后端集成测试（需 DB）
     e2e        前端 Playwright（run-e2e.mjs <level>）
     all        unit + e2e 串行
+    performance 文件夹扫描性能测试（委托 run-perf.ps1；空白库 + 报告 + 清理）
 
 .PARAMETER Level
     scan | smoke | p0 | p1 | all | light | full。
@@ -53,7 +55,7 @@ param(
     [Parameter(Position = 0)]
     [string]$EnvFile,
 
-    [ValidateSet('unit', 'integration', 'e2e', 'all')]
+    [ValidateSet('unit', 'integration', 'e2e', 'all', 'performance')]
     [string]$Layer = 'unit',
 
     [ValidateSet('dev', 'scan', 'smoke', 'p0', 'p1', 'all', 'light', 'full')]
@@ -120,6 +122,20 @@ switch ($ScanPrep) {
 # -StopServices 模式：只关服务，跳过测试
 if ($StopServices) {
     & (Join-Path $PSScriptRoot 'services-down.ps1') -EnvFile $EnvFile -Mode $Mode -Component 'all'
+    exit $LASTEXITCODE
+}
+
+# -Layer performance：独立性能基准，自带 services-up / 空白库 / 清理 / 报告流程。
+# 不再走下面的 unit/e2e 分支，避免两套服务生命周期叠加。
+if ($Layer -eq 'performance') {
+    $perfMode = if ($Mode) {
+        $Mode
+    } elseif ($env:TS_TEST_ENV -in 'docker', 'ci') {
+        'docker'
+    } else {
+        'dev'
+    }
+    & (Join-Path $PSScriptRoot 'run-perf.ps1') -EnvFile $EnvFile -Mode $perfMode
     exit $LASTEXITCODE
 }
 

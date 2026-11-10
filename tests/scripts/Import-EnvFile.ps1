@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     把一个 .env 文件加载进当前 PowerShell 会话的 $env:（子进程会继承）。
 
@@ -10,6 +10,11 @@
 .PARAMETER Path
     .env 文件绝对路径。
 
+.PARAMETER PreserveExisting
+    已存在于当前会话的变量不覆盖。服务生命周期脚本在调用方有意覆盖
+    TS_TEST_RESET_DB / TS_TEST_KEEP_SERVICES 时使用，避免重新导入 .env
+    把调用方的选择冲掉。
+
 .EXAMPLE
     . .\Import-EnvFile.ps1
     Import-EnvFile -Path .\tests\.env.test
@@ -17,7 +22,8 @@
 function Import-EnvFile {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)][string]$Path
+        [Parameter(Mandatory = $true)][string]$Path,
+        [switch]$PreserveExisting
     )
 
     if (-not (Test-Path $Path)) {
@@ -40,6 +46,10 @@ function Import-EnvFile {
             (($val.StartsWith('"') -and $val.EndsWith('"')) -or
              ($val.StartsWith("'") -and $val.EndsWith("'")))) {
             $val = $val.Substring(1, $val.Length - 2)
+        }
+
+        if ($PreserveExisting -and (Test-Path "Env:$key")) {
+            continue
         }
 
         Set-Item -Path "Env:$key" -Value $val
