@@ -10,7 +10,8 @@ test.describe('P1 - 照片与工具箱视图合同', () => {
   test('PhotosPage 可展开并关闭筛选面板', async ({ page }) => {
     await page.goto('/photos')
 
-    const filterButton = page.locator('main').getByRole('button', { name: '筛选' })
+    // 面板内「高级筛选」按钮的 accessible name 也含「筛选」，需用精确名称定位开关按钮。
+    const filterButton = page.locator('main').getByRole('button', { name: '筛选照片', exact: true })
     await expect(filterButton).toBeVisible({ timeout: 15_000 })
     await filterButton.click()
     // 筛选面板重构后主分组为媒体类型/拍摄年份/地点/人物/类别，
