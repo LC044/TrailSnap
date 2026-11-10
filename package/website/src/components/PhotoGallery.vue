@@ -20,6 +20,7 @@
       @add-to-album="ids => $emit('add-to-album', ids)"
       @remove-from-album="ids => $emit('remove-from-album', ids)"
       @set-album-cover="ids => $emit('set-album-cover', ids)"
+      @batch-edit-time="ids => $emit('batch-edit-time', ids)"
       @batch-edit-location="ids => $emit('batch-edit-location', ids)"
       @transfer="(action, ids) => $emit('transfer', action, ids)"
     >
@@ -512,7 +513,7 @@ const props = withDefaults(defineProps<Props>(), {
   loadingDays: () => new Set()
 })
 
-const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'remove-association', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
+const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'remove-association', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-time', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
 
     // --- Selection State ---
 const { 

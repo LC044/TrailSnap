@@ -21,7 +21,7 @@ import { useZIndex } from 'element-plus'
 import { nextDialogZIndex } from '@/utils/pickerDate'
 import { reducedMotion } from '@/utils/motion'
 import { useRouteDismiss } from '@/composables/useRouteDismiss'
-const props = withDefaults(defineProps<{ modelValue: boolean; title: string; glass?: boolean; closeOnAction?: boolean; mobilePresentation?: 'sheet' | 'popover' }>(), { closeOnAction: false, mobilePresentation: 'sheet' })
+const props = withDefaults(defineProps<{ modelValue: boolean; title: string; glass?: boolean; closeOnAction?: boolean; mobilePresentation?: 'sheet' | 'popover'; placement?: 'bottom' | 'top-end' }>(), { closeOnAction: false, mobilePresentation: 'sheet', placement: 'bottom' })
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>()
 const mobile = useMediaQuery('(max-width: 767px)')
 const menuRef = ref<HTMLElement | null>(null)
@@ -39,7 +39,7 @@ const trigger = () => {
 const positionMenu = async () => {
   await nextTick()
   const control = trigger()
-  const anchor = (control?.closest<HTMLElement>('.ts-glass-toolbar') ?? control ?? anchorRef.value?.parentElement)?.getBoundingClientRect()
+  const anchor = (props.placement === 'top-end' ? control : control?.closest<HTMLElement>('.ts-glass-toolbar') ?? control ?? anchorRef.value?.parentElement)?.getBoundingClientRect()
   const menu = menuRef.value
   if (!anchor || !menu) return
   const viewport = window.visualViewport
@@ -47,12 +47,18 @@ const positionMenu = async () => {
   const viewportHeight = viewport?.height ?? window.innerHeight
   // Measure layout size, not the temporarily scaled animation bounds.
   const menuWidth = menu.offsetWidth
-  const top = Math.max(viewportTop + 8, Math.min(anchor.bottom + 10, viewportTop + viewportHeight - menu.offsetHeight - 8))
-  const left = Math.max(8, Math.min(anchor.left + anchor.width / 2 - menuWidth / 2, window.innerWidth - menuWidth - 8))
+  const above = props.placement === 'top-end'
+  const maxHeight = above ? Math.max(0, anchor.top - viewportTop - 26) : viewportHeight - 16
+  const menuHeight = Math.min(menu.offsetHeight, maxHeight)
+  const top = above
+    ? Math.max(viewportTop + 8, anchor.top - 18 - menuHeight)
+    : Math.max(viewportTop + 8, Math.min(anchor.bottom + 10, viewportTop + viewportHeight - menuHeight - 8))
+  const preferredLeft = above ? anchor.right - menuWidth : anchor.left + anchor.width / 2 - menuWidth / 2
+  const left = Math.max(8, Math.min(preferredLeft, window.innerWidth - menuWidth - 8))
   const controlRect = control?.getBoundingClientRect() ?? anchor
   const originX = Math.max(0, Math.min(controlRect.left + controlRect.width / 2 - left, menuWidth))
   const originY = controlRect.bottom <= top ? '0%' : '100%'
-  menuStyle.value = { position: 'fixed', zIndex: String(layerZIndex), marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${viewportHeight - 16}px`, overflowY: 'auto', transformOrigin: `${originX}px ${originY}` }
+  menuStyle.value = { position: 'fixed', zIndex: String(layerZIndex), marginTop: '0', right: 'auto', top: `${top}px`, left: `${left}px`, maxHeight: `${maxHeight}px`, overflowY: 'auto', transformOrigin: `${originX}px ${originY}` }
 }
 let animations: Animation[] = []
 let animatedPanel: HTMLElement | null = null

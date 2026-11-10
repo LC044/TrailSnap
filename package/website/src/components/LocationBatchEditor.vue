@@ -112,7 +112,7 @@ const mapLoading = ref(false)
 const submitting = ref(false)
 const searchQuery = ref('')
 const formattedAddress = ref('')
-const writeToFile = ref(false)
+const writeToFile = ref(true)
 const batchLocationDetail = ref<LocationDetail | null>(null)
 let openingGeneration = 0
 
@@ -166,7 +166,7 @@ const destroyBatchMap = () => {
   destroyMap()
   searchQuery.value = ''
   formattedAddress.value = ''
-  writeToFile.value = false
+  writeToFile.value = true
   batchLocationDetail.value = null
 }
 

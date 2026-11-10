@@ -241,6 +241,7 @@
         @retry="$emit('retry')"
         @transfer="handleBatchTransfer"
         @batch-edit-location="handleBatchEditLocation"
+        @batch-edit-time="handleBatchEditTime"
         @generate-caption="handleGenerateCaption"
         @save-caption="handleSaveCaption"
         @clear-caption="handleClearCaption"
@@ -327,6 +328,13 @@
       @success="handleTransferSuccess"
     />
 
+    <TimeBatchEditor
+      v-model="showTimeBatchEditor"
+      :photo-ids="timeEditPhotoIds"
+      @updated="emit('retry')"
+      @success="galleryRef?.exitSelectionMode()"
+    />
+
     <!-- Batch Location Editor -->
     <LocationBatchEditor
       v-model="showLocationBatchEditor"
@@ -364,6 +372,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ParticleExplosion from '@/components/ParticleExplosion.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
 import FolderSelectionDialog from '@/components/FolderSelectionDialog.vue'
+import TimeBatchEditor from '@/components/TimeBatchEditor.vue'
 import LocationBatchEditor from '@/components/LocationBatchEditor.vue'
 import type { AlbumImage } from '@/types/album'
 
@@ -897,6 +906,13 @@ const tempSelectedIds = ref<string[]>([])
 const showFolderSelector = ref(false)
 const folderAction = ref<'move' | 'copy'>('move')
 const transferPhotoIds = ref<string[]>([])
+
+const showTimeBatchEditor = ref(false)
+const timeEditPhotoIds = ref<string[]>([])
+const handleBatchEditTime = (ids: string[]) => {
+  timeEditPhotoIds.value = ids
+  showTimeBatchEditor.value = true
+}
 
 // Batch location edit state
 const showLocationBatchEditor = ref(false)
