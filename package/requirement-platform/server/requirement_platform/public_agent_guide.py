@@ -3,7 +3,7 @@ from .config import settings
 
 
 def agent_guide() -> str:
-    base = settings.web_url.rstrip("/")
+    base = settings.public_base_url
     return f"""# TrailSnap 普通用户 AI 反馈指南 v1
 
 平台：{base}

@@ -9,6 +9,7 @@ services:
     environment:
       RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in package/requirement-platform/.env}
       RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in package/requirement-platform/.env}
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     volumes:
       - requirement-data:/app/data
     networks: [requirement-private]
@@ -28,6 +29,7 @@ services:
     environment:
       RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in package/requirement-platform/.env}
       RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in package/requirement-platform/.env}
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     volumes:
       - requirement-data:/app/data
     networks: [requirement-private]
@@ -45,6 +47,7 @@ services:
     environment:
       RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in package/requirement-platform/.env}
       RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in package/requirement-platform/.env}
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     volumes:
       - requirement-data:/app/data
     networks: [requirement-private]
@@ -56,6 +59,8 @@ services:
     image: trailsnap-requirement-platform-web:local
     build: ./web
     restart: unless-stopped
+    environment:
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     ports:
       - "127.0.0.1:8011:8080"
     networks: [requirement-private]

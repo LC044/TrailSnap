@@ -1,25 +1,15 @@
 import base64
 import json
-import os
-import tempfile
-import atexit
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-
-TEST_DIR = tempfile.TemporaryDirectory()
-os.environ["RP_DATABASE_URL"] = f"sqlite:///{Path(TEST_DIR.name) / 'requirements.db'}"
-os.environ["RP_JWT_SECRET"] = "test-secret-that-is-long-enough-for-tests"
-os.environ["RP_GITHUB_TOKEN"] = ""
-os.environ["RP_UPLOAD_DIR"] = str(Path(TEST_DIR.name) / "uploads")
-os.environ["RP_WEB_URL"] = "https://feedback.trailsnap.cn"
-os.environ["RP_MCP_PUBLIC_URL"] = "https://feedback.trailsnap.cn/mcp/"
-
+# Test environment variables live in conftest.py so that module import order
+# cannot reconfigure the module-level Settings singleton.
 from fastapi.testclient import TestClient  # noqa: E402
 
-from requirement_platform.db import SessionLocal, engine  # noqa: E402
+from requirement_platform.db import SessionLocal  # noqa: E402
 from requirement_platform.main import app  # noqa: E402
 from requirement_platform import mcp_server  # noqa: E402
 from requirement_platform.mcp_server import mcp_http_app  # noqa: E402
@@ -31,14 +21,6 @@ from requirement_platform.services import (  # noqa: E402
     GitHubClient, _call_triage_ai, analyze_requirement, closing_issue_numbers, requirement_status_from_github,
 )
 from requirement_platform.ai_settings import AIModelTarget  # noqa: E402
-
-
-def cleanup_database_handles():
-    engine.dispose()
-    TEST_DIR.cleanup()
-
-
-atexit.register(cleanup_database_handles)
 
 
 def auth(token: str) -> dict[str, str]:

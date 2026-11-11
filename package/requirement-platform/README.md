@@ -95,9 +95,46 @@ uv run python -m requirement_platform.seed_demo
    若需要在服务器上从源码构建（本地调试或不便访问 GHCR 时），改用 `docker compose up -d --build`。
 4. 在宿主机反向代理中把 `feedback.trailsnap.cn` 转发到 `127.0.0.1:8011`，并启用 HTTPS。
 5. 使用 `RP_OWNER_EMAIL` 对应邮箱注册首个账号，该账号会成为唯一所有者；随后再开放域名供其他用户注册。
-6. 在主 TrailSnap 前端构建时设置 `VITE_REQUIREMENT_PLATFORM_URL=https://feedback.trailsnap.cn`。
+6. 在主 TrailSnap 前端构建时设置 `VITE_REQUIREMENT_PLATFORM_URL=https://feedback.trailsnap.cn`；若使用子路径部署，值改为带前缀的完整地址（见下节）。
 
 SQLite 文件保存在 Docker 卷 `requirement-data`。备份时先暂停 API、worker 和 MCP，或使用 SQLite 在线备份命令生成一致性副本；不要在写入期间直接复制数据库文件。当前实现只支持 SQLite；任务领取使用条件更新保证单实例内不会被重复领取。
+
+## 子路径部署（URL 前缀）
+
+默认部署在域名根路径。若要把平台挂到已有站点的 `/issues` 下（例如 `https://example.com/issues/`），只需在 `.env` 增加一个变量：
+
+```dotenv
+RP_BASE_PATH=/issues
+RP_WEB_URL=https://example.com
+RP_CORS_ORIGINS=https://example.com
+```
+
+`RP_WEB_URL` 只填站点根，不要带前缀。模板里同域的 `RP_MCP_PUBLIC_URL` 和 `RP_GITHUB_OAUTH_REDIRECT_URI` 会被自动插入前缀（已包含前缀时不会重复插入）；如果它们指向其它域名，请自行写全带前缀的地址。GitHub OAuth App 的 Authorization callback URL 也要同步改为 `https://example.com/issues/api/auth/github/callback`。
+
+宿主机反向代理的两种写法都能工作，容器内 nginx 会自动兼容：
+
+```nginx
+# 方式 A：代理层剥离前缀（推荐，容器视角仍是根路径）
+location /issues/ {
+    proxy_pass http://127.0.0.1:8011/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+# 方式 B：保留完整路径，由容器内 nginx 自行剥离
+location /issues/ {
+    proxy_pass http://127.0.0.1:8011;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+注意事项：
+
+- 前缀支持多段（`/feedback/issues`），只允许字母、数字、`.`、`_`、`-`、`~`；不允许 `/` 结尾、`..` 或空段。非法值会让 web 容器启动失败并打印原因，后端也会在加载配置时报错。
+- 前缀在**容器启动时**注入到 `index.html` 的 `<base>`、Vue Router、API 请求和 nginx 转发规则，因此 GHCR 上的预构建镜像无需重新打包。修改或取消前缀后执行 `docker compose -f docker-compose.prod.yml up -d --force-recreate web`；仅 `docker restart` 不会重新读取环境变量。
+- 后端生成的公开需求链接、附件下载地址、Agent 指南、GitHub OAuth 回调与 MCP 地址都会自动带上前缀。主站跳转过来时把 `VITE_REQUIREMENT_PLATFORM_URL` 设为 `https://example.com/issues`。
+- 本地开发也能验证前缀：在 `web/` 目录执行 `RP_BASE_PATH=/issues npm run dev`，访问 `http://localhost:5177/issues/`，Vite 会把 `/issues/api`、`/issues/mcp` 代理到本机后端。
 
 ## AI 模型设置
 

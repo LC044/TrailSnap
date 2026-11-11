@@ -443,6 +443,7 @@ import logoUrl from './assets/logo.svg'
 import { api, type AgentToken, type Batch, type Dashboard, type Requirement, type RequirementHistory, type RequirementSupplement, type User as ApiUser } from './api'
 import SubmissionResult from './SubmissionResult.vue'
 import { continuationPrompt } from './feedbackExperience'
+import { APP_SITE_URL, appUrl } from './runtimeBase'
 import {
   requirementStatuses, reviewActionLabels,
   statusLabel,
@@ -540,7 +541,7 @@ const batchForm = reactive({ name: '', version_name: '', goal: '', batch_type: '
 const batchEditTarget = ref<Batch | null>(null)
 const scopeOptions = ['requirements:read', 'requirements:write', 'requirements:review', 'versions:read', 'versions:write', 'github:write', 'specs:read', 'tasks:write', 'tasks:claim', 'runs:write', 'artifacts:write']
 const tokenForm = reactive({ name: '', scopes: ['requirements:read'], expires_in_days: 90, project_key: 'trailsnap', agent_role: '', task_id: '' })
-const mcpUrl = `${window.location.origin}/mcp/`
+const mcpUrl = `${APP_SITE_URL}/mcp/`
 const mcpConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nhttp_headers = { Authorization = "Bearer trp_替换为刚创建的完整令牌" }\ndefault_tools_approval_mode = "writes"`)
 const mcpEnvConfigExample = computed(() => `[mcp_servers.trailsnap_requirements]\nurl = "${mcpUrl}"\nbearer_token_env_var = "TRAILSNAP_MCP_TOKEN"\ndefault_tools_approval_mode = "writes"`)
 const genericMcpConfig = computed(() => JSON.stringify({
@@ -727,7 +728,7 @@ function saveManagementLink(item: Requirement) {
 }
 function continueWithAI(item: Requirement) {
   if (item.visibility !== 'public') { ElMessage.warning('私有需求暂不支持生成公开续办提示词'); return }
-  showCopy(continuationPrompt(item, location.origin), '交给 AI 继续处理', '复制以下内容，粘贴到你的 Trae、Codex 等 AI 工具中，再告诉它这次想做什么。此内容不包含修改权限。')
+  showCopy(continuationPrompt(item, APP_SITE_URL), '交给 AI 继续处理', '复制以下内容，粘贴到你的 Trae、Codex 等 AI 工具中，再告诉它这次想做什么。此内容不包含修改权限。')
 }
 function openSupplement(item: Requirement) {
   if (supplementTarget.value?.id !== item.id && supplementBody.value.trim()) {
@@ -967,7 +968,7 @@ function closeDetail() {
   detailHistory.value = []
   void router.push({ name: tab.value })
 }
-function requirementLink(item: Requirement) { return `${window.location.origin}/requirements/REQ-${item.public_number}` }
+function requirementLink(item: Requirement) { return appUrl(`requirements/REQ-${item.public_number}`) }
 async function copyRequirementLink(item: Requirement) { await copyText(requirementLink(item)) }
 async function followDetail() {
   if (!detailTarget.value) return

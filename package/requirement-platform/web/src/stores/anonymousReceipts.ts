@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Requirement } from '../api'
+import { appUrl } from '../runtimeBase'
 
 type Receipt = { id: string; number: number; token: string }
 const key = 'rp_anonymous_receipts_v1'
@@ -23,7 +24,7 @@ export const useAnonymousReceipts = defineStore('anonymous-receipts', () => {
   function tokenFor(id: string) { return receipts.value.find(item => item.id === id)?.token }
   function managementLink(requirement: Requirement) {
     const token = tokenFor(requirement.id)
-    return token ? `${location.origin}/requirements/REQ-${requirement.public_number}#edit_token=${encodeURIComponent(token)}` : ''
+    return token ? appUrl(`requirements/REQ-${requirement.public_number}#edit_token=${encodeURIComponent(token)}`) : ''
   }
   return { receipts, save, tokenFor, managementLink }
 })

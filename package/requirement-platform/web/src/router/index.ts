@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { APP_BASE_PATH } from '../runtimeBase'
 
 export type AppTab = 'public' | 'dashboard' | 'submit' | 'mine' | 'admin' | 'versions' | 'usage' | 'integrations' | 'ai-settings' | 'users'
 
@@ -24,4 +25,4 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
-export const router = createRouter({ history: createWebHistory(), routes })
+export const router = createRouter({ history: createWebHistory(APP_BASE_PATH), routes })
