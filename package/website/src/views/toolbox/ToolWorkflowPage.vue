@@ -3,38 +3,34 @@
     <header class="mb-6 flex min-w-0 items-start justify-between gap-3">
       <div class="flex min-w-0 items-start gap-3">
         <BackButton label="返回工具箱" @click="goBack" />
-        <div class="min-w-0"><h1 class="ts-page-title">{{ titles[kind] }}</h1><p class="ts-muted mt-1 text-sm">先选范围，预览变化，再确认执行。</p></div>
+        <div class="min-w-0"><h1 class="ts-page-title">{{ kind === 'cleanup' ? ({ duplicate: '重复照片', similar: '相似照片', quality: '低质量照片' })[config.cleanup_mode] : titles[kind] }}</h1></div>
       </div>
       <RouterLink to="/toolbox" class="ts-button ts-button-ghost">操作记录</RouterLink>
     </header>
-    <ol v-if="!plan || plan.status === 'preview'" class="mb-5 flex gap-2" aria-label="操作步骤">
-      <li v-for="(label, index) in steps" :key="label" class="ts-divider min-w-0 flex-1 rounded-xl border px-3 py-2 text-sm"
-        :class="step === index + 1 ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'ts-muted'"
-        :aria-current="step === index + 1 ? 'step' : undefined">{{ index + 1 }}. {{ label }}</li>
-    </ol>
     <p v-if="error" role="alert" class="mb-4 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
-    <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div class="space-y-5">
       <div v-loading="busy" class="ts-surface min-w-0 p-4 md:p-6">
-        <MediaScopeSelector v-if="step === 1" v-model:scope="scope" :count="scopeCount" :checking="checking" @check="checkScope(true)" />
-        <div v-else-if="step === 2" class="space-y-5">
-          <ToolPresetBar v-if="['organize', 'rename', 'album'].includes(kind)" v-model="config" @apply-default="applyDefault" @ready="presetsReady" />
-          <div v-if="draftAvailable" class="ts-divider flex flex-wrap items-center gap-2 rounded-xl border p-3 text-sm">
-            有未使用的规则草稿
-            <el-button size="small" @click="restoreDraft">恢复草稿</el-button><el-button size="small" @click="discardDraft">丢弃</el-button>
-          </div>
+        <MediaScopeSelector v-if="step < 3" v-model:scope="scope" :count="scopeCount" :checking="checking" @check="checkScope(true)" />
+        <div v-if="step < 3" class="ts-divider mt-6 space-y-5 border-t pt-6">
+          <ToolPresetBar v-if="['organize', 'rename', 'album'].includes(kind)" v-model="config" @apply-default="applyDefault" @ready="presetsReady" >
+          <template #default>
           <OrganizeRuleEditor v-if="kind === 'organize' || kind === 'album'" v-model="config" :scope="scope" />
           <RenameTemplateEditor v-else-if="kind === 'rename'" v-model="config" />
+          </template>
+          <template #actions>
+            <el-button type="primary" :loading="busy || checking" :disabled="!scopeValid || !configValid" @click="preview">查看效果</el-button>
+          </template>
+          </ToolPresetBar>
           <el-form v-else-if="kind === 'cleanup'" label-position="top">
             <h2 class="ts-section-title mb-4">找出候选，由你决定保留</h2>
-            <el-form-item label="寻找什么"><el-select v-model="config.cleanup_mode" class="w-full max-w-md">
-              <el-option label="内容完全重复" value="duplicate" /><el-option label="画面相似" value="similar" /><el-option label="低质量评分" value="quality" />
-            </el-select></el-form-item>
+            <details><summary class="cursor-pointer py-3 text-sm">更多设置 · {{ config.compare_all ? '与全库比较' : '仅在所选范围比较' }}</summary>
             <el-form-item label="比较范围"><el-select v-model="config.compare_all" class="w-full">
               <el-option label="仅在本次范围内比较" :value="false" /><el-option label="与整个图库比较（范围外仅作参考，不可删除）" :value="true" />
             </el-select></el-form-item>
             <el-form-item v-if="config.cleanup_mode === 'similar'" label="相似度阈值"><el-slider v-model="config.similarity" :min=".8" :max="1" :step=".01" show-input /></el-form-item>
             <el-form-item v-if="config.cleanup_mode === 'quality'" label="综合评分不高于"><el-input-number v-model="config.quality_max" :min="0" :max="200" /></el-form-item>
             <el-alert title="本版使用已经计算的哈希、向量和评分生成候选，缺少分析结果的影像会跳过。相似比较最多 3000 项；其他工具单次最多 50000 项。" type="info" :closable="false" />
+            </details>
           </el-form>
           <el-form v-else label-position="top">
             <h2 class="ts-section-title mb-4">修正拍摄信息</h2>
@@ -50,20 +46,11 @@
         </div>
         <ToolPlanPreview v-else-if="plan" :plan="plan" :executing="executing" @execute="execute" @back="backToConfig"
           @stop="stop" @recover="recover" @again="again" />
-        <div v-if="step < 3" class="ts-divider mt-6 flex justify-end gap-2 border-t pt-4">
-          <el-button v-if="step === 2" @click="step = 1">上一步</el-button>
-          <el-button type="primary" :loading="busy || checking" :disabled="!scopeValid || (step === 2 && !configValid)" @click="step === 1 ? next() : preview()">{{ step === 1 ? '下一步：设置规则' : '查看真实预览' }}</el-button>
+        <div v-if="step < 3 && !['organize', 'rename', 'album'].includes(kind)" class="ts-divider mt-6 flex justify-end gap-2 border-t pt-4">
+          <el-button type="primary" :loading="busy || checking" :disabled="!scopeValid || !configValid" @click="preview">{{ kind === 'cleanup' ? '查找候选照片' : '查看效果' }}</el-button>
         </div>
       </div>
-      <aside class="ts-surface h-fit min-w-0 space-y-4 p-4 lg:sticky lg:top-4">
-        <div class="flex items-center gap-2"><ShieldCheck class="h-5 w-5 text-primary-500" /><h2 class="text-sm font-semibold">本次处理范围</h2></div>
-        <p class="break-all text-sm">{{ sourceSummary }}</p>
-        <p v-if="scope.start_date || scope.end_date" class="ts-muted text-sm">{{ scope.start_date || '不限开始' }} 至 {{ scope.end_date || '不限结束' }}</p>
-        <p v-if="scopeCount !== null" class="text-2xl font-bold">{{ scopeCount.toLocaleString() }} <span class="ts-muted text-sm font-normal">项</span></p>
-        <p v-if="scope.excluded_ids.length" class="ts-muted text-xs">已排除 {{ scope.excluded_ids.length }} 项</p>
-        <p class="ts-muted text-xs">只处理你有权限的未删除影像。原文件变更必须经过最后确认。</p>
-        <el-button v-if="step === 2" @click="step = 1">更改范围</el-button>
-      </aside>
+
     </div>
     <ResponsiveDialog v-model="scopeDialog" title="核对处理范围" max-width="60rem" mobile-mode="fullscreen" mobile-back>
       <p class="ts-muted mb-4 text-sm" aria-live="polite">
@@ -86,7 +73,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ShieldCheck } from 'lucide-vue-next'
 import { ElMessage } from 'element-plus'
 import AppPage from '@/components/ui/AppPage.vue'
 import BackButton from '@/components/ui/BackButton.vue'
@@ -107,11 +93,11 @@ const route = useRoute(), router = useRouter()
 const goBack = useAppBack('/toolbox')
 const kind = computed(() => props.kind)
 const titles: Record<ToolKind, string> = { organize: '影像整理', rename: '批量重命名', album: '按规则创建相册', cleanup: '照片清理', metadata: '修正拍摄信息' }
-const steps = ['选择范围', '设置规则', '预览并执行']
 const user = useUserStore(), store = useToolboxStore()
 const scope = ref(emptyScope()), config = ref(defaultConfig(props.kind))
 if (props.cleanupMode) config.value.cleanup_mode = props.cleanupMode
-const step = ref(1), busy = ref(false), checking = ref(false), executing = ref(false), error = ref('')
+if (props.kind === 'organize' || props.kind === 'album') config.value.rules[0].granularity = 'month'
+const step = ref(2), busy = ref(false), checking = ref(false), executing = ref(false), error = ref('')
 const plan = ref<ToolPlan | null>(null)
 const scopeCount = ref<number | null>(null), scopeRows = ref<ScopeItem[]>([]), scopePage = ref(1), scopeDialog = ref(false)
 const scopeValid = computed(() => {
@@ -127,11 +113,6 @@ const configValid = computed(() => {
   if (value.kind === 'metadata' && value.time_mode === 'custom') return !!value.custom_time
   if (value.kind === 'metadata' && value.time_mode === 'none') return !!(value.make || value.model)
   return true
-})
-const sourceSummary = computed(() => {
-  const s = scope.value
-  return s.source === 'folders' ? s.folders.join('、') || '尚未选择文件夹' : s.source === 'albums' ? `已选 ${s.album_ids.length} 个相册`
-    : s.source === 'selected' ? `明确选择 ${s.photo_ids.length} 项` : s.source === 'filter' ? '按拍摄日期筛选' : '全部图库（主动选择）'
 })
 const snapshot = () => JSON.stringify({ scope: scope.value, config: config.value })
 watch(scope, () => { scopeCount.value = null; if (plan.value?.status === 'preview') plan.value = null }, { deep: true })
@@ -154,15 +135,10 @@ const checkScope = async (open: boolean) => {
   finally { if (version === scopeSequence) checking.value = false }
 }
 const exclude = async (id: string) => { scope.value.excluded_ids = [...new Set([...scope.value.excluded_ids, id])]; await checkScope(false) }
-const next = async () => {
-  try {
-    if (!await checkScope(false)) return
-    if (!scopeCount.value) { ElMessage.warning('范围内没有影像，请调整条件'); return }
-    step.value = 2
-  } catch { /* Error is rendered above the form. */ }
-}
 const preview = async () => {
-  if (busy.value || !configValid.value) return
+  if (busy.value || checking.value || !scopeValid.value || !configValid.value) return
+  if (!await checkScope(false)) return
+  if (!scopeCount.value) { ElMessage.warning('范围内没有影像，请调整条件'); return }
   busy.value = true; error.value = ''
   const key = snapshot()
   const owner = user.userInfo?.id
@@ -214,7 +190,7 @@ const recover = async (mode: 'retry' | 'undo') => {
 }
 const again = async () => {
   if (plan.value) config.value = JSON.parse(JSON.stringify(plan.value.request.config))
-  plan.value = null; scope.value = emptyScope(); step.value = 1; await router.replace({ query: {} })
+  plan.value = null; scope.value = emptyScope(); step.value = 2; await router.replace({ query: {} })
 }
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let disposed = false
@@ -283,7 +259,7 @@ watch(() => user.userInfo?.id, () => {
   scopeSequence++
   scope.value = emptyScope(); config.value = defaultConfig(props.kind)
   plan.value = null; scopeRows.value = []; scopeDialog.value = false
-  step.value = 1; error.value = ''; checking.value = false
+  step.value = 2; error.value = ''; checking.value = false
   persistedDraft = ''; draftAvailable.value = false; defaultsApplied = false
 })
 onMounted(async () => {

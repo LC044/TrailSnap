@@ -2,7 +2,7 @@
   <section class="space-y-5">
     <div>
       <h2 class="ts-section-title">这次处理哪些影像？</h2>
-      <p class="ts-muted mt-1 text-sm">范围与整理规则独立。不会默认处理整个图库。</p>
+
     </div>
     <div class="grid grid-cols-2 gap-2 sm:grid-cols-5" role="group" aria-label="范围来源">
       <button v-for="source in sources" :key="source.value" type="button"
@@ -45,7 +45,8 @@
       </div>
       <el-alert v-if="scope.source === 'all'" title="你已主动选择全部影像，请特别注意执行前的影响范围。" type="warning" :closable="false" show-icon />
 
-      <div class="mt-5 border-t pt-5 ts-divider">
+      <details :open="scope.source === 'filter' || !!scope.start_date || !!scope.end_date || scope.upload_time_fallback || scope.media_type !== 'image'" class="mt-4">
+        <summary class="cursor-pointer py-3 text-sm">缩小范围<span v-if="scope.start_date || scope.end_date"> · 已设置日期</span></summary>
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
           <span class="text-sm font-semibold">附加条件{{ scope.source === 'filter' ? '（请至少指定日期）' : '（可选）' }}</span>
           <div class="flex flex-wrap gap-2">
@@ -68,7 +69,7 @@
           </el-select>
         </el-form-item>
         <p class="ts-muted mt-2 text-xs">本版文件操作仅处理静态照片；视频、动态照片及检测到的关联文件会跳过。</p>
-      </div>
+      </details>
     </el-form>
     <div class="ts-divider flex flex-wrap items-center justify-between gap-3 border-t pt-4">
       <p v-if="count !== null" class="text-sm"><strong class="text-primary-600 dark:text-primary-400">{{ count.toLocaleString() }}</strong> 项符合当前范围</p>

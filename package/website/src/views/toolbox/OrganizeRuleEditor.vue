@@ -1,10 +1,14 @@
 <template>
   <div class="space-y-5">
-    <div class="flex items-start justify-between gap-3">
-      <div><h2 class="ts-section-title">{{ config.kind === 'album' ? '按规则创建应用内相册' : '设置归档规则' }}</h2>
-        <p class="ts-muted mt-1 text-sm">可组合最多三级，例如“年份 → 城市”。{{ config.kind === 'album' ? '不移动或复制原文件。' : '整理的是实际文件。' }}</p></div>
-      <el-button :disabled="config.rules.length >= 3" @click="addRule"><Plus class="mr-1 h-4 w-4" />增加一级</el-button>
+    <h2 class="ts-section-title">怎样整理？</h2>
+    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4" role="group" aria-label="常用整理方案">
+      <button v-for="preset in quickPresets" :key="preset.id" type="button" class="ts-button ts-button-secondary"
+        :aria-pressed="currentPreset === preset.id" :class="{ 'preset-selected': currentPreset === preset.id }" @click="applyPreset(preset.id)"><Check v-if="currentPreset === preset.id" class="h-4 w-4 shrink-0" aria-hidden="true" />{{ preset.label }}</button>
+      <button type="button" class="ts-button ts-button-secondary" :aria-expanded="customRules" @click="customRules = !customRules">自定义</button>
     </div>
+    <p class="ts-muted text-sm">{{ ruleSummary }}<span v-if="currentPreset"> · 示例：{{ currentPreset === 'month' ? '2026/11' : currentPreset === 'city' ? '杭州市' : '2026/杭州市' }}</span></p>
+    <div v-if="customRules || !currentPreset" class="space-y-4">
+      <el-button :disabled="config.rules.length >= 3" @click="addRule"><Plus class="mr-1 h-4 w-4" />增加一级</el-button>
     <div v-for="(rule, index) in config.rules" :key="index" class="ts-divider space-y-3 rounded-2xl border p-4">
       <div class="flex items-center justify-between">
         <span class="text-sm font-semibold">第 {{ index + 1 }} 级</span>
@@ -34,6 +38,7 @@
         </div>
       </el-form>
     </div>
+    </div>
     <el-form label-position="top">
       <template v-if="config.kind === 'organize'">
         <el-form-item label="目标目录">
@@ -41,13 +46,6 @@
             <el-input v-model="config.target" readonly placeholder="选择已配置存储中的目标目录" class="min-w-0 flex-1" />
             <el-button @click="targetPicker = true">选择目录</el-button>
           </div>
-        </el-form-item>
-        <el-form-item label="怎样生成目录">
-          <el-select v-model="config.layout" class="w-full">
-            <el-option label="重新归档：仅按新规则生成目录" value="rebuild" />
-            <el-option label="保留原文件夹层级，再继续细分" value="preserve" :disabled="scope.source !== 'folders' || scope.folders.length !== 1" />
-          </el-select>
-          <p class="ts-muted mt-2 text-xs">{{ config.layout === 'preserve' ? '保留相对于所选源文件夹的月/日等目录，再追加新分组。目标选源文件夹即可在原位置细分。' : '原有月份/日期目录不会自动保留在新结构中。' }}</p>
         </el-form-item>
         <el-form-item label="原文件如何处理（请明确选择）">
           <el-radio-group v-model="config.action">
@@ -57,6 +55,15 @@
         <el-alert v-if="config.action === 'move'" title="移动会改变实际文件位置，外部软件依赖的原路径可能失效。执行前请检查真实预览。" type="warning" :closable="false" />
       </template>
       <el-form-item v-else label="相册名前缀（可选）"><el-input v-model="config.album_prefix" maxlength="40" placeholder="例如：旅行 · " class="max-w-md" /></el-form-item>
+      <details class="mt-4">
+        <summary class="cursor-pointer py-3 text-sm">高级设置 · {{ advancedSummary }}</summary>
+        <el-form-item v-if="config.kind === 'organize'" label="怎样生成目录">
+          <el-select v-model="config.layout" class="w-full">
+            <el-option label="重新归档：仅按新规则生成目录" value="rebuild" />
+            <el-option label="保留原文件夹层级，再继续细分" value="preserve" :disabled="scope.source !== 'folders' || scope.folders.length !== 1" />
+          </el-select>
+          <p class="ts-muted mt-2 text-xs">{{ config.layout === 'preserve' ? '保留相对于所选源文件夹的月/日等目录，再追加新分组。目标选源文件夹即可在原位置细分。' : '原有月份/日期目录不会自动保留在新结构中。' }}</p>
+        </el-form-item>
       <el-form-item class="mt-4" label="缺少归档信息">
         <el-select v-model="config.missing" class="w-full max-w-md"><el-option label="跳过并在预览中说明" value="skip" /><el-option label="归入未知信息分组" value="placeholder" /><el-option label="缺少拍摄时间时使用上传时间，其他缺失跳过" value="upload" /></el-select>
       </el-form-item>
@@ -66,17 +73,30 @@
           <el-option label="每个匹配分组各生成一份" value="all" :disabled="config.kind === 'organize' && config.action !== 'copy'" />
         </el-select>
       </el-form-item>
+      </details>
     </el-form>
     <DirectoryPickerDialog v-model:visible="targetPicker" v-model="config.target" />
   </div>
 </template>
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { Plus, X } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { Check, Plus, X } from 'lucide-vue-next'
 import { workflowApi, type MediaScope, type ToolConfig, type OrganizeRule } from '@/api/toolboxWorkflows'
 import DirectoryPickerDialog from '@/components/DirectoryPickerDialog.vue'
 const props = defineProps<{ scope: MediaScope }>()
 const config = defineModel<ToolConfig>({ required: true })
+const customRules = ref(false)
+const quickPresets = [{ id: 'month', label: '按年月' }, { id: 'city', label: '按城市' }, { id: 'year-city', label: '按年份和城市' }]
+const presetRules = (id: string): OrganizeRule[] => id === 'month'
+  ? [{ strategy: 'time', granularity: 'month', nested: true, groups: null }]
+  : id === 'city' ? [{ strategy: 'location', granularity: 'city', nested: true, groups: null }]
+  : [{ strategy: 'time', granularity: 'year', nested: true, groups: null }, { strategy: 'location', granularity: 'city', nested: true, groups: null }]
+const currentPreset = computed(() => quickPresets.find(p => JSON.stringify(presetRules(p.id)) === JSON.stringify(config.value.rules))?.id)
+const ruleSummary = computed(() => config.value.rules.map(r => `${({ time: '日期', location: '地点', person: '人物', category: '分类' })[r.strategy]} · ${({ year: '年份', month: '年月', day: '年月日', city: '城市', province: '省份', district: '区县', province_city: '省 / 市', city_district: '市 / 区县', province_city_district: '省 / 市 / 区县' } as Record<string, string>)[r.granularity] || '分组'}${r.groups !== null ? '（指定分组）' : ''}${!r.nested ? '（平铺）' : ''}`).join(' → '))
+const advancedSummary = computed(() => [config.value.layout === 'preserve' ? '保留原层级' : '按新规则生成目录',
+  config.value.missing === 'skip' ? '缺失信息跳过' : config.value.missing === 'upload' ? '使用上传时间' : '归入未知分组',
+  config.value.multi_group === 'skip' ? '' : config.value.multi_group === 'all' ? '多分组各生成一份' : '采用首个分组'].filter(Boolean).join(' · '))
+const applyPreset = (id: string) => { config.value.rules = presetRules(id); customRules.value = false; revision++; options.value = {}; errors.value = {} }
 const locationOptions = [
   { label: '省份', value: 'province' }, { label: '城市', value: 'city' }, { label: '区县', value: 'district' },
   { label: '省 / 市', value: 'province_city' }, { label: '市 / 区县', value: 'city_district' }, { label: '省 / 市 / 区县', value: 'province_city_district' },
@@ -105,3 +125,14 @@ const loadOptions = async (index: number) => {
   finally { loading.value[index] = false }
 }
 </script>
+
+<style scoped>
+.preset-selected {
+  border-color: var(--theme-primary);
+  background: rgba(var(--theme-rgb), 0.12);
+  color: var(--theme-primary);
+}
+.preset-selected:hover {
+  background: rgba(var(--theme-rgb), 0.18);
+}
+</style>

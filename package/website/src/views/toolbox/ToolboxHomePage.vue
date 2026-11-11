@@ -3,7 +3,7 @@
     <header class="mb-7 flex min-w-0 items-start justify-between gap-3">
       <div><span class="mb-3 inline-flex rounded-xl bg-primary-50 p-3 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"><Wrench class="h-6 w-6" /></span>
         <h1 class="ts-page-title md:text-3xl">工具箱</h1><p class="ts-muted mt-2 text-sm md:text-base">整理、命名与修复。先选范围，再放心操作。</p></div>
-      <el-button :loading="loading" @click="load">刷新记录</el-button>
+
     </header>
     <section v-if="active.length" class="ts-surface mb-7 p-4 md:p-5" aria-label="正在进行">
       <h2 class="ts-section-title mb-3">正在进行</h2>
@@ -17,10 +17,9 @@
       <h2 id="organize-heading" class="ts-section-title mb-3">整理与命名</h2>
       <div class="grid gap-3 md:grid-cols-2 md:gap-5">
         <RouterLink v-for="tool in mainTools" :key="tool.path" :to="tool.path"
-          class="ts-surface group flex min-h-[100px] items-center gap-4 p-4 transition hover:border-primary-500 focus-visible:outline-primary-500 md:min-h-[148px] md:p-6">
+          class="ts-surface group flex min-h-[100px] items-center gap-4 p-4 transition hover:border-primary-500 focus-visible:outline-primary-500 md:min-h-[104px] md:p-5">
           <span class="rounded-xl bg-primary-50 p-3 text-primary-600 dark:bg-primary-900/20 dark:text-primary-400"><component :is="tool.icon" class="h-6 w-6" /></span>
-          <div class="min-w-0 flex-1"><h3 class="text-base font-semibold md:text-lg">{{ tool.title }}</h3><p class="ts-muted mt-1 text-sm leading-6">{{ tool.desc }}</p>
-            <p class="mt-2 text-xs text-primary-600 dark:text-primary-400">{{ tool.note }}</p></div>
+          <div class="min-w-0 flex-1"><h3 class="text-base font-semibold md:text-lg">{{ tool.title }}</h3><p class="ts-muted mt-1 text-sm leading-6">{{ tool.note }}</p></div>
           <ChevronRight class="h-5 w-5 shrink-0 ts-muted" />
         </RouterLink>
       </div>
@@ -37,8 +36,8 @@
         </RouterLink>
       </div>
     </section>
-    <section class="mt-7" aria-labelledby="templates-heading">
-      <div class="mb-3 flex items-center justify-between"><h2 id="templates-heading" class="ts-section-title">我的常用模板</h2><RouterLink to="/toolbox/rename" class="text-sm text-primary-600 dark:text-primary-400">编辑与管理</RouterLink></div>
+    <section v-if="templateError || store.preferences.presets.length" class="mt-7" aria-labelledby="templates-heading">
+      <div class="mb-3 flex items-center justify-between"><h2 id="templates-heading" class="ts-section-title">我的常用模板</h2><button type="button" class="ts-button ts-button-ghost" @click="manageOpen = true">编辑与管理</button></div>
       <p v-if="templateError" role="alert" class="text-sm text-red-600 dark:text-red-400">模板加载失败，请刷新后重试。</p>
       <div v-else-if="store.preferences.presets.length" class="grid gap-3 sm:grid-cols-3">
         <RouterLink v-for="preset in store.preferences.presets.slice(0, 3)" :key="preset.id" :to="{ path: paths[preset.config.kind], query: { preset: preset.id } }" class="ts-surface min-w-0 p-4">
@@ -47,8 +46,9 @@
       </div>
       <p v-else class="ts-surface ts-muted p-4 text-sm">保存常用命名模板或整理方案，下次直接使用。规则会按账号保存。</p>
     </section>
-    <section class="mt-7" aria-labelledby="history-heading">
-      <h2 id="history-heading" class="ts-section-title mb-3">操作记录</h2>
+    <details id="history" class="mt-7" :open="!!error">
+      <summary id="history-heading" class="cursor-pointer py-3 font-semibold">操作记录</summary>
+      <el-button :loading="loading" class="mb-3" @click="load">刷新记录</el-button>
       <p v-if="error" role="alert" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
       <div v-else class="ts-surface overflow-hidden">
         <button v-for="plan in history" :key="plan.id" type="button" class="ts-divider flex w-full items-center gap-3 border-b p-4 text-left last:border-b-0 hover:bg-[var(--ts-color-surface-muted)]"
@@ -58,16 +58,38 @@
         </button>
         <p v-if="!history.length && !loading" class="ts-muted p-6 text-center text-sm">尚无新工具箱操作记录。预览不算已执行操作。</p>
       </div>
-      <div class="mt-3 flex justify-center gap-2"><el-button :disabled="page === 1 || loading" @click="page--; load()">上一页</el-button><el-button :disabled="history.length < 20 || loading" @click="page++; load()">下一页</el-button></div>
-    </section>
+      <div v-if="page > 1 || history.length >= 20" class="mt-3 flex justify-center gap-2"><el-button :disabled="page === 1 || loading" @click="page--; load()">上一页</el-button><el-button :disabled="history.length < 20 || loading" @click="page++; load()">下一页</el-button></div>
+    </details>
+    <ResponsiveDialog v-model="manageOpen" title="管理常用模板与方案" mobile-mode="fullscreen" mobile-back>
+      <p v-if="manageError" role="alert" class="mb-3 text-sm text-red-600 dark:text-red-400">{{ manageError }} <el-button link :disabled="store.busy" @click="reloadPresets">重新载入</el-button></p>
+      <div class="space-y-3">
+        <article v-for="preset in store.preferences.presets" :key="preset.id" class="ts-divider min-w-0 rounded-xl border p-4">
+          <p class="break-all font-semibold">{{ preset.name }}</p>
+          <p class="ts-muted mt-1 text-xs">{{ titles[preset.config.kind] }}</p>
+          <div v-if="editingId === preset.id" class="mt-3 flex flex-wrap gap-2">
+            <el-input v-model="editingName" maxlength="30" aria-label="方案名称" class="min-w-0 flex-1" />
+            <el-button :loading="store.busy" :disabled="!editingName.trim() || !!manageError" @click="renamePreset(preset)">保存名称</el-button>
+            <el-button :disabled="store.busy" @click="editingId = ''">取消</el-button>
+          </div>
+          <div v-else class="mt-3 flex flex-wrap gap-2">
+            <el-button :disabled="store.busy" @click="editRules(preset)">编辑规则</el-button>
+            <el-button :disabled="store.busy || !!manageError" @click="editingId = preset.id; editingName = preset.name">重命名</el-button>
+            <el-button type="danger" plain :disabled="store.busy || !!manageError" @click="deletePreset(preset)">删除</el-button>
+          </div>
+        </article>
+        <p v-if="!store.preferences.presets.length" class="ts-muted py-6 text-center text-sm">暂无保存的模板或方案</p>
+      </div>
+    </ResponsiveDialog>
   </AppPage>
 </template>
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Wrench, FolderOpen, Tag, Images, Copy, Trash2, Clock3, ChevronRight } from 'lucide-vue-next'
+import { ElMessageBox } from 'element-plus'
+import ResponsiveDialog from '@/components/ui/ResponsiveDialog.vue'
 import AppPage from '@/components/ui/AppPage.vue'
-import { workflowApi, type ToolKind, type ToolPlan } from '@/api/toolboxWorkflows'
+import { workflowApi, type ToolKind, type ToolPlan, type ToolPreset } from '@/api/toolboxWorkflows'
 import { useToolboxStore } from '@/stores/toolbox'
 const router = useRouter(), store = useToolboxStore()
 const titles: Record<string, string> = { organize: '影像整理', rename: '批量重命名', album: '相册归类', cleanup: '照片清理', metadata: '拍摄信息修复', undo: '恢复原路径' }
@@ -83,6 +105,34 @@ const otherTools = [
   { path: '/toolbox/cleanup', title: '低质量照片', desc: '评分候选，不自动删除', icon: Trash2 },
   { path: '/toolbox/time-from-filename', title: '修正拍摄信息', desc: '选择范围，写入时间与设备', icon: Clock3 },
 ]
+const manageOpen = ref(false), manageError = ref(''), editingId = ref(''), editingName = ref('')
+const reloadPresets = async () => {
+  try { await store.load(); manageError.value = ''; templateError.value = false }
+  catch { manageError.value = '模板加载失败，请重试' }
+}
+const editRules = (preset: ToolPreset) => {
+  manageOpen.value = false
+  router.push({ path: paths[preset.config.kind], query: { preset: preset.id } })
+}
+const renamePreset = async (preset: ToolPreset) => {
+  const name = editingName.value.trim()
+  if (!name || store.busy) return
+  if (store.preferences.presets.some(p => p.id !== preset.id && p.name === name)) { manageError.value = '已有同名方案，请修改名称'; return }
+  try {
+    await store.save({ ...store.preferences, presets: store.preferences.presets.map(p => p.id === preset.id ? { ...p, name } : p) })
+    editingId.value = ''; manageError.value = ''
+  } catch { manageError.value = '保存失败，请重新载入后重试' }
+}
+const deletePreset = async (preset: ToolPreset) => {
+  try { await ElMessageBox.confirm(`删除“${preset.name}”？`, '删除方案', { type: 'warning' }) }
+  catch { return }
+  if (store.busy) return
+  try {
+    await store.save({ ...store.preferences, presets: store.preferences.presets.filter(p => p.id !== preset.id),
+      default_rename_id: store.preferences.default_rename_id === preset.id ? null : store.preferences.default_rename_id })
+    manageError.value = ''
+  } catch { manageError.value = '删除失败，请重新载入后重试' }
+}
 const history = ref<ToolPlan[]>([]), page = ref(1), loading = ref(false), error = ref(''), templateError = ref(false)
 const active = ref<ToolPlan[]>([])
 let loadVersion = 0
@@ -95,7 +145,7 @@ const load = async () => {
     ])
     if (version !== loadVersion) return
     history.value = records; active.value = running; error.value = ''
-  } catch { if (version === loadVersion) error.value = '操作记录加载失败；请确认已执行本次数据库迁移后重试。' }
+  } catch { if (version === loadVersion) error.value = '操作记录加载失败，请重试。' }
   finally { if (version === loadVersion) loading.value = false }
 }
 const open = (plan: ToolPlan) => router.push({ path: paths[plan.kind === 'undo' ? plan.request.config.kind : plan.kind], query: { plan: plan.id } })
