@@ -248,10 +248,12 @@ test.describe.serial('P0 - 人物相册', () => {
     await expect(rescanDialog.getByText('相似度 90%')).toBeVisible()
     await expect(rescanDialog.getByText('当前：其他人物')).toBeVisible()
     await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeEnabled()
-    await rescanDialog.getByRole('spinbutton', { name: '最大匹配距离' }).fill('0.60')
+    // 弹窗默认以 0.6 发起首次查找，mock 原样回显 candidate_threshold；
+    // 填一个不同的值才会触发「阈值已修改」的禁用态。
+    await rescanDialog.getByRole('spinbutton', { name: '最大匹配距离' }).fill('0.63')
     await rescanDialog.getByRole('spinbutton', { name: '最大匹配距离' }).blur()
     await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeDisabled()
-    const customLookup = page.waitForResponse(response => response.url().includes('/rescan/preview?threshold=0.6'))
+    const customLookup = page.waitForResponse(response => response.url().includes('/rescan/preview?threshold=0.63'))
     await rescanDialog.getByRole('button', { name: '重新查找' }).click()
     await customLookup
     await expect(rescanDialog.getByRole('button', { name: '应用选中项（1）' })).toBeEnabled()
