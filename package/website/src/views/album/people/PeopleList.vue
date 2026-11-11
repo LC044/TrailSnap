@@ -117,8 +117,8 @@
               : ''
           ]"
         >
-          <CheckSquareIcon class="w-5 h-5" />
-          <span>{{ isMergeMode ? '完成' : '批量' }}</span>
+          <EditIcon class="w-5 h-5" />
+          <span>{{ isMergeMode ? '完成' : '编辑人物' }}</span>
         </button>
       </div>
     </div>
@@ -314,7 +314,8 @@ import {
   Eye as EyeIcon,
   EyeOff as EyeOffIcon,
   Filter as FilterIcon,
-  Trash2 as TrashIcon } from 'lucide-vue-next'
+  Trash2 as TrashIcon, 
+  EditIcon} from 'lucide-vue-next'
 import IdentityEditDialog from '@/components/IdentityEditDialog.vue'
 import FaceRescanDialog from '@/components/FaceRescanDialog.vue'
 import PersonAvatar from '@/components/PersonAvatar.vue'

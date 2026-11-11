@@ -2,18 +2,29 @@
   <ResponsiveDialog
     :model-value="visible"
     title="查找此人的更多照片"
-    description="根据已识别的人脸查找，不会重新检测照片。"
+    description=""
     max-width="55rem" mobile-mode="fullscreen" mobile-back
     :before-close="() => !applying"
     @update:model-value="emit('update:visible', $event)"
   >
     <div class="mb-4 space-y-2">
-      <div class="flex flex-wrap items-center gap-3">
-        <label for="person-search-threshold" class="text-sm font-medium">最大匹配距离</label>
-        <el-input-number :key="loading || applying ? 'busy' : 'ready'" id="person-search-threshold" v-model="threshold" :min="0" :max="1" :step="0.01" :disabled="loading || applying" />
-        <button type="button" class="ts-button ts-button-secondary" :disabled="loading || applying || threshold == null" @click="loadPreview">重新查找</button>
+      <div class="flex flex-wrap items-start gap-3">
+        <div class="space-y-2">
+          <div class="flex items-center gap-3">
+            <label for="person-search-threshold" class="text-sm font-medium">最大匹配距离</label>
+            <el-input-number :key="loading || applying ? 'busy' : 'ready'" id="person-search-threshold" v-model="threshold" :min="0" :max="1" :step="0.01" :disabled="loading || applying" />
+          </div>
+          <p class="ts-muted text-xs leading-5">数值越小越严格，数值越大候选越多</p>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center gap-3">
+            <label for="person-removal-threshold" class="text-sm font-medium">最小移出距离</label>
+            <el-input-number :key="loading || applying ? 'busy' : 'ready'" id="person-removal-threshold" v-model="removalThreshold" :min="0" :max="1" :step="0.01" :disabled="loading || applying" />
+          </div>
+          <p class="ts-muted text-xs leading-5">数值越小，待移出候选越多</p>
+        </div>
+        <button type="button" class="ts-button ts-button-secondary" :disabled="loading || applying || threshold == null || removalThreshold == null" @click="loadPreview">重新查找</button>
       </div>
-      <p class="ts-muted text-xs leading-5">数值越小越严格，数值越大候选越多。仅用于本次查找；修改后需重新查找。移出候选仍使用已保存的移出阈值。</p>
       <p v-if="thresholdChanged" class="ts-muted text-xs" role="status">阈值已修改，请重新查找后再应用。</p>
     </div>
     <div v-if="loading" class="flex min-h-72 flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400">
@@ -33,9 +44,6 @@
         <p v-if="preview.reason === 'no_reference_faces'" class="mb-2 text-sm">此人物还没有可用于比对的人脸。请先在照片中标记一张清晰人脸。</p>
         <p class="font-medium text-gray-800 dark:text-gray-100">
           找到 {{ preview.summary.add_count }} 个待新增、{{ preview.summary.remove_count }} 个待移出人脸
-        </p>
-        <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-          高相似度且未归属的新增项已默认选中；普通候选、从其他人物改归属及移出项需手动勾选。人工确认过的人脸不会被自动移出或改归属。
         </p>
       </div>
 
@@ -87,8 +95,8 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onBeforeUnmount, ref, watch, type PropType } from 'vue'
-import { ElCheckbox, ElMessage } from 'element-plus'
-import { RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
+import { ElMessage } from 'element-plus'
+import { Check as CheckIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
 import { faceApi, type FaceRescanCandidate, type FaceRescanPreview } from '@/api/face'
 import type { FaceIdentity } from '@/types/album'
 import { thumbnailUrl } from '@/utils/mediaUrl'
@@ -104,8 +112,12 @@ const loading = ref(false)
 const applying = ref(false)
 const loadFailed = ref(false)
 const preview = ref<FaceRescanPreview | null>(null)
-const threshold = ref<number | undefined>()
-const thresholdChanged = computed(() => !!preview.value && threshold.value !== preview.value.candidate_threshold)
+const DEFAULT_SEARCH_THRESHOLD = 0.6
+const threshold = ref<number | undefined>(DEFAULT_SEARCH_THRESHOLD)
+const removalThreshold = ref<number | undefined>()
+const thresholdChanged = computed(() => !!preview.value && (
+  threshold.value !== preview.value.candidate_threshold || removalThreshold.value !== preview.value.removal_threshold
+))
 let requestVersion = 0
 let controller: AbortController | null = null
 const selectedAddIds = ref<number[]>([])
@@ -143,10 +155,11 @@ const loadPreview = async () => {
   selectedAddIds.value = []
   selectedRemoveIds.value = []
   try {
-    const result = await faceApi.previewIdentityRescan(props.identity.id, threshold.value, controller.signal)
+    const result = await faceApi.previewIdentityRescan(props.identity.id, threshold.value, controller.signal, removalThreshold.value)
     if (version !== requestVersion || !props.visible) return
     preview.value = result
     threshold.value = result.candidate_threshold
+    removalThreshold.value = result.removal_threshold
     selectedAddIds.value = result.add_candidates
       .filter(item => item.recommended && item.assignment_type === 'unassigned')
       .map(item => item.face_id)
@@ -170,6 +183,7 @@ const applySelection = async () => {
       add_face_ids: selectedAddIds.value,
       remove_face_ids: selectedRemoveIds.value,
       threshold: preview.value.candidate_threshold,
+      removal_threshold: preview.value.removal_threshold,
     })
     if (version !== requestVersion || !props.visible) return
     ElMessage.success(`已应用：新增 ${result.added_count ?? 0} 张，移出 ${result.removed_count ?? 0} 张`)
@@ -197,7 +211,8 @@ watch([() => props.visible, () => props.identity?.id], ([visible]) => {
   preview.value = null
   selectedAddIds.value = []
   selectedRemoveIds.value = []
-  threshold.value = undefined
+  threshold.value = DEFAULT_SEARCH_THRESHOLD
+  removalThreshold.value = undefined
   if (visible) void loadPreview()
 }, { immediate: true })
 onBeforeUnmount(() => { ++requestVersion; controller?.abort() })
@@ -237,6 +252,7 @@ const CandidateGrid = defineComponent({
     return () => candidateProps.items.length
       ? h('div', { class: 'grid max-h-[48vh] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 md:grid-cols-4' },
           candidateProps.items.map(item => h('button', {
+            key: item.face_id,
             type: 'button',
             disabled: candidateProps.disabled,
             'aria-pressed': candidateProps.selectedIds.includes(item.face_id),
@@ -254,13 +270,15 @@ const CandidateGrid = defineComponent({
                 loading: 'lazy',
                 alt: '人脸候选',
               }),
-              h(ElCheckbox, {
-                disabled: candidateProps.disabled,
-                modelValue: candidateProps.selectedIds.includes(item.face_id),
-                class: 'absolute left-2 top-2 rounded bg-white/90 px-1 dark:bg-gray-900/90',
-                'onUpdate:modelValue': () => emitCandidate('toggle', item.face_id),
-                onClick: (event: Event) => event.stopPropagation(),
-              }),
+              h('span', {
+                'aria-hidden': 'true',
+                class: [
+                  'pointer-events-none absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full border shadow-sm',
+                  candidateProps.selectedIds.includes(item.face_id)
+                    ? 'border-primary-500 bg-primary-500 text-white'
+                    : 'border-white/90 bg-black/35',
+                ],
+              }, candidateProps.selectedIds.includes(item.face_id) ? [h(CheckIcon, { class: 'h-4 w-4', strokeWidth: 3 })] : []),
             ]),
             h('div', { class: 'space-y-1 p-2' }, [
               h('p', { class: 'text-xs font-medium text-gray-800 dark:text-gray-100' }, `相似度 ${Math.round(item.confidence * 100)}%`),

@@ -53,12 +53,12 @@
           </el-collapse-item>
         </el-collapse>
 
-        <SettingsFormRow v-if="!serviceOnly" label="重新整理人物" description="按已保存的识别参数重新聚类，清除人物名称、封面和合并结果。照片和人脸特征将用于重新整理。">
+        <SettingsFormRow v-if="!serviceOnly" label="重新整理人物" description="按已保存的识别参数重新聚类，清除人物名称、封面和合并结果。照片和人脸特征将用于重新整理">
           <div class="flex flex-col items-start gap-2">
             <el-button type="danger" plain :loading="clustering.submitting" :disabled="clustering.status?.phase === 'resetting'" @click="resetPeople">
               {{ clustering.status?.phase === 'failed' ? '重试人物整理' : '重置人物聚类' }}
             </el-button>
-            <span v-if="clustering.status?.phase === 'resetting'" role="status" class="ts-muted text-sm">正在重新整理，可在任务管理中查看进度。</span>
+            <span v-if="clustering.status?.phase === 'resetting'" role="status" class="ts-muted text-sm">正在重新整理</span>
             <span v-if="clustering.status?.phase === 'failed'" role="alert" class="ts-muted text-sm">整理中断，请重试。</span>
           </div>
         </SettingsFormRow>

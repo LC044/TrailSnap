@@ -157,14 +157,14 @@ export const faceApi = {
     return data.data;
   },
 
-  async previewIdentityRescan(id: string, threshold?: number, signal?: AbortSignal) {
+  async previewIdentityRescan(id: string, threshold?: number, signal?: AbortSignal, removalThreshold?: number) {
     const data = await request.post<FaceRescanPreview>(`/api/faces/identities/${id}/rescan/preview`, undefined, {
-      params: { threshold }, signal, silentError: true,
+      params: { threshold, removal_threshold: removalThreshold }, signal, silentError: true,
     });
     return data.data;
   },
 
-  async applyIdentityRescan(id: string, selection: { add_face_ids: number[]; remove_face_ids: number[]; threshold?: number }) {
+  async applyIdentityRescan(id: string, selection: { add_face_ids: number[]; remove_face_ids: number[]; threshold?: number; removal_threshold?: number }) {
     const data = await request.post(`/api/faces/identities/${id}/rescan/apply`, selection);
     return data.data;
   },

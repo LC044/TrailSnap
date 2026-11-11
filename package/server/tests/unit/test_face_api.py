@@ -39,19 +39,22 @@ def test_more_photos_preview_and_apply_forward_the_same_local_threshold():
          patch("app.service.face_cluster.FaceClusterService") as service:
         service.return_value.preview_identity_rescan.return_value = {}
         service.return_value.apply_identity_rescan.return_value = {"affected_photo_ids": []}
-        face_api.preview_identity_rescan(id=identity_id, threshold=.63, db=db, current_user=user)
+        face_api.preview_identity_rescan(id=identity_id, threshold=.63, removal_threshold=.31, db=db, current_user=user)
         face_api.apply_identity_rescan(id=identity_id,
-            payload=FaceRescanApplyRequest(add_face_ids=[1], threshold=.63), db=db, current_user=user)
+            payload=FaceRescanApplyRequest(add_face_ids=[1], threshold=.63, removal_threshold=.31), db=db, current_user=user)
     assert service.return_value.preview_identity_rescan.call_args.kwargs["threshold"] == .63
     assert service.return_value.apply_identity_rescan.call_args.kwargs["threshold"] == .63
+    assert service.return_value.preview_identity_rescan.call_args.kwargs["removal_threshold"] == .31
+    assert service.return_value.apply_identity_rescan.call_args.kwargs["removal_threshold"] == .31
 
 
 @pytest.mark.parametrize("threshold", [-.01, 1.01, float("nan"), float("inf")])
-def test_more_photos_apply_rejects_invalid_threshold(threshold):
+@pytest.mark.parametrize("field", ["threshold", "removal_threshold"])
+def test_more_photos_apply_rejects_invalid_threshold(threshold, field):
     from pydantic import ValidationError
     from app.schemas.face import FaceRescanApplyRequest
     with pytest.raises(ValidationError):
-        FaceRescanApplyRequest(threshold=threshold)
+        FaceRescanApplyRequest(**{field: threshold})
 
 
 # ----------------------------- POST /identities ------------------------
@@ -299,7 +302,7 @@ def test_apply_identity_rescan_passes_selection_and_updates_affected_photos():
     db = MagicMock()
     identity_id = uuid4()
     photo_id = uuid4()
-    payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[20], threshold=None)
+    payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[20], threshold=None, removal_threshold=None)
     result = {
         "status": "success",
         "added_count": 1,
@@ -330,7 +333,7 @@ def test_apply_identity_rescan_exposes_stale_preview_as_http_409():
     user = _user()
     db = MagicMock()
     identity_id = uuid4()
-    payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[], threshold=None)
+    payload = SimpleNamespace(add_face_ids=[10], remove_face_ids=[], threshold=None, removal_threshold=None)
 
     with patch.object(face_api.crud_face, "get_identity", return_value=SimpleNamespace(id=identity_id)), \
          patch("app.service.face_cluster.FaceClusterService") as service_class:

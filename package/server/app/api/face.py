@@ -531,6 +531,7 @@ def rescan_identity(
 def preview_identity_rescan(
     id: UUID = Path(..., description="人物ID"),
     threshold: Annotated[Optional[float], Query(ge=0, le=1, description="本次查找的最大余弦距离")] = None,
+    removal_threshold: Annotated[Optional[float], Query(ge=0, le=1, description="本次查找的最小移出距离")] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
@@ -541,7 +542,8 @@ def preview_identity_rescan(
         from app.service.face_cluster import FaceRescanError
         service = _face_cluster_service()(db, user_id=current_user.id)
         result = service.preview_identity_rescan(id, owner_id=current_user.id,
-                                                 **({"threshold": threshold} if threshold is not None else {}))
+            **({"threshold": threshold} if threshold is not None else {}),
+            **({"removal_threshold": removal_threshold} if removal_threshold is not None else {}))
     except FaceRescanError as exc:
         raise HTTPException(status_code=500, detail="Face identity rescan preview failed") from exc
     return BaseResponse(code=200, msg="扫描预览成功", data=result)
@@ -566,6 +568,7 @@ def apply_identity_rescan(
             add_face_ids=payload.add_face_ids,
             remove_face_ids=payload.remove_face_ids,
             **({"threshold": payload.threshold} if payload.threshold is not None else {}),
+            **({"removal_threshold": payload.removal_threshold} if payload.removal_threshold is not None else {}),
         )
     except FaceRescanConflictError as exc:
         raise HTTPException(status_code=409, detail="Face rescan candidates changed; preview again") from exc

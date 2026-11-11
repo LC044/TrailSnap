@@ -196,11 +196,13 @@ class FaceClusterService:
         return None
 
     def preview_identity_rescan(self, identity_id: uuid.UUID, owner_id: uuid.UUID = None,
-                                *, threshold: float | None = None) -> dict:
+                                *, threshold: float | None = None,
+                                removal_threshold: float | None = None) -> dict:
         """Return add/remove candidates without changing any face assignment."""
         try:
             analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=False,
-                **({"threshold": threshold} if threshold is not None else {}))
+                **({"threshold": threshold} if threshold is not None else {}),
+                **({"removal_threshold": removal_threshold} if removal_threshold is not None else {}))
             return self._serialize_rescan_preview(analysis)
         except Exception as exc:
             self.db.rollback()
@@ -214,6 +216,7 @@ class FaceClusterService:
         add_face_ids: list[int],
         remove_face_ids: list[int],
         *, threshold: float | None = None,
+        removal_threshold: float | None = None,
     ) -> dict:
         """Recompute and atomically apply only the candidates confirmed by the user."""
         try:
@@ -221,7 +224,8 @@ class FaceClusterService:
             lock_owner(self.db, owner_id)
             self.owner_id = owner_id
             analysis = self._analyze_identity_rescan(identity_id, owner_id, lock=True,
-                **({"threshold": threshold} if threshold is not None else {}))
+                **({"threshold": threshold} if threshold is not None else {}),
+                **({"removal_threshold": removal_threshold} if removal_threshold is not None else {}))
             valid_add_ids = {item["face"].id for item in analysis["add_candidates"]}
             valid_remove_ids = {item["face"].id for item in analysis["remove_candidates"]}
             selected_add_ids = set(add_face_ids)
@@ -266,6 +270,7 @@ class FaceClusterService:
         owner_id: uuid.UUID | None,
         lock: bool,
         threshold: float | None = None,
+        removal_threshold: float | None = None,
     ) -> dict:
         assigned_query = self.db.query(Face).join(Photo).filter(
             Face.face_identity_id == identity_id,
@@ -281,7 +286,7 @@ class FaceClusterService:
         assigned_faces = assigned_query.all()
 
         candidate_threshold = self.RESCAN_CANDIDATE_THRESHOLD if threshold is None else threshold
-        removal_threshold = self.RESCAN_REMOVAL_THRESHOLD
+        removal_threshold = self.RESCAN_REMOVAL_THRESHOLD if removal_threshold is None else removal_threshold
         if not assigned_faces:
             return {
                 "identity_id": identity_id,
@@ -346,6 +351,13 @@ class FaceClusterService:
             if face.face_identity_id and face.face_identity_id != identity_id and self._is_manually_confirmed(face):
                 continue
             add_candidates.append({"face": face, "distance": min_distance})
+
+        # ``candidate_faces`` comes back in database order; sort by similarity
+        # (distance ascending) so the preview grid shows the best matches first.
+        add_candidates.sort(key=lambda item: (item["distance"], item["face"].id))
+        # Removals rank least-similar first (distance descending): the further
+        # a face is from the trusted prototypes, the more suspect it is.
+        remove_candidates.sort(key=lambda item: (-item["distance"], item["face"].id))
 
         return {
             "identity_id": identity_id,
@@ -456,6 +468,7 @@ class FaceClusterService:
             "threshold": self.RESCAN_AUTO_MATCH_THRESHOLD,
             "candidate_threshold": analysis.get("candidate_threshold", self.RESCAN_CANDIDATE_THRESHOLD),
             "affected_photo_ids": [str(photo_id) for photo_id in affected_photo_ids],
+            "removal_threshold": analysis["removal_threshold"],
         }
 
     @staticmethod
