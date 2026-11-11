@@ -62,6 +62,7 @@ export const useNotificationStore = defineStore('notification', () => {
     typeof Notification !== 'undefined' && Notification.permission === 'granted'
   );
   const lastEventAt = ref<string | null>(null);
+  const taskRevision = ref(0);
   const trackedIds = ref<Set<string>>(new Set());
 
   // ---- 持久化 prefs ----
@@ -160,6 +161,8 @@ export const useNotificationStore = defineStore('notification', () => {
   };
 
   const handleEvent = (event: string, data: any) => {
+    // A revision also works for repeated timestamps and ID-less bulk creations.
+    if (event.startsWith('task.') || event === 'hello') taskRevision.value++;
     if (event === 'task.category' || event === 'task.extension') {
       lastEventAt.value = new Date().toISOString();
     } else if (event.startsWith('task.')) {
@@ -241,6 +244,7 @@ export const useNotificationStore = defineStore('notification', () => {
     prefs,
     desktopNotifications,
     lastEventAt,
+    taskRevision,
     // computed
     unreadCount,
     // helpers

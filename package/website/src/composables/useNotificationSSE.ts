@@ -135,6 +135,14 @@ export function useNotificationSSE(opts: UseNotificationSSEOptions): UseNotifica
     es.addEventListener('error', onError);
     es.addEventListener('hello', handle as EventListener);
     es.addEventListener('ping', handle as EventListener);
+    es.addEventListener('task.batch', ((raw: MessageEvent) => {
+      try {
+        const batch = JSON.parse(raw.data);
+        for (const item of batch.events || []) {
+          handle({ type: item.event, data: JSON.stringify(item.data) } as MessageEvent);
+        }
+      } catch { /* ignore malformed batches */ }
+    }) as EventListener);
     es.addEventListener('task.updated', handle as EventListener);
     es.addEventListener('task.created', handle as EventListener);
     es.addEventListener('task.retry', handle as EventListener);

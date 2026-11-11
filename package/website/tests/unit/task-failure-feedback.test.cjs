@@ -13,10 +13,10 @@ function harness() {
   const success = [], warnings = [], routes = [], timers = new Map()
   const context = { ref, computed, watch() {}, onMounted() {}, onUnmounted(fn) { cleanup = fn },
     defineProps: () => ({ isCollapsed: true }), useRouter: () => ({ push: route => routes.push(route) }),
-    useNotificationStore: () => ({}), useDebounceFn: fn => fn,
+    useNotificationStore: () => ({}), createTaskRefresh: fn => ({ schedule: fn, cancel() {} }),
     tasksApi: { getGroupedStatus: async () => rows },
     ElMessage: { success: text => success.push(text), warning: text => warnings.push(text) },
-    window: { setTimeout(fn) { timers.set(1, fn); return 1 }, clearTimeout(id) { timers.delete(id) } } }
+    window: { setTimeout(fn) { timers.set(1, fn); return 1 }, clearTimeout(id) { timers.delete(id) }, clearInterval() {} } }
   vm.createContext(context)
   vm.runInContext(ts.transpileModule(script + '\nglobalThis.page = { compactCount, formatCount, detailCategories, fetchStatus, shouldShow, showSuccess, expanded, totalFailed, toggleExpand };', {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },

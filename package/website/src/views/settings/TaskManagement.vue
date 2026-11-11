@@ -122,6 +122,7 @@ import SettingsFormRow from '@/components/ui/SettingsFormRow.vue'
 import TaskRowContent from './components/TaskRowContent.vue'
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
+import { createTaskRefresh } from '@/utils/taskRefresh'
 import { tasksApi } from '@/api/tasks'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronRight, Clock3, RefreshCw, Settings2 } from 'lucide-vue-next'
@@ -403,34 +404,19 @@ const formatCategory = (cat: string) => {
     return names[cat] || cat
 }
 
-// 任务列表刷新：挂载拉一次 + SSE 事件驱动（防抖 1s）+ 60s 兜底轮询。
+// Shared API caching avoids duplicate summary reads from the sidebar.
 let taskPollTimer: number | null = null
-let refreshDebounce: number | null = null
-const scheduleRefresh = () => {
-    if (refreshDebounce) window.clearTimeout(refreshDebounce)
-    refreshDebounce = window.setTimeout(() => {
-        refreshDebounce = null
-        fetchTasks()
-    }, 1000)
-}
-watch(() => notifyStore.lastEventAt, () => {
-    scheduleRefresh()
-})
+const taskRefresh = createTaskRefresh(() => { void fetchTasks() })
+watch(() => notifyStore.taskRevision, taskRefresh.schedule)
 
 onMounted(() => {
-    fetchTasks()
-    taskPollTimer = window.setInterval(fetchTasks, 60000)
+    taskRefresh.schedule()
+    taskPollTimer = window.setInterval(taskRefresh.schedule, 60000)
 })
 
 onUnmounted(() => {
-    if (taskPollTimer) {
-        clearInterval(taskPollTimer)
-        taskPollTimer = null
-    }
-    if (refreshDebounce) {
-        window.clearTimeout(refreshDebounce)
-        refreshDebounce = null
-    }
+    if (taskPollTimer !== null) window.clearInterval(taskPollTimer)
+    taskRefresh.cancel()
 })
 </script>
 
