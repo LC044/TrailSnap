@@ -155,16 +155,6 @@ class ImageClassificationService:
         for category, model_file in discovered.items():
             model_key = f"yolo_photo_cls_{category}"
 
-            def make_check(model_file=model_file):
-                def check():
-                    try:
-                        path = str(ai_model_manager.get_model_dir("classification", task=True))
-                        model_path = os.path.join(path, model_file)
-                        return os.path.exists(model_path)
-                    except:
-                        return False
-                return check
-
             if model_key not in model_manager.models:
                 model_manager.register_model(
                     model_key,
