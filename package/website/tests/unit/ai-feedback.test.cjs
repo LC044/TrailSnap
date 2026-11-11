@@ -15,7 +15,9 @@ function receiptHarness(initial = '[]', failStorage = false) {
     localStorage: { getItem: () => saved, setItem: (_, value) => { if (failStorage) throw Error('blocked'); saved = value; } },
     location: { origin: 'https://feedback.trailsnap.cn' },
     crypto: webcrypto, btoa,
-  })(name => name === 'pinia' ? { defineStore: (_, setup) => setup } : { ref: value => ({ value }) }, module, module.exports);
+  })(name => name === 'pinia' ? { defineStore: (_, setup) => setup }
+    : name === '../runtimeBase' ? { appUrl: p => `https://feedback.trailsnap.cn/${p}` }
+    : { ref: value => ({ value }) }, module, module.exports);
   return { ...module.exports, saved: () => saved };
 }
 
