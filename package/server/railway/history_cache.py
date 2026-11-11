@@ -139,7 +139,9 @@ class HistoryCache:
             raise ValueError('Railway feed rollback refused')
         if target == cursor:
             return self.status()
-        deltas = sorted((d for d in manifest['deltas'] if d['sequence'] > cursor), key=lambda d: d['sequence'])
+        available = (manifest['compact_deltas'] if manifest.get('station_dates_version') == 1
+                     else manifest['deltas'])
+        deltas = sorted((d for d in available if d['sequence'] > cursor), key=lambda d: d['sequence'])
         contiguous = len(deltas) == target-cursor and all(d['sequence']==cursor+i+1 for i,d in enumerate(deltas))
         if cursor == 0 or not contiguous or sum(d['bytes'] for d in deltas) >= manifest['snapshot']['bytes']:
             deltas = [manifest['snapshot']]
@@ -190,6 +192,8 @@ class HistoryCache:
     def _apply_v2(cls, db, pack):
         for value in pack['stations']:
             cls._upsert(db, 'station:' + value['telecode'], value)
+        for row in pack.get('station_dates', []):
+            cls._apply_station_dates(db, row)
         for row in pack['train_versions']:
             value, code = row['value'], row['code']
             if not code or not value['h'] or not isinstance(value['s'], list):
@@ -210,6 +214,35 @@ class HistoryCache:
             for day in row['dates']:
                 date.fromisoformat(day)
                 db.execute('INSERT OR IGNORE INTO observation VALUES (?, ?, ?)', (code, day, fingerprint))
+
+    @classmethod
+    def _apply_station_dates(cls, db, row):
+        """Apply only dates to an existing station; a bad patch rolls back its pack."""
+        code = row.get('telecode')
+        if not isinstance(code, str) or not re.fullmatch(r'[A-Z]{3}', code):
+            raise ValueError('Invalid station date identity')
+        existing = db.execute('SELECT body FROM entity WHERE key=?', ('station:' + code,)).fetchone()
+        if not existing:
+            raise ValueError('Station dates reference missing station')
+        value = json.loads(existing[0])
+        names, versions = value['names'], value.get('versions', [])
+        if (not isinstance(row.get('name_last'), list) or not isinstance(row.get('version_last'), list)
+                or len(row['name_last']) != len(names) or len(row['version_last']) != len(versions)):
+            raise ValueError('Station date shape mismatch')
+        def checked(day, previous=None, first=None):
+            if not isinstance(day, str) or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', day):
+                raise ValueError('Invalid station date')
+            date.fromisoformat(day)
+            if (previous and day < previous) or (first and day < first):
+                raise ValueError('Station date rollback refused')
+            return day
+        value['last_seen'] = checked(row.get('last_seen'), value.get('last_seen'), value.get('first_seen'))
+        for epochs, dates in ((names, row['name_last']), (versions, row['version_last'])):
+            for epoch, day in zip(epochs, dates):
+                epoch['last'] = checked(day, epoch.get('last'), epoch.get('first'))
+                if day > value['last_seen']:
+                    raise ValueError('Station observation exceeds last seen date')
+        cls._upsert(db, 'station:' + code, value)
 
     @staticmethod
     def _upsert(db, key, value):
