@@ -17,6 +17,7 @@ tests/.env.docker
 .claude/
 *test-local*
 .playwright-cli
+.playwright-mcp/
 releases/
 package/desktop/dist/
 package/desktop/launcher/target/

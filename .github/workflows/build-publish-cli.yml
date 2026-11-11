@@ -38,7 +38,7 @@ jobs:
           # - os: macos-13
           #   asset_name: trailsnap-cli-macos-x64
           #   executable_name: trailsnap
-          - os: macos-14
+          - os: macos-15
             asset_name: trailsnap-cli-macos-arm64
             executable_name: trailsnap
 

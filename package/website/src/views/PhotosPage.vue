@@ -252,6 +252,8 @@ const applyQueryFilters = () => {
   f.cities = []
   f.makes = []
   f.models = []
+  f.people = parseQueryFilter(route.query.people)
+  f.categories = parseQueryFilter(route.query.categories)
 
   const { image_types, file_types, years, cities, makes, models, uploaded_after, uploaded_before, is_panorama } = route.query
   f.image_types = parseQueryFilter(image_types)

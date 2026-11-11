@@ -236,3 +236,131 @@ test('saving LLM settings excludes stale face and AI service configuration', asy
   assert.equal(payloads[0].ai.visual_evaluation_prompt, 'review photos')
   mounted.unmount()
 })
+
+// --- 批量主按钮恢复默认「删除」，解除关联移到「更多」菜单 ---
+const readSource = file => fs.readFileSync(path.resolve(__dirname, '../../src', file), 'utf8').replace(/\r\n/g, '\n')
+
+function extractBlock(source, name, terminator) {
+  const start = source.indexOf(`const ${name} = `)
+  assert.notEqual(start, -1, `${name} should exist`)
+  const end = terminator === 'blankline'
+    ? source.indexOf('\n\n', start)
+    : (() => {
+        let depth = 0
+        for (let i = source.indexOf('{', start); i < source.length; i++) {
+          if (source[i] === '{') depth++
+          else if (source[i] === '}' && --depth === 0) return i + 1
+        }
+        return -1
+      })()
+  assert.ok(end > start, `${name} should have a detectable end`)
+  return source.slice(start, end)
+}
+
+// 把 SFC 里的函数抽出来真实执行，避免为整个页面 stub 几十个依赖
+function buildFn(source, name, names, terminator = 'blankline') {
+  const snippet = extractBlock(source, name, terminator)
+  const js = ts.transpileModule(`function __factory() {\n${snippet}\nreturn ${name}\n}\nreturn __factory()`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  }).outputText
+  return new Function('ctx', `const { ${names.join(', ')} } = ctx\n${js}`)
+}
+
+test('批量主按钮走真删除，灯箱与「更多」解除关联保持原有语义', () => {
+  const calls = []
+  const ctx = {
+    deletePhotosGlobally: (ids, cb) => { calls.push(['delete', ids]); cb(true) },
+    detachPhotos: (ids, cb) => { calls.push(['detach', ids]); cb(true) },
+    isUserAlbum: { value: true },
+  }
+  const people = buildFn(readSource('views/album/people/PeopleDetail.vue'), 'handleConfirmDelete',
+    ['deletePhotosGlobally', 'detachPhotos'])(ctx)
+  people(['p1'], () => {}, 'batch')
+  people(['p1'], () => {})
+  assert.deepEqual(calls, [['delete', ['p1']], ['detach', ['p1']]])
+
+  calls.length = 0
+  const album = buildFn(readSource('views/album/AlbumDetail.vue'), 'handleConfirmDelete',
+    ['deletePhotosGlobally', 'detachPhotos', 'isUserAlbum'])(ctx)
+  album(['p1'], () => {}, 'batch')
+  album(['p1'], () => {})
+  assert.deepEqual(calls, [['delete', ['p1']], ['detach', ['p1']]])
+  calls.length = 0
+  ctx.isUserAlbum.value = false
+  album(['p1'], () => {})
+  assert.deepEqual(calls, [['delete', ['p1']]], '系统相册没有移出语义，灯箱仍是真删除')
+})
+
+test('confirmDelete 把批量/灯箱来源传给视图，真删除才播放粒子', () => {
+  const build = buildFn(readSource('components/UnifiedPhotoPage.vue'), 'confirmDelete', [
+    'lightboxDeleteId', 'props', 'captureVisiblePhoto', 'emit', 'showParticle',
+    'galleryRef', 'closeLightbox', 'nextTick', 'requestAnimationFrame', 'restoreVisiblePhoto', 'idsToDelete',
+  ], 'braces')
+  for (const { lightbox, label, source, particle } of [
+    { lightbox: null, label: '从人物中移除', source: 'batch', particle: 1 },
+    { lightbox: 'p1', label: '从人物中移除', source: 'lightbox', particle: 0 },
+    { lightbox: 'p1', label: '删除', source: 'lightbox', particle: 1 },
+  ]) {
+    const events = []
+    let particles = 0
+    const ctx = {
+      lightboxDeleteId: { value: lightbox },
+      props: { deleteLabel: label, removeLabel: label === '删除' ? '' : label },
+      captureVisiblePhoto: () => 'anchor',
+      emit: (...args) => events.push(args),
+      showParticle: { get value() { return false }, set value(v) { if (v) particles++ } },
+      galleryRef: { value: { exitSelectionMode: () => {} } },
+      closeLightbox: () => {},
+      nextTick: cb => cb(),
+      requestAnimationFrame: cb => cb(),
+      restoreVisiblePhoto: () => {},
+      idsToDelete: { value: ['p1', 'p2'] },
+    }
+    build(ctx)()
+    assert.equal(events.length, 1)
+    assert.equal(events[0][0], 'confirm-delete')
+    assert.deepEqual(events[0][1], ['p1', 'p2'])
+    assert.equal(events[0][3], source)
+    events[0][2](true)
+    assert.equal(particles, particle)
+  }
+})
+
+test('主删除按钮恢复默认，解除关联项只出现在「更多」菜单', () => {
+  const bar = readSource('components/PhotoBatchActionBar.vue')
+  assert.match(bar, /removeLabel\?: string/)
+  assert.match(bar, /removeLabel: ''/, '默认关闭，不影响其他页面')
+  assert.match(bar, /v-if="removeLabel"/)
+  assert.match(bar, /@click="\$emit\('remove-association', selectedArray\)"/)
+  assert.match(bar, /:title="removeLabel"/)
+  assert.match(bar, /v-if="albumContext && !removeLabel"/, '有专属菜单项时不重复显示「移出相册」')
+  assert.match(bar, /'remove-association': \[ids: string\[\]\]/)
+  assert.equal((bar.match(/title="deleteLabel"/g) || []).length, 1, '主删除按钮仍然只有一个')
+
+  const gallery = readSource('components/PhotoGallery.vue')
+  assert.match(gallery, /:remove-label="removeLabel"/)
+  assert.match(gallery, /@remove-association="ids => \$emit\('remove-association', ids\)"/)
+  assert.match(gallery, /props\.deleteLabel\.includes\('移除'\)/, '主按钮不含「移除」时走默认删除')
+
+  const page = readSource('components/UnifiedPhotoPage.vue')
+  assert.match(page, /props\.removeLabel \? '删除' : props\.deleteLabel/, '批量按钮恢复默认「删除」')
+  assert.match(page, /@remove-association="handleBatchRemoveAssociation"/)
+  assert.match(page, /\(e: 'confirm-remove-association'/)
+  assert.match(page, /仅解除关联，照片本身不会被删除/)
+  assert.match(page, /放入回收站，可稍后恢复/, '批量删除要提示可恢复')
+  assert.doesNotMatch(page, /:delete-title="batchDeleteLabel"/, '灯箱仍沿用原有移除语义')
+
+  const people = readSource('views/album/people/PeopleDetail.vue')
+  assert.match(people, /remove-label="从人物中移除"/)
+  assert.match(people, /@confirm-remove-association="handleConfirmRemoveAssociation"/)
+  assert.match(people, /await photoStore\.deletePhotos\(ids\)/)
+  assert.match(people, /await faceApi\.removePhotos\(identityId, ids\)/)
+  assert.doesNotMatch(people, /confirm-remove\s/, '不再复用删除确认流程')
+
+  const album = readSource('views/album/AlbumDetail.vue')
+  assert.match(album, /:remove-label="isUserAlbum \? '从相册中移除' : ''"/)
+  assert.match(album, /@confirm-remove-association="handleConfirmRemoveAssociation"/)
+  assert.match(album, /await photoStore\.deletePhotos\(ids\)/)
+  assert.match(album, /await albumStore\.removePhotosFromAlbum\(albumId, ids\)/)
+  assert.match(album, /:delete-label="isUserAlbum \? '从相册中移除' : '删除'"/, '灯箱删除标题保持原样')
+})

@@ -222,6 +222,7 @@ export interface GroupAlbumItem {
 }
 
 export interface FilterOptions {
+  person_options?: { id: string; name: string; photo_count: number; photo_id?: string | null; face_rect?: number[] | null }[];
   years: number[];
   cities: string[];
   makes: string[];
@@ -230,6 +231,8 @@ export interface FilterOptions {
   file_types: string[];
   uploaded_after?: string;
   uploaded_before?: string;
+  people?: string[];
+  categories?: string[];
 }
 
 export interface SimilarPhoto {
@@ -248,4 +251,6 @@ export interface FilterState {
   models: string[];
   image_types: string[];
   file_types: string[];
+  people?: string[];
+  categories?: string[];
 }

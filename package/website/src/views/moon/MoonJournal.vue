@@ -251,9 +251,9 @@
           >
             <template #header-left><span aria-hidden="true"></span></template>
             <template #batch-actions="{ selectedIds, clearSelection }">
-              <el-dropdown-item @click="removeFromMoonTag(Array.from(selectedIds)); clearSelection()">
+              <button type="button" class="ts-action-row" @click="removeFromMoonTag(Array.from(selectedIds)); clearSelection()">
                 <div class="flex items-center gap-2"><ImageMinus class="h-4 w-4" /><span>从月亮分类中移除</span></div>
-              </el-dropdown-item>
+              </button>
             </template>
           </UnifiedPhotoPage>
         </section>

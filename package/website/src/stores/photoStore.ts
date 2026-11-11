@@ -125,7 +125,7 @@ export const mapPhotoToImage = (photo: TimelineCover): AlbumImage => {
     }
   }
 
-export const photoStoreSetup = () => {
+const createPhotoStore = (persistFilters = true) => {
   const timeField = ref<'photo_time' | 'upload_time'>('photo_time')
   const browseEnabled = ref(false)
   const browseGranularity = ref<'year' | 'month' | 'day'>('day')
@@ -172,11 +172,15 @@ export const photoStoreSetup = () => {
   // 瞬时省份过滤（不持久化）：拼图手动选择器默认只展示当前省份照片，
   // 与 selectedFilters 解耦，避免污染全局筛选缓存。置空则不过滤。
   const provinceFilter = ref<string | null>(null);
+  // Search conditions apply equally to counts, covers and every loaded month.
+  const searchFilters = ref<Record<string, string>>({});
   const selectedFilters = reactive<FilterState>({
       years: [],
       cities: [],
       makes: [],
       models: [],
+      people: [],
+      categories: [],
       image_types: [],
       file_types: []
   });
@@ -227,7 +231,7 @@ export const photoStoreSetup = () => {
   }
 
   // 筛选条件持久化到 trailsnap:selectedFilters，刷新/重开后恢复（P1 2.1.9 回归用例依赖）。
-  {
+  if (persistFilters) {
       const FILTER_CACHE_KEY = 'selectedFilters'
       const cached = getLocalCache<FilterState & { is_panorama?: boolean }>(FILTER_CACHE_KEY)
       if (cached) {
@@ -254,7 +258,7 @@ export const photoStoreSetup = () => {
   }
 
   const cleanFilters = () => {
-      const filters = { ...selectedFilters } as any;
+      const filters = { ...selectedFilters, ...searchFilters.value } as any;
       for (const key in filters) {
           if (Array.isArray(filters[key]) && filters[key].length === 0) {
               delete filters[key];
@@ -673,6 +677,7 @@ export const photoStoreSetup = () => {
       folderPath.value = null;
       folderDirect.value = false;
       provinceFilter.value = null;
+      searchFilters.value = {};
   }
 
   const fetchThumbnail = async (photoId: string) => {
@@ -702,6 +707,7 @@ export const photoStoreSetup = () => {
     folderPath,
     folderDirect,
     provinceFilter,
+    searchFilters,
     fetchAvailableFilters,
     fetchTimelineStats,
     loadPhotos,
@@ -727,7 +733,9 @@ export const photoStoreSetup = () => {
   }
 }
 
+export const photoStoreSetup = () => createPhotoStore()
 export const usePhotoStore = defineStore('photo', photoStoreSetup)
 // “全部照片”页长期缓存；其他照片视图使用独立的 store。
 export const usePhotosPageStore = defineStore('photosPage', photoStoreSetup)
+export const useSearchPhotosStore = defineStore('searchPhotos', () => createPhotoStore(false))
 

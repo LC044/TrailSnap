@@ -479,7 +479,7 @@ const showLocationEditDialog = ref(false)
 const savingLocation = ref(false)
 const locationMapLoading = ref(false)
 const locationSearchQuery = ref('')
-const locationWriteToFile = ref(false)
+const locationWriteToFile = ref(true)
 
 const locationForm = reactive({
   latitude: 0 as number,
@@ -770,7 +770,7 @@ const openLocationEditDialog = () => {
     locationForm.district = props.metadata.district || ''
     locationForm.country = props.metadata.country || ''
     locationSearchQuery.value = ''
-    locationWriteToFile.value = false
+    locationWriteToFile.value = true
     showLocationEditDialog.value = true
 }
 

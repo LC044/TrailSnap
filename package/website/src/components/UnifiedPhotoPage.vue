@@ -8,7 +8,7 @@
         <slot name="header-left" :scrolled="headerScrolled">
           <div v-if="showBack || title || $slots['title-extra']" class="flex min-w-0 items-center gap-2" :class="headerScrolled && !stableTitle ? 'text-white' : 'text-gray-900 dark:text-white'" data-testid="photo-page-title" :data-scrolled="headerScrolled">
             <BackButton label="返回" v-if="showBack" @click="$emit('back')" />
-            <div class="min-w-0 transition-colors duration-200" :class="stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2'" v-if="!loadingTitle">
+            <div v-if="!loadingTitle" class="ts-title-block min-w-0 transition-colors duration-200" :class="[stableTitle ? 'ts-liquid-glass rounded-full px-3 py-1.5' : headerScrolled ? 'rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm' : 'pr-2', { 'ts-title-block--compact': subtitle && (stableTitle || !headerScrolled) }]">
               <h1 :title="title" class="ts-page-title flex items-center gap-2" :class="{ 'ts-compact-title': headerScrolled && !stableTitle }">
                 <span class="truncate">{{ title }}</span>
                 <slot name="title-extra"></slot>
@@ -221,7 +221,8 @@
         :layout-mode="layoutMode"
         :view-size="viewSize"
         :group-by-date="true"
-        :delete-label="deleteLabel"
+        :delete-label="batchDeleteLabel"
+        :remove-label="removeLabel"
         :pending-remove-ids="pendingRemoveIds"
         :day-captions="captionMap"
         :day-locations="locationMap"
@@ -233,12 +234,14 @@
         @load-more="$emit('load-more')"
         @load-range="(offset) => $emit('load-range', offset)"
         @batch-delete="handleBatchDelete"
+        @remove-association="handleBatchRemoveAssociation"
         @remove-from-album="handleBatchRemoveFromAlbum"
         @add-to-album="handleBatchAddToAlbum"
         @set-album-cover="(ids) => $emit('set-cover', ids)"
         @retry="$emit('retry')"
         @transfer="handleBatchTransfer"
         @batch-edit-location="handleBatchEditLocation"
+        @batch-edit-time="handleBatchEditTime"
         @generate-caption="handleGenerateCaption"
         @save-caption="handleSaveCaption"
         @clear-caption="handleClearCaption"
@@ -325,6 +328,13 @@
       @success="handleTransferSuccess"
     />
 
+    <TimeBatchEditor
+      v-model="showTimeBatchEditor"
+      :photo-ids="timeEditPhotoIds"
+      @updated="emit('retry')"
+      @success="galleryRef?.exitSelectionMode()"
+    />
+
     <!-- Batch Location Editor -->
     <LocationBatchEditor
       v-model="showLocationBatchEditor"
@@ -362,6 +372,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ParticleExplosion from '@/components/ParticleExplosion.vue'
 import AlbumSelector from '@/components/AlbumSelector.vue'
 import FolderSelectionDialog from '@/components/FolderSelectionDialog.vue'
+import TimeBatchEditor from '@/components/TimeBatchEditor.vue'
 import LocationBatchEditor from '@/components/LocationBatchEditor.vue'
 import type { AlbumImage } from '@/types/album'
 
@@ -396,6 +407,8 @@ const props = withDefaults(defineProps<{
   timelineItems?: any[]
   allowUpload?: boolean
   deleteLabel?: string
+  // 非空时：主删除按钮恢复默认「删除」，该文案作为「更多」里的解除关联项
+  removeLabel?: string
   hasMore?: boolean
   timelineStats?: any
   confirmRemove?: boolean
@@ -417,6 +430,7 @@ const props = withDefaults(defineProps<{
   timelineItems: () => [],
   allowUpload: false,
   deleteLabel: '删除',
+  removeLabel: '',
   hasMore: false,
   timelineStats: null,
   confirmRemove: false,
@@ -441,9 +455,13 @@ const emit = defineEmits<{
   (e: 'photo-update', event: any): void
   (e: 'viewer-close'): void
   (e: 'remove-from-album', ids: string[]): void // General delete/remove event
-  (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void): void
+  (e: 'confirm-delete', ids: string[], callback: (success: boolean) => void, source: 'batch' | 'lightbox'): void
+  (e: 'confirm-remove-association', ids: string[], callback: (success: boolean) => void): void
   (e: 'refresh-data', done: (success?: boolean) => void): void
 }>()
+
+// 批量工具栏的主按钮：有解除关联菜单项时恢复为默认「删除」，灯箱仍用 deleteLabel
+const batchDeleteLabel = computed(() => props.removeLabel ? '删除' : props.deleteLabel)
 
 // UI State
 const pageTopRef = ref<HTMLElement | null>(null)
@@ -724,7 +742,7 @@ const timeNavigationKey = () => [route.query.view, route.query.time, route.query
 const restoreTimeNavigation = async () => {
   const navigationKey = timeNavigationKey()
   try {
-    if (!props.enableTimeBrowse || route.name !== 'Photos') return
+    if (!props.enableTimeBrowse || !['Photos', 'SearchResult'].includes(String(route.name))) return
     const target = ['year', 'month', 'day'].includes(String(route.query.view)) ? String(route.query.view) as TimeGranularity : 'day'
     const field: TimeField = route.query.time === 'upload_time' ? 'upload_time' : 'photo_time'
     const id = String(route.query.anchor ?? '')
@@ -778,7 +796,7 @@ watch(layoutMode, mode => {
 // ---- Moments 朋友圈日文案 ----
 // MVP 阶段只在 "全部照片" 视图启用（scope='all'）
 const showMomentCaption = computed(() =>
-  layoutMode.value === 'moments' && (!props.enableTimeBrowse || store.value.timeField === 'photo_time') && (store.value?.currentContext?.type === 'all')
+  layoutMode.value === 'moments' && !store.value.searchFilters?.search_type && (!props.enableTimeBrowse || store.value.timeField === 'photo_time') && (store.value?.currentContext?.type === 'all')
 )
 const {
   captionMap,
@@ -889,6 +907,13 @@ const showFolderSelector = ref(false)
 const folderAction = ref<'move' | 'copy'>('move')
 const transferPhotoIds = ref<string[]>([])
 
+const showTimeBatchEditor = ref(false)
+const timeEditPhotoIds = ref<string[]>([])
+const handleBatchEditTime = (ids: string[]) => {
+  timeEditPhotoIds.value = ids
+  showTimeBatchEditor.value = true
+}
+
 // Batch location edit state
 const showLocationBatchEditor = ref(false)
 const locationEditPhotoIds = ref<string[]>([])
@@ -988,6 +1013,22 @@ const handleBatchRemoveFromAlbum = (ids: string[]) => {
     })
 }
 
+// 「更多」里的解除关联：只影响当前相册/人物，照片本体保留
+const handleBatchRemoveAssociation = (ids: string[]) => {
+    if (ids.length === 0) return
+    ElMessageBox.confirm(
+        `确定要将选中的 ${ids.length} 张照片${props.removeLabel}吗？仅解除关联，照片本身不会被删除。`,
+        '确认',
+        { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    ).then(() => {
+        emit('confirm-remove-association', ids, (success: boolean) => {
+            if (success) galleryRef.value?.exitSelectionMode()
+        })
+    }).catch(() => {
+        // 用户点击取消
+    })
+}
+
 const handlePhotoDelete = (id: string) => {
     lightboxDeleteId.value = id
     idsToDelete.value = [id]
@@ -995,18 +1036,22 @@ const handlePhotoDelete = (id: string) => {
 }
 
 const confirmMessage = computed(() => {
-  if (props.deleteLabel === '删除') {
-    return `确定要删除选中的 ${idsToDelete.value.length} 张照片吗？删除的照片将放入回收站，可稍后恢复。`
+  const count = idsToDelete.value.length
+  // 主按钮恢复为默认「删除」时给回收站提示；灯箱沿用原有的移除文案
+  if (props.deleteLabel === '删除' || (!lightboxDeleteId.value && props.removeLabel)) {
+    return `确定要删除选中的 ${count} 张照片吗？删除的照片将放入回收站，可稍后恢复。`
   }
-  return `确定要${props.deleteLabel}选中的 ${idsToDelete.value.length} 张照片吗？`
+  return `确定要${props.deleteLabel}选中的 ${count} 张照片吗？`
 })
 
 const confirmDelete = () => {
+    const source: 'batch' | 'lightbox' = lightboxDeleteId.value ? 'lightbox' : 'batch'
+    const realDelete = props.deleteLabel === '删除' || (source === 'batch' && !!props.removeLabel)
     const scrollAnchor = captureVisiblePhoto(idsToDelete.value)
     emit('confirm-delete', idsToDelete.value, (success: boolean) => {
         if (success) {
             // Show particle if needed (usually for permanent delete)
-            if (props.deleteLabel === '删除') {
+            if (realDelete) {
                 showParticle.value = true
             }
             galleryRef.value?.exitSelectionMode()
@@ -1016,7 +1061,7 @@ const confirmDelete = () => {
             })))
         }
         lightboxDeleteId.value = null
-    })
+    }, source)
 }
 
 const handleAddToAlbumFromLightbox = (img: AlbumImage) => {
@@ -1042,6 +1087,29 @@ defineExpose({
 </script>
 
 <style scoped>
+/* A subtitle used to stack a 24px title over a second line, turning the glass
+   capsule into a tall oval next to the 36-44px round controls. Keep both on one
+   line so the capsule stays the same height as the back / toolbar buttons. */
+.ts-title-block--compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ts-toolbar-control-size);
+  padding-block: 4px;
+}
+.ts-title-block--compact .ts-page-title { min-width: 0; font-size: 16px; line-height: 1.2; letter-spacing: -.01em; }
+.ts-title-block--compact p { flex-shrink: 0; font-size: 12px; line-height: 1.2; white-space: nowrap; }
+@media (max-width: 767px) {
+  .ts-title-block--compact { gap: 5px; min-height: 34px; padding-block: 3px; }
+  .ts-title-block--compact .ts-page-title { font-size: 15px; }
+}
+/* Below 360px the fixed-width subtitle would squeeze the title down to a
+   single ellipsis. Tighten the capsule and let the subtitle shrink instead. */
+@media (max-width: 359px) {
+  .ts-title-block--compact { padding-inline: 6px; gap: 3px; }
+  .ts-title-block--compact .ts-page-title { flex-grow: 1; font-size: 14px; }
+  .ts-title-block--compact p { min-width: 0; flex-shrink: .5; font-size: 11px; }
+}
 .photo-time-view-button {
   font-size: var(--ts-mobile-icon-size, 20px);
   line-height: 1;

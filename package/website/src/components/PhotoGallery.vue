@@ -13,11 +13,14 @@
       :visible="isSelectionMode && showActionBar" :selected-ids="localSelectedIds"
       :is-all-selected="isAllSelected" :is-downloading="isDownloading" :delete-label="deleteLabel"
       :album-context="store?.currentContext?.type === 'album'" allow-transfer
+      :remove-label="removeLabel"
       @cancel="exitSelectionMode" @select-all="toggleSelectAll" @download="handleDownload"
       @delete="handleDelete" @person="openPersonSelector"
+      @remove-association="ids => $emit('remove-association', ids)"
       @add-to-album="ids => $emit('add-to-album', ids)"
       @remove-from-album="ids => $emit('remove-from-album', ids)"
       @set-album-cover="ids => $emit('set-album-cover', ids)"
+      @batch-edit-time="ids => $emit('batch-edit-time', ids)"
       @batch-edit-location="ids => $emit('batch-edit-location', ids)"
       @transfer="(action, ids) => $emit('transfer', action, ids)"
     >
@@ -469,6 +472,8 @@ interface Props {
   viewSize?: 'sm' | 'md' | 'lg'
   groupByDate?: boolean
   deleteLabel?: string
+  // 「从相册/人物中移除」菜单项的文案；非空时主删除按钮由外部恢复为默认「删除」
+  removeLabel?: string
   activeDate?: string // v-model
   pendingRemoveIds?: Set<string>
   error?: string | null
@@ -495,6 +500,7 @@ const props = withDefaults(defineProps<Props>(), {
   active: true,
   groupByDate: true,
   deleteLabel: '删除',
+  removeLabel: '',
   loading: false,
   hasMore: false,
   pendingRemoveIds: () => new Set(),
@@ -507,7 +513,7 @@ const props = withDefaults(defineProps<Props>(), {
   loadingDays: () => new Set()
 })
 
-const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
+const emit = defineEmits(['click-photo', 'load-more', 'load-range', 'update:activeDate', 'batch-delete', 'remove-association', 'add-to-album', 'remove-from-album', 'set-album-cover', 'retry', 'selection-change', 'transfer', 'batch-edit-time', 'batch-edit-location', 'generate-caption', 'save-caption', 'clear-caption', 'visible-months-change'])
 
     // --- Selection State ---
 const { 

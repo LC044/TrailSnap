@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from .config import settings
 from .delivery import spec_dict, task_dict
 from .models import (
     ClarificationQuestion,
@@ -115,7 +116,7 @@ def requirement_data(
         "processing_status": item.processing_status,
         "processing_error": item.processing_error,
         "created_at": item.created_at.isoformat(),
-        "download_url": f"/api/requirements/{row.id}/attachments/{item.id}",
+        "download_url": settings.api_path(f"requirements/{row.id}/attachments/{item.id}"),
     } for item in attachments]
     questions = db.query(ClarificationQuestion).filter(
         ClarificationQuestion.requirement_id == row.id

@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-11-10 (0.20.2)
+
+### New
+
+- Structured condition search: combine keyword with person, place, album, tag or date types, refine results with the rebuilt filter panel.
+- Rebuilt photo toolbox with a scope, live preview and confirm workflow; reusable rename templates and GPS write-back to original files.
+- Face recognition gains multi-appearance clustering with adjustable levels, similar-face lookup and custom names when merging.
+- Batch edit photo capture time, with optional write-back to original files.
+
+### Improvements
+
+- Redesigned settings center with unified styling and better mobile layout.
+- Better travel statistics and mobile responsive layout with unified buttons and larger touch targets.
+- Album and people pages restore delete as the default bulk action; detach moves into the More menu.
+- Official download page now serves from a static version manifest for faster access.
+
+### Bug Fixes
+
+- Fix face merge failures.
+- Fix intermittent API connection errors in visual description tasks.
+- Fix extra top safe-area padding on Android third-party browsers.
+
 ## 2026-11-01 (0.20.1)
 
 ### New

@@ -35,6 +35,9 @@ export type BatchInput = {
 }
 export type RequirementHistory = { id: string; action: string; actor_name: string; before?: string; after?: string; reason?: string; created_at: string }
 export type RequirementSupplement = { id: string; body: string; created_at: string; author_name: string }
+export type DashboardDailyTypePoint = {
+  date: string; feature: number; improvement: number; bug: number; other: number
+}
 export type Dashboard = {
   total: number; new_last_7_days: number; pending_review: number; in_progress: number
   github_linked: number; anonymous: number
@@ -42,6 +45,19 @@ export type Dashboard = {
   contributor_count: number; follower_count: number
   daily_new_30d: Array<{ date: string; count: number }>
   top_contributors: Array<{ user_id: string; name: string; count: number }>
+  // 以下为看板增强字段，旧版后端不返回时前端自动降级
+  generated_at?: string
+  by_priority?: Record<string, number>
+  by_severity?: Record<string, number>
+  by_source?: Record<string, number>
+  by_visibility?: Record<string, number>
+  active_contributors_30d?: number
+  released_last_30d?: number
+  closed_last_30d?: number
+  avg_resolution_days?: number | null
+  daily_new_90d?: Array<{ date: string; count: number }>
+  daily_new_by_type_90d?: DashboardDailyTypePoint[]
+  top_followed?: Array<{ id: string; public_number?: number | null; title: string; follower_count: number }>
 }
 export type AIModel = { id: string; connection_id: string; model_name: string; display_name: string; enabled: boolean; supports_json_mode: boolean; context_window?: number; reasoning_levels: string[] }
 export type AIConnection = { id: string; name: string; provider: string; api_base: string; has_api_key: boolean; api_key_hint?: string; enabled: boolean; timeout_seconds: number; priority: number; models: AIModel[] }

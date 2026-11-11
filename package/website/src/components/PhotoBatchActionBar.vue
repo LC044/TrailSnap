@@ -66,20 +66,19 @@
             </button>
 
             <!-- More Actions -->
-            <el-dropdown trigger="click" placement="top-end">
-              <button class="ts-icon-button ts-button-ghost text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">
+            <div class="selection-more">
+              <button class="ts-icon-button ts-button-ghost text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="更多" aria-haspopup="menu" :aria-expanded="moreVisible" @click="moreVisible = !moreVisible">
                 <MoreHorizontal class="w-5 h-5" /><span>更多</span>
               </button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item :disabled="localSelectedIds.size === 0" @click="$emit('person')">
+              <AdaptiveMenu v-model="moreVisible" title="批量操作" placement="top-end" close-on-action>
+                  <button type="button" class="ts-action-row" :disabled="localSelectedIds.size === 0" @click="$emit('person')">
                     <div class="flex items-center gap-2">
                       <UserPlus class="w-4 h-4" />
                       <span>添加到人物</span>
                     </div>
-                  </el-dropdown-item>
+                  </button>
 
-                  <el-dropdown-item
+                  <button type="button" class="ts-action-row"
                     :disabled="localSelectedIds.size === 0"
                     v-if="allowTransfer" @click="$emit('transfer', 'move', selectedArray)"
                   >
@@ -87,9 +86,9 @@
                         <FolderOutput class="w-4 h-4" />
                         <span>移动到目录</span>
                      </div>
-                  </el-dropdown-item>
+                  </button>
 
-                  <el-dropdown-item
+                  <button type="button" class="ts-action-row"
                     :disabled="localSelectedIds.size === 0"
                     v-if="allowTransfer" @click="$emit('transfer', 'copy', selectedArray)"
                   >
@@ -97,10 +96,22 @@
                         <Copy class="w-4 h-4" />
                         <span>复制到目录</span>
                      </div>
-                  </el-dropdown-item>
+                  </button>
 
-                  <el-dropdown-item
-                    v-if="albumContext"
+                  <button type="button" class="ts-action-row"
+                    v-if="removeLabel"
+                    :title="removeLabel"
+                    :disabled="localSelectedIds.size === 0"
+                    @click="$emit('remove-association', selectedArray)"
+                  >
+                     <div class="flex w-full items-center gap-2">
+                        <ImageMinusIcon class="w-4 h-4" />
+                        <span>{{ removeLabel }}</span>
+                     </div>
+                  </button>
+
+                  <button type="button" class="ts-action-row"
+                    v-if="albumContext && !removeLabel"
                     :disabled="localSelectedIds.size === 0"
                     @click="$emit('remove-from-album', selectedArray)"
                   >
@@ -108,9 +119,9 @@
                         <ImageMinusIcon class="w-4 h-4" />
                         <span>移出相册</span>
                      </div>
-                  </el-dropdown-item>
+                  </button>
 
-                  <el-dropdown-item
+                  <button type="button" class="ts-action-row"
                     v-if="albumContext && localSelectedIds.size===1"
                     @click="$emit('set-album-cover', selectedArray)"
                   >
@@ -118,9 +129,19 @@
                         <ImageIcon class="w-4 h-4" />
                         <span>设为封面</span>
                      </div>
-                  </el-dropdown-item>
+                  </button>
 
-                  <el-dropdown-item
+                  <button type="button" class="ts-action-row"
+                    :disabled="localSelectedIds.size === 0"
+                    @click="$emit('batch-edit-time', selectedArray)"
+                  >
+                    <div class="flex items-center gap-2">
+                      <CalendarClock class="w-4 h-4" />
+                      <span>批量修改时间</span>
+                    </div>
+                  </button>
+
+                  <button type="button" class="ts-action-row"
                     :disabled="localSelectedIds.size === 0"
                     @click="$emit('batch-edit-location', selectedArray)"
                   >
@@ -128,13 +149,12 @@
                         <MapPin class="w-4 h-4" />
                         <span>批量修正位置</span>
                      </div>
-                  </el-dropdown-item>
+                  </button>
 
                   <div class="border-t border-gray-100 dark:border-gray-800 my-1 mx-2" v-if="$slots['batch-actions']"></div>
                   <slot name="batch-actions" :selected-ids="localSelectedIds" :clear-selection="() => emit('cancel')"></slot>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+                </AdaptiveMenu>
+            </div>
             </slot>
           </div>
         </div>
@@ -144,8 +164,10 @@
 
 </template>
 <script setup lang="ts">
-import { computed } from 'vue'
-import { X, Download, Trash2, Loader2, ImageMinusIcon, ImagePlusIcon, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy, Image as ImageIcon, MapPin } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import AdaptiveMenu from '@/components/ui/AdaptiveMenu.vue'
+import { X, Download, Trash2, Loader2, ImageMinusIcon, ImagePlusIcon, MoreHorizontal, UserPlus, CheckSquare, FolderOutput, Copy, Image as ImageIcon, MapPin, CalendarClock } from 'lucide-vue-next'
+const moreVisible = ref(false)
 const props = withDefaults(defineProps<{
   visible: boolean
   selectedIds: ReadonlySet<string>
@@ -154,17 +176,20 @@ const props = withDefaults(defineProps<{
   deleteLabel: string
   albumContext?: boolean
   allowTransfer?: boolean
+  // 非空时，「从相册/人物中移除」显示在这里的「更多」菜单，主按钮保持默认「删除」
+  removeLabel?: string
   selectedCount?: number
   actionColumns?: number
   showMobileHeader?: boolean
-}>(), { albumContext: false, allowTransfer: false, actionColumns: 4, showMobileHeader: true })
+}>(), { albumContext: false, allowTransfer: false, removeLabel: '', actionColumns: 4, showMobileHeader: true })
 const localSelectedIds = computed(() => props.selectedIds)
 const selectionCount = computed(() => props.selectedCount ?? props.selectedIds.size)
 const selectedArray = computed(() => Array.from(props.selectedIds))
 const emit = defineEmits<{
   cancel: []; 'select-all': []; download: []; delete: []; person: []
   'add-to-album': [ids: string[]]; 'remove-from-album': [ids: string[]]
-  'set-album-cover': [ids: string[]]; 'batch-edit-location': [ids: string[]]
+  'remove-association': [ids: string[]]
+  'set-album-cover': [ids: string[]]; 'batch-edit-location': [ids: string[]]; 'batch-edit-time': [ids: string[]]
   transfer: [action: 'move' | 'copy', ids: string[]]
 }>()
 </script>
@@ -182,7 +207,7 @@ const emit = defineEmits<{
   .selection-summary { width: 100%; }
   .selection-all { margin-left: auto; padding-inline: 12px; }
   .selection-actions { width: 100%; display: grid; grid-template-columns: repeat(var(--selection-action-columns, 4), minmax(0, 1fr)); }
-  .selection-actions :deep(.el-dropdown) { display: block; min-width: 0; }
+  .selection-actions .selection-more { display: block; min-width: 0; }
   .selection-actions :deep(button) { width: 100%; min-width: 0; height: 54px; flex-direction: column; gap: 3px; padding: 4px 0; font-size: 11px; }
 }
 </style>

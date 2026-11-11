@@ -29,12 +29,12 @@
           @click-photo="handlePhotoClick"
         >
           <template #batch-actions="{ selectedIds, clearSelection }">
-            <el-dropdown-item @click="handleMoveToNonArchive(Array.from(selectedIds), clearSelection)">
+            <button type="button" class="ts-action-row" @click="handleMoveToNonArchive(Array.from(selectedIds), clearSelection)">
               <div class="flex items-center gap-2 text-primary-500">
                 <FolderDown class="w-4 h-4" />
                 <span>移出图库不归档</span>
               </div>
-            </el-dropdown-item>
+            </button>
           </template>
         </FlatPhotoGallery>
         
