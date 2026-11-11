@@ -19,8 +19,10 @@ export function useSimilarFaces(
   const selected = ref(new Map<number, SimilarFaceCandidate>())
   const target = ref<FaceIdentity | null>(null)
   const assignmentMode = ref<'person' | 'unassigned'>('person')
-  const scope = ref<SimilarFaceScope>('all')
+  const scope = ref<SimilarFaceScope>('other')
   const match = ref<SimilarFaceMatch>('balanced')
+  const threshold = ref<number | null>(null)
+  const includeConfirmed = ref(false)
   const hideAssigned = ref(true)
   const showSelected = ref(false)
   const page = ref(0)
@@ -40,9 +42,12 @@ export function useSimilarFaces(
   let pendingReferenceSelection = false
 
   const lowSimilarity = computed(() => scope.value === 'current_low')
+  const effectiveThreshold = computed(() => threshold.value ?? (lowSimilarity.value
+    ? { strict: .55, balanced: .45, broad: .35 }
+    : { strict: .35, balanced: .45, broad: .55 })[match.value])
   const destinationId = computed(() => assignmentMode.value === 'unassigned' ? null : target.value?.id)
   const selectedItems = computed(() => [...selected.value.values()].filter(item =>
-    item.identity_id !== destinationId.value && (!lowSimilarity.value || item.id !== props.reference.id)))
+    canSelect(item)))
   const selectedCount = computed(() => selectedItems.value.length)
   const visibleItems = computed(() => showSelected.value
     ? selectedItems.value
@@ -66,6 +71,7 @@ export function useSimilarFaces(
       const result = await faceApi.searchSimilarFaces(seed.photo_id, seed.id, {
         scope: scope.value, match: match.value, skip: nextPage * PAGE_SIZE,
         limit: PAGE_SIZE, exclude_identity_id: excludeIdentity.value,
+        threshold: effectiveThreshold.value, include_confirmed: includeConfirmed.value,
       }, controller.signal)
       if (version !== requestVersion || !props.visible) return
       reference.value = result.reference
@@ -94,6 +100,7 @@ export function useSimilarFaces(
 
   function canSelect(item: SimilarFaceCandidate) {
     return item.identity_id !== destinationId.value && (!lowSimilarity.value || item.id !== props.reference.id)
+      && (includeConfirmed.value || !item.manually_confirmed || item.id === props.reference.id)
   }
 
   function toggle(item: SimilarFaceCandidate) {
@@ -196,8 +203,10 @@ export function useSimilarFaces(
     selected.value.clear()
     target.value = null
     assignmentMode.value = 'person'
-    scope.value = 'all'
+    scope.value = 'other'
     match.value = 'balanced'
+    threshold.value = null
+    includeConfirmed.value = false
     hideAssigned.value = true
     showSelected.value = false
     page.value = 0
@@ -211,7 +220,15 @@ export function useSimilarFaces(
     void load(0, false, true)
   }, { immediate: true })
 
-  watch([scope, match, excludeIdentity], () => {
+  watch([scope, match], () => { threshold.value = null }, { flush: 'sync' })
+  watch(includeConfirmed, value => {
+    if (!value) {
+      for (const [id, item] of selected.value) {
+        if (item.manually_confirmed && id !== props.reference.id) selected.value.delete(id)
+      }
+    }
+  }, { flush: 'sync' })
+  watch([scope, match, threshold, includeConfirmed, excludeIdentity], () => {
     if (!props.visible || submitting.value || resetting) return
     if (lowSimilarity.value) {
       selected.value.delete(props.reference.id)
@@ -219,11 +236,12 @@ export function useSimilarFaces(
     }
     showSelected.value = false
     void load()
-  }, { flush: 'sync' })
+  })
   onBeforeUnmount(() => { ++requestVersion; controller?.abort() })
 
   return {
     reference, items, target, assignmentMode, lowSimilarity, scope, match, hideAssigned, showSelected, page,
+    threshold, effectiveThreshold, includeConfirmed,
     faceCount, photoCount, hasMore, loading, appending, submitting, loadError, actionError,
     successMessage, undoToken, selectedItems, selectedCount, visibleItems,
     reassignCount, manualCount, canSubmit, load, isSelected, canSelect, toggle, selectPage,

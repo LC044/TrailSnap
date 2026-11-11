@@ -45,11 +45,16 @@
         </label>
         <label class="min-w-0 space-y-1 text-xs"><span class="ts-muted">{{ lowSimilarity ? '排查范围' : '匹配范围' }}</span>
           <el-select v-model="match" :aria-label="lowSimilarity ? '排查范围' : '匹配范围'" :disabled="submitting" class="w-full">
-            <el-option :label="lowSimilarity ? '差异明显' : '更相似'" value="strict" />
-            <el-option :label="lowSimilarity ? '较低相似' : '较相似'" value="balanced" />
-            <el-option :label="lowSimilarity ? '扩大排查' : '扩大查找'" value="broad" />
+            <el-option label="严格" value="strict" />
+            <el-option label="普通" value="balanced" />
+            <el-option label="宽松" value="broad" />
           </el-select>
         </label>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <el-checkbox v-model="includeConfirmed" :disabled="submitting">显示已人工确认的人脸</el-checkbox>
+        <button type="button" class="ts-button ts-button-ghost ts-button-sm" :disabled="submitting"
+          @click="openAdvanced">高级选项{{ threshold !== null ? ' · 自定义' : '' }}</button>
       </div>
       <p v-if="lowSimilarity" class="ts-muted text-xs">只排查样本所属人物，差异最大的人脸优先显示。角度、年龄、光线也会影响相似度，请核对头像和原图后再更正。</p>
       <el-checkbox v-if="target && assignmentMode === 'person'" v-model="hideAssigned" :disabled="submitting">隐藏已属于“{{ target.identity_name }}”的人脸</el-checkbox>
@@ -131,7 +136,21 @@
     </template>
   </ResponsiveDialog>
 
-  <PersonSelector v-model:visible="selectorVisible" title="选择正确人物" :submitting="submitting" @select="selectTarget" />
+  <PersonSelector v-model:visible="selectorVisible" title="选择正确人物" include-unnamed :submitting="submitting" @select="selectTarget" />
+
+  <ResponsiveDialog v-model="advancedVisible" title="高级查找选项" max-width="28rem">
+    <div class="space-y-3">
+      <label for="similar-face-threshold" class="block text-sm font-medium">{{ lowSimilarity ? '最低差异距离' : '最大匹配距离' }}</label>
+      <el-input-number id="similar-face-threshold" v-model="thresholdDraft" :min="0" :max="1" :step="0.01" :precision="2" />
+      <p class="ts-muted text-sm leading-6">{{ lowSimilarity ? '数值越大，仅显示差异更明显的人脸。' : '数值越小，匹配越严格；数值越大，候选越多。' }}仅用于本次查找，不修改全局识别参数。</p>
+    </div>
+    <template #footer>
+      <div class="flex flex-wrap justify-end gap-2">
+        <button type="button" class="ts-button ts-button-secondary" @click="threshold = null; advancedVisible = false">恢复档位默认值</button>
+        <button type="button" class="ts-button ts-button-primary" :disabled="thresholdDraft == null" @click="threshold = thresholdDraft ?? null; advancedVisible = false">应用并查找</button>
+      </div>
+    </template>
+  </ResponsiveDialog>
 
   <ResponsiveDialog v-model="confirmVisible" title="确认批量更正" max-width="28rem" :before-close="() => !submitting">
     <p class="text-sm leading-7">{{ assignmentMode === 'unassigned' ? `将选中的 ${selectedCount} 张人脸释放为未标记人脸，照片和人脸仍然保留。` : `将选中的 ${selectedCount} 张人脸更正为“${target?.identity_name}”。` }}</p>
@@ -198,11 +217,18 @@ const {
   faceCount, photoCount, hasMore, loading, appending, submitting, loadError, actionError,
   successMessage, undoToken, selectedItems, selectedCount, visibleItems, reassignCount, manualCount,
   canSubmit, load, isSelected, canSelect, toggle, selectPage, clearSelection, chooseTarget, apply, undo,
+  threshold, effectiveThreshold, includeConfirmed,
 } = useSimilarFaces(props, photoIds => emit('applied', photoIds))
 const { width } = useWindowSize()
 const isMobile = computed(() => width.value < 768)
 watch(isMobile, () => { if (props.visible && !submitting.value) void load() })
 const selectorVisible = ref(false)
+const advancedVisible = ref(false)
+const thresholdDraft = ref<number | undefined>(.45)
+function openAdvanced() {
+  thresholdDraft.value = effectiveThreshold.value
+  advancedVisible.value = true
+}
 const confirmVisible = ref(false)
 const discardVisible = ref(false)
 const preview = ref<SimilarFaceCandidate | null>(null)
@@ -218,7 +244,7 @@ const previewBox = computed(() => !previewLoaded.value || !preview.value || !pre
     previewImage.value.naturalWidth, previewImage.value.naturalHeight))
 watch(preview, () => { previewLoaded.value = false; previewFailed.value = false })
 watch(() => props.visible, value => {
-  if (!value) { preview.value = null; selectorVisible.value = false; confirmVisible.value = false; discardVisible.value = false }
+  if (!value) { preview.value = null; selectorVisible.value = false; confirmVisible.value = false; discardVisible.value = false; advancedVisible.value = false }
 })
 const loadMoreButton = ref<HTMLElement | null>(null)
 useIntersectionObserver(loadMoreButton, ([entry]) => {

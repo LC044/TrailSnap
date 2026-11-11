@@ -62,6 +62,9 @@ def library(face_sqlite_session, monkeypatch):
 
 
 def search(lib, **kwargs):
+    # Existing transaction tests explicitly request the full reviewed set.
+    kwargs.setdefault("scope", "all")
+    kwargs.setdefault("include_confirmed", True)
     return search_similar_faces(lib["db"], lib["photo"].id, lib["seed"].id, lib["owner"].id, **kwargs)
 
 
@@ -87,6 +90,34 @@ def test_search_is_face_local_ranked_and_never_returns_private_or_invalid_faces(
     assert result.items[1].identity_id is None
     assert all(row.face_rect and row.review_token for row in result.items)
     assert lib["updates"] == [] and lib["same"].face_identity_id == lib["alice"].id
+
+
+def test_default_search_excludes_current_person_and_manually_confirmed_candidates(library):
+    lib = library
+    lib["broad"].recognize_confidence = 1
+    lib["db"].commit()
+    result = search_similar_faces(lib["db"], lib["photo"].id, lib["seed"].id, lib["owner"].id)
+    assert [face.id for face in result.items] == [lib["unassigned"].id]
+    assert result.face_count == 1 and result.photo_count == 1
+    assert result.reference.id == lib["seed"].id
+
+
+@pytest.mark.parametrize("max_rows", [150000, 1])
+def test_custom_threshold_and_confirmed_filter_apply_before_counts_and_pagination(library, monkeypatch, max_rows):
+    from app.service.face_vector_cache import FaceVectorCache
+    monkeypatch.setattr("app.service.similar_faces.face_vector_cache", FaceVectorCache(max_rows=max_rows))
+    lib = library
+    # A confirmed and an unconfirmed face coexist in this photo; filtering is face-local.
+    lib["broad"].recognize_confidence = 1
+    lib["db"].commit()
+    result = search(lib, scope="other", threshold=.6, include_confirmed=False, limit=1)
+    assert [face.id for face in result.items] == [lib["unassigned"].id]
+    assert result.face_count == 1 and result.photo_count == 1 and not result.has_more
+    shown = search(lib, scope="other", threshold=.6, include_confirmed=True, limit=1)
+    assert shown.face_count == 2 and shown.has_more
+    second = search(lib, scope="other", threshold=.6, include_confirmed=True, skip=1, limit=1)
+    assert second.items[0].id == lib["broad"].id and second.items[0].manually_confirmed
+    assert search(lib, threshold=0, include_confirmed=False).items == []
 
 
 def test_filters_pagination_and_widening_keep_face_identity_separate(library):
