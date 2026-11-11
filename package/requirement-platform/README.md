@@ -131,7 +131,8 @@ location /issues/ {
 
 注意事项：
 
-- 前缀支持多段（`/feedback/issues`），只允许字母、数字、`.`、`_`、`-`、`~`；不允许 `/` 结尾、`..` 或空段。非法值会让 web 容器启动失败并打印原因，后端也会在加载配置时报错。
+- 前缀支持多段（`/feedback/issues`），只允许字母、数字、`.`、`_`、`-`、`~`；首尾多余的 `/` 会被规范化，内部空段、`..` 与非法字符会被拒绝。非法值会让 web 容器启动失败并打印原因，后端也会在加载配置时报错。
+- 容器内 nginx 只返回相对 `Location`（`/issues` → `/issues/` 的重定向会保留 query 参数），不会把容器内部地址暴露给浏览器，因此 HTTPS 反向代理下也能正确跳转。
 - 前缀在**容器启动时**注入到 `index.html` 的 `<base>`、Vue Router、API 请求和 nginx 转发规则，因此 GHCR 上的预构建镜像无需重新打包。修改或取消前缀后执行 `docker compose -f docker-compose.prod.yml up -d --force-recreate web`；仅 `docker restart` 不会重新读取环境变量。
 - 后端生成的公开需求链接、附件下载地址、Agent 指南、GitHub OAuth 回调与 MCP 地址都会自动带上前缀。主站跳转过来时把 `VITE_REQUIREMENT_PLATFORM_URL` 设为 `https://example.com/issues`。
 - 本地开发也能验证前缀：在 `web/` 目录执行 `RP_BASE_PATH=/issues npm run dev`，访问 `http://localhost:5177/issues/`，Vite 会把 `/issues/api`、`/issues/mcp` 代理到本机后端。

@@ -55,6 +55,8 @@ else
     printf '# Accepts both a proxy that strips the prefix and one that forwards\n'
     printf '# the full prefixed path to this container.\n'
     printf 'rewrite ^%s(/.*)$ $1 last;\n' "$escaped"
-    printf 'location = %s { return 301 %s/; }\n' "$prefix" "$prefix"
+    # $is_args/$args keep query strings on the /issues -> /issues/ redirect.
+    # nginx resolves these variables; printf must emit them literally.
+    printf 'location = %s { return 301 %s/$is_args$args; }\n' "$prefix" "$prefix"
   } > "$conf"
 fi
