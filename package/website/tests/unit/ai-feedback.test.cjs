@@ -15,9 +15,15 @@ function receiptHarness(initial = '[]', failStorage = false) {
     localStorage: { getItem: () => saved, setItem: (_, value) => { if (failStorage) throw Error('blocked'); saved = value; } },
     location: { origin: 'https://feedback.trailsnap.cn' },
     crypto: webcrypto, btoa,
-  })(name => name === 'pinia' ? { defineStore: (_, setup) => setup }
-    : name === '../runtimeBase' ? { appUrl: p => `https://feedback.trailsnap.cn/${p}` }
-    : { ref: value => ({ value }) }, module, module.exports);
+  })(name => {
+    // The store builds the management link with `appUrl` from ../runtimeBase.
+    // The vm shim used to answer every non-pinia import with `{ ref }`, so
+    // `appUrl` was undefined and the link could not be built.
+    const key = String(name).replace(/^['"]|['"]$/g, '');
+    if (key === 'pinia') return { defineStore: (_, setup) => setup };
+    if (key === '../runtimeBase') return { appUrl: target => `https://feedback.trailsnap.cn/${target}` };
+    return { ref: value => ({ value }) };
+  }, module, module.exports);
   return { ...module.exports, saved: () => saved };
 }
 

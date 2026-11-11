@@ -605,13 +605,10 @@ def _extract_month_day(txt: str):
         if before not in ('￥', '¥') and after not in ('折', '元'):
             mm = m0.group(1).zfill(2)
             dd = m0.group(2).zfill(2)
-            try:
-                imonth = int(mm)
-                iday = int(dd)
-                if 1 <= imonth <= 12 and 1 <= iday <= 31:
-                    return (mm, dd)
-            except:
-                pass
+            imonth = int(mm)
+            iday = int(dd)
+            if 1 <= imonth <= 12 and 1 <= iday <= 31:
+                return (mm, dd)
 
     # 1. 标准格式：X月X日
     m = re.search(r'(\d{1,2})\s*月\s*(\d{1,2})\s*日', s)
@@ -627,13 +624,10 @@ def _extract_month_day(txt: str):
     if m2:
         mm = m2.group(1).zfill(2)
         dd = m2.group(2).zfill(2)
-        try:
-            imonth = int(mm)
-            iday = int(dd)
-            if 1 <= imonth <= 12 and 1 <= iday <= 31:
-                return (mm, dd)
-        except:
-            pass
+        imonth = int(mm)
+        iday = int(dd)
+        if 1 <= imonth <= 12 and 1 <= iday <= 31:
+            return (mm, dd)
             
     return None
 
