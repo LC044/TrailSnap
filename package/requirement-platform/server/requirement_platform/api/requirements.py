@@ -66,7 +66,7 @@ def edit_token_matches(row: Requirement, token: str | None) -> bool:
 def anonymous_submission_response(row: Requirement, db: Session, token: str) -> JSONResponse:
     data = requirement_data(row, db)
     data["edit_token"] = token
-    data["public_url"] = f"{settings.web_url.rstrip('/')}/requirements/REQ-{row.public_number}"
+    data["public_url"] = settings.public_url(f"requirements/REQ-{row.public_number}")
     return JSONResponse(ok(data, "submitted"), headers={"Cache-Control": "no-store"})
 
 
@@ -174,7 +174,7 @@ def create_requirement(payload: RequirementCreate, user: User | None = Depends(o
     if upload_token:
         data["upload_token"] = upload_token
         data["edit_token"] = edit_token
-        data["public_url"] = f"{settings.web_url.rstrip('/')}/requirements/REQ-{row.public_number}"
+        data["public_url"] = settings.public_url(f"requirements/REQ-{row.public_number}")
     return JSONResponse(ok(data, "submitted"), headers={"Cache-Control": "no-store"})
 
 
@@ -262,7 +262,7 @@ async def upload_requirement_attachment(
     return ok({"id": attachment.id, "name": original_name, "content_type": attachment.content_type,
                "size_bytes": size, "kind": attachment.kind, "content_sha256": attachment.content_sha256,
                "processing_status": attachment.processing_status,
-               "download_url": f"/api/requirements/{row.id}/attachments/{attachment.id}"})
+               "download_url": settings.api_path(f"requirements/{row.id}/attachments/{attachment.id}")})
 
 
 @router.get("/api/requirements/{requirement_id}/attachments/{attachment_id}")

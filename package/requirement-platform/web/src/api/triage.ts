@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '../runtimeBase'
+
 export type TriageStreamEvent = {
   type: 'attempt' | 'delta' | 'retry' | 'complete' | 'error'
   attempt?: number
@@ -16,7 +18,7 @@ export async function streamPreflightTriage(
   data: unknown,
   onEvent: (event: TriageStreamEvent) => void,
 ): Promise<TriageStreamEvent> {
-  const baseUrl = import.meta.env.VITE_REQUIREMENT_API_URL || '/api'
+  const baseUrl = API_BASE_URL
   const token = localStorage.getItem('rp_token')
   const response = await fetch(`${baseUrl}/requirements/preflight-triage/stream`, {
     method: 'POST',

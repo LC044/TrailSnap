@@ -86,7 +86,7 @@ def github_oauth_start(mode: str = Query("login", pattern="^(login|link)$"), use
     })
     response = JSONResponse(ok({"authorize_url": url}))
     response.set_cookie("rp_github_oauth", state, max_age=600, httponly=True,
-                        secure=settings.web_url.startswith("https://"), samesite="lax", path="/api/auth/github")
+                        secure=settings.web_url.startswith("https://"), samesite="lax", path=settings.api_path("auth/github"))
     return response
 
 
@@ -124,8 +124,8 @@ def github_oauth_callback(code: str, state: str, request: Request, db: Session =
             email = primary.get("email") if primary else None
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         logger.exception("GitHub OAuth token or profile request failed: %s", type(exc).__name__)
-        response = RedirectResponse(f"{settings.web_url}/?github_error=oauth_upstream", status_code=302)
-        response.delete_cookie("rp_github_oauth", path="/api/auth/github")
+        response = RedirectResponse(f"{settings.public_url()}/?github_error=oauth_upstream", status_code=302)
+        response.delete_cookie("rp_github_oauth", path=settings.api_path("auth/github"))
         return response
 
     github_user_id = int(profile["id"])
@@ -176,8 +176,8 @@ def github_oauth_callback(code: str, state: str, request: Request, db: Session =
     audit(db, user.id, "github.account_linked" if mode == "link" else "user.github_login", "user", user.id,
           github_login=identity.login)
     db.commit()
-    response = RedirectResponse(f"{settings.web_url}/?github_grant={grant_value}", status_code=302)
-    response.delete_cookie("rp_github_oauth", path="/api/auth/github")
+    response = RedirectResponse(f"{settings.public_url()}/?github_grant={grant_value}", status_code=302)
+    response.delete_cookie("rp_github_oauth", path=settings.api_path("auth/github"))
     return response
 
 

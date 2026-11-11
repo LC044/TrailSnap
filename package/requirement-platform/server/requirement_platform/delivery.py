@@ -205,7 +205,7 @@ def _build_context(db: Session, requirement: Requirement, spec: RequirementSpec)
                              "requirement_revision": triage.requirement_version}] if triage else []) +
                          [{"type": "attachment", "id": item.id, "name": item.original_name,
                            "sha256": item.content_sha256, "processing_status": item.processing_status,
-                           "download_path": f"/api/requirements/{requirement.id}/attachments/{item.id}"}
+                           "download_path": settings.api_path(f"requirements/{requirement.id}/attachments/{item.id}")}
                           for item in attachments],
         "repository_constraints": {"instructions": ["AGENTS.md"], "test_entry": "tests/scripts/run-tests.ps1",
                                    "instruction_base_sha": spec.content["base_sha"]},

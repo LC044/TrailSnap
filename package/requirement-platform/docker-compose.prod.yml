@@ -19,6 +19,7 @@ services:
     environment:
       RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in .env}
       RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in .env}
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     volumes:
       - requirement-data:/app/data
     networks: [requirement-private]
@@ -38,6 +39,7 @@ services:
     environment:
       RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in .env}
       RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in .env}
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     volumes:
       - requirement-data:/app/data
     networks: [requirement-private]
@@ -55,6 +57,7 @@ services:
     environment:
       RP_JWT_SECRET: ${RP_JWT_SECRET:?Set RP_JWT_SECRET in .env}
       RP_OWNER_EMAIL: ${RP_OWNER_EMAIL:?Set RP_OWNER_EMAIL in .env}
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     volumes:
       - requirement-data:/app/data
     networks: [requirement-private]
@@ -65,6 +68,8 @@ services:
   web:
     image: ghcr.io/lc044/requirement-platform-web:${RP_IMAGE_TAG:-latest}
     restart: unless-stopped
+    environment:
+      RP_BASE_PATH: ${RP_BASE_PATH:-}
     ports:
       - "127.0.0.1:8011:8080"
     networks: [requirement-private]

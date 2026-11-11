@@ -1,7 +1,8 @@
 import axios from 'axios'
+import { API_BASE_URL } from '../runtimeBase'
 
 export const client = axios.create({
-  baseURL: import.meta.env.VITE_REQUIREMENT_API_URL || '/api',
+  baseURL: API_BASE_URL,
   timeout: 20000,
 })
 
