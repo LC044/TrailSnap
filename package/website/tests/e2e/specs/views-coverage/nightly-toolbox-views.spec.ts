@@ -82,7 +82,9 @@ test.describe.serial('Nightly toolbox view coverage @views-coverage', () => {
 
   test('ToolboxHomePage lists every tool entry, templates and history', async ({ page }) => {
     await page.route('**/api/toolbox/preferences', route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ code: 0, msg: 'success', data: { version: 0, presets: [], recent: [], default_rename_id: null } }) }))
+    const preferencesResponse = page.waitForResponse(r => r.url().includes('/api/toolbox/preferences') && r.request().method() === 'GET')
     await page.goto('/toolbox', { waitUntil: 'domcontentloaded' })
+    expect((await preferencesResponse).ok()).toBeTruthy()
     await waitForApp(page)
 
     await expect(page.getByRole('heading', { name: '工具箱' })).toBeVisible()

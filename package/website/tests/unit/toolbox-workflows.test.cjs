@@ -219,3 +219,21 @@ test('template manager routes each preset to its own tool and persists names', a
   assert.equal(store.preferences.presets.length, 0)
   ctx.unmount()
 })
+
+test('toolbox restores user identity from a token before loading empty presets', async () => {
+  const user = vue.reactive({ token: 'session', userInfo: null })
+  const calls = []
+  user.getUserInfo = async () => { calls.push('user'); user.userInfo = { id: 'restored' } }
+  const store = load('stores/toolbox.ts', {
+    pinia: { defineStore: (_name, setup) => setup },
+    '@/stores/user': { useUserStore: () => user },
+    '@/api/toolboxWorkflows': { workflowApi: { preferences: async () => {
+      calls.push('preferences')
+      return { version: 0, presets: [], recent: [], default_rename_id: null }
+    } } },
+  }).useToolboxStore()
+  await store.load()
+  assert.deepEqual(calls, ['user', 'preferences'])
+  assert.equal(store.loadedOwner.value, 'restored')
+  assert.deepEqual(store.preferences.value.presets, [])
+})
