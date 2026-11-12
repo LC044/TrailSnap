@@ -40,7 +40,9 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
     }
 
     // 旧「暂无最近活动」占位改为「操作记录」分区，记录来自持久化预览计划。
-    await expect(page.getByRole('region', { name: '操作记录' })).toBeVisible();
+    await expect(page.locator('#history > summary')).toHaveText('操作记录');
+    await page.locator('#history > summary').click();
+    await expect(page.getByRole('button', { name: '刷新记录' })).toBeVisible();
 
     await page.getByRole('link', { name: /批量重命名/ }).first().click();
     await expect(page).toHaveURL(/\/toolbox\/rename$/);
@@ -53,7 +55,7 @@ test.describe('P1 - 视图合同补测 @views-coverage', () => {
 
     await page.getByRole('link', { name: /低质量照片/ }).first().click();
     await expect(page).toHaveURL(/\/toolbox\/cleanup$/);
-    await expect(page.locator('h1.ts-page-title', { hasText: '照片清理' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('h1.ts-page-title', { hasText: '低质量照片' })).toBeVisible({ timeout: 10_000 });
   });
 
   test('年度报告页 - 白名单路由不会踢去 /login', async ({ page }) => {
