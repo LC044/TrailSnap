@@ -59,6 +59,11 @@ case "${1:-}" in
   printf '%s\n' "$content" > "$compose_path.tmp"
   chmod 644 "$compose_path.tmp"
   mv -f -- "$compose_path.tmp" "$compose_path"
+  # Run initialization here so fnOS can show actionable errors in its dialog.
+  if ! output=$(docker compose -p "$APP-fnos" -f "$compose_path" run --rm bootstrap 2>&1); then
+    fail "$output
+初始化失败。请检查镜像下载网络、目录权限及 Docker 接管配置。迁移时请先正常停止旧容器，保留原数据，不要清空目录。官网：https://trailsnap.cn/docs/guide/fnos"
+  fi
   ;;
  configure)
   [ -r "$TRIM_PKGVAR/data-path" ] || fail '应用还未初始化，请先启动应用。'

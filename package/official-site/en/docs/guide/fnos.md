@@ -29,6 +29,43 @@ For example, photos might be in `/vol1/1000/Photos`, with user data in `/vol1/10
 
 If the latest release has no `.fpk` asset yet, use the [fnOS Docker guide](/en/docs/guide/docker/fnos).
 
+## Migrate an existing Docker deployment
+
+Package revision 17 and later accepts ordinary existing database passwords. Direct adoption requires PostgreSQL 18, user and database name `trailsnap`, and `PGDATA=/var/lib/postgresql/data/pgdata`. Other major versions require a logical database migration; never edit `PG_VERSION`.
+
+Stop all old Compose services normally and disable their automatic startup. Back up the complete data directory, Compose configuration, and external originals while stopped, preserving ownership and permissions. Keep `data/` and `pg_data/pgdata/` under the selected user data directory. Do not use `down -v` or start both deployments against the same database files.
+
+Create `runtime/postgres.env` in that directory, with these three lines. Replace the password with the old deployment's actual expanded password, literally, without quotes or URL encoding. Empty and multiline passwords are unsupported. Restrict access to this file (`chmod 600`).
+
+```ini
+POSTGRES_DB=trailsnap
+POSTGRES_USER=trailsnap
+POSTGRES_PASSWORD=trailsnap
+```
+
+Create `runtime/installation.json`, adjusting the example paths:
+
+```json
+{
+  "appname": "trailsnap",
+  "revision": 3,
+  "layout": "catalog-v1",
+  "port": 3180,
+  "data_dir": "/vol1/1000/TrailSnap",
+  "photo_dir": "/vol1/1000/Photos",
+  "extra_dirs": [],
+  "libraries": [
+    {"source": "/vol1/1000/Photos", "target": "/app/Photos", "read_only": true}
+  ]
+}
+```
+
+Each `target` must exactly match the old container photo mount, either `/app/Photos` or a child path. List each additional mount in `libraries` and its source in `extra_dirs`. Other mount layouts are outside this guide. Do not rescan or rewrite photo paths. Select the parent directory `/vol1/1000/TrailSnap` as user data during installation, and the same primary photo folder. Stored port and mount settings are retained. Grant application data/photo access while preserving PostgreSQL file ownership.
+
+Install a TrailSnap version at least as recent as the old deployment. Sign in with your existing account and verify counts, albums, people, originals, videos, and uploads. If asked to create an account, stop and check the data path. Keep the old configuration and backup without restarting the old containers. Database upgrades may require restoring the backup to roll back.
+
+Initialization errors appear in the installation dialog. A nonempty directory requires the two runtime files above; credential/configuration errors require checking the actual password and JSON fields. A `postmaster.pid` error requires a normal database shutdown, not deleting a live lock. Check directory permissions and image registry connectivity for permission/download errors. For authentication failures after startup, check the actual old password: editing this file does not change the database password. Inspect `trailsnap-fnos-postgres` and `trailsnap-fnos-server` logs, and redact credentials before requesting help.
+
 ## Connect existing photos
 
 In TrailSnap, open **Settings → Photo folders (照片文件夹)**, refresh the detected folders, select your photo folder by name, and choose **Add selected libraries and scan**. Photos appear as scanning progresses.

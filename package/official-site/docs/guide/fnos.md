@@ -31,6 +31,82 @@ description: 使用飞牛安装包安装行影集，添加已有照片目录、�
 
 如果最新 Release 暂时没有 `.fpk` 附件，可以使用[飞牛 Docker 部署方式](/docs/guide/docker/fnos)。不要下载其他系统的安装包代替。
 
+## 从 Docker 迁移：原目录接管
+
+本节适用于包含此兼容修复的新版安装包（打包修订 17 起）；旧包仍可能拒绝普通密码。迁移后由飞牛应用管理服务，旧 Compose 停用，不需要在行影集界面导入数据库。
+
+### 1. 核对并备份旧部署
+
+以下示例要求旧数据库为 **PostgreSQL 18**，用户名和数据库名均为 `trailsnap`，`PGDATA=/var/lib/postgresql/data/pgdata`。先在旧数据库运行时执行 `docker compose exec postgres psql -U trailsnap -d trailsnap -c 'SHOW server_version;'` 核对版本。其他主版本不能直接复用数据库文件，请保留旧部署，通过逻辑备份迁移，不要修改 `PG_VERSION`。
+
+在旧 Compose 目录执行 `docker compose stop`，关闭全部旧服务，并禁用旧项目自动启动。停服后独立备份整个数据目录、Compose 配置和外部原图，保留文件权限和属主。不要使用 `down -v`，不要删除旧数据。飞牛包的行影集版本应不低于旧部署。
+
+假设旧目录为 `/vol1/1000/TrailSnap`，结构必须是：
+
+```text
+/vol1/1000/TrailSnap/
+├─ data/                 # 旧 /app/data 的完整内容
+├─ pg_data/pgdata/       # 内含 PG_VERSION、base 等数据库文件
+└─ runtime/              # 下一步新建
+```
+
+若原来使用 Docker 命名卷或其他布局，不要直接套用这些路径。外部照片目录应独立于这个数据目录。
+
+### 2. 准备凭据和安装标记
+
+通过 SSH 在旧数据目录下新建 `runtime`。创建 UTF-8 文件 `runtime/postgres.env`：
+
+```ini
+POSTGRES_DB=trailsnap
+POSTGRES_USER=trailsnap
+POSTGRES_PASSWORD=trailsnap
+```
+
+最后一行替换为旧 Compose 中**实际生效的密码**，保留原文，不加引号，不做 URL 编码；如 Compose 使用变量或 `$$` 转义，填写展开后的密码。不要求密码为 64 位十六进制，不支持换行或空密码。不要为了安装修改旧数据库密码。文件含敏感信息，请限制为管理员可读写（例如 `chmod 600 runtime/postgres.env`）。
+
+创建 `runtime/installation.json`，按实际路径修改：
+
+```json
+{
+  "appname": "trailsnap",
+  "revision": 3,
+  "layout": "catalog-v1",
+  "port": 3180,
+  "data_dir": "/vol1/1000/TrailSnap",
+  "photo_dir": "/vol1/1000/Photos",
+  "extra_dirs": [],
+  "libraries": [
+    {
+      "source": "/vol1/1000/Photos",
+      "target": "/app/Photos",
+      "read_only": true
+    }
+  ]
+}
+```
+
+`source` 是 NAS 上的原照片路径；`target` **必须与旧 Compose 容器内的挂载路径完全一致**。例如旧配置是 `/vol1/1000/Photos:/app/Photos:ro`，就使用上例；若原来为 `/app/Photos/旅行`，则保留该路径。多个挂载逐项加入 `libraries`，目标不能重复，均使用 `/app/Photos` 或其子目录；其他目录布局暂不适用本教程。保持原来的读写选择。`photo_dir` 为主照片目录，`extra_dirs` 填其他照片源目录。不要改数据库中的照片路径，也不需要重新扫描重建索引。
+
+### 3. 安装并验收
+
+安装新版 `.fpk` 时，用户数据目录填 `/vol1/1000/TrailSnap`（不是其 `data` 子目录），照片目录填 `/vol1/1000/Photos`。标记中的端口和图库映射会被保留。确保应用账号可读写应用数据、可读取照片；数据库文件保留原 PostgreSQL 属主，不要递归改成应用账号。
+
+安装后使用**原来的行影集账号**登录，核对照片数量、相册、人物，抽查原图和视频，再验证上传。若出现创建新账号页面或原图打不开，先停止飞牛应用，核对数据目录和挂载，勿重新扫描掩盖问题。确认成功后保留旧配置及备份，但不再启动旧容器。新版启动可能升级数据库结构，回退需恢复停服备份，不能直接用旧程序打开升级后的数据库。
+
+### 安装失败怎么办
+
+| 提示或现象 | 处理办法 |
+| --- | --- |
+| 目录非空且缺少接管配置 | 新安装改用空目录；迁移按上文准备两个 runtime 文件，不要清空旧目录 |
+| 数据库密码为空、配置格式错误 | 核对文件名、JSON 语法、必需字段及实际密码；密码不要加引号 |
+| 不是 PostgreSQL 18 | 保留旧部署，通过逻辑备份迁移，不能直接复制不同主版本的 pg_data |
+| 存在 postmaster.pid | 正常停止旧数据库；异常退出时先在旧部署完成恢复并正常停服，不要强删运行锁 |
+| 无法读写目录 | 核对应用账号权限、存储卷在线状态，保留数据库属主 |
+| 镜像下载失败、超时 | 检查 NAS 联网和镜像仓库连接，再重试安装 |
+| 安装完成但数据库认证失败 | 核对旧密码；填写凭据文件不会自动修改数据库内密码 |
+
+安装回调会显示初始化失败原因；也可在 Docker 中查看 `trailsnap-fnos-postgres`、`trailsnap-fnos-server` 的日志。求助时附错误信息并隐藏密码、令牌，不要上传凭据文件。
+
 ## 接入已有照片
 
 打开行影集「设置 → 照片文件夹」，点击「重新检测」，按照片文件夹名称勾选目录，然后点击「添加选中的图库并扫描」。照片会陆续出现在图库中。

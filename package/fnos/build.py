@@ -16,7 +16,7 @@ import tomllib
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
-REVISION = 16  # Increment for fnOS-only revisions without a product version change.
+REVISION = 17  # Increment for fnOS-only revisions without a product version change.
 VERSION_PATTERN = r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?"
 
 
