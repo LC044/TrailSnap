@@ -137,5 +137,5 @@ async def ai_response_error(response):
         detail = ""
     suffix = f": {str(detail)[:1000]}" if detail else ""
     if response.status in (502, 503, 504):
-        return f"{WAIT_PREFIX}AI 服务尚未就绪，恢复后自动继续{suffix}"
+        return f"{WAIT_PREFIX}AI 服务尚未就绪（HTTP {response.status}），恢复后自动继续{suffix}"
     return f"AI Service error: {response.status}{suffix}"

@@ -365,7 +365,8 @@ def test_process_batch_ai_non_200_marks_all_failed(monkeypatch):
     failed = [r for r in results if r["status"] == "failed"]
     assert len(failed) == 2
     for entry in failed:
-        assert "AI Service error" in entry["error"]
+        # 502/503/504 现在归入“等待 AI 模型”可重试文案，而非永久失败。
+        assert "AI 服务尚未就绪" in entry["error"]
         assert "503" in entry["error"]
 
 

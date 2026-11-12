@@ -207,7 +207,7 @@ class ClassifyImageStrategy(BaseTaskStrategy):
             if tag_data:
                 _, tag_name, confidence = tag_data
                 tag_id = get_tag_id(db, tag_name, photo.owner_id)
-                publish_tag(db, photo.id, UUID(str(tag_id)), confidence)
+                publish_tag(db, photo.id, tag_id, confidence)
                 tags_found = 1
             else:
                 tags_found = 0

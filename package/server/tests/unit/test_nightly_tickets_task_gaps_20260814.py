@@ -325,6 +325,8 @@ async def test_process_single_photo_ai_service_error_returns_failed():
         result = await RecognizeTicketStrategy().process_single_photo(MagicMock(), photo, db)
 
     assert result["status"] == "failed"
+    # 503 归入“等待 AI 模型”可重试文案；状态码保留在详情里。
+    assert "AI 服务尚未就绪" in result["error"]
     assert "503" in result["error"]
 
 

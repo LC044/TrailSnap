@@ -55,20 +55,16 @@ def add_tag_to_photo(db: Session, photo_id: UUID, tag_name: str, confidence: flo
         if relation.is_deleted:
             relation.is_deleted = False
             relation.confidence = confidence
-            db.commit()
         else:
             # If manually added (confidence=1.0), overwrite existing confidence
             # Or if new confidence > old confidence (optional logic, but let's stick to simple override if manual)
             if confidence == 1.0:
                 relation.confidence = 1.0
-                db.commit()
         db.refresh(relation)
     else:
         relation = PhotoTagRelation(photo_id=photo_id, tag_id=tag.id, confidence=confidence)
         db.add(relation)
-        db.commit()
-        db.refresh(relation)
-    
+
     from app.service.clip_classification import decide_tag
     decide_tag(db, photo_id, tag.id, True)
     db.commit()

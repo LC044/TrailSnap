@@ -77,7 +77,13 @@ def _wait_for_sidecars(source: Path) -> None:
     """An orphan's parent watcher may need two seconds after a shell crash."""
     import psutil
 
-    excluded = {os.getpid(), *(process.pid for process in psutil.Process().parents())}
+    # A dead parent is precisely the orphan case this wait handles; the
+    # parent chain must not crash the scan when the launcher already exited.
+    try:
+        parent_pids = [process.pid for process in psutil.Process().parents()]
+    except psutil.NoSuchProcess:
+        parent_pids = []
+    excluded = {os.getpid(), *parent_pids}
     deadline = time.monotonic() + 5
     while True:
         running = False

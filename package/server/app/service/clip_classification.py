@@ -415,6 +415,10 @@ def decide_tag(db, photo_id, tag_id, keep):
 
 def publish_tag(db, photo_id, tag_id, score=None):
     """Replace one independent category association, honoring manual decisions."""
+    if not isinstance(tag_id, UUID):
+        # Callers may pass the string form (for example the YOLO classifier's
+        # cached tag ids); normalize once instead of forcing every caller.
+        tag_id = UUID(str(tag_id))
     lock_photo(db, photo_id)
     db.flush()
     decision = db.get(TagDecision, (photo_id, tag_id))

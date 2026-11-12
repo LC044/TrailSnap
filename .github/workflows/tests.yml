@@ -355,6 +355,19 @@ jobs:
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build local AI image
+        # E2E 必须用本分支的 AI 代码：CLIP 分类依赖 /embedding/text 的 model
+        # 校验与 X-Embedding-Model 头，server(:ci) 与远端 ai:master 版本不一致
+        # 会让全部 CLIP 任务失败。本地 build 后与 server/frontend 一同替换为 :ci。
+        uses: docker/build-push-action@v6
+        with:
+          context: package/ai
+          file: package/ai/Dockerfile
+          load: true
+          tags: siyuan044/trailsnap-ai:ci
+          cache-from: type=gha,scope=e2e-ai
+          cache-to: type=gha,mode=max,scope=e2e-ai
+
       - name: Build local server image
         uses: docker/build-push-action@v6
         with:
@@ -378,11 +391,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=e2e-frontend
 
       - name: Override image tags for e2e stack
-        # server/frontend 用本地刚 build 的 :ci；ai 保持 :master（下一步 docker pull 拉取）
+        # server/frontend/ai 均使用本地刚 build 的 :ci，保证三个容器来自同一分支代码。
         run: |
           sed -i.bak \
             -e 's|siyuan044/trailsnap-server:master|siyuan044/trailsnap-server:ci|' \
             -e 's|siyuan044/trailsnap-frontend:master|siyuan044/trailsnap-frontend:ci|' \
+            -e 's|siyuan044/trailsnap-ai:master|siyuan044/trailsnap-ai:ci|' \
             tests/docker/docker-compose.yml
           rm tests/docker/docker-compose.yml.bak
           grep -nE 'image:' tests/docker/docker-compose.yml
@@ -395,11 +409,6 @@ jobs:
         with:
           path: tests/.cache/ai-models
           key: ai-models-v1
-
-      - name: Pull AI image
-        # run-tests -Mode docker 起栈时不会 compose pull，ai:master 需预先拉到本地，
-        # 否则 compose up 找不到镜像。server/frontend 是本地 :ci build，pgvector 由 up 自动拉。
-        run: docker pull siyuan044/trailsnap-ai:master
 
       - name: Run E2E (services-up → run-e2e → services-down)
         # 单一入口：run-tests.ps1 内部 try/finally 保证 services-down 无论成败都执行，
