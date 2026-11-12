@@ -5,7 +5,7 @@ import re
 def apply_shared_ticket_date(texts, tickets):
     """A single explicit page date may apply to several visible ticket cards."""
     dates = set()
-    codes = {m[0] for text in texts for m in re.finditer(r'(?<![A-Za-z0-9])[GDCKTZSNLYA]\d{1,4}(?![A-Za-z0-9])',text)}
+    codes = {m[0] for text in texts for m in re.finditer(r'(?<![A-Za-z0-9])[GDCKTZSNVLYA]\d{1,4}(?![A-Za-z0-9])',text)}
     for text in texts:
         match=re.match(r'^\s*(?:乘车日期[:：]\s*)?((?:\d{4}年)?\d{1,2}月\d{1,2}日)',text)
         if match:dates.add(match[1])

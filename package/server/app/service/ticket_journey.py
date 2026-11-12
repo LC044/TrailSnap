@@ -87,7 +87,7 @@ def resolve_code_candidates(info, day, cache):
         return None
     matches=[]
     for code in set(candidates):
-        if not isinstance(code,str) or not re.fullmatch(r'[GDCKTZSNLYA]\d{1,4}',code):continue
+        if not isinstance(code,str) or not re.fullmatch(r'[GDCKTZSNVLYA]\d{1,4}',code):continue
         result=cache.resolve(code,day,info['departure_station'],info['arrival_station'])
         if result.get('match') in ('exact','nearest'):matches.append(code)
     return matches[0] if len(matches)==1 else None
